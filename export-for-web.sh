@@ -30,11 +30,23 @@ fi
 # Remove existing export if it exists
 rm -f "$EXPORT_FILE"
 
+# MoneyMoney keeps a lock on its live DB while it's running, which blocks even read-only
+# PRAGMAs from sqlcipher. Copy the encrypted DB (and its WAL/SHM sidecars, if any) to a
+# scratch location first so sqlcipher has exclusive access.
+SCRATCH_DIR=$(mktemp -d -t moneymoney-export-XXXXXXXX)
+trap 'rm -rf "$SCRATCH_DIR"' EXIT
+SOURCE_COPY="$SCRATCH_DIR/source.sqlite"
+
+echo "Copying MoneyMoney database to scratch location..."
+cp "$MONEYMONEY_DB" "$SOURCE_COPY"
+[ -f "${MONEYMONEY_DB}-wal" ] && cp "${MONEYMONEY_DB}-wal" "${SOURCE_COPY}-wal"
+[ -f "${MONEYMONEY_DB}-shm" ] && cp "${MONEYMONEY_DB}-shm" "${SOURCE_COPY}-shm"
+
 echo "Creating new plain SQLite database..."
 sqlite3 "$EXPORT_FILE" "SELECT 1;" > /dev/null
 
 echo "Exporting tables from MoneyMoney database..."
-sqlcipher "$MONEYMONEY_DB" <<EOF
+sqlcipher "$SOURCE_COPY" <<EOF
 PRAGMA key = '$PASSWORD';
 PRAGMA cipher_compatibility = $CIPHER_COMPAT;
 

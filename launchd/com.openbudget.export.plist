@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LaunchAgent that runs the MoneyMoney → OpenBudget export on an hourly
+  schedule. Invokes the .app via /usr/bin/open so Launch Services starts it
+  with the bundle's TCC identity — that's what makes the Full Disk Access grant
+  on OpenBudgetImporter.app actually apply at run time.
+
+  Install:
+    ./launchd/build.sh                          # compile + sign the .app
+    # then grant FDA to launchd/OpenBudgetImporter.app in System Settings
+    cp launchd/com.openbudget.export.plist ~/Library/LaunchAgents/
+    # edit the copy if your repo isn't at /Users/<you>/budget
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.openbudget.export.plist
+    launchctl kickstart -k gui/$(id -u)/com.openbudget.export   # run once now
+
+  Uninstall:
+    launchctl bootout gui/$(id -u)/com.openbudget.export
+    rm ~/Library/LaunchAgents/com.openbudget.export.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.openbudget.export</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/open</string>
+        <string>-W</string>
+        <string>-a</string>
+        <string>/Users/CHANGEME/budget/launchd/OpenBudgetImporter.app</string>
+    </array>
+
+    <!-- Hourly. Swap for StartCalendarInterval if you'd rather pick specific clock times. -->
+    <key>StartInterval</key>
+    <integer>3600</integer>
+
+    <!-- Run once at load so you don't wait an hour for the first sync. -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/openbudget-launchd.log</string>
+    <key>StandardOutPath</key>
+    <string>/tmp/openbudget-launchd.log</string>
+</dict>
+</plist>
