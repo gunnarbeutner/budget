@@ -1,6 +1,29 @@
 // Chart rendering functions
 window.chartInstances = window.chartInstances || {};
 
+// Custom tooltip positioner: anchors to the outer edge of the hovered bar group instead of
+// averaging across elements. The default "average" mode lands between Cashflow's income and
+// expense stacks, where it covers the bars. With "outerEdge", the caret sits on the right
+// edge of the rightmost hovered bar (Chart.js auto-flips alignment when there's no room).
+if (window.Chart && Chart.Tooltip && Chart.Tooltip.positioners) {
+    Chart.Tooltip.positioners.outerEdge = function (elements) {
+        if (!elements || !elements.length) return false;
+        let maxRight = -Infinity;
+        let ySum = 0;
+        let count = 0;
+        for (const el of elements) {
+            const bar = el.element;
+            if (!bar || typeof bar.x !== 'number') continue;
+            const right = bar.x + (bar.width || 0) / 2;
+            if (right > maxRight) maxRight = right;
+            ySum += bar.y;
+            count++;
+        }
+        if (!count) return false;
+        return { x: maxRight, y: ySum / count };
+    };
+}
+
 window.renderPieChart = function(elementId, chartData) {
     const ctx = document.getElementById(elementId);
     if (!ctx) {
@@ -118,6 +141,41 @@ window.renderStackedBarChart = function(elementId, chartData) {
     }
 };
 
+// Cashflow plugin: paints a tinted band across forecast months so the user can see at a
+// glance which bars are projected vs actual. The Razor side passes
+// options.plugins.forecastShading.startMonth — 1-based, with 13 meaning "no forecast".
+const forecastShadingPlugin = {
+    id: 'forecastShading',
+    beforeDatasetsDraw(chart, _args, options) {
+        const startMonth = options?.startMonth;
+        if (!startMonth || startMonth > 12) return;
+
+        const xScale = chart.scales?.x;
+        const chartArea = chart.chartArea;
+        if (!xScale || !chartArea) return;
+
+        const startIdx = startMonth - 1;
+        if (startIdx > 11) return;
+
+        // Left edge: the boundary halfway between (startIdx-1) and startIdx — or the chart's
+        // left edge if startIdx is 0 (i.e. the whole year is forecast).
+        let leftPx;
+        if (startIdx === 0) {
+            leftPx = chartArea.left;
+        } else {
+            const prevX = xScale.getPixelForValue(startIdx - 1);
+            const thisX = xScale.getPixelForValue(startIdx);
+            leftPx = (prevX + thisX) / 2;
+        }
+        const rightPx = chartArea.right;
+
+        chart.ctx.save();
+        chart.ctx.fillStyle = 'rgba(100, 100, 100, 0.08)';
+        chart.ctx.fillRect(leftPx, chartArea.top, rightPx - leftPx, chartArea.bottom - chartArea.top);
+        chart.ctx.restore();
+    }
+};
+
 // Cashflow plugin: draws the net (income − expense) for each month above the taller stack.
 const monthlyNetLabelsPlugin = {
     id: 'monthlyNetLabels',
@@ -183,7 +241,7 @@ window.renderChart = function(elementId, chartData) {
     try {
         window.chartInstances[elementId] = new Chart(ctx, {
             ...chartData,
-            plugins: [monthlyNetLabelsPlugin]
+            plugins: [forecastShadingPlugin, monthlyNetLabelsPlugin]
         });
         return true;
     } catch (error) {

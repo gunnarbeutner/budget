@@ -484,8 +484,9 @@ else
 
         var datasets = new List<object>();
 
-        // Add income datasets (positive values)
-        var incomeColors = GenerateColors(incomeCategories.Count, "rgba(40, 167, 69, {0})"); // Green tones
+        // Income bars use a green-family palette; expenses use red. Each category gets a
+        // distinct shade within its family so individual items in the stack are still readable.
+        var incomeColors = GenerateColors(incomeCategories.Count, centerHue: 135); // greens
         for (int i = 0; i < incomeCategories.Count; i++)
         {
             var income = incomeCategories[i];
@@ -502,7 +503,7 @@ else
 
         // Add expense datasets — drawn as positive values too so they share a baseline with
         // the income stack; Chart.js groups the two stack keys side-by-side per month.
-        var expenseColors = GenerateColors(expenseCategories.Count, "rgba(220, 53, 69, {0})"); // Red tones
+        var expenseColors = GenerateColors(expenseCategories.Count, centerHue: 5); // reds/oranges
         for (int i = 0; i < expenseCategories.Count; i++)
         {
             var expense = expenseCategories[i];
@@ -539,10 +540,17 @@ else
                     {
                         mode = "index",
                         intersect = false,
+                        position = "outerEdge",
                         callbacks = new
                         {
                             label = "function(context) { return context.dataset.label + ': €' + context.parsed.y.toFixed(2); }"
                         }
+                    },
+                    // Picked up by the forecastShading plugin in wwwroot/js/charts.js. 13 means
+                    // "no projection active", so the plugin draws nothing.
+                    forecastShading = new
+                    {
+                        startMonth = firstProjectedMonth
                     }
                 },
                 scales = new
@@ -571,18 +579,22 @@ else
         await JSRuntime.InvokeVoidAsync("renderChart", "cashflowChart", chartData);
     }
 
-    private string[] GenerateColors(int count, string template = "rgba({0}, {1}, {2}, {{0}})")
+    /// <summary>
+    /// Returns an array of rgba color templates (each with a "{0}" placeholder for alpha) that
+    /// share a hue family. Hues are spread evenly across centerHue ± hueSpread/2, and lightness
+    /// alternates so adjacent categories stay visually distinct without leaving the family.
+    /// </summary>
+    private string[] GenerateColors(int count, double centerHue, double hueSpread = 70)
     {
         var colors = new string[count];
-        var hueStep = 360.0 / count;
-
         for (int i = 0; i < count; i++)
         {
-            var hue = i * hueStep;
-            var (r, g, b) = HslToRgb(hue / 360.0, 0.7, 0.5);
-            colors[i] = string.Format(template, r, g, b);
+            var t = count == 1 ? 0.5 : (double)i / (count - 1);
+            var hue = (centerHue - hueSpread / 2 + hueSpread * t + 360) % 360;
+            var lightness = 0.40 + (i % 2) * 0.15; // alternate 0.40 / 0.55
+            var (r, g, b) = HslToRgb(hue / 360.0, 0.65, lightness);
+            colors[i] = $"rgba({r}, {g}, {b}, {{0}})";
         }
-
         return colors;
     }
 
