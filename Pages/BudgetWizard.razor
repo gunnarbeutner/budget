@@ -2,10 +2,18 @@
 @using OpenBudget.Services
 @using OpenBudget.Models
 @using OpenBudget.Shared
+@using Microsoft.AspNetCore.WebUtilities
 @inject BudgetService BudgetService
 @inject NavigationManager Navigation
 
 <PageTitle>Create Budget</PageTitle>
+
+@if (notFound)
+{
+    <h1>Not Found</h1>
+    <p class="text-muted">No project specified. Open the wizard from a project on the <a href="/">dashboard</a>.</p>
+    return;
+}
 
 <h1>Budget Creation Wizard</h1>
 
@@ -13,21 +21,12 @@
 {
     <div class="card">
         <div class="card-header">
-            <h5>Step 1: Select Project and Year</h5>
+            <h5>Step 1: Year &amp; Name</h5>
         </div>
         <div class="card-body">
             <div class="mb-3">
                 <label class="form-label">Project</label>
-                <select class="form-select" @bind="selectedProjectId">
-                    <option value="0">-- Select a project --</option>
-                    @if (projects != null)
-                    {
-                        foreach (var project in projects)
-                        {
-                            <option value="@project.Id">@project.Name</option>
-                        }
-                    }
-                </select>
+                <input type="text" class="form-control" value="@(projects?.FirstOrDefault(p => p.Id == selectedProjectId)?.Name)" readonly />
             </div>
 
             <div class="mb-3">
@@ -46,10 +45,10 @@
                 <textarea class="form-control" @bind="notes" rows="3"></textarea>
             </div>
 
-            <button class="btn btn-primary" @onclick="GeneratePredictions" disabled="@(selectedProjectId == 0)">
+            <button class="btn btn-primary" @onclick="GeneratePredictions">
                 Next: Generate Predictions
             </button>
-            <a href="/" class="btn btn-secondary">Cancel</a>
+            <a href="/projects/@selectedProjectId" class="btn btn-secondary">Cancel</a>
         </div>
     </div>
 }
@@ -133,7 +132,7 @@ else if (step == 3)
         <h4>Budget Created Successfully!</h4>
         <p>Your budget for @selectedYear has been created with predicted monthly amounts based on historical data.</p>
         <a href="/projects/@selectedProjectId" class="btn btn-primary">View Project</a>
-        <a href="/budgets/wizard" class="btn btn-secondary" @onclick="Reset">Create Another Budget</a>
+        <a href="/budgets/wizard?projectId=@selectedProjectId" class="btn btn-secondary" @onclick="Reset">Create Another Budget</a>
     </div>
 }
 
@@ -145,6 +144,7 @@ else if (step == 3)
     private string notes = "";
     private int step = 1;
     private bool isGenerating = false;
+    private bool notFound = false;
 
     private Dictionary<(long Id, CategoryItemType ItemType), decimal[]>? predictions;
     private Dictionary<(long Id, CategoryItemType ItemType), string>? categoryNames;
@@ -157,7 +157,25 @@ else if (step == 3)
 
     protected override async Task OnInitializedAsync()
     {
+        // The wizard is project-scoped via ?projectId=<id>; mirroring Analysis and Cashflow.
+        // No project (or an unknown one) renders a Not Found view rather than offering a
+        // free-floating project picker.
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        if (!QueryHelpers.ParseQuery(uri.Query).TryGetValue("projectId", out var v)
+            || !int.TryParse(v, out var pid))
+        {
+            notFound = true;
+            return;
+        }
+
         projects = await BudgetService.GetProjectsAsync();
+        if (!projects.Any(p => p.Id == pid))
+        {
+            notFound = true;
+            return;
+        }
+
+        selectedProjectId = pid;
     }
 
     private async Task LoadCategories()

@@ -767,6 +767,12 @@
             }
         }
 
+        // Anchor the y-axis bottom at 0 only when every trend value is non-negative —
+        // otherwise let Chart.js auto-fit so refund-dominated months still render below zero.
+        bool hasNegativeTrend = categoryTrends != null
+            && categoryTrends.Values.Any(t => t.Any(m => m.Amount < 0));
+        decimal? yMin = hasNegativeTrend ? null : 0m;
+
         var chartData = new
         {
             type = "bar",
@@ -805,7 +811,12 @@
                     y = new
                     {
                         stacked = true, // Stack categories within actual spending
-                        beginAtZero = true,
+                        // Pass 0 to anchor the bottom for grace when data is all positive;
+                        // null lets Chart.js auto-fit so refund-dominated months show below 0.
+                        min = yMin,
+                        // Push the axis max above the data so stackTotalLabelsPlugin's
+                        // two-line Budget/Actual labels fit inside the plot area.
+                        grace = "10%",
                         title = new
                         {
                             display = true,

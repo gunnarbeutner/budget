@@ -25,9 +25,12 @@
     <div class="col-md-6">
         <label class="form-label">Year</label>
         <select class="form-select" @bind="selectedYear" @bind:after="OnYearChanged">
-            @for (int year = DateTime.UtcNow.Year - 2; year <= DateTime.UtcNow.Year + 2; year++)
+            @if (availableYears != null)
             {
-                <option value="@year">@year</option>
+                foreach (var y in availableYears)
+                {
+                    <option value="@y">@y</option>
+                }
             }
         </select>
     </div>
@@ -113,13 +116,33 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                 var splitsTotal = contributionSplits.Values.Sum();
                                 var splitsValid = splitsTotal == 100m;
                             }
-                            <small class="@(splitsValid ? "text-muted" : "text-danger fw-semibold")">
-                                Total: @splitsTotal%
-                                @if (!splitsValid)
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="@(splitsValid ? "text-muted" : "text-danger fw-semibold")">
+                                    Total: @splitsTotal%
+                                    @if (!splitsValid)
+                                    {
+                                        <span> — should sum to 100%</span>
+                                    }
+                                </small>
+                                @if (selectedBudgetId > 0)
                                 {
-                                    <span> — should sum to 100%</span>
+                                    <div class="d-flex align-items-center gap-2">
+                                        @if (splitsDirty)
+                                        {
+                                            <small class="text-muted">unsaved changes</small>
+                                        }
+                                        <button class="btn btn-sm btn-outline-primary"
+                                                disabled="@(!splitsDirty || splitsSaving)"
+                                                @onclick="SaveSplits">
+                                            @(splitsSaving ? "Saving…" : "Save splits")
+                                        </button>
+                                    </div>
                                 }
-                            </small>
+                                else
+                                {
+                                    <small class="text-muted">Select a budget to save splits.</small>
+                                }
+                            </div>
                         </div>
 
                         <div class="table-responsive">
@@ -207,6 +230,7 @@ else
 
 @code {
     private List<Budget>? availableBudgets;
+    private List<int>? availableYears;
     private int selectedYear = DateTime.UtcNow.Year;
     private int selectedProjectId = 0;
     private int selectedBudgetId = 0;
@@ -222,9 +246,13 @@ else
     private bool needsChartRender = false;
     private int firstProjectedMonth = 13;
     private decimal totalMonthlyIncomeNeeded = 0m;
+    private bool splitsDirty = false;
+    private bool splitsSaving = false;
 
     private class CategoryCashflow
     {
+        public long CategoryId { get; set; }
+        public CategoryItemType ItemType { get; set; }
         public string CategoryName { get; set; } = "";
         public decimal[] MonthlyAmounts { get; set; } = new decimal[12];
     }
@@ -249,6 +277,22 @@ else
 
         selectedProjectId = project.Id;
         projectName = project.Name;
+
+        // Populate the Year dropdown from years the project's tracked categories have
+        // transactions in, plus the next two years so the user can plan ahead with
+        // budget-driven projections.
+        var historicalYears = await BudgetService.GetYearsWithTransactionsForProjectAsync(selectedProjectId);
+        var today = DateTime.UtcNow.Year;
+        var futureYears = new[] { today + 1, today + 2 };
+        availableYears = futureYears
+            .Concat(historicalYears)
+            .Distinct()
+            .OrderByDescending(y => y)
+            .ToList();
+        if (!availableYears.Any())
+            availableYears = new List<int> { today };
+        if (!availableYears.Contains(selectedYear))
+            selectedYear = availableYears.Contains(today) ? today : availableYears.First();
 
         await LoadAvailableBudgets();
         await LoadCashflowData();
@@ -423,6 +467,8 @@ else
             {
                 incomeCategories.Add(new CategoryCashflow
                 {
+                    CategoryId = category.Id,
+                    ItemType = category.ItemType,
                     CategoryName = category.Name,
                     MonthlyAmounts = income
                 });
@@ -432,21 +478,34 @@ else
             {
                 expenseCategories.Add(new CategoryCashflow
                 {
+                    CategoryId = category.Id,
+                    ItemType = category.ItemType,
                     CategoryName = category.Name,
                     MonthlyAmounts = expenses
                 });
             }
         }
 
-        // Initialize equal splits
+        // Seed contribution splits: prefer the budget's saved splits when a budget is
+        // selected, fall back to equal splits otherwise. Items missing from the saved set
+        // get an equal-share fallback so newly-added income sources aren't silently zero.
+        Dictionary<(long, CategoryItemType), decimal> storedSplits = new();
+        if (selectedBudgetId > 0)
+        {
+            storedSplits = await BudgetService.GetBudgetContributionSplitsAsync(selectedBudgetId);
+        }
         if (incomeCategories.Any())
         {
-            var equalSplit = 100m / incomeCategories.Count;
+            var equalSplit = Math.Round(100m / incomeCategories.Count, 0);
             foreach (var income in incomeCategories)
             {
-                contributionSplits[income.CategoryName] = Math.Round(equalSplit, 0);
+                var key = (income.CategoryId, income.ItemType);
+                contributionSplits[income.CategoryName] = storedSplits.TryGetValue(key, out var saved)
+                    ? saved
+                    : equalSplit;
             }
         }
+        splitsDirty = false;
 
         // Attribute projected income to each source via the contribution splits and
         // recompute the rollup totals from the resulting per-source arrays.
@@ -510,10 +569,29 @@ else
 
     private async Task RecalculateContributions()
     {
+        splitsDirty = true;
         ApplyIncomeProjection();
         RecomputeTotals();
         await RenderCashflowChart();
         StateHasChanged();
+    }
+
+    private async Task SaveSplits()
+    {
+        if (selectedBudgetId <= 0 || !incomeCategories.Any()) return;
+        splitsSaving = true;
+        try
+        {
+            var payload = incomeCategories
+                .Select(c => (c.CategoryId, c.ItemType, Percent: contributionSplits.GetValueOrDefault(c.CategoryName, 0m)))
+                .ToList();
+            await BudgetService.SaveBudgetContributionSplitsAsync(selectedBudgetId, payload);
+            splitsDirty = false;
+        }
+        finally
+        {
+            splitsSaving = false;
+        }
     }
 
     private async Task RenderCashflowChart()
@@ -559,6 +637,14 @@ else
             });
         }
 
+        // Anchor the y-axis bottom at 0 only when no row has a negative month — otherwise let
+        // Chart.js auto-fit so refund-heavy months (negative net) still render as visible
+        // bars dropping below the zero line.
+        bool hasNegativeMonth =
+            incomeCategories.Any(c => c.MonthlyAmounts.Any(v => v < 0))
+            || expenseCategories.Any(c => c.MonthlyAmounts.Any(v => v < 0));
+        decimal? yMin = hasNegativeMonth ? null : 0m;
+
         var chartData = new
         {
             type = "bar",
@@ -603,6 +689,12 @@ else
                     y = new
                     {
                         stacked = true,
+                        // Explicit min anchors the bottom for Chart.js's grace algorithm,
+                        // which only skips padding an end when that end has a user-defined
+                        // bound. We pass 0 for all-positive data and null when negatives
+                        // exist so refund-heavy months stay visible below the zero line.
+                        min = yMin,
+                        grace = "30%",
                         ticks = new
                         {
                             callback = "function(value) { return '€' + value.toFixed(0); }"

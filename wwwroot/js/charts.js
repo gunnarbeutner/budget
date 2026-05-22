@@ -75,42 +75,66 @@ window.renderLineChart = function(elementId, chartData) {
     }
 };
 
-// Inline plugin: draws the monthly total of the "actual" stack just above each bar group.
+// Inline plugin: draws the monthly total above each stack. When both "actual" and "budget"
+// stacks are present, the labels are prefixed with "Actual" / "Budget" so the user can tell
+// the two bar groups apart at a glance instead of relying on the legend's opacity cue.
 const stackTotalLabelsPlugin = {
     id: 'stackTotalLabels',
     afterDatasetsDraw(chart) {
         const { ctx, data } = chart;
         if (!data || !data.labels || !data.datasets) return;
 
-        // Find any dataset belonging to the "actual" stack so we can use its bar geometry.
-        const actualDatasetIndex = data.datasets.findIndex(ds => ds.stack === 'actual');
-        if (actualDatasetIndex < 0) return;
+        const actualIdx = data.datasets.findIndex(ds => ds.stack === 'actual');
+        const budgetIdx = data.datasets.findIndex(ds => ds.stack === 'budget');
+        if (actualIdx < 0 && budgetIdx < 0) return;
 
-        const actualMeta = chart.getDatasetMeta(actualDatasetIndex);
+        const actualMeta = actualIdx >= 0 ? chart.getDatasetMeta(actualIdx) : null;
+        const budgetMeta = budgetIdx >= 0 ? chart.getDatasetMeta(budgetIdx) : null;
+        const both = actualIdx >= 0 && budgetIdx >= 0;
 
         ctx.save();
-        ctx.font = '600 11px system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.fillStyle = '#333';
 
         for (let i = 0; i < data.labels.length; i++) {
-            let total = 0;
+            let actualSum = 0;
+            let budgetSum = 0;
             for (const ds of data.datasets) {
-                if (ds.stack !== 'actual') continue;
-                const value = Number(ds.data[i]);
-                if (!isNaN(value)) total += value;
+                const v = Number(ds.data[i]);
+                if (isNaN(v)) continue;
+                if (ds.stack === 'actual') actualSum += v;
+                else if (ds.stack === 'budget') budgetSum += v;
             }
 
-            if (total <= 0) continue;
+            // Budget stack label
+            if (budgetMeta && budgetSum > 0) {
+                const bar = budgetMeta.data[i];
+                if (bar) {
+                    const yTop = chart.scales.y.getPixelForValue(budgetSum);
+                    ctx.font = '600 10px system-ui, sans-serif';
+                    ctx.fillStyle = '#777';
+                    ctx.fillText('Budget', bar.x, yTop - 14);
+                    ctx.font = '600 11px system-ui, sans-serif';
+                    ctx.fillStyle = '#333';
+                    ctx.fillText('€' + budgetSum.toFixed(0), bar.x, yTop - 4);
+                }
+            }
 
-            const bar = actualMeta.data[i];
-            if (!bar) continue;
-
-            // bar.y on the bottom dataset is the top of its own segment, not the top of the
-            // whole stack — convert the running total through the y scale to land above the stack.
-            const yTop = chart.scales.y.getPixelForValue(total);
-            ctx.fillText('€' + total.toFixed(0), bar.x, yTop - 4);
+            // Actual stack label
+            if (actualMeta && actualSum > 0) {
+                const bar = actualMeta.data[i];
+                if (bar) {
+                    const yTop = chart.scales.y.getPixelForValue(actualSum);
+                    if (both) {
+                        ctx.font = '600 10px system-ui, sans-serif';
+                        ctx.fillStyle = '#777';
+                        ctx.fillText('Actual', bar.x, yTop - 14);
+                    }
+                    ctx.font = '600 11px system-ui, sans-serif';
+                    ctx.fillStyle = '#333';
+                    ctx.fillText('€' + actualSum.toFixed(0), bar.x, yTop - 4);
+                }
+            }
         }
         ctx.restore();
     }
@@ -185,19 +209,23 @@ const forecastShadingPlugin = {
     }
 };
 
-// Cashflow plugin: draws the net (income − expense) for each month above the taller stack.
+// Cashflow plugin: draws stack identity labels ("Income" / "Expenses") and totals above each
+// stack, plus the net (income − expense) above the taller of the two. Without the stack
+// captions the side-by-side income vs expense pair could be confused at a glance.
 const monthlyNetLabelsPlugin = {
     id: 'monthlyNetLabels',
     afterDatasetsDraw(chart) {
         const { ctx, data } = chart;
         if (!data || !data.labels || !data.datasets) return;
 
-        const hasIncome = data.datasets.some(ds => ds.stack === 'income');
-        const hasExpense = data.datasets.some(ds => ds.stack === 'expenses');
-        if (!hasIncome && !hasExpense) return;
+        const incomeIdx = data.datasets.findIndex(ds => ds.stack === 'income');
+        const expenseIdx = data.datasets.findIndex(ds => ds.stack === 'expenses');
+        if (incomeIdx < 0 && expenseIdx < 0) return;
+
+        const incomeMeta = incomeIdx >= 0 ? chart.getDatasetMeta(incomeIdx) : null;
+        const expenseMeta = expenseIdx >= 0 ? chart.getDatasetMeta(expenseIdx) : null;
 
         ctx.save();
-        ctx.font = '600 11px system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
 
@@ -210,15 +238,44 @@ const monthlyNetLabelsPlugin = {
                 if (ds.stack === 'income') income += v;
                 else if (ds.stack === 'expenses') expense += v;
             }
-
             if (income === 0 && expense === 0) continue;
 
+            // Income stack: small "Income" caption + total
+            if (incomeMeta && income > 0) {
+                const bar = incomeMeta.data[i];
+                if (bar) {
+                    const yTop = chart.scales.y.getPixelForValue(income);
+                    ctx.font = '600 10px system-ui, sans-serif';
+                    ctx.fillStyle = '#777';
+                    ctx.fillText('Income', bar.x, yTop - 14);
+                    ctx.font = '600 11px system-ui, sans-serif';
+                    ctx.fillStyle = '#333';
+                    ctx.fillText('€' + income.toFixed(0), bar.x, yTop - 4);
+                }
+            }
+
+            // Expense stack: small "Expenses" caption + total
+            if (expenseMeta && expense > 0) {
+                const bar = expenseMeta.data[i];
+                if (bar) {
+                    const yTop = chart.scales.y.getPixelForValue(expense);
+                    ctx.font = '600 10px system-ui, sans-serif';
+                    ctx.fillStyle = '#777';
+                    ctx.fillText('Expenses', bar.x, yTop - 14);
+                    ctx.font = '600 11px system-ui, sans-serif';
+                    ctx.fillStyle = '#333';
+                    ctx.fillText('€' + expense.toFixed(0), bar.x, yTop - 4);
+                }
+            }
+
+            // Net sits above the taller stack with enough offset to clear its two-line label.
             const net = income - expense;
-            const yTop = chart.scales.y.getPixelForValue(Math.max(income, expense));
+            const yTallerTop = chart.scales.y.getPixelForValue(Math.max(income, expense));
             const x = chart.scales.x.getPixelForValue(i);
+            ctx.font = '600 11px system-ui, sans-serif';
             ctx.fillStyle = net >= 0 ? '#1c7a3a' : '#a02434';
             const sign = net >= 0 ? '+' : '−';
-            ctx.fillText(sign + '€' + Math.abs(net).toFixed(0), x, yTop - 4);
+            ctx.fillText(sign + '€' + Math.abs(net).toFixed(0), x, yTallerTop - 28);
         }
         ctx.restore();
     }

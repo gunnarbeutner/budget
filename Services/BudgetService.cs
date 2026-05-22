@@ -848,6 +848,23 @@ public class BudgetService
     }
 
     /// <summary>
+    /// Reads the 12 actual monthly spending amounts for a single tracked item in a specific
+    /// calendar year. Used as the prediction for already-elapsed target years where seasonal
+    /// scaling against today's level would be nonsensical.
+    /// </summary>
+    private async Task<decimal[]> GetYearActualsAsync((long Id, CategoryItemType ItemType) key, int year)
+    {
+        var result = new decimal[12];
+        var batch = await GetMonthlySpendingBatchAsync(new[] { key }, year);
+        if (batch.TryGetValue(key, out var trend))
+        {
+            for (int i = 0; i < 12 && i < trend.Count; i++)
+                result[i] = trend[i].Amount;
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Predict monthly spending for a leaf (MoneyMoney Category) using seasonal adjustment —
     /// same algorithm as <see cref="PredictMonthlySpendingForCategoryAsync"/> but driven by
     /// per-leaf history (<see cref="GetMonthlySpendingForCategoryAsync"/>) instead of summing
@@ -856,6 +873,13 @@ public class BudgetService
     public async Task<decimal[]> PredictMonthlySpendingForLeafCategoryAsync(long categoryId, int targetYear)
     {
         var predictions = new decimal[12];
+
+        // For a completely elapsed year, just use that year's own actuals — no scaling needed.
+        if (targetYear < DateTime.UtcNow.Year)
+        {
+            return await GetYearActualsAsync((categoryId, CategoryItemType.Category), targetYear);
+        }
+
         var monthlyData = await GetMonthlySpendingForCategoryAsync(categoryId, 24);
 
         if (!monthlyData.Any())
@@ -911,6 +935,12 @@ public class BudgetService
     public async Task<decimal[]> PredictMonthlySpendingForCategoryAsync(long categoryGroupId, int targetYear)
     {
         var predictions = new decimal[12];
+
+        // For a completely elapsed year, just use that year's own actuals — no scaling needed.
+        if (targetYear < DateTime.UtcNow.Year)
+        {
+            return await GetYearActualsAsync((categoryGroupId, CategoryItemType.Group), targetYear);
+        }
 
         // Get 2 years of historical data
         var monthlyData = await GetMonthlySpendingAsync(categoryGroupId, 24);
@@ -1090,6 +1120,58 @@ public class BudgetService
     #endregion
 
     #region Budget Trend Analysis
+
+    /// <summary>
+    /// Returns this budget's stored Income Contribution splits as a dictionary keyed by
+    /// (CategoryId, ItemType). Empty dictionary if no splits are saved.
+    /// </summary>
+    public async Task<Dictionary<(long Id, CategoryItemType ItemType), decimal>> GetBudgetContributionSplitsAsync(int budgetId)
+    {
+        var rows = await _budgetDb.BudgetContributionSplits
+            .Where(s => s.BudgetId == budgetId)
+            .ToListAsync();
+        return rows.ToDictionary(r => (r.CategoryId, r.ItemType), r => r.Percent);
+    }
+
+    /// <summary>
+    /// Replace the budget's contribution-split rows with the supplied set. Rows whose
+    /// (CategoryId, ItemType) key isn't in the new set get deleted, others are upserted.
+    /// </summary>
+    public async Task SaveBudgetContributionSplitsAsync(
+        int budgetId,
+        IReadOnlyCollection<(long Id, CategoryItemType ItemType, decimal Percent)> splits)
+    {
+        var existing = await _budgetDb.BudgetContributionSplits
+            .Where(s => s.BudgetId == budgetId)
+            .ToListAsync();
+
+        var desiredKeys = splits.Select(s => (s.Id, s.ItemType)).ToHashSet();
+        foreach (var row in existing.Where(r => !desiredKeys.Contains((r.CategoryId, r.ItemType))))
+        {
+            _budgetDb.BudgetContributionSplits.Remove(row);
+        }
+
+        foreach (var (id, itemType, percent) in splits)
+        {
+            var row = existing.FirstOrDefault(r => r.CategoryId == id && r.ItemType == itemType);
+            if (row == null)
+            {
+                _budgetDb.BudgetContributionSplits.Add(new BudgetContributionSplit
+                {
+                    BudgetId = budgetId,
+                    CategoryId = id,
+                    ItemType = itemType,
+                    Percent = percent
+                });
+            }
+            else
+            {
+                row.Percent = percent;
+            }
+        }
+
+        await _budgetDb.SaveChangesAsync();
+    }
 
     /// <summary>
     /// Returns the 12-month budget amounts for every MonthlyBudgetEntry on a budget, keyed by

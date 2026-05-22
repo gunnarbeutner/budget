@@ -53,6 +53,32 @@ namespace OpenBudget.Migrations
                     b.ToTable("budgets");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.BudgetContributionSplit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BudgetId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ItemType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("Percent")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BudgetId", "CategoryId", "ItemType")
+                        .IsUnique();
+
+                    b.ToTable("budget_contribution_splits");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.CategoryTypeAssignment", b =>
                 {
                     b.Property<int>("Id")
@@ -215,6 +241,17 @@ namespace OpenBudget.Migrations
                         .IsRequired();
 
                     b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.BudgetContributionSplit", b =>
+                {
+                    b.HasOne("OpenBudget.Models.Budget", "Budget")
+                        .WithMany()
+                        .HasForeignKey("BudgetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Budget");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.CategoryTypeAssignment", b =>

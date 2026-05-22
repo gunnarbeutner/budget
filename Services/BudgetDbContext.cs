@@ -19,6 +19,7 @@ public class BudgetDbContext : DbContext
     public DbSet<CategoryTypeAssignment> CategoryTypeAssignments => Set<CategoryTypeAssignment>();
     public DbSet<Budget> Budgets => Set<Budget>();
     public DbSet<MonthlyBudgetEntry> MonthlyBudgetEntries => Set<MonthlyBudgetEntry>();
+    public DbSet<BudgetContributionSplit> BudgetContributionSplits => Set<BudgetContributionSplit>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,6 +61,15 @@ public class BudgetDbContext : DbContext
             .WithMany(b => b.MonthlyEntries)
             .HasForeignKey(mbe => mbe.BudgetId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<BudgetContributionSplit>()
+            .HasOne(bcs => bcs.Budget)
+            .WithMany()
+            .HasForeignKey(bcs => bcs.BudgetId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<BudgetContributionSplit>()
+            .HasIndex(bcs => new { bcs.BudgetId, bcs.CategoryId, bcs.ItemType })
+            .IsUnique();
 
         // Note: We don't create a FK to Category since it's in a different database
         // We'll handle the relationship in code
