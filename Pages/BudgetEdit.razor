@@ -4,7 +4,7 @@
 @inject BudgetService BudgetService
 @inject NavigationManager Navigation
 
-<PageTitle>@(budget != null ? $"Edit Budget — {budget.Project?.Name} {budget.Year}" : "Edit Budget")</PageTitle>
+<PageTitle>@(budget != null ? $"Edit Budget — {budget.Project?.Name} · {budget.Name}" : "Edit Budget")</PageTitle>
 
 @if (notFound)
 {
@@ -21,7 +21,7 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h1 class="mb-0">Edit Budget — @budget.Project?.Name</h1>
+        <h1 class="mb-0">Edit Budget — @budget.Project?.Name <small class="text-muted">@budget.Name</small></h1>
         @if (budget.LastModifiedAt.HasValue)
         {
             <small class="text-muted">Last modified @budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</small>
@@ -32,15 +32,26 @@
 
 <div class="card mb-3">
     <div class="card-body">
-        <div class="row">
-            <div class="col-md-3">
+        <div class="row g-3">
+            <div class="col-md-5">
+                <label class="form-label">Name</label>
+                <input type="text" class="form-control" maxlength="200" @bind="budget.Name" />
+            </div>
+            <div class="col-md-2">
                 <label class="form-label">Year</label>
                 <input type="number" class="form-control" min="2000" max="2100" @bind="budget.Year" />
             </div>
-            <div class="col-md-9">
+            <div class="col-md-5">
                 <label class="form-label">Notes</label>
                 <input type="text" class="form-control" @bind="budget.Notes" />
             </div>
+        </div>
+        <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox" id="budget-active" @bind="budget.IsActive" />
+            <label class="form-check-label" for="budget-active">
+                Active for @budget.Year — the dashboard rolls this budget up. Saving will
+                deactivate any other budget for the same year.
+            </label>
         </div>
     </div>
 </div>

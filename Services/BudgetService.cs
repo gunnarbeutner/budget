@@ -191,7 +191,10 @@ public class BudgetService
             throw new ArgumentException("Project not found", nameof(projectId));
 
         var budgets = await GetBudgetsForProjectAsync(projectId);
-        var activeBudget = budgets.FirstOrDefault(b => b.Year == year);
+        // Prefer the budget the user explicitly marked active; fall back to the most recently
+        // modified one for the year if nothing is active (legacy data, edge cases).
+        var activeBudget = budgets.FirstOrDefault(b => b.Year == year && b.IsActive)
+            ?? budgets.FirstOrDefault(b => b.Year == year);
         var budgetAmounts = activeBudget != null
             ? activeBudget.MonthlyEntries.ToDictionary(
                 e => ((long Id, CategoryItemType ItemType))(e.CategoryId, e.ItemType),
@@ -630,6 +633,8 @@ public class BudgetService
             .Where(b => b.ProjectId == projectId)
             .Include(b => b.MonthlyEntries)
             .OrderByDescending(b => b.Year)
+            .ThenByDescending(b => b.IsActive)
+            .ThenByDescending(b => b.LastModifiedAt ?? b.CreatedAt)
             .ToListAsync();
     }
 
@@ -646,17 +651,32 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Create a new budget
+    /// Create a new budget. By default the new budget becomes the active one for its
+    /// (project, year), deactivating any sibling that was active. If <paramref name="name"/>
+    /// is null/empty we use today's date in YYYY-MM-DD form.
     /// </summary>
-    public async Task<Budget> CreateBudgetAsync(int projectId, int year, string? notes = null)
+    public async Task<Budget> CreateBudgetAsync(int projectId, int year, string? name = null, string? notes = null, bool makeActive = true)
     {
+        var createdAt = DateTime.UtcNow;
         var budget = new Budget
         {
             ProjectId = projectId,
             Year = year,
+            Name = string.IsNullOrWhiteSpace(name) ? createdAt.ToString("yyyy-MM-dd") : name.Trim(),
             Notes = notes,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = createdAt,
+            IsActive = makeActive
         };
+
+        if (makeActive)
+        {
+            // Clear any other active budget for the same (project, year) so the new one wins.
+            var siblings = await _budgetDb.Budgets
+                .Where(b => b.ProjectId == projectId && b.Year == year && b.IsActive)
+                .ToListAsync();
+            foreach (var sibling in siblings)
+                sibling.IsActive = false;
+        }
 
         _budgetDb.Budgets.Add(budget);
         await _budgetDb.SaveChangesAsync();
@@ -665,11 +685,43 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Update a budget
+    /// Mark a budget as the active one for its (project, year), deactivating siblings.
+    /// </summary>
+    public async Task SetActiveBudgetAsync(int budgetId)
+    {
+        var target = await _budgetDb.Budgets.FindAsync(budgetId);
+        if (target == null) return;
+
+        var siblings = await _budgetDb.Budgets
+            .Where(b => b.ProjectId == target.ProjectId && b.Year == target.Year && b.Id != target.Id && b.IsActive)
+            .ToListAsync();
+        foreach (var sibling in siblings)
+            sibling.IsActive = false;
+
+        target.IsActive = true;
+        await _budgetDb.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Update a budget. If the caller flipped IsActive on, deactivate every other budget for
+    /// the same (project, year) in the same transaction so the unique-active invariant holds.
     /// </summary>
     public async Task UpdateBudgetAsync(Budget budget)
     {
         budget.LastModifiedAt = DateTime.UtcNow;
+
+        if (budget.IsActive)
+        {
+            var siblings = await _budgetDb.Budgets
+                .Where(b => b.ProjectId == budget.ProjectId
+                            && b.Year == budget.Year
+                            && b.Id != budget.Id
+                            && b.IsActive)
+                .ToListAsync();
+            foreach (var sibling in siblings)
+                sibling.IsActive = false;
+        }
+
         _budgetDb.Budgets.Update(budget);
         await _budgetDb.SaveChangesAsync();
     }
@@ -1417,24 +1469,79 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Batched version of GetMonthlySpendingAsync / GetMonthlySpendingForCategoryAsync. Returns
-    /// monthly outflow (negative transactions, negated to positive) for the last N calendar months.
+    /// Returns the calendar years that have at least one transaction in the MoneyMoney DB,
+    /// newest first. Implemented as min/max of the timestamp column rather than a DISTINCT
+    /// year scan — gap years (rare) are still returned for UI continuity.
+    /// </summary>
+    public async Task<List<int>> GetYearsWithTransactionsAsync()
+    {
+        var minTs = await _moneyMoneyDb.Transactions.MinAsync(t => (long?)t.Timestamp);
+        var maxTs = await _moneyMoneyDb.Transactions.MaxAsync(t => (long?)t.Timestamp);
+        return YearsBetween(minTs, maxTs);
+    }
+
+    /// <summary>
+    /// Same as <see cref="GetYearsWithTransactionsAsync"/> but restricted to the leaves of a
+    /// project's tracking items — so the year picker on a project page doesn't offer years
+    /// where the tracked categories don't actually have any data.
+    /// </summary>
+    public async Task<List<int>> GetYearsWithTransactionsForProjectAsync(int projectId)
+    {
+        var project = await GetProjectAsync(projectId);
+        if (project == null) return new List<int>();
+
+        var trackedKeys = new List<(long Id, CategoryItemType ItemType)>();
+        foreach (var ti in project.TrackingItems)
+        {
+            if (ti.CategoryGroupId.HasValue)
+                trackedKeys.Add((ti.CategoryGroupId.Value, CategoryItemType.Group));
+            else if (ti.CategoryId.HasValue)
+                trackedKeys.Add((ti.CategoryId.Value, CategoryItemType.Category));
+        }
+        if (!trackedKeys.Any()) return new List<int>();
+
+        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync();
+        var itemToLeafIds = BuildItemToLeafCategoryIds(trackedKeys, allCategoriesWithCounts);
+        var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
+        if (!allLeafIds.Any()) return new List<int>();
+
+        var minTs = await _moneyMoneyDb.Transactions
+            .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
+            .MinAsync(t => (long?)t.Timestamp);
+        var maxTs = await _moneyMoneyDb.Transactions
+            .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
+            .MaxAsync(t => (long?)t.Timestamp);
+        return YearsBetween(minTs, maxTs);
+    }
+
+    private static List<int> YearsBetween(long? minTs, long? maxTs)
+    {
+        if (!minTs.HasValue || !maxTs.HasValue) return new List<int>();
+        var minYear = DateTimeOffset.FromUnixTimeSeconds(minTs.Value).UtcDateTime.Year;
+        var maxYear = DateTimeOffset.FromUnixTimeSeconds(maxTs.Value).UtcDateTime.Year;
+        var years = new List<int>();
+        for (int y = maxYear; y >= minYear; y--)
+            years.Add(y);
+        return years;
+    }
+
+    /// <summary>
+    /// Batched monthly outflow (negative transactions, negated to positive) for a calendar year.
     /// Items with no leaf categories get an empty list, matching the per-item method's behavior.
     /// </summary>
     public async Task<Dictionary<(long Id, CategoryItemType ItemType), List<MonthlySpending>>>
         GetMonthlySpendingBatchAsync(
             IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
-            int months)
+            int year)
     {
+        const int months = 12;
         var result = new Dictionary<(long, CategoryItemType), List<MonthlySpending>>();
         foreach (var item in items)
             result[item] = new List<MonthlySpending>();
 
-        if (!items.Any() || months <= 0) return result;
+        if (!items.Any()) return result;
 
-        var now = DateTimeOffset.UtcNow;
-        var startDate = new DateTimeOffset(new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc))
-            .AddMonths(-(months - 1));
+        var startDate = new DateTimeOffset(new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc));
 
         var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync();
         var itemToLeafIds = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);

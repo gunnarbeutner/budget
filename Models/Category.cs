@@ -28,6 +28,12 @@ public class Category
     [Column("group_key")]
     public long? GroupId { get; set; }
 
+    /// <summary>
+    /// MoneyMoney's display order within the parent group. Null values sort last.
+    /// </summary>
+    [Column("sort")]
+    public long? Sort { get; set; }
+
     // Navigation properties
     public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
 

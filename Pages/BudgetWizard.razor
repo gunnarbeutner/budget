@@ -36,6 +36,12 @@
             </div>
 
             <div class="mb-3">
+                <label class="form-label">Name</label>
+                <input type="text" class="form-control" @bind="budgetName" placeholder="@DateTime.UtcNow.ToString("yyyy-MM-dd")" />
+                <small class="form-text text-muted">Defaults to today's date. The dashboard uses the budget marked active for each year.</small>
+            </div>
+
+            <div class="mb-3">
                 <label class="form-label">Notes (optional)</label>
                 <textarea class="form-control" @bind="notes" rows="3"></textarea>
             </div>
@@ -135,6 +141,7 @@ else if (step == 3)
     private List<Project>? projects;
     private int selectedProjectId;
     private int selectedYear = DateTime.UtcNow.Year;
+    private string budgetName = "";
     private string notes = "";
     private int step = 1;
     private bool isGenerating = false;
@@ -353,7 +360,7 @@ else if (step == 3)
         if (predictions == null)
             return;
 
-        var budget = await BudgetService.CreateBudgetAsync(selectedProjectId, selectedYear, notes);
+        var budget = await BudgetService.CreateBudgetAsync(selectedProjectId, selectedYear, budgetName, notes);
         var entries = predictions
             .Select(kvp => (kvp.Key.Id, kvp.Key.ItemType, kvp.Value))
             .ToList();
@@ -367,6 +374,7 @@ else if (step == 3)
         step = 1;
         selectedProjectId = 0;
         selectedYear = DateTime.UtcNow.Year;
+        budgetName = "";
         notes = "";
         predictions = null;
         categoryNames = null;

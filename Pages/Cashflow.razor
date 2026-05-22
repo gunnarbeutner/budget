@@ -24,7 +24,7 @@
 <div class="row mb-4">
     <div class="col-md-6">
         <label class="form-label">Year</label>
-        <select class="form-select" @bind="selectedYear" @bind:after="LoadCashflowData">
+        <select class="form-select" @bind="selectedYear" @bind:after="OnYearChanged">
             @for (int year = DateTime.UtcNow.Year - 2; year <= DateTime.UtcNow.Year + 2; year++)
             {
                 <option value="@year">@year</option>
@@ -40,7 +40,7 @@
             {
                 foreach (var budget in availableBudgets)
                 {
-                    <option value="@budget.Id">@budget.Project?.Name - @budget.Year</option>
+                    <option value="@budget.Id">@budget.Year — @budget.Name@(budget.IsActive ? " (active)" : "")</option>
                 }
             }
         </select>
@@ -109,7 +109,17 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                     </div>
                                 }
                             </div>
-                            <small class="text-muted">Total: @contributionSplits.Values.Sum()%</small>
+                            @{
+                                var splitsTotal = contributionSplits.Values.Sum();
+                                var splitsValid = splitsTotal == 100m;
+                            }
+                            <small class="@(splitsValid ? "text-muted" : "text-danger fw-semibold")">
+                                Total: @splitsTotal%
+                                @if (!splitsValid)
+                                {
+                                    <span> — should sum to 100%</span>
+                                }
+                            </small>
                         </div>
 
                         <div class="table-responsive">
@@ -145,7 +155,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                     <tr class="table-primary">
                                         <th>Total</th>
                                         <th class="text-end">@FormatEuro(incomeCategories.Sum(c => c.MonthlyAmounts.Sum()))</th>
-                                        <th class="text-end">@contributionSplits.Values.Sum()%</th>
+                                        <th class="text-end @(splitsValid ? "" : "text-danger")">@splitsTotal%</th>
                                         <th class="text-end">@FormatEuro(totalExpenses)</th>
                                         <th class="text-end">@FormatEuro(incomeCategories.Sum(c => c.MonthlyAmounts.Sum()) - totalExpenses)</th>
                                     </tr>
@@ -258,6 +268,26 @@ else
     private async Task LoadAvailableBudgets()
     {
         availableBudgets = await BudgetService.GetBudgetsForProjectAsync(selectedProjectId);
+        // Default the selection to the active budget for the displayed year (if any). Keep
+        // the user's manual choice intact when the dropdown is reloaded for the same year.
+        if (availableBudgets.All(b => b.Id != selectedBudgetId))
+        {
+            selectedBudgetId = availableBudgets
+                .FirstOrDefault(b => b.Year == selectedYear && b.IsActive)?.Id ?? 0;
+        }
+    }
+
+    private async Task OnYearChanged()
+    {
+        // Re-pick the active budget for the new year unless the user already chose one
+        // for it explicitly.
+        var currentMatch = availableBudgets?.FirstOrDefault(b => b.Id == selectedBudgetId);
+        if (currentMatch == null || currentMatch.Year != selectedYear)
+        {
+            selectedBudgetId = availableBudgets?
+                .FirstOrDefault(b => b.Year == selectedYear && b.IsActive)?.Id ?? 0;
+        }
+        await LoadCashflowData();
     }
 
     private async Task LoadCashflowData()
@@ -334,22 +364,33 @@ else
 
         bool projecting = budgetMonthlyAmounts != null && firstProjectedMonth <= 12;
 
-        // Pre-compute the year's expense budget and total YTD income so we know the global
-        // monthly income gap before populating per-source values.
-        decimal annualExpenseBudget = 0m;
+        // Pre-compute the projected total annual expense (past actuals + future budget) and
+        // the YTD income so the global monthly income gap reflects what will actually appear
+        // in the Income Contribution Calculator's "Total Expenses" reference. If we used the
+        // annual expense budget instead, the calculator's "Remaining" wouldn't reach zero when
+        // past actuals diverged from past budget — even with splits summing to 100%.
+        decimal totalExpensesForProjection = 0m;
         decimal totalIncomeYtd = 0m;
         if (projecting)
         {
             foreach (var cat in availableCategories)
             {
                 bool isIncome = incomeItemsForProjection!.Contains((cat.Id, cat.ItemType));
-                if (!isIncome && budgetMonthlyAmounts!.TryGetValue((cat.Id, cat.ItemType), out var monthly))
+                var (income, expenses) = batch[(cat.Id, cat.ItemType)];
+                if (!isIncome)
                 {
-                    annualExpenseBudget += monthly.Sum();
+                    // Past actuals (Jan..firstProjectedMonth-1) come from the batch's expense
+                    // array; future months will be overwritten with the budget value in the
+                    // per-category loop below, so reflect that here.
+                    totalExpensesForProjection += expenses.Take(firstProjectedMonth - 1).Sum();
+                    if (budgetMonthlyAmounts!.TryGetValue((cat.Id, cat.ItemType), out var monthly))
+                    {
+                        for (int m = firstProjectedMonth - 1; m < 12; m++)
+                            totalExpensesForProjection += monthly[m];
+                    }
                 }
-                if (isIncome)
+                else
                 {
-                    var (income, _) = batch[(cat.Id, cat.ItemType)];
                     totalIncomeYtd += income.Take(firstProjectedMonth - 1).Sum();
                 }
             }
@@ -357,7 +398,7 @@ else
 
         var remainingMonthsForProjection = 13 - firstProjectedMonth;
         totalMonthlyIncomeNeeded = projecting && remainingMonthsForProjection > 0
-            ? Math.Max(0m, (annualExpenseBudget - totalIncomeYtd) / remainingMonthsForProjection)
+            ? Math.Max(0m, (totalExpensesForProjection - totalIncomeYtd) / remainingMonthsForProjection)
             : 0m;
 
         foreach (var category in availableCategories)

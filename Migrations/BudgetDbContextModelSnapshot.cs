@@ -26,7 +26,15 @@ namespace OpenBudget.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime?>("LastModifiedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Notes")

@@ -27,6 +27,18 @@
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6">
+                        <label class="form-label">Year</label>
+                        <select class="form-select" value="@selectedYear" @onchange="OnYearChanged">
+                            @if (availableYears != null)
+                            {
+                                foreach (var y in availableYears)
+                                {
+                                    <option value="@y">@y</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-6">
                         <label class="form-label">Compare with Budget</label>
                         <select class="form-select" value="@selectedCompareBudgetId" @onchange="OnCompareBudgetChanged">
                             <option value="0">-- No Budget Comparison --</option>
@@ -34,19 +46,9 @@
                             {
                                 foreach (var bud in availableBudgets)
                                 {
-                                    <option value="@bud.Id">@bud.Year (@bud.Notes)</option>
+                                    <option value="@bud.Id">@bud.Year — @bud.Name@(bud.IsActive ? " (active)" : "")</option>
                                 }
                             }
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Date Range</label>
-                        <select class="form-select" value="@selectedDateRange" @onchange="OnDateRangeChanged">
-                            <option value="12">Last 12 Months</option>
-                            <option value="6">Last 6 Months</option>
-                            <option value="3">Last 3 Months</option>
-                            <option value="current-year">Current Year</option>
-                            <option value="last-year">Last Year</option>
                         </select>
                     </div>
                 </div>
@@ -99,7 +101,7 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach (var item in varianceSummary.OrderByDescending(v => Math.Abs(v.Variance)))
+                                        @foreach (var item in varianceSummary.OrderBy(v => categorySortKeys.GetValueOrDefault(v.CategoryName, v.CategoryName)).ThenBy(v => v.CategoryName))
                                         {
                                             var percentOfBudget = item.BudgetAmount > 0 ? (item.ActualAmount / item.BudgetAmount * 100) : 0;
                                             var rowClass = percentOfBudget > 110 ? "table-danger" : percentOfBudget > 90 ? "table-warning" : "table-success";
@@ -126,6 +128,49 @@
                                                 }
                                                 @totalPercent.ToString("N1")%
                                             </th>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        @* No budget selected — show a plain summary so users always get a tabular
+                           breakdown to scan alongside the chart. *@
+                        <div class="mt-4">
+                            <h6>Summary</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Category</th>
+                                            <th class="text-end">Total</th>
+                                            <th class="text-end">Avg / month</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var (name, trend) in categoryTrends.OrderBy(kvp => categorySortKeys.GetValueOrDefault(kvp.Key, kvp.Key)).ThenBy(kvp => kvp.Key))
+                                        {
+                                            var total = trend.Sum(m => m.Amount);
+                                            var avg = trend.Count > 0 ? total / trend.Count : 0m;
+                                            <tr>
+                                                <td>@name</td>
+                                                <td class="text-end">€@total.ToString("N2")</td>
+                                                <td class="text-end">€@avg.ToString("N2")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                    <tfoot>
+                                        @{
+                                            var grandTotal = categoryTrends.Values.Sum(t => t.Sum(m => m.Amount));
+                                            var grandMonths = categoryTrends.Values.Select(t => t.Count).DefaultIfEmpty(0).Max();
+                                            var grandAvg = grandMonths > 0 ? grandTotal / grandMonths : 0m;
+                                        }
+                                        <tr class="table-primary">
+                                            <th>Total</th>
+                                            <th class="text-end">€@grandTotal.ToString("N2")</th>
+                                            <th class="text-end">€@grandAvg.ToString("N2")</th>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -195,12 +240,14 @@
     private HashSet<(long Id, CategoryItemType ItemType)> incomeItems = new();
     private List<Category>? allActualCategories;
     private Dictionary<string, List<MonthlySpending>>? categoryTrends;
+    private Dictionary<string, string> categorySortKeys = new();
     private Dictionary<string, List<MonthlySpending>>? budgetTrends;
     private List<VarianceSummary>? varianceSummary;
     private List<Budget>? availableBudgets;
     private int selectedBudgetId = 0;
     private int selectedCompareBudgetId = 0;
-    private string selectedDateRange = "12";
+    private int selectedYear = DateTime.UtcNow.Year;
+    private List<int>? availableYears;
     private bool categoriesExpanded = false;
     private string? projectName;
     private bool notFound = false;
@@ -240,6 +287,16 @@
         // Load all actual categories
         allActualCategories = await BudgetService.GetAllCategoriesAsync();
 
+        // Populate the year picker from the years the project's tracked categories actually
+        // have transactions in. Default to the current year, or the closest available if the
+        // current year isn't in the dataset. Falls back to a single-entry list with the
+        // current year so the dropdown isn't empty when a project has no transactions yet.
+        availableYears = await BudgetService.GetYearsWithTransactionsForProjectAsync(selectedBudgetId);
+        if (!availableYears.Any())
+            availableYears = new List<int> { DateTime.UtcNow.Year };
+        if (!availableYears.Contains(selectedYear))
+            selectedYear = availableYears.First();
+
         await LoadProjectContext();
         await LoadCategoryTrends();
     }
@@ -261,6 +318,15 @@
 
         incomeItems = await BudgetService.GetIncomeItemsForProjectAsync(selectedBudgetId);
         availableBudgets = await BudgetService.GetBudgetsForProjectAsync(selectedBudgetId);
+
+        // Default the budget-comparison dropdown to the project's active budget for the
+        // currently-selected year, unless the user already picked a budget that still applies.
+        var currentMatch = availableBudgets.FirstOrDefault(b => b.Id == selectedCompareBudgetId);
+        if (currentMatch == null || currentMatch.Year != selectedYear)
+        {
+            selectedCompareBudgetId = availableBudgets
+                .FirstOrDefault(b => b.Year == selectedYear && b.IsActive)?.Id ?? 0;
+        }
 
         await FilterCategoriesByBudget();
         allAvailableCategories = filteredCategories;
@@ -434,10 +500,24 @@
         }
     }
 
-    private async Task OnDateRangeChanged(ChangeEventArgs e)
+    private async Task OnYearChanged(ChangeEventArgs e)
     {
-        selectedDateRange = e.Value?.ToString() ?? "12";
-        await LoadCategoryTrends();
+        if (int.TryParse(e.Value?.ToString(), out var y))
+        {
+            selectedYear = y;
+            // Re-pick the active budget for the new year unless the user already picked one
+            // that matches it.
+            if (availableBudgets != null)
+            {
+                var currentMatch = availableBudgets.FirstOrDefault(b => b.Id == selectedCompareBudgetId);
+                if (currentMatch == null || currentMatch.Year != selectedYear)
+                {
+                    selectedCompareBudgetId = availableBudgets
+                        .FirstOrDefault(b => b.Year == selectedYear && b.IsActive)?.Id ?? 0;
+                }
+            }
+            await LoadCategoryTrends();
+        }
     }
 
     private async Task OnCompareBudgetChanged(ChangeEventArgs e)
@@ -453,28 +533,6 @@
     {
         categoryTrends = new Dictionary<string, List<MonthlySpending>>();
 
-        int months;
-        int? filterYear = null;
-
-        if (selectedDateRange == "current-year")
-        {
-            // Get current year data: from Jan to current month
-            var now = DateTime.UtcNow;
-            months = now.Month + 12; // Get extra months to ensure we have full year if needed
-            filterYear = now.Year;
-        }
-        else if (selectedDateRange == "last-year")
-        {
-            // Get last year data: all 12 months of previous year
-            var now = DateTime.UtcNow;
-            months = now.Month + 12; // Get enough months to cover last full year
-            filterYear = now.Year - 1;
-        }
-        else
-        {
-            months = int.Parse(selectedDateRange);
-        }
-
         // Batch-load trends for all selected groups and categories in one DB roundtrip
         var batchKeys = new List<(long Id, CategoryItemType ItemType)>();
         foreach (var groupId in selectedCategoryGroupIds)
@@ -482,8 +540,9 @@
         foreach (var categoryId in selectedActualCategoryIds)
             batchKeys.Add((categoryId, CategoryItemType.Category));
 
-        var trendBatch = await BudgetService.GetMonthlySpendingBatchAsync(batchKeys, months);
+        var trendBatch = await BudgetService.GetMonthlySpendingBatchAsync(batchKeys, selectedYear);
 
+        categorySortKeys = new Dictionary<string, string>();
         foreach (var (key, trend) in trendBatch)
         {
             if (!trend.Any()) continue;
@@ -503,12 +562,8 @@
                 name = category.Name ?? "Unknown";
             }
 
-            var filtered = filterYear.HasValue
-                ? trend.Where(m => m.Year == filterYear.Value).ToList()
-                : trend;
-
-            if (filtered.Any())
-                categoryTrends[name] = filtered;
+            categoryTrends[name] = trend;
+            categorySortKeys[name] = ComputeMoneyMoneySortKey(key);
         }
 
         // Load budget data if comparison is active
@@ -600,6 +655,44 @@
             needsTrendChartRender = true;
             StateHasChanged();
         }
+    }
+
+    /// <summary>
+    /// Build a sort key reflecting an item's position in MoneyMoney's tree (ancestor sort
+    /// values, then own sort, then id for stability). Lexicographic compare on the resulting
+    /// string yields the same order MoneyMoney itself displays.
+    /// </summary>
+    private string ComputeMoneyMoneySortKey((long Id, CategoryItemType ItemType) key)
+    {
+        var parts = new List<string>();
+        long? walkUp = null;
+
+        if (key.ItemType == CategoryItemType.Category)
+        {
+            var cat = allActualCategories?.FirstOrDefault(c => c.Id == key.Id);
+            parts.Insert(0, (cat?.Sort ?? long.MaxValue).ToString("D19"));
+            walkUp = cat?.GroupId;
+        }
+        else
+        {
+            var groupItem = allCategories?.FirstOrDefault(c =>
+                c.ItemType == CategoryItemType.Group && c.Id == key.Id);
+            parts.Insert(0, (groupItem?.CategoryGroup.Sort ?? long.MaxValue).ToString("D19"));
+            walkUp = groupItem?.ParentCategoryGroupId;
+        }
+
+        while (walkUp.HasValue)
+        {
+            var parent = allCategories?.FirstOrDefault(c =>
+                c.ItemType == CategoryItemType.Group && c.Id == walkUp.Value);
+            if (parent == null) break;
+            parts.Insert(0, (parent.CategoryGroup.Sort ?? long.MaxValue).ToString("D19"));
+            walkUp = parent.ParentCategoryGroupId;
+        }
+
+        // Append the item's id as a stable tiebreaker.
+        parts.Add(key.Id.ToString("D19"));
+        return string.Join(".", parts);
     }
 
     private async Task RenderStackedBarChart()
@@ -703,6 +796,7 @@
                     {
                         mode = "index",
                         intersect = false,
+                        position = "outerEdge",
                         callbacks = new
                         {
                             label = "function(context) { return context.dataset.label + ': €' + context.parsed.y.toFixed(2); }"

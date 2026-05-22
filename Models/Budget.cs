@@ -18,7 +18,21 @@ public class Budget
     [Required]
     public int Year { get; set; }
 
+    /// <summary>
+    /// Human-friendly label, defaulting to the creation date (YYYY-MM-DD) — editable. Lets the
+    /// user keep multiple budgets for the same year (e.g. baseline vs revised) distinguishable.
+    /// </summary>
+    [Required]
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// Exactly one budget per (project, year) should have IsActive=true; that's the one the
+    /// dashboard rolls up. The service enforces the uniqueness when a budget is made active.
+    /// </summary>
+    public bool IsActive { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
