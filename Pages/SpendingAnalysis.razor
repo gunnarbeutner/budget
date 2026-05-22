@@ -2,31 +2,31 @@
 @using OpenBudget.Services
 @using OpenBudget.Models
 @using System.Text.Json
+@using Microsoft.AspNetCore.WebUtilities
 @inject BudgetService BudgetService
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
-<PageTitle>Spending Analysis</PageTitle>
+<PageTitle>Spending Analysis@(projectName != null ? $" — {projectName}" : "")</PageTitle>
 
-<h1>Spending Analysis</h1>
+@if (notFound)
+{
+    <h1>Not Found</h1>
+    <p class="text-muted">No project specified. Open this page from a project on the <a href="/">dashboard</a>.</p>
+    return;
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Spending Analysis@(projectName != null ? $" — {projectName}" : "")</h1>
+    <a href="/" class="btn btn-secondary">Back to Dashboard</a>
+</div>
 
 <div class="row mb-3">
     <div class="col-md-12">
         <div class="card">
             <div class="card-body">
                 <div class="row">
-                    <div class="col-md-4">
-                        <label class="form-label">Select Project</label>
-                        <select class="form-select" value="@selectedBudgetId" @onchange="OnBudgetChanged">
-                            @if (budgets != null)
-                            {
-                                foreach (var budget in budgets)
-                                {
-                                    <option value="@budget.Id">@budget.Name</option>
-                                }
-                            }
-                        </select>
-                    </div>
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         <label class="form-label">Compare with Budget</label>
                         <select class="form-select" value="@selectedCompareBudgetId" @onchange="OnCompareBudgetChanged">
                             <option value="0">-- No Budget Comparison --</option>
@@ -39,7 +39,7 @@
                             }
                         </select>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         <label class="form-label">Date Range</label>
                         <select class="form-select" value="@selectedDateRange" @onchange="OnDateRangeChanged">
                             <option value="12">Last 12 Months</option>
@@ -56,42 +56,7 @@
 </div>
 
 <div class="row">
-    <div class="col-md-3">
-        <div class="card mb-3">
-            <div class="card-header">
-                <h5 class="mb-0">Categories</h5>
-            </div>
-            <div class="card-body">
-                <div style="max-height: calc(100vh - 250px); overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.25rem; padding: 0.5rem;">
-                    @if (allAvailableCategories != null && allActualCategories != null)
-                    {
-                        @foreach (var rootCat in allAvailableCategories.Where(c => c.IsRootCategory).OrderBy(c => c.CategoryGroup.Name))
-                        {
-                            <CategoryTree
-                                CategoryGroup="@rootCat"
-                                Level="0"
-                                RenderMode="CategoryTreeRenderMode.Checkbox"
-                                ParentSelected="false"
-                                SelectedCategoryGroupIds="@selectedCategoryGroupIds"
-                                SelectedCategoryIds="@selectedActualCategoryIds"
-                                OnCategoryGroupToggle="@HandleCategoryGroupToggle"
-                                OnCategoryToggle="@HandleCategoryToggle"
-                                AllCategories="@allAvailableCategories"
-                                ActualCategories="@allActualCategories" />
-                        }
-                    }
-                </div>
-                <small class="form-text text-muted mt-2 d-block">
-                    <strong>How to use:</strong><br/>
-                    • Categories shown are based on project tracking settings<br/>
-                    • Income categories are excluded — configure types in the project details page<br/>
-                    • Selected categories appear as stacked bars showing trends over time
-                </small>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-9">
+    <div class="col-12">
         <div class="card">
             <div class="card-header">
                 <h5 class="mb-0">Category Trends</h5>
@@ -114,7 +79,7 @@
                 }
                 else
                 {
-                    <div style="position: relative; height: 400px; max-height: 600px;">
+                    <div style="position: relative; height: 600px; max-height: 900px;">
                         <canvas id="trendStackedBarChart"></canvas>
                     </div>
 
@@ -173,6 +138,54 @@
     </div>
 </div>
 
+<div class="row mt-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center" role="button" @onclick="ToggleCategoriesPanel" style="cursor: pointer;">
+                <h5 class="mb-0">Categories</h5>
+                <span class="oi @(categoriesExpanded ? "oi-chevron-top" : "oi-chevron-bottom")" aria-hidden="true"></span>
+            </div>
+            @if (categoriesExpanded)
+            {
+                <div class="card-body">
+                    <div style="max-height: 500px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.25rem; padding: 0.5rem;">
+                        @if (allAvailableCategories != null && allActualCategories != null)
+                        {
+                            var filteredGroupIds = allAvailableCategories
+                                .Where(c => c.ItemType == CategoryItemType.Group)
+                                .Select(c => c.Id)
+                                .ToHashSet();
+                            @foreach (var rootCat in allAvailableCategories
+                                .Where(c => c.ItemType == CategoryItemType.Group
+                                    && !filteredGroupIds.Contains(c.ParentCategoryGroupId ?? -1))
+                                .OrderBy(c => c.CategoryGroup.Name))
+                            {
+                                <CategoryTree
+                                    CategoryGroup="@rootCat"
+                                    Level="0"
+                                    RenderMode="CategoryTreeRenderMode.Checkbox"
+                                    ParentSelected="false"
+                                    SelectedCategoryGroupIds="@selectedCategoryGroupIds"
+                                    SelectedCategoryIds="@selectedActualCategoryIds"
+                                    OnCategoryGroupToggle="@HandleCategoryGroupToggle"
+                                    OnCategoryToggle="@HandleCategoryToggle"
+                                    AllCategories="@allAvailableCategories"
+                                    ActualCategories="@allActualCategories" />
+                            }
+                        }
+                    </div>
+                    <small class="form-text text-muted mt-2 d-block">
+                        <strong>How to use:</strong><br/>
+                        • Categories shown are based on project tracking settings<br/>
+                        • Income categories are excluded — configure types in the project details page<br/>
+                        • Selected categories appear as stacked bars showing trends over time
+                    </small>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
 @code {
     private List<CategoryGroupWithChildCount>? allCategories;
     private List<CategoryGroupWithChildCount>? filteredCategories;
@@ -184,15 +197,36 @@
     private Dictionary<string, List<MonthlySpending>>? categoryTrends;
     private Dictionary<string, List<MonthlySpending>>? budgetTrends;
     private List<VarianceSummary>? varianceSummary;
-    private List<Project>? budgets;
     private List<Budget>? availableBudgets;
     private int selectedBudgetId = 0;
     private int selectedCompareBudgetId = 0;
     private string selectedDateRange = "12";
+    private bool categoriesExpanded = false;
+    private string? projectName;
+    private bool notFound = false;
+
+    private void ToggleCategoriesPanel() => categoriesExpanded = !categoriesExpanded;
 
     protected override async Task OnInitializedAsync()
     {
-        budgets = await BudgetService.GetProjectsAsync();
+        // This page is project-scoped via ?projectId=<id>; the only way to land here legitimately
+        // is from the dashboard buttons. A bare URL or unknown project is an actual 404.
+        var initialProjectId = ReadProjectIdFromQuery();
+        if (!initialProjectId.HasValue)
+        {
+            notFound = true;
+            return;
+        }
+
+        var project = await BudgetService.GetProjectAsync(initialProjectId.Value);
+        if (project == null)
+        {
+            notFound = true;
+            return;
+        }
+
+        selectedBudgetId = project.Id;
+        projectName = project.Name;
 
         // Load all category groups (including sub-categories), not just root ones
         var allCategoryGroups = await BudgetService.GetAllCategoriesWithChildCountsAsync();
@@ -206,13 +240,19 @@
         // Load all actual categories
         allActualCategories = await BudgetService.GetAllCategoriesAsync();
 
-        // A project is always required; default to the first one
-        if (budgets.Any())
+        await LoadProjectContext();
+        await LoadCategoryTrends();
+    }
+
+    private int? ReadProjectIdFromQuery()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("projectId", out var value)
+            && int.TryParse(value, out var parsed))
         {
-            selectedBudgetId = budgets.First().Id;
-            await LoadProjectContext();
-            await LoadCategoryTrends();
+            return parsed;
         }
+        return null;
     }
 
     private async Task LoadProjectContext()
@@ -244,17 +284,6 @@
                     continue;
                 selectedActualCategoryIds.Add(item.CategoryId.Value);
             }
-        }
-    }
-
-    private async Task OnBudgetChanged(ChangeEventArgs e)
-    {
-        if (int.TryParse(e.Value?.ToString(), out var budgetId) && budgetId > 0)
-        {
-            selectedBudgetId = budgetId;
-            selectedCompareBudgetId = 0;
-            await LoadProjectContext();
-            await LoadCategoryTrends();
         }
     }
 
@@ -446,46 +475,40 @@
             months = int.Parse(selectedDateRange);
         }
 
-        // Load trends for all selected category groups
+        // Batch-load trends for all selected groups and categories in one DB roundtrip
+        var batchKeys = new List<(long Id, CategoryItemType ItemType)>();
         foreach (var groupId in selectedCategoryGroupIds)
-        {
-            var group = allAvailableCategories?.FirstOrDefault(c => c.CategoryGroup.Id == groupId);
-            if (group != null)
-            {
-                var trend = await BudgetService.GetMonthlySpendingAsync(groupId, months);
-
-                // Filter by year if needed
-                if (filterYear.HasValue && trend.Any())
-                {
-                    trend = trend.Where(m => m.Year == filterYear.Value).ToList();
-                }
-
-                if (trend.Any())
-                {
-                    categoryTrends[group.CategoryGroup.Name ?? "Unknown"] = trend;
-                }
-            }
-        }
-
-        // Load trends for all selected individual categories
+            batchKeys.Add((groupId, CategoryItemType.Group));
         foreach (var categoryId in selectedActualCategoryIds)
+            batchKeys.Add((categoryId, CategoryItemType.Category));
+
+        var trendBatch = await BudgetService.GetMonthlySpendingBatchAsync(batchKeys, months);
+
+        foreach (var (key, trend) in trendBatch)
         {
-            var category = allActualCategories?.FirstOrDefault(c => c.Id == categoryId);
-            if (category != null)
+            if (!trend.Any()) continue;
+
+            string name;
+            if (key.ItemType == CategoryItemType.Group)
             {
-                var trend = await BudgetService.GetMonthlySpendingForCategoryAsync(categoryId, months);
-
-                // Filter by year if needed
-                if (filterYear.HasValue && trend.Any())
-                {
-                    trend = trend.Where(m => m.Year == filterYear.Value).ToList();
-                }
-
-                if (trend.Any())
-                {
-                    categoryTrends[category.Name ?? "Unknown"] = trend;
-                }
+                var group = allAvailableCategories?.FirstOrDefault(c =>
+                    c.ItemType == CategoryItemType.Group && c.Id == key.Id);
+                if (group == null) continue;
+                name = group.CategoryGroup.Name ?? "Unknown";
             }
+            else
+            {
+                var category = allActualCategories?.FirstOrDefault(c => c.Id == key.Id);
+                if (category == null) continue;
+                name = category.Name ?? "Unknown";
+            }
+
+            var filtered = filterYear.HasValue
+                ? trend.Where(m => m.Year == filterYear.Value).ToList()
+                : trend;
+
+            if (filtered.Any())
+                categoryTrends[name] = filtered;
         }
 
         // Load budget data if comparison is active
@@ -509,7 +532,7 @@
                 var group = allAvailableCategories?.FirstOrDefault(c => c.CategoryGroup.Id == groupId);
                 if (group != null)
                 {
-                    var budgetTrend = await BudgetService.GetBudgetTrendAsync(groupId, selectedCompareBudgetId);
+                    var budgetTrend = await BudgetService.GetBudgetTrendAsync(groupId, CategoryItemType.Group, selectedCompareBudgetId);
                     if (budgetTrend.Any())
                     {
                         var categoryName = group.CategoryGroup.Name ?? "Unknown";
@@ -543,7 +566,7 @@
                 var category = allActualCategories?.FirstOrDefault(c => c.Id == categoryId);
                 if (category != null)
                 {
-                    var budgetTrend = await BudgetService.GetBudgetTrendAsync(categoryId, selectedCompareBudgetId);
+                    var budgetTrend = await BudgetService.GetBudgetTrendAsync(categoryId, CategoryItemType.Category, selectedCompareBudgetId);
                     if (budgetTrend.Any())
                     {
                         var categoryName = category.Name ?? "Unknown";

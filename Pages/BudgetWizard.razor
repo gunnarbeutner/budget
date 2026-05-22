@@ -43,7 +43,7 @@
             <button class="btn btn-primary" @onclick="GeneratePredictions" disabled="@(selectedProjectId == 0)">
                 Next: Generate Predictions
             </button>
-            <a href="/projects" class="btn btn-secondary">Cancel</a>
+            <a href="/" class="btn btn-secondary">Cancel</a>
         </div>
     </div>
 }
@@ -83,10 +83,10 @@ else if (step == 2)
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var (categoryId, amounts) in predictions.OrderBy(p => categoryNames.GetValueOrDefault(p.Key, "Unknown")))
+                            @foreach (var (key, amounts) in predictions.OrderBy(p => categoryNames.GetValueOrDefault(p.Key, "Unknown")))
                             {
                                 <tr>
-                                    <td>@categoryNames.GetValueOrDefault(categoryId, "Unknown")</td>
+                                    <td>@categoryNames.GetValueOrDefault(key, "Unknown")</td>
                                     @for (int m = 0; m < 12; m++)
                                     {
                                         <td class="text-end">
@@ -139,8 +139,8 @@ else if (step == 3)
     private int step = 1;
     private bool isGenerating = false;
 
-    private Dictionary<long, decimal[]>? predictions;
-    private Dictionary<long, string>? categoryNames;
+    private Dictionary<(long Id, CategoryItemType ItemType), decimal[]>? predictions;
+    private Dictionary<(long Id, CategoryItemType ItemType), string>? categoryNames;
 
     // Category selection
     private List<CategoryGroupWithChildCount>? allAvailableCategories;
@@ -206,35 +206,59 @@ else if (step == 3)
         // Load tracking items from the project
         var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(selectedProjectId);
 
-        // Generate predictions based on tracking items
-        predictions = new Dictionary<long, decimal[]>();
-        categoryNames = new Dictionary<long, string>();
+        // Load the hierarchy once so we can look up parent names without per-item DB calls.
+        var allCategoryItems = await BudgetService.GetAllCategoriesWithChildCountsAsync();
+        var groupById = allCategoryItems
+            .Where(c => c.ItemType == CategoryItemType.Group)
+            .ToDictionary(c => c.Id, c => c.CategoryGroup);
+        var categoryById = (await BudgetService.GetAllCategoriesAsync())
+            .ToDictionary(c => c.Id, c => c);
 
+        predictions = new Dictionary<(long Id, CategoryItemType ItemType), decimal[]>();
+        categoryNames = new Dictionary<(long Id, CategoryItemType ItemType), string>();
+
+        // First pass: gather predictions and remember each row's base name + parent group name.
+        var labels = new List<((long Id, CategoryItemType ItemType) Key, string BaseName, string? ParentName)>();
         foreach (var item in trackingItems)
         {
             if (item.CategoryGroupId.HasValue)
             {
-                // Predict for category group
-                var categoryGroup = await BudgetService.GetCategoryWithSubCategoriesAsync(item.CategoryGroupId.Value);
-                if (categoryGroup != null)
-                {
-                    var monthlyPredictions = await BudgetService.PredictMonthlySpendingForCategoryAsync(item.CategoryGroupId.Value, selectedYear);
-                    predictions[item.CategoryGroupId.Value] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
-                    categoryNames[item.CategoryGroupId.Value] = categoryGroup.Name ?? "Unknown";
-                }
+                if (!groupById.TryGetValue(item.CategoryGroupId.Value, out var cg)) continue;
+                var parentName = cg.ParentGroupId.HasValue
+                    && groupById.TryGetValue(cg.ParentGroupId.Value, out var parent)
+                    ? parent.Name
+                    : null;
+                var key = (item.CategoryGroupId.Value, CategoryItemType.Group);
+                labels.Add((key, cg.Name ?? "Unknown", parentName));
+
+                var monthlyPredictions = await BudgetService.PredictMonthlySpendingForCategoryAsync(item.CategoryGroupId.Value, selectedYear);
+                predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
             }
             else if (item.CategoryId.HasValue)
             {
-                // Predict for individual category
-                var categories = await BudgetService.GetAllCategoriesAsync();
-                var category = categories.FirstOrDefault(c => c.Id == item.CategoryId.Value);
-                if (category != null)
-                {
-                    var monthlyPredictions = await PredictForIndividualCategoryAsync(item.CategoryId.Value, selectedYear);
-                    predictions[item.CategoryId.Value] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
-                    categoryNames[item.CategoryId.Value] = category.Name ?? "Unknown";
-                }
+                if (!categoryById.TryGetValue(item.CategoryId.Value, out var cat)) continue;
+                var parentName = cat.GroupId.HasValue
+                    && groupById.TryGetValue(cat.GroupId.Value, out var parent)
+                    ? parent.Name
+                    : null;
+                var key = (item.CategoryId.Value, CategoryItemType.Category);
+                labels.Add((key, cat.Name ?? "Unknown", parentName));
+
+                var monthlyPredictions = await PredictForIndividualCategoryAsync(item.CategoryId.Value, selectedYear);
+                predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
             }
+        }
+
+        // Second pass: only prefix the parent when the base name collides with another row's.
+        var nameCounts = labels
+            .GroupBy(l => l.BaseName)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        foreach (var (key, baseName, parentName) in labels)
+        {
+            categoryNames[key] = nameCounts[baseName] > 1 && !string.IsNullOrEmpty(parentName)
+                ? $"{parentName} › {baseName}"
+                : baseName;
         }
 
         isGenerating = false;
@@ -411,12 +435,13 @@ else if (step == 3)
         var budget = await BudgetService.CreateBudgetAsync(selectedProjectId, selectedYear, notes);
 
         // Save monthly entries
-        foreach (var (categoryId, monthlyAmounts) in predictions)
+        foreach (var (key, monthlyAmounts) in predictions)
         {
             var entry = new MonthlyBudgetEntry
             {
                 BudgetId = budget.Id,
-                CategoryId = categoryId,
+                CategoryId = key.Id,
+                ItemType = key.ItemType,
                 Month1 = monthlyAmounts[0],
                 Month2 = monthlyAmounts[1],
                 Month3 = monthlyAmounts[2],

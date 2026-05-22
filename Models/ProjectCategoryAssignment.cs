@@ -4,7 +4,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// Assigns a MoneyMoney category to a project with spending limit
+/// Assigns a MoneyMoney category to a project. Budget amounts live on the Budget /
+/// MonthlyBudgetEntry models — this record only expresses membership.
 /// </summary>
 [Table("project_category_assignments")]
 public class ProjectCategoryAssignment
@@ -15,11 +16,6 @@ public class ProjectCategoryAssignment
     public int ProjectId { get; set; }
 
     public long CategoryId { get; set; }
-
-    /// <summary>
-    /// Monthly spending limit for this category in this project
-    /// </summary>
-    public decimal MonthlyLimit { get; set; }
 
     // Navigation properties
     public Project Project { get; set; } = null!;

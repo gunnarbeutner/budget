@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using OpenBudget.Services;
 
 namespace OpenBudget.Models;
 
@@ -17,6 +18,12 @@ public class MonthlyBudgetEntry
 
     [Required]
     public long CategoryId { get; set; }
+
+    /// <summary>
+    /// Whether CategoryId refers to a CategoryGroup or a leaf Category. The two MoneyMoney
+    /// tables share a numeric ID space, so this discriminator is required to identify the row.
+    /// </summary>
+    public CategoryItemType ItemType { get; set; } = CategoryItemType.Group;
 
     // 12 monthly amounts for the year
     [Column(TypeName = "decimal(18,2)")]

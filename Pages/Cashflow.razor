@@ -2,15 +2,27 @@
 @using OpenBudget.Services
 @using OpenBudget.Models
 @using Microsoft.JSInterop
+@using Microsoft.AspNetCore.WebUtilities
 @inject BudgetService BudgetService
 @inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
 
-<PageTitle>Cashflow Analysis</PageTitle>
+<PageTitle>Cashflow Analysis@(projectName != null ? $" — {projectName}" : "")</PageTitle>
 
-<h1>Cashflow Analysis</h1>
+@if (notFound)
+{
+    <h1>Not Found</h1>
+    <p class="text-muted">No project specified. Open this page from a project on the <a href="/">dashboard</a>.</p>
+    return;
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Cashflow Analysis@(projectName != null ? $" — {projectName}" : "")</h1>
+    <a href="/" class="btn btn-secondary">Back to Dashboard</a>
+</div>
 
 <div class="row mb-4">
-    <div class="col-md-4">
+    <div class="col-md-6">
         <label class="form-label">Year</label>
         <select class="form-select" @bind="selectedYear" @bind:after="LoadCashflowData">
             @for (int year = DateTime.UtcNow.Year - 2; year <= DateTime.UtcNow.Year + 2; year++)
@@ -20,7 +32,7 @@
         </select>
     </div>
 
-    <div class="col-md-4">
+    <div class="col-md-6">
         <label class="form-label">Budget (optional)</label>
         <select class="form-select" @bind="selectedBudgetId" @bind:after="LoadCashflowData">
             <option value="0">-- No budget --</option>
@@ -29,20 +41,6 @@
                 foreach (var budget in availableBudgets)
                 {
                     <option value="@budget.Id">@budget.Project?.Name - @budget.Year</option>
-                }
-            }
-        </select>
-    </div>
-
-    <div class="col-md-4">
-        <label class="form-label">Project</label>
-        <select class="form-select" @bind="selectedProjectId" @bind:after="OnProjectChanged">
-            <option value="0">-- All projects --</option>
-            @if (projects != null)
-            {
-                foreach (var project in projects)
-                {
-                    <option value="@project.Id">@project.Name</option>
                 }
             }
         </select>
@@ -84,6 +82,13 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                     <p class="text-muted">
                         Calculate how much each income source needs to contribute to cover expenses.
                     </p>
+
+                    @if (firstProjectedMonth <= 12)
+                    {
+                        <div class="alert alert-info py-2 small">
+                            @(new DateTime(selectedYear, firstProjectedMonth, 1).ToString("MMMM"))–@(new DateTime(selectedYear, 12, 1).ToString("MMMM")) are projected from the selected budget; earlier months use actual transactions.
+                        </div>
+                    }
 
                     @if (incomeCategories.Any())
                     {
@@ -191,18 +196,22 @@ else
 }
 
 @code {
-    private List<Project>? projects;
     private List<Budget>? availableBudgets;
     private int selectedYear = DateTime.UtcNow.Year;
     private int selectedProjectId = 0;
     private int selectedBudgetId = 0;
     private bool isLoading = false;
+    private string? projectName;
+    private bool notFound = false;
 
     private List<CategoryCashflow> incomeCategories = new();
     private List<CategoryCashflow> expenseCategories = new();
     private Dictionary<string, decimal> contributionSplits = new();
     private decimal totalExpenses = 0;
     private decimal netCashflow = 0;
+    private bool needsChartRender = false;
+    private int firstProjectedMonth = 13;
+    private decimal totalMonthlyIncomeNeeded = 0m;
 
     private class CategoryCashflow
     {
@@ -212,31 +221,49 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        projects = await BudgetService.GetProjectsAsync();
+        // This page is project-scoped via ?projectId=<id>; the only way to land here legitimately
+        // is from the dashboard buttons. A bare URL or unknown project is an actual 404.
+        var initialProjectId = ReadProjectIdFromQuery();
+        if (!initialProjectId.HasValue)
+        {
+            notFound = true;
+            return;
+        }
+
+        var project = await BudgetService.GetProjectAsync(initialProjectId.Value);
+        if (project == null)
+        {
+            notFound = true;
+            return;
+        }
+
+        selectedProjectId = project.Id;
+        projectName = project.Name;
+
         await LoadAvailableBudgets();
         await LoadCashflowData();
     }
 
-    private async Task OnProjectChanged()
+    private int? ReadProjectIdFromQuery()
     {
-        await LoadAvailableBudgets();
-        await LoadCashflowData();
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("projectId", out var value)
+            && int.TryParse(value, out var parsed))
+        {
+            return parsed;
+        }
+        return null;
     }
 
     private async Task LoadAvailableBudgets()
     {
-        if (selectedProjectId > 0)
-        {
-            availableBudgets = await BudgetService.GetBudgetsForProjectAsync(selectedProjectId);
-        }
-        else
-        {
-            availableBudgets = new List<Budget>();
-        }
+        availableBudgets = await BudgetService.GetBudgetsForProjectAsync(selectedProjectId);
     }
 
     private async Task LoadCashflowData()
     {
+        if (selectedProjectId <= 0) return;
+
         isLoading = true;
         StateHasChanged();
 
@@ -244,85 +271,131 @@ else
         expenseCategories.Clear();
         contributionSplits.Clear();
 
-        List<CategoryGroupWithChildCount> availableCategories;
+        // Load project tracking items (from Budget Tracking Configuration)
+        var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(selectedProjectId);
+        var availableCategories = new List<CategoryGroupWithChildCount>();
 
-        // Filter by project tracking items if a project is selected
-        if (selectedProjectId > 0)
+        if (trackingItems.Any())
         {
-            // Load project tracking items (from Budget Tracking Configuration)
-            var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(selectedProjectId);
+            var allCategories = await BudgetService.GetAllCategoriesWithChildCountsAsync();
 
-            if (trackingItems.Any())
+            foreach (var item in trackingItems)
             {
-                var allCategories = await BudgetService.GetAllCategoriesWithChildCountsAsync();
-                availableCategories = new List<CategoryGroupWithChildCount>();
-
-                foreach (var item in trackingItems)
+                if (item.CategoryGroupId.HasValue)
                 {
-                    if (item.CategoryGroupId.HasValue)
+                    // Filter by ItemType=Group: Group IDs and Category IDs share a numeric
+                    // namespace, so without this we may resolve a Group ID to an unrelated Category.
+                    var category = allCategories.FirstOrDefault(c =>
+                        c.ItemType == CategoryItemType.Group && c.Id == item.CategoryGroupId.Value);
+                    if (category != null)
                     {
-                        // Filter by ItemType=Group: Group IDs and Category IDs share a numeric
-                        // namespace, so without this we may resolve a Group ID to an unrelated Category.
-                        var category = allCategories.FirstOrDefault(c =>
-                            c.ItemType == CategoryItemType.Group && c.Id == item.CategoryGroupId.Value);
-                        if (category != null)
-                        {
-                            availableCategories.Add(category);
-                        }
+                        availableCategories.Add(category);
                     }
-                    else if (item.CategoryId.HasValue)
+                }
+                else if (item.CategoryId.HasValue)
+                {
+                    var category = allCategories.FirstOrDefault(c =>
+                        c.ItemType == CategoryItemType.Category && c.Id == item.CategoryId.Value);
+                    if (category != null)
                     {
-                        var category = allCategories.FirstOrDefault(c =>
-                            c.ItemType == CategoryItemType.Category && c.Id == item.CategoryId.Value);
-                        if (category != null)
-                        {
-                            availableCategories.Add(category);
-                        }
+                        availableCategories.Add(category);
                     }
                 }
             }
-            else
+        }
+
+        // Load monthly data for every tracked item in a single batched call
+        var batchKeys = availableCategories.Select(c => (c.Id, c.ItemType)).ToList();
+        var batch = await BudgetService.GetMonthlyIncomeAndExpenseBatchAsync(batchKeys, selectedYear, selectedProjectId);
+
+        // If a budget is selected for the displayed year, project future months. Expenses use
+        // the budget's per-month values directly. Income is one global value per month:
+        //   (sum_of_expenses_from_budget - income_so_far) / remaining_months
+        // and is attributed to each income source by the calculator's contribution-split %.
+        Dictionary<(long Id, CategoryItemType ItemType), decimal[]>? budgetMonthlyAmounts = null;
+        HashSet<(long Id, CategoryItemType ItemType)>? incomeItemsForProjection = null;
+        firstProjectedMonth = 13; // sentinel: no projection
+        if (selectedBudgetId > 0)
+        {
+            var selectedBudget = availableBudgets?.FirstOrDefault(b => b.Id == selectedBudgetId);
+            if (selectedBudget != null && selectedBudget.Year == selectedYear)
             {
-                availableCategories = new List<CategoryGroupWithChildCount>();
+                var today = DateTime.UtcNow;
+                if (selectedYear > today.Year) firstProjectedMonth = 1;
+                else if (selectedYear == today.Year) firstProjectedMonth = today.Month + 1;
+
+                if (firstProjectedMonth <= 12)
+                {
+                    budgetMonthlyAmounts = await BudgetService.GetMonthlyBudgetAmountsAsync(selectedBudgetId);
+                    incomeItemsForProjection = await BudgetService.GetIncomeItemsForProjectAsync(selectedProjectId);
+                }
             }
         }
-        else
+
+        bool projecting = budgetMonthlyAmounts != null && firstProjectedMonth <= 12;
+
+        // Pre-compute the year's expense budget and total YTD income so we know the global
+        // monthly income gap before populating per-source values.
+        decimal annualExpenseBudget = 0m;
+        decimal totalIncomeYtd = 0m;
+        if (projecting)
         {
-            // No project selected: load all leaf categories (those without children)
-            var allCategories = await BudgetService.GetAllCategoriesWithChildCountsAsync();
-            availableCategories = allCategories
-                .Where(c => c.Id != 1 && c.DirectChildCount == 0) // Only leaf categories
-                .ToList();
+            foreach (var cat in availableCategories)
+            {
+                bool isIncome = incomeItemsForProjection!.Contains((cat.Id, cat.ItemType));
+                if (!isIncome && budgetMonthlyAmounts!.TryGetValue((cat.Id, cat.ItemType), out var monthly))
+                {
+                    annualExpenseBudget += monthly.Sum();
+                }
+                if (isIncome)
+                {
+                    var (income, _) = batch[(cat.Id, cat.ItemType)];
+                    totalIncomeYtd += income.Take(firstProjectedMonth - 1).Sum();
+                }
+            }
         }
 
-        // Load monthly data for each category
+        var remainingMonthsForProjection = 13 - firstProjectedMonth;
+        totalMonthlyIncomeNeeded = projecting && remainingMonthsForProjection > 0
+            ? Math.Max(0m, (annualExpenseBudget - totalIncomeYtd) / remainingMonthsForProjection)
+            : 0m;
+
         foreach (var category in availableCategories)
         {
-            var projectIdParam = selectedProjectId > 0 ? (int?)selectedProjectId : null;
-            var monthlyData = await BudgetService.GetMonthlyIncomeAndExpenseAsync(category.Id, selectedYear, projectIdParam);
+            var (income, expenses) = batch[(category.Id, category.ItemType)];
 
-            if (monthlyData.Income.Any(m => m > 0))
+            bool isIncomeItem = incomeItemsForProjection?.Contains((category.Id, category.ItemType)) == true;
+
+            // Expense projection is per-month from the budget (seasonality intact).
+            if (projecting && !isIncomeItem
+                && budgetMonthlyAmounts!.TryGetValue((category.Id, category.ItemType), out var budgetMonthly))
+            {
+                for (int m = firstProjectedMonth - 1; m < 12; m++)
+                {
+                    expenses[m] = budgetMonthly[m];
+                }
+            }
+
+            // Include known income items in the chart even with zero YTD — the split-driven
+            // projection below will populate their future months.
+            if (income.Any(m => m > 0) || isIncomeItem)
             {
                 incomeCategories.Add(new CategoryCashflow
                 {
                     CategoryName = category.Name,
-                    MonthlyAmounts = monthlyData.Income
+                    MonthlyAmounts = income
                 });
             }
 
-            if (monthlyData.Expenses.Any(m => m > 0))
+            if (expenses.Any(m => m > 0))
             {
                 expenseCategories.Add(new CategoryCashflow
                 {
                     CategoryName = category.Name,
-                    MonthlyAmounts = monthlyData.Expenses
+                    MonthlyAmounts = expenses
                 });
             }
         }
-
-        isLoading = false;
-        totalExpenses = expenseCategories.Sum(c => c.MonthlyAmounts.Sum());
-        netCashflow = incomeCategories.Sum(c => c.MonthlyAmounts.Sum()) - totalExpenses;
 
         // Initialize equal splits
         if (incomeCategories.Any())
@@ -334,7 +407,48 @@ else
             }
         }
 
-        await RenderCashflowChart();
+        // Attribute projected income to each source via the contribution splits and
+        // recompute the rollup totals from the resulting per-source arrays.
+        ApplyIncomeProjection();
+        RecomputeTotals();
+
+        isLoading = false;
+
+        // Defer chart render until after Blazor has rendered the canvas element.
+        // RenderCashflowChart depends on `cashflowChart` existing in the DOM, but at this
+        // point we're still inside OnInitializedAsync / a bind handler and the post-await
+        // render that creates the canvas hasn't happened yet.
+        needsChartRender = incomeCategories.Any() || expenseCategories.Any();
+    }
+
+    private void ApplyIncomeProjection()
+    {
+        if (firstProjectedMonth > 12 || totalMonthlyIncomeNeeded <= 0m) return;
+
+        foreach (var income in incomeCategories)
+        {
+            var split = contributionSplits.GetValueOrDefault(income.CategoryName, 0m);
+            var perMonth = totalMonthlyIncomeNeeded * (split / 100m);
+            for (int m = firstProjectedMonth - 1; m < 12; m++)
+            {
+                income.MonthlyAmounts[m] = perMonth;
+            }
+        }
+    }
+
+    private void RecomputeTotals()
+    {
+        totalExpenses = expenseCategories.Sum(c => c.MonthlyAmounts.Sum());
+        netCashflow = incomeCategories.Sum(c => c.MonthlyAmounts.Sum()) - totalExpenses;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (needsChartRender)
+        {
+            needsChartRender = false;
+            await RenderCashflowChart();
+        }
     }
 
     private async Task<HashSet<long>> GetAllSubGroupIdsAsync(long categoryGroupId, List<CategoryGroupWithChildCount> allCategories)
@@ -353,8 +467,11 @@ else
         return result;
     }
 
-    private void RecalculateContributions()
+    private async Task RecalculateContributions()
     {
+        ApplyIncomeProjection();
+        RecomputeTotals();
+        await RenderCashflowChart();
         StateHasChanged();
     }
 

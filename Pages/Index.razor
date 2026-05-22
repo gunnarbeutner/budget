@@ -10,10 +10,7 @@
 
 <div class="row mb-4">
     <div class="col-md-12">
-        <div class="d-flex justify-content-between align-items-center">
-            <h3>Current Month: @DateTime.Now.ToString("MMMM yyyy")</h3>
-            <a href="/projects" class="btn btn-primary">Manage Projects</a>
-        </div>
+        <h3>Current Month: @DateTime.Now.ToString("MMMM yyyy")</h3>
     </div>
 </div>
 
@@ -25,7 +22,7 @@ else if (!budgetSummaries.Any())
 {
     <div class="alert alert-info">
         <h4>Welcome to MoneyMoney Budget Tracker!</h4>
-        <p>You don't have any projects yet. <a href="/projects" class="alert-link">Create your first project</a> to get started.</p>
+        <p>You don't have any projects yet. Click "New Project" below to get started.</p>
     </div>
 }
 else
@@ -38,12 +35,11 @@ else
 
             <div class="col-md-6 mb-4">
                 <div class="card">
-                    <div class="card-header bg-@statusClass text-white">
-                        <h5 class="mb-0">
-                            <a href="/projects/@summary.ProjectId" class="text-white text-decoration-none">
-                                @summary.ProjectName
-                            </a>
-                        </h5>
+                    <div class="card-header bg-@statusClass text-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">@summary.ProjectName</h5>
+                        <a href="/projects/@summary.ProjectId" class="text-white text-decoration-none" title="Project settings" aria-label="Project settings">
+                            <span class="oi oi-cog" aria-hidden="true"></span>
+                        </a>
                     </div>
                     <div class="card-body">
                         <div class="row text-center mb-3">
@@ -88,8 +84,9 @@ else
                             </div>
                         }
 
-                        <div class="mt-3">
-                            <a href="/projects/@summary.ProjectId" class="btn btn-sm btn-outline-primary w-100">View Details</a>
+                        <div class="mt-3 d-flex gap-2">
+                            <a href="/analysis?projectId=@summary.ProjectId" class="btn btn-sm btn-outline-primary flex-fill">Analysis</a>
+                            <a href="/cashflow?projectId=@summary.ProjectId" class="btn btn-sm btn-outline-primary flex-fill">Cashflow</a>
                         </div>
                     </div>
                 </div>
@@ -98,8 +95,44 @@ else
     </div>
 }
 
+<div class="mt-4">
+    <button class="btn btn-primary" @onclick="ShowCreateDialog">New Project</button>
+</div>
+
+@if (showCreateDialog)
+{
+    <div class="modal show d-block" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Create New Project</h5>
+                    <button type="button" class="btn-close" @onclick="HideCreateDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="projectName" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="projectName" @bind="newProjectName" />
+                    </div>
+                    <div class="mb-3">
+                        <label for="projectDescription" class="form-label">Description (optional)</label>
+                        <textarea class="form-control" id="projectDescription" @bind="newProjectDescription" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="HideCreateDialog">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="CreateProject" disabled="@string.IsNullOrWhiteSpace(newProjectName)">Create</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+}
+
 @code {
     private List<ProjectSpendingSummary>? budgetSummaries;
+    private bool showCreateDialog = false;
+    private string newProjectName = "";
+    private string newProjectDescription = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -129,7 +162,7 @@ else
                 }
                 else
                 {
-                    // Fall back to project-level budget with MonthlyLimit
+                    // No budget for this year — surface spent values with a budget of 0
                     summary = await BudgetService.GetProjectSpendingSummaryAsync(project.Id, now.Year, now.Month);
                 }
 
@@ -140,5 +173,27 @@ else
                 Console.WriteLine($"Error loading summary for project {project.Id}: {ex.Message}");
             }
         }
+    }
+
+    private void ShowCreateDialog()
+    {
+        newProjectName = "";
+        newProjectDescription = "";
+        showCreateDialog = true;
+    }
+
+    private void HideCreateDialog()
+    {
+        showCreateDialog = false;
+    }
+
+    private async Task CreateProject()
+    {
+        if (string.IsNullOrWhiteSpace(newProjectName))
+            return;
+
+        await BudgetService.CreateProjectAsync(newProjectName, newProjectDescription);
+        showCreateDialog = false;
+        await LoadDashboard();
     }
 }

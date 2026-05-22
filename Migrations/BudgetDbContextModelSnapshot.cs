@@ -83,6 +83,9 @@ namespace OpenBudget.Migrations
                     b.Property<long>("CategoryId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("ItemType")
+                        .HasColumnType("INTEGER");
+
                     b.Property<decimal>("Month1")
                         .HasColumnType("decimal(18,2)");
 
@@ -156,9 +159,6 @@ namespace OpenBudget.Migrations
 
                     b.Property<long>("CategoryId")
                         .HasColumnType("INTEGER");
-
-                    b.Property<decimal>("MonthlyLimit")
-                        .HasColumnType("TEXT");
 
                     b.Property<int>("ProjectId")
                         .HasColumnType("INTEGER");
