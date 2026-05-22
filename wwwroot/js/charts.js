@@ -1,26 +1,35 @@
 // Chart rendering functions
 window.chartInstances = window.chartInstances || {};
 
-// Custom tooltip positioner: anchors to the outer edge of the hovered bar group instead of
-// averaging across elements. The default "average" mode lands between Cashflow's income and
-// expense stacks, where it covers the bars. With "outerEdge", the caret sits on the right
-// edge of the rightmost hovered bar (Chart.js auto-flips alignment when there's no room).
+// Custom tooltip positioner: anchors to whichever outer edge of the hovered bar group has
+// room to grow into. Cursor in the left half of the chart → anchor on the right edge of the
+// bars so the tooltip extends rightward. Cursor in the right half → anchor on the left edge
+// so it extends leftward. Without this flip, Chart.js's auto-alignment would render the
+// tooltip body back across the bars you're hovering when you reach the chart's edge.
 if (window.Chart && Chart.Tooltip && Chart.Tooltip.positioners) {
-    Chart.Tooltip.positioners.outerEdge = function (elements) {
+    Chart.Tooltip.positioners.outerEdge = function (elements, eventPosition) {
         if (!elements || !elements.length) return false;
+        let minLeft = Infinity;
         let maxRight = -Infinity;
         let ySum = 0;
         let count = 0;
         for (const el of elements) {
             const bar = el.element;
             if (!bar || typeof bar.x !== 'number') continue;
-            const right = bar.x + (bar.width || 0) / 2;
-            if (right > maxRight) maxRight = right;
+            const half = (bar.width || 0) / 2;
+            if (bar.x - half < minLeft) minLeft = bar.x - half;
+            if (bar.x + half > maxRight) maxRight = bar.x + half;
             ySum += bar.y;
             count++;
         }
         if (!count) return false;
-        return { x: maxRight, y: ySum / count };
+
+        const area = this.chart.chartArea;
+        const center = (area.left + area.right) / 2;
+        const cursorX = eventPosition?.x ?? (minLeft + maxRight) / 2;
+        const anchorX = cursorX < center ? maxRight : minLeft;
+
+        return { x: anchorX, y: ySum / count };
     };
 }
 
