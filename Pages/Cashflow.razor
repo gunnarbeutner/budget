@@ -500,16 +500,16 @@ else
             });
         }
 
-        // Add expense datasets (negative values)
+        // Add expense datasets — drawn as positive values too so they share a baseline with
+        // the income stack; Chart.js groups the two stack keys side-by-side per month.
         var expenseColors = GenerateColors(expenseCategories.Count, "rgba(220, 53, 69, {0})"); // Red tones
         for (int i = 0; i < expenseCategories.Count; i++)
         {
             var expense = expenseCategories[i];
-            var negativeAmounts = expense.MonthlyAmounts.Select(a => -a).ToArray();
             datasets.Add(new
             {
                 label = $"{expense.CategoryName} (Expense)",
-                data = negativeAmounts,
+                data = expense.MonthlyAmounts,
                 backgroundColor = string.Format(expenseColors[i], "0.7"),
                 borderColor = string.Format(expenseColors[i], "1"),
                 borderWidth = 1,
@@ -541,7 +541,7 @@ else
                         intersect = false,
                         callbacks = new
                         {
-                            label = "function(context) { var value = Math.abs(context.parsed.y); return context.dataset.label + ': €' + value.toFixed(2); }"
+                            label = "function(context) { return context.dataset.label + ': €' + context.parsed.y.toFixed(2); }"
                         }
                     }
                 },
@@ -556,7 +556,7 @@ else
                         stacked = true,
                         ticks = new
                         {
-                            callback = "function(value) { return '€' + Math.abs(value).toFixed(0); }"
+                            callback = "function(value) { return '€' + value.toFixed(0); }"
                         },
                         title = new
                         {

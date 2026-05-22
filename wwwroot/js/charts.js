@@ -118,6 +118,45 @@ window.renderStackedBarChart = function(elementId, chartData) {
     }
 };
 
+// Cashflow plugin: draws the net (income − expense) for each month above the taller stack.
+const monthlyNetLabelsPlugin = {
+    id: 'monthlyNetLabels',
+    afterDatasetsDraw(chart) {
+        const { ctx, data } = chart;
+        if (!data || !data.labels || !data.datasets) return;
+
+        const hasIncome = data.datasets.some(ds => ds.stack === 'income');
+        const hasExpense = data.datasets.some(ds => ds.stack === 'expenses');
+        if (!hasIncome && !hasExpense) return;
+
+        ctx.save();
+        ctx.font = '600 11px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+
+        for (let i = 0; i < data.labels.length; i++) {
+            let income = 0;
+            let expense = 0;
+            for (const ds of data.datasets) {
+                const v = Number(ds.data[i]);
+                if (isNaN(v)) continue;
+                if (ds.stack === 'income') income += v;
+                else if (ds.stack === 'expenses') expense += v;
+            }
+
+            if (income === 0 && expense === 0) continue;
+
+            const net = income - expense;
+            const yTop = chart.scales.y.getPixelForValue(Math.max(income, expense));
+            const x = chart.scales.x.getPixelForValue(i);
+            ctx.fillStyle = net >= 0 ? '#1c7a3a' : '#a02434';
+            const sign = net >= 0 ? '+' : '−';
+            ctx.fillText(sign + '€' + Math.abs(net).toFixed(0), x, yTop - 4);
+        }
+        ctx.restore();
+    }
+};
+
 // Generic chart rendering function
 window.renderChart = function(elementId, chartData) {
     const ctx = document.getElementById(elementId);
@@ -142,7 +181,10 @@ window.renderChart = function(elementId, chartData) {
     }
 
     try {
-        window.chartInstances[elementId] = new Chart(ctx, chartData);
+        window.chartInstances[elementId] = new Chart(ctx, {
+            ...chartData,
+            plugins: [monthlyNetLabelsPlugin]
+        });
         return true;
     } catch (error) {
         console.error('Error creating chart:', error);
