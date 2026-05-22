@@ -1,0 +1,453 @@
+@page "/budgets/wizard"
+@using OpenBudget.Services
+@using OpenBudget.Models
+@using OpenBudget.Shared
+@inject BudgetService BudgetService
+@inject NavigationManager Navigation
+
+<PageTitle>Create Budget</PageTitle>
+
+<h1>Budget Creation Wizard</h1>
+
+@if (step == 1)
+{
+    <div class="card">
+        <div class="card-header">
+            <h5>Step 1: Select Project and Year</h5>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">Project</label>
+                <select class="form-select" @bind="selectedProjectId">
+                    <option value="0">-- Select a project --</option>
+                    @if (projects != null)
+                    {
+                        foreach (var project in projects)
+                        {
+                            <option value="@project.Id">@project.Name</option>
+                        }
+                    }
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Budget Year</label>
+                <input type="number" class="form-control" @bind="selectedYear" min="2020" max="2030" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Notes (optional)</label>
+                <textarea class="form-control" @bind="notes" rows="3"></textarea>
+            </div>
+
+            <button class="btn btn-primary" @onclick="GeneratePredictions" disabled="@(selectedProjectId == 0)">
+                Next: Generate Predictions
+            </button>
+            <a href="/projects" class="btn btn-secondary">Cancel</a>
+        </div>
+    </div>
+}
+else if (step == 2)
+{
+    <div class="card">
+        <div class="card-header">
+            <h5>Step 2: Review Predicted Budget</h5>
+        </div>
+        <div class="card-body">
+            @if (isGenerating)
+            {
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Generating predictions...</span>
+                    </div>
+                    <p>Analyzing historical data and generating predictions...</p>
+                </div>
+            }
+            else if (predictions != null && categoryNames != null)
+            {
+                <p class="text-muted">
+                    Budget predictions are based on historical spending data from last year, using same-month patterns for seasonal adjustment.
+                    You can adjust the predicted amounts before saving.
+                </p>
+
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                @for (int m = 1; m <= 12; m++)
+                                {
+                                    <th class="text-end">@(new DateTime(2000, m, 1).ToString("MMM"))</th>
+                                }
+                                <th class="text-end">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var (categoryId, amounts) in predictions.OrderBy(p => categoryNames.GetValueOrDefault(p.Key, "Unknown")))
+                            {
+                                <tr>
+                                    <td>@categoryNames.GetValueOrDefault(categoryId, "Unknown")</td>
+                                    @for (int m = 0; m < 12; m++)
+                                    {
+                                        <td class="text-end">
+                                            <input type="number" class="form-control form-control-sm"
+                                                   style="width: 80px; text-align: right;"
+                                                   step="0.01"
+                                                   @bind="amounts[m]" />
+                                        </td>
+                                    }
+                                    <td class="text-end"><strong>€@amounts.Sum().ToString("N2")</strong></td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr class="table-primary">
+                                <th>Total</th>
+                                @for (int m = 0; m < 12; m++)
+                                {
+                                    <th class="text-end">€@predictions.Values.Sum(a => a[m]).ToString("N2")</th>
+                                }
+                                <th class="text-end">€@predictions.Values.Sum(a => a.Sum()).ToString("N2")</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <div class="mt-3">
+                    <button class="btn btn-primary" @onclick="SaveBudget">Save Budget</button>
+                    <button class="btn btn-secondary" @onclick="() => step = 1">Back</button>
+                </div>
+            }
+        </div>
+    </div>
+}
+else if (step == 3)
+{
+    <div class="alert alert-success">
+        <h4>Budget Created Successfully!</h4>
+        <p>Your budget for @selectedYear has been created with predicted monthly amounts based on historical data.</p>
+        <a href="/projects/@selectedProjectId" class="btn btn-primary">View Project</a>
+        <a href="/budgets/wizard" class="btn btn-secondary" @onclick="Reset">Create Another Budget</a>
+    </div>
+}
+
+@code {
+    private List<Project>? projects;
+    private int selectedProjectId;
+    private int selectedYear = DateTime.UtcNow.Year;
+    private string notes = "";
+    private int step = 1;
+    private bool isGenerating = false;
+
+    private Dictionary<long, decimal[]>? predictions;
+    private Dictionary<long, string>? categoryNames;
+
+    // Category selection
+    private List<CategoryGroupWithChildCount>? allAvailableCategories;
+    private List<Category>? allActualCategories;
+    private HashSet<long> selectedCategoryGroupIds = new();
+    private HashSet<long> selectedActualCategoryIds = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        projects = await BudgetService.GetProjectsAsync();
+    }
+
+    private async Task LoadCategories()
+    {
+        var project = await BudgetService.GetProjectAsync(selectedProjectId);
+        if (project == null)
+            return;
+
+        // Load all category groups/categories for the project
+        var allCategoryGroups = await BudgetService.GetAllCategoriesWithChildCountsAsync();
+        allActualCategories = await BudgetService.GetAllCategoriesAsync();
+
+        // Get all category group IDs that are in the project
+        var projectCategoryGroupIds = new HashSet<long>();
+        foreach (var assignment in project.CategoryAssignments)
+        {
+            projectCategoryGroupIds.Add(assignment.CategoryId);
+            GetAllSubGroupIds(assignment.CategoryId, projectCategoryGroupIds, allCategoryGroups);
+        }
+
+        // Filter to only categories in the project
+        allAvailableCategories = allCategoryGroups
+            .Where(c => c.CategoryGroup.Id != 1 && projectCategoryGroupIds.Contains(c.CategoryGroup.Id))
+            .ToList();
+
+        // Initialize with top-level assignments selected
+        selectedCategoryGroupIds = project.CategoryAssignments
+            .Select(a => a.CategoryId)
+            .ToHashSet();
+        selectedActualCategoryIds.Clear();
+
+        step = 2;
+    }
+
+    private void GetAllSubGroupIds(long categoryGroupId, HashSet<long> result, List<CategoryGroupWithChildCount> allCategories)
+    {
+        var children = allCategories.Where(c => c.ParentCategoryGroupId == categoryGroupId).ToList();
+        foreach (var child in children)
+        {
+            result.Add(child.CategoryGroup.Id);
+            GetAllSubGroupIds(child.CategoryGroup.Id, result, allCategories);
+        }
+    }
+
+    private async Task GeneratePredictions()
+    {
+        step = 2;
+        isGenerating = true;
+        StateHasChanged();
+
+        await Task.Delay(100); // Allow UI to update
+
+        // Load tracking items from the project
+        var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(selectedProjectId);
+
+        // Generate predictions based on tracking items
+        predictions = new Dictionary<long, decimal[]>();
+        categoryNames = new Dictionary<long, string>();
+
+        foreach (var item in trackingItems)
+        {
+            if (item.CategoryGroupId.HasValue)
+            {
+                // Predict for category group
+                var categoryGroup = await BudgetService.GetCategoryWithSubCategoriesAsync(item.CategoryGroupId.Value);
+                if (categoryGroup != null)
+                {
+                    var monthlyPredictions = await BudgetService.PredictMonthlySpendingForCategoryAsync(item.CategoryGroupId.Value, selectedYear);
+                    predictions[item.CategoryGroupId.Value] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
+                    categoryNames[item.CategoryGroupId.Value] = categoryGroup.Name ?? "Unknown";
+                }
+            }
+            else if (item.CategoryId.HasValue)
+            {
+                // Predict for individual category
+                var categories = await BudgetService.GetAllCategoriesAsync();
+                var category = categories.FirstOrDefault(c => c.Id == item.CategoryId.Value);
+                if (category != null)
+                {
+                    var monthlyPredictions = await PredictForIndividualCategoryAsync(item.CategoryId.Value, selectedYear);
+                    predictions[item.CategoryId.Value] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
+                    categoryNames[item.CategoryId.Value] = category.Name ?? "Unknown";
+                }
+            }
+        }
+
+        isGenerating = false;
+    }
+
+    private async Task<decimal[]> PredictForIndividualCategoryAsync(long categoryId, int targetYear)
+    {
+        var predictions = new decimal[12];
+        var monthlyData = await BudgetService.GetMonthlySpendingForCategoryAsync(categoryId, 24);
+
+        if (!monthlyData.Any())
+        {
+            return predictions;
+        }
+
+        // Get previous calendar year data for distribution pattern
+        var previousYearData = monthlyData
+            .Where(m => m.Year == targetYear - 1)
+            .OrderBy(m => m.Month)
+            .ToList();
+
+        // Get last 12 months (excluding current month) for recent spending level
+        var now = DateTime.UtcNow;
+        var recentData = monthlyData
+            .Where(m => m.Year < now.Year || (m.Year == now.Year && m.Month < now.Month))
+            .OrderByDescending(m => m.Year)
+            .ThenByDescending(m => m.Month)
+            .Take(12)
+            .ToList();
+
+        if (!recentData.Any())
+        {
+            var avgAmount = monthlyData.Average(m => m.Amount);
+            for (int i = 0; i < 12; i++)
+            {
+                predictions[i] = avgAmount;
+            }
+            return predictions;
+        }
+
+        var recentTotal = recentData.Sum(m => m.Amount);
+
+        if (previousYearData.Any() && previousYearData.Count == 12)
+        {
+            var previousYearTotal = previousYearData.Sum(m => m.Amount);
+
+            if (previousYearTotal > 0)
+            {
+                for (int month = 1; month <= 12; month++)
+                {
+                    var previousYearMonth = previousYearData.FirstOrDefault(m => m.Month == month);
+                    if (previousYearMonth != null)
+                    {
+                        var distribution = previousYearMonth.Amount / previousYearTotal;
+                        predictions[month - 1] = recentTotal * distribution;
+                    }
+                    else
+                    {
+                        predictions[month - 1] = recentTotal / 12;
+                    }
+                }
+            }
+            else
+            {
+                var monthlyAvg = recentTotal / 12;
+                for (int i = 0; i < 12; i++)
+                {
+                    predictions[i] = monthlyAvg;
+                }
+            }
+        }
+        else
+        {
+            var monthlyAvg = recentTotal / 12;
+            for (int i = 0; i < 12; i++)
+            {
+                predictions[i] = monthlyAvg;
+            }
+        }
+
+        return predictions;
+    }
+
+    private async Task HandleCategoryGroupToggle((long Id, bool IsChecked) args)
+    {
+        if (args.IsChecked)
+        {
+            selectedCategoryGroupIds.Add(args.Id);
+            RemoveDescendantsFromSelection(args.Id);
+        }
+        else
+        {
+            selectedCategoryGroupIds.Remove(args.Id);
+            SelectImmediateChildren(args.Id);
+        }
+        await Task.CompletedTask;
+    }
+
+    private async Task HandleCategoryToggle((long Id, bool IsChecked) args)
+    {
+        if (args.IsChecked)
+        {
+            selectedActualCategoryIds.Add(args.Id);
+        }
+        else
+        {
+            selectedActualCategoryIds.Remove(args.Id);
+        }
+        await Task.CompletedTask;
+    }
+
+    private void RemoveDescendantsFromSelection(long parentCategoryGroupId)
+    {
+        if (allAvailableCategories == null) return;
+
+        var childGroups = allAvailableCategories
+            .Where(c => c.ParentCategoryGroupId == parentCategoryGroupId)
+            .ToList();
+
+        foreach (var child in childGroups)
+        {
+            selectedCategoryGroupIds.Remove(child.CategoryGroup.Id);
+            RemoveDescendantsFromSelection(child.CategoryGroup.Id);
+        }
+
+        if (allActualCategories != null)
+        {
+            var categoriesToRemove = allActualCategories
+                .Where(c => c.GroupId == parentCategoryGroupId)
+                .Select(c => c.Id)
+                .ToList();
+
+            foreach (var catId in categoriesToRemove)
+            {
+                selectedActualCategoryIds.Remove(catId);
+            }
+        }
+    }
+
+    private void SelectImmediateChildren(long parentCategoryGroupId)
+    {
+        if (allAvailableCategories == null) return;
+
+        var childGroups = allAvailableCategories
+            .Where(c => c.ParentCategoryGroupId == parentCategoryGroupId)
+            .ToList();
+
+        if (childGroups.Any())
+        {
+            foreach (var child in childGroups)
+            {
+                selectedCategoryGroupIds.Add(child.CategoryGroup.Id);
+            }
+        }
+        else if (allActualCategories != null)
+        {
+            var categories = allActualCategories
+                .Where(c => c.GroupId == parentCategoryGroupId)
+                .ToList();
+
+            foreach (var cat in categories)
+            {
+                selectedActualCategoryIds.Add(cat.Id);
+            }
+        }
+    }
+
+    private async Task SaveBudget()
+    {
+        if (predictions == null)
+            return;
+
+        // Create budget
+        var budget = await BudgetService.CreateBudgetAsync(selectedProjectId, selectedYear, notes);
+
+        // Save monthly entries
+        foreach (var (categoryId, monthlyAmounts) in predictions)
+        {
+            var entry = new MonthlyBudgetEntry
+            {
+                BudgetId = budget.Id,
+                CategoryId = categoryId,
+                Month1 = monthlyAmounts[0],
+                Month2 = monthlyAmounts[1],
+                Month3 = monthlyAmounts[2],
+                Month4 = monthlyAmounts[3],
+                Month5 = monthlyAmounts[4],
+                Month6 = monthlyAmounts[5],
+                Month7 = monthlyAmounts[6],
+                Month8 = monthlyAmounts[7],
+                Month9 = monthlyAmounts[8],
+                Month10 = monthlyAmounts[9],
+                Month11 = monthlyAmounts[10],
+                Month12 = monthlyAmounts[11]
+            };
+
+            await BudgetService.SaveMonthlyBudgetEntryAsync(entry);
+        }
+
+        step = 3;
+    }
+
+    private void Reset()
+    {
+        step = 1;
+        selectedProjectId = 0;
+        selectedYear = DateTime.UtcNow.Year;
+        notes = "";
+        predictions = null;
+        categoryNames = null;
+        allAvailableCategories = null;
+        allActualCategories = null;
+        selectedCategoryGroupIds.Clear();
+        selectedActualCategoryIds.Clear();
+    }
+}

@@ -1,0 +1,191 @@
+@using OpenBudget.Models
+@using OpenBudget.Services
+@using OpenBudget.Shared
+
+@if (RenderMode == CategoryTreeRenderMode.Checkbox)
+{
+    @RenderCheckboxTree(CategoryGroup, Level, ParentSelected)
+}
+else if (RenderMode == CategoryTreeRenderMode.Dropdown)
+{
+    @RenderDropdownOption(CategoryGroup, Level)
+}
+
+@code {
+    [Parameter] public CategoryGroupWithChildCount CategoryGroup { get; set; } = null!;
+    [Parameter] public int Level { get; set; } = 0;
+    [Parameter] public CategoryTreeRenderMode RenderMode { get; set; } = CategoryTreeRenderMode.Checkbox;
+    [Parameter] public bool ParentSelected { get; set; } = false;
+
+    // For checkbox mode
+    [Parameter] public HashSet<long> SelectedCategoryGroupIds { get; set; } = new();
+    [Parameter] public HashSet<long> SelectedCategoryIds { get; set; } = new();
+    [Parameter] public EventCallback<(long Id, bool IsChecked)> OnCategoryGroupToggle { get; set; }
+    [Parameter] public EventCallback<(long Id, bool IsChecked)> OnCategoryToggle { get; set; }
+
+    // Shared data
+    [Parameter] public List<CategoryGroupWithChildCount>? AllCategories { get; set; }
+    [Parameter] public List<Category>? ActualCategories { get; set; }
+
+    private RenderFragment RenderCheckboxTree(CategoryGroupWithChildCount catGroup, int level, bool parentSelected) => builder =>
+    {
+        var indentPx = level * 20;
+
+        var isSelected = SelectedCategoryGroupIds.Contains(catGroup.CategoryGroup.Id);
+        var isDisabled = parentSelected;
+
+        // Render category group checkbox
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "form-check");
+        builder.AddAttribute(2, "style", $"padding-left: {indentPx}px;");
+
+        builder.OpenElement(3, "input");
+        builder.AddAttribute(4, "class", "form-check-input");
+        builder.AddAttribute(5, "type", "checkbox");
+        builder.AddAttribute(6, "id", $"catgroup-{catGroup.CategoryGroup.Id}");
+        builder.AddAttribute(7, "checked", isSelected);
+        if (isDisabled)
+        {
+            builder.AddAttribute(8, "disabled", true);
+        }
+        builder.AddAttribute(9, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this,
+            e => OnCategoryGroupToggle.InvokeAsync((catGroup.CategoryGroup.Id, (bool)e.Value!))));
+        builder.CloseElement(); // input
+
+        builder.OpenElement(10, "label");
+        builder.AddAttribute(11, "class", "form-check-label");
+        builder.AddAttribute(12, "for", $"catgroup-{catGroup.CategoryGroup.Id}");
+        builder.AddContent(13, catGroup.CategoryGroup.Name);
+        builder.CloseElement(); // label
+
+        builder.CloseElement(); // div
+
+        // Get child category groups and actual categories, then sort them together by name
+        var childGroups = AllCategories?
+            .Where(c => c.ParentCategoryGroupId == catGroup.CategoryGroup.Id)
+            .Select(c => (Name: c.CategoryGroup.Name ?? "", Type: "Group", Item: (object)c))
+            .ToList() ?? new List<(string Name, string Type, object Item)>();
+
+        var categories = ActualCategories?
+            .Where(c => c.GroupId == catGroup.CategoryGroup.Id)
+            .Select(c => (Name: c.Name ?? "", Type: "Category", Item: (object)c))
+            .ToList() ?? new List<(string Name, string Type, object Item)>();
+
+        // Combine and sort by name
+        var allChildren = childGroups.Concat(categories).OrderBy(x => x.Name).ToList();
+
+        foreach (var child in allChildren)
+        {
+            if (child.Type == "Category")
+            {
+                var category = (Category)child.Item;
+                var catIndentPx = (level + 1) * 20;
+
+                var catSelected = SelectedCategoryIds.Contains(category.Id);
+                var catDisabled = isSelected || parentSelected;
+
+                builder.OpenElement(14, "div");
+                builder.AddAttribute(15, "class", "form-check");
+                builder.AddAttribute(16, "style", $"padding-left: {catIndentPx}px;");
+
+                builder.OpenElement(17, "input");
+                builder.AddAttribute(18, "class", "form-check-input");
+                builder.AddAttribute(19, "type", "checkbox");
+                builder.AddAttribute(20, "id", $"cat-{category.Id}");
+                builder.AddAttribute(21, "checked", catSelected);
+                if (catDisabled)
+                {
+                    builder.AddAttribute(22, "disabled", true);
+                }
+                builder.AddAttribute(23, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this,
+                    e => OnCategoryToggle.InvokeAsync((category.Id, (bool)e.Value!))));
+                builder.CloseElement(); // input
+
+                builder.OpenElement(24, "label");
+                builder.AddAttribute(25, "class", "form-check-label");
+                builder.AddAttribute(26, "for", $"cat-{category.Id}");
+                builder.AddContent(27, category.Name);
+                builder.CloseElement(); // label
+
+                builder.CloseElement(); // div
+            }
+            else // Group
+            {
+                var childGroup = (CategoryGroupWithChildCount)child.Item;
+                builder.OpenComponent<CategoryTree>(28);
+                builder.AddAttribute(29, "CategoryGroup", childGroup);
+                builder.AddAttribute(30, "Level", level + 1);
+                builder.AddAttribute(31, "RenderMode", CategoryTreeRenderMode.Checkbox);
+                builder.AddAttribute(32, "ParentSelected", isSelected || parentSelected);
+                builder.AddAttribute(33, "SelectedCategoryGroupIds", SelectedCategoryGroupIds);
+                builder.AddAttribute(34, "SelectedCategoryIds", SelectedCategoryIds);
+                builder.AddAttribute(35, "OnCategoryGroupToggle", OnCategoryGroupToggle);
+                builder.AddAttribute(36, "OnCategoryToggle", OnCategoryToggle);
+                builder.AddAttribute(37, "AllCategories", AllCategories);
+                builder.AddAttribute(38, "ActualCategories", ActualCategories);
+                builder.CloseComponent();
+            }
+        }
+    };
+
+    private RenderFragment RenderDropdownOption(CategoryGroupWithChildCount catGroup, int level) => builder =>
+    {
+        var indent = level switch
+        {
+            0 => "",
+            1 => "  ↳ ",
+            2 => "    ↳↳ ",
+            _ => "      ↳↳↳ "
+        };
+
+        // Render category group option
+        builder.OpenElement(0, "option");
+        builder.AddAttribute(1, "value", $"G-{catGroup.CategoryGroup.Id}");
+        builder.AddContent(2, $"{indent}{catGroup.CategoryGroup.Name}");
+        builder.CloseElement();
+
+        // Get child category groups and actual categories, then sort them together by name
+        var childGroupsDropdown = AllCategories?
+            .Where(c => c.ParentCategoryGroupId == catGroup.CategoryGroup.Id)
+            .Select(c => (Name: c.CategoryGroup.Name ?? "", Type: "Group", Item: (object)c))
+            .ToList() ?? new List<(string Name, string Type, object Item)>();
+
+        var categoriesDropdown = ActualCategories?
+            .Where(c => c.GroupId == catGroup.CategoryGroup.Id)
+            .Select(c => (Name: c.Name ?? "", Type: "Category", Item: (object)c))
+            .ToList() ?? new List<(string Name, string Type, object Item)>();
+
+        var childIndent = level switch
+        {
+            0 => "  ↳ ",
+            1 => "    ↳↳ ",
+            _ => "      ↳↳↳ "
+        };
+
+        // Combine and sort by name
+        var allChildrenDropdown = childGroupsDropdown.Concat(categoriesDropdown).OrderBy(x => x.Name).ToList();
+
+        foreach (var child in allChildrenDropdown)
+        {
+            if (child.Type == "Category")
+            {
+                var category = (Category)child.Item;
+                builder.OpenElement(3, "option");
+                builder.AddAttribute(4, "value", $"C-{category.Id}");
+                builder.AddContent(5, $"{childIndent}{category.Name}");
+                builder.CloseElement();
+            }
+            else // Group
+            {
+                var childGroup = (CategoryGroupWithChildCount)child.Item;
+                builder.OpenComponent<CategoryTree>(6);
+                builder.AddAttribute(7, "CategoryGroup", childGroup);
+                builder.AddAttribute(8, "Level", level + 1);
+                builder.AddAttribute(9, "RenderMode", CategoryTreeRenderMode.Dropdown);
+                builder.AddAttribute(10, "AllCategories", AllCategories);
+                builder.AddAttribute(11, "ActualCategories", ActualCategories);
+                builder.CloseComponent();
+            }
+        }
+    };
+}

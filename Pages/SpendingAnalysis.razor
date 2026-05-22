@@ -1,0 +1,560 @@
+@page "/analysis"
+@using OpenBudget.Services
+@using OpenBudget.Models
+@using System.Text.Json
+@inject BudgetService BudgetService
+@inject IJSRuntime JS
+
+<PageTitle>Spending Analysis</PageTitle>
+
+<h1>Spending Analysis</h1>
+
+<div class="row mb-3">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <label class="form-label">Select Project</label>
+                        <select class="form-select" value="@selectedBudgetId" @onchange="OnBudgetChanged">
+                            <option value="0">-- All Categories --</option>
+                            @if (budgets != null)
+                            {
+                                foreach (var budget in budgets)
+                                {
+                                    <option value="@budget.Id">@budget.Name</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-3">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Categories</h5>
+            </div>
+            <div class="card-body">
+                <div style="max-height: calc(100vh - 250px); overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.25rem; padding: 0.5rem;">
+                    @if (allAvailableCategories != null && allActualCategories != null)
+                    {
+                        @foreach (var rootCat in allAvailableCategories.Where(c => c.IsRootCategory).OrderBy(c => c.CategoryGroup.Name))
+                        {
+                            <CategoryTree
+                                CategoryGroup="@rootCat"
+                                Level="0"
+                                RenderMode="CategoryTreeRenderMode.Checkbox"
+                                ParentSelected="false"
+                                SelectedCategoryGroupIds="@selectedCategoryGroupIds"
+                                SelectedCategoryIds="@selectedActualCategoryIds"
+                                OnCategoryGroupToggle="@HandleCategoryGroupToggle"
+                                OnCategoryToggle="@HandleCategoryToggle"
+                                AllCategories="@allAvailableCategories"
+                                ActualCategories="@allActualCategories" />
+                        }
+                    }
+                </div>
+                <small class="form-text text-muted mt-2 d-block">
+                    <strong>How to use:</strong><br/>
+                    @if (selectedBudgetId == 0)
+                    {
+                        <text>• Check/uncheck categories to control what appears in the chart<br/></text>
+                        <text>• Deselecting a parent automatically selects its children<br/></text>
+                    }
+                    else
+                    {
+                        <text>• Categories shown are based on project tracking settings<br/></text>
+                        <text>• Configure tracking in the project details page<br/></text>
+                    }
+                    • Selected categories appear as stacked bars showing trends over time
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-9">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Category Trends</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Date Range</label>
+                    <select class="form-select" value="@selectedDateRange" @onchange="OnDateRangeChanged">
+                        <option value="12">Last 12 Months</option>
+                        <option value="6">Last 6 Months</option>
+                        <option value="3">Last 3 Months</option>
+                        <option value="current-year">Current Year</option>
+                        <option value="last-year">Last Year</option>
+                    </select>
+                </div>
+
+                @if (categoryTrends == null)
+                {
+                    <p><em>Loading trends...</em></p>
+                }
+                else if (!categoryTrends.Any())
+                {
+                    <p class="text-muted">No trend data available for selected categories.</p>
+                }
+                else
+                {
+                    <canvas id="trendStackedBarChart" width="400" height="200"></canvas>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<CategoryGroupWithChildCount>? allCategories;
+    private List<CategoryGroupWithChildCount>? filteredCategories;
+    private List<CategoryGroupWithChildCount>? allAvailableCategories;
+    private HashSet<long> selectedCategoryGroupIds = new();
+    private HashSet<long> selectedActualCategoryIds = new();
+    private List<Category>? allActualCategories;
+    private Dictionary<string, List<MonthlySpending>>? categoryTrends;
+    private List<Project>? budgets;
+    private int selectedBudgetId = 0;
+    private string selectedDateRange = "12";
+
+    protected override async Task OnInitializedAsync()
+    {
+        budgets = await BudgetService.GetProjectsAsync();
+
+        // Load all category groups (including sub-categories), not just root ones
+        var allCategoryGroups = await BudgetService.GetAllCategoriesWithChildCountsAsync();
+
+        // Filter out the hidden root category (id=1) and organize hierarchically
+        allCategories = allCategoryGroups
+            .Where(c => c.CategoryGroup.Id != 1)
+            .OrderBy(c => c.CategoryGroup.Name)
+            .ToList();
+
+        // Load all actual categories
+        allActualCategories = await BudgetService.GetAllCategoriesAsync();
+
+        // Initially show all categories
+        filteredCategories = allCategories;
+        allAvailableCategories = filteredCategories;
+
+        // Initialize with all leaf category groups selected (those without children)
+        selectedCategoryGroupIds = allAvailableCategories
+            .Where(c => c.DirectChildCount == 0)
+            .Select(c => c.CategoryGroup.Id)
+            .ToHashSet();
+
+        await LoadCategoryTrends();
+    }
+
+    private async Task OnBudgetChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var budgetId))
+        {
+            selectedBudgetId = budgetId;
+            await FilterCategoriesByBudget();
+
+            // Update available categories
+            allAvailableCategories = filteredCategories;
+
+            if (selectedBudgetId == 0)
+            {
+                // Show all categories - select leaf nodes
+                selectedCategoryGroupIds = allAvailableCategories!
+                    .Where(c => c.DirectChildCount == 0)
+                    .Select(c => c.CategoryGroup.Id)
+                    .ToHashSet();
+                selectedActualCategoryIds.Clear();
+            }
+            else
+            {
+                // Load project tracking items
+                var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(selectedBudgetId);
+
+                selectedCategoryGroupIds.Clear();
+                selectedActualCategoryIds.Clear();
+
+                foreach (var item in trackingItems)
+                {
+                    if (item.CategoryGroupId.HasValue)
+                    {
+                        selectedCategoryGroupIds.Add(item.CategoryGroupId.Value);
+                    }
+                    else if (item.CategoryId.HasValue)
+                    {
+                        selectedActualCategoryIds.Add(item.CategoryId.Value);
+                    }
+                }
+            }
+
+            await LoadCategoryTrends();
+        }
+    }
+
+    private async Task FilterCategoriesByBudget()
+    {
+        if (selectedBudgetId == 0)
+        {
+            // Show all categories
+            filteredCategories = allCategories;
+            return;
+        }
+
+        var budget = await BudgetService.GetProjectAsync(selectedBudgetId);
+        if (budget == null)
+        {
+            filteredCategories = new List<CategoryGroupWithChildCount>();
+            return;
+        }
+
+        // Get all category group IDs that are in the budget (including sub-groups)
+        var budgetCategoryGroupIds = new HashSet<long>();
+
+        foreach (var assignment in budget.CategoryAssignments)
+        {
+            // Add the assigned category group
+            budgetCategoryGroupIds.Add(assignment.CategoryId);
+
+            // Add all sub-groups recursively using the already-loaded data
+            GetAllSubGroupIds(assignment.CategoryId, budgetCategoryGroupIds);
+        }
+
+        // Filter categories to only those in the budget
+        filteredCategories = allCategories!
+            .Where(c => budgetCategoryGroupIds.Contains(c.CategoryGroup.Id))
+            .ToList();
+    }
+
+    private void GetAllSubGroupIds(long categoryGroupId, HashSet<long> result)
+    {
+        if (allCategories == null) return;
+
+        // Find all children of this category group
+        var children = allCategories.Where(c => c.ParentCategoryGroupId == categoryGroupId).ToList();
+
+        foreach (var child in children)
+        {
+            result.Add(child.CategoryGroup.Id);
+            // Recursively get all descendants
+            GetAllSubGroupIds(child.CategoryGroup.Id, result);
+        }
+    }
+
+    private async Task HandleCategoryGroupToggle((long Id, bool IsChecked) args)
+    {
+        if (args.IsChecked)
+        {
+            // Add the category group
+            selectedCategoryGroupIds.Add(args.Id);
+
+            // Remove all descendant category groups and categories
+            RemoveDescendantsFromSelection(args.Id);
+        }
+        else
+        {
+            // Remove the category group
+            selectedCategoryGroupIds.Remove(args.Id);
+
+            // Auto-select immediate children (category groups or categories)
+            SelectImmediateChildren(args.Id);
+        }
+
+        // Refresh the chart
+        await LoadCategoryTrends();
+    }
+
+    private async Task HandleCategoryToggle((long Id, bool IsChecked) args)
+    {
+        if (args.IsChecked)
+        {
+            selectedActualCategoryIds.Add(args.Id);
+        }
+        else
+        {
+            selectedActualCategoryIds.Remove(args.Id);
+        }
+
+        // Refresh the chart
+        await LoadCategoryTrends();
+    }
+
+
+    private void RemoveDescendantsFromSelection(long parentCategoryGroupId)
+    {
+        if (allAvailableCategories == null) return;
+
+        // Find all child category groups
+        var childGroups = allAvailableCategories
+            .Where(c => c.ParentCategoryGroupId == parentCategoryGroupId)
+            .ToList();
+
+        foreach (var child in childGroups)
+        {
+            selectedCategoryGroupIds.Remove(child.CategoryGroup.Id);
+            // Recursively remove descendants
+            RemoveDescendantsFromSelection(child.CategoryGroup.Id);
+        }
+
+        // Also remove all actual categories belonging to this category group
+        if (allActualCategories != null)
+        {
+            var categoriesToRemove = allActualCategories
+                .Where(c => c.GroupId == parentCategoryGroupId)
+                .Select(c => c.Id)
+                .ToList();
+
+            foreach (var catId in categoriesToRemove)
+            {
+                selectedActualCategoryIds.Remove(catId);
+            }
+        }
+    }
+
+    private void SelectImmediateChildren(long parentCategoryGroupId)
+    {
+        if (allAvailableCategories == null) return;
+
+        // Find immediate child category groups
+        var childGroups = allAvailableCategories
+            .Where(c => c.ParentCategoryGroupId == parentCategoryGroupId)
+            .ToList();
+
+        if (childGroups.Any())
+        {
+            // Has child groups - select them
+            foreach (var child in childGroups)
+            {
+                selectedCategoryGroupIds.Add(child.CategoryGroup.Id);
+            }
+        }
+        else if (allActualCategories != null)
+        {
+            // No child groups - this is a leaf category group, select its categories
+            var categories = allActualCategories
+                .Where(c => c.GroupId == parentCategoryGroupId)
+                .ToList();
+
+            foreach (var cat in categories)
+            {
+                selectedActualCategoryIds.Add(cat.Id);
+            }
+        }
+    }
+
+    private bool needsTrendChartRender = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (needsTrendChartRender && categoryTrends != null && categoryTrends.Any())
+        {
+            needsTrendChartRender = false;
+            await RenderStackedBarChart();
+        }
+    }
+
+    private async Task OnDateRangeChanged(ChangeEventArgs e)
+    {
+        selectedDateRange = e.Value?.ToString() ?? "12";
+        await LoadCategoryTrends();
+    }
+
+    private async Task LoadCategoryTrends()
+    {
+        categoryTrends = new Dictionary<string, List<MonthlySpending>>();
+
+        int months;
+        int? filterYear = null;
+
+        if (selectedDateRange == "current-year")
+        {
+            // Get current year data: from Jan to current month
+            var now = DateTime.UtcNow;
+            months = now.Month + 12; // Get extra months to ensure we have full year if needed
+            filterYear = now.Year;
+        }
+        else if (selectedDateRange == "last-year")
+        {
+            // Get last year data: all 12 months of previous year
+            var now = DateTime.UtcNow;
+            months = now.Month + 12; // Get enough months to cover last full year
+            filterYear = now.Year - 1;
+        }
+        else
+        {
+            months = int.Parse(selectedDateRange);
+        }
+
+        // Load trends for all selected category groups
+        foreach (var groupId in selectedCategoryGroupIds)
+        {
+            var group = allAvailableCategories?.FirstOrDefault(c => c.CategoryGroup.Id == groupId);
+            if (group != null)
+            {
+                var trend = await BudgetService.GetMonthlySpendingAsync(groupId, months);
+
+                // Filter by year if needed
+                if (filterYear.HasValue && trend.Any())
+                {
+                    trend = trend.Where(m => m.Year == filterYear.Value).ToList();
+                }
+
+                if (trend.Any())
+                {
+                    categoryTrends[group.CategoryGroup.Name ?? "Unknown"] = trend;
+                }
+            }
+        }
+
+        // Load trends for all selected individual categories
+        foreach (var categoryId in selectedActualCategoryIds)
+        {
+            var category = allActualCategories?.FirstOrDefault(c => c.Id == categoryId);
+            if (category != null)
+            {
+                var trend = await BudgetService.GetMonthlySpendingForCategoryAsync(categoryId, months);
+
+                // Filter by year if needed
+                if (filterYear.HasValue && trend.Any())
+                {
+                    trend = trend.Where(m => m.Year == filterYear.Value).ToList();
+                }
+
+                if (trend.Any())
+                {
+                    categoryTrends[category.Name ?? "Unknown"] = trend;
+                }
+            }
+        }
+
+        if (categoryTrends.Any())
+        {
+            needsTrendChartRender = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RenderStackedBarChart()
+    {
+        if (categoryTrends == null || !categoryTrends.Any())
+            return;
+
+        // Get all unique month labels from the first category's trend
+        var firstTrend = categoryTrends.Values.First();
+        var labels = firstTrend.Select(m => m.MonthName).ToArray();
+
+        // Sort categories by average amount (descending - largest at bottom of stack)
+        var sortedCategories = categoryTrends
+            .OrderByDescending(kvp => kvp.Value.Average(m => m.Amount))
+            .ToList();
+
+        // Create datasets for each category
+        var datasets = new List<object>();
+        var colors = GenerateColors(sortedCategories.Count);
+        int colorIndex = 0;
+
+        foreach (var kvp in sortedCategories)
+        {
+            var categoryName = kvp.Key;
+            var trend = kvp.Value;
+            var data = trend.Select(m => m.Amount).ToArray();
+
+            datasets.Add(new
+            {
+                label = categoryName,
+                data = data,
+                backgroundColor = colors[colorIndex++]
+            });
+        }
+
+        var chartData = new
+        {
+            type = "bar",
+            data = new
+            {
+                labels = labels,
+                datasets = datasets.ToArray()
+            },
+            options = new
+            {
+                responsive = true,
+                plugins = new
+                {
+                    legend = new
+                    {
+                        position = "bottom"
+                    },
+                    tooltip = new
+                    {
+                        mode = "index",
+                        intersect = false,
+                        callbacks = new
+                        {
+                            label = "function(context) { return context.dataset.label + ': €' + context.parsed.y.toFixed(2); }"
+                        }
+                    }
+                },
+                scales = new
+                {
+                    x = new
+                    {
+                        stacked = true
+                    },
+                    y = new
+                    {
+                        stacked = true,
+                        beginAtZero = true,
+                        title = new
+                        {
+                            display = true,
+                            text = "Amount (€)"
+                        },
+                        ticks = new
+                        {
+                            callback = "function(value) { return '€' + value.toFixed(2); }"
+                        }
+                    }
+                }
+            }
+        };
+
+        await Task.Delay(100); // Give the DOM time to render
+
+        try
+        {
+            await JS.InvokeVoidAsync("renderStackedBarChart", "trendStackedBarChart", chartData);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error rendering stacked bar chart: {ex.Message}");
+        }
+    }
+
+    private string[] GenerateColors(int count)
+    {
+        var colors = new[]
+        {
+            "rgba(255, 99, 132, 0.8)",
+            "rgba(54, 162, 235, 0.8)",
+            "rgba(255, 206, 86, 0.8)",
+            "rgba(75, 192, 192, 0.8)",
+            "rgba(153, 102, 255, 0.8)",
+            "rgba(255, 159, 64, 0.8)",
+            "rgba(199, 199, 199, 0.8)",
+            "rgba(83, 102, 255, 0.8)",
+            "rgba(255, 99, 255, 0.8)",
+            "rgba(99, 255, 132, 0.8)"
+        };
+
+        var result = new string[count];
+        for (int i = 0; i < count; i++)
+        {
+            result[i] = colors[i % colors.Length];
+        }
+        return result;
+    }
+}

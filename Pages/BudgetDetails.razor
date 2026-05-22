@@ -1,0 +1,582 @@
+@page "/projects/{BudgetId:int}"
+@using OpenBudget.Services
+@using OpenBudget.Models
+@using OpenBudget.Shared
+@inject BudgetService BudgetService
+@inject NavigationManager Navigation
+
+<PageTitle>@(budget?.Name ?? "Project Details")</PageTitle>
+
+@if (budget == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1>@budget.Name</h1>
+            @if (!string.IsNullOrEmpty(budget.Description))
+            {
+                <p class="text-muted">@budget.Description</p>
+            }
+        </div>
+        <a href="/projects" class="btn btn-secondary">Back to Projects</a>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Category Assignments</h5>
+                    <button class="btn btn-sm btn-primary" @onclick="ShowAddCategoryDialog">Add Category</button>
+                </div>
+                <div class="card-body">
+                    @if (!budget.CategoryAssignments.Any())
+                    {
+                        <p class="text-muted">No categories assigned yet.</p>
+                    }
+                    else
+                    {
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Category</th>
+                                    <th>Monthly Limit</th>
+                                    <th>Suggested</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var assignment in budget.CategoryAssignments)
+                                {
+                                    var categoryName = categoryNames.GetValueOrDefault(assignment.CategoryId, "Loading...");
+                                    var suggested = suggestedAmounts.GetValueOrDefault(assignment.CategoryId, 0);
+
+                                    <tr>
+                                        <td>@categoryName</td>
+                                        <td>€@assignment.MonthlyLimit.ToString("N2")</td>
+                                        <td class="text-muted">€@suggested.ToString("N2")</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-danger" @onclick="() => RemoveCategory(assignment.CategoryId)">Remove</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Current Month Overview</h5>
+                </div>
+                <div class="card-body">
+                    @if (spendingSummary == null)
+                    {
+                        <p><em>Loading spending data...</em></p>
+                    }
+                    else
+                    {
+                        <h6>@spendingSummary.Month/@spendingSummary.Year</h6>
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between">
+                                <span>Total Project Budget:</span>
+                                <strong>€@spendingSummary.TotalBudget.ToString("N2")</strong>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span>Total Spent:</span>
+                                <strong class="@(spendingSummary.TotalSpent > spendingSummary.TotalBudget ? "text-danger" : "text-success")">
+                                    €@spendingSummary.TotalSpent.ToString("N2")
+                                </strong>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span>Remaining:</span>
+                                <strong class="@(spendingSummary.TotalRemaining < 0 ? "text-danger" : "text-success")">
+                                    €@spendingSummary.TotalRemaining.ToString("N2")
+                                </strong>
+                            </div>
+                        </div>
+
+                        @if (spendingSummary.CategorySpending.Any())
+                        {
+                            <h6 class="mt-4">By Category:</h6>
+                            @foreach (var cat in spendingSummary.CategorySpending.OrderByDescending(c => c.PercentUsed))
+                            {
+                                <div class="mb-2">
+                                    <div class="d-flex justify-content-between small">
+                                        <span>@cat.CategoryName</span>
+                                        <span>€@cat.Spent.ToString("N2") / €@cat.Budget.ToString("N2")</span>
+                                    </div>
+                                    <div class="progress">
+                                        <div class="progress-bar @(cat.PercentUsed > 100 ? "bg-danger" : cat.PercentUsed > 80 ? "bg-warning" : "bg-success")"
+                                             role="progressbar"
+                                             style="width: @Math.Min(cat.PercentUsed, 100)%"
+                                             aria-valuenow="@cat.PercentUsed"
+                                             aria-valuemin="0"
+                                             aria-valuemax="100">
+                                            @cat.PercentUsed.ToString("F0")%
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Budget Tracking Configuration</h5>
+                    <button class="btn btn-sm btn-primary" @onclick="ShowTrackingDialog">Configure Tracking</button>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Configure which categories/groups to track for budgets and analysis.
+                        This controls what appears in budget creation and spending analysis.
+                    </p>
+                    @if (trackingItems == null || !trackingItems.Any())
+                    {
+                        <p class="text-muted">No tracking items configured. Click "Configure Tracking" to set up.</p>
+                    }
+                    else
+                    {
+                        <div class="d-flex flex-wrap gap-2">
+                            @foreach (var item in trackingItems)
+                            {
+                                var name = item.CategoryGroupId.HasValue
+                                    ? trackingCategoryNames.GetValueOrDefault(item.CategoryGroupId.Value, "Loading...")
+                                    : trackingCategoryNames.GetValueOrDefault(item.CategoryId!.Value, "Loading...");
+                                var type = item.CategoryGroupId.HasValue ? "Group" : "Category";
+
+                                <span class="badge bg-secondary">@name (@type)</span>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showTrackingDialog)
+{
+    <div class="modal show d-block" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Configure Budget Tracking</h5>
+                    <button type="button" class="btn-close" @onclick="HideTrackingDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted">
+                        Select which categories/groups to track for budgeting and analysis.
+                        Deselecting a parent will automatically select its children for more granular control.
+                    </p>
+
+                    <div style="max-height: 500px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.25rem; padding: 0.5rem;">
+                        @if (allAvailableCategories != null && allActualCategories != null)
+                        {
+                            @foreach (var rootCat in allAvailableCategories.Where(c => c.IsRootCategory).OrderBy(c => c.CategoryGroup.Name))
+                            {
+                                <CategoryTree
+                                    CategoryGroup="@rootCat"
+                                    Level="0"
+                                    RenderMode="CategoryTreeRenderMode.Checkbox"
+                                    ParentSelected="false"
+                                    SelectedCategoryGroupIds="@selectedTrackingGroupIds"
+                                    SelectedCategoryIds="@selectedTrackingCategoryIds"
+                                    OnCategoryGroupToggle="@HandleTrackingGroupToggle"
+                                    OnCategoryToggle="@HandleTrackingCategoryToggle"
+                                    AllCategories="@allAvailableCategories"
+                                    ActualCategories="@allActualCategories" />
+                            }
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="HideTrackingDialog">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveTrackingConfiguration">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+}
+
+@if (showAddCategoryDialog)
+{
+    <div class="modal show d-block" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Category to Project</h5>
+                    <button type="button" class="btn-close" @onclick="HideAddCategoryDialog"></button>
+                </div>
+                <div class="modal-body">
+                    @if (availableCategoriesWithCounts == null)
+                    {
+                        <p><em>Loading categories...</em></p>
+                    }
+                    else
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">Select Category</label>
+                            <select class="form-select" @bind="selectedCategoryId" size="15">
+                                <option value="0">-- Select a category --</option>
+                                @{
+                                    // Group by parent to show hierarchy
+                                    var rootCategories = availableCategoriesWithCounts.Where(c => c.IsRootCategory).OrderBy(c => c.CategoryGroup.Name);
+
+                                    foreach (var rootCat in rootCategories)
+                                    {
+                                        var childInfo = rootCat.DirectChildCount > 0 ? $" ({rootCat.DirectChildCount} sub-categories)" : "";
+                                        <option value="@rootCat.CategoryGroup.Id">@rootCat.CategoryGroup.Name@childInfo</option>
+
+                                        // Show first-level children (e.g., Auslagen, Barauszahlung under Umbuchungen)
+                                        var firstLevelChildren = availableCategoriesWithCounts
+                                            .Where(c => c.ParentCategoryGroupId == rootCat.CategoryGroup.Id)
+                                            .OrderBy(c => c.CategoryGroup.Name);
+
+                                        foreach (var child1 in firstLevelChildren)
+                                        {
+                                            var child1Info = child1.DirectChildCount > 0 ? $" ({child1.DirectChildCount} sub-categories)" : "";
+                                            <option value="@child1.CategoryGroup.Id">  ↳ @child1.CategoryGroup.Name@child1Info</option>
+
+                                            // Show second-level children (e.g., Sparkasse under Barauszahlung)
+                                            var secondLevelChildren = availableCategoriesWithCounts
+                                                .Where(c => c.ParentCategoryGroupId == child1.CategoryGroup.Id)
+                                                .OrderBy(c => c.CategoryGroup.Name);
+
+                                            foreach (var child2 in secondLevelChildren)
+                                            {
+                                                var child2Info = child2.DirectChildCount > 0 ? $" ({child2.DirectChildCount} sub-categories)" : "";
+                                                <option value="@child2.CategoryGroup.Id">    ↳↳ @child2.CategoryGroup.Name@child2Info</option>
+                                            }
+                                        }
+                                    }
+                                }
+                            </select>
+                            <small class="form-text text-muted">Parent categories automatically include all their sub-categories in project calculations</small>
+                        </div>
+
+                        @if (selectedCategoryId > 0)
+                        {
+                            var suggested = suggestedAmounts.GetValueOrDefault(selectedCategoryId, 0);
+                            <div class="alert alert-info">
+                                <strong>Suggested monthly limit based on last 12 months:</strong> €@suggested.ToString("N2")
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Monthly Limit (€)</label>
+                                <input type="number" class="form-control" step="0.01" @bind="newCategoryLimit" />
+                            </div>
+
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" @bind="useSuggestedAmount" id="useSuggested" />
+                                <label class="form-check-label" for="useSuggested">
+                                    Use suggested amount
+                                </label>
+                            </div>
+                        }
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="HideAddCategoryDialog">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="AddCategory" disabled="@(selectedCategoryId == 0)">Add Category</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+}
+
+@code {
+    [Parameter]
+    public int BudgetId { get; set; }
+
+    private Project? budget;
+    private ProjectSpendingSummary? spendingSummary;
+    private Dictionary<long, string> categoryNames = new();
+    private Dictionary<long, decimal> suggestedAmounts = new();
+    private List<CategoryGroupWithChildCount>? availableCategoriesWithCounts;
+
+    private bool showAddCategoryDialog = false;
+    private long selectedCategoryId = 0;
+    private decimal newCategoryLimit = 0;
+    private bool useSuggestedAmount = false;
+
+    // Tracking configuration
+    private List<ProjectTrackingItem>? trackingItems;
+    private Dictionary<long, string> trackingCategoryNames = new();
+    private bool showTrackingDialog = false;
+    private HashSet<long> selectedTrackingGroupIds = new();
+    private HashSet<long> selectedTrackingCategoryIds = new();
+    private List<CategoryGroupWithChildCount>? allAvailableCategories;
+    private List<Category>? allActualCategories;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBudget();
+        await LoadSpendingSummary();
+        await LoadTrackingItems();
+    }
+
+    private async Task LoadBudget()
+    {
+        budget = await BudgetService.GetProjectAsync(BudgetId);
+
+        if (budget != null)
+        {
+            // Load category group names
+            foreach (var assignment in budget.CategoryAssignments)
+            {
+                var categoryGroup = await BudgetService.GetCategoryWithSubCategoriesAsync(assignment.CategoryId);
+                if (categoryGroup != null)
+                {
+                    categoryNames[assignment.CategoryId] = categoryGroup.Name ?? "Unknown";
+
+                    // Load suggested amount
+                    var suggested = await BudgetService.CalculateAverageMonthlySpendingAsync(assignment.CategoryId);
+                    suggestedAmounts[assignment.CategoryId] = suggested;
+                }
+            }
+        }
+    }
+
+    private async Task LoadSpendingSummary()
+    {
+        var now = DateTime.UtcNow;
+        spendingSummary = await BudgetService.GetProjectSpendingSummaryAsync(BudgetId, now.Year, now.Month);
+    }
+
+    private async Task ShowAddCategoryDialog()
+    {
+        availableCategoriesWithCounts = await BudgetService.GetAllCategoriesWithChildCountsAsync();
+        selectedCategoryId = 0;
+        newCategoryLimit = 0;
+        useSuggestedAmount = false;
+        showAddCategoryDialog = true;
+    }
+
+    private void HideAddCategoryDialog()
+    {
+        showAddCategoryDialog = false;
+    }
+
+    private async Task AddCategory()
+    {
+        if (selectedCategoryId == 0)
+            return;
+
+        // Calculate suggested amount if not already loaded
+        if (!suggestedAmounts.ContainsKey(selectedCategoryId))
+        {
+            var suggested = await BudgetService.CalculateAverageMonthlySpendingAsync(selectedCategoryId);
+            suggestedAmounts[selectedCategoryId] = suggested;
+        }
+
+        var limit = useSuggestedAmount ? suggestedAmounts[selectedCategoryId] : newCategoryLimit;
+
+        await BudgetService.AssignCategoryToProjectAsync(BudgetId, selectedCategoryId, limit);
+
+        showAddCategoryDialog = false;
+        await LoadBudget();
+        await LoadSpendingSummary();
+    }
+
+    private async Task RemoveCategory(long categoryId)
+    {
+        await BudgetService.RemoveCategoryFromProjectAsync(BudgetId, categoryId);
+        await LoadBudget();
+        await LoadSpendingSummary();
+    }
+
+    // Tracking configuration methods
+    private async Task LoadTrackingItems()
+    {
+        trackingItems = await BudgetService.GetProjectTrackingItemsAsync(BudgetId);
+
+        // Load names for tracking items
+        if (trackingItems != null)
+        {
+            foreach (var item in trackingItems)
+            {
+                if (item.CategoryGroupId.HasValue)
+                {
+                    var categoryGroup = await BudgetService.GetCategoryWithSubCategoriesAsync(item.CategoryGroupId.Value);
+                    if (categoryGroup != null)
+                    {
+                        trackingCategoryNames[item.CategoryGroupId.Value] = categoryGroup.Name ?? "Unknown";
+                    }
+                }
+                else if (item.CategoryId.HasValue)
+                {
+                    var categories = await BudgetService.GetAllCategoriesAsync();
+                    var category = categories.FirstOrDefault(c => c.Id == item.CategoryId.Value);
+                    if (category != null)
+                    {
+                        trackingCategoryNames[item.CategoryId.Value] = category.Name ?? "Unknown";
+                    }
+                }
+            }
+        }
+    }
+
+    private async Task ShowTrackingDialog()
+    {
+        // Load all categories
+        var allCategoryGroups = await BudgetService.GetAllCategoriesWithChildCountsAsync();
+        allActualCategories = await BudgetService.GetAllCategoriesAsync();
+
+        // Get all category group IDs that are in the project
+        if (budget != null)
+        {
+            var projectCategoryGroupIds = new HashSet<long>();
+            foreach (var assignment in budget.CategoryAssignments)
+            {
+                projectCategoryGroupIds.Add(assignment.CategoryId);
+                GetAllSubGroupIds(assignment.CategoryId, projectCategoryGroupIds, allCategoryGroups);
+            }
+
+            // Filter to only categories in the project
+            allAvailableCategories = allCategoryGroups
+                .Where(c => c.CategoryGroup.Id != 1 && projectCategoryGroupIds.Contains(c.CategoryGroup.Id))
+                .ToList();
+        }
+
+        // Load current tracking configuration
+        selectedTrackingGroupIds.Clear();
+        selectedTrackingCategoryIds.Clear();
+
+        if (trackingItems != null)
+        {
+            foreach (var item in trackingItems)
+            {
+                if (item.CategoryGroupId.HasValue)
+                {
+                    selectedTrackingGroupIds.Add(item.CategoryGroupId.Value);
+                }
+                else if (item.CategoryId.HasValue)
+                {
+                    selectedTrackingCategoryIds.Add(item.CategoryId.Value);
+                }
+            }
+        }
+
+        showTrackingDialog = true;
+    }
+
+    private void HideTrackingDialog()
+    {
+        showTrackingDialog = false;
+    }
+
+    private async Task SaveTrackingConfiguration()
+    {
+        await BudgetService.UpdateProjectTrackingItemsAsync(BudgetId, selectedTrackingGroupIds, selectedTrackingCategoryIds);
+        showTrackingDialog = false;
+        await LoadTrackingItems();
+    }
+
+    private async Task HandleTrackingGroupToggle((long Id, bool IsChecked) args)
+    {
+        if (args.IsChecked)
+        {
+            selectedTrackingGroupIds.Add(args.Id);
+            RemoveTrackingDescendantsFromSelection(args.Id);
+        }
+        else
+        {
+            selectedTrackingGroupIds.Remove(args.Id);
+            SelectTrackingImmediateChildren(args.Id);
+        }
+        await Task.CompletedTask;
+    }
+
+    private async Task HandleTrackingCategoryToggle((long Id, bool IsChecked) args)
+    {
+        if (args.IsChecked)
+        {
+            selectedTrackingCategoryIds.Add(args.Id);
+        }
+        else
+        {
+            selectedTrackingCategoryIds.Remove(args.Id);
+        }
+        await Task.CompletedTask;
+    }
+
+    private void RemoveTrackingDescendantsFromSelection(long parentCategoryGroupId)
+    {
+        if (allAvailableCategories == null) return;
+
+        var childGroups = allAvailableCategories
+            .Where(c => c.ParentCategoryGroupId == parentCategoryGroupId)
+            .ToList();
+
+        foreach (var child in childGroups)
+        {
+            selectedTrackingGroupIds.Remove(child.CategoryGroup.Id);
+            RemoveTrackingDescendantsFromSelection(child.CategoryGroup.Id);
+        }
+
+        if (allActualCategories != null)
+        {
+            var categoriesToRemove = allActualCategories
+                .Where(c => c.GroupId == parentCategoryGroupId)
+                .Select(c => c.Id)
+                .ToList();
+
+            foreach (var catId in categoriesToRemove)
+            {
+                selectedTrackingCategoryIds.Remove(catId);
+            }
+        }
+    }
+
+    private void SelectTrackingImmediateChildren(long parentCategoryGroupId)
+    {
+        if (allAvailableCategories == null) return;
+
+        var childGroups = allAvailableCategories
+            .Where(c => c.ParentCategoryGroupId == parentCategoryGroupId)
+            .ToList();
+
+        if (childGroups.Any())
+        {
+            foreach (var child in childGroups)
+            {
+                selectedTrackingGroupIds.Add(child.CategoryGroup.Id);
+            }
+        }
+        else if (allActualCategories != null)
+        {
+            var categories = allActualCategories
+                .Where(c => c.GroupId == parentCategoryGroupId)
+                .ToList();
+
+            foreach (var cat in categories)
+            {
+                selectedTrackingCategoryIds.Add(cat.Id);
+            }
+        }
+    }
+
+    private void GetAllSubGroupIds(long categoryGroupId, HashSet<long> result, List<CategoryGroupWithChildCount> allCategories)
+    {
+        var children = allCategories.Where(c => c.ParentCategoryGroupId == categoryGroupId).ToList();
+        foreach (var child in children)
+        {
+            result.Add(child.CategoryGroup.Id);
+            GetAllSubGroupIds(child.CategoryGroup.Id, result, allCategories);
+        }
+    }
+}
