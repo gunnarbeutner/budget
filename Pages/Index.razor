@@ -6,11 +6,29 @@
 
 <PageTitle>Dashboard</PageTitle>
 
-<h1>Project Dashboard</h1>
-
-<div class="row mb-4">
-    <div class="col-md-12">
-        <h3>Current Month: @DateTime.Now.ToString("MMMM yyyy")</h3>
+<div class="row mb-4 align-items-center">
+    <div class="col">
+        <h3 class="mb-0">
+            @(period switch
+            {
+                "year" => $"Year {DateTime.Now.Year}",
+                "ytd" => $"YTD {DateTime.Now.Year}",
+                _ => DateTime.Now.ToString("MMMM yyyy")
+            })
+        </h3>
+    </div>
+    <div class="col-auto">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Period">
+            <button type="button"
+                    class="btn @(period == "month" ? "btn-primary" : "btn-outline-primary")"
+                    @onclick='() => SetPeriod("month")'>Month</button>
+            <button type="button"
+                    class="btn @(period == "ytd" ? "btn-primary" : "btn-outline-primary")"
+                    @onclick='() => SetPeriod("ytd")'>YTD</button>
+            <button type="button"
+                    class="btn @(period == "year" ? "btn-primary" : "btn-outline-primary")"
+                    @onclick='() => SetPeriod("year")'>Year</button>
+        </div>
     </div>
 </div>
 
@@ -28,8 +46,11 @@ else if (!budgetSummaries.Any())
 else
 {
     <div class="row">
-        @foreach (var summary in budgetSummaries)
+        @for (int i = 0; i < budgetSummaries.Count; i++)
         {
+            var summary = budgetSummaries[i];
+            var isFirst = i == 0;
+            var isLast = i == budgetSummaries.Count - 1;
             var overallPercent = summary.TotalBudget > 0 ? (summary.TotalSpent / summary.TotalBudget * 100) : 0;
             string statusClass;
             if (summary.HasBudget)
@@ -40,14 +61,29 @@ else
             {
                 statusClass = summary.MonthNet >= 0 ? "success" : "danger";
             }
+            var projectId = summary.ProjectId;
 
             <div class="col-md-6 mb-4">
                 <div class="card">
                     <div class="card-header bg-@statusClass text-white d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">@summary.ProjectName</h5>
-                        <a href="/projects/@summary.ProjectId" class="text-white text-decoration-none" title="Project settings" aria-label="Project settings">
-                            <span class="oi oi-cog" aria-hidden="true"></span>
-                        </a>
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-link text-white p-0"
+                                    title="Move up" aria-label="Move up"
+                                    disabled="@isFirst"
+                                    @onclick="() => MoveProject(projectId, -1)">
+                                <span class="oi oi-chevron-top" aria-hidden="true"></span>
+                            </button>
+                            <button type="button" class="btn btn-link text-white p-0"
+                                    title="Move down" aria-label="Move down"
+                                    disabled="@isLast"
+                                    @onclick="() => MoveProject(projectId, 1)">
+                                <span class="oi oi-chevron-bottom" aria-hidden="true"></span>
+                            </button>
+                            <a href="/projects/@projectId" class="text-white text-decoration-none" title="Project settings" aria-label="Project settings">
+                                <span class="oi oi-cog" aria-hidden="true"></span>
+                            </a>
+                        </div>
                     </div>
                     <div class="card-body">
                         @if (summary.HasBudget)
@@ -95,7 +131,7 @@ else
                                 </div>
                             </div>
                             <p class="small text-muted mb-3">
-                                No budget for @summary.Year — showing this month's actuals.
+                                No budget for @summary.Year — showing @(summary.IsSingleMonth ? "this month's" : "year-to-date") actuals.
                             </p>
                         }
 
@@ -179,6 +215,10 @@ else
     private string newProjectName = "";
     private string newProjectDescription = "";
 
+    // "month" = current month, "ytd" = Jan..currentMonth (year-to-date budget vs YTD actuals),
+    // "year" = full annual budget vs YTD actuals. Default is "month".
+    private string period = "month";
+
     protected override async Task OnInitializedAsync()
     {
         await LoadDashboard();
@@ -190,12 +230,23 @@ else
         budgetSummaries = new List<ProjectSpendingSummary>();
 
         var now = DateTime.UtcNow;
+        // - month: just this month's slice of the budget vs this month's actuals
+        // - ytd:   Jan..currentMonth on both sides — "am I on pace?"
+        // - year:  full annual budget (Jan..Dec) vs YTD actuals — "how much remains?"
+        //         Year mode summing through December is safe: future months have no
+        //         transactions yet, so spent collapses to YTD anyway.
+        var (fromMonth, toMonth) = period switch
+        {
+            "year" => (1, 12),
+            "ytd" => (1, now.Month),
+            _ => (now.Month, now.Month)
+        };
 
         foreach (var project in projects)
         {
             try
             {
-                var summary = await BudgetService.GetSpendingSummaryAsync(project.Id, now.Year, now.Month);
+                var summary = await BudgetService.GetSpendingSummaryAsync(project.Id, now.Year, fromMonth, toMonth);
                 budgetSummaries.Add(summary);
             }
             catch (Exception ex)
@@ -203,6 +254,20 @@ else
                 Console.WriteLine($"Error loading summary for project {project.Id}: {ex.Message}");
             }
         }
+    }
+
+    private async Task SetPeriod(string value)
+    {
+        if (period == value) return;
+        period = value;
+        budgetSummaries = null;
+        await LoadDashboard();
+    }
+
+    private async Task MoveProject(int projectId, int direction)
+    {
+        await BudgetService.MoveProjectAsync(projectId, direction);
+        await LoadDashboard();
     }
 
     private void ShowCreateDialog()

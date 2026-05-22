@@ -79,7 +79,7 @@ else
                     }
                     else
                     {
-                        <h6>@spendingSummary.Month/@spendingSummary.Year</h6>
+                        <h6>@spendingSummary.ToMonth/@spendingSummary.Year</h6>
                         <div class="mb-3">
                             <div class="d-flex justify-content-between">
                                 <span>Total Project Budget:</span>
@@ -249,6 +249,80 @@ else
             </div>
         </div>
     </div>
+
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Budgets</h5>
+                    <a class="btn btn-sm btn-primary" href="/budgets/wizard">New Budget</a>
+                </div>
+                <div class="card-body">
+                    @if (projectBudgets == null)
+                    {
+                        <p class="text-muted">Loading…</p>
+                    }
+                    else if (!projectBudgets.Any())
+                    {
+                        <p class="text-muted">No budgets yet. Click "New Budget" to launch the wizard.</p>
+                    }
+                    else
+                    {
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Year</th>
+                                    <th>Notes</th>
+                                    <th>Last modified</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var b in projectBudgets.OrderByDescending(b => b.Year))
+                                {
+                                    <tr>
+                                        <td>@b.Year</td>
+                                        <td>@b.Notes</td>
+                                        <td class="text-muted small">
+                                            @(b.LastModifiedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                                                ?? b.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))
+                                        </td>
+                                        <td class="text-end">
+                                            <a class="btn btn-sm btn-outline-primary me-1" href="/budgets/@b.Id/edit">Edit</a>
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ShowDeleteBudgetDialog(b)">Delete</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (budgetPendingDelete != null)
+{
+    <div class="modal show d-block" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Delete Budget</h5>
+                    <button type="button" class="btn-close" @onclick="HideDeleteBudgetDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Delete the @budgetPendingDelete.Year budget@(string.IsNullOrEmpty(budgetPendingDelete.Notes) ? "" : $" ({budgetPendingDelete.Notes})")?</p>
+                    <p class="text-muted small mb-0">All of its monthly entries will be removed. This cannot be undone.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="HideDeleteBudgetDialog">Cancel</button>
+                    <button class="btn btn-danger" @onclick="ConfirmDeleteBudget">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
 }
 
 @if (showDeleteDialog)
@@ -410,6 +484,10 @@ else
     private long selectedCategoryId = 0;
     private bool showDeleteDialog = false;
 
+    // Budgets card state
+    private List<Budget>? projectBudgets;
+    private Budget? budgetPendingDelete;
+
     // Tracking configuration
     private List<ProjectTrackingItem>? trackingItems;
     private Dictionary<long, string> trackingCategoryNames = new();
@@ -436,6 +514,31 @@ else
         await LoadSpendingSummary();
         await LoadTrackingItems();
         await LoadIncomeExpenseConfiguration();
+        await LoadProjectBudgets();
+    }
+
+    private async Task LoadProjectBudgets()
+    {
+        projectBudgets = await BudgetService.GetBudgetsForProjectAsync(BudgetId);
+    }
+
+    private void ShowDeleteBudgetDialog(Budget b)
+    {
+        budgetPendingDelete = b;
+    }
+
+    private void HideDeleteBudgetDialog()
+    {
+        budgetPendingDelete = null;
+    }
+
+    private async Task ConfirmDeleteBudget()
+    {
+        if (budgetPendingDelete == null) return;
+        var id = budgetPendingDelete.Id;
+        budgetPendingDelete = null;
+        await BudgetService.DeleteBudgetAsync(id);
+        await LoadProjectBudgets();
     }
 
     private async Task LoadBudget()
@@ -459,7 +562,7 @@ else
     private async Task LoadSpendingSummary()
     {
         var now = DateTime.UtcNow;
-        spendingSummary = await BudgetService.GetSpendingSummaryAsync(BudgetId, now.Year, now.Month);
+        spendingSummary = await BudgetService.GetSpendingSummaryAsync(BudgetId, now.Year, now.Month, now.Month);
     }
 
     private async Task ShowAddCategoryDialog()

@@ -244,7 +244,7 @@ else if (step == 3)
                 var key = (item.CategoryId.Value, CategoryItemType.Category);
                 labels.Add((key, cat.Name ?? "Unknown", parentName));
 
-                var monthlyPredictions = await PredictForIndividualCategoryAsync(item.CategoryId.Value, selectedYear);
+                var monthlyPredictions = await BudgetService.PredictMonthlySpendingForLeafCategoryAsync(item.CategoryId.Value, selectedYear);
                 predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
             }
         }
@@ -262,84 +262,6 @@ else if (step == 3)
         }
 
         isGenerating = false;
-    }
-
-    private async Task<decimal[]> PredictForIndividualCategoryAsync(long categoryId, int targetYear)
-    {
-        var predictions = new decimal[12];
-        var monthlyData = await BudgetService.GetMonthlySpendingForCategoryAsync(categoryId, 24);
-
-        if (!monthlyData.Any())
-        {
-            return predictions;
-        }
-
-        // Get previous calendar year data for distribution pattern
-        var previousYearData = monthlyData
-            .Where(m => m.Year == targetYear - 1)
-            .OrderBy(m => m.Month)
-            .ToList();
-
-        // Get last 12 months (excluding current month) for recent spending level
-        var now = DateTime.UtcNow;
-        var recentData = monthlyData
-            .Where(m => m.Year < now.Year || (m.Year == now.Year && m.Month < now.Month))
-            .OrderByDescending(m => m.Year)
-            .ThenByDescending(m => m.Month)
-            .Take(12)
-            .ToList();
-
-        if (!recentData.Any())
-        {
-            var avgAmount = monthlyData.Average(m => m.Amount);
-            for (int i = 0; i < 12; i++)
-            {
-                predictions[i] = avgAmount;
-            }
-            return predictions;
-        }
-
-        var recentTotal = recentData.Sum(m => m.Amount);
-
-        if (previousYearData.Any() && previousYearData.Count == 12)
-        {
-            var previousYearTotal = previousYearData.Sum(m => m.Amount);
-
-            if (previousYearTotal > 0)
-            {
-                for (int month = 1; month <= 12; month++)
-                {
-                    var previousYearMonth = previousYearData.FirstOrDefault(m => m.Month == month);
-                    if (previousYearMonth != null)
-                    {
-                        var distribution = previousYearMonth.Amount / previousYearTotal;
-                        predictions[month - 1] = recentTotal * distribution;
-                    }
-                    else
-                    {
-                        predictions[month - 1] = recentTotal / 12;
-                    }
-                }
-            }
-            else
-            {
-                var monthlyAvg = recentTotal / 12;
-                for (int i = 0; i < 12; i++)
-                {
-                    predictions[i] = monthlyAvg;
-                }
-            }
-        }
-        else
-        {
-            var monthlyAvg = recentTotal / 12;
-            for (int i = 0; i < 12; i++)
-            {
-                predictions[i] = monthlyAvg;
-            }
-        }
-
-        return predictions;
     }
 
     private async Task HandleCategoryGroupToggle((long Id, bool IsChecked) args)
@@ -431,33 +353,11 @@ else if (step == 3)
         if (predictions == null)
             return;
 
-        // Create budget
         var budget = await BudgetService.CreateBudgetAsync(selectedProjectId, selectedYear, notes);
-
-        // Save monthly entries
-        foreach (var (key, monthlyAmounts) in predictions)
-        {
-            var entry = new MonthlyBudgetEntry
-            {
-                BudgetId = budget.Id,
-                CategoryId = key.Id,
-                ItemType = key.ItemType,
-                Month1 = monthlyAmounts[0],
-                Month2 = monthlyAmounts[1],
-                Month3 = monthlyAmounts[2],
-                Month4 = monthlyAmounts[3],
-                Month5 = monthlyAmounts[4],
-                Month6 = monthlyAmounts[5],
-                Month7 = monthlyAmounts[6],
-                Month8 = monthlyAmounts[7],
-                Month9 = monthlyAmounts[8],
-                Month10 = monthlyAmounts[9],
-                Month11 = monthlyAmounts[10],
-                Month12 = monthlyAmounts[11]
-            };
-
-            await BudgetService.SaveMonthlyBudgetEntryAsync(entry);
-        }
+        var entries = predictions
+            .Select(kvp => (kvp.Key.Id, kvp.Key.ItemType, kvp.Value))
+            .ToList();
+        await BudgetService.SaveBudgetEntriesAsync(budget.Id, entries);
 
         step = 3;
     }

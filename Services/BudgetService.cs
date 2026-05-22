@@ -21,7 +21,8 @@ public class BudgetService
     {
         return await _budgetDb.Projects
             .Include(b => b.CategoryAssignments)
-            .OrderByDescending(b => b.CreatedAt)
+            .OrderBy(b => b.SortOrder)
+            .ThenByDescending(b => b.CreatedAt)
             .ToListAsync();
     }
 
@@ -42,17 +43,51 @@ public class BudgetService
     /// </summary>
     public async Task<Project> CreateProjectAsync(string name, string? description = null)
     {
+        var maxSortOrder = await _budgetDb.Projects.AnyAsync()
+            ? await _budgetDb.Projects.MaxAsync(p => p.SortOrder)
+            : -1;
+
         var project = new Project
         {
             Name = name,
             Description = description,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            SortOrder = maxSortOrder + 1
         };
 
         _budgetDb.Projects.Add(project);
         await _budgetDb.SaveChangesAsync();
 
         return project;
+    }
+
+    /// <summary>
+    /// Move a project up (direction = -1) or down (+1) in the dashboard order by swapping
+    /// SortOrder with its immediate neighbor. No-op when already at the edge.
+    /// </summary>
+    public async Task MoveProjectAsync(int projectId, int direction)
+    {
+        if (direction != -1 && direction != 1)
+            throw new ArgumentException("direction must be -1 or 1", nameof(direction));
+
+        var ordered = await _budgetDb.Projects
+            .OrderBy(p => p.SortOrder)
+            .ThenByDescending(p => p.CreatedAt)
+            .ToListAsync();
+
+        var index = ordered.FindIndex(p => p.Id == projectId);
+        if (index < 0) return;
+
+        var swapIndex = index + direction;
+        if (swapIndex < 0 || swapIndex >= ordered.Count) return;
+
+        // Renumber so the swap is unambiguous even if any rows shared a SortOrder before.
+        for (int i = 0; i < ordered.Count; i++)
+            ordered[i].SortOrder = i;
+        (ordered[index].SortOrder, ordered[swapIndex].SortOrder) =
+            (ordered[swapIndex].SortOrder, ordered[index].SortOrder);
+
+        await _budgetDb.SaveChangesAsync();
     }
 
     /// <summary>
@@ -139,25 +174,28 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Spending summary for a project in a specific month. Tracked items come from the project's
-    /// live ProjectTrackingItems so changes show up without re-running the budget wizard. Budget
-    /// amounts are read from the active Budget for the year if one exists; otherwise the per-row
-    /// Budget is 0 and only Spent is meaningful.
+    /// Spending summary for a project across a month range [fromMonth, toMonth] within a year.
+    /// Tracked items come from the project's live ProjectTrackingItems so changes show up
+    /// without re-running the budget wizard. Budget amounts are read from the active Budget
+    /// for the year if one exists; otherwise the per-row Budget is 0 and only Spent is
+    /// meaningful. Pass fromMonth == toMonth for a single month.
     /// </summary>
-    public async Task<ProjectSpendingSummary> GetSpendingSummaryAsync(int projectId, int year, int month)
+    public async Task<ProjectSpendingSummary> GetSpendingSummaryAsync(int projectId, int year, int fromMonth, int toMonth)
     {
+        if (fromMonth < 1 || fromMonth > 12) throw new ArgumentOutOfRangeException(nameof(fromMonth));
+        if (toMonth < 1 || toMonth > 12) throw new ArgumentOutOfRangeException(nameof(toMonth));
+        if (toMonth < fromMonth) throw new ArgumentException("toMonth must be >= fromMonth", nameof(toMonth));
+
         var project = await GetProjectAsync(projectId);
         if (project == null)
             throw new ArgumentException("Project not found", nameof(projectId));
-
-        var monthIndex = month - 1;
 
         var budgets = await GetBudgetsForProjectAsync(projectId);
         var activeBudget = budgets.FirstOrDefault(b => b.Year == year);
         var budgetAmounts = activeBudget != null
             ? activeBudget.MonthlyEntries.ToDictionary(
                 e => ((long Id, CategoryItemType ItemType))(e.CategoryId, e.ItemType),
-                e => e.GetMonthAmount(month))
+                e => Enumerable.Range(fromMonth, toMonth - fromMonth + 1).Sum(m => e.GetMonthAmount(m)))
             : new Dictionary<(long Id, CategoryItemType ItemType), decimal>();
 
         // Resolve tracked items from the project's live tracking config.
@@ -173,8 +211,8 @@ public class BudgetService
         // ieBatch sums all transactions (no sign filter) and routes them to income[] or expense[]
         // based on each leaf's classification — so refunds in expense categories correctly reduce
         // the expense total, and any negative-amount transactions in income categories reduce
-        // income. Using it for every row makes "Spent" mean "net month amount in the item's
-        // natural direction" consistently.
+        // income. Using it for every row makes "Spent" mean "net amount in the item's natural
+        // direction" consistently across the requested month range.
         var ieBatch = await GetMonthlyIncomeAndExpenseBatchAsync(trackedKeys, year, projectId);
         var incomeItemsSet = await GetIncomeItemsForProjectAsync(projectId);
 
@@ -197,11 +235,15 @@ public class BudgetService
 
             bool isIncome = incomeItemsSet.Contains(key);
             decimal spent = 0m;
-            if (ieBatch.TryGetValue(key, out var ie) && monthIndex >= 0 && monthIndex < 12)
+            if (ieBatch.TryGetValue(key, out var ie))
             {
-                spent = isIncome ? ie.Income[monthIndex] : ie.Expenses[monthIndex];
-                monthIncome += ie.Income[monthIndex];
-                monthExpenses += ie.Expenses[monthIndex];
+                for (int m = fromMonth; m <= toMonth; m++)
+                {
+                    var idx = m - 1;
+                    spent += isIncome ? ie.Income[idx] : ie.Expenses[idx];
+                    monthIncome += ie.Income[idx];
+                    monthExpenses += ie.Expenses[idx];
+                }
             }
 
             var budgetAmount = budgetAmounts.GetValueOrDefault(key, 0m);
@@ -232,7 +274,8 @@ public class BudgetService
             ProjectId = projectId,
             ProjectName = project.Name,
             Year = year,
-            Month = month,
+            FromMonth = fromMonth,
+            ToMonth = toMonth,
             CategorySpending = categorySpending,
             TotalBudget = expenseRows.Sum(c => c.Budget),
             TotalSpent = expenseRows.Sum(c => c.Spent),
@@ -645,6 +688,54 @@ public class BudgetService
     }
 
     /// <summary>
+    /// Replace the full set of MonthlyBudgetEntry rows for a budget. Existing rows whose
+    /// (CategoryId, ItemType) key is absent from <paramref name="entries"/> are deleted;
+    /// the rest are upserted. Touches LastModifiedAt and writes everything in one
+    /// SaveChangesAsync so partial failures don't leave the budget half-rewritten.
+    /// </summary>
+    public async Task SaveBudgetEntriesAsync(
+        int budgetId,
+        IReadOnlyCollection<(long Id, CategoryItemType ItemType, decimal[] Months)> entries)
+    {
+        var budget = await _budgetDb.Budgets.FindAsync(budgetId);
+        if (budget == null)
+            throw new ArgumentException("Budget not found", nameof(budgetId));
+
+        var existing = await _budgetDb.MonthlyBudgetEntries
+            .Where(e => e.BudgetId == budgetId)
+            .ToListAsync();
+
+        var desiredKeys = entries.Select(e => (e.Id, e.ItemType)).ToHashSet();
+        foreach (var row in existing.Where(e => !desiredKeys.Contains((e.CategoryId, e.ItemType))))
+        {
+            _budgetDb.MonthlyBudgetEntries.Remove(row);
+        }
+
+        foreach (var (id, itemType, months) in entries)
+        {
+            if (months.Length != 12)
+                throw new ArgumentException($"Entry ({id}, {itemType}) needs exactly 12 monthly amounts; got {months.Length}.");
+
+            var row = existing.FirstOrDefault(e => e.CategoryId == id && e.ItemType == itemType);
+            if (row == null)
+            {
+                row = new MonthlyBudgetEntry
+                {
+                    BudgetId = budgetId,
+                    CategoryId = id,
+                    ItemType = itemType
+                };
+                _budgetDb.MonthlyBudgetEntries.Add(row);
+            }
+            for (int m = 1; m <= 12; m++)
+                row.SetMonthAmount(m, months[m - 1]);
+        }
+
+        budget.LastModifiedAt = DateTime.UtcNow;
+        await _budgetDb.SaveChangesAsync();
+    }
+
+    /// <summary>
     /// Add or update a monthly budget entry
     /// </summary>
     public async Task<MonthlyBudgetEntry> SaveMonthlyBudgetEntryAsync(MonthlyBudgetEntry entry)
@@ -701,6 +792,63 @@ public class BudgetService
             predictions[assignment.CategoryId] = monthlyPredictions;
         }
 
+        return predictions;
+    }
+
+    /// <summary>
+    /// Predict monthly spending for a leaf (MoneyMoney Category) using seasonal adjustment —
+    /// same algorithm as <see cref="PredictMonthlySpendingForCategoryAsync"/> but driven by
+    /// per-leaf history (<see cref="GetMonthlySpendingForCategoryAsync"/>) instead of summing
+    /// a group's descendants.
+    /// </summary>
+    public async Task<decimal[]> PredictMonthlySpendingForLeafCategoryAsync(long categoryId, int targetYear)
+    {
+        var predictions = new decimal[12];
+        var monthlyData = await GetMonthlySpendingForCategoryAsync(categoryId, 24);
+
+        if (!monthlyData.Any())
+            return predictions;
+
+        var previousYearData = monthlyData
+            .Where(m => m.Year == targetYear - 1)
+            .OrderBy(m => m.Month)
+            .ToList();
+
+        var now = DateTime.UtcNow;
+        var recentData = monthlyData
+            .Where(m => m.Year < now.Year || (m.Year == now.Year && m.Month < now.Month))
+            .OrderByDescending(m => m.Year)
+            .ThenByDescending(m => m.Month)
+            .Take(12)
+            .ToList();
+
+        if (!recentData.Any())
+        {
+            var avg = monthlyData.Average(m => m.Amount);
+            for (int i = 0; i < 12; i++) predictions[i] = avg;
+            return predictions;
+        }
+
+        var recentTotal = recentData.Sum(m => m.Amount);
+
+        if (previousYearData.Count == 12)
+        {
+            var previousYearTotal = previousYearData.Sum(m => m.Amount);
+            if (previousYearTotal > 0)
+            {
+                for (int month = 1; month <= 12; month++)
+                {
+                    var previousMonth = previousYearData.FirstOrDefault(m => m.Month == month);
+                    predictions[month - 1] = previousMonth != null
+                        ? recentTotal * (previousMonth.Amount / previousYearTotal)
+                        : recentTotal / 12;
+                }
+                return predictions;
+            }
+        }
+
+        var monthlyAvg = recentTotal / 12;
+        for (int i = 0; i < 12; i++) predictions[i] = monthlyAvg;
         return predictions;
     }
 
@@ -1384,7 +1532,9 @@ public class ProjectSpendingSummary
     public int ProjectId { get; set; }
     public string ProjectName { get; set; } = string.Empty;
     public int Year { get; set; }
-    public int Month { get; set; }
+    public int FromMonth { get; set; }
+    public int ToMonth { get; set; }
+    public bool IsSingleMonth => FromMonth == ToMonth;
     public List<CategorySpending> CategorySpending { get; set; } = new();
     public decimal TotalBudget { get; set; }
     public decimal TotalSpent { get; set; }
