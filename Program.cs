@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Services;
 
@@ -9,6 +10,18 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddScoped<BudgetService>();
+
+// Behind a TLS-terminating reverse proxy: trust X-Forwarded-Proto / X-Forwarded-For so the
+// app knows requests are HTTPS even though Kestrel only ever sees plain HTTP on :8080. Without
+// this, UseHttpsRedirection (now removed) would 307-loop, and link / asset URLs would render
+// with the wrong scheme.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // The proxy isn't on a known network in Docker; clear the allow-list so any upstream is trusted.
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 // Configure database paths
 var dataDir = Path.Combine(builder.Environment.ContentRootPath, "data");
@@ -39,6 +52,9 @@ using (var scope = app.Services.CreateScope())
     budgetDb.Database.Migrate();
 }
 
+// ForwardedHeaders must be the first middleware so downstream components see the right scheme.
+app.UseForwardedHeaders();
+
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
@@ -47,11 +63,15 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+// HTTPS redirection is handled by the reverse proxy out front; the container itself only
+// listens on plain HTTP on :8080, so an in-app redirect here would loop or 404 framework
+// assets like /_framework/blazor.server.js.
 
 app.UseStaticFiles();
 
 app.UseRouting();
+
+app.MapStaticAssets();
 
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");

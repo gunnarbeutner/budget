@@ -1,26 +1,27 @@
-# Build stage
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+WORKDIR /app
+EXPOSE 8080
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
-
-# Restore as a distinct layer for better layer caching
-COPY OpenBudget.csproj ./
-RUN dotnet restore
-
-# Copy the rest and publish
+COPY ["OpenBudget.csproj", "."]
+RUN dotnet restore "./OpenBudget.csproj"
 COPY . .
-RUN dotnet publish OpenBudget.csproj -c Release -o /app --no-restore
+RUN dotnet build "OpenBudget.csproj" -c Release -o /app/build
 
-# Runtime stage
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
+FROM build AS publish
+RUN dotnet publish "OpenBudget.csproj" -c Release -o /app/publish /p:UseAppHost=false
+
+FROM base AS final
 WORKDIR /app
-COPY --from=build /app ./
+COPY --from=publish /app/publish .
 
 # /app/data holds the SQLite files (moneymoney.db, budgets.db). Mount as a volume.
 VOLUME ["/app/data"]
 
-EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080 \
     ASPNETCORE_ENVIRONMENT=Production \
+    ASPNETCORE_FORWARDEDHEADERS_ENABLED=true \
     DOTNET_RUNNING_IN_CONTAINER=true
 
 ENTRYPOINT ["dotnet", "OpenBudget.dll"]
