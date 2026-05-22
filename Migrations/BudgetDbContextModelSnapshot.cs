@@ -45,6 +45,32 @@ namespace OpenBudget.Migrations
                     b.ToTable("budgets");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.CategoryTypeAssignment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsIncome")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ItemType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ProjectId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId", "CategoryId")
+                        .IsUnique();
+
+                    b.ToTable("category_type_assignments");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.MonthlyBudgetEntry", b =>
                 {
                     b.Property<int>("Id")
@@ -180,6 +206,17 @@ namespace OpenBudget.Migrations
                     b.Navigation("Project");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.CategoryTypeAssignment", b =>
+                {
+                    b.HasOne("OpenBudget.Models.Project", "Project")
+                        .WithMany("CategoryTypeAssignments")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.MonthlyBudgetEntry", b =>
                 {
                     b.HasOne("OpenBudget.Models.Budget", "Budget")
@@ -221,6 +258,8 @@ namespace OpenBudget.Migrations
             modelBuilder.Entity("OpenBudget.Models.Project", b =>
                 {
                     b.Navigation("CategoryAssignments");
+
+                    b.Navigation("CategoryTypeAssignments");
 
                     b.Navigation("TrackingItems");
                 });

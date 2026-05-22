@@ -60,9 +60,11 @@ else if (RenderMode == CategoryTreeRenderMode.Dropdown)
 
         builder.CloseElement(); // div
 
-        // Get child category groups and actual categories, then sort them together by name
+        // Get child category groups and actual categories, then sort them together by name.
+        // Filter childGroups by ItemType=Group to avoid matching Category items, whose placeholder
+        // CategoryGroup.Id equals their parent group ID and would cause infinite recursion.
         var childGroups = AllCategories?
-            .Where(c => c.ParentCategoryGroupId == catGroup.CategoryGroup.Id)
+            .Where(c => c.ItemType == CategoryItemType.Group && c.ParentCategoryGroupId == catGroup.CategoryGroup.Id)
             .Select(c => (Name: c.CategoryGroup.Name ?? "", Type: "Group", Item: (object)c))
             .ToList() ?? new List<(string Name, string Type, object Item)>();
 
@@ -144,9 +146,11 @@ else if (RenderMode == CategoryTreeRenderMode.Dropdown)
         builder.AddContent(2, $"{indent}{catGroup.CategoryGroup.Name}");
         builder.CloseElement();
 
-        // Get child category groups and actual categories, then sort them together by name
+        // Get child category groups and actual categories, then sort them together by name.
+        // Filter childGroups by ItemType=Group to avoid matching Category items, whose placeholder
+        // CategoryGroup.Id equals their parent group ID and would cause infinite recursion.
         var childGroupsDropdown = AllCategories?
-            .Where(c => c.ParentCategoryGroupId == catGroup.CategoryGroup.Id)
+            .Where(c => c.ItemType == CategoryItemType.Group && c.ParentCategoryGroupId == catGroup.CategoryGroup.Id)
             .Select(c => (Name: c.CategoryGroup.Name ?? "", Type: "Group", Item: (object)c))
             .ToList() ?? new List<(string Name, string Type, object Item)>();
 

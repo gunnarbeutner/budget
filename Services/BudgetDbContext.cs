@@ -16,6 +16,7 @@ public class BudgetDbContext : DbContext
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectCategoryAssignment> ProjectCategoryAssignments => Set<ProjectCategoryAssignment>();
     public DbSet<ProjectTrackingItem> ProjectTrackingItems => Set<ProjectTrackingItem>();
+    public DbSet<CategoryTypeAssignment> CategoryTypeAssignments => Set<CategoryTypeAssignment>();
     public DbSet<Budget> Budgets => Set<Budget>();
     public DbSet<MonthlyBudgetEntry> MonthlyBudgetEntries => Set<MonthlyBudgetEntry>();
 
@@ -35,6 +36,17 @@ public class BudgetDbContext : DbContext
             .WithMany(p => p.TrackingItems)
             .HasForeignKey(pti => pti.ProjectId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<CategoryTypeAssignment>()
+            .HasOne(cta => cta.Project)
+            .WithMany(p => p.CategoryTypeAssignments)
+            .HasForeignKey(cta => cta.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Configure unique constraint: one assignment per category per project
+        modelBuilder.Entity<CategoryTypeAssignment>()
+            .HasIndex(cta => new { cta.ProjectId, cta.CategoryId })
+            .IsUnique();
 
         // Configure relationships for Budgets
         modelBuilder.Entity<Budget>()

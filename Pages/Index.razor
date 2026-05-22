@@ -108,21 +108,36 @@ else
 
     private async Task LoadDashboard()
     {
-        var budgets = await BudgetService.GetProjectsAsync();
+        var projects = await BudgetService.GetProjectsAsync();
         budgetSummaries = new List<ProjectSpendingSummary>();
 
         var now = DateTime.UtcNow;
 
-        foreach (var budget in budgets)
+        foreach (var project in projects)
         {
             try
             {
-                var summary = await BudgetService.GetProjectSpendingSummaryAsync(budget.Id, now.Year, now.Month);
+                // Try to find an active budget for the current year
+                var budgets = await BudgetService.GetBudgetsForProjectAsync(project.Id);
+                var activeBudget = budgets.FirstOrDefault(b => b.Year == now.Year);
+
+                ProjectSpendingSummary summary;
+                if (activeBudget != null)
+                {
+                    // Use budget-based tracking with MonthlyBudgetEntries
+                    summary = await BudgetService.GetBudgetSpendingSummaryAsync(activeBudget.Id, now.Month);
+                }
+                else
+                {
+                    // Fall back to project-level budget with MonthlyLimit
+                    summary = await BudgetService.GetProjectSpendingSummaryAsync(project.Id, now.Year, now.Month);
+                }
+
                 budgetSummaries.Add(summary);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading summary for budget {budget.Id}: {ex.Message}");
+                Console.WriteLine($"Error loading summary for project {project.Id}: {ex.Message}");
             }
         }
     }

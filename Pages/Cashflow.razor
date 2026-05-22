@@ -1,0 +1,510 @@
+@page "/cashflow"
+@using OpenBudget.Services
+@using OpenBudget.Models
+@using Microsoft.JSInterop
+@inject BudgetService BudgetService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Cashflow Analysis</PageTitle>
+
+<h1>Cashflow Analysis</h1>
+
+<div class="row mb-4">
+    <div class="col-md-4">
+        <label class="form-label">Year</label>
+        <select class="form-select" @bind="selectedYear" @bind:after="LoadCashflowData">
+            @for (int year = DateTime.UtcNow.Year - 2; year <= DateTime.UtcNow.Year + 2; year++)
+            {
+                <option value="@year">@year</option>
+            }
+        </select>
+    </div>
+
+    <div class="col-md-4">
+        <label class="form-label">Budget (optional)</label>
+        <select class="form-select" @bind="selectedBudgetId" @bind:after="LoadCashflowData">
+            <option value="0">-- No budget --</option>
+            @if (availableBudgets != null)
+            {
+                foreach (var budget in availableBudgets)
+                {
+                    <option value="@budget.Id">@budget.Project?.Name - @budget.Year</option>
+                }
+            }
+        </select>
+    </div>
+
+    <div class="col-md-4">
+        <label class="form-label">Project</label>
+        <select class="form-select" @bind="selectedProjectId" @bind:after="OnProjectChanged">
+            <option value="0">-- All projects --</option>
+            @if (projects != null)
+            {
+                foreach (var project in projects)
+                {
+                    <option value="@project.Id">@project.Name</option>
+                }
+            }
+        </select>
+    </div>
+</div>
+
+@if (isLoading)
+{
+    <div class="text-center">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (incomeCategories.Any() || expenseCategories.Any())
+{
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Monthly Cashflow - @selectedYear</h5>
+                </div>
+                <div class="card-body">
+                    <div style="position: relative; height: 400px; max-height: 600px;">
+                        <canvas id="cashflowChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Income Contribution Calculator</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Calculate how much each income source needs to contribute to cover expenses.
+                    </p>
+
+                    @if (incomeCategories.Any())
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">Contribution Split</label>
+                            <div class="row">
+                                @foreach (var income in incomeCategories)
+                                {
+                                    <div class="col-md-3 mb-2">
+                                        <label class="form-label small">@income.CategoryName</label>
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" class="form-control"
+                                                   @bind="contributionSplits[income.CategoryName]"
+                                                   @bind:after="RecalculateContributions"
+                                                   min="0" max="100" step="1" />
+                                            <span class="input-group-text">%</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                            <small class="text-muted">Total: @contributionSplits.Values.Sum()%</small>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Income Category</th>
+                                        <th class="text-end">Yearly Income</th>
+                                        <th class="text-end">Split %</th>
+                                        <th class="text-end">Required Contribution</th>
+                                        <th class="text-end">Remaining</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var income in incomeCategories)
+                                    {
+                                        var split = contributionSplits.GetValueOrDefault(income.CategoryName, 0);
+                                        var totalIncome = income.MonthlyAmounts.Sum();
+                                        var requiredContribution = totalExpenses * split / 100;
+                                        var remaining = totalIncome - requiredContribution;
+                                        var remainingClass = remaining >= 0 ? "text-success" : "text-danger";
+
+                                        <tr>
+                                            <td>@income.CategoryName</td>
+                                            <td class="text-end">@FormatEuro(totalIncome)</td>
+                                            <td class="text-end">@split%</td>
+                                            <td class="text-end">@FormatEuro(requiredContribution)</td>
+                                            <td class="text-end @remainingClass">@FormatEuro(remaining)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot>
+                                    <tr class="table-primary">
+                                        <th>Total</th>
+                                        <th class="text-end">@FormatEuro(incomeCategories.Sum(c => c.MonthlyAmounts.Sum()))</th>
+                                        <th class="text-end">@contributionSplits.Values.Sum()%</th>
+                                        <th class="text-end">@FormatEuro(totalExpenses)</th>
+                                        <th class="text-end">@FormatEuro(incomeCategories.Sum(c => c.MonthlyAmounts.Sum()) - totalExpenses)</th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted">No income categories found for the selected period.</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Summary</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <h6>Total Income</h6>
+                            <h3 class="text-success">@FormatEuro(incomeCategories.Sum(c => c.MonthlyAmounts.Sum()))</h3>
+                        </div>
+                        <div class="col-md-4">
+                            <h6>Total Expenses</h6>
+                            <h3 class="text-danger">@FormatEuro(totalExpenses)</h3>
+                        </div>
+                        <div class="col-md-4">
+                            <h6>Net Cashflow</h6>
+                            <h3 class="@(netCashflow >= 0 ? "text-success" : "text-danger")">@FormatEuro(netCashflow)</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="alert alert-info">
+        No data found for the selected year and filters.
+    </div>
+}
+
+@code {
+    private List<Project>? projects;
+    private List<Budget>? availableBudgets;
+    private int selectedYear = DateTime.UtcNow.Year;
+    private int selectedProjectId = 0;
+    private int selectedBudgetId = 0;
+    private bool isLoading = false;
+
+    private List<CategoryCashflow> incomeCategories = new();
+    private List<CategoryCashflow> expenseCategories = new();
+    private Dictionary<string, decimal> contributionSplits = new();
+    private decimal totalExpenses = 0;
+    private decimal netCashflow = 0;
+
+    private class CategoryCashflow
+    {
+        public string CategoryName { get; set; } = "";
+        public decimal[] MonthlyAmounts { get; set; } = new decimal[12];
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        projects = await BudgetService.GetProjectsAsync();
+        await LoadAvailableBudgets();
+        await LoadCashflowData();
+    }
+
+    private async Task OnProjectChanged()
+    {
+        await LoadAvailableBudgets();
+        await LoadCashflowData();
+    }
+
+    private async Task LoadAvailableBudgets()
+    {
+        if (selectedProjectId > 0)
+        {
+            availableBudgets = await BudgetService.GetBudgetsForProjectAsync(selectedProjectId);
+        }
+        else
+        {
+            availableBudgets = new List<Budget>();
+        }
+    }
+
+    private async Task LoadCashflowData()
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        incomeCategories.Clear();
+        expenseCategories.Clear();
+        contributionSplits.Clear();
+
+        List<CategoryGroupWithChildCount> availableCategories;
+
+        // Filter by project tracking items if a project is selected
+        if (selectedProjectId > 0)
+        {
+            // Load project tracking items (from Budget Tracking Configuration)
+            var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(selectedProjectId);
+
+            if (trackingItems.Any())
+            {
+                var allCategories = await BudgetService.GetAllCategoriesWithChildCountsAsync();
+                availableCategories = new List<CategoryGroupWithChildCount>();
+
+                foreach (var item in trackingItems)
+                {
+                    if (item.CategoryGroupId.HasValue)
+                    {
+                        // Filter by ItemType=Group: Group IDs and Category IDs share a numeric
+                        // namespace, so without this we may resolve a Group ID to an unrelated Category.
+                        var category = allCategories.FirstOrDefault(c =>
+                            c.ItemType == CategoryItemType.Group && c.Id == item.CategoryGroupId.Value);
+                        if (category != null)
+                        {
+                            availableCategories.Add(category);
+                        }
+                    }
+                    else if (item.CategoryId.HasValue)
+                    {
+                        var category = allCategories.FirstOrDefault(c =>
+                            c.ItemType == CategoryItemType.Category && c.Id == item.CategoryId.Value);
+                        if (category != null)
+                        {
+                            availableCategories.Add(category);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                availableCategories = new List<CategoryGroupWithChildCount>();
+            }
+        }
+        else
+        {
+            // No project selected: load all leaf categories (those without children)
+            var allCategories = await BudgetService.GetAllCategoriesWithChildCountsAsync();
+            availableCategories = allCategories
+                .Where(c => c.Id != 1 && c.DirectChildCount == 0) // Only leaf categories
+                .ToList();
+        }
+
+        // Load monthly data for each category
+        foreach (var category in availableCategories)
+        {
+            var projectIdParam = selectedProjectId > 0 ? (int?)selectedProjectId : null;
+            var monthlyData = await BudgetService.GetMonthlyIncomeAndExpenseAsync(category.Id, selectedYear, projectIdParam);
+
+            if (monthlyData.Income.Any(m => m > 0))
+            {
+                incomeCategories.Add(new CategoryCashflow
+                {
+                    CategoryName = category.Name,
+                    MonthlyAmounts = monthlyData.Income
+                });
+            }
+
+            if (monthlyData.Expenses.Any(m => m > 0))
+            {
+                expenseCategories.Add(new CategoryCashflow
+                {
+                    CategoryName = category.Name,
+                    MonthlyAmounts = monthlyData.Expenses
+                });
+            }
+        }
+
+        isLoading = false;
+        totalExpenses = expenseCategories.Sum(c => c.MonthlyAmounts.Sum());
+        netCashflow = incomeCategories.Sum(c => c.MonthlyAmounts.Sum()) - totalExpenses;
+
+        // Initialize equal splits
+        if (incomeCategories.Any())
+        {
+            var equalSplit = 100m / incomeCategories.Count;
+            foreach (var income in incomeCategories)
+            {
+                contributionSplits[income.CategoryName] = Math.Round(equalSplit, 0);
+            }
+        }
+
+        await RenderCashflowChart();
+    }
+
+    private async Task<HashSet<long>> GetAllSubGroupIdsAsync(long categoryGroupId, List<CategoryGroupWithChildCount> allCategories)
+    {
+        var result = new HashSet<long>();
+        var children = allCategories.Where(c => c.ParentCategoryGroupId == categoryGroupId).ToList();
+        foreach (var child in children)
+        {
+            result.Add(child.CategoryGroup.Id);
+            var subIds = await GetAllSubGroupIdsAsync(child.CategoryGroup.Id, allCategories);
+            foreach (var subId in subIds)
+            {
+                result.Add(subId);
+            }
+        }
+        return result;
+    }
+
+    private void RecalculateContributions()
+    {
+        StateHasChanged();
+    }
+
+    private async Task RenderCashflowChart()
+    {
+        if (!incomeCategories.Any() && !expenseCategories.Any())
+            return;
+
+        var monthLabels = new[] { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+
+        var datasets = new List<object>();
+
+        // Add income datasets (positive values)
+        var incomeColors = GenerateColors(incomeCategories.Count, "rgba(40, 167, 69, {0})"); // Green tones
+        for (int i = 0; i < incomeCategories.Count; i++)
+        {
+            var income = incomeCategories[i];
+            datasets.Add(new
+            {
+                label = $"{income.CategoryName} (Income)",
+                data = income.MonthlyAmounts,
+                backgroundColor = string.Format(incomeColors[i], "0.7"),
+                borderColor = string.Format(incomeColors[i], "1"),
+                borderWidth = 1,
+                stack = "income"
+            });
+        }
+
+        // Add expense datasets (negative values)
+        var expenseColors = GenerateColors(expenseCategories.Count, "rgba(220, 53, 69, {0})"); // Red tones
+        for (int i = 0; i < expenseCategories.Count; i++)
+        {
+            var expense = expenseCategories[i];
+            var negativeAmounts = expense.MonthlyAmounts.Select(a => -a).ToArray();
+            datasets.Add(new
+            {
+                label = $"{expense.CategoryName} (Expense)",
+                data = negativeAmounts,
+                backgroundColor = string.Format(expenseColors[i], "0.7"),
+                borderColor = string.Format(expenseColors[i], "1"),
+                borderWidth = 1,
+                stack = "expenses"
+            });
+        }
+
+        var chartData = new
+        {
+            type = "bar",
+            data = new
+            {
+                labels = monthLabels,
+                datasets = datasets.ToArray()
+            },
+            options = new
+            {
+                responsive = true,
+                maintainAspectRatio = false,
+                plugins = new
+                {
+                    legend = new
+                    {
+                        position = "bottom"
+                    },
+                    tooltip = new
+                    {
+                        mode = "index",
+                        intersect = false,
+                        callbacks = new
+                        {
+                            label = "function(context) { var value = Math.abs(context.parsed.y); return context.dataset.label + ': €' + value.toFixed(2); }"
+                        }
+                    }
+                },
+                scales = new
+                {
+                    x = new
+                    {
+                        stacked = true
+                    },
+                    y = new
+                    {
+                        stacked = true,
+                        ticks = new
+                        {
+                            callback = "function(value) { return '€' + Math.abs(value).toFixed(0); }"
+                        },
+                        title = new
+                        {
+                            display = true,
+                            text = "Amount (€)"
+                        }
+                    }
+                }
+            }
+        };
+
+        await JSRuntime.InvokeVoidAsync("renderChart", "cashflowChart", chartData);
+    }
+
+    private string[] GenerateColors(int count, string template = "rgba({0}, {1}, {2}, {{0}})")
+    {
+        var colors = new string[count];
+        var hueStep = 360.0 / count;
+
+        for (int i = 0; i < count; i++)
+        {
+            var hue = i * hueStep;
+            var (r, g, b) = HslToRgb(hue / 360.0, 0.7, 0.5);
+            colors[i] = string.Format(template, r, g, b);
+        }
+
+        return colors;
+    }
+
+    private (int r, int g, int b) HslToRgb(double h, double s, double l)
+    {
+        double r, g, b;
+
+        if (s == 0)
+        {
+            r = g = b = l;
+        }
+        else
+        {
+            double HueToRgb(double p, double q, double t)
+            {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1.0 / 6.0) return p + (q - p) * 6 * t;
+                if (t < 1.0 / 2.0) return q;
+                if (t < 2.0 / 3.0) return p + (q - p) * (2.0 / 3.0 - t) * 6;
+                return p;
+            }
+
+            var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            var p = 2 * l - q;
+            r = HueToRgb(p, q, h + 1.0 / 3.0);
+            g = HueToRgb(p, q, h);
+            b = HueToRgb(p, q, h - 1.0 / 3.0);
+        }
+
+        return ((int)(r * 255), (int)(g * 255), (int)(b * 255));
+    }
+
+    private string FormatEuro(decimal value)
+    {
+        if (value < 0)
+        {
+            return $"-€{Math.Abs(value):N2}";
+        }
+        return $"€{value:N2}";
+    }
+}

@@ -202,6 +202,65 @@ public class BudgetService
     }
 
     /// <summary>
+    /// Get spending summary for a budget in a specific month using MonthlyBudgetEntries
+    /// </summary>
+    public async Task<ProjectSpendingSummary> GetBudgetSpendingSummaryAsync(int budgetId, int month)
+    {
+        var budget = await GetBudgetAsync(budgetId);
+        if (budget == null)
+            throw new ArgumentException("Budget not found", nameof(budgetId));
+
+        var startDate = new DateTime(budget.Year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var endDate = startDate.AddMonths(1);
+
+        var startTimestamp = ((DateTimeOffset)startDate).ToUnixTimeSeconds();
+        var endTimestamp = ((DateTimeOffset)endDate).ToUnixTimeSeconds();
+
+        var categorySpending = new List<CategorySpending>();
+
+        foreach (var entry in budget.MonthlyEntries)
+        {
+            var categoryGroup = await _moneyMoneyDb.CategoryGroups
+                .FirstOrDefaultAsync(cg => cg.Id == entry.CategoryId);
+
+            if (categoryGroup == null)
+                continue;
+
+            var categoryIds = await GetAllCategoryIdsForGroupAsync(entry.CategoryId);
+
+            // Get transactions (amounts are negative for expenses, so negate to get positive value)
+            var spent = await _moneyMoneyDb.Transactions
+                .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
+                .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
+                .Where(t => t.Amount < 0)
+                .SumAsync(t => -(decimal)t.Amount);
+
+            var budgetAmount = entry.GetMonthAmount(month);
+
+            categorySpending.Add(new CategorySpending
+            {
+                CategoryId = entry.CategoryId,
+                CategoryName = categoryGroup.Name ?? "Unknown",
+                Budget = budgetAmount,
+                Spent = spent,
+                Remaining = budgetAmount - spent
+            });
+        }
+
+        return new ProjectSpendingSummary
+        {
+            ProjectId = budget.ProjectId,
+            ProjectName = budget.Project?.Name ?? "Unknown",
+            Year = budget.Year,
+            Month = month,
+            CategorySpending = categorySpending,
+            TotalBudget = categorySpending.Sum(c => c.Budget),
+            TotalSpent = categorySpending.Sum(c => c.Spent),
+            TotalRemaining = categorySpending.Sum(c => c.Remaining)
+        };
+    }
+
+    /// <summary>
     /// Get all category IDs for a category group (including all sub-groups and their categories)
     /// </summary>
     private async Task<List<long>> GetAllCategoryIdsForGroupAsync(long categoryGroupId)
@@ -257,12 +316,16 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Get all category groups with their sub-group counts
+    /// Get all category groups and individual categories with their sub-group counts
     /// </summary>
     public async Task<List<CategoryGroupWithChildCount>> GetAllCategoriesWithChildCountsAsync()
     {
         var allCategoryGroups = await _moneyMoneyDb.CategoryGroups
             .OrderBy(cg => cg.Name)
+            .ToListAsync();
+
+        var allCategories = await _moneyMoneyDb.Categories
+            .OrderBy(c => c.Name)
             .ToListAsync();
 
         var result = new List<CategoryGroupWithChildCount>();
@@ -273,8 +336,10 @@ public class BudgetService
             if (categoryGroup.Id == 1 && string.IsNullOrEmpty(categoryGroup.Name))
                 continue;
 
-            // Count direct children
-            var childCount = allCategoryGroups.Count(cg => cg.ParentGroupId == categoryGroup.Id);
+            // Count direct children (both sub-groups and individual categories)
+            var subGroupCount = allCategoryGroups.Count(cg => cg.ParentGroupId == categoryGroup.Id);
+            var categoryCount = allCategories.Count(c => c.GroupId == categoryGroup.Id);
+            var childCount = subGroupCount + categoryCount;
 
             // A category group is a root category if:
             // 1. It has no parent (group_key is null or 0), OR
@@ -286,9 +351,28 @@ public class BudgetService
             result.Add(new CategoryGroupWithChildCount
             {
                 CategoryGroup = categoryGroup,
+                ItemType = CategoryItemType.Group,
                 DirectChildCount = childCount,
                 IsRootCategory = isRootCategory,
                 ParentCategoryGroupId = categoryGroup.ParentGroupId
+            });
+        }
+
+        // Add individual categories as items
+        foreach (var category in allCategories)
+        {
+            // Skip if no GroupId (shouldn't happen but be safe)
+            if (!category.GroupId.HasValue)
+                continue;
+
+            result.Add(new CategoryGroupWithChildCount
+            {
+                CategoryGroup = new CategoryGroup { Id = category.GroupId.Value }, // Placeholder for parent reference
+                Category = category,
+                ItemType = CategoryItemType.Category,
+                DirectChildCount = 0, // Categories don't have children
+                IsRootCategory = false,
+                ParentCategoryGroupId = category.GroupId
             });
         }
 
@@ -321,8 +405,9 @@ public class BudgetService
     /// </summary>
     public async Task<List<MonthlySpending>> GetMonthlySpendingForCategoryAsync(long categoryId, int months = 12)
     {
-        var endDate = DateTimeOffset.UtcNow;
-        var startDate = endDate.AddMonths(-months);
+        // Get calendar month boundaries - last N months including current month
+        var now = DateTimeOffset.UtcNow;
+        var startDate = new DateTimeOffset(new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc)).AddMonths(-(months - 1));
 
         var results = new List<MonthlySpending>();
 
@@ -361,8 +446,9 @@ public class BudgetService
         if (!categoryIds.Any())
             return new List<MonthlySpending>();
 
-        var endDate = DateTimeOffset.UtcNow;
-        var startDate = endDate.AddMonths(-months);
+        // Get calendar month boundaries - last N months including current month
+        var now = DateTimeOffset.UtcNow;
+        var startDate = new DateTimeOffset(new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc)).AddMonths(-(months - 1));
 
         var results = new List<MonthlySpending>();
 
@@ -815,6 +901,279 @@ public class BudgetService
     }
 
     #endregion
+
+    #region Budget Trend Analysis
+
+    public async Task<List<MonthlySpending>> GetBudgetTrendAsync(long categoryId, int budgetId)
+    {
+        var budget = await _budgetDb.Budgets.FindAsync(budgetId);
+        if (budget == null) return new List<MonthlySpending>();
+
+        var entry = await _budgetDb.MonthlyBudgetEntries
+            .FirstOrDefaultAsync(e => e.BudgetId == budgetId && e.CategoryId == categoryId);
+
+        if (entry == null) return new List<MonthlySpending>();
+
+        var monthlyBudgets = new[]
+        {
+            entry.Month1, entry.Month2, entry.Month3, entry.Month4,
+            entry.Month5, entry.Month6, entry.Month7, entry.Month8,
+            entry.Month9, entry.Month10, entry.Month11, entry.Month12
+        };
+
+        var result = new List<MonthlySpending>();
+        for (int month = 1; month <= 12; month++)
+        {
+            result.Add(new MonthlySpending
+            {
+                Year = budget.Year,
+                Month = month,
+                Amount = monthlyBudgets[month - 1]
+            });
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Get category type assignments for a project
+    /// </summary>
+    public async Task<List<CategoryTypeAssignment>> GetCategoryTypeAssignmentsAsync(int projectId)
+    {
+        return await _budgetDb.CategoryTypeAssignments
+            .Where(cta => cta.ProjectId == projectId)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Returns the set of items (groups and categories) that resolve as Income for a project,
+    /// taking inheritance from ancestor groups into account.
+    /// </summary>
+    public async Task<HashSet<(long Id, CategoryItemType ItemType)>> GetIncomeItemsForProjectAsync(int projectId)
+    {
+        var typeAssignments = await _budgetDb.CategoryTypeAssignments
+            .Where(cta => cta.ProjectId == projectId)
+            .ToListAsync();
+
+        var result = new HashSet<(long, CategoryItemType)>();
+        if (!typeAssignments.Any())
+            return result;
+
+        var assignmentLookup = typeAssignments.ToDictionary(
+            ta => (ta.CategoryId, ta.ItemType),
+            ta => ta.IsIncome);
+
+        var allCategories = await GetAllCategoriesWithChildCountsAsync();
+
+        foreach (var item in allCategories)
+        {
+            if (ResolveCategoryTypeWithInheritance(item.Id, item.ItemType, allCategories, assignmentLookup))
+            {
+                result.Add((item.Id, item.ItemType));
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Set whether a category is income or expense for a project
+    /// </summary>
+    public async Task SetCategoryTypeAsync(int projectId, long categoryId, CategoryItemType itemType, bool isIncome)
+    {
+        var existing = await _budgetDb.CategoryTypeAssignments
+            .FirstOrDefaultAsync(cta => cta.ProjectId == projectId && cta.CategoryId == categoryId && cta.ItemType == itemType);
+
+        if (existing != null)
+        {
+            existing.IsIncome = isIncome;
+        }
+        else
+        {
+            _budgetDb.CategoryTypeAssignments.Add(new CategoryTypeAssignment
+            {
+                ProjectId = projectId,
+                CategoryId = categoryId,
+                ItemType = itemType,
+                IsIncome = isIncome
+            });
+        }
+
+        await _budgetDb.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Delete a category type assignment
+    /// </summary>
+    public async Task DeleteCategoryTypeAsync(int projectId, long categoryId, CategoryItemType itemType)
+    {
+        var existing = await _budgetDb.CategoryTypeAssignments
+            .FirstOrDefaultAsync(cta => cta.ProjectId == projectId && cta.CategoryId == categoryId && cta.ItemType == itemType);
+
+        if (existing != null)
+        {
+            _budgetDb.CategoryTypeAssignments.Remove(existing);
+            await _budgetDb.SaveChangesAsync();
+        }
+    }
+
+    /// <summary>
+    /// Resolves a category's income/expense type with inheritance support.
+    /// Checks for explicit assignment first, then walks up parent chain for inherited assignments.
+    /// Returns true if category is income (explicit or inherited), false otherwise (default: expense).
+    /// </summary>
+    private bool ResolveCategoryTypeWithInheritance(
+        long categoryId,
+        CategoryItemType itemType,
+        List<CategoryGroupWithChildCount> allCategories,
+        Dictionary<(long Id, CategoryItemType ItemType), bool> assignmentLookup)
+    {
+        // Check for explicit assignment on this specific item
+        if (assignmentLookup.TryGetValue((categoryId, itemType), out bool isIncome))
+        {
+            return isIncome;
+        }
+
+        // For Categories (leaf nodes), check inheritance from parent CategoryGroup
+        if (itemType == CategoryItemType.Category)
+        {
+            var category = allCategories.FirstOrDefault(c => c.ItemType == CategoryItemType.Category && c.Id == categoryId);
+            if (category != null && category.ParentCategoryGroupId.HasValue)
+            {
+                // Check parent CategoryGroup (recursive to support multi-level inheritance)
+                return ResolveCategoryTypeWithInheritance(
+                    category.ParentCategoryGroupId.Value,
+                    CategoryItemType.Group,
+                    allCategories,
+                    assignmentLookup);
+            }
+        }
+        // For CategoryGroups, walk up the parent chain
+        else if (itemType == CategoryItemType.Group)
+        {
+            var categoryGroup = allCategories.FirstOrDefault(c => c.ItemType == CategoryItemType.Group && c.Id == categoryId);
+            if (categoryGroup != null && categoryGroup.ParentCategoryGroupId.HasValue)
+            {
+                // Check parent CategoryGroup
+                if (assignmentLookup.TryGetValue((categoryGroup.ParentCategoryGroupId.Value, CategoryItemType.Group), out bool parentIsIncome))
+                {
+                    return parentIsIncome;
+                }
+
+                // Recursively check ancestors
+                return ResolveCategoryTypeWithInheritance(
+                    categoryGroup.ParentCategoryGroupId.Value,
+                    CategoryItemType.Group,
+                    allCategories,
+                    assignmentLookup);
+            }
+        }
+
+        // Default to expense if no assignment found
+        return false;
+    }
+
+    /// <summary>
+    /// Get monthly income and expenses for a category group in a specific year
+    /// Uses project-specific category type assignments if projectId is provided
+    /// </summary>
+    public async Task<(decimal[] Income, decimal[] Expenses)> GetMonthlyIncomeAndExpenseAsync(long categoryGroupId, int year, int? projectId = null)
+    {
+        // Check if this is a leaf category (has no children) or a category group
+        var isLeafCategory = await _moneyMoneyDb.Categories.AnyAsync(c => c.Id == categoryGroupId);
+
+        List<long> categoryIds;
+        if (isLeafCategory)
+        {
+            // It's a leaf category, use it directly
+            categoryIds = new List<long> { categoryGroupId };
+        }
+        else
+        {
+            // It's a category group, get all descendant categories
+            categoryIds = await GetAllCategoryIdsForGroupAsync(categoryGroupId);
+        }
+
+        if (!categoryIds.Any())
+            return (new decimal[12], new decimal[12]);
+
+        HashSet<long> incomeCategoryIds;
+        HashSet<long> expenseCategoryIds;
+
+        if (projectId.HasValue)
+        {
+            // Use project-specific category type assignments with inheritance
+            var allCategories = await GetAllCategoriesWithChildCountsAsync();
+            var typeAssignments = await _budgetDb.CategoryTypeAssignments
+                .Where(cta => cta.ProjectId == projectId.Value)
+                .ToListAsync();
+
+            var assignmentLookup = typeAssignments.ToDictionary(
+                ta => (ta.CategoryId, ta.ItemType),
+                ta => ta.IsIncome);
+
+            incomeCategoryIds = new HashSet<long>();
+            expenseCategoryIds = new HashSet<long>();
+
+            // Resolve each leaf category's type with inheritance
+            foreach (var categoryId in categoryIds)
+            {
+                bool isIncome = ResolveCategoryTypeWithInheritance(categoryId, CategoryItemType.Category, allCategories, assignmentLookup);
+                if (isIncome)
+                    incomeCategoryIds.Add(categoryId);
+                else
+                    expenseCategoryIds.Add(categoryId);
+            }
+        }
+        else
+        {
+            // Fallback to MoneyMoney Category.Type
+            var categories = await _moneyMoneyDb.Categories
+                .Where(c => categoryIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, c => c.Type ?? 0);
+
+            // Type 2 = Income categories, all others = Expense categories
+            incomeCategoryIds = categories.Where(kvp => kvp.Value == 2).Select(kvp => kvp.Key).ToHashSet();
+            expenseCategoryIds = categories.Where(kvp => kvp.Value != 2).Select(kvp => kvp.Key).ToHashSet();
+        }
+
+        var income = new decimal[12];
+        var expenses = new decimal[12];
+
+        for (int month = 1; month <= 12; month++)
+        {
+            var startDate = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var endDate = startDate.AddMonths(1);
+
+            var startTimestamp = ((DateTimeOffset)startDate).ToUnixTimeSeconds();
+            var endTimestamp = ((DateTimeOffset)endDate).ToUnixTimeSeconds();
+
+            // Get income from income categories (sum all amounts)
+            if (incomeCategoryIds.Any())
+            {
+                var monthlyIncome = await _moneyMoneyDb.Transactions
+                    .Where(t => t.CategoryId.HasValue && incomeCategoryIds.Contains(t.CategoryId.Value))
+                    .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
+                    .SumAsync(t => (decimal)t.Amount);
+
+                income[month - 1] = monthlyIncome;
+            }
+
+            // Get expenses from expense categories (sum all amounts, negate to make positive)
+            if (expenseCategoryIds.Any())
+            {
+                var monthlyExpense = await _moneyMoneyDb.Transactions
+                    .Where(t => t.CategoryId.HasValue && expenseCategoryIds.Contains(t.CategoryId.Value))
+                    .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
+                    .SumAsync(t => -(decimal)t.Amount);
+
+                expenses[month - 1] = monthlyExpense;
+            }
+        }
+
+        return (income, expenses);
+    }
+
+    #endregion
 }
 
 public class ProjectSpendingSummary
@@ -839,12 +1198,121 @@ public class CategorySpending
     public decimal PercentUsed => Budget > 0 ? (Spent / Budget * 100) : 0;
 }
 
+public enum CategoryItemType
+{
+    Group,
+    Category
+}
+
 public class CategoryGroupWithChildCount
 {
     public CategoryGroup CategoryGroup { get; set; } = null!;
+    public Category? Category { get; set; }
+    public CategoryItemType ItemType { get; set; }
     public int DirectChildCount { get; set; }
     public bool IsRootCategory { get; set; }
     public long? ParentCategoryGroupId { get; set; }
+
+    // Unified ID property
+    public long Id => ItemType == CategoryItemType.Category ? (Category?.Id ?? 0) : CategoryGroup.Id;
+
+    // Unified Name property
+    public string Name => ItemType == CategoryItemType.Category ? (Category?.Name ?? "") : (CategoryGroup.Name ?? "");
+
+    /// <summary>
+    /// Checks if a category item is a descendant of a given ancestor category ID.
+    /// Handles ID collision by properly filtering CategoryGroups vs Categories.
+    /// </summary>
+    public static bool IsDescendantOf(CategoryGroupWithChildCount item, long ancestorId, List<CategoryGroupWithChildCount> allCategories)
+    {
+        var current = item;
+        while (current != null && current.ParentCategoryGroupId.HasValue)
+        {
+            if (current.ParentCategoryGroupId.Value == ancestorId)
+                return true;
+
+            // Move up to parent (must be a Group since only Groups can be parents)
+            current = allCategories.FirstOrDefault(c =>
+                c.ItemType == CategoryItemType.Group &&
+                c.Id == current.ParentCategoryGroupId.Value);
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Recursively collects all descendant IDs from a starting category.
+    /// Handles ID collision by properly filtering CategoryGroups vs Categories.
+    /// </summary>
+    public static void CollectDescendantIds(
+        long categoryId,
+        List<CategoryGroupWithChildCount> allCategories,
+        HashSet<long> result,
+        bool includeLeafCategories = true)
+    {
+        // Find all children of this category
+        var children = allCategories.Where(c => c.ParentCategoryGroupId == categoryId).ToList();
+
+        foreach (var child in children)
+        {
+            // Only CategoryGroups can have children (Categories are leaf nodes)
+            bool isGroup = child.ItemType == CategoryItemType.Group;
+
+            // Add to result if: it's a Group OR we're including leaf categories
+            if (isGroup || includeLeafCategories)
+            {
+                result.Add(child.Id);
+            }
+
+            // Only recurse into CategoryGroups (Categories can't have children)
+            if (isGroup)
+            {
+                CollectDescendantIds(child.Id, allCategories, result, includeLeafCategories);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Collects all descendants (both CategoryGroups and Categories) of a given category.
+    /// Returns the actual CategoryGroupWithChildCount objects, not just IDs.
+    /// This avoids ID collision issues when filtering.
+    /// </summary>
+    public static HashSet<CategoryGroupWithChildCount> CollectDescendants(
+        long categoryId,
+        List<CategoryGroupWithChildCount> allCategories,
+        bool includeLeafCategories = true)
+    {
+        var result = new HashSet<CategoryGroupWithChildCount>();
+        CollectDescendantsRecursive(categoryId, allCategories, result, includeLeafCategories);
+        return result;
+    }
+
+    private static void CollectDescendantsRecursive(
+        long categoryId,
+        List<CategoryGroupWithChildCount> allCategories,
+        HashSet<CategoryGroupWithChildCount> result,
+        bool includeLeafCategories)
+    {
+        // Find all children of this category
+        var children = allCategories.Where(c => c.ParentCategoryGroupId == categoryId).ToList();
+
+        foreach (var child in children)
+        {
+            // Only CategoryGroups can have children (Categories are leaf nodes)
+            bool isGroup = child.ItemType == CategoryItemType.Group;
+
+            // Add to result if: it's a Group OR we're including leaf categories
+            if (isGroup || includeLeafCategories)
+            {
+                result.Add(child);
+            }
+
+            // Only recurse into CategoryGroups (Categories can't have children)
+            if (isGroup)
+            {
+                CollectDescendantsRecursive(child.Id, allCategories, result, includeLeafCategories);
+            }
+        }
+    }
 }
 
 public class MonthlySpending

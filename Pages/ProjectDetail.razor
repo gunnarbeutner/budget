@@ -133,6 +133,93 @@ else
     <div class="row mt-4">
         <div class="col-12">
             <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Category Income/Expense Configuration</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Configure which categories are income vs expense for cashflow analysis.
+                        Categories not marked as income will default to expenses. Settings on parent categories inherit to children.
+                    </p>
+
+                    @if (isLoadingCategoryTypes)
+                    {
+                        <div class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    }
+                    else if (incomeExpenseCategories.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Category</th>
+                                        <th>Type</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var categoryWithLevel in incomeExpenseCategories)
+                                    {
+                                        var typeInfo = GetCategoryType(categoryWithLevel.CategoryGroup.Id, categoryWithLevel.CategoryGroup.ItemType);
+                                        var isIncome = typeInfo.IsIncome;
+                                        var isInherited = typeInfo.IsInherited;
+                                        var isExplicit = typeInfo.IsExplicit;
+
+                                        var displayType = isIncome ? "Income" : "Expense";
+                                        if (isInherited) displayType += " (inherited)";
+                                        else if (!isExplicit) displayType += " (default)";
+
+                                        var badgeClass = isIncome ? "bg-success" : "bg-danger";
+                                        if (isInherited || !isExplicit) badgeClass = isIncome ? "bg-success bg-opacity-50" : "bg-danger bg-opacity-50";
+
+                                        <tr>
+                                            <td style="padding-left: @((categoryWithLevel.Level * 20))px">@categoryWithLevel.CategoryGroup.Name</td>
+                                            <td><span class="badge @badgeClass">@displayType</span></td>
+                                            <td>
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    <button type="button" class="btn btn-outline-success"
+                                                            @onclick="() => SetCategoryType(categoryWithLevel.CategoryGroup.Id, categoryWithLevel.CategoryGroup.ItemType, true)"
+                                                            disabled="@isInherited">
+                                                        Income
+                                                    </button>
+                                                    <button type="button" class="btn btn-outline-danger"
+                                                            @onclick="() => SetCategoryType(categoryWithLevel.CategoryGroup.Id, categoryWithLevel.CategoryGroup.ItemType, false)"
+                                                            disabled="@isInherited">
+                                                        Expense
+                                                    </button>
+                                                    @if (isExplicit)
+                                                    {
+                                                        <button type="button" class="btn btn-outline-secondary"
+                                                                @onclick="() => ClearCategoryType(categoryWithLevel.CategoryGroup.Id, categoryWithLevel.CategoryGroup.ItemType)">
+                                                            Clear
+                                                        </button>
+                                                    }
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-info">
+                            No categories assigned to this project yet.
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">Budget Tracking Configuration</h5>
                     <button class="btn btn-sm btn-primary" @onclick="ShowTrackingDialog">Configure Tracking</button>
@@ -322,11 +409,23 @@ else
     private List<CategoryGroupWithChildCount>? allAvailableCategories;
     private List<Category>? allActualCategories;
 
+    // Income/Expense configuration
+    private List<CategoryWithLevel> incomeExpenseCategories = new();
+    private List<CategoryTypeAssignment> categoryTypeAssignments = new();
+    private bool isLoadingCategoryTypes = false;
+
+    private class CategoryWithLevel
+    {
+        public CategoryGroupWithChildCount CategoryGroup { get; set; } = null!;
+        public int Level { get; set; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await LoadBudget();
         await LoadSpendingSummary();
         await LoadTrackingItems();
+        await LoadIncomeExpenseConfiguration();
     }
 
     private async Task LoadBudget()
@@ -402,7 +501,8 @@ else
     // Tracking configuration methods
     private async Task LoadTrackingItems()
     {
-        trackingItems = await BudgetService.GetProjectTrackingItemsAsync(BudgetId);
+        var project = await BudgetService.GetProjectAsync(BudgetId);
+        trackingItems = project?.TrackingItems.ToList() ?? new List<ProjectTrackingItem>();
 
         // Load names for tracking items
         if (trackingItems != null)
@@ -432,6 +532,10 @@ else
 
     private async Task ShowTrackingDialog()
     {
+        // Show dialog immediately
+        showTrackingDialog = true;
+        StateHasChanged();
+
         // Load all categories
         var allCategoryGroups = await BudgetService.GetAllCategoriesWithChildCountsAsync();
         allActualCategories = await BudgetService.GetAllCategoriesAsync();
@@ -443,7 +547,7 @@ else
             foreach (var assignment in budget.CategoryAssignments)
             {
                 projectCategoryGroupIds.Add(assignment.CategoryId);
-                GetAllSubGroupIds(assignment.CategoryId, projectCategoryGroupIds, allCategoryGroups);
+                CategoryGroupWithChildCount.CollectDescendantIds(assignment.CategoryId, allCategoryGroups, projectCategoryGroupIds, includeLeafCategories: false);
             }
 
             // Filter to only categories in the project
@@ -471,7 +575,7 @@ else
             }
         }
 
-        showTrackingDialog = true;
+        StateHasChanged();
     }
 
     private void HideTrackingDialog()
@@ -570,13 +674,185 @@ else
         }
     }
 
-    private void GetAllSubGroupIds(long categoryGroupId, HashSet<long> result, List<CategoryGroupWithChildCount> allCategories)
+    // Income/Expense configuration methods
+    private async Task LoadIncomeExpenseConfiguration()
     {
-        var children = allCategories.Where(c => c.ParentCategoryGroupId == categoryGroupId).ToList();
+        if (budget == null)
+            return;
+
+        isLoadingCategoryTypes = true;
+        StateHasChanged();
+
+        // Get category IDs assigned to this project
+        var assignedCategoryIds = budget.CategoryAssignments.Select(ca => ca.CategoryId).ToHashSet();
+
+        // Load all categories
+        var allCategories = await BudgetService.GetAllCategoriesWithChildCountsAsync();
+
+        // Build complete set: assigned categories + their ancestors + all descendants
+        // Use HashSet of actual items to avoid ID collision issues
+        var projectCategoryItems = new HashSet<CategoryGroupWithChildCount>();
+        foreach (var assignedId in assignedCategoryIds)
+        {
+            // Assigned IDs should be CategoryGroups only - filter by ItemType to avoid ID collision
+            var category = allCategories.FirstOrDefault(c => c.ItemType == CategoryItemType.Group && c.Id == assignedId);
+            if (category == null)
+                continue; // Skip if not found as a CategoryGroup
+
+            projectCategoryItems.Add(category);
+
+            // Add all ancestors (for hierarchy display)
+            var current = category;
+            while (current != null && current.ParentCategoryGroupId.HasValue)
+            {
+                var parent = allCategories.FirstOrDefault(c => c.ItemType == CategoryItemType.Group && c.Id == current.ParentCategoryGroupId.Value);
+                if (parent != null)
+                {
+                    projectCategoryItems.Add(parent);
+                    current = parent;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            // Add all descendants (sub-groups and sub-categories) using shared helper
+            var descendants = CategoryGroupWithChildCount.CollectDescendants(assignedId, allCategories);
+            foreach (var descendant in descendants)
+            {
+                projectCategoryItems.Add(descendant);
+            }
+        }
+
+        var filteredCategories = projectCategoryItems
+            .Where(c => c.Id != 1)
+            .ToList();
+
+        // Build hierarchy with levels
+        incomeExpenseCategories = BuildHierarchy(filteredCategories);
+
+        // Load category type assignments
+        categoryTypeAssignments = await BudgetService.GetCategoryTypeAssignmentsAsync(BudgetId);
+
+        isLoadingCategoryTypes = false;
+        StateHasChanged();
+    }
+
+    private List<CategoryWithLevel> BuildHierarchy(List<CategoryGroupWithChildCount> categories)
+    {
+        var result = new List<CategoryWithLevel>();
+        // Only check CategoryGroups for parent existence to avoid ID collision with Categories
+        var roots = categories.Where(c => c.IsRootCategory || !categories.Any(x => x.ItemType == CategoryItemType.Group && x.Id == c.ParentCategoryGroupId)).ToList();
+
+        foreach (var root in roots.OrderBy(c => c.Name))
+        {
+            AddCategoryWithChildren(root, 0, categories, result);
+        }
+
+        return result;
+    }
+
+    private void AddCategoryWithChildren(CategoryGroupWithChildCount category, int level, List<CategoryGroupWithChildCount> allCategories, List<CategoryWithLevel> result)
+    {
+        result.Add(new CategoryWithLevel { CategoryGroup = category, Level = level });
+
+        // Only CategoryGroups can have children; Categories are leaf nodes
+        // This prevents ID collision issues between Categories and CategoryGroups
+        if (category.ItemType == CategoryItemType.Group)
+        {
+            var children = allCategories
+                .Where(c => c.ParentCategoryGroupId == category.Id)
+                .OrderBy(c => c.Name)
+                .ToList();
+
+            foreach (var child in children)
+            {
+                AddCategoryWithChildren(child, level + 1, allCategories, result);
+            }
+        }
+    }
+
+    private (bool IsIncome, bool IsInherited, bool IsExplicit) GetCategoryType(long categoryId, CategoryItemType itemType)
+    {
+        // Check if this item has an explicit assignment
+        var explicitAssignment = categoryTypeAssignments.FirstOrDefault(a => a.CategoryId == categoryId && a.ItemType == itemType);
+        if (explicitAssignment != null)
+        {
+            return (explicitAssignment.IsIncome, false, true);
+        }
+
+        // Check if any parent has an assignment (inheritance)
+        var allCats = incomeExpenseCategories.Select(c => c.CategoryGroup).ToList();
+        var currentItem = allCats.FirstOrDefault(c => c.Id == categoryId && c.ItemType == itemType);
+
+        while (currentItem != null && currentItem.ParentCategoryGroupId.HasValue)
+        {
+            // Parents are always CategoryGroups
+            var parentAssignment = categoryTypeAssignments.FirstOrDefault(a => a.CategoryId == currentItem.ParentCategoryGroupId.Value && a.ItemType == CategoryItemType.Group);
+            if (parentAssignment != null)
+            {
+                return (parentAssignment.IsIncome, true, false);
+            }
+            // Move up to parent (which is always a CategoryGroup)
+            currentItem = allCats.FirstOrDefault(c => c.ItemType == CategoryItemType.Group && c.Id == currentItem.ParentCategoryGroupId.Value);
+        }
+
+        // Default to expense
+        return (false, false, false);
+    }
+
+    private List<(long Id, CategoryItemType ItemType)> GetAllDescendantItems(long categoryId, CategoryItemType itemType)
+    {
+        var result = new List<(long Id, CategoryItemType ItemType)>();
+
+        // Only CategoryGroups can have children (Categories are leaf nodes)
+        if (itemType != CategoryItemType.Group)
+            return result;
+
+        var allCats = incomeExpenseCategories.Select(c => c.CategoryGroup).ToList();
+        var children = allCats.Where(c => c.ParentCategoryGroupId == categoryId).ToList();
+
         foreach (var child in children)
         {
-            result.Add(child.CategoryGroup.Id);
-            GetAllSubGroupIds(child.CategoryGroup.Id, result, allCategories);
+            result.Add((child.Id, child.ItemType));
+
+            // Only recurse for CategoryGroups (Categories are leaf nodes)
+            if (child.ItemType == CategoryItemType.Group)
+            {
+                result.AddRange(GetAllDescendantItems(child.Id, child.ItemType));
+            }
         }
+        return result;
+    }
+
+    private async Task SetCategoryType(long categoryId, CategoryItemType itemType, bool isIncome)
+    {
+        // Set for this item
+        await BudgetService.SetCategoryTypeAsync(BudgetId, categoryId, itemType, isIncome);
+
+        // Clear explicit assignments for all descendants so they inherit
+        var descendantItems = GetAllDescendantItems(categoryId, itemType);
+        foreach (var (id, type) in descendantItems)
+        {
+            await BudgetService.DeleteCategoryTypeAsync(BudgetId, id, type);
+        }
+
+        await LoadIncomeExpenseConfiguration();
+    }
+
+    private async Task ClearCategoryType(long categoryId, CategoryItemType itemType)
+    {
+        // Clear for this item
+        await BudgetService.DeleteCategoryTypeAsync(BudgetId, categoryId, itemType);
+
+        // Also clear for all descendants
+        var descendantItems = GetAllDescendantItems(categoryId, itemType);
+        foreach (var (id, type) in descendantItems)
+        {
+            await BudgetService.DeleteCategoryTypeAsync(BudgetId, id, type);
+        }
+
+        await LoadIncomeExpenseConfiguration();
     }
 }
