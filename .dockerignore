@@ -1,0 +1,13 @@
+bin/
+obj/
+data/
+.git/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+**/.DS_Store
+Dockerfile
+docker-compose*.yml
+.dockerignore

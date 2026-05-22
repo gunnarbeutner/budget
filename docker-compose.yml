@@ -1,0 +1,21 @@
+# Example deployment. Set MONEYMONEY_DB_UPLOAD_TOKEN in a .env file beside this
+# compose file (e.g. `MONEYMONEY_DB_UPLOAD_TOKEN=$(openssl rand -hex 32)`).
+#
+# Initial bootstrap: copy a MoneyMoney SQLite snapshot into ./data/moneymoney.db
+# before the first start, or POST it to /api/moneymoney-db after start.
+#
+# TLS: terminate at a reverse proxy in front of this container. The app speaks
+# plain HTTP on port 8080; put nginx / Caddy / Traefik in front for HTTPS.
+
+services:
+  app:
+    build: .
+    image: openbudget
+    container_name: openbudget
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      MONEYMONEY_DB_UPLOAD_TOKEN: ${MONEYMONEY_DB_UPLOAD_TOKEN:?set MONEYMONEY_DB_UPLOAD_TOKEN in .env}

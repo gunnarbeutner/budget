@@ -46,3 +46,8 @@ ScaffoldingReadMe.txt
 
 # macOS
 .DS_Store
+
+# Local secrets / runtime data
+.env
+.env.*
+data/

@@ -68,3 +68,23 @@ else
     echo "✗ Export failed"
     exit 1
 fi
+
+# Optional: ship the exported DB to a remote OpenBudget instance.
+# Set both OPENBUDGET_UPLOAD_URL (e.g. https://your.server/api/moneymoney-db) and
+# OPENBUDGET_UPLOAD_TOKEN (matching the server's MONEYMONEY_DB_UPLOAD_TOKEN env var).
+if [ -n "$OPENBUDGET_UPLOAD_URL" ] && [ -n "$OPENBUDGET_UPLOAD_TOKEN" ]; then
+    echo "Uploading to $OPENBUDGET_UPLOAD_URL..."
+    if curl -fsS -X POST \
+        -H "Authorization: Bearer $OPENBUDGET_UPLOAD_TOKEN" \
+        -H "Content-Type: application/octet-stream" \
+        --data-binary "@$EXPORT_FILE" \
+        "$OPENBUDGET_UPLOAD_URL"; then
+        echo
+        echo "✓ Uploaded"
+    else
+        echo "✗ Upload failed"
+        exit 1
+    fi
+elif [ -n "$OPENBUDGET_UPLOAD_URL" ] || [ -n "$OPENBUDGET_UPLOAD_TOKEN" ]; then
+    echo "Warning: set both OPENBUDGET_UPLOAD_URL and OPENBUDGET_UPLOAD_TOKEN to enable upload (or neither for local-only)"
+fi
