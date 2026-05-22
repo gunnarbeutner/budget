@@ -40,8 +40,18 @@ echo "Compiling launcher..."
 swiftc -O -o "$BIN" "$SRC"
 chmod +x "$BIN"
 
-echo "Signing bundle (ad-hoc)..."
-codesign --force --deep --sign - "$APP"
+# Sign with a real Apple-issued identity by default so the TCC grant survives rebuilds.
+# Override via the OPENBUDGET_SIGN_IDENTITY env var (a SHA-1 fingerprint or the cert's common name).
+# Falls back to ad-hoc if the named identity isn't installed.
+SIGN_IDENTITY="${OPENBUDGET_SIGN_IDENTITY:-Apple Development: Gunnar Beutner (6Y6QK59LBP)}"
+if security find-identity -v -p codesigning | grep -q "$SIGN_IDENTITY"; then
+    echo "Signing bundle as: $SIGN_IDENTITY"
+    codesign --force --deep --sign "$SIGN_IDENTITY" "$APP"
+else
+    echo "Signing identity \"$SIGN_IDENTITY\" not found; falling back to ad-hoc."
+    echo "(TCC will re-prompt for Full Disk Access after every rebuild with ad-hoc signatures.)"
+    codesign --force --deep --sign - "$APP"
+fi
 
 echo "Done: $APP"
 echo

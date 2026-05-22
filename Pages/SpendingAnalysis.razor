@@ -64,13 +64,6 @@
                 <h5 class="mb-0">Category Trends</h5>
             </div>
             <div class="card-body">
-                @if (selectedCompareBudgetId > 0 && categoryTrends != null && budgetTrends != null)
-                {
-                    <div class="alert alert-info mb-3">
-                        <strong>Budget Comparison Active:</strong> Budget lines shown on chart. Variance summary below chart.
-                    </div>
-                }
-
                 @if (categoryTrends == null)
                 {
                     <p><em>Loading trends...</em></p>
