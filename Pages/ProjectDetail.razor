@@ -459,7 +459,7 @@ else
     private async Task LoadSpendingSummary()
     {
         var now = DateTime.UtcNow;
-        spendingSummary = await BudgetService.GetProjectSpendingSummaryAsync(BudgetId, now.Year, now.Month);
+        spendingSummary = await BudgetService.GetSpendingSummaryAsync(BudgetId, now.Year, now.Month);
     }
 
     private async Task ShowAddCategoryDialog()

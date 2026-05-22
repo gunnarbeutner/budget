@@ -139,75 +139,44 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Get spending summary for a budget in a specific month/year
+    /// Spending summary for a project in a specific month. Tracked items come from the project's
+    /// live ProjectTrackingItems so changes show up without re-running the budget wizard. Budget
+    /// amounts are read from the active Budget for the year if one exists; otherwise the per-row
+    /// Budget is 0 and only Spent is meaningful.
     /// </summary>
-    public async Task<ProjectSpendingSummary> GetProjectSpendingSummaryAsync(int projectId, int year, int month)
+    public async Task<ProjectSpendingSummary> GetSpendingSummaryAsync(int projectId, int year, int month)
     {
         var project = await GetProjectAsync(projectId);
         if (project == null)
             throw new ArgumentException("Project not found", nameof(projectId));
 
-        // Budget amounts live on the Budget model now; without an active budget there's nothing
-        // to compare against, so every assignment reports a budget of 0. Assignments are
-        // historically Group references — none of the legacy code stored Category IDs here.
-        var entries = project.CategoryAssignments
-            .Select(a => (a.CategoryId, ItemType: CategoryItemType.Group, Budget: 0m))
-            .ToList();
+        var monthIndex = month - 1;
 
-        var categorySpending = await BuildCategorySpendingAsync(year, month, entries);
+        var budgets = await GetBudgetsForProjectAsync(projectId);
+        var activeBudget = budgets.FirstOrDefault(b => b.Year == year);
+        var budgetAmounts = activeBudget != null
+            ? activeBudget.MonthlyEntries.ToDictionary(
+                e => ((long Id, CategoryItemType ItemType))(e.CategoryId, e.ItemType),
+                e => e.GetMonthAmount(month))
+            : new Dictionary<(long Id, CategoryItemType ItemType), decimal>();
 
-        return new ProjectSpendingSummary
+        // Resolve tracked items from the project's live tracking config.
+        var trackedKeys = new List<(long Id, CategoryItemType ItemType)>();
+        foreach (var ti in project.TrackingItems)
         {
-            ProjectId = projectId,
-            ProjectName = project.Name,
-            Year = year,
-            Month = month,
-            CategorySpending = categorySpending,
-            TotalBudget = categorySpending.Sum(c => c.Budget),
-            TotalSpent = categorySpending.Sum(c => c.Spent),
-            TotalRemaining = categorySpending.Sum(c => c.Remaining)
-        };
-    }
+            if (ti.CategoryGroupId.HasValue)
+                trackedKeys.Add((ti.CategoryGroupId.Value, CategoryItemType.Group));
+            else if (ti.CategoryId.HasValue)
+                trackedKeys.Add((ti.CategoryId.Value, CategoryItemType.Category));
+        }
 
-    /// <summary>
-    /// Get spending summary for a budget in a specific month using MonthlyBudgetEntries
-    /// </summary>
-    public async Task<ProjectSpendingSummary> GetBudgetSpendingSummaryAsync(int budgetId, int month)
-    {
-        var budget = await GetBudgetAsync(budgetId);
-        if (budget == null)
-            throw new ArgumentException("Budget not found", nameof(budgetId));
-
-        var entries = budget.MonthlyEntries
-            .Select(e => (e.CategoryId, e.ItemType, Budget: e.GetMonthAmount(month)))
-            .ToList();
-
-        var categorySpending = await BuildCategorySpendingAsync(budget.Year, month, entries);
-
-        return new ProjectSpendingSummary
-        {
-            ProjectId = budget.ProjectId,
-            ProjectName = budget.Project?.Name ?? "Unknown",
-            Year = budget.Year,
-            Month = month,
-            CategorySpending = categorySpending,
-            TotalBudget = categorySpending.Sum(c => c.Budget),
-            TotalSpent = categorySpending.Sum(c => c.Spent),
-            TotalRemaining = categorySpending.Sum(c => c.Remaining)
-        };
-    }
-
-    /// <summary>
-    /// Builds the per-row spent/remaining values for a set of budget entries, with one batched
-    /// transactions query for the month. Entries are disambiguated by (CategoryId, ItemType).
-    /// </summary>
-    private async Task<List<CategorySpending>> BuildCategorySpendingAsync(
-        int year,
-        int month,
-        List<(long CategoryId, CategoryItemType ItemType, decimal Budget)> entries)
-    {
-        var startTimestamp = ((DateTimeOffset)new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc)).ToUnixTimeSeconds();
-        var endTimestamp = ((DateTimeOffset)new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1)).ToUnixTimeSeconds();
+        // ieBatch sums all transactions (no sign filter) and routes them to income[] or expense[]
+        // based on each leaf's classification — so refunds in expense categories correctly reduce
+        // the expense total, and any negative-amount transactions in income categories reduce
+        // income. Using it for every row makes "Spent" mean "net month amount in the item's
+        // natural direction" consistently.
+        var ieBatch = await GetMonthlyIncomeAndExpenseBatchAsync(trackedKeys, year, projectId);
+        var incomeItemsSet = await GetIncomeItemsForProjectAsync(projectId);
 
         var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync();
         var groupNameLookup = allCategoriesWithCounts
@@ -216,73 +185,62 @@ public class BudgetService
         var leafCategoryNameLookup = (await _moneyMoneyDb.Categories.ToListAsync())
             .ToDictionary(c => c.Id, c => c.Name ?? "Unknown");
 
-        // Build the leaf transaction-category ID set per entry, keyed by (id, itemType).
-        var entryLeafIds = new Dictionary<(long Id, CategoryItemType ItemType), HashSet<long>>();
-        var entryNames = new Dictionary<(long Id, CategoryItemType ItemType), string>();
-        foreach (var (entryId, itemType, _) in entries)
+        var categorySpending = new List<CategorySpending>();
+        decimal monthIncome = 0m;
+        decimal monthExpenses = 0m;
+        foreach (var key in trackedKeys)
         {
-            var key = (entryId, itemType);
-            if (entryLeafIds.ContainsKey(key)) continue;
+            string? name = key.ItemType == CategoryItemType.Group
+                ? groupNameLookup.GetValueOrDefault(key.Id)
+                : leafCategoryNameLookup.GetValueOrDefault(key.Id);
+            if (name == null) continue;
 
-            var leafIds = new HashSet<long>();
-            string? name;
-            if (itemType == CategoryItemType.Category)
+            bool isIncome = incomeItemsSet.Contains(key);
+            decimal spent = 0m;
+            if (ieBatch.TryGetValue(key, out var ie) && monthIndex >= 0 && monthIndex < 12)
             {
-                if (!leafCategoryNameLookup.TryGetValue(entryId, out var catName)) continue;
-                leafIds.Add(entryId);
-                name = catName;
-            }
-            else
-            {
-                if (!groupNameLookup.TryGetValue(entryId, out var groupName)) continue;
-                name = groupName;
-                var descendants = CategoryGroupWithChildCount.CollectDescendants(
-                    entryId, allCategoriesWithCounts, includeLeafCategories: true);
-                foreach (var d in descendants)
-                {
-                    if (d.ItemType == CategoryItemType.Category)
-                        leafIds.Add(d.Id);
-                }
+                spent = isIncome ? ie.Income[monthIndex] : ie.Expenses[monthIndex];
+                monthIncome += ie.Income[monthIndex];
+                monthExpenses += ie.Expenses[monthIndex];
             }
 
-            entryLeafIds[key] = leafIds;
-            entryNames[key] = name ?? "Unknown";
-        }
-
-        // Single batched query for spending in the month
-        var allLeafIds = entryLeafIds.Values.SelectMany(s => s).Distinct().ToList();
-        var spendingByLeaf = new Dictionary<long, decimal>();
-        if (allLeafIds.Any())
-        {
-            var raw = await _moneyMoneyDb.Transactions
-                .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
-                .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
-                .Where(t => t.Amount < 0)
-                .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount })
-                .ToListAsync();
-            foreach (var t in raw)
+            var budgetAmount = budgetAmounts.GetValueOrDefault(key, 0m);
+            categorySpending.Add(new CategorySpending
             {
-                spendingByLeaf[t.CategoryId] = spendingByLeaf.GetValueOrDefault(t.CategoryId) + -(decimal)t.Amount;
-            }
-        }
-
-        var result = new List<CategorySpending>();
-        foreach (var (entryId, itemType, budgetAmount) in entries)
-        {
-            var key = (entryId, itemType);
-            if (!entryLeafIds.TryGetValue(key, out var leafIds)) continue;
-            var spent = leafIds.Sum(id => spendingByLeaf.GetValueOrDefault(id));
-            result.Add(new CategorySpending
-            {
-                CategoryId = entryId,
-                CategoryName = entryNames[key],
+                CategoryId = key.Id,
+                ItemType = key.ItemType,
+                CategoryName = name,
+                IsIncome = isIncome,
                 Budget = budgetAmount,
                 Spent = spent,
                 Remaining = budgetAmount - spent
             });
         }
 
-        return result;
+        // ieBatch totals double-count when both a Group and one of its descendants are tracked,
+        // because the leaf transactions are counted for each ancestor. Use the per-row totals
+        // we just summed — they have the same shape — so the dashboard's MonthIncome/MonthExpenses
+        // match the chart's rendering on Cashflow. (If you want non-overlapping totals, narrow
+        // the tracking config to leaves or non-overlapping groups.)
+
+        // Budget / Spent / Remaining roll-ups are expense-side only — income items contribute
+        // to MonthIncome instead, so summing them in here would double the displayed Spent.
+        var expenseRows = categorySpending.Where(c => !c.IsIncome).ToList();
+
+        return new ProjectSpendingSummary
+        {
+            ProjectId = projectId,
+            ProjectName = project.Name,
+            Year = year,
+            Month = month,
+            CategorySpending = categorySpending,
+            TotalBudget = expenseRows.Sum(c => c.Budget),
+            TotalSpent = expenseRows.Sum(c => c.Spent),
+            TotalRemaining = expenseRows.Sum(c => c.Remaining),
+            HasBudget = activeBudget != null,
+            MonthIncome = monthIncome,
+            MonthExpenses = monthExpenses
+        };
     }
 
     /// <summary>
@@ -1431,15 +1389,29 @@ public class ProjectSpendingSummary
     public decimal TotalBudget { get; set; }
     public decimal TotalSpent { get; set; }
     public decimal TotalRemaining { get; set; }
+
+    /// <summary>True when an active Budget exists for the year and was used to populate Budget/Remaining.</summary>
+    public bool HasBudget { get; set; }
+    /// <summary>Sum of income across tracked income items for the month.</summary>
+    public decimal MonthIncome { get; set; }
+    /// <summary>Sum of expenses across tracked expense items for the month.</summary>
+    public decimal MonthExpenses { get; set; }
+    public decimal MonthNet => MonthIncome - MonthExpenses;
 }
 
 public class CategorySpending
 {
     public long CategoryId { get; set; }
+    public CategoryItemType ItemType { get; set; }
     public string CategoryName { get; set; } = string.Empty;
     public decimal Budget { get; set; }
+    /// <summary>
+    /// Month's amount in the item's natural direction: income amount for income items,
+    /// expense amount for expense items. Always positive.
+    /// </summary>
     public decimal Spent { get; set; }
     public decimal Remaining { get; set; }
+    public bool IsIncome { get; set; }
     public decimal PercentUsed => Budget > 0 ? (Spent / Budget * 100) : 0;
 }
 

@@ -31,7 +31,15 @@ else
         @foreach (var summary in budgetSummaries)
         {
             var overallPercent = summary.TotalBudget > 0 ? (summary.TotalSpent / summary.TotalBudget * 100) : 0;
-            var statusClass = overallPercent > 100 ? "danger" : overallPercent > 80 ? "warning" : "success";
+            string statusClass;
+            if (summary.HasBudget)
+            {
+                statusClass = overallPercent > 100 ? "danger" : overallPercent > 80 ? "warning" : "success";
+            }
+            else
+            {
+                statusClass = summary.MonthNet >= 0 ? "success" : "danger";
+            }
 
             <div class="col-md-6 mb-4">
                 <div class="card">
@@ -42,43 +50,80 @@ else
                         </a>
                     </div>
                     <div class="card-body">
-                        <div class="row text-center mb-3">
-                            <div class="col-4">
-                                <div class="text-muted small">Budget</div>
-                                <div class="h5">€@summary.TotalBudget.ToString("N2")</div>
+                        @if (summary.HasBudget)
+                        {
+                            <div class="row text-center mb-3">
+                                <div class="col-4">
+                                    <div class="text-muted small">Budget</div>
+                                    <div class="h5">€@summary.TotalBudget.ToString("N2")</div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="text-muted small">Spent</div>
+                                    <div class="h5 text-@statusClass">€@summary.TotalSpent.ToString("N2")</div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="text-muted small">Remaining</div>
+                                    <div class="h5 text-@statusClass">€@summary.TotalRemaining.ToString("N2")</div>
+                                </div>
                             </div>
-                            <div class="col-4">
-                                <div class="text-muted small">Spent</div>
-                                <div class="h5 text-@statusClass">€@summary.TotalSpent.ToString("N2")</div>
-                            </div>
-                            <div class="col-4">
-                                <div class="text-muted small">Remaining</div>
-                                <div class="h5 text-@statusClass">€@summary.TotalRemaining.ToString("N2")</div>
-                            </div>
-                        </div>
 
-                        <div class="progress mb-3" style="height: 25px;">
-                            <div class="progress-bar bg-@statusClass"
-                                 role="progressbar"
-                                 style="width: @Math.Min(overallPercent, 100)%"
-                                 aria-valuenow="@overallPercent"
-                                 aria-valuemin="0"
-                                 aria-valuemax="100">
-                                @overallPercent.ToString("F0")%
+                            <div class="progress mb-3" style="height: 25px;">
+                                <div class="progress-bar bg-@statusClass"
+                                     role="progressbar"
+                                     style="width: @Math.Min(overallPercent, 100)%"
+                                     aria-valuenow="@overallPercent"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100">
+                                    @overallPercent.ToString("F0")%
+                                </div>
                             </div>
-                        </div>
+                        }
+                        else
+                        {
+                            <div class="row text-center mb-3">
+                                <div class="col-4">
+                                    <div class="text-muted small">Income</div>
+                                    <div class="h5 text-success">€@summary.MonthIncome.ToString("N2")</div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="text-muted small">Expenses</div>
+                                    <div class="h5 text-danger">€@summary.MonthExpenses.ToString("N2")</div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="text-muted small">Net</div>
+                                    <div class="h5 text-@statusClass">€@summary.MonthNet.ToString("N2")</div>
+                                </div>
+                            </div>
+                            <p class="small text-muted mb-3">
+                                No budget for @summary.Year — showing this month's actuals.
+                            </p>
+                        }
 
-                        @if (summary.CategorySpending.Any())
+                        @{
+                            var topCategories = summary.CategorySpending
+                                .Where(c => !c.IsIncome)
+                                .OrderByDescending(c => c.Spent)
+                                .Take(3)
+                                .ToList();
+                        }
+                        @if (topCategories.Any())
                         {
                             <div class="mt-3">
                                 <h6 class="text-muted">Top Categories:</h6>
-                                @foreach (var cat in summary.CategorySpending.OrderByDescending(c => c.Spent).Take(3))
+                                @foreach (var cat in topCategories)
                                 {
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <span class="small">@cat.CategoryName</span>
-                                        <span class="badge bg-@(cat.PercentUsed > 100 ? "danger" : cat.PercentUsed > 80 ? "warning" : "secondary")">
-                                            €@cat.Spent.ToString("N2") / €@cat.Budget.ToString("N2")
-                                        </span>
+                                        @if (summary.HasBudget)
+                                        {
+                                            <span class="badge bg-@(cat.PercentUsed > 100 ? "danger" : cat.PercentUsed > 80 ? "warning" : "secondary")">
+                                                €@cat.Spent.ToString("N2") / €@cat.Budget.ToString("N2")
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">€@cat.Spent.ToString("N2")</span>
+                                        }
                                     </div>
                                 }
                             </div>
@@ -150,22 +195,7 @@ else
         {
             try
             {
-                // Try to find an active budget for the current year
-                var budgets = await BudgetService.GetBudgetsForProjectAsync(project.Id);
-                var activeBudget = budgets.FirstOrDefault(b => b.Year == now.Year);
-
-                ProjectSpendingSummary summary;
-                if (activeBudget != null)
-                {
-                    // Use budget-based tracking with MonthlyBudgetEntries
-                    summary = await BudgetService.GetBudgetSpendingSummaryAsync(activeBudget.Id, now.Month);
-                }
-                else
-                {
-                    // No budget for this year — surface spent values with a budget of 0
-                    summary = await BudgetService.GetProjectSpendingSummaryAsync(project.Id, now.Year, now.Month);
-                }
-
+                var summary = await BudgetService.GetSpendingSummaryAsync(project.Id, now.Year, now.Month);
                 budgetSummaries.Add(summary);
             }
             catch (Exception ex)
