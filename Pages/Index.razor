@@ -33,7 +33,7 @@
         <input @ref="monthInputRef" type="month"
                style="position: absolute; left: 50%; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0;"
                max="@MaxMonthValue"
-               @bind="AnchorMonthValue" @bind:format="yyyy-MM" @bind:after="LoadDashboard"
+               @bind="AnchorMonthValue" @bind:format="yyyy-MM" @bind:after="OnAnchorPicked"
                tabindex="-1" aria-hidden="true" />
     </h3>
     <button type="button" class="btn btn-sm btn-outline-secondary"
@@ -43,7 +43,7 @@
     </button>
     <button type="button" class="btn btn-sm btn-outline-secondary"
             @onclick="GoToToday" disabled="@IsTodayAnchor">Today</button>
-    <div class="ms-auto">
+    <div>
         <div class="btn-group btn-group-sm" role="group" aria-label="Period">
             <button type="button"
                     class="btn @(period == "month" ? "btn-primary" : "btn-outline-primary")"
@@ -327,6 +327,10 @@ else
             ["period"] = period,
             ["expanded"] = expanded.Count == 0 ? null : string.Join(",", expanded.OrderBy(i => i)),
         });
+        // Guard against prerender redirect loops and stray no-op navigations: only push when
+        // the target URL actually differs from the current one. During ServerPrerendered,
+        // NavigateTo becomes a 302 — issuing it for an identical URL would loop forever.
+        if (uri == Navigation.Uri) return;
         Navigation.NavigateTo(uri, forceLoad: false, replace: true);
     }
 
@@ -338,7 +342,6 @@ else
 
     private async Task LoadDashboard()
     {
-        UpdateUrl();
         var projects = await BudgetService.GetProjectsAsync();
         budgetSummaries = new List<ProjectSpendingSummary>();
 
@@ -372,6 +375,7 @@ else
     {
         if (period == value) return;
         period = value;
+        UpdateUrl();
         budgetSummaries = null;
         await LoadDashboard();
     }
@@ -426,6 +430,7 @@ else
         if (dt.Year < 1900) return;
         if (dt.Year == anchor.Year && dt.Month == anchor.Month) return;
         anchor = (dt.Year, dt.Month);
+        UpdateUrl();
         budgetSummaries = null;
         await LoadDashboard();
     }
@@ -435,6 +440,7 @@ else
         var now = DateTime.Now;
         if (anchor.Year == now.Year && anchor.Month == now.Month) return;
         anchor = (now.Year, now.Month);
+        UpdateUrl();
         budgetSummaries = null;
         await LoadDashboard();
     }
@@ -442,6 +448,13 @@ else
     private async Task OpenMonthPicker()
     {
         await JS.InvokeVoidAsync("showPickerOn", monthInputRef);
+    }
+
+    private async Task OnAnchorPicked()
+    {
+        UpdateUrl();
+        budgetSummaries = null;
+        await LoadDashboard();
     }
 
     private async Task OnHeadingKey(KeyboardEventArgs e)
