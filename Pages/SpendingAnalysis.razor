@@ -702,21 +702,29 @@
         // Create datasets for each category
         var datasets = new List<object>();
         var colors = GenerateColors(sortedCategories.Count);
-        int colorIndex = 0;
+        var actualOrder = new Dictionary<string, int>(StringComparer.Ordinal);
+        var actualColor = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        foreach (var kvp in sortedCategories)
+        for (int i = 0; i < sortedCategories.Count; i++)
         {
+            var kvp = sortedCategories[i];
             var categoryName = kvp.Key;
             var trend = kvp.Value;
             var data = trend.Select(m => m.Amount).ToArray();
+
+            actualOrder[categoryName] = i;
+            actualColor[categoryName] = colors[i];
 
             datasets.Add(new
             {
                 label = categoryName,
                 data = data,
-                backgroundColor = colors[colorIndex++],
+                backgroundColor = colors[i],
                 type = "bar",
-                stack = "actual" // Separate stack for actual spending
+                stack = "actual", // Separate stack for actual spending
+                // Picked up by the merged tooltip + hover-highlight in charts.js to pair
+                // each "actual" dataset with its "budget" counterpart on the same category.
+                highlightGroup = categoryName
             });
         }
 
@@ -732,12 +740,25 @@
                 budgetLookup[categoryName] = trend.ToDictionary(m => (m.Year, m.Month), m => m.Amount);
             }
 
-            // Sort budget categories to match actual spending order
-            var sortedBudgetCategories = budgetTrends.OrderBy(kvp => kvp.Key).ToList();
+            // Mirror the actuals' order so each budget segment lines up with its actual
+            // counterpart in the stack. Categories that only exist on the budget side fall
+            // to the end, sorted by their own average so the larger budget-only items still
+            // sit nearer the bottom.
+            var sortedBudgetCategories = budgetTrends
+                .OrderBy(kvp => actualOrder.GetValueOrDefault(kvp.Key, int.MaxValue))
+                .ThenByDescending(kvp => kvp.Value.Average(m => m.Amount))
+                .ToList();
 
-            // Reset color index to match actual spending colors
-            var budgetColorIndex = 0;
+            // Reserve extra colors for budget-only categories so they don't collide with
+            // the actuals palette.
+            var budgetOnlyCount = sortedBudgetCategories.Count(kvp => !actualColor.ContainsKey(kvp.Key));
+            var extraColors = budgetOnlyCount > 0 ? GenerateColors(budgetOnlyCount) : Array.Empty<string>();
+            var extraIndex = 0;
 
+            // Build budget datasets in sort order, then prepend the whole block so within
+            // the budget stack the first item (largest) ends up at the bottom — matching the
+            // actuals stack convention.
+            var budgetDatasets = new List<object>();
             foreach (var kvp in sortedBudgetCategories)
             {
                 var categoryName = kvp.Key;
@@ -748,20 +769,25 @@
                     budgetData.ContainsKey((m.Year, m.Month)) ? (decimal?)budgetData[(m.Year, m.Month)] : null
                 ).ToArray();
 
-                // Use same color as actual spending but with transparency
-                var baseColor = colors[budgetColorIndex++ % colors.Length];
-                var budgetColor = baseColor.Replace("0.7)", "0.3)"); // Make budget bars more transparent
+                // Reuse the matching actual color when available so the user can tell at a
+                // glance which budget segment maps to which actual segment.
+                var baseColor = actualColor.TryGetValue(categoryName, out var matched)
+                    ? matched
+                    : extraColors[extraIndex++];
+                var budgetColor = baseColor.Replace("0.8)", "0.3)"); // Make budget bars more transparent
 
-                datasets.Insert(0, new
+                budgetDatasets.Add(new
                 {
                     label = $"{categoryName} (Budget)",
                     data = data,
                     backgroundColor = budgetColor,
-                    borderColor = baseColor.Replace("0.7)", "1)"),
+                    borderColor = baseColor.Replace("0.8)", "1)"),
                     borderWidth = 1,
-                    stack = "budget" // Separate stack for budget
+                    stack = "budget", // Separate stack for budget
+                    highlightGroup = categoryName
                 });
             }
+            datasets.InsertRange(0, budgetDatasets);
         }
 
         // Anchor the y-axis bottom at 0 only when every trend value is non-negative —
@@ -793,9 +819,12 @@
                         mode = "index",
                         intersect = false,
                         position = "outerEdge",
+                        // Drop the standalone budget rows when a matching actual row is also
+                        // in the tooltip — that actual row will inline the budget value below.
+                        filter = "function(item, idx, array) { if (item.dataset.stack !== 'budget') return true; const key = item.dataset.highlightGroup; return !array.some(o => o.dataset.stack !== 'budget' && o.dataset.highlightGroup === key); }",
                         callbacks = new
                         {
-                            label = "function(context) { return context.dataset.label + ': €' + context.parsed.y.toFixed(2); }"
+                            label = "function(context) { const ds = context.dataset; const key = ds.highlightGroup || ds.label; const isBudget = ds.stack === 'budget'; if (isBudget) { return key + ': — / €' + context.parsed.y.toFixed(2); } const budgetDs = context.chart.data.datasets.find(d => d.stack === 'budget' && d.highlightGroup === key); const budgetVal = budgetDs ? budgetDs.data[context.dataIndex] : null; const actual = '€' + context.parsed.y.toFixed(2); return key + ': ' + actual + (budgetVal != null ? ' / €' + Number(budgetVal).toFixed(2) : ''); }"
                         }
                     }
                 },
@@ -812,8 +841,9 @@
                         // null lets Chart.js auto-fit so refund-dominated months show below 0.
                         min = yMin,
                         // Push the axis max above the data so stackTotalLabelsPlugin's
-                        // two-line Budget/Actual labels fit inside the plot area.
-                        grace = "10%",
+                        // two-line Budget/Actual labels AND the net (budget − actual) label
+                        // above them fit inside the plot area.
+                        grace = "25%",
                         title = new
                         {
                             display = true,

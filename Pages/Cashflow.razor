@@ -602,10 +602,15 @@ else
 
         // Income bars use a green-family palette; expenses use red. Each category gets a
         // distinct shade within its family so individual items in the stack are still readable.
-        var incomeColors = GenerateColors(incomeCategories.Count, centerHue: 135); // greens
-        for (int i = 0; i < incomeCategories.Count; i++)
+        // Sort by average monthly amount (descending) so the largest contributor sits at the
+        // bottom of the stack — matching the SpendingAnalysis chart convention.
+        var sortedIncome = incomeCategories
+            .OrderByDescending(c => c.MonthlyAmounts.Length > 0 ? c.MonthlyAmounts.Average() : 0m)
+            .ToList();
+        var incomeColors = GenerateColors(sortedIncome.Count, centerHue: 135); // greens
+        for (int i = 0; i < sortedIncome.Count; i++)
         {
-            var income = incomeCategories[i];
+            var income = sortedIncome[i];
             datasets.Add(new
             {
                 label = $"{income.CategoryName} (Income)",
@@ -619,10 +624,13 @@ else
 
         // Add expense datasets — drawn as positive values too so they share a baseline with
         // the income stack; Chart.js groups the two stack keys side-by-side per month.
-        var expenseColors = GenerateColors(expenseCategories.Count, centerHue: 5); // reds/oranges
-        for (int i = 0; i < expenseCategories.Count; i++)
+        var sortedExpense = expenseCategories
+            .OrderByDescending(c => c.MonthlyAmounts.Length > 0 ? c.MonthlyAmounts.Average() : 0m)
+            .ToList();
+        var expenseColors = GenerateColors(sortedExpense.Count, centerHue: 5); // reds/oranges
+        for (int i = 0; i < sortedExpense.Count; i++)
         {
-            var expense = expenseCategories[i];
+            var expense = sortedExpense[i];
             datasets.Add(new
             {
                 label = $"{expense.CategoryName} (Expense)",

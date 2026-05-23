@@ -37,9 +37,20 @@ function attachTooltipHoverHighlight(chartConfig) {
     tt.callbacks = tt.callbacks || {};
     const userLabelTextColor = tt.callbacks.labelTextColor;
     const userLabelColor = tt.callbacks.labelColor;
-    tt.callbacks.labelTextColor = function (context) {
+    // Match on dataset.highlightGroup when set, otherwise fall back to datasetIndex. This
+    // lets the SpendingAnalysis chart pair its "actual" and "budget" datasets so hovering
+    // either one keeps the merged tooltip row bright.
+    function hoverKey(ds, datasetIndex) {
+        return ds && ds.highlightGroup != null ? ds.highlightGroup : datasetIndex;
+    }
+    function isDimmed(context) {
         const hovered = context.chart._activeHover;
-        if (hovered && context.datasetIndex !== hovered.d) {
+        if (!hovered) return false;
+        const hoveredDs = context.chart.data.datasets[hovered.d];
+        return hoverKey(context.dataset, context.datasetIndex) !== hoverKey(hoveredDs, hovered.d);
+    }
+    tt.callbacks.labelTextColor = function (context) {
+        if (isDimmed(context)) {
             return 'rgba(255, 255, 255, 0.45)';
         }
         if (typeof userLabelTextColor === 'function') {
@@ -48,13 +59,12 @@ function attachTooltipHoverHighlight(chartConfig) {
         return '#fff';
     };
     tt.callbacks.labelColor = function (context) {
-        const hovered = context.chart._activeHover;
         const ds = context.dataset || {};
         const bg = Array.isArray(ds.backgroundColor)
             ? ds.backgroundColor[context.dataIndex] ?? ds.backgroundColor[0]
             : ds.backgroundColor;
         const bd = ds.borderColor || bg;
-        const dim = hovered && context.datasetIndex !== hovered.d;
+        const dim = isDimmed(context);
         if (!dim && typeof userLabelColor === 'function') {
             return userLabelColor.call(this, context);
         }
@@ -213,7 +223,87 @@ const stackTotalLabelsPlugin = {
                     ctx.fillText('€' + actualSum.toFixed(0), bar.x, yTop - 4);
                 }
             }
+
+            // Net (budget − actual): positive = under budget (green), negative = over (red).
+            // Mirrors the Cashflow chart so users can read over/under at a glance. Skip when
+            // only one stack is present, or when there's no actual yet — comparing budget
+            // to a still-empty month would read as a huge under-spend every time.
+            if (both && actualSum > 0) {
+                const net = budgetSum - actualSum;
+                const yTallerTop = chart.scales.y.getPixelForValue(Math.max(actualSum, budgetSum));
+                const x = chart.scales.x.getPixelForValue(i);
+                ctx.font = '600 11px system-ui, sans-serif';
+                ctx.fillStyle = net >= 0 ? '#1c7a3a' : '#a02434';
+                const sign = net >= 0 ? '+' : '−';
+                ctx.fillText(sign + '€' + Math.abs(net).toFixed(0), x, yTallerTop - 28);
+            }
         }
+        ctx.restore();
+    }
+};
+
+// Inline plugin: when a stacked-bar segment is hovered and a sibling segment with the same
+// highlightGroup exists in another stack (the SpendingAnalysis "actual" vs "budget" pair),
+// draw two dashed lines connecting the top and bottom edges of the two segments so the
+// reader can eyeball the over/under at a glance.
+const hoverPairConnectorPlugin = {
+    id: 'hoverPairConnector',
+    afterDatasetsDraw(chart) {
+        const hovered = chart._activeHover;
+        if (!hovered) return;
+        const datasets = chart.data.datasets;
+        const hoveredDs = datasets[hovered.d];
+        if (!hoveredDs || hoveredDs.highlightGroup == null) return;
+
+        const pairedIdx = datasets.findIndex((d, i) =>
+            i !== hovered.d && d.highlightGroup === hoveredDs.highlightGroup && d.stack !== hoveredDs.stack
+        );
+        if (pairedIdx < 0) return;
+
+        const hBar = chart.getDatasetMeta(hovered.d).data[hovered.i];
+        const pBar = chart.getDatasetMeta(pairedIdx).data[hovered.i];
+        if (!hBar || !pBar) return;
+
+        // y can be above or below base depending on sign; normalize to top/bottom.
+        const hTop = Math.min(hBar.y, hBar.base);
+        const hBot = Math.max(hBar.y, hBar.base);
+        const pTop = Math.min(pBar.y, pBar.base);
+        const pBot = Math.max(pBar.y, pBar.base);
+
+        // If either side has no value for this month, both edges collapse onto the baseline.
+        // Drawing the connector then makes the lines plunge to 0, which misreads as "budget
+        // dropped to 0" — skip it. The tooltip's "— / €N" still conveys the missing side.
+        if (hBot - hTop < 1 || pBot - pTop < 1) return;
+
+        // Whichever bar sits to the left provides the line's left endpoint (right edge of
+        // that bar) and the other provides the right endpoint (left edge).
+        const leftIsHovered = hBar.x < pBar.x;
+        const leftBar = leftIsHovered ? hBar : pBar;
+        const rightBar = leftIsHovered ? pBar : hBar;
+        const leftTop = leftIsHovered ? hTop : pTop;
+        const leftBot = leftIsHovered ? hBot : pBot;
+        const rightTop = leftIsHovered ? pTop : hTop;
+        const rightBot = leftIsHovered ? pBot : hBot;
+
+        const xL = leftBar.x + (leftBar.width || 0) / 2;
+        const xR = rightBar.x - (rightBar.width || 0) / 2;
+
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(60, 60, 60, 0.85)';
+        ctx.lineWidth = 1.25;
+        ctx.setLineDash([4, 3]);
+
+        ctx.beginPath();
+        ctx.moveTo(xL, leftTop);
+        ctx.lineTo(xR, rightTop);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(xL, leftBot);
+        ctx.lineTo(xR, rightBot);
+        ctx.stroke();
+
         ctx.restore();
     }
 };
@@ -236,6 +326,9 @@ window.renderStackedBarChart = function(elementId, chartData) {
             chartData.options.plugins.tooltip.callbacks.label = eval('(' + chartData.options.plugins.tooltip.callbacks.label + ')');
         }
     }
+    if (typeof chartData.options?.plugins?.tooltip?.filter === 'string') {
+        chartData.options.plugins.tooltip.filter = eval('(' + chartData.options.plugins.tooltip.filter + ')');
+    }
     if (chartData.options?.scales?.y?.ticks?.callback) {
         chartData.options.scales.y.ticks.callback = eval('(' + chartData.options.scales.y.ticks.callback + ')');
     }
@@ -245,7 +338,7 @@ window.renderStackedBarChart = function(elementId, chartData) {
     try {
         window.chartInstances[elementId] = new Chart(ctx, {
             ...chartData,
-            plugins: [stackTotalLabelsPlugin]
+            plugins: [stackTotalLabelsPlugin, hoverPairConnectorPlugin]
         });
         return true;
     } catch (error) {
@@ -379,6 +472,9 @@ window.renderChart = function(elementId, chartData) {
         if (chartData.options.plugins.tooltip.callbacks.label) {
             chartData.options.plugins.tooltip.callbacks.label = eval('(' + chartData.options.plugins.tooltip.callbacks.label + ')');
         }
+    }
+    if (typeof chartData.options?.plugins?.tooltip?.filter === 'string') {
+        chartData.options.plugins.tooltip.filter = eval('(' + chartData.options.plugins.tooltip.filter + ')');
     }
     if (chartData.options?.scales?.y?.ticks?.callback) {
         chartData.options.scales.y.ticks.callback = eval('(' + chartData.options.scales.y.ticks.callback + ')');
