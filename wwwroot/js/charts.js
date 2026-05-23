@@ -92,32 +92,30 @@ function fadeColor(color, factor) {
 // Custom tooltip positioner: anchors to whichever outer edge of the hovered bar group has
 // room to grow into. Cursor in the left half of the chart → anchor on the right edge of the
 // bars so the tooltip extends rightward. Cursor in the right half → anchor on the left edge
-// so it extends leftward. Without this flip, Chart.js's auto-alignment would render the
-// tooltip body back across the bars you're hovering when you reach the chart's edge.
+// so it extends leftward. Y tracks the cursor so Chart.js's auto-alignment can flip the
+// tooltip above/below depending on space — keeping it from extending past the chart bottom
+// when hovering middle-of-chart months.
 if (window.Chart && Chart.Tooltip && Chart.Tooltip.positioners) {
     Chart.Tooltip.positioners.outerEdge = function (elements, eventPosition) {
         if (!elements || !elements.length) return false;
         let minLeft = Infinity;
         let maxRight = -Infinity;
-        let ySum = 0;
-        let count = 0;
         for (const el of elements) {
             const bar = el.element;
             if (!bar || typeof bar.x !== 'number') continue;
             const half = (bar.width || 0) / 2;
             if (bar.x - half < minLeft) minLeft = bar.x - half;
             if (bar.x + half > maxRight) maxRight = bar.x + half;
-            ySum += bar.y;
-            count++;
         }
-        if (!count) return false;
+        if (minLeft === Infinity) return false;
 
         const area = this.chart.chartArea;
         const center = (area.left + area.right) / 2;
         const cursorX = eventPosition?.x ?? (minLeft + maxRight) / 2;
         const anchorX = cursorX < center ? maxRight : minLeft;
+        const cursorY = eventPosition?.y ?? (area.top + area.bottom) / 2;
 
-        return { x: anchorX, y: ySum / count };
+        return { x: anchorX, y: cursorY };
     };
 }
 

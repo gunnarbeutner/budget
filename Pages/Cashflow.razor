@@ -600,14 +600,20 @@ else
 
         var datasets = new List<object>();
 
-        // Income bars use a green-family palette; expenses use red. Each category gets a
-        // distinct shade within its family so individual items in the stack are still readable.
         // Sort by average monthly amount (descending) so the largest contributor sits at the
         // bottom of the stack — matching the SpendingAnalysis chart convention.
         var sortedIncome = incomeCategories
             .OrderByDescending(c => c.MonthlyAmounts.Length > 0 ? c.MonthlyAmounts.Average() : 0m)
             .ToList();
-        var incomeColors = GenerateColors(sortedIncome.Count, centerHue: 135); // greens
+        var sortedExpense = expenseCategories
+            .OrderByDescending(c => c.MonthlyAmounts.Length > 0 ? c.MonthlyAmounts.Average() : 0m)
+            .ToList();
+
+        // Share one palette across both stacks so each category gets a distinct color. Income
+        // takes the first slots, expenses continue from there. Income/expense distinction is
+        // still legible via the side-by-side stacks and the "Income"/"Expenses" captions the
+        // monthlyNetLabels plugin draws above them.
+        var palette = GenerateColors(sortedIncome.Count + sortedExpense.Count);
         for (int i = 0; i < sortedIncome.Count; i++)
         {
             var income = sortedIncome[i];
@@ -615,28 +621,25 @@ else
             {
                 label = $"{income.CategoryName} (Income)",
                 data = income.MonthlyAmounts,
-                backgroundColor = string.Format(incomeColors[i], "0.7"),
-                borderColor = string.Format(incomeColors[i], "1"),
+                backgroundColor = string.Format(palette[i], "0.7"),
+                borderColor = string.Format(palette[i], "1"),
                 borderWidth = 1,
                 stack = "income"
             });
         }
 
-        // Add expense datasets — drawn as positive values too so they share a baseline with
-        // the income stack; Chart.js groups the two stack keys side-by-side per month.
-        var sortedExpense = expenseCategories
-            .OrderByDescending(c => c.MonthlyAmounts.Length > 0 ? c.MonthlyAmounts.Average() : 0m)
-            .ToList();
-        var expenseColors = GenerateColors(sortedExpense.Count, centerHue: 5); // reds/oranges
+        // Expense datasets — drawn as positive values too so they share a baseline with the
+        // income stack; Chart.js groups the two stack keys side-by-side per month.
         for (int i = 0; i < sortedExpense.Count; i++)
         {
             var expense = sortedExpense[i];
+            var color = palette[sortedIncome.Count + i];
             datasets.Add(new
             {
                 label = $"{expense.CategoryName} (Expense)",
                 data = expense.MonthlyAmounts,
-                backgroundColor = string.Format(expenseColors[i], "0.7"),
-                borderColor = string.Format(expenseColors[i], "1"),
+                backgroundColor = string.Format(color, "0.7"),
+                borderColor = string.Format(color, "1"),
                 borderWidth = 1,
                 stack = "expenses"
             });
@@ -718,52 +721,32 @@ else
     }
 
     /// <summary>
-    /// Returns an array of rgba color templates (each with a "{0}" placeholder for alpha) that
-    /// share a hue family. Hues are spread evenly across centerHue ± hueSpread/2, and lightness
-    /// alternates so adjacent categories stay visually distinct without leaving the family.
+    /// Returns rgba color templates (each with a "{0}" placeholder for alpha) drawn from the
+    /// same fixed palette as SpendingAnalysis. Cycles via modulo when more colors are
+    /// requested than the palette has.
     /// </summary>
-    private string[] GenerateColors(int count, double centerHue, double hueSpread = 70)
+    private string[] GenerateColors(int count)
     {
-        var colors = new string[count];
+        var palette = new[]
+        {
+            "rgba(255, 99, 132, {0})",
+            "rgba(54, 162, 235, {0})",
+            "rgba(255, 206, 86, {0})",
+            "rgba(75, 192, 192, {0})",
+            "rgba(153, 102, 255, {0})",
+            "rgba(255, 159, 64, {0})",
+            "rgba(199, 199, 199, {0})",
+            "rgba(83, 102, 255, {0})",
+            "rgba(255, 99, 255, {0})",
+            "rgba(99, 255, 132, {0})"
+        };
+
+        var result = new string[count];
         for (int i = 0; i < count; i++)
         {
-            var t = count == 1 ? 0.5 : (double)i / (count - 1);
-            var hue = (centerHue - hueSpread / 2 + hueSpread * t + 360) % 360;
-            var lightness = 0.40 + (i % 2) * 0.15; // alternate 0.40 / 0.55
-            var (r, g, b) = HslToRgb(hue / 360.0, 0.65, lightness);
-            colors[i] = $"rgba({r}, {g}, {b}, {{0}})";
+            result[i] = palette[i % palette.Length];
         }
-        return colors;
-    }
-
-    private (int r, int g, int b) HslToRgb(double h, double s, double l)
-    {
-        double r, g, b;
-
-        if (s == 0)
-        {
-            r = g = b = l;
-        }
-        else
-        {
-            double HueToRgb(double p, double q, double t)
-            {
-                if (t < 0) t += 1;
-                if (t > 1) t -= 1;
-                if (t < 1.0 / 6.0) return p + (q - p) * 6 * t;
-                if (t < 1.0 / 2.0) return q;
-                if (t < 2.0 / 3.0) return p + (q - p) * (2.0 / 3.0 - t) * 6;
-                return p;
-            }
-
-            var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-            var p = 2 * l - q;
-            r = HueToRgb(p, q, h + 1.0 / 3.0);
-            g = HueToRgb(p, q, h);
-            b = HueToRgb(p, q, h - 1.0 / 3.0);
-        }
-
-        return ((int)(r * 255), (int)(g * 255), (int)(b * 255));
+        return result;
     }
 
     private string FormatEuro(decimal value)
