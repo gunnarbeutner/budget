@@ -1,6 +1,84 @@
 // Chart rendering functions
 window.chartInstances = window.chartInstances || {};
 
+// Tooltip hover-highlight: with mode:'index' the tooltip lists every dataset stacked at that
+// x-index, but Chart.js doesn't mark which segment the cursor is actually intersecting. We
+// track the intersected segment in chart._activeHover and dim the other tooltip rows so the
+// hovered one stands out. Force a redraw when the hovered segment changes, since active
+// index doesn't change as the cursor moves vertically inside a stack.
+function attachTooltipHoverHighlight(chartConfig) {
+    chartConfig.options = chartConfig.options || {};
+    const userOnHover = chartConfig.options.onHover;
+    chartConfig.options.onHover = function (event, active, chart) {
+        const els = chart.getElementsAtEventForMode(event, 'point', { intersect: true }, false);
+        const next = els.length ? { d: els[0].datasetIndex, i: els[0].index } : null;
+        const prev = chart._activeHover;
+        const changed = (prev?.d ?? -1) !== (next?.d ?? -1) || (prev?.i ?? -1) !== (next?.i ?? -1);
+        if (changed) {
+            chart._activeHover = next;
+            // Chart.js caches resolved labelColors/labelTextColors on the tooltip during
+            // update(). When the cursor moves between segments in the same x-index column,
+            // active items don't change, so the tooltip never re-runs the callbacks and the
+            // cache stays stale. Recompute the cached arrays directly, then repaint.
+            const tt = chart.tooltip;
+            const items = tt && tt.dataPoints;
+            if (items && items.length) {
+                const cb = tt.options.callbacks;
+                tt.labelColors = items.map(item => cb.labelColor.call(tt, item));
+                tt.labelTextColors = items.map(item => cb.labelTextColor.call(tt, item));
+            }
+            chart.draw();
+        }
+        if (typeof userOnHover === 'function') userOnHover.call(this, event, active, chart);
+    };
+
+    const tt = chartConfig.options.plugins?.tooltip;
+    if (!tt) return;
+    tt.callbacks = tt.callbacks || {};
+    const userLabelTextColor = tt.callbacks.labelTextColor;
+    const userLabelColor = tt.callbacks.labelColor;
+    tt.callbacks.labelTextColor = function (context) {
+        const hovered = context.chart._activeHover;
+        if (hovered && context.datasetIndex !== hovered.d) {
+            return 'rgba(255, 255, 255, 0.45)';
+        }
+        if (typeof userLabelTextColor === 'function') {
+            return userLabelTextColor.call(this, context);
+        }
+        return '#fff';
+    };
+    tt.callbacks.labelColor = function (context) {
+        const hovered = context.chart._activeHover;
+        const ds = context.dataset || {};
+        const bg = Array.isArray(ds.backgroundColor)
+            ? ds.backgroundColor[context.dataIndex] ?? ds.backgroundColor[0]
+            : ds.backgroundColor;
+        const bd = ds.borderColor || bg;
+        const dim = hovered && context.datasetIndex !== hovered.d;
+        if (!dim && typeof userLabelColor === 'function') {
+            return userLabelColor.call(this, context);
+        }
+        return {
+            backgroundColor: dim ? fadeColor(bg, 0.3) : bg,
+            borderColor: dim ? fadeColor(bd, 0.3) : bd,
+            borderWidth: 1,
+        };
+    };
+}
+
+// Multiply a CSS color's alpha by `factor`. Handles "rgba(r,g,b,a)" and "rgb(r,g,b)".
+// Falls back to the original string if it doesn't recognize the format — the swatch just
+// won't dim, which is acceptable.
+function fadeColor(color, factor) {
+    if (typeof color !== 'string') return color;
+    const rgba = color.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/i);
+    if (rgba) {
+        const a = (rgba[4] !== undefined ? parseFloat(rgba[4]) : 1) * factor;
+        return `rgba(${rgba[1]}, ${rgba[2]}, ${rgba[3]}, ${a})`;
+    }
+    return color;
+}
+
 // Custom tooltip positioner: anchors to whichever outer edge of the hovered bar group has
 // room to grow into. Cursor in the left half of the chart → anchor on the right edge of the
 // bars so the tooltip extends rightward. Cursor in the right half → anchor on the left edge
@@ -162,6 +240,8 @@ window.renderStackedBarChart = function(elementId, chartData) {
         chartData.options.scales.y.ticks.callback = eval('(' + chartData.options.scales.y.ticks.callback + ')');
     }
 
+    attachTooltipHoverHighlight(chartData);
+
     try {
         window.chartInstances[elementId] = new Chart(ctx, {
             ...chartData,
@@ -303,6 +383,8 @@ window.renderChart = function(elementId, chartData) {
     if (chartData.options?.scales?.y?.ticks?.callback) {
         chartData.options.scales.y.ticks.callback = eval('(' + chartData.options.scales.y.ticks.callback + ')');
     }
+
+    attachTooltipHoverHighlight(chartData);
 
     try {
         window.chartInstances[elementId] = new Chart(ctx, {
