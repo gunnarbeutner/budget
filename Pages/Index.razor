@@ -112,6 +112,24 @@ else
                         </div>
                     </div>
                     <div class="card-body">
+                        @{
+                            var balanceInfo = projectBalances.GetValueOrDefault(projectId);
+                            var hasBalance = balanceInfo is { AccountCount: > 0 };
+                        }
+                        @if (hasBalance)
+                        {
+                            <div class="d-flex justify-content-between align-items-baseline pb-2 mb-3 border-bottom">
+                                <div>
+                                    <div class="text-muted small">Current balance</div>
+                                    <div class="h5 mb-0 @(balanceInfo!.Balance < 0 ? "text-danger" : "")">
+                                        €@balanceInfo.Balance.ToString("N2")
+                                    </div>
+                                </div>
+                                <div class="text-muted small">
+                                    @balanceInfo.AccountCount @(balanceInfo.AccountCount == 1 ? "account" : "accounts")
+                                </div>
+                            </div>
+                        }
                         @if (summary.HasBudget)
                         {
                             <div class="row text-center mb-3">
@@ -258,6 +276,7 @@ else
 
 @code {
     private List<ProjectSpendingSummary>? budgetSummaries;
+    private Dictionary<int, ProjectBalanceSummary> projectBalances = new();
     private bool showCreateDialog = false;
     private string newProjectName = "";
     private string newProjectDescription = "";
@@ -369,6 +388,9 @@ else
                 Console.WriteLine($"Error loading summary for project {project.Id}: {ex.Message}");
             }
         }
+
+        // Period-independent: linked-account balances are the same regardless of month/YTD/year.
+        projectBalances = await BudgetService.GetAllProjectsBalancesAsync();
     }
 
     private async Task SetPeriod(string value)

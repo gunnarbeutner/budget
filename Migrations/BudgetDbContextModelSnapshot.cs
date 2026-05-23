@@ -188,6 +188,32 @@ namespace OpenBudget.Migrations
                     b.ToTable("projects");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.ProjectAccountAssignment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("AccountId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProjectId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Scope")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId", "AccountId")
+                        .IsUnique();
+
+                    b.ToTable("project_account_assignments");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.ProjectCategoryAssignment", b =>
                 {
                     b.Property<int>("Id")
@@ -276,6 +302,17 @@ namespace OpenBudget.Migrations
                     b.Navigation("Budget");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.ProjectAccountAssignment", b =>
+                {
+                    b.HasOne("OpenBudget.Models.Project", "Project")
+                        .WithMany("AccountAssignments")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.ProjectCategoryAssignment", b =>
                 {
                     b.HasOne("OpenBudget.Models.Project", "Project")
@@ -305,6 +342,8 @@ namespace OpenBudget.Migrations
 
             modelBuilder.Entity("OpenBudget.Models.Project", b =>
                 {
+                    b.Navigation("AccountAssignments");
+
                     b.Navigation("CategoryAssignments");
 
                     b.Navigation("CategoryTypeAssignments");

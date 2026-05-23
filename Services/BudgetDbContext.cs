@@ -20,6 +20,7 @@ public class BudgetDbContext : DbContext
     public DbSet<Budget> Budgets => Set<Budget>();
     public DbSet<MonthlyBudgetEntry> MonthlyBudgetEntries => Set<MonthlyBudgetEntry>();
     public DbSet<BudgetContributionSplit> BudgetContributionSplits => Set<BudgetContributionSplit>();
+    public DbSet<ProjectAccountAssignment> ProjectAccountAssignments => Set<ProjectAccountAssignment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -69,6 +70,15 @@ public class BudgetDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<BudgetContributionSplit>()
             .HasIndex(bcs => new { bcs.BudgetId, bcs.CategoryId, bcs.ItemType })
+            .IsUnique();
+
+        modelBuilder.Entity<ProjectAccountAssignment>()
+            .HasOne(paa => paa.Project)
+            .WithMany(p => p.AccountAssignments)
+            .HasForeignKey(paa => paa.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ProjectAccountAssignment>()
+            .HasIndex(paa => new { paa.ProjectId, paa.AccountId })
             .IsUnique();
 
         // Note: We don't create a FK to Category since it's in a different database

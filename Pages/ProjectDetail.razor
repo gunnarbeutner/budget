@@ -70,6 +70,78 @@ else
     <div class="row mt-4">
         <div class="col-12">
             <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Accounts</h5>
+                    <button class="btn btn-sm btn-primary" @onclick="ShowAddAccountDialog">Add Account</button>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Link MoneyMoney accounts that fund this project. <strong>Shared</strong> only counts transactions whose category is assigned to the project (use for a main account that mixes traffic). <strong>Exclusive</strong> counts every transaction in the account (use for dedicated accounts like a rental Mietkautionskonto).
+                    </p>
+                    @if (accountAssignments == null || allAccounts == null)
+                    {
+                        <p class="text-muted mb-0"><em>Loading…</em></p>
+                    }
+                    else if (!accountAssignments.Any())
+                    {
+                        <p class="text-muted mb-0">No accounts assigned yet.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Account</th>
+                                        <th>Kind</th>
+                                        <th class="text-end">Current balance</th>
+                                        <th>Scope</th>
+                                        <th class="text-end"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var assignment in accountAssignments)
+                                    {
+                                        var account = allAccounts.FirstOrDefault(a => a.Id == assignment.AccountId);
+                                        var name = account?.Name ?? $"Account #{assignment.AccountId} (missing)";
+                                        var kind = account?.KindLabel ?? "—";
+                                        var balance = account?.CurrentBalance;
+                                        var currency = account?.Currency ?? "";
+                                        <tr>
+                                            <td>@name</td>
+                                            <td><span class="badge bg-secondary">@kind</span></td>
+                                            <td class="text-end">@(balance.HasValue ? FormatMoney(balance.Value, currency) : "—")</td>
+                                            <td>
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    <button type="button"
+                                                            class="btn @(assignment.Scope == AccountScope.Shared ? "btn-primary" : "btn-outline-primary")"
+                                                            @onclick="() => SetAccountScope(assignment.AccountId, AccountScope.Shared)">
+                                                        Shared
+                                                    </button>
+                                                    <button type="button"
+                                                            class="btn @(assignment.Scope == AccountScope.Exclusive ? "btn-primary" : "btn-outline-primary")"
+                                                            @onclick="() => SetAccountScope(assignment.AccountId, AccountScope.Exclusive)">
+                                                        Exclusive
+                                                    </button>
+                                                </div>
+                                            </td>
+                                            <td class="text-end">
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveAccount(assignment.AccountId)">Remove</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">Category Income/Expense Configuration</h5>
                 </div>
@@ -356,6 +428,75 @@ else
     <div class="modal-backdrop show"></div>
 }
 
+@if (showAddAccountDialog)
+{
+    <div class="modal show d-block" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Account to Project</h5>
+                    <button type="button" class="btn-close" @onclick="HideAddAccountDialog"></button>
+                </div>
+                <div class="modal-body">
+                    @if (allAccounts == null || accountAssignments == null)
+                    {
+                        <p><em>Loading accounts...</em></p>
+                    }
+                    else
+                    {
+                        var assignedIds = accountAssignments.Select(a => a.AccountId).ToHashSet();
+                        var unassigned = allAccounts.Where(a => !assignedIds.Contains(a.Id)).ToList();
+                        if (!unassigned.Any())
+                        {
+                            <p class="text-muted mb-0">All accounts are already assigned.</p>
+                        }
+                        else
+                        {
+                            <div class="mb-3">
+                                <label class="form-label">Account</label>
+                                <select class="form-select" @bind="addAccountSelectedId" size="12">
+                                    <option value="0">-- Select an account --</option>
+                                    @foreach (var account in unassigned)
+                                    {
+                                        var balance = account.CurrentBalance;
+                                        var label = $"{account.Name} ({account.KindLabel})"
+                                            + (balance.HasValue ? $" — {FormatMoney(balance.Value, account.Currency ?? "")}" : "");
+                                        <option value="@account.Id">@label</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Scope</label>
+                                <div class="btn-group d-flex" role="group">
+                                    <input type="radio" class="btn-check" name="addAccountScope" id="addAccountScopeShared"
+                                           checked="@(addAccountSelectedScope == AccountScope.Shared)"
+                                           @onchange="@(() => addAccountSelectedScope = AccountScope.Shared)" />
+                                    <label class="btn btn-outline-primary" for="addAccountScopeShared">Shared</label>
+
+                                    <input type="radio" class="btn-check" name="addAccountScope" id="addAccountScopeExclusive"
+                                           checked="@(addAccountSelectedScope == AccountScope.Exclusive)"
+                                           @onchange="@(() => addAccountSelectedScope = AccountScope.Exclusive)" />
+                                    <label class="btn btn-outline-primary" for="addAccountScopeExclusive">Exclusive</label>
+                                </div>
+                                <small class="form-text text-muted">
+                                    Shared: only transactions in the project's categories count. Exclusive: every transaction in the account counts.
+                                </small>
+                            </div>
+                        }
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="HideAddAccountDialog">Cancel</button>
+                    <button type="button" class="btn btn-primary"
+                            @onclick="AddAccount"
+                            disabled="@(addAccountSelectedId == 0)">Add Account</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+}
+
 @if (showAddCategoryDialog)
 {
     <div class="modal show d-block" tabindex="-1">
@@ -454,6 +595,13 @@ else
     private List<CategoryTypeAssignment> categoryTypeAssignments = new();
     private bool isLoadingCategoryTypes = false;
 
+    // Account assignments
+    private List<ProjectAccountAssignment>? accountAssignments;
+    private List<Account>? allAccounts;
+    private bool showAddAccountDialog = false;
+    private long addAccountSelectedId = 0;
+    private AccountScope addAccountSelectedScope = AccountScope.Shared;
+
     private class CategoryWithLevel
     {
         public CategoryGroupWithChildCount CategoryGroup { get; set; } = null!;
@@ -466,6 +614,51 @@ else
         await LoadTrackingItems();
         await LoadIncomeExpenseConfiguration();
         await LoadProjectBudgets();
+        await LoadAccountAssignments();
+    }
+
+    private async Task LoadAccountAssignments()
+    {
+        accountAssignments = await BudgetService.GetProjectAccountAssignmentsAsync(BudgetId);
+        allAccounts ??= await BudgetService.GetAllAccountsAsync();
+    }
+
+    private void ShowAddAccountDialog()
+    {
+        addAccountSelectedId = 0;
+        addAccountSelectedScope = AccountScope.Shared;
+        showAddAccountDialog = true;
+    }
+
+    private void HideAddAccountDialog() => showAddAccountDialog = false;
+
+    private async Task AddAccount()
+    {
+        if (addAccountSelectedId == 0) return;
+        await BudgetService.AssignAccountToProjectAsync(BudgetId, addAccountSelectedId, addAccountSelectedScope);
+        showAddAccountDialog = false;
+        await LoadAccountAssignments();
+    }
+
+    private async Task SetAccountScope(long accountId, AccountScope scope)
+    {
+        await BudgetService.SetAccountScopeAsync(BudgetId, accountId, scope);
+        await LoadAccountAssignments();
+    }
+
+    private async Task RemoveAccount(long accountId)
+    {
+        await BudgetService.RemoveAccountFromProjectAsync(BudgetId, accountId);
+        await LoadAccountAssignments();
+    }
+
+    private static string FormatMoney(decimal value, string currency)
+    {
+        // Match Cashflow's € formatting for EUR; fall back to the raw currency code otherwise.
+        var symbol = currency == "EUR" ? "€" : (currency + " ");
+        return value < 0
+            ? $"-{symbol}{Math.Abs(value):N2}"
+            : $"{symbol}{value:N2}";
     }
 
     private async Task LoadProjectBudgets()

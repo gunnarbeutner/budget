@@ -1714,6 +1714,385 @@ public class BudgetService
     }
 
     #endregion
+
+    #region Project Account Assignments
+
+    /// <summary>
+    /// Returns all MoneyMoney accounts ordered by their MoneyMoney sort field, then name.
+    /// Used by the project Accounts card and the assignment picker.
+    /// </summary>
+    public async Task<List<Account>> GetAllAccountsAsync()
+    {
+        return await _moneyMoneyDb.Accounts
+            .OrderBy(a => a.Sort)
+            .ThenBy(a => a.Name)
+            .ToListAsync();
+    }
+
+    public async Task<List<ProjectAccountAssignment>> GetProjectAccountAssignmentsAsync(int projectId)
+    {
+        return await _budgetDb.ProjectAccountAssignments
+            .Where(paa => paa.ProjectId == projectId)
+            .ToListAsync();
+    }
+
+    public async Task AssignAccountToProjectAsync(int projectId, long accountId, AccountScope scope)
+    {
+        var existing = await _budgetDb.ProjectAccountAssignments
+            .FirstOrDefaultAsync(paa => paa.ProjectId == projectId && paa.AccountId == accountId);
+        if (existing != null)
+        {
+            existing.Scope = scope;
+        }
+        else
+        {
+            _budgetDb.ProjectAccountAssignments.Add(new ProjectAccountAssignment
+            {
+                ProjectId = projectId,
+                AccountId = accountId,
+                Scope = scope
+            });
+        }
+        await _budgetDb.SaveChangesAsync();
+    }
+
+    public async Task SetAccountScopeAsync(int projectId, long accountId, AccountScope scope)
+    {
+        var existing = await _budgetDb.ProjectAccountAssignments
+            .FirstOrDefaultAsync(paa => paa.ProjectId == projectId && paa.AccountId == accountId);
+        if (existing == null) return;
+        existing.Scope = scope;
+        await _budgetDb.SaveChangesAsync();
+    }
+
+    public async Task RemoveAccountFromProjectAsync(int projectId, long accountId)
+    {
+        var existing = await _budgetDb.ProjectAccountAssignments
+            .FirstOrDefaultAsync(paa => paa.ProjectId == projectId && paa.AccountId == accountId);
+        if (existing == null) return;
+        _budgetDb.ProjectAccountAssignments.Remove(existing);
+        await _budgetDb.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Returns the project's real per-day balance delta for the calendar year, starting from the
+    /// project-accounts' actual combined balance on Jan 1. Deltas reflect transactions on assigned
+    /// accounts filtered by scope: Exclusive includes every transaction in the account; Shared
+    /// includes only transactions whose category is in the project's tracked-categories set.
+    ///
+    /// Starting balance is computed by reversing ALL transactions on the assigned accounts from
+    /// year start through "now" out of the live account balance — so the line is anchored to a
+    /// real-world number regardless of scope. Days beyond today have zero delta; the caller can
+    /// layer projection on top.
+    /// </summary>
+    public async Task<ProjectDailyDeltaResult> GetProjectActualDailyDeltaAsync(int projectId, int year)
+    {
+        var assignments = await _budgetDb.ProjectAccountAssignments
+            .Where(paa => paa.ProjectId == projectId)
+            .ToListAsync();
+
+        int daysInYear = DateTime.IsLeapYear(year) ? 366 : 365;
+        var result = new ProjectDailyDeltaResult
+        {
+            DailyDelta = new decimal[daysInYear],
+            HasAccounts = assignments.Any()
+        };
+        if (!result.HasAccounts) return result;
+
+        var accountIds = assignments.Select(a => a.AccountId).ToHashSet();
+        var exclusiveIds = assignments.Where(a => a.Scope == AccountScope.Exclusive).Select(a => a.AccountId).ToHashSet();
+        var sharedIds = assignments.Where(a => a.Scope == AccountScope.Shared).Select(a => a.AccountId).ToHashSet();
+
+        var accounts = await _moneyMoneyDb.Accounts
+            .Where(a => accountIds.Contains(a.Id))
+            .ToListAsync();
+        decimal currentBalance = accounts.Sum(a => a.CurrentBalance ?? 0m);
+
+        // Resolve project's leaf category IDs once — only needed when at least one account is Shared.
+        HashSet<long> projectLeafCategoryIds = new();
+        if (sharedIds.Any())
+        {
+            var trackingItems = await GetProjectTrackingItemsAsync(projectId);
+            var items = trackingItems
+                .Select(t => t.CategoryGroupId.HasValue
+                    ? (t.CategoryGroupId.Value, CategoryItemType.Group)
+                    : (t.CategoryId!.Value, CategoryItemType.Category))
+                .ToList();
+            var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync();
+            var itemToLeaf = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
+            projectLeafCategoryIds = itemToLeaf.Values.SelectMany(s => s).ToHashSet();
+        }
+
+        var yearStartUtc = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var yearStartTs = ((DateTimeOffset)yearStartUtc).ToUnixTimeSeconds();
+        var yearEndTs = ((DateTimeOffset)yearStartUtc.AddYears(1)).ToUnixTimeSeconds();
+        var nowTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        // Reverse ALL transactions on assigned accounts since year-start out of the live balance to
+        // anchor the line on Jan 1. This is intentionally unfiltered by scope: we want the real
+        // account balance at year start, not a project-attributed pseudo-balance.
+        decimal ytdSumAllScopes = 0m;
+        if (nowTs >= yearStartTs)
+        {
+            var clampedEnd = Math.Min(nowTs, yearEndTs);
+            ytdSumAllScopes = (decimal)await _moneyMoneyDb.Transactions
+                .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
+                .Where(t => t.Timestamp >= yearStartTs && t.Timestamp < clampedEnd)
+                .SumAsync(t => t.Amount);
+        }
+        else
+        {
+            // selectedYear is in the future — add expected flows BACKWARD: we can't know them, so
+            // anchor at current balance. This is a known approximation; the page warns when
+            // forecasting future years.
+        }
+        result.StartingBalance = currentBalance - ytdSumAllScopes;
+
+        var yearTxns = await _moneyMoneyDb.Transactions
+            .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
+            .Where(t => t.Timestamp >= yearStartTs && t.Timestamp < yearEndTs)
+            .Select(t => new { AccountId = t.AccountId!.Value, t.CategoryId, t.Amount, t.Timestamp })
+            .ToListAsync();
+
+        foreach (var t in yearTxns)
+        {
+            bool include = exclusiveIds.Contains(t.AccountId)
+                || (sharedIds.Contains(t.AccountId)
+                    && t.CategoryId.HasValue
+                    && projectLeafCategoryIds.Contains(t.CategoryId.Value));
+            if (!include) continue;
+
+            var date = DateTimeOffset.FromUnixTimeSeconds(t.Timestamp).UtcDateTime;
+            int dayIndex = date.DayOfYear - 1;
+            if (dayIndex < 0 || dayIndex >= daysInYear) continue;
+            result.DailyDelta[dayIndex] += (decimal)t.Amount;
+        }
+
+        var today = DateTime.UtcNow.Date;
+        if (year < today.Year) result.LastActualDayOfYear = daysInYear;
+        else if (year > today.Year) result.LastActualDayOfYear = 0;
+        else result.LastActualDayOfYear = today.DayOfYear;
+
+        return result;
+    }
+
+    /// <summary>
+    /// Returns the current combined balance of each project's assigned accounts in a single
+    /// pass — two DB calls regardless of project count. Projects with no assignments are
+    /// omitted; the caller treats absence as "no accounts linked".
+    /// </summary>
+    public async Task<Dictionary<int, ProjectBalanceSummary>> GetAllProjectsBalancesAsync()
+    {
+        var assignments = await _budgetDb.ProjectAccountAssignments.ToListAsync();
+        if (!assignments.Any()) return new Dictionary<int, ProjectBalanceSummary>();
+
+        var accountIds = assignments.Select(a => a.AccountId).Distinct().ToList();
+        var accounts = await _moneyMoneyDb.Accounts
+            .Where(a => accountIds.Contains(a.Id))
+            .ToListAsync();
+        var accountById = accounts.ToDictionary(a => a.Id);
+
+        var result = new Dictionary<int, ProjectBalanceSummary>();
+        foreach (var grp in assignments.GroupBy(a => a.ProjectId))
+        {
+            decimal balance = 0m;
+            int linkedCount = 0;
+            foreach (var assignment in grp)
+            {
+                if (!accountById.TryGetValue(assignment.AccountId, out var acc)) continue;
+                balance += acc.CurrentBalance ?? 0m;
+                linkedCount++;
+            }
+            result[grp.Key] = new ProjectBalanceSummary
+            {
+                Balance = balance,
+                AccountCount = linkedCount
+            };
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Returns a normalized day-of-month spending distribution per item, learned from real
+    /// transactions. Used by the balance chart's projection so projected months show real-looking
+    /// patterns (payday lumps, mid-month groceries, end-of-month rent) instead of a flat smear.
+    ///
+    /// Fallback ladder per item: trailing 12 months (≥3 transactions) → all-time (≥3) → a single
+    /// lump on day 1. Weights normalize to sum=1 over days 1..31; callers must snap any weight
+    /// past the target month's last day onto the last day (Feb gets the day-29/30/31 weight).
+    /// </summary>
+    public async Task<Dictionary<(long Id, CategoryItemType ItemType), DayOfMonthDistribution>>
+        GetCategoryDayOfMonthWeightsAsync(
+            IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items)
+    {
+        const int MinSampleSize = 3;
+
+        var result = new Dictionary<(long, CategoryItemType), DayOfMonthDistribution>();
+        if (!items.Any()) return result;
+
+        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync();
+        var itemToLeafIds = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
+
+        var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
+        if (!allLeafIds.Any())
+        {
+            foreach (var item in items) result[item] = DayOfMonthDistribution.Day1Fallback();
+            return result;
+        }
+
+        var nowTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var trailingStartTs = ((DateTimeOffset)DateTime.UtcNow.AddYears(-1)).ToUnixTimeSeconds();
+
+        // Single transaction scan across all relevant leaves; trailing-year vs all-time are then
+        // computed in-memory per item without further round trips.
+        var allTxns = await _moneyMoneyDb.Transactions
+            .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
+            .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount, t.Timestamp })
+            .ToListAsync();
+
+        var byLeaf = allTxns
+            .GroupBy(t => t.CategoryId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        foreach (var item in items)
+        {
+            var leafs = itemToLeafIds[item];
+            var sample = new List<(decimal AbsAmount, int DayOfMonth)>();
+            int trailingCount = 0;
+            foreach (var leaf in leafs)
+            {
+                if (!byLeaf.TryGetValue(leaf, out var list)) continue;
+                foreach (var t in list)
+                {
+                    if (t.Timestamp < trailingStartTs || t.Timestamp > nowTs) continue;
+                    var day = DateTimeOffset.FromUnixTimeSeconds(t.Timestamp).UtcDateTime.Day;
+                    sample.Add((Math.Abs((decimal)t.Amount), day));
+                    trailingCount++;
+                }
+            }
+
+            if (trailingCount >= MinSampleSize)
+            {
+                result[item] = DayOfMonthDistribution.FromSample(sample, trailingCount, DistributionPatternSource.TrailingYear);
+                continue;
+            }
+
+            // Fall back to all-time sample.
+            sample.Clear();
+            int allTimeCount = 0;
+            foreach (var leaf in leafs)
+            {
+                if (!byLeaf.TryGetValue(leaf, out var list)) continue;
+                foreach (var t in list)
+                {
+                    var day = DateTimeOffset.FromUnixTimeSeconds(t.Timestamp).UtcDateTime.Day;
+                    sample.Add((Math.Abs((decimal)t.Amount), day));
+                    allTimeCount++;
+                }
+            }
+
+            result[item] = allTimeCount >= MinSampleSize
+                ? DayOfMonthDistribution.FromSample(sample, allTimeCount, DistributionPatternSource.AllTime)
+                : DayOfMonthDistribution.Day1Fallback();
+        }
+
+        return result;
+    }
+
+    #endregion
+}
+
+public class ProjectBalanceSummary
+{
+    public decimal Balance { get; set; }
+    public int AccountCount { get; set; }
+}
+
+public enum DistributionPatternSource
+{
+    TrailingYear,
+    AllTime,
+    Day1Fallback
+}
+
+/// <summary>
+/// Normalized 31-element day-of-month spending histogram for one tracked item.
+/// <see cref="Weights"/>[i] is the share of monthly volume on day (i+1), summing to ~1.
+/// </summary>
+public class DayOfMonthDistribution
+{
+    public decimal[] Weights { get; set; } = new decimal[31];
+    public DistributionPatternSource Source { get; set; }
+    public int SampleSize { get; set; }
+
+    public static DayOfMonthDistribution Day1Fallback()
+    {
+        var w = new decimal[31];
+        w[0] = 1m;
+        return new DayOfMonthDistribution { Weights = w, Source = DistributionPatternSource.Day1Fallback };
+    }
+
+    public static DayOfMonthDistribution FromSample(
+        IReadOnlyCollection<(decimal AbsAmount, int DayOfMonth)> sample,
+        int sampleSize,
+        DistributionPatternSource source)
+    {
+        var weights = new decimal[31];
+        decimal total = 0m;
+        foreach (var (amt, day) in sample)
+        {
+            if (day < 1 || day > 31) continue;
+            weights[day - 1] += amt;
+            total += amt;
+        }
+
+        if (total > 0m)
+        {
+            for (int i = 0; i < 31; i++) weights[i] /= total;
+        }
+        else
+        {
+            // Zero-amount sample (rare — refunds netted to zero). Fall back to count-based by
+            // re-walking; if even that is empty, distribute uniformly.
+            int countTotal = sample.Count(s => s.DayOfMonth >= 1 && s.DayOfMonth <= 31);
+            if (countTotal > 0)
+            {
+                foreach (var (_, day) in sample)
+                {
+                    if (day < 1 || day > 31) continue;
+                    weights[day - 1] += 1m / countTotal;
+                }
+            }
+            else
+            {
+                for (int i = 0; i < 31; i++) weights[i] = 1m / 31m;
+            }
+        }
+
+        return new DayOfMonthDistribution
+        {
+            Weights = weights,
+            Source = source,
+            SampleSize = sampleSize
+        };
+    }
+}
+
+/// <summary>
+/// Output of <see cref="BudgetService.GetProjectActualDailyDeltaAsync"/>: the starting balance
+/// (real-world account balance at year start) and a per-day delta array of scope-filtered
+/// transaction sums. The caller layers projection deltas on top and cumulates to produce a
+/// balance line.
+/// </summary>
+public class ProjectDailyDeltaResult
+{
+    public decimal StartingBalance { get; set; }
+    /// <summary>Length = days in year. Index 0 = Jan 1.</summary>
+    public decimal[] DailyDelta { get; set; } = Array.Empty<decimal>();
+    /// <summary>1-indexed day of year up to which DailyDelta is populated from real transactions
+    /// (subsequent days are zero pending projection). Zero when the year is entirely in the future.</summary>
+    public int LastActualDayOfYear { get; set; }
+    public bool HasAccounts { get; set; }
 }
 
 public class ProjectSpendingSummary

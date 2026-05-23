@@ -75,6 +75,111 @@ else if (incomeCategories.Any() || expenseCategories.Any())
     <div class="row mb-4">
         <div class="col-12">
             <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Account Balance &amp; Watermarks - @selectedYear</h5>
+                    @if (hasAssignedAccounts && balanceDaily.Length > 0)
+                    {
+                        <small class="text-muted">
+                            Year min: <span class="@(yearMinBalance < 0 ? "text-danger fw-semibold" : "fw-semibold")">@FormatEuro(yearMinBalance)</span>
+                            on @(new DateTime(selectedYear, 1, 1).AddDays(yearMinDayOfYear - 1).ToString("MMM d"))
+                        </small>
+                    }
+                </div>
+                <div class="card-body">
+                    @if (!hasAssignedAccounts)
+                    {
+                        <div class="alert alert-info mb-0 py-2 small">
+                            No accounts assigned to this project. Open <a href="/projects/@selectedProjectId">project settings</a> and link the MoneyMoney accounts that fund this project to see a real balance line.
+                        </div>
+                    }
+                    else if (balanceDaily.Length == 0)
+                    {
+                        <p class="text-muted mb-0">No data.</p>
+                    }
+                    else
+                    {
+                        <p class="text-muted small mb-2">
+                            Starting balance Jan 1: <strong>@FormatEuro(startingBalance)</strong>.
+                            Solid line uses real transactions; shaded region uses projected amounts distributed across each month by the per-category day-of-month patterns learned from history.
+                        </p>
+                        @if (patternSourceCounts.Any())
+                        {
+                            var parts = new List<string>();
+                            if (patternSourceCounts.TryGetValue(DistributionPatternSource.TrailingYear, out var t) && t > 0)
+                                parts.Add($"{t} from trailing 12mo");
+                            if (patternSourceCounts.TryGetValue(DistributionPatternSource.AllTime, out var a) && a > 0)
+                                parts.Add($"{a} from all-time");
+                            if (patternSourceCounts.TryGetValue(DistributionPatternSource.Day1Fallback, out var f) && f > 0)
+                                parts.Add($"{f} on day-1 fallback");
+                            <p class="text-muted small mb-2">
+                                <em>Pattern sources: @string.Join(", ", parts).</em>
+                            </p>
+                        }
+                        @if (yearMinBalance < 0m && balanceDaily.Length > 0)
+                        {
+                            var minDate = new DateTime(selectedYear, 1, 1).AddDays(yearMinDayOfYear - 1);
+                            if (firstFutureNegativeDayOfYear > 0)
+                            {
+                                var firstFutureDate = new DateTime(selectedYear, 1, 1).AddDays(firstFutureNegativeDayOfYear - 1);
+                                <div class="alert alert-danger py-2 small mb-2">
+                                    <strong>Projected to first dip below zero on @firstFutureDate.ToString("MMM d")</strong>;
+                                    reaches its low of @FormatEuro(yearMinBalance) on @minDate.ToString("MMM d").
+                                    Adding ~@FormatEuro(-yearMinBalance) to the project before @firstFutureDate.ToString("MMM d") keeps the line above zero all year.
+                                </div>
+                            }
+                            else if (currentlyNegative)
+                            {
+                                <div class="alert alert-danger py-2 small mb-2">
+                                    <strong>Balance is currently @FormatEuro(currentBalanceForYear)</strong> — below zero.
+                                    Projected low @FormatEuro(yearMinBalance) on @minDate.ToString("MMM d").
+                                    Adding ~@FormatEuro(-yearMinBalance) now would keep the line above zero through year end.
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="alert alert-info py-2 small mb-2">
+                                    Balance dipped to <strong>@FormatEuro(yearMinBalance)</strong> on @minDate.ToString("MMM d") earlier this year.
+                                    Currently @FormatEuro(currentBalanceForYear) and projected to stay non-negative.
+                                </div>
+                            }
+                        }
+                        <div style="position: relative; height: 320px;">
+                            <canvas id="balanceChart"></canvas>
+                        </div>
+                        <div class="table-responsive mt-3">
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Month</th>
+                                        <th class="text-end">Low</th>
+                                        <th class="text-end">High</th>
+                                        <th class="text-end">End</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var wm in monthlyWatermarks)
+                                    {
+                                        var rowClass = wm.Low < 0 ? "table-danger" : "";
+                                        var lowClass = wm.Low < 0 ? "text-danger fw-semibold" : "";
+                                        <tr class="@rowClass">
+                                            <td>@(new DateTime(selectedYear, wm.Month, 1).ToString("MMM"))</td>
+                                            <td class="text-end @lowClass">@FormatEuro(wm.Low)</td>
+                                            <td class="text-end">@FormatEuro(wm.High)</td>
+                                            <td class="text-end">@FormatEuro(wm.End)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
                 <div class="card-header">
                     <h5>Income Contribution Calculator</h5>
                 </div>
@@ -245,6 +350,57 @@ else
     private decimal totalMonthlyIncomeNeeded = 0m;
     private bool splitsDirty = false;
     private bool splitsSaving = false;
+
+    // Balance / watermark state. Populated from GetProjectActualDailyDeltaAsync after the bar
+    // chart's projection arrays exist; future months are layered on top via spreading the
+    // projected monthly net across days.
+    private bool hasAssignedAccounts = false;
+    private decimal startingBalance = 0m;
+    private decimal[] balanceDaily = Array.Empty<decimal>();
+    private MonthWatermark[] monthlyWatermarks = Array.Empty<MonthWatermark>();
+    private decimal yearMinBalance = 0m;
+    private int yearMinDayOfYear = 0;
+    /// <summary>1-indexed day-of-year where the line first dips below zero in the FUTURE
+    /// (relative to the "today" cursor for the selected year). 0 if no future dip. Used to
+    /// frame the actionable date — past dips can't be acted on, so they get a different message.</summary>
+    private int firstFutureNegativeDayOfYear = 0;
+    /// <summary>Balance at the "today" position in the selected year, or 0 if the year is
+    /// entirely in the future.</summary>
+    private decimal currentBalanceForYear = 0m;
+    private bool currentlyNegative = false;
+    private int lastActualDayOfYear = 0;
+    private bool needsBalanceChartRender = false;
+    private Dictionary<DistributionPatternSource, int> patternSourceCounts = new();
+
+    private record struct MonthWatermark(int Month, decimal Low, decimal High, decimal End);
+
+    /// <summary>
+    /// Adds <paramref name="amount"/> × <paramref name="weights"/> across the days of a month
+    /// into the day-of-year <paramref name="deltas"/> array. Any weight mass on day-of-month
+    /// indices past <paramref name="daysInMonth"/> is folded into the last day so a "31st"
+    /// historical pattern still lands on Feb 28/29.
+    /// </summary>
+    private static void DistributeAcrossMonth(
+        decimal[] deltas,
+        int startDoy,
+        int daysInMonth,
+        decimal amount,
+        decimal[] weights,
+        int sign)
+    {
+        for (int d = 1; d <= daysInMonth; d++)
+        {
+            decimal w = weights[d - 1];
+            if (d == daysInMonth)
+            {
+                for (int extraIdx = daysInMonth; extraIdx < weights.Length; extraIdx++)
+                    w += weights[extraIdx];
+            }
+            int idx = startDoy - 1 + (d - 1);
+            if (idx >= 0 && idx < deltas.Length)
+                deltas[idx] += sign * amount * w;
+        }
+    }
 
     private class CategoryCashflow
     {
@@ -509,6 +665,8 @@ else
         ApplyIncomeProjection();
         RecomputeTotals();
 
+        await LoadBalanceDataAsync();
+
         isLoading = false;
 
         // Defer chart render until after Blazor has rendered the canvas element.
@@ -516,6 +674,132 @@ else
         // point we're still inside OnInitializedAsync / a bind handler and the post-await
         // render that creates the canvas hasn't happened yet.
         needsChartRender = incomeCategories.Any() || expenseCategories.Any();
+        needsBalanceChartRender = hasAssignedAccounts && balanceDaily.Length > 0;
+    }
+
+    private async Task LoadBalanceDataAsync()
+    {
+        var data = await BudgetService.GetProjectActualDailyDeltaAsync(selectedProjectId, selectedYear);
+        hasAssignedAccounts = data.HasAccounts;
+        startingBalance = data.StartingBalance;
+        lastActualDayOfYear = data.LastActualDayOfYear;
+        balanceDaily = Array.Empty<decimal>();
+        monthlyWatermarks = Array.Empty<MonthWatermark>();
+        yearMinBalance = 0m;
+        yearMinDayOfYear = 0;
+        if (!hasAssignedAccounts) return;
+
+        var deltas = (decimal[])data.DailyDelta.Clone();
+        patternSourceCounts.Clear();
+
+        // Layer projection: per category, multiply the projected monthly amount by a learned
+        // day-of-month histogram so projected months show real-looking patterns (payday lumps,
+        // mid-month groceries, end-of-month rent). firstProjectedMonth is "next month" in the
+        // current year, so the current month's remaining days get neither real txns nor
+        // projection — the line goes flat for those days. Accepting that gap for now.
+        if (firstProjectedMonth <= 12)
+        {
+            var projItems = incomeCategories
+                .Select(c => (c.CategoryId, c.ItemType))
+                .Concat(expenseCategories.Select(c => (c.CategoryId, c.ItemType)))
+                .Distinct()
+                .ToList();
+            var weights = await BudgetService.GetCategoryDayOfMonthWeightsAsync(projItems);
+
+            // Tally pattern sources for the badge under the chart. One vote per category.
+            foreach (var w in weights.Values)
+            {
+                patternSourceCounts.TryGetValue(w.Source, out var n);
+                patternSourceCounts[w.Source] = n + 1;
+            }
+
+            for (int m = firstProjectedMonth; m <= 12; m++)
+            {
+                int daysInMonth = DateTime.DaysInMonth(selectedYear, m);
+                if (daysInMonth == 0) continue;
+                int startDoy = new DateTime(selectedYear, m, 1).DayOfYear; // 1-indexed
+
+                foreach (var income in incomeCategories)
+                {
+                    var amount = income.MonthlyAmounts[m - 1];
+                    if (amount == 0m) continue;
+                    if (!weights.TryGetValue((income.CategoryId, income.ItemType), out var dist)) continue;
+                    DistributeAcrossMonth(deltas, startDoy, daysInMonth, amount, dist.Weights, sign: +1);
+                }
+
+                foreach (var expense in expenseCategories)
+                {
+                    var amount = expense.MonthlyAmounts[m - 1];
+                    if (amount == 0m) continue;
+                    if (!weights.TryGetValue((expense.CategoryId, expense.ItemType), out var dist)) continue;
+                    DistributeAcrossMonth(deltas, startDoy, daysInMonth, amount, dist.Weights, sign: -1);
+                }
+            }
+        }
+
+        // Cumulate into the daily balance line.
+        var balance = new decimal[deltas.Length];
+        decimal running = startingBalance;
+        for (int i = 0; i < deltas.Length; i++)
+        {
+            running += deltas[i];
+            balance[i] = running;
+        }
+        balanceDaily = balance;
+
+        // Per-month low/high/end.
+        var wm = new List<MonthWatermark>(12);
+        for (int m = 1; m <= 12; m++)
+        {
+            int start = new DateTime(selectedYear, m, 1).DayOfYear - 1;
+            int endExclusive = m == 12
+                ? balance.Length
+                : new DateTime(selectedYear, m + 1, 1).DayOfYear - 1;
+            if (endExclusive <= start) continue;
+            decimal low = decimal.MaxValue, high = decimal.MinValue;
+            for (int i = start; i < endExclusive; i++)
+            {
+                if (balance[i] < low) low = balance[i];
+                if (balance[i] > high) high = balance[i];
+            }
+            wm.Add(new MonthWatermark(m, low, high, balance[endExclusive - 1]));
+        }
+        monthlyWatermarks = wm.ToArray();
+
+        // Year-min summary used in the card header.
+        decimal min = balance[0];
+        int minIdx = 0;
+        for (int i = 1; i < balance.Length; i++)
+        {
+            if (balance[i] < min) { min = balance[i]; minIdx = i; }
+        }
+        yearMinBalance = min;
+        yearMinDayOfYear = minIdx + 1;
+
+        // Locate "today" within the balance array so we can talk about future risk separately
+        // from historical dips. Past years collapse "today" to year-end; future years sit before
+        // the array entirely.
+        var todayUtc = DateTime.UtcNow;
+        int currentDayIdx;
+        if (selectedYear < todayUtc.Year) currentDayIdx = balance.Length - 1;
+        else if (selectedYear > todayUtc.Year) currentDayIdx = -1;
+        else currentDayIdx = lastActualDayOfYear - 1;
+
+        currentBalanceForYear = currentDayIdx >= 0 ? balance[currentDayIdx] : 0m;
+        currentlyNegative = currentDayIdx >= 0 && balance[currentDayIdx] < 0m;
+
+        // First FUTURE crossing below zero — the actionable date. Only meaningful when the line
+        // is currently non-negative; if we're already underwater, there's no "before D" to act on
+        // and the banner falls through to a different message.
+        firstFutureNegativeDayOfYear = 0;
+        if (!currentlyNegative)
+        {
+            int searchFrom = Math.Max(0, currentDayIdx + 1);
+            for (int i = searchFrom; i < balance.Length; i++)
+            {
+                if (balance[i] < 0m) { firstFutureNegativeDayOfYear = i + 1; break; }
+            }
+        }
     }
 
     private void ApplyIncomeProjection()
@@ -545,6 +829,11 @@ else
         {
             needsChartRender = false;
             await RenderCashflowChart();
+        }
+        if (needsBalanceChartRender)
+        {
+            needsBalanceChartRender = false;
+            await RenderBalanceChart();
         }
     }
 
@@ -718,6 +1007,114 @@ else
         };
 
         await JSRuntime.InvokeVoidAsync("renderChart", "cashflowChart", chartData);
+    }
+
+    private async Task RenderBalanceChart()
+    {
+        if (balanceDaily.Length == 0) return;
+
+        // Labels: only the 1st of each month gets a string; other days are empty so the axis
+        // doesn't try to render 365 overlapping labels. The tooltip recomputes the full date
+        // from the data index via the tooltip.title callback below.
+        var labels = new string[balanceDaily.Length];
+        var monthNames = new[] { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+        for (int i = 0; i < balanceDaily.Length; i++)
+        {
+            var dt = new DateTime(selectedYear, 1, 1).AddDays(i);
+            labels[i] = dt.Day == 1 ? monthNames[dt.Month - 1] : "";
+        }
+
+        var pointBackground = new string[balanceDaily.Length];
+        var pointRadius = new int[balanceDaily.Length];
+        for (int i = 0; i < balanceDaily.Length; i++)
+        {
+            pointBackground[i] = "rgba(54, 162, 235, 1)";
+            pointRadius[i] = 0;
+        }
+        // Highlight the year minimum so the watermark is visually anchored.
+        if (yearMinDayOfYear >= 1 && yearMinDayOfYear <= balanceDaily.Length)
+        {
+            pointBackground[yearMinDayOfYear - 1] = "rgba(220, 53, 69, 1)";
+            pointRadius[yearMinDayOfYear - 1] = 5;
+        }
+
+        var chartData = new
+        {
+            type = "line",
+            data = new
+            {
+                labels,
+                datasets = new object[]
+                {
+                    new
+                    {
+                        label = "Balance",
+                        data = balanceDaily,
+                        borderColor = "rgba(54, 162, 235, 1)",
+                        backgroundColor = "rgba(54, 162, 235, 0.15)",
+                        borderWidth = 2,
+                        fill = true,
+                        tension = 0.1,
+                        pointRadius,
+                        pointBackgroundColor = pointBackground,
+                        pointHoverRadius = 4
+                    }
+                }
+            },
+            options = new
+            {
+                responsive = true,
+                maintainAspectRatio = false,
+                plugins = new
+                {
+                    legend = new { display = false },
+                    tooltip = new
+                    {
+                        mode = "index",
+                        intersect = false,
+                        callbacks = new
+                        {
+                            // Reconstruct the full date from the data index — labels[] only carries
+                            // month names on day-1, so we can't use the label string for tooltips.
+                            title = $"function(items) {{ if (!items.length) return ''; var i = items[0].dataIndex; var d = new Date({selectedYear}, 0, 1 + i); return d.toLocaleDateString('en-US', {{ month: 'short', day: 'numeric' }}); }}",
+                            label = "function(context) { return 'Balance: €' + context.parsed.y.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }"
+                        }
+                    },
+                    forecastShading = new
+                    {
+                        // Day index (1-based) where projection starts. lastActualDayOfYear+1 keeps
+                        // the real-transaction portion unshaded.
+                        startIndex = lastActualDayOfYear + 1
+                    },
+                    zeroLine = new { enabled = true }
+                },
+                scales = new
+                {
+                    x = new
+                    {
+                        // Labels contain month names only on day-1 of each month and "" elsewhere
+                        // (see RenderBalanceChart label setup), so Chart.js draws 12 axis labels
+                        // at the right positions without needing a tick filter.
+                        ticks = new
+                        {
+                            autoSkip = false,
+                            maxRotation = 0
+                        },
+                        grid = new { display = false }
+                    },
+                    y = new
+                    {
+                        ticks = new
+                        {
+                            callback = "function(value) { return '€' + value.toFixed(0); }"
+                        },
+                        title = new { display = true, text = "Balance (€)" }
+                    }
+                }
+            }
+        };
+
+        await JSRuntime.InvokeVoidAsync("renderChart", "balanceChart", chartData);
     }
 
     /// <summary>

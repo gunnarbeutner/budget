@@ -442,18 +442,21 @@ window.renderStackedBarChart = function(elementId, chartData) {
 // Cashflow plugin: paints a tinted band across forecast months so the user can see at a
 // glance which bars are projected vs actual. The Razor side passes
 // options.plugins.forecastShading.startMonth — 1-based, with 13 meaning "no forecast".
+// For non-month charts (e.g. the daily balance chart), pass startIndex instead — same 1-based
+// convention but interpreted against the x-axis labels' length, not 12.
 const forecastShadingPlugin = {
     id: 'forecastShading',
     beforeDatasetsDraw(chart, _args, options) {
-        const startMonth = options?.startMonth;
-        if (!startMonth || startMonth > 12) return;
+        const raw = options?.startIndex ?? options?.startMonth;
+        if (!raw) return;
 
         const xScale = chart.scales?.x;
         const chartArea = chart.chartArea;
         if (!xScale || !chartArea) return;
 
-        const startIdx = startMonth - 1;
-        if (startIdx > 11) return;
+        const labelCount = chart.data?.labels?.length ?? 12;
+        const startIdx = raw - 1;
+        if (startIdx < 0 || startIdx >= labelCount) return;
 
         // Left edge: the boundary halfway between (startIdx-1) and startIdx — or the chart's
         // left edge if startIdx is 0 (i.e. the whole year is forecast).
@@ -565,6 +568,32 @@ const monthlyNetLabelsPlugin = {
     }
 };
 
+// Draws a dashed red horizontal line at y=0 across the plot area when 0 is in the y range.
+// Opt-in via options.plugins.zeroLine.enabled — other charts (the stacked-bar cashflow chart,
+// the analysis chart) bypass it because they don't set the option.
+const zeroLinePlugin = {
+    id: 'zeroLine',
+    afterDatasetsDraw(chart, _args, options) {
+        if (!options?.enabled) return;
+        const yScale = chart.scales?.y;
+        const chartArea = chart.chartArea;
+        if (!yScale || !chartArea) return;
+        if (yScale.min > 0 || yScale.max < 0) return;
+
+        const y = yScale.getPixelForValue(0);
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.strokeStyle = options.color || 'rgba(220, 53, 69, 0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(chartArea.left, y);
+        ctx.lineTo(chartArea.right, y);
+        ctx.stroke();
+        ctx.restore();
+    }
+};
+
 // Generic chart rendering function
 window.renderChart = function(elementId, chartData) {
     const ctx = document.getElementById(elementId);
@@ -583,6 +612,9 @@ window.renderChart = function(elementId, chartData) {
         if (chartData.options.plugins.tooltip.callbacks.label) {
             chartData.options.plugins.tooltip.callbacks.label = eval('(' + chartData.options.plugins.tooltip.callbacks.label + ')');
         }
+        if (chartData.options.plugins.tooltip.callbacks.title) {
+            chartData.options.plugins.tooltip.callbacks.title = eval('(' + chartData.options.plugins.tooltip.callbacks.title + ')');
+        }
     }
     if (typeof chartData.options?.plugins?.tooltip?.filter === 'string') {
         chartData.options.plugins.tooltip.filter = eval('(' + chartData.options.plugins.tooltip.filter + ')');
@@ -596,7 +628,7 @@ window.renderChart = function(elementId, chartData) {
     try {
         window.chartInstances[elementId] = new Chart(ctx, {
             ...chartData,
-            plugins: [forecastShadingPlugin, monthlyNetLabelsPlugin]
+            plugins: [forecastShadingPlugin, monthlyNetLabelsPlugin, zeroLinePlugin]
         });
         return true;
     } catch (error) {

@@ -30,4 +30,5 @@ public class Project
     public ICollection<ProjectCategoryAssignment> CategoryAssignments { get; set; } = new List<ProjectCategoryAssignment>();
     public ICollection<ProjectTrackingItem> TrackingItems { get; set; } = new List<ProjectTrackingItem>();
     public ICollection<CategoryTypeAssignment> CategoryTypeAssignments { get; set; } = new List<CategoryTypeAssignment>();
+    public ICollection<ProjectAccountAssignment> AccountAssignments { get; set; } = new List<ProjectAccountAssignment>();
 }
