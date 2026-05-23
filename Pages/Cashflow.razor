@@ -59,6 +59,24 @@
                    @onchange="@(() => OnIncomeModeChanged("recent"))" />
             <label class="btn btn-outline-primary" for="incomeProjRecent" title="Repeat each income category's last completed month, flat across the remaining months. Useful for stress-testing.">Last month</label>
         </div>
+        @if (incomeProjectionMode == "breakeven")
+        {
+            <div class="form-check form-switch mt-2 small">
+                <input class="form-check-input" type="checkbox" id="balanceFloorEnabled"
+                       checked="@balanceFloorEnabled"
+                       @onchange="OnBalanceFloorToggleChanged" />
+                <label class="form-check-label" for="balanceFloorEnabled">
+                    Keep balance ≥
+                </label>
+                <div class="input-group input-group-sm mt-1" style="max-width: 180px;">
+                    <span class="input-group-text">€</span>
+                    <input type="number" class="form-control"
+                           step="50"
+                           disabled="@(!balanceFloorEnabled)"
+                           @bind="balanceFloor" @bind:after="LoadCashflowData" />
+                </div>
+            </div>
+        }
     </div>
 </div>
 
@@ -130,31 +148,36 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                 <em>Pattern sources: @string.Join(", ", parts).</em>
                             </p>
                         }
-                        @if (yearMinBalance < 0m && balanceDaily.Length > 0)
+                        @if (balanceDaily.Length > 0 && yearMinBalance < EffectiveFloor)
                         {
+                            var floor = EffectiveFloor;
+                            var floorLabel = balanceFloorEnabled && balanceFloor != 0m
+                                ? $"the {FormatEuro(balanceFloor)} floor"
+                                : "zero";
+                            var topUp = floor - yearMinBalance;
                             var minDate = new DateTime(selectedYear, 1, 1).AddDays(yearMinDayOfYear - 1);
                             if (firstFutureNegativeDayOfYear > 0)
                             {
                                 var firstFutureDate = new DateTime(selectedYear, 1, 1).AddDays(firstFutureNegativeDayOfYear - 1);
                                 <div class="alert alert-danger py-2 small mb-2">
-                                    <strong>Projected to first dip below zero on @firstFutureDate.ToString("MMM d")</strong>;
+                                    <strong>Projected to first dip below @floorLabel on @firstFutureDate.ToString("MMM d")</strong>;
                                     reaches its low of @FormatEuro(yearMinBalance) on @minDate.ToString("MMM d").
-                                    Adding ~@FormatEuro(-yearMinBalance) to the project before @firstFutureDate.ToString("MMM d") keeps the line above zero all year.
+                                    Adding ~@FormatEuro(topUp) to the project before @firstFutureDate.ToString("MMM d") keeps the line above @floorLabel all year.
                                 </div>
                             }
                             else if (currentlyNegative)
                             {
                                 <div class="alert alert-danger py-2 small mb-2">
-                                    <strong>Balance is currently @FormatEuro(currentBalanceForYear)</strong> — below zero.
+                                    <strong>Balance is currently @FormatEuro(currentBalanceForYear)</strong> — below @floorLabel.
                                     Projected low @FormatEuro(yearMinBalance) on @minDate.ToString("MMM d").
-                                    Adding ~@FormatEuro(-yearMinBalance) now would keep the line above zero through year end.
+                                    Adding ~@FormatEuro(topUp) now would keep the line above @floorLabel through year end.
                                 </div>
                             }
                             else
                             {
                                 <div class="alert alert-info py-2 small mb-2">
                                     Balance dipped to <strong>@FormatEuro(yearMinBalance)</strong> on @minDate.ToString("MMM d") earlier this year.
-                                    Currently @FormatEuro(currentBalanceForYear) and projected to stay non-negative.
+                                    Currently @FormatEuro(currentBalanceForYear) and projected to stay above @floorLabel.
                                 </div>
                             }
                         }
@@ -226,6 +249,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                 <text>@rangeLabel are projected from the selected budget; earlier months use actual transactions.</text>
                             }
                         </div>
+
                     }
 
                     @if (incomeCategories.Any() && incomeProjectionMode == "recent")
@@ -436,6 +460,22 @@ else
     /// LoadCashflowData in "recent" mode; null otherwise.</summary>
     private Dictionary<(long Id, CategoryItemType ItemType), decimal>? recentIncomePerItem;
 
+    /// <summary>Minimum balance the alert banner should defend. When &gt; 0, the banner fires
+    /// whenever the line dips below this value (not just 0) and the recommended top-up scales
+    /// accordingly. Does NOT change the income projection — the user is expected to plan a
+    /// one-time top-up rather than sustain a higher income (which would over-shoot by year end).</summary>
+    private bool balanceFloorEnabled = false;
+    private decimal balanceFloor = 0m;
+    /// <summary>The floor value actually used by the watermark/banner detection — falls back to
+    /// 0 when the toggle is off so the "balance below zero" alarm still fires by default.</summary>
+    private decimal EffectiveFloor => balanceFloorEnabled ? balanceFloor : 0m;
+
+    // Lifted cache: GetProjectActualDailyDeltaAsync / GetCategoryDayOfMonthWeightsAsync are
+    // fetched once per LoadCashflowData so the floor algorithm and LoadBalanceDataAsync share
+    // their results.
+    private ProjectDailyDeltaResult? cachedDeltaResult;
+    private Dictionary<(long Id, CategoryItemType ItemType), DayOfMonthDistribution>? cachedHistograms;
+
     // Balance / watermark state. Populated from GetProjectActualDailyDeltaAsync after the bar
     // chart's projection arrays exist; future months are layered on top via spreading the
     // projected monthly net across days.
@@ -563,6 +603,12 @@ else
     {
         if (incomeProjectionMode == mode) return;
         incomeProjectionMode = mode;
+        await LoadCashflowData();
+    }
+
+    private async Task OnBalanceFloorToggleChanged(ChangeEventArgs e)
+    {
+        balanceFloorEnabled = e.Value is bool b && b;
         await LoadCashflowData();
     }
 
@@ -766,6 +812,16 @@ else
         }
         splitsDirty = false;
 
+        // Fetch real account deltas + day-of-month histograms once. Both the balance chart and
+        // the floor algorithm consume them; LoadBalanceDataAsync reads the cached values.
+        cachedDeltaResult = await BudgetService.GetProjectActualDailyDeltaAsync(selectedProjectId, selectedYear);
+        cachedHistograms = null;
+        if (projecting)
+        {
+            var projItems = availableCategories.Select(c => (c.Id, c.ItemType)).ToList();
+            cachedHistograms = await BudgetService.GetCategoryDayOfMonthWeightsAsync(projItems);
+        }
+
         // Attribute projected income to each source via the contribution splits and
         // recompute the rollup totals from the resulting per-source arrays.
         ApplyIncomeProjection();
@@ -783,9 +839,12 @@ else
         needsBalanceChartRender = hasAssignedAccounts && balanceDaily.Length > 0;
     }
 
-    private async Task LoadBalanceDataAsync()
+    private Task LoadBalanceDataAsync()
     {
-        var data = await BudgetService.GetProjectActualDailyDeltaAsync(selectedProjectId, selectedYear);
+        // Data already fetched in LoadCashflowData; this method only reshapes the cached
+        // result into a balance line + watermarks. Returns a completed Task so callers'
+        // await semantics stay unchanged.
+        var data = cachedDeltaResult ?? new ProjectDailyDeltaResult();
         hasAssignedAccounts = data.HasAccounts;
         startingBalance = data.StartingBalance;
         lastActualDayOfYear = data.LastActualDayOfYear;
@@ -793,7 +852,7 @@ else
         monthlyWatermarks = Array.Empty<MonthWatermark>();
         yearMinBalance = 0m;
         yearMinDayOfYear = 0;
-        if (!hasAssignedAccounts) return;
+        if (!hasAssignedAccounts) return Task.CompletedTask;
 
         var deltas = (decimal[])data.DailyDelta.Clone();
         patternSourceCounts.Clear();
@@ -803,14 +862,9 @@ else
         // mid-month groceries, end-of-month rent). firstProjectedMonth is "next month" in the
         // current year, so the current month's remaining days get neither real txns nor
         // projection — the line goes flat for those days. Accepting that gap for now.
-        if (firstProjectedMonth <= 12)
+        if (firstProjectedMonth <= 12 && cachedHistograms != null)
         {
-            var projItems = incomeCategories
-                .Select(c => (c.CategoryId, c.ItemType))
-                .Concat(expenseCategories.Select(c => (c.CategoryId, c.ItemType)))
-                .Distinct()
-                .ToList();
-            var weights = await BudgetService.GetCategoryDayOfMonthWeightsAsync(projItems);
+            var weights = cachedHistograms;
 
             // Tally pattern sources for the badge under the chart. One vote per category.
             foreach (var w in weights.Values)
@@ -892,20 +946,22 @@ else
         else currentDayIdx = lastActualDayOfYear - 1;
 
         currentBalanceForYear = currentDayIdx >= 0 ? balance[currentDayIdx] : 0m;
-        currentlyNegative = currentDayIdx >= 0 && balance[currentDayIdx] < 0m;
+        var floor = EffectiveFloor;
+        currentlyNegative = currentDayIdx >= 0 && balance[currentDayIdx] < floor;
 
-        // First FUTURE crossing below zero — the actionable date. Only meaningful when the line
-        // is currently non-negative; if we're already underwater, there's no "before D" to act on
-        // and the banner falls through to a different message.
+        // First FUTURE crossing below the floor — the actionable date. Only meaningful when
+        // the line is currently above the floor; if we're already underwater, there's no
+        // "before D" to act on and the banner falls through to a different message.
         firstFutureNegativeDayOfYear = 0;
         if (!currentlyNegative)
         {
             int searchFrom = Math.Max(0, currentDayIdx + 1);
             for (int i = searchFrom; i < balance.Length; i++)
             {
-                if (balance[i] < 0m) { firstFutureNegativeDayOfYear = i + 1; break; }
+                if (balance[i] < floor) { firstFutureNegativeDayOfYear = i + 1; break; }
             }
         }
+        return Task.CompletedTask;
     }
 
     private void ApplyIncomeProjection()
@@ -983,6 +1039,8 @@ else
         splitsDirty = true;
         ApplyIncomeProjection();
         RecomputeTotals();
+        await LoadBalanceDataAsync();
+        needsBalanceChartRender = hasAssignedAccounts && balanceDaily.Length > 0;
         await RenderCashflowChart();
         StateHasChanged();
     }

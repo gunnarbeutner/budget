@@ -1905,29 +1905,28 @@ public class BudgetService
         var yearEndTs = ((DateTimeOffset)yearStartUtc.AddYears(1)).ToUnixTimeSeconds();
         var nowTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-        // Reverse ALL transactions on assigned accounts since year-start out of the live balance to
-        // anchor the line on Jan 1. This is intentionally unfiltered by scope: we want the real
-        // account balance at year start, not a project-attributed pseudo-balance.
+        // Anchor the line on Jan 1 by reversing all booked transactions through "now" out of the
+        // live balance. Both this sum and the per-day delta walk below MUST use the same upper
+        // bound — MoneyMoney stores future-dated entries (scheduled payments) in the same table,
+        // and including them in one but not the other lets currentBalance fall out of sync with
+        // sum(DailyDelta), making balanceAtProjStart drift away from the real account balance.
+        var clampedEnd = Math.Max(yearStartTs, Math.Min(nowTs, yearEndTs));
+
         decimal ytdSumAllScopes = 0m;
-        if (nowTs >= yearStartTs)
+        if (clampedEnd > yearStartTs)
         {
-            var clampedEnd = Math.Min(nowTs, yearEndTs);
             ytdSumAllScopes = (decimal)await _moneyMoneyDb.Transactions
                 .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
                 .Where(t => t.Timestamp >= yearStartTs && t.Timestamp < clampedEnd)
                 .SumAsync(t => t.Amount);
         }
-        else
-        {
-            // selectedYear is in the future — add expected flows BACKWARD: we can't know them, so
-            // anchor at current balance. This is a known approximation; the page warns when
-            // forecasting future years.
-        }
+        // selectedYear in the future: clampedEnd == yearStartTs, ytdSumAllScopes stays 0, and
+        // StartingBalance defaults to currentBalance — a known approximation flagged in the UI.
         result.StartingBalance = currentBalance - ytdSumAllScopes;
 
         var yearTxns = await _moneyMoneyDb.Transactions
             .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
-            .Where(t => t.Timestamp >= yearStartTs && t.Timestamp < yearEndTs)
+            .Where(t => t.Timestamp >= yearStartTs && t.Timestamp < clampedEnd)
             .Select(t => new { AccountId = t.AccountId!.Value, t.CategoryId, t.Amount, t.Timestamp })
             .ToListAsync();
 
