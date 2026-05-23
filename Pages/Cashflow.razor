@@ -19,7 +19,7 @@
 <h1 class="mb-3">Cashflow@(projectName != null ? $" — {projectName}" : "")</h1>
 
 <div class="row mb-4">
-    <div class="col-md-6">
+    <div class="col-md-4">
         <label class="form-label">Year</label>
         <select class="form-select" @bind="selectedYear" @bind:after="OnYearChanged">
             @if (availableYears != null)
@@ -32,7 +32,7 @@
         </select>
     </div>
 
-    <div class="col-md-6">
+    <div class="col-md-4">
         <label class="form-label">Budget (optional)</label>
         <select class="form-select" @bind="selectedBudgetId" @bind:after="LoadCashflowData">
             <option value="0">-- No budget --</option>
@@ -44,6 +44,21 @@
                 }
             }
         </select>
+    </div>
+
+    <div class="col-md-4">
+        <label class="form-label">Income projection</label>
+        <div class="btn-group d-flex" role="group" aria-label="Income projection mode">
+            <input type="radio" class="btn-check" name="incomeProj" id="incomeProjBreakeven"
+                   checked="@(incomeProjectionMode == "breakeven")"
+                   @onchange="@(() => OnIncomeModeChanged("breakeven"))" />
+            <label class="btn btn-outline-primary" for="incomeProjBreakeven" title="Project income at the level needed to cover budgeted expenses (the original behavior).">Break-even</label>
+
+            <input type="radio" class="btn-check" name="incomeProj" id="incomeProjRecent"
+                   checked="@(incomeProjectionMode == "recent")"
+                   @onchange="@(() => OnIncomeModeChanged("recent"))" />
+            <label class="btn btn-outline-primary" for="incomeProjRecent" title="Repeat each income category's last completed month, flat across the remaining months. Useful for stress-testing.">Last month</label>
+        </div>
     </div>
 </div>
 
@@ -184,18 +199,77 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                     <h5>Income Contribution Calculator</h5>
                 </div>
                 <div class="card-body">
-                    <p class="text-muted">
-                        Calculate how much each income source needs to contribute to cover expenses.
-                    </p>
+                    @if (incomeProjectionMode == "recent")
+                    {
+                        <p class="text-muted">
+                            Stress-test view: each income category's last completed month is repeated flat across the projection. Use this to see whether current income covers the remaining year's budgeted expenses.
+                        </p>
+                    }
+                    else
+                    {
+                        <p class="text-muted">
+                            Calculate how much each income source needs to contribute to cover expenses.
+                        </p>
+                    }
 
                     @if (firstProjectedMonth <= 12)
                     {
+                        var rangeLabel = $"{new DateTime(selectedYear, firstProjectedMonth, 1):MMMM}–{new DateTime(selectedYear, 12, 1):MMMM}";
                         <div class="alert alert-info py-2 small">
-                            @(new DateTime(selectedYear, firstProjectedMonth, 1).ToString("MMMM"))–@(new DateTime(selectedYear, 12, 1).ToString("MMMM")) are projected from the selected budget; earlier months use actual transactions.
+                            @if (incomeProjectionMode == "recent" && recentIncomePerItem != null)
+                            {
+                                var sourceLabel = new DateTime(recentIncomeSourceMonth.Year, recentIncomeSourceMonth.Month, 1).ToString("MMMM yyyy");
+                                <text>@rangeLabel are projected — expenses from the selected budget, income repeated from @sourceLabel actuals; earlier months use actual transactions.</text>
+                            }
+                            else
+                            {
+                                <text>@rangeLabel are projected from the selected budget; earlier months use actual transactions.</text>
+                            }
                         </div>
                     }
 
-                    @if (incomeCategories.Any())
+                    @if (incomeCategories.Any() && incomeProjectionMode == "recent")
+                    {
+                        var sourceMonthLabel = new DateTime(recentIncomeSourceMonth.Year, recentIncomeSourceMonth.Month, 1).ToString("MMM yyyy");
+                        var yearlyIncome = incomeCategories.Sum(c => c.MonthlyAmounts.Sum());
+                        var netYearly = yearlyIncome - totalExpenses;
+                        var netClass = netYearly >= 0 ? "text-success" : "text-danger";
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Income Category</th>
+                                        <th class="text-end">Source-month (@sourceMonthLabel)</th>
+                                        <th class="text-end">Projected yearly</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var income in incomeCategories)
+                                    {
+                                        var sourceMonthAmount = recentIncomePerItem?.GetValueOrDefault((income.CategoryId, income.ItemType), 0m) ?? 0m;
+                                        var yearly = income.MonthlyAmounts.Sum();
+                                        <tr>
+                                            <td>@income.CategoryName</td>
+                                            <td class="text-end">@FormatEuro(sourceMonthAmount)</td>
+                                            <td class="text-end">@FormatEuro(yearly)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot>
+                                    <tr class="table-primary">
+                                        <th>Total income</th>
+                                        <th></th>
+                                        <th class="text-end">@FormatEuro(yearlyIncome)</th>
+                                    </tr>
+                                    <tr>
+                                        <th colspan="2" class="text-end">vs. projected yearly expenses (@FormatEuro(totalExpenses))</th>
+                                        <th class="text-end @netClass">@FormatEuro(netYearly)</th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    }
+                    else if (incomeCategories.Any())
                     {
                         <div class="mb-3">
                             <label class="form-label">Contribution Split</label>
@@ -351,6 +425,17 @@ else
     private bool splitsDirty = false;
     private bool splitsSaving = false;
 
+    /// <summary>"breakeven" (default) projects income at the level needed to cover budgeted
+    /// expenses; "recent" repeats each income category's last completed calendar month flat
+    /// across the projected months for stress-testing.</summary>
+    private string incomeProjectionMode = "breakeven";
+    /// <summary>The calendar month whose actuals are repeated in "recent" mode. Used both for
+    /// the projection math and the per-category readout label.</summary>
+    private (int Year, int Month) recentIncomeSourceMonth;
+    /// <summary>Per-item income for <see cref="recentIncomeSourceMonth"/>. Populated by
+    /// LoadCashflowData in "recent" mode; null otherwise.</summary>
+    private Dictionary<(long Id, CategoryItemType ItemType), decimal>? recentIncomePerItem;
+
     // Balance / watermark state. Populated from GetProjectActualDailyDeltaAsync after the bar
     // chart's projection arrays exist; future months are layered on top via spreading the
     // projected monthly net across days.
@@ -474,6 +559,13 @@ else
         }
     }
 
+    private async Task OnIncomeModeChanged(string mode)
+    {
+        if (incomeProjectionMode == mode) return;
+        incomeProjectionMode = mode;
+        await LoadCashflowData();
+    }
+
     private async Task OnYearChanged()
     {
         // Re-pick the active budget for the new year unless the user already chose one
@@ -560,6 +652,20 @@ else
         }
 
         bool projecting = budgetMonthlyAmounts != null && firstProjectedMonth <= 12;
+
+        // In "recent" mode, pull last completed calendar month's per-category income up front so
+        // ApplyIncomeProjection can look it up. Skipped in "breakeven" mode (which derives income
+        // from the gap calculator below).
+        recentIncomePerItem = null;
+        if (projecting && incomeProjectionMode == "recent")
+        {
+            var today = DateTime.UtcNow;
+            var sourceMonthStart = new DateTime(today.Year, today.Month, 1).AddMonths(-1);
+            recentIncomeSourceMonth = (sourceMonthStart.Year, sourceMonthStart.Month);
+            var recentBatchKeys = availableCategories.Select(c => (c.Id, c.ItemType)).ToList();
+            recentIncomePerItem = await BudgetService.GetMonthlyIncomePerItemAsync(
+                recentBatchKeys, selectedProjectId, sourceMonthStart.Year, sourceMonthStart.Month);
+        }
 
         // Pre-compute the projected total annual expense (past actuals + future budget) and
         // the YTD income so the global monthly income gap reflects what will actually appear
@@ -804,8 +910,27 @@ else
 
     private void ApplyIncomeProjection()
     {
-        if (firstProjectedMonth > 12 || totalMonthlyIncomeNeeded <= 0m) return;
+        if (firstProjectedMonth > 12) return;
 
+        if (incomeProjectionMode == "recent")
+        {
+            // Repeat each category's source-month income flat across the projection. Categories
+            // missing from the lookup (or with zero income that month) project to zero — useful
+            // for stress testing irregular income.
+            var src = recentIncomePerItem ?? new Dictionary<(long, CategoryItemType), decimal>();
+            foreach (var income in incomeCategories)
+            {
+                var perMonth = src.GetValueOrDefault((income.CategoryId, income.ItemType), 0m);
+                for (int m = firstProjectedMonth - 1; m < 12; m++)
+                {
+                    income.MonthlyAmounts[m] = perMonth;
+                }
+            }
+            return;
+        }
+
+        // "breakeven" mode: distribute the global income gap by contribution-split %.
+        if (totalMonthlyIncomeNeeded <= 0m) return;
         foreach (var income in incomeCategories)
         {
             var split = contributionSplits.GetValueOrDefault(income.CategoryName, 0m);

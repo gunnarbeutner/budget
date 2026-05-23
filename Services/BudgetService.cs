@@ -1551,6 +1551,83 @@ public class BudgetService
     }
 
     /// <summary>
+    /// Returns income totals per tracked item for a single calendar month. Used by the
+    /// Cashflow page's "Last month repeated" projection mode to flatten last-completed-month's
+    /// income forward across the remaining months.
+    /// Mirrors GetMonthlyIncomeAndExpenseBatchAsync's leaf-resolution + project-aware income
+    /// classification, but scopes the transaction query to one month and returns income only.
+    /// </summary>
+    public async Task<Dictionary<(long Id, CategoryItemType ItemType), decimal>>
+        GetMonthlyIncomePerItemAsync(
+            IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
+            int? projectId,
+            int year,
+            int month)
+    {
+        var result = new Dictionary<(long, CategoryItemType), decimal>();
+        foreach (var item in items) result[item] = 0m;
+        if (!items.Any()) return result;
+
+        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync();
+        var itemToLeafIds = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
+
+        var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
+        if (!allLeafIds.Any()) return result;
+
+        Dictionary<long, bool> leafIsIncome;
+        if (projectId.HasValue)
+        {
+            var typeAssignments = await _budgetDb.CategoryTypeAssignments
+                .Where(cta => cta.ProjectId == projectId.Value)
+                .ToListAsync();
+            var assignmentLookup = typeAssignments.ToDictionary(
+                ta => (ta.CategoryId, ta.ItemType),
+                ta => ta.IsIncome);
+            leafIsIncome = allLeafIds.ToDictionary(
+                id => id,
+                id => ResolveCategoryTypeWithInheritance(id, CategoryItemType.Category, allCategoriesWithCounts, assignmentLookup));
+        }
+        else
+        {
+            var types = await _moneyMoneyDb.Categories
+                .Where(c => allLeafIds.Contains(c.Id))
+                .Select(c => new { c.Id, c.Type })
+                .ToListAsync();
+            leafIsIncome = types.ToDictionary(c => c.Id, c => c.Type == 2);
+        }
+
+        var monthStartUtc = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var startTs = ((DateTimeOffset)monthStartUtc).ToUnixTimeSeconds();
+        var endTs = ((DateTimeOffset)monthStartUtc.AddMonths(1)).ToUnixTimeSeconds();
+
+        var raw = await _moneyMoneyDb.Transactions
+            .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
+            .Where(t => t.Timestamp >= startTs && t.Timestamp < endTs)
+            .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount })
+            .ToListAsync();
+
+        var perCategorySum = new Dictionary<long, decimal>();
+        foreach (var t in raw)
+        {
+            perCategorySum.TryGetValue(t.CategoryId, out var s);
+            perCategorySum[t.CategoryId] = s + (decimal)t.Amount;
+        }
+
+        foreach (var item in items)
+        {
+            decimal sum = 0m;
+            foreach (var leafId in itemToLeafIds[item])
+            {
+                if (!perCategorySum.TryGetValue(leafId, out var s)) continue;
+                if (!leafIsIncome.GetValueOrDefault(leafId, false)) continue;
+                sum += s; // income txns have positive amounts in MoneyMoney
+            }
+            result[item] = sum;
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Returns the calendar years that have at least one transaction in the MoneyMoney DB,
     /// newest first. Implemented as min/max of the timestamp column rather than a DISTINCT
     /// year scan — gap years (rare) are still returned for UI continuity.
