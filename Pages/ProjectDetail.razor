@@ -27,7 +27,7 @@ else
     </div>
 
     <div class="row mb-4">
-        <div class="col-md-6">
+        <div class="col-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">Category Assignments</h5>
@@ -61,66 +61,6 @@ else
                                 }
                             </tbody>
                         </table>
-                    }
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Current Month Overview</h5>
-                </div>
-                <div class="card-body">
-                    @if (spendingSummary == null)
-                    {
-                        <p><em>Loading spending data...</em></p>
-                    }
-                    else
-                    {
-                        <h6>@spendingSummary.ToMonth/@spendingSummary.Year</h6>
-                        <div class="mb-3">
-                            <div class="d-flex justify-content-between">
-                                <span>Total Project Budget:</span>
-                                <strong>€@spendingSummary.TotalBudget.ToString("N2")</strong>
-                            </div>
-                            <div class="d-flex justify-content-between">
-                                <span>Total Spent:</span>
-                                <strong class="@(spendingSummary.TotalSpent > spendingSummary.TotalBudget ? "text-danger" : "text-success")">
-                                    €@spendingSummary.TotalSpent.ToString("N2")
-                                </strong>
-                            </div>
-                            <div class="d-flex justify-content-between">
-                                <span>Remaining:</span>
-                                <strong class="@(spendingSummary.TotalRemaining < 0 ? "text-danger" : "text-success")">
-                                    €@spendingSummary.TotalRemaining.ToString("N2")
-                                </strong>
-                            </div>
-                        </div>
-
-                        @if (spendingSummary.CategorySpending.Any())
-                        {
-                            <h6 class="mt-4">By Category:</h6>
-                            @foreach (var cat in spendingSummary.CategorySpending.OrderByDescending(c => c.PercentUsed))
-                            {
-                                <div class="mb-2">
-                                    <div class="d-flex justify-content-between small">
-                                        <span>@cat.CategoryName</span>
-                                        <span>€@cat.Spent.ToString("N2") / €@cat.Budget.ToString("N2")</span>
-                                    </div>
-                                    <div class="progress">
-                                        <div class="progress-bar @(cat.PercentUsed > 100 ? "bg-danger" : cat.PercentUsed > 80 ? "bg-warning" : "bg-success")"
-                                             role="progressbar"
-                                             style="width: @Math.Min(cat.PercentUsed, 100)%"
-                                             aria-valuenow="@cat.PercentUsed"
-                                             aria-valuemin="0"
-                                             aria-valuemax="100">
-                                            @cat.PercentUsed.ToString("F0")%
-                                        </div>
-                                    </div>
-                                </div>
-                            }
-                        }
                     }
                 </div>
             </div>
@@ -489,7 +429,6 @@ else
     public int BudgetId { get; set; }
 
     private Project? budget;
-    private ProjectSpendingSummary? spendingSummary;
     private Dictionary<long, string> categoryNames = new();
     private List<CategoryGroupWithChildCount>? availableCategoriesWithCounts;
 
@@ -524,7 +463,6 @@ else
     protected override async Task OnInitializedAsync()
     {
         await LoadBudget();
-        await LoadSpendingSummary();
         await LoadTrackingItems();
         await LoadIncomeExpenseConfiguration();
         await LoadProjectBudgets();
@@ -558,7 +496,6 @@ else
     {
         await BudgetService.SetActiveBudgetAsync(budgetId);
         await LoadProjectBudgets();
-        await LoadSpendingSummary();
     }
 
     private async Task LoadBudget()
@@ -577,12 +514,6 @@ else
                 }
             }
         }
-    }
-
-    private async Task LoadSpendingSummary()
-    {
-        var now = DateTime.UtcNow;
-        spendingSummary = await BudgetService.GetSpendingSummaryAsync(BudgetId, now.Year, now.Month, now.Month);
     }
 
     private async Task ShowAddCategoryDialog()
@@ -606,14 +537,12 @@ else
 
         showAddCategoryDialog = false;
         await LoadBudget();
-        await LoadSpendingSummary();
     }
 
     private async Task RemoveCategory(long categoryId)
     {
         await BudgetService.RemoveCategoryFromProjectAsync(BudgetId, categoryId);
         await LoadBudget();
-        await LoadSpendingSummary();
     }
 
     private void ShowDeleteDialog() => showDeleteDialog = true;

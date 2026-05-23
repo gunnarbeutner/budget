@@ -7,7 +7,7 @@
 @inject IJSRuntime JSRuntime
 @inject NavigationManager Navigation
 
-<PageTitle>Cashflow Analysis@(projectName != null ? $" — {projectName}" : "")</PageTitle>
+<PageTitle>Cashflow@(projectName != null ? $" — {projectName}" : "")</PageTitle>
 
 @if (notFound)
 {
@@ -16,7 +16,7 @@
     return;
 }
 
-<h1 class="mb-3">Cashflow Analysis@(projectName != null ? $" — {projectName}" : "")</h1>
+<h1 class="mb-3">Cashflow@(projectName != null ? $" — {projectName}" : "")</h1>
 
 <div class="row mb-4">
     <div class="col-md-6">
@@ -601,7 +601,7 @@ else
         var datasets = new List<object>();
 
         // Sort by average monthly amount (descending) so the largest contributor sits at the
-        // bottom of the stack — matching the SpendingAnalysis chart convention.
+        // bottom of the stack — matching the Budgets chart convention.
         var sortedIncome = incomeCategories
             .OrderByDescending(c => c.MonthlyAmounts.Length > 0 ? c.MonthlyAmounts.Average() : 0m)
             .ToList();
@@ -722,7 +722,7 @@ else
 
     /// <summary>
     /// Returns rgba color templates (each with a "{0}" placeholder for alpha) drawn from the
-    /// same fixed palette as SpendingAnalysis. Cycles via modulo when more colors are
+    /// same fixed palette as the Budgets chart. Cycles via modulo when more colors are
     /// requested than the palette has.
     /// </summary>
     private string[] GenerateColors(int count)

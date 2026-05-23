@@ -1,4 +1,4 @@
-@page "/analysis"
+@page "/budgets"
 @using OpenBudget.Services
 @using OpenBudget.Models
 @using System.Text.Json
@@ -7,7 +7,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 
-<PageTitle>Spending Analysis@(projectName != null ? $" — {projectName}" : "")</PageTitle>
+<PageTitle>Budgets@(projectName != null ? $" — {projectName}" : "")</PageTitle>
 
 @if (notFound)
 {
@@ -16,7 +16,7 @@
     return;
 }
 
-<h1 class="mb-3">Spending Analysis@(projectName != null ? $" — {projectName}" : "")</h1>
+<h1 class="mb-3">Budgets@(projectName != null ? $" — {projectName}" : "")</h1>
 
 <div class="row mb-3">
     <div class="col-md-12">

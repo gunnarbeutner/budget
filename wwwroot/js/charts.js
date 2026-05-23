@@ -1,6 +1,18 @@
 // Chart rendering functions
 window.chartInstances = window.chartInstances || {};
 
+// Open the native picker on a date/month input that's visually hidden — used to make
+// the dashboard heading double as the month-picker trigger. Falls back to focus+click
+// for browsers that don't expose showPicker() yet (pre-Safari 16.4).
+window.showPickerOn = function (el) {
+    if (!el) return;
+    if (typeof el.showPicker === 'function') {
+        try { el.showPicker(); return; } catch { /* fall through */ }
+    }
+    el.focus();
+    el.click();
+};
+
 // Tooltip hover-highlight: with mode:'index' the tooltip lists every dataset stacked at that
 // x-index, but Chart.js doesn't mark which segment the cursor is actually intersecting. We
 // track the intersected segment in chart._activeHover and dim the other tooltip rows so the
@@ -161,6 +173,70 @@ window.renderLineChart = function(elementId, chartData) {
     }
 };
 
+// Euro formatter for the above-bar labels. In 'abbrev' mode, values ≥ 1000 collapse to
+// "€1.2k" / "€12k" so labels stay readable on narrow (mobile) charts; otherwise rounds to
+// a whole-euro figure.
+function fmtEuro(v, mode) {
+    const abs = Math.abs(v);
+    const sign = v < 0 ? '−' : '';
+    if (mode === 'abbrev') {
+        if (abs >= 10000) return sign + '€' + Math.round(abs / 1000) + 'k';
+        if (abs >= 1000) return sign + '€' + (abs / 1000).toFixed(1) + 'k';
+    }
+    return sign + '€' + Math.round(abs);
+}
+
+// Pick a label rendering strategy given the available horizontal width per label.
+// Degrades full → totalOnly (drop caption) → abbrev (€1.2k) → hidden as labels start to
+// overflow their available slot.
+function pickLabelMode(ctx, maxAbsValue, captions, available) {
+    if (available <= 14) return 'hidden';
+    ctx.font = '600 11px system-ui, sans-serif';
+    const fullW = ctx.measureText(fmtEuro(maxAbsValue, 'full')).width;
+    if (fullW <= available) {
+        if (captions.length === 0) return 'full';
+        ctx.font = '600 10px system-ui, sans-serif';
+        const widestCap = Math.max(...captions.map(c => ctx.measureText(c).width));
+        return widestCap <= available ? 'full' : 'totalOnly';
+    }
+    const abbrW = ctx.measureText(fmtEuro(maxAbsValue, 'abbrev')).width;
+    return abbrW <= available ? 'abbrev' : 'hidden';
+}
+
+// Minimum center-to-center distance between adjacent label anchor points (bar centers)
+// across the given stacks — including cross-stack pairs within the same month, which are
+// typically the tightest gap on a side-by-side stacked-bar chart.
+function minBarCenterSpacing(chart, stackKeys) {
+    const metas = stackKeys
+        .map(key => {
+            const idx = chart.data.datasets.findIndex(ds => ds.stack === key);
+            return idx >= 0 ? chart.getDatasetMeta(idx) : null;
+        })
+        .filter(Boolean);
+    if (metas.length === 0) return Infinity;
+    const labelCount = chart.data.labels.length;
+    let min = Infinity;
+    for (const meta of metas) {
+        for (let i = 1; i < labelCount; i++) {
+            const a = meta.data[i - 1], b = meta.data[i];
+            if (a && b && typeof a.x === 'number' && typeof b.x === 'number') {
+                min = Math.min(min, Math.abs(b.x - a.x));
+            }
+        }
+    }
+    for (let i = 0; i < labelCount; i++) {
+        for (let p = 0; p < metas.length; p++) {
+            for (let q = p + 1; q < metas.length; q++) {
+                const a = metas[p].data[i], b = metas[q].data[i];
+                if (a && b && typeof a.x === 'number' && typeof b.x === 'number') {
+                    min = Math.min(min, Math.abs(b.x - a.x));
+                }
+            }
+        }
+    }
+    return min;
+}
+
 // Inline plugin: draws the monthly total above each stack. When both "actual" and "budget"
 // stacks are present, the labels are prefixed with "Actual" / "Budget" so the user can tell
 // the two bar groups apart at a glance instead of relying on the legend's opacity cue.
@@ -178,31 +254,49 @@ const stackTotalLabelsPlugin = {
         const budgetMeta = budgetIdx >= 0 ? chart.getDatasetMeta(budgetIdx) : null;
         const both = actualIdx >= 0 && budgetIdx >= 0;
 
-        ctx.save();
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-
+        // Pre-aggregate per-month sums so the mode picker sees the widest label we'd draw.
+        let maxAbs = 0;
+        const sums = [];
         for (let i = 0; i < data.labels.length; i++) {
-            let actualSum = 0;
-            let budgetSum = 0;
+            let actualSum = 0, budgetSum = 0;
             for (const ds of data.datasets) {
                 const v = Number(ds.data[i]);
                 if (isNaN(v)) continue;
                 if (ds.stack === 'actual') actualSum += v;
                 else if (ds.stack === 'budget') budgetSum += v;
             }
+            sums[i] = { actualSum, budgetSum };
+            maxAbs = Math.max(maxAbs, Math.abs(actualSum), Math.abs(budgetSum));
+            if (both) maxAbs = Math.max(maxAbs, Math.abs(budgetSum - actualSum));
+        }
+
+        const captions = [];
+        if (budgetIdx >= 0) captions.push('Budget');
+        if (actualIdx >= 0 && both) captions.push('Actual');
+        const spacing = minBarCenterSpacing(chart, ['actual', 'budget']);
+        const mode = pickLabelMode(ctx, maxAbs, captions, spacing * 0.95);
+        if (mode === 'hidden') return;
+
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+
+        for (let i = 0; i < data.labels.length; i++) {
+            const { actualSum, budgetSum } = sums[i];
 
             // Budget stack label
             if (budgetMeta && budgetSum > 0) {
                 const bar = budgetMeta.data[i];
                 if (bar) {
                     const yTop = chart.scales.y.getPixelForValue(budgetSum);
-                    ctx.font = '600 10px system-ui, sans-serif';
-                    ctx.fillStyle = '#777';
-                    ctx.fillText('Budget', bar.x, yTop - 14);
+                    if (mode === 'full') {
+                        ctx.font = '600 10px system-ui, sans-serif';
+                        ctx.fillStyle = '#777';
+                        ctx.fillText('Budget', bar.x, yTop - 14);
+                    }
                     ctx.font = '600 11px system-ui, sans-serif';
                     ctx.fillStyle = '#333';
-                    ctx.fillText('€' + budgetSum.toFixed(0), bar.x, yTop - 4);
+                    ctx.fillText(fmtEuro(budgetSum, mode), bar.x, yTop - 4);
                 }
             }
 
@@ -211,14 +305,14 @@ const stackTotalLabelsPlugin = {
                 const bar = actualMeta.data[i];
                 if (bar) {
                     const yTop = chart.scales.y.getPixelForValue(actualSum);
-                    if (both) {
+                    if (both && mode === 'full') {
                         ctx.font = '600 10px system-ui, sans-serif';
                         ctx.fillStyle = '#777';
                         ctx.fillText('Actual', bar.x, yTop - 14);
                     }
                     ctx.font = '600 11px system-ui, sans-serif';
                     ctx.fillStyle = '#333';
-                    ctx.fillText('€' + actualSum.toFixed(0), bar.x, yTop - 4);
+                    ctx.fillText(fmtEuro(actualSum, mode), bar.x, yTop - 4);
                 }
             }
 
@@ -232,8 +326,8 @@ const stackTotalLabelsPlugin = {
                 const x = chart.scales.x.getPixelForValue(i);
                 ctx.font = '600 11px system-ui, sans-serif';
                 ctx.fillStyle = net >= 0 ? '#1c7a3a' : '#a02434';
-                const sign = net >= 0 ? '+' : '−';
-                ctx.fillText(sign + '€' + Math.abs(net).toFixed(0), x, yTallerTop - 28);
+                const formatted = fmtEuro(net, mode);
+                ctx.fillText((net >= 0 ? '+' : '') + formatted, x, yTallerTop - 28);
             }
         }
         ctx.restore();
@@ -396,19 +490,34 @@ const monthlyNetLabelsPlugin = {
         const incomeMeta = incomeIdx >= 0 ? chart.getDatasetMeta(incomeIdx) : null;
         const expenseMeta = expenseIdx >= 0 ? chart.getDatasetMeta(expenseIdx) : null;
 
-        ctx.save();
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-
+        // Pre-aggregate per-month sums so the mode picker sees the widest label we'd draw.
+        let maxAbs = 0;
+        const sums = [];
         for (let i = 0; i < data.labels.length; i++) {
-            let income = 0;
-            let expense = 0;
+            let income = 0, expense = 0;
             for (const ds of data.datasets) {
                 const v = Number(ds.data[i]);
                 if (isNaN(v)) continue;
                 if (ds.stack === 'income') income += v;
                 else if (ds.stack === 'expenses') expense += v;
             }
+            sums[i] = { income, expense };
+            maxAbs = Math.max(maxAbs, Math.abs(income), Math.abs(expense), Math.abs(income - expense));
+        }
+
+        const captions = [];
+        if (incomeIdx >= 0) captions.push('Income');
+        if (expenseIdx >= 0) captions.push('Expenses');
+        const spacing = minBarCenterSpacing(chart, ['income', 'expenses']);
+        const mode = pickLabelMode(ctx, maxAbs, captions, spacing * 0.95);
+        if (mode === 'hidden') return;
+
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+
+        for (let i = 0; i < data.labels.length; i++) {
+            const { income, expense } = sums[i];
             if (income === 0 && expense === 0) continue;
 
             // Income stack: small "Income" caption + total
@@ -416,12 +525,14 @@ const monthlyNetLabelsPlugin = {
                 const bar = incomeMeta.data[i];
                 if (bar) {
                     const yTop = chart.scales.y.getPixelForValue(income);
-                    ctx.font = '600 10px system-ui, sans-serif';
-                    ctx.fillStyle = '#777';
-                    ctx.fillText('Income', bar.x, yTop - 14);
+                    if (mode === 'full') {
+                        ctx.font = '600 10px system-ui, sans-serif';
+                        ctx.fillStyle = '#777';
+                        ctx.fillText('Income', bar.x, yTop - 14);
+                    }
                     ctx.font = '600 11px system-ui, sans-serif';
                     ctx.fillStyle = '#333';
-                    ctx.fillText('€' + income.toFixed(0), bar.x, yTop - 4);
+                    ctx.fillText(fmtEuro(income, mode), bar.x, yTop - 4);
                 }
             }
 
@@ -430,12 +541,14 @@ const monthlyNetLabelsPlugin = {
                 const bar = expenseMeta.data[i];
                 if (bar) {
                     const yTop = chart.scales.y.getPixelForValue(expense);
-                    ctx.font = '600 10px system-ui, sans-serif';
-                    ctx.fillStyle = '#777';
-                    ctx.fillText('Expenses', bar.x, yTop - 14);
+                    if (mode === 'full') {
+                        ctx.font = '600 10px system-ui, sans-serif';
+                        ctx.fillStyle = '#777';
+                        ctx.fillText('Expenses', bar.x, yTop - 14);
+                    }
                     ctx.font = '600 11px system-ui, sans-serif';
                     ctx.fillStyle = '#333';
-                    ctx.fillText('€' + expense.toFixed(0), bar.x, yTop - 4);
+                    ctx.fillText(fmtEuro(expense, mode), bar.x, yTop - 4);
                 }
             }
 
@@ -445,8 +558,8 @@ const monthlyNetLabelsPlugin = {
             const x = chart.scales.x.getPixelForValue(i);
             ctx.font = '600 11px system-ui, sans-serif';
             ctx.fillStyle = net >= 0 ? '#1c7a3a' : '#a02434';
-            const sign = net >= 0 ? '+' : '−';
-            ctx.fillText(sign + '€' + Math.abs(net).toFixed(0), x, yTallerTop - 28);
+            const formatted = fmtEuro(net, mode);
+            ctx.fillText((net >= 0 ? '+' : '') + formatted, x, yTallerTop - 28);
         }
         ctx.restore();
     }

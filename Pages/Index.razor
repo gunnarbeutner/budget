@@ -1,23 +1,49 @@
 ﻿@page "/"
 @using OpenBudget.Services
 @using OpenBudget.Models
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.WebUtilities
 @inject BudgetService BudgetService
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>Dashboard</PageTitle>
 
-<div class="row mb-4 align-items-center">
-    <div class="col">
-        <h3 class="mb-0">
-            @(period switch
-            {
-                "year" => $"Year {DateTime.Now.Year}",
-                "ytd" => $"YTD {DateTime.Now.Year}",
-                _ => DateTime.Now.ToString("MMMM yyyy")
-            })
-        </h3>
-    </div>
-    <div class="col-auto">
+@{
+    var anchorDate = new DateTime(anchor.Year, anchor.Month, 1);
+    var headingText = period switch
+    {
+        "year" => $"Year {anchor.Year}",
+        "ytd" => $"YTD through {anchorDate:MMMM yyyy}",
+        _ => anchorDate.ToString("MMMM yyyy")
+    };
+}
+<div class="d-flex flex-wrap mb-4 align-items-center gap-2">
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            @onclick="() => StepAnchor(-1)" aria-label="Previous">
+        <span class="oi oi-chevron-left" aria-hidden="true"></span>
+    </button>
+    <h3 class="mb-0 d-inline-flex align-items-center gap-2 position-relative"
+        role="button" tabindex="0"
+        style="cursor: pointer;"
+        title="Pick month"
+        @onclick="OpenMonthPicker"
+        @onkeydown="OnHeadingKey">
+        <span>@headingText</span>
+        <input @ref="monthInputRef" type="month"
+               style="position: absolute; left: 50%; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0;"
+               max="@MaxMonthValue"
+               @bind="AnchorMonthValue" @bind:format="yyyy-MM" @bind:after="LoadDashboard"
+               tabindex="-1" aria-hidden="true" />
+    </h3>
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            @onclick="() => StepAnchor(1)" aria-label="Next"
+            disabled="@IsAtMaxAnchor">
+        <span class="oi oi-chevron-right" aria-hidden="true"></span>
+    </button>
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            @onclick="GoToToday" disabled="@IsTodayAnchor">Today</button>
+    <div class="ms-auto">
         <div class="btn-group btn-group-sm" role="group" aria-label="Period">
             <button type="button"
                     class="btn @(period == "month" ? "btn-primary" : "btn-outline-primary")"
@@ -136,37 +162,58 @@ else
                         }
 
                         @{
-                            var topCategories = summary.CategorySpending
+                            var expenseCategories = summary.CategorySpending
                                 .Where(c => !c.IsIncome)
                                 .OrderByDescending(c => c.Spent)
-                                .Take(3)
                                 .ToList();
+                            var isExpanded = expanded.Contains(projectId);
+                            var shownCategories = isExpanded ? expenseCategories : expenseCategories.Take(3).ToList();
                         }
-                        @if (topCategories.Any())
+                        @if (expenseCategories.Any())
                         {
                             <div class="mt-3">
-                                <h6 class="text-muted">Top Categories:</h6>
-                                @foreach (var cat in topCategories)
+                                <h6 class="text-muted">@(isExpanded ? "Categories:" : "Top Categories:")</h6>
+                                @foreach (var cat in shownCategories)
                                 {
-                                    <div class="d-flex justify-content-between align-items-center mb-2">
-                                        <span class="small">@cat.CategoryName</span>
-                                        @if (summary.HasBudget)
+                                    <div class="mb-2">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="small">@cat.CategoryName</span>
+                                            @if (summary.HasBudget)
+                                            {
+                                                <span class="badge bg-@(cat.PercentUsed > 100 ? "danger" : cat.PercentUsed > 80 ? "warning" : "secondary")">
+                                                    €@cat.Spent.ToString("N2") / €@cat.Budget.ToString("N2")
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary">€@cat.Spent.ToString("N2")</span>
+                                            }
+                                        </div>
+                                        @if (isExpanded && summary.HasBudget && cat.Budget > 0)
                                         {
-                                            <span class="badge bg-@(cat.PercentUsed > 100 ? "danger" : cat.PercentUsed > 80 ? "warning" : "secondary")">
-                                                €@cat.Spent.ToString("N2") / €@cat.Budget.ToString("N2")
-                                            </span>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge bg-secondary">€@cat.Spent.ToString("N2")</span>
+                                            <div class="progress mt-1" style="height: 6px;">
+                                                <div class="progress-bar bg-@(cat.PercentUsed > 100 ? "danger" : cat.PercentUsed > 80 ? "warning" : "success")"
+                                                     role="progressbar"
+                                                     style="width: @Math.Min(cat.PercentUsed, 100)%"
+                                                     aria-valuenow="@cat.PercentUsed"
+                                                     aria-valuemin="0"
+                                                     aria-valuemax="100"></div>
+                                            </div>
                                         }
                                     </div>
+                                }
+                                @if (expenseCategories.Count > 3)
+                                {
+                                    <button type="button" class="btn btn-sm btn-link p-0"
+                                            @onclick="() => ToggleExpanded(projectId)">
+                                        @(isExpanded ? "Show top 3" : $"Show all ({expenseCategories.Count})")
+                                    </button>
                                 }
                             </div>
                         }
 
                         <div class="mt-3 d-flex gap-2">
-                            <a href="/analysis?projectId=@summary.ProjectId" class="btn btn-sm btn-outline-primary flex-fill">Analysis</a>
+                            <a href="/budgets?projectId=@summary.ProjectId" class="btn btn-sm btn-outline-primary flex-fill">Budgets</a>
                             <a href="/cashflow?projectId=@summary.ProjectId" class="btn btn-sm btn-outline-primary flex-fill">Cashflow</a>
                         </div>
                     </div>
@@ -215,38 +262,103 @@ else
     private string newProjectName = "";
     private string newProjectDescription = "";
 
-    // "month" = current month, "ytd" = Jan..currentMonth (year-to-date budget vs YTD actuals),
-    // "year" = full annual budget vs YTD actuals. Default is "month".
+    // "month" = anchor month only, "ytd" = Jan..anchor.Month of anchor.Year,
+    // "year" = full anchor year (Jan..Dec). Default is "month".
     private string period = "month";
+
+    // The user-selected reference point. Drives both the heading and the range
+    // passed to GetSpendingSummaryAsync — period reinterprets this anchor.
+    private (int Year, int Month) anchor;
+
+    private ElementReference monthInputRef;
+
+    // Project IDs whose category list is expanded to show all rows. Persisted in the URL
+    // so a shared link can come up pre-expanded.
+    private HashSet<int> expanded = new();
 
     protected override async Task OnInitializedAsync()
     {
+        ReadStateFromQuery();
         await LoadDashboard();
+    }
+
+    private void ReadStateFromQuery()
+    {
+        var now = DateTime.Now;
+        anchor = (now.Year, now.Month);
+
+        var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
+
+        if (query.TryGetValue("period", out var p))
+        {
+            var v = p.ToString();
+            if (v is "month" or "ytd" or "year") period = v;
+        }
+
+        expanded = new HashSet<int>();
+        if (query.TryGetValue("expanded", out var ex) && !string.IsNullOrWhiteSpace(ex))
+        {
+            foreach (var part in ex.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (int.TryParse(part, out var id)) expanded.Add(id);
+            }
+        }
+
+        int year = anchor.Year;
+        int month = anchor.Month;
+        if (query.TryGetValue("year", out var y) && int.TryParse(y, out var py) && py >= 1900 && py <= now.Year)
+            year = py;
+        if (query.TryGetValue("month", out var m) && int.TryParse(m, out var pm) && pm >= 1 && pm <= 12)
+            month = pm;
+
+        // Clamp future anchors back to current — never serve a future view.
+        var picked = new DateTime(year, month, 1);
+        var max = new DateTime(now.Year, now.Month, 1);
+        if (picked > max) picked = max;
+        anchor = (picked.Year, picked.Month);
+    }
+
+    private void UpdateUrl()
+    {
+        var uri = Navigation.GetUriWithQueryParameters(new Dictionary<string, object?>
+        {
+            ["year"] = anchor.Year,
+            ["month"] = anchor.Month,
+            ["period"] = period,
+            ["expanded"] = expanded.Count == 0 ? null : string.Join(",", expanded.OrderBy(i => i)),
+        });
+        Navigation.NavigateTo(uri, forceLoad: false, replace: true);
+    }
+
+    private void ToggleExpanded(int projectId)
+    {
+        if (!expanded.Add(projectId)) expanded.Remove(projectId);
+        UpdateUrl();
     }
 
     private async Task LoadDashboard()
     {
+        UpdateUrl();
         var projects = await BudgetService.GetProjectsAsync();
         budgetSummaries = new List<ProjectSpendingSummary>();
 
-        var now = DateTime.UtcNow;
-        // - month: just this month's slice of the budget vs this month's actuals
-        // - ytd:   Jan..currentMonth on both sides — "am I on pace?"
-        // - year:  full annual budget (Jan..Dec) vs YTD actuals — "how much remains?"
+        // - month: just the anchor month's slice of the budget vs that month's actuals
+        // - ytd:   Jan..anchor.Month on both sides — "am I on pace?"
+        // - year:  full annual budget (Jan..Dec) vs actuals through anchor's year.
         //         Year mode summing through December is safe: future months have no
-        //         transactions yet, so spent collapses to YTD anyway.
+        //         transactions yet, so spent collapses to actuals-to-date anyway.
         var (fromMonth, toMonth) = period switch
         {
             "year" => (1, 12),
-            "ytd" => (1, now.Month),
-            _ => (now.Month, now.Month)
+            "ytd" => (1, anchor.Month),
+            _ => (anchor.Month, anchor.Month)
         };
 
         foreach (var project in projects)
         {
             try
             {
-                var summary = await BudgetService.GetSpendingSummaryAsync(project.Id, now.Year, fromMonth, toMonth);
+                var summary = await BudgetService.GetSpendingSummaryAsync(project.Id, anchor.Year, fromMonth, toMonth);
                 budgetSummaries.Add(summary);
             }
             catch (Exception ex)
@@ -262,6 +374,82 @@ else
         period = value;
         budgetSummaries = null;
         await LoadDashboard();
+    }
+
+    private string MaxMonthValue
+    {
+        get
+        {
+            var now = DateTime.Now;
+            return $"{now.Year:D4}-{now.Month:D2}";
+        }
+    }
+
+    private DateTime AnchorMonthValue
+    {
+        get => new DateTime(anchor.Year, anchor.Month, 1);
+        set
+        {
+            var now = DateTime.Now;
+            var max = new DateTime(now.Year, now.Month, 1);
+            var dt = value > max ? max : new DateTime(value.Year, value.Month, 1);
+            anchor = (dt.Year, dt.Month);
+        }
+    }
+
+    private bool IsAtMaxAnchor
+    {
+        get
+        {
+            var now = DateTime.Now;
+            if (period == "year") return anchor.Year >= now.Year;
+            return anchor.Year > now.Year || (anchor.Year == now.Year && anchor.Month >= now.Month);
+        }
+    }
+
+    private bool IsTodayAnchor
+    {
+        get
+        {
+            var now = DateTime.Now;
+            return anchor.Year == now.Year && anchor.Month == now.Month;
+        }
+    }
+
+    private async Task StepAnchor(int direction)
+    {
+        var dt = new DateTime(anchor.Year, anchor.Month, 1);
+        dt = period == "year" ? dt.AddYears(direction) : dt.AddMonths(direction);
+        var now = DateTime.Now;
+        var max = new DateTime(now.Year, now.Month, 1);
+        if (dt > max) dt = max;
+        if (dt.Year < 1900) return;
+        if (dt.Year == anchor.Year && dt.Month == anchor.Month) return;
+        anchor = (dt.Year, dt.Month);
+        budgetSummaries = null;
+        await LoadDashboard();
+    }
+
+    private async Task GoToToday()
+    {
+        var now = DateTime.Now;
+        if (anchor.Year == now.Year && anchor.Month == now.Month) return;
+        anchor = (now.Year, now.Month);
+        budgetSummaries = null;
+        await LoadDashboard();
+    }
+
+    private async Task OpenMonthPicker()
+    {
+        await JS.InvokeVoidAsync("showPickerOn", monthInputRef);
+    }
+
+    private async Task OnHeadingKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == " " || e.Key == "Spacebar")
+        {
+            await OpenMonthPicker();
+        }
     }
 
     private async Task MoveProject(int projectId, int direction)
