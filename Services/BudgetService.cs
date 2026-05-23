@@ -3,15 +3,21 @@ using OpenBudget.Models;
 
 namespace OpenBudget.Services;
 
+/// <summary>Locates the MoneyMoney SQLite file on disk for stat-style queries (upload freshness).
+/// Registered as a singleton in Program.cs.</summary>
+public record MoneyMoneyDbInfo(string Path);
+
 public class BudgetService
 {
     private readonly BudgetDbContext _budgetDb;
     private readonly MoneyMoneyDbContext _moneyMoneyDb;
+    private readonly MoneyMoneyDbInfo _moneyMoneyDbInfo;
 
-    public BudgetService(BudgetDbContext budgetDb, MoneyMoneyDbContext moneyMoneyDb)
+    public BudgetService(BudgetDbContext budgetDb, MoneyMoneyDbContext moneyMoneyDb, MoneyMoneyDbInfo moneyMoneyDbInfo)
     {
         _budgetDb = budgetDb;
         _moneyMoneyDb = moneyMoneyDb;
+        _moneyMoneyDbInfo = moneyMoneyDbInfo;
     }
 
     /// <summary>
@@ -1953,6 +1959,43 @@ public class BudgetService
     }
 
     /// <summary>
+    /// Returns when the MoneyMoney DB file was last replaced on disk plus a per-account refresh
+    /// snapshot (last successful refresh time + last error). The dashboard uses this to flag
+    /// stale data; projection numbers built on stale data silently lie, so a visible indicator
+    /// matters more than any single feature on top.
+    /// </summary>
+    public async Task<DataFreshness> GetDataFreshnessAsync()
+    {
+        DateTime? dbUploadedUtc = null;
+        try
+        {
+            if (File.Exists(_moneyMoneyDbInfo.Path))
+                dbUploadedUtc = File.GetLastWriteTimeUtc(_moneyMoneyDbInfo.Path);
+        }
+        catch
+        {
+            // Stat failure isn't actionable from here — leave dbUploadedUtc null and the UI will
+            // show "unknown" rather than crash the whole page.
+        }
+
+        var accounts = await _moneyMoneyDb.Accounts
+            .Select(a => new AccountFreshness
+            {
+                AccountId = a.Id,
+                Name = a.Name,
+                RefreshTimestamp = a.RefreshTimestamp,
+                Error = a.Error
+            })
+            .ToListAsync();
+
+        return new DataFreshness
+        {
+            DbUploadedUtc = dbUploadedUtc,
+            Accounts = accounts
+        };
+    }
+
+    /// <summary>
     /// Returns the current combined balance of each project's assigned accounts in a single
     /// pass — two DB calls regardless of project count. Projects with no assignments are
     /// omitted; the caller treats absence as "no accounts linked".
@@ -2082,6 +2125,30 @@ public class ProjectBalanceSummary
 {
     public decimal Balance { get; set; }
     public int AccountCount { get; set; }
+}
+
+public class DataFreshness
+{
+    /// <summary>Last-write time of the MoneyMoney SQLite file (i.e. when it was last uploaded via the /api/moneymoney-db endpoint). Null when the file is missing or unreadable.</summary>
+    public DateTime? DbUploadedUtc { get; set; }
+    public List<AccountFreshness> Accounts { get; set; } = new();
+
+    /// <summary>True when any account has an unread error message — indicates a refresh failure
+    /// that may be masking missing transactions.</summary>
+    public IEnumerable<AccountFreshness> AccountsWithErrors =>
+        Accounts.Where(a => !string.IsNullOrWhiteSpace(a.Error));
+}
+
+public class AccountFreshness
+{
+    public long AccountId { get; set; }
+    public string? Name { get; set; }
+    public long? RefreshTimestamp { get; set; }
+    public string? Error { get; set; }
+
+    public DateTime? LastRefreshUtc => RefreshTimestamp.HasValue && RefreshTimestamp.Value > 0
+        ? DateTimeOffset.FromUnixTimeSeconds(RefreshTimestamp.Value).UtcDateTime
+        : null;
 }
 
 public enum DistributionPatternSource

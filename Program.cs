@@ -28,6 +28,9 @@ var dataDir = Path.Combine(builder.Environment.ContentRootPath, "data");
 var moneyMoneyDbPath = Path.Combine(dataDir, "moneymoney.db");
 var budgetDbPath = Path.Combine(dataDir, "budgets.db");
 
+// Expose the MoneyMoney DB path so services can stat the file (e.g. to report upload freshness).
+builder.Services.AddSingleton(new MoneyMoneyDbInfo(moneyMoneyDbPath));
+
 // Configure MoneyMoney database (plain SQLite, read-only)
 builder.Services.AddDbContext<MoneyMoneyDbContext>(options =>
 {

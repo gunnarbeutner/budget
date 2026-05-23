@@ -45,6 +45,20 @@ public class Account
     [Column("sort")]
     public long? Sort { get; set; }
 
+    /// <summary>
+    /// Unix-seconds timestamp of MoneyMoney's last successful refresh of this account. Null for
+    /// manually-maintained accounts (cash, real estate) that never auto-refresh.
+    /// </summary>
+    [Column("refresh_tsp")]
+    public long? RefreshTimestamp { get; set; }
+
+    /// <summary>
+    /// Last refresh error message from MoneyMoney (e.g. login failure, MFA timeout). Null when
+    /// the most recent refresh succeeded.
+    /// </summary>
+    [Column("error")]
+    public string? Error { get; set; }
+
     // Navigation properties
     public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
 
@@ -67,6 +81,14 @@ public class Account
                 : null;
         }
     }
+
+    /// <summary>
+    /// <see cref="RefreshTimestamp"/> as UTC <see cref="DateTime"/>, or null when not refreshed.
+    /// </summary>
+    [NotMapped]
+    public DateTime? LastRefreshUtc => RefreshTimestamp.HasValue && RefreshTimestamp.Value > 0
+        ? DateTimeOffset.FromUnixTimeSeconds(RefreshTimestamp.Value).UtcDateTime
+        : null;
 
     /// <summary>
     /// Short human label derived from <see cref="Type"/>. Falls back to the raw code.

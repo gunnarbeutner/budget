@@ -9,6 +9,32 @@
 
 <PageTitle>Dashboard</PageTitle>
 
+@if (freshness != null)
+{
+    var uploaded = freshness.DbUploadedUtc;
+    var nowUtc = DateTime.UtcNow;
+    var age = uploaded.HasValue ? nowUtc - uploaded.Value : (TimeSpan?)null;
+    string ageLabel = age.HasValue ? FormatRelativeAge(age.Value) : "unknown";
+    string ageClass = age switch
+    {
+        null => "alert-warning",
+        { TotalDays: > 7 } => "alert-danger",
+        { TotalHours: > 36 } => "alert-warning",
+        _ => "alert-secondary"
+    };
+    var errorAccounts = freshness.AccountsWithErrors.ToList();
+    <div class="alert @ageClass py-1 px-2 small mb-3 d-flex flex-wrap align-items-center gap-2">
+        <span>MoneyMoney data uploaded <strong>@ageLabel</strong>@(uploaded.HasValue ? $" ({uploaded.Value.ToLocalTime():yyyy-MM-dd HH:mm})" : "").</span>
+        @if (errorAccounts.Any())
+        {
+            <span>
+                @errorAccounts.Count @(errorAccounts.Count == 1 ? "account" : "accounts") with refresh errors:
+                @string.Join(", ", errorAccounts.Select(a => a.Name ?? $"#{a.AccountId}")).
+            </span>
+        }
+    </div>
+}
+
 @{
     var anchorDate = new DateTime(anchor.Year, anchor.Month, 1);
     var headingText = period switch
@@ -277,6 +303,7 @@ else
 @code {
     private List<ProjectSpendingSummary>? budgetSummaries;
     private Dictionary<int, ProjectBalanceSummary> projectBalances = new();
+    private DataFreshness? freshness;
     private bool showCreateDialog = false;
     private string newProjectName = "";
     private string newProjectDescription = "";
@@ -391,6 +418,21 @@ else
 
         // Period-independent: linked-account balances are the same regardless of month/YTD/year.
         projectBalances = await BudgetService.GetAllProjectsBalancesAsync();
+
+        // Period-independent: data freshness reflects the most recent upload + per-account
+        // refresh state. Surfaced at the top of the page so stale numbers can't masquerade as
+        // current.
+        freshness = await BudgetService.GetDataFreshnessAsync();
+    }
+
+    private static string FormatRelativeAge(TimeSpan age)
+    {
+        if (age.TotalSeconds < 0) return "in the future";
+        if (age.TotalMinutes < 1) return "just now";
+        if (age.TotalHours < 1) return $"{(int)age.TotalMinutes}m ago";
+        if (age.TotalDays < 1) return $"{(int)age.TotalHours}h ago";
+        if (age.TotalDays < 30) return $"{(int)age.TotalDays}d ago";
+        return $"{(int)(age.TotalDays / 30)}mo ago";
     }
 
     private async Task SetPeriod(string value)

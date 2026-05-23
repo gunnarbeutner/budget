@@ -95,6 +95,7 @@ else
                                         <th>Account</th>
                                         <th>Kind</th>
                                         <th class="text-end">Current balance</th>
+                                        <th>Last refresh</th>
                                         <th>Scope</th>
                                         <th class="text-end"></th>
                                     </tr>
@@ -107,10 +108,30 @@ else
                                         var kind = account?.KindLabel ?? "—";
                                         var balance = account?.CurrentBalance;
                                         var currency = account?.Currency ?? "";
+                                        var lastRefresh = account?.LastRefreshUtc;
+                                        var refreshAge = lastRefresh.HasValue ? DateTime.UtcNow - lastRefresh.Value : (TimeSpan?)null;
+                                        var refreshError = account?.Error;
                                         <tr>
                                             <td>@name</td>
                                             <td><span class="badge bg-secondary">@kind</span></td>
                                             <td class="text-end">@(balance.HasValue ? FormatMoney(balance.Value, currency) : "—")</td>
+                                            <td>
+                                                @if (refreshAge.HasValue)
+                                                {
+                                                    var refreshClass = refreshAge.Value.TotalDays > 7 ? "text-danger fw-semibold"
+                                                        : refreshAge.Value.TotalHours > 36 ? "text-warning fw-semibold"
+                                                        : "text-muted";
+                                                    <span class="small @refreshClass" title="@(lastRefresh!.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))">@FormatRelativeAge(refreshAge.Value)</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="small text-muted">manual</span>
+                                                }
+                                                @if (!string.IsNullOrWhiteSpace(refreshError))
+                                                {
+                                                    <span class="badge bg-danger ms-1" title="@refreshError">error</span>
+                                                }
+                                            </td>
                                             <td>
                                                 <div class="btn-group btn-group-sm" role="group">
                                                     <button type="button"
@@ -659,6 +680,16 @@ else
         return value < 0
             ? $"-{symbol}{Math.Abs(value):N2}"
             : $"{symbol}{value:N2}";
+    }
+
+    private static string FormatRelativeAge(TimeSpan age)
+    {
+        if (age.TotalSeconds < 0) return "in the future";
+        if (age.TotalMinutes < 1) return "just now";
+        if (age.TotalHours < 1) return $"{(int)age.TotalMinutes}m ago";
+        if (age.TotalDays < 1) return $"{(int)age.TotalHours}h ago";
+        if (age.TotalDays < 30) return $"{(int)age.TotalDays}d ago";
+        return $"{(int)(age.TotalDays / 30)}mo ago";
     }
 
     private async Task LoadProjectBudgets()
