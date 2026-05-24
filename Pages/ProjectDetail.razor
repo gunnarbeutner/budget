@@ -4,12 +4,13 @@
 @using OpenBudget.Shared
 @inject BudgetService BudgetService
 @inject NavigationManager Navigation
+@inject IStringLocalizer<ProjectDetail> L
 
-<PageTitle>@(budget?.Name ?? "Project Details")</PageTitle>
+<PageTitle>@(budget?.Name ?? L["PageTitle_Default"])</PageTitle>
 
 @if (budget == null)
 {
-    <p><em>Loading...</em></p>
+    <p><em>@L["Status_Loading"]</em></p>
 }
 else
 {
@@ -22,7 +23,7 @@ else
             }
         </div>
         <div>
-            <button class="btn btn-danger" @onclick="ShowDeleteDialog">Delete Project</button>
+            <button class="btn btn-danger" @onclick="ShowDeleteDialog">@L["Button_DeleteProject"]</button>
         </div>
     </div>
 
@@ -30,32 +31,32 @@ else
         <div class="col-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Category Assignments</h5>
-                    <button class="btn btn-sm btn-primary" @onclick="ShowAddCategoryDialog">Add Category</button>
+                    <h5 class="mb-0">@L["CategoryAssignments_Heading"]</h5>
+                    <button class="btn btn-sm btn-primary" @onclick="ShowAddCategoryDialog">@L["Button_AddCategory"]</button>
                 </div>
                 <div class="card-body">
                     @if (!budget.CategoryAssignments.Any())
                     {
-                        <p class="text-muted">No categories assigned yet.</p>
+                        <p class="text-muted">@L["CategoryAssignments_Empty"]</p>
                     }
                     else
                     {
                         <table class="table">
                             <thead>
                                 <tr>
-                                    <th>Category</th>
+                                    <th>@L["Table_Category"]</th>
                                     <th></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach (var assignment in budget.CategoryAssignments)
                                 {
-                                    var categoryName = categoryNames.GetValueOrDefault(assignment.CategoryId, "Loading...");
+                                    var categoryName = categoryNames.GetValueOrDefault(assignment.CategoryId, L["Status_Loading"].Value);
 
                                     <tr>
                                         <td>@categoryName</td>
                                         <td>
-                                            <button class="btn btn-sm btn-danger" @onclick="() => RemoveCategory(assignment.CategoryId)">Remove</button>
+                                            <button class="btn btn-sm btn-danger" @onclick="() => RemoveCategory(assignment.CategoryId)">@L["Button_Remove"]</button>
                                         </td>
                                     </tr>
                                 }
@@ -71,20 +72,20 @@ else
         <div class="col-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Accounts</h5>
-                    <button class="btn btn-sm btn-primary" @onclick="ShowAddAccountDialog">Add Account</button>
+                    <h5 class="mb-0">@L["Accounts_Heading"]</h5>
+                    <button class="btn btn-sm btn-primary" @onclick="ShowAddAccountDialog">@L["Button_AddAccount"]</button>
                 </div>
                 <div class="card-body">
                     <p class="text-muted small mb-3">
-                        Link MoneyMoney accounts that fund this project. <strong>Shared</strong> only counts transactions whose category is assigned to the project (use for a main account that mixes traffic). <strong>Exclusive</strong> counts every transaction in the account (use for dedicated accounts like a rental Mietkautionskonto).
+                        @L["Accounts_Description_Before"]<strong>@L["Accounts_Description_Shared"]</strong>@L["Accounts_Description_Middle"]<strong>@L["Accounts_Description_Exclusive"]</strong>@L["Accounts_Description_After"]
                     </p>
                     @if (accountAssignments == null || allAccounts == null)
                     {
-                        <p class="text-muted mb-0"><em>Loading…</em></p>
+                        <p class="text-muted mb-0"><em>@L["Status_LoadingEllipsis"]</em></p>
                     }
                     else if (!accountAssignments.Any())
                     {
-                        <p class="text-muted mb-0">No accounts assigned yet.</p>
+                        <p class="text-muted mb-0">@L["Accounts_Empty"]</p>
                     }
                     else
                     {
@@ -92,11 +93,11 @@ else
                             <table class="table table-sm mb-0">
                                 <thead>
                                     <tr>
-                                        <th>Account</th>
-                                        <th>Kind</th>
-                                        <th class="text-end">Current balance</th>
-                                        <th>Last refresh</th>
-                                        <th>Scope</th>
+                                        <th>@L["Table_Account"]</th>
+                                        <th>@L["Table_Kind"]</th>
+                                        <th class="text-end">@L["Table_CurrentBalance"]</th>
+                                        <th>@L["Table_LastRefresh"]</th>
+                                        <th>@L["Table_Scope"]</th>
                                         <th class="text-end"></th>
                                     </tr>
                                 </thead>
@@ -104,8 +105,8 @@ else
                                     @foreach (var assignment in accountAssignments)
                                     {
                                         var account = allAccounts.FirstOrDefault(a => a.Id == assignment.AccountId);
-                                        var name = account?.Name ?? $"Account #{assignment.AccountId} (missing)";
-                                        var kind = account?.KindLabel ?? "—";
+                                        var name = account?.Name ?? L["Account_MissingName", assignment.AccountId].Value;
+                                        var kind = account?.KindLabel ?? L["Dash"].Value;
                                         var balance = account?.CurrentBalance;
                                         var currency = account?.Currency ?? "";
                                         var lastRefresh = account?.LastRefreshUtc;
@@ -114,7 +115,7 @@ else
                                         <tr>
                                             <td>@name</td>
                                             <td><span class="badge bg-secondary">@kind</span></td>
-                                            <td class="text-end">@(balance.HasValue ? FormatMoney(balance.Value, currency) : "—")</td>
+                                            <td class="text-end">@(balance.HasValue ? FormatMoney(balance.Value, currency) : L["Dash"].Value)</td>
                                             <td>
                                                 @if (refreshAge.HasValue)
                                                 {
@@ -125,11 +126,11 @@ else
                                                 }
                                                 else
                                                 {
-                                                    <span class="small text-muted">manual</span>
+                                                    <span class="small text-muted">@L["Refresh_Manual"]</span>
                                                 }
                                                 @if (!string.IsNullOrWhiteSpace(refreshError))
                                                 {
-                                                    <span class="badge bg-danger ms-1" title="@refreshError">error</span>
+                                                    <span class="badge bg-danger ms-1" title="@refreshError">@L["Refresh_Error"]</span>
                                                 }
                                             </td>
                                             <td>
@@ -137,17 +138,17 @@ else
                                                     <button type="button"
                                                             class="btn @(assignment.Scope == AccountScope.Shared ? "btn-primary" : "btn-outline-primary")"
                                                             @onclick="() => SetAccountScope(assignment.AccountId, AccountScope.Shared)">
-                                                        Shared
+                                                        @L["Scope_Shared"]
                                                     </button>
                                                     <button type="button"
                                                             class="btn @(assignment.Scope == AccountScope.Exclusive ? "btn-primary" : "btn-outline-primary")"
                                                             @onclick="() => SetAccountScope(assignment.AccountId, AccountScope.Exclusive)">
-                                                        Exclusive
+                                                        @L["Scope_Exclusive"]
                                                     </button>
                                                 </div>
                                             </td>
                                             <td class="text-end">
-                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveAccount(assignment.AccountId)">Remove</button>
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveAccount(assignment.AccountId)">@L["Button_Remove"]</button>
                                             </td>
                                         </tr>
                                     }
@@ -164,19 +165,18 @@ else
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0">Category Income/Expense Configuration</h5>
+                    <h5 class="mb-0">@L["IncomeExpense_Heading"]</h5>
                 </div>
                 <div class="card-body">
                     <p class="text-muted">
-                        Configure which categories are income vs expense for cashflow analysis.
-                        Categories not marked as income will default to expenses. Settings on parent categories inherit to children.
+                        @L["IncomeExpense_Description"]
                     </p>
 
                     @if (isLoadingCategoryTypes)
                     {
                         <div class="text-center">
                             <div class="spinner-border" role="status">
-                                <span class="visually-hidden">Loading...</span>
+                                <span class="visually-hidden">@L["Status_Loading"]</span>
                             </div>
                         </div>
                     }
@@ -186,9 +186,9 @@ else
                             <table class="table table-sm">
                                 <thead>
                                     <tr>
-                                        <th>Category</th>
-                                        <th>Type</th>
-                                        <th>Action</th>
+                                        <th>@L["Table_Category"]</th>
+                                        <th>@L["Table_Type"]</th>
+                                        <th>@L["Table_Action"]</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -199,9 +199,9 @@ else
                                         var isInherited = typeInfo.IsInherited;
                                         var isExplicit = typeInfo.IsExplicit;
 
-                                        var displayType = isIncome ? "Income" : "Expense";
-                                        if (isInherited) displayType += " (inherited)";
-                                        else if (!isExplicit) displayType += " (default)";
+                                        var displayType = isIncome ? L["Type_Income"].Value : L["Type_Expense"].Value;
+                                        if (isInherited) displayType += L["Type_Inherited_Suffix"].Value;
+                                        else if (!isExplicit) displayType += L["Type_Default_Suffix"].Value;
 
                                         var badgeClass = isIncome ? "bg-success" : "bg-danger";
                                         if (isInherited || !isExplicit) badgeClass = isIncome ? "bg-success bg-opacity-50" : "bg-danger bg-opacity-50";
@@ -214,18 +214,18 @@ else
                                                     <button type="button" class="btn btn-outline-success"
                                                             @onclick="() => SetCategoryType(categoryWithLevel.CategoryGroup.Id, categoryWithLevel.CategoryGroup.ItemType, true)"
                                                             disabled="@isInherited">
-                                                        Income
+                                                        @L["Type_Income"]
                                                     </button>
                                                     <button type="button" class="btn btn-outline-danger"
                                                             @onclick="() => SetCategoryType(categoryWithLevel.CategoryGroup.Id, categoryWithLevel.CategoryGroup.ItemType, false)"
                                                             disabled="@isInherited">
-                                                        Expense
+                                                        @L["Type_Expense"]
                                                     </button>
                                                     @if (isExplicit)
                                                     {
                                                         <button type="button" class="btn btn-outline-secondary"
                                                                 @onclick="() => ClearCategoryType(categoryWithLevel.CategoryGroup.Id, categoryWithLevel.CategoryGroup.ItemType)">
-                                                            Clear
+                                                            @L["Button_Clear"]
                                                         </button>
                                                     }
                                                 </div>
@@ -239,7 +239,7 @@ else
                     else
                     {
                         <div class="alert alert-info">
-                            No categories assigned to this project yet.
+                            @L["IncomeExpense_Empty"]
                         </div>
                     }
                 </div>
@@ -251,17 +251,16 @@ else
         <div class="col-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Budget Tracking Configuration</h5>
-                    <button class="btn btn-sm btn-primary" @onclick="ShowTrackingDialog">Configure Tracking</button>
+                    <h5 class="mb-0">@L["Tracking_Heading"]</h5>
+                    <button class="btn btn-sm btn-primary" @onclick="ShowTrackingDialog">@L["Button_ConfigureTracking"]</button>
                 </div>
                 <div class="card-body">
                     <p class="text-muted">
-                        Configure which categories/groups to track for budgets and analysis.
-                        This controls what appears in budget creation and spending analysis.
+                        @L["Tracking_Description"]
                     </p>
                     @if (trackingItems == null || !trackingItems.Any())
                     {
-                        <p class="text-muted">No tracking items configured. Click "Configure Tracking" to set up.</p>
+                        <p class="text-muted">@L["Tracking_Empty"]</p>
                     }
                     else
                     {
@@ -269,11 +268,11 @@ else
                             @foreach (var item in trackingItems)
                             {
                                 var name = item.CategoryGroupId.HasValue
-                                    ? trackingCategoryNames.GetValueOrDefault(item.CategoryGroupId.Value, "Loading...")
-                                    : trackingCategoryNames.GetValueOrDefault(item.CategoryId!.Value, "Loading...");
-                                var type = item.CategoryGroupId.HasValue ? "Group" : "Category";
+                                    ? trackingCategoryNames.GetValueOrDefault(item.CategoryGroupId.Value, L["Status_Loading"].Value)
+                                    : trackingCategoryNames.GetValueOrDefault(item.CategoryId!.Value, L["Status_Loading"].Value);
+                                var type = item.CategoryGroupId.HasValue ? L["Tracking_Item_Group"].Value : L["Tracking_Item_Category"].Value;
 
-                                <span class="badge bg-secondary">@name (@type)</span>
+                                <span class="badge bg-secondary">@L["Tracking_Item_Label", name, type]</span>
                             }
                         </div>
                     }
@@ -286,28 +285,28 @@ else
         <div class="col-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Budgets</h5>
-                    <a class="btn btn-sm btn-primary" href="/budgets/wizard?projectId=@BudgetId">New Budget</a>
+                    <h5 class="mb-0">@L["Budgets_Heading"]</h5>
+                    <a class="btn btn-sm btn-primary" href="/budgets/wizard?projectId=@BudgetId">@L["Button_NewBudget"]</a>
                 </div>
                 <div class="card-body">
                     @if (projectBudgets == null)
                     {
-                        <p class="text-muted">Loading…</p>
+                        <p class="text-muted">@L["Status_LoadingEllipsis"]</p>
                     }
                     else if (!projectBudgets.Any())
                     {
-                        <p class="text-muted">No budgets yet. Click "New Budget" to launch the wizard.</p>
+                        <p class="text-muted">@L["Budgets_Empty"]</p>
                     }
                     else
                     {
                         <table class="table table-sm mb-0">
                             <thead>
                                 <tr>
-                                    <th>Year</th>
-                                    <th>Name</th>
-                                    <th>Notes</th>
-                                    <th>Last modified</th>
-                                    <th class="text-end">Actions</th>
+                                    <th>@L["Table_Year"]</th>
+                                    <th>@L["Table_Name"]</th>
+                                    <th>@L["Table_Notes"]</th>
+                                    <th>@L["Table_LastModified"]</th>
+                                    <th class="text-end">@L["Table_Actions"]</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -319,7 +318,7 @@ else
                                             @b.Name
                                             @if (b.IsActive)
                                             {
-                                                <span class="badge bg-success ms-1">Active</span>
+                                                <span class="badge bg-success ms-1">@L["Badge_Active"]</span>
                                             }
                                         </td>
                                         <td>@b.Notes</td>
@@ -331,11 +330,11 @@ else
                                             @if (!b.IsActive)
                                             {
                                                 <button class="btn btn-sm btn-outline-success me-1"
-                                                        title="Use this budget on the dashboard for @b.Year"
-                                                        @onclick="() => SetBudgetActive(b.Id)">Make Active</button>
+                                                        title="@L["Title_MakeActive", b.Year]"
+                                                        @onclick="() => SetBudgetActive(b.Id)">@L["Button_MakeActive"]</button>
                                             }
-                                            <a class="btn btn-sm btn-outline-primary me-1" href="/budgets/@b.Id/edit">Edit</a>
-                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ShowDeleteBudgetDialog(b)">Delete</button>
+                                            <a class="btn btn-sm btn-outline-primary me-1" href="/budgets/@b.Id/edit">@L["Button_Edit"]</a>
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ShowDeleteBudgetDialog(b)">@L["Button_Delete"]</button>
                                         </td>
                                     </tr>
                                 }
@@ -354,16 +353,16 @@ else
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Delete Budget</h5>
+                    <h5 class="modal-title">@L["Modal_DeleteBudget_Title"]</h5>
                     <button type="button" class="btn-close" @onclick="HideDeleteBudgetDialog"></button>
                 </div>
                 <div class="modal-body">
-                    <p>Delete the @budgetPendingDelete.Year budget@(string.IsNullOrEmpty(budgetPendingDelete.Notes) ? "" : $" ({budgetPendingDelete.Notes})")?</p>
-                    <p class="text-muted small mb-0">All of its monthly entries will be removed. This cannot be undone.</p>
+                    <p>@L["Modal_DeleteBudget_Body", budgetPendingDelete.Year, string.IsNullOrEmpty(budgetPendingDelete.Notes) ? "" : L["Modal_DeleteBudget_Notes", budgetPendingDelete.Notes].Value]</p>
+                    <p class="text-muted small mb-0">@L["Modal_DeleteBudget_Warning"]</p>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="HideDeleteBudgetDialog">Cancel</button>
-                    <button class="btn btn-danger" @onclick="ConfirmDeleteBudget">Delete</button>
+                    <button class="btn btn-secondary" @onclick="HideDeleteBudgetDialog">@L["Button_Cancel"]</button>
+                    <button class="btn btn-danger" @onclick="ConfirmDeleteBudget">@L["Button_Delete"]</button>
                 </div>
             </div>
         </div>
@@ -377,16 +376,16 @@ else
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Delete Project</h5>
+                    <h5 class="modal-title">@L["Modal_DeleteProject_Title"]</h5>
                     <button type="button" class="btn-close" @onclick="HideDeleteDialog"></button>
                 </div>
                 <div class="modal-body">
-                    <p>Are you sure you want to delete <strong>@budget?.Name</strong>?</p>
-                    <p class="text-muted small mb-0">This will also remove the project's tracking items, category type assignments, and any budgets attached to it. This cannot be undone.</p>
+                    <p>@L["Modal_DeleteProject_Body_Before"]<strong>@budget?.Name</strong>@L["Modal_DeleteProject_Body_After"]</p>
+                    <p class="text-muted small mb-0">@L["Modal_DeleteProject_Warning"]</p>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="HideDeleteDialog">Cancel</button>
-                    <button type="button" class="btn btn-danger" @onclick="DeleteProject">Delete</button>
+                    <button type="button" class="btn btn-secondary" @onclick="HideDeleteDialog">@L["Button_Cancel"]</button>
+                    <button type="button" class="btn btn-danger" @onclick="DeleteProject">@L["Button_Delete"]</button>
                 </div>
             </div>
         </div>
@@ -400,13 +399,12 @@ else
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Configure Budget Tracking</h5>
+                    <h5 class="modal-title">@L["Modal_ConfigureTracking_Title"]</h5>
                     <button type="button" class="btn-close" @onclick="HideTrackingDialog"></button>
                 </div>
                 <div class="modal-body">
                     <p class="text-muted">
-                        Select which categories/groups to track for budgeting and analysis.
-                        Deselecting a parent will automatically select its children for more granular control.
+                        @L["Modal_ConfigureTracking_Description"]
                     </p>
 
                     <div style="max-height: 500px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.25rem; padding: 0.5rem;">
@@ -440,8 +438,8 @@ else
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="HideTrackingDialog">Cancel</button>
-                    <button type="button" class="btn btn-primary" @onclick="SaveTrackingConfiguration">Save</button>
+                    <button type="button" class="btn btn-secondary" @onclick="HideTrackingDialog">@L["Button_Cancel"]</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveTrackingConfiguration">@L["Button_Save"]</button>
                 </div>
             </div>
         </div>
@@ -455,13 +453,13 @@ else
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Add Account to Project</h5>
+                    <h5 class="modal-title">@L["Modal_AddAccount_Title"]</h5>
                     <button type="button" class="btn-close" @onclick="HideAddAccountDialog"></button>
                 </div>
                 <div class="modal-body">
                     @if (allAccounts == null || accountAssignments == null)
                     {
-                        <p><em>Loading accounts...</em></p>
+                        <p><em>@L["Status_LoadingAccounts"]</em></p>
                     }
                     else
                     {
@@ -469,14 +467,14 @@ else
                         var unassigned = allAccounts.Where(a => !assignedIds.Contains(a.Id)).ToList();
                         if (!unassigned.Any())
                         {
-                            <p class="text-muted mb-0">All accounts are already assigned.</p>
+                            <p class="text-muted mb-0">@L["AddAccount_AllAssigned"]</p>
                         }
                         else
                         {
                             <div class="mb-3">
-                                <label class="form-label">Account</label>
+                                <label class="form-label">@L["Form_AccountLabel"]</label>
                                 <select class="form-select" @bind="addAccountSelectedId" size="12">
-                                    <option value="0">-- Select an account --</option>
+                                    <option value="0">@L["Form_SelectAccount"]</option>
                                     @foreach (var account in unassigned)
                                     {
                                         var balance = account.CurrentBalance;
@@ -487,30 +485,30 @@ else
                                 </select>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Scope</label>
+                                <label class="form-label">@L["Form_ScopeLabel"]</label>
                                 <div class="btn-group d-flex" role="group">
                                     <input type="radio" class="btn-check" name="addAccountScope" id="addAccountScopeShared"
                                            checked="@(addAccountSelectedScope == AccountScope.Shared)"
                                            @onchange="@(() => addAccountSelectedScope = AccountScope.Shared)" />
-                                    <label class="btn btn-outline-primary" for="addAccountScopeShared">Shared</label>
+                                    <label class="btn btn-outline-primary" for="addAccountScopeShared">@L["Scope_Shared"]</label>
 
                                     <input type="radio" class="btn-check" name="addAccountScope" id="addAccountScopeExclusive"
                                            checked="@(addAccountSelectedScope == AccountScope.Exclusive)"
                                            @onchange="@(() => addAccountSelectedScope = AccountScope.Exclusive)" />
-                                    <label class="btn btn-outline-primary" for="addAccountScopeExclusive">Exclusive</label>
+                                    <label class="btn btn-outline-primary" for="addAccountScopeExclusive">@L["Scope_Exclusive"]</label>
                                 </div>
                                 <small class="form-text text-muted">
-                                    Shared: only transactions in the project's categories count. Exclusive: every transaction in the account counts.
+                                    @L["AddAccount_ScopeHelp"]
                                 </small>
                             </div>
                         }
                     }
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="HideAddAccountDialog">Cancel</button>
+                    <button type="button" class="btn btn-secondary" @onclick="HideAddAccountDialog">@L["Button_Cancel"]</button>
                     <button type="button" class="btn btn-primary"
                             @onclick="AddAccount"
-                            disabled="@(addAccountSelectedId == 0)">Add Account</button>
+                            disabled="@(addAccountSelectedId == 0)">@L["Button_AddAccount"]</button>
                 </div>
             </div>
         </div>
@@ -524,27 +522,27 @@ else
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Add Category to Project</h5>
+                    <h5 class="modal-title">@L["Modal_AddCategory_Title"]</h5>
                     <button type="button" class="btn-close" @onclick="HideAddCategoryDialog"></button>
                 </div>
                 <div class="modal-body">
                     @if (availableCategoriesWithCounts == null)
                     {
-                        <p><em>Loading categories...</em></p>
+                        <p><em>@L["Status_LoadingCategories"]</em></p>
                     }
                     else
                     {
                         <div class="mb-3">
-                            <label class="form-label">Select Category</label>
+                            <label class="form-label">@L["Form_SelectCategoryLabel"]</label>
                             <select class="form-select" @bind="selectedCategoryId" size="15">
-                                <option value="0">-- Select a category --</option>
+                                <option value="0">@L["Form_SelectCategory"]</option>
                                 @{
                                     // Group by parent to show hierarchy
                                     var rootCategories = availableCategoriesWithCounts.Where(c => c.IsRootCategory).OrderBy(c => c.CategoryGroup.Name);
 
                                     foreach (var rootCat in rootCategories)
                                     {
-                                        var childInfo = rootCat.DirectChildCount > 0 ? $" ({rootCat.DirectChildCount} sub-categories)" : "";
+                                        var childInfo = rootCat.DirectChildCount > 0 ? L["Form_SubCategories", rootCat.DirectChildCount].Value : "";
                                         <option value="@rootCat.CategoryGroup.Id">@rootCat.CategoryGroup.Name@childInfo</option>
 
                                         // Show first-level children (e.g., Auslagen, Barauszahlung under Umbuchungen)
@@ -554,7 +552,7 @@ else
 
                                         foreach (var child1 in firstLevelChildren)
                                         {
-                                            var child1Info = child1.DirectChildCount > 0 ? $" ({child1.DirectChildCount} sub-categories)" : "";
+                                            var child1Info = child1.DirectChildCount > 0 ? L["Form_SubCategories", child1.DirectChildCount].Value : "";
                                             <option value="@child1.CategoryGroup.Id">  ↳ @child1.CategoryGroup.Name@child1Info</option>
 
                                             // Show second-level children (e.g., Sparkasse under Barauszahlung)
@@ -564,21 +562,21 @@ else
 
                                             foreach (var child2 in secondLevelChildren)
                                             {
-                                                var child2Info = child2.DirectChildCount > 0 ? $" ({child2.DirectChildCount} sub-categories)" : "";
+                                                var child2Info = child2.DirectChildCount > 0 ? L["Form_SubCategories", child2.DirectChildCount].Value : "";
                                                 <option value="@child2.CategoryGroup.Id">    ↳↳ @child2.CategoryGroup.Name@child2Info</option>
                                             }
                                         }
                                     }
                                 }
                             </select>
-                            <small class="form-text text-muted">Parent categories automatically include all their sub-categories in project calculations</small>
+                            <small class="form-text text-muted">@L["AddCategory_Help"]</small>
                         </div>
 
                     }
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="HideAddCategoryDialog">Cancel</button>
-                    <button type="button" class="btn btn-primary" @onclick="AddCategory" disabled="@(selectedCategoryId == 0)">Add Category</button>
+                    <button type="button" class="btn btn-secondary" @onclick="HideAddCategoryDialog">@L["Button_Cancel"]</button>
+                    <button type="button" class="btn btn-primary" @onclick="AddCategory" disabled="@(selectedCategoryId == 0)">@L["Button_AddCategory"]</button>
                 </div>
             </div>
         </div>
@@ -682,14 +680,14 @@ else
             : $"{symbol}{value:N2}";
     }
 
-    private static string FormatRelativeAge(TimeSpan age)
+    private string FormatRelativeAge(TimeSpan age)
     {
-        if (age.TotalSeconds < 0) return "in the future";
-        if (age.TotalMinutes < 1) return "just now";
-        if (age.TotalHours < 1) return $"{(int)age.TotalMinutes}m ago";
-        if (age.TotalDays < 1) return $"{(int)age.TotalHours}h ago";
-        if (age.TotalDays < 30) return $"{(int)age.TotalDays}d ago";
-        return $"{(int)(age.TotalDays / 30)}mo ago";
+        if (age.TotalSeconds < 0) return L["RelativeAge_Future"];
+        if (age.TotalMinutes < 1) return L["RelativeAge_JustNow"];
+        if (age.TotalHours < 1) return L["RelativeAge_MinutesAgo", (int)age.TotalMinutes];
+        if (age.TotalDays < 1) return L["RelativeAge_HoursAgo", (int)age.TotalHours];
+        if (age.TotalDays < 30) return L["RelativeAge_DaysAgo", (int)age.TotalDays];
+        return L["RelativeAge_MonthsAgo", (int)(age.TotalDays / 30)];
     }
 
     private async Task LoadProjectBudgets()
@@ -734,7 +732,7 @@ else
                 var categoryGroup = await BudgetService.GetCategoryWithSubCategoriesAsync(assignment.CategoryId);
                 if (categoryGroup != null)
                 {
-                    categoryNames[assignment.CategoryId] = categoryGroup.Name ?? "Unknown";
+                    categoryNames[assignment.CategoryId] = categoryGroup.Name ?? L["Unknown"].Value;
                 }
             }
         }
@@ -795,7 +793,7 @@ else
                     var categoryGroup = await BudgetService.GetCategoryWithSubCategoriesAsync(item.CategoryGroupId.Value);
                     if (categoryGroup != null)
                     {
-                        trackingCategoryNames[item.CategoryGroupId.Value] = categoryGroup.Name ?? "Unknown";
+                        trackingCategoryNames[item.CategoryGroupId.Value] = categoryGroup.Name ?? L["Unknown"].Value;
                     }
                 }
                 else if (item.CategoryId.HasValue)
@@ -804,7 +802,7 @@ else
                     var category = categories.FirstOrDefault(c => c.Id == item.CategoryId.Value);
                     if (category != null)
                     {
-                        trackingCategoryNames[item.CategoryId.Value] = category.Name ?? "Unknown";
+                        trackingCategoryNames[item.CategoryId.Value] = category.Name ?? L["Unknown"].Value;
                     }
                 }
             }

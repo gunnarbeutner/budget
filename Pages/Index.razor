@@ -6,8 +6,9 @@
 @inject BudgetService BudgetService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject IStringLocalizer<Index> L
 
-<PageTitle>Dashboard</PageTitle>
+<PageTitle>@L["PageTitle"]</PageTitle>
 
 @if (freshness != null)
 {
@@ -21,7 +22,7 @@
     var isFresh = age is { TotalHours: <= 36 } && !errorAccounts.Any();
     if (!isFresh)
     {
-        string ageLabel = age.HasValue ? FormatRelativeAge(age.Value) : "unknown";
+        string ageLabel = age.HasValue ? FormatRelativeAge(age.Value) : L["Freshness_Unknown"];
         string ageClass = age switch
         {
             null => "alert-warning",
@@ -29,12 +30,13 @@
             { TotalHours: > 36 } => "alert-warning",
             _ => "alert-secondary"
         };
+        var errorKey = errorAccounts.Count == 1 ? "Freshness_RefreshErrors_One" : "Freshness_RefreshErrors_Other";
         <div class="alert @ageClass py-1 px-2 small mb-3 d-flex flex-wrap align-items-center gap-2">
-            <span>MoneyMoney data uploaded <strong>@ageLabel</strong>@(uploaded.HasValue ? $" ({uploaded.Value.ToLocalTime():yyyy-MM-dd HH:mm})" : "").</span>
+            <span>@L["Freshness_Uploaded"] <strong>@ageLabel</strong>@(uploaded.HasValue ? $" ({uploaded.Value.ToLocalTime():yyyy-MM-dd HH:mm})" : "").</span>
             @if (errorAccounts.Any())
             {
                 <span>
-                    @errorAccounts.Count @(errorAccounts.Count == 1 ? "account" : "accounts") with refresh errors:
+                    @L[errorKey, errorAccounts.Count]
                     @string.Join(", ", errorAccounts.Select(a => a.Name ?? $"#{a.AccountId}")).
                 </span>
             }
@@ -46,20 +48,20 @@
     var anchorDate = new DateTime(anchor.Year, anchor.Month, 1);
     var headingText = period switch
     {
-        "year" => $"Year {anchor.Year}",
-        "ytd" => $"YTD through {anchorDate:MMMM yyyy}",
+        "year" => L["Heading_Year", anchor.Year].Value,
+        "ytd" => L["Heading_YTD", anchorDate.ToString("MMMM yyyy")].Value,
         _ => anchorDate.ToString("MMMM yyyy")
     };
 }
 <div class="d-flex flex-wrap mb-4 align-items-center gap-2">
     <button type="button" class="btn btn-sm btn-outline-secondary"
-            @onclick="() => StepAnchor(-1)" aria-label="Previous">
+            @onclick="() => StepAnchor(-1)" aria-label="@L["Aria_Previous"]">
         <span class="oi oi-chevron-left" aria-hidden="true"></span>
     </button>
     <h3 class="mb-0 d-inline-flex align-items-center gap-2 position-relative"
         role="button" tabindex="0"
         style="cursor: pointer;"
-        title="Pick month"
+        title="@L["Title_PickMonth"]"
         @onclick="OpenMonthPicker"
         @onkeydown="OnHeadingKey">
         <span>@headingText</span>
@@ -70,36 +72,36 @@
                tabindex="-1" aria-hidden="true" />
     </h3>
     <button type="button" class="btn btn-sm btn-outline-secondary"
-            @onclick="() => StepAnchor(1)" aria-label="Next"
+            @onclick="() => StepAnchor(1)" aria-label="@L["Aria_Next"]"
             disabled="@IsAtMaxAnchor">
         <span class="oi oi-chevron-right" aria-hidden="true"></span>
     </button>
     <button type="button" class="btn btn-sm btn-outline-secondary"
-            @onclick="GoToToday" disabled="@IsTodayAnchor">Today</button>
+            @onclick="GoToToday" disabled="@IsTodayAnchor">@L["Button_Today"]</button>
     <div>
-        <div class="btn-group btn-group-sm" role="group" aria-label="Period">
+        <div class="btn-group btn-group-sm" role="group" aria-label="@L["Aria_Period"]">
             <button type="button"
                     class="btn @(period == "month" ? "btn-primary" : "btn-outline-primary")"
-                    @onclick='() => SetPeriod("month")'>Month</button>
+                    @onclick='() => SetPeriod("month")'>@L["Button_Month"]</button>
             <button type="button"
                     class="btn @(period == "ytd" ? "btn-primary" : "btn-outline-primary")"
-                    @onclick='() => SetPeriod("ytd")'>YTD</button>
+                    @onclick='() => SetPeriod("ytd")'>@L["Button_YTD"]</button>
             <button type="button"
                     class="btn @(period == "year" ? "btn-primary" : "btn-outline-primary")"
-                    @onclick='() => SetPeriod("year")'>Year</button>
+                    @onclick='() => SetPeriod("year")'>@L["Button_Year"]</button>
         </div>
     </div>
 </div>
 
 @if (budgetSummaries == null)
 {
-    <p><em>Loading project data...</em></p>
+    <p><em>@L["Status_Loading"]</em></p>
 }
 else if (!budgetSummaries.Any())
 {
     <div class="alert alert-info">
-        <h4>Welcome to MoneyMoney Budget Tracker!</h4>
-        <p>You don't have any projects yet. Click "New Project" below to get started.</p>
+        <h4>@L["Welcome_Heading"]</h4>
+        <p>@L["Welcome_Body"]</p>
     </div>
 }
 else
@@ -128,18 +130,18 @@ else
                         <h5 class="mb-0">@summary.ProjectName</h5>
                         <div class="d-flex align-items-center gap-2">
                             <button type="button" class="btn btn-link text-white p-0"
-                                    title="Move up" aria-label="Move up"
+                                    title="@L["Aria_MoveUp"]" aria-label="@L["Aria_MoveUp"]"
                                     disabled="@isFirst"
                                     @onclick="() => MoveProject(projectId, -1)">
                                 <span class="oi oi-chevron-top" aria-hidden="true"></span>
                             </button>
                             <button type="button" class="btn btn-link text-white p-0"
-                                    title="Move down" aria-label="Move down"
+                                    title="@L["Aria_MoveDown"]" aria-label="@L["Aria_MoveDown"]"
                                     disabled="@isLast"
                                     @onclick="() => MoveProject(projectId, 1)">
                                 <span class="oi oi-chevron-bottom" aria-hidden="true"></span>
                             </button>
-                            <a href="/projects/@projectId" class="text-white text-decoration-none" title="Project settings" aria-label="Project settings">
+                            <a href="/projects/@projectId" class="text-white text-decoration-none" title="@L["Aria_ProjectSettings"]" aria-label="@L["Aria_ProjectSettings"]">
                                 <span class="oi oi-cog" aria-hidden="true"></span>
                             </a>
                         </div>
@@ -153,13 +155,13 @@ else
                         {
                             <div class="d-flex justify-content-between align-items-baseline pb-2 mb-3 border-bottom">
                                 <div>
-                                    <div class="text-muted small">Current balance</div>
+                                    <div class="text-muted small">@L["Label_CurrentBalance"]</div>
                                     <div class="h5 mb-0 text-nowrap @(balanceInfo!.Balance < 0 ? "text-danger" : "")">
                                         €@balanceInfo.Balance.ToString("N2")
                                     </div>
                                 </div>
                                 <div class="text-muted small">
-                                    @balanceInfo.AccountCount @(balanceInfo.AccountCount == 1 ? "account" : "accounts")
+                                    @L[balanceInfo.AccountCount == 1 ? "Label_Account_One" : "Label_Account_Other", balanceInfo.AccountCount]
                                 </div>
                             </div>
                         }
@@ -167,15 +169,15 @@ else
                         {
                             <div class="row text-center mb-3">
                                 <div class="col-4">
-                                    <div class="text-muted small">Budget</div>
+                                    <div class="text-muted small">@L["Label_Budget"]</div>
                                     <div class="h5 text-nowrap">€@summary.TotalBudget.ToString("N2")</div>
                                 </div>
                                 <div class="col-4">
-                                    <div class="text-muted small">Spent</div>
+                                    <div class="text-muted small">@L["Label_Spent"]</div>
                                     <div class="h5 text-nowrap text-@statusClass">€@summary.TotalSpent.ToString("N2")</div>
                                 </div>
                                 <div class="col-4">
-                                    <div class="text-muted small">Remaining</div>
+                                    <div class="text-muted small">@L["Label_Remaining"]</div>
                                     <div class="h5 text-nowrap text-@statusClass">€@summary.TotalRemaining.ToString("N2")</div>
                                 </div>
                             </div>
@@ -195,20 +197,20 @@ else
                         {
                             <div class="row text-center mb-3">
                                 <div class="col-4">
-                                    <div class="text-muted small">Income</div>
+                                    <div class="text-muted small">@L["Label_Income"]</div>
                                     <div class="h5 text-nowrap text-success">€@summary.MonthIncome.ToString("N2")</div>
                                 </div>
                                 <div class="col-4">
-                                    <div class="text-muted small">Expenses</div>
+                                    <div class="text-muted small">@L["Label_Expenses"]</div>
                                     <div class="h5 text-nowrap text-danger">€@summary.MonthExpenses.ToString("N2")</div>
                                 </div>
                                 <div class="col-4">
-                                    <div class="text-muted small">Net</div>
+                                    <div class="text-muted small">@L["Label_Net"]</div>
                                     <div class="h5 text-nowrap text-@statusClass">€@summary.MonthNet.ToString("N2")</div>
                                 </div>
                             </div>
                             <p class="small text-muted mb-3">
-                                No budget for @summary.Year — showing @(summary.IsSingleMonth ? "this month's" : "year-to-date") actuals.
+                                @L[summary.IsSingleMonth ? "NoBudget_ThisMonth" : "NoBudget_YearToDate", summary.Year]
                             </p>
                         }
 
@@ -223,7 +225,7 @@ else
                         @if (expenseCategories.Any())
                         {
                             <div class="mt-3">
-                                <h6 class="text-muted">@(isExpanded ? "Categories:" : "Top Categories:")</h6>
+                                <h6 class="text-muted">@(isExpanded ? L["Label_Categories"] : L["Label_TopCategories"])</h6>
                                 @foreach (var cat in shownCategories)
                                 {
                                     <div class="mb-2">
@@ -257,15 +259,15 @@ else
                                 {
                                     <button type="button" class="btn btn-sm btn-link p-0"
                                             @onclick="() => ToggleExpanded(projectId)">
-                                        @(isExpanded ? "Show top 3" : $"Show all ({expenseCategories.Count})")
+                                        @(isExpanded ? L["Button_ShowTop3"] : L["Button_ShowAll", expenseCategories.Count])
                                     </button>
                                 }
                             </div>
                         }
 
                         <div class="mt-3 d-flex gap-2">
-                            <a href="/budgets?projectId=@summary.ProjectId" class="btn btn-sm btn-outline-primary flex-fill">Budgets</a>
-                            <a href="/cashflow?projectId=@summary.ProjectId" class="btn btn-sm btn-outline-primary flex-fill">Cashflow</a>
+                            <a href="/budgets?projectId=@summary.ProjectId" class="btn btn-sm btn-outline-primary flex-fill">@L["Button_Budgets"]</a>
+                            <a href="/cashflow?projectId=@summary.ProjectId" class="btn btn-sm btn-outline-primary flex-fill">@L["Button_Cashflow"]</a>
                         </div>
                     </div>
                 </div>
@@ -275,7 +277,7 @@ else
 }
 
 <div class="mt-4">
-    <button class="btn btn-primary" @onclick="ShowCreateDialog">New Project</button>
+    <button class="btn btn-primary" @onclick="ShowCreateDialog">@L["Button_NewProject"]</button>
 </div>
 
 @if (showCreateDialog)
@@ -284,22 +286,22 @@ else
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Create New Project</h5>
+                    <h5 class="modal-title">@L["Modal_CreateNewProject"]</h5>
                     <button type="button" class="btn-close" @onclick="HideCreateDialog"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label for="projectName" class="form-label">Name</label>
+                        <label for="projectName" class="form-label">@L["Form_NameLabel"]</label>
                         <input type="text" class="form-control" id="projectName" @bind="newProjectName" />
                     </div>
                     <div class="mb-3">
-                        <label for="projectDescription" class="form-label">Description (optional)</label>
+                        <label for="projectDescription" class="form-label">@L["Form_DescriptionLabel"]</label>
                         <textarea class="form-control" id="projectDescription" @bind="newProjectDescription" rows="3"></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="HideCreateDialog">Cancel</button>
-                    <button type="button" class="btn btn-primary" @onclick="CreateProject" disabled="@string.IsNullOrWhiteSpace(newProjectName)">Create</button>
+                    <button type="button" class="btn btn-secondary" @onclick="HideCreateDialog">@L["Button_Cancel"]</button>
+                    <button type="button" class="btn btn-primary" @onclick="CreateProject" disabled="@string.IsNullOrWhiteSpace(newProjectName)">@L["Button_Create"]</button>
                 </div>
             </div>
         </div>
@@ -432,14 +434,14 @@ else
         freshness = await BudgetService.GetDataFreshnessAsync();
     }
 
-    private static string FormatRelativeAge(TimeSpan age)
+    private string FormatRelativeAge(TimeSpan age)
     {
-        if (age.TotalSeconds < 0) return "in the future";
-        if (age.TotalMinutes < 1) return "just now";
-        if (age.TotalHours < 1) return $"{(int)age.TotalMinutes}m ago";
-        if (age.TotalDays < 1) return $"{(int)age.TotalHours}h ago";
-        if (age.TotalDays < 30) return $"{(int)age.TotalDays}d ago";
-        return $"{(int)(age.TotalDays / 30)}mo ago";
+        if (age.TotalSeconds < 0) return L["RelativeAge_Future"];
+        if (age.TotalMinutes < 1) return L["RelativeAge_JustNow"];
+        if (age.TotalHours < 1) return L["RelativeAge_MinutesAgo", (int)age.TotalMinutes];
+        if (age.TotalDays < 1) return L["RelativeAge_HoursAgo", (int)age.TotalHours];
+        if (age.TotalDays < 30) return L["RelativeAge_DaysAgo", (int)age.TotalDays];
+        return L["RelativeAge_MonthsAgo", (int)(age.TotalDays / 30)];
     }
 
     private async Task SetPeriod(string value)

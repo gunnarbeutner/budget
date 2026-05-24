@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Services;
+using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,6 +12,20 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddScoped<BudgetService>();
+
+// Localization: resx files live under /Resources mirroring the namespace
+// (e.g. Pages/Index.razor → Resources/Pages/Index.de.resx). Culture is picked from the
+// browser's Accept-Language header by default; add CookieRequestCultureProvider later if a
+// manual language picker is needed.
+builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+
+var supportedCultures = new[] { new CultureInfo("en"), new CultureInfo("de") };
+builder.Services.Configure<RequestLocalizationOptions>(options =>
+{
+    options.DefaultRequestCulture = new RequestCulture("en");
+    options.SupportedCultures = supportedCultures;
+    options.SupportedUICultures = supportedCultures;
+});
 
 // Behind a TLS-terminating reverse proxy: trust X-Forwarded-Proto / X-Forwarded-For so the
 // app knows requests are HTTPS even though Kestrel only ever sees plain HTTP on :8080. Without
@@ -71,6 +87,8 @@ if (!app.Environment.IsDevelopment())
 // assets like /_framework/blazor.server.js.
 
 app.UseStaticFiles();
+
+app.UseRequestLocalization();
 
 app.UseRouting();
 

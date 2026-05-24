@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Cashflow</value>
+  </data>
+  <data name="PageTitle_WithProject" xml:space="preserve">
+    <value>Cashflow — {0}</value>
+  </data>
+  <data name="Heading_Cashflow" xml:space="preserve">
+    <value>Cashflow</value>
+  </data>
+  <data name="Heading_Cashflow_WithProject" xml:space="preserve">
+    <value>Cashflow — {0}</value>
+  </data>
+  <data name="NotFound_Heading" xml:space="preserve">
+    <value>Not Found</value>
+  </data>
+  <data name="NotFound_Body_Before" xml:space="preserve">
+    <value>No project specified. Open this page from a project on the </value>
+  </data>
+  <data name="NotFound_Body_LinkText" xml:space="preserve">
+    <value>dashboard</value>
+  </data>
+  <data name="NotFound_Body_After" xml:space="preserve">
+    <value>.</value>
+  </data>
+  <data name="Label_Year" xml:space="preserve">
+    <value>Year</value>
+  </data>
+  <data name="Label_BudgetOptional" xml:space="preserve">
+    <value>Budget (optional)</value>
+  </data>
+  <data name="Option_NoBudget" xml:space="preserve">
+    <value>-- No budget --</value>
+  </data>
+  <data name="Option_BudgetEntry" xml:space="preserve">
+    <value>{0} — {1}</value>
+  </data>
+  <data name="Option_BudgetEntry_Active" xml:space="preserve">
+    <value>{0} — {1} (active)</value>
+  </data>
+  <data name="Label_IncomeProjection" xml:space="preserve">
+    <value>Income projection</value>
+  </data>
+  <data name="Aria_IncomeProjectionMode" xml:space="preserve">
+    <value>Income projection mode</value>
+  </data>
+  <data name="Projection_Breakeven" xml:space="preserve">
+    <value>Break-even</value>
+  </data>
+  <data name="Projection_Breakeven_Title" xml:space="preserve">
+    <value>Project income at the level needed to cover budgeted expenses (the original behavior).</value>
+  </data>
+  <data name="Projection_LastMonth" xml:space="preserve">
+    <value>Last month</value>
+  </data>
+  <data name="Projection_LastMonth_Title" xml:space="preserve">
+    <value>Repeat each income category's last completed month, flat across the remaining months. Useful for stress-testing.</value>
+  </data>
+  <data name="BalanceFloor_Label" xml:space="preserve">
+    <value>Keep balance ≥</value>
+  </data>
+  <data name="Status_Loading" xml:space="preserve">
+    <value>Loading...</value>
+  </data>
+  <data name="Card_MonthlyCashflow" xml:space="preserve">
+    <value>Monthly Cashflow - {0}</value>
+  </data>
+  <data name="Card_AccountBalanceWatermarks" xml:space="preserve">
+    <value>Account Balance &amp; Watermarks - {0}</value>
+  </data>
+  <data name="Balance_YearMin" xml:space="preserve">
+    <value>Year min:</value>
+  </data>
+  <data name="Balance_YearMin_On" xml:space="preserve">
+    <value>on {0}</value>
+  </data>
+  <data name="Balance_NoAccountsAssigned_Before" xml:space="preserve">
+    <value>No accounts assigned to this project. Open </value>
+  </data>
+  <data name="Balance_NoAccountsAssigned_LinkText" xml:space="preserve">
+    <value>project settings</value>
+  </data>
+  <data name="Balance_NoAccountsAssigned_After" xml:space="preserve">
+    <value> and link the MoneyMoney accounts that fund this project to see a real balance line.</value>
+  </data>
+  <data name="Balance_NoData" xml:space="preserve">
+    <value>No data.</value>
+  </data>
+  <data name="Balance_StartingBalance_Before" xml:space="preserve">
+    <value>Starting balance Jan 1: </value>
+  </data>
+  <data name="Balance_StartingBalance_After" xml:space="preserve">
+    <value>. Solid line uses real transactions; shaded region uses projected amounts distributed across each month by the per-category day-of-month patterns learned from history.</value>
+  </data>
+  <data name="PatternSources_Prefix" xml:space="preserve">
+    <value>Pattern sources:</value>
+  </data>
+  <data name="PatternSource_TrailingYear" xml:space="preserve">
+    <value>{0} from trailing 12mo</value>
+  </data>
+  <data name="PatternSource_AllTime" xml:space="preserve">
+    <value>{0} from all-time</value>
+  </data>
+  <data name="PatternSource_Day1Fallback" xml:space="preserve">
+    <value>{0} on day-1 fallback</value>
+  </data>
+  <data name="Floor_TheXFloor" xml:space="preserve">
+    <value>the {0} floor</value>
+  </data>
+  <data name="Floor_Zero" xml:space="preserve">
+    <value>zero</value>
+  </data>
+  <data name="Alert_FutureNegative_HeadingPart" xml:space="preserve">
+    <value>Projected to first dip below {0} on {1}</value>
+  </data>
+  <data name="Alert_FutureNegative_BodyPart" xml:space="preserve">
+    <value>; reaches its low of {0} on {1}. Adding ~{2} to the project before {3} keeps the line above {4} all year.</value>
+  </data>
+  <data name="Alert_CurrentlyNegative_HeadingPart" xml:space="preserve">
+    <value>Balance is currently {0}</value>
+  </data>
+  <data name="Alert_CurrentlyNegative_BodyPart" xml:space="preserve">
+    <value> — below {0}. Projected low {1} on {2}. Adding ~{3} now would keep the line above {4} through year end.</value>
+  </data>
+  <data name="Alert_PastDip_Before" xml:space="preserve">
+    <value>Balance dipped to </value>
+  </data>
+  <data name="Alert_PastDip_After" xml:space="preserve">
+    <value> on {0} earlier this year. Currently {1} and projected to stay above {2}.</value>
+  </data>
+  <data name="Table_Month" xml:space="preserve">
+    <value>Month</value>
+  </data>
+  <data name="Table_Low" xml:space="preserve">
+    <value>Low</value>
+  </data>
+  <data name="Table_High" xml:space="preserve">
+    <value>High</value>
+  </data>
+  <data name="Table_End" xml:space="preserve">
+    <value>End</value>
+  </data>
+  <data name="Card_IncomeContributionCalculator" xml:space="preserve">
+    <value>Income Contribution Calculator</value>
+  </data>
+  <data name="Calculator_Intro_Recent" xml:space="preserve">
+    <value>Stress-test view: each income category's last completed month is repeated flat across the projection. Use this to see whether current income covers the remaining year's budgeted expenses.</value>
+  </data>
+  <data name="Calculator_Intro_Breakeven" xml:space="preserve">
+    <value>Calculate how much each income source needs to contribute to cover expenses.</value>
+  </data>
+  <data name="Calculator_Range_Recent" xml:space="preserve">
+    <value>{0} are projected — expenses from the selected budget, income repeated from {1} actuals; earlier months use actual transactions.</value>
+  </data>
+  <data name="Calculator_Range_Breakeven" xml:space="preserve">
+    <value>{0} are projected from the selected budget; earlier months use actual transactions.</value>
+  </data>
+  <data name="Table_IncomeCategory" xml:space="preserve">
+    <value>Income Category</value>
+  </data>
+  <data name="Table_SourceMonth" xml:space="preserve">
+    <value>Source-month ({0})</value>
+  </data>
+  <data name="Table_ProjectedYearly" xml:space="preserve">
+    <value>Projected yearly</value>
+  </data>
+  <data name="Table_TotalIncome" xml:space="preserve">
+    <value>Total income</value>
+  </data>
+  <data name="Table_VsProjectedYearlyExpenses" xml:space="preserve">
+    <value>vs. projected yearly expenses ({0})</value>
+  </data>
+  <data name="Label_ContributionSplit" xml:space="preserve">
+    <value>Contribution Split</value>
+  </data>
+  <data name="Splits_Total" xml:space="preserve">
+    <value>Total: {0}%</value>
+  </data>
+  <data name="Splits_ShouldSumTo100" xml:space="preserve">
+    <value> — should sum to 100%</value>
+  </data>
+  <data name="Splits_UnsavedChanges" xml:space="preserve">
+    <value>unsaved changes</value>
+  </data>
+  <data name="Button_Saving" xml:space="preserve">
+    <value>Saving…</value>
+  </data>
+  <data name="Button_SaveSplits" xml:space="preserve">
+    <value>Save splits</value>
+  </data>
+  <data name="Splits_SelectBudgetToSave" xml:space="preserve">
+    <value>Select a budget to save splits.</value>
+  </data>
+  <data name="Table_YearlyIncome" xml:space="preserve">
+    <value>Yearly Income</value>
+  </data>
+  <data name="Table_SplitPercent" xml:space="preserve">
+    <value>Split %</value>
+  </data>
+  <data name="Table_RequiredContribution" xml:space="preserve">
+    <value>Required Contribution</value>
+  </data>
+  <data name="Table_Remaining" xml:space="preserve">
+    <value>Remaining</value>
+  </data>
+  <data name="Table_Total" xml:space="preserve">
+    <value>Total</value>
+  </data>
+  <data name="NoIncomeCategories" xml:space="preserve">
+    <value>No income categories found for the selected period.</value>
+  </data>
+  <data name="Card_Summary" xml:space="preserve">
+    <value>Summary</value>
+  </data>
+  <data name="Summary_TotalIncome" xml:space="preserve">
+    <value>Total Income</value>
+  </data>
+  <data name="Summary_TotalExpenses" xml:space="preserve">
+    <value>Total Expenses</value>
+  </data>
+  <data name="Summary_NetCashflow" xml:space="preserve">
+    <value>Net Cashflow</value>
+  </data>
+  <data name="NoData_YearAndFilters" xml:space="preserve">
+    <value>No data found for the selected year and filters.</value>
+  </data>
+  <data name="Chart_DatasetIncome" xml:space="preserve">
+    <value>{0} (Income)</value>
+  </data>
+  <data name="Chart_DatasetExpense" xml:space="preserve">
+    <value>{0} (Expense)</value>
+  </data>
+  <data name="Chart_AmountAxis" xml:space="preserve">
+    <value>Amount (€)</value>
+  </data>
+  <data name="Chart_BalanceAxis" xml:space="preserve">
+    <value>Balance (€)</value>
+  </data>
+  <data name="Chart_BalanceLabel" xml:space="preserve">
+    <value>Balance</value>
+  </data>
+</root>

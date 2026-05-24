@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Budgets</value>
+  </data>
+  <data name="NotFound_Heading" xml:space="preserve">
+    <value>Nicht gefunden</value>
+  </data>
+  <data name="NotFound_BodyBefore" xml:space="preserve">
+    <value>Kein Projekt angegeben. Öffne diese Seite über ein Projekt im </value>
+  </data>
+  <data name="NotFound_DashboardLink" xml:space="preserve">
+    <value>Dashboard</value>
+  </data>
+  <data name="NotFound_BodyAfter" xml:space="preserve">
+    <value>.</value>
+  </data>
+  <data name="Heading_Budgets" xml:space="preserve">
+    <value>Budgets</value>
+  </data>
+  <data name="Form_YearLabel" xml:space="preserve">
+    <value>Jahr</value>
+  </data>
+  <data name="Form_CompareWithBudgetLabel" xml:space="preserve">
+    <value>Mit Budget vergleichen</value>
+  </data>
+  <data name="Form_NoBudgetComparisonOption" xml:space="preserve">
+    <value>-- Kein Budgetvergleich --</value>
+  </data>
+  <data name="Form_ActiveSuffix" xml:space="preserve">
+    <value> (aktiv)</value>
+  </data>
+  <data name="Card_CategoryTrendsTitle" xml:space="preserve">
+    <value>Kategorie-Trends</value>
+  </data>
+  <data name="Status_LoadingTrends" xml:space="preserve">
+    <value>Trends werden geladen...</value>
+  </data>
+  <data name="Status_NoTrendData" xml:space="preserve">
+    <value>Keine Trenddaten für die ausgewählten Kategorien verfügbar.</value>
+  </data>
+  <data name="Heading_BudgetVsActualVariance" xml:space="preserve">
+    <value>Budget vs. Ist – Abweichung</value>
+  </data>
+  <data name="Table_HeaderCategory" xml:space="preserve">
+    <value>Kategorie</value>
+  </data>
+  <data name="Table_HeaderBudget" xml:space="preserve">
+    <value>Budget</value>
+  </data>
+  <data name="Table_HeaderActual" xml:space="preserve">
+    <value>Ist</value>
+  </data>
+  <data name="Table_HeaderVariance" xml:space="preserve">
+    <value>Abweichung</value>
+  </data>
+  <data name="Table_HeaderPercentOfBudget" xml:space="preserve">
+    <value>% vom Budget</value>
+  </data>
+  <data name="Table_HeaderTotal" xml:space="preserve">
+    <value>Gesamt</value>
+  </data>
+  <data name="Heading_Summary" xml:space="preserve">
+    <value>Zusammenfassung</value>
+  </data>
+  <data name="Table_HeaderAvgPerMonth" xml:space="preserve">
+    <value>Ø / Monat</value>
+  </data>
+  <data name="Card_CategoriesTitle" xml:space="preserve">
+    <value>Kategorien</value>
+  </data>
+  <data name="HowToUse_Heading" xml:space="preserve">
+    <value>Verwendung:</value>
+  </data>
+  <data name="HowToUse_Item1" xml:space="preserve">
+    <value>Angezeigte Kategorien basieren auf den Tracking-Einstellungen des Projekts</value>
+  </data>
+  <data name="HowToUse_Item2" xml:space="preserve">
+    <value>Einnahmekategorien werden ausgeschlossen — Typen konfigurierst du auf der Projektdetailseite</value>
+  </data>
+  <data name="HowToUse_Item3" xml:space="preserve">
+    <value>Ausgewählte Kategorien erscheinen als gestapelte Balken, die Trends im Zeitverlauf zeigen</value>
+  </data>
+  <data name="Unknown" xml:space="preserve">
+    <value>Unbekannt</value>
+  </data>
+  <data name="RootLabel" xml:space="preserve">
+    <value>(Stamm)</value>
+  </data>
+  <data name="Chart_BudgetSuffix" xml:space="preserve">
+    <value>{0} (Budget)</value>
+  </data>
+  <data name="Chart_YAxisTitle" xml:space="preserve">
+    <value>Betrag (€)</value>
+  </data>
+</root>

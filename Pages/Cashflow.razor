@@ -6,21 +6,22 @@
 @inject BudgetService BudgetService
 @inject IJSRuntime JSRuntime
 @inject NavigationManager Navigation
+@inject IStringLocalizer<Cashflow> L
 
-<PageTitle>Cashflow@(projectName != null ? $" — {projectName}" : "")</PageTitle>
+<PageTitle>@(projectName != null ? L["PageTitle_WithProject", projectName] : L["PageTitle"])</PageTitle>
 
 @if (notFound)
 {
-    <h1>Not Found</h1>
-    <p class="text-muted">No project specified. Open this page from a project on the <a href="/">dashboard</a>.</p>
+    <h1>@L["NotFound_Heading"]</h1>
+    <p class="text-muted">@L["NotFound_Body_Before"]<a href="/">@L["NotFound_Body_LinkText"]</a>@L["NotFound_Body_After"]</p>
     return;
 }
 
-<h1 class="mb-3">Cashflow@(projectName != null ? $" — {projectName}" : "")</h1>
+<h1 class="mb-3">@(projectName != null ? L["Heading_Cashflow_WithProject", projectName] : L["Heading_Cashflow"])</h1>
 
 <div class="row mb-4">
     <div class="col-md-4">
-        <label class="form-label">Year</label>
+        <label class="form-label">@L["Label_Year"]</label>
         <select class="form-select" @bind="selectedYear" @bind:after="OnYearChanged">
             @if (availableYears != null)
             {
@@ -33,31 +34,31 @@
     </div>
 
     <div class="col-md-4">
-        <label class="form-label">Budget (optional)</label>
+        <label class="form-label">@L["Label_BudgetOptional"]</label>
         <select class="form-select" @bind="selectedBudgetId" @bind:after="LoadCashflowData">
-            <option value="0">-- No budget --</option>
+            <option value="0">@L["Option_NoBudget"]</option>
             @if (availableBudgets != null)
             {
                 foreach (var budget in availableBudgets)
                 {
-                    <option value="@budget.Id">@budget.Year — @budget.Name@(budget.IsActive ? " (active)" : "")</option>
+                    <option value="@budget.Id">@(budget.IsActive ? L["Option_BudgetEntry_Active", budget.Year, budget.Name] : L["Option_BudgetEntry", budget.Year, budget.Name])</option>
                 }
             }
         </select>
     </div>
 
     <div class="col-md-4">
-        <label class="form-label">Income projection</label>
-        <div class="btn-group d-flex" role="group" aria-label="Income projection mode">
+        <label class="form-label">@L["Label_IncomeProjection"]</label>
+        <div class="btn-group d-flex" role="group" aria-label="@L["Aria_IncomeProjectionMode"]">
             <input type="radio" class="btn-check" name="incomeProj" id="incomeProjBreakeven"
                    checked="@(incomeProjectionMode == "breakeven")"
                    @onchange="@(() => OnIncomeModeChanged("breakeven"))" />
-            <label class="btn btn-outline-primary" for="incomeProjBreakeven" title="Project income at the level needed to cover budgeted expenses (the original behavior).">Break-even</label>
+            <label class="btn btn-outline-primary" for="incomeProjBreakeven" title="@L["Projection_Breakeven_Title"]">@L["Projection_Breakeven"]</label>
 
             <input type="radio" class="btn-check" name="incomeProj" id="incomeProjRecent"
                    checked="@(incomeProjectionMode == "recent")"
                    @onchange="@(() => OnIncomeModeChanged("recent"))" />
-            <label class="btn btn-outline-primary" for="incomeProjRecent" title="Repeat each income category's last completed month, flat across the remaining months. Useful for stress-testing.">Last month</label>
+            <label class="btn btn-outline-primary" for="incomeProjRecent" title="@L["Projection_LastMonth_Title"]">@L["Projection_LastMonth"]</label>
         </div>
         @if (incomeProjectionMode == "breakeven")
         {
@@ -66,7 +67,7 @@
                        checked="@balanceFloorEnabled"
                        @onchange="OnBalanceFloorToggleChanged" />
                 <label class="form-check-label" for="balanceFloorEnabled">
-                    Keep balance ≥
+                    @L["BalanceFloor_Label"]
                 </label>
                 <div class="input-group input-group-sm mt-1" style="max-width: 180px;">
                     <span class="input-group-text">€</span>
@@ -84,7 +85,7 @@
 {
     <div class="text-center">
         <div class="spinner-border" role="status">
-            <span class="visually-hidden">Loading...</span>
+            <span class="visually-hidden">@L["Status_Loading"]</span>
         </div>
     </div>
 }
@@ -94,7 +95,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5>Monthly Cashflow - @selectedYear</h5>
+                    <h5>@L["Card_MonthlyCashflow", selectedYear]</h5>
                 </div>
                 <div class="card-body">
                     <div style="position: relative; height: 400px; max-height: 600px;">
@@ -109,12 +110,12 @@ else if (incomeCategories.Any() || expenseCategories.Any())
         <div class="col-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Account Balance &amp; Watermarks - @selectedYear</h5>
+                    <h5 class="mb-0">@L["Card_AccountBalanceWatermarks", selectedYear]</h5>
                     @if (hasAssignedAccounts && balanceDaily.Length > 0)
                     {
                         <small class="text-muted">
-                            Year min: <span class="@(yearMinBalance < 0 ? "text-danger fw-semibold" : "fw-semibold")">@FormatEuro(yearMinBalance)</span>
-                            on @(new DateTime(selectedYear, 1, 1).AddDays(yearMinDayOfYear - 1).ToString("MMM d"))
+                            @L["Balance_YearMin"] <span class="@(yearMinBalance < 0 ? "text-danger fw-semibold" : "fw-semibold")">@FormatEuro(yearMinBalance)</span>
+                            @L["Balance_YearMin_On", new DateTime(selectedYear, 1, 1).AddDays(yearMinDayOfYear - 1).ToString("MMM d")]
                         </small>
                     }
                 </div>
@@ -122,62 +123,56 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                     @if (!hasAssignedAccounts)
                     {
                         <div class="alert alert-info mb-0 py-2 small">
-                            No accounts assigned to this project. Open <a href="/projects/@selectedProjectId">project settings</a> and link the MoneyMoney accounts that fund this project to see a real balance line.
+                            @L["Balance_NoAccountsAssigned_Before"]<a href="/projects/@selectedProjectId">@L["Balance_NoAccountsAssigned_LinkText"]</a>@L["Balance_NoAccountsAssigned_After"]
                         </div>
                     }
                     else if (balanceDaily.Length == 0)
                     {
-                        <p class="text-muted mb-0">No data.</p>
+                        <p class="text-muted mb-0">@L["Balance_NoData"]</p>
                     }
                     else
                     {
                         <p class="text-muted small mb-2">
-                            Starting balance Jan 1: <strong>@FormatEuro(startingBalance)</strong>.
-                            Solid line uses real transactions; shaded region uses projected amounts distributed across each month by the per-category day-of-month patterns learned from history.
+                            @L["Balance_StartingBalance_Before"]<strong>@FormatEuro(startingBalance)</strong>@L["Balance_StartingBalance_After"]
                         </p>
                         @if (patternSourceCounts.Any())
                         {
                             var parts = new List<string>();
                             if (patternSourceCounts.TryGetValue(DistributionPatternSource.TrailingYear, out var t) && t > 0)
-                                parts.Add($"{t} from trailing 12mo");
+                                parts.Add(L["PatternSource_TrailingYear", t]);
                             if (patternSourceCounts.TryGetValue(DistributionPatternSource.AllTime, out var a) && a > 0)
-                                parts.Add($"{a} from all-time");
+                                parts.Add(L["PatternSource_AllTime", a]);
                             if (patternSourceCounts.TryGetValue(DistributionPatternSource.Day1Fallback, out var f) && f > 0)
-                                parts.Add($"{f} on day-1 fallback");
+                                parts.Add(L["PatternSource_Day1Fallback", f]);
                             <p class="text-muted small mb-2">
-                                <em>Pattern sources: @string.Join(", ", parts).</em>
+                                <em>@L["PatternSources_Prefix"] @string.Join(", ", parts).</em>
                             </p>
                         }
                         @if (balanceDaily.Length > 0 && yearMinBalance < EffectiveFloor)
                         {
                             var floor = EffectiveFloor;
                             var floorLabel = balanceFloorEnabled && balanceFloor != 0m
-                                ? $"the {FormatEuro(balanceFloor)} floor"
-                                : "zero";
+                                ? L["Floor_TheXFloor", FormatEuro(balanceFloor)].Value
+                                : L["Floor_Zero"].Value;
                             var topUp = floor - yearMinBalance;
                             var minDate = new DateTime(selectedYear, 1, 1).AddDays(yearMinDayOfYear - 1);
                             if (firstFutureNegativeDayOfYear > 0)
                             {
                                 var firstFutureDate = new DateTime(selectedYear, 1, 1).AddDays(firstFutureNegativeDayOfYear - 1);
                                 <div class="alert alert-danger py-2 small mb-2">
-                                    <strong>Projected to first dip below @floorLabel on @firstFutureDate.ToString("MMM d")</strong>;
-                                    reaches its low of @FormatEuro(yearMinBalance) on @minDate.ToString("MMM d").
-                                    Adding ~@FormatEuro(topUp) to the project before @firstFutureDate.ToString("MMM d") keeps the line above @floorLabel all year.
+                                    <strong>@L["Alert_FutureNegative_HeadingPart", floorLabel, firstFutureDate.ToString("MMM d")]</strong>@L["Alert_FutureNegative_BodyPart", FormatEuro(yearMinBalance), minDate.ToString("MMM d"), FormatEuro(topUp), firstFutureDate.ToString("MMM d"), floorLabel]
                                 </div>
                             }
                             else if (currentlyNegative)
                             {
                                 <div class="alert alert-danger py-2 small mb-2">
-                                    <strong>Balance is currently @FormatEuro(currentBalanceForYear)</strong> — below @floorLabel.
-                                    Projected low @FormatEuro(yearMinBalance) on @minDate.ToString("MMM d").
-                                    Adding ~@FormatEuro(topUp) now would keep the line above @floorLabel through year end.
+                                    <strong>@L["Alert_CurrentlyNegative_HeadingPart", FormatEuro(currentBalanceForYear)]</strong>@L["Alert_CurrentlyNegative_BodyPart", floorLabel, FormatEuro(yearMinBalance), minDate.ToString("MMM d"), FormatEuro(topUp), floorLabel]
                                 </div>
                             }
                             else
                             {
                                 <div class="alert alert-info py-2 small mb-2">
-                                    Balance dipped to <strong>@FormatEuro(yearMinBalance)</strong> on @minDate.ToString("MMM d") earlier this year.
-                                    Currently @FormatEuro(currentBalanceForYear) and projected to stay above @floorLabel.
+                                    @L["Alert_PastDip_Before"]<strong>@FormatEuro(yearMinBalance)</strong>@L["Alert_PastDip_After", minDate.ToString("MMM d"), FormatEuro(currentBalanceForYear), floorLabel]
                                 </div>
                             }
                         }
@@ -188,10 +183,10 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                             <table class="table table-sm mb-0">
                                 <thead>
                                     <tr>
-                                        <th>Month</th>
-                                        <th class="text-end">Low</th>
-                                        <th class="text-end">High</th>
-                                        <th class="text-end">End</th>
+                                        <th>@L["Table_Month"]</th>
+                                        <th class="text-end">@L["Table_Low"]</th>
+                                        <th class="text-end">@L["Table_High"]</th>
+                                        <th class="text-end">@L["Table_End"]</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -219,19 +214,19 @@ else if (incomeCategories.Any() || expenseCategories.Any())
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5>Income Contribution Calculator</h5>
+                    <h5>@L["Card_IncomeContributionCalculator"]</h5>
                 </div>
                 <div class="card-body">
                     @if (incomeProjectionMode == "recent")
                     {
                         <p class="text-muted">
-                            Stress-test view: each income category's last completed month is repeated flat across the projection. Use this to see whether current income covers the remaining year's budgeted expenses.
+                            @L["Calculator_Intro_Recent"]
                         </p>
                     }
                     else
                     {
                         <p class="text-muted">
-                            Calculate how much each income source needs to contribute to cover expenses.
+                            @L["Calculator_Intro_Breakeven"]
                         </p>
                     }
 
@@ -242,11 +237,11 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                             @if (incomeProjectionMode == "recent" && recentIncomePerItem != null)
                             {
                                 var sourceLabel = new DateTime(recentIncomeSourceMonth.Year, recentIncomeSourceMonth.Month, 1).ToString("MMMM yyyy");
-                                <text>@rangeLabel are projected — expenses from the selected budget, income repeated from @sourceLabel actuals; earlier months use actual transactions.</text>
+                                <text>@L["Calculator_Range_Recent", rangeLabel, sourceLabel]</text>
                             }
                             else
                             {
-                                <text>@rangeLabel are projected from the selected budget; earlier months use actual transactions.</text>
+                                <text>@L["Calculator_Range_Breakeven", rangeLabel]</text>
                             }
                         </div>
 
@@ -262,9 +257,9 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                             <table class="table table-sm">
                                 <thead>
                                     <tr>
-                                        <th>Income Category</th>
-                                        <th class="text-end">Source-month (@sourceMonthLabel)</th>
-                                        <th class="text-end">Projected yearly</th>
+                                        <th>@L["Table_IncomeCategory"]</th>
+                                        <th class="text-end">@L["Table_SourceMonth", sourceMonthLabel]</th>
+                                        <th class="text-end">@L["Table_ProjectedYearly"]</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -281,12 +276,12 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                 </tbody>
                                 <tfoot>
                                     <tr class="table-primary">
-                                        <th>Total income</th>
+                                        <th>@L["Table_TotalIncome"]</th>
                                         <th></th>
                                         <th class="text-end">@FormatEuro(yearlyIncome)</th>
                                     </tr>
                                     <tr>
-                                        <th colspan="2" class="text-end">vs. projected yearly expenses (@FormatEuro(totalExpenses))</th>
+                                        <th colspan="2" class="text-end">@L["Table_VsProjectedYearlyExpenses", FormatEuro(totalExpenses)]</th>
                                         <th class="text-end @netClass">@FormatEuro(netYearly)</th>
                                     </tr>
                                 </tfoot>
@@ -296,7 +291,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                     else if (incomeCategories.Any())
                     {
                         <div class="mb-3">
-                            <label class="form-label">Contribution Split</label>
+                            <label class="form-label">@L["Label_ContributionSplit"]</label>
                             <div class="row">
                                 @foreach (var income in incomeCategories)
                                 {
@@ -318,10 +313,10 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                             }
                             <div class="d-flex justify-content-between align-items-center">
                                 <small class="@(splitsValid ? "text-muted" : "text-danger fw-semibold")">
-                                    Total: @splitsTotal%
+                                    @L["Splits_Total", splitsTotal]
                                     @if (!splitsValid)
                                     {
-                                        <span> — should sum to 100%</span>
+                                        <span>@L["Splits_ShouldSumTo100"]</span>
                                     }
                                 </small>
                                 @if (selectedBudgetId > 0)
@@ -329,18 +324,18 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                     <div class="d-flex align-items-center gap-2">
                                         @if (splitsDirty)
                                         {
-                                            <small class="text-muted">unsaved changes</small>
+                                            <small class="text-muted">@L["Splits_UnsavedChanges"]</small>
                                         }
                                         <button class="btn btn-sm btn-outline-primary"
                                                 disabled="@(!splitsDirty || splitsSaving)"
                                                 @onclick="SaveSplits">
-                                            @(splitsSaving ? "Saving…" : "Save splits")
+                                            @(splitsSaving ? L["Button_Saving"] : L["Button_SaveSplits"])
                                         </button>
                                     </div>
                                 }
                                 else
                                 {
-                                    <small class="text-muted">Select a budget to save splits.</small>
+                                    <small class="text-muted">@L["Splits_SelectBudgetToSave"]</small>
                                 }
                             </div>
                         </div>
@@ -349,11 +344,11 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                             <table class="table table-sm">
                                 <thead>
                                     <tr>
-                                        <th>Income Category</th>
-                                        <th class="text-end">Yearly Income</th>
-                                        <th class="text-end">Split %</th>
-                                        <th class="text-end">Required Contribution</th>
-                                        <th class="text-end">Remaining</th>
+                                        <th>@L["Table_IncomeCategory"]</th>
+                                        <th class="text-end">@L["Table_YearlyIncome"]</th>
+                                        <th class="text-end">@L["Table_SplitPercent"]</th>
+                                        <th class="text-end">@L["Table_RequiredContribution"]</th>
+                                        <th class="text-end">@L["Table_Remaining"]</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -376,7 +371,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                 </tbody>
                                 <tfoot>
                                     <tr class="table-primary">
-                                        <th>Total</th>
+                                        <th>@L["Table_Total"]</th>
                                         <th class="text-end">@FormatEuro(incomeCategories.Sum(c => c.MonthlyAmounts.Sum()))</th>
                                         <th class="text-end @(splitsValid ? "" : "text-danger")">@splitsTotal%</th>
                                         <th class="text-end">@FormatEuro(totalExpenses)</th>
@@ -388,7 +383,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                     }
                     else
                     {
-                        <p class="text-muted">No income categories found for the selected period.</p>
+                        <p class="text-muted">@L["NoIncomeCategories"]</p>
                     }
                 </div>
             </div>
@@ -399,20 +394,20 @@ else if (incomeCategories.Any() || expenseCategories.Any())
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5>Summary</h5>
+                    <h5>@L["Card_Summary"]</h5>
                 </div>
                 <div class="card-body">
                     <div class="row">
                         <div class="col-md-4">
-                            <h6>Total Income</h6>
+                            <h6>@L["Summary_TotalIncome"]</h6>
                             <h3 class="text-success">@FormatEuro(incomeCategories.Sum(c => c.MonthlyAmounts.Sum()))</h3>
                         </div>
                         <div class="col-md-4">
-                            <h6>Total Expenses</h6>
+                            <h6>@L["Summary_TotalExpenses"]</h6>
                             <h3 class="text-danger">@FormatEuro(totalExpenses)</h3>
                         </div>
                         <div class="col-md-4">
-                            <h6>Net Cashflow</h6>
+                            <h6>@L["Summary_NetCashflow"]</h6>
                             <h3 class="@(netCashflow >= 0 ? "text-success" : "text-danger")">@FormatEuro(netCashflow)</h3>
                         </div>
                     </div>
@@ -424,7 +419,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
 else
 {
     <div class="alert alert-info">
-        No data found for the selected year and filters.
+        @L["NoData_YearAndFilters"]
     </div>
 }
 
@@ -1091,7 +1086,7 @@ else
             var income = sortedIncome[i];
             datasets.Add(new
             {
-                label = $"{income.CategoryName} (Income)",
+                label = L["Chart_DatasetIncome", income.CategoryName].Value,
                 data = income.MonthlyAmounts,
                 backgroundColor = string.Format(palette[i], "0.7"),
                 borderColor = string.Format(palette[i], "1"),
@@ -1108,7 +1103,7 @@ else
             var color = palette[sortedIncome.Count + i];
             datasets.Add(new
             {
-                label = $"{expense.CategoryName} (Expense)",
+                label = L["Chart_DatasetExpense", expense.CategoryName].Value,
                 data = expense.MonthlyAmounts,
                 backgroundColor = string.Format(color, "0.7"),
                 borderColor = string.Format(color, "1"),
@@ -1182,7 +1177,7 @@ else
                         title = new
                         {
                             display = true,
-                            text = "Amount (€)"
+                            text = L["Chart_AmountAxis"].Value
                         }
                     }
                 }
@@ -1231,7 +1226,7 @@ else
                 {
                     new
                     {
-                        label = "Balance",
+                        label = L["Chart_BalanceLabel"].Value,
                         data = balanceDaily,
                         borderColor = "rgba(54, 162, 235, 1)",
                         backgroundColor = "rgba(54, 162, 235, 0.15)",
@@ -1260,7 +1255,7 @@ else
                             // Reconstruct the full date from the data index — labels[] only carries
                             // month names on day-1, so we can't use the label string for tooltips.
                             title = $"function(items) {{ if (!items.length) return ''; var i = items[0].dataIndex; var d = new Date({selectedYear}, 0, 1 + i); return d.toLocaleDateString('en-US', {{ month: 'short', day: 'numeric' }}); }}",
-                            label = "function(context) { return 'Balance: €' + context.parsed.y.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }"
+                            label = $"function(context) {{ return '{L["Chart_BalanceLabel"].Value}: €' + context.parsed.y.toLocaleString('de-DE', {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}); }}"
                         }
                     },
                     forecastShading = new
@@ -1291,7 +1286,7 @@ else
                         {
                             callback = "function(value) { return '€' + value.toFixed(0); }"
                         },
-                        title = new { display = true, text = "Balance (€)" }
+                        title = new { display = true, text = L["Chart_BalanceAxis"].Value }
                     }
                 }
             }

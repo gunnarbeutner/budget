@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Budget bearbeiten</value>
+  </data>
+  <data name="PageTitle_WithName" xml:space="preserve">
+    <value>Budget bearbeiten — {0} · {1}</value>
+  </data>
+  <data name="NotFound_Heading" xml:space="preserve">
+    <value>Nicht gefunden</value>
+  </data>
+  <data name="NotFound_Body_Before" xml:space="preserve">
+    <value>Kein Budget mit ID {0}.</value>
+  </data>
+  <data name="NotFound_BackLink" xml:space="preserve">
+    <value>Zurück zum Dashboard</value>
+  </data>
+  <data name="Status_Loading" xml:space="preserve">
+    <value>Wird geladen…</value>
+  </data>
+  <data name="Header_Title" xml:space="preserve">
+    <value>Budget bearbeiten —</value>
+  </data>
+  <data name="Header_LastModified" xml:space="preserve">
+    <value>Zuletzt geändert {0}</value>
+  </data>
+  <data name="Button_BackToProject" xml:space="preserve">
+    <value>Zurück zum Projekt</value>
+  </data>
+  <data name="Form_NameLabel" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Form_YearLabel" xml:space="preserve">
+    <value>Jahr</value>
+  </data>
+  <data name="Form_NotesLabel" xml:space="preserve">
+    <value>Notizen</value>
+  </data>
+  <data name="Form_ActiveLabel" xml:space="preserve">
+    <value>Aktiv für {0} — das Dashboard rechnet dieses Budget hoch. Beim Speichern wird jedes andere Budget für dasselbe Jahr deaktiviert.</value>
+  </data>
+  <data name="Section_MonthlyAmounts" xml:space="preserve">
+    <value>Monatliche Beträge</value>
+  </data>
+  <data name="Picker_AddTrackedItem" xml:space="preserve">
+    <value>Erfasstes Element hinzufügen…</value>
+  </data>
+  <data name="Picker_Unknown" xml:space="preserve">
+    <value>Unbekannt</value>
+  </data>
+  <data name="Button_Add" xml:space="preserve">
+    <value>Hinzufügen</value>
+  </data>
+  <data name="Button_Repredict" xml:space="preserve">
+    <value>Neu vorhersagen</value>
+  </data>
+  <data name="Empty_NoRows" xml:space="preserve">
+    <value>Keine Zeilen. Füge ein erfasstes Element hinzu, um mit dem Budgetieren zu beginnen.</value>
+  </data>
+  <data name="Table_Category" xml:space="preserve">
+    <value>Kategorie</value>
+  </data>
+  <data name="Table_Total" xml:space="preserve">
+    <value>Gesamt</value>
+  </data>
+  <data name="Button_RemoveRow" xml:space="preserve">
+    <value>Zeile entfernen</value>
+  </data>
+  <data name="Button_Save" xml:space="preserve">
+    <value>Speichern</value>
+  </data>
+  <data name="Button_Saving" xml:space="preserve">
+    <value>Wird gespeichert…</value>
+  </data>
+  <data name="Button_Cancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="Modal_RepredictTitle" xml:space="preserve">
+    <value>Beträge neu vorhersagen</value>
+  </data>
+  <data name="Modal_RepredictBody" xml:space="preserve">
+    <value>Die monatlichen Beträge jeder Zeile durch Vorhersagen aus historischen Daten ersetzen?</value>
+  </data>
+  <data name="Modal_RepredictHint" xml:space="preserve">
+    <value>Dies überschreibt deine Eingaben. Speichern ist zum Rückgängigmachen nicht nötig — navigiere einfach weg, ohne zu speichern.</value>
+  </data>
+</root>

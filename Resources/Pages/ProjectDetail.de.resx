@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle_Default" xml:space="preserve">
+    <value>Projektdetails</value>
+  </data>
+  <data name="Status_Loading" xml:space="preserve">
+    <value>Wird geladen...</value>
+  </data>
+  <data name="Status_LoadingEllipsis" xml:space="preserve">
+    <value>Wird geladen…</value>
+  </data>
+  <data name="Status_LoadingAccounts" xml:space="preserve">
+    <value>Konten werden geladen...</value>
+  </data>
+  <data name="Status_LoadingCategories" xml:space="preserve">
+    <value>Kategorien werden geladen...</value>
+  </data>
+  <data name="Button_DeleteProject" xml:space="preserve">
+    <value>Projekt löschen</value>
+  </data>
+  <data name="CategoryAssignments_Heading" xml:space="preserve">
+    <value>Kategoriezuordnungen</value>
+  </data>
+  <data name="Button_AddCategory" xml:space="preserve">
+    <value>Kategorie hinzufügen</value>
+  </data>
+  <data name="CategoryAssignments_Empty" xml:space="preserve">
+    <value>Noch keine Kategorien zugeordnet.</value>
+  </data>
+  <data name="Table_Category" xml:space="preserve">
+    <value>Kategorie</value>
+  </data>
+  <data name="Button_Remove" xml:space="preserve">
+    <value>Entfernen</value>
+  </data>
+  <data name="Accounts_Heading" xml:space="preserve">
+    <value>Konten</value>
+  </data>
+  <data name="Button_AddAccount" xml:space="preserve">
+    <value>Konto hinzufügen</value>
+  </data>
+  <data name="Accounts_Description_Before" xml:space="preserve">
+    <value>MoneyMoney-Konten verknüpfen, die dieses Projekt finanzieren. </value>
+  </data>
+  <data name="Accounts_Description_Shared" xml:space="preserve">
+    <value>Gemeinsam</value>
+  </data>
+  <data name="Accounts_Description_Middle" xml:space="preserve">
+    <value> zählt nur Transaktionen, deren Kategorie dem Projekt zugeordnet ist (für ein Hauptkonto mit gemischtem Verkehr). </value>
+  </data>
+  <data name="Accounts_Description_Exclusive" xml:space="preserve">
+    <value>Exklusiv</value>
+  </data>
+  <data name="Accounts_Description_After" xml:space="preserve">
+    <value> zählt jede Transaktion im Konto (für dedizierte Konten wie ein Mietkautionskonto).</value>
+  </data>
+  <data name="Accounts_Empty" xml:space="preserve">
+    <value>Noch keine Konten zugeordnet.</value>
+  </data>
+  <data name="Table_Account" xml:space="preserve">
+    <value>Konto</value>
+  </data>
+  <data name="Table_Kind" xml:space="preserve">
+    <value>Art</value>
+  </data>
+  <data name="Table_CurrentBalance" xml:space="preserve">
+    <value>Aktueller Saldo</value>
+  </data>
+  <data name="Table_LastRefresh" xml:space="preserve">
+    <value>Letzte Aktualisierung</value>
+  </data>
+  <data name="Table_Scope" xml:space="preserve">
+    <value>Bereich</value>
+  </data>
+  <data name="Account_MissingName" xml:space="preserve">
+    <value>Konto #{0} (fehlt)</value>
+  </data>
+  <data name="Refresh_Manual" xml:space="preserve">
+    <value>manuell</value>
+  </data>
+  <data name="Refresh_Error" xml:space="preserve">
+    <value>Fehler</value>
+  </data>
+  <data name="Scope_Shared" xml:space="preserve">
+    <value>Gemeinsam</value>
+  </data>
+  <data name="Scope_Exclusive" xml:space="preserve">
+    <value>Exklusiv</value>
+  </data>
+  <data name="IncomeExpense_Heading" xml:space="preserve">
+    <value>Konfiguration Einnahmen/Ausgaben pro Kategorie</value>
+  </data>
+  <data name="IncomeExpense_Description" xml:space="preserve">
+    <value>Lege fest, welche Kategorien für die Cashflow-Analyse als Einnahmen bzw. Ausgaben gelten. Kategorien, die nicht als Einnahmen markiert sind, gelten standardmäßig als Ausgaben. Einstellungen auf übergeordneten Kategorien werden an Unterkategorien vererbt.</value>
+  </data>
+  <data name="IncomeExpense_Empty" xml:space="preserve">
+    <value>Diesem Projekt sind noch keine Kategorien zugeordnet.</value>
+  </data>
+  <data name="Table_Type" xml:space="preserve">
+    <value>Typ</value>
+  </data>
+  <data name="Table_Action" xml:space="preserve">
+    <value>Aktion</value>
+  </data>
+  <data name="Type_Income" xml:space="preserve">
+    <value>Einnahme</value>
+  </data>
+  <data name="Type_Expense" xml:space="preserve">
+    <value>Ausgabe</value>
+  </data>
+  <data name="Type_Inherited_Suffix" xml:space="preserve">
+    <value> (vererbt)</value>
+  </data>
+  <data name="Type_Default_Suffix" xml:space="preserve">
+    <value> (Standard)</value>
+  </data>
+  <data name="Button_Clear" xml:space="preserve">
+    <value>Zurücksetzen</value>
+  </data>
+  <data name="Tracking_Heading" xml:space="preserve">
+    <value>Konfiguration Budgetverfolgung</value>
+  </data>
+  <data name="Button_ConfigureTracking" xml:space="preserve">
+    <value>Verfolgung konfigurieren</value>
+  </data>
+  <data name="Tracking_Description" xml:space="preserve">
+    <value>Lege fest, welche Kategorien/Gruppen für Budgets und Analysen verfolgt werden. Dies bestimmt, was bei der Budgeterstellung und Ausgabenanalyse erscheint.</value>
+  </data>
+  <data name="Tracking_Empty" xml:space="preserve">
+    <value>Keine Verfolgungseinträge konfiguriert. Klicke auf "Verfolgung konfigurieren", um sie einzurichten.</value>
+  </data>
+  <data name="Tracking_Item_Group" xml:space="preserve">
+    <value>Gruppe</value>
+  </data>
+  <data name="Tracking_Item_Category" xml:space="preserve">
+    <value>Kategorie</value>
+  </data>
+  <data name="Tracking_Item_Label" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="Budgets_Heading" xml:space="preserve">
+    <value>Budgets</value>
+  </data>
+  <data name="Button_NewBudget" xml:space="preserve">
+    <value>Neues Budget</value>
+  </data>
+  <data name="Budgets_Empty" xml:space="preserve">
+    <value>Noch keine Budgets. Klicke auf "Neues Budget", um den Assistenten zu starten.</value>
+  </data>
+  <data name="Table_Year" xml:space="preserve">
+    <value>Jahr</value>
+  </data>
+  <data name="Table_Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Table_Notes" xml:space="preserve">
+    <value>Notizen</value>
+  </data>
+  <data name="Table_LastModified" xml:space="preserve">
+    <value>Zuletzt geändert</value>
+  </data>
+  <data name="Table_Actions" xml:space="preserve">
+    <value>Aktionen</value>
+  </data>
+  <data name="Badge_Active" xml:space="preserve">
+    <value>Aktiv</value>
+  </data>
+  <data name="Button_MakeActive" xml:space="preserve">
+    <value>Aktivieren</value>
+  </data>
+  <data name="Title_MakeActive" xml:space="preserve">
+    <value>Dieses Budget für {0} im Dashboard verwenden</value>
+  </data>
+  <data name="Button_Edit" xml:space="preserve">
+    <value>Bearbeiten</value>
+  </data>
+  <data name="Button_Delete" xml:space="preserve">
+    <value>Löschen</value>
+  </data>
+  <data name="Modal_DeleteBudget_Title" xml:space="preserve">
+    <value>Budget löschen</value>
+  </data>
+  <data name="Modal_DeleteBudget_Body" xml:space="preserve">
+    <value>Budget {0}{1} löschen?</value>
+  </data>
+  <data name="Modal_DeleteBudget_Notes" xml:space="preserve">
+    <value> ({0})</value>
+  </data>
+  <data name="Modal_DeleteBudget_Warning" xml:space="preserve">
+    <value>Alle zugehörigen Monatseinträge werden entfernt. Dies kann nicht rückgängig gemacht werden.</value>
+  </data>
+  <data name="Button_Cancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="Modal_DeleteProject_Title" xml:space="preserve">
+    <value>Projekt löschen</value>
+  </data>
+  <data name="Modal_DeleteProject_Body_Before" xml:space="preserve">
+    <value>Möchtest du wirklich </value>
+  </data>
+  <data name="Modal_DeleteProject_Body_After" xml:space="preserve">
+    <value> löschen?</value>
+  </data>
+  <data name="Modal_DeleteProject_Warning" xml:space="preserve">
+    <value>Damit werden auch die Verfolgungseinträge, Kategorietyp-Zuordnungen und alle daran gekoppelten Budgets entfernt. Dies kann nicht rückgängig gemacht werden.</value>
+  </data>
+  <data name="Modal_ConfigureTracking_Title" xml:space="preserve">
+    <value>Budgetverfolgung konfigurieren</value>
+  </data>
+  <data name="Modal_ConfigureTracking_Description" xml:space="preserve">
+    <value>Wähle aus, welche Kategorien/Gruppen für Budgets und Analysen verfolgt werden sollen. Wird eine übergeordnete Kategorie abgewählt, werden ihre Unterelemente automatisch ausgewählt, um eine feinere Steuerung zu ermöglichen.</value>
+  </data>
+  <data name="Button_Save" xml:space="preserve">
+    <value>Speichern</value>
+  </data>
+  <data name="Modal_AddAccount_Title" xml:space="preserve">
+    <value>Konto zum Projekt hinzufügen</value>
+  </data>
+  <data name="AddAccount_AllAssigned" xml:space="preserve">
+    <value>Alle Konten sind bereits zugeordnet.</value>
+  </data>
+  <data name="Form_AccountLabel" xml:space="preserve">
+    <value>Konto</value>
+  </data>
+  <data name="Form_SelectAccount" xml:space="preserve">
+    <value>-- Konto auswählen --</value>
+  </data>
+  <data name="Form_ScopeLabel" xml:space="preserve">
+    <value>Bereich</value>
+  </data>
+  <data name="AddAccount_ScopeHelp" xml:space="preserve">
+    <value>Gemeinsam: Nur Transaktionen in den Projektkategorien zählen. Exklusiv: Jede Transaktion im Konto zählt.</value>
+  </data>
+  <data name="Modal_AddCategory_Title" xml:space="preserve">
+    <value>Kategorie zum Projekt hinzufügen</value>
+  </data>
+  <data name="Form_SelectCategoryLabel" xml:space="preserve">
+    <value>Kategorie auswählen</value>
+  </data>
+  <data name="Form_SelectCategory" xml:space="preserve">
+    <value>-- Kategorie auswählen --</value>
+  </data>
+  <data name="Form_SubCategories" xml:space="preserve">
+    <value> ({0} Unterkategorien)</value>
+  </data>
+  <data name="AddCategory_Help" xml:space="preserve">
+    <value>Übergeordnete Kategorien beziehen automatisch alle ihre Unterkategorien in die Projektberechnungen ein</value>
+  </data>
+  <data name="Unknown" xml:space="preserve">
+    <value>Unbekannt</value>
+  </data>
+  <data name="Dash" xml:space="preserve">
+    <value>—</value>
+  </data>
+  <data name="RelativeAge_Future" xml:space="preserve">
+    <value>in der Zukunft</value>
+  </data>
+  <data name="RelativeAge_JustNow" xml:space="preserve">
+    <value>gerade eben</value>
+  </data>
+  <data name="RelativeAge_MinutesAgo" xml:space="preserve">
+    <value>vor {0}m</value>
+  </data>
+  <data name="RelativeAge_HoursAgo" xml:space="preserve">
+    <value>vor {0}h</value>
+  </data>
+  <data name="RelativeAge_DaysAgo" xml:space="preserve">
+    <value>vor {0}T</value>
+  </data>
+  <data name="RelativeAge_MonthsAgo" xml:space="preserve">
+    <value>vor {0}Mo</value>
+  </data>
+</root>

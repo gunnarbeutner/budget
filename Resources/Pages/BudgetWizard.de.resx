@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Budget erstellen</value>
+  </data>
+  <data name="NotFound_Heading" xml:space="preserve">
+    <value>Nicht gefunden</value>
+  </data>
+  <data name="NotFound_Before" xml:space="preserve">
+    <value>Kein Projekt angegeben. Öffne den Assistenten aus einem Projekt im </value>
+  </data>
+  <data name="NotFound_LinkText" xml:space="preserve">
+    <value>Dashboard</value>
+  </data>
+  <data name="NotFound_After" xml:space="preserve">
+    <value>.</value>
+  </data>
+  <data name="Header_Title" xml:space="preserve">
+    <value>Budget-Erstellungsassistent</value>
+  </data>
+  <data name="Step_One_Title" xml:space="preserve">
+    <value>Schritt 1: Jahr &amp; Name</value>
+  </data>
+  <data name="Form_ProjectLabel" xml:space="preserve">
+    <value>Projekt</value>
+  </data>
+  <data name="Form_BudgetYearLabel" xml:space="preserve">
+    <value>Budgetjahr</value>
+  </data>
+  <data name="Form_NameLabel" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Form_NameHelp" xml:space="preserve">
+    <value>Standardmäßig das heutige Datum. Das Dashboard verwendet das pro Jahr als aktiv markierte Budget.</value>
+  </data>
+  <data name="Form_NotesLabel" xml:space="preserve">
+    <value>Notizen (optional)</value>
+  </data>
+  <data name="Button_NextGenerate" xml:space="preserve">
+    <value>Weiter: Prognosen erstellen</value>
+  </data>
+  <data name="Button_Cancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="Step_Two_Title" xml:space="preserve">
+    <value>Schritt 2: Prognostiziertes Budget prüfen</value>
+  </data>
+  <data name="Status_GeneratingShort" xml:space="preserve">
+    <value>Prognosen werden erstellt...</value>
+  </data>
+  <data name="Status_GeneratingLong" xml:space="preserve">
+    <value>Historische Daten werden analysiert und Prognosen erstellt...</value>
+  </data>
+  <data name="Predictions_Intro" xml:space="preserve">
+    <value>Budgetprognosen basieren auf historischen Ausgabendaten des Vorjahres und nutzen monatsgleiche Muster zur saisonalen Anpassung. Du kannst die prognostizierten Beträge vor dem Speichern anpassen.</value>
+  </data>
+  <data name="Table_Category" xml:space="preserve">
+    <value>Kategorie</value>
+  </data>
+  <data name="Table_Total" xml:space="preserve">
+    <value>Gesamt</value>
+  </data>
+  <data name="Category_Unknown" xml:space="preserve">
+    <value>Unbekannt</value>
+  </data>
+  <data name="Button_SaveBudget" xml:space="preserve">
+    <value>Budget speichern</value>
+  </data>
+  <data name="Button_Back" xml:space="preserve">
+    <value>Zurück</value>
+  </data>
+  <data name="Success_Heading" xml:space="preserve">
+    <value>Budget erfolgreich erstellt!</value>
+  </data>
+  <data name="Success_Body" xml:space="preserve">
+    <value>Dein Budget für {0} wurde mit prognostizierten Monatsbeträgen basierend auf historischen Daten erstellt.</value>
+  </data>
+  <data name="Button_ViewProject" xml:space="preserve">
+    <value>Projekt anzeigen</value>
+  </data>
+  <data name="Button_CreateAnother" xml:space="preserve">
+    <value>Weiteres Budget erstellen</value>
+  </data>
+</root>

@@ -5,50 +5,51 @@
 @using Microsoft.AspNetCore.WebUtilities
 @inject BudgetService BudgetService
 @inject NavigationManager Navigation
+@inject IStringLocalizer<BudgetWizard> L
 
-<PageTitle>Create Budget</PageTitle>
+<PageTitle>@L["PageTitle"]</PageTitle>
 
 @if (notFound)
 {
-    <h1>Not Found</h1>
-    <p class="text-muted">No project specified. Open the wizard from a project on the <a href="/">dashboard</a>.</p>
+    <h1>@L["NotFound_Heading"]</h1>
+    <p class="text-muted">@L["NotFound_Before"]<a href="/">@L["NotFound_LinkText"]</a>@L["NotFound_After"]</p>
     return;
 }
 
-<h1>Budget Creation Wizard</h1>
+<h1>@L["Header_Title"]</h1>
 
 @if (step == 1)
 {
     <div class="card">
         <div class="card-header">
-            <h5>Step 1: Year &amp; Name</h5>
+            <h5>@L["Step_One_Title"]</h5>
         </div>
         <div class="card-body">
             <div class="mb-3">
-                <label class="form-label">Project</label>
+                <label class="form-label">@L["Form_ProjectLabel"]</label>
                 <input type="text" class="form-control" value="@(projects?.FirstOrDefault(p => p.Id == selectedProjectId)?.Name)" readonly />
             </div>
 
             <div class="mb-3">
-                <label class="form-label">Budget Year</label>
+                <label class="form-label">@L["Form_BudgetYearLabel"]</label>
                 <input type="number" class="form-control" @bind="selectedYear" min="2020" max="2030" />
             </div>
 
             <div class="mb-3">
-                <label class="form-label">Name</label>
+                <label class="form-label">@L["Form_NameLabel"]</label>
                 <input type="text" class="form-control" @bind="budgetName" placeholder="@DateTime.UtcNow.ToString("yyyy-MM-dd")" />
-                <small class="form-text text-muted">Defaults to today's date. The dashboard uses the budget marked active for each year.</small>
+                <small class="form-text text-muted">@L["Form_NameHelp"]</small>
             </div>
 
             <div class="mb-3">
-                <label class="form-label">Notes (optional)</label>
+                <label class="form-label">@L["Form_NotesLabel"]</label>
                 <textarea class="form-control" @bind="notes" rows="3"></textarea>
             </div>
 
             <button class="btn btn-primary" @onclick="GeneratePredictions">
-                Next: Generate Predictions
+                @L["Button_NextGenerate"]
             </button>
-            <a href="/projects/@selectedProjectId" class="btn btn-secondary">Cancel</a>
+            <a href="/projects/@selectedProjectId" class="btn btn-secondary">@L["Button_Cancel"]</a>
         </div>
     </div>
 }
@@ -56,42 +57,41 @@ else if (step == 2)
 {
     <div class="card">
         <div class="card-header">
-            <h5>Step 2: Review Predicted Budget</h5>
+            <h5>@L["Step_Two_Title"]</h5>
         </div>
         <div class="card-body">
             @if (isGenerating)
             {
                 <div class="text-center">
                     <div class="spinner-border" role="status">
-                        <span class="visually-hidden">Generating predictions...</span>
+                        <span class="visually-hidden">@L["Status_GeneratingShort"]</span>
                     </div>
-                    <p>Analyzing historical data and generating predictions...</p>
+                    <p>@L["Status_GeneratingLong"]</p>
                 </div>
             }
             else if (predictions != null && categoryNames != null)
             {
                 <p class="text-muted">
-                    Budget predictions are based on historical spending data from last year, using same-month patterns for seasonal adjustment.
-                    You can adjust the predicted amounts before saving.
+                    @L["Predictions_Intro"]
                 </p>
 
                 <div class="table-responsive">
                     <table class="table table-sm">
                         <thead>
                             <tr>
-                                <th>Category</th>
+                                <th>@L["Table_Category"]</th>
                                 @for (int m = 1; m <= 12; m++)
                                 {
                                     <th class="text-end">@(new DateTime(2000, m, 1).ToString("MMM"))</th>
                                 }
-                                <th class="text-end">Total</th>
+                                <th class="text-end">@L["Table_Total"]</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var (key, amounts) in predictions.OrderBy(p => categoryNames.GetValueOrDefault(p.Key, "Unknown")))
+                            @foreach (var (key, amounts) in predictions.OrderBy(p => categoryNames.GetValueOrDefault(p.Key, L["Category_Unknown"])))
                             {
                                 <tr>
-                                    <td>@categoryNames.GetValueOrDefault(key, "Unknown")</td>
+                                    <td>@categoryNames.GetValueOrDefault(key, L["Category_Unknown"])</td>
                                     @for (int m = 0; m < 12; m++)
                                     {
                                         <td class="text-end">
@@ -107,7 +107,7 @@ else if (step == 2)
                         </tbody>
                         <tfoot>
                             <tr class="table-primary">
-                                <th>Total</th>
+                                <th>@L["Table_Total"]</th>
                                 @for (int m = 0; m < 12; m++)
                                 {
                                     <th class="text-end">€@predictions.Values.Sum(a => a[m]).ToString("N2")</th>
@@ -119,8 +119,8 @@ else if (step == 2)
                 </div>
 
                 <div class="mt-3">
-                    <button class="btn btn-primary" @onclick="SaveBudget">Save Budget</button>
-                    <button class="btn btn-secondary" @onclick="() => step = 1">Back</button>
+                    <button class="btn btn-primary" @onclick="SaveBudget">@L["Button_SaveBudget"]</button>
+                    <button class="btn btn-secondary" @onclick="() => step = 1">@L["Button_Back"]</button>
                 </div>
             }
         </div>
@@ -129,10 +129,10 @@ else if (step == 2)
 else if (step == 3)
 {
     <div class="alert alert-success">
-        <h4>Budget Created Successfully!</h4>
-        <p>Your budget for @selectedYear has been created with predicted monthly amounts based on historical data.</p>
-        <a href="/projects/@selectedProjectId" class="btn btn-primary">View Project</a>
-        <a href="/budgets/wizard?projectId=@selectedProjectId" class="btn btn-secondary" @onclick="Reset">Create Another Budget</a>
+        <h4>@L["Success_Heading"]</h4>
+        <p>@L["Success_Body", selectedYear]</p>
+        <a href="/projects/@selectedProjectId" class="btn btn-primary">@L["Button_ViewProject"]</a>
+        <a href="/budgets/wizard?projectId=@selectedProjectId" class="btn btn-secondary" @onclick="Reset">@L["Button_CreateAnother"]</a>
     </div>
 }
 
@@ -254,7 +254,7 @@ else if (step == 3)
                     ? parent.Name
                     : null;
                 var key = (item.CategoryGroupId.Value, CategoryItemType.Group);
-                labels.Add((key, cg.Name ?? "Unknown", parentName));
+                labels.Add((key, cg.Name ?? L["Category_Unknown"], parentName));
 
                 var monthlyPredictions = await BudgetService.PredictMonthlySpendingForCategoryAsync(item.CategoryGroupId.Value, selectedYear);
                 predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
@@ -267,7 +267,7 @@ else if (step == 3)
                     ? parent.Name
                     : null;
                 var key = (item.CategoryId.Value, CategoryItemType.Category);
-                labels.Add((key, cat.Name ?? "Unknown", parentName));
+                labels.Add((key, cat.Name ?? L["Category_Unknown"], parentName));
 
                 var monthlyPredictions = await BudgetService.PredictMonthlySpendingForLeafCategoryAsync(item.CategoryId.Value, selectedYear);
                 predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();

@@ -3,54 +3,54 @@
 @using OpenBudget.Models
 @inject BudgetService BudgetService
 @inject NavigationManager Navigation
+@inject IStringLocalizer<BudgetEdit> L
 
-<PageTitle>@(budget != null ? $"Edit Budget — {budget.Project?.Name} · {budget.Name}" : "Edit Budget")</PageTitle>
+<PageTitle>@(budget != null ? L["PageTitle_WithName", budget.Project?.Name ?? "", budget.Name ?? ""] : L["PageTitle"])</PageTitle>
 
 @if (notFound)
 {
-    <h1>Not Found</h1>
-    <p class="text-muted">No budget with id @BudgetId. <a href="/">Back to dashboard</a>.</p>
+    <h1>@L["NotFound_Heading"]</h1>
+    <p class="text-muted">@L["NotFound_Body_Before", BudgetId] <a href="/">@L["NotFound_BackLink"]</a>.</p>
     return;
 }
 
 @if (budget == null)
 {
-    <p><em>Loading…</em></p>
+    <p><em>@L["Status_Loading"]</em></p>
     return;
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h1 class="mb-0">Edit Budget — @budget.Project?.Name <small class="text-muted">@budget.Name</small></h1>
+        <h1 class="mb-0">@L["Header_Title"] @budget.Project?.Name <small class="text-muted">@budget.Name</small></h1>
         @if (budget.LastModifiedAt.HasValue)
         {
-            <small class="text-muted">Last modified @budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</small>
+            <small class="text-muted">@L["Header_LastModified", budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")]</small>
         }
     </div>
-    <a href="/projects/@budget.ProjectId" class="btn btn-secondary">Back to Project</a>
+    <a href="/projects/@budget.ProjectId" class="btn btn-secondary">@L["Button_BackToProject"]</a>
 </div>
 
 <div class="card mb-3">
     <div class="card-body">
         <div class="row g-3">
             <div class="col-md-5">
-                <label class="form-label">Name</label>
+                <label class="form-label">@L["Form_NameLabel"]</label>
                 <input type="text" class="form-control" maxlength="200" @bind="budget.Name" />
             </div>
             <div class="col-md-2">
-                <label class="form-label">Year</label>
+                <label class="form-label">@L["Form_YearLabel"]</label>
                 <input type="number" class="form-control" min="2000" max="2100" @bind="budget.Year" />
             </div>
             <div class="col-md-5">
-                <label class="form-label">Notes</label>
+                <label class="form-label">@L["Form_NotesLabel"]</label>
                 <input type="text" class="form-control" @bind="budget.Notes" />
             </div>
         </div>
         <div class="form-check mt-3">
             <input class="form-check-input" type="checkbox" id="budget-active" @bind="budget.IsActive" />
             <label class="form-check-label" for="budget-active">
-                Active for @budget.Year — the dashboard rolls this budget up. Saving will
-                deactivate any other budget for the same year.
+                @L["Form_ActiveLabel", budget.Year]
             </label>
         </div>
     </div>
@@ -58,26 +58,26 @@
 
 <div class="card mb-3">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Monthly amounts</h5>
+        <h5 class="mb-0">@L["Section_MonthlyAmounts"]</h5>
         <div class="d-flex gap-2">
             @if (availableToAdd.Any())
             {
                 <select class="form-select form-select-sm" @bind="addSelection" style="min-width: 280px;">
-                    <option value="">Add tracked item…</option>
+                    <option value="">@L["Picker_AddTrackedItem"]</option>
                     @foreach (var key in availableToAdd.OrderBy(k => addCandidateNames.GetValueOrDefault(k, "")))
                     {
-                        <option value="@SerializeKey(key)">@addCandidateNames.GetValueOrDefault(key, "Unknown")</option>
+                        <option value="@SerializeKey(key)">@addCandidateNames.GetValueOrDefault(key, L["Picker_Unknown"])</option>
                     }
                 </select>
-                <button class="btn btn-sm btn-outline-primary" @onclick="AddSelected" disabled="@string.IsNullOrEmpty(addSelection)">Add</button>
+                <button class="btn btn-sm btn-outline-primary" @onclick="AddSelected" disabled="@string.IsNullOrEmpty(addSelection)">@L["Button_Add"]</button>
             }
-            <button class="btn btn-sm btn-outline-secondary" @onclick="ShowRepredictDialog" disabled="@(editingEntries.Count == 0)">Re-predict</button>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="ShowRepredictDialog" disabled="@(editingEntries.Count == 0)">@L["Button_Repredict"]</button>
         </div>
     </div>
     <div class="card-body p-0">
         @if (editingEntries.Count == 0)
         {
-            <p class="text-muted m-3">No rows. Add a tracked item to start budgeting.</p>
+            <p class="text-muted m-3">@L["Empty_NoRows"]</p>
         }
         else
         {
@@ -85,12 +85,12 @@
                 <table class="table table-sm mb-0">
                     <thead>
                         <tr>
-                            <th>Category</th>
+                            <th>@L["Table_Category"]</th>
                             @for (int m = 1; m <= 12; m++)
                             {
                                 <th class="text-end">@(new DateTime(2000, m, 1).ToString("MMM"))</th>
                             }
-                            <th class="text-end">Total</th>
+                            <th class="text-end">@L["Table_Total"]</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -98,7 +98,7 @@
                         @foreach (var (key, amounts) in editingEntries.OrderBy(e => categoryNames.GetValueOrDefault(e.Key, "")))
                         {
                             <tr>
-                                <td>@categoryNames.GetValueOrDefault(key, "Unknown")</td>
+                                <td>@categoryNames.GetValueOrDefault(key, L["Picker_Unknown"])</td>
                                 @for (int m = 0; m < 12; m++)
                                 {
                                     var idx = m;
@@ -112,7 +112,7 @@
                                 <td class="text-end"><strong>€@amounts.Sum().ToString("N2")</strong></td>
                                 <td>
                                     <button class="btn btn-sm btn-link text-danger p-0"
-                                            title="Remove row"
+                                            title="@L["Button_RemoveRow"]"
                                             @onclick="() => RemoveRow(key)">×</button>
                                 </td>
                             </tr>
@@ -120,7 +120,7 @@
                     </tbody>
                     <tfoot>
                         <tr class="table-primary">
-                            <th>Total</th>
+                            <th>@L["Table_Total"]</th>
                             @for (int m = 0; m < 12; m++)
                             {
                                 var idx = m;
@@ -137,8 +137,8 @@
 </div>
 
 <div class="d-flex gap-2">
-    <button class="btn btn-primary" @onclick="Save" disabled="@isSaving">@(isSaving ? "Saving…" : "Save")</button>
-    <a href="/projects/@budget.ProjectId" class="btn btn-secondary">Cancel</a>
+    <button class="btn btn-primary" @onclick="Save" disabled="@isSaving">@(isSaving ? L["Button_Saving"] : L["Button_Save"])</button>
+    <a href="/projects/@budget.ProjectId" class="btn btn-secondary">@L["Button_Cancel"]</a>
 </div>
 
 @if (showRepredictDialog)
@@ -147,16 +147,16 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Re-predict amounts</h5>
+                    <h5 class="modal-title">@L["Modal_RepredictTitle"]</h5>
                     <button type="button" class="btn-close" @onclick="HideRepredictDialog"></button>
                 </div>
                 <div class="modal-body">
-                    <p>Replace every row's monthly amounts with predictions from historical data?</p>
-                    <p class="text-muted small mb-0">This overwrites what you've typed. Save isn't required to undo — just navigate away without saving.</p>
+                    <p>@L["Modal_RepredictBody"]</p>
+                    <p class="text-muted small mb-0">@L["Modal_RepredictHint"]</p>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="HideRepredictDialog">Cancel</button>
-                    <button class="btn btn-primary" @onclick="Repredict">Re-predict</button>
+                    <button class="btn btn-secondary" @onclick="HideRepredictDialog">@L["Button_Cancel"]</button>
+                    <button class="btn btn-primary" @onclick="Repredict">@L["Button_Repredict"]</button>
                 </div>
             </div>
         </div>
@@ -278,7 +278,7 @@
                     && groupById.TryGetValue(g.ParentGroupId.Value, out var parent)
                     ? parent.Name
                     : null;
-                return (key, g.Name ?? "Unknown", parentName);
+                return (key, g.Name ?? L["Picker_Unknown"], parentName);
             }
         }
         else if (categoryById.TryGetValue(key.Id, out var cat))
@@ -287,9 +287,9 @@
                 && groupById.TryGetValue(cat.GroupId.Value, out var parent)
                 ? parent.Name
                 : null;
-            return (key, cat.Name ?? "Unknown", parentName);
+            return (key, cat.Name ?? L["Picker_Unknown"], parentName);
         }
-        return (key, "Unknown", null);
+        return (key, L["Picker_Unknown"], null);
     }
 
     private void RemoveRow((long Id, CategoryItemType ItemType) key)
