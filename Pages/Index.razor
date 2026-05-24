@@ -14,25 +14,32 @@
     var uploaded = freshness.DbUploadedUtc;
     var nowUtc = DateTime.UtcNow;
     var age = uploaded.HasValue ? nowUtc - uploaded.Value : (TimeSpan?)null;
-    string ageLabel = age.HasValue ? FormatRelativeAge(age.Value) : "unknown";
-    string ageClass = age switch
-    {
-        null => "alert-warning",
-        { TotalDays: > 7 } => "alert-danger",
-        { TotalHours: > 36 } => "alert-warning",
-        _ => "alert-secondary"
-    };
     var errorAccounts = freshness.AccountsWithErrors.ToList();
-    <div class="alert @ageClass py-1 px-2 small mb-3 d-flex flex-wrap align-items-center gap-2">
-        <span>MoneyMoney data uploaded <strong>@ageLabel</strong>@(uploaded.HasValue ? $" ({uploaded.Value.ToLocalTime():yyyy-MM-dd HH:mm})" : "").</span>
-        @if (errorAccounts.Any())
+    // Hide on the happy path: recent upload (<=36h) and no per-account errors. Anything
+    // older, unknown, or with refresh errors still surfaces so stale numbers can't masquerade
+    // as current.
+    var isFresh = age is { TotalHours: <= 36 } && !errorAccounts.Any();
+    if (!isFresh)
+    {
+        string ageLabel = age.HasValue ? FormatRelativeAge(age.Value) : "unknown";
+        string ageClass = age switch
         {
-            <span>
-                @errorAccounts.Count @(errorAccounts.Count == 1 ? "account" : "accounts") with refresh errors:
-                @string.Join(", ", errorAccounts.Select(a => a.Name ?? $"#{a.AccountId}")).
-            </span>
-        }
-    </div>
+            null => "alert-warning",
+            { TotalDays: > 7 } => "alert-danger",
+            { TotalHours: > 36 } => "alert-warning",
+            _ => "alert-secondary"
+        };
+        <div class="alert @ageClass py-1 px-2 small mb-3 d-flex flex-wrap align-items-center gap-2">
+            <span>MoneyMoney data uploaded <strong>@ageLabel</strong>@(uploaded.HasValue ? $" ({uploaded.Value.ToLocalTime():yyyy-MM-dd HH:mm})" : "").</span>
+            @if (errorAccounts.Any())
+            {
+                <span>
+                    @errorAccounts.Count @(errorAccounts.Count == 1 ? "account" : "accounts") with refresh errors:
+                    @string.Join(", ", errorAccounts.Select(a => a.Name ?? $"#{a.AccountId}")).
+                </span>
+            }
+        </div>
+    }
 }
 
 @{
@@ -147,7 +154,7 @@ else
                             <div class="d-flex justify-content-between align-items-baseline pb-2 mb-3 border-bottom">
                                 <div>
                                     <div class="text-muted small">Current balance</div>
-                                    <div class="h5 mb-0 @(balanceInfo!.Balance < 0 ? "text-danger" : "")">
+                                    <div class="h5 mb-0 text-nowrap @(balanceInfo!.Balance < 0 ? "text-danger" : "")">
                                         €@balanceInfo.Balance.ToString("N2")
                                     </div>
                                 </div>
@@ -161,15 +168,15 @@ else
                             <div class="row text-center mb-3">
                                 <div class="col-4">
                                     <div class="text-muted small">Budget</div>
-                                    <div class="h5">€@summary.TotalBudget.ToString("N2")</div>
+                                    <div class="h5 text-nowrap">€@summary.TotalBudget.ToString("N2")</div>
                                 </div>
                                 <div class="col-4">
                                     <div class="text-muted small">Spent</div>
-                                    <div class="h5 text-@statusClass">€@summary.TotalSpent.ToString("N2")</div>
+                                    <div class="h5 text-nowrap text-@statusClass">€@summary.TotalSpent.ToString("N2")</div>
                                 </div>
                                 <div class="col-4">
                                     <div class="text-muted small">Remaining</div>
-                                    <div class="h5 text-@statusClass">€@summary.TotalRemaining.ToString("N2")</div>
+                                    <div class="h5 text-nowrap text-@statusClass">€@summary.TotalRemaining.ToString("N2")</div>
                                 </div>
                             </div>
 
@@ -189,15 +196,15 @@ else
                             <div class="row text-center mb-3">
                                 <div class="col-4">
                                     <div class="text-muted small">Income</div>
-                                    <div class="h5 text-success">€@summary.MonthIncome.ToString("N2")</div>
+                                    <div class="h5 text-nowrap text-success">€@summary.MonthIncome.ToString("N2")</div>
                                 </div>
                                 <div class="col-4">
                                     <div class="text-muted small">Expenses</div>
-                                    <div class="h5 text-danger">€@summary.MonthExpenses.ToString("N2")</div>
+                                    <div class="h5 text-nowrap text-danger">€@summary.MonthExpenses.ToString("N2")</div>
                                 </div>
                                 <div class="col-4">
                                     <div class="text-muted small">Net</div>
-                                    <div class="h5 text-@statusClass">€@summary.MonthNet.ToString("N2")</div>
+                                    <div class="h5 text-nowrap text-@statusClass">€@summary.MonthNet.ToString("N2")</div>
                                 </div>
                             </div>
                             <p class="small text-muted mb-3">
@@ -225,12 +232,12 @@ else
                                             @if (summary.HasBudget)
                                             {
                                                 <span class="badge bg-@(cat.PercentUsed > 100 ? "danger" : cat.PercentUsed > 80 ? "warning" : "secondary")">
-                                                    €@cat.Spent.ToString("N2") / €@cat.Budget.ToString("N2")
+                                                    <span class="text-nowrap">€@cat.Spent.ToString("N2")</span> / <span class="text-nowrap">€@cat.Budget.ToString("N2")</span>
                                                 </span>
                                             }
                                             else
                                             {
-                                                <span class="badge bg-secondary">€@cat.Spent.ToString("N2")</span>
+                                                <span class="badge bg-secondary text-nowrap">€@cat.Spent.ToString("N2")</span>
                                             }
                                         </div>
                                         @if (isExpanded && summary.HasBudget && cat.Budget > 0)
