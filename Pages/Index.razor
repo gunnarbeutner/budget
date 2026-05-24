@@ -185,8 +185,8 @@ else
                             <div class="progress mb-3" style="height: 25px;">
                                 <div class="progress-bar bg-@statusClass"
                                      role="progressbar"
-                                     style="width: @Math.Min(overallPercent, 100)%"
-                                     aria-valuenow="@overallPercent"
+                                     style="width: @(Math.Min(overallPercent, 100).ToString(CultureInfo.InvariantCulture))%"
+                                     aria-valuenow="@overallPercent.ToString(CultureInfo.InvariantCulture)"
                                      aria-valuemin="0"
                                      aria-valuemax="100">
                                     @overallPercent.ToString("F0")%
@@ -247,8 +247,8 @@ else
                                             <div class="progress mt-1" style="height: 6px;">
                                                 <div class="progress-bar bg-@(cat.PercentUsed > 100 ? "danger" : cat.PercentUsed > 80 ? "warning" : "success")"
                                                      role="progressbar"
-                                                     style="width: @Math.Min(cat.PercentUsed, 100)%"
-                                                     aria-valuenow="@cat.PercentUsed"
+                                                     style="width: @(Math.Min(cat.PercentUsed, 100).ToString(CultureInfo.InvariantCulture))%"
+                                                     aria-valuenow="@cat.PercentUsed.ToString(CultureInfo.InvariantCulture)"
                                                      aria-valuemin="0"
                                                      aria-valuemax="100"></div>
                                             </div>
