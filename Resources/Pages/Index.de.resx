@@ -107,7 +107,7 @@
     <value>Projektdaten werden geladen...</value>
   </data>
   <data name="Welcome_Heading" xml:space="preserve">
-    <value>Willkommen beim MoneyMoney Budget Tracker!</value>
+    <value>Willkommen bei Budget!</value>
   </data>
   <data name="Welcome_Body" xml:space="preserve">
     <value>Du hast noch keine Projekte. Klicke unten auf „Neues Projekt", um loszulegen.</value>
