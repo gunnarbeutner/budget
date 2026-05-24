@@ -232,6 +232,11 @@
     private Dictionary<string, List<MonthlySpending>>? categoryTrends;
     private Dictionary<string, string> categorySortKeys = new();
     private Dictionary<string, List<MonthlySpending>>? budgetTrends;
+    /// <summary>(Id, ItemType) → unique display name. Bare category name when no collision,
+    /// "Parent group > Name" when two or more selected items share the same bare name.
+    /// Populated by LoadCategoryTrends; the other dictionaries are keyed by the resulting
+    /// display name so collisions can't silently overwrite entries.</summary>
+    private Dictionary<(long Id, CategoryItemType ItemType), string> categoryDisplayNames = new();
     private List<VarianceSummary>? varianceSummary;
     private List<Budget>? availableBudgets;
     private int selectedBudgetId = 0;
@@ -519,6 +524,68 @@
         }
     }
 
+    /// <summary>
+    /// Resolves a unique display name for every selected (Id, ItemType). Bare category name is
+    /// used unless two or more selections share it, in which case both are qualified as
+    /// "Parent group > Name" so they're distinguishable in the chart, variance table, and
+    /// summary.
+    /// </summary>
+    private Dictionary<(long Id, CategoryItemType ItemType), string> BuildDisplayNames(
+        IEnumerable<(long Id, CategoryItemType ItemType)> keys)
+    {
+        var bare = new Dictionary<(long, CategoryItemType), string>();
+        foreach (var key in keys)
+        {
+            string name;
+            if (key.ItemType == CategoryItemType.Group)
+            {
+                var group = allAvailableCategories?.FirstOrDefault(c =>
+                    c.ItemType == CategoryItemType.Group && c.Id == key.Id);
+                name = group?.CategoryGroup.Name ?? "Unknown";
+            }
+            else
+            {
+                var category = allActualCategories?.FirstOrDefault(c => c.Id == key.Id);
+                name = category?.Name ?? "Unknown";
+            }
+            bare[key] = name;
+        }
+
+        var counts = bare.Values.GroupBy(n => n).ToDictionary(g => g.Key, g => g.Count());
+        var result = new Dictionary<(long, CategoryItemType), string>();
+        foreach (var (key, name) in bare)
+        {
+            if (counts[name] > 1)
+            {
+                var parent = ResolveParentGroupName(key) ?? "(root)";
+                result[key] = $"{parent} > {name}";
+            }
+            else
+            {
+                result[key] = name;
+            }
+        }
+        return result;
+    }
+
+    private string? ResolveParentGroupName((long Id, CategoryItemType ItemType) key)
+    {
+        if (key.ItemType == CategoryItemType.Category)
+        {
+            var category = allActualCategories?.FirstOrDefault(c => c.Id == key.Id);
+            if (category?.GroupId == null) return null;
+            var parent = allAvailableCategories?.FirstOrDefault(c =>
+                c.ItemType == CategoryItemType.Group && c.Id == category.GroupId.Value);
+            return parent?.CategoryGroup.Name;
+        }
+        var group = allAvailableCategories?.FirstOrDefault(c =>
+            c.ItemType == CategoryItemType.Group && c.Id == key.Id);
+        if (group?.ParentCategoryGroupId == null) return null;
+        var parentGroup = allAvailableCategories?.FirstOrDefault(c =>
+            c.ItemType == CategoryItemType.Group && c.Id == group.ParentCategoryGroupId.Value);
+        return parentGroup?.CategoryGroup.Name;
+    }
+
     private async Task LoadCategoryTrends()
     {
         categoryTrends = new Dictionary<string, List<MonthlySpending>>();
@@ -532,25 +599,17 @@
 
         var trendBatch = await BudgetService.GetMonthlySpendingBatchAsync(batchKeys, selectedYear);
 
+        // Two leaf categories can share the same name (e.g. "Reparaturen" sits under both
+        // "Umlagefähig" and "Nicht umlagefähig"). The downstream dictionaries are keyed by
+        // display name, so collisions silently overwrite — disambiguate with the parent group
+        // before any key is written.
+        categoryDisplayNames = BuildDisplayNames(batchKeys);
+
         categorySortKeys = new Dictionary<string, string>();
         foreach (var (key, trend) in trendBatch)
         {
             if (!trend.Any()) continue;
-
-            string name;
-            if (key.ItemType == CategoryItemType.Group)
-            {
-                var group = allAvailableCategories?.FirstOrDefault(c =>
-                    c.ItemType == CategoryItemType.Group && c.Id == key.Id);
-                if (group == null) continue;
-                name = group.CategoryGroup.Name ?? "Unknown";
-            }
-            else
-            {
-                var category = allActualCategories?.FirstOrDefault(c => c.Id == key.Id);
-                if (category == null) continue;
-                name = category.Name ?? "Unknown";
-            }
+            if (!categoryDisplayNames.TryGetValue(key, out var name)) continue;
 
             categoryTrends[name] = trend;
             categorySortKeys[name] = ComputeMoneyMoneySortKey(key);
@@ -580,7 +639,9 @@
                     var budgetTrend = await BudgetService.GetBudgetTrendAsync(groupId, CategoryItemType.Group, selectedCompareBudgetId);
                     if (budgetTrend.Any())
                     {
-                        var categoryName = group.CategoryGroup.Name ?? "Unknown";
+                        var categoryName = categoryDisplayNames.GetValueOrDefault(
+                            (groupId, CategoryItemType.Group),
+                            group.CategoryGroup.Name ?? "Unknown");
                         var actualTrend = categoryTrends.GetValueOrDefault(categoryName);
 
                         // Filter budget to only months being displayed on the chart
@@ -614,7 +675,9 @@
                     var budgetTrend = await BudgetService.GetBudgetTrendAsync(categoryId, CategoryItemType.Category, selectedCompareBudgetId);
                     if (budgetTrend.Any())
                     {
-                        var categoryName = category.Name ?? "Unknown";
+                        var categoryName = categoryDisplayNames.GetValueOrDefault(
+                            (categoryId, CategoryItemType.Category),
+                            category.Name ?? "Unknown");
                         var actualTrend = categoryTrends.GetValueOrDefault(categoryName);
 
                         // Filter budget to only months being displayed on the chart
