@@ -62,6 +62,11 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
     <string>1.0</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
+    <!-- Agent app: no dock icon when launchd fires the headless --run-once mode. The
+         interactive config flow at the bottom of main.swift calls setActivationPolicy(.regular)
+         to elevate to a foreground app and show the window when the user launches it directly. -->
+    <key>LSUIElement</key>
+    <true/>
 </dict>
 </plist>
 PLIST
