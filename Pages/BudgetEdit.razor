@@ -81,6 +81,17 @@
         }
         else
         {
+            var sortedEntries = editingEntries
+                .OrderBy(e => categoryNames.GetValueOrDefault(e.Key, ""))
+                .ToList();
+            var incomeRows = sortedEntries.Where(e => incomeKeys.Contains(e.Key)).ToList();
+            var expenseRows = sortedEntries.Where(e => !incomeKeys.Contains(e.Key)).ToList();
+
+            decimal IncomeMonth(int idx) => incomeRows.Sum(e => e.Value[idx]);
+            decimal ExpenseMonth(int idx) => expenseRows.Sum(e => e.Value[idx]);
+            var incomeYear = incomeRows.Sum(e => e.Value.Sum());
+            var expenseYear = expenseRows.Sum(e => e.Value.Sum());
+
             <div class="table-responsive">
                 <table class="table table-sm mb-0">
                     <thead>
@@ -94,42 +105,102 @@
                             <th></th>
                         </tr>
                     </thead>
-                    <tbody>
-                        @foreach (var (key, amounts) in editingEntries.OrderBy(e => categoryNames.GetValueOrDefault(e.Key, "")))
-                        {
-                            <tr>
-                                <td>@categoryNames.GetValueOrDefault(key, L["Picker_Unknown"])</td>
+                    @if (incomeRows.Any())
+                    {
+                        <tbody>
+                            <tr class="table-secondary">
+                                <th colspan="15">@L["Section_Income"]</th>
+                            </tr>
+                            @foreach (var (key, amounts) in incomeRows)
+                            {
+                                <tr>
+                                    <td>@categoryNames.GetValueOrDefault(key, L["Picker_Unknown"])</td>
+                                    @for (int m = 0; m < 12; m++)
+                                    {
+                                        var idx = m;
+                                        <td class="text-end">
+                                            <input type="number" class="form-control form-control-sm"
+                                                   style="min-width: 80px; text-align: right;"
+                                                   step="0.01"
+                                                   @bind="amounts[idx]" />
+                                        </td>
+                                    }
+                                    <td class="text-end"><strong>€@amounts.Sum().ToString("N2")</strong></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-link text-danger p-0"
+                                                title="@L["Button_RemoveRow"]"
+                                                @onclick="() => RemoveRow(key)">×</button>
+                                    </td>
+                                </tr>
+                            }
+                            <tr class="table-primary">
+                                <th>@L["Subtotal_Income"]</th>
                                 @for (int m = 0; m < 12; m++)
                                 {
-                                    var idx = m;
-                                    <td class="text-end">
-                                        <input type="number" class="form-control form-control-sm"
-                                               style="width: 80px; text-align: right;"
-                                               step="0.01"
-                                               @bind="amounts[idx]" />
-                                    </td>
+                                    <th class="text-end">€@IncomeMonth(m).ToString("N2")</th>
                                 }
-                                <td class="text-end"><strong>€@amounts.Sum().ToString("N2")</strong></td>
-                                <td>
-                                    <button class="btn btn-sm btn-link text-danger p-0"
-                                            title="@L["Button_RemoveRow"]"
-                                            @onclick="() => RemoveRow(key)">×</button>
-                                </td>
+                                <th class="text-end">€@incomeYear.ToString("N2")</th>
+                                <th></th>
                             </tr>
-                        }
-                    </tbody>
-                    <tfoot>
-                        <tr class="table-primary">
-                            <th>@L["Table_Total"]</th>
-                            @for (int m = 0; m < 12; m++)
+                        </tbody>
+                    }
+                    @if (expenseRows.Any())
+                    {
+                        <tbody>
+                            <tr class="table-secondary">
+                                <th colspan="15">@L["Section_Expenses"]</th>
+                            </tr>
+                            @foreach (var (key, amounts) in expenseRows)
                             {
-                                var idx = m;
-                                <th class="text-end">€@editingEntries.Values.Sum(a => a[idx]).ToString("N2")</th>
+                                <tr>
+                                    <td>@categoryNames.GetValueOrDefault(key, L["Picker_Unknown"])</td>
+                                    @for (int m = 0; m < 12; m++)
+                                    {
+                                        var idx = m;
+                                        <td class="text-end">
+                                            <input type="number" class="form-control form-control-sm"
+                                                   style="min-width: 80px; text-align: right;"
+                                                   step="0.01"
+                                                   @bind="amounts[idx]" />
+                                        </td>
+                                    }
+                                    <td class="text-end"><strong>€@amounts.Sum().ToString("N2")</strong></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-link text-danger p-0"
+                                                title="@L["Button_RemoveRow"]"
+                                                @onclick="() => RemoveRow(key)">×</button>
+                                    </td>
+                                </tr>
                             }
-                            <th class="text-end">€@editingEntries.Values.Sum(a => a.Sum()).ToString("N2")</th>
-                            <th></th>
-                        </tr>
-                    </tfoot>
+                            <tr class="table-primary">
+                                <th>@L["Subtotal_Expenses"]</th>
+                                @for (int m = 0; m < 12; m++)
+                                {
+                                    <th class="text-end">€@ExpenseMonth(m).ToString("N2")</th>
+                                }
+                                <th class="text-end">€@expenseYear.ToString("N2")</th>
+                                <th></th>
+                            </tr>
+                        </tbody>
+                    }
+                    @if (incomeRows.Any() && expenseRows.Any())
+                    {
+                        var netYear = incomeYear - expenseYear;
+                        var netClass = netYear >= 0 ? "text-success" : "text-danger";
+                        <tfoot>
+                            <tr>
+                                <th>@L["Net"]</th>
+                                @for (int m = 0; m < 12; m++)
+                                {
+                                    var net = IncomeMonth(m) - ExpenseMonth(m);
+                                    var cls = net >= 0 ? "text-success" : "text-danger";
+                                    <th class="text-end @cls">€@net.ToString("N2")</th>
+                                }
+                                <th class="text-end @netClass">€@netYear.ToString("N2")</th>
+                                <th></th>
+                            </tr>
+                        </tfoot>
+                    }
                 </table>
             </div>
         }
@@ -176,6 +247,7 @@
     private Dictionary<(long Id, CategoryItemType ItemType), string> categoryNames = new();
     private List<(long Id, CategoryItemType ItemType)> availableToAdd = new();
     private Dictionary<(long Id, CategoryItemType ItemType), string> addCandidateNames = new();
+    private HashSet<(long Id, CategoryItemType ItemType)> incomeKeys = new();
     private string addSelection = "";
 
     // Cached lookups so Re-predict / Add doesn't rehit the DB for naming.
@@ -192,6 +264,7 @@
         }
 
         await LoadHierarchyLookups();
+        incomeKeys = await BudgetService.GetIncomeItemsForProjectAsync(budget.ProjectId);
 
         editingEntries = budget.MonthlyEntries.ToDictionary(
             e => (e.CategoryId, e.ItemType),
@@ -320,9 +393,10 @@
         var sourceId = budget.Project?.SourceId ?? SourceScope.LegacySourceId;
         foreach (var key in editingEntries.Keys.ToList())
         {
+            var isIncome = incomeKeys.Contains(key);
             var predicted = key.ItemType == CategoryItemType.Group
-                ? await BudgetService.PredictMonthlySpendingForCategoryAsync(key.Id, budget.Year, sourceId)
-                : await BudgetService.PredictMonthlySpendingForLeafCategoryAsync(key.Id, budget.Year, sourceId);
+                ? await BudgetService.PredictMonthlySpendingForCategoryAsync(key.Id, budget.Year, sourceId, isIncome)
+                : await BudgetService.PredictMonthlySpendingForLeafCategoryAsync(key.Id, budget.Year, sourceId, isIncome);
             editingEntries[key] = predicted.Select(p => Math.Round(p, 2)).ToArray();
         }
         showRepredictDialog = false;

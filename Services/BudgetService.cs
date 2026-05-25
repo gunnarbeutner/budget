@@ -466,7 +466,7 @@ public class BudgetService
     /// <summary>
     /// Get monthly spending for an individual category over the last N months
     /// </summary>
-    public async Task<List<MonthlySpending>> GetMonthlySpendingForCategoryAsync(long categoryId, int sourceId, int months = 12)
+    public async Task<List<MonthlySpending>> GetMonthlySpendingForCategoryAsync(long categoryId, int sourceId, int months = 12, bool isIncome = false)
     {
         // Get calendar month boundaries - last N months including current month
         var now = DateTimeOffset.UtcNow;
@@ -482,12 +482,19 @@ public class BudgetService
             var startTimestamp = monthStart.ToUnixTimeSeconds();
             var endTimestamp = monthEnd.ToUnixTimeSeconds();
 
-            var spent = await _budgetDb.Transactions
-                .Where(t => t.SourceId == sourceId)
-                .Where(t => t.CategoryId == categoryId)
-                .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
-                .Where(t => t.Amount < 0)
-                .SumAsync(t => -(decimal)t.Amount);
+            var spent = isIncome
+                ? await _budgetDb.Transactions
+                    .Where(t => t.SourceId == sourceId)
+                    .Where(t => t.CategoryId == categoryId)
+                    .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
+                    .Where(t => t.Amount > 0)
+                    .SumAsync(t => (decimal)t.Amount)
+                : await _budgetDb.Transactions
+                    .Where(t => t.SourceId == sourceId)
+                    .Where(t => t.CategoryId == categoryId)
+                    .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
+                    .Where(t => t.Amount < 0)
+                    .SumAsync(t => -(decimal)t.Amount);
 
             results.Add(new MonthlySpending
             {
@@ -501,9 +508,10 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Get monthly spending for a category group over the last N months
+    /// Get monthly spending for a category group over the last N months. When isIncome=true,
+    /// sums positive transactions (income) instead of negated negatives (expenses).
     /// </summary>
-    public async Task<List<MonthlySpending>> GetMonthlySpendingAsync(long categoryGroupId, int sourceId, int months = 12)
+    public async Task<List<MonthlySpending>> GetMonthlySpendingAsync(long categoryGroupId, int sourceId, int months = 12, bool isIncome = false)
     {
         var categoryIds = await GetAllCategoryIdsForGroupAsync(categoryGroupId, sourceId);
 
@@ -524,12 +532,19 @@ public class BudgetService
             var startTimestamp = monthStart.ToUnixTimeSeconds();
             var endTimestamp = monthEnd.ToUnixTimeSeconds();
 
-            var spent = await _budgetDb.Transactions
-                .Where(t => t.SourceId == sourceId)
-                .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
-                .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
-                .Where(t => t.Amount < 0)
-                .SumAsync(t => -(decimal)t.Amount);
+            var spent = isIncome
+                ? await _budgetDb.Transactions
+                    .Where(t => t.SourceId == sourceId)
+                    .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
+                    .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
+                    .Where(t => t.Amount > 0)
+                    .SumAsync(t => (decimal)t.Amount)
+                : await _budgetDb.Transactions
+                    .Where(t => t.SourceId == sourceId)
+                    .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
+                    .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
+                    .Where(t => t.Amount < 0)
+                    .SumAsync(t => -(decimal)t.Amount);
 
             results.Add(new MonthlySpending
             {
@@ -881,10 +896,10 @@ public class BudgetService
     /// calendar year. Used as the prediction for already-elapsed target years where seasonal
     /// scaling against today's level would be nonsensical.
     /// </summary>
-    private async Task<decimal[]> GetYearActualsAsync((long Id, CategoryItemType ItemType) key, int year, int sourceId)
+    private async Task<decimal[]> GetYearActualsAsync((long Id, CategoryItemType ItemType) key, int year, int sourceId, bool isIncome = false)
     {
         var result = new decimal[12];
-        var batch = await GetMonthlySpendingBatchAsync(new[] { key }, year, sourceId);
+        var batch = await GetMonthlySpendingBatchAsync(new[] { key }, year, sourceId, isIncome);
         if (batch.TryGetValue(key, out var trend))
         {
             for (int i = 0; i < 12 && i < trend.Count; i++)
@@ -899,17 +914,17 @@ public class BudgetService
     /// per-leaf history (<see cref="GetMonthlySpendingForCategoryAsync"/>) instead of summing
     /// a group's descendants.
     /// </summary>
-    public async Task<decimal[]> PredictMonthlySpendingForLeafCategoryAsync(long categoryId, int targetYear, int sourceId)
+    public async Task<decimal[]> PredictMonthlySpendingForLeafCategoryAsync(long categoryId, int targetYear, int sourceId, bool isIncome = false)
     {
         var predictions = new decimal[12];
 
         // For a completely elapsed year, just use that year's own actuals — no scaling needed.
         if (targetYear < DateTime.UtcNow.Year)
         {
-            return await GetYearActualsAsync((categoryId, CategoryItemType.Category), targetYear, sourceId);
+            return await GetYearActualsAsync((categoryId, CategoryItemType.Category), targetYear, sourceId, isIncome);
         }
 
-        var monthlyData = await GetMonthlySpendingForCategoryAsync(categoryId, sourceId, 24);
+        var monthlyData = await GetMonthlySpendingForCategoryAsync(categoryId, sourceId, 24, isIncome);
 
         if (!monthlyData.Any())
             return predictions;
@@ -961,18 +976,18 @@ public class BudgetService
     /// Predict monthly spending for a specific category group using seasonal adjustment
     /// This looks at the same month last year and adjusts based on overall trend
     /// </summary>
-    public async Task<decimal[]> PredictMonthlySpendingForCategoryAsync(long categoryGroupId, int targetYear, int sourceId)
+    public async Task<decimal[]> PredictMonthlySpendingForCategoryAsync(long categoryGroupId, int targetYear, int sourceId, bool isIncome = false)
     {
         var predictions = new decimal[12];
 
         // For a completely elapsed year, just use that year's own actuals — no scaling needed.
         if (targetYear < DateTime.UtcNow.Year)
         {
-            return await GetYearActualsAsync((categoryGroupId, CategoryItemType.Group), targetYear, sourceId);
+            return await GetYearActualsAsync((categoryGroupId, CategoryItemType.Group), targetYear, sourceId, isIncome);
         }
 
         // Get 2 years of historical data
-        var monthlyData = await GetMonthlySpendingAsync(categoryGroupId, sourceId, 24);
+        var monthlyData = await GetMonthlySpendingAsync(categoryGroupId, sourceId, 24, isIncome);
 
         if (!monthlyData.Any())
         {
@@ -1734,7 +1749,8 @@ public class BudgetService
         GetMonthlySpendingBatchAsync(
             IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
             int year,
-            int sourceId)
+            int sourceId,
+            bool isIncome = false)
     {
         const int months = 12;
         var result = new Dictionary<(long, CategoryItemType), List<MonthlySpending>>();
@@ -1766,11 +1782,14 @@ public class BudgetService
         var startTs = startDate.ToUnixTimeSeconds();
         var endTs = startDate.AddMonths(months).ToUnixTimeSeconds();
 
-        var raw = await _budgetDb.Transactions
+        var rawQuery = _budgetDb.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
-            .Where(t => t.Timestamp >= startTs && t.Timestamp < endTs)
-            .Where(t => t.Amount < 0)
+            .Where(t => t.Timestamp >= startTs && t.Timestamp < endTs);
+        rawQuery = isIncome
+            ? rawQuery.Where(t => t.Amount > 0)
+            : rawQuery.Where(t => t.Amount < 0);
+        var raw = await rawQuery
             .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount, t.Timestamp })
             .ToListAsync();
 
@@ -1785,7 +1804,7 @@ public class BudgetService
                 arr = new decimal[months];
                 perCategoryMonthly[t.CategoryId] = arr;
             }
-            arr[monthIndex] += -(decimal)t.Amount;
+            arr[monthIndex] += isIncome ? (decimal)t.Amount : -(decimal)t.Amount;
         }
 
         foreach (var item in items)

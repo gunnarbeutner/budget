@@ -118,6 +118,21 @@
   <data name="Table_Total" xml:space="preserve">
     <value>Total</value>
   </data>
+  <data name="Section_Income" xml:space="preserve">
+    <value>Income</value>
+  </data>
+  <data name="Section_Expenses" xml:space="preserve">
+    <value>Expenses</value>
+  </data>
+  <data name="Subtotal_Income" xml:space="preserve">
+    <value>Subtotal income</value>
+  </data>
+  <data name="Subtotal_Expenses" xml:space="preserve">
+    <value>Subtotal expenses</value>
+  </data>
+  <data name="Net" xml:space="preserve">
+    <value>Net</value>
+  </data>
   <data name="Category_Unknown" xml:space="preserve">
     <value>Unknown</value>
   </data>

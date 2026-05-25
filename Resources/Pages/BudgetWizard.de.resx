@@ -118,6 +118,21 @@
   <data name="Table_Total" xml:space="preserve">
     <value>Gesamt</value>
   </data>
+  <data name="Section_Income" xml:space="preserve">
+    <value>Einnahmen</value>
+  </data>
+  <data name="Section_Expenses" xml:space="preserve">
+    <value>Ausgaben</value>
+  </data>
+  <data name="Subtotal_Income" xml:space="preserve">
+    <value>Zwischensumme Einnahmen</value>
+  </data>
+  <data name="Subtotal_Expenses" xml:space="preserve">
+    <value>Zwischensumme Ausgaben</value>
+  </data>
+  <data name="Net" xml:space="preserve">
+    <value>Netto</value>
+  </data>
   <data name="Category_Unknown" xml:space="preserve">
     <value>Unbekannt</value>
   </data>

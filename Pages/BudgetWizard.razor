@@ -75,6 +75,15 @@ else if (step == 2)
                     @L["Predictions_Intro"]
                 </p>
 
+                var sortedPredictions = predictions
+                    .OrderBy(p => categoryNames.GetValueOrDefault(p.Key, L["Category_Unknown"]))
+                    .ToList();
+                var wizIncomeRows = sortedPredictions.Where(p => incomeKeys.Contains(p.Key)).ToList();
+                var wizExpenseRows = sortedPredictions.Where(p => !incomeKeys.Contains(p.Key)).ToList();
+                decimal wizIncomeMonth(int idx) => wizIncomeRows.Sum(p => p.Value[idx]);
+                decimal wizExpenseMonth(int idx) => wizExpenseRows.Sum(p => p.Value[idx]);
+                var wizIncomeYear = wizIncomeRows.Sum(p => p.Value.Sum());
+                var wizExpenseYear = wizExpenseRows.Sum(p => p.Value.Sum());
                 <div class="table-responsive">
                     <table class="table table-sm">
                         <thead>
@@ -87,34 +96,89 @@ else if (step == 2)
                                 <th class="text-end">@L["Table_Total"]</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            @foreach (var (key, amounts) in predictions.OrderBy(p => categoryNames.GetValueOrDefault(p.Key, L["Category_Unknown"])))
-                            {
-                                <tr>
-                                    <td>@categoryNames.GetValueOrDefault(key, L["Category_Unknown"])</td>
+                        @if (wizIncomeRows.Any())
+                        {
+                            <tbody>
+                                <tr class="table-secondary">
+                                    <th colspan="14">@L["Section_Income"]</th>
+                                </tr>
+                                @foreach (var (key, amounts) in wizIncomeRows)
+                                {
+                                    <tr>
+                                        <td>@categoryNames.GetValueOrDefault(key, L["Category_Unknown"])</td>
+                                        @for (int m = 0; m < 12; m++)
+                                        {
+                                            var idx = m;
+                                            <td class="text-end">
+                                                <input type="number" class="form-control form-control-sm"
+                                                       style="min-width: 80px; text-align: right;"
+                                                       step="0.01"
+                                                       @bind="amounts[idx]" />
+                                            </td>
+                                        }
+                                        <td class="text-end"><strong>€@amounts.Sum().ToString("N2")</strong></td>
+                                    </tr>
+                                }
+                                <tr class="table-primary">
+                                    <th>@L["Subtotal_Income"]</th>
                                     @for (int m = 0; m < 12; m++)
                                     {
-                                        <td class="text-end">
-                                            <input type="number" class="form-control form-control-sm"
-                                                   style="width: 80px; text-align: right;"
-                                                   step="0.01"
-                                                   @bind="amounts[m]" />
-                                        </td>
+                                        <th class="text-end">€@wizIncomeMonth(m).ToString("N2")</th>
                                     }
-                                    <td class="text-end"><strong>€@amounts.Sum().ToString("N2")</strong></td>
+                                    <th class="text-end">€@wizIncomeYear.ToString("N2")</th>
                                 </tr>
-                            }
-                        </tbody>
-                        <tfoot>
-                            <tr class="table-primary">
-                                <th>@L["Table_Total"]</th>
-                                @for (int m = 0; m < 12; m++)
+                            </tbody>
+                        }
+                        @if (wizExpenseRows.Any())
+                        {
+                            <tbody>
+                                <tr class="table-secondary">
+                                    <th colspan="14">@L["Section_Expenses"]</th>
+                                </tr>
+                                @foreach (var (key, amounts) in wizExpenseRows)
                                 {
-                                    <th class="text-end">€@predictions.Values.Sum(a => a[m]).ToString("N2")</th>
+                                    <tr>
+                                        <td>@categoryNames.GetValueOrDefault(key, L["Category_Unknown"])</td>
+                                        @for (int m = 0; m < 12; m++)
+                                        {
+                                            var idx = m;
+                                            <td class="text-end">
+                                                <input type="number" class="form-control form-control-sm"
+                                                       style="min-width: 80px; text-align: right;"
+                                                       step="0.01"
+                                                       @bind="amounts[idx]" />
+                                            </td>
+                                        }
+                                        <td class="text-end"><strong>€@amounts.Sum().ToString("N2")</strong></td>
+                                    </tr>
                                 }
-                                <th class="text-end">€@predictions.Values.Sum(a => a.Sum()).ToString("N2")</th>
-                            </tr>
-                        </tfoot>
+                                <tr class="table-primary">
+                                    <th>@L["Subtotal_Expenses"]</th>
+                                    @for (int m = 0; m < 12; m++)
+                                    {
+                                        <th class="text-end">€@wizExpenseMonth(m).ToString("N2")</th>
+                                    }
+                                    <th class="text-end">€@wizExpenseYear.ToString("N2")</th>
+                                </tr>
+                            </tbody>
+                        }
+                        @if (wizIncomeRows.Any() && wizExpenseRows.Any())
+                        {
+                            var netYear = wizIncomeYear - wizExpenseYear;
+                            var netClass = netYear >= 0 ? "text-success" : "text-danger";
+                            <tfoot>
+                                <tr>
+                                    <th>@L["Net"]</th>
+                                    @for (int m = 0; m < 12; m++)
+                                    {
+                                        var net = wizIncomeMonth(m) - wizExpenseMonth(m);
+                                        var cls = net >= 0 ? "text-success" : "text-danger";
+                                        <th class="text-end @cls">€@net.ToString("N2")</th>
+                                    }
+                                    <th class="text-end @netClass">€@netYear.ToString("N2")</th>
+                                </tr>
+                            </tfoot>
+                        }
                     </table>
                 </div>
 
@@ -148,6 +212,7 @@ else if (step == 3)
 
     private Dictionary<(long Id, CategoryItemType ItemType), decimal[]>? predictions;
     private Dictionary<(long Id, CategoryItemType ItemType), string>? categoryNames;
+    private HashSet<(long Id, CategoryItemType ItemType)> incomeKeys = new();
 
     // Category selection
     private List<CategoryGroupWithChildCount>? allAvailableCategories;
@@ -232,6 +297,7 @@ else if (step == 3)
         // Load tracking items from the project
         var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(selectedProjectId);
         var sourceIdForPredict = await BudgetService.GetSourceIdForProjectAsync(selectedProjectId);
+        incomeKeys = await BudgetService.GetIncomeItemsForProjectAsync(selectedProjectId);
 
         // Load the hierarchy once so we can look up parent names without per-item DB calls.
         var allCategoryItems = await BudgetService.GetAllCategoriesWithChildCountsAsync(sourceIdForPredict);
@@ -258,7 +324,8 @@ else if (step == 3)
                 var key = (item.CategoryGroupId.Value, CategoryItemType.Group);
                 labels.Add((key, cg.Name ?? L["Category_Unknown"], parentName));
 
-                var monthlyPredictions = await BudgetService.PredictMonthlySpendingForCategoryAsync(item.CategoryGroupId.Value, selectedYear, sourceIdForPredict);
+                var isIncome = incomeKeys.Contains(key);
+                var monthlyPredictions = await BudgetService.PredictMonthlySpendingForCategoryAsync(item.CategoryGroupId.Value, selectedYear, sourceIdForPredict, isIncome);
                 predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
             }
             else if (item.CategoryId.HasValue)
@@ -271,7 +338,8 @@ else if (step == 3)
                 var key = (item.CategoryId.Value, CategoryItemType.Category);
                 labels.Add((key, cat.Name ?? L["Category_Unknown"], parentName));
 
-                var monthlyPredictions = await BudgetService.PredictMonthlySpendingForLeafCategoryAsync(item.CategoryId.Value, selectedYear, sourceIdForPredict);
+                var isIncome = incomeKeys.Contains(key);
+                var monthlyPredictions = await BudgetService.PredictMonthlySpendingForLeafCategoryAsync(item.CategoryId.Value, selectedYear, sourceIdForPredict, isIncome);
                 predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
             }
         }
