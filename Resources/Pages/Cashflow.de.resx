@@ -226,6 +226,12 @@
   <data name="Table_IncomeCategory" xml:space="preserve">
     <value>Einnahmenkategorie</value>
   </data>
+  <data name="Table_Origin" xml:space="preserve">
+    <value>Aus</value>
+  </data>
+  <data name="Rollup_CollisionWarning" xml:space="preserve">
+    <value>Das übergeordnete Projekt und ein oder mehrere Unterprojekte erfassen dieselbe Kategorie. Deren Transaktionen werden in der Zusammenfassung doppelt gezählt; entferne das doppelte Erfassungselement auf einer Seite.</value>
+  </data>
   <data name="Table_SourceMonth" xml:space="preserve">
     <value>Quellmonat ({0})</value>
   </data>

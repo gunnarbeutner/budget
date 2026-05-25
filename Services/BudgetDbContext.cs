@@ -95,6 +95,16 @@ public class BudgetDbContext : DbContext
             .HasForeignKey(p => p.SourceId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // Self-referencing parent/child. SetNull on parent delete so children survive as
+        // top-level projects rather than getting cascade-removed with the parent.
+        modelBuilder.Entity<Project>()
+            .HasOne(p => p.Parent)
+            .WithMany(p => p.Children)
+            .HasForeignKey(p => p.ParentProjectId)
+            .OnDelete(DeleteBehavior.SetNull);
+        modelBuilder.Entity<Project>()
+            .HasIndex(p => p.ParentProjectId);
+
         modelBuilder.Entity<ImportSource>()
             .HasIndex(s => s.Name)
             .IsUnique();

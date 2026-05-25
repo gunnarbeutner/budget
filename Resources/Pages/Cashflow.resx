@@ -226,6 +226,12 @@
   <data name="Table_IncomeCategory" xml:space="preserve">
     <value>Income Category</value>
   </data>
+  <data name="Table_Origin" xml:space="preserve">
+    <value>From</value>
+  </data>
+  <data name="Rollup_CollisionWarning" xml:space="preserve">
+    <value>The parent project and one or more child projects track the same category. Their transactions are being summed twice in the rollup; remove the duplicate tracking item from one side.</value>
+  </data>
   <data name="Table_SourceMonth" xml:space="preserve">
     <value>Source-month ({0})</value>
   </data>

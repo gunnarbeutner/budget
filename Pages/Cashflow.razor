@@ -262,6 +262,23 @@ else if (incomeCategories.Any() || expenseCategories.Any())
 
                     }
 
+                    @if (rollupCollisions.Any())
+                    {
+                        <div class="alert alert-warning py-2 small mb-3">
+                            @L["Rollup_CollisionWarning"]
+                            <ul class="mb-0 mt-1">
+                                @foreach (var col in rollupCollisions)
+                                {
+                                    <li>@($"{(col.ItemType == CategoryItemType.Group ? "Group" : "Category")} #{col.CategoryId}") &mdash; @col.ChildName</li>
+                                }
+                            </ul>
+                        </div>
+                    }
+
+                    @{
+                        var showOrigin = incomeCategories.Select(c => c.OriginProjectId).Distinct().Count() > 1;
+                    }
+
                     @if (incomeCategories.Any() && incomeProjectionMode == "recent")
                     {
                         var sourceMonthLabel = new DateTime(recentIncomeSourceMonth.Year, recentIncomeSourceMonth.Month, 1).ToString("MMM yyyy");
@@ -273,6 +290,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                 <thead>
                                     <tr>
                                         <th>@L["Table_IncomeCategory"]</th>
+                                        @if (showOrigin) { <th>@L["Table_Origin"]</th> }
                                         <th class="text-end">@L["Table_SourceMonth", sourceMonthLabel]</th>
                                         <th class="text-end">@L["Table_ProjectedYearly"]</th>
                                     </tr>
@@ -284,6 +302,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                         var yearly = income.MonthlyAmounts.Sum();
                                         <tr>
                                             <td>@income.CategoryName</td>
+                                            @if (showOrigin) { <td><small class="text-muted">@income.OriginProjectName</small></td> }
                                             <td class="text-end">@FormatEuro(sourceMonthAmount)</td>
                                             <td class="text-end">@FormatEuro(yearly)</td>
                                         </tr>
@@ -291,12 +310,12 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                 </tbody>
                                 <tfoot>
                                     <tr class="table-primary">
-                                        <th>@L["Table_TotalIncome"]</th>
+                                        <th colspan="@(showOrigin ? 2 : 1)">@L["Table_TotalIncome"]</th>
                                         <th></th>
                                         <th class="text-end">@FormatEuro(yearlyIncome)</th>
                                     </tr>
                                     <tr>
-                                        <th colspan="2" class="text-end">@L["Table_VsProjectedYearlyExpenses", FormatEuro(totalExpenses)]</th>
+                                        <th colspan="@(showOrigin ? 3 : 2)" class="text-end">@L["Table_VsProjectedYearlyExpenses", FormatEuro(totalExpenses)]</th>
                                         <th class="text-end @netClass">@FormatEuro(netYearly)</th>
                                     </tr>
                                 </tfoot>
@@ -360,6 +379,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                 <thead>
                                     <tr>
                                         <th>@L["Table_IncomeCategory"]</th>
+                                        @if (showOrigin) { <th>@L["Table_Origin"]</th> }
                                         <th class="text-end">@L["Table_YearlyIncome"]</th>
                                         <th class="text-end">@L["Table_SplitPercent"]</th>
                                         <th class="text-end">@L["Table_RequiredContribution"]</th>
@@ -377,6 +397,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
 
                                         <tr>
                                             <td>@income.CategoryName</td>
+                                            @if (showOrigin) { <td><small class="text-muted">@income.OriginProjectName</small></td> }
                                             <td class="text-end">@FormatEuro(totalIncome)</td>
                                             <td class="text-end">@split%</td>
                                             <td class="text-end">@FormatEuro(requiredContribution)</td>
@@ -386,7 +407,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                 </tbody>
                                 <tfoot>
                                     <tr class="table-primary">
-                                        <th>@L["Table_Total"]</th>
+                                        <th colspan="@(showOrigin ? 2 : 1)">@L["Table_Total"]</th>
                                         <th class="text-end">@FormatEuro(incomeCategories.Sum(c => c.MonthlyAmounts.Sum()))</th>
                                         <th class="text-end @(splitsValid ? "" : "text-danger")">@splitsTotal%</th>
                                         <th class="text-end">@FormatEuro(totalExpenses)</th>
@@ -477,6 +498,16 @@ else
     /// when a budget is selected and the page is projecting (firstProjectedMonth ≤ 12).</summary>
     private Dictionary<(long Id, CategoryItemType ItemType), decimal[]>? budgetMonthlyAmounts;
 
+    /// <summary>When the selected project has child projects, each child uses its own active
+    /// budget for the year. Keyed by ProjectId so ApplyIncomeProjection can route each row's
+    /// future months to the right budget. Includes the parent's own entry.</summary>
+    private Dictionary<int, Dictionary<(long Id, CategoryItemType ItemType), decimal[]>> budgetMonthlyAmountsByProject = new();
+
+    /// <summary>Keys tracked by both the parent and a child project. Recorded during the
+    /// per-project slice load so the page can warn the user — without dedupe their actuals
+    /// would be summed twice in the rollup. Tuple: (catId, itemType, child project name).</summary>
+    private HashSet<(long CategoryId, CategoryItemType ItemType, string ChildName)> rollupCollisions = new();
+
     /// <summary>Master switch for the balance-floor alert. When off, no alert fires regardless
     /// of where the projection dips — a user who doesn't care to be warned about negative
     /// balances gets a quiet page. When on, the banner fires whenever the line dips below
@@ -557,6 +588,33 @@ else
         public CategoryItemType ItemType { get; set; }
         public string CategoryName { get; set; } = "";
         public decimal[] MonthlyAmounts { get; set; } = new decimal[12];
+
+        /// <summary>
+        /// The project this row's actuals and projected amounts came from. For a project with
+        /// children, the cashflow view loads rows from the parent and each child; this lets
+        /// the per-category table show which sub-project each line belongs to.
+        /// </summary>
+        public int OriginProjectId { get; set; }
+        public string OriginProjectName { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Per-project intermediate result of <see cref="LoadOneProjectCashflowSliceAsync"/>: the
+    /// income and expense rows we'd add to the unified list, plus the project's name for
+    /// display, the keys it covers (used to detect collisions when the parent and a child
+    /// track the same item), and the budget amounts that drive its own projection.
+    /// </summary>
+    private class ProjectCashflowSlice
+    {
+        public int ProjectId { get; set; }
+        public string ProjectName { get; set; } = "";
+        public List<CategoryCashflow> IncomeCategories { get; set; } = new();
+        public List<CategoryCashflow> ExpenseCategories { get; set; } = new();
+        public HashSet<(long Id, CategoryItemType ItemType)> Keys { get; set; } = new();
+        public decimal TotalExpensesForProjection { get; set; }
+        public decimal TotalIncomeYtd { get; set; }
+        public List<(long Id, CategoryItemType ItemType)> ProjectionItems { get; set; } = new();
+        public Dictionary<(long Id, CategoryItemType ItemType), decimal[]>? BudgetAmounts { get; set; }
     }
 
     protected override async Task OnInitializedAsync()
@@ -739,162 +797,88 @@ else
         incomeCategories.Clear();
         expenseCategories.Clear();
         contributionSplits.Clear();
+        rollupCollisions.Clear();
 
-        // Load project tracking items (from Budget Tracking Configuration)
-        var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(selectedProjectId);
-        var availableCategories = new List<CategoryGroupWithChildCount>();
-
-        if (trackingItems.Any())
+        // Compute the projection window once — every sub-project uses the same calendar year,
+        // so firstProjectedMonth is shared. Each child uses its own active budget for that
+        // year (loaded inside the slice helper). 13 = sentinel "no projection".
+        firstProjectedMonth = 13;
+        var selectedBudget = availableBudgets?.FirstOrDefault(b => b.Id == selectedBudgetId);
+        if (selectedBudgetId > 0 && selectedBudget != null && selectedBudget.Year == selectedYear)
         {
-            var allCategories = await BudgetService.GetAllCategoriesWithChildCountsAsync(projectSourceId);
-
-            foreach (var item in trackingItems)
-            {
-                if (item.CategoryGroupId.HasValue)
-                {
-                    // Filter by ItemType=Group: Group IDs and Category IDs share a numeric
-                    // namespace, so without this we may resolve a Group ID to an unrelated Category.
-                    var category = allCategories.FirstOrDefault(c =>
-                        c.ItemType == CategoryItemType.Group && c.Id == item.CategoryGroupId.Value);
-                    if (category != null)
-                    {
-                        availableCategories.Add(category);
-                    }
-                }
-                else if (item.CategoryId.HasValue)
-                {
-                    var category = allCategories.FirstOrDefault(c =>
-                        c.ItemType == CategoryItemType.Category && c.Id == item.CategoryId.Value);
-                    if (category != null)
-                    {
-                        availableCategories.Add(category);
-                    }
-                }
-            }
+            var today = DateTime.UtcNow;
+            if (selectedYear > today.Year) firstProjectedMonth = 1;
+            else if (selectedYear == today.Year) firstProjectedMonth = today.Month + 1;
         }
 
-        // Load monthly data for every tracked item in a single batched call
-        var batchKeys = availableCategories.Select(c => (c.Id, c.ItemType)).ToList();
-        var batch = await BudgetService.GetMonthlyIncomeAndExpenseBatchAsync(batchKeys, selectedYear, projectSourceId, selectedProjectId);
-
-        // If a budget is selected for the displayed year, project future months. Expenses use
-        // the budget's per-month values directly. Income depends on the selected mode: "budget"
-        // pulls per-item monthly values directly from the budget, "breakeven" derives one
-        // global gap = (expense_total - income_ytd) / remaining_months attributed by
-        // contribution-split %, "recent" repeats each item's last-month actuals.
-        budgetMonthlyAmounts = null;
-        HashSet<(long Id, CategoryItemType ItemType)>? incomeItemsForProjection = null;
-        firstProjectedMonth = 13; // sentinel: no projection
-        if (selectedBudgetId > 0)
-        {
-            var selectedBudget = availableBudgets?.FirstOrDefault(b => b.Id == selectedBudgetId);
-            if (selectedBudget != null && selectedBudget.Year == selectedYear)
-            {
-                var today = DateTime.UtcNow;
-                if (selectedYear > today.Year) firstProjectedMonth = 1;
-                else if (selectedYear == today.Year) firstProjectedMonth = today.Month + 1;
-
-                if (firstProjectedMonth <= 12)
-                {
-                    budgetMonthlyAmounts = await BudgetService.GetMonthlyBudgetAmountsAsync(selectedBudgetId);
-                    incomeItemsForProjection = await BudgetService.GetIncomeItemsForProjectAsync(selectedProjectId);
-                }
-            }
-        }
-
-        bool projecting = budgetMonthlyAmounts != null && firstProjectedMonth <= 12;
-
-        // In "recent" mode, pull last completed calendar month's per-category income up front so
-        // ApplyIncomeProjection can look it up. Skipped in "breakeven" mode (which derives income
-        // from the gap calculator below).
+        // The recent-mode source month is global (last completed calendar month).
         recentIncomePerItem = null;
-        if (projecting && incomeProjectionMode == "recent")
+        if (firstProjectedMonth <= 12 && incomeProjectionMode == "recent")
         {
             var today = DateTime.UtcNow;
             var sourceMonthStart = new DateTime(today.Year, today.Month, 1).AddMonths(-1);
             recentIncomeSourceMonth = (sourceMonthStart.Year, sourceMonthStart.Month);
-            var recentBatchKeys = availableCategories.Select(c => (c.Id, c.ItemType)).ToList();
-            recentIncomePerItem = await BudgetService.GetMonthlyIncomePerItemAsync(
-                recentBatchKeys, projectSourceId, selectedProjectId, sourceMonthStart.Year, sourceMonthStart.Month);
         }
 
-        // Pre-compute the projected total annual expense (past actuals + future budget) and
-        // the YTD income so the global monthly income gap reflects what will actually appear
-        // in the Income Contribution Calculator's "Total Expenses" reference. If we used the
-        // annual expense budget instead, the calculator's "Remaining" wouldn't reach zero when
-        // past actuals diverged from past budget — even with splits summing to 100%.
-        decimal totalExpensesForProjection = 0m;
-        decimal totalIncomeYtd = 0m;
-        if (projecting)
+        // Build the list of projects to roll up: this one, plus its immediate children. Each
+        // child uses its own active budget for the year (so child projections stay self-
+        // consistent even though the parent budget is the one driving "selected budget" UI).
+        var children = await BudgetService.GetChildProjectsAsync(selectedProjectId);
+        var parent = (await BudgetService.GetProjectAsync(selectedProjectId))!;
+
+        var parentSlice = await LoadOneProjectCashflowSliceAsync(
+            parent, isSelectedProject: true, budgetIdOverride: selectedBudgetId);
+        var slices = new List<ProjectCashflowSlice> { parentSlice };
+        foreach (var child in children)
         {
-            foreach (var cat in availableCategories)
+            // Each child's projection uses ITS active budget for the same year (not the parent's).
+            var childActiveBudget = (await BudgetService.GetBudgetsForProjectAsync(child.Id))
+                .FirstOrDefault(b => b.Year == selectedYear && b.IsActive);
+            slices.Add(await LoadOneProjectCashflowSliceAsync(
+                child, isSelectedProject: false,
+                budgetIdOverride: childActiveBudget?.Id ?? 0));
+        }
+
+        // Cross-slice collision detection: a key tracked by the parent AND a child would
+        // double-count the same transactions. Record the offending keys so the page can warn.
+        var keysByProject = slices.ToDictionary(s => s.ProjectId, s => s.Keys);
+        foreach (var key in parentSlice.Keys)
+        {
+            foreach (var child in slices.Skip(1))
             {
-                bool isIncome = incomeItemsForProjection!.Contains((cat.Id, cat.ItemType));
-                var (income, expenses) = batch[(cat.Id, cat.ItemType)];
-                if (!isIncome)
-                {
-                    // Past actuals (Jan..firstProjectedMonth-1) come from the batch's expense
-                    // array; future months will be overwritten with the budget value in the
-                    // per-category loop below, so reflect that here.
-                    totalExpensesForProjection += expenses.Take(firstProjectedMonth - 1).Sum();
-                    if (budgetMonthlyAmounts!.TryGetValue((cat.Id, cat.ItemType), out var monthly))
-                    {
-                        for (int m = firstProjectedMonth - 1; m < 12; m++)
-                            totalExpensesForProjection += monthly[m];
-                    }
-                }
-                else
-                {
-                    totalIncomeYtd += income.Take(firstProjectedMonth - 1).Sum();
-                }
+                if (child.Keys.Contains(key))
+                    rollupCollisions.Add((key.Id, key.ItemType, child.ProjectName));
             }
         }
 
+        // Merge slices into the page-level income/expense lists. We keep each (project, key)
+        // as a separate row rather than summing across projects so the per-category table can
+        // show the origin column; chart aggregation happens downstream in RecomputeTotals.
+        foreach (var slice in slices)
+        {
+            incomeCategories.AddRange(slice.IncomeCategories);
+            expenseCategories.AddRange(slice.ExpenseCategories);
+        }
+
+        // Aggregated projection totals (sum across all slices) feed the income contribution
+        // calculator's "Total Expenses" reference and the breakeven-mode income gap.
+        bool projecting = firstProjectedMonth <= 12;
+        var totalExpensesForProjection = slices.Sum(s => s.TotalExpensesForProjection);
+        var totalIncomeYtd = slices.Sum(s => s.TotalIncomeYtd);
         var remainingMonthsForProjection = 13 - firstProjectedMonth;
         totalMonthlyIncomeNeeded = projecting && remainingMonthsForProjection > 0
             ? Math.Max(0m, (totalExpensesForProjection - totalIncomeYtd) / remainingMonthsForProjection)
             : 0m;
 
-        foreach (var category in availableCategories)
-        {
-            var (income, expenses) = batch[(category.Id, category.ItemType)];
-
-            bool isIncomeItem = incomeItemsForProjection?.Contains((category.Id, category.ItemType)) == true;
-
-            // Expense projection is per-month from the budget (seasonality intact).
-            if (projecting && !isIncomeItem
-                && budgetMonthlyAmounts!.TryGetValue((category.Id, category.ItemType), out var budgetMonthly))
-            {
-                for (int m = firstProjectedMonth - 1; m < 12; m++)
-                {
-                    expenses[m] = budgetMonthly[m];
-                }
-            }
-
-            // Include known income items in the chart even with zero YTD — the split-driven
-            // projection below will populate their future months.
-            if (income.Any(m => m > 0) || isIncomeItem)
-            {
-                incomeCategories.Add(new CategoryCashflow
-                {
-                    CategoryId = category.Id,
-                    ItemType = category.ItemType,
-                    CategoryName = category.Name,
-                    MonthlyAmounts = income
-                });
-            }
-
-            if (expenses.Any(m => m > 0))
-            {
-                expenseCategories.Add(new CategoryCashflow
-                {
-                    CategoryId = category.Id,
-                    ItemType = category.ItemType,
-                    CategoryName = category.Name,
-                    MonthlyAmounts = expenses
-                });
-            }
-        }
+        // For "budget" projection mode, ApplyIncomeProjection looks at budgetMonthlyAmounts
+        // keyed by (catId, itemType) — but with rollup, each row in incomeCategories carries
+        // its origin project. We stitch together a per-origin lookup so income rows from child
+        // projects use the child's budget values for their future months.
+        budgetMonthlyAmountsByProject = slices
+            .Where(s => s.BudgetAmounts != null)
+            .ToDictionary(s => s.ProjectId, s => s.BudgetAmounts!);
+        // Back-compat: ApplyIncomeProjection still also reads budgetMonthlyAmounts (parent's).
+        budgetMonthlyAmounts = parentSlice.BudgetAmounts;
 
         // Seed contribution splits: prefer the budget's saved splits when a budget is
         // selected, fall back to equal splits otherwise. Items missing from the saved set
@@ -918,12 +902,15 @@ else
         splitsDirty = false;
 
         // Fetch real account deltas + day-of-month histograms once. Both the balance chart and
-        // the floor algorithm consume them; LoadBalanceDataAsync reads the cached values.
+        // the floor algorithm consume them; LoadBalanceDataAsync reads the cached values. With
+        // rollup we use the parent's accounts only — if the user wants child accounts in the
+        // balance line they should be assigned to the parent project too (no schema change
+        // needed; assignments are independent of the parent/child relationship).
         cachedDeltaResult = await BudgetService.GetProjectActualDailyDeltaAsync(selectedProjectId, selectedYear);
         cachedHistograms = null;
         if (projecting)
         {
-            var projItems = availableCategories.Select(c => (c.Id, c.ItemType)).ToList();
+            var projItems = slices.SelectMany(s => s.ProjectionItems).Distinct().ToList();
             cachedHistograms = await BudgetService.GetCategoryDayOfMonthWeightsAsync(projItems, projectSourceId);
         }
 
@@ -942,6 +929,139 @@ else
         // render that creates the canvas hasn't happened yet.
         needsChartRender = incomeCategories.Any() || expenseCategories.Any();
         needsBalanceChartRender = hasAssignedAccounts && balanceDaily.Length > 0;
+    }
+
+    /// <summary>
+    /// Loads one project's slice of the cashflow view — its tracking items expanded into per-
+    /// category rows with actuals + (optionally) budget-driven future-month overlays. The
+    /// caller stitches multiple slices together for the parent + child rollup. <paramref
+    /// name="budgetIdOverride"/> is the budget whose monthly amounts drive this slice's
+    /// projection (the parent slice uses the UI-selected budget; each child slice uses its
+    /// own active budget for the same year).
+    /// </summary>
+    private async Task<ProjectCashflowSlice> LoadOneProjectCashflowSliceAsync(
+        Project project, bool isSelectedProject, int budgetIdOverride)
+    {
+        var slice = new ProjectCashflowSlice
+        {
+            ProjectId = project.Id,
+            ProjectName = project.Name
+        };
+
+        var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(project.Id);
+        var availableCategories = new List<CategoryGroupWithChildCount>();
+        if (trackingItems.Any())
+        {
+            var allCategories = await BudgetService.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+            foreach (var item in trackingItems)
+            {
+                if (item.CategoryGroupId.HasValue)
+                {
+                    var cat = allCategories.FirstOrDefault(c =>
+                        c.ItemType == CategoryItemType.Group && c.Id == item.CategoryGroupId.Value);
+                    if (cat != null) availableCategories.Add(cat);
+                }
+                else if (item.CategoryId.HasValue)
+                {
+                    var cat = allCategories.FirstOrDefault(c =>
+                        c.ItemType == CategoryItemType.Category && c.Id == item.CategoryId.Value);
+                    if (cat != null) availableCategories.Add(cat);
+                }
+            }
+        }
+        slice.Keys = availableCategories.Select(c => (c.Id, c.ItemType)).ToHashSet();
+        slice.ProjectionItems = availableCategories.Select(c => (c.Id, c.ItemType)).ToList();
+
+        var batch = await BudgetService.GetMonthlyIncomeAndExpenseBatchAsync(
+            slice.ProjectionItems, selectedYear, project.SourceId, project.Id);
+
+        // Budget projection: only when projecting AND this slice has a budget for the year.
+        Dictionary<(long, CategoryItemType), decimal[]>? budgetAmounts = null;
+        HashSet<(long, CategoryItemType)>? incomeItems = null;
+        if (firstProjectedMonth <= 12 && budgetIdOverride > 0)
+        {
+            budgetAmounts = await BudgetService.GetMonthlyBudgetAmountsAsync(budgetIdOverride);
+            incomeItems = await BudgetService.GetIncomeItemsForProjectAsync(project.Id);
+        }
+        slice.BudgetAmounts = budgetAmounts;
+        bool projecting = budgetAmounts != null && firstProjectedMonth <= 12;
+
+        // "Recent" mode pre-fetch (per-project, but the source month is global so we just
+        // reuse recentIncomeSourceMonth set by the caller). Only the selected/parent slice
+        // populates recentIncomePerItem; child rows in recent mode default to zero for the
+        // future — rollup income reporting is otherwise too noisy to interpret.
+        if (isSelectedProject && projecting && incomeProjectionMode == "recent")
+        {
+            recentIncomePerItem = await BudgetService.GetMonthlyIncomePerItemAsync(
+                slice.ProjectionItems, project.SourceId, project.Id,
+                recentIncomeSourceMonth.Year, recentIncomeSourceMonth.Month);
+        }
+
+        if (projecting)
+        {
+            foreach (var cat in availableCategories)
+            {
+                bool isIncome = incomeItems!.Contains((cat.Id, cat.ItemType));
+                var (income, expenses) = batch[(cat.Id, cat.ItemType)];
+                if (!isIncome)
+                {
+                    slice.TotalExpensesForProjection += expenses.Take(firstProjectedMonth - 1).Sum();
+                    if (budgetAmounts!.TryGetValue((cat.Id, cat.ItemType), out var monthly))
+                    {
+                        for (int m = firstProjectedMonth - 1; m < 12; m++)
+                            slice.TotalExpensesForProjection += monthly[m];
+                    }
+                }
+                else
+                {
+                    slice.TotalIncomeYtd += income.Take(firstProjectedMonth - 1).Sum();
+                }
+            }
+        }
+
+        foreach (var category in availableCategories)
+        {
+            var (income, expenses) = batch[(category.Id, category.ItemType)];
+            bool isIncomeItem = incomeItems?.Contains((category.Id, category.ItemType)) == true;
+
+            // Expense projection: overwrite future months with the budget's per-month values
+            // (preserves seasonality). Income future months are written later by
+            // ApplyIncomeProjection based on the selected mode.
+            if (projecting && !isIncomeItem
+                && budgetAmounts!.TryGetValue((category.Id, category.ItemType), out var budgetMonthly))
+            {
+                for (int m = firstProjectedMonth - 1; m < 12; m++)
+                    expenses[m] = budgetMonthly[m];
+            }
+
+            if (income.Any(m => m > 0) || isIncomeItem)
+            {
+                slice.IncomeCategories.Add(new CategoryCashflow
+                {
+                    CategoryId = category.Id,
+                    ItemType = category.ItemType,
+                    CategoryName = category.Name,
+                    MonthlyAmounts = income,
+                    OriginProjectId = project.Id,
+                    OriginProjectName = project.Name
+                });
+            }
+
+            if (expenses.Any(m => m > 0))
+            {
+                slice.ExpenseCategories.Add(new CategoryCashflow
+                {
+                    CategoryId = category.Id,
+                    ItemType = category.ItemType,
+                    CategoryName = category.Name,
+                    MonthlyAmounts = expenses,
+                    OriginProjectId = project.Id,
+                    OriginProjectName = project.Name
+                });
+            }
+        }
+
+        return slice;
     }
 
     private Task LoadBalanceDataAsync()
@@ -1087,13 +1207,14 @@ else
 
         if (incomeProjectionMode == "budget")
         {
-            // Pull each income category's future months straight from the budget. Items missing
-            // from the budget (or with zero rows there) project to zero, matching the convention
-            // for expense items without a budget row.
+            // Pull each income category's future months straight from the budget — routed by
+            // origin project so rolled-up child rows use the CHILD's budget, not the parent's.
+            // Items missing from the budget (or with zero rows there) project to zero.
             foreach (var income in incomeCategories)
             {
                 decimal[]? monthly = null;
-                budgetMonthlyAmounts?.TryGetValue((income.CategoryId, income.ItemType), out monthly);
+                if (budgetMonthlyAmountsByProject.TryGetValue(income.OriginProjectId, out var byKey))
+                    byKey.TryGetValue((income.CategoryId, income.ItemType), out monthly);
                 for (int m = firstProjectedMonth - 1; m < 12; m++)
                 {
                     income.MonthlyAmounts[m] = monthly?[m] ?? 0m;

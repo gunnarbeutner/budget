@@ -34,6 +34,17 @@ public class Project
 
     public ImportSource? Source { get; set; }
 
+    /// <summary>
+    /// Optional parent project. When set, the Cashflow page rolls this project's tracked
+    /// flows into the parent's chart and per-category breakdown — but each project keeps
+    /// its own budgets and budget editor scope. Parent and child must share the same
+    /// SourceId; cycles and self-parenting are rejected at the service layer. Currently
+    /// only single-level hierarchies are supported (a parent cannot itself have a parent).
+    /// </summary>
+    public int? ParentProjectId { get; set; }
+    public Project? Parent { get; set; }
+    public ICollection<Project> Children { get; set; } = new List<Project>();
+
     // Navigation properties
     public ICollection<ProjectCategoryAssignment> CategoryAssignments { get; set; } = new List<ProjectCategoryAssignment>();
     public ICollection<ProjectTrackingItem> TrackingItems { get; set; } = new List<ProjectTrackingItem>();

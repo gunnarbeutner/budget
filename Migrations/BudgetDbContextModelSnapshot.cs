@@ -344,6 +344,9 @@ namespace OpenBudget.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ParentProjectId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("SortOrder")
                         .HasColumnType("INTEGER");
 
@@ -351,6 +354,8 @@ namespace OpenBudget.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ParentProjectId");
 
                     b.HasIndex("SourceId");
 
@@ -553,11 +558,18 @@ namespace OpenBudget.Migrations
 
             modelBuilder.Entity("OpenBudget.Models.Project", b =>
                 {
+                    b.HasOne("OpenBudget.Models.Project", "Parent")
+                        .WithMany("Children")
+                        .HasForeignKey("ParentProjectId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("OpenBudget.Models.ImportSource", "Source")
                         .WithMany("Projects")
                         .HasForeignKey("SourceId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Parent");
 
                     b.Navigation("Source");
                 });
@@ -646,6 +658,8 @@ namespace OpenBudget.Migrations
                     b.Navigation("CategoryAssignments");
 
                     b.Navigation("CategoryTypeAssignments");
+
+                    b.Navigation("Children");
 
                     b.Navigation("TrackingItems");
                 });

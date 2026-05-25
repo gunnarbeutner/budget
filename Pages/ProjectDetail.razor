@@ -30,6 +30,49 @@ else
     <div class="row mb-4">
         <div class="col-12">
             <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">@L["ParentProject_Heading"]</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-2">@L["ParentProject_Description"]</p>
+                    @if (hasOwnChildren)
+                    {
+                        <p class="text-muted mb-0"><em>@L["ParentProject_HasChildren", childProjectNames]</em></p>
+                    }
+                    else
+                    {
+                        <div class="row g-2 align-items-center">
+                            <div class="col-md-6">
+                                <select class="form-select form-select-sm"
+                                        value="@(budget.ParentProjectId?.ToString() ?? "")"
+                                        @onchange="OnParentChanged"
+                                        disabled="@(eligibleParents == null)">
+                                    <option value="">@L["ParentProject_None"]</option>
+                                    @if (eligibleParents != null)
+                                    {
+                                        foreach (var p in eligibleParents)
+                                        {
+                                            <option value="@p.Id">@p.Name</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                            @if (!string.IsNullOrEmpty(parentSaveError))
+                            {
+                                <div class="col-md-6">
+                                    <small class="text-danger">@parentSaveError</small>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0">@L["CategoryAssignments_Heading"]</h5>
                     <button class="btn btn-sm btn-primary" @onclick="ShowAddCategoryDialog">@L["Button_AddCategory"]</button>
@@ -530,6 +573,14 @@ else
     private long addAccountSelectedId = 0;
     private AccountScope addAccountSelectedScope = AccountScope.Shared;
 
+    // Parent project picker. eligibleParents = top-level projects in the same MoneyMoney
+    // source (cycle-prevention; only single-level hierarchies). hasOwnChildren disables the
+    // picker — projects that already act as parents can't themselves become children yet.
+    private List<Project>? eligibleParents;
+    private bool hasOwnChildren = false;
+    private string childProjectNames = "";
+    private string? parentSaveError;
+
     private class CategoryWithLevel
     {
         public CategoryGroupWithChildCount CategoryGroup { get; set; } = null!;
@@ -542,6 +593,49 @@ else
         await LoadTrackingItems();
         await LoadIncomeExpenseConfiguration();
         await LoadAccountAssignments();
+        await LoadParentPickerAsync();
+    }
+
+    private async Task LoadParentPickerAsync()
+    {
+        if (budget == null) return;
+        var children = await BudgetService.GetChildProjectsAsync(BudgetId);
+        hasOwnChildren = children.Any();
+        childProjectNames = string.Join(", ", children.Select(c => c.Name));
+
+        if (hasOwnChildren)
+        {
+            eligibleParents = null;
+            return;
+        }
+
+        var all = await BudgetService.GetProjectsAsync();
+        eligibleParents = all
+            .Where(p => p.Id != BudgetId)
+            .Where(p => p.SourceId == budget.SourceId)
+            .Where(p => p.ParentProjectId == null)   // only top-level parents (single-level hierarchy)
+            .OrderBy(p => p.Name)
+            .ToList();
+    }
+
+    private async Task OnParentChanged(ChangeEventArgs e)
+    {
+        if (budget == null) return;
+        parentSaveError = null;
+        int? newParentId = null;
+        if (e.Value is string s && int.TryParse(s, out var pid))
+        {
+            newParentId = pid;
+        }
+        try
+        {
+            await BudgetService.SetProjectParentAsync(BudgetId, newParentId);
+            budget.ParentProjectId = newParentId;
+        }
+        catch (Exception ex)
+        {
+            parentSaveError = ex.Message;
+        }
     }
 
     private async Task LoadAccountAssignments()
