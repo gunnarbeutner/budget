@@ -104,19 +104,22 @@
     <value>Einnahmen-Prognosemodus</value>
   </data>
   <data name="Projection_Breakeven" xml:space="preserve">
-    <value>Kostendeckend</value>
+    <value>Auf Kostendeckung</value>
   </data>
-  <data name="Projection_Breakeven_Title" xml:space="preserve">
-    <value>Einnahmen werden auf dem Niveau prognostiziert, das nötig ist, um die budgetierten Ausgaben zu decken (Standardverhalten).</value>
+  <data name="Projection_Breakeven_Help" xml:space="preserve">
+    <value>Künftige Monate zeigen Einnahmen auf dem Niveau, das nötig ist, um die budgetierten Ausgaben zu decken.</value>
   </data>
   <data name="Projection_LastMonth" xml:space="preserve">
-    <value>Letzter Monat</value>
+    <value>Letzten Monat wiederholen</value>
   </data>
-  <data name="Projection_LastMonth_Title" xml:space="preserve">
-    <value>Wiederholt den letzten abgeschlossenen Monat jeder Einnahmenkategorie konstant über die verbleibenden Monate. Nützlich für Stresstests.</value>
+  <data name="Projection_LastMonth_Help" xml:space="preserve">
+    <value>Künftige Monate wiederholen den letzten abgeschlossenen Monat jeder Einnahmenkategorie — nützlich, um zu prüfen, ob die aktuellen Einnahmen die geplanten Ausgaben decken.</value>
   </data>
   <data name="BalanceFloor_Label" xml:space="preserve">
-    <value>Saldo halten ≥</value>
+    <value>Warnung, wenn Saldo unter</value>
+  </data>
+  <data name="BalanceFloor_Help" xml:space="preserve">
+    <value>Betrifft nur die Prognose-Warnung — ändert die prognostizierten Einnahmen nicht. Plane lieber eine einmalige Aufstockung als dauerhaft höhere Einnahmen.</value>
   </data>
   <data name="Status_Loading" xml:space="preserve">
     <value>Wird geladen...</value>
@@ -151,29 +154,20 @@
   <data name="Balance_StartingBalance_After" xml:space="preserve">
     <value>. Die durchgezogene Linie zeigt echte Transaktionen; der schattierte Bereich zeigt prognostizierte Beträge, verteilt über die Tage jedes Monats anhand der aus der Historie gelernten Tagesmuster pro Kategorie.</value>
   </data>
-  <data name="PatternSources_Prefix" xml:space="preserve">
-    <value>Musterquellen:</value>
-  </data>
-  <data name="PatternSource_TrailingYear" xml:space="preserve">
-    <value>{0} aus den letzten 12 Monaten</value>
-  </data>
-  <data name="PatternSource_AllTime" xml:space="preserve">
-    <value>{0} aus dem Gesamtzeitraum</value>
-  </data>
-  <data name="PatternSource_Day1Fallback" xml:space="preserve">
-    <value>{0} mit Tag-1-Fallback</value>
-  </data>
   <data name="Floor_TheXFloor" xml:space="preserve">
-    <value>der Untergrenze von {0}</value>
+    <value>die Untergrenze von {0}</value>
   </data>
   <data name="Floor_Zero" xml:space="preserve">
     <value>null</value>
   </data>
-  <data name="Alert_FutureNegative_HeadingPart" xml:space="preserve">
-    <value>Voraussichtlich wird {0} erstmals am {1} unterschritten</value>
+  <data name="Alert_FutureNegative_HeadingPart_Zero" xml:space="preserve">
+    <value>Der Saldo wird voraussichtlich am {0} erstmals negativ</value>
+  </data>
+  <data name="Alert_FutureNegative_HeadingPart_Floor" xml:space="preserve">
+    <value>Der Saldo fällt voraussichtlich am {1} erstmals unter {0}</value>
   </data>
   <data name="Alert_FutureNegative_BodyPart" xml:space="preserve">
-    <value>; erreicht den Tiefststand von {0} am {1}. Eine Aufstockung des Projekts um ca. {2} vor dem {3} hält die Linie das ganze Jahr über über {4}.</value>
+    <value> und erreicht den Tiefststand von {0} am {1}. Eine Aufstockung des Projekts um ca. {2} vor dem {3} hält die Linie ganzjährig über {4}.</value>
   </data>
   <data name="Alert_CurrentlyNegative_HeadingPart" xml:space="preserve">
     <value>Der Saldo beträgt aktuell {0}</value>
@@ -190,23 +184,26 @@
   <data name="Table_Month" xml:space="preserve">
     <value>Monat</value>
   </data>
-  <data name="Table_Low" xml:space="preserve">
-    <value>Tief</value>
+  <data name="Table_LowestBalance" xml:space="preserve">
+    <value>Tiefster Stand</value>
   </data>
-  <data name="Table_High" xml:space="preserve">
-    <value>Hoch</value>
+  <data name="Table_HighestBalance" xml:space="preserve">
+    <value>Höchster Stand</value>
   </data>
-  <data name="Table_End" xml:space="preserve">
-    <value>Ende</value>
+  <data name="Table_MonthEndBalance" xml:space="preserve">
+    <value>Monatsendstand</value>
   </data>
   <data name="Card_IncomeContributionCalculator" xml:space="preserve">
     <value>Einnahmen-Beitragsrechner</value>
   </data>
-  <data name="Calculator_Intro_Recent" xml:space="preserve">
-    <value>Stresstest-Ansicht: Der letzte abgeschlossene Monat jeder Einnahmenkategorie wird konstant über die Prognose wiederholt. So lässt sich prüfen, ob die aktuellen Einnahmen die budgetierten Ausgaben für den Rest des Jahres decken.</value>
+  <data name="Calculator_HowItWorks_Summary" xml:space="preserve">
+    <value>So funktioniert's</value>
   </data>
-  <data name="Calculator_Intro_Breakeven" xml:space="preserve">
-    <value>Berechnet, wie viel jede Einnahmequelle beitragen muss, um die Ausgaben zu decken.</value>
+  <data name="Calculator_HowItWorks_Recent" xml:space="preserve">
+    <value>Der letzte abgeschlossene Kalendermonat jeder Einnahmenkategorie wird konstant über die verbleibenden Monate wiederholt. „Prognose Jahr" = bisherige Ist-Werte + Einnahmen des Vormonats × verbleibende Monate. So lässt sich prüfen, ob die aktuellen Einnahmen die budgetierten Ausgaben für den Rest des Jahres decken.</value>
+  </data>
+  <data name="Calculator_HowItWorks_Breakeven" xml:space="preserve">
+    <value>Der Aufteilungsanteil jeder Zeile bestimmt, welchen Anteil der prognostizierten Jahresausgaben diese Einnahmequelle decken muss. „Erforderlich" = Gesamtausgaben × Anteil. „Verbleibend" = Einnahmen der Quelle minus erforderlicher Beitrag. Passe die Anteile an, um verschiedene Verteilungen durchzuspielen; „Speichern" hinterlegt sie am ausgewählten Budget.</value>
   </data>
   <data name="Calculator_Range_Recent" xml:space="preserve">
     <value>{0} sind prognostiziert — Ausgaben aus dem ausgewählten Budget, Einnahmen aus den Ist-Werten von {1} wiederholt; frühere Monate verwenden echte Transaktionen.</value>

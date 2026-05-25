@@ -104,19 +104,22 @@
     <value>Income projection mode</value>
   </data>
   <data name="Projection_Breakeven" xml:space="preserve">
-    <value>Break-even</value>
+    <value>Pace to break even</value>
   </data>
-  <data name="Projection_Breakeven_Title" xml:space="preserve">
-    <value>Project income at the level needed to cover budgeted expenses (the original behavior).</value>
+  <data name="Projection_Breakeven_Help" xml:space="preserve">
+    <value>Future months show income at the level needed to cover budgeted expenses.</value>
   </data>
   <data name="Projection_LastMonth" xml:space="preserve">
-    <value>Last month</value>
+    <value>Repeat last month</value>
   </data>
-  <data name="Projection_LastMonth_Title" xml:space="preserve">
-    <value>Repeat each income category's last completed month, flat across the remaining months. Useful for stress-testing.</value>
+  <data name="Projection_LastMonth_Help" xml:space="preserve">
+    <value>Future months repeat each income category's last completed month — useful for stress-testing whether current income covers planned spending.</value>
   </data>
   <data name="BalanceFloor_Label" xml:space="preserve">
-    <value>Keep balance ≥</value>
+    <value>Alert if balance dips below</value>
+  </data>
+  <data name="BalanceFloor_Help" xml:space="preserve">
+    <value>Affects the projection alert only — doesn't change the projected income. Plan a one-time top-up rather than higher recurring income.</value>
   </data>
   <data name="Status_Loading" xml:space="preserve">
     <value>Loading...</value>
@@ -151,29 +154,20 @@
   <data name="Balance_StartingBalance_After" xml:space="preserve">
     <value>. Solid line uses real transactions; shaded region uses projected amounts distributed across each month by the per-category day-of-month patterns learned from history.</value>
   </data>
-  <data name="PatternSources_Prefix" xml:space="preserve">
-    <value>Pattern sources:</value>
-  </data>
-  <data name="PatternSource_TrailingYear" xml:space="preserve">
-    <value>{0} from trailing 12mo</value>
-  </data>
-  <data name="PatternSource_AllTime" xml:space="preserve">
-    <value>{0} from all-time</value>
-  </data>
-  <data name="PatternSource_Day1Fallback" xml:space="preserve">
-    <value>{0} on day-1 fallback</value>
-  </data>
   <data name="Floor_TheXFloor" xml:space="preserve">
     <value>the {0} floor</value>
   </data>
   <data name="Floor_Zero" xml:space="preserve">
     <value>zero</value>
   </data>
-  <data name="Alert_FutureNegative_HeadingPart" xml:space="preserve">
-    <value>Projected to first dip below {0} on {1}</value>
+  <data name="Alert_FutureNegative_HeadingPart_Zero" xml:space="preserve">
+    <value>Balance projected to go negative on {0}</value>
+  </data>
+  <data name="Alert_FutureNegative_HeadingPart_Floor" xml:space="preserve">
+    <value>Balance projected to first dip below {0} on {1}</value>
   </data>
   <data name="Alert_FutureNegative_BodyPart" xml:space="preserve">
-    <value>; reaches its low of {0} on {1}. Adding ~{2} to the project before {3} keeps the line above {4} all year.</value>
+    <value> and reaches its low of {0} on {1}. Adding ~{2} to the project before {3} keeps the line above {4} all year.</value>
   </data>
   <data name="Alert_CurrentlyNegative_HeadingPart" xml:space="preserve">
     <value>Balance is currently {0}</value>
@@ -190,23 +184,26 @@
   <data name="Table_Month" xml:space="preserve">
     <value>Month</value>
   </data>
-  <data name="Table_Low" xml:space="preserve">
-    <value>Low</value>
+  <data name="Table_LowestBalance" xml:space="preserve">
+    <value>Lowest balance</value>
   </data>
-  <data name="Table_High" xml:space="preserve">
-    <value>High</value>
+  <data name="Table_HighestBalance" xml:space="preserve">
+    <value>Highest balance</value>
   </data>
-  <data name="Table_End" xml:space="preserve">
-    <value>End</value>
+  <data name="Table_MonthEndBalance" xml:space="preserve">
+    <value>Month-end balance</value>
   </data>
   <data name="Card_IncomeContributionCalculator" xml:space="preserve">
     <value>Income Contribution Calculator</value>
   </data>
-  <data name="Calculator_Intro_Recent" xml:space="preserve">
-    <value>Stress-test view: each income category's last completed month is repeated flat across the projection. Use this to see whether current income covers the remaining year's budgeted expenses.</value>
+  <data name="Calculator_HowItWorks_Summary" xml:space="preserve">
+    <value>How this works</value>
   </data>
-  <data name="Calculator_Intro_Breakeven" xml:space="preserve">
-    <value>Calculate how much each income source needs to contribute to cover expenses.</value>
+  <data name="Calculator_HowItWorks_Recent" xml:space="preserve">
+    <value>Each income category's last completed calendar month is repeated flat across the remaining months. "Projected Yearly" = past actuals + last-month income × remaining months. Use this to see whether current income covers the rest of the year's budgeted expenses.</value>
+  </data>
+  <data name="Calculator_HowItWorks_Breakeven" xml:space="preserve">
+    <value>Each row's split percentage determines what share of the year's projected expenses that income source needs to cover. "Required" = total expenses × split. "Remaining" = the source's income minus what it owes. Edit the splits to model different ways to divide responsibility; Save persists them on the selected budget.</value>
   </data>
   <data name="Calculator_Range_Recent" xml:space="preserve">
     <value>{0} are projected — expenses from the selected budget, income repeated from {1} actuals; earlier months use actual transactions.</value>

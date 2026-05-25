@@ -3,6 +3,7 @@
 @using OpenBudget.Models
 @using Microsoft.JSInterop
 @using Microsoft.AspNetCore.WebUtilities
+@using System.Globalization
 @inject BudgetService BudgetService
 @inject IJSRuntime JSRuntime
 @inject NavigationManager Navigation
@@ -35,7 +36,7 @@
 
     <div class="col-md-4">
         <label class="form-label">@L["Label_BudgetOptional"]</label>
-        <select class="form-select" @bind="selectedBudgetId" @bind:after="LoadCashflowData">
+        <select class="form-select" @bind="selectedBudgetId" @bind:after="OnBudgetChanged">
             <option value="0">@L["Option_NoBudget"]</option>
             @if (availableBudgets != null)
             {
@@ -53,13 +54,16 @@
             <input type="radio" class="btn-check" name="incomeProj" id="incomeProjBreakeven"
                    checked="@(incomeProjectionMode == "breakeven")"
                    @onchange="@(() => OnIncomeModeChanged("breakeven"))" />
-            <label class="btn btn-outline-primary" for="incomeProjBreakeven" title="@L["Projection_Breakeven_Title"]">@L["Projection_Breakeven"]</label>
+            <label class="btn btn-outline-primary" for="incomeProjBreakeven">@L["Projection_Breakeven"]</label>
 
             <input type="radio" class="btn-check" name="incomeProj" id="incomeProjRecent"
                    checked="@(incomeProjectionMode == "recent")"
                    @onchange="@(() => OnIncomeModeChanged("recent"))" />
-            <label class="btn btn-outline-primary" for="incomeProjRecent" title="@L["Projection_LastMonth_Title"]">@L["Projection_LastMonth"]</label>
+            <label class="btn btn-outline-primary" for="incomeProjRecent">@L["Projection_LastMonth"]</label>
         </div>
+        <small class="form-text text-muted d-block mt-1">
+            @(incomeProjectionMode == "breakeven" ? L["Projection_Breakeven_Help"] : L["Projection_LastMonth_Help"])
+        </small>
         @if (incomeProjectionMode == "breakeven")
         {
             <div class="form-check form-switch mt-2 small">
@@ -74,8 +78,9 @@
                     <input type="number" class="form-control"
                            step="50"
                            disabled="@(!balanceFloorEnabled)"
-                           @bind="balanceFloor" @bind:after="LoadCashflowData" />
+                           @bind="balanceFloor" @bind:after="OnBalanceFloorChanged" />
                 </div>
+                <small class="form-text text-muted d-block mt-1">@L["BalanceFloor_Help"]</small>
             </div>
         }
     </div>
@@ -91,21 +96,9 @@
 }
 else if (incomeCategories.Any() || expenseCategories.Any())
 {
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5>@L["Card_MonthlyCashflow", selectedYear]</h5>
-                </div>
-                <div class="card-body">
-                    <div style="position: relative; height: 400px; max-height: 600px;">
-                        <canvas id="cashflowChart"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
+    @* Balance & watermarks first: the alerts here ("balance dips below floor on …") are the
+       most decision-relevant content; the cashflow bar chart below provides the breakdown
+       behind that line. *@
     <div class="row mb-4">
         <div class="col-12">
             <div class="card">
@@ -115,7 +108,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                     {
                         <small class="text-muted">
                             @L["Balance_YearMin"] <span class="@(yearMinBalance < 0 ? "text-danger fw-semibold" : "fw-semibold")">@FormatEuro(yearMinBalance)</span>
-                            @L["Balance_YearMin_On", new DateTime(selectedYear, 1, 1).AddDays(yearMinDayOfYear - 1).ToString("MMM d")]
+                            @L["Balance_YearMin_On", FormatMonthDay(new DateTime(selectedYear, 1, 1).AddDays(yearMinDayOfYear - 1))]
                         </small>
                     }
                 </div>
@@ -135,44 +128,41 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                         <p class="text-muted small mb-2">
                             @L["Balance_StartingBalance_Before"]<strong>@FormatEuro(startingBalance)</strong>@L["Balance_StartingBalance_After"]
                         </p>
-                        @if (patternSourceCounts.Any())
-                        {
-                            var parts = new List<string>();
-                            if (patternSourceCounts.TryGetValue(DistributionPatternSource.TrailingYear, out var t) && t > 0)
-                                parts.Add(L["PatternSource_TrailingYear", t]);
-                            if (patternSourceCounts.TryGetValue(DistributionPatternSource.AllTime, out var a) && a > 0)
-                                parts.Add(L["PatternSource_AllTime", a]);
-                            if (patternSourceCounts.TryGetValue(DistributionPatternSource.Day1Fallback, out var f) && f > 0)
-                                parts.Add(L["PatternSource_Day1Fallback", f]);
-                            <p class="text-muted small mb-2">
-                                <em>@L["PatternSources_Prefix"] @string.Join(", ", parts).</em>
-                            </p>
-                        }
-                        @if (balanceDaily.Length > 0 && yearMinBalance < EffectiveFloor)
+                        @if (balanceFloorEnabled && balanceDaily.Length > 0 && yearMinBalance < EffectiveFloor)
                         {
                             var floor = EffectiveFloor;
                             var floorLabel = balanceFloorEnabled && balanceFloor != 0m
                                 ? L["Floor_TheXFloor", FormatEuro(balanceFloor)].Value
                                 : L["Floor_Zero"].Value;
-                            var topUp = floor - yearMinBalance;
-                            var minDate = new DateTime(selectedYear, 1, 1).AddDays(yearMinDayOfYear - 1);
+                            // Year-min covers the whole year; future-min is today onward. The
+                            // FutureNegative / CurrentlyNegative alerts talk about an upcoming
+                            // low, so they need future-min — otherwise a January dip would
+                            // show up as the quoted date in a June-onward alert.
+                            var futureMinDate = new DateTime(selectedYear, 1, 1).AddDays(Math.Max(futureMinDayOfYear, 1) - 1);
+                            var futureTopUp = floor - futureMinBalance;
+                            var yearMinDate = new DateTime(selectedYear, 1, 1).AddDays(yearMinDayOfYear - 1);
                             if (firstFutureNegativeDayOfYear > 0)
                             {
                                 var firstFutureDate = new DateTime(selectedYear, 1, 1).AddDays(firstFutureNegativeDayOfYear - 1);
                                 <div class="alert alert-danger py-2 small mb-2">
-                                    <strong>@L["Alert_FutureNegative_HeadingPart", floorLabel, firstFutureDate.ToString("MMM d")]</strong>@L["Alert_FutureNegative_BodyPart", FormatEuro(yearMinBalance), minDate.ToString("MMM d"), FormatEuro(topUp), firstFutureDate.ToString("MMM d"), floorLabel]
+                                    @{
+                                        var heading = balanceFloor == 0m
+                                            ? L["Alert_FutureNegative_HeadingPart_Zero", FormatMonthDay(firstFutureDate)]
+                                            : L["Alert_FutureNegative_HeadingPart_Floor", floorLabel, FormatMonthDay(firstFutureDate)];
+                                    }
+                                    <strong>@heading</strong>@L["Alert_FutureNegative_BodyPart", FormatEuro(futureMinBalance), FormatMonthDay(futureMinDate), FormatEuro(futureTopUp), FormatMonthDay(firstFutureDate), floorLabel]
                                 </div>
                             }
                             else if (currentlyNegative)
                             {
                                 <div class="alert alert-danger py-2 small mb-2">
-                                    <strong>@L["Alert_CurrentlyNegative_HeadingPart", FormatEuro(currentBalanceForYear)]</strong>@L["Alert_CurrentlyNegative_BodyPart", floorLabel, FormatEuro(yearMinBalance), minDate.ToString("MMM d"), FormatEuro(topUp), floorLabel]
+                                    <strong>@L["Alert_CurrentlyNegative_HeadingPart", FormatEuro(currentBalanceForYear)]</strong>@L["Alert_CurrentlyNegative_BodyPart", floorLabel, FormatEuro(futureMinBalance), FormatMonthDay(futureMinDate), FormatEuro(futureTopUp), floorLabel]
                                 </div>
                             }
                             else
                             {
                                 <div class="alert alert-info py-2 small mb-2">
-                                    @L["Alert_PastDip_Before"]<strong>@FormatEuro(yearMinBalance)</strong>@L["Alert_PastDip_After", minDate.ToString("MMM d"), FormatEuro(currentBalanceForYear), floorLabel]
+                                    @L["Alert_PastDip_Before"]<strong>@FormatEuro(yearMinBalance)</strong>@L["Alert_PastDip_After", FormatMonthDay(yearMinDate), FormatEuro(currentBalanceForYear), floorLabel]
                                 </div>
                             }
                         }
@@ -184,9 +174,9 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                 <thead>
                                     <tr>
                                         <th>@L["Table_Month"]</th>
-                                        <th class="text-end">@L["Table_Low"]</th>
-                                        <th class="text-end">@L["Table_High"]</th>
-                                        <th class="text-end">@L["Table_End"]</th>
+                                        <th class="text-end">@L["Table_LowestBalance"]</th>
+                                        <th class="text-end">@L["Table_HighestBalance"]</th>
+                                        <th class="text-end">@L["Table_MonthEndBalance"]</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -214,21 +204,37 @@ else if (incomeCategories.Any() || expenseCategories.Any())
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
+                    <h5>@L["Card_MonthlyCashflow", selectedYear]</h5>
+                </div>
+                <div class="card-body">
+                    <div style="position: relative; height: 400px; max-height: 600px;">
+                        <canvas id="cashflowChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
                     <h5>@L["Card_IncomeContributionCalculator"]</h5>
                 </div>
                 <div class="card-body">
-                    @if (incomeProjectionMode == "recent")
-                    {
-                        <p class="text-muted">
-                            @L["Calculator_Intro_Recent"]
-                        </p>
-                    }
-                    else
-                    {
-                        <p class="text-muted">
-                            @L["Calculator_Intro_Breakeven"]
-                        </p>
-                    }
+                    <details class="mb-3">
+                        <summary class="text-muted small" style="cursor: pointer;">@L["Calculator_HowItWorks_Summary"]</summary>
+                        <div class="text-muted small mt-2">
+                            @if (incomeProjectionMode == "recent")
+                            {
+                                @L["Calculator_HowItWorks_Recent"]
+                            }
+                            else
+                            {
+                                @L["Calculator_HowItWorks_Breakeven"]
+                            }
+                        </div>
+                    </details>
 
                     @if (firstProjectedMonth <= 12)
                     {
@@ -455,15 +461,18 @@ else
     /// LoadCashflowData in "recent" mode; null otherwise.</summary>
     private Dictionary<(long Id, CategoryItemType ItemType), decimal>? recentIncomePerItem;
 
-    /// <summary>Minimum balance the alert banner should defend. When &gt; 0, the banner fires
-    /// whenever the line dips below this value (not just 0) and the recommended top-up scales
-    /// accordingly. Does NOT change the income projection — the user is expected to plan a
-    /// one-time top-up rather than sustain a higher income (which would over-shoot by year end).</summary>
+    /// <summary>Master switch for the balance-floor alert. When off, no alert fires regardless
+    /// of where the projection dips — a user who doesn't care to be warned about negative
+    /// balances gets a quiet page. When on, the banner fires whenever the line dips below
+    /// <see cref="balanceFloor"/> and the recommended top-up scales accordingly. Does NOT
+    /// change the income projection — the user is expected to plan a one-time top-up rather
+    /// than sustain a higher income (which would over-shoot by year end).</summary>
     private bool balanceFloorEnabled = false;
     private decimal balanceFloor = 0m;
-    /// <summary>The floor value actually used by the watermark/banner detection — falls back to
-    /// 0 when the toggle is off so the "balance below zero" alarm still fires by default.</summary>
-    private decimal EffectiveFloor => balanceFloorEnabled ? balanceFloor : 0m;
+    /// <summary>The floor value used by the watermark/banner detection. Only meaningful when
+    /// <see cref="balanceFloorEnabled"/> is true — callers must gate display on the toggle
+    /// themselves, since this property doesn't.</summary>
+    private decimal EffectiveFloor => balanceFloor;
 
     // Lifted cache: GetProjectActualDailyDeltaAsync / GetCategoryDayOfMonthWeightsAsync are
     // fetched once per LoadCashflowData so the floor algorithm and LoadBalanceDataAsync share
@@ -480,6 +489,12 @@ else
     private MonthWatermark[] monthlyWatermarks = Array.Empty<MonthWatermark>();
     private decimal yearMinBalance = 0m;
     private int yearMinDayOfYear = 0;
+    /// <summary>Min balance over the future portion of the year (today onward). Used by the
+    /// FutureNegative / CurrentlyNegative alerts — those sentences talk about an upcoming
+    /// dip, so seeding them with the full-year min would otherwise quote a date in January
+    /// when the projected future low is much closer to today.</summary>
+    private decimal futureMinBalance = 0m;
+    private int futureMinDayOfYear = 0;
     /// <summary>1-indexed day-of-year where the line first dips below zero in the FUTURE
     /// (relative to the "today" cursor for the selected year). 0 if no future dip. Used to
     /// frame the actionable date — past dips can't be acted on, so they get a different message.</summary>
@@ -490,8 +505,6 @@ else
     private bool currentlyNegative = false;
     private int lastActualDayOfYear = 0;
     private bool needsBalanceChartRender = false;
-    private Dictionary<DistributionPatternSource, int> patternSourceCounts = new();
-
     private record struct MonthWatermark(int Month, decimal Low, decimal High, decimal End);
 
     /// <summary>
@@ -551,6 +564,11 @@ else
         selectedProjectId = project.Id;
         projectName = project.Name;
 
+        // Overlay URL-provided state before the year clamp / budget defaulting runs, so a
+        // shared link reproducing a specific year + budget + projection mode + floor wins
+        // over the page defaults.
+        ReadStateFromQuery();
+
         // Populate the Year dropdown from years the project's tracked categories have
         // transactions in, plus the next two years so the user can plan ahead with
         // budget-driven projections.
@@ -569,6 +587,9 @@ else
 
         await LoadAvailableBudgets();
         await LoadCashflowData();
+        // Canonicalize the URL after init in case the URL referenced a budgetId that doesn't
+        // belong to this project (LoadAvailableBudgets re-picks the active one in that case).
+        UpdateUrl();
     }
 
     private int? ReadProjectIdFromQuery()
@@ -580,6 +601,56 @@ else
             return parsed;
         }
         return null;
+    }
+
+    /// <summary>
+    /// Overlays URL query parameters onto the view-shaping fields. Defaults stay in place when
+    /// a param is absent. Invalid values (bad year, unknown projection mode, malformed floor)
+    /// are ignored — downstream code clamps/validates further if needed.
+    /// </summary>
+    private void ReadStateFromQuery()
+    {
+        var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
+
+        if (query.TryGetValue("year", out var y) && int.TryParse(y, out var py))
+            selectedYear = py;
+
+        if (query.TryGetValue("budgetId", out var b) && int.TryParse(b, out var pb))
+            selectedBudgetId = pb;
+
+        if (query.TryGetValue("mode", out var m))
+        {
+            var v = m.ToString();
+            if (v is "breakeven" or "recent") incomeProjectionMode = v;
+        }
+
+        if (query.TryGetValue("floorOn", out var fo) && bool.TryParse(fo, out var pfo))
+            balanceFloorEnabled = pfo;
+
+        if (query.TryGetValue("floor", out var f)
+            && decimal.TryParse(f, NumberStyles.Number, CultureInfo.InvariantCulture, out var pf))
+            balanceFloor = pf;
+    }
+
+    /// <summary>
+    /// Writes the current view-shaping state back to the URL so reloads/back-button preserve
+    /// it and links are shareable. Defaults are omitted to keep URLs short. Uses replace:true
+    /// to avoid creating a history entry per keystroke; guarded against no-op navigations that
+    /// would otherwise 302-loop during ServerPrerendered.
+    /// </summary>
+    private void UpdateUrl()
+    {
+        var uri = Navigation.GetUriWithQueryParameters(new Dictionary<string, object?>
+        {
+            ["projectId"] = selectedProjectId,
+            ["year"] = selectedYear,
+            ["budgetId"] = selectedBudgetId == 0 ? null : selectedBudgetId,
+            ["mode"] = incomeProjectionMode == "breakeven" ? null : incomeProjectionMode,
+            ["floorOn"] = balanceFloorEnabled ? "true" : null,
+            ["floor"] = balanceFloor == 0m ? null : balanceFloor.ToString(CultureInfo.InvariantCulture),
+        });
+        if (uri == Navigation.Uri) return;
+        Navigation.NavigateTo(uri, forceLoad: false, replace: true);
     }
 
     private async Task LoadAvailableBudgets()
@@ -599,12 +670,32 @@ else
         if (incomeProjectionMode == mode) return;
         incomeProjectionMode = mode;
         await LoadCashflowData();
+        UpdateUrl();
+    }
+
+    private async Task OnBudgetChanged()
+    {
+        await LoadCashflowData();
+        UpdateUrl();
     }
 
     private async Task OnBalanceFloorToggleChanged(ChangeEventArgs e)
     {
         balanceFloorEnabled = e.Value is bool b && b;
-        await LoadCashflowData();
+        await OnBalanceFloorChanged();
+    }
+
+    /// <summary>
+    /// Recomputes the floor-dependent alert state (currentlyNegative,
+    /// firstFutureNegativeDayOfYear, future-min) without going through the full LoadCashflowData
+    /// path — that would re-seed contributionSplits from storedSplits and wipe any unsaved edits
+    /// the user made in the calculator. The balance line itself doesn't depend on the floor,
+    /// so this is enough.
+    /// </summary>
+    private async Task OnBalanceFloorChanged()
+    {
+        await LoadBalanceDataAsync();
+        UpdateUrl();
     }
 
     private async Task OnYearChanged()
@@ -618,6 +709,7 @@ else
                 .FirstOrDefault(b => b.Year == selectedYear && b.IsActive)?.Id ?? 0;
         }
         await LoadCashflowData();
+        UpdateUrl();
     }
 
     private async Task LoadCashflowData()
@@ -847,10 +939,11 @@ else
         monthlyWatermarks = Array.Empty<MonthWatermark>();
         yearMinBalance = 0m;
         yearMinDayOfYear = 0;
+        futureMinBalance = 0m;
+        futureMinDayOfYear = 0;
         if (!hasAssignedAccounts) return Task.CompletedTask;
 
         var deltas = (decimal[])data.DailyDelta.Clone();
-        patternSourceCounts.Clear();
 
         // Layer projection: per category, multiply the projected monthly amount by a learned
         // day-of-month histogram so projected months show real-looking patterns (payday lumps,
@@ -860,13 +953,6 @@ else
         if (firstProjectedMonth <= 12 && cachedHistograms != null)
         {
             var weights = cachedHistograms;
-
-            // Tally pattern sources for the badge under the chart. One vote per category.
-            foreach (var w in weights.Values)
-            {
-                patternSourceCounts.TryGetValue(w.Source, out var n);
-                patternSourceCounts[w.Source] = n + 1;
-            }
 
             for (int m = firstProjectedMonth; m <= 12; m++)
             {
@@ -943,6 +1029,24 @@ else
         currentBalanceForYear = currentDayIdx >= 0 ? balance[currentDayIdx] : 0m;
         var floor = EffectiveFloor;
         currentlyNegative = currentDayIdx >= 0 && balance[currentDayIdx] < floor;
+
+        // Min over today..end-of-year, used by the FutureNegative / CurrentlyNegative alerts.
+        // Including today (not currentDayIdx+1) so "Projected low" can quote today's balance
+        // when we're currently negative and don't dip further. Past years collapse currentDayIdx
+        // to balance.Length-1, leaving futureStart at the last day — a degenerate one-element
+        // window that won't fire either alert anyway.
+        int futureStart = Math.Max(0, currentDayIdx);
+        if (futureStart < balance.Length)
+        {
+            decimal fMin = balance[futureStart];
+            int fIdx = futureStart;
+            for (int i = futureStart + 1; i < balance.Length; i++)
+            {
+                if (balance[i] < fMin) { fMin = balance[i]; fIdx = i; }
+            }
+            futureMinBalance = fMin;
+            futureMinDayOfYear = fIdx + 1;
+        }
 
         // First FUTURE crossing below the floor — the actionable date. Only meaningful when
         // the line is currently above the floor; if we're already underwater, there's no
@@ -1332,4 +1436,12 @@ else
         }
         return $"€{value:N2}";
     }
+
+    /// <summary>
+    /// Renders a month + day using the current culture's MonthDayPattern so the order matches
+    /// each locale's convention (en: "June 17", de: "17. Juni") — a hardcoded "MMM d" pins
+    /// English ordering and produces "Juni 17" in German, which reads wrong.
+    /// </summary>
+    private static string FormatMonthDay(DateTime d) =>
+        d.ToString(CultureInfo.CurrentCulture.DateTimeFormat.MonthDayPattern, CultureInfo.CurrentCulture);
 }
