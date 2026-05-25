@@ -55,3 +55,4 @@ data/
 # launchd helper build artifacts
 launchd/OpenBudgetImporter.app/
 launchd/.DS_Store
+launchd/.build/
