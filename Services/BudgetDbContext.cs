@@ -99,9 +99,9 @@ public class BudgetDbContext : DbContext
             .HasIndex(s => s.Name)
             .IsUnique();
 
-        // Seed the legacy source so SourceId=1 (identity namespacing) is always available — the
-        // post-Migrate bootstrap in Program.cs uses it to absorb any pre-existing
-        // data/moneymoney.db file.
+        // Seed source 1 so identity namespacing is always available; the upload endpoint
+        // creates additional sources on demand. "Legacy" in the name predates multi-source
+        // support and is kept only because changing it would churn schema migrations.
         modelBuilder.Entity<ImportSource>().HasData(new ImportSource
         {
             Id = SourceScope.LegacySourceId,

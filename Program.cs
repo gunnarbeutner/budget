@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Localization;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Models;
 using OpenBudget.Services;
@@ -43,10 +42,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 // Configure database paths. Everything lives in budgets.db now — the MoneyMoney data is
-// imported into the same store under namespaced IDs (see SourceScope). The legacy
-// data/moneymoney.db file is absorbed once on first boot then renamed to *.legacy.
+// imported into the same store under namespaced IDs (see SourceScope) via the upload
+// endpoint below.
 var dataDir = Path.Combine(builder.Environment.ContentRootPath, "data");
-var legacyMoneyMoneyDbPath = Path.Combine(dataDir, "moneymoney.db");
 var budgetDbPath = Path.Combine(dataDir, "budgets.db");
 var uploadStagingDir = Path.Combine(dataDir, "uploads");
 
@@ -62,11 +60,6 @@ using (var scope = app.Services.CreateScope())
 {
     var budgetDb = scope.ServiceProvider.GetRequiredService<BudgetDbContext>();
     budgetDb.Database.Migrate();
-
-    // Legacy bootstrap: when a pre-multi-source moneymoney.db exists on disk and our mm_*
-    // tables are still empty for the default source, absorb it into source 1 (identity
-    // namespacing → existing budgets.db references stay valid) and rename the file.
-    AbsorbLegacyMoneyMoneyDb(budgetDb, legacyMoneyMoneyDbPath, app.Logger);
 }
 
 Directory.CreateDirectory(uploadStagingDir);
@@ -228,118 +221,5 @@ static async Task<IResult> HandleUploadAsync(
         {
             try { File.Delete(tempPath); } catch { /* best-effort cleanup */ }
         }
-    }
-}
-
-static void AbsorbLegacyMoneyMoneyDb(BudgetDbContext db, string legacyPath, ILogger logger)
-{
-    // Pre-multi-source installs had a single read-only data/moneymoney.db file. The migration
-    // creates the empty mm_* tables; this bootstrap copies the legacy file's rows into source 1
-    // (identity namespacing → existing FK references in budgets.db stay valid), updates the
-    // source's LastUploadAt to the file's mtime, then renames the file out of the way so we
-    // don't import it again on the next boot.
-    if (!File.Exists(legacyPath)) return;
-    bool hasAnyRows = db.Accounts.Any(a => a.SourceId == SourceScope.LegacySourceId)
-        || db.Categories.Any(c => c.SourceId == SourceScope.LegacySourceId)
-        || db.CategoryGroups.Any(cg => cg.SourceId == SourceScope.LegacySourceId)
-        || db.Transactions.Any(t => t.SourceId == SourceScope.LegacySourceId);
-    if (hasAnyRows) return;
-
-    logger.LogInformation("Absorbing legacy MoneyMoney DB at {Path} into source 1 (default).", legacyPath);
-    try
-    {
-        var connStr = new SqliteConnectionStringBuilder
-        {
-            DataSource = legacyPath,
-            Mode = SqliteOpenMode.ReadOnly
-        }.ToString();
-        using var src = new SqliteConnection(connStr);
-        src.Open();
-
-        using var destConn = (SqliteConnection)db.Database.GetDbConnection();
-        if (destConn.State != System.Data.ConnectionState.Open) destConn.Open();
-
-        // MoneyMoney's own DB has dangling rowid references (e.g. category_groups with
-        // group_key=0 pointing at a non-existent parent). Our mm_* tables declare FKs because EF
-        // generated them from the model, so we have to silence FK enforcement on this connection
-        // for the bulk copy to succeed. Reset afterwards.
-        using (var pragmaOff = destConn.CreateCommand())
-        {
-            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
-            pragmaOff.ExecuteNonQuery();
-        }
-
-        using var tx = destConn.BeginTransaction();
-
-        CopyTable(src, destConn, tx,
-            "SELECT rowid, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error FROM accounts",
-            "INSERT INTO mm_accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error) VALUES ($id, $sid, $a, $b, $c, $d, $e, $f, $g, $h, $i)",
-            9);
-        CopyTable(src, destConn, tx,
-            "SELECT rowid, name, group_key, sort, color FROM category_groups",
-            "INSERT INTO mm_category_groups (Id, SourceId, name, group_key, sort, color) VALUES ($id, $sid, $a, $b, $c, $d)",
-            4);
-        CopyTable(src, destConn, tx,
-            "SELECT rowid, name, type, color, rules, group_key, sort FROM categories",
-            "INSERT INTO mm_categories (Id, SourceId, name, type, color, rules, group_key, sort) VALUES ($id, $sid, $a, $b, $c, $d, $e, $f)",
-            6);
-        CopyTable(src, destConn, tx,
-            "SELECT rowid, local_account_key, amount, currency, timestamp, name, comment, category_key, checkmark, splitted FROM transactions",
-            "INSERT INTO mm_transactions (Id, SourceId, local_account_key, amount, currency, timestamp, name, comment, category_key, checkmark, splitted) VALUES ($id, $sid, $a, $b, $c, $d, $e, $f, $g, $h, $i)",
-            9);
-
-        tx.Commit();
-
-        // Stamp LastUploadAt with the legacy file's mtime so the freshness banner shows the
-        // right age right after migration.
-        var fileMtime = File.GetLastWriteTimeUtc(legacyPath);
-        db.Database.ExecuteSqlRaw(
-            "UPDATE money_money_sources SET LastUploadAt = {0} WHERE Id = {1}",
-            fileMtime, SourceScope.LegacySourceId);
-
-        var renamedPath = legacyPath + ".legacy";
-        if (File.Exists(renamedPath)) File.Delete(renamedPath);
-        File.Move(legacyPath, renamedPath);
-        logger.LogInformation("Legacy MoneyMoney DB absorbed; renamed to {Renamed}.", renamedPath);
-
-        // Re-enable FK enforcement for the lifetime of the connection — EF expects it on.
-        using (var pragmaOn = ((SqliteConnection)db.Database.GetDbConnection()).CreateCommand())
-        {
-            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
-            pragmaOn.ExecuteNonQuery();
-        }
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Legacy MoneyMoney DB absorption failed — leaving file in place.");
-    }
-}
-
-static void CopyTable(SqliteConnection src, SqliteConnection dest, SqliteTransaction tx, string selectSql, string insertSql, int valueColumnCount)
-{
-    // Generic legacy copy: maps SELECT columns (excluding rowid) to INSERT $a, $b, ... in
-    // order. Used only by the once-per-install bootstrap, so the verbose mapping is fine.
-    using var insert = dest.CreateCommand();
-    insert.CommandText = insertSql;
-    insert.Transaction = tx;
-    insert.Parameters.AddWithValue("$id", 0L);
-    insert.Parameters.AddWithValue("$sid", SourceScope.LegacySourceId);
-    var letters = new[] { "$a", "$b", "$c", "$d", "$e", "$f", "$g", "$h", "$i", "$j" };
-    for (int i = 0; i < valueColumnCount; i++)
-        insert.Parameters.Add(new SqliteParameter(letters[i], DBNull.Value));
-
-    using var selectCmd = src.CreateCommand();
-    selectCmd.CommandText = selectSql;
-    using var reader = selectCmd.ExecuteReader();
-    while (reader.Read())
-    {
-        long rowid = reader.GetInt64(0);
-        insert.Parameters["$id"].Value = SourceScope.Namespace(SourceScope.LegacySourceId, rowid);
-        for (int i = 0; i < valueColumnCount; i++)
-        {
-            int colIndex = i + 1;
-            insert.Parameters[letters[i]].Value = reader.IsDBNull(colIndex) ? DBNull.Value : reader.GetValue(colIndex);
-        }
-        insert.ExecuteNonQuery();
     }
 }
