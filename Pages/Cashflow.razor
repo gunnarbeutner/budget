@@ -1143,8 +1143,12 @@ else
                 if (daysInMonth == 0) continue;
                 int startDoy = new DateTime(selectedYear, m, 1).DayOfYear; // 1-indexed
 
+                // Filter to aggregate rows so a tracked parent group + its tracked descendants
+                // don't both distribute the same money. The displayed total uses the same
+                // filter — keeping them in lockstep means the balance line matches the total.
                 foreach (var income in incomeCategories)
                 {
+                    if (!income.IsAggregateRow) continue;
                     var amount = income.MonthlyAmounts[m - 1];
                     if (amount == 0m) continue;
                     if (!weights.TryGetValue((income.CategoryId, income.ItemType), out var dist)) continue;
@@ -1153,6 +1157,7 @@ else
 
                 foreach (var expense in expenseCategories)
                 {
+                    if (!expense.IsAggregateRow) continue;
                     var amount = expense.MonthlyAmounts[m - 1];
                     if (amount == 0m) continue;
                     if (!weights.TryGetValue((expense.CategoryId, expense.ItemType), out var dist)) continue;

@@ -875,25 +875,36 @@
         //   - shadow: leaves with recent transactions but no budget entry. Table-only
         //     drill-down; never enter the chart or total (no budget data to compare).
         var batchKeys = new List<(long Id, CategoryItemType ItemType)>();
+        var batchKeySeen = new HashSet<(long Id, CategoryItemType ItemType)>();
         var shadowOnlyKeys = new HashSet<(long Id, CategoryItemType ItemType)>();
+        void AddBatchKey((long Id, CategoryItemType ItemType) k)
+        {
+            // Dedup — a leaf can come in via both selectedActualCategoryIds (tracked at the
+            // leaf level) AND budgetedDescendantsByGroup (auto-included under its tracked
+            // parent). Duplicates would explode the ToDictionary on the variance render.
+            if (batchKeySeen.Add(k)) batchKeys.Add(k);
+        }
         foreach (var groupId in selectedCategoryGroupIds)
         {
             var key = (groupId, CategoryItemType.Group);
-            batchKeys.Add(key);
+            AddBatchKey(key);
             if (!expandedVarianceKeys.Contains(key)) continue;
             if (budgetedDescendantsByGroup.TryGetValue(key, out var budgeted))
             {
-                batchKeys.AddRange(budgeted);
+                foreach (var b in budgeted) AddBatchKey(b);
             }
             else if (selectedCompareBudgetId > 0
                 && shadowSubcatsByGroup.TryGetValue(key, out var subs))
             {
-                batchKeys.AddRange(subs);
-                foreach (var s in subs) shadowOnlyKeys.Add(s);
+                foreach (var s in subs)
+                {
+                    AddBatchKey(s);
+                    shadowOnlyKeys.Add(s);
+                }
             }
         }
         foreach (var categoryId in selectedActualCategoryIds)
-            batchKeys.Add((categoryId, CategoryItemType.Category));
+            AddBatchKey((categoryId, CategoryItemType.Category));
 
         // Budget-carrier keys: the rows whose budget figures into the chart + footer totals.
         //   - tracked leaves: always carriers
