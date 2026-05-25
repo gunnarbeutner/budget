@@ -1996,6 +1996,30 @@ public class BudgetService
     }
 
     /// <summary>
+    /// Counts MoneyMoney transactions that aren't assigned to a real category and returns the
+    /// summed absolute amount. Surfaced on the dashboard so users see when budget rollups are
+    /// silently undercounting because transactions slipped past categorization in MoneyMoney —
+    /// the absolute sum is the decision signal (€5,000 missing rent vs €50 of coffee).
+    ///
+    /// MoneyMoney represents "no category" by pinning the transaction to a sentinel category
+    /// with an empty name (typically rowid=1) rather than leaving category_key NULL, so both
+    /// shapes count. Split-parent rows (Splitted=1) carry that same sentinel as a placeholder
+    /// — their real categories live on the child rows — so they're excluded to match
+    /// MoneyMoney's own "Uncategorized" view.
+    /// </summary>
+    public async Task<UncategorizedSummary> GetUncategorizedTransactionSummaryAsync()
+    {
+        var query = _moneyMoneyDb.Transactions
+            .Where(t => t.Splitted != 1)
+            .Where(t => t.CategoryId == null
+                || !_moneyMoneyDb.Categories.Any(c => c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)));
+
+        var count = await query.CountAsync();
+        var absSum = count == 0 ? 0m : (decimal)await query.SumAsync(t => Math.Abs(t.Amount));
+        return new UncategorizedSummary { Count = count, AbsoluteAmount = absSum };
+    }
+
+    /// <summary>
     /// Returns the current combined balance of each project's assigned accounts in a single
     /// pass — two DB calls regardless of project count. Projects with no assignments are
     /// omitted; the caller treats absence as "no accounts linked".
@@ -2125,6 +2149,12 @@ public class ProjectBalanceSummary
 {
     public decimal Balance { get; set; }
     public int AccountCount { get; set; }
+}
+
+public class UncategorizedSummary
+{
+    public int Count { get; set; }
+    public decimal AbsoluteAmount { get; set; }
 }
 
 public class DataFreshness

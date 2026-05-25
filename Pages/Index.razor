@@ -44,6 +44,22 @@
     }
 }
 
+@if (uncategorized is { Count: > 0 })
+{
+    // Tier mirrors the freshness banner: a handful of stragglers is informational, but a
+    // pile-up is loud because the dashboard numbers are then meaningfully wrong.
+    string uncategorizedClass = uncategorized.Count switch
+    {
+        >= 50 => "alert-danger",
+        >= 10 => "alert-warning",
+        _ => "alert-secondary"
+    };
+    var uncategorizedKey = uncategorized.Count == 1 ? "Uncategorized_One" : "Uncategorized_Other";
+    <div class="alert @uncategorizedClass py-1 px-2 small mb-3 d-flex flex-wrap align-items-center gap-2">
+        <span>@L[uncategorizedKey, uncategorized.Count, $"€{uncategorized.AbsoluteAmount.ToString("N2")}"]</span>
+    </div>
+}
+
 @{
     var anchorDate = new DateTime(anchor.Year, anchor.Month, 1);
     var headingText = period switch
@@ -313,6 +329,7 @@ else
     private List<ProjectSpendingSummary>? budgetSummaries;
     private Dictionary<int, ProjectBalanceSummary> projectBalances = new();
     private DataFreshness? freshness;
+    private UncategorizedSummary? uncategorized;
     private bool showCreateDialog = false;
     private string newProjectName = "";
     private string newProjectDescription = "";
@@ -432,6 +449,7 @@ else
         // refresh state. Surfaced at the top of the page so stale numbers can't masquerade as
         // current.
         freshness = await BudgetService.GetDataFreshnessAsync();
+        uncategorized = await BudgetService.GetUncategorizedTransactionSummaryAsync();
     }
 
     private string FormatRelativeAge(TimeSpan age)

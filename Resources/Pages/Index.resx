@@ -70,6 +70,12 @@
   <data name="Freshness_RefreshErrors_Other" xml:space="preserve">
     <value>{0} accounts with refresh errors:</value>
   </data>
+  <data name="Uncategorized_One" xml:space="preserve">
+    <value>{0} transaction ({1}) has no category — budget rollups may be incomplete.</value>
+  </data>
+  <data name="Uncategorized_Other" xml:space="preserve">
+    <value>{0} transactions ({1}) have no category — budget rollups may be incomplete.</value>
+  </data>
   <data name="PageTitle" xml:space="preserve">
     <value>Dashboard</value>
   </data>

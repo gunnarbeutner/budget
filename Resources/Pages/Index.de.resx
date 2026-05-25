@@ -70,6 +70,12 @@
   <data name="Freshness_RefreshErrors_Other" xml:space="preserve">
     <value>{0} Konten mit Aktualisierungsfehlern:</value>
   </data>
+  <data name="Uncategorized_One" xml:space="preserve">
+    <value>{0} Transaktion ({1}) ohne Kategorie — Budgetsummen sind möglicherweise unvollständig.</value>
+  </data>
+  <data name="Uncategorized_Other" xml:space="preserve">
+    <value>{0} Transaktionen ({1}) ohne Kategorie — Budgetsummen sind möglicherweise unvollständig.</value>
+  </data>
   <data name="PageTitle" xml:space="preserve">
     <value>Dashboard</value>
   </data>

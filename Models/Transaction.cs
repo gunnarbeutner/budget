@@ -37,6 +37,14 @@ public class Transaction
     [Column("checkmark")]
     public long? Checkmark { get; set; }
 
+    /// <summary>
+    /// MoneyMoney split marker. 0 = normal row, 1 = split parent (a placeholder; its real
+    /// category lives on the children), 2 = split child. Parents must be excluded from any
+    /// rollup or "uncategorized" count or they double-count against their children.
+    /// </summary>
+    [Column("splitted")]
+    public long? Splitted { get; set; }
+
     [NotMapped]
     public DateTime Date => DateTimeOffset.FromUnixTimeSeconds(Timestamp).DateTime;
 
