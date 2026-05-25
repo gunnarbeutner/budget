@@ -100,6 +100,9 @@
   <data name="Button_Today" xml:space="preserve">
     <value>Today</value>
   </data>
+  <data name="Title_TodayMarker" xml:space="preserve">
+    <value>Today ({0}% of period elapsed)</value>
+  </data>
   <data name="Button_Month" xml:space="preserve">
     <value>Month</value>
   </data>

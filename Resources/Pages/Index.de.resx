@@ -100,6 +100,9 @@
   <data name="Button_Today" xml:space="preserve">
     <value>Heute</value>
   </data>
+  <data name="Title_TodayMarker" xml:space="preserve">
+    <value>Heute ({0}% des Zeitraums verstrichen)</value>
+  </data>
   <data name="Button_Month" xml:space="preserve">
     <value>Monat</value>
   </data>

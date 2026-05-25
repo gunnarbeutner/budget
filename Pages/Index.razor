@@ -188,7 +188,7 @@ else
                                 </div>
                             </div>
 
-                            <div class="progress mb-3" style="height: 25px;">
+                            <div class="progress mb-3 position-relative" style="height: 25px;">
                                 <div class="progress-bar bg-@statusClass"
                                      role="progressbar"
                                      style="width: @(Math.Min(overallPercent, 100).ToString(CultureInfo.InvariantCulture))%"
@@ -197,6 +197,13 @@ else
                                      aria-valuemax="100">
                                     @overallPercent.ToString("F0")%
                                 </div>
+                                @{ var todayPct = TodayMarkerPercent; }
+                                @if (todayPct.HasValue)
+                                {
+                                    <div class="position-absolute top-0 bottom-0"
+                                         style="left: @(todayPct.Value.ToString("F2", CultureInfo.InvariantCulture))%; width: 2px; background-color: rgba(0,0,0,0.7);"
+                                         title="@L["Title_TodayMarker", todayPct.Value.ToString("F0")]"></div>
+                                }
                             </div>
                         }
                         else
@@ -548,6 +555,30 @@ else
         UpdateUrl();
         budgetSummaries = null;
         await LoadDashboard();
+    }
+
+    // Position of "today" within the currently selected period, as a percentage [0..100].
+    // Returns null when today falls outside the period, or for "month" view where a single-
+    // month bar is too short for the marker to be informative.
+    private double? TodayMarkerPercent
+    {
+        get
+        {
+            if (period == "month") return null;
+            var (fromMonth, toMonth) = period switch
+            {
+                "year" => (1, 12),
+                "ytd" => (1, anchor.Month),
+                _ => (anchor.Month, anchor.Month)
+            };
+            var periodStart = new DateTime(anchor.Year, fromMonth, 1);
+            var periodEndExclusive = new DateTime(anchor.Year, toMonth, 1).AddMonths(1);
+            var today = DateTime.Today;
+            if (today < periodStart || today >= periodEndExclusive) return null;
+            var totalDays = (periodEndExclusive - periodStart).TotalDays;
+            var elapsedDays = (today - periodStart).TotalDays;
+            return elapsedDays / totalDays * 100.0;
+        }
     }
 
     private async Task OpenMonthPicker()
