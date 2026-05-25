@@ -51,6 +51,11 @@
     <div class="col-md-4">
         <label class="form-label">@L["Label_IncomeProjection"]</label>
         <div class="btn-group d-flex" role="group" aria-label="@L["Aria_IncomeProjectionMode"]">
+            <input type="radio" class="btn-check" name="incomeProj" id="incomeProjBudget"
+                   checked="@(incomeProjectionMode == "budget")"
+                   @onchange="@(() => OnIncomeModeChanged("budget"))" />
+            <label class="btn btn-outline-primary" for="incomeProjBudget">@L["Projection_Budget"]</label>
+
             <input type="radio" class="btn-check" name="incomeProj" id="incomeProjBreakeven"
                    checked="@(incomeProjectionMode == "breakeven")"
                    @onchange="@(() => OnIncomeModeChanged("breakeven"))" />
@@ -62,7 +67,12 @@
             <label class="btn btn-outline-primary" for="incomeProjRecent">@L["Projection_LastMonth"]</label>
         </div>
         <small class="form-text text-muted d-block mt-1">
-            @(incomeProjectionMode == "breakeven" ? L["Projection_Breakeven_Help"] : L["Projection_LastMonth_Help"])
+            @(incomeProjectionMode switch
+            {
+                "budget" => L["Projection_Budget_Help"],
+                "recent" => L["Projection_LastMonth_Help"],
+                _ => L["Projection_Breakeven_Help"]
+            })
         </small>
         <div class="form-check form-switch mt-2 small">
             <input class="form-check-input" type="checkbox" id="balanceFloorEnabled"
@@ -222,14 +232,12 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                     <details class="mb-3">
                         <summary class="text-muted small" style="cursor: pointer;">@L["Calculator_HowItWorks_Summary"]</summary>
                         <div class="text-muted small mt-2">
-                            @if (incomeProjectionMode == "recent")
+                            @(incomeProjectionMode switch
                             {
-                                @L["Calculator_HowItWorks_Recent"]
-                            }
-                            else
-                            {
-                                @L["Calculator_HowItWorks_Breakeven"]
-                            }
+                                "budget" => L["Calculator_HowItWorks_Budget"],
+                                "recent" => L["Calculator_HowItWorks_Recent"],
+                                _ => L["Calculator_HowItWorks_Breakeven"]
+                            })
                         </div>
                     </details>
 
@@ -241,6 +249,10 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                             {
                                 var sourceLabel = new DateTime(recentIncomeSourceMonth.Year, recentIncomeSourceMonth.Month, 1).ToString("MMMM yyyy");
                                 <text>@L["Calculator_Range_Recent", rangeLabel, sourceLabel]</text>
+                            }
+                            else if (incomeProjectionMode == "budget")
+                            {
+                                <text>@L["Calculator_Range_Budget", rangeLabel]</text>
                             }
                             else
                             {
@@ -448,16 +460,22 @@ else
     private bool splitsDirty = false;
     private bool splitsSaving = false;
 
-    /// <summary>"breakeven" (default) projects income at the level needed to cover budgeted
-    /// expenses; "recent" repeats each income category's last completed calendar month flat
-    /// across the projected months for stress-testing.</summary>
-    private string incomeProjectionMode = "breakeven";
+    /// <summary>"budget" (default) projects income from the selected budget's monthly income
+    /// amounts (per-category, with seasonality intact). "breakeven" derives income at the level
+    /// needed to cover budgeted expenses, attributed by contribution split. "recent" repeats
+    /// each income category's last completed calendar month flat across the projected months
+    /// for stress-testing.</summary>
+    private string incomeProjectionMode = "budget";
     /// <summary>The calendar month whose actuals are repeated in "recent" mode. Used both for
     /// the projection math and the per-category readout label.</summary>
     private (int Year, int Month) recentIncomeSourceMonth;
     /// <summary>Per-item income for <see cref="recentIncomeSourceMonth"/>. Populated by
     /// LoadCashflowData in "recent" mode; null otherwise.</summary>
     private Dictionary<(long Id, CategoryItemType ItemType), decimal>? recentIncomePerItem;
+    /// <summary>Per-item monthly budget amounts (12-element arrays) for the selected budget.
+    /// Used by "budget" mode to project income, and by expense projection below. Populated
+    /// when a budget is selected and the page is projecting (firstProjectedMonth ≤ 12).</summary>
+    private Dictionary<(long Id, CategoryItemType ItemType), decimal[]>? budgetMonthlyAmounts;
 
     /// <summary>Master switch for the balance-floor alert. When off, no alert fires regardless
     /// of where the projection dips — a user who doesn't care to be warned about negative
@@ -620,7 +638,7 @@ else
         if (query.TryGetValue("mode", out var m))
         {
             var v = m.ToString();
-            if (v is "breakeven" or "recent") incomeProjectionMode = v;
+            if (v is "budget" or "breakeven" or "recent") incomeProjectionMode = v;
         }
 
         if (query.TryGetValue("floorOn", out var fo) && bool.TryParse(fo, out var pfo))
@@ -644,7 +662,7 @@ else
             ["projectId"] = selectedProjectId,
             ["year"] = selectedYear,
             ["budgetId"] = selectedBudgetId == 0 ? null : selectedBudgetId,
-            ["mode"] = incomeProjectionMode == "breakeven" ? null : incomeProjectionMode,
+            ["mode"] = incomeProjectionMode == "budget" ? null : incomeProjectionMode,
             ["floorOn"] = balanceFloorEnabled ? "true" : null,
             ["floor"] = balanceFloor == 0m ? null : balanceFloor.ToString(CultureInfo.InvariantCulture),
         });
@@ -760,10 +778,11 @@ else
         var batch = await BudgetService.GetMonthlyIncomeAndExpenseBatchAsync(batchKeys, selectedYear, projectSourceId, selectedProjectId);
 
         // If a budget is selected for the displayed year, project future months. Expenses use
-        // the budget's per-month values directly. Income is one global value per month:
-        //   (sum_of_expenses_from_budget - income_so_far) / remaining_months
-        // and is attributed to each income source by the calculator's contribution-split %.
-        Dictionary<(long Id, CategoryItemType ItemType), decimal[]>? budgetMonthlyAmounts = null;
+        // the budget's per-month values directly. Income depends on the selected mode: "budget"
+        // pulls per-item monthly values directly from the budget, "breakeven" derives one
+        // global gap = (expense_total - income_ytd) / remaining_months attributed by
+        // contribution-split %, "recent" repeats each item's last-month actuals.
+        budgetMonthlyAmounts = null;
         HashSet<(long Id, CategoryItemType ItemType)>? incomeItemsForProjection = null;
         firstProjectedMonth = 13; // sentinel: no projection
         if (selectedBudgetId > 0)
@@ -1065,6 +1084,23 @@ else
     private void ApplyIncomeProjection()
     {
         if (firstProjectedMonth > 12) return;
+
+        if (incomeProjectionMode == "budget")
+        {
+            // Pull each income category's future months straight from the budget. Items missing
+            // from the budget (or with zero rows there) project to zero, matching the convention
+            // for expense items without a budget row.
+            foreach (var income in incomeCategories)
+            {
+                decimal[]? monthly = null;
+                budgetMonthlyAmounts?.TryGetValue((income.CategoryId, income.ItemType), out monthly);
+                for (int m = firstProjectedMonth - 1; m < 12; m++)
+                {
+                    income.MonthlyAmounts[m] = monthly?[m] ?? 0m;
+                }
+            }
+            return;
+        }
 
         if (incomeProjectionMode == "recent")
         {

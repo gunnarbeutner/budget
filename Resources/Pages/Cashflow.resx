@@ -103,6 +103,12 @@
   <data name="Aria_IncomeProjectionMode" xml:space="preserve">
     <value>Income projection mode</value>
   </data>
+  <data name="Projection_Budget" xml:space="preserve">
+    <value>From budget</value>
+  </data>
+  <data name="Projection_Budget_Help" xml:space="preserve">
+    <value>Future months use the selected budget's monthly income amounts per category — keeps seasonality and one-off entries (Nachzahlung, bonuses) intact.</value>
+  </data>
   <data name="Projection_Breakeven" xml:space="preserve">
     <value>Pace to break even</value>
   </data>
@@ -199,11 +205,17 @@
   <data name="Calculator_HowItWorks_Summary" xml:space="preserve">
     <value>How this works</value>
   </data>
+  <data name="Calculator_HowItWorks_Budget" xml:space="preserve">
+    <value>Both income and expenses for future months come straight from the selected budget's per-category monthly amounts. The split percentages below describe how expenses would be apportioned across income sources — they don't change the projection in this mode.</value>
+  </data>
   <data name="Calculator_HowItWorks_Recent" xml:space="preserve">
     <value>Each income category's last completed calendar month is repeated flat across the remaining months. "Projected Yearly" = past actuals + last-month income × remaining months. Use this to see whether current income covers the rest of the year's budgeted expenses.</value>
   </data>
   <data name="Calculator_HowItWorks_Breakeven" xml:space="preserve">
     <value>Each row's split percentage determines what share of the year's projected expenses that income source needs to cover. "Required" = total expenses × split. "Remaining" = the source's income minus what it owes. Edit the splits to model different ways to divide responsibility; Save persists them on the selected budget.</value>
+  </data>
+  <data name="Calculator_Range_Budget" xml:space="preserve">
+    <value>{0} are projected from the selected budget for both income and expenses; earlier months use actual transactions.</value>
   </data>
   <data name="Calculator_Range_Recent" xml:space="preserve">
     <value>{0} are projected — expenses from the selected budget, income repeated from {1} actuals; earlier months use actual transactions.</value>

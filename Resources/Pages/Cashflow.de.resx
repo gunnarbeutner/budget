@@ -103,6 +103,12 @@
   <data name="Aria_IncomeProjectionMode" xml:space="preserve">
     <value>Einnahmen-Prognosemodus</value>
   </data>
+  <data name="Projection_Budget" xml:space="preserve">
+    <value>Aus dem Budget</value>
+  </data>
+  <data name="Projection_Budget_Help" xml:space="preserve">
+    <value>Künftige Monate übernehmen die monatlichen Einnahmen pro Kategorie direkt aus dem ausgewählten Budget — Saisonalität und Einmalposten (Nachzahlung, Boni) bleiben erhalten.</value>
+  </data>
   <data name="Projection_Breakeven" xml:space="preserve">
     <value>Auf Kostendeckung</value>
   </data>
@@ -199,11 +205,17 @@
   <data name="Calculator_HowItWorks_Summary" xml:space="preserve">
     <value>So funktioniert's</value>
   </data>
+  <data name="Calculator_HowItWorks_Budget" xml:space="preserve">
+    <value>Einnahmen und Ausgaben für künftige Monate kommen direkt aus den monatlichen Beträgen pro Kategorie im ausgewählten Budget. Die Aufteilungsanteile unten beschreiben, wie die Ausgaben auf die Einnahmequellen verteilt würden — sie beeinflussen die Prognose in diesem Modus nicht.</value>
+  </data>
   <data name="Calculator_HowItWorks_Recent" xml:space="preserve">
     <value>Der letzte abgeschlossene Kalendermonat jeder Einnahmenkategorie wird konstant über die verbleibenden Monate wiederholt. „Prognose Jahr" = bisherige Ist-Werte + Einnahmen des Vormonats × verbleibende Monate. So lässt sich prüfen, ob die aktuellen Einnahmen die budgetierten Ausgaben für den Rest des Jahres decken.</value>
   </data>
   <data name="Calculator_HowItWorks_Breakeven" xml:space="preserve">
     <value>Der Aufteilungsanteil jeder Zeile bestimmt, welchen Anteil der prognostizierten Jahresausgaben diese Einnahmequelle decken muss. „Erforderlich" = Gesamtausgaben × Anteil. „Verbleibend" = Einnahmen der Quelle minus erforderlicher Beitrag. Passe die Anteile an, um verschiedene Verteilungen durchzuspielen; „Speichern" hinterlegt sie am ausgewählten Budget.</value>
+  </data>
+  <data name="Calculator_Range_Budget" xml:space="preserve">
+    <value>{0} sind für Einnahmen und Ausgaben aus dem ausgewählten Budget prognostiziert; frühere Monate verwenden echte Transaktionen.</value>
   </data>
   <data name="Calculator_Range_Recent" xml:space="preserve">
     <value>{0} sind prognostiziert — Ausgaben aus dem ausgewählten Budget, Einnahmen aus den Ist-Werten von {1} wiederholt; frühere Monate verwenden echte Transaktionen.</value>
