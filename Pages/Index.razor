@@ -10,68 +10,6 @@
 
 <PageTitle>@L["PageTitle"]</PageTitle>
 
-@if (freshness != null)
-{
-    // One banner per registered source — multi-source installs need to see staleness per source
-    // because each is uploaded independently.
-    var nowUtc = DateTime.UtcNow;
-    var showSourceLabel = freshness.Count > 1;
-    foreach (var f in freshness)
-    {
-        var uploaded = f.DbUploadedUtc;
-        var age = uploaded.HasValue ? nowUtc - uploaded.Value : (TimeSpan?)null;
-        var errorAccounts = f.AccountsWithErrors.ToList();
-        var isFresh = age is { TotalHours: <= 36 } && !errorAccounts.Any();
-        if (isFresh) continue;
-
-        string ageLabel = age.HasValue ? FormatRelativeAge(age.Value) : L["Freshness_Unknown"];
-        string ageClass = age switch
-        {
-            null => "alert-warning",
-            { TotalDays: > 7 } => "alert-danger",
-            { TotalHours: > 36 } => "alert-warning",
-            _ => "alert-secondary"
-        };
-        var errorKey = errorAccounts.Count == 1 ? "Freshness_RefreshErrors_One" : "Freshness_RefreshErrors_Other";
-        <div class="alert @ageClass py-1 px-2 small mb-3 d-flex flex-wrap align-items-center gap-2">
-            @if (showSourceLabel)
-            {
-                <span class="badge bg-secondary">@f.SourceName</span>
-            }
-            <span>@L["Freshness_Uploaded"] <strong>@ageLabel</strong>@(uploaded.HasValue ? $" ({uploaded.Value.ToLocalTime():yyyy-MM-dd HH:mm})" : "").</span>
-            @if (errorAccounts.Any())
-            {
-                <span>
-                    @L[errorKey, errorAccounts.Count]
-                    @string.Join(", ", errorAccounts.Select(a => a.Name ?? $"#{a.AccountId}")).
-                </span>
-            }
-        </div>
-    }
-}
-
-@if (uncategorized != null)
-{
-    var showSourceLabel = uncategorized.Count > 1;
-    foreach (var u in uncategorized.Values.Where(u => u.Count > 0))
-    {
-        string uncategorizedClass = u.Count switch
-        {
-            >= 50 => "alert-danger",
-            >= 10 => "alert-warning",
-            _ => "alert-secondary"
-        };
-        var uncategorizedKey = u.Count == 1 ? "Uncategorized_One" : "Uncategorized_Other";
-        var sourceName = sourceNamesById.GetValueOrDefault(u.SourceId, $"#{u.SourceId}");
-        <div class="alert @uncategorizedClass py-1 px-2 small mb-3 d-flex flex-wrap align-items-center gap-2">
-            @if (showSourceLabel)
-            {
-                <span class="badge bg-secondary">@sourceName</span>
-            }
-            <span>@L[uncategorizedKey, u.Count, $"€{u.AbsoluteAmount.ToString("N2")}"]</span>
-        </div>
-    }
-}
 
 @{
     var anchorDate = new DateTime(anchor.Year, anchor.Month, 1);
@@ -82,7 +20,8 @@
         _ => anchorDate.ToString("MMMM yyyy")
     };
 }
-<div class="d-flex flex-wrap mb-4 align-items-center gap-2">
+<div class="d-flex flex-wrap mb-4 align-items-center gap-2 sticky-top bg-white border-bottom py-2"
+     style="margin-left: -0.5rem; margin-right: -0.5rem; padding-left: 0.5rem; padding-right: 0.5rem;">
     <button type="button" class="btn btn-sm btn-outline-secondary"
             @onclick="() => StepAnchor(-1)" aria-label="@L["Aria_Previous"]">
         <span class="oi oi-chevron-left" aria-hidden="true"></span>
@@ -154,9 +93,47 @@ else
             var projectId = summary.ProjectId;
 
             <div class="col-md-6 mb-4">
-                <div class="card">
+                @{
+                    var alert = GetProjectAlert(summary);
+                    var alertOpen = openAlertProjectId == projectId;
+                }
+                <div class="card" style="overflow: visible;">
                     <div class="card-header bg-@statusClass text-white d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">@summary.ProjectName</h5>
+                        <div class="d-flex align-items-center gap-2">
+                            <h5 class="mb-0">@summary.ProjectName</h5>
+                            @if (alert is { } a)
+                            {
+                                <div class="position-relative">
+                                    <button type="button"
+                                            class="btn btn-link text-white p-0 d-inline-flex align-items-center"
+                                            title="@string.Join(" ", a.Lines)"
+                                            aria-label="@string.Join(" ", a.Lines)"
+                                            @onclick="() => ToggleAlert(projectId)">
+                                        <span class="badge bg-@(a.Severity) d-inline-flex align-items-center"
+                                              style="font-size: 0.75rem;">
+                                            <span class="oi oi-warning" aria-hidden="true"></span>
+                                        </span>
+                                    </button>
+                                    @if (alertOpen)
+                                    {
+                                        <div class="position-absolute shadow border rounded bg-white text-dark p-2 small"
+                                             style="top: 100%; left: 0; z-index: 1030; margin-top: 0.25rem; min-width: 260px; max-width: 360px;">
+                                            <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+                                                <strong class="text-@(a.Severity)">Warnings</strong>
+                                                <button type="button" class="btn-close btn-sm" aria-label="Close"
+                                                        @onclick="() => ToggleAlert(projectId)"></button>
+                                            </div>
+                                            <ul class="mb-0 ps-3">
+                                                @foreach (var line in a.Lines)
+                                                {
+                                                    <li>@line</li>
+                                                }
+                                            </ul>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
                         <div class="d-flex align-items-center gap-2">
                             <button type="button" class="btn btn-link text-white p-0"
                                     title="@L["Aria_MoveUp"]" aria-label="@L["Aria_MoveUp"]"
@@ -354,9 +331,11 @@ else
     private List<ProjectSpendingSummary>? budgetSummaries;
     private Dictionary<int, ProjectBalanceSummary> projectBalances = new();
     private List<DataFreshness>? freshness;
+    private Dictionary<int, DataFreshness> freshnessBySourceId = new();
     private Dictionary<int, UncategorizedSummary>? uncategorized;
     private List<ImportSource> availableSources = new();
     private Dictionary<int, string> sourceNamesById = new();
+    private int? openAlertProjectId;
     private bool showCreateDialog = false;
     private string newProjectName = "";
     private string newProjectDescription = "";
@@ -477,6 +456,7 @@ else
         // refresh state. Surfaced at the top of the page so stale numbers can't masquerade as
         // current.
         freshness = await BudgetService.GetDataFreshnessAsync();
+        freshnessBySourceId = freshness.ToDictionary(f => f.SourceId);
         uncategorized = await BudgetService.GetUncategorizedTransactionSummaryAsync();
         availableSources = await BudgetService.GetAllSourcesAsync();
         sourceNamesById = availableSources.ToDictionary(s => s.Id, s => s.Name);
@@ -619,5 +599,77 @@ else
         await BudgetService.CreateProjectAsync(newProjectName, sourceId, newProjectDescription);
         showCreateDialog = false;
         await LoadDashboard();
+    }
+
+    private void ToggleAlert(int projectId)
+    {
+        openAlertProjectId = openAlertProjectId == projectId ? null : projectId;
+    }
+
+    /// <summary>
+    /// Per-project diagnostic. Returns null when there is nothing to warn about; otherwise
+    /// returns a (severity, message-lines) tuple. Severity drives the icon color and the
+    /// popover badge.
+    /// </summary>
+    private (string Severity, List<string> Lines)? GetProjectAlert(ProjectSpendingSummary summary)
+    {
+        var lines = new List<string>();
+        string severity = "secondary";
+        var nowUtc = DateTime.UtcNow;
+
+        // Freshness: stale upload or per-account refresh errors for the project's source.
+        if (freshnessBySourceId.TryGetValue(summary.SourceId, out var f))
+        {
+            var age = f.DbUploadedUtc.HasValue ? nowUtc - f.DbUploadedUtc.Value : (TimeSpan?)null;
+            var freshSev = age switch
+            {
+                null => "warning",
+                { TotalDays: > 7 } => "danger",
+                { TotalHours: > 36 } => "warning",
+                _ => null
+            };
+            if (freshSev != null)
+            {
+                string ageLabel = age.HasValue ? FormatRelativeAge(age.Value) : L["Freshness_Unknown"];
+                var uploadedExtra = f.DbUploadedUtc.HasValue
+                    ? $" ({f.DbUploadedUtc.Value.ToLocalTime():yyyy-MM-dd HH:mm})"
+                    : "";
+                lines.Add($"{L["Freshness_Uploaded"]} {ageLabel}{uploadedExtra}.");
+                severity = freshSev;
+            }
+
+            var errorAccounts = f.AccountsWithErrors.ToList();
+            if (errorAccounts.Any())
+            {
+                var errorKey = errorAccounts.Count == 1
+                    ? "Freshness_RefreshErrors_One"
+                    : "Freshness_RefreshErrors_Other";
+                lines.Add($"{L[errorKey, errorAccounts.Count]} {string.Join(", ", errorAccounts.Select(a => a.Name ?? $"#{a.AccountId}"))}.");
+                if (severity == "secondary") severity = "warning";
+            }
+        }
+
+        // Uncategorized transactions in this project's source: rolls into project numbers that
+        // may be undercounting.
+        if (uncategorized != null && uncategorized.TryGetValue(summary.SourceId, out var u) && u.Count > 0)
+        {
+            var key = u.Count == 1 ? "Uncategorized_One" : "Uncategorized_Other";
+            lines.Add(L[key, u.Count, $"€{u.AbsoluteAmount.ToString("N2")}"].Value);
+            var uncatSev = u.Count switch
+            {
+                >= 50 => "danger",
+                >= 10 => "warning",
+                _ => "secondary"
+            };
+            severity = MaxSeverity(severity, uncatSev);
+        }
+
+        return lines.Any() ? (severity, lines) : null;
+    }
+
+    private static string MaxSeverity(string a, string b)
+    {
+        int rank(string s) => s switch { "danger" => 2, "warning" => 1, _ => 0 };
+        return rank(a) >= rank(b) ? a : b;
     }
 }

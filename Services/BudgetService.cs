@@ -297,6 +297,7 @@ public class BudgetService
         return new ProjectSpendingSummary
         {
             ProjectId = projectId,
+            SourceId = project.SourceId,
             ProjectName = project.Name,
             Year = year,
             FromMonth = fromMonth,
@@ -2329,6 +2330,7 @@ public class ProjectDailyDeltaResult
 public class ProjectSpendingSummary
 {
     public int ProjectId { get; set; }
+    public int SourceId { get; set; }
     public string ProjectName { get; set; } = string.Empty;
     public int Year { get; set; }
     public int FromMonth { get; set; }
