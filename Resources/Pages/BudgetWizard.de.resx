@@ -133,8 +133,8 @@
   <data name="Success_Body" xml:space="preserve">
     <value>Dein Budget für {0} wurde mit prognostizierten Monatsbeträgen basierend auf historischen Daten erstellt.</value>
   </data>
-  <data name="Button_ViewProject" xml:space="preserve">
-    <value>Projekt anzeigen</value>
+  <data name="Button_ViewBudgets" xml:space="preserve">
+    <value>Budgets anzeigen</value>
   </data>
   <data name="Button_CreateAnother" xml:space="preserve">
     <value>Weiteres Budget erstellen</value>

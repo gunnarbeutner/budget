@@ -49,7 +49,7 @@
             <button class="btn btn-primary" @onclick="GeneratePredictions">
                 @L["Button_NextGenerate"]
             </button>
-            <a href="/projects/@selectedProjectId" class="btn btn-secondary">@L["Button_Cancel"]</a>
+            <a href="/budgets?projectId=@selectedProjectId" class="btn btn-secondary">@L["Button_Cancel"]</a>
         </div>
     </div>
 }
@@ -131,7 +131,7 @@ else if (step == 3)
     <div class="alert alert-success">
         <h4>@L["Success_Heading"]</h4>
         <p>@L["Success_Body", selectedYear]</p>
-        <a href="/projects/@selectedProjectId" class="btn btn-primary">@L["Button_ViewProject"]</a>
+        <a href="/budgets?projectId=@selectedProjectId" class="btn btn-primary">@L["Button_ViewBudgets"]</a>
         <a href="/budgets/wizard?projectId=@selectedProjectId" class="btn btn-secondary" @onclick="Reset">@L["Button_CreateAnother"]</a>
     </div>
 }

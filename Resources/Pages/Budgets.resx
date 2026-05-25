@@ -151,4 +151,34 @@
   <data name="Chart_YAxisTitle" xml:space="preserve">
     <value>Amount (€)</value>
   </data>
+  <data name="Button_NewBudget" xml:space="preserve">
+    <value>New Budget</value>
+  </data>
+  <data name="Button_MakeActive" xml:space="preserve">
+    <value>Make Active</value>
+  </data>
+  <data name="Title_MakeActive" xml:space="preserve">
+    <value>Use this budget on the dashboard for {0}</value>
+  </data>
+  <data name="Button_Edit" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="Button_Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="Button_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Modal_DeleteBudget_Title" xml:space="preserve">
+    <value>Delete Budget</value>
+  </data>
+  <data name="Modal_DeleteBudget_Body" xml:space="preserve">
+    <value>Delete the {0} budget{1}?</value>
+  </data>
+  <data name="Modal_DeleteBudget_Notes" xml:space="preserve">
+    <value> ({0})</value>
+  </data>
+  <data name="Modal_DeleteBudget_Warning" xml:space="preserve">
+    <value>All of its monthly entries will be removed. This cannot be undone.</value>
+  </data>
 </root>

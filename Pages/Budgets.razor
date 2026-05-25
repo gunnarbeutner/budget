@@ -38,16 +38,34 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">@L["Form_CompareWithBudgetLabel"]</label>
-                        <select class="form-select" value="@selectedCompareBudgetId" @onchange="OnCompareBudgetChanged">
-                            <option value="0">@L["Form_NoBudgetComparisonOption"]</option>
-                            @if (availableBudgets != null)
-                            {
-                                foreach (var bud in availableBudgets)
+                        <div class="d-flex gap-2 align-items-stretch">
+                            <select class="form-select" value="@selectedCompareBudgetId" @onchange="OnCompareBudgetChanged">
+                                <option value="0">@L["Form_NoBudgetComparisonOption"]</option>
+                                @if (availableBudgets != null)
                                 {
-                                    <option value="@bud.Id">@bud.Year — @bud.Name@(bud.IsActive ? L["Form_ActiveSuffix"].Value : "")</option>
+                                    foreach (var bud in availableBudgets)
+                                    {
+                                        <option value="@bud.Id">@bud.Year — @bud.Name@(bud.IsActive ? L["Form_ActiveSuffix"].Value : "")</option>
+                                    }
                                 }
+                            </select>
+                            <a class="btn btn-primary text-nowrap" href="/budgets/wizard?projectId=@selectedBudgetId">@L["Button_NewBudget"]</a>
+                            @{
+                                var selectedBudget = availableBudgets?.FirstOrDefault(b => b.Id == selectedCompareBudgetId);
                             }
-                        </select>
+                            @if (selectedBudget != null)
+                            {
+                                <a class="btn btn-outline-primary text-nowrap" href="/budgets/@selectedBudget.Id/edit">@L["Button_Edit"]</a>
+                                @if (!selectedBudget.IsActive)
+                                {
+                                    <button type="button" class="btn btn-outline-success text-nowrap"
+                                            title="@L["Title_MakeActive", selectedBudget.Year]"
+                                            @onclick="() => SetBudgetActive(selectedBudget.Id)">@L["Button_MakeActive"]</button>
+                                }
+                                <button type="button" class="btn btn-outline-danger text-nowrap"
+                                        @onclick="() => ShowDeleteBudgetDialog(selectedBudget)">@L["Button_Delete"]</button>
+                            }
+                        </div>
                     </div>
                 </div>
             </div>
@@ -222,6 +240,29 @@
     </div>
 </div>
 
+@if (budgetPendingDelete != null)
+{
+    <div class="modal show d-block" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@L["Modal_DeleteBudget_Title"]</h5>
+                    <button type="button" class="btn-close" @onclick="HideDeleteBudgetDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <p>@L["Modal_DeleteBudget_Body", budgetPendingDelete.Year, string.IsNullOrEmpty(budgetPendingDelete.Notes) ? "" : L["Modal_DeleteBudget_Notes", budgetPendingDelete.Notes].Value]</p>
+                    <p class="text-muted small mb-0">@L["Modal_DeleteBudget_Warning"]</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="HideDeleteBudgetDialog">@L["Button_Cancel"]</button>
+                    <button class="btn btn-danger" @onclick="ConfirmDeleteBudget">@L["Button_Delete"]</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+}
+
 @code {
     private List<CategoryGroupWithChildCount>? allCategories;
     private List<CategoryGroupWithChildCount>? filteredCategories;
@@ -240,6 +281,8 @@
     private Dictionary<(long Id, CategoryItemType ItemType), string> categoryDisplayNames = new();
     private List<VarianceSummary>? varianceSummary;
     private List<Budget>? availableBudgets;
+    /// <summary>Budget the user has clicked Delete on, awaiting confirmation in the modal.</summary>
+    private Budget? budgetPendingDelete;
     private int selectedBudgetId = 0;
     private int selectedCompareBudgetId = 0;
     private int selectedYear = DateTime.UtcNow.Year;
@@ -523,6 +566,47 @@
             selectedCompareBudgetId = budgetId;
             await LoadCategoryTrends();
         }
+    }
+
+    private async Task RefreshBudgets()
+    {
+        availableBudgets = await BudgetService.GetBudgetsForProjectAsync(selectedBudgetId);
+    }
+
+    private async Task SetBudgetActive(int budgetId)
+    {
+        await BudgetService.SetActiveBudgetAsync(budgetId);
+        await RefreshBudgets();
+        // The currently-selected budget's Active flag may have flipped — re-render so the
+        // dropdown shows the updated "(active)" suffix and the inline "Make Active" button
+        // hides for the now-active row.
+        await LoadCategoryTrends();
+    }
+
+    private void ShowDeleteBudgetDialog(Budget b)
+    {
+        budgetPendingDelete = b;
+    }
+
+    private void HideDeleteBudgetDialog()
+    {
+        budgetPendingDelete = null;
+    }
+
+    private async Task ConfirmDeleteBudget()
+    {
+        if (budgetPendingDelete == null) return;
+        var id = budgetPendingDelete.Id;
+        budgetPendingDelete = null;
+        await BudgetService.DeleteBudgetAsync(id);
+        await RefreshBudgets();
+        // If the deleted budget was the comparison target, fall back to "No comparison" so the
+        // chart doesn't try to render against a budget that no longer exists.
+        if (selectedCompareBudgetId == id)
+        {
+            selectedCompareBudgetId = 0;
+        }
+        await LoadCategoryTrends();
     }
 
     /// <summary>

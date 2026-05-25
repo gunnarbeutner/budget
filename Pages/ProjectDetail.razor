@@ -281,93 +281,6 @@ else
         </div>
     </div>
 
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">@L["Budgets_Heading"]</h5>
-                    <a class="btn btn-sm btn-primary" href="/budgets/wizard?projectId=@BudgetId">@L["Button_NewBudget"]</a>
-                </div>
-                <div class="card-body">
-                    @if (projectBudgets == null)
-                    {
-                        <p class="text-muted">@L["Status_LoadingEllipsis"]</p>
-                    }
-                    else if (!projectBudgets.Any())
-                    {
-                        <p class="text-muted">@L["Budgets_Empty"]</p>
-                    }
-                    else
-                    {
-                        <table class="table table-sm mb-0">
-                            <thead>
-                                <tr>
-                                    <th>@L["Table_Year"]</th>
-                                    <th>@L["Table_Name"]</th>
-                                    <th>@L["Table_Notes"]</th>
-                                    <th>@L["Table_LastModified"]</th>
-                                    <th class="text-end">@L["Table_Actions"]</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var b in projectBudgets.OrderByDescending(b => b.Year).ThenByDescending(b => b.IsActive).ThenByDescending(b => b.LastModifiedAt ?? b.CreatedAt))
-                                {
-                                    <tr>
-                                        <td>@b.Year</td>
-                                        <td>
-                                            @b.Name
-                                            @if (b.IsActive)
-                                            {
-                                                <span class="badge bg-success ms-1">@L["Badge_Active"]</span>
-                                            }
-                                        </td>
-                                        <td>@b.Notes</td>
-                                        <td class="text-muted small">
-                                            @(b.LastModifiedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
-                                                ?? b.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))
-                                        </td>
-                                        <td class="text-end">
-                                            @if (!b.IsActive)
-                                            {
-                                                <button class="btn btn-sm btn-outline-success me-1"
-                                                        title="@L["Title_MakeActive", b.Year]"
-                                                        @onclick="() => SetBudgetActive(b.Id)">@L["Button_MakeActive"]</button>
-                                            }
-                                            <a class="btn btn-sm btn-outline-primary me-1" href="/budgets/@b.Id/edit">@L["Button_Edit"]</a>
-                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ShowDeleteBudgetDialog(b)">@L["Button_Delete"]</button>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    }
-                </div>
-            </div>
-        </div>
-    </div>
-}
-
-@if (budgetPendingDelete != null)
-{
-    <div class="modal show d-block" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">@L["Modal_DeleteBudget_Title"]</h5>
-                    <button type="button" class="btn-close" @onclick="HideDeleteBudgetDialog"></button>
-                </div>
-                <div class="modal-body">
-                    <p>@L["Modal_DeleteBudget_Body", budgetPendingDelete.Year, string.IsNullOrEmpty(budgetPendingDelete.Notes) ? "" : L["Modal_DeleteBudget_Notes", budgetPendingDelete.Notes].Value]</p>
-                    <p class="text-muted small mb-0">@L["Modal_DeleteBudget_Warning"]</p>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="HideDeleteBudgetDialog">@L["Button_Cancel"]</button>
-                    <button class="btn btn-danger" @onclick="ConfirmDeleteBudget">@L["Button_Delete"]</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="modal-backdrop show"></div>
 }
 
 @if (showDeleteDialog)
@@ -596,10 +509,6 @@ else
     private long selectedCategoryId = 0;
     private bool showDeleteDialog = false;
 
-    // Budgets card state
-    private List<Budget>? projectBudgets;
-    private Budget? budgetPendingDelete;
-
     // Tracking configuration
     private List<ProjectTrackingItem>? trackingItems;
     private Dictionary<long, string> trackingCategoryNames = new();
@@ -632,7 +541,6 @@ else
         await LoadBudget();
         await LoadTrackingItems();
         await LoadIncomeExpenseConfiguration();
-        await LoadProjectBudgets();
         await LoadAccountAssignments();
     }
 
@@ -688,36 +596,6 @@ else
         if (age.TotalDays < 1) return L["RelativeAge_HoursAgo", (int)age.TotalHours];
         if (age.TotalDays < 30) return L["RelativeAge_DaysAgo", (int)age.TotalDays];
         return L["RelativeAge_MonthsAgo", (int)(age.TotalDays / 30)];
-    }
-
-    private async Task LoadProjectBudgets()
-    {
-        projectBudgets = await BudgetService.GetBudgetsForProjectAsync(BudgetId);
-    }
-
-    private void ShowDeleteBudgetDialog(Budget b)
-    {
-        budgetPendingDelete = b;
-    }
-
-    private void HideDeleteBudgetDialog()
-    {
-        budgetPendingDelete = null;
-    }
-
-    private async Task ConfirmDeleteBudget()
-    {
-        if (budgetPendingDelete == null) return;
-        var id = budgetPendingDelete.Id;
-        budgetPendingDelete = null;
-        await BudgetService.DeleteBudgetAsync(id);
-        await LoadProjectBudgets();
-    }
-
-    private async Task SetBudgetActive(int budgetId)
-    {
-        await BudgetService.SetActiveBudgetAsync(budgetId);
-        await LoadProjectBudgets();
     }
 
     private async Task LoadBudget()

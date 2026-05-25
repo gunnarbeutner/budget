@@ -28,7 +28,7 @@
             <small class="text-muted">@L["Header_LastModified", budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")]</small>
         }
     </div>
-    <a href="/projects/@budget.ProjectId" class="btn btn-secondary">@L["Button_BackToProject"]</a>
+    <a href="/budgets?projectId=@budget.ProjectId" class="btn btn-secondary">@L["Button_BackToBudgets"]</a>
 </div>
 
 <div class="card mb-3">
@@ -138,7 +138,7 @@
 
 <div class="d-flex gap-2">
     <button class="btn btn-primary" @onclick="Save" disabled="@isSaving">@(isSaving ? L["Button_Saving"] : L["Button_Save"])</button>
-    <a href="/projects/@budget.ProjectId" class="btn btn-secondary">@L["Button_Cancel"]</a>
+    <a href="/budgets?projectId=@budget.ProjectId" class="btn btn-secondary">@L["Button_Cancel"]</a>
 </div>
 
 @if (showRepredictDialog)
@@ -337,7 +337,7 @@
                 .Select(kvp => (kvp.Key.Id, kvp.Key.ItemType, kvp.Value))
                 .ToList();
             await BudgetService.SaveBudgetEntriesAsync(BudgetId, entries);
-            Navigation.NavigateTo($"/projects/{budget.ProjectId}");
+            Navigation.NavigateTo($"/budgets?projectId={budget.ProjectId}");
         }
         finally
         {

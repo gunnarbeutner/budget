@@ -82,8 +82,8 @@
   <data name="Header_LastModified" xml:space="preserve">
     <value>Last modified {0}</value>
   </data>
-  <data name="Button_BackToProject" xml:space="preserve">
-    <value>Back to Project</value>
+  <data name="Button_BackToBudgets" xml:space="preserve">
+    <value>Back to Budgets</value>
   </data>
   <data name="Form_NameLabel" xml:space="preserve">
     <value>Name</value>

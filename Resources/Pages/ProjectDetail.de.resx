@@ -196,59 +196,11 @@
   <data name="Tracking_Item_Label" xml:space="preserve">
     <value>{0} ({1})</value>
   </data>
-  <data name="Budgets_Heading" xml:space="preserve">
-    <value>Budgets</value>
-  </data>
-  <data name="Button_NewBudget" xml:space="preserve">
-    <value>Neues Budget</value>
-  </data>
-  <data name="Budgets_Empty" xml:space="preserve">
-    <value>Noch keine Budgets. Klicke auf "Neues Budget", um den Assistenten zu starten.</value>
-  </data>
-  <data name="Table_Year" xml:space="preserve">
-    <value>Jahr</value>
-  </data>
-  <data name="Table_Name" xml:space="preserve">
-    <value>Name</value>
-  </data>
-  <data name="Table_Notes" xml:space="preserve">
-    <value>Notizen</value>
-  </data>
-  <data name="Table_LastModified" xml:space="preserve">
-    <value>Zuletzt geändert</value>
-  </data>
-  <data name="Table_Actions" xml:space="preserve">
-    <value>Aktionen</value>
-  </data>
-  <data name="Badge_Active" xml:space="preserve">
-    <value>Aktiv</value>
-  </data>
-  <data name="Button_MakeActive" xml:space="preserve">
-    <value>Aktivieren</value>
-  </data>
-  <data name="Title_MakeActive" xml:space="preserve">
-    <value>Dieses Budget für {0} im Dashboard verwenden</value>
-  </data>
-  <data name="Button_Edit" xml:space="preserve">
-    <value>Bearbeiten</value>
+  <data name="Button_Cancel" xml:space="preserve">
+    <value>Abbrechen</value>
   </data>
   <data name="Button_Delete" xml:space="preserve">
     <value>Löschen</value>
-  </data>
-  <data name="Modal_DeleteBudget_Title" xml:space="preserve">
-    <value>Budget löschen</value>
-  </data>
-  <data name="Modal_DeleteBudget_Body" xml:space="preserve">
-    <value>Budget {0}{1} löschen?</value>
-  </data>
-  <data name="Modal_DeleteBudget_Notes" xml:space="preserve">
-    <value> ({0})</value>
-  </data>
-  <data name="Modal_DeleteBudget_Warning" xml:space="preserve">
-    <value>Alle zugehörigen Monatseinträge werden entfernt. Dies kann nicht rückgängig gemacht werden.</value>
-  </data>
-  <data name="Button_Cancel" xml:space="preserve">
-    <value>Abbrechen</value>
   </data>
   <data name="Modal_DeleteProject_Title" xml:space="preserve">
     <value>Projekt löschen</value>
