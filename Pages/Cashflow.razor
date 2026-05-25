@@ -64,25 +64,22 @@
         <small class="form-text text-muted d-block mt-1">
             @(incomeProjectionMode == "breakeven" ? L["Projection_Breakeven_Help"] : L["Projection_LastMonth_Help"])
         </small>
-        @if (incomeProjectionMode == "breakeven")
-        {
-            <div class="form-check form-switch mt-2 small">
-                <input class="form-check-input" type="checkbox" id="balanceFloorEnabled"
-                       checked="@balanceFloorEnabled"
-                       @onchange="OnBalanceFloorToggleChanged" />
-                <label class="form-check-label" for="balanceFloorEnabled">
-                    @L["BalanceFloor_Label"]
-                </label>
-                <div class="input-group input-group-sm mt-1" style="max-width: 180px;">
-                    <span class="input-group-text">€</span>
-                    <input type="number" class="form-control"
-                           step="50"
-                           disabled="@(!balanceFloorEnabled)"
-                           @bind="balanceFloor" @bind:after="OnBalanceFloorChanged" />
-                </div>
-                <small class="form-text text-muted d-block mt-1">@L["BalanceFloor_Help"]</small>
+        <div class="form-check form-switch mt-2 small">
+            <input class="form-check-input" type="checkbox" id="balanceFloorEnabled"
+                   checked="@balanceFloorEnabled"
+                   @onchange="OnBalanceFloorToggleChanged" />
+            <label class="form-check-label" for="balanceFloorEnabled">
+                @L["BalanceFloor_Label"]
+            </label>
+            <div class="input-group input-group-sm mt-1" style="max-width: 180px;">
+                <span class="input-group-text">€</span>
+                <input type="number" class="form-control"
+                       step="50"
+                       disabled="@(!balanceFloorEnabled)"
+                       @bind="balanceFloor" @bind:after="OnBalanceFloorChanged" />
             </div>
-        }
+            <small class="form-text text-muted d-block mt-1">@L["BalanceFloor_Help"]</small>
+        </div>
     </div>
 </div>
 
