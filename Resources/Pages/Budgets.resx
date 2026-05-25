@@ -166,6 +166,12 @@
   <data name="Button_Delete" xml:space="preserve">
     <value>Delete</value>
   </data>
+  <data name="Button_Expand" xml:space="preserve">
+    <value>Expand</value>
+  </data>
+  <data name="Button_Collapse" xml:space="preserve">
+    <value>Collapse</value>
+  </data>
   <data name="Button_Cancel" xml:space="preserve">
     <value>Cancel</value>
   </data>

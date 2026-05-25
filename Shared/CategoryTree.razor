@@ -84,7 +84,9 @@ else if (RenderMode == CategoryTreeRenderMode.Dropdown)
                 var catIndentPx = (level + 1) * 20;
 
                 var catSelected = SelectedCategoryIds.Contains(category.Id);
-                var catDisabled = isSelected || parentSelected;
+                // Sub-cats stay enabled when their parent group is also checked — a tracked
+                // sub-cat overrides the group's actuals (rollup excludes it from the group bucket).
+                var catDisabled = parentSelected;
 
                 builder.OpenElement(14, "div");
                 builder.AddAttribute(15, "class", "form-check");

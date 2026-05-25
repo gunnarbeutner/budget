@@ -166,6 +166,12 @@
   <data name="Button_Delete" xml:space="preserve">
     <value>Löschen</value>
   </data>
+  <data name="Button_Expand" xml:space="preserve">
+    <value>Aufklappen</value>
+  </data>
+  <data name="Button_Collapse" xml:space="preserve">
+    <value>Zuklappen</value>
+  </data>
   <data name="Button_Cancel" xml:space="preserve">
     <value>Abbrechen</value>
   </data>

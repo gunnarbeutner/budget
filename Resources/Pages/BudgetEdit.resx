@@ -139,6 +139,12 @@
   <data name="Button_RemoveRow" xml:space="preserve">
     <value>Remove row</value>
   </data>
+  <data name="Button_Expand" xml:space="preserve">
+    <value>Expand</value>
+  </data>
+  <data name="Button_Collapse" xml:space="preserve">
+    <value>Collapse</value>
+  </data>
   <data name="Button_Save" xml:space="preserve">
     <value>Save</value>
   </data>

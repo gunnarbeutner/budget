@@ -139,6 +139,12 @@
   <data name="Button_RemoveRow" xml:space="preserve">
     <value>Zeile entfernen</value>
   </data>
+  <data name="Button_Expand" xml:space="preserve">
+    <value>Aufklappen</value>
+  </data>
+  <data name="Button_Collapse" xml:space="preserve">
+    <value>Zuklappen</value>
+  </data>
   <data name="Button_Save" xml:space="preserve">
     <value>Speichern</value>
   </data>

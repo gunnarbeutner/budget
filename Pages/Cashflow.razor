@@ -282,7 +282,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                     @if (incomeCategories.Any() && incomeProjectionMode == "recent")
                     {
                         var sourceMonthLabel = new DateTime(recentIncomeSourceMonth.Year, recentIncomeSourceMonth.Month, 1).ToString("MMM yyyy");
-                        var yearlyIncome = incomeCategories.Sum(c => c.MonthlyAmounts.Sum());
+                        var yearlyIncome = incomeCategories.Where(c => c.IsAggregateRow).Sum(c => c.MonthlyAmounts.Sum());
                         var netYearly = yearlyIncome - totalExpenses;
                         var netClass = netYearly >= 0 ? "text-success" : "text-danger";
                         <div class="table-responsive">
@@ -296,7 +296,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var income in incomeCategories)
+                                    @foreach (var income in incomeCategories.Where(c => c.IsAggregateRow))
                                     {
                                         var sourceMonthAmount = recentIncomePerItem?.GetValueOrDefault((income.CategoryId, income.ItemType), 0m) ?? 0m;
                                         var yearly = income.MonthlyAmounts.Sum();
@@ -327,7 +327,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                         <div class="mb-3">
                             <label class="form-label">@L["Label_ContributionSplit"]</label>
                             <div class="row">
-                                @foreach (var income in incomeCategories)
+                                @foreach (var income in incomeCategories.Where(c => c.IsAggregateRow))
                                 {
                                     <div class="col-md-3 mb-2">
                                         <label class="form-label small">@income.CategoryName</label>
@@ -387,7 +387,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var income in incomeCategories)
+                                    @foreach (var income in incomeCategories.Where(c => c.IsAggregateRow))
                                     {
                                         var split = contributionSplits.GetValueOrDefault(income.CategoryName, 0);
                                         var totalIncome = income.MonthlyAmounts.Sum();
@@ -408,10 +408,10 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                 <tfoot>
                                     <tr class="table-primary">
                                         <th colspan="@(showOrigin ? 2 : 1)">@L["Table_Total"]</th>
-                                        <th class="text-end">@FormatEuro(incomeCategories.Sum(c => c.MonthlyAmounts.Sum()))</th>
+                                        <th class="text-end">@FormatEuro(incomeCategories.Where(c => c.IsAggregateRow).Sum(c => c.MonthlyAmounts.Sum()))</th>
                                         <th class="text-end @(splitsValid ? "" : "text-danger")">@splitsTotal%</th>
                                         <th class="text-end">@FormatEuro(totalExpenses)</th>
-                                        <th class="text-end">@FormatEuro(incomeCategories.Sum(c => c.MonthlyAmounts.Sum()) - totalExpenses)</th>
+                                        <th class="text-end">@FormatEuro(incomeCategories.Where(c => c.IsAggregateRow).Sum(c => c.MonthlyAmounts.Sum()) - totalExpenses)</th>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -436,7 +436,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                     <div class="row">
                         <div class="col-md-4">
                             <h6>@L["Summary_TotalIncome"]</h6>
-                            <h3 class="text-success">@FormatEuro(incomeCategories.Sum(c => c.MonthlyAmounts.Sum()))</h3>
+                            <h3 class="text-success">@FormatEuro(incomeCategories.Where(c => c.IsAggregateRow).Sum(c => c.MonthlyAmounts.Sum()))</h3>
                         </div>
                         <div class="col-md-4">
                             <h6>@L["Summary_TotalExpenses"]</h6>
@@ -596,6 +596,13 @@ else
         /// </summary>
         public int OriginProjectId { get; set; }
         public string OriginProjectName { get; set; } = "";
+
+        /// <summary>
+        /// True iff this row is a leaf of its slice's tracking tree (i.e. no other tracked
+        /// item in the same project is a descendant of it). Aggregates (totals) sum only over
+        /// these rows so a tracked group + tracked sub-cat don't double-count.
+        /// </summary>
+        public bool IsAggregateRow { get; set; }
     }
 
     /// <summary>
@@ -888,10 +895,13 @@ else
         {
             storedSplits = await BudgetService.GetBudgetContributionSplitsAsync(selectedBudgetId);
         }
-        if (incomeCategories.Any())
+        // Only aggregate (leaf-of-tracking) rows get a split — group rows that auto-sum
+        // from their tracked sub-cats don't need their own percentage.
+        var aggregateIncomeCategories = incomeCategories.Where(c => c.IsAggregateRow).ToList();
+        if (aggregateIncomeCategories.Any())
         {
-            var equalSplit = Math.Round(100m / incomeCategories.Count, 0);
-            foreach (var income in incomeCategories)
+            var equalSplit = Math.Round(100m / aggregateIncomeCategories.Count, 0);
+            foreach (var income in aggregateIncomeCategories)
             {
                 var key = (income.CategoryId, income.ItemType);
                 contributionSplits[income.CategoryName] = storedSplits.TryGetValue(key, out var saved)
@@ -972,6 +982,13 @@ else
         slice.Keys = availableCategories.Select(c => (c.Id, c.ItemType)).ToHashSet();
         slice.ProjectionItems = availableCategories.Select(c => (c.Id, c.ItemType)).ToList();
 
+        // Aggregate rows = leaves of this slice's tracking tree (no other tracked item is a
+        // descendant). Summing actuals/projections over these avoids double-counting when both
+        // a group and a sub-cat under it are tracked.
+        var hierarchyForSlice = await BudgetService.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        var sliceTree = TrackedRowTree.Build(slice.ProjectionItems, hierarchyForSlice);
+        var aggregateKeys = sliceTree.Where(n => !n.HasChildren).Select(n => n.Key).ToHashSet();
+
         var batch = await BudgetService.GetMonthlyIncomeAndExpenseBatchAsync(
             slice.ProjectionItems, selectedYear, project.SourceId, project.Id);
 
@@ -1003,6 +1020,9 @@ else
             {
                 bool isIncome = incomeItems!.Contains((cat.Id, cat.ItemType));
                 var (income, expenses) = batch[(cat.Id, cat.ItemType)];
+                // Only aggregate over leaves-of-tracking-tree so a tracked group + sub-cat pair
+                // doesn't double-count. Per-row totals stay natural for display.
+                if (!aggregateKeys.Contains((cat.Id, cat.ItemType))) continue;
                 if (!isIncome)
                 {
                     slice.TotalExpensesForProjection += expenses.Take(firstProjectedMonth - 1).Sum();
@@ -1034,6 +1054,8 @@ else
                     expenses[m] = budgetMonthly[m];
             }
 
+            bool isAggregateRow = aggregateKeys.Contains((category.Id, category.ItemType));
+
             if (income.Any(m => m > 0) || isIncomeItem)
             {
                 slice.IncomeCategories.Add(new CategoryCashflow
@@ -1043,7 +1065,8 @@ else
                     CategoryName = category.Name,
                     MonthlyAmounts = income,
                     OriginProjectId = project.Id,
-                    OriginProjectName = project.Name
+                    OriginProjectName = project.Name,
+                    IsAggregateRow = isAggregateRow
                 });
             }
 
@@ -1056,7 +1079,8 @@ else
                     CategoryName = category.Name,
                     MonthlyAmounts = expenses,
                     OriginProjectId = project.Id,
-                    OriginProjectName = project.Name
+                    OriginProjectName = project.Name,
+                    IsAggregateRow = isAggregateRow
                 });
             }
         }
@@ -1255,8 +1279,8 @@ else
 
     private void RecomputeTotals()
     {
-        totalExpenses = expenseCategories.Sum(c => c.MonthlyAmounts.Sum());
-        netCashflow = incomeCategories.Sum(c => c.MonthlyAmounts.Sum()) - totalExpenses;
+        totalExpenses = expenseCategories.Where(c => c.IsAggregateRow).Sum(c => c.MonthlyAmounts.Sum());
+        netCashflow = incomeCategories.Where(c => c.IsAggregateRow).Sum(c => c.MonthlyAmounts.Sum()) - totalExpenses;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -1306,7 +1330,10 @@ else
         splitsSaving = true;
         try
         {
+            // Only aggregate (leaf-of-tracking) rows participate in splits; group rows that
+            // auto-sum from their tracked sub-cats don't have percentages of their own.
             var payload = incomeCategories
+                .Where(c => c.IsAggregateRow)
                 .Select(c => (c.CategoryId, c.ItemType, Percent: contributionSplits.GetValueOrDefault(c.CategoryName, 0m)))
                 .ToList();
             await BudgetService.SaveBudgetContributionSplitsAsync(selectedBudgetId, payload);

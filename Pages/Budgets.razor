@@ -110,33 +110,66 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach (var item in varianceSummary.OrderBy(v => categorySortKeys.GetValueOrDefault(v.CategoryName, v.CategoryName)).ThenBy(v => v.CategoryName))
+                                        @{
+                                            var varianceTreeNodes = TrackedRowTree.Build(
+                                                varianceSummary.Select(v => (v.CategoryId, v.ItemType)),
+                                                allAvailableCategories ?? new List<CategoryGroupWithChildCount>(),
+                                                k => varianceSummary.FirstOrDefault(v => v.CategoryId == k.Id && v.ItemType == k.ItemType)?.CategoryName ?? "");
+                                            var varianceByKey = varianceSummary.ToDictionary(v => (v.CategoryId, v.ItemType));
+                                        }
+                                        @foreach (var node in varianceTreeNodes)
                                         {
-                                            var percentOfBudget = item.BudgetAmount > 0 ? (item.ActualAmount / item.BudgetAmount * 100) : 0;
-                                            var rowClass = percentOfBudget > 110 ? "table-danger" : percentOfBudget > 90 ? "table-warning" : "table-success";
+                                            if (!varianceByKey.TryGetValue(node.Key, out var item)) continue;
+                                            var percentOfBudget = item.HasBudget && item.BudgetAmount > 0
+                                                ? (item.ActualAmount / item.BudgetAmount * 100) : 0;
+                                            var hasShadowSubs = item.ItemType == CategoryItemType.Group
+                                                && shadowSubcatsByGroup.ContainsKey((item.CategoryId, item.ItemType));
+                                            var canExpand = hasShadowSubs || node.HasChildren;
+                                            var isExpanded = expandedVarianceKeys.Contains(node.Key);
+                                            // Expanded groups stay as parent rows but their numbers are just sums of the
+                                            // sub-cats shown below — render muted so the eye lands on the breakdown.
+                                            var rowClass = isExpanded ? "text-muted fst-italic"
+                                                : !item.HasBudget ? ""
+                                                : percentOfBudget > 110 ? "table-danger"
+                                                : percentOfBudget > 90 ? "table-warning"
+                                                : "table-success";
+                                            // Tree indent already disambiguates sub-cat vs. parent — drop the "Parent › Name"
+                                            // prefix that BuildDisplayNames adds for the flat chart legend.
+                                            var bareName = BareCategoryName(node.Key) ?? item.CategoryName;
                                             <tr class="@rowClass">
-                                                <td>@item.CategoryName</td>
-                                                <td class="text-end">€@item.BudgetAmount.ToString("N2")</td>
+                                                <td style="@($"padding-left: {0.5 + node.Level * 1.25}rem; white-space: nowrap;")">
+                                                    @if (canExpand)
+                                                    {
+                                                        <button type="button" class="btn btn-sm btn-link p-0 me-1"
+                                                                style="text-decoration: none;"
+                                                                @onclick="() => ToggleVarianceExpand(node.Key)"
+                                                                title="@(isExpanded ? L["Button_Collapse"] : L["Button_Expand"])">
+                                                            @(isExpanded ? "▾" : "▸")
+                                                        </button>
+                                                    }
+                                                    @bareName
+                                                </td>
+                                                <td class="text-end">@(item.HasBudget ? $"€{item.BudgetAmount:N2}" : "—")</td>
                                                 <td class="text-end">€@item.ActualAmount.ToString("N2")</td>
-                                                <td class="text-end">€@item.Variance.ToString("N2")</td>
-                                                <td class="text-end">@percentOfBudget.ToString("N1")%</td>
+                                                <td class="text-end">@(item.HasBudget ? $"€{item.Variance:N2}" : "—")</td>
+                                                <td class="text-end">@(item.HasBudget ? $"{percentOfBudget:N1}%" : "—")</td>
                                             </tr>
                                         }
                                     </tbody>
                                     <tfoot>
+                                        @{
+                                            var aggregateRows = varianceSummary.Where(v => v.IsAggregateRow).ToList();
+                                            var totalBudget = aggregateRows.Sum(v => v.BudgetAmount);
+                                            var totalActual = aggregateRows.Sum(v => v.ActualAmount);
+                                            var totalVariance = aggregateRows.Sum(v => v.Variance);
+                                            var totalPercent = totalBudget > 0 ? (totalActual / totalBudget * 100) : 0;
+                                        }
                                         <tr class="table-primary">
                                             <th>@L["Table_HeaderTotal"]</th>
-                                            <th class="text-end">€@varianceSummary.Sum(v => v.BudgetAmount).ToString("N2")</th>
-                                            <th class="text-end">€@varianceSummary.Sum(v => v.ActualAmount).ToString("N2")</th>
-                                            <th class="text-end">€@varianceSummary.Sum(v => v.Variance).ToString("N2")</th>
-                                            <th class="text-end">
-                                                @{
-                                                    var totalPercent = varianceSummary.Sum(v => v.BudgetAmount) > 0
-                                                        ? (varianceSummary.Sum(v => v.ActualAmount) / varianceSummary.Sum(v => v.BudgetAmount) * 100)
-                                                        : 0;
-                                                }
-                                                @totalPercent.ToString("N1")%
-                                            </th>
+                                            <th class="text-end">€@totalBudget.ToString("N2")</th>
+                                            <th class="text-end">€@totalActual.ToString("N2")</th>
+                                            <th class="text-end">€@totalVariance.ToString("N2")</th>
+                                            <th class="text-end">@totalPercent.ToString("N1")%</th>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -172,8 +205,12 @@
                                     </tbody>
                                     <tfoot>
                                         @{
-                                            var grandTotal = categoryTrends.Values.Sum(t => t.Sum(m => m.Amount));
-                                            var grandMonths = categoryTrends.Values.Select(t => t.Count).DefaultIfEmpty(0).Max();
+                                            var aggregateTrendValues = categoryTrends
+                                                .Where(kvp => aggregateRowNames.Contains(kvp.Key))
+                                                .Select(kvp => kvp.Value)
+                                                .ToList();
+                                            var grandTotal = aggregateTrendValues.Sum(t => t.Sum(m => m.Amount));
+                                            var grandMonths = aggregateTrendValues.Select(t => t.Count).DefaultIfEmpty(0).Max();
                                             var grandAvg = grandMonths > 0 ? grandTotal / grandMonths : 0m;
                                         }
                                         <tr class="table-primary">
@@ -273,6 +310,11 @@
     private List<Category>? allActualCategories;
     private Dictionary<string, List<MonthlySpending>>? categoryTrends;
     private Dictionary<string, string> categorySortKeys = new();
+    private HashSet<string> aggregateRowNames = new();
+    /// <summary>Display names hidden from the chart — expanded tracked groups, whose sub-cat
+    /// rows take their place in the chart. The variance table still shows the group row (with
+    /// a ▾ caret) as a parent for the nested sub-cats.</summary>
+    private HashSet<string> chartHiddenNames = new();
     private Dictionary<string, List<MonthlySpending>>? budgetTrends;
     /// <summary>(Id, ItemType) → unique display name. Bare category name when no collision,
     /// "Parent group > Name" when two or more selected items share the same bare name.
@@ -292,7 +334,40 @@
     private int projectSourceId = SourceScope.LegacySourceId;
     private bool notFound = false;
 
+    // Variance tree: groups the user has expanded. When a group is expanded, the variance
+    // table replaces its row with its in-use sub-cats (sub-cats that have transactions in the
+    // trailing 12 months — same set BudgetEdit uses for shadow rows). The chart follows suit:
+    // expanded groups vanish, their sub-cats appear in their place. Persisted per (project,
+    // year) in localStorage so the layout survives a reload.
+    private HashSet<(long Id, CategoryItemType ItemType)> expandedVarianceKeys = new();
+    // Per tracked group: the in-use leaf sub-cats we'd show if the group were expanded.
+    // Computed on load + when the underlying tracking changes.
+    private Dictionary<(long Id, CategoryItemType ItemType), List<(long Id, CategoryItemType ItemType)>>
+        shadowSubcatsByGroup = new();
+    private string ExpandScope => $"budgets-variance:{selectedBudgetId}:{selectedYear}";
+
     private void ToggleCategoriesPanel() => categoriesExpanded = !categoriesExpanded;
+
+    private string? BareCategoryName((long Id, CategoryItemType ItemType) key)
+    {
+        if (key.ItemType == CategoryItemType.Category)
+            return allActualCategories?.FirstOrDefault(c => c.Id == key.Id)?.Name;
+        return allAvailableCategories?.FirstOrDefault(c =>
+            c.ItemType == CategoryItemType.Group && c.Id == key.Id)?.CategoryGroup.Name;
+    }
+
+    private async Task ToggleVarianceExpand((long Id, CategoryItemType ItemType) key)
+    {
+        if (!expandedVarianceKeys.Add(key)) expandedVarianceKeys.Remove(key);
+        try
+        {
+            await JS.InvokeVoidAsync("expandState.set", ExpandScope,
+                expandedVarianceKeys.Select(k => $"{(int)k.ItemType}:{k.Id}").ToArray());
+        }
+        catch { /* localStorage unavailable */ }
+        await LoadCategoryTrends();
+        needsTrendChartRender = true;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -391,6 +466,36 @@
                 if (incomeItems.Contains((item.CategoryId.Value, CategoryItemType.Category)))
                     continue;
                 selectedActualCategoryIds.Add(item.CategoryId.Value);
+            }
+        }
+
+        // For each tracked expense group, fetch the leaf sub-cats that have transactions in
+        // the trailing 12 months. These are the rows the variance table will reveal when the
+        // group is expanded (and they'll show up in the chart in place of the group). Tracked
+        // leaves are excluded since they already have their own row.
+        shadowSubcatsByGroup.Clear();
+        var trackedLeafIds = trackingItems
+            .Where(ti => ti.CategoryId.HasValue)
+            .Select(ti => ti.CategoryId!.Value)
+            .ToHashSet();
+        var groupIds = selectedCategoryGroupIds.ToList();
+        if (groupIds.Count > 0)
+        {
+            var allRecentLeaves = await BudgetService.GetLeafCategoriesWithRecentTransactionsAsync(
+                groupIds, projectSourceId);
+            foreach (var groupId in groupIds)
+            {
+                var descendants = CategoryGroupWithChildCount.CollectDescendants(
+                    groupId, allCategories, includeLeafCategories: true);
+                var subKeys = descendants
+                    .Where(d => d.ItemType == CategoryItemType.Category
+                        && allRecentLeaves.Contains(d.Id)
+                        && !trackedLeafIds.Contains(d.Id)
+                        && !incomeItems.Contains((d.Id, CategoryItemType.Category)))
+                    .Select(d => (d.Id, d.ItemType))
+                    .ToList();
+                if (subKeys.Count > 0)
+                    shadowSubcatsByGroup[(groupId, CategoryItemType.Group)] = subKeys;
             }
         }
     }
@@ -535,6 +640,32 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender && selectedCompareBudgetId > 0)
+        {
+            try
+            {
+                var stored = await JS.InvokeAsync<string[]>("expandState.get", ExpandScope);
+                expandedVarianceKeys.Clear();
+                foreach (var s in stored)
+                {
+                    var parts = s.Split(':');
+                    if (parts.Length == 2
+                        && int.TryParse(parts[0], out var typeInt)
+                        && long.TryParse(parts[1], out var id))
+                    {
+                        expandedVarianceKeys.Add((id, (CategoryItemType)typeInt));
+                    }
+                }
+                if (expandedVarianceKeys.Count > 0)
+                {
+                    await LoadCategoryTrends();
+                    needsTrendChartRender = true;
+                    StateHasChanged();
+                }
+            }
+            catch { /* localStorage unavailable */ }
+        }
+
         if (needsTrendChartRender && categoryTrends != null && categoryTrends.Any())
         {
             needsTrendChartRender = false;
@@ -678,10 +809,21 @@
     {
         categoryTrends = new Dictionary<string, List<MonthlySpending>>();
 
-        // Batch-load trends for all selected groups and categories in one DB roundtrip
+        // Batch-load trends for all selected groups and categories in one DB roundtrip.
+        // When a budget is selected and the user has expanded a group in the variance view,
+        // also load its in-use leaf sub-cats so they can appear nested under the group in the
+        // variance table — and replace the group in the chart (see chartKeys further down).
         var batchKeys = new List<(long Id, CategoryItemType ItemType)>();
         foreach (var groupId in selectedCategoryGroupIds)
-            batchKeys.Add((groupId, CategoryItemType.Group));
+        {
+            var key = (groupId, CategoryItemType.Group);
+            batchKeys.Add(key);
+            if (selectedCompareBudgetId > 0 && expandedVarianceKeys.Contains(key)
+                && shadowSubcatsByGroup.TryGetValue(key, out var subs))
+            {
+                batchKeys.AddRange(subs);
+            }
+        }
         foreach (var categoryId in selectedActualCategoryIds)
             batchKeys.Add((categoryId, CategoryItemType.Category));
 
@@ -694,6 +836,13 @@
         categoryDisplayNames = BuildDisplayNames(batchKeys);
 
         categorySortKeys = new Dictionary<string, string>();
+        // Aggregate rows = leaves of the chart-selection tree (no other selected key is a
+        // descendant). Totals across categoryTrends sum only these to avoid double-counting
+        // when both a group and its sub-cat are charted.
+        var chartTreeNodes = TrackedRowTree.Build(batchKeys, allAvailableCategories ?? new List<CategoryGroupWithChildCount>());
+        var aggregateChartKeys = chartTreeNodes.Where(n => !n.HasChildren).Select(n => n.Key).ToHashSet();
+        aggregateRowNames = new HashSet<string>();
+        chartHiddenNames = new HashSet<string>();
         foreach (var (key, trend) in trendBatch)
         {
             if (!trend.Any()) continue;
@@ -701,6 +850,16 @@
 
             categoryTrends[name] = trend;
             categorySortKeys[name] = ComputeMoneyMoneySortKey(key);
+            if (aggregateChartKeys.Contains(key)) aggregateRowNames.Add(name);
+            // Expanded tracked groups have their sub-cats rendered as separate rows in the
+            // chart — hide the group itself so it doesn't double up visually. (The variance
+            // table below still shows the group row as the parent of those sub-cats.)
+            if (selectedCompareBudgetId > 0
+                && key.ItemType == CategoryItemType.Group
+                && expandedVarianceKeys.Contains(key))
+            {
+                chartHiddenNames.Add(name);
+            }
         }
 
         // Load budget data if comparison is active
@@ -718,76 +877,54 @@
                 .Distinct()
                 .ToHashSet();
 
-            // Load budget data for selected category groups
-            foreach (var groupId in selectedCategoryGroupIds)
+            // Use effective budget amounts (groups auto-sum from their tracked descendants) so a
+            // group row charted alongside its sub-cats shows a meaningful budget instead of zero.
+            var budgetEffective = await BudgetService.ComputeBudgetEffectiveAmountsAsync(selectedCompareBudgetId);
+            var compareBudget = await BudgetService.GetBudgetAsync(selectedCompareBudgetId);
+            var budgetYear = compareBudget?.Year ?? selectedYear;
+
+            // aggregateRowNames is already populated by the trend-loading pass above using
+            // the same chart tree projection; reconstruct the key set here for filtering.
+            var aggregateKeySetForVariance = batchKeys
+                .Where(k => categoryDisplayNames.TryGetValue(k, out var n) && aggregateRowNames.Contains(n))
+                .ToHashSet();
+
+            foreach (var key in batchKeys)
             {
-                var group = allAvailableCategories?.FirstOrDefault(c => c.CategoryGroup.Id == groupId);
-                if (group != null)
+                var categoryName = categoryDisplayNames.GetValueOrDefault(key);
+                if (categoryName == null) continue;
+
+                // Shadow sub-cats (expanded under a group) have no MonthlyBudgetEntry so
+                // budgetEffective doesn't list them — fall back to zero budget so they still
+                // get a row showing their actuals. HasBudget=false drives the "—" rendering.
+                var hasBudget = budgetEffective.Effective.TryGetValue(key, out var monthlyArr);
+                var stored = monthlyArr ?? new decimal[12];
+
+                var trend = Enumerable.Range(1, 12)
+                    .Select(m => new MonthlySpending { Year = budgetYear, Month = m, Amount = stored[m - 1] })
+                    .Where(m => allDisplayedMonths.Contains((m.Year, m.Month)))
+                    .ToList();
+                var actualTrend = categoryTrends.GetValueOrDefault(categoryName);
+
+                // Drop only the truly empty rows: no budget allocation AND no actuals.
+                if (!trend.Any(m => m.Amount != 0m) && (actualTrend == null || actualTrend.All(m => m.Amount == 0m)))
+                    continue;
+
+                if (hasBudget && trend.Any(m => m.Amount != 0m))
+                    budgetTrends[categoryName] = trend;
+                var budgetTotal = trend.Sum(m => m.Amount);
+                var actualTotal = actualTrend?.Sum(m => m.Amount) ?? 0m;
+                varianceSummary.Add(new VarianceSummary
                 {
-                    var budgetTrend = await BudgetService.GetBudgetTrendAsync(groupId, CategoryItemType.Group, selectedCompareBudgetId);
-                    if (budgetTrend.Any())
-                    {
-                        var categoryName = categoryDisplayNames.GetValueOrDefault(
-                            (groupId, CategoryItemType.Group),
-                            group.CategoryGroup.Name ?? L["Unknown"]);
-                        var actualTrend = categoryTrends.GetValueOrDefault(categoryName);
-
-                        // Filter budget to only months being displayed on the chart
-                        var filteredBudget = budgetTrend.Where(b => allDisplayedMonths.Contains((b.Year, b.Month))).ToList();
-
-                        if (filteredBudget.Any())
-                        {
-                            budgetTrends[categoryName] = filteredBudget;
-
-                            // Calculate variance
-                            var budgetTotal = filteredBudget.Sum(m => m.Amount);
-                            var actualTotal = actualTrend?.Sum(m => m.Amount) ?? 0;
-                            varianceSummary.Add(new VarianceSummary
-                            {
-                                CategoryName = categoryName,
-                                BudgetAmount = budgetTotal,
-                                ActualAmount = actualTotal,
-                                Variance = actualTotal - budgetTotal
-                            });
-                        }
-                    }
-                }
-            }
-
-            // Load budget data for selected individual categories
-            foreach (var categoryId in selectedActualCategoryIds)
-            {
-                var category = allActualCategories?.FirstOrDefault(c => c.Id == categoryId);
-                if (category != null)
-                {
-                    var budgetTrend = await BudgetService.GetBudgetTrendAsync(categoryId, CategoryItemType.Category, selectedCompareBudgetId);
-                    if (budgetTrend.Any())
-                    {
-                        var categoryName = categoryDisplayNames.GetValueOrDefault(
-                            (categoryId, CategoryItemType.Category),
-                            category.Name ?? L["Unknown"]);
-                        var actualTrend = categoryTrends.GetValueOrDefault(categoryName);
-
-                        // Filter budget to only months being displayed on the chart
-                        var filteredBudget = budgetTrend.Where(b => allDisplayedMonths.Contains((b.Year, b.Month))).ToList();
-
-                        if (filteredBudget.Any())
-                        {
-                            budgetTrends[categoryName] = filteredBudget;
-
-                            // Calculate variance
-                            var budgetTotal = filteredBudget.Sum(m => m.Amount);
-                            var actualTotal = actualTrend?.Sum(m => m.Amount) ?? 0;
-                            varianceSummary.Add(new VarianceSummary
-                            {
-                                CategoryName = categoryName,
-                                BudgetAmount = budgetTotal,
-                                ActualAmount = actualTotal,
-                                Variance = actualTotal - budgetTotal
-                            });
-                        }
-                    }
-                }
+                    CategoryId = key.Id,
+                    ItemType = key.ItemType,
+                    CategoryName = categoryName,
+                    BudgetAmount = budgetTotal,
+                    ActualAmount = actualTotal,
+                    Variance = actualTotal - budgetTotal,
+                    IsAggregateRow = aggregateKeySetForVariance.Contains(key),
+                    HasBudget = hasBudget
+                });
             }
         }
 
@@ -845,8 +982,10 @@
         var firstTrend = categoryTrends.Values.First();
         var labels = firstTrend.Select(m => m.MonthName).ToArray();
 
-        // Sort categories by average amount (descending - largest at bottom of stack)
+        // Sort categories by average amount (descending - largest at bottom of stack).
+        // Filter out expanded groups — their sub-cat rows appear in the chart instead.
         var sortedCategories = categoryTrends
+            .Where(kvp => !chartHiddenNames.Contains(kvp.Key))
             .OrderByDescending(kvp => kvp.Value.Average(m => m.Amount))
             .ToList();
 
@@ -896,6 +1035,7 @@
             // to the end, sorted by their own average so the larger budget-only items still
             // sit nearer the bottom.
             var sortedBudgetCategories = budgetTrends
+                .Where(kvp => !chartHiddenNames.Contains(kvp.Key))
                 .OrderBy(kvp => actualOrder.GetValueOrDefault(kvp.Key, int.MaxValue))
                 .ThenByDescending(kvp => kvp.Value.Average(m => m.Amount))
                 .ToList();

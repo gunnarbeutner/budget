@@ -310,8 +310,8 @@ else if (step == 3)
         predictions = new Dictionary<(long Id, CategoryItemType ItemType), decimal[]>();
         categoryNames = new Dictionary<(long Id, CategoryItemType ItemType), string>();
 
-        // First pass: gather predictions and remember each row's base name + parent group name.
-        var labels = new List<((long Id, CategoryItemType ItemType) Key, string BaseName, string? ParentName)>();
+        // First pass: gather predictions and remember each row's base name + parent group context.
+        var labels = new List<((long Id, CategoryItemType ItemType) Key, string BaseName, string? ParentName, long? ParentGroupId)>();
         foreach (var item in trackingItems)
         {
             if (item.CategoryGroupId.HasValue)
@@ -322,7 +322,7 @@ else if (step == 3)
                     ? parent.Name
                     : null;
                 var key = (item.CategoryGroupId.Value, CategoryItemType.Group);
-                labels.Add((key, cg.Name ?? L["Category_Unknown"], parentName));
+                labels.Add((key, cg.Name ?? L["Category_Unknown"], parentName, cg.ParentGroupId));
 
                 var isIncome = incomeKeys.Contains(key);
                 var monthlyPredictions = await BudgetService.PredictMonthlySpendingForCategoryAsync(item.CategoryGroupId.Value, selectedYear, sourceIdForPredict, isIncome);
@@ -336,7 +336,7 @@ else if (step == 3)
                     ? parent.Name
                     : null;
                 var key = (item.CategoryId.Value, CategoryItemType.Category);
-                labels.Add((key, cat.Name ?? L["Category_Unknown"], parentName));
+                labels.Add((key, cat.Name ?? L["Category_Unknown"], parentName, cat.GroupId));
 
                 var isIncome = incomeKeys.Contains(key);
                 var monthlyPredictions = await BudgetService.PredictMonthlySpendingForLeafCategoryAsync(item.CategoryId.Value, selectedYear, sourceIdForPredict, isIncome);
@@ -344,14 +344,23 @@ else if (step == 3)
             }
         }
 
-        // Second pass: only prefix the parent when the base name collides with another row's.
+        // Second pass: prefix the parent group when the base name collides with another row's,
+        // OR when the row's parent group is also a tracked row — so coexisting group + sub-cat
+        // rows read unambiguously (e.g. "Food" vs. "Food › Groceries").
         var nameCounts = labels
             .GroupBy(l => l.BaseName)
             .ToDictionary(g => g.Key, g => g.Count());
+        var trackedGroupIds = labels
+            .Where(l => l.Key.ItemType == CategoryItemType.Group)
+            .Select(l => l.Key.Id)
+            .ToHashSet();
 
-        foreach (var (key, baseName, parentName) in labels)
+        foreach (var (key, baseName, parentName, parentGroupId) in labels)
         {
-            categoryNames[key] = nameCounts[baseName] > 1 && !string.IsNullOrEmpty(parentName)
+            var prefix = !string.IsNullOrEmpty(parentName)
+                && (nameCounts[baseName] > 1
+                    || (parentGroupId.HasValue && trackedGroupIds.Contains(parentGroupId.Value)));
+            categoryNames[key] = prefix
                 ? $"{parentName} › {baseName}"
                 : baseName;
         }

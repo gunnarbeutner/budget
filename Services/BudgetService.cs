@@ -289,11 +289,10 @@ public class BudgetService
                 trackedKeys.Add((ti.CategoryId.Value, CategoryItemType.Category));
         }
 
-        // ieBatch sums all transactions (no sign filter) and routes them to income[] or expense[]
-        // based on each leaf's classification — so refunds in expense categories correctly reduce
-        // the expense total, and any negative-amount transactions in income categories reduce
-        // income. Using it for every row makes "Spent" mean "net amount in the item's natural
-        // direction" consistently across the requested month range.
+        // ieBatch gives each tracked row its natural total (leaf sets overlap, so a Group's
+        // numbers include any tracked sub-cat under it). That's what we want for per-row display.
+        // Aggregate totals (MonthIncome/MonthExpenses) come from a separate leaf-union pass so
+        // they don't double-count across overlapping rows.
         var ieBatch = await GetMonthlyIncomeAndExpenseBatchAsync(trackedKeys, year, project.SourceId, projectId);
         var incomeItemsSet = await GetIncomeItemsForProjectAsync(projectId);
 
@@ -304,9 +303,10 @@ public class BudgetService
         var leafCategoryNameLookup = (await _budgetDb.Categories.Where(c => c.SourceId == project.SourceId).ToListAsync())
             .ToDictionary(c => c.Id, c => c.Name ?? "Unknown");
 
+        var (monthIncome, monthExpenses) = await AggregateIncomeExpenseForRangeAsync(
+            trackedKeys, year, fromMonth, toMonth, project.SourceId, projectId);
+
         var categorySpending = new List<CategorySpending>();
-        decimal monthIncome = 0m;
-        decimal monthExpenses = 0m;
         foreach (var key in trackedKeys)
         {
             string? name = key.ItemType == CategoryItemType.Group
@@ -322,8 +322,6 @@ public class BudgetService
                 {
                     var idx = m - 1;
                     spent += isIncome ? ie.Income[idx] : ie.Expenses[idx];
-                    monthIncome += ie.Income[idx];
-                    monthExpenses += ie.Expenses[idx];
                 }
             }
 
@@ -340,15 +338,12 @@ public class BudgetService
             });
         }
 
-        // ieBatch totals double-count when both a Group and one of its descendants are tracked,
-        // because the leaf transactions are counted for each ancestor. Use the per-row totals
-        // we just summed — they have the same shape — so the dashboard's MonthIncome/MonthExpenses
-        // match the chart's rendering on Cashflow. (If you want non-overlapping totals, narrow
-        // the tracking config to leaves or non-overlapping groups.)
-
-        // Budget / Spent / Remaining roll-ups are expense-side only — income items contribute
-        // to MonthIncome instead, so summing them in here would double the displayed Spent.
+        // Budget totals rely on the post-migration invariant: at any subtree only one level
+        // carries non-zero stored amounts, so summing all expense rows' Budget gives the
+        // correct total. TotalSpent uses the leaf-union aggregate to avoid double-counting
+        // across a tracked group + tracked sub-cat.
         var expenseRows = categorySpending.Where(c => !c.IsIncome).ToList();
+        var totalBudget = expenseRows.Sum(c => c.Budget);
 
         return new ProjectSpendingSummary
         {
@@ -359,13 +354,116 @@ public class BudgetService
             FromMonth = fromMonth,
             ToMonth = toMonth,
             CategorySpending = categorySpending,
-            TotalBudget = expenseRows.Sum(c => c.Budget),
-            TotalSpent = expenseRows.Sum(c => c.Spent),
-            TotalRemaining = expenseRows.Sum(c => c.Remaining),
+            TotalBudget = totalBudget,
+            TotalSpent = monthExpenses,
+            TotalRemaining = totalBudget - monthExpenses,
             HasBudget = activeBudget != null,
             MonthIncome = monthIncome,
             MonthExpenses = monthExpenses
         };
+    }
+
+    /// <summary>
+    /// Returns leaf category IDs that (a) sit underneath any of the given ancestor groups
+    /// (recursive) and (b) have at least one transaction in the trailing 12 months ending at
+    /// <paramref name="endUtc"/> (defaults to now). Used by BudgetEdit to surface "in-use"
+    /// sub-categories under a tracked group as shadow rows the user can promote to real
+    /// budget rows just by typing an amount. The trailing-window lookback works on Jan 1
+    /// (when the budget year has no transactions yet) and stays stable mid-year.
+    /// </summary>
+    public async Task<HashSet<long>> GetLeafCategoriesWithRecentTransactionsAsync(
+        IEnumerable<long> ancestorGroupIds, int sourceId, DateTime? endUtc = null)
+    {
+        var ancestorList = ancestorGroupIds.Distinct().ToList();
+        if (ancestorList.Count == 0) return new HashSet<long>();
+
+        var hierarchy = await GetAllCategoriesWithChildCountsAsync(sourceId);
+        var candidateLeaves = new HashSet<long>();
+        foreach (var groupId in ancestorList)
+        {
+            var descendants = CategoryGroupWithChildCount.CollectDescendants(
+                groupId, hierarchy, includeLeafCategories: true);
+            foreach (var d in descendants)
+                if (d.ItemType == CategoryItemType.Category) candidateLeaves.Add(d.Id);
+        }
+        if (candidateLeaves.Count == 0) return new HashSet<long>();
+
+        var end = endUtc ?? DateTime.UtcNow;
+        var start = end.AddYears(-1);
+        var startTs = ((DateTimeOffset)start).ToUnixTimeSeconds();
+        var endTs = ((DateTimeOffset)end).ToUnixTimeSeconds();
+
+        var leafList = candidateLeaves.ToList();
+        var hits = await _budgetDb.Transactions
+            .Where(t => t.SourceId == sourceId)
+            .Where(t => t.CategoryId.HasValue && leafList.Contains(t.CategoryId.Value))
+            .Where(t => t.Timestamp >= startTs && t.Timestamp < endTs)
+            .Select(t => t.CategoryId!.Value)
+            .Distinct()
+            .ToListAsync();
+
+        return hits.ToHashSet();
+    }
+
+    /// <summary>
+    /// Computes the net income/expense aggregate over a month range for a set of tracked items,
+    /// deduplicated via the leaf-category union so a tracked group + tracked sub-cat under it
+    /// don't double-count. Per-leaf classification (project-aware if projectId given) routes
+    /// each leaf's transaction sum into income or expense.
+    /// </summary>
+    private async Task<(decimal Income, decimal Expense)> AggregateIncomeExpenseForRangeAsync(
+        IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
+        int year, int fromMonth, int toMonth, int sourceId, int? projectId)
+    {
+        if (items.Count == 0) return (0m, 0m);
+
+        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(sourceId);
+        var itemToLeafIds = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
+        var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
+        if (allLeafIds.Count == 0) return (0m, 0m);
+
+        Dictionary<long, bool> leafIsIncome;
+        if (projectId.HasValue)
+        {
+            var typeAssignments = await _budgetDb.CategoryTypeAssignments
+                .Where(cta => cta.ProjectId == projectId.Value)
+                .ToListAsync();
+            var assignmentLookup = typeAssignments.ToDictionary(
+                ta => (ta.CategoryId, ta.ItemType),
+                ta => ta.IsIncome);
+            leafIsIncome = allLeafIds.ToDictionary(
+                id => id,
+                id => ResolveCategoryTypeWithInheritance(id, CategoryItemType.Category, allCategoriesWithCounts, assignmentLookup));
+        }
+        else
+        {
+            var types = await _budgetDb.Categories
+                .Where(c => c.SourceId == sourceId && allLeafIds.Contains(c.Id))
+                .Select(c => new { c.Id, c.Type })
+                .ToListAsync();
+            leafIsIncome = types.ToDictionary(c => c.Id, c => c.Type == 2);
+        }
+
+        var startDate = new DateTime(year, fromMonth, 1, 0, 0, 0, DateTimeKind.Utc);
+        var endDate = new DateTime(year, toMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
+        var startTs = ((DateTimeOffset)startDate).ToUnixTimeSeconds();
+        var endTs = ((DateTimeOffset)endDate).ToUnixTimeSeconds();
+
+        var raw = await _budgetDb.Transactions
+            .Where(t => t.SourceId == sourceId)
+            .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
+            .Where(t => t.Timestamp >= startTs && t.Timestamp < endTs)
+            .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount })
+            .ToListAsync();
+
+        decimal income = 0m, expense = 0m;
+        foreach (var t in raw)
+        {
+            var amt = (decimal)t.Amount;
+            if (leafIsIncome.GetValueOrDefault(t.CategoryId, false)) income += amt;
+            else expense += -amt;
+        }
+        return (income, expense);
     }
 
     /// <summary>
@@ -853,17 +951,22 @@ public class BudgetService
         if (budget == null)
             throw new ArgumentException("Budget not found", nameof(budgetId));
 
+        var project = await _budgetDb.Projects.FindAsync(budget.ProjectId);
+        var sourceId = project?.SourceId ?? SourceScope.LegacySourceId;
+        var hierarchy = await GetAllCategoriesWithChildCountsAsync(sourceId);
+        var normalized = NormalizeBudgetEntries(entries, hierarchy);
+
         var existing = await _budgetDb.MonthlyBudgetEntries
             .Where(e => e.BudgetId == budgetId)
             .ToListAsync();
 
-        var desiredKeys = entries.Select(e => (e.Id, e.ItemType)).ToHashSet();
+        var desiredKeys = normalized.Select(e => (e.Id, e.ItemType)).ToHashSet();
         foreach (var row in existing.Where(e => !desiredKeys.Contains((e.CategoryId, e.ItemType))))
         {
             _budgetDb.MonthlyBudgetEntries.Remove(row);
         }
 
-        foreach (var (id, itemType, months) in entries)
+        foreach (var (id, itemType, months) in normalized)
         {
             if (months.Length != 12)
                 throw new ArgumentException($"Entry ({id}, {itemType}) needs exactly 12 monthly amounts; got {months.Length}.");
@@ -885,6 +988,36 @@ public class BudgetService
 
         budget.LastModifiedAt = DateTime.UtcNow;
         await _budgetDb.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Enforce the one-level-per-subtree invariant in the entries being saved: any Group entry
+    /// whose descendants in the same set have non-zero amounts gets its own months zeroed. The
+    /// UI should prevent this state, but this guards against drift between the UI's editing
+    /// state and what's submitted.
+    /// </summary>
+    private static List<(long Id, CategoryItemType ItemType, decimal[] Months)> NormalizeBudgetEntries(
+        IReadOnlyCollection<(long Id, CategoryItemType ItemType, decimal[] Months)> entries,
+        List<CategoryGroupWithChildCount> hierarchy)
+    {
+        var byKey = entries.ToDictionary(e => (e.Id, e.ItemType), e => e.Months);
+        var result = new List<(long Id, CategoryItemType ItemType, decimal[] Months)>(entries.Count);
+        foreach (var entry in entries)
+        {
+            if (entry.ItemType != CategoryItemType.Group)
+            {
+                result.Add(entry);
+                continue;
+            }
+            var descendants = CategoryGroupWithChildCount.CollectDescendants(
+                entry.Id, hierarchy, includeLeafCategories: true);
+            bool hasActiveDescendant = descendants.Any(d =>
+                byKey.TryGetValue((d.Id, d.ItemType), out var dMonths) && dMonths.Any(m => m != 0m));
+            result.Add(hasActiveDescendant
+                ? (entry.Id, entry.ItemType, new decimal[12])
+                : entry);
+        }
+        return result;
     }
 
     /// <summary>
@@ -1182,6 +1315,42 @@ public class BudgetService
     }
 
     /// <summary>
+    /// Add tracking items for any keys not already tracked by the project; never removes
+    /// existing ones. Used by BudgetEdit's save path so promoting a shadow row into a real
+    /// budget entry also makes that sub-cat tracked everywhere else.
+    /// </summary>
+    public async Task EnsureProjectTrackingIncludesAsync(
+        int projectId,
+        IEnumerable<(long Id, CategoryItemType ItemType)> keys)
+    {
+        var keyList = keys.Distinct().ToList();
+        if (keyList.Count == 0) return;
+
+        var existing = await _budgetDb.ProjectTrackingItems
+            .Where(pti => pti.ProjectId == projectId)
+            .ToListAsync();
+        var have = existing
+            .Select(e => e.CategoryGroupId.HasValue
+                ? (e.CategoryGroupId.Value, CategoryItemType.Group)
+                : (e.CategoryId!.Value, CategoryItemType.Category))
+            .ToHashSet();
+
+        bool added = false;
+        foreach (var key in keyList)
+        {
+            if (have.Contains(key)) continue;
+            _budgetDb.ProjectTrackingItems.Add(new ProjectTrackingItem
+            {
+                ProjectId = projectId,
+                CategoryGroupId = key.ItemType == CategoryItemType.Group ? key.Id : null,
+                CategoryId = key.ItemType == CategoryItemType.Category ? key.Id : null
+            });
+            added = true;
+        }
+        if (added) await _budgetDb.SaveChangesAsync();
+    }
+
+    /// <summary>
     /// Update the tracking items for a project
     /// </summary>
     public async Task UpdateProjectTrackingItemsAsync(int projectId, HashSet<long> categoryGroupIds, HashSet<long> categoryIds)
@@ -1291,6 +1460,70 @@ public class BudgetService
                 e.Month1, e.Month2, e.Month3, e.Month4, e.Month5, e.Month6,
                 e.Month7, e.Month8, e.Month9, e.Month10, e.Month11, e.Month12
             });
+    }
+
+    /// <summary>
+    /// Effective + stored budget amounts for a budget. A group whose any descendant has a
+    /// non-zero stored amount gets its effective months replaced by the sum of all stored
+    /// amounts beneath it (the model invariant: budget amounts live at one level per subtree,
+    /// so the sum is unambiguous post-normalization). Such groups are flagged in AutoSummed
+    /// so the UI can render their inputs read-only.
+    /// </summary>
+    public async Task<BudgetEffectiveAmounts> ComputeBudgetEffectiveAmountsAsync(int budgetId)
+    {
+        var budget = await _budgetDb.Budgets
+            .Include(b => b.MonthlyEntries)
+            .Include(b => b.Project)
+            .FirstOrDefaultAsync(b => b.Id == budgetId);
+        if (budget == null) return new BudgetEffectiveAmounts();
+
+        var stored = budget.MonthlyEntries.ToDictionary(
+            e => (e.CategoryId, e.ItemType),
+            e => new[]
+            {
+                e.Month1, e.Month2, e.Month3, e.Month4, e.Month5, e.Month6,
+                e.Month7, e.Month8, e.Month9, e.Month10, e.Month11, e.Month12
+            });
+
+        var sourceId = budget.Project?.SourceId ?? SourceScope.LegacySourceId;
+        var hierarchy = await GetAllCategoriesWithChildCountsAsync(sourceId);
+        return ComputeEffectiveAmounts(stored, hierarchy);
+    }
+
+    /// <summary>
+    /// Pure version of <see cref="ComputeBudgetEffectiveAmountsAsync"/> for callers that
+    /// already have the stored amounts + hierarchy in memory (e.g. BudgetEdit reacts to every
+    /// keystroke without a round trip). Returns a new <see cref="BudgetEffectiveAmounts"/>.
+    /// </summary>
+    public static BudgetEffectiveAmounts ComputeEffectiveAmounts(
+        Dictionary<(long Id, CategoryItemType ItemType), decimal[]> stored,
+        List<CategoryGroupWithChildCount> hierarchy)
+    {
+        var result = new BudgetEffectiveAmounts { Stored = stored };
+        foreach (var (key, months) in stored)
+            result.Effective[key] = (decimal[])months.Clone();
+
+        foreach (var groupKey in stored.Keys.Where(k => k.ItemType == CategoryItemType.Group).ToList())
+        {
+            var descendants = CategoryGroupWithChildCount.CollectDescendants(
+                groupKey.Id, hierarchy, includeLeafCategories: true);
+
+            var sum = new decimal[12];
+            bool anyDescendantHasAmount = false;
+            foreach (var d in descendants)
+            {
+                if (!stored.TryGetValue((d.Id, d.ItemType), out var dMonths)) continue;
+                for (int m = 0; m < 12; m++) sum[m] += dMonths[m];
+                if (dMonths.Any(x => x != 0m)) anyDescendantHasAmount = true;
+            }
+
+            if (anyDescendantHasAmount)
+            {
+                result.Effective[groupKey] = sum;
+                result.AutoSummed.Add(groupKey);
+            }
+        }
+        return result;
     }
 
     public async Task<List<MonthlySpending>> GetBudgetTrendAsync(long categoryId, CategoryItemType itemType, int budgetId)
@@ -1880,7 +2113,10 @@ public class BudgetService
 
     /// <summary>
     /// Resolves the set of leaf (MoneyMoney Category) IDs covered by each tracking item, using
-    /// the already-loaded hierarchy to avoid additional DB calls.
+    /// the already-loaded hierarchy to avoid additional DB calls. Each item's leaf set is its
+    /// natural recursive expansion — overlaps between a group and a tracked descendant are
+    /// preserved. Per-row totals are therefore the natural sum of everything under the item;
+    /// aggregate totals across items must use the leaf union (Distinct) to avoid double-counting.
     /// </summary>
     private static Dictionary<(long, CategoryItemType), HashSet<long>> BuildItemToLeafCategoryIds(
         IEnumerable<(long Id, CategoryItemType ItemType)> items,
@@ -2320,6 +2556,26 @@ public enum DistributionPatternSource
     TrailingYear,
     AllTime,
     Day1Fallback
+}
+
+/// <summary>
+/// Per-budget view of stored vs. effective monthly amounts. A group row's effective amount is
+/// the sum of all stored amounts beneath it (when any are non-zero), or its own stored amount
+/// otherwise — that's the rule that lets a group act as a roll-up of its sub-cats without a
+/// separate "leftover" concept.
+/// </summary>
+public class BudgetEffectiveAmounts
+{
+    /// <summary>Raw amounts as persisted, keyed by (Id, ItemType).</summary>
+    public Dictionary<(long Id, CategoryItemType ItemType), decimal[]> Stored { get; init; } = new();
+
+    /// <summary>What each row should display: group rows get replaced by descendant sum when
+    /// applicable, all others equal their stored amount.</summary>
+    public Dictionary<(long Id, CategoryItemType ItemType), decimal[]> Effective { get; init; } = new();
+
+    /// <summary>Group keys whose effective amount is computed from descendants — the UI should
+    /// render these group inputs read-only.</summary>
+    public HashSet<(long Id, CategoryItemType ItemType)> AutoSummed { get; init; } = new();
 }
 
 /// <summary>

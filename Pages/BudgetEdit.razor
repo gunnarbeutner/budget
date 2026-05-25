@@ -1,8 +1,10 @@
 @page "/budgets/{BudgetId:int}/edit"
 @using OpenBudget.Services
 @using OpenBudget.Models
+@using Microsoft.JSInterop
 @inject BudgetService BudgetService
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @inject IStringLocalizer<BudgetEdit> L
 
 <PageTitle>@(budget != null ? L["PageTitle_WithName", budget.Project?.Name ?? "", budget.Name ?? ""] : L["PageTitle"])</PageTitle>
@@ -81,16 +83,81 @@
         }
         else
         {
-            var sortedEntries = editingEntries
-                .OrderBy(e => categoryNames.GetValueOrDefault(e.Key, ""))
-                .ToList();
-            var incomeRows = sortedEntries.Where(e => incomeKeys.Contains(e.Key)).ToList();
-            var expenseRows = sortedEntries.Where(e => !incomeKeys.Contains(e.Key)).ToList();
+            // Effective amounts already reflect the auto-summed group totals; sum at level-0
+            // rows in each section avoids double-counting once descendants roll into their group.
+            decimal SectionMonth(List<TrackedRowNode> nodes, int idx) =>
+                nodes.Where(n => n.Level == 0).Sum(n => GetEffective(n.Key)[idx]);
+            decimal SectionYear(List<TrackedRowNode> nodes) =>
+                nodes.Where(n => n.Level == 0).Sum(n => GetEffective(n.Key).Sum());
 
-            decimal IncomeMonth(int idx) => incomeRows.Sum(e => e.Value[idx]);
-            decimal ExpenseMonth(int idx) => expenseRows.Sum(e => e.Value[idx]);
-            var incomeYear = incomeRows.Sum(e => e.Value.Sum());
-            var expenseYear = expenseRows.Sum(e => e.Value.Sum());
+            var incomeYear = SectionYear(incomeTree);
+            var expenseYear = SectionYear(expenseTree);
+
+            RenderFragment<TrackedRowNode> RowTr = node =>
+                @<tr class="@(IsShadow(node.Key) ? "table-light" : "")">
+                    <td title="@categoryFullPaths.GetValueOrDefault(node.Key, "")"
+                        style="@($"padding-left: {0.5 + node.Level * 1.25}rem; white-space: nowrap;")">
+                        @if (node.HasChildren)
+                        {
+                            <button type="button" class="btn btn-sm btn-link p-0 me-1"
+                                    style="text-decoration: none;"
+                                    @onclick="() => ToggleExpand(node.Key)"
+                                    title="@(expandedKeys.Contains(node.Key) ? L["Button_Collapse"] : L["Button_Expand"])">
+                                @(expandedKeys.Contains(node.Key) ? "▾" : "▸")
+                            </button>
+                        }
+                        <span class="@(IsAutoSummed(node.Key) ? "text-muted" : "") @(IsShadow(node.Key) ? "fst-italic text-muted" : "")">
+                            @categoryNames.GetValueOrDefault(node.Key, L["Picker_Unknown"])
+                        </span>
+                    </td>
+                    @{
+                        var isShadowRow = IsShadow(node.Key);
+                        var monthsForDisplay = IsAutoSummed(node.Key)
+                            ? GetEffective(node.Key)
+                            : (isShadowRow ? shadowEntries[node.Key] : editingEntries[node.Key]);
+                        var readOnly = IsAutoSummed(node.Key);
+                    }
+                    @for (int m = 0; m < 12; m++)
+                    {
+                        var idx = m;
+                        <td class="text-end">
+                            @if (readOnly)
+                            {
+                                <input type="number" class="form-control form-control-sm bg-light text-muted"
+                                       style="min-width: 80px; text-align: right;"
+                                       step="0.01"
+                                       readonly
+                                       value="@monthsForDisplay[idx].ToString("0.##")" />
+                            }
+                            else if (isShadowRow)
+                            {
+                                <input type="number" class="form-control form-control-sm"
+                                       style="min-width: 80px; text-align: right;"
+                                       step="0.01"
+                                       placeholder="0"
+                                       @bind="shadowEntries[node.Key][idx]"
+                                       @bind:after="() => OnShadowMonthsChanged(node.Key)" />
+                            }
+                            else
+                            {
+                                <input type="number" class="form-control form-control-sm"
+                                       style="min-width: 80px; text-align: right;"
+                                       step="0.01"
+                                       @bind="editingEntries[node.Key][idx]"
+                                       @bind:after="OnMonthsChanged" />
+                            }
+                        </td>
+                    }
+                    <td class="text-end"><strong>€@monthsForDisplay.Sum().ToString("N2")</strong></td>
+                    <td>
+                        @if (!isShadowRow)
+                        {
+                            <button class="btn btn-sm btn-link text-danger p-0"
+                                    title="@L["Button_RemoveRow"]"
+                                    @onclick="() => RemoveRow(node.Key)">×</button>
+                        }
+                    </td>
+                </tr>;
 
             <div class="table-responsive">
                 <table class="table table-sm mb-0">
@@ -105,85 +172,49 @@
                             <th></th>
                         </tr>
                     </thead>
-                    @if (incomeRows.Any())
+                    @if (incomeTree.Any())
                     {
                         <tbody>
                             <tr class="table-secondary">
                                 <th colspan="15">@L["Section_Income"]</th>
                             </tr>
-                            @foreach (var (key, amounts) in incomeRows)
+                            @foreach (var node in incomeTree.Where(IsRowVisible))
                             {
-                                <tr>
-                                    <td>@categoryNames.GetValueOrDefault(key, L["Picker_Unknown"])</td>
-                                    @for (int m = 0; m < 12; m++)
-                                    {
-                                        var idx = m;
-                                        <td class="text-end">
-                                            <input type="number" class="form-control form-control-sm"
-                                                   style="min-width: 80px; text-align: right;"
-                                                   step="0.01"
-                                                   @bind="amounts[idx]" />
-                                        </td>
-                                    }
-                                    <td class="text-end"><strong>€@amounts.Sum().ToString("N2")</strong></td>
-                                    <td>
-                                        <button class="btn btn-sm btn-link text-danger p-0"
-                                                title="@L["Button_RemoveRow"]"
-                                                @onclick="() => RemoveRow(key)">×</button>
-                                    </td>
-                                </tr>
+                                @RowTr(node)
                             }
                             <tr class="table-primary">
                                 <th>@L["Subtotal_Income"]</th>
                                 @for (int m = 0; m < 12; m++)
                                 {
-                                    <th class="text-end">€@IncomeMonth(m).ToString("N2")</th>
+                                    <th class="text-end">€@SectionMonth(incomeTree, m).ToString("N2")</th>
                                 }
                                 <th class="text-end">€@incomeYear.ToString("N2")</th>
                                 <th></th>
                             </tr>
                         </tbody>
                     }
-                    @if (expenseRows.Any())
+                    @if (expenseTree.Any())
                     {
                         <tbody>
                             <tr class="table-secondary">
                                 <th colspan="15">@L["Section_Expenses"]</th>
                             </tr>
-                            @foreach (var (key, amounts) in expenseRows)
+                            @foreach (var node in expenseTree.Where(IsRowVisible))
                             {
-                                <tr>
-                                    <td>@categoryNames.GetValueOrDefault(key, L["Picker_Unknown"])</td>
-                                    @for (int m = 0; m < 12; m++)
-                                    {
-                                        var idx = m;
-                                        <td class="text-end">
-                                            <input type="number" class="form-control form-control-sm"
-                                                   style="min-width: 80px; text-align: right;"
-                                                   step="0.01"
-                                                   @bind="amounts[idx]" />
-                                        </td>
-                                    }
-                                    <td class="text-end"><strong>€@amounts.Sum().ToString("N2")</strong></td>
-                                    <td>
-                                        <button class="btn btn-sm btn-link text-danger p-0"
-                                                title="@L["Button_RemoveRow"]"
-                                                @onclick="() => RemoveRow(key)">×</button>
-                                    </td>
-                                </tr>
+                                @RowTr(node)
                             }
                             <tr class="table-primary">
                                 <th>@L["Subtotal_Expenses"]</th>
                                 @for (int m = 0; m < 12; m++)
                                 {
-                                    <th class="text-end">€@ExpenseMonth(m).ToString("N2")</th>
+                                    <th class="text-end">€@SectionMonth(expenseTree, m).ToString("N2")</th>
                                 }
                                 <th class="text-end">€@expenseYear.ToString("N2")</th>
                                 <th></th>
                             </tr>
                         </tbody>
                     }
-                    @if (incomeRows.Any() && expenseRows.Any())
+                    @if (incomeTree.Any() && expenseTree.Any())
                     {
                         var netYear = incomeYear - expenseYear;
                         var netClass = netYear >= 0 ? "text-success" : "text-danger";
@@ -192,7 +223,7 @@
                                 <th>@L["Net"]</th>
                                 @for (int m = 0; m < 12; m++)
                                 {
-                                    var net = IncomeMonth(m) - ExpenseMonth(m);
+                                    var net = SectionMonth(incomeTree, m) - SectionMonth(expenseTree, m);
                                     var cls = net >= 0 ? "text-success" : "text-danger";
                                     <th class="text-end @cls">€@net.ToString("N2")</th>
                                 }
@@ -244,7 +275,13 @@
     private bool showRepredictDialog = false;
 
     private Dictionary<(long Id, CategoryItemType ItemType), decimal[]> editingEntries = new();
+    // Shadow rows: leaf sub-cats under a tracked group that have transactions in the budget's
+    // year but no budget row of their own. Rendered under their group with empty inputs;
+    // typing a non-zero value promotes them into editingEntries (and into project tracking
+    // on save) so the user can budget at the leaf level without a separate tracking step.
+    private Dictionary<(long Id, CategoryItemType ItemType), decimal[]> shadowEntries = new();
     private Dictionary<(long Id, CategoryItemType ItemType), string> categoryNames = new();
+    private Dictionary<(long Id, CategoryItemType ItemType), string> categoryFullPaths = new();
     private List<(long Id, CategoryItemType ItemType)> availableToAdd = new();
     private Dictionary<(long Id, CategoryItemType ItemType), string> addCandidateNames = new();
     private HashSet<(long Id, CategoryItemType ItemType)> incomeKeys = new();
@@ -253,6 +290,15 @@
     // Cached lookups so Re-predict / Add doesn't rehit the DB for naming.
     private Dictionary<long, CategoryGroup> groupById = new();
     private Dictionary<long, Category> categoryById = new();
+    private List<CategoryGroupWithChildCount> hierarchy = new();
+
+    // Tree projection + effective amounts. Recomputed whenever the edit set changes (add/remove)
+    // or when a row's months are edited (live, so an auto-summed group reflects descendants).
+    private List<TrackedRowNode> incomeTree = new();
+    private List<TrackedRowNode> expenseTree = new();
+    private BudgetEffectiveAmounts effective = new();
+    private HashSet<(long Id, CategoryItemType ItemType)> expandedKeys = new();
+    private string ExpandScope => $"budget-edit:{BudgetId}";
 
     protected override async Task OnInitializedAsync()
     {
@@ -274,13 +320,65 @@
                 e.Month7, e.Month8, e.Month9, e.Month10, e.Month11, e.Month12
             });
 
+        await LoadShadowsAsync();
         await RefreshNamesAndCandidates();
+        RebuildTrees();
+    }
+
+    private async Task LoadShadowsAsync()
+    {
+        if (budget == null) return;
+        var sourceId = budget.Project?.SourceId ?? SourceScope.LegacySourceId;
+        var trackedGroupIds = editingEntries.Keys
+            .Where(k => k.ItemType == CategoryItemType.Group)
+            .Select(k => k.Id)
+            .ToList();
+        if (trackedGroupIds.Count == 0)
+        {
+            shadowEntries.Clear();
+            return;
+        }
+
+        var leafIds = await BudgetService.GetLeafCategoriesWithRecentTransactionsAsync(
+            trackedGroupIds, sourceId);
+
+        // Drop leaves that already have their own budget row.
+        foreach (var existing in editingEntries.Keys.Where(k => k.ItemType == CategoryItemType.Category))
+            leafIds.Remove(existing.Id);
+
+        // Reset shadows: keep only shadow keys that are still candidates; new ones default to zero.
+        var newShadows = new Dictionary<(long Id, CategoryItemType ItemType), decimal[]>();
+        foreach (var leafId in leafIds)
+        {
+            var key = (leafId, CategoryItemType.Category);
+            newShadows[key] = shadowEntries.TryGetValue(key, out var existing) ? existing : new decimal[12];
+        }
+        shadowEntries = newShadows;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || budget == null) return;
+        try
+        {
+            var keys = await JS.InvokeAsync<string[]>("expandState.get", ExpandScope);
+            expandedKeys.Clear();
+            foreach (var s in keys)
+            {
+                if (TryDeserializeKey(s, out var k)) expandedKeys.Add(k);
+            }
+            StateHasChanged();
+        }
+        catch
+        {
+            // localStorage unavailable — default to all-collapsed, harmless.
+        }
     }
 
     private async Task LoadHierarchyLookups()
     {
         var sourceId = budget?.Project?.SourceId ?? SourceScope.LegacySourceId;
-        var hierarchy = await BudgetService.GetAllCategoriesWithChildCountsAsync(sourceId);
+        hierarchy = await BudgetService.GetAllCategoriesWithChildCountsAsync(sourceId);
         groupById = hierarchy
             .Where(c => c.ItemType == CategoryItemType.Group)
             .ToDictionary(c => c.Id, c => c.CategoryGroup);
@@ -289,27 +387,97 @@
         categoryById = categories.ToDictionary(c => c.Id, c => c);
     }
 
+    private void RebuildTrees()
+    {
+        // Effective amounts: groups with descendant amounts auto-sum and become read-only.
+        // Shadow rows have zero amounts so they don't affect auto-summing until promoted.
+        effective = BudgetService.ComputeEffectiveAmounts(editingEntries, hierarchy);
+
+        // Tree includes both real rows and shadow rows so the user can drill into tracked
+        // groups and see their in-year leaf categories without leaving the editor.
+        var allKeys = editingEntries.Keys.Concat(shadowEntries.Keys);
+        var incomeItems = allKeys.Where(k => incomeKeys.Contains(k));
+        var expenseItems = allKeys.Where(k => !incomeKeys.Contains(k));
+        incomeTree = TrackedRowTree.Build(incomeItems, hierarchy, k => categoryNames.GetValueOrDefault(k, ""));
+        expenseTree = TrackedRowTree.Build(expenseItems, hierarchy, k => categoryNames.GetValueOrDefault(k, ""));
+    }
+
+    private decimal[] GetEffective((long Id, CategoryItemType ItemType) key) =>
+        effective.Effective.TryGetValue(key, out var m) ? m : new decimal[12];
+
+    private bool IsAutoSummed((long Id, CategoryItemType ItemType) key) =>
+        effective.AutoSummed.Contains(key);
+
+    private bool IsRowVisible(TrackedRowNode node)
+    {
+        var p = node.ParentKey;
+        while (p.HasValue)
+        {
+            if (!expandedKeys.Contains(p.Value)) return false;
+            // Walk up via the tree's parent chain. Find this parent's own ParentKey.
+            var parentNode = (incomeTree.Concat(expenseTree)).FirstOrDefault(n => n.Key.Equals(p.Value));
+            p = parentNode?.ParentKey;
+        }
+        return true;
+    }
+
+    private async Task ToggleExpand((long Id, CategoryItemType ItemType) key)
+    {
+        if (!expandedKeys.Add(key)) expandedKeys.Remove(key);
+        try
+        {
+            await JS.InvokeVoidAsync("expandState.set", ExpandScope,
+                expandedKeys.Select(SerializeKey).ToArray());
+        }
+        catch { /* localStorage unavailable */ }
+    }
+
+    private void OnMonthsChanged() => RebuildTrees();
+
+    private bool IsShadow((long Id, CategoryItemType ItemType) key) => shadowEntries.ContainsKey(key);
+
+    /// <summary>
+    /// Called when a shadow row's input changes. If any month became non-zero, promote the
+    /// row from shadow state to a real budget entry — its parent group then auto-sums it.
+    /// Returns to shadow state if the user clears everything back to zero.
+    /// </summary>
+    private async Task OnShadowMonthsChanged((long Id, CategoryItemType ItemType) key)
+    {
+        if (!shadowEntries.TryGetValue(key, out var months)) return;
+        if (months.Any(m => m != 0m))
+        {
+            editingEntries[key] = months;
+            shadowEntries.Remove(key);
+            await RefreshAfterEditAsync();
+        }
+        else
+        {
+            RebuildTrees();
+        }
+    }
+
     private async Task RefreshNamesAndCandidates()
     {
         if (budget == null) return;
 
-        // Compute labels for the rows currently in the editor and prefix parent names
-        // only when base names collide (mirrors BudgetWizard).
-        var labels = new List<((long Id, CategoryItemType ItemType) Key, string BaseName, string? ParentName)>();
-        foreach (var key in editingEntries.Keys)
+        // Compute labels for the rows currently in the editor + shadow rows. Prefix the parent
+        // group name when the base name collides with another row's, OR when this row's parent
+        // group is also tracked — the second case keeps a "Food" group row visually distinct
+        // from a "Food › Groceries" sub-cat row when both coexist in the same table.
+        var allRowKeys = editingEntries.Keys.Concat(shadowEntries.Keys);
+        var labels = new List<((long Id, CategoryItemType ItemType) Key, string BaseName, string? ParentName, long? ParentGroupId)>();
+        foreach (var key in allRowKeys)
         {
             labels.Add(BuildLabel(key));
         }
 
-        var nameCounts = labels
-            .GroupBy(l => l.BaseName)
-            .ToDictionary(g => g.Key, g => g.Count());
+        var trackedGroupIds = editingEntries.Keys
+            .Where(k => k.ItemType == CategoryItemType.Group)
+            .Select(k => k.Id)
+            .ToHashSet();
 
-        categoryNames = labels.ToDictionary(
-            l => l.Key,
-            l => nameCounts[l.BaseName] > 1 && !string.IsNullOrEmpty(l.ParentName)
-                ? $"{l.ParentName} › {l.BaseName}"
-                : l.BaseName);
+        categoryNames = BuildDisplayNames(labels, trackedGroupIds);
+        categoryFullPaths = allRowKeys.ToDictionary(k => k, BuildFullPath);
 
         // Build the "Add tracked item" list — project tracking items that aren't already in the editor.
         var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(budget.ProjectId);
@@ -329,19 +497,55 @@
             availableToAdd.Add(candidate.Value);
         }
 
-        // Apply the same collision logic to the candidates so the picker labels stay consistent.
+        // Picker candidates are prefixed against the editor's tracked group set too — that way
+        // a candidate "Groceries" reads as "Food › Groceries" when Food is already a row.
         var candidateLabels = availableToAdd.Select(BuildLabel).ToList();
-        var candidateCounts = candidateLabels
+        addCandidateNames = BuildDisplayNames(candidateLabels, trackedGroupIds);
+    }
+
+    private Dictionary<(long Id, CategoryItemType ItemType), string> BuildDisplayNames(
+        List<((long Id, CategoryItemType ItemType) Key, string BaseName, string? ParentName, long? ParentGroupId)> labels,
+        HashSet<long> trackedGroupIds)
+    {
+        var nameCounts = labels
             .GroupBy(l => l.BaseName)
             .ToDictionary(g => g.Key, g => g.Count());
-        addCandidateNames = candidateLabels.ToDictionary(
+
+        return labels.ToDictionary(
             l => l.Key,
-            l => candidateCounts[l.BaseName] > 1 && !string.IsNullOrEmpty(l.ParentName)
+            l => !string.IsNullOrEmpty(l.ParentName)
+                && (nameCounts[l.BaseName] > 1
+                    || (l.ParentGroupId.HasValue && trackedGroupIds.Contains(l.ParentGroupId.Value)))
                 ? $"{l.ParentName} › {l.BaseName}"
                 : l.BaseName);
     }
 
-    private ((long Id, CategoryItemType ItemType) Key, string BaseName, string? ParentName) BuildLabel(
+    private string BuildFullPath((long Id, CategoryItemType ItemType) key)
+    {
+        var parts = new List<string>();
+        long? walker;
+        if (key.ItemType == CategoryItemType.Group)
+        {
+            if (!groupById.TryGetValue(key.Id, out var g)) return L["Picker_Unknown"];
+            parts.Add(g.Name ?? L["Picker_Unknown"]);
+            walker = g.ParentGroupId;
+        }
+        else
+        {
+            if (!categoryById.TryGetValue(key.Id, out var c)) return L["Picker_Unknown"];
+            parts.Add(c.Name ?? L["Picker_Unknown"]);
+            walker = c.GroupId;
+        }
+        while (walker.HasValue && groupById.TryGetValue(walker.Value, out var ancestor))
+        {
+            parts.Add(ancestor.Name ?? L["Picker_Unknown"]);
+            walker = ancestor.ParentGroupId;
+        }
+        parts.Reverse();
+        return string.Join(" › ", parts);
+    }
+
+    private ((long Id, CategoryItemType ItemType) Key, string BaseName, string? ParentName, long? ParentGroupId) BuildLabel(
         (long Id, CategoryItemType ItemType) key)
     {
         if (key.ItemType == CategoryItemType.Group)
@@ -352,7 +556,7 @@
                     && groupById.TryGetValue(g.ParentGroupId.Value, out var parent)
                     ? parent.Name
                     : null;
-                return (key, g.Name ?? L["Picker_Unknown"], parentName);
+                return (key, g.Name ?? L["Picker_Unknown"], parentName, g.ParentGroupId);
             }
         }
         else if (categoryById.TryGetValue(key.Id, out var cat))
@@ -361,15 +565,15 @@
                 && groupById.TryGetValue(cat.GroupId.Value, out var parent)
                 ? parent.Name
                 : null;
-            return (key, cat.Name ?? L["Picker_Unknown"], parentName);
+            return (key, cat.Name ?? L["Picker_Unknown"], parentName, cat.GroupId);
         }
-        return (key, L["Picker_Unknown"], null);
+        return (key, L["Picker_Unknown"], null, null);
     }
 
     private void RemoveRow((long Id, CategoryItemType ItemType) key)
     {
         editingEntries.Remove(key);
-        _ = RefreshNamesAndCandidates();
+        _ = RefreshAfterEditAsync();
     }
 
     private async Task AddSelected()
@@ -380,7 +584,14 @@
 
         editingEntries[key] = new decimal[12];
         addSelection = "";
+        await RefreshAfterEditAsync();
+    }
+
+    private async Task RefreshAfterEditAsync()
+    {
+        await LoadShadowsAsync();
         await RefreshNamesAndCandidates();
+        RebuildTrees();
     }
 
     private void ShowRepredictDialog() => showRepredictDialog = true;
@@ -413,6 +624,9 @@
                 .Select(kvp => (kvp.Key.Id, kvp.Key.ItemType, kvp.Value))
                 .ToList();
             await BudgetService.SaveBudgetEntriesAsync(BudgetId, entries);
+            // Promoted shadow rows need to be added to project tracking so Cashflow / Budgets
+            // pick them up too. Existing tracking is preserved.
+            await BudgetService.EnsureProjectTrackingIncludesAsync(budget.ProjectId, editingEntries.Keys);
             Navigation.NavigateTo($"/budgets?projectId={budget.ProjectId}");
         }
         finally
