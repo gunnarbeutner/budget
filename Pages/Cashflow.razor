@@ -1035,6 +1035,37 @@ else
                 recentIncomeSourceMonth.Year, recentIncomeSourceMonth.Month);
         }
 
+        // Pre-pass: self-correcting expense projection. For each row each future month is
+        // sized to keep the running cumulative spend on the annual-budget curve — overruns
+        // earlier in the year shrink later months, underruns let later months catch up. Same
+        // mechanic as the original Cashflow workbook's `=-(annual×cumul_through_m − sum_prior)`
+        // formula. Floor at 0 so an already-over-budget row stops contributing rather than
+        // flipping to a negative ("income-shaped") bar.
+        if (projecting)
+        {
+            foreach (var cat in availableCategories)
+            {
+                bool isIncomeItem = incomeItems!.Contains((cat.Id, cat.ItemType));
+                if (isIncomeItem) continue;
+                if (!budgetAmounts!.TryGetValue((cat.Id, cat.ItemType), out var budgetMonthly)) continue;
+                var (_, expenses) = batch[(cat.Id, cat.ItemType)];
+                decimal cumulSpent = 0m;
+                decimal cumulTarget = 0m;
+                for (int m = 0; m < firstProjectedMonth - 1; m++)
+                {
+                    cumulSpent += expenses[m];
+                    cumulTarget += budgetMonthly[m];
+                }
+                for (int m = firstProjectedMonth - 1; m < 12; m++)
+                {
+                    cumulTarget += budgetMonthly[m];
+                    var projected = Math.Max(0m, cumulTarget - cumulSpent);
+                    expenses[m] = projected;
+                    cumulSpent += projected;
+                }
+            }
+        }
+
         if (projecting)
         {
             foreach (var cat in availableCategories)
@@ -1046,12 +1077,10 @@ else
                 if (!aggregateKeys.Contains((cat.Id, cat.ItemType))) continue;
                 if (!isIncome)
                 {
-                    slice.TotalExpensesForProjection += expenses.Take(firstProjectedMonth - 1).Sum();
-                    if (budgetAmounts!.TryGetValue((cat.Id, cat.ItemType), out var monthly))
-                    {
-                        for (int m = firstProjectedMonth - 1; m < 12; m++)
-                            slice.TotalExpensesForProjection += monthly[m];
-                    }
+                    // expenses already carries self-corrected projection from the pre-pass —
+                    // summing it gives the row's whole-year planned spend (annual budget in
+                    // the typical case, capped at actuals if an early overrun never catches up).
+                    slice.TotalExpensesForProjection += expenses.Sum();
                 }
                 else
                 {
@@ -1065,15 +1094,8 @@ else
             var (income, expenses) = batch[(category.Id, category.ItemType)];
             bool isIncomeItem = incomeItems?.Contains((category.Id, category.ItemType)) == true;
 
-            // Expense projection: overwrite future months with the budget's per-month values
-            // (preserves seasonality). Income future months are written later by
-            // ApplyIncomeProjection based on the selected mode.
-            if (projecting && !isIncomeItem
-                && budgetAmounts!.TryGetValue((category.Id, category.ItemType), out var budgetMonthly))
-            {
-                for (int m = firstProjectedMonth - 1; m < 12; m++)
-                    expenses[m] = budgetMonthly[m];
-            }
+            // Income future months are written later by ApplyIncomeProjection based on the
+            // selected mode. Expense future months were already populated by the pre-pass above.
 
             bool isAggregateRow = aggregateKeys.Contains((category.Id, category.ItemType));
 
