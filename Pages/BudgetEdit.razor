@@ -112,10 +112,12 @@
                     </td>
                     @{
                         var isShadowRow = IsShadow(node.Key);
+                        var isVirtualRow = IsVirtual(node.Key);
                         var monthsForDisplay = IsAutoSummed(node.Key)
                             ? GetEffective(node.Key)
                             : (isShadowRow ? shadowEntries[node.Key] : editingEntries[node.Key]);
-                        var readOnly = IsAutoSummed(node.Key);
+                        // Virtual rows are auto-summed parent groups; their inputs are always read-only.
+                        var readOnly = IsAutoSummed(node.Key) || isVirtualRow;
                     }
                     @for (int m = 0; m < 12; m++)
                     {
@@ -150,7 +152,7 @@
                     }
                     <td class="text-end"><strong>€@monthsForDisplay.Sum().ToString("N2")</strong></td>
                     <td>
-                        @if (!isShadowRow)
+                        @if (!isShadowRow && !isVirtualRow)
                         {
                             <button class="btn btn-sm btn-link text-danger p-0"
                                     title="@L["Button_RemoveRow"]"
@@ -280,6 +282,11 @@
     // typing a non-zero value promotes them into editingEntries (and into project tracking
     // on save) so the user can budget at the leaf level without a separate tracking step.
     private Dictionary<(long Id, CategoryItemType ItemType), decimal[]> shadowEntries = new();
+    // Virtual parent rows: tracked groups (from the project) whose budget rows live only on
+    // their descendants. Rendered auto-summed so the hierarchy stays visible even when the
+    // group itself has no MonthlyBudgetEntry. Never persisted — Save() ignores them.
+    private HashSet<(long Id, CategoryItemType ItemType)> virtualGroupKeys = new();
+    private HashSet<(long Id, CategoryItemType ItemType)> trackedItemKeys = new();
     private Dictionary<(long Id, CategoryItemType ItemType), string> categoryNames = new();
     private Dictionary<(long Id, CategoryItemType ItemType), string> categoryFullPaths = new();
     private List<(long Id, CategoryItemType ItemType)> availableToAdd = new();
@@ -329,13 +336,25 @@
     {
         if (budget == null) return;
         var sourceId = budget.Project?.SourceId ?? SourceScope.LegacySourceId;
-        var trackedGroupIds = editingEntries.Keys
+
+        // Tracked groups for shadow leaf expansion = editor groups + project-tracked groups.
+        // Project-tracked groups not in the editor become "virtual" parent rows further down.
+        var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(budget.ProjectId);
+        trackedItemKeys = trackingItems
+            .Select(ti => ti.CategoryGroupId.HasValue
+                ? (ti.CategoryGroupId.Value, CategoryItemType.Group)
+                : (ti.CategoryId!.Value, CategoryItemType.Category))
+            .ToHashSet();
+        var trackedGroupIds = trackedItemKeys
             .Where(k => k.ItemType == CategoryItemType.Group)
             .Select(k => k.Id)
+            .Union(editingEntries.Keys.Where(k => k.ItemType == CategoryItemType.Group).Select(k => k.Id))
+            .Distinct()
             .ToList();
         if (trackedGroupIds.Count == 0)
         {
             shadowEntries.Clear();
+            virtualGroupKeys.Clear();
             return;
         }
 
@@ -354,6 +373,20 @@
             newShadows[key] = shadowEntries.TryGetValue(key, out var existing) ? existing : new decimal[12];
         }
         shadowEntries = newShadows;
+
+        // Virtual groups: project-tracked groups that have any descendant present in the
+        // editor (real entry or shadow). Shown as auto-summed parent rows so the hierarchy
+        // stays visible even when the group itself isn't a budget row.
+        virtualGroupKeys.Clear();
+        var allDescendantKeys = editingEntries.Keys.Concat(shadowEntries.Keys).ToHashSet();
+        foreach (var trackedGroup in trackedItemKeys.Where(k => k.ItemType == CategoryItemType.Group))
+        {
+            if (editingEntries.ContainsKey(trackedGroup)) continue;
+            var descendants = CategoryGroupWithChildCount.CollectDescendants(
+                trackedGroup.Id, hierarchy, includeLeafCategories: true);
+            if (descendants.Any(d => allDescendantKeys.Contains((d.Id, d.ItemType))))
+                virtualGroupKeys.Add(trackedGroup);
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -362,16 +395,29 @@
         try
         {
             var keys = await JS.InvokeAsync<string[]>("expandState.get", ExpandScope);
-            expandedKeys.Clear();
-            foreach (var s in keys)
+            if (keys.Length > 0)
             {
-                if (TryDeserializeKey(s, out var k)) expandedKeys.Add(k);
+                expandedKeys.Clear();
+                foreach (var s in keys)
+                {
+                    if (TryDeserializeKey(s, out var k)) expandedKeys.Add(k);
+                }
+            }
+            else
+            {
+                // No stored preference: default to expanded for any auto-summed group, so the
+                // user sees the sub-cat breakdown immediately rather than just the roll-up.
+                expandedKeys.Clear();
+                foreach (var k in effective.AutoSummed) expandedKeys.Add(k);
             }
             StateHasChanged();
         }
         catch
         {
-            // localStorage unavailable — default to all-collapsed, harmless.
+            // localStorage unavailable — fall back to auto-expand defaults.
+            expandedKeys.Clear();
+            foreach (var k in effective.AutoSummed) expandedKeys.Add(k);
+            StateHasChanged();
         }
     }
 
@@ -391,11 +437,18 @@
     {
         // Effective amounts: groups with descendant amounts auto-sum and become read-only.
         // Shadow rows have zero amounts so they don't affect auto-summing until promoted.
-        effective = BudgetService.ComputeEffectiveAmounts(editingEntries, hierarchy);
+        // Virtual group rows are seeded with zero so ComputeEffectiveAmounts auto-sums them
+        // from their tracked descendants — same display path as a real but emptied group row.
+        var storedForEffective = new Dictionary<(long Id, CategoryItemType ItemType), decimal[]>(editingEntries);
+        foreach (var virtKey in virtualGroupKeys)
+            if (!storedForEffective.ContainsKey(virtKey))
+                storedForEffective[virtKey] = new decimal[12];
+        effective = BudgetService.ComputeEffectiveAmounts(storedForEffective, hierarchy);
 
-        // Tree includes both real rows and shadow rows so the user can drill into tracked
-        // groups and see their in-year leaf categories without leaving the editor.
-        var allKeys = editingEntries.Keys.Concat(shadowEntries.Keys);
+        // Tree includes real rows, shadow rows, and virtual parent groups so the user can
+        // drill into tracked groups and see their in-year leaf categories without leaving
+        // the editor — and so a sub-cat-only budget still shows the parent for context.
+        var allKeys = editingEntries.Keys.Concat(shadowEntries.Keys).Concat(virtualGroupKeys);
         var incomeItems = allKeys.Where(k => incomeKeys.Contains(k));
         var expenseItems = allKeys.Where(k => !incomeKeys.Contains(k));
         incomeTree = TrackedRowTree.Build(incomeItems, hierarchy, k => categoryNames.GetValueOrDefault(k, ""));
@@ -435,6 +488,7 @@
     private void OnMonthsChanged() => RebuildTrees();
 
     private bool IsShadow((long Id, CategoryItemType ItemType) key) => shadowEntries.ContainsKey(key);
+    private bool IsVirtual((long Id, CategoryItemType ItemType) key) => virtualGroupKeys.Contains(key);
 
     /// <summary>
     /// Called when a shadow row's input changes. If any month became non-zero, promote the
@@ -460,11 +514,11 @@
     {
         if (budget == null) return;
 
-        // Compute labels for the rows currently in the editor + shadow rows. Prefix the parent
-        // group name when the base name collides with another row's, OR when this row's parent
-        // group is also tracked — the second case keeps a "Food" group row visually distinct
-        // from a "Food › Groceries" sub-cat row when both coexist in the same table.
-        var allRowKeys = editingEntries.Keys.Concat(shadowEntries.Keys);
+        // Compute labels for the rows currently in the editor + shadow rows + virtual parent
+        // groups. Prefix the parent group name when the base name collides with another row's,
+        // OR when this row's parent group is also tracked — the second case keeps a "Food"
+        // group row visually distinct from a "Food › Groceries" sub-cat row when both coexist.
+        var allRowKeys = editingEntries.Keys.Concat(shadowEntries.Keys).Concat(virtualGroupKeys);
         var labels = new List<((long Id, CategoryItemType ItemType) Key, string BaseName, string? ParentName, long? ParentGroupId)>();
         foreach (var key in allRowKeys)
         {

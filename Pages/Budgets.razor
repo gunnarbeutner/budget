@@ -122,17 +122,21 @@
                                             if (!varianceByKey.TryGetValue(node.Key, out var item)) continue;
                                             var percentOfBudget = item.HasBudget && item.BudgetAmount > 0
                                                 ? (item.ActualAmount / item.BudgetAmount * 100) : 0;
-                                            var hasShadowSubs = item.ItemType == CategoryItemType.Group
-                                                && shadowSubcatsByGroup.ContainsKey((item.CategoryId, item.ItemType));
-                                            var canExpand = hasShadowSubs || node.HasChildren;
+                                            // Caret only when manual expand actually adds something — i.e. the group
+                                            // has shadow sub-cats and isn't already showing budgeted descendants.
+                                            var canExpand = item.ItemType == CategoryItemType.Group
+                                                && HasManualExpand((item.CategoryId, item.ItemType));
                                             var isExpanded = expandedVarianceKeys.Contains(node.Key);
-                                            // Expanded groups stay as parent rows but their numbers are just sums of the
-                                            // sub-cats shown below — render muted so the eye lands on the breakdown.
-                                            var rowClass = isExpanded ? "text-muted fst-italic"
+                                            // Auto-summed groups (computed from sub-cats) render muted+italic and prefix
+                                            // numbers with Σ so the value reads as a roll-up rather than a user input.
+                                            // Expansion adds nothing to the parent's styling — it just toggles whether
+                                            // the sub-cat rows below are visible.
+                                            var rowClass = item.IsAutoSummed ? "text-muted fst-italic"
                                                 : !item.HasBudget ? ""
                                                 : percentOfBudget > 110 ? "table-danger"
                                                 : percentOfBudget > 90 ? "table-warning"
                                                 : "table-success";
+                                            var sumPrefix = item.IsAutoSummed ? "Σ " : "";
                                             // Tree indent already disambiguates sub-cat vs. parent — drop the "Parent › Name"
                                             // prefix that BuildDisplayNames adds for the flat chart legend.
                                             var bareName = BareCategoryName(node.Key) ?? item.CategoryName;
@@ -149,9 +153,9 @@
                                                     }
                                                     @bareName
                                                 </td>
-                                                <td class="text-end">@(item.HasBudget ? $"€{item.BudgetAmount:N2}" : "—")</td>
+                                                <td class="text-end">@(item.HasBudget ? $"{sumPrefix}€{item.BudgetAmount:N2}" : "—")</td>
                                                 <td class="text-end">€@item.ActualAmount.ToString("N2")</td>
-                                                <td class="text-end">@(item.HasBudget ? $"€{item.Variance:N2}" : "—")</td>
+                                                <td class="text-end">@(item.HasBudget ? $"{sumPrefix}€{item.Variance:N2}" : "—")</td>
                                                 <td class="text-end">@(item.HasBudget ? $"{percentOfBudget:N1}%" : "—")</td>
                                             </tr>
                                         }
@@ -344,6 +348,16 @@
     // Computed on load + when the underlying tracking changes.
     private Dictionary<(long Id, CategoryItemType ItemType), List<(long Id, CategoryItemType ItemType)>>
         shadowSubcatsByGroup = new();
+    // Per tracked group: descendants that hold a non-zero MonthlyBudgetEntry in the selected
+    // compare-budget. Always included in the chart + variance table (replacing the group in
+    // the chart, nested under it in the variance table) — that's "show the budget where it
+    // actually lives" without requiring a manual expand step.
+    private Dictionary<(long Id, CategoryItemType ItemType), List<(long Id, CategoryItemType ItemType)>>
+        budgetedDescendantsByGroup = new();
+    // Auto-default = "expand every group whose descendants carry the budget" — applied once
+    // per session unless localStorage holds a user-set override. Reset on year/budget change
+    // so a fresh budget gets the same friendly default before the user touches anything.
+    private bool sessionAutoDefaultApplied = false;
     private string ExpandScope => $"budgets-variance:{selectedBudgetId}:{selectedYear}";
 
     private void ToggleCategoriesPanel() => categoriesExpanded = !categoriesExpanded;
@@ -500,6 +514,13 @@
         }
     }
 
+    private bool HasManualExpand((long Id, CategoryItemType ItemType) key)
+    {
+        // Caret shows on any tracked group that has SOMETHING to drill into — either budgeted
+        // descendants or shadow transactions. User can toggle either way.
+        return budgetedDescendantsByGroup.ContainsKey(key) || shadowSubcatsByGroup.ContainsKey(key);
+    }
+
     private async Task FilterCategoriesByBudget()
     {
         var budget = await BudgetService.GetProjectAsync(selectedBudgetId);
@@ -644,26 +665,27 @@
         {
             try
             {
-                var stored = await JS.InvokeAsync<string[]>("expandState.get", ExpandScope);
-                expandedVarianceKeys.Clear();
-                foreach (var s in stored)
+                var hasPreference = await JS.InvokeAsync<bool>("expandState.hasPreference", ExpandScope);
+                if (hasPreference)
                 {
-                    var parts = s.Split(':');
-                    if (parts.Length == 2
-                        && int.TryParse(parts[0], out var typeInt)
-                        && long.TryParse(parts[1], out var id))
+                    var stored = await JS.InvokeAsync<string[]>("expandState.get", ExpandScope);
+                    expandedVarianceKeys.Clear();
+                    foreach (var s in stored)
                     {
-                        expandedVarianceKeys.Add((id, (CategoryItemType)typeInt));
+                        var parts = s.Split(':');
+                        if (parts.Length == 2
+                            && int.TryParse(parts[0], out var typeInt)
+                            && long.TryParse(parts[1], out var id))
+                        {
+                            expandedVarianceKeys.Add((id, (CategoryItemType)typeInt));
+                        }
                     }
-                }
-                if (expandedVarianceKeys.Count > 0)
-                {
                     await LoadCategoryTrends();
                     needsTrendChartRender = true;
                     StateHasChanged();
                 }
             }
-            catch { /* localStorage unavailable */ }
+            catch { /* localStorage unavailable — keep server-side auto-defaults */ }
         }
 
         if (needsTrendChartRender && categoryTrends != null && categoryTrends.Any())
@@ -689,6 +711,9 @@
                         .FirstOrDefault(b => b.Year == selectedYear && b.IsActive)?.Id ?? 0;
                 }
             }
+            // New scope = fresh auto-default; user toggles are scoped to (budget, year).
+            expandedVarianceKeys.Clear();
+            sessionAutoDefaultApplied = false;
             await LoadCategoryTrends();
         }
     }
@@ -698,6 +723,8 @@
         if (int.TryParse(e.Value?.ToString(), out var budgetId))
         {
             selectedCompareBudgetId = budgetId;
+            expandedVarianceKeys.Clear();
+            sessionAutoDefaultApplied = false;
             await LoadCategoryTrends();
         }
     }
@@ -809,23 +836,79 @@
     {
         categoryTrends = new Dictionary<string, List<MonthlySpending>>();
 
-        // Batch-load trends for all selected groups and categories in one DB roundtrip.
-        // When a budget is selected and the user has expanded a group in the variance view,
-        // also load its in-use leaf sub-cats so they can appear nested under the group in the
-        // variance table — and replace the group in the chart (see chartKeys further down).
+        // Build the map of groups whose descendants carry the budget. Auto-default expansion
+        // (below) opens these so the breakdown is visible without a click, but the caret still
+        // works — user can collapse to see just the auto-summed parent.
+        budgetedDescendantsByGroup.Clear();
+        if (selectedCompareBudgetId > 0 && allCategories != null)
+        {
+            var budgetKeys = (await BudgetService.GetMonthlyBudgetAmountsAsync(selectedCompareBudgetId))
+                .Where(kvp => kvp.Value.Any(m => m != 0m))
+                .Select(kvp => kvp.Key)
+                .ToHashSet();
+            foreach (var groupId in selectedCategoryGroupIds)
+            {
+                var groupKey = (groupId, CategoryItemType.Group);
+                var descendants = CategoryGroupWithChildCount.CollectDescendants(
+                    groupId, allCategories, includeLeafCategories: true);
+                var budgeted = descendants
+                    .Select(d => (d.Id, d.ItemType))
+                    .Where(k => budgetKeys.Contains(k))
+                    .ToList();
+                if (budgeted.Count > 0)
+                    budgetedDescendantsByGroup[groupKey] = budgeted;
+            }
+        }
+
+        if (!sessionAutoDefaultApplied && selectedCompareBudgetId > 0)
+        {
+            foreach (var k in budgetedDescendantsByGroup.Keys)
+                expandedVarianceKeys.Add(k);
+            sessionAutoDefaultApplied = true;
+        }
+
+        // Batch-load trends. A tracked group only pulls its descendants in when the user has
+        // it expanded — collapsed = show just the (auto-summed) group row. Two kinds of
+        // descendants:
+        //   - budgeted: leaves/sub-groups carrying their own MonthlyBudgetEntry. They're the
+        //     "real" breakdown for the subtree and participate in the chart + total.
+        //   - shadow: leaves with recent transactions but no budget entry. Table-only
+        //     drill-down; never enter the chart or total (no budget data to compare).
         var batchKeys = new List<(long Id, CategoryItemType ItemType)>();
+        var shadowOnlyKeys = new HashSet<(long Id, CategoryItemType ItemType)>();
         foreach (var groupId in selectedCategoryGroupIds)
         {
             var key = (groupId, CategoryItemType.Group);
             batchKeys.Add(key);
-            if (selectedCompareBudgetId > 0 && expandedVarianceKeys.Contains(key)
+            if (!expandedVarianceKeys.Contains(key)) continue;
+            if (budgetedDescendantsByGroup.TryGetValue(key, out var budgeted))
+            {
+                batchKeys.AddRange(budgeted);
+            }
+            else if (selectedCompareBudgetId > 0
                 && shadowSubcatsByGroup.TryGetValue(key, out var subs))
             {
                 batchKeys.AddRange(subs);
+                foreach (var s in subs) shadowOnlyKeys.Add(s);
             }
         }
         foreach (var categoryId in selectedActualCategoryIds)
             batchKeys.Add((categoryId, CategoryItemType.Category));
+
+        // Budget-carrier keys: the rows whose budget figures into the chart + footer totals.
+        //   - tracked leaves: always carriers
+        //   - budgeted descendants (when their parent is expanded): carriers
+        //   - tracked group when collapsed (or without budgeted descendants): carrier with its
+        //     auto-summed/own amount
+        //   - tracked group when expanded with budgeted descendants present: NOT a carrier —
+        //     the descendants in batchKeys carry the value
+        //   - shadow leaves: never carriers (table-only)
+        var budgetCarrierKeys = batchKeys
+            .Where(k => !shadowOnlyKeys.Contains(k))
+            .Where(k => !(k.ItemType == CategoryItemType.Group
+                          && expandedVarianceKeys.Contains(k)
+                          && budgetedDescendantsByGroup.ContainsKey(k)))
+            .ToHashSet();
 
         var trendBatch = await BudgetService.GetMonthlySpendingBatchAsync(batchKeys, selectedYear, projectSourceId);
 
@@ -836,11 +919,20 @@
         categoryDisplayNames = BuildDisplayNames(batchKeys);
 
         categorySortKeys = new Dictionary<string, string>();
-        // Aggregate rows = leaves of the chart-selection tree (no other selected key is a
-        // descendant). Totals across categoryTrends sum only these to avoid double-counting
-        // when both a group and its sub-cat are charted.
-        var chartTreeNodes = TrackedRowTree.Build(batchKeys, allAvailableCategories ?? new List<CategoryGroupWithChildCount>());
-        var aggregateChartKeys = chartTreeNodes.Where(n => !n.HasChildren).Select(n => n.Key).ToHashSet();
+        // Aggregate + chart-inclusion. With a budget: only carriers count, so totals stay
+        // stable on expand/collapse and shadow drill-down rows never enter the chart.
+        // Without a budget: fall back to tree-leaves dedup so user-picked group + sub-cat
+        // doesn't double-count in the summary footer, and don't hide anything from the chart.
+        HashSet<(long Id, CategoryItemType ItemType)> aggregateKeys;
+        if (selectedCompareBudgetId > 0)
+        {
+            aggregateKeys = budgetCarrierKeys;
+        }
+        else
+        {
+            var chartTreeNodes = TrackedRowTree.Build(batchKeys, allAvailableCategories ?? new List<CategoryGroupWithChildCount>());
+            aggregateKeys = chartTreeNodes.Where(n => !n.HasChildren).Select(n => n.Key).ToHashSet();
+        }
         aggregateRowNames = new HashSet<string>();
         chartHiddenNames = new HashSet<string>();
         foreach (var (key, trend) in trendBatch)
@@ -850,16 +942,8 @@
 
             categoryTrends[name] = trend;
             categorySortKeys[name] = ComputeMoneyMoneySortKey(key);
-            if (aggregateChartKeys.Contains(key)) aggregateRowNames.Add(name);
-            // Expanded tracked groups have their sub-cats rendered as separate rows in the
-            // chart — hide the group itself so it doesn't double up visually. (The variance
-            // table below still shows the group row as the parent of those sub-cats.)
-            if (selectedCompareBudgetId > 0
-                && key.ItemType == CategoryItemType.Group
-                && expandedVarianceKeys.Contains(key))
-            {
-                chartHiddenNames.Add(name);
-            }
+            if (aggregateKeys.Contains(key)) aggregateRowNames.Add(name);
+            else if (selectedCompareBudgetId > 0) chartHiddenNames.Add(name);
         }
 
         // Load budget data if comparison is active
@@ -877,9 +961,20 @@
                 .Distinct()
                 .ToHashSet();
 
-            // Use effective budget amounts (groups auto-sum from their tracked descendants) so a
-            // group row charted alongside its sub-cats shows a meaningful budget instead of zero.
-            var budgetEffective = await BudgetService.ComputeBudgetEffectiveAmountsAsync(selectedCompareBudgetId);
+            // Effective budget amounts. Tracked groups whose descendants carry the budget
+            // (and the group has no entry of its own) get an injected zero stored amount so
+            // ComputeEffectiveAmounts auto-sums them from their descendants — otherwise the
+            // group row would render €0 next to a chart that shows the breakdown.
+            var rawStored = await BudgetService.GetMonthlyBudgetAmountsAsync(selectedCompareBudgetId);
+            var augmentedStored = new Dictionary<(long Id, CategoryItemType ItemType), decimal[]>(rawStored);
+            foreach (var groupKey in budgetedDescendantsByGroup.Keys)
+            {
+                if (!augmentedStored.ContainsKey(groupKey))
+                    augmentedStored[groupKey] = new decimal[12];
+            }
+            var budgetEffective = BudgetService.ComputeEffectiveAmounts(
+                augmentedStored,
+                allAvailableCategories ?? new List<CategoryGroupWithChildCount>());
             var compareBudget = await BudgetService.GetBudgetAsync(selectedCompareBudgetId);
             var budgetYear = compareBudget?.Year ?? selectedYear;
 
@@ -923,7 +1018,8 @@
                     ActualAmount = actualTotal,
                     Variance = actualTotal - budgetTotal,
                     IsAggregateRow = aggregateKeySetForVariance.Contains(key),
-                    HasBudget = hasBudget
+                    HasBudget = hasBudget,
+                    IsAutoSummed = budgetEffective.AutoSummed.Contains(key)
                 });
             }
         }

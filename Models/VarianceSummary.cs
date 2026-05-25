@@ -23,4 +23,9 @@ public class VarianceSummary
     /// Budget / Variance / % so they don't look like deliberate zero-budget rows.
     /// </summary>
     public bool HasBudget { get; set; }
+
+    /// <summary>True when the BudgetAmount is the sum of tracked descendants' budgets (a
+    /// computed roll-up) rather than a value the user typed. The table marks the row so the
+    /// distinction is obvious.</summary>
+    public bool IsAutoSummed { get; set; }
 }
