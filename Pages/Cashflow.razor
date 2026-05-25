@@ -959,47 +959,68 @@ else
         };
 
         var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(project.Id);
+        var hierarchyForSlice = await BudgetService.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+
+        // Pre-load budget amounts so we can auto-include descendants of tracked groups that
+        // hold their own non-zero budget entry. Without this, a sub-cat-level budget (e.g.
+        // Strom + Heizung under Energieversorgung) would be invisible to the slice's rollup
+        // because only the parent group is in tracking.
+        Dictionary<(long, CategoryItemType), decimal[]>? budgetAmounts = null;
+        if (budgetIdOverride > 0)
+            budgetAmounts = await BudgetService.GetMonthlyBudgetAmountsAsync(budgetIdOverride);
+        var budgetKeysWithAmounts = budgetAmounts == null
+            ? new HashSet<(long, CategoryItemType)>()
+            : budgetAmounts.Where(kv => kv.Value.Any(m => m != 0m)).Select(kv => kv.Key).ToHashSet();
+
         var availableCategories = new List<CategoryGroupWithChildCount>();
-        if (trackingItems.Any())
+        var seenKeys = new HashSet<(long, CategoryItemType)>();
+        foreach (var item in trackingItems)
         {
-            var allCategories = await BudgetService.GetAllCategoriesWithChildCountsAsync(project.SourceId);
-            foreach (var item in trackingItems)
+            CategoryGroupWithChildCount? cat = null;
+            if (item.CategoryGroupId.HasValue)
             {
-                if (item.CategoryGroupId.HasValue)
+                cat = hierarchyForSlice.FirstOrDefault(c =>
+                    c.ItemType == CategoryItemType.Group && c.Id == item.CategoryGroupId.Value);
+            }
+            else if (item.CategoryId.HasValue)
+            {
+                cat = hierarchyForSlice.FirstOrDefault(c =>
+                    c.ItemType == CategoryItemType.Category && c.Id == item.CategoryId.Value);
+            }
+            if (cat == null) continue;
+            if (seenKeys.Add((cat.Id, cat.ItemType)))
+                availableCategories.Add(cat);
+
+            // Auto-include any descendant with a non-zero budget — same "show the data where
+            // it lives" rule the Budgets variance view uses, so the chart + projection math
+            // include sub-cat budgets without the user touching project tracking.
+            if (cat.ItemType == CategoryItemType.Group && budgetKeysWithAmounts.Count > 0)
+            {
+                var descendants = CategoryGroupWithChildCount.CollectDescendants(
+                    cat.Id, hierarchyForSlice, includeLeafCategories: true);
+                foreach (var d in descendants)
                 {
-                    var cat = allCategories.FirstOrDefault(c =>
-                        c.ItemType == CategoryItemType.Group && c.Id == item.CategoryGroupId.Value);
-                    if (cat != null) availableCategories.Add(cat);
-                }
-                else if (item.CategoryId.HasValue)
-                {
-                    var cat = allCategories.FirstOrDefault(c =>
-                        c.ItemType == CategoryItemType.Category && c.Id == item.CategoryId.Value);
-                    if (cat != null) availableCategories.Add(cat);
+                    var dKey = (d.Id, d.ItemType);
+                    if (budgetKeysWithAmounts.Contains(dKey) && seenKeys.Add(dKey))
+                        availableCategories.Add(d);
                 }
             }
         }
         slice.Keys = availableCategories.Select(c => (c.Id, c.ItemType)).ToHashSet();
         slice.ProjectionItems = availableCategories.Select(c => (c.Id, c.ItemType)).ToList();
 
-        // Aggregate rows = leaves of this slice's tracking tree (no other tracked item is a
-        // descendant). Summing actuals/projections over these avoids double-counting when both
-        // a group and a sub-cat under it are tracked.
-        var hierarchyForSlice = await BudgetService.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        // Aggregate rows = leaves of this slice's projection tree (no other projected item is
+        // a descendant). Summing actuals/projections over these avoids double-counting when
+        // both a group and a sub-cat under it appear in the slice.
         var sliceTree = TrackedRowTree.Build(slice.ProjectionItems, hierarchyForSlice);
         var aggregateKeys = sliceTree.Where(n => !n.HasChildren).Select(n => n.Key).ToHashSet();
 
         var batch = await BudgetService.GetMonthlyIncomeAndExpenseBatchAsync(
             slice.ProjectionItems, selectedYear, project.SourceId, project.Id);
 
-        // Budget projection: only when projecting AND this slice has a budget for the year.
-        Dictionary<(long, CategoryItemType), decimal[]>? budgetAmounts = null;
         HashSet<(long, CategoryItemType)>? incomeItems = null;
         if (firstProjectedMonth <= 12 && budgetIdOverride > 0)
-        {
-            budgetAmounts = await BudgetService.GetMonthlyBudgetAmountsAsync(budgetIdOverride);
             incomeItems = await BudgetService.GetIncomeItemsForProjectAsync(project.Id);
-        }
         slice.BudgetAmounts = budgetAmounts;
         bool projecting = budgetAmounts != null && firstProjectedMonth <= 12;
 
