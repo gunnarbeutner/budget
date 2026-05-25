@@ -94,8 +94,32 @@
   <data name="Form_NotesLabel" xml:space="preserve">
     <value>Notes (optional)</value>
   </data>
+  <data name="Form_SourceLabel" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="Form_SourcePredict" xml:space="preserve">
+    <value>Predict from history</value>
+  </data>
+  <data name="Form_SourcePredictHelp" xml:space="preserve">
+    <value>Generates monthly amounts for each tracked category using seasonal-adjusted history.</value>
+  </data>
+  <data name="Form_SourceClone" xml:space="preserve">
+    <value>Clone an existing budget</value>
+  </data>
+  <data name="Form_SourceCloneHelp" xml:space="preserve">
+    <value>Copies the monthly amounts from another budget for this project — useful for rolling a previous year forward and tweaking.</value>
+  </data>
+  <data name="Form_SourcePickBudget" xml:space="preserve">
+    <value>— Pick a budget to clone —</value>
+  </data>
+  <data name="Form_ActiveSuffix" xml:space="preserve">
+    <value> (active)</value>
+  </data>
   <data name="Button_NextGenerate" xml:space="preserve">
     <value>Next: Generate Predictions</value>
+  </data>
+  <data name="Button_NextClone" xml:space="preserve">
+    <value>Next: Clone Budget</value>
   </data>
   <data name="Button_Cancel" xml:space="preserve">
     <value>Cancel</value>

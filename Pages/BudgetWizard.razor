@@ -46,8 +46,46 @@
                 <textarea class="form-control" @bind="notes" rows="3"></textarea>
             </div>
 
-            <button class="btn btn-primary" @onclick="GeneratePredictions">
-                @L["Button_NextGenerate"]
+            <div class="mb-3">
+                <label class="form-label d-block">@L["Form_SourceLabel"]</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="sourceMode" id="sourceModePredict"
+                           checked="@(sourceMode == "predict")"
+                           @onchange="@(() => sourceMode = "predict")" />
+                    <label class="form-check-label" for="sourceModePredict">
+                        @L["Form_SourcePredict"]
+                        <small class="form-text text-muted d-block">@L["Form_SourcePredictHelp"]</small>
+                    </label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="sourceMode" id="sourceModeClone"
+                           checked="@(sourceMode == "clone")"
+                           disabled="@(availableSourceBudgets == null || availableSourceBudgets.Count == 0)"
+                           @onchange="@(() => sourceMode = "clone")" />
+                    <label class="form-check-label" for="sourceModeClone">
+                        @L["Form_SourceClone"]
+                        <small class="form-text text-muted d-block">@L["Form_SourceCloneHelp"]</small>
+                    </label>
+                </div>
+                @if (sourceMode == "clone")
+                {
+                    <select class="form-select mt-2" @bind="sourceBudgetId" style="max-width: 28em;">
+                        <option value="0">@L["Form_SourcePickBudget"]</option>
+                        @if (availableSourceBudgets != null)
+                        {
+                            foreach (var bud in availableSourceBudgets.OrderByDescending(b => b.Year).ThenBy(b => b.Name))
+                            {
+                                <option value="@bud.Id">@bud.Year — @bud.Name@(bud.IsActive ? L["Form_ActiveSuffix"].Value : "")</option>
+                            }
+                        }
+                    </select>
+                }
+            </div>
+
+            <button class="btn btn-primary"
+                    @onclick="GeneratePredictions"
+                    disabled="@(sourceMode == "clone" && sourceBudgetId == 0)">
+                @(sourceMode == "clone" ? L["Button_NextClone"] : L["Button_NextGenerate"])
             </button>
             <a href="/budgets?projectId=@selectedProjectId" class="btn btn-secondary">@L["Button_Cancel"]</a>
         </div>
@@ -214,6 +252,12 @@ else if (step == 3)
     private Dictionary<(long Id, CategoryItemType ItemType), string>? categoryNames;
     private HashSet<(long Id, CategoryItemType ItemType)> incomeKeys = new();
 
+    // Source of step-2 numbers: "predict" (seasonal forecast from history) or "clone"
+    // (copy an existing budget's monthly amounts so the user only tweaks deltas).
+    private string sourceMode = "predict";
+    private int sourceBudgetId = 0;
+    private List<Budget>? availableSourceBudgets;
+
     // Category selection
     private List<CategoryGroupWithChildCount>? allAvailableCategories;
     private List<Category>? allActualCategories;
@@ -241,6 +285,7 @@ else if (step == 3)
         }
 
         selectedProjectId = pid;
+        availableSourceBudgets = await BudgetService.GetBudgetsForProjectAsync(selectedProjectId);
     }
 
     private async Task LoadCategories()
@@ -294,8 +339,6 @@ else if (step == 3)
 
         await Task.Delay(100); // Allow UI to update
 
-        // Load tracking items from the project
-        var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(selectedProjectId);
         var sourceIdForPredict = await BudgetService.GetSourceIdForProjectAsync(selectedProjectId);
         incomeKeys = await BudgetService.GetIncomeItemsForProjectAsync(selectedProjectId);
 
@@ -308,58 +351,84 @@ else if (step == 3)
             .ToDictionary(c => c.Id, c => c);
 
         predictions = new Dictionary<(long Id, CategoryItemType ItemType), decimal[]>();
-        categoryNames = new Dictionary<(long Id, CategoryItemType ItemType), string>();
 
-        // First pass: gather predictions and remember each row's base name + parent group context.
-        var labels = new List<((long Id, CategoryItemType ItemType) Key, string BaseName, string? ParentName, long? ParentGroupId)>();
-        foreach (var item in trackingItems)
+        if (sourceMode == "clone" && sourceBudgetId > 0)
         {
-            if (item.CategoryGroupId.HasValue)
+            // Copy the source budget's per-month amounts verbatim. Keys that aren't in the
+            // project's current tracking still appear — the user can edit / drop them in
+            // BudgetEdit afterwards. Save flow handles whatever's in `predictions`.
+            var src = await BudgetService.GetMonthlyBudgetAmountsAsync(sourceBudgetId);
+            foreach (var (key, months) in src)
+                predictions[key] = months.Select(p => Math.Round(p, 2)).ToArray();
+        }
+        else
+        {
+            // Predict from history per tracking item (default behaviour).
+            var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(selectedProjectId);
+            foreach (var item in trackingItems)
             {
-                if (!groupById.TryGetValue(item.CategoryGroupId.Value, out var cg)) continue;
+                if (item.CategoryGroupId.HasValue)
+                {
+                    if (!groupById.ContainsKey(item.CategoryGroupId.Value)) continue;
+                    var key = (item.CategoryGroupId.Value, CategoryItemType.Group);
+                    var isIncome = incomeKeys.Contains(key);
+                    var monthlyPredictions = await BudgetService.PredictMonthlySpendingForCategoryAsync(
+                        item.CategoryGroupId.Value, selectedYear, sourceIdForPredict, isIncome);
+                    predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
+                }
+                else if (item.CategoryId.HasValue)
+                {
+                    if (!categoryById.ContainsKey(item.CategoryId.Value)) continue;
+                    var key = (item.CategoryId.Value, CategoryItemType.Category);
+                    var isIncome = incomeKeys.Contains(key);
+                    var monthlyPredictions = await BudgetService.PredictMonthlySpendingForLeafCategoryAsync(
+                        item.CategoryId.Value, selectedYear, sourceIdForPredict, isIncome);
+                    predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
+                }
+            }
+        }
+
+        // Build display names from whatever ended up in predictions (handles both paths,
+        // including cloned keys that may no longer be tracked). Prefix the parent group when
+        // base names collide OR when the parent group itself is also a row — so coexisting
+        // group + sub-cat rows read unambiguously (e.g. "Food" vs. "Food › Groceries").
+        var labels = new List<((long Id, CategoryItemType ItemType) Key, string BaseName, string? ParentName, long? ParentGroupId)>();
+        foreach (var key in predictions.Keys)
+        {
+            if (key.ItemType == CategoryItemType.Group)
+            {
+                if (!groupById.TryGetValue(key.Id, out var cg)) continue;
                 var parentName = cg.ParentGroupId.HasValue
                     && groupById.TryGetValue(cg.ParentGroupId.Value, out var parent)
                     ? parent.Name
                     : null;
-                var key = (item.CategoryGroupId.Value, CategoryItemType.Group);
                 labels.Add((key, cg.Name ?? L["Category_Unknown"], parentName, cg.ParentGroupId));
-
-                var isIncome = incomeKeys.Contains(key);
-                var monthlyPredictions = await BudgetService.PredictMonthlySpendingForCategoryAsync(item.CategoryGroupId.Value, selectedYear, sourceIdForPredict, isIncome);
-                predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
             }
-            else if (item.CategoryId.HasValue)
+            else
             {
-                if (!categoryById.TryGetValue(item.CategoryId.Value, out var cat)) continue;
+                if (!categoryById.TryGetValue(key.Id, out var cat)) continue;
                 var parentName = cat.GroupId.HasValue
                     && groupById.TryGetValue(cat.GroupId.Value, out var parent)
                     ? parent.Name
                     : null;
-                var key = (item.CategoryId.Value, CategoryItemType.Category);
                 labels.Add((key, cat.Name ?? L["Category_Unknown"], parentName, cat.GroupId));
-
-                var isIncome = incomeKeys.Contains(key);
-                var monthlyPredictions = await BudgetService.PredictMonthlySpendingForLeafCategoryAsync(item.CategoryId.Value, selectedYear, sourceIdForPredict, isIncome);
-                predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
             }
         }
 
-        // Second pass: prefix the parent group when the base name collides with another row's,
-        // OR when the row's parent group is also a tracked row — so coexisting group + sub-cat
-        // rows read unambiguously (e.g. "Food" vs. "Food › Groceries").
         var nameCounts = labels
             .GroupBy(l => l.BaseName)
             .ToDictionary(g => g.Key, g => g.Count());
-        var trackedGroupIds = labels
+        var rowGroupIds = labels
             .Where(l => l.Key.ItemType == CategoryItemType.Group)
             .Select(l => l.Key.Id)
             .ToHashSet();
 
+        categoryNames = new Dictionary<(long Id, CategoryItemType ItemType), string>();
         foreach (var (key, baseName, parentName, parentGroupId) in labels)
         {
             var prefix = !string.IsNullOrEmpty(parentName)
                 && (nameCounts[baseName] > 1
-                    || (parentGroupId.HasValue && trackedGroupIds.Contains(parentGroupId.Value)));
+                    || (parentGroupId.HasValue && rowGroupIds.Contains(parentGroupId.Value)));
             categoryNames[key] = prefix
                 ? $"{parentName} › {baseName}"
                 : baseName;
@@ -479,5 +548,7 @@ else if (step == 3)
         allActualCategories = null;
         selectedCategoryGroupIds.Clear();
         selectedActualCategoryIds.Clear();
+        sourceMode = "predict";
+        sourceBudgetId = 0;
     }
 }
