@@ -4,14 +4,17 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// MoneyMoney transaction (read-only from MoneyMoney database)
+/// MoneyMoney transaction imported into our DB. <see cref="Id"/> encodes the source via
+/// <c>SourceScope.Namespace(SourceId, rowid)</c>; <see cref="SourceId"/> is duplicated as a
+/// real column for indexed filtering.
 /// </summary>
-[Table("transactions")]
+[Table("mm_transactions")]
 public class Transaction
 {
     [Key]
-    [Column("rowid")]
     public long Id { get; set; }
+
+    public int SourceId { get; set; }
 
     [Column("local_account_key")]
     public long? AccountId { get; set; }

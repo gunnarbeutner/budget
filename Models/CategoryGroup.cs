@@ -4,14 +4,16 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// MoneyMoney category group - defines the category hierarchy
+/// MoneyMoney category group imported into our DB. <see cref="Id"/> and
+/// <see cref="ParentGroupId"/> are namespaced via <c>SourceScope.Namespace</c>.
 /// </summary>
-[Table("category_groups")]
+[Table("mm_category_groups")]
 public class CategoryGroup
 {
     [Key]
-    [Column("rowid")]
     public long Id { get; set; }
+
+    public int SourceId { get; set; }
 
     [Column("name")]
     public string? Name { get; set; }

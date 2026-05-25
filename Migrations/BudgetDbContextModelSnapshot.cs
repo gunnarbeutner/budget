@@ -17,6 +17,58 @@ namespace OpenBudget.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.8");
 
+            modelBuilder.Entity("OpenBudget.Models.Account", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Balances")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("balances");
+
+                    b.Property<string>("Currency")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("error");
+
+                    b.Property<string>("Iban")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("iban");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("name");
+
+                    b.Property<long?>("Portfolio")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("portfolio");
+
+                    b.Property<long?>("RefreshTimestamp")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("refresh_tsp");
+
+                    b.Property<long?>("Sort")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("sort");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("Type")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceId");
+
+                    b.ToTable("mm_accounts");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.Budget", b =>
                 {
                     b.Property<int>("Id")
@@ -79,6 +131,82 @@ namespace OpenBudget.Migrations
                     b.ToTable("budget_contribution_splits");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.Category", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Color")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("color");
+
+                    b.Property<long?>("GroupId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("group_key");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Rules")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("rules");
+
+                    b.Property<long?>("Sort")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("sort");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("Type")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GroupId");
+
+                    b.HasIndex("SourceId", "GroupId");
+
+                    b.ToTable("mm_categories");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.CategoryGroup", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Color")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("color");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("name");
+
+                    b.Property<long?>("ParentGroupId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("group_key");
+
+                    b.Property<long?>("Sort")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("sort");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParentGroupId");
+
+                    b.HasIndex("SourceId");
+
+                    b.ToTable("mm_category_groups");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.CategoryTypeAssignment", b =>
                 {
                     b.Property<int>("Id")
@@ -103,6 +231,42 @@ namespace OpenBudget.Migrations
                         .IsUnique();
 
                     b.ToTable("category_type_assignments");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.ImportSource", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastUploadAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LastUploadSizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("money_money_sources");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            CreatedAt = new DateTime(2020, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Name = "default"
+                        });
                 });
 
             modelBuilder.Entity("OpenBudget.Models.MonthlyBudgetEntry", b =>
@@ -183,7 +347,12 @@ namespace OpenBudget.Migrations
                     b.Property<int>("SortOrder")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("SourceId");
 
                     b.ToTable("projects");
                 });
@@ -258,6 +427,66 @@ namespace OpenBudget.Migrations
                     b.ToTable("project_tracking_items");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.Transaction", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("AccountId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("local_account_key");
+
+                    b.Property<double>("Amount")
+                        .HasColumnType("REAL")
+                        .HasColumnName("amount");
+
+                    b.Property<long?>("CategoryId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("category_key");
+
+                    b.Property<long?>("Checkmark")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("checkmark");
+
+                    b.Property<string>("Comment")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("comment");
+
+                    b.Property<string>("Currency")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("name");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("Splitted")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("splitted");
+
+                    b.Property<long>("Timestamp")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("timestamp");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("CategoryId");
+
+                    b.HasIndex("SourceId", "AccountId");
+
+                    b.HasIndex("SourceId", "Timestamp");
+
+                    b.HasIndex("SourceId", "CategoryId", "Timestamp");
+
+                    b.ToTable("mm_transactions");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.Budget", b =>
                 {
                     b.HasOne("OpenBudget.Models.Project", "Project")
@@ -280,6 +509,26 @@ namespace OpenBudget.Migrations
                     b.Navigation("Budget");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.Category", b =>
+                {
+                    b.HasOne("OpenBudget.Models.CategoryGroup", "Group")
+                        .WithMany("Categories")
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.CategoryGroup", b =>
+                {
+                    b.HasOne("OpenBudget.Models.CategoryGroup", "ParentGroup")
+                        .WithMany("SubGroups")
+                        .HasForeignKey("ParentGroupId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ParentGroup");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.CategoryTypeAssignment", b =>
                 {
                     b.HasOne("OpenBudget.Models.Project", "Project")
@@ -300,6 +549,17 @@ namespace OpenBudget.Migrations
                         .IsRequired();
 
                     b.Navigation("Budget");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.Project", b =>
+                {
+                    b.HasOne("OpenBudget.Models.ImportSource", "Source")
+                        .WithMany("Projects")
+                        .HasForeignKey("SourceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Source");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.ProjectAccountAssignment", b =>
@@ -335,9 +595,48 @@ namespace OpenBudget.Migrations
                     b.Navigation("Project");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.Transaction", b =>
+                {
+                    b.HasOne("OpenBudget.Models.Account", "Account")
+                        .WithMany("Transactions")
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("OpenBudget.Models.Category", "Category")
+                        .WithMany("Transactions")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.Account", b =>
+                {
+                    b.Navigation("Transactions");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.Budget", b =>
                 {
                     b.Navigation("MonthlyEntries");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.Category", b =>
+                {
+                    b.Navigation("Transactions");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.CategoryGroup", b =>
+                {
+                    b.Navigation("Categories");
+
+                    b.Navigation("SubGroups");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.ImportSource", b =>
+                {
+                    b.Navigation("Projects");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Project", b =>

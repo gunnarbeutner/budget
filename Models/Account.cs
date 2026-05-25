@@ -6,14 +6,16 @@ using System.Text.RegularExpressions;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// MoneyMoney account (read-only from MoneyMoney database)
+/// MoneyMoney account imported into our DB. <see cref="Id"/> is namespaced via
+/// <c>SourceScope.Namespace(SourceId, rowid)</c> to avoid collisions across sources.
 /// </summary>
-[Table("accounts")]
+[Table("mm_accounts")]
 public class Account
 {
     [Key]
-    [Column("rowid")]
     public long Id { get; set; }
+
+    public int SourceId { get; set; }
 
     [Column("name")]
     public string? Name { get; set; }

@@ -289,6 +289,7 @@
     private List<int>? availableYears;
     private bool categoriesExpanded = false;
     private string? projectName;
+    private int projectSourceId = SourceScope.LegacySourceId;
     private bool notFound = false;
 
     private void ToggleCategoriesPanel() => categoriesExpanded = !categoriesExpanded;
@@ -313,18 +314,20 @@
 
         selectedBudgetId = project.Id;
         projectName = project.Name;
+        projectSourceId = project.SourceId;
 
         // Load all category groups (including sub-categories), not just root ones
-        var allCategoryGroups = await BudgetService.GetAllCategoriesWithChildCountsAsync();
+        var allCategoryGroups = await BudgetService.GetAllCategoriesWithChildCountsAsync(projectSourceId);
 
-        // Filter out the hidden root category (id=1) and organize hierarchically
+        // Filter out the hidden root category (per-source rowid 1) and organize hierarchically
+        var sentinelRoot = SourceScope.SentinelRoot(projectSourceId);
         allCategories = allCategoryGroups
-            .Where(c => c.CategoryGroup.Id != 1)
+            .Where(c => c.CategoryGroup.Id != sentinelRoot)
             .OrderBy(c => c.CategoryGroup.Name)
             .ToList();
 
         // Load all actual categories
-        allActualCategories = await BudgetService.GetAllCategoriesAsync();
+        allActualCategories = await BudgetService.GetAllCategoriesAsync(projectSourceId);
 
         // Populate the year picker from the years the project's tracked categories actually
         // have transactions in. Default to the current year, or the closest available if the
@@ -682,7 +685,7 @@
         foreach (var categoryId in selectedActualCategoryIds)
             batchKeys.Add((categoryId, CategoryItemType.Category));
 
-        var trendBatch = await BudgetService.GetMonthlySpendingBatchAsync(batchKeys, selectedYear);
+        var trendBatch = await BudgetService.GetMonthlySpendingBatchAsync(batchKeys, selectedYear, projectSourceId);
 
         // Two leaf categories can share the same name (e.g. "Reparaturen" sits under both
         // "Umlagefähig" and "Nicht umlagefähig"). The downstream dictionaries are keyed by

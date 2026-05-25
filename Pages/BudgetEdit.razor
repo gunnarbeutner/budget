@@ -206,12 +206,13 @@
 
     private async Task LoadHierarchyLookups()
     {
-        var hierarchy = await BudgetService.GetAllCategoriesWithChildCountsAsync();
+        var sourceId = budget?.Project?.SourceId ?? SourceScope.LegacySourceId;
+        var hierarchy = await BudgetService.GetAllCategoriesWithChildCountsAsync(sourceId);
         groupById = hierarchy
             .Where(c => c.ItemType == CategoryItemType.Group)
             .ToDictionary(c => c.Id, c => c.CategoryGroup);
 
-        var categories = await BudgetService.GetAllCategoriesAsync();
+        var categories = await BudgetService.GetAllCategoriesAsync(sourceId);
         categoryById = categories.ToDictionary(c => c.Id, c => c);
     }
 
@@ -316,11 +317,12 @@
     {
         if (budget == null) { showRepredictDialog = false; return; }
 
+        var sourceId = budget.Project?.SourceId ?? SourceScope.LegacySourceId;
         foreach (var key in editingEntries.Keys.ToList())
         {
             var predicted = key.ItemType == CategoryItemType.Group
-                ? await BudgetService.PredictMonthlySpendingForCategoryAsync(key.Id, budget.Year)
-                : await BudgetService.PredictMonthlySpendingForLeafCategoryAsync(key.Id, budget.Year);
+                ? await BudgetService.PredictMonthlySpendingForCategoryAsync(key.Id, budget.Year, sourceId)
+                : await BudgetService.PredictMonthlySpendingForLeafCategoryAsync(key.Id, budget.Year, sourceId);
             editingEntries[key] = predicted.Select(p => Math.Round(p, 2)).ToArray();
         }
         showRepredictDialog = false;

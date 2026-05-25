@@ -26,6 +26,14 @@ public class Project
     /// </summary>
     public int SortOrder { get; set; }
 
+    /// <summary>
+    /// MoneyMoney source this project draws categories and accounts from. Set at creation
+    /// and immutable — re-binding would invalidate every category/account assignment.
+    /// </summary>
+    public int SourceId { get; set; } = 1;
+
+    public ImportSource? Source { get; set; }
+
     // Navigation properties
     public ICollection<ProjectCategoryAssignment> CategoryAssignments { get; set; } = new List<ProjectCategoryAssignment>();
     public ICollection<ProjectTrackingItem> TrackingItems { get; set; } = new List<ProjectTrackingItem>();

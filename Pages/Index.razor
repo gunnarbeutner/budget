@@ -12,16 +12,18 @@
 
 @if (freshness != null)
 {
-    var uploaded = freshness.DbUploadedUtc;
+    // One banner per registered source — multi-source installs need to see staleness per source
+    // because each is uploaded independently.
     var nowUtc = DateTime.UtcNow;
-    var age = uploaded.HasValue ? nowUtc - uploaded.Value : (TimeSpan?)null;
-    var errorAccounts = freshness.AccountsWithErrors.ToList();
-    // Hide on the happy path: recent upload (<=36h) and no per-account errors. Anything
-    // older, unknown, or with refresh errors still surfaces so stale numbers can't masquerade
-    // as current.
-    var isFresh = age is { TotalHours: <= 36 } && !errorAccounts.Any();
-    if (!isFresh)
+    var showSourceLabel = freshness.Count > 1;
+    foreach (var f in freshness)
     {
+        var uploaded = f.DbUploadedUtc;
+        var age = uploaded.HasValue ? nowUtc - uploaded.Value : (TimeSpan?)null;
+        var errorAccounts = f.AccountsWithErrors.ToList();
+        var isFresh = age is { TotalHours: <= 36 } && !errorAccounts.Any();
+        if (isFresh) continue;
+
         string ageLabel = age.HasValue ? FormatRelativeAge(age.Value) : L["Freshness_Unknown"];
         string ageClass = age switch
         {
@@ -32,6 +34,10 @@
         };
         var errorKey = errorAccounts.Count == 1 ? "Freshness_RefreshErrors_One" : "Freshness_RefreshErrors_Other";
         <div class="alert @ageClass py-1 px-2 small mb-3 d-flex flex-wrap align-items-center gap-2">
+            @if (showSourceLabel)
+            {
+                <span class="badge bg-secondary">@f.SourceName</span>
+            }
             <span>@L["Freshness_Uploaded"] <strong>@ageLabel</strong>@(uploaded.HasValue ? $" ({uploaded.Value.ToLocalTime():yyyy-MM-dd HH:mm})" : "").</span>
             @if (errorAccounts.Any())
             {
@@ -44,20 +50,27 @@
     }
 }
 
-@if (uncategorized is { Count: > 0 })
+@if (uncategorized != null)
 {
-    // Tier mirrors the freshness banner: a handful of stragglers is informational, but a
-    // pile-up is loud because the dashboard numbers are then meaningfully wrong.
-    string uncategorizedClass = uncategorized.Count switch
+    var showSourceLabel = uncategorized.Count > 1;
+    foreach (var u in uncategorized.Values.Where(u => u.Count > 0))
     {
-        >= 50 => "alert-danger",
-        >= 10 => "alert-warning",
-        _ => "alert-secondary"
-    };
-    var uncategorizedKey = uncategorized.Count == 1 ? "Uncategorized_One" : "Uncategorized_Other";
-    <div class="alert @uncategorizedClass py-1 px-2 small mb-3 d-flex flex-wrap align-items-center gap-2">
-        <span>@L[uncategorizedKey, uncategorized.Count, $"€{uncategorized.AbsoluteAmount.ToString("N2")}"]</span>
-    </div>
+        string uncategorizedClass = u.Count switch
+        {
+            >= 50 => "alert-danger",
+            >= 10 => "alert-warning",
+            _ => "alert-secondary"
+        };
+        var uncategorizedKey = u.Count == 1 ? "Uncategorized_One" : "Uncategorized_Other";
+        var sourceName = sourceNamesById.GetValueOrDefault(u.SourceId, $"#{u.SourceId}");
+        <div class="alert @uncategorizedClass py-1 px-2 small mb-3 d-flex flex-wrap align-items-center gap-2">
+            @if (showSourceLabel)
+            {
+                <span class="badge bg-secondary">@sourceName</span>
+            }
+            <span>@L[uncategorizedKey, u.Count, $"€{u.AbsoluteAmount.ToString("N2")}"]</span>
+        </div>
+    }
 }
 
 @{
@@ -314,6 +327,18 @@ else
                         <label for="projectDescription" class="form-label">@L["Form_DescriptionLabel"]</label>
                         <textarea class="form-control" id="projectDescription" @bind="newProjectDescription" rows="3"></textarea>
                     </div>
+                    @if (availableSources.Count > 1)
+                    {
+                        <div class="mb-3">
+                            <label for="projectSource" class="form-label">MoneyMoney source</label>
+                            <select id="projectSource" class="form-select" @bind="newProjectSourceId">
+                                @foreach (var s in availableSources)
+                                {
+                                    <option value="@s.Id">@s.Name</option>
+                                }
+                            </select>
+                        </div>
+                    }
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" @onclick="HideCreateDialog">@L["Button_Cancel"]</button>
@@ -328,11 +353,14 @@ else
 @code {
     private List<ProjectSpendingSummary>? budgetSummaries;
     private Dictionary<int, ProjectBalanceSummary> projectBalances = new();
-    private DataFreshness? freshness;
-    private UncategorizedSummary? uncategorized;
+    private List<DataFreshness>? freshness;
+    private Dictionary<int, UncategorizedSummary>? uncategorized;
+    private List<ImportSource> availableSources = new();
+    private Dictionary<int, string> sourceNamesById = new();
     private bool showCreateDialog = false;
     private string newProjectName = "";
     private string newProjectDescription = "";
+    private int newProjectSourceId = SourceScope.LegacySourceId;
 
     // "month" = anchor month only, "ytd" = Jan..anchor.Month of anchor.Year,
     // "year" = full anchor year (Jan..Dec). Default is "month".
@@ -450,6 +478,12 @@ else
         // current.
         freshness = await BudgetService.GetDataFreshnessAsync();
         uncategorized = await BudgetService.GetUncategorizedTransactionSummaryAsync();
+        availableSources = await BudgetService.GetAllSourcesAsync();
+        sourceNamesById = availableSources.ToDictionary(s => s.Id, s => s.Name);
+        if (!availableSources.Any(s => s.Id == newProjectSourceId))
+        {
+            newProjectSourceId = availableSources.FirstOrDefault()?.Id ?? SourceScope.LegacySourceId;
+        }
     }
 
     private string FormatRelativeAge(TimeSpan age)
@@ -579,7 +613,10 @@ else
         if (string.IsNullOrWhiteSpace(newProjectName))
             return;
 
-        await BudgetService.CreateProjectAsync(newProjectName, newProjectDescription);
+        var sourceId = availableSources.Any(s => s.Id == newProjectSourceId)
+            ? newProjectSourceId
+            : (availableSources.FirstOrDefault()?.Id ?? SourceScope.LegacySourceId);
+        await BudgetService.CreateProjectAsync(newProjectName, sourceId, newProjectDescription);
         showCreateDialog = false;
         await LoadDashboard();
     }

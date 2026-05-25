@@ -547,7 +547,10 @@ else
     private async Task LoadAccountAssignments()
     {
         accountAssignments = await BudgetService.GetProjectAccountAssignmentsAsync(BudgetId);
-        allAccounts ??= await BudgetService.GetAllAccountsAsync();
+        if (allAccounts == null && budget != null)
+        {
+            allAccounts = await BudgetService.GetAllAccountsAsync(budget.SourceId);
+        }
     }
 
     private void ShowAddAccountDialog()
@@ -618,7 +621,8 @@ else
 
     private async Task ShowAddCategoryDialog()
     {
-        availableCategoriesWithCounts = await BudgetService.GetAllCategoriesWithChildCountsAsync();
+        var sourceId = budget?.SourceId ?? SourceScope.LegacySourceId;
+        availableCategoriesWithCounts = await BudgetService.GetAllCategoriesWithChildCountsAsync(sourceId);
         selectedCategoryId = 0;
         showAddCategoryDialog = true;
     }
@@ -660,6 +664,7 @@ else
     {
         var project = await BudgetService.GetProjectAsync(BudgetId);
         trackingItems = project?.TrackingItems.ToList() ?? new List<ProjectTrackingItem>();
+        var sourceId = project?.SourceId ?? SourceScope.LegacySourceId;
 
         // Load names for tracking items
         if (trackingItems != null)
@@ -676,7 +681,7 @@ else
                 }
                 else if (item.CategoryId.HasValue)
                 {
-                    var categories = await BudgetService.GetAllCategoriesAsync();
+                    var categories = await BudgetService.GetAllCategoriesAsync(sourceId);
                     var category = categories.FirstOrDefault(c => c.Id == item.CategoryId.Value);
                     if (category != null)
                     {
@@ -693,9 +698,10 @@ else
         showTrackingDialog = true;
         StateHasChanged();
 
+        var sourceId = budget?.SourceId ?? SourceScope.LegacySourceId;
         // Load all categories
-        var allCategoryGroups = await BudgetService.GetAllCategoriesWithChildCountsAsync();
-        allActualCategories = await BudgetService.GetAllCategoriesAsync();
+        var allCategoryGroups = await BudgetService.GetAllCategoriesWithChildCountsAsync(sourceId);
+        allActualCategories = await BudgetService.GetAllCategoriesAsync(sourceId);
 
         // Get all category group IDs that are in the project
         if (budget != null)
@@ -836,7 +842,7 @@ else
         var assignedCategoryIds = budget.CategoryAssignments.Select(ca => ca.CategoryId).ToHashSet();
 
         // Load all categories
-        var allCategories = await BudgetService.GetAllCategoriesWithChildCountsAsync();
+        var allCategories = await BudgetService.GetAllCategoriesWithChildCountsAsync(budget.SourceId);
 
         // Build complete set: assigned categories + their ancestors + all descendants
         // Use HashSet of actual items to avoid ID collision issues
@@ -874,8 +880,9 @@ else
             }
         }
 
+        var sentinelRoot = SourceScope.SentinelRoot(budget.SourceId);
         var filteredCategories = projectCategoryItems
-            .Where(c => c.Id != 1)
+            .Where(c => c.Id != sentinelRoot)
             .ToList();
 
         // Build hierarchy with levels

@@ -4,14 +4,17 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// MoneyMoney category (read-only from MoneyMoney database)
+/// MoneyMoney category imported into our DB. <see cref="Id"/> is namespaced via
+/// <c>SourceScope.Namespace(SourceId, rowid)</c>; <see cref="GroupId"/> uses the same
+/// namespacing so it resolves into <see cref="CategoryGroup"/> within the same source.
 /// </summary>
-[Table("categories")]
+[Table("mm_categories")]
 public class Category
 {
     [Key]
-    [Column("rowid")]
     public long Id { get; set; }
+
+    public int SourceId { get; set; }
 
     [Column("name")]
     public string? Name { get; set; }

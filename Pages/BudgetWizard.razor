@@ -185,8 +185,8 @@ else if (step == 3)
             return;
 
         // Load all category groups/categories for the project
-        var allCategoryGroups = await BudgetService.GetAllCategoriesWithChildCountsAsync();
-        allActualCategories = await BudgetService.GetAllCategoriesAsync();
+        var allCategoryGroups = await BudgetService.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        allActualCategories = await BudgetService.GetAllCategoriesAsync(project.SourceId);
 
         // Get all category group IDs that are in the project
         var projectCategoryGroupIds = new HashSet<long>();
@@ -197,8 +197,9 @@ else if (step == 3)
         }
 
         // Filter to only categories in the project
+        var sentinelRoot = SourceScope.SentinelRoot(project.SourceId);
         allAvailableCategories = allCategoryGroups
-            .Where(c => c.CategoryGroup.Id != 1 && projectCategoryGroupIds.Contains(c.CategoryGroup.Id))
+            .Where(c => c.CategoryGroup.Id != sentinelRoot && projectCategoryGroupIds.Contains(c.CategoryGroup.Id))
             .ToList();
 
         // Initialize with top-level assignments selected
@@ -230,13 +231,14 @@ else if (step == 3)
 
         // Load tracking items from the project
         var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(selectedProjectId);
+        var sourceIdForPredict = await BudgetService.GetSourceIdForProjectAsync(selectedProjectId);
 
         // Load the hierarchy once so we can look up parent names without per-item DB calls.
-        var allCategoryItems = await BudgetService.GetAllCategoriesWithChildCountsAsync();
+        var allCategoryItems = await BudgetService.GetAllCategoriesWithChildCountsAsync(sourceIdForPredict);
         var groupById = allCategoryItems
             .Where(c => c.ItemType == CategoryItemType.Group)
             .ToDictionary(c => c.Id, c => c.CategoryGroup);
-        var categoryById = (await BudgetService.GetAllCategoriesAsync())
+        var categoryById = (await BudgetService.GetAllCategoriesAsync(sourceIdForPredict))
             .ToDictionary(c => c.Id, c => c);
 
         predictions = new Dictionary<(long Id, CategoryItemType ItemType), decimal[]>();
@@ -256,7 +258,7 @@ else if (step == 3)
                 var key = (item.CategoryGroupId.Value, CategoryItemType.Group);
                 labels.Add((key, cg.Name ?? L["Category_Unknown"], parentName));
 
-                var monthlyPredictions = await BudgetService.PredictMonthlySpendingForCategoryAsync(item.CategoryGroupId.Value, selectedYear);
+                var monthlyPredictions = await BudgetService.PredictMonthlySpendingForCategoryAsync(item.CategoryGroupId.Value, selectedYear, sourceIdForPredict);
                 predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
             }
             else if (item.CategoryId.HasValue)
@@ -269,7 +271,7 @@ else if (step == 3)
                 var key = (item.CategoryId.Value, CategoryItemType.Category);
                 labels.Add((key, cat.Name ?? L["Category_Unknown"], parentName));
 
-                var monthlyPredictions = await BudgetService.PredictMonthlySpendingForLeafCategoryAsync(item.CategoryId.Value, selectedYear);
+                var monthlyPredictions = await BudgetService.PredictMonthlySpendingForLeafCategoryAsync(item.CategoryId.Value, selectedYear, sourceIdForPredict);
                 predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
             }
         }

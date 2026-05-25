@@ -82,8 +82,10 @@ else
 fi
 
 # Optional: ship the exported DB to a remote OpenBudget instance.
-# Set both OPENBUDGET_UPLOAD_URL (e.g. https://your.server/api/moneymoney-db) and
-# OPENBUDGET_UPLOAD_TOKEN (matching the server's MONEYMONEY_DB_UPLOAD_TOKEN env var).
+# Set both OPENBUDGET_UPLOAD_URL (e.g. https://your.server/api/moneymoney-db/<source-name>)
+# and OPENBUDGET_UPLOAD_TOKEN (matching the server's MONEYMONEY_DB_UPLOAD_TOKEN env var).
+# The trailing /<source-name> is required: first upload to a new name registers a
+# new MoneyMoney source; later uploads replace its data.
 if [ -n "$OPENBUDGET_UPLOAD_URL" ] && [ -n "$OPENBUDGET_UPLOAD_TOKEN" ]; then
     echo "Uploading to $OPENBUDGET_UPLOAD_URL..."
     if curl -fsS -X POST \

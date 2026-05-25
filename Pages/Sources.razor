@@ -1,0 +1,145 @@
+@page "/sources"
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject BudgetService BudgetService
+@inject BudgetDbContext Db
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>MoneyMoney sources</PageTitle>
+
+<h1 class="mb-3">MoneyMoney sources</h1>
+
+<p class="text-muted">
+    Each named source holds one MoneyMoney installation's data. Upload a fresh DB with
+    <code>POST /api/moneymoney-db/{name}</code> — the first upload to a new name registers it.
+</p>
+
+@if (sources == null)
+{
+    <p><em>Loading…</em></p>
+}
+else if (!sources.Any())
+{
+    <div class="alert alert-info">No sources registered yet.</div>
+}
+else
+{
+    <table class="table table-sm align-middle">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Created</th>
+                <th>Last upload</th>
+                <th class="text-end">Projects</th>
+                <th class="text-end">Transactions</th>
+                <th class="text-end">Bytes</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var s in sources)
+            {
+                <tr>
+                    <td><strong>@s.Name</strong></td>
+                    <td><span title="@s.CreatedAt.ToString("u")">@s.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</span></td>
+                    <td>
+                        @if (s.LastUploadAt.HasValue)
+                        {
+                            <span title="@s.LastUploadAt.Value.ToString("u")">@s.LastUploadAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">never</span>
+                        }
+                    </td>
+                    <td class="text-end">@projectCounts.GetValueOrDefault(s.Id, 0)</td>
+                    <td class="text-end">@transactionCounts.GetValueOrDefault(s.Id, 0).ToString("N0")</td>
+                    <td class="text-end">@(s.LastUploadSizeBytes.HasValue ? s.LastUploadSizeBytes.Value.ToString("N0") : "—")</td>
+                    <td class="text-end">
+                        @if (projectCounts.GetValueOrDefault(s.Id, 0) == 0 && s.Id != SourceScope.LegacySourceId)
+                        {
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(s)">Delete</button>
+                        }
+                        else
+                        {
+                            <span class="text-muted small">in use</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (pendingDelete != null)
+{
+    <div class="modal show d-block" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Delete source "@pendingDelete.Name"?</h5>
+                    <button type="button" class="btn-close" @onclick="() => pendingDelete = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p>This wipes all mm_* rows for this source and removes the source entry.</p>
+                    <p class="text-danger">Projects bound to this source must be deleted first; the action will refuse otherwise.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => pendingDelete = null">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="DeleteConfirmed">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+}
+
+@code {
+    private List<ImportSource>? sources;
+    private Dictionary<int, int> projectCounts = new();
+    private Dictionary<int, int> transactionCounts = new();
+    private ImportSource? pendingDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        sources = await BudgetService.GetAllSourcesAsync();
+        projectCounts = await Db.Projects
+            .GroupBy(p => p.SourceId)
+            .Select(g => new { SourceId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.SourceId, x => x.Count);
+        transactionCounts = await Db.Transactions
+            .GroupBy(t => t.SourceId)
+            .Select(g => new { SourceId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.SourceId, x => x.Count);
+    }
+
+    private void ConfirmDelete(ImportSource s)
+    {
+        pendingDelete = s;
+    }
+
+    private async Task DeleteConfirmed()
+    {
+        if (pendingDelete == null) return;
+        var sourceId = pendingDelete.Id;
+        if (await Db.Projects.AnyAsync(p => p.SourceId == sourceId))
+        {
+            // UI shouldn't even offer the button in this case, but guard anyway.
+            pendingDelete = null;
+            return;
+        }
+        await Db.Database.ExecuteSqlRawAsync("DELETE FROM mm_transactions WHERE SourceId = {0}", new object[] { sourceId });
+        await Db.Database.ExecuteSqlRawAsync("DELETE FROM mm_categories WHERE SourceId = {0}", new object[] { sourceId });
+        await Db.Database.ExecuteSqlRawAsync("DELETE FROM mm_category_groups WHERE SourceId = {0}", new object[] { sourceId });
+        await Db.Database.ExecuteSqlRawAsync("DELETE FROM mm_accounts WHERE SourceId = {0}", new object[] { sourceId });
+        Db.ImportSources.Remove(pendingDelete);
+        await Db.SaveChangesAsync();
+        pendingDelete = null;
+        await LoadAsync();
+    }
+}

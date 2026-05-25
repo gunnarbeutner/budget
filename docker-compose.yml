@@ -2,7 +2,7 @@
 # compose file (e.g. `MONEYMONEY_DB_UPLOAD_TOKEN=$(openssl rand -hex 32)`).
 #
 # Initial bootstrap: copy a MoneyMoney SQLite snapshot into ./data/moneymoney.db
-# before the first start, or POST it to /api/moneymoney-db after start.
+# before the first start, or POST it to /api/moneymoney-db/{name} after start.
 #
 # TLS: terminate at a reverse proxy in front of this container. The app speaks
 # plain HTTP on port 8080; put nginx / Caddy / Traefik in front for HTTPS.

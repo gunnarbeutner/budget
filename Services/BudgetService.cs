@@ -3,21 +3,13 @@ using OpenBudget.Models;
 
 namespace OpenBudget.Services;
 
-/// <summary>Locates the MoneyMoney SQLite file on disk for stat-style queries (upload freshness).
-/// Registered as a singleton in Program.cs.</summary>
-public record MoneyMoneyDbInfo(string Path);
-
 public class BudgetService
 {
     private readonly BudgetDbContext _budgetDb;
-    private readonly MoneyMoneyDbContext _moneyMoneyDb;
-    private readonly MoneyMoneyDbInfo _moneyMoneyDbInfo;
 
-    public BudgetService(BudgetDbContext budgetDb, MoneyMoneyDbContext moneyMoneyDb, MoneyMoneyDbInfo moneyMoneyDbInfo)
+    public BudgetService(BudgetDbContext budgetDb)
     {
         _budgetDb = budgetDb;
-        _moneyMoneyDb = moneyMoneyDb;
-        _moneyMoneyDbInfo = moneyMoneyDbInfo;
     }
 
     /// <summary>
@@ -45,9 +37,9 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Create a new budget
+    /// Create a new budget bound to a specific MoneyMoney source.
     /// </summary>
-    public async Task<Project> CreateProjectAsync(string name, string? description = null)
+    public async Task<Project> CreateProjectAsync(string name, int sourceId, string? description = null)
     {
         var maxSortOrder = await _budgetDb.Projects.AnyAsync()
             ? await _budgetDb.Projects.MaxAsync(p => p.SortOrder)
@@ -58,7 +50,8 @@ public class BudgetService
             Name = name,
             Description = description,
             CreatedAt = DateTime.UtcNow,
-            SortOrder = maxSortOrder + 1
+            SortOrder = maxSortOrder + 1,
+            SourceId = sourceId
         };
 
         _budgetDb.Projects.Add(project);
@@ -144,13 +137,35 @@ public class BudgetService
     }
 
     /// <summary>
+    /// Resolve the SourceId for a project. Single FK lookup; callers that already loaded the
+    /// project should pass <c>project.SourceId</c> directly instead.
+    /// </summary>
+    public async Task<int> GetSourceIdForProjectAsync(int projectId)
+    {
+        return await _budgetDb.Projects
+            .Where(p => p.Id == projectId)
+            .Select(p => p.SourceId)
+            .FirstOrDefaultAsync();
+    }
+
+    /// <summary>
+    /// All registered MoneyMoney sources, ordered by name.
+    /// </summary>
+    public async Task<List<ImportSource>> GetAllSourcesAsync()
+    {
+        return await _budgetDb.ImportSources
+            .OrderBy(s => s.Name)
+            .ToListAsync();
+    }
+
+    /// <summary>
     /// Calculate average monthly spending for a category group and all its categories/sub-groups
     /// over the last N months
     /// </summary>
-    public async Task<decimal> CalculateAverageMonthlySpendingAsync(long categoryGroupId, int months = 12)
+    public async Task<decimal> CalculateAverageMonthlySpendingAsync(long categoryGroupId, int sourceId, int months = 12)
     {
         // Get all category IDs for this group (including sub-groups)
-        var categoryIds = await GetAllCategoryIdsForGroupAsync(categoryGroupId);
+        var categoryIds = await GetAllCategoryIdsForGroupAsync(categoryGroupId, sourceId);
 
         if (!categoryIds.Any())
             return 0;
@@ -163,7 +178,8 @@ public class BudgetService
         var endTimestamp = endDate.ToUnixTimeSeconds();
 
         // Get all transactions for these categories in the time range
-        var transactions = await _moneyMoneyDb.Transactions
+        var transactions = await _budgetDb.Transactions
+            .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
             .Where(t => t.Timestamp >= startTimestamp && t.Timestamp <= endTimestamp)
             .Where(t => t.Amount < 0) // Only expenses (negative amounts)
@@ -222,14 +238,14 @@ public class BudgetService
         // the expense total, and any negative-amount transactions in income categories reduce
         // income. Using it for every row makes "Spent" mean "net amount in the item's natural
         // direction" consistently across the requested month range.
-        var ieBatch = await GetMonthlyIncomeAndExpenseBatchAsync(trackedKeys, year, projectId);
+        var ieBatch = await GetMonthlyIncomeAndExpenseBatchAsync(trackedKeys, year, project.SourceId, projectId);
         var incomeItemsSet = await GetIncomeItemsForProjectAsync(projectId);
 
-        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync();
+        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(project.SourceId);
         var groupNameLookup = allCategoriesWithCounts
             .Where(c => c.ItemType == CategoryItemType.Group)
             .ToDictionary(c => c.Id, c => c.CategoryGroup.Name ?? "Unknown");
-        var leafCategoryNameLookup = (await _moneyMoneyDb.Categories.ToListAsync())
+        var leafCategoryNameLookup = (await _budgetDb.Categories.Where(c => c.SourceId == project.SourceId).ToListAsync())
             .ToDictionary(c => c.Id, c => c.Name ?? "Unknown");
 
         var categorySpending = new List<CategorySpending>();
@@ -298,18 +314,18 @@ public class BudgetService
     /// <summary>
     /// Get all category IDs for a category group (including all sub-groups and their categories)
     /// </summary>
-    private async Task<List<long>> GetAllCategoryIdsForGroupAsync(long categoryGroupId)
+    private async Task<List<long>> GetAllCategoryIdsForGroupAsync(long categoryGroupId, int sourceId)
     {
         var categoryIds = new List<long>();
 
         // Get all category group IDs (including sub-groups)
-        var groupIds = await GetAllCategoryGroupIdsRecursiveAsync(categoryGroupId);
+        var groupIds = await GetAllCategoryGroupIdsRecursiveAsync(categoryGroupId, sourceId);
 
         // Get all categories that belong to these groups
         foreach (var groupId in groupIds)
         {
-            var categoriesInGroup = await _moneyMoneyDb.Categories
-                .Where(c => c.GroupId == groupId)
+            var categoriesInGroup = await _budgetDb.Categories
+                .Where(c => c.SourceId == sourceId && c.GroupId == groupId)
                 .Select(c => c.Id)
                 .ToListAsync();
 
@@ -322,18 +338,18 @@ public class BudgetService
     /// <summary>
     /// Recursively get all category group IDs including sub-groups
     /// </summary>
-    private async Task<List<long>> GetAllCategoryGroupIdsRecursiveAsync(long categoryGroupId)
+    private async Task<List<long>> GetAllCategoryGroupIdsRecursiveAsync(long categoryGroupId, int sourceId)
     {
         var groupIds = new List<long> { categoryGroupId };
 
         // Get sub-groups
-        var subGroups = await _moneyMoneyDb.CategoryGroups
-            .Where(cg => cg.ParentGroupId == categoryGroupId)
+        var subGroups = await _budgetDb.CategoryGroups
+            .Where(cg => cg.SourceId == sourceId && cg.ParentGroupId == categoryGroupId)
             .ToListAsync();
 
         foreach (var subGroup in subGroups)
         {
-            var subGroupIds = await GetAllCategoryGroupIdsRecursiveAsync(subGroup.Id);
+            var subGroupIds = await GetAllCategoryGroupIdsRecursiveAsync(subGroup.Id, sourceId);
             groupIds.AddRange(subGroupIds);
         }
 
@@ -341,25 +357,32 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Get all categories (from categories table)
+    /// Get all categories for a specific source (from mm_categories).
     /// </summary>
-    public async Task<List<Category>> GetAllCategoriesAsync()
+    public async Task<List<Category>> GetAllCategoriesAsync(int sourceId)
     {
-        return await _moneyMoneyDb.Categories
+        return await _budgetDb.Categories
+            .Where(c => c.SourceId == sourceId)
             .OrderBy(c => c.Name)
             .ToListAsync();
     }
 
     /// <summary>
-    /// Get all category groups and individual categories with their sub-group counts
+    /// Get all category groups and individual categories with their sub-group counts, scoped
+    /// to one source. Sentinel rowid-0/1 entries (MoneyMoney's hidden "Umbuchungen" root) are
+    /// filtered out per source.
     /// </summary>
-    public async Task<List<CategoryGroupWithChildCount>> GetAllCategoriesWithChildCountsAsync()
+    public async Task<List<CategoryGroupWithChildCount>> GetAllCategoriesWithChildCountsAsync(int sourceId)
     {
-        var allCategoryGroups = await _moneyMoneyDb.CategoryGroups
+        var sentinelRoot = SourceScope.SentinelRoot(sourceId);
+
+        var allCategoryGroups = await _budgetDb.CategoryGroups
+            .Where(cg => cg.SourceId == sourceId)
             .OrderBy(cg => cg.Name)
             .ToListAsync();
 
-        var allCategories = await _moneyMoneyDb.Categories
+        var allCategories = await _budgetDb.Categories
+            .Where(c => c.SourceId == sourceId)
             .OrderBy(c => c.Name)
             .ToListAsync();
 
@@ -367,8 +390,8 @@ public class BudgetService
 
         foreach (var categoryGroup in allCategoryGroups)
         {
-            // Skip category group 1 if it has no name (it's the root Umbuchungen system category)
-            if (categoryGroup.Id == 1 && string.IsNullOrEmpty(categoryGroup.Name))
+            // Skip the source's sentinel root category group (no name, holds "Umbuchungen").
+            if (categoryGroup.Id == sentinelRoot && string.IsNullOrEmpty(categoryGroup.Name))
                 continue;
 
             // Count direct children (both sub-groups and individual categories)
@@ -378,10 +401,10 @@ public class BudgetService
 
             // A category group is a root category if:
             // 1. It has no parent (group_key is null or 0), OR
-            // 2. It's a child of category group 1 (Umbuchungen root) which we're hiding
+            // 2. It's a child of the sentinel root group which we're hiding
             var isRootCategory = categoryGroup.ParentGroupId == null ||
                                  categoryGroup.ParentGroupId == 0 ||
-                                 categoryGroup.ParentGroupId == 1;
+                                 categoryGroup.ParentGroupId == sentinelRoot;
 
             result.Add(new CategoryGroupWithChildCount
             {
@@ -415,30 +438,34 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Get all root category groups (category groups with no parent or parent is the root category group with id=1)
+    /// Get all root category groups for a source (groups with no parent or parented to the
+    /// sentinel root group).
     /// </summary>
-    public async Task<List<CategoryGroup>> GetRootCategoriesAsync()
+    public async Task<List<CategoryGroup>> GetRootCategoriesAsync(int sourceId)
     {
-        return await _moneyMoneyDb.CategoryGroups
-            .Where(cg => cg.ParentGroupId == null || cg.ParentGroupId == 0 || cg.ParentGroupId == 1)
-            .Where(cg => cg.Id != 1) // Exclude the empty root category group
+        var sentinelRoot = SourceScope.SentinelRoot(sourceId);
+        return await _budgetDb.CategoryGroups
+            .Where(cg => cg.SourceId == sourceId)
+            .Where(cg => cg.ParentGroupId == null || cg.ParentGroupId == 0 || cg.ParentGroupId == sentinelRoot)
+            .Where(cg => cg.Id != sentinelRoot)
             .OrderBy(cg => cg.Name)
             .ToListAsync();
     }
 
     /// <summary>
-    /// Get a category group by ID
+    /// Get a category group by namespaced ID. The ID alone is unique across sources because
+    /// of namespacing, so no source filter is needed at the boundary.
     /// </summary>
     public async Task<CategoryGroup?> GetCategoryWithSubCategoriesAsync(long categoryGroupId)
     {
-        return await _moneyMoneyDb.CategoryGroups
+        return await _budgetDb.CategoryGroups
             .FirstOrDefaultAsync(cg => cg.Id == categoryGroupId);
     }
 
     /// <summary>
     /// Get monthly spending for an individual category over the last N months
     /// </summary>
-    public async Task<List<MonthlySpending>> GetMonthlySpendingForCategoryAsync(long categoryId, int months = 12)
+    public async Task<List<MonthlySpending>> GetMonthlySpendingForCategoryAsync(long categoryId, int sourceId, int months = 12)
     {
         // Get calendar month boundaries - last N months including current month
         var now = DateTimeOffset.UtcNow;
@@ -454,7 +481,8 @@ public class BudgetService
             var startTimestamp = monthStart.ToUnixTimeSeconds();
             var endTimestamp = monthEnd.ToUnixTimeSeconds();
 
-            var spent = await _moneyMoneyDb.Transactions
+            var spent = await _budgetDb.Transactions
+                .Where(t => t.SourceId == sourceId)
                 .Where(t => t.CategoryId == categoryId)
                 .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
                 .Where(t => t.Amount < 0)
@@ -474,9 +502,9 @@ public class BudgetService
     /// <summary>
     /// Get monthly spending for a category group over the last N months
     /// </summary>
-    public async Task<List<MonthlySpending>> GetMonthlySpendingAsync(long categoryGroupId, int months = 12)
+    public async Task<List<MonthlySpending>> GetMonthlySpendingAsync(long categoryGroupId, int sourceId, int months = 12)
     {
-        var categoryIds = await GetAllCategoryIdsForGroupAsync(categoryGroupId);
+        var categoryIds = await GetAllCategoryIdsForGroupAsync(categoryGroupId, sourceId);
 
         if (!categoryIds.Any())
             return new List<MonthlySpending>();
@@ -495,7 +523,8 @@ public class BudgetService
             var startTimestamp = monthStart.ToUnixTimeSeconds();
             var endTimestamp = monthEnd.ToUnixTimeSeconds();
 
-            var spent = await _moneyMoneyDb.Transactions
+            var spent = await _budgetDb.Transactions
+                .Where(t => t.SourceId == sourceId)
                 .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
                 .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
                 .Where(t => t.Amount < 0)
@@ -513,12 +542,13 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Get spending breakdown by category for a specific month
+    /// Get spending breakdown by category for a specific month. Must be scoped to a project so
+    /// the source is known; calling with projectId==0 returns an empty list.
     /// </summary>
     public async Task<List<CategorySpendingDetail>> GetCategorySpendingForMonthAsync(
         int year,
         int month,
-        int projectId = 0,
+        int projectId,
         HashSet<long>? selectedCategoryGroupIds = null,
         HashSet<long>? selectedCategoryIds = null)
     {
@@ -528,39 +558,29 @@ public class BudgetService
         var startTimestamp = ((DateTimeOffset)startDate).ToUnixTimeSeconds();
         var endTimestamp = ((DateTimeOffset)endDate).ToUnixTimeSeconds();
 
-        List<CategoryGroup> categoryGroupsToProcess;
+        if (projectId <= 0)
+            return new List<CategorySpendingDetail>();
 
-        if (projectId > 0)
+        var project = await GetProjectAsync(projectId);
+        if (project == null)
+            return new List<CategorySpendingDetail>();
+
+        var sourceId = project.SourceId;
+        var budgetCategoryGroupIds = new HashSet<long>();
+        foreach (var assignment in project.CategoryAssignments)
         {
-            // Get only category groups assigned to this budget (including all descendants)
-            var project = await GetProjectAsync(projectId);
-            if (project == null)
-                return new List<CategorySpendingDetail>();
-
-            var budgetCategoryGroupIds = new HashSet<long>();
-            foreach (var assignment in project.CategoryAssignments)
+            budgetCategoryGroupIds.Add(assignment.CategoryId);
+            var subGroupIds = await GetAllCategoryGroupIdsRecursiveAsync(assignment.CategoryId, sourceId);
+            foreach (var subGroupId in subGroupIds)
             {
-                budgetCategoryGroupIds.Add(assignment.CategoryId);
-                var subGroupIds = await GetAllCategoryGroupIdsRecursiveAsync(assignment.CategoryId);
-                foreach (var subGroupId in subGroupIds)
-                {
-                    budgetCategoryGroupIds.Add(subGroupId);
-                }
+                budgetCategoryGroupIds.Add(subGroupId);
             }
+        }
 
-            categoryGroupsToProcess = await _moneyMoneyDb.CategoryGroups
-                .Where(cg => budgetCategoryGroupIds.Contains(cg.Id))
-                .OrderBy(cg => cg.Name)
-                .ToListAsync();
-        }
-        else
-        {
-            // Get ALL category groups (not just roots)
-            categoryGroupsToProcess = await _moneyMoneyDb.CategoryGroups
-                .Where(cg => cg.Id != 1)  // Exclude the hidden root category
-                .OrderBy(cg => cg.Name)
-                .ToListAsync();
-        }
+        var categoryGroupsToProcess = await _budgetDb.CategoryGroups
+            .Where(cg => cg.SourceId == sourceId && budgetCategoryGroupIds.Contains(cg.Id))
+            .OrderBy(cg => cg.Name)
+            .ToListAsync();
 
         var results = new List<CategorySpendingDetail>();
 
@@ -573,12 +593,13 @@ public class BudgetService
 
             foreach (var categoryGroup in groupsToProcess)
             {
-                var categoryIds = await GetAllCategoryIdsForGroupAsync(categoryGroup.Id);
+                var categoryIds = await GetAllCategoryIdsForGroupAsync(categoryGroup.Id, sourceId);
 
                 if (!categoryIds.Any())
                     continue;
 
-                var spent = await _moneyMoneyDb.Transactions
+                var spent = await _budgetDb.Transactions
+                    .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
                     .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
                     .Where(t => t.Amount < 0)
@@ -601,13 +622,14 @@ public class BudgetService
         {
             foreach (var categoryId in selectedCategoryIds)
             {
-                var category = await _moneyMoneyDb.Categories
-                    .FirstOrDefaultAsync(c => c.Id == categoryId);
+                var category = await _budgetDb.Categories
+                    .FirstOrDefaultAsync(c => c.SourceId == sourceId && c.Id == categoryId);
 
                 if (category == null)
                     continue;
 
-                var spent = await _moneyMoneyDb.Transactions
+                var spent = await _budgetDb.Transactions
+                    .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId == categoryId)
                     .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
                     .Where(t => t.Amount < 0)
@@ -846,7 +868,7 @@ public class BudgetService
 
         foreach (var assignment in project.CategoryAssignments)
         {
-            var monthlyPredictions = await PredictMonthlySpendingForCategoryAsync(assignment.CategoryId, targetYear);
+            var monthlyPredictions = await PredictMonthlySpendingForCategoryAsync(assignment.CategoryId, targetYear, project.SourceId);
             predictions[assignment.CategoryId] = monthlyPredictions;
         }
 
@@ -858,10 +880,10 @@ public class BudgetService
     /// calendar year. Used as the prediction for already-elapsed target years where seasonal
     /// scaling against today's level would be nonsensical.
     /// </summary>
-    private async Task<decimal[]> GetYearActualsAsync((long Id, CategoryItemType ItemType) key, int year)
+    private async Task<decimal[]> GetYearActualsAsync((long Id, CategoryItemType ItemType) key, int year, int sourceId)
     {
         var result = new decimal[12];
-        var batch = await GetMonthlySpendingBatchAsync(new[] { key }, year);
+        var batch = await GetMonthlySpendingBatchAsync(new[] { key }, year, sourceId);
         if (batch.TryGetValue(key, out var trend))
         {
             for (int i = 0; i < 12 && i < trend.Count; i++)
@@ -876,17 +898,17 @@ public class BudgetService
     /// per-leaf history (<see cref="GetMonthlySpendingForCategoryAsync"/>) instead of summing
     /// a group's descendants.
     /// </summary>
-    public async Task<decimal[]> PredictMonthlySpendingForLeafCategoryAsync(long categoryId, int targetYear)
+    public async Task<decimal[]> PredictMonthlySpendingForLeafCategoryAsync(long categoryId, int targetYear, int sourceId)
     {
         var predictions = new decimal[12];
 
         // For a completely elapsed year, just use that year's own actuals — no scaling needed.
         if (targetYear < DateTime.UtcNow.Year)
         {
-            return await GetYearActualsAsync((categoryId, CategoryItemType.Category), targetYear);
+            return await GetYearActualsAsync((categoryId, CategoryItemType.Category), targetYear, sourceId);
         }
 
-        var monthlyData = await GetMonthlySpendingForCategoryAsync(categoryId, 24);
+        var monthlyData = await GetMonthlySpendingForCategoryAsync(categoryId, sourceId, 24);
 
         if (!monthlyData.Any())
             return predictions;
@@ -938,18 +960,18 @@ public class BudgetService
     /// Predict monthly spending for a specific category group using seasonal adjustment
     /// This looks at the same month last year and adjusts based on overall trend
     /// </summary>
-    public async Task<decimal[]> PredictMonthlySpendingForCategoryAsync(long categoryGroupId, int targetYear)
+    public async Task<decimal[]> PredictMonthlySpendingForCategoryAsync(long categoryGroupId, int targetYear, int sourceId)
     {
         var predictions = new decimal[12];
 
         // For a completely elapsed year, just use that year's own actuals — no scaling needed.
         if (targetYear < DateTime.UtcNow.Year)
         {
-            return await GetYearActualsAsync((categoryGroupId, CategoryItemType.Group), targetYear);
+            return await GetYearActualsAsync((categoryGroupId, CategoryItemType.Group), targetYear, sourceId);
         }
 
         // Get 2 years of historical data
-        var monthlyData = await GetMonthlySpendingAsync(categoryGroupId, 24);
+        var monthlyData = await GetMonthlySpendingAsync(categoryGroupId, sourceId, 24);
 
         if (!monthlyData.Any())
         {
@@ -1259,7 +1281,8 @@ public class BudgetService
             ta => (ta.CategoryId, ta.ItemType),
             ta => ta.IsIncome);
 
-        var allCategories = await GetAllCategoriesWithChildCountsAsync();
+        var sourceId = await GetSourceIdForProjectAsync(projectId);
+        var allCategories = await GetAllCategoriesWithChildCountsAsync(sourceId);
 
         foreach (var item in allCategories)
         {
@@ -1373,10 +1396,10 @@ public class BudgetService
     /// Get monthly income and expenses for a category group in a specific year
     /// Uses project-specific category type assignments if projectId is provided
     /// </summary>
-    public async Task<(decimal[] Income, decimal[] Expenses)> GetMonthlyIncomeAndExpenseAsync(long categoryGroupId, int year, int? projectId = null)
+    public async Task<(decimal[] Income, decimal[] Expenses)> GetMonthlyIncomeAndExpenseAsync(long categoryGroupId, int year, int sourceId, int? projectId = null)
     {
         // Check if this is a leaf category (has no children) or a category group
-        var isLeafCategory = await _moneyMoneyDb.Categories.AnyAsync(c => c.Id == categoryGroupId);
+        var isLeafCategory = await _budgetDb.Categories.AnyAsync(c => c.SourceId == sourceId && c.Id == categoryGroupId);
 
         List<long> categoryIds;
         if (isLeafCategory)
@@ -1387,7 +1410,7 @@ public class BudgetService
         else
         {
             // It's a category group, get all descendant categories
-            categoryIds = await GetAllCategoryIdsForGroupAsync(categoryGroupId);
+            categoryIds = await GetAllCategoryIdsForGroupAsync(categoryGroupId, sourceId);
         }
 
         if (!categoryIds.Any())
@@ -1399,7 +1422,7 @@ public class BudgetService
         if (projectId.HasValue)
         {
             // Use project-specific category type assignments with inheritance
-            var allCategories = await GetAllCategoriesWithChildCountsAsync();
+            var allCategories = await GetAllCategoriesWithChildCountsAsync(sourceId);
             var typeAssignments = await _budgetDb.CategoryTypeAssignments
                 .Where(cta => cta.ProjectId == projectId.Value)
                 .ToListAsync();
@@ -1424,8 +1447,8 @@ public class BudgetService
         else
         {
             // Fallback to MoneyMoney Category.Type
-            var categories = await _moneyMoneyDb.Categories
-                .Where(c => categoryIds.Contains(c.Id))
+            var categories = await _budgetDb.Categories
+                .Where(c => c.SourceId == sourceId && categoryIds.Contains(c.Id))
                 .ToDictionaryAsync(c => c.Id, c => c.Type ?? 0);
 
             // Type 2 = Income categories, all others = Expense categories
@@ -1447,7 +1470,8 @@ public class BudgetService
             // Get income from income categories (sum all amounts)
             if (incomeCategoryIds.Any())
             {
-                var monthlyIncome = await _moneyMoneyDb.Transactions
+                var monthlyIncome = await _budgetDb.Transactions
+                    .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId.HasValue && incomeCategoryIds.Contains(t.CategoryId.Value))
                     .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
                     .SumAsync(t => (decimal)t.Amount);
@@ -1458,7 +1482,8 @@ public class BudgetService
             // Get expenses from expense categories (sum all amounts, negate to make positive)
             if (expenseCategoryIds.Any())
             {
-                var monthlyExpense = await _moneyMoneyDb.Transactions
+                var monthlyExpense = await _budgetDb.Transactions
+                    .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId.HasValue && expenseCategoryIds.Contains(t.CategoryId.Value))
                     .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
                     .SumAsync(t => -(decimal)t.Amount);
@@ -1479,6 +1504,7 @@ public class BudgetService
         GetMonthlyIncomeAndExpenseBatchAsync(
             IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
             int year,
+            int sourceId,
             int? projectId)
     {
         var result = new Dictionary<(long, CategoryItemType), (decimal[], decimal[])>();
@@ -1487,7 +1513,7 @@ public class BudgetService
 
         if (!items.Any()) return result;
 
-        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync();
+        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(sourceId);
         var itemToLeafIds = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
 
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
@@ -1509,8 +1535,8 @@ public class BudgetService
         }
         else
         {
-            var types = await _moneyMoneyDb.Categories
-                .Where(c => allLeafIds.Contains(c.Id))
+            var types = await _budgetDb.Categories
+                .Where(c => c.SourceId == sourceId && allLeafIds.Contains(c.Id))
                 .Select(c => new { c.Id, c.Type })
                 .ToListAsync();
             leafIsIncome = types.ToDictionary(c => c.Id, c => c.Type == 2);
@@ -1520,7 +1546,8 @@ public class BudgetService
         var startTs = ((DateTimeOffset)yearStart).ToUnixTimeSeconds();
         var endTs = ((DateTimeOffset)yearStart.AddYears(1)).ToUnixTimeSeconds();
 
-        var raw = await _moneyMoneyDb.Transactions
+        var raw = await _budgetDb.Transactions
+            .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .Where(t => t.Timestamp >= startTs && t.Timestamp < endTs)
             .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount, t.Timestamp })
@@ -1566,6 +1593,7 @@ public class BudgetService
     public async Task<Dictionary<(long Id, CategoryItemType ItemType), decimal>>
         GetMonthlyIncomePerItemAsync(
             IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
+            int sourceId,
             int? projectId,
             int year,
             int month)
@@ -1574,7 +1602,7 @@ public class BudgetService
         foreach (var item in items) result[item] = 0m;
         if (!items.Any()) return result;
 
-        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync();
+        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(sourceId);
         var itemToLeafIds = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
 
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
@@ -1595,8 +1623,8 @@ public class BudgetService
         }
         else
         {
-            var types = await _moneyMoneyDb.Categories
-                .Where(c => allLeafIds.Contains(c.Id))
+            var types = await _budgetDb.Categories
+                .Where(c => c.SourceId == sourceId && allLeafIds.Contains(c.Id))
                 .Select(c => new { c.Id, c.Type })
                 .ToListAsync();
             leafIsIncome = types.ToDictionary(c => c.Id, c => c.Type == 2);
@@ -1606,7 +1634,8 @@ public class BudgetService
         var startTs = ((DateTimeOffset)monthStartUtc).ToUnixTimeSeconds();
         var endTs = ((DateTimeOffset)monthStartUtc.AddMonths(1)).ToUnixTimeSeconds();
 
-        var raw = await _moneyMoneyDb.Transactions
+        var raw = await _budgetDb.Transactions
+            .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .Where(t => t.Timestamp >= startTs && t.Timestamp < endTs)
             .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount })
@@ -1634,14 +1663,18 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Returns the calendar years that have at least one transaction in the MoneyMoney DB,
-    /// newest first. Implemented as min/max of the timestamp column rather than a DISTINCT
-    /// year scan — gap years (rare) are still returned for UI continuity.
+    /// Returns the calendar years that have at least one transaction for a given source,
+    /// newest first. Min/max of the timestamp column rather than a DISTINCT year scan — gap
+    /// years (rare) are still returned for UI continuity.
     /// </summary>
-    public async Task<List<int>> GetYearsWithTransactionsAsync()
+    public async Task<List<int>> GetYearsWithTransactionsAsync(int sourceId)
     {
-        var minTs = await _moneyMoneyDb.Transactions.MinAsync(t => (long?)t.Timestamp);
-        var maxTs = await _moneyMoneyDb.Transactions.MaxAsync(t => (long?)t.Timestamp);
+        var minTs = await _budgetDb.Transactions
+            .Where(t => t.SourceId == sourceId)
+            .MinAsync(t => (long?)t.Timestamp);
+        var maxTs = await _budgetDb.Transactions
+            .Where(t => t.SourceId == sourceId)
+            .MaxAsync(t => (long?)t.Timestamp);
         return YearsBetween(minTs, maxTs);
     }
 
@@ -1665,15 +1698,17 @@ public class BudgetService
         }
         if (!trackedKeys.Any()) return new List<int>();
 
-        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync();
+        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(project.SourceId);
         var itemToLeafIds = BuildItemToLeafCategoryIds(trackedKeys, allCategoriesWithCounts);
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
         if (!allLeafIds.Any()) return new List<int>();
 
-        var minTs = await _moneyMoneyDb.Transactions
+        var minTs = await _budgetDb.Transactions
+            .Where(t => t.SourceId == project.SourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .MinAsync(t => (long?)t.Timestamp);
-        var maxTs = await _moneyMoneyDb.Transactions
+        var maxTs = await _budgetDb.Transactions
+            .Where(t => t.SourceId == project.SourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .MaxAsync(t => (long?)t.Timestamp);
         return YearsBetween(minTs, maxTs);
@@ -1697,7 +1732,8 @@ public class BudgetService
     public async Task<Dictionary<(long Id, CategoryItemType ItemType), List<MonthlySpending>>>
         GetMonthlySpendingBatchAsync(
             IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
-            int year)
+            int year,
+            int sourceId)
     {
         const int months = 12;
         var result = new Dictionary<(long, CategoryItemType), List<MonthlySpending>>();
@@ -1708,7 +1744,7 @@ public class BudgetService
 
         var startDate = new DateTimeOffset(new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc));
 
-        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync();
+        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(sourceId);
         var itemToLeafIds = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
 
         // Seed N month entries for items that have any leaf categories
@@ -1729,7 +1765,8 @@ public class BudgetService
         var startTs = startDate.ToUnixTimeSeconds();
         var endTs = startDate.AddMonths(months).ToUnixTimeSeconds();
 
-        var raw = await _moneyMoneyDb.Transactions
+        var raw = await _budgetDb.Transactions
+            .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .Where(t => t.Timestamp >= startTs && t.Timestamp < endTs)
             .Where(t => t.Amount < 0)
@@ -1801,12 +1838,13 @@ public class BudgetService
     #region Project Account Assignments
 
     /// <summary>
-    /// Returns all MoneyMoney accounts ordered by their MoneyMoney sort field, then name.
+    /// Returns all MoneyMoney accounts for a source ordered by MoneyMoney sort field, then name.
     /// Used by the project Accounts card and the assignment picker.
     /// </summary>
-    public async Task<List<Account>> GetAllAccountsAsync()
+    public async Task<List<Account>> GetAllAccountsAsync(int sourceId)
     {
-        return await _moneyMoneyDb.Accounts
+        return await _budgetDb.Accounts
+            .Where(a => a.SourceId == sourceId)
             .OrderBy(a => a.Sort)
             .ThenBy(a => a.Name)
             .ToListAsync();
@@ -1870,6 +1908,13 @@ public class BudgetService
     /// </summary>
     public async Task<ProjectDailyDeltaResult> GetProjectActualDailyDeltaAsync(int projectId, int year)
     {
+        var project = await _budgetDb.Projects
+            .Where(p => p.Id == projectId)
+            .Select(p => new { p.Id, p.SourceId })
+            .FirstOrDefaultAsync();
+        if (project == null) return new ProjectDailyDeltaResult { DailyDelta = Array.Empty<decimal>() };
+        var sourceId = project.SourceId;
+
         var assignments = await _budgetDb.ProjectAccountAssignments
             .Where(paa => paa.ProjectId == projectId)
             .ToListAsync();
@@ -1886,8 +1931,8 @@ public class BudgetService
         var exclusiveIds = assignments.Where(a => a.Scope == AccountScope.Exclusive).Select(a => a.AccountId).ToHashSet();
         var sharedIds = assignments.Where(a => a.Scope == AccountScope.Shared).Select(a => a.AccountId).ToHashSet();
 
-        var accounts = await _moneyMoneyDb.Accounts
-            .Where(a => accountIds.Contains(a.Id))
+        var accounts = await _budgetDb.Accounts
+            .Where(a => a.SourceId == sourceId && accountIds.Contains(a.Id))
             .ToListAsync();
         decimal currentBalance = accounts.Sum(a => a.CurrentBalance ?? 0m);
 
@@ -1901,7 +1946,7 @@ public class BudgetService
                     ? (t.CategoryGroupId.Value, CategoryItemType.Group)
                     : (t.CategoryId!.Value, CategoryItemType.Category))
                 .ToList();
-            var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync();
+            var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(sourceId);
             var itemToLeaf = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
             projectLeafCategoryIds = itemToLeaf.Values.SelectMany(s => s).ToHashSet();
         }
@@ -1921,7 +1966,8 @@ public class BudgetService
         decimal ytdSumAllScopes = 0m;
         if (clampedEnd > yearStartTs)
         {
-            ytdSumAllScopes = (decimal)await _moneyMoneyDb.Transactions
+            ytdSumAllScopes = (decimal)await _budgetDb.Transactions
+                .Where(t => t.SourceId == sourceId)
                 .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
                 .Where(t => t.Timestamp >= yearStartTs && t.Timestamp < clampedEnd)
                 .SumAsync(t => t.Amount);
@@ -1930,7 +1976,8 @@ public class BudgetService
         // StartingBalance defaults to currentBalance — a known approximation flagged in the UI.
         result.StartingBalance = currentBalance - ytdSumAllScopes;
 
-        var yearTxns = await _moneyMoneyDb.Transactions
+        var yearTxns = await _budgetDb.Transactions
+            .Where(t => t.SourceId == sourceId)
             .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
             .Where(t => t.Timestamp >= yearStartTs && t.Timestamp < clampedEnd)
             .Select(t => new { AccountId = t.AccountId!.Value, t.CategoryId, t.Amount, t.Timestamp })
@@ -1959,40 +2006,35 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Returns when the MoneyMoney DB file was last replaced on disk plus a per-account refresh
-    /// snapshot (last successful refresh time + last error). The dashboard uses this to flag
-    /// stale data; projection numbers built on stale data silently lie, so a visible indicator
-    /// matters more than any single feature on top.
+    /// Returns when each registered MoneyMoney source was last imported (LastUploadAt) plus the
+    /// account-refresh snapshot for each source. The dashboard uses this to flag stale data;
+    /// projection numbers built on stale data silently lie, so a visible indicator matters.
     /// </summary>
-    public async Task<DataFreshness> GetDataFreshnessAsync()
+    public async Task<List<DataFreshness>> GetDataFreshnessAsync()
     {
-        DateTime? dbUploadedUtc = null;
-        try
-        {
-            if (File.Exists(_moneyMoneyDbInfo.Path))
-                dbUploadedUtc = File.GetLastWriteTimeUtc(_moneyMoneyDbInfo.Path);
-        }
-        catch
-        {
-            // Stat failure isn't actionable from here — leave dbUploadedUtc null and the UI will
-            // show "unknown" rather than crash the whole page.
-        }
+        var sources = await _budgetDb.ImportSources
+            .OrderBy(s => s.Name)
+            .ToListAsync();
 
-        var accounts = await _moneyMoneyDb.Accounts
-            .Select(a => new AccountFreshness
+        var accountsBySource = (await _budgetDb.Accounts
+            .Select(a => new { a.SourceId, a.Id, a.Name, a.RefreshTimestamp, a.Error })
+            .ToListAsync())
+            .GroupBy(a => a.SourceId)
+            .ToDictionary(g => g.Key, g => g.Select(a => new AccountFreshness
             {
                 AccountId = a.Id,
                 Name = a.Name,
                 RefreshTimestamp = a.RefreshTimestamp,
                 Error = a.Error
-            })
-            .ToListAsync();
+            }).ToList());
 
-        return new DataFreshness
+        return sources.Select(s => new DataFreshness
         {
-            DbUploadedUtc = dbUploadedUtc,
-            Accounts = accounts
-        };
+            SourceId = s.Id,
+            SourceName = s.Name,
+            DbUploadedUtc = s.LastUploadAt,
+            Accounts = accountsBySource.TryGetValue(s.Id, out var list) ? list : new List<AccountFreshness>()
+        }).ToList();
     }
 
     /// <summary>
@@ -2007,16 +2049,25 @@ public class BudgetService
     /// — their real categories live on the child rows — so they're excluded to match
     /// MoneyMoney's own "Uncategorized" view.
     /// </summary>
-    public async Task<UncategorizedSummary> GetUncategorizedTransactionSummaryAsync()
+    public async Task<Dictionary<int, UncategorizedSummary>> GetUncategorizedTransactionSummaryAsync()
     {
-        var query = _moneyMoneyDb.Transactions
-            .Where(t => t.Splitted != 1)
-            .Where(t => t.CategoryId == null
-                || !_moneyMoneyDb.Categories.Any(c => c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)));
+        // Group per source so the dashboard can render a banner per source. Two queries (count
+        // and sum) per source — fine even at a dozen sources.
+        var sourceIds = await _budgetDb.ImportSources.Select(s => s.Id).ToListAsync();
+        var result = new Dictionary<int, UncategorizedSummary>();
+        foreach (var sourceId in sourceIds)
+        {
+            var query = _budgetDb.Transactions
+                .Where(t => t.SourceId == sourceId)
+                .Where(t => t.Splitted != 1)
+                .Where(t => t.CategoryId == null
+                    || !_budgetDb.Categories.Any(c => c.SourceId == sourceId && c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)));
 
-        var count = await query.CountAsync();
-        var absSum = count == 0 ? 0m : (decimal)await query.SumAsync(t => Math.Abs(t.Amount));
-        return new UncategorizedSummary { Count = count, AbsoluteAmount = absSum };
+            var count = await query.CountAsync();
+            var absSum = count == 0 ? 0m : (decimal)await query.SumAsync(t => Math.Abs(t.Amount));
+            result[sourceId] = new UncategorizedSummary { SourceId = sourceId, Count = count, AbsoluteAmount = absSum };
+        }
+        return result;
     }
 
     /// <summary>
@@ -2029,8 +2080,10 @@ public class BudgetService
         var assignments = await _budgetDb.ProjectAccountAssignments.ToListAsync();
         if (!assignments.Any()) return new Dictionary<int, ProjectBalanceSummary>();
 
+        // AccountIds are namespaced globally unique across sources, so a single Contains() query
+        // resolves accounts for every project regardless of source.
         var accountIds = assignments.Select(a => a.AccountId).Distinct().ToList();
-        var accounts = await _moneyMoneyDb.Accounts
+        var accounts = await _budgetDb.Accounts
             .Where(a => accountIds.Contains(a.Id))
             .ToListAsync();
         var accountById = accounts.ToDictionary(a => a.Id);
@@ -2066,14 +2119,15 @@ public class BudgetService
     /// </summary>
     public async Task<Dictionary<(long Id, CategoryItemType ItemType), DayOfMonthDistribution>>
         GetCategoryDayOfMonthWeightsAsync(
-            IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items)
+            IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
+            int sourceId)
     {
         const int MinSampleSize = 3;
 
         var result = new Dictionary<(long, CategoryItemType), DayOfMonthDistribution>();
         if (!items.Any()) return result;
 
-        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync();
+        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(sourceId);
         var itemToLeafIds = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
 
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
@@ -2088,7 +2142,8 @@ public class BudgetService
 
         // Single transaction scan across all relevant leaves; trailing-year vs all-time are then
         // computed in-memory per item without further round trips.
-        var allTxns = await _moneyMoneyDb.Transactions
+        var allTxns = await _budgetDb.Transactions
+            .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount, t.Timestamp })
             .ToListAsync();
@@ -2153,13 +2208,16 @@ public class ProjectBalanceSummary
 
 public class UncategorizedSummary
 {
+    public int SourceId { get; set; }
     public int Count { get; set; }
     public decimal AbsoluteAmount { get; set; }
 }
 
 public class DataFreshness
 {
-    /// <summary>Last-write time of the MoneyMoney SQLite file (i.e. when it was last uploaded via the /api/moneymoney-db endpoint). Null when the file is missing or unreadable.</summary>
+    public int SourceId { get; set; }
+    public string SourceName { get; set; } = string.Empty;
+    /// <summary>When this source was last uploaded via the /api/moneymoney-db/{name} endpoint. Null when nothing has been imported yet.</summary>
     public DateTime? DbUploadedUtc { get; set; }
     public List<AccountFreshness> Accounts { get; set; } = new();
 

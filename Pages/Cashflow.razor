@@ -434,6 +434,7 @@ else
     private int selectedBudgetId = 0;
     private bool isLoading = false;
     private string? projectName;
+    private int projectSourceId = SourceScope.LegacySourceId;
     private bool notFound = false;
 
     private List<CategoryCashflow> incomeCategories = new();
@@ -560,6 +561,7 @@ else
 
         selectedProjectId = project.Id;
         projectName = project.Name;
+        projectSourceId = project.SourceId;
 
         // Overlay URL-provided state before the year clamp / budget defaulting runs, so a
         // shared link reproducing a specific year + budget + projection mode + floor wins
@@ -726,7 +728,7 @@ else
 
         if (trackingItems.Any())
         {
-            var allCategories = await BudgetService.GetAllCategoriesWithChildCountsAsync();
+            var allCategories = await BudgetService.GetAllCategoriesWithChildCountsAsync(projectSourceId);
 
             foreach (var item in trackingItems)
             {
@@ -755,7 +757,7 @@ else
 
         // Load monthly data for every tracked item in a single batched call
         var batchKeys = availableCategories.Select(c => (c.Id, c.ItemType)).ToList();
-        var batch = await BudgetService.GetMonthlyIncomeAndExpenseBatchAsync(batchKeys, selectedYear, selectedProjectId);
+        var batch = await BudgetService.GetMonthlyIncomeAndExpenseBatchAsync(batchKeys, selectedYear, projectSourceId, selectedProjectId);
 
         // If a budget is selected for the displayed year, project future months. Expenses use
         // the budget's per-month values directly. Income is one global value per month:
@@ -794,7 +796,7 @@ else
             recentIncomeSourceMonth = (sourceMonthStart.Year, sourceMonthStart.Month);
             var recentBatchKeys = availableCategories.Select(c => (c.Id, c.ItemType)).ToList();
             recentIncomePerItem = await BudgetService.GetMonthlyIncomePerItemAsync(
-                recentBatchKeys, selectedProjectId, sourceMonthStart.Year, sourceMonthStart.Month);
+                recentBatchKeys, projectSourceId, selectedProjectId, sourceMonthStart.Year, sourceMonthStart.Month);
         }
 
         // Pre-compute the projected total annual expense (past actuals + future budget) and
@@ -903,7 +905,7 @@ else
         if (projecting)
         {
             var projItems = availableCategories.Select(c => (c.Id, c.ItemType)).ToList();
-            cachedHistograms = await BudgetService.GetCategoryDayOfMonthWeightsAsync(projItems);
+            cachedHistograms = await BudgetService.GetCategoryDayOfMonthWeightsAsync(projItems, projectSourceId);
         }
 
         // Attribute projected income to each source via the contribution splits and
