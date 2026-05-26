@@ -215,43 +215,6 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Calculate average monthly spending for a category group and all its categories/sub-groups
-    /// over the last N months
-    /// </summary>
-    public async Task<decimal> CalculateAverageMonthlySpendingAsync(long categoryGroupId, int sourceId, int months = 12)
-    {
-        // Get all category IDs for this group (including sub-groups)
-        var categoryIds = await GetAllCategoryIdsForGroupAsync(categoryGroupId, sourceId);
-
-        if (!categoryIds.Any())
-            return 0;
-
-        // Calculate date range
-        var endDate = DateTimeOffset.UtcNow;
-        var startDate = endDate.AddMonths(-months);
-
-        var startTimestamp = startDate.ToUnixTimeSeconds();
-        var endTimestamp = endDate.ToUnixTimeSeconds();
-
-        // Get all transactions for these categories in the time range
-        var transactions = await _budgetDb.Transactions
-            .Where(t => t.SourceId == sourceId)
-            .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
-            .Where(t => t.Timestamp >= startTimestamp && t.Timestamp <= endTimestamp)
-            .Where(t => t.Amount < 0) // Only expenses (negative amounts)
-            .ToListAsync();
-
-        if (!transactions.Any())
-            return 0;
-
-        // Calculate total spending (convert to positive)
-        var totalSpending = transactions.Sum(t => Math.Abs((decimal)t.Amount));
-
-        // Return average per month
-        return totalSpending / months;
-    }
-
-    /// <summary>
     /// Spending summary for a project across a month range [fromMonth, toMonth] within a year.
     /// Tracked items come from the project's live ProjectTrackingItems so changes show up
     /// without re-running the budget wizard. Budget amounts are read from the active Budget
@@ -619,21 +582,6 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Get all root category groups for a source (groups with no parent or parented to the
-    /// sentinel root group).
-    /// </summary>
-    public async Task<List<CategoryGroup>> GetRootCategoriesAsync(int sourceId)
-    {
-        var sentinelRoot = SourceScope.SentinelRoot(sourceId);
-        return await _budgetDb.CategoryGroups
-            .Where(cg => cg.SourceId == sourceId)
-            .Where(cg => cg.ParentGroupId == null || cg.ParentGroupId == 0 || cg.ParentGroupId == sentinelRoot)
-            .Where(cg => cg.Id != sentinelRoot)
-            .OrderBy(cg => cg.Name)
-            .ToListAsync();
-    }
-
-    /// <summary>
     /// Get a category group by namespaced ID. The ID alone is unique across sources because
     /// of namespacing, so no source filter is needed at the boundary.
     /// </summary>
@@ -735,115 +683,6 @@ public class BudgetService
         }
 
         return results;
-    }
-
-    /// <summary>
-    /// Get spending breakdown by category for a specific month. Must be scoped to a project so
-    /// the source is known; calling with projectId==0 returns an empty list.
-    /// </summary>
-    public async Task<List<CategorySpendingDetail>> GetCategorySpendingForMonthAsync(
-        int year,
-        int month,
-        int projectId,
-        HashSet<long>? selectedCategoryGroupIds = null,
-        HashSet<long>? selectedCategoryIds = null)
-    {
-        var startDate = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var endDate = startDate.AddMonths(1);
-
-        var startTimestamp = ((DateTimeOffset)startDate).ToUnixTimeSeconds();
-        var endTimestamp = ((DateTimeOffset)endDate).ToUnixTimeSeconds();
-
-        if (projectId <= 0)
-            return new List<CategorySpendingDetail>();
-
-        var project = await GetProjectAsync(projectId);
-        if (project == null)
-            return new List<CategorySpendingDetail>();
-
-        var sourceId = project.SourceId;
-        var budgetCategoryGroupIds = new HashSet<long>();
-        foreach (var assignment in project.CategoryAssignments)
-        {
-            budgetCategoryGroupIds.Add(assignment.CategoryId);
-            var subGroupIds = await GetAllCategoryGroupIdsRecursiveAsync(assignment.CategoryId, sourceId);
-            foreach (var subGroupId in subGroupIds)
-            {
-                budgetCategoryGroupIds.Add(subGroupId);
-            }
-        }
-
-        var categoryGroupsToProcess = await _budgetDb.CategoryGroups
-            .Where(cg => cg.SourceId == sourceId && budgetCategoryGroupIds.Contains(cg.Id))
-            .OrderBy(cg => cg.Name)
-            .ToListAsync();
-
-        var results = new List<CategorySpendingDetail>();
-
-        // Process selected category groups
-        if (selectedCategoryGroupIds != null && selectedCategoryGroupIds.Any())
-        {
-            var groupsToProcess = categoryGroupsToProcess
-                .Where(cg => selectedCategoryGroupIds.Contains(cg.Id))
-                .ToList();
-
-            foreach (var categoryGroup in groupsToProcess)
-            {
-                var categoryIds = await GetAllCategoryIdsForGroupAsync(categoryGroup.Id, sourceId);
-
-                if (!categoryIds.Any())
-                    continue;
-
-                var spent = await _budgetDb.Transactions
-                    .Where(t => t.SourceId == sourceId)
-                    .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
-                    .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
-                    .Where(t => t.Amount < 0)
-                    .SumAsync(t => -(decimal)t.Amount);
-
-                if (spent > 0)
-                {
-                    results.Add(new CategorySpendingDetail
-                    {
-                        CategoryGroupId = categoryGroup.Id,
-                        CategoryGroupName = categoryGroup.Name ?? "Unknown",
-                        Amount = spent
-                    });
-                }
-            }
-        }
-
-        // Process selected individual categories
-        if (selectedCategoryIds != null && selectedCategoryIds.Any())
-        {
-            foreach (var categoryId in selectedCategoryIds)
-            {
-                var category = await _budgetDb.Categories
-                    .FirstOrDefaultAsync(c => c.SourceId == sourceId && c.Id == categoryId);
-
-                if (category == null)
-                    continue;
-
-                var spent = await _budgetDb.Transactions
-                    .Where(t => t.SourceId == sourceId)
-                    .Where(t => t.CategoryId == categoryId)
-                    .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
-                    .Where(t => t.Amount < 0)
-                    .SumAsync(t => -(decimal)t.Amount);
-
-                if (spent > 0)
-                {
-                    results.Add(new CategorySpendingDetail
-                    {
-                        CategoryGroupId = category.GroupId ?? 0,
-                        CategoryGroupName = category.Name ?? "Unknown",
-                        Amount = spent
-                    });
-                }
-            }
-        }
-
-        return results.OrderByDescending(r => r.Amount).ToList();
     }
 
     #region Budget Management
@@ -1046,65 +885,9 @@ public class BudgetService
         return result;
     }
 
-    /// <summary>
-    /// Add or update a monthly budget entry
-    /// </summary>
-    public async Task<MonthlyBudgetEntry> SaveMonthlyBudgetEntryAsync(MonthlyBudgetEntry entry)
-    {
-        var existing = await _budgetDb.MonthlyBudgetEntries
-            .FirstOrDefaultAsync(e => e.BudgetId == entry.BudgetId
-                && e.CategoryId == entry.CategoryId
-                && e.ItemType == entry.ItemType);
-
-        if (existing != null)
-        {
-            existing.Month1 = entry.Month1;
-            existing.Month2 = entry.Month2;
-            existing.Month3 = entry.Month3;
-            existing.Month4 = entry.Month4;
-            existing.Month5 = entry.Month5;
-            existing.Month6 = entry.Month6;
-            existing.Month7 = entry.Month7;
-            existing.Month8 = entry.Month8;
-            existing.Month9 = entry.Month9;
-            existing.Month10 = entry.Month10;
-            existing.Month11 = entry.Month11;
-            existing.Month12 = entry.Month12;
-
-            _budgetDb.MonthlyBudgetEntries.Update(existing);
-        }
-        else
-        {
-            _budgetDb.MonthlyBudgetEntries.Add(entry);
-        }
-
-        await _budgetDb.SaveChangesAsync();
-        return existing ?? entry;
-    }
-
     #endregion
 
     #region Budget Prediction
-
-    /// <summary>
-    /// Predict monthly budgets for a project for a specific year using historical data with seasonal adjustment
-    /// </summary>
-    public async Task<Dictionary<long, decimal[]>> PredictMonthlyBudgetsAsync(int projectId, int targetYear)
-    {
-        var project = await GetProjectAsync(projectId);
-        if (project == null)
-            return new Dictionary<long, decimal[]>();
-
-        var predictions = new Dictionary<long, decimal[]>();
-
-        foreach (var assignment in project.CategoryAssignments)
-        {
-            var monthlyPredictions = await PredictMonthlySpendingForCategoryAsync(assignment.CategoryId, targetYear, project.SourceId);
-            predictions[assignment.CategoryId] = monthlyPredictions;
-        }
-
-        return predictions;
-    }
 
     /// <summary>
     /// Reads the 12 actual monthly spending amounts for a single tracked item in a specific
@@ -1283,47 +1066,6 @@ public class BudgetService
         }
 
         return predictions;
-    }
-
-    /// <summary>
-    /// Generate a complete budget for a project based on predictions
-    /// </summary>
-    public async Task<Budget> GeneratePredictedBudgetAsync(int projectId, int year, string? notes = null)
-    {
-        // Create the budget
-        var budget = await CreateBudgetAsync(projectId, year, notes ?? "Auto-generated from historical data");
-
-        // Get predictions
-        var predictions = await PredictMonthlyBudgetsAsync(projectId, year);
-
-        // Create monthly budget entries — these come from ProjectCategoryAssignments which
-        // historically only stored Group references.
-        foreach (var (categoryId, monthlyAmounts) in predictions)
-        {
-            var entry = new MonthlyBudgetEntry
-            {
-                BudgetId = budget.Id,
-                CategoryId = categoryId,
-                ItemType = CategoryItemType.Group,
-                Month1 = monthlyAmounts[0],
-                Month2 = monthlyAmounts[1],
-                Month3 = monthlyAmounts[2],
-                Month4 = monthlyAmounts[3],
-                Month5 = monthlyAmounts[4],
-                Month6 = monthlyAmounts[5],
-                Month7 = monthlyAmounts[6],
-                Month8 = monthlyAmounts[7],
-                Month9 = monthlyAmounts[8],
-                Month10 = monthlyAmounts[9],
-                Month11 = monthlyAmounts[10],
-                Month12 = monthlyAmounts[11]
-            };
-
-            await SaveMonthlyBudgetEntryAsync(entry);
-        }
-
-        // Reload budget with entries
-        return await GetBudgetAsync(budget.Id) ?? budget;
     }
 
     #endregion
@@ -1552,38 +1294,6 @@ public class BudgetService
         return result;
     }
 
-    public async Task<List<MonthlySpending>> GetBudgetTrendAsync(long categoryId, CategoryItemType itemType, int budgetId)
-    {
-        var budget = await _budgetDb.Budgets.FindAsync(budgetId);
-        if (budget == null) return new List<MonthlySpending>();
-
-        var entry = await _budgetDb.MonthlyBudgetEntries
-            .FirstOrDefaultAsync(e => e.BudgetId == budgetId
-                && e.CategoryId == categoryId
-                && e.ItemType == itemType);
-
-        if (entry == null) return new List<MonthlySpending>();
-
-        var monthlyBudgets = new[]
-        {
-            entry.Month1, entry.Month2, entry.Month3, entry.Month4,
-            entry.Month5, entry.Month6, entry.Month7, entry.Month8,
-            entry.Month9, entry.Month10, entry.Month11, entry.Month12
-        };
-
-        var result = new List<MonthlySpending>();
-        for (int month = 1; month <= 12; month++)
-        {
-            result.Add(new MonthlySpending
-            {
-                Year = budget.Year,
-                Month = month,
-                Amount = monthlyBudgets[month - 1]
-            });
-        }
-        return result;
-    }
-
     /// <summary>
     /// Get category type assignments for a project
     /// </summary>
@@ -1724,112 +1434,9 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Get monthly income and expenses for a category group in a specific year
-    /// Uses project-specific category type assignments if projectId is provided
-    /// </summary>
-    public async Task<(decimal[] Income, decimal[] Expenses)> GetMonthlyIncomeAndExpenseAsync(long categoryGroupId, int year, int sourceId, int? projectId = null)
-    {
-        // Check if this is a leaf category (has no children) or a category group
-        var isLeafCategory = await _budgetDb.Categories.AnyAsync(c => c.SourceId == sourceId && c.Id == categoryGroupId);
-
-        List<long> categoryIds;
-        if (isLeafCategory)
-        {
-            // It's a leaf category, use it directly
-            categoryIds = new List<long> { categoryGroupId };
-        }
-        else
-        {
-            // It's a category group, get all descendant categories
-            categoryIds = await GetAllCategoryIdsForGroupAsync(categoryGroupId, sourceId);
-        }
-
-        if (!categoryIds.Any())
-            return (new decimal[12], new decimal[12]);
-
-        HashSet<long> incomeCategoryIds;
-        HashSet<long> expenseCategoryIds;
-
-        if (projectId.HasValue)
-        {
-            // Use project-specific category type assignments with inheritance
-            var allCategories = await GetAllCategoriesWithChildCountsAsync(sourceId);
-            var typeAssignments = await _budgetDb.CategoryTypeAssignments
-                .Where(cta => cta.ProjectId == projectId.Value)
-                .ToListAsync();
-
-            var assignmentLookup = typeAssignments.ToDictionary(
-                ta => (ta.CategoryId, ta.ItemType),
-                ta => ta.IsIncome);
-
-            incomeCategoryIds = new HashSet<long>();
-            expenseCategoryIds = new HashSet<long>();
-
-            // Resolve each leaf category's type with inheritance
-            foreach (var categoryId in categoryIds)
-            {
-                bool isIncome = ResolveCategoryTypeWithInheritance(categoryId, CategoryItemType.Category, allCategories, assignmentLookup);
-                if (isIncome)
-                    incomeCategoryIds.Add(categoryId);
-                else
-                    expenseCategoryIds.Add(categoryId);
-            }
-        }
-        else
-        {
-            // Fallback to MoneyMoney Category.Type
-            var categories = await _budgetDb.Categories
-                .Where(c => c.SourceId == sourceId && categoryIds.Contains(c.Id))
-                .ToDictionaryAsync(c => c.Id, c => c.Type ?? 0);
-
-            // Type 2 = Income categories, all others = Expense categories
-            incomeCategoryIds = categories.Where(kvp => kvp.Value == 2).Select(kvp => kvp.Key).ToHashSet();
-            expenseCategoryIds = categories.Where(kvp => kvp.Value != 2).Select(kvp => kvp.Key).ToHashSet();
-        }
-
-        var income = new decimal[12];
-        var expenses = new decimal[12];
-
-        for (int month = 1; month <= 12; month++)
-        {
-            var startDate = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
-            var endDate = startDate.AddMonths(1);
-
-            var startTimestamp = ((DateTimeOffset)startDate).ToUnixTimeSeconds();
-            var endTimestamp = ((DateTimeOffset)endDate).ToUnixTimeSeconds();
-
-            // Get income from income categories (sum all amounts)
-            if (incomeCategoryIds.Any())
-            {
-                var monthlyIncome = await _budgetDb.Transactions
-                    .Where(t => t.SourceId == sourceId)
-                    .Where(t => t.CategoryId.HasValue && incomeCategoryIds.Contains(t.CategoryId.Value))
-                    .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
-                    .SumAsync(t => (decimal)t.Amount);
-
-                income[month - 1] = monthlyIncome;
-            }
-
-            // Get expenses from expense categories (sum all amounts, negate to make positive)
-            if (expenseCategoryIds.Any())
-            {
-                var monthlyExpense = await _budgetDb.Transactions
-                    .Where(t => t.SourceId == sourceId)
-                    .Where(t => t.CategoryId.HasValue && expenseCategoryIds.Contains(t.CategoryId.Value))
-                    .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
-                    .SumAsync(t => -(decimal)t.Amount);
-
-                expenses[month - 1] = monthlyExpense;
-            }
-        }
-
-        return (income, expenses);
-    }
-
-    /// <summary>
-    /// Batched version of GetMonthlyIncomeAndExpenseAsync. Loads category hierarchy and type
-    /// assignments once, then performs a single transactions query for the entire year covering
-    /// every tracked item's leaf categories. Replaces an N×24-query pattern with one query.
+    /// Loads category hierarchy and type assignments once, then performs a single transactions
+    /// query for the entire year covering every tracked item's leaf categories. Replaces an
+    /// N×24-query pattern with one query.
     /// </summary>
     public async Task<Dictionary<(long Id, CategoryItemType ItemType), (decimal[] Income, decimal[] Expenses)>>
         GetMonthlyIncomeAndExpenseBatchAsync(
