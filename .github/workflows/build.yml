@@ -3,10 +3,33 @@ name: Build and push container image
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore OpenBudget.Tests/OpenBudget.Tests.csproj
+
+      - name: Run tests
+        run: dotnet test OpenBudget.Tests/OpenBudget.Tests.csproj --no-restore --verbosity minimal
+
   build-and-push:
+    # Only push the image when tests pass. PR runs hit `test` only — they don't have
+    # packages:write and the build step would 401 against GHCR anyway.
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
