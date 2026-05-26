@@ -69,9 +69,13 @@
   <data name="Heading_Year" xml:space="preserve"><value>Year {0}</value></data>
   <data name="Heading_YTD" xml:space="preserve"><value>YTD through {0}</value></data>
 
+  <data name="Tree_Heading" xml:space="preserve"><value>Browse</value></data>
   <data name="Tree_AllTransactions" xml:space="preserve"><value>All transactions</value></data>
   <data name="Tree_Section_Accounts" xml:space="preserve"><value>Accounts</value></data>
   <data name="Tree_Section_Categories" xml:space="preserve"><value>Categories</value></data>
+  <data name="Aria_Tree" xml:space="preserve"><value>Browse tree</value></data>
+  <data name="Aria_ToggleTree" xml:space="preserve"><value>Toggle browse tree</value></data>
+  <data name="Aria_Close" xml:space="preserve"><value>Close</value></data>
 
   <data name="Header_AllTransactions" xml:space="preserve"><value>All transactions</value></data>
   <data name="Header_Context_AllTransactions" xml:space="preserve"><value>Project</value></data>

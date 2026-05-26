@@ -26,17 +26,23 @@
 
 <div class="d-flex flex-wrap mb-3 align-items-center gap-2 sticky-top bg-body border-bottom py-2"
      style="margin-left: -0.5rem; margin-right: -0.5rem; padding-left: 0.5rem; padding-right: 0.5rem; z-index: 1020;">
+    @* Mobile-only toggle for the left rail. On lg+ the rail is part of the grid; below lg
+       it slides in as a drawer, opened via this button. *@
+    <button type="button" class="btn btn-sm btn-outline-secondary d-lg-none"
+            @onclick="ToggleRail" aria-label="@L["Aria_ToggleTree"]" aria-expanded="@railOpen.ToString().ToLower()">
+        <i class="bi bi-list" aria-hidden="true"></i>
+    </button>
     <a href="/projects/@ProjectId" class="text-decoration-none text-body-secondary me-1"
        title="@L["Aria_BackToProject"]" aria-label="@L["Aria_BackToProject"]">
         <i class="bi bi-chevron-left"></i>
     </a>
-    <h5 class="mb-0 me-2">@(project?.Name ?? "")</h5>
+    <h5 class="mb-0 me-2 browse-project-name">@(project?.Name ?? "")</h5>
 
     <button type="button" class="btn btn-sm btn-outline-secondary"
             @onclick="() => StepAnchor(-1)" aria-label="@L["Aria_Previous"]">
         <i class="bi bi-chevron-left" aria-hidden="true"></i>
     </button>
-    <span class="text-body-secondary small">@AnchorHeading</span>
+    <span class="text-body-secondary small browse-anchor-label">@AnchorHeading</span>
     <button type="button" class="btn btn-sm btn-outline-secondary"
             @onclick="() => StepAnchor(1)" aria-label="@L["Aria_Next"]" disabled="@IsAtMaxAnchor">
         <i class="bi bi-chevron-right" aria-hidden="true"></i>
@@ -54,7 +60,15 @@
 </div>
 
 <div class="browse-layout">
-    <aside class="browse-rail">
+    @if (railOpen)
+    {
+        <div class="browse-backdrop d-lg-none" @onclick="CloseRail" aria-hidden="true"></div>
+    }
+    <aside class="browse-rail @(railOpen ? "open" : "")" aria-label="@L["Aria_Tree"]">
+        <div class="browse-rail-header d-lg-none">
+            <span class="fw-semibold">@L["Tree_Heading"]</span>
+            <button type="button" class="btn-close" @onclick="CloseRail" aria-label="@L["Aria_Close"]"></button>
+        </div>
         @if (tree == null)
         {
             <div aria-busy="true">
@@ -366,6 +380,16 @@
     // OnAfterRenderAsync push it to the browser.
     private bool chartDirty;
 
+    // Mobile-only: the left rail is hidden by default and slides in as a drawer when
+    // toggled. On lg+ the rail is part of the grid and this flag is ignored (CSS keeps
+    // .browse-rail visible regardless of .open). Closing happens on backdrop click, the X
+    // button, or whenever the user picks a tree node — auto-closing on selection so they
+    // immediately see the transactions on the right.
+    private bool railOpen;
+
+    private void ToggleRail() => railOpen = !railOpen;
+    private void CloseRail() => railOpen = false;
+
     public void Dispose()
     {
         selfRef?.Dispose();
@@ -552,6 +576,7 @@
     {
         selectionKind = "all"; selectionId = null;
         pageNumber = 0;
+        railOpen = false;
         UpdateUrl();
         await ReloadTransactionsAsync();
     }
@@ -575,6 +600,7 @@
     {
         selectionKind = "account"; selectionId = id;
         pageNumber = 0;
+        railOpen = false;
         UpdateUrl();
         await ReloadTransactionsAsync();
     }
@@ -584,6 +610,7 @@
         selectionKind = n.ItemType == CategoryItemType.Category ? "category" : "group";
         selectionId = n.Id;
         pageNumber = 0;
+        railOpen = false;
         UpdateUrl();
         await ReloadTransactionsAsync();
     }
@@ -1011,7 +1038,10 @@
         builder.AddAttribute(2, "role", "treeitem");
         builder.AddAttribute(3, "tabindex", "0");
         builder.AddAttribute(4, "aria-selected", isSelected ? "true" : "false");
-        builder.AddAttribute(5, "style", $"padding-left: {0.5 + level * 1.0:0.##}rem;");
+        // FormattableString.Invariant: CSS lengths need a decimal point, but Razor's $""
+        // interpolation defaults to CurrentCulture — German renders "1,5rem", which browsers
+        // silently drop as invalid and the tree flattens.
+        builder.AddAttribute(5, "style", FormattableString.Invariant($"padding-left: {0.5 + level * 1.0:0.##}rem;"));
         builder.AddAttribute(6, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, () => SelectCategoryNode(node)));
         builder.AddAttribute(7, "onkeydown", EventCallback.Factory.Create<KeyboardEventArgs>(this, e => OnCategoryKeydown(e, node)));
 
