@@ -19,6 +19,8 @@ builder.Services.AddScoped<BudgetPredictionService>();
 builder.Services.AddScoped<CashflowProjectionService>();
 builder.Services.AddScoped<BudgetService>();
 builder.Services.AddScoped<FreshnessService>();
+builder.Services.AddScoped<TransactionQueryService>();
+builder.Services.AddScoped<BrowseService>();
 builder.Services.AddSingleton<MoneyMoneyImportService>();
 
 // Localization: resx files live under /Resources mirroring the namespace
@@ -54,6 +56,12 @@ var dataDir = Path.Combine(builder.Environment.ContentRootPath, "data");
 var budgetDbPath = Path.Combine(dataDir, "budgets.db");
 var uploadStagingDir = Path.Combine(dataDir, "uploads");
 
+// Ensure the data dir exists before EF opens the SQLite file — fresh checkouts and Docker
+// volumes both arrive without it, and SQLite errors with "unable to open database file"
+// rather than auto-creating the parent directory.
+Directory.CreateDirectory(dataDir);
+Directory.CreateDirectory(uploadStagingDir);
+
 builder.Services.AddDbContext<BudgetDbContext>(options =>
 {
     options.UseSqlite($"Data Source={budgetDbPath}");
@@ -67,8 +75,6 @@ using (var scope = app.Services.CreateScope())
     var budgetDb = scope.ServiceProvider.GetRequiredService<BudgetDbContext>();
     budgetDb.Database.Migrate();
 }
-
-Directory.CreateDirectory(uploadStagingDir);
 
 // ForwardedHeaders must be the first middleware so downstream components see the right scheme.
 app.UseForwardedHeaders();
