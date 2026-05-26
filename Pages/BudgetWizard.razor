@@ -4,6 +4,7 @@
 @using OpenBudget.Shared
 @using Microsoft.AspNetCore.WebUtilities
 @inject BudgetService BudgetService
+@inject CategoryHierarchyService CategoryHierarchyService
 @inject NavigationManager Navigation
 @inject IStringLocalizer<BudgetWizard> L
 
@@ -294,8 +295,8 @@ else if (step == 3)
             return;
 
         // Load all category groups/categories for the project
-        var allCategoryGroups = await BudgetService.GetAllCategoriesWithChildCountsAsync(project.SourceId);
-        allActualCategories = await BudgetService.GetAllCategoriesAsync(project.SourceId);
+        var allCategoryGroups = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        allActualCategories = await CategoryHierarchyService.GetAllCategoriesAsync(project.SourceId);
 
         // Get all category group IDs that are in the project
         var projectCategoryGroupIds = new HashSet<long>();
@@ -342,11 +343,11 @@ else if (step == 3)
         incomeKeys = await BudgetService.GetIncomeItemsForProjectAsync(selectedProjectId);
 
         // Load the hierarchy once so we can look up parent names without per-item DB calls.
-        var allCategoryItems = await BudgetService.GetAllCategoriesWithChildCountsAsync(sourceIdForPredict);
+        var allCategoryItems = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(sourceIdForPredict);
         var groupById = allCategoryItems
             .Where(c => c.ItemType == CategoryItemType.Group)
             .ToDictionary(c => c.Id, c => c.CategoryGroup);
-        var categoryById = (await BudgetService.GetAllCategoriesAsync(sourceIdForPredict))
+        var categoryById = (await CategoryHierarchyService.GetAllCategoriesAsync(sourceIdForPredict))
             .ToDictionary(c => c.Id, c => c);
 
         predictions = new Dictionary<(long Id, CategoryItemType ItemType), decimal[]>();

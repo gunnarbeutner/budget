@@ -3,6 +3,7 @@
 @using OpenBudget.Models
 @using OpenBudget.Shared
 @inject BudgetService BudgetService
+@inject CategoryHierarchyService CategoryHierarchyService
 @inject NavigationManager Navigation
 @inject IStringLocalizer<ProjectDetail> L
 
@@ -697,7 +698,7 @@ else
             // Load category group names
             foreach (var assignment in budget.CategoryAssignments)
             {
-                var categoryGroup = await BudgetService.GetCategoryWithSubCategoriesAsync(assignment.CategoryId);
+                var categoryGroup = await CategoryHierarchyService.GetCategoryWithSubCategoriesAsync(assignment.CategoryId);
                 if (categoryGroup != null)
                 {
                     categoryNames[assignment.CategoryId] = categoryGroup.Name ?? L["Unknown"].Value;
@@ -709,7 +710,7 @@ else
     private async Task ShowAddCategoryDialog()
     {
         var sourceId = budget?.SourceId ?? SourceScope.LegacySourceId;
-        availableCategoriesWithCounts = await BudgetService.GetAllCategoriesWithChildCountsAsync(sourceId);
+        availableCategoriesWithCounts = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(sourceId);
         selectedCategoryId = 0;
         showAddCategoryDialog = true;
     }
@@ -760,7 +761,7 @@ else
             {
                 if (item.CategoryGroupId.HasValue)
                 {
-                    var categoryGroup = await BudgetService.GetCategoryWithSubCategoriesAsync(item.CategoryGroupId.Value);
+                    var categoryGroup = await CategoryHierarchyService.GetCategoryWithSubCategoriesAsync(item.CategoryGroupId.Value);
                     if (categoryGroup != null)
                     {
                         trackingCategoryNames[item.CategoryGroupId.Value] = categoryGroup.Name ?? L["Unknown"].Value;
@@ -768,7 +769,7 @@ else
                 }
                 else if (item.CategoryId.HasValue)
                 {
-                    var categories = await BudgetService.GetAllCategoriesAsync(sourceId);
+                    var categories = await CategoryHierarchyService.GetAllCategoriesAsync(sourceId);
                     var category = categories.FirstOrDefault(c => c.Id == item.CategoryId.Value);
                     if (category != null)
                     {
@@ -787,8 +788,8 @@ else
 
         var sourceId = budget?.SourceId ?? SourceScope.LegacySourceId;
         // Load all categories
-        var allCategoryGroups = await BudgetService.GetAllCategoriesWithChildCountsAsync(sourceId);
-        allActualCategories = await BudgetService.GetAllCategoriesAsync(sourceId);
+        var allCategoryGroups = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(sourceId);
+        allActualCategories = await CategoryHierarchyService.GetAllCategoriesAsync(sourceId);
 
         // Get all category group IDs that are in the project
         if (budget != null)
@@ -929,7 +930,7 @@ else
         var assignedCategoryIds = budget.CategoryAssignments.Select(ca => ca.CategoryId).ToHashSet();
 
         // Load all categories
-        var allCategories = await BudgetService.GetAllCategoriesWithChildCountsAsync(budget.SourceId);
+        var allCategories = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(budget.SourceId);
 
         // Build complete set: assigned categories + their ancestors + all descendants
         // Use HashSet of actual items to avoid ID collision issues

@@ -12,6 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
+builder.Services.AddScoped<CategoryHierarchyService>();
 builder.Services.AddScoped<BudgetService>();
 builder.Services.AddScoped<FreshnessService>();
 builder.Services.AddSingleton<MoneyMoneyImportService>();

@@ -3,6 +3,7 @@
 @using OpenBudget.Models
 @using Microsoft.JSInterop
 @inject BudgetService BudgetService
+@inject CategoryHierarchyService CategoryHierarchyService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject IStringLocalizer<BudgetEdit> L
@@ -433,12 +434,12 @@
     private async Task LoadHierarchyLookups()
     {
         var sourceId = budget?.Project?.SourceId ?? SourceScope.LegacySourceId;
-        hierarchy = await BudgetService.GetAllCategoriesWithChildCountsAsync(sourceId);
+        hierarchy = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(sourceId);
         groupById = hierarchy
             .Where(c => c.ItemType == CategoryItemType.Group)
             .ToDictionary(c => c.Id, c => c.CategoryGroup);
 
-        var categories = await BudgetService.GetAllCategoriesAsync(sourceId);
+        var categories = await CategoryHierarchyService.GetAllCategoriesAsync(sourceId);
         categoryById = categories.ToDictionary(c => c.Id, c => c);
     }
 

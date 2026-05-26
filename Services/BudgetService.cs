@@ -6,17 +6,12 @@ namespace OpenBudget.Services;
 public class BudgetService
 {
     private readonly BudgetDbContext _budgetDb;
+    private readonly CategoryHierarchyService _hierarchy;
 
-    // Per-service-instance cache of GetAllCategoriesWithChildCountsAsync results. The hierarchy
-    // is read-only within a BudgetService lifetime (uploads / category-tree edits go through
-    // separate scopes), and the dashboard load alone hits this method 5+ times per project,
-    // turning N projects into ~5N redundant fetches. BudgetService is scoped per Blazor circuit
-    // and Blazor Server dispatches single-threadedly per circuit, so no locking is needed.
-    private readonly Dictionary<int, List<CategoryGroupWithChildCount>> _hierarchyBySourceId = new();
-
-    public BudgetService(BudgetDbContext budgetDb)
+    public BudgetService(BudgetDbContext budgetDb, CategoryHierarchyService hierarchy)
     {
         _budgetDb = budgetDb;
+        _hierarchy = hierarchy;
     }
 
     /// <summary>
@@ -266,7 +261,7 @@ public class BudgetService
                 storedAmounts[key] = new decimal[12];
         }
 
-        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
         var effective = ComputeEffectiveAmounts(storedAmounts, allCategoriesWithCounts);
 
         var budgetAmounts = effective.Effective.ToDictionary(
@@ -366,7 +361,7 @@ public class BudgetService
         var ancestorList = ancestorGroupIds.Distinct().ToList();
         if (ancestorList.Count == 0) return new HashSet<long>();
 
-        var hierarchy = await GetAllCategoriesWithChildCountsAsync(sourceId);
+        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
         var candidateLeaves = new HashSet<long>();
         foreach (var groupId in ancestorList)
         {
@@ -404,8 +399,8 @@ public class BudgetService
     {
         if (items.Count == 0) return (0m, 0m);
 
-        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(sourceId);
-        var itemToLeafIds = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
+        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
         if (allLeafIds.Count == 0) return (0m, 0m);
 
@@ -449,145 +444,6 @@ public class BudgetService
             else expenseCents += -t.Amount;
         }
         return (incomeCents / 100m, expenseCents / 100m);
-    }
-
-    /// <summary>
-    /// Get all category IDs for a category group (including all sub-groups and their categories)
-    /// </summary>
-    private async Task<List<long>> GetAllCategoryIdsForGroupAsync(long categoryGroupId, int sourceId)
-    {
-        var categoryIds = new List<long>();
-
-        // Get all category group IDs (including sub-groups)
-        var groupIds = await GetAllCategoryGroupIdsRecursiveAsync(categoryGroupId, sourceId);
-
-        // Get all categories that belong to these groups
-        foreach (var groupId in groupIds)
-        {
-            var categoriesInGroup = await _budgetDb.Categories
-                .Where(c => c.SourceId == sourceId && c.GroupId == groupId)
-                .Select(c => c.Id)
-                .ToListAsync();
-
-            categoryIds.AddRange(categoriesInGroup);
-        }
-
-        return categoryIds;
-    }
-
-    /// <summary>
-    /// Recursively get all category group IDs including sub-groups
-    /// </summary>
-    private async Task<List<long>> GetAllCategoryGroupIdsRecursiveAsync(long categoryGroupId, int sourceId)
-    {
-        var groupIds = new List<long> { categoryGroupId };
-
-        // Get sub-groups
-        var subGroups = await _budgetDb.CategoryGroups
-            .Where(cg => cg.SourceId == sourceId && cg.ParentGroupId == categoryGroupId)
-            .ToListAsync();
-
-        foreach (var subGroup in subGroups)
-        {
-            var subGroupIds = await GetAllCategoryGroupIdsRecursiveAsync(subGroup.Id, sourceId);
-            groupIds.AddRange(subGroupIds);
-        }
-
-        return groupIds;
-    }
-
-    /// <summary>
-    /// Get all categories for a specific source (from mm_categories).
-    /// </summary>
-    public async Task<List<Category>> GetAllCategoriesAsync(int sourceId)
-    {
-        return await _budgetDb.Categories
-            .Where(c => c.SourceId == sourceId)
-            .OrderBy(c => c.Name)
-            .ToListAsync();
-    }
-
-    /// <summary>
-    /// Get all category groups and individual categories with their sub-group counts, scoped
-    /// to one source. Sentinel rowid-0/1 entries (MoneyMoney's hidden "Umbuchungen" root) are
-    /// filtered out per source.
-    /// </summary>
-    public async Task<List<CategoryGroupWithChildCount>> GetAllCategoriesWithChildCountsAsync(int sourceId)
-    {
-        if (_hierarchyBySourceId.TryGetValue(sourceId, out var cached)) return cached;
-
-        var sentinelRoot = SourceScope.SentinelRoot(sourceId);
-
-        var allCategoryGroups = await _budgetDb.CategoryGroups
-            .Where(cg => cg.SourceId == sourceId)
-            .OrderBy(cg => cg.Name)
-            .ToListAsync();
-
-        var allCategories = await _budgetDb.Categories
-            .Where(c => c.SourceId == sourceId)
-            .OrderBy(c => c.Name)
-            .ToListAsync();
-
-        var result = new List<CategoryGroupWithChildCount>();
-
-        foreach (var categoryGroup in allCategoryGroups)
-        {
-            // Skip the source's sentinel root category group (no name, holds "Umbuchungen").
-            if (categoryGroup.Id == sentinelRoot && string.IsNullOrEmpty(categoryGroup.Name))
-                continue;
-
-            // Count direct children (both sub-groups and individual categories)
-            var subGroupCount = allCategoryGroups.Count(cg => cg.ParentGroupId == categoryGroup.Id);
-            var categoryCount = allCategories.Count(c => c.GroupId == categoryGroup.Id);
-            var childCount = subGroupCount + categoryCount;
-
-            // A category group is a root category if:
-            // 1. It has no parent (group_key is null or 0), OR
-            // 2. It's a child of the sentinel root group which we're hiding
-            var isRootCategory = categoryGroup.ParentGroupId == null ||
-                                 categoryGroup.ParentGroupId == 0 ||
-                                 categoryGroup.ParentGroupId == sentinelRoot;
-
-            result.Add(new CategoryGroupWithChildCount
-            {
-                CategoryGroup = categoryGroup,
-                ItemType = CategoryItemType.Group,
-                DirectChildCount = childCount,
-                IsRootCategory = isRootCategory,
-                ParentCategoryGroupId = categoryGroup.ParentGroupId
-            });
-        }
-
-        // Add individual categories as items
-        foreach (var category in allCategories)
-        {
-            // Skip if no GroupId (shouldn't happen but be safe)
-            if (!category.GroupId.HasValue)
-                continue;
-
-            result.Add(new CategoryGroupWithChildCount
-            {
-                CategoryGroup = new CategoryGroup { Id = category.GroupId.Value }, // Placeholder for parent reference
-                Category = category,
-                ItemType = CategoryItemType.Category,
-                DirectChildCount = 0, // Categories don't have children
-                IsRootCategory = false,
-                ParentCategoryGroupId = category.GroupId
-            });
-        }
-
-        _hierarchyBySourceId[sourceId] = result;
-        return result;
-    }
-
-    /// <summary>
-    /// Get a category group by namespaced ID. The ID alone is unique across sources because
-    /// of namespacing, so no source filter is needed at the boundary.
-    /// </summary>
-    public async Task<CategoryGroup?> GetCategoryWithSubCategoriesAsync(long categoryGroupId)
-    {
-        return await _budgetDb.CategoryGroups
-            .FirstOrDefaultAsync(cg => cg.Id == categoryGroupId);
     }
 
     /// <summary>
@@ -637,7 +493,7 @@ public class BudgetService
     /// </summary>
     public async Task<List<MonthlySpending>> GetMonthlySpendingAsync(long categoryGroupId, int sourceId, int months = 12, bool isIncome = false)
     {
-        var categoryIds = await GetAllCategoryIdsForGroupAsync(categoryGroupId, sourceId);
+        var categoryIds = await _hierarchy.GetAllCategoryIdsForGroupAsync(categoryGroupId, sourceId);
 
         if (!categoryIds.Any())
             return new List<MonthlySpending>();
@@ -811,7 +667,7 @@ public class BudgetService
 
         var project = await _budgetDb.Projects.FindAsync(budget.ProjectId);
         var sourceId = project?.SourceId ?? SourceScope.LegacySourceId;
-        var hierarchy = await GetAllCategoriesWithChildCountsAsync(sourceId);
+        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
         var normalized = NormalizeBudgetEntries(entries, hierarchy);
 
         var existing = await _budgetDb.MonthlyBudgetEntries
@@ -1247,7 +1103,7 @@ public class BudgetService
             });
 
         var sourceId = budget.Project?.SourceId ?? SourceScope.LegacySourceId;
-        var hierarchy = await GetAllCategoriesWithChildCountsAsync(sourceId);
+        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
         return ComputeEffectiveAmounts(stored, hierarchy);
     }
 
@@ -1316,7 +1172,7 @@ public class BudgetService
             ta => ta.IsIncome);
 
         var sourceId = await GetSourceIdForProjectAsync(projectId);
-        var allCategories = await GetAllCategoriesWithChildCountsAsync(sourceId);
+        var allCategories = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
 
         foreach (var item in allCategories)
         {
@@ -1444,8 +1300,8 @@ public class BudgetService
 
         if (!items.Any()) return result;
 
-        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(sourceId);
-        var itemToLeafIds = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
+        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
 
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
         if (!allLeafIds.Any()) return result;
@@ -1529,8 +1385,8 @@ public class BudgetService
         foreach (var item in items) result[item] = 0m;
         if (!items.Any()) return result;
 
-        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(sourceId);
-        var itemToLeafIds = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
+        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
 
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
         if (!allLeafIds.Any()) return result;
@@ -1614,8 +1470,8 @@ public class BudgetService
         var trackedKeys = project.TrackingItems.ToTrackedKeys().ToList();
         if (!trackedKeys.Any()) return new List<int>();
 
-        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(project.SourceId);
-        var itemToLeafIds = BuildItemToLeafCategoryIds(trackedKeys, allCategoriesWithCounts);
+        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(trackedKeys, allCategoriesWithCounts);
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
         if (!allLeafIds.Any()) return new List<int>();
 
@@ -1661,8 +1517,8 @@ public class BudgetService
 
         var startDate = new DateTimeOffset(new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc));
 
-        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(sourceId);
-        var itemToLeafIds = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
+        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
 
         // Seed N month entries for items that have any leaf categories
         foreach (var item in items)
@@ -1726,32 +1582,6 @@ public class BudgetService
     /// preserved. Per-row totals are therefore the natural sum of everything under the item;
     /// aggregate totals across items must use the leaf union (Distinct) to avoid double-counting.
     /// </summary>
-    private static Dictionary<(long, CategoryItemType), HashSet<long>> BuildItemToLeafCategoryIds(
-        IEnumerable<(long Id, CategoryItemType ItemType)> items,
-        List<CategoryGroupWithChildCount> allCategoriesWithCounts)
-    {
-        var map = new Dictionary<(long, CategoryItemType), HashSet<long>>();
-        foreach (var item in items)
-        {
-            var leafIds = new HashSet<long>();
-            if (item.ItemType == CategoryItemType.Category)
-            {
-                leafIds.Add(item.Id);
-            }
-            else
-            {
-                var descendants = CategoryGroupWithChildCount.CollectDescendants(
-                    item.Id, allCategoriesWithCounts, includeLeafCategories: true);
-                foreach (var d in descendants)
-                {
-                    if (d.ItemType == CategoryItemType.Category)
-                        leafIds.Add(d.Id);
-                }
-            }
-            map[item] = leafIds;
-        }
-        return map;
-    }
 
     #endregion
 
@@ -1862,8 +1692,8 @@ public class BudgetService
         {
             var trackingItems = await GetProjectTrackingItemsAsync(projectId);
             var items = trackingItems.ToTrackedKeys().ToList();
-            var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(sourceId);
-            var itemToLeaf = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
+            var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+            var itemToLeaf = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
             projectLeafCategoryIds = itemToLeaf.Values.SelectMany(s => s).ToHashSet();
         }
 
@@ -1977,8 +1807,8 @@ public class BudgetService
         var result = new Dictionary<(long, CategoryItemType), DayOfMonthDistribution>();
         if (!items.Any()) return result;
 
-        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(sourceId);
-        var itemToLeafIds = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
+        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
 
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
         if (!allLeafIds.Any())

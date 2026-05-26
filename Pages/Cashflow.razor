@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.WebUtilities
 @using System.Globalization
 @inject BudgetService BudgetService
+@inject CategoryHierarchyService CategoryHierarchyService
 @inject IJSRuntime JSRuntime
 @inject NavigationManager Navigation
 @inject IStringLocalizer<Cashflow> L
@@ -945,7 +946,7 @@ else
         };
 
         var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(project.Id);
-        var hierarchyForSlice = await BudgetService.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        var hierarchyForSlice = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(project.SourceId);
 
         // Pre-load budget amounts so we can auto-include descendants of tracked groups that
         // hold their own non-zero budget entry. Without this, a sub-cat-level budget (e.g.
