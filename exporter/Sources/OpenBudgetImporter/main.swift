@@ -39,7 +39,6 @@ let app = NSApplication.shared
 app.setActivationPolicy(.regular)
 let delegate = AppDelegate()
 app.delegate = delegate
-app.activate(ignoringOtherApps: true)
 app.run()
 
 // MARK: - AppDelegate / window
@@ -62,6 +61,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentView = NSHostingView(rootView: content)
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
+
+        // LSUIElement starts the process as a background agent — Launch Services won't
+        // activate it for us. setActivationPolicy(.regular) at startup elevates it to a
+        // foreground app, but the window still has to be explicitly activated after the run
+        // loop is up; otherwise it opens behind the frontmost app.
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -148,6 +153,7 @@ final class ConfigViewModel: ObservableObject {
     @Published var baseURL: String = Config.baseURL ?? ""
     @Published var sourceName: String = Config.sourceName ?? ""
     @Published var token: String = Keychain.token ?? ""
+    @Published var dbPassword: String = Keychain.dbPassword ?? ""
     @Published var status: String = ""
     @Published var working: Bool = false
     @Published var isInstalled: Bool = LaunchAgent.isInstalled
@@ -158,6 +164,7 @@ final class ConfigViewModel: ObservableObject {
             try Config.validate(baseURL: self.baseURL, sourceName: self.sourceName, token: self.token)
             Config.save(baseURL: self.baseURL, sourceName: self.sourceName)
             try Keychain.setToken(self.token)
+            try Keychain.setDBPassword(self.dbPassword)
             try LaunchAgent.install()
             self.isInstalled = true
             self.status = "Installed launchd agent at hourly schedule. First run triggered."
@@ -220,6 +227,9 @@ struct ConfigView: View {
                 SecureField("API token", text: $vm.token)
                     .textFieldStyle(.roundedBorder)
                     .help("Matches the server's MONEYMONEY_DB_UPLOAD_TOKEN env var. Stored in macOS Keychain.")
+                SecureField("MoneyMoney password", text: $vm.dbPassword)
+                    .textFieldStyle(.roundedBorder)
+                    .help("Leave empty if MoneyMoney has no database password set. Stored in macOS Keychain.")
             }
 
             HStack {
@@ -289,9 +299,26 @@ enum Config {
 
 enum Keychain {
     private static let service = "de.beutner.OpenBudgetImporter"
-    private static let account = "api-token"
+    private static let tokenAccount = "api-token"
+    private static let dbPasswordAccount = "db-password"
 
-    static var token: String? {
+    static var token: String? { read(account: tokenAccount) }
+    static func setToken(_ token: String) throws { try write(account: tokenAccount, value: token) }
+
+    /// MoneyMoney's SQLCipher password. nil / empty means use MoneyMoney's
+    /// built-in "nopasswd" key (i.e. the user hasn't set a password).
+    static var dbPassword: String? { read(account: dbPasswordAccount) }
+    static func setDBPassword(_ password: String) throws {
+        // Empty input means "back to the default key" — wipe the entry so a stale
+        // value can't shadow the default on subsequent runs.
+        if password.isEmpty {
+            try delete(account: dbPasswordAccount)
+        } else {
+            try write(account: dbPasswordAccount, value: password)
+        }
+    }
+
+    private static func read(account: String) -> String? {
         var result: AnyObject?
         let q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -307,14 +334,14 @@ enum Keychain {
         return s
     }
 
-    static func setToken(_ token: String) throws {
-        let data = token.data(using: .utf8)!
+    private static func write(account: String, value: String) throws {
+        let data = value.data(using: .utf8)!
         let common: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-        // Try update first, then add — handles both "first run" and "user changed token".
+        // Try update first, then add — handles both "first run" and "user changed value".
         let updateStatus = SecItemUpdate(
             common as CFDictionary,
             [kSecValueData as String: data] as CFDictionary)
@@ -324,10 +351,22 @@ enum Keychain {
             attrs[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
             let addStatus = SecItemAdd(attrs as CFDictionary, nil)
             if addStatus != errSecSuccess {
-                throw AppError.keychain("SecItemAdd failed (status \(addStatus))")
+                throw AppError.keychain("SecItemAdd(\(account)) failed (status \(addStatus))")
             }
         } else if updateStatus != errSecSuccess {
-            throw AppError.keychain("SecItemUpdate failed (status \(updateStatus))")
+            throw AppError.keychain("SecItemUpdate(\(account)) failed (status \(updateStatus))")
+        }
+    }
+
+    private static func delete(account: String) throws {
+        let q: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        let status = SecItemDelete(q as CFDictionary)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            throw AppError.keychain("SecItemDelete(\(account)) failed (status \(status))")
         }
     }
 }
@@ -452,9 +491,8 @@ enum LogFile {
 
 enum Exporter {
     private static let moneyMoneyDBPath = "\(NSHomeDirectory())/Library/Containers/com.moneymoney-app.retail/Data/Library/Application Support/MoneyMoney/Database/MoneyMoney.sqlite"
-    // MoneyMoney's default cipher key when the user hasn't set a password ("nopasswd" / cipher
-    // compatibility 4). If the user later sets a password, this app needs the matching key —
-    // we'd surface a config field for it.
+    // MoneyMoney's cipher key when the user hasn't set a password. The user-supplied password
+    // (from Keychain) overrides this when present; cipher compatibility is the same either way.
     private static let defaultCipherKey = "nopasswd"
     private static let cipherCompatibility = 4
 
@@ -478,8 +516,9 @@ enum Exporter {
         logger("Copying MoneyMoney DB to scratch (\(scratch.url.path))")
         try copyMoneyMoneyFiles(to: srcCopy)
 
+        let cipherKey = Keychain.dbPassword.flatMap { $0.isEmpty ? nil : $0 } ?? defaultCipherKey
         logger("Decrypting + exporting tables")
-        try decryptAndExport(source: srcCopy.path, output: outFile.path)
+        try decryptAndExport(source: srcCopy.path, output: outFile.path, cipherKey: cipherKey)
 
         let attrs = try FileManager.default.attributesOfItem(atPath: outFile.path)
         let size = (attrs[.size] as? Int64) ?? 0
@@ -507,7 +546,7 @@ enum Exporter {
     /// DETACH. Using `PRAGMA key` instead of `sqlite3_key()` keeps us on the public API —
     /// `sqlite3_key` is only exposed in the sqlcipher.swift package behind `SQLITE_HAS_CODEC`,
     /// which the binary distribution doesn't surface to consumers.
-    private static func decryptAndExport(source: String, output: String) throws {
+    private static func decryptAndExport(source: String, output: String, cipherKey: String) throws {
         var db: OpaquePointer?
         let openResult = sqlite3_open(source, &db)
         guard openResult == SQLITE_OK, let db else {
@@ -516,10 +555,19 @@ enum Exporter {
         }
         defer { sqlite3_close(db) }
 
-        try exec(db, "PRAGMA key = \(quote(defaultCipherKey));")
+        try exec(db, "PRAGMA key = \(quote(cipherKey));")
         try exec(db, "PRAGMA cipher_compatibility = \(cipherCompatibility);")
         // Touch the schema so the key + compat actually decrypt the header before we ATTACH.
-        try exec(db, "SELECT count(*) FROM sqlite_master;")
+        // SQLITE_NOTADB (26) on this probe almost always means the cipher key is wrong —
+        // surface that with a config-pointing message rather than the raw sqlite error.
+        do {
+            try exec(db, "SELECT count(*) FROM sqlite_master;")
+        } catch AppError.sqlcipher(let raw) where raw.contains("file is not a database") {
+            let hint = cipherKey == defaultCipherKey
+                ? "MoneyMoney password is set but no password is configured here — open OpenBudgetImporter.app and fill in the MoneyMoney password field."
+                : "The configured MoneyMoney password does not match — re-open OpenBudgetImporter.app and re-enter it."
+            throw AppError.sqlcipher(hint)
+        }
 
         // Empty output (existing file would cause ATTACH to refuse if it has a different schema).
         try? FileManager.default.removeItem(atPath: output)
