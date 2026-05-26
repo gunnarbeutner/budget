@@ -35,7 +35,7 @@ year-to-date variance reports, and forward-looking balance projections.
 Local development:
 
 ```bash
-dotnet run
+dotnet run --project src/OpenBudget
 ```
 
 Production via Docker:

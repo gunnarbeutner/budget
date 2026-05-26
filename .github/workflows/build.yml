@@ -20,10 +20,10 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore OpenBudget.Tests/OpenBudget.Tests.csproj
+        run: dotnet restore tests/OpenBudget.Tests/OpenBudget.Tests.csproj
 
       - name: Run tests
-        run: dotnet test OpenBudget.Tests/OpenBudget.Tests.csproj --no-restore --verbosity minimal
+        run: dotnet test tests/OpenBudget.Tests/OpenBudget.Tests.csproj --no-restore --verbosity minimal
 
   build-and-push:
     # Only push the image when tests pass. PR runs hit `test` only — they don't have

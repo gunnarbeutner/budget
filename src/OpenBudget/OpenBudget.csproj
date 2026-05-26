@@ -6,14 +6,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
-  <!-- The test project lives in a subdirectory and has its own csproj; exclude it from this
-       project's default glob so its .cs files don't get compiled twice. -->
-  <ItemGroup>
-    <Compile Remove="OpenBudget.Tests/**/*.cs" />
-    <Content Remove="OpenBudget.Tests/**" />
-    <None Remove="OpenBudget.Tests/**" />
-  </ItemGroup>
-
   <ItemGroup>
     <InternalsVisibleTo Include="OpenBudget.Tests" />
   </ItemGroup>

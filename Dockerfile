@@ -4,13 +4,13 @@ EXPOSE 8080
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
-COPY ["OpenBudget.csproj", "."]
-RUN dotnet restore "./OpenBudget.csproj"
+COPY ["src/OpenBudget/OpenBudget.csproj", "src/OpenBudget/"]
+RUN dotnet restore "src/OpenBudget/OpenBudget.csproj"
 COPY . .
-RUN dotnet build "OpenBudget.csproj" -c Release -o /app/build
+RUN dotnet build "src/OpenBudget/OpenBudget.csproj" -c Release -o /app/build
 
 FROM build AS publish
-RUN dotnet publish "OpenBudget.csproj" -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "src/OpenBudget/OpenBudget.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app
