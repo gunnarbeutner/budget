@@ -6,6 +6,7 @@
 @using System.Globalization
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
+@inject BudgetEntryService BudgetEntryService
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject IJSRuntime JSRuntime
 @inject NavigationManager Navigation
@@ -725,7 +726,7 @@ else
 
     private async Task LoadAvailableBudgets()
     {
-        availableBudgets = await BudgetService.GetBudgetsForProjectAsync(selectedProjectId);
+        availableBudgets = await BudgetEntryService.GetBudgetsForProjectAsync(selectedProjectId);
         // Default the selection to the active budget for the displayed year (if any). Keep
         // the user's manual choice intact when the dropdown is reloaded for the same year.
         if (availableBudgets.All(b => b.Id != selectedBudgetId))
@@ -827,7 +828,7 @@ else
         foreach (var child in children)
         {
             // Each child's projection uses ITS active budget for the same year (not the parent's).
-            var childActiveBudget = (await BudgetService.GetBudgetsForProjectAsync(child.Id))
+            var childActiveBudget = (await BudgetEntryService.GetBudgetsForProjectAsync(child.Id))
                 .FirstOrDefault(b => b.Year == selectedYear && b.IsActive);
             slices.Add(await LoadOneProjectCashflowSliceAsync(
                 child, isSelectedProject: false,
@@ -881,7 +882,7 @@ else
         Dictionary<(long, CategoryItemType), decimal> storedSplits = new();
         if (selectedBudgetId > 0)
         {
-            storedSplits = await BudgetService.GetBudgetContributionSplitsAsync(selectedBudgetId);
+            storedSplits = await BudgetEntryService.GetBudgetContributionSplitsAsync(selectedBudgetId);
         }
         // Only aggregate (leaf-of-tracking) rows get a split — group rows that auto-sum
         // from their tracked sub-cats don't need their own percentage.
@@ -955,7 +956,7 @@ else
         // because only the parent group is in tracking.
         Dictionary<(long, CategoryItemType), decimal[]>? budgetAmounts = null;
         if (budgetIdOverride > 0)
-            budgetAmounts = await BudgetService.GetMonthlyBudgetAmountsAsync(budgetIdOverride);
+            budgetAmounts = await BudgetEntryService.GetMonthlyBudgetAmountsAsync(budgetIdOverride);
         var budgetKeysWithAmounts = budgetAmounts == null
             ? new HashSet<(long, CategoryItemType)>()
             : budgetAmounts.Where(kv => kv.Value.Any(m => m != 0m)).Select(kv => kv.Key).ToHashSet();
@@ -1372,7 +1373,7 @@ else
                 .Where(c => c.IsAggregateRow)
                 .Select(c => (c.CategoryId, c.ItemType, Percent: contributionSplits.GetValueOrDefault(c.CategoryName, 0m)))
                 .ToList();
-            await BudgetService.SaveBudgetContributionSplitsAsync(selectedBudgetId, payload);
+            await BudgetEntryService.SaveBudgetContributionSplitsAsync(selectedBudgetId, payload);
             splitsDirty = false;
         }
         finally

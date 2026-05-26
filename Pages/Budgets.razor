@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.WebUtilities
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
+@inject BudgetEntryService BudgetEntryService
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
@@ -441,7 +442,7 @@
         if (selectedBudgetId <= 0 || allCategories == null) return;
 
         incomeItems = await BudgetService.GetIncomeItemsForProjectAsync(selectedBudgetId);
-        availableBudgets = await BudgetService.GetBudgetsForProjectAsync(selectedBudgetId);
+        availableBudgets = await BudgetEntryService.GetBudgetsForProjectAsync(selectedBudgetId);
 
         // Default the budget-comparison dropdown to the project's active budget for the
         // currently-selected year, unless the user already picked a budget that still applies.
@@ -661,12 +662,12 @@
 
     private async Task RefreshBudgets()
     {
-        availableBudgets = await BudgetService.GetBudgetsForProjectAsync(selectedBudgetId);
+        availableBudgets = await BudgetEntryService.GetBudgetsForProjectAsync(selectedBudgetId);
     }
 
     private async Task SetBudgetActive(int budgetId)
     {
-        await BudgetService.SetActiveBudgetAsync(budgetId);
+        await BudgetEntryService.SetActiveBudgetAsync(budgetId);
         await RefreshBudgets();
         // The currently-selected budget's Active flag may have flipped — re-render so the
         // dropdown shows the updated "(active)" suffix and the inline "Make Active" button
@@ -689,7 +690,7 @@
         if (budgetPendingDelete == null) return;
         var id = budgetPendingDelete.Id;
         budgetPendingDelete = null;
-        await BudgetService.DeleteBudgetAsync(id);
+        await BudgetEntryService.DeleteBudgetAsync(id);
         await RefreshBudgets();
         // If the deleted budget was the comparison target, fall back to "No comparison" so the
         // chart doesn't try to render against a budget that no longer exists.
@@ -772,7 +773,7 @@
         budgetedDescendantsByGroup.Clear();
         if (selectedCompareBudgetId > 0 && allCategories != null)
         {
-            var budgetKeys = (await BudgetService.GetMonthlyBudgetAmountsAsync(selectedCompareBudgetId))
+            var budgetKeys = (await BudgetEntryService.GetMonthlyBudgetAmountsAsync(selectedCompareBudgetId))
                 .Where(kvp => kvp.Value.Any(m => m != 0m))
                 .Select(kvp => kvp.Key)
                 .ToHashSet();
@@ -906,17 +907,17 @@
             // (and the group has no entry of its own) get an injected zero stored amount so
             // ComputeEffectiveAmounts auto-sums them from their descendants — otherwise the
             // group row would render €0 next to a chart that shows the breakdown.
-            var rawStored = await BudgetService.GetMonthlyBudgetAmountsAsync(selectedCompareBudgetId);
+            var rawStored = await BudgetEntryService.GetMonthlyBudgetAmountsAsync(selectedCompareBudgetId);
             var augmentedStored = new Dictionary<(long Id, CategoryItemType ItemType), decimal[]>(rawStored);
             foreach (var groupKey in budgetedDescendantsByGroup.Keys)
             {
                 if (!augmentedStored.ContainsKey(groupKey))
                     augmentedStored[groupKey] = new decimal[12];
             }
-            var budgetEffective = BudgetService.ComputeEffectiveAmounts(
+            var budgetEffective = BudgetEntryService.ComputeEffectiveAmounts(
                 augmentedStored,
                 allAvailableCategories ?? new List<CategoryGroupWithChildCount>());
-            var compareBudget = await BudgetService.GetBudgetAsync(selectedCompareBudgetId);
+            var compareBudget = await BudgetEntryService.GetBudgetAsync(selectedCompareBudgetId);
             var budgetYear = compareBudget?.Year ?? selectedYear;
 
             // aggregateRowNames is already populated by the trend-loading pass above using

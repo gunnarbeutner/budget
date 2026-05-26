@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.WebUtilities
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
+@inject BudgetEntryService BudgetEntryService
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject NavigationManager Navigation
 @inject IStringLocalizer<BudgetWizard> L
@@ -286,7 +287,7 @@ else if (step == 3)
         }
 
         selectedProjectId = pid.Value;
-        availableSourceBudgets = await BudgetService.GetBudgetsForProjectAsync(selectedProjectId);
+        availableSourceBudgets = await BudgetEntryService.GetBudgetsForProjectAsync(selectedProjectId);
     }
 
     private async Task LoadCategories()
@@ -358,7 +359,7 @@ else if (step == 3)
             // Copy the source budget's per-month amounts verbatim. Keys that aren't in the
             // project's current tracking still appear — the user can edit / drop them in
             // BudgetEdit afterwards. Save flow handles whatever's in `predictions`.
-            var src = await BudgetService.GetMonthlyBudgetAmountsAsync(sourceBudgetId);
+            var src = await BudgetEntryService.GetMonthlyBudgetAmountsAsync(sourceBudgetId);
             foreach (var (key, months) in src)
                 predictions[key] = months.Select(p => Math.Round(p, 2)).ToArray();
         }
@@ -462,11 +463,11 @@ else if (step == 3)
         if (predictions == null)
             return;
 
-        var budget = await BudgetService.CreateBudgetAsync(selectedProjectId, selectedYear, budgetName, notes);
+        var budget = await BudgetEntryService.CreateBudgetAsync(selectedProjectId, selectedYear, budgetName, notes);
         var entries = predictions
             .Select(kvp => (kvp.Key.Id, kvp.Key.ItemType, kvp.Value))
             .ToList();
-        await BudgetService.SaveBudgetEntriesAsync(budget.Id, entries);
+        await BudgetEntryService.SaveBudgetEntriesAsync(budget.Id, entries);
 
         step = 3;
     }

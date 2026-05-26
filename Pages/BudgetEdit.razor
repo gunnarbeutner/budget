@@ -4,6 +4,7 @@
 @using Microsoft.JSInterop
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
+@inject BudgetEntryService BudgetEntryService
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -324,7 +325,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        budget = await BudgetService.GetBudgetAsync(BudgetId);
+        budget = await BudgetEntryService.GetBudgetAsync(BudgetId);
         if (budget == null)
         {
             notFound = true;
@@ -454,7 +455,7 @@
         foreach (var virtKey in virtualGroupKeys)
             if (!storedForEffective.ContainsKey(virtKey))
                 storedForEffective[virtKey] = new decimal[12];
-        effective = BudgetService.ComputeEffectiveAmounts(storedForEffective, hierarchy);
+        effective = BudgetEntryService.ComputeEffectiveAmounts(storedForEffective, hierarchy);
 
         // Tree includes real rows, shadow rows, and virtual parent groups so the user can
         // drill into tracked groups and see their in-year leaf categories without leaving
@@ -684,11 +685,11 @@
         isSaving = true;
         try
         {
-            await BudgetService.UpdateBudgetAsync(budget);
+            await BudgetEntryService.UpdateBudgetAsync(budget);
             var entries = editingEntries
                 .Select(kvp => (kvp.Key.Id, kvp.Key.ItemType, kvp.Value))
                 .ToList();
-            await BudgetService.SaveBudgetEntriesAsync(BudgetId, entries);
+            await BudgetEntryService.SaveBudgetEntriesAsync(BudgetId, entries);
             // Promoted shadow rows need to be added to project tracking so Cashflow / Budgets
             // pick them up too. Existing tracking is preserved.
             await ProjectService.EnsureProjectTrackingIncludesAsync(budget.ProjectId, editingEntries.Keys);

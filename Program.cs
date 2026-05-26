@@ -14,6 +14,7 @@ builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddScoped<CategoryHierarchyService>();
 builder.Services.AddScoped<ProjectService>();
+builder.Services.AddScoped<BudgetEntryService>();
 builder.Services.AddScoped<BudgetService>();
 builder.Services.AddScoped<FreshnessService>();
 builder.Services.AddSingleton<MoneyMoneyImportService>();
