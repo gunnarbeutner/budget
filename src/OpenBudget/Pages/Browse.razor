@@ -1035,7 +1035,11 @@
 
         builder.OpenElement(30, "span");
         builder.AddAttribute(31, "class", "browse-tree-amount");
-        if (node.Spent != 0m)
+        // Show the spent side whenever the node has any context to anchor it: either an
+        // actual non-zero spent value, OR a budget pair on its right ("€0,00 | €120,00" reads
+        // cleanly; a bare " | €120,00" reads as a missing value).
+        bool hasBudgetContext = node.Remaining.HasValue;
+        if (node.Spent != 0m || hasBudgetContext)
         {
             builder.OpenElement(32, "span");
             builder.AddAttribute(33, "class", node.IsIncome ? "text-success" : "text-danger");
