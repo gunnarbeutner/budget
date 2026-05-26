@@ -3,6 +3,14 @@
    yellow / red. All BS utilities (bg-success, text-danger, etc.) consume these
    via -rgb so updating both keeps the surfaces and text in sync. ---- */
 :root {
+    /* Tell the browser we render a light UI in the default state. Bootstrap declares
+       `color-scheme: dark` on [data-bs-theme="dark"] but never declares the light side,
+       so iOS Safari with the device in dark mode was falling back to the OS scheme for
+       any chrome it manages itself (overscroll-bounce area, native form controls,
+       scrollbars). That bleed-through showed as a black band behind the sticky filter
+       bar on the dashboard as the address bar collapsed. */
+    color-scheme: light;
+
     --bs-success: #10b981;
     --bs-success-rgb: 16, 185, 129;
     --bs-warning: #f59e0b;
