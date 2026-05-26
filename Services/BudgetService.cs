@@ -238,14 +238,7 @@ public class BudgetService
             ?? budgets.FirstOrDefault(b => b.Year == year);
 
         // Resolve tracked items from the project's live tracking config.
-        var trackedKeys = new List<(long Id, CategoryItemType ItemType)>();
-        foreach (var ti in project.TrackingItems)
-        {
-            if (ti.CategoryGroupId.HasValue)
-                trackedKeys.Add((ti.CategoryGroupId.Value, CategoryItemType.Group));
-            else if (ti.CategoryId.HasValue)
-                trackedKeys.Add((ti.CategoryId.Value, CategoryItemType.Category));
-        }
+        var trackedKeys = project.TrackingItems.ToTrackedKeys().ToList();
 
         // Per-month stored amounts. Seed every tracked group missing an entry with zero so
         // ComputeEffectiveAmounts can auto-sum from its descendants — that's how a tracked
@@ -1609,14 +1602,7 @@ public class BudgetService
         var project = await GetProjectAsync(projectId);
         if (project == null) return new List<int>();
 
-        var trackedKeys = new List<(long Id, CategoryItemType ItemType)>();
-        foreach (var ti in project.TrackingItems)
-        {
-            if (ti.CategoryGroupId.HasValue)
-                trackedKeys.Add((ti.CategoryGroupId.Value, CategoryItemType.Group));
-            else if (ti.CategoryId.HasValue)
-                trackedKeys.Add((ti.CategoryId.Value, CategoryItemType.Category));
-        }
+        var trackedKeys = project.TrackingItems.ToTrackedKeys().ToList();
         if (!trackedKeys.Any()) return new List<int>();
 
         var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(project.SourceId);
@@ -1866,11 +1852,7 @@ public class BudgetService
         if (sharedIds.Any())
         {
             var trackingItems = await GetProjectTrackingItemsAsync(projectId);
-            var items = trackingItems
-                .Select(t => t.CategoryGroupId.HasValue
-                    ? (t.CategoryGroupId.Value, CategoryItemType.Group)
-                    : (t.CategoryId!.Value, CategoryItemType.Category))
-                .ToList();
+            var items = trackingItems.ToTrackedKeys().ToList();
             var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(sourceId);
             var itemToLeaf = BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
             projectLeafCategoryIds = itemToLeaf.Values.SelectMany(s => s).ToHashSet();

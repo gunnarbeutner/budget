@@ -353,11 +353,7 @@
         // Tracked groups for shadow leaf expansion = editor groups + project-tracked groups.
         // Project-tracked groups not in the editor become "virtual" parent rows further down.
         var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(budget.ProjectId);
-        trackedItemKeys = trackingItems
-            .Select(ti => ti.CategoryGroupId.HasValue
-                ? (ti.CategoryGroupId.Value, CategoryItemType.Group)
-                : (ti.CategoryId!.Value, CategoryItemType.Category))
-            .ToHashSet();
+        trackedItemKeys = trackingItems.ToTrackedKeys().ToHashSet();
         var trackedGroupIds = trackedItemKeys
             .Where(k => k.ItemType == CategoryItemType.Group)
             .Select(k => k.Id)
