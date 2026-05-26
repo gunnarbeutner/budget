@@ -113,7 +113,7 @@
             RenderFragment<TrackedRowNode> RowTr = node =>
                 @<tr class="@(IsShadow(node.Key) ? "table-light" : "")">
                     <td title="@categoryFullPaths.GetValueOrDefault(node.Key, "")"
-                        style="@($"padding-left: {0.5 + node.Level * 1.25}rem; white-space: nowrap;")">
+                        style="@(FormattableString.Invariant($"padding-left: {0.5 + node.Level * 1.25}rem; white-space: nowrap;"))">
                         @if (node.HasChildren)
                         {
                             <button type="button" class="btn btn-sm btn-link p-0 me-1"

@@ -145,7 +145,7 @@
                                             // prefix that BuildDisplayNames adds for the flat chart legend.
                                             var bareName = BareCategoryName(node.Key) ?? item.CategoryName;
                                             <tr class="@rowClass">
-                                                <td style="@($"padding-left: {0.5 + node.Level * 1.25}rem; white-space: nowrap;")">
+                                                <td style="@(FormattableString.Invariant($"padding-left: {0.5 + node.Level * 1.25}rem; white-space: nowrap;"))">
                                                     @if (canExpand)
                                                     {
                                                         <button type="button" class="btn btn-sm btn-link p-0 me-1"
