@@ -273,11 +273,6 @@ public class BudgetService
         // modified one for the year if nothing is active (legacy data, edge cases).
         var activeBudget = budgets.FirstOrDefault(b => b.Year == year && b.IsActive)
             ?? budgets.FirstOrDefault(b => b.Year == year);
-        var budgetAmounts = activeBudget != null
-            ? activeBudget.MonthlyEntries.ToDictionary(
-                e => ((long Id, CategoryItemType ItemType))(e.CategoryId, e.ItemType),
-                e => Enumerable.Range(fromMonth, toMonth - fromMonth + 1).Sum(m => e.GetMonthAmount(m)))
-            : new Dictionary<(long Id, CategoryItemType ItemType), decimal>();
 
         // Resolve tracked items from the project's live tracking config.
         var trackedKeys = new List<(long Id, CategoryItemType ItemType)>();
@@ -289,6 +284,37 @@ public class BudgetService
                 trackedKeys.Add((ti.CategoryId.Value, CategoryItemType.Category));
         }
 
+        // Per-month stored amounts. Seed every tracked group missing an entry with zero so
+        // ComputeEffectiveAmounts can auto-sum from its descendants — that's how a tracked
+        // group's row shows a meaningful budget when its amounts live on its sub-cats (the
+        // post-normalization invariant: budgets carry on one level per subtree).
+        var storedAmounts = activeBudget != null
+            ? activeBudget.MonthlyEntries.ToDictionary(
+                e => ((long Id, CategoryItemType ItemType))(e.CategoryId, e.ItemType),
+                e => new[]
+                {
+                    e.Month1, e.Month2, e.Month3, e.Month4, e.Month5, e.Month6,
+                    e.Month7, e.Month8, e.Month9, e.Month10, e.Month11, e.Month12
+                })
+            : new Dictionary<(long Id, CategoryItemType ItemType), decimal[]>();
+        foreach (var key in trackedKeys.Where(k => k.ItemType == CategoryItemType.Group))
+        {
+            if (!storedAmounts.ContainsKey(key))
+                storedAmounts[key] = new decimal[12];
+        }
+
+        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        var effective = ComputeEffectiveAmounts(storedAmounts, allCategoriesWithCounts);
+
+        var budgetAmounts = effective.Effective.ToDictionary(
+            kvp => kvp.Key,
+            kvp =>
+            {
+                decimal sum = 0m;
+                for (int m = fromMonth; m <= toMonth; m++) sum += kvp.Value[m - 1];
+                return sum;
+            });
+
         // ieBatch gives each tracked row its natural total (leaf sets overlap, so a Group's
         // numbers include any tracked sub-cat under it). That's what we want for per-row display.
         // Aggregate totals (MonthIncome/MonthExpenses) come from a separate leaf-union pass so
@@ -296,7 +322,6 @@ public class BudgetService
         var ieBatch = await GetMonthlyIncomeAndExpenseBatchAsync(trackedKeys, year, project.SourceId, projectId);
         var incomeItemsSet = await GetIncomeItemsForProjectAsync(projectId);
 
-        var allCategoriesWithCounts = await GetAllCategoriesWithChildCountsAsync(project.SourceId);
         var groupNameLookup = allCategoriesWithCounts
             .Where(c => c.ItemType == CategoryItemType.Group)
             .ToDictionary(c => c.Id, c => c.CategoryGroup.Name ?? "Unknown");
@@ -338,12 +363,13 @@ public class BudgetService
             });
         }
 
-        // Budget totals rely on the post-migration invariant: at any subtree only one level
-        // carries non-zero stored amounts, so summing all expense rows' Budget gives the
-        // correct total. TotalSpent uses the leaf-union aggregate to avoid double-counting
-        // across a tracked group + tracked sub-cat.
+        // Budget total: skip auto-summed groups so a tracked group whose budget is rolled up
+        // from sub-cats isn't double-counted alongside its descendants. TotalSpent uses the
+        // leaf-union aggregate to avoid double-counting across a tracked group + tracked sub-cat.
         var expenseRows = categorySpending.Where(c => !c.IsIncome).ToList();
-        var totalBudget = expenseRows.Sum(c => c.Budget);
+        var totalBudget = expenseRows
+            .Where(c => !effective.AutoSummed.Contains((c.CategoryId, c.ItemType)))
+            .Sum(c => c.Budget);
 
         return new ProjectSpendingSummary
         {
