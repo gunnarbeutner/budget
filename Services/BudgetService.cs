@@ -7,6 +7,13 @@ public class BudgetService
 {
     private readonly BudgetDbContext _budgetDb;
 
+    // Per-service-instance cache of GetAllCategoriesWithChildCountsAsync results. The hierarchy
+    // is read-only within a BudgetService lifetime (uploads / category-tree edits go through
+    // separate scopes), and the dashboard load alone hits this method 5+ times per project,
+    // turning N projects into ~5N redundant fetches. BudgetService is scoped per Blazor circuit
+    // and Blazor Server dispatches single-threadedly per circuit, so no locking is needed.
+    private readonly Dictionary<int, List<CategoryGroupWithChildCount>> _hierarchyBySourceId = new();
+
     public BudgetService(BudgetDbContext budgetDb)
     {
         _budgetDb = budgetDb;
@@ -508,6 +515,8 @@ public class BudgetService
     /// </summary>
     public async Task<List<CategoryGroupWithChildCount>> GetAllCategoriesWithChildCountsAsync(int sourceId)
     {
+        if (_hierarchyBySourceId.TryGetValue(sourceId, out var cached)) return cached;
+
         var sentinelRoot = SourceScope.SentinelRoot(sourceId);
 
         var allCategoryGroups = await _budgetDb.CategoryGroups
@@ -568,6 +577,7 @@ public class BudgetService
             });
         }
 
+        _hierarchyBySourceId[sourceId] = result;
         return result;
     }
 
