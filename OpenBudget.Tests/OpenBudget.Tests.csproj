@@ -12,6 +12,10 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- Match the main project's EF Core + Sqlite versions to silence MSB3277 reference
+         conflicts and let the test project use EF Core types (DbContextOptionsBuilder,
+         in-memory SqliteConnection) directly. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.8" />
   </ItemGroup>
 
   <ItemGroup>

@@ -180,7 +180,7 @@ public class BudgetEntryService
     /// UI should prevent this state, but this guards against drift between the UI's editing
     /// state and what's submitted.
     /// </summary>
-    private static List<(long Id, CategoryItemType ItemType, decimal[] Months)> NormalizeBudgetEntries(
+    internal static List<(long Id, CategoryItemType ItemType, decimal[] Months)> NormalizeBudgetEntries(
         IReadOnlyCollection<(long Id, CategoryItemType ItemType, decimal[] Months)> entries,
         List<CategoryGroupWithChildCount> hierarchy)
     {

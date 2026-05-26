@@ -278,11 +278,10 @@ public class MoneyMoneyImportService
                 ? DBNull.Value
                 : (object)SourceScope.Namespace(sourceId, r.GetInt64(1));
             // MoneyMoney stores amounts as REAL euros (or other currency); we keep them as
-            // integer cents downstream so DB-side SUM is exact. Round-half-to-even matches the
-            // C# default and avoids skew over large samples.
+            // integer cents downstream so DB-side SUM is exact.
             cmd.Parameters["$amount"].Value = r.IsDBNull(2)
                 ? DBNull.Value
-                : (object)(long)Math.Round(r.GetDouble(2) * 100.0, MidpointRounding.ToEven);
+                : (object)MoneyMath.EurosToCents(r.GetDouble(2));
             cmd.Parameters["$currency"].Value = r.IsDBNull(3) ? DBNull.Value : r.GetString(3);
             cmd.Parameters["$timestamp"].Value = r.IsDBNull(4) ? DBNull.Value : r.GetInt64(4);
             cmd.Parameters["$name"].Value = r.IsDBNull(5) ? DBNull.Value : r.GetString(5);
