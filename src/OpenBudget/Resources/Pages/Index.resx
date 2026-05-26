@@ -175,6 +175,9 @@
   <data name="Button_ShowAll" xml:space="preserve">
     <value>Show all ({0})</value>
   </data>
+  <data name="Button_Browse" xml:space="preserve">
+    <value>Browse</value>
+  </data>
   <data name="Button_Budgets" xml:space="preserve">
     <value>Budgets</value>
   </data>

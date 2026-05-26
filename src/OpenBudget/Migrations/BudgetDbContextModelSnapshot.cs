@@ -466,6 +466,10 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("name");
 
+                    b.Property<string>("Purpose")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("purpose");
+
                     b.Property<int>("SourceId")
                         .HasColumnType("INTEGER");
 

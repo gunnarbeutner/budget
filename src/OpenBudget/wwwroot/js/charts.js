@@ -711,6 +711,58 @@ const zeroLinePlugin = {
 };
 
 // Generic chart rendering function
+// Browse page bar chart: handles its own rendering since it needs (a) a Blazor click bridge
+// for navigating to a clicked bar's month, and (b) auto-scrolling the container to the
+// right-most (most recent) bar on each render so the user lands looking at the anchor.
+window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values, bg, dotnetRef) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return false;
+    if (window.chartInstances[canvasId]) {
+        window.chartInstances[canvasId].destroy();
+    }
+    try {
+        window.chartInstances[canvasId] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Spent',
+                    data: values,
+                    backgroundColor: bg,
+                    borderWidth: 0,
+                }]
+            },
+            options: {
+                // responsive:true tracks the canvas's CSS parent (.browse-chart, which we
+                // size explicitly to N pixels for N buckets). maintainAspectRatio:false
+                // lets the canvas honor its own style height (140px) without forcing a
+                // ratio against the wide width.
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { callback: function(v) { return '€' + v.toFixed(0); } }
+                    }
+                },
+                onClick: function(evt, elements) {
+                    if (!elements || !elements.length || !dotnetRef) return;
+                    const idx = elements[0].index;
+                    dotnetRef.invokeMethodAsync('OnChartBarClicked', idx);
+                }
+            }
+        });
+        // Scroll the wrapper to the right edge so the newest bar (= anchor end) is in view.
+        const scroller = document.getElementById(scrollContainerId);
+        if (scroller) scroller.scrollLeft = scroller.scrollWidth;
+        return true;
+    } catch (error) {
+        console.error('Error creating browse chart:', error);
+        return false;
+    }
+};
+
 window.renderChart = function(elementId, chartData) {
     const ctx = document.getElementById(elementId);
     if (!ctx) {

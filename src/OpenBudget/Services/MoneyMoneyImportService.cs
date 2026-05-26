@@ -37,7 +37,7 @@ public class MoneyMoneyImportService
     private static readonly string[] ExpectedTransactionColumns =
     {
         "local_account_key", "amount", "currency", "timestamp", "name", "comment",
-        "category_key", "checkmark", "splitted"
+        "purpose", "category_key", "checkmark", "splitted"
     };
 
     private readonly IServiceScopeFactory _scopeFactory;
@@ -191,6 +191,24 @@ public class MoneyMoneyImportService
         }
     }
 
+    /// <summary>
+    /// True when the named column exists on the named table in the source DB. Used to make
+    /// optional columns (e.g. SEPA <c>purpose</c>) backward-compatible with older MoneyMoney
+    /// snapshots that may not carry them.
+    /// </summary>
+    private static async Task<bool> ColumnExistsAsync(SqliteConnection src, string table, string column, CancellationToken ct)
+    {
+        await using var cmd = src.CreateCommand();
+        cmd.CommandText = $"PRAGMA table_info({table})";
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var name = reader.GetString(reader.GetOrdinal("name"));
+            if (string.Equals(name, column, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
     private static async Task<int> CopyAccountsAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
     {
         const string select = "SELECT rowid, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error FROM accounts";
@@ -261,13 +279,18 @@ public class MoneyMoneyImportService
 
     private static async Task<int> CopyTransactionsAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
     {
-        const string select = """
-            SELECT rowid, local_account_key, amount, currency, timestamp, name, comment, category_key, checkmark, splitted
+        // Older MoneyMoney snapshots (or future schema renames) may not have a `purpose`
+        // column. Probe for it and substitute NULL in the SELECT when absent so the import
+        // still succeeds with an empty Purpose rather than crashing on "no such column".
+        bool hasPurpose = await ColumnExistsAsync(src, "transactions", "purpose", ct);
+        string purposeExpr = hasPurpose ? "purpose" : "NULL AS purpose";
+        string select = $"""
+            SELECT rowid, local_account_key, amount, currency, timestamp, name, comment, {purposeExpr}, category_key, checkmark, splitted
             FROM transactions
             """;
         const string insert = """
-            INSERT INTO mm_transactions (Id, SourceId, local_account_key, amount, currency, timestamp, name, comment, category_key, checkmark, splitted)
-            VALUES ($id, $sid, $local_account_key, $amount, $currency, $timestamp, $name, $comment, $category_key, $checkmark, $splitted)
+            INSERT INTO mm_transactions (Id, SourceId, local_account_key, amount, currency, timestamp, name, comment, purpose, category_key, checkmark, splitted)
+            VALUES ($id, $sid, $local_account_key, $amount, $currency, $timestamp, $name, $comment, $purpose, $category_key, $checkmark, $splitted)
             """;
         return await BulkCopyAsync(src, db, select, insert, sourceId, (cmd, r) =>
         {
@@ -286,12 +309,13 @@ public class MoneyMoneyImportService
             cmd.Parameters["$timestamp"].Value = r.IsDBNull(4) ? DBNull.Value : r.GetInt64(4);
             cmd.Parameters["$name"].Value = r.IsDBNull(5) ? DBNull.Value : r.GetString(5);
             cmd.Parameters["$comment"].Value = r.IsDBNull(6) ? DBNull.Value : r.GetString(6);
-            cmd.Parameters["$category_key"].Value = r.IsDBNull(7)
+            cmd.Parameters["$purpose"].Value = r.IsDBNull(7) ? DBNull.Value : r.GetString(7);
+            cmd.Parameters["$category_key"].Value = r.IsDBNull(8)
                 ? DBNull.Value
-                : (object)SourceScope.Namespace(sourceId, r.GetInt64(7));
-            cmd.Parameters["$checkmark"].Value = r.IsDBNull(8) ? DBNull.Value : r.GetInt64(8);
-            cmd.Parameters["$splitted"].Value = r.IsDBNull(9) ? DBNull.Value : r.GetInt64(9);
-        }, new[] { "$id", "$sid", "$local_account_key", "$amount", "$currency", "$timestamp", "$name", "$comment", "$category_key", "$checkmark", "$splitted" }, ct);
+                : (object)SourceScope.Namespace(sourceId, r.GetInt64(8));
+            cmd.Parameters["$checkmark"].Value = r.IsDBNull(9) ? DBNull.Value : r.GetInt64(9);
+            cmd.Parameters["$splitted"].Value = r.IsDBNull(10) ? DBNull.Value : r.GetInt64(10);
+        }, new[] { "$id", "$sid", "$local_account_key", "$amount", "$currency", "$timestamp", "$name", "$comment", "$purpose", "$category_key", "$checkmark", "$splitted" }, ct);
     }
 
     private static object NamespaceParentGroup(int sourceId, long parentRowid)

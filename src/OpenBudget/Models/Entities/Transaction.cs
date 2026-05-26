@@ -39,6 +39,15 @@ public class Transaction
     [Column("comment")]
     public string? Comment { get; set; }
 
+    /// <summary>
+    /// SEPA "Verwendungszweck" / purpose field — the bank's raw transaction text including
+    /// EREF / MREF / CRED references and the original creditor's billing line. Often the
+    /// only place a payment's real identity lives, since <see cref="Name"/> is sometimes
+    /// just the payment processor (e.g. "PayPal").
+    /// </summary>
+    [Column("purpose")]
+    public string? Purpose { get; set; }
+
     [Column("category_key")]
     public long? CategoryId { get; set; }
 

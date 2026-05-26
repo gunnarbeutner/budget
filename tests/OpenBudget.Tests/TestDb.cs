@@ -19,6 +19,8 @@ internal sealed class TestDb : IAsyncDisposable
     public ProjectService Projects { get; }
     public BudgetEntryService Entries { get; }
     public BudgetService Spending { get; }
+    public TransactionQueryService TransactionQueries { get; }
+    public BrowseService Browse { get; }
 
     public TestDb()
     {
@@ -33,6 +35,8 @@ internal sealed class TestDb : IAsyncDisposable
         Projects = new ProjectService(Db);
         Entries = new BudgetEntryService(Db, Hierarchy);
         Spending = new BudgetService(Db, Hierarchy, Projects, Entries);
+        TransactionQueries = new TransactionQueryService(Db);
+        Browse = new BrowseService(Db, Hierarchy, Projects, Entries, Spending);
     }
 
     public async ValueTask DisposeAsync()
@@ -93,6 +97,20 @@ internal sealed class TestDb : IAsyncDisposable
     }
 
     /// <summary>
+    /// Assign a CategoryGroup to a project — the "assigned group" anchor the browse tree
+    /// roots itself on. The legacy table is named ProjectCategoryAssignments and its column
+    /// is "CategoryId" but the values it stores are CategoryGroup IDs.
+    /// </summary>
+    public void AssignGroup(int projectId, long categoryGroupId)
+    {
+        Db.ProjectCategoryAssignments.Add(new ProjectCategoryAssignment
+        {
+            ProjectId = projectId,
+            CategoryId = categoryGroupId,
+        });
+    }
+
+    /// <summary>
     /// Create a budget for a project with a uniform monthly amount per (Id, ItemType) entry.
     /// </summary>
     public Budget AddBudget(int projectId, int year, params (long Id, CategoryItemType ItemType, decimal MonthlyAmount)[] entries)
@@ -126,15 +144,29 @@ internal sealed class TestDb : IAsyncDisposable
     /// Add a transaction. Amount is in cents (matches the on-disk column type post-migration).
     /// Negative cents = expense, positive cents = income — same convention as MoneyMoney.
     /// </summary>
-    public void AddTransaction(long id, long categoryId, long amountCents, DateTime date, int sourceId = 1)
+    public void AddTransaction(
+        long id, long categoryId, long amountCents, DateTime date, int sourceId = 1,
+        long? accountId = null, string? name = null, string? comment = null, long? splitted = null)
     {
         Db.Transactions.Add(new Transaction
         {
             Id = id,
             SourceId = sourceId,
             CategoryId = categoryId,
+            AccountId = accountId,
             Amount = amountCents,
             Timestamp = ((DateTimeOffset)DateTime.SpecifyKind(date, DateTimeKind.Utc)).ToUnixTimeSeconds(),
+            Name = name,
+            Comment = comment,
+            Splitted = splitted,
         });
+    }
+
+    /// <summary>Add a MoneyMoney account with a known Id + name.</summary>
+    public Account AddAccount(long id, string name = "Acct", int sourceId = 1)
+    {
+        var a = new Account { Id = id, SourceId = sourceId, Name = name };
+        Db.Accounts.Add(a);
+        return a;
     }
 }

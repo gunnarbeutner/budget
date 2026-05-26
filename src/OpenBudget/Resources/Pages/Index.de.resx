@@ -175,6 +175,9 @@
   <data name="Button_ShowAll" xml:space="preserve">
     <value>Alle anzeigen ({0})</value>
   </data>
+  <data name="Button_Browse" xml:space="preserve">
+    <value>Durchsuchen</value>
+  </data>
   <data name="Button_Budgets" xml:space="preserve">
     <value>Budgets</value>
   </data>

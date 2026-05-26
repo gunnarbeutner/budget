@@ -73,6 +73,9 @@
   <data name="Status_LoadingCategories" xml:space="preserve">
     <value>Loading categories...</value>
   </data>
+  <data name="Button_Browse" xml:space="preserve">
+    <value>Browse</value>
+  </data>
   <data name="Button_DeleteProject" xml:space="preserve">
     <value>Delete Project</value>
   </data>

@@ -1,0 +1,1056 @@
+@page "/projects/{ProjectId:int}/browse"
+@using System.Globalization
+@using OpenBudget.Services
+@using OpenBudget.Models
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.WebUtilities
+@inject BrowseService BrowseService
+@inject TransactionQueryService TransactionQueries
+@inject CategoryHierarchyService Hierarchy
+@inject ProjectService ProjectService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject IStringLocalizer<Browse> L
+@implements IDisposable
+
+<PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
+
+@if (notFound)
+{
+    <h1>@L["NotFound_Heading"]</h1>
+    <p class="text-muted">
+        @L["NotFound_Body_Before"]<a href="/">@L["NotFound_Body_LinkText"]</a>@L["NotFound_Body_After"]
+    </p>
+    return;
+}
+
+<div class="d-flex flex-wrap mb-3 align-items-center gap-2 sticky-top bg-body border-bottom py-2"
+     style="margin-left: -0.5rem; margin-right: -0.5rem; padding-left: 0.5rem; padding-right: 0.5rem; z-index: 1020;">
+    <a href="/projects/@ProjectId" class="text-decoration-none text-body-secondary me-1"
+       title="@L["Aria_BackToProject"]" aria-label="@L["Aria_BackToProject"]">
+        <i class="bi bi-chevron-left"></i>
+    </a>
+    <h5 class="mb-0 me-2">@(project?.Name ?? "")</h5>
+
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            @onclick="() => StepAnchor(-1)" aria-label="@L["Aria_Previous"]">
+        <i class="bi bi-chevron-left" aria-hidden="true"></i>
+    </button>
+    <span class="text-body-secondary small">@AnchorHeading</span>
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            @onclick="() => StepAnchor(1)" aria-label="@L["Aria_Next"]" disabled="@IsAtMaxAnchor">
+        <i class="bi bi-chevron-right" aria-hidden="true"></i>
+    </button>
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            @onclick="GoToToday" disabled="@IsTodayAnchor">@L["Button_Today"]</button>
+    <div class="segmented" role="group" aria-label="@L["Aria_Period"]">
+        <button type="button" class="btn @(period == "month" ? "active" : "")"
+                @onclick='() => SetPeriod("month")'>@L["Button_Month"]</button>
+        <button type="button" class="btn @(period == "ytd" ? "active" : "")"
+                @onclick='() => SetPeriod("ytd")'>@L["Button_YTD"]</button>
+        <button type="button" class="btn @(period == "year" ? "active" : "")"
+                @onclick='() => SetPeriod("year")'>@L["Button_Year"]</button>
+    </div>
+</div>
+
+<div class="browse-layout">
+    <aside class="browse-rail">
+        @if (tree == null)
+        {
+            <div aria-busy="true">
+                @for (int i = 0; i < 6; i++)
+                {
+                    <div class="skeleton skeleton-line" style="margin-left: @(i % 3 * 12)px;"></div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="browse-tree" role="tree">
+                @{
+                    bool allSelected = selectionKind == "all";
+                }
+                <div class="browse-tree-row @(allSelected ? "selected" : "")"
+                     role="treeitem" tabindex="0" aria-selected="@allSelected.ToString().ToLower()"
+                     @onclick="SelectAll"
+                     @onkeydown="OnAllKeydown">
+                    <span class="browse-tree-name fw-semibold">
+                        <i class="bi bi-list-ul me-1" aria-hidden="true"></i>@L["Tree_AllTransactions"]
+                    </span>
+                </div>
+
+                @if (tree.Accounts.Count > 0)
+                {
+                    <div class="browse-tree-section">@L["Tree_Section_Accounts"]</div>
+                    @foreach (var a in tree.Accounts)
+                    {
+                        var accountId = a.Id;
+                        bool isSel = selectionKind == "account" && selectionId == accountId;
+                        <div class="browse-tree-row @(isSel ? "selected" : "")"
+                             role="treeitem" tabindex="0" aria-selected="@isSel.ToString().ToLower()"
+                             @onclick="() => SelectAccount(accountId)"
+                             @onkeydown="e => OnAccountKeydown(e, accountId)">
+                            <span class="browse-tree-name"><i class="bi bi-bank me-1" aria-hidden="true"></i>@a.Name</span>
+                            @if (a.Balance.HasValue)
+                            {
+                                <span class="browse-tree-amount @(a.Balance < 0 ? "text-danger" : "text-muted")">
+                                    @Formatting.FormatMoney(a.Balance.Value, a.Currency ?? "EUR")
+                                </span>
+                            }
+                        </div>
+                    }
+                }
+
+                @if (tree.Categories.Count > 0)
+                {
+                    <div class="browse-tree-section">@L["Tree_Section_Categories"]</div>
+                    @foreach (var c in tree.Categories)
+                    {
+                        @RenderCategoryNode(c, 0)
+                    }
+                }
+            </div>
+        }
+    </aside>
+
+    <section class="browse-main">
+        @if (tree == null)
+        {
+            <div class="card mb-3" aria-busy="true">
+                <div class="card-body">
+                    <div class="skeleton skeleton-line-lg" style="width: 40%;"></div>
+                    <div class="skeleton skeleton-block mt-3"></div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="card mb-3 browse-header-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+                        <div>
+                            <div class="text-body-secondary small text-uppercase">@SelectionContextLabel</div>
+                            <h3 class="mb-1">@SelectionName</h3>
+                            @if (selectionKind != "account" && SelectionBudget is { } budget)
+                            {
+                                var avail = budget - SelectionSpent;
+                                <div class="text-body-secondary small">
+                                    @L["Header_Available"]
+                                    <span class="@(avail < 0 ? "text-danger fw-semibold" : "text-success fw-semibold")">
+                                        @Formatting.FormatMoney(avail)
+                                    </span>
+                                </div>
+                            }
+                        </div>
+                        <div class="text-end">
+                            @if (selectionKind == "account" && SelectionAccountBalance is { } balance)
+                            {
+                                // Account header reads its current balance — independent of the
+                                // anchor period. The period net flow (incoming − outgoing) reads
+                                // as a smaller secondary line below.
+                                <div class="h2 mb-0 @(balance < 0 ? "text-danger" : "")">
+                                    @Formatting.FormatMoney(balance, SelectionAccountCurrency ?? "EUR")
+                                </div>
+                                <div class="text-body-secondary small">@L["Header_CurrentBalance"]</div>
+                                <div class="text-body-secondary small">
+                                    @AnchorHeading: <span class="@(SelectionAccountPeriodSum < 0 ? "text-danger" : "text-success")">
+                                        @Formatting.FormatMoney(SelectionAccountPeriodSum, SelectionAccountCurrency ?? "EUR")
+                                    </span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="h2 mb-0 @(SelectionSpent < 0 ? "text-success" : "text-danger")">
+                                    @Formatting.FormatMoney(-SelectionSpent)
+                                </div>
+                                <div class="text-body-secondary small">@AnchorHeading</div>
+                                @if (SelectionBudget is { } b2)
+                                {
+                                    <div class="text-body-secondary small">@L["Header_Budget"] @Formatting.FormatMoney(b2)</div>
+                                }
+                            }
+                        </div>
+                    </div>
+
+                    @if (chartBars != null && chartBars.Length > 0)
+                    {
+                        <div class="d-flex justify-content-end mt-3">
+                            <div class="segmented" role="group" aria-label="@L["Chart_AriaGranularity"]">
+                                <button type="button" class="btn @(chartGranularity == "M" ? "active" : "")"
+                                        @onclick='() => SetChartGranularity("M")'>@L["Chart_M"]</button>
+                                <button type="button" class="btn @(chartGranularity == "Q" ? "active" : "")"
+                                        @onclick='() => SetChartGranularity("Q")'>@L["Chart_Q"]</button>
+                                <button type="button" class="btn @(chartGranularity == "Y" ? "active" : "")"
+                                        @onclick='() => SetChartGranularity("Y")'>@L["Chart_Y"]</button>
+                            </div>
+                        </div>
+                        <div id="browseChartScroll" class="browse-chart-scroll mt-2">
+                            <div class="browse-chart" style="width: @(ChartCanvasWidthPx)px;">
+                                <canvas id="browseChart" style="height: 140px;"></canvas>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <div class="input-group input-group-sm" style="max-width: 280px;">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="search" class="form-control" placeholder="@L["Filter_SearchPlaceholder"]"
+                           value="@searchInput" @oninput="OnSearchInput" />
+                </div>
+                <div class="input-group input-group-sm" style="max-width: 160px;">
+                    <span class="input-group-text">€ ≥</span>
+                    <input type="number" class="form-control" step="1" min="0"
+                           value="@amountMinInput" @onchange="OnAmountMinChanged" />
+                </div>
+                <div class="input-group input-group-sm" style="max-width: 160px;">
+                    <span class="input-group-text">€ ≤</span>
+                    <input type="number" class="form-control" step="1" min="0"
+                           value="@amountMaxInput" @onchange="OnAmountMaxChanged" />
+                </div>
+                @if (selectionKind != "account" && tree.Accounts.Count > 1)
+                {
+                    <select class="form-select form-select-sm" style="max-width: 200px;"
+                            value="@(accountFilter?.ToString() ?? "")"
+                            @onchange="OnAccountFilterChanged">
+                        <option value="">@L["Filter_AnyAccount"]</option>
+                        @foreach (var a in tree.Accounts)
+                        {
+                            <option value="@a.Id">@a.Name</option>
+                        }
+                    </select>
+                }
+                @if (HasActiveFilter)
+                {
+                    <button type="button" class="btn btn-sm btn-link" @onclick="ClearFilters">@L["Filter_Clear"]</button>
+                }
+            </div>
+
+            @if (page == null)
+            {
+                <div aria-busy="true">
+                    @for (int i = 0; i < 6; i++)
+                    {
+                        <div class="skeleton skeleton-line"></div>
+                    }
+                </div>
+            }
+            else if (page.TotalCount == 0)
+            {
+                <div class="text-body-secondary py-4 text-center">
+                    <i class="bi bi-inbox" style="font-size: 1.6rem;" aria-hidden="true"></i>
+                    <div>@L["Empty_NoTransactions"]</div>
+                </div>
+            }
+            else
+            {
+                <div class="tx-list">
+                    @foreach (var row in page.Rows)
+                    {
+                        var inPeriod = IsInAnchorPeriod(row.Date);
+                        <div class="tx-row @(inPeriod ? "in-period" : "")">
+                            <div class="tx-date-col">
+                                <div class="tx-date">@row.Date.ToString("dd.MM.yyyy")</div>
+                                @if (showCategoryColumn && !string.IsNullOrEmpty(row.CategoryName))
+                                {
+                                    <div class="tx-badges">
+                                        <span class="badge text-bg-primary tx-badge">@row.CategoryName</span>
+                                    </div>
+                                }
+                            </div>
+                            <div class="tx-payee">
+                                <span class="tx-name">@(row.Name ?? "")</span>
+                                @if (!string.IsNullOrEmpty(row.Comment))
+                                {
+                                    <span class="tx-comment text-body-secondary">@row.Comment</span>
+                                }
+                                @if (!string.IsNullOrEmpty(row.Purpose))
+                                {
+                                    <span class="tx-purpose text-body-secondary">@row.Purpose</span>
+                                }
+                            </div>
+                            <div class="tx-account">
+                                @if (showAccountColumn && !string.IsNullOrEmpty(row.AccountName))
+                                {
+                                    <span class="badge text-bg-light border tx-badge">@row.AccountName</span>
+                                }
+                            </div>
+                            <div class="tx-amount @(row.Amount < 0 ? "text-danger" : "text-success")">
+                                @if (row.IsSplitChild)
+                                {
+                                    <span class="badge text-bg-warning me-1" title="@L["Tx_SplitChildTitle"]">@L["Tx_SplitChild"]</span>
+                                }
+                                @Formatting.FormatMoney(row.Amount, row.Currency ?? "EUR")
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mt-3 small text-body-secondary">
+                    <div>
+                        @{
+                            var first = pageNumber * pageSize + 1;
+                            var last = Math.Min((pageNumber + 1) * pageSize, page.TotalCount);
+                        }
+                        @L["Footer_Range", first, last, page.TotalCount] · @L["Footer_Sum"] @Formatting.FormatMoney(page.TotalSum)
+                    </div>
+                    <div class="d-flex align-items-center gap-1">
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                @onclick="() => GoToPage(pageNumber - 1)" disabled="@(pageNumber == 0)">
+                            <i class="bi bi-chevron-left"></i>
+                        </button>
+                        <span>@(pageNumber + 1)</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                @onclick="() => GoToPage(pageNumber + 1)" disabled="@(!HasNextPage)">
+                            <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+            }
+        }
+    </section>
+</div>
+
+@code {
+    [Parameter] public int ProjectId { get; set; }
+
+    private const int pageSize = 50;
+
+    private Project? project;
+    private bool notFound;
+
+    // Tree + page data.
+    private BrowseTree? tree;
+    private TransactionPage? page;
+
+    // URL state.
+    private (int Year, int Month) anchor;
+    private string period = "month";
+
+    // Selection — "all" | "account" | "category" | "group".
+    private string selectionKind = "all";
+    private long? selectionId;
+
+    // Filter state.
+    private long? accountFilter;
+    private string searchInput = "";
+    private string searchEffective = "";
+    private decimal? amountMin;
+    private decimal? amountMax;
+    private string amountMinInput = "";
+    private string amountMaxInput = "";
+    private int pageNumber;
+
+    // Chart series: bucketed Spent for the selected node, spanning the source's full history
+    // (earliest transaction → anchor bucket). Granularity picks the bucket width (M/Q/Y); the
+    // anchor bucket is highlighted and the canvas auto-scrolls to it.
+    private (string Label, decimal Value, bool IsAnchor)[]? chartBars;
+    // Each chart bar's start month, in (Year, Month) tuples. Used by OnChartBarClicked to
+    // translate the bar index back into an anchor date.
+    private (int Year, int Month)[]? chartBarMonths;
+    private string chartGranularity = "M";
+    private long lastRenderToken;
+    // Cached once per page: the earliest source-wide transaction so chart bucket count is
+    // stable across selections.
+    private DateTime? sourceEarliestTx;
+
+    // JS ↔ Blazor bridge for chart bar clicks. Allocated once per page lifetime; the chart
+    // re-render hands the same reference each time so click events route back to us.
+    private DotNetObjectReference<Browse>? selfRef;
+
+    // Defer JS interop until after the first browser render. OnInitializedAsync runs during
+    // server prerender where JS calls are illegal — so we mark the chart dirty and let
+    // OnAfterRenderAsync push it to the browser.
+    private bool chartDirty;
+
+    public void Dispose()
+    {
+        selfRef?.Dispose();
+    }
+
+    // Debounce search keystrokes — we throttle by token instead of timer/JS interop.
+    private long searchToken;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ReadStateFromQuery();
+        project = await ProjectService.GetProjectAsync(ProjectId);
+        if (project == null) { notFound = true; return; }
+        await ReloadAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // The initial pipeline (OnInitializedAsync → ReloadAsync) computes chart data but
+        // can't push it to JS during prerender. Flush any pending chart here, then on every
+        // subsequent state change that flips chartDirty.
+        if (chartDirty)
+        {
+            chartDirty = false;
+            await RenderChartAsync();
+        }
+    }
+
+    private void ReadStateFromQuery()
+    {
+        var now = DateTime.Now;
+        anchor = (now.Year, now.Month);
+        var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
+
+        if (query.TryGetValue("year", out var y) && int.TryParse(y, out var py) && py >= 1900 && py <= now.Year)
+            anchor.Year = py;
+        if (query.TryGetValue("month", out var m) && int.TryParse(m, out var pm) && pm is >= 1 and <= 12)
+            anchor.Month = pm;
+        // Clamp future anchor.
+        var picked = new DateTime(anchor.Year, anchor.Month, 1);
+        var max = new DateTime(now.Year, now.Month, 1);
+        if (picked > max) picked = max;
+        anchor = (picked.Year, picked.Month);
+
+        if (query.TryGetValue("period", out var p) && p.ToString() is var pv && (pv == "month" || pv == "ytd" || pv == "year"))
+            period = pv;
+
+        if (query.TryGetValue("sel", out var s) && !string.IsNullOrWhiteSpace(s))
+        {
+            var raw = s.ToString();
+            if (raw.StartsWith("cat-") && long.TryParse(raw[4..], out var cid))
+            {
+                selectionKind = "category"; selectionId = cid;
+            }
+            else if (raw.StartsWith("grp-") && long.TryParse(raw[4..], out var gid))
+            {
+                selectionKind = "group"; selectionId = gid;
+            }
+            else if (raw.StartsWith("acct-") && long.TryParse(raw[5..], out var aid))
+            {
+                selectionKind = "account"; selectionId = aid;
+            }
+        }
+
+        if (query.TryGetValue("acct", out var af) && long.TryParse(af, out var afl)) accountFilter = afl;
+        if (query.TryGetValue("q", out var qs)) { searchInput = qs.ToString(); searchEffective = searchInput; }
+        if (query.TryGetValue("amin", out var minRaw) && decimal.TryParse(minRaw, NumberStyles.Number, CultureInfo.InvariantCulture, out var minVal))
+        { amountMin = minVal; amountMinInput = minRaw.ToString(); }
+        if (query.TryGetValue("amax", out var maxRaw) && decimal.TryParse(maxRaw, NumberStyles.Number, CultureInfo.InvariantCulture, out var maxVal))
+        { amountMax = maxVal; amountMaxInput = maxRaw.ToString(); }
+        if (query.TryGetValue("page", out var pgRaw) && int.TryParse(pgRaw, out var pg) && pg >= 0) pageNumber = pg;
+        if (query.TryGetValue("g", out var g) && g.ToString() is var gv && (gv == "M" || gv == "Q" || gv == "Y"))
+            chartGranularity = gv;
+    }
+
+    private void UpdateUrl() => PageState.ReplaceQuery(Navigation, new Dictionary<string, object?>
+    {
+        ["year"] = anchor.Year,
+        ["month"] = anchor.Month,
+        ["period"] = period == "month" ? null : period,
+        ["sel"] = selectionKind switch
+        {
+            "category" => $"cat-{selectionId}",
+            "group" => $"grp-{selectionId}",
+            "account" => $"acct-{selectionId}",
+            _ => null
+        },
+        ["acct"] = accountFilter?.ToString(),
+        ["q"] = string.IsNullOrWhiteSpace(searchEffective) ? null : searchEffective,
+        ["amin"] = amountMin?.ToString(CultureInfo.InvariantCulture),
+        ["amax"] = amountMax?.ToString(CultureInfo.InvariantCulture),
+        ["page"] = pageNumber == 0 ? null : pageNumber.ToString(),
+        ["g"] = chartGranularity == "M" ? null : chartGranularity
+    });
+
+    private (int FromMonth, int ToMonth) PeriodRange => period switch
+    {
+        "year" => (1, 12),
+        "ytd" => (1, anchor.Month),
+        _ => (anchor.Month, anchor.Month)
+    };
+
+    private string AnchorHeading
+    {
+        get
+        {
+            var d = new DateTime(anchor.Year, anchor.Month, 1);
+            return period switch
+            {
+                "year" => L["Heading_Year", anchor.Year].Value,
+                "ytd" => L["Heading_YTD", d.ToString("MMMM yyyy")].Value,
+                _ => d.ToString("MMMM yyyy")
+            };
+        }
+    }
+
+    private bool IsAtMaxAnchor
+    {
+        get
+        {
+            var now = DateTime.Now;
+            if (period == "year") return anchor.Year >= now.Year;
+            return anchor.Year > now.Year || (anchor.Year == now.Year && anchor.Month >= now.Month);
+        }
+    }
+
+    private bool IsTodayAnchor
+    {
+        get
+        {
+            var now = DateTime.Now;
+            return anchor.Year == now.Year && anchor.Month == now.Month;
+        }
+    }
+
+    private async Task StepAnchor(int direction)
+    {
+        var dt = new DateTime(anchor.Year, anchor.Month, 1);
+        dt = period == "year" ? dt.AddYears(direction) : dt.AddMonths(direction);
+        var now = DateTime.Now;
+        var max = new DateTime(now.Year, now.Month, 1);
+        if (dt > max) dt = max;
+        if (dt.Year < 1900) return;
+        if (dt.Year == anchor.Year && dt.Month == anchor.Month) return;
+        anchor = (dt.Year, dt.Month);
+        UpdateUrl();
+        await ReloadHighlightAsync();
+    }
+
+    private async Task GoToToday()
+    {
+        var now = DateTime.Now;
+        if (anchor.Year == now.Year && anchor.Month == now.Month) return;
+        anchor = (now.Year, now.Month);
+        UpdateUrl();
+        await ReloadHighlightAsync();
+    }
+
+    private async Task SetPeriod(string value)
+    {
+        if (period == value) return;
+        period = value;
+        UpdateUrl();
+        await ReloadHighlightAsync();
+    }
+
+    /// <summary>
+    /// Lightweight refresh when the anchor / period changes but the selection and filters
+    /// don't. Rebuilds the tree (so its per-node period numbers update) and re-renders the
+    /// chart highlight, but leaves the transaction list intact — the list is unfiltered by
+    /// anchor, so its content doesn't change.
+    /// </summary>
+    private async Task ReloadHighlightAsync()
+    {
+        if (project == null) return;
+        var (fm, tm) = PeriodRange;
+        tree = await BrowseService.GetTreeAsync(ProjectId, anchor.Year, fm, tm);
+        await ComputeChartAsync();
+        chartDirty = true;
+        StateHasChanged();
+    }
+
+    private async Task SelectAll()
+    {
+        selectionKind = "all"; selectionId = null;
+        pageNumber = 0;
+        UpdateUrl();
+        await ReloadTransactionsAsync();
+    }
+
+    private async Task OnAllKeydown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == " ") await SelectAll();
+    }
+
+    private async Task OnAccountKeydown(KeyboardEventArgs e, long id)
+    {
+        if (e.Key == "Enter" || e.Key == " ") await SelectAccount(id);
+    }
+
+    private async Task OnCategoryKeydown(KeyboardEventArgs e, BrowseCategoryNode n)
+    {
+        if (e.Key == "Enter" || e.Key == " ") await SelectCategoryNode(n);
+    }
+
+    private async Task SelectAccount(long id)
+    {
+        selectionKind = "account"; selectionId = id;
+        pageNumber = 0;
+        UpdateUrl();
+        await ReloadTransactionsAsync();
+    }
+
+    private async Task SelectCategoryNode(BrowseCategoryNode n)
+    {
+        selectionKind = n.ItemType == CategoryItemType.Category ? "category" : "group";
+        selectionId = n.Id;
+        pageNumber = 0;
+        UpdateUrl();
+        await ReloadTransactionsAsync();
+    }
+
+    private async Task GoToPage(int pg)
+    {
+        if (pg < 0) return;
+        pageNumber = pg;
+        UpdateUrl();
+        await ReloadTransactionsAsync();
+    }
+
+    private async Task SetChartGranularity(string g)
+    {
+        if (chartGranularity == g) return;
+        chartGranularity = g;
+        UpdateUrl();
+        await ComputeChartAsync();
+        chartDirty = true;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Invoked from JS when the user clicks a bar in the chart. <paramref name="barIndex"/>
+    /// is the bar's position in <see cref="chartBars"/>; we map it back through
+    /// <see cref="chartBarMonths"/> to set the anchor to that month and re-highlight.
+    /// </summary>
+    [JSInvokable]
+    public async Task OnChartBarClicked(int barIndex)
+    {
+        if (chartBarMonths == null) return;
+        if (barIndex < 0 || barIndex >= chartBarMonths.Length) return;
+        var (y, m) = chartBarMonths[barIndex];
+        if (y == anchor.Year && m == anchor.Month) return;
+        anchor = (y, m);
+        UpdateUrl();
+        await ReloadHighlightAsync();
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        searchInput = e.Value?.ToString() ?? "";
+        var token = ++searchToken;
+        // Tiny debounce: wait, then check we're still the latest typed value.
+        await Task.Delay(250);
+        if (token != searchToken) return;
+        if (searchEffective == searchInput) return;
+        searchEffective = searchInput;
+        pageNumber = 0;
+        UpdateUrl();
+        await ReloadTransactionsAsync();
+    }
+
+    private async Task OnAccountFilterChanged(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        accountFilter = long.TryParse(v, out var af) ? af : null;
+        pageNumber = 0;
+        UpdateUrl();
+        await ReloadTransactionsAsync();
+    }
+
+    private async Task OnAmountMinChanged(ChangeEventArgs e)
+    {
+        amountMinInput = e.Value?.ToString() ?? "";
+        amountMin = decimal.TryParse(amountMinInput, NumberStyles.Number, CultureInfo.InvariantCulture, out var v) ? v : null;
+        pageNumber = 0;
+        UpdateUrl();
+        await ReloadTransactionsAsync();
+    }
+
+    private async Task OnAmountMaxChanged(ChangeEventArgs e)
+    {
+        amountMaxInput = e.Value?.ToString() ?? "";
+        amountMax = decimal.TryParse(amountMaxInput, NumberStyles.Number, CultureInfo.InvariantCulture, out var v) ? v : null;
+        pageNumber = 0;
+        UpdateUrl();
+        await ReloadTransactionsAsync();
+    }
+
+    private async Task ClearFilters()
+    {
+        accountFilter = null;
+        searchInput = ""; searchEffective = "";
+        amountMin = null; amountMax = null;
+        amountMinInput = ""; amountMaxInput = "";
+        pageNumber = 0;
+        UpdateUrl();
+        await ReloadTransactionsAsync();
+    }
+
+    private bool HasActiveFilter =>
+        accountFilter.HasValue || !string.IsNullOrWhiteSpace(searchEffective) || amountMin.HasValue || amountMax.HasValue;
+
+    private async Task ReloadAsync()
+    {
+        tree = null; page = null;
+        StateHasChanged();
+        var (fm, tm) = PeriodRange;
+        tree = await BrowseService.GetTreeAsync(ProjectId, anchor.Year, fm, tm);
+        if (tree == null) { notFound = true; return; }
+        if (project != null && sourceEarliestTx == null)
+        {
+            sourceEarliestTx = await TransactionQueries.GetSourceEarliestTransactionAsync(project.SourceId);
+        }
+        await ReloadTransactionsAsync();
+    }
+
+    private async Task ReloadTransactionsAsync()
+    {
+        if (project == null || tree == null) return;
+        page = null;
+        StateHasChanged();
+
+        // The transaction list is intentionally unfiltered by the period anchor — matches
+        // MoneyMoney's "Period: Show All" default. The anchor only drives chart-highlight
+        // and the header period sum. Other filters (search/amount/account) still apply.
+        var query = new TransactionQuery
+        {
+            SourceId = project.SourceId,
+            CategoryLeafIds = await ResolveSelectionLeavesAsync(),
+            AccountIds = ResolveSelectionAccounts(),
+            SearchText = string.IsNullOrWhiteSpace(searchEffective) ? null : searchEffective,
+            MinAbsAmount = amountMin,
+            MaxAbsAmount = amountMax,
+            Page = pageNumber,
+            PageSize = pageSize
+        };
+        page = await TransactionQueries.QueryAsync(query);
+        await ComputeChartAsync();
+        chartDirty = true;
+        StateHasChanged();
+    }
+
+    private async Task<IReadOnlyCollection<long>?> ResolveSelectionLeavesAsync()
+    {
+        if (project == null) return null;
+        if (selectionKind == "category" && selectionId is { } cid) return new[] { cid };
+        if (selectionKind == "group" && selectionId is { } gid)
+        {
+            var hier = await Hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+            var map = CategoryHierarchyService.BuildItemToLeafCategoryIds(
+                new[] { (gid, CategoryItemType.Group) }, hier);
+            return map.TryGetValue((gid, CategoryItemType.Group), out var leaves) ? leaves.ToList() : null;
+        }
+        return null;
+    }
+
+    private IReadOnlyCollection<long>? ResolveSelectionAccounts()
+    {
+        if (selectionKind == "account" && selectionId is { } aid) return new[] { aid };
+        if (accountFilter is { } af) return new[] { af };
+        return null;
+    }
+
+    private string SelectionContextLabel => selectionKind switch
+    {
+        "account" => L["Header_Context_Account"],
+        "category" or "group" => L["Header_Context_Category"],
+        _ => L["Header_Context_AllTransactions"]
+    };
+
+    private string SelectionName
+    {
+        get
+        {
+            if (selectionKind == "account" && selectionId is { } aid && tree != null)
+                return tree.Accounts.FirstOrDefault(a => a.Id == aid)?.Name ?? "";
+            if ((selectionKind == "category" || selectionKind == "group") && selectionId is { } cid && tree != null)
+                return FindCategoryNode(tree.Categories, cid, selectionKind == "category" ? CategoryItemType.Category : CategoryItemType.Group)?.Name ?? "";
+            return L["Header_AllTransactions"];
+        }
+    }
+
+    private decimal SelectionSpent
+    {
+        get
+        {
+            if (tree == null) return 0m;
+            // Header is anchor-period scoped, independent of the (unfiltered) transaction
+            // list. Read straight from the tree-decoration the BrowseService computed so the
+            // header number always matches what the tree row shows for the selected node.
+            if (selectionKind == "category" && selectionId is { } cid)
+                return FindCategoryNode(tree.Categories, cid, CategoryItemType.Category)?.Spent ?? 0m;
+            if (selectionKind == "group" && selectionId is { } gid)
+                return FindCategoryNode(tree.Categories, gid, CategoryItemType.Group)?.Spent ?? 0m;
+            if (selectionKind == "account" && selectionId is { } aid)
+            {
+                // Accounts use MoneyMoney's natural signing: inflow positive, outflow negative.
+                // Flip so "Spent" reads positive in the header for negative-net periods.
+                var acct = tree.Accounts.FirstOrDefault(a => a.Id == aid);
+                return acct == null ? 0m : -acct.PeriodSum;
+            }
+            // "All": sum of root category Spent values for the period.
+            return tree.Categories.Sum(c => c.Spent);
+        }
+    }
+
+    private BrowseAccountNode? SelectedAccountNode =>
+        tree != null && selectionKind == "account" && selectionId is { } aid
+            ? tree.Accounts.FirstOrDefault(a => a.Id == aid)
+            : null;
+
+    private decimal? SelectionAccountBalance => SelectedAccountNode?.Balance;
+    private string? SelectionAccountCurrency => SelectedAccountNode?.Currency;
+    private decimal SelectionAccountPeriodSum => SelectedAccountNode?.PeriodSum ?? 0m;
+
+    private decimal? SelectionBudget
+    {
+        get
+        {
+            if (tree == null) return null;
+            if (selectionKind == "category" && selectionId is { } cid)
+                return FindCategoryNode(tree.Categories, cid, CategoryItemType.Category)?.Budget;
+            if (selectionKind == "group" && selectionId is { } gid)
+                return FindCategoryNode(tree.Categories, gid, CategoryItemType.Group)?.Budget;
+            return null;
+        }
+    }
+
+    private bool showCategoryColumn => selectionKind != "category";
+    private bool showAccountColumn => selectionKind != "account" && (tree?.Accounts.Count ?? 0) > 0;
+
+    private bool IsInAnchorPeriod(DateTime date)
+    {
+        var (fm, tm) = PeriodRange;
+        if (date.Year != anchor.Year) return false;
+        return date.Month >= fm && date.Month <= tm;
+    }
+
+    /// <summary>
+    /// Canvas width in pixels — bar width × bucket count, floored at 320 so a near-empty
+    /// source doesn't collapse the chart to nothing. Lives here rather than inline in markup
+    /// because Razor doesn't allow @{} statement blocks inside an @if body.
+    /// </summary>
+    private int ChartCanvasWidthPx
+    {
+        get
+        {
+            if (chartBars == null) return 320;
+            int barPx = chartGranularity switch { "Y" => 64, "Q" => 52, _ => 36 };
+            return Math.Max(chartBars.Length * barPx, 320);
+        }
+    }
+
+    private bool HasNextPage => page != null && (pageNumber + 1) * pageSize < page.TotalCount;
+
+    private static BrowseCategoryNode? FindCategoryNode(IEnumerable<BrowseCategoryNode> nodes, long id, CategoryItemType type)
+    {
+        foreach (var n in nodes)
+        {
+            if (n.Id == id && n.ItemType == type) return n;
+            var found = FindCategoryNode(n.Children, id, type);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private async Task ComputeChartAsync()
+    {
+        // History series for the selected node, bucketed by chartGranularity. Account-level
+        // charts would need a different signal (net cashflow / balance over time) — skip for
+        // now so the canvas just stays hidden when an account is selected.
+        if (project == null || tree == null) { chartBars = null; return; }
+        if (selectionKind != "category" && selectionKind != "group") { chartBars = null; return; }
+
+        var leaves = await ResolveSelectionLeavesAsync();
+        if (leaves == null || leaves.Count == 0) { chartBars = null; return; }
+
+        // Window spans the source's first-ever transaction through the anchor bucket so the
+        // chart matches MoneyMoney's "full history" axis. Bucket count varies with the data
+        // and granularity; the canvas wraps in a horizontal-scroll container so it can grow.
+        var anchorDate = new DateTime(anchor.Year, anchor.Month, 1);
+        var earliest = sourceEarliestTx ?? anchorDate;
+        var (windowStart, windowEndExclusive, bucketCount, bucketOf, labelOf) = ResolveChartWindow(earliest, anchorDate, chartGranularity);
+
+        var leafList = leaves.ToList();
+        var raw = await TransactionQueries.GetRawByDateRangeAsync(
+            project.SourceId, leafList, windowStart, windowEndExclusive);
+
+        // Mark every bucket touching the anchor period as "anchor" — for M this is one
+        // bucket, for YTD it's all buckets from Jan to anchor month, for Year all twelve
+        // months of the year. The chart highlight then matches the period selector's reach
+        // rather than just the single anchor month.
+        var (fm, tm) = PeriodRange;
+        var bars = new (string Label, decimal Value, bool IsAnchor)[bucketCount];
+        var months = new (int Year, int Month)[bucketCount];
+        for (int i = 0; i < bucketCount; i++)
+        {
+            bars[i] = (labelOf(i), 0m, false);
+            // Use the middle of the bucket so quarterly / yearly clicks land on a reasonable
+            // anchor month rather than just the first day.
+            var ts = windowStart.AddDays(0); // re-resolve below
+            // For each granularity, just iterate from windowStart forward.
+        }
+        // Reconstruct bucket month-starts: walk forward bucket-by-bucket.
+        var cursor = windowStart;
+        for (int i = 0; i < bucketCount; i++)
+        {
+            months[i] = (cursor.Year, cursor.Month);
+            cursor = chartGranularity switch
+            {
+                "Y" => cursor.AddYears(1),
+                "Q" => cursor.AddMonths(3),
+                _ => cursor.AddMonths(1)
+            };
+        }
+        chartBarMonths = months;
+        for (int m = fm; m <= tm; m++)
+        {
+            var bucket = bucketOf(new DateTime(anchor.Year, m, 1));
+            if (bucket >= 0 && bucket < bucketCount)
+            {
+                bars[bucket] = (bars[bucket].Label, bars[bucket].Value, true);
+            }
+        }
+        foreach (var (date, amount) in raw)
+        {
+            var b = bucketOf(date);
+            if (b < 0 || b >= bucketCount) continue;
+            bars[b] = (bars[b].Label, bars[b].Value + Math.Abs(amount), bars[b].IsAnchor);
+        }
+        chartBars = bars;
+    }
+
+    private static (DateTime Start, DateTime EndExclusive, int Count, Func<DateTime, int> BucketOf, Func<int, string> LabelOf)
+        ResolveChartWindow(DateTime earliestTx, DateTime anchorMonthStart, string granularity)
+    {
+        switch (granularity)
+        {
+            case "Y":
+            {
+                int startYear = earliestTx.Year;
+                int endYear = anchorMonthStart.Year;
+                int count = Math.Max(1, endYear - startYear + 1);
+                var start = new DateTime(startYear, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+                var end = new DateTime(endYear + 1, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+                return (start, end, count,
+                    d => d.Year - startYear,
+                    i => (startYear + i).ToString());
+            }
+            case "Q":
+            {
+                int totalStartQ = earliestTx.Year * 4 + (earliestTx.Month - 1) / 3;
+                int totalAnchorQ = anchorMonthStart.Year * 4 + (anchorMonthStart.Month - 1) / 3;
+                int count = Math.Max(1, totalAnchorQ - totalStartQ + 1);
+                int startYear = totalStartQ / 4;
+                int startQ = totalStartQ - startYear * 4;
+                var start = new DateTime(startYear, startQ * 3 + 1, 1, 0, 0, 0, DateTimeKind.Utc);
+                int endYear = totalAnchorQ / 4;
+                int endQ = totalAnchorQ - endYear * 4;
+                var end = new DateTime(endYear, endQ * 3 + 1, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(3);
+                return (start, end, count,
+                    d =>
+                    {
+                        int q = (d.Month - 1) / 3;
+                        int totalQ = d.Year * 4 + q;
+                        return totalQ - totalStartQ;
+                    },
+                    i =>
+                    {
+                        int totalQ = totalStartQ + i;
+                        int y = totalQ / 4;
+                        int q = totalQ - y * 4;
+                        return $"Q{q + 1}/{(y % 100):D2}";
+                    });
+            }
+            default: // "M"
+            {
+                int startTotal = earliestTx.Year * 12 + (earliestTx.Month - 1);
+                int anchorTotal = anchorMonthStart.Year * 12 + (anchorMonthStart.Month - 1);
+                int count = Math.Max(1, anchorTotal - startTotal + 1);
+                int startYear = startTotal / 12;
+                int startMonth = startTotal - startYear * 12 + 1;
+                var start = new DateTime(startYear, startMonth, 1, 0, 0, 0, DateTimeKind.Utc);
+                var end = anchorMonthStart.AddMonths(1);
+                var monthNames = new[] { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+                return (start, end, count,
+                    d =>
+                    {
+                        int total = d.Year * 12 + (d.Month - 1);
+                        return total - startTotal;
+                    },
+                    i =>
+                    {
+                        int total = startTotal + i;
+                        int y = total / 12;
+                        int m = total - y * 12;
+                        return $"{monthNames[m]} '{(y % 100):D2}";
+                    });
+            }
+        }
+    }
+
+    private async Task RenderChartAsync()
+    {
+        if (chartBars == null) return;
+        selfRef ??= DotNetObjectReference.Create(this);
+        var labels = chartBars.Select(b => b.Label).ToArray();
+        var values = chartBars.Select(b => (double)b.Value).ToArray();
+        var bg = chartBars.Select(b => b.IsAnchor
+            ? "rgba(54, 162, 235, 0.9)"
+            : "rgba(54, 162, 235, 0.4)").ToArray();
+        ++lastRenderToken;
+        try
+        {
+            await JS.InvokeVoidAsync("renderBrowseChart", "browseChart", "browseChartScroll",
+                labels, values, bg, selfRef);
+        }
+        catch (JSDisconnectedException) { /* page navigation in flight */ }
+    }
+
+    private RenderFragment RenderCategoryNode(BrowseCategoryNode node, int level) => builder =>
+    {
+        bool isSelected = (selectionKind == (node.ItemType == CategoryItemType.Category ? "category" : "group"))
+                          && selectionId == node.Id;
+
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "browse-tree-row" + (isSelected ? " selected" : "") + (node.IsTracked ? " tracked" : ""));
+        builder.AddAttribute(2, "role", "treeitem");
+        builder.AddAttribute(3, "tabindex", "0");
+        builder.AddAttribute(4, "aria-selected", isSelected ? "true" : "false");
+        builder.AddAttribute(5, "style", $"padding-left: {0.5 + level * 1.0:0.##}rem;");
+        builder.AddAttribute(6, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, () => SelectCategoryNode(node)));
+        builder.AddAttribute(7, "onkeydown", EventCallback.Factory.Create<KeyboardEventArgs>(this, e => OnCategoryKeydown(e, node)));
+
+        builder.OpenElement(10, "span");
+        builder.AddAttribute(11, "class", "browse-tree-name");
+        if (!string.IsNullOrEmpty(node.Color))
+        {
+            builder.OpenElement(12, "span");
+            builder.AddAttribute(13, "class", "browse-color-dot");
+            builder.AddAttribute(14, "style", $"background:{node.Color};");
+            builder.CloseElement();
+        }
+        else
+        {
+            builder.OpenElement(15, "i");
+            builder.AddAttribute(16, "class", node.ItemType == CategoryItemType.Group ? "bi bi-folder me-1" : "bi bi-tag me-1");
+            builder.CloseElement();
+        }
+        builder.AddContent(20, node.Name);
+        builder.CloseElement(); // span.browse-tree-name
+
+        builder.OpenElement(30, "span");
+        builder.AddAttribute(31, "class", "browse-tree-amount");
+        if (node.Spent != 0m)
+        {
+            builder.OpenElement(32, "span");
+            builder.AddAttribute(33, "class", node.IsIncome ? "text-success" : "text-danger");
+            builder.AddContent(34, Formatting.FormatMoney(node.IsIncome ? node.Spent : -node.Spent));
+            builder.CloseElement();
+        }
+        if (node.Remaining is { } rem)
+        {
+            builder.AddContent(35, " | ");
+            builder.OpenElement(36, "span");
+            builder.AddAttribute(37, "class", rem < 0 ? "text-danger" : "text-success");
+            builder.AddContent(38, Formatting.FormatMoney(rem));
+            builder.CloseElement();
+        }
+        builder.CloseElement(); // span.browse-tree-amount
+
+        builder.CloseElement(); // div.browse-tree-row
+
+        // Children rendered as siblings at the next indent level.
+        foreach (var c in node.Children)
+        {
+            builder.AddContent(50, RenderCategoryNode(c, level + 1));
+        }
+    };
+}
