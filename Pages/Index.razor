@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.AspNetCore.WebUtilities
 @inject BudgetService BudgetService
+@inject FreshnessService FreshnessService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject IStringLocalizer<Index> L
@@ -472,9 +473,9 @@ else
         // Period-independent: data freshness reflects the most recent upload + per-account
         // refresh state. Surfaced at the top of the page so stale numbers can't masquerade as
         // current.
-        freshness = await BudgetService.GetDataFreshnessAsync();
+        freshness = await FreshnessService.GetDataFreshnessAsync();
         freshnessBySourceId = freshness.ToDictionary(f => f.SourceId);
-        uncategorized = await BudgetService.GetUncategorizedTransactionSummaryAsync();
+        uncategorized = await FreshnessService.GetUncategorizedTransactionSummaryAsync();
         availableSources = await BudgetService.GetAllSourcesAsync();
         sourceNamesById = availableSources.ToDictionary(s => s.Id, s => s.Name);
         if (!availableSources.Any(s => s.Id == newProjectSourceId))
