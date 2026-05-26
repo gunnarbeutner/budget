@@ -351,9 +351,11 @@
     private (int Year, int Month)[]? chartBarMonths;
     private string chartGranularity = "M";
     private long lastRenderToken;
-    // Cached once per page: the earliest source-wide transaction so chart bucket count is
-    // stable across selections.
+    // Cached once per page: the source's full transaction date range. The chart spans
+    // earliest→latest so the axis stays the same when the user picks an earlier anchor —
+    // anchoring on March doesn't truncate the chart at March.
     private DateTime? sourceEarliestTx;
+    private DateTime? sourceLatestTx;
 
     // JS ↔ Blazor bridge for chart bar clicks. Allocated once per page lifetime; the chart
     // re-render hands the same reference each time so click events route back to us.
@@ -685,7 +687,9 @@
         if (tree == null) { notFound = true; return; }
         if (project != null && sourceEarliestTx == null)
         {
-            sourceEarliestTx = await TransactionQueries.GetSourceEarliestTransactionAsync(project.SourceId);
+            var (earliest, latest) = await TransactionQueries.GetSourceTransactionDateRangeAsync(project.SourceId);
+            sourceEarliestTx = earliest;
+            sourceLatestTx = latest;
         }
         await ReloadTransactionsAsync();
     }
@@ -851,12 +855,15 @@
         var leaves = await ResolveSelectionLeavesAsync();
         if (leaves == null || leaves.Count == 0) { chartBars = null; return; }
 
-        // Window spans the source's first-ever transaction through the anchor bucket so the
-        // chart matches MoneyMoney's "full history" axis. Bucket count varies with the data
-        // and granularity; the canvas wraps in a horizontal-scroll container so it can grow.
+        // Window spans the source's full transaction history — earliest → max(anchor,
+        // latest). Anchoring on an earlier month must not shrink the chart's right edge or
+        // the user loses sight of recent activity.
         var anchorDate = new DateTime(anchor.Year, anchor.Month, 1);
         var earliest = sourceEarliestTx ?? anchorDate;
-        var (windowStart, windowEndExclusive, bucketCount, bucketOf, labelOf) = ResolveChartWindow(earliest, anchorDate, chartGranularity);
+        var rightEdge = sourceLatestTx is { } lt && lt > anchorDate
+            ? new DateTime(lt.Year, lt.Month, 1)
+            : anchorDate;
+        var (windowStart, windowEndExclusive, bucketCount, bucketOf, labelOf) = ResolveChartWindow(earliest, rightEdge, chartGranularity);
 
         var leafList = leaves.ToList();
         var raw = await TransactionQueries.GetRawByDateRangeAsync(

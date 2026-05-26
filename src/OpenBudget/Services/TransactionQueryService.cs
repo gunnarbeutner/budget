@@ -131,17 +131,23 @@ public class TransactionQueryService
     }
 
     /// <summary>
-    /// Earliest transaction timestamp for a source, as UTC. Used as the chart's left edge so
-    /// the per-category history goes back as far as the data exists. Null when the source
+    /// Earliest and latest transaction timestamps for a source, as UTC. Used by the browse
+    /// chart to size its time axis from the source's full history rather than collapsing
+    /// when the anchor sits early or mid-range. Either value may be null when the source
     /// has no transactions yet.
     /// </summary>
-    public async Task<DateTime?> GetSourceEarliestTransactionAsync(int sourceId, CancellationToken ct = default)
+    public async Task<(DateTime? Earliest, DateTime? Latest)> GetSourceTransactionDateRangeAsync(
+        int sourceId, CancellationToken ct = default)
     {
-        var minTs = await _db.Transactions
+        var bounds = await _db.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.Splitted != 1)
-            .MinAsync(t => (long?)t.Timestamp, ct);
-        return minTs.HasValue ? DateTimeOffset.FromUnixTimeSeconds(minTs.Value).UtcDateTime : null;
+            .GroupBy(_ => 1)
+            .Select(g => new { Min = g.Min(t => (long?)t.Timestamp), Max = g.Max(t => (long?)t.Timestamp) })
+            .FirstOrDefaultAsync(ct);
+        DateTime? earliest = bounds?.Min is { } mn ? DateTimeOffset.FromUnixTimeSeconds(mn).UtcDateTime : null;
+        DateTime? latest = bounds?.Max is { } mx ? DateTimeOffset.FromUnixTimeSeconds(mx).UtcDateTime : null;
+        return (earliest, latest);
     }
 
     /// <summary>
