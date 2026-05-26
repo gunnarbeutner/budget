@@ -10,7 +10,15 @@
 
 @if (budget == null)
 {
-    <p><em>@L["Status_Loading"]</em></p>
+    <div aria-busy="true" aria-label="@L["Status_Loading"]">
+        <div class="skeleton skeleton-line-lg mb-3" style="width: 35%;"></div>
+        <div class="skeleton skeleton-line mb-4" style="width: 60%;"></div>
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="skeleton skeleton-block"></div>
+            </div>
+        </div>
+    </div>
 }
 else
 {
@@ -177,14 +185,14 @@ else
                                                 }
                                             </td>
                                             <td>
-                                                <div class="btn-group btn-group-sm" role="group">
+                                                <div class="segmented" role="group">
                                                     <button type="button"
-                                                            class="btn @(assignment.Scope == AccountScope.Shared ? "btn-primary" : "btn-outline-primary")"
+                                                            class="btn @(assignment.Scope == AccountScope.Shared ? "active" : "")"
                                                             @onclick="() => SetAccountScope(assignment.AccountId, AccountScope.Shared)">
                                                         @L["Scope_Shared"]
                                                     </button>
                                                     <button type="button"
-                                                            class="btn @(assignment.Scope == AccountScope.Exclusive ? "btn-primary" : "btn-outline-primary")"
+                                                            class="btn @(assignment.Scope == AccountScope.Exclusive ? "active" : "")"
                                                             @onclick="() => SetAccountScope(assignment.AccountId, AccountScope.Exclusive)">
                                                         @L["Scope_Exclusive"]
                                                     </button>
@@ -442,16 +450,16 @@ else
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">@L["Form_ScopeLabel"]</label>
-                                <div class="btn-group d-flex" role="group">
+                                <div class="segmented segmented-block" role="group">
                                     <input type="radio" class="btn-check" name="addAccountScope" id="addAccountScopeShared"
                                            checked="@(addAccountSelectedScope == AccountScope.Shared)"
                                            @onchange="@(() => addAccountSelectedScope = AccountScope.Shared)" />
-                                    <label class="btn btn-outline-primary" for="addAccountScopeShared">@L["Scope_Shared"]</label>
+                                    <label class="btn" for="addAccountScopeShared">@L["Scope_Shared"]</label>
 
                                     <input type="radio" class="btn-check" name="addAccountScope" id="addAccountScopeExclusive"
                                            checked="@(addAccountSelectedScope == AccountScope.Exclusive)"
                                            @onchange="@(() => addAccountSelectedScope = AccountScope.Exclusive)" />
-                                    <label class="btn btn-outline-primary" for="addAccountScopeExclusive">@L["Scope_Exclusive"]</label>
+                                    <label class="btn" for="addAccountScopeExclusive">@L["Scope_Exclusive"]</label>
                                 </div>
                                 <small class="form-text text-muted">
                                     @L["AddAccount_ScopeHelp"]

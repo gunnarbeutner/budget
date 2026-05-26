@@ -82,7 +82,7 @@
             <div class="card-body">
                 @if (categoryTrends == null)
                 {
-                    <p><em>@L["Status_LoadingTrends"]</em></p>
+                    <div class="skeleton" style="height: 600px;" aria-busy="true" aria-label="@L["Status_LoadingTrends"]"></div>
                 }
                 else if (!categoryTrends.Any())
                 {

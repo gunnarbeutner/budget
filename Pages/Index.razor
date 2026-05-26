@@ -47,15 +47,15 @@
     <button type="button" class="btn btn-sm btn-outline-secondary"
             @onclick="GoToToday" disabled="@IsTodayAnchor">@L["Button_Today"]</button>
     <div>
-        <div class="btn-group btn-group-sm" role="group" aria-label="@L["Aria_Period"]">
+        <div class="segmented" role="group" aria-label="@L["Aria_Period"]">
             <button type="button"
-                    class="btn @(period == "month" ? "btn-primary" : "btn-outline-primary")"
+                    class="btn @(period == "month" ? "active" : "")"
                     @onclick='() => SetPeriod("month")'>@L["Button_Month"]</button>
             <button type="button"
-                    class="btn @(period == "ytd" ? "btn-primary" : "btn-outline-primary")"
+                    class="btn @(period == "ytd" ? "active" : "")"
                     @onclick='() => SetPeriod("ytd")'>@L["Button_YTD"]</button>
             <button type="button"
-                    class="btn @(period == "year" ? "btn-primary" : "btn-outline-primary")"
+                    class="btn @(period == "year" ? "active" : "")"
                     @onclick='() => SetPeriod("year")'>@L["Button_Year"]</button>
         </div>
     </div>
@@ -63,7 +63,23 @@
 
 @if (budgetSummaries == null)
 {
-    <p><em>@L["Status_Loading"]</em></p>
+    <div class="row" aria-busy="true" aria-label="@L["Status_Loading"]">
+        @for (int i = 0; i < 2; i++)
+        {
+            <div class="col-md-6 mb-4">
+                <div class="card project-card" style="overflow: visible;">
+                    <div class="card-header">
+                        <div class="skeleton skeleton-line" style="width: 40%;"></div>
+                    </div>
+                    <div class="card-body">
+                        <div class="skeleton skeleton-block mb-3"></div>
+                        <div class="skeleton skeleton-line" style="width: 80%;"></div>
+                        <div class="skeleton skeleton-line" style="width: 60%;"></div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
 }
 else if (!budgetSummaries.Any())
 {
@@ -189,15 +205,16 @@ else
                                 </div>
                             </div>
 
-                            <div class="progress mb-3 position-relative" style="height: 25px;">
+                            <div class="d-flex justify-content-end mb-1">
+                                <span class="small fw-semibold text-@statusClass">@overallPercent.ToString("F0")%</span>
+                            </div>
+                            <div class="progress mb-3 position-relative" style="height: 8px;">
                                 <div class="progress-bar bg-@statusClass"
                                      role="progressbar"
                                      style="width: @(Math.Min(overallPercent, 100).ToString(CultureInfo.InvariantCulture))%"
                                      aria-valuenow="@overallPercent.ToString(CultureInfo.InvariantCulture)"
                                      aria-valuemin="0"
-                                     aria-valuemax="100">
-                                    @overallPercent.ToString("F0")%
-                                </div>
+                                     aria-valuemax="100"></div>
                                 @{ var todayPct = TodayMarkerPercent; }
                                 @if (todayPct.HasValue)
                                 {

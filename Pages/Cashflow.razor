@@ -50,21 +50,21 @@
 
     <div class="col-md-4">
         <label class="form-label">@L["Label_IncomeProjection"]</label>
-        <div class="btn-group d-flex" role="group" aria-label="@L["Aria_IncomeProjectionMode"]">
+        <div class="segmented segmented-block" role="group" aria-label="@L["Aria_IncomeProjectionMode"]">
             <input type="radio" class="btn-check" name="incomeProj" id="incomeProjBudget"
                    checked="@(incomeProjectionMode == "budget")"
                    @onchange="@(() => OnIncomeModeChanged("budget"))" />
-            <label class="btn btn-outline-primary" for="incomeProjBudget">@L["Projection_Budget"]</label>
+            <label class="btn" for="incomeProjBudget">@L["Projection_Budget"]</label>
 
             <input type="radio" class="btn-check" name="incomeProj" id="incomeProjBreakeven"
                    checked="@(incomeProjectionMode == "breakeven")"
                    @onchange="@(() => OnIncomeModeChanged("breakeven"))" />
-            <label class="btn btn-outline-primary" for="incomeProjBreakeven">@L["Projection_Breakeven"]</label>
+            <label class="btn" for="incomeProjBreakeven">@L["Projection_Breakeven"]</label>
 
             <input type="radio" class="btn-check" name="incomeProj" id="incomeProjRecent"
                    checked="@(incomeProjectionMode == "recent")"
                    @onchange="@(() => OnIncomeModeChanged("recent"))" />
-            <label class="btn btn-outline-primary" for="incomeProjRecent">@L["Projection_LastMonth"]</label>
+            <label class="btn" for="incomeProjRecent">@L["Projection_LastMonth"]</label>
         </div>
         <small class="form-text text-muted d-block mt-1">
             @(incomeProjectionMode switch
