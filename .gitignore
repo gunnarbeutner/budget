@@ -52,7 +52,7 @@ ScaffoldingReadMe.txt
 .env.*
 data/
 
-# launchd helper build artifacts
-launchd/OpenBudgetImporter.app/
-launchd/.DS_Store
-launchd/.build/
+# exporter helper build artifacts
+exporter/OpenBudgetImporter.app/
+exporter/.DS_Store
+exporter/.build/
