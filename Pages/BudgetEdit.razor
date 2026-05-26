@@ -691,9 +691,6 @@
                 .Select(kvp => (kvp.Key.Id, kvp.Key.ItemType, kvp.Value))
                 .ToList();
             await BudgetEntryService.SaveBudgetEntriesAsync(BudgetId, entries);
-            // Promoted shadow rows need to be added to project tracking so Cashflow / Budgets
-            // pick them up too. Existing tracking is preserved.
-            await ProjectService.EnsureProjectTrackingIncludesAsync(budget.ProjectId, editingEntries.Keys);
             Navigation.NavigateTo($"/budgets?projectId={budget.ProjectId}");
         }
         finally

@@ -197,42 +197,6 @@ public class ProjectService
             .ToListAsync();
     }
 
-    /// <summary>
-    /// Add tracking items for any keys not already tracked by the project; never removes
-    /// existing ones. Used by BudgetEdit's save path so promoting a shadow row into a real
-    /// budget entry also makes that sub-cat tracked everywhere else.
-    /// </summary>
-    public async Task EnsureProjectTrackingIncludesAsync(
-        int projectId,
-        IEnumerable<(long Id, CategoryItemType ItemType)> keys)
-    {
-        var keyList = keys.Distinct().ToList();
-        if (keyList.Count == 0) return;
-
-        var existing = await _db.ProjectTrackingItems
-            .Where(pti => pti.ProjectId == projectId)
-            .ToListAsync();
-        var have = existing
-            .Select(e => e.CategoryGroupId.HasValue
-                ? (e.CategoryGroupId.Value, CategoryItemType.Group)
-                : (e.CategoryId!.Value, CategoryItemType.Category))
-            .ToHashSet();
-
-        bool added = false;
-        foreach (var key in keyList)
-        {
-            if (have.Contains(key)) continue;
-            _db.ProjectTrackingItems.Add(new ProjectTrackingItem
-            {
-                ProjectId = projectId,
-                CategoryGroupId = key.ItemType == CategoryItemType.Group ? key.Id : null,
-                CategoryId = key.ItemType == CategoryItemType.Category ? key.Id : null
-            });
-            added = true;
-        }
-        if (added) await _db.SaveChangesAsync();
-    }
-
     public async Task UpdateProjectTrackingItemsAsync(int projectId, HashSet<long> categoryGroupIds, HashSet<long> categoryIds)
     {
         var existing = await _db.ProjectTrackingItems
