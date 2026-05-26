@@ -1098,7 +1098,9 @@
 
         // Create datasets for each category
         var datasets = new List<object>();
-        var colors = GenerateColors(sortedCategories.Count);
+        // Palette templates carry a "{0}" placeholder for alpha; resolve to 0.8 here for
+        // the actual bars and 0.3 / 1.0 below for budget overlays / borders.
+        var palette = ChartPalette.Templates(sortedCategories.Count);
         var actualOrder = new Dictionary<string, int>(StringComparer.Ordinal);
         var actualColor = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -1110,13 +1112,13 @@
             var data = trend.Select(m => m.Amount).ToArray();
 
             actualOrder[categoryName] = i;
-            actualColor[categoryName] = colors[i];
+            actualColor[categoryName] = palette[i];
 
             datasets.Add(new
             {
                 label = categoryName,
                 data = data,
-                backgroundColor = colors[i],
+                backgroundColor = ChartPalette.WithAlpha(palette[i], 0.8),
                 type = "bar",
                 stack = "actual", // Separate stack for actual spending
                 // Picked up by the merged tooltip + hover-highlight in charts.js to pair
@@ -1150,7 +1152,7 @@
             // Reserve extra colors for budget-only categories so they don't collide with
             // the actuals palette.
             var budgetOnlyCount = sortedBudgetCategories.Count(kvp => !actualColor.ContainsKey(kvp.Key));
-            var extraColors = budgetOnlyCount > 0 ? GenerateColors(budgetOnlyCount) : Array.Empty<string>();
+            var extraColors = budgetOnlyCount > 0 ? ChartPalette.Templates(budgetOnlyCount) : Array.Empty<string>();
             var extraIndex = 0;
 
             // Build budget datasets in sort order, then prepend the whole block so within
@@ -1172,14 +1174,14 @@
                 var baseColor = actualColor.TryGetValue(categoryName, out var matched)
                     ? matched
                     : extraColors[extraIndex++];
-                var budgetColor = baseColor.Replace("0.8)", "0.3)"); // Make budget bars more transparent
+                var budgetColor = ChartPalette.WithAlpha(baseColor, 0.3); // Make budget bars more transparent
 
                 budgetDatasets.Add(new
                 {
                     label = L["Chart_BudgetSuffix", categoryName].Value,
                     data = data,
                     backgroundColor = budgetColor,
-                    borderColor = baseColor.Replace("0.8)", "1)"),
+                    borderColor = ChartPalette.WithAlpha(baseColor, 1),
                     borderWidth = 1,
                     stack = "budget", // Separate stack for budget
                     highlightGroup = categoryName
@@ -1268,27 +1270,4 @@
         }
     }
 
-    private string[] GenerateColors(int count)
-    {
-        var colors = new[]
-        {
-            "rgba(255, 99, 132, 0.8)",
-            "rgba(54, 162, 235, 0.8)",
-            "rgba(255, 206, 86, 0.8)",
-            "rgba(75, 192, 192, 0.8)",
-            "rgba(153, 102, 255, 0.8)",
-            "rgba(255, 159, 64, 0.8)",
-            "rgba(199, 199, 199, 0.8)",
-            "rgba(83, 102, 255, 0.8)",
-            "rgba(255, 99, 255, 0.8)",
-            "rgba(99, 255, 132, 0.8)"
-        };
-
-        var result = new string[count];
-        for (int i = 0; i < count; i++)
-        {
-            result[i] = colors[i % colors.Length];
-        }
-        return result;
-    }
 }

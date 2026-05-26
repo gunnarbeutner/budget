@@ -1635,38 +1635,9 @@ else
     /// same fixed palette as the Budgets chart. Cycles via modulo when more colors are
     /// requested than the palette has.
     /// </summary>
-    private string[] GenerateColors(int count)
-    {
-        var palette = new[]
-        {
-            "rgba(255, 99, 132, {0})",
-            "rgba(54, 162, 235, {0})",
-            "rgba(255, 206, 86, {0})",
-            "rgba(75, 192, 192, {0})",
-            "rgba(153, 102, 255, {0})",
-            "rgba(255, 159, 64, {0})",
-            "rgba(199, 199, 199, {0})",
-            "rgba(83, 102, 255, {0})",
-            "rgba(255, 99, 255, {0})",
-            "rgba(99, 255, 132, {0})"
-        };
+    private string[] GenerateColors(int count) => ChartPalette.Templates(count);
 
-        var result = new string[count];
-        for (int i = 0; i < count; i++)
-        {
-            result[i] = palette[i % palette.Length];
-        }
-        return result;
-    }
-
-    private string FormatEuro(decimal value)
-    {
-        if (value < 0)
-        {
-            return $"-€{Math.Abs(value):N2}";
-        }
-        return $"€{value:N2}";
-    }
+    private string FormatEuro(decimal value) => Formatting.FormatMoney(value);
 
     /// <summary>
     /// Renders a month + day using the current culture's MonthDayPattern so the order matches

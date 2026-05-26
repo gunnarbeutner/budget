@@ -684,24 +684,9 @@ else
         await LoadAccountAssignments();
     }
 
-    private static string FormatMoney(decimal value, string currency)
-    {
-        // Match Cashflow's € formatting for EUR; fall back to the raw currency code otherwise.
-        var symbol = currency == "EUR" ? "€" : (currency + " ");
-        return value < 0
-            ? $"-{symbol}{Math.Abs(value):N2}"
-            : $"{symbol}{value:N2}";
-    }
+    private static string FormatMoney(decimal value, string currency) => Formatting.FormatMoney(value, currency);
 
-    private string FormatRelativeAge(TimeSpan age)
-    {
-        if (age.TotalSeconds < 0) return L["RelativeAge_Future"];
-        if (age.TotalMinutes < 1) return L["RelativeAge_JustNow"];
-        if (age.TotalHours < 1) return L["RelativeAge_MinutesAgo", (int)age.TotalMinutes];
-        if (age.TotalDays < 1) return L["RelativeAge_HoursAgo", (int)age.TotalHours];
-        if (age.TotalDays < 30) return L["RelativeAge_DaysAgo", (int)age.TotalDays];
-        return L["RelativeAge_MonthsAgo", (int)(age.TotalDays / 30)];
-    }
+    private string FormatRelativeAge(TimeSpan age) => Formatting.FormatRelativeAge(age, L);
 
     private async Task LoadBudget()
     {
