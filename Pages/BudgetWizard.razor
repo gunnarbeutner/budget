@@ -269,22 +269,21 @@ else if (step == 3)
         // The wizard is project-scoped via ?projectId=<id>; mirroring Analysis and Cashflow.
         // No project (or an unknown one) renders a Not Found view rather than offering a
         // free-floating project picker.
-        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
-        if (!QueryHelpers.ParseQuery(uri.Query).TryGetValue("projectId", out var v)
-            || !int.TryParse(v, out var pid))
+        var pid = PageState.ReadIntQuery(Navigation, "projectId");
+        if (pid is null)
         {
             notFound = true;
             return;
         }
 
         projects = await BudgetService.GetProjectsAsync();
-        if (!projects.Any(p => p.Id == pid))
+        if (!projects.Any(p => p.Id == pid.Value))
         {
             notFound = true;
             return;
         }
 
-        selectedProjectId = pid;
+        selectedProjectId = pid.Value;
         availableSourceBudgets = await BudgetService.GetBudgetsForProjectAsync(selectedProjectId);
     }
 

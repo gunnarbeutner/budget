@@ -422,21 +422,13 @@ else
         anchor = (picked.Year, picked.Month);
     }
 
-    private void UpdateUrl()
+    private void UpdateUrl() => PageState.ReplaceQuery(Navigation, new Dictionary<string, object?>
     {
-        var uri = Navigation.GetUriWithQueryParameters(new Dictionary<string, object?>
-        {
-            ["year"] = anchor.Year,
-            ["month"] = anchor.Month,
-            ["period"] = period,
-            ["expanded"] = expanded.Count == 0 ? null : string.Join(",", expanded.OrderBy(i => i)),
-        });
-        // Guard against prerender redirect loops and stray no-op navigations: only push when
-        // the target URL actually differs from the current one. During ServerPrerendered,
-        // NavigateTo becomes a 302 — issuing it for an identical URL would loop forever.
-        if (uri == Navigation.Uri) return;
-        Navigation.NavigateTo(uri, forceLoad: false, replace: true);
-    }
+        ["year"] = anchor.Year,
+        ["month"] = anchor.Month,
+        ["period"] = period,
+        ["expanded"] = expanded.Count == 0 ? null : string.Join(",", expanded.OrderBy(i => i)),
+    });
 
     private void ToggleExpanded(int projectId)
     {

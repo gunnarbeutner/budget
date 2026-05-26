@@ -432,16 +432,7 @@
         await LoadCategoryTrends();
     }
 
-    private int? ReadProjectIdFromQuery()
-    {
-        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
-        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("projectId", out var value)
-            && int.TryParse(value, out var parsed))
-        {
-            return parsed;
-        }
-        return null;
-    }
+    private int? ReadProjectIdFromQuery() => PageState.ReadIntQuery(Navigation, "projectId");
 
     private async Task LoadProjectContext()
     {

@@ -674,16 +674,7 @@ else
         UpdateUrl();
     }
 
-    private int? ReadProjectIdFromQuery()
-    {
-        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
-        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("projectId", out var value)
-            && int.TryParse(value, out var parsed))
-        {
-            return parsed;
-        }
-        return null;
-    }
+    private int? ReadProjectIdFromQuery() => PageState.ReadIntQuery(Navigation, "projectId");
 
     /// <summary>
     /// Overlays URL query parameters onto the view-shaping fields. Defaults stay in place when
@@ -720,20 +711,15 @@ else
     /// to avoid creating a history entry per keystroke; guarded against no-op navigations that
     /// would otherwise 302-loop during ServerPrerendered.
     /// </summary>
-    private void UpdateUrl()
+    private void UpdateUrl() => PageState.ReplaceQuery(Navigation, new Dictionary<string, object?>
     {
-        var uri = Navigation.GetUriWithQueryParameters(new Dictionary<string, object?>
-        {
-            ["projectId"] = selectedProjectId,
-            ["year"] = selectedYear,
-            ["budgetId"] = selectedBudgetId == 0 ? null : selectedBudgetId,
-            ["mode"] = incomeProjectionMode == "budget" ? null : incomeProjectionMode,
-            ["floorOn"] = balanceFloorEnabled ? "true" : null,
-            ["floor"] = balanceFloor == 0m ? null : balanceFloor.ToString(CultureInfo.InvariantCulture),
-        });
-        if (uri == Navigation.Uri) return;
-        Navigation.NavigateTo(uri, forceLoad: false, replace: true);
-    }
+        ["projectId"] = selectedProjectId,
+        ["year"] = selectedYear,
+        ["budgetId"] = selectedBudgetId == 0 ? null : selectedBudgetId,
+        ["mode"] = incomeProjectionMode == "budget" ? null : incomeProjectionMode,
+        ["floorOn"] = balanceFloorEnabled ? "true" : null,
+        ["floor"] = balanceFloor == 0m ? null : balanceFloor.ToString(CultureInfo.InvariantCulture),
+    });
 
     private async Task LoadAvailableBudgets()
     {
