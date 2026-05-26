@@ -143,13 +143,19 @@ public class BudgetService
             });
         }
 
-        // Budget total: skip auto-summed groups so a tracked group whose budget is rolled up
-        // from sub-cats isn't double-counted alongside its descendants. TotalSpent uses the
-        // leaf-union aggregate to avoid double-counting across a tracked group + tracked sub-cat.
-        var expenseRows = categorySpending.Where(c => !c.IsIncome).ToList();
-        var totalBudget = expenseRows
-            .Where(c => !effective.AutoSummed.Contains((c.CategoryId, c.ItemType)))
-            .Sum(c => c.Budget);
+        // Budget total: sum the user's actual saved entries (storedAmounts) directly. Using
+        // categorySpending.Budget would inherit effective.Effective's auto-sum, which replaces
+        // a tracked parent's own stored amount with the descendant sum — so anything the user
+        // typed on the parent alongside children would silently disappear from the total.
+        // No double-counting risk: each MonthlyBudgetEntry is its own key, summed once.
+        // TotalSpent / MonthExpenses still come from the leaf-union aggregate so they don't
+        // double-count across a tracked group + tracked sub-cat on the actuals side.
+        var totalBudget = 0m;
+        foreach (var (key, months) in storedAmounts)
+        {
+            if (incomeItemsSet.Contains(key)) continue;
+            for (int m = fromMonth; m <= toMonth; m++) totalBudget += months[m - 1];
+        }
 
         return new ProjectSpendingSummary
         {
