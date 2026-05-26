@@ -371,18 +371,25 @@
             return;
         }
 
-        var leafIds = await BudgetService.GetLeafCategoriesWithRecentTransactionsAsync(
-            trackedGroupIds, sourceId);
-
-        // Drop leaves that already have their own budget row.
-        foreach (var existing in editingEntries.Keys.Where(k => k.ItemType == CategoryItemType.Category))
-            leafIds.Remove(existing.Id);
+        // Surface every descendant (sub-groups + leaf categories) of each tracked group,
+        // recursively. Rows without their own budget entry render as shadows the user can
+        // promote by typing an amount — no need to add them manually via the tracking
+        // dialog. No transaction-history filter: showing the full subtree is the point.
+        var candidates = new HashSet<(long Id, CategoryItemType ItemType)>();
+        foreach (var groupId in trackedGroupIds)
+        {
+            foreach (var d in CategoryGroupWithChildCount.CollectDescendants(
+                         groupId, hierarchy, includeLeafCategories: true))
+            {
+                candidates.Add((d.Id, d.ItemType));
+            }
+        }
+        candidates.ExceptWith(editingEntries.Keys);
 
         // Reset shadows: keep only shadow keys that are still candidates; new ones default to zero.
         var newShadows = new Dictionary<(long Id, CategoryItemType ItemType), decimal[]>();
-        foreach (var leafId in leafIds)
+        foreach (var key in candidates)
         {
-            var key = (leafId, CategoryItemType.Category);
             newShadows[key] = shadowEntries.TryGetValue(key, out var existing) ? existing : new decimal[12];
         }
         shadowEntries = newShadows;
