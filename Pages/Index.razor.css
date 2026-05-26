@@ -1,0 +1,15 @@
+.project-card {
+    border-left: 3px solid var(--card-accent, var(--bs-border-color));
+}
+
+.project-card.status-success { --card-accent: var(--bs-success); }
+.project-card.status-warning { --card-accent: var(--bs-warning); }
+.project-card.status-danger  { --card-accent: var(--bs-danger);  }
+
+.project-status-dot {
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 999px;
+    background-color: var(--card-accent, var(--bs-secondary));
+    flex-shrink: 0;
+}

@@ -24,7 +24,7 @@
      style="margin-left: -0.5rem; margin-right: -0.5rem; padding-left: 0.5rem; padding-right: 0.5rem;">
     <button type="button" class="btn btn-sm btn-outline-secondary"
             @onclick="() => StepAnchor(-1)" aria-label="@L["Aria_Previous"]">
-        <span class="oi oi-chevron-left" aria-hidden="true"></span>
+        <i class="bi bi-chevron-left" aria-hidden="true"></i>
     </button>
     <h3 class="mb-0 d-inline-flex align-items-center gap-2 position-relative"
         role="button" tabindex="0"
@@ -42,7 +42,7 @@
     <button type="button" class="btn btn-sm btn-outline-secondary"
             @onclick="() => StepAnchor(1)" aria-label="@L["Aria_Next"]"
             disabled="@IsAtMaxAnchor">
-        <span class="oi oi-chevron-right" aria-hidden="true"></span>
+        <i class="bi bi-chevron-right" aria-hidden="true"></i>
     </button>
     <button type="button" class="btn btn-sm btn-outline-secondary"
             @onclick="GoToToday" disabled="@IsTodayAnchor">@L["Button_Today"]</button>
@@ -97,21 +97,22 @@ else
                     var alert = GetProjectAlert(summary);
                     var alertOpen = openAlertProjectId == projectId;
                 }
-                <div class="card" style="overflow: visible;">
-                    <div class="card-header bg-@statusClass text-white d-flex justify-content-between align-items-center">
+                <div class="card project-card status-@statusClass" style="overflow: visible;">
+                    <div class="card-header d-flex justify-content-between align-items-center">
                         <div class="d-flex align-items-center gap-2">
+                            <span class="project-status-dot" aria-hidden="true"></span>
                             <h5 class="mb-0">@summary.ProjectName</h5>
                             @if (alert is { } a)
                             {
                                 <div class="position-relative">
                                     <button type="button"
-                                            class="btn btn-link text-white p-0 d-inline-flex align-items-center"
+                                            class="btn btn-link text-body-secondary p-0 d-inline-flex align-items-center"
                                             title="@string.Join(" ", a.Lines)"
                                             aria-label="@string.Join(" ", a.Lines)"
                                             @onclick="() => ToggleAlert(projectId)">
                                         <span class="badge bg-@(a.Severity) d-inline-flex align-items-center"
                                               style="font-size: 0.75rem;">
-                                            <span class="oi oi-warning" aria-hidden="true"></span>
+                                            <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
                                         </span>
                                     </button>
                                     @if (alertOpen)
@@ -135,20 +136,20 @@ else
                             }
                         </div>
                         <div class="d-flex align-items-center gap-2">
-                            <button type="button" class="btn btn-link text-white p-0"
+                            <button type="button" class="btn btn-link text-body-secondary p-0"
                                     title="@L["Aria_MoveUp"]" aria-label="@L["Aria_MoveUp"]"
                                     disabled="@isFirst"
                                     @onclick="() => MoveProject(projectId, -1)">
-                                <span class="oi oi-chevron-top" aria-hidden="true"></span>
+                                <i class="bi bi-chevron-up" aria-hidden="true"></i>
                             </button>
-                            <button type="button" class="btn btn-link text-white p-0"
+                            <button type="button" class="btn btn-link text-body-secondary p-0"
                                     title="@L["Aria_MoveDown"]" aria-label="@L["Aria_MoveDown"]"
                                     disabled="@isLast"
                                     @onclick="() => MoveProject(projectId, 1)">
-                                <span class="oi oi-chevron-bottom" aria-hidden="true"></span>
+                                <i class="bi bi-chevron-down" aria-hidden="true"></i>
                             </button>
-                            <a href="/projects/@projectId" class="text-white text-decoration-none" title="@L["Aria_ProjectSettings"]" aria-label="@L["Aria_ProjectSettings"]">
-                                <span class="oi oi-cog" aria-hidden="true"></span>
+                            <a href="/projects/@projectId" class="text-body-secondary text-decoration-none" title="@L["Aria_ProjectSettings"]" aria-label="@L["Aria_ProjectSettings"]">
+                                <i class="bi bi-gear" aria-hidden="true"></i>
                             </a>
                         </div>
                     </div>

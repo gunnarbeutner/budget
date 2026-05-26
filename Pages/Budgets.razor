@@ -238,7 +238,7 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center" role="button" @onclick="ToggleCategoriesPanel" style="cursor: pointer;">
                 <h5 class="mb-0">@L["Card_CategoriesTitle"]</h5>
-                <span class="oi @(categoriesExpanded ? "oi-chevron-top" : "oi-chevron-bottom")" aria-hidden="true"></span>
+                <i class="bi @(categoriesExpanded ? "bi-chevron-up" : "bi-chevron-down")" aria-hidden="true"></i>
             </div>
             @if (categoriesExpanded)
             {
