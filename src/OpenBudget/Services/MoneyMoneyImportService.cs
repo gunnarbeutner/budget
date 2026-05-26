@@ -37,7 +37,7 @@ public class MoneyMoneyImportService
     private static readonly string[] ExpectedTransactionColumns =
     {
         "local_account_key", "amount", "currency", "timestamp", "name", "comment",
-        "purpose", "category_key", "checkmark", "splitted"
+        "unformatted_purpose", "category_key", "checkmark", "splitted"
     };
 
     private readonly IServiceScopeFactory _scopeFactory;
@@ -279,11 +279,12 @@ public class MoneyMoneyImportService
 
     private static async Task<int> CopyTransactionsAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
     {
-        // Older MoneyMoney snapshots (or future schema renames) may not have a `purpose`
-        // column. Probe for it and substitute NULL in the SELECT when absent so the import
-        // still succeeds with an empty Purpose rather than crashing on "no such column".
-        bool hasPurpose = await ColumnExistsAsync(src, "transactions", "purpose", ct);
-        string purposeExpr = hasPurpose ? "purpose" : "NULL AS purpose";
+        // MoneyMoney's SEPA "Verwendungszweck" lives in unformatted_purpose (verified against
+        // a live MoneyMoney 2.5-era SQLCipher db: rows there carry the BILLCOLL/EREF/MREF/CRED
+        // raw text users see in the transaction detail pane). Older / forked schemas may not
+        // have it — probe at runtime and substitute NULL so the import still succeeds.
+        bool hasPurpose = await ColumnExistsAsync(src, "transactions", "unformatted_purpose", ct);
+        string purposeExpr = hasPurpose ? "unformatted_purpose" : "NULL AS unformatted_purpose";
         string select = $"""
             SELECT rowid, local_account_key, amount, currency, timestamp, name, comment, {purposeExpr}, category_key, checkmark, splitted
             FROM transactions
