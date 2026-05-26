@@ -438,86 +438,21 @@ else if (step == 3)
 
     private async Task HandleCategoryGroupToggle((long Id, bool IsChecked) args)
     {
-        if (args.IsChecked)
+        if (allAvailableCategories != null)
         {
-            selectedCategoryGroupIds.Add(args.Id);
-            RemoveDescendantsFromSelection(args.Id);
-        }
-        else
-        {
-            selectedCategoryGroupIds.Remove(args.Id);
-            SelectImmediateChildren(args.Id);
+            CategorySelection.ApplyGroupToggle(
+                args.Id, args.IsChecked,
+                selectedCategoryGroupIds, selectedActualCategoryIds,
+                allAvailableCategories);
         }
         await Task.CompletedTask;
     }
 
     private async Task HandleCategoryToggle((long Id, bool IsChecked) args)
     {
-        if (args.IsChecked)
-        {
-            selectedActualCategoryIds.Add(args.Id);
-        }
-        else
-        {
-            selectedActualCategoryIds.Remove(args.Id);
-        }
+        if (args.IsChecked) selectedActualCategoryIds.Add(args.Id);
+        else selectedActualCategoryIds.Remove(args.Id);
         await Task.CompletedTask;
-    }
-
-    private void RemoveDescendantsFromSelection(long parentCategoryGroupId)
-    {
-        if (allAvailableCategories == null) return;
-
-        var childGroups = allAvailableCategories
-            .Where(c => c.ParentCategoryGroupId == parentCategoryGroupId)
-            .ToList();
-
-        foreach (var child in childGroups)
-        {
-            selectedCategoryGroupIds.Remove(child.CategoryGroup.Id);
-            RemoveDescendantsFromSelection(child.CategoryGroup.Id);
-        }
-
-        if (allActualCategories != null)
-        {
-            var categoriesToRemove = allActualCategories
-                .Where(c => c.GroupId == parentCategoryGroupId)
-                .Select(c => c.Id)
-                .ToList();
-
-            foreach (var catId in categoriesToRemove)
-            {
-                selectedActualCategoryIds.Remove(catId);
-            }
-        }
-    }
-
-    private void SelectImmediateChildren(long parentCategoryGroupId)
-    {
-        if (allAvailableCategories == null) return;
-
-        var childGroups = allAvailableCategories
-            .Where(c => c.ParentCategoryGroupId == parentCategoryGroupId)
-            .ToList();
-
-        if (childGroups.Any())
-        {
-            foreach (var child in childGroups)
-            {
-                selectedCategoryGroupIds.Add(child.CategoryGroup.Id);
-            }
-        }
-        else if (allActualCategories != null)
-        {
-            var categories = allActualCategories
-                .Where(c => c.GroupId == parentCategoryGroupId)
-                .ToList();
-
-            foreach (var cat in categories)
-            {
-                selectedActualCategoryIds.Add(cat.Id);
-            }
-        }
     }
 
     private async Task SaveBudget()

@@ -559,24 +559,13 @@
 
     private async Task HandleCategoryGroupToggle((long Id, bool IsChecked) args)
     {
-        if (args.IsChecked)
+        if (allAvailableCategories != null)
         {
-            // Add the category group
-            selectedCategoryGroupIds.Add(args.Id);
-
-            // Remove all descendant category groups and categories
-            RemoveDescendantsFromSelection(args.Id);
+            CategorySelection.ApplyGroupToggle(
+                args.Id, args.IsChecked,
+                selectedCategoryGroupIds, selectedActualCategoryIds,
+                allAvailableCategories);
         }
-        else
-        {
-            // Remove the category group
-            selectedCategoryGroupIds.Remove(args.Id);
-
-            // Auto-select immediate children (category groups or categories)
-            SelectImmediateChildren(args.Id);
-        }
-
-        // Refresh the chart
         await LoadCategoryTrends();
     }
 
@@ -595,58 +584,6 @@
         await LoadCategoryTrends();
     }
 
-
-    private void RemoveDescendantsFromSelection(long parentCategoryGroupId)
-    {
-        if (allAvailableCategories == null) return;
-
-        // Use shared helper to get all descendants
-        var descendants = CategoryGroupWithChildCount.CollectDescendants(parentCategoryGroupId, allAvailableCategories);
-
-        foreach (var descendant in descendants)
-        {
-            if (descendant.ItemType == CategoryItemType.Group)
-            {
-                selectedCategoryGroupIds.Remove(descendant.Id);
-            }
-            else if (descendant.ItemType == CategoryItemType.Category)
-            {
-                selectedActualCategoryIds.Remove(descendant.Id);
-            }
-        }
-    }
-
-    private void SelectImmediateChildren(long parentCategoryGroupId)
-    {
-        if (allAvailableCategories == null) return;
-
-        // Find immediate children - filter properly to avoid ID collision
-        var childGroups = allAvailableCategories
-            .Where(c => c.ParentCategoryGroupId == parentCategoryGroupId && c.ItemType == CategoryItemType.Group)
-            .ToList();
-
-        var childCategories = allAvailableCategories
-            .Where(c => c.ParentCategoryGroupId == parentCategoryGroupId && c.ItemType == CategoryItemType.Category)
-            .ToList();
-
-        if (childGroups.Any())
-        {
-            // Has child groups - select them
-            foreach (var child in childGroups)
-            {
-                selectedCategoryGroupIds.Add(child.Id);
-            }
-        }
-
-        if (childCategories.Any())
-        {
-            // Select child categories
-            foreach (var child in childCategories)
-            {
-                selectedActualCategoryIds.Add(child.Id);
-            }
-        }
-    }
 
     private bool needsTrendChartRender = false;
 
