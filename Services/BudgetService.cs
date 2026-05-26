@@ -47,6 +47,7 @@ public class BudgetService
 
         // Resolve tracked items from the project's live tracking config.
         var trackedKeys = project.TrackingItems.ToTrackedKeys().ToList();
+        var trackedKeySet = trackedKeys.ToHashSet();
 
         // Per-month stored amounts. Seed every tracked group missing an entry with zero so
         // ComputeEffectiveAmounts can auto-sum from its descendants — that's how a tracked
@@ -95,9 +96,24 @@ public class BudgetService
         var (monthIncome, monthExpenses) = await AggregateIncomeExpenseForRangeAsync(
             trackedKeys, year, fromMonth, toMonth, project.SourceId, projectId);
 
+        // When a tracked parent has tracked descendants, both rows would otherwise display
+        // the same money — the parent's per-row Spent is the leaf union, which already
+        // includes any tracked sub-cat. Collapse to the most specific level by hiding the
+        // parent. The tracking list itself is unchanged; this is just a display rule.
+        var shadowedParents = new HashSet<(long Id, CategoryItemType ItemType)>();
+        foreach (var key in trackedKeys.Where(k => k.ItemType == CategoryItemType.Group))
+        {
+            var descendants = CategoryGroupWithChildCount.CollectDescendants(
+                key.Id, allCategoriesWithCounts, includeLeafCategories: true);
+            if (descendants.Any(d => trackedKeySet.Contains((d.Id, d.ItemType))))
+                shadowedParents.Add(key);
+        }
+
         var categorySpending = new List<CategorySpending>();
         foreach (var key in trackedKeys)
         {
+            if (shadowedParents.Contains(key)) continue;
+
             string? name = key.ItemType == CategoryItemType.Group
                 ? groupNameLookup.GetValueOrDefault(key.Id)
                 : leafCategoryNameLookup.GetValueOrDefault(key.Id);
