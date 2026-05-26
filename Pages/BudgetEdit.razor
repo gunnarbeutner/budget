@@ -161,14 +161,14 @@
                     </td>
                 </tr>;
 
-            <div class="table-responsive">
+            <div class="budget-table-wrap">
                 <table class="table table-sm mb-0">
                     <thead>
                         <tr>
                             <th>@L["Table_Category"]</th>
                             @for (int m = 1; m <= 12; m++)
                             {
-                                <th class="text-end">@(new DateTime(2000, m, 1).ToString("MMM"))</th>
+                                <th class="text-center">@(new DateTime(2000, m, 1).ToString("MMM"))</th>
                             }
                             <th class="text-end">@L["Table_Total"]</th>
                             <th></th>
