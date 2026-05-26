@@ -1,16 +1,24 @@
-# Example deployment. Set MONEYMONEY_DB_UPLOAD_TOKEN in a .env file beside this
-# compose file (e.g. `MONEYMONEY_DB_UPLOAD_TOKEN=$(openssl rand -hex 32)`).
+# Deployment via GHCR + Watchtower.
 #
-# Initial bootstrap: copy a MoneyMoney SQLite snapshot into ./data/moneymoney.db
-# before the first start, or POST it to /api/moneymoney-db/{name} after start.
+# CI (.github/workflows/build.yml) builds and pushes ghcr.io/<owner>/budget:latest on every
+# push to main. Watchtower polls every 5 minutes on this host and restarts the app container
+# in place when a new image lands. Net effect: `git push` → ~5-10 minutes → host updated.
 #
-# TLS: terminate at a reverse proxy in front of this container. The app speaks
-# plain HTTP on port 8080; put nginx / Caddy / Traefik in front for HTTPS.
+# One-time host setup before `docker compose up`:
+#   1. Create a GitHub PAT with `read:packages` scope.
+#   2. echo "$PAT" | docker login ghcr.io -u <github-user> --password-stdin
+#      (this stores creds at ~/.docker/config.json, which Watchtower reads via the mount below)
+#   3. echo "MONEYMONEY_DB_UPLOAD_TOKEN=$(openssl rand -hex 32)" > .env
+#
+# Bootstrap data: copy a MoneyMoney SQLite snapshot into ./data/ before first start, or POST
+# it to /api/moneymoney-db/{name} after start.
+#
+# TLS: terminate at a reverse proxy in front of this container. The app speaks plain HTTP on
+# port 8080; put nginx / Caddy / Traefik in front for HTTPS.
 
 services:
   app:
-    build: .
-    image: openbudget
+    image: ghcr.io/gunnarbeutner/budget:latest
     container_name: openbudget
     restart: unless-stopped
     ports:
@@ -19,3 +27,26 @@ services:
       - ./data:/app/data
     environment:
       MONEYMONEY_DB_UPLOAD_TOKEN: ${MONEYMONEY_DB_UPLOAD_TOKEN:?set MONEYMONEY_DB_UPLOAD_TOKEN in .env}
+    labels:
+      # Opt this container into Watchtower's poll (paired with WATCHTOWER_LABEL_ENABLE=true).
+      com.centurylinklabs.watchtower.enable: "true"
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: openbudget-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # GHCR images for a private repo require auth — Watchtower picks up the host's
+      # docker-login credentials from this file.
+      - ~/.docker/config.json:/config.json:ro
+    environment:
+      # Only watch containers that explicitly opt in via the label above. Avoids touching
+      # anything else running on this host.
+      WATCHTOWER_LABEL_ENABLE: "true"
+      # 5 minutes — fast enough that a push feels close to live, slow enough that GHCR rate
+      # limits aren't a concern.
+      WATCHTOWER_POLL_INTERVAL: "300"
+      # Delete the previous image after a successful update so the host doesn't accumulate
+      # stale layers.
+      WATCHTOWER_CLEANUP: "true"
