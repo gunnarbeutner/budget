@@ -16,6 +16,7 @@ builder.Services.AddScoped<CategoryHierarchyService>();
 builder.Services.AddScoped<ProjectService>();
 builder.Services.AddScoped<BudgetEntryService>();
 builder.Services.AddScoped<BudgetPredictionService>();
+builder.Services.AddScoped<CashflowProjectionService>();
 builder.Services.AddScoped<BudgetService>();
 builder.Services.AddScoped<FreshnessService>();
 builder.Services.AddSingleton<MoneyMoneyImportService>();

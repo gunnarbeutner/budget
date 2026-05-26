@@ -7,6 +7,7 @@
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
 @inject BudgetEntryService BudgetEntryService
+@inject CashflowProjectionService CashflowProjectionService
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject IJSRuntime JSRuntime
 @inject NavigationManager Navigation
@@ -905,12 +906,12 @@ else
         // rollup we use the parent's accounts only — if the user wants child accounts in the
         // balance line they should be assigned to the parent project too (no schema change
         // needed; assignments are independent of the parent/child relationship).
-        cachedDeltaResult = await BudgetService.GetProjectActualDailyDeltaAsync(selectedProjectId, selectedYear);
+        cachedDeltaResult = await CashflowProjectionService.GetProjectActualDailyDeltaAsync(selectedProjectId, selectedYear);
         cachedHistograms = null;
         if (projecting)
         {
             var projItems = slices.SelectMany(s => s.ProjectionItems).Distinct().ToList();
-            cachedHistograms = await BudgetService.GetCategoryDayOfMonthWeightsAsync(projItems, projectSourceId);
+            cachedHistograms = await CashflowProjectionService.GetCategoryDayOfMonthWeightsAsync(projItems, projectSourceId);
         }
 
         // Attribute projected income to each source via the contribution splits and
