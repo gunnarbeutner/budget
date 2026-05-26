@@ -378,15 +378,13 @@ public class BudgetService
         if (candidateLeaves.Count == 0) return new HashSet<long>();
 
         var end = endUtc ?? DateTime.UtcNow;
-        var start = end.AddYears(-1);
-        var startTs = ((DateTimeOffset)start).ToUnixTimeSeconds();
-        var endTs = ((DateTimeOffset)end).ToUnixTimeSeconds();
+        var range = TimeRange.Between(end.AddYears(-1), end);
 
         var leafList = candidateLeaves.ToList();
         var hits = await _budgetDb.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && leafList.Contains(t.CategoryId.Value))
-            .Where(t => t.Timestamp >= startTs && t.Timestamp < endTs)
+            .WithinUtc(range)
             .Select(t => t.CategoryId!.Value)
             .Distinct()
             .ToListAsync();
@@ -433,15 +431,14 @@ public class BudgetService
             leafIsIncome = types.ToDictionary(c => c.Id, c => c.Type == 2);
         }
 
-        var startDate = new DateTime(year, fromMonth, 1, 0, 0, 0, DateTimeKind.Utc);
-        var endDate = new DateTime(year, toMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
-        var startTs = ((DateTimeOffset)startDate).ToUnixTimeSeconds();
-        var endTs = ((DateTimeOffset)endDate).ToUnixTimeSeconds();
+        var range = TimeRange.Between(
+            new DateTime(year, fromMonth, 1, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(year, toMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1));
 
         var raw = await _budgetDb.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
-            .Where(t => t.Timestamp >= startTs && t.Timestamp < endTs)
+            .WithinUtc(range)
             .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount })
             .ToListAsync();
 
@@ -605,22 +602,19 @@ public class BudgetService
         for (int i = 0; i < months; i++)
         {
             var monthStart = startDate.AddMonths(i);
-            var monthEnd = monthStart.AddMonths(1);
-
-            var startTimestamp = monthStart.ToUnixTimeSeconds();
-            var endTimestamp = monthEnd.ToUnixTimeSeconds();
+            var range = TimeRange.Between(monthStart, monthStart.AddMonths(1));
 
             var spent = isIncome
                 ? await _budgetDb.Transactions
                     .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId == categoryId)
-                    .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
+                    .WithinUtc(range)
                     .Where(t => t.Amount > 0)
                     .SumAsync(t => (decimal)t.Amount)
                 : await _budgetDb.Transactions
                     .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId == categoryId)
-                    .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
+                    .WithinUtc(range)
                     .Where(t => t.Amount < 0)
                     .SumAsync(t => -(decimal)t.Amount);
 
@@ -655,22 +649,19 @@ public class BudgetService
         for (int i = 0; i < months; i++)
         {
             var monthStart = startDate.AddMonths(i);
-            var monthEnd = monthStart.AddMonths(1);
-
-            var startTimestamp = monthStart.ToUnixTimeSeconds();
-            var endTimestamp = monthEnd.ToUnixTimeSeconds();
+            var range = TimeRange.Between(monthStart, monthStart.AddMonths(1));
 
             var spent = isIncome
                 ? await _budgetDb.Transactions
                     .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
-                    .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
+                    .WithinUtc(range)
                     .Where(t => t.Amount > 0)
                     .SumAsync(t => (decimal)t.Amount)
                 : await _budgetDb.Transactions
                     .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
-                    .Where(t => t.Timestamp >= startTimestamp && t.Timestamp < endTimestamp)
+                    .WithinUtc(range)
                     .Where(t => t.Amount < 0)
                     .SumAsync(t => -(decimal)t.Amount);
 
@@ -1480,14 +1471,10 @@ public class BudgetService
             leafIsIncome = types.ToDictionary(c => c.Id, c => c.Type == 2);
         }
 
-        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var startTs = ((DateTimeOffset)yearStart).ToUnixTimeSeconds();
-        var endTs = ((DateTimeOffset)yearStart.AddYears(1)).ToUnixTimeSeconds();
-
         var raw = await _budgetDb.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
-            .Where(t => t.Timestamp >= startTs && t.Timestamp < endTs)
+            .WithinUtc(TimeRange.Year(year))
             .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount, t.Timestamp })
             .ToListAsync();
 
@@ -1568,14 +1555,10 @@ public class BudgetService
             leafIsIncome = types.ToDictionary(c => c.Id, c => c.Type == 2);
         }
 
-        var monthStartUtc = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var startTs = ((DateTimeOffset)monthStartUtc).ToUnixTimeSeconds();
-        var endTs = ((DateTimeOffset)monthStartUtc.AddMonths(1)).ToUnixTimeSeconds();
-
         var raw = await _budgetDb.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
-            .Where(t => t.Timestamp >= startTs && t.Timestamp < endTs)
+            .WithinUtc(TimeRange.Month(year, month))
             .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount })
             .ToListAsync();
 
@@ -1701,13 +1684,10 @@ public class BudgetService
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
         if (!allLeafIds.Any()) return result;
 
-        var startTs = startDate.ToUnixTimeSeconds();
-        var endTs = startDate.AddMonths(months).ToUnixTimeSeconds();
-
         var rawQuery = _budgetDb.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
-            .Where(t => t.Timestamp >= startTs && t.Timestamp < endTs);
+            .WithinUtc(TimeRange.Between(startDate, startDate.AddMonths(months)));
         rawQuery = isIncome
             ? rawQuery.Where(t => t.Amount > 0)
             : rawQuery.Where(t => t.Amount < 0);
@@ -1896,9 +1876,7 @@ public class BudgetService
             projectLeafCategoryIds = itemToLeaf.Values.SelectMany(s => s).ToHashSet();
         }
 
-        var yearStartUtc = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var yearStartTs = ((DateTimeOffset)yearStartUtc).ToUnixTimeSeconds();
-        var yearEndTs = ((DateTimeOffset)yearStartUtc.AddYears(1)).ToUnixTimeSeconds();
+        var yearRange = TimeRange.Year(year);
         var nowTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         // Anchor the line on Jan 1 by reversing all booked transactions through "now" out of the
@@ -1906,25 +1884,26 @@ public class BudgetService
         // bound — MoneyMoney stores future-dated entries (scheduled payments) in the same table,
         // and including them in one but not the other lets currentBalance fall out of sync with
         // sum(DailyDelta), making balanceAtProjStart drift away from the real account balance.
-        var clampedEnd = Math.Max(yearStartTs, Math.Min(nowTs, yearEndTs));
+        var clampedEnd = Math.Max(yearRange.StartTs, Math.Min(nowTs, yearRange.EndTsExclusive));
+        var ytdRange = new TimeRange(yearRange.StartTs, clampedEnd);
 
         decimal ytdSumAllScopes = 0m;
-        if (clampedEnd > yearStartTs)
+        if (clampedEnd > yearRange.StartTs)
         {
             ytdSumAllScopes = (decimal)await _budgetDb.Transactions
                 .Where(t => t.SourceId == sourceId)
                 .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
-                .Where(t => t.Timestamp >= yearStartTs && t.Timestamp < clampedEnd)
+                .WithinUtc(ytdRange)
                 .SumAsync(t => t.Amount);
         }
-        // selectedYear in the future: clampedEnd == yearStartTs, ytdSumAllScopes stays 0, and
-        // StartingBalance defaults to currentBalance — a known approximation flagged in the UI.
+        // selectedYear in the future: clampedEnd == yearRange.StartTs, ytdSumAllScopes stays 0,
+        // and StartingBalance defaults to currentBalance — a known approximation flagged in the UI.
         result.StartingBalance = currentBalance - ytdSumAllScopes;
 
         var yearTxns = await _budgetDb.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
-            .Where(t => t.Timestamp >= yearStartTs && t.Timestamp < clampedEnd)
+            .WithinUtc(ytdRange)
             .Select(t => new { AccountId = t.AccountId!.Value, t.CategoryId, t.Amount, t.Timestamp })
             .ToListAsync();
 
@@ -2082,8 +2061,10 @@ public class BudgetService
             return result;
         }
 
-        var nowTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        var trailingStartTs = ((DateTimeOffset)DateTime.UtcNow.AddYears(-1)).ToUnixTimeSeconds();
+        // Trailing-year window for the primary sample. Half-open per TimeRange convention —
+        // a transaction at exactly the upper-bound second is treated as "future" and skipped.
+        var nowUtc = DateTime.UtcNow;
+        var trailingRange = TimeRange.Between(nowUtc.AddYears(-1), nowUtc);
 
         // Single transaction scan across all relevant leaves; trailing-year vs all-time are then
         // computed in-memory per item without further round trips.
@@ -2107,7 +2088,7 @@ public class BudgetService
                 if (!byLeaf.TryGetValue(leaf, out var list)) continue;
                 foreach (var t in list)
                 {
-                    if (t.Timestamp < trailingStartTs || t.Timestamp > nowTs) continue;
+                    if (t.Timestamp < trailingRange.StartTs || t.Timestamp >= trailingRange.EndTsExclusive) continue;
                     var day = DateTimeOffset.FromUnixTimeSeconds(t.Timestamp).UtcDateTime.Day;
                     sample.Add((Math.Abs((decimal)t.Amount), day));
                     trailingCount++;
