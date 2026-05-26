@@ -76,7 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Bare Swift executables launched via NSApplication don't get the standard main menu, so
     /// Cmd-X/C/V/A reach no responder and the text fields ignore them. Install just enough of
     /// the system menu (App + Edit + Window) to route those shortcuts to the first responder.
-    private func installMainMenu() {
+    @MainActor private func installMainMenu() {
         let mainMenu = NSMenu()
 
         // Application menu (the bold leftmost item — name comes from CFBundleName).
@@ -150,7 +150,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 @MainActor
 final class ConfigViewModel: ObservableObject {
-    @Published var baseURL: String = Config.baseURL ?? ""
+    // Multi-URL: edited as newline-separated text in the UI; persisted as a string array.
+    // Each non-blank line becomes one upload target on every export.
+    @Published var baseURLsText: String = Config.baseURLs.joined(separator: "\n")
     @Published var sourceName: String = Config.sourceName ?? ""
     @Published var token: String = Keychain.token ?? ""
     @Published var dbPassword: String = Keychain.dbPassword ?? ""
@@ -161,8 +163,9 @@ final class ConfigViewModel: ObservableObject {
     func saveAndInstall() async {
         await runWorking {
             self.status = "Saving and installing..."
-            try Config.validate(baseURL: self.baseURL, sourceName: self.sourceName, token: self.token)
-            Config.save(baseURL: self.baseURL, sourceName: self.sourceName)
+            let urls = Config.parseURLs(self.baseURLsText)
+            try Config.validate(baseURLs: urls, sourceName: self.sourceName, token: self.token)
+            Config.save(baseURLs: urls, sourceName: self.sourceName)
             try Keychain.setToken(self.token)
             try Keychain.setDBPassword(self.dbPassword)
             try LaunchAgent.install()
@@ -218,9 +221,15 @@ struct ConfigView: View {
                 .foregroundColor(.secondary).font(.callout)
 
             Form {
-                TextField("Server base URL", text: $vm.baseURL)
-                    .textFieldStyle(.roundedBorder)
-                    .help("e.g. https://budget.example.com")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Server base URLs")
+                        .font(.callout)
+                    TextEditor(text: $vm.baseURLsText)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 60, maxHeight: 100)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.4)))
+                        .help("One URL per line, e.g. https://budget.example.com. Every export uploads to each in turn.")
+                }
                 TextField("Source name (slug)", text: $vm.sourceName)
                     .textFieldStyle(.roundedBorder)
                     .help("Lowercase letters/digits/hyphens. The first upload with a new name registers it on the server.")
@@ -236,7 +245,7 @@ struct ConfigView: View {
                 Button(vm.isInstalled ? "Save & restart" : "Save & install") {
                     Task { await vm.saveAndInstall() }
                 }
-                .disabled(vm.working || vm.baseURL.isEmpty || vm.sourceName.isEmpty || vm.token.isEmpty)
+                .disabled(vm.working || Config.parseURLs(vm.baseURLsText).isEmpty || vm.sourceName.isEmpty || vm.token.isEmpty)
                 Button("Run now") { Task { await vm.runNow() } }
                     .disabled(vm.working)
                 Button("Uninstall") { Task { await vm.uninstall() } }
@@ -268,22 +277,53 @@ struct ConfigView: View {
 // MARK: - Config (UserDefaults)
 
 enum Config {
-    private static let baseURLKey = "baseURL"
+    private static let baseURLsKey = "baseURLs"
+    // Legacy single-URL key. Kept readable for one-shot migration so an existing user's saved
+    // URL doesn't disappear when they upgrade to the multi-URL build.
+    private static let legacyBaseURLKey = "baseURL"
     private static let sourceNameKey = "sourceName"
 
-    static var baseURL: String? { UserDefaults.standard.string(forKey: baseURLKey) }
+    /// Returns the configured URLs. Reads the multi-URL array if present; otherwise falls
+    /// back to (and migrates) the legacy single-URL key.
+    static var baseURLs: [String] {
+        if let array = UserDefaults.standard.stringArray(forKey: baseURLsKey), !array.isEmpty {
+            return array
+        }
+        if let legacy = UserDefaults.standard.string(forKey: legacyBaseURLKey), !legacy.isEmpty {
+            return [legacy]
+        }
+        return []
+    }
+
     static var sourceName: String? { UserDefaults.standard.string(forKey: sourceNameKey) }
 
-    static func save(baseURL: String, sourceName: String) {
-        UserDefaults.standard.set(baseURL, forKey: baseURLKey)
+    static func save(baseURLs: [String], sourceName: String) {
+        UserDefaults.standard.set(baseURLs, forKey: baseURLsKey)
         UserDefaults.standard.set(sourceName, forKey: sourceNameKey)
+        // Once the multi-URL key is populated, drop the legacy scalar so the two can't drift.
+        UserDefaults.standard.removeObject(forKey: legacyBaseURLKey)
+    }
+
+    /// Split a newline-separated text blob into individual URLs, trimming whitespace and
+    /// dropping empty lines. Used by the UI to convert TextEditor content to the storage
+    /// shape — and to gate the "Save" button on whether at least one URL is present.
+    static func parseURLs(_ text: String) -> [String] {
+        text
+            .split(whereSeparator: { $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 
     /// Validate that all fields look usable before persisting. Server-side slug rules are the
     /// same as the import endpoint's: lowercase alnum + hyphens, ≤ 100 chars.
-    static func validate(baseURL: String, sourceName: String, token: String) throws {
-        guard let url = URL(string: baseURL), url.scheme == "https" || url.scheme == "http", url.host != nil else {
-            throw AppError.invalidConfig("Base URL must be http(s)://host[/path]")
+    static func validate(baseURLs: [String], sourceName: String, token: String) throws {
+        if baseURLs.isEmpty {
+            throw AppError.invalidConfig("At least one server base URL is required.")
+        }
+        for raw in baseURLs {
+            guard let url = URL(string: raw), url.scheme == "https" || url.scheme == "http", url.host != nil else {
+                throw AppError.invalidConfig("Base URL '\(raw)' must be http(s)://host[/path]")
+            }
         }
         let slugRange = sourceName.range(of: "^[a-z0-9][a-z0-9-]{0,99}$", options: .regularExpression)
         guard slugRange != nil else {
@@ -497,10 +537,11 @@ enum Exporter {
     private static let cipherCompatibility = 4
 
     static func runOnce(logger: @escaping @Sendable (String) -> Void) async throws {
-        guard let baseURL = Config.baseURL, !baseURL.isEmpty,
+        let baseURLs = Config.baseURLs
+        guard !baseURLs.isEmpty,
               let sourceName = Config.sourceName, !sourceName.isEmpty,
               let token = Keychain.token, !token.isEmpty else {
-            throw AppError.invalidConfig("Missing config — open OpenBudgetImporter.app to set base URL, source name, and token.")
+            throw AppError.invalidConfig("Missing config — open OpenBudgetImporter.app to set base URLs, source name, and token.")
         }
 
         guard FileManager.default.fileExists(atPath: moneyMoneyDBPath) else {
@@ -522,9 +563,26 @@ enum Exporter {
 
         let attrs = try FileManager.default.attributesOfItem(atPath: outFile.path)
         let size = (attrs[.size] as? Int64) ?? 0
-        logger("Exported \(size) bytes → uploading to \(baseURL)/api/moneymoney-db/\(sourceName)")
 
-        try await upload(file: outFile, baseURL: baseURL, sourceName: sourceName, token: token, logger: logger)
+        // Try every configured URL even if some fail — a stale or down endpoint shouldn't
+        // silently prevent the healthy ones from receiving the snapshot. Collect failures and
+        // throw a combined error at the end so the launchd-driven run still surfaces them.
+        var failures: [(String, Error)] = []
+        for baseURL in baseURLs {
+            logger("Exported \(size) bytes → uploading to \(baseURL)/api/moneymoney-db/\(sourceName)")
+            do {
+                try await upload(file: outFile, baseURL: baseURL, sourceName: sourceName, token: token, logger: logger)
+            } catch {
+                logger("✗ Upload to \(baseURL) failed: \(error.localizedDescription)")
+                failures.append((baseURL, error))
+            }
+        }
+        if !failures.isEmpty {
+            let summary = failures
+                .map { "\($0.0): \($0.1.localizedDescription)" }
+                .joined(separator: "; ")
+            throw AppError.upload("\(failures.count)/\(baseURLs.count) target(s) failed — \(summary)")
+        }
     }
 
     /// MoneyMoney keeps a lock on its live DB. Copy the encrypted file + WAL/SHM sidecars so
