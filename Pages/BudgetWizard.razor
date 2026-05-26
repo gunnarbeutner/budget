@@ -6,6 +6,7 @@
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
 @inject BudgetEntryService BudgetEntryService
+@inject BudgetPredictionService BudgetPredictionService
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject NavigationManager Navigation
 @inject IStringLocalizer<BudgetWizard> L
@@ -374,7 +375,7 @@ else if (step == 3)
                     if (!groupById.ContainsKey(item.CategoryGroupId.Value)) continue;
                     var key = (item.CategoryGroupId.Value, CategoryItemType.Group);
                     var isIncome = incomeKeys.Contains(key);
-                    var monthlyPredictions = await BudgetService.PredictMonthlySpendingForCategoryAsync(
+                    var monthlyPredictions = await BudgetPredictionService.PredictMonthlySpendingForCategoryAsync(
                         item.CategoryGroupId.Value, selectedYear, sourceIdForPredict, isIncome);
                     predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
                 }
@@ -383,7 +384,7 @@ else if (step == 3)
                     if (!categoryById.ContainsKey(item.CategoryId.Value)) continue;
                     var key = (item.CategoryId.Value, CategoryItemType.Category);
                     var isIncome = incomeKeys.Contains(key);
-                    var monthlyPredictions = await BudgetService.PredictMonthlySpendingForLeafCategoryAsync(
+                    var monthlyPredictions = await BudgetPredictionService.PredictMonthlySpendingForLeafCategoryAsync(
                         item.CategoryId.Value, selectedYear, sourceIdForPredict, isIncome);
                     predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
                 }

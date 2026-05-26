@@ -5,6 +5,7 @@
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
 @inject BudgetEntryService BudgetEntryService
+@inject BudgetPredictionService BudgetPredictionService
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -672,8 +673,8 @@
         {
             var isIncome = incomeKeys.Contains(key);
             var predicted = key.ItemType == CategoryItemType.Group
-                ? await BudgetService.PredictMonthlySpendingForCategoryAsync(key.Id, budget.Year, sourceId, isIncome)
-                : await BudgetService.PredictMonthlySpendingForLeafCategoryAsync(key.Id, budget.Year, sourceId, isIncome);
+                ? await BudgetPredictionService.PredictMonthlySpendingForCategoryAsync(key.Id, budget.Year, sourceId, isIncome)
+                : await BudgetPredictionService.PredictMonthlySpendingForLeafCategoryAsync(key.Id, budget.Year, sourceId, isIncome);
             editingEntries[key] = predicted.Select(p => Math.Round(p, 2)).ToArray();
         }
         showRepredictDialog = false;

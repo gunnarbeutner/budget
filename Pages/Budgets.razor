@@ -6,6 +6,7 @@
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
 @inject BudgetEntryService BudgetEntryService
+@inject BudgetPredictionService BudgetPredictionService
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
@@ -852,7 +853,7 @@
                           && budgetedDescendantsByGroup.ContainsKey(k)))
             .ToHashSet();
 
-        var trendBatch = await BudgetService.GetMonthlySpendingBatchAsync(batchKeys, selectedYear, projectSourceId);
+        var trendBatch = await BudgetPredictionService.GetMonthlySpendingBatchAsync(batchKeys, selectedYear, projectSourceId);
 
         // Two leaf categories can share the same name (e.g. "Reparaturen" sits under both
         // "Umlagefähig" and "Nicht umlagefähig"). The downstream dictionaries are keyed by
