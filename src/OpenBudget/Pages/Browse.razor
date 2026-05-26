@@ -364,12 +364,12 @@
     // translate the bar index back into an anchor date.
     private (int Year, int Month)[]? chartBarMonths;
     private string chartGranularity = "M";
+    // Y-axis inversion: true for expense categories/groups so the bars still "grow upwards"
+    // visually even though their underlying values are negative (the tick labels honestly
+    // read "−300 €"). Income categories and accounts use the natural axis where positive
+    // goes up and negative goes down.
+    private bool chartInvertY;
     private long lastRenderToken;
-    // Cached once per page: the source's full transaction date range. The chart spans
-    // earliest→latest so the axis stays the same when the user picks an earlier anchor —
-    // anchoring on March doesn't truncate the chart at March.
-    private DateTime? sourceEarliestTx;
-    private DateTime? sourceLatestTx;
 
     // JS ↔ Blazor bridge for chart bar clicks. Allocated once per page lifetime; the chart
     // re-render hands the same reference each time so click events route back to us.
@@ -712,12 +712,6 @@
         var (fm, tm) = PeriodRange;
         tree = await BrowseService.GetTreeAsync(ProjectId, anchor.Year, fm, tm);
         if (tree == null) { notFound = true; return; }
-        if (project != null && sourceEarliestTx == null)
-        {
-            var (earliest, latest) = await TransactionQueries.GetSourceTransactionDateRangeAsync(project.SourceId);
-            sourceEarliestTx = earliest;
-            sourceLatestTx = latest;
-        }
         await ReloadTransactionsAsync();
     }
 
@@ -873,28 +867,58 @@
 
     private async Task ComputeChartAsync()
     {
-        // History series for the selected node, bucketed by chartGranularity. Account-level
-        // charts would need a different signal (net cashflow / balance over time) — skip for
-        // now so the canvas just stays hidden when an account is selected.
+        // History series for the selected node, bucketed by chartGranularity. We support
+        // category / group selections (chart of period spend signed by MoneyMoney's
+        // natural convention — expenses negative, refunds offsetting) and account
+        // selections (signed net flow). "All" has no single meaningful chart yet.
         if (project == null || tree == null) { chartBars = null; return; }
-        if (selectionKind != "category" && selectionKind != "group") { chartBars = null; return; }
 
-        var leaves = await ResolveSelectionLeavesAsync();
-        if (leaves == null || leaves.Count == 0) { chartBars = null; return; }
+        IReadOnlyCollection<long>? leaves = null;
+        IReadOnlyCollection<long>? accounts = null;
+        bool invertY = false;
 
-        // Window spans the source's full transaction history — earliest → max(anchor,
-        // latest). Anchoring on an earlier month must not shrink the chart's right edge or
-        // the user loses sight of recent activity.
+        if (selectionKind == "category" || selectionKind == "group")
+        {
+            leaves = await ResolveSelectionLeavesAsync();
+            if (leaves == null || leaves.Count == 0) { chartBars = null; return; }
+            bool isIncome = false;
+            if (selectionKind == "category" && selectionId is { } cidIncome)
+                isIncome = FindCategoryNode(tree.Categories, cidIncome, CategoryItemType.Category)?.IsIncome ?? false;
+            else if (selectionKind == "group" && selectionId is { } gidIncome)
+                isIncome = FindCategoryNode(tree.Categories, gidIncome, CategoryItemType.Group)?.IsIncome ?? false;
+            // Expense items invert the axis so spending grows upward (the values are still
+            // negative — the tick labels read "−300 €"). Income items keep the natural axis.
+            invertY = !isIncome;
+        }
+        else if (selectionKind == "account" && selectionId is { } aid)
+        {
+            accounts = new[] { aid };
+            // Accounts use the natural axis: net inflow up, net outflow down.
+        }
+        else
+        {
+            // "all" selection — defer until we decide what aggregate makes sense.
+            chartBars = null;
+            return;
+        }
+
+        // Window spans the selected node's actual transaction history — its earliest
+        // transaction through max(anchor, its latest). A category that started in 2026 won't
+        // drag the chart back to 2020 just because the source has older rows in other
+        // categories. Anchoring on an earlier month still doesn't shrink the right edge.
+        var (scopeEarliest, scopeLatest) = await TransactionQueries.GetScopeDateRangeAsync(
+            project.SourceId, leaves, accounts);
+        if (scopeEarliest == null) { chartBars = null; return; }
+
         var anchorDate = new DateTime(anchor.Year, anchor.Month, 1);
-        var earliest = sourceEarliestTx ?? anchorDate;
-        var rightEdge = sourceLatestTx is { } lt && lt > anchorDate
+        var earliest = scopeEarliest.Value;
+        var rightEdge = scopeLatest is { } lt && lt > anchorDate
             ? new DateTime(lt.Year, lt.Month, 1)
             : anchorDate;
         var (windowStart, windowEndExclusive, bucketCount, bucketOf, labelOf) = ResolveChartWindow(earliest, rightEdge, chartGranularity);
 
-        var leafList = leaves.ToList();
         var raw = await TransactionQueries.GetRawByDateRangeAsync(
-            project.SourceId, leafList, windowStart, windowEndExclusive);
+            project.SourceId, leaves, accounts, windowStart, windowEndExclusive);
 
         // Mark every bucket touching the anchor period as "anchor" — for M this is one
         // bucket, for YTD it's all buckets from Jan to anchor month, for Year all twelve
@@ -906,10 +930,6 @@
         for (int i = 0; i < bucketCount; i++)
         {
             bars[i] = (labelOf(i), 0m, false);
-            // Use the middle of the bucket so quarterly / yearly clicks land on a reasonable
-            // anchor month rather than just the first day.
-            var ts = windowStart.AddDays(0); // re-resolve below
-            // For each granularity, just iterate from windowStart forward.
         }
         // Reconstruct bucket month-starts: walk forward bucket-by-bucket.
         var cursor = windowStart;
@@ -936,8 +956,11 @@
         {
             var b = bucketOf(date);
             if (b < 0 || b >= bucketCount) continue;
-            bars[b] = (bars[b].Label, bars[b].Value + Math.Abs(amount), bars[b].IsAnchor);
+            // Sum raw signed amounts — MoneyMoney's convention is negative for outflows and
+            // positive for inflows. Refunds against an expense bring the bar closer to zero.
+            bars[b] = (bars[b].Label, bars[b].Value + amount, bars[b].IsAnchor);
         }
+        chartInvertY = invertY;
         chartBars = bars;
     }
 
@@ -1023,7 +1046,7 @@
         try
         {
             await JS.InvokeVoidAsync("renderBrowseChart", "browseChart", "browseChartScroll",
-                labels, values, bg, selfRef);
+                labels, values, bg, chartInvertY, selfRef);
         }
         catch (JSDisconnectedException) { /* page navigation in flight */ }
     }

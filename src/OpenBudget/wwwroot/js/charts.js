@@ -714,19 +714,26 @@ const zeroLinePlugin = {
 // Browse page bar chart: handles its own rendering since it needs (a) a Blazor click bridge
 // for navigating to a clicked bar's month, and (b) auto-scrolling the container to the
 // right-most (most recent) bar on each render so the user lands looking at the anchor.
-window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values, bg, dotnetRef) {
+window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values, bg, invertY, dotnetRef) {
     const ctx = document.getElementById(canvasId);
     if (!ctx) return false;
     if (window.chartInstances[canvasId]) {
         window.chartInstances[canvasId].destroy();
     }
+    // Format a euro value with the natural sign. Chart.js calls this for both tick labels
+    // and tooltips, so a single helper keeps them consistent.
+    const formatEuro = function(v) {
+        const n = Number(v);
+        if (n < 0) return '-€' + Math.abs(n).toFixed(0);
+        return '€' + n.toFixed(0);
+    };
     try {
         window.chartInstances[canvasId] = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: labels,
                 datasets: [{
-                    label: 'Spent',
+                    label: 'Amount',
                     data: values,
                     backgroundColor: bg,
                     borderWidth: 0,
@@ -739,11 +746,23 @@ window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values,
                 // ratio against the wide width.
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) { return formatEuro(ctx.parsed.y); }
+                        }
+                    }
+                },
                 scales: {
                     y: {
-                        beginAtZero: true,
-                        ticks: { callback: function(v) { return '€' + v.toFixed(0); } }
+                        // For expense items the underlying values are negative; reversing
+                        // the axis makes the bars still grow upward visually (spending you
+                        // can compare at a glance) while the tick labels honestly read
+                        // "−300 €". Income + account selections use the natural axis where
+                        // positive = up.
+                        reverse: !!invertY,
+                        ticks: { callback: function(v) { return formatEuro(v); } }
                     }
                 },
                 onClick: function(evt, elements) {

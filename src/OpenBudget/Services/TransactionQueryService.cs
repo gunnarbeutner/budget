@@ -131,17 +131,32 @@ public class TransactionQueryService
     }
 
     /// <summary>
-    /// Earliest and latest transaction timestamps for a source, as UTC. Used by the browse
-    /// chart to size its time axis from the source's full history rather than collapsing
-    /// when the anchor sits early or mid-range. Either value may be null when the source
-    /// has no transactions yet.
+    /// Earliest and latest transaction timestamps within a scope (source + optional leaf
+    /// categories and/or account ids), as UTC. The browse chart uses this so its x-axis
+    /// spans only the selected node's actual history — a category that started in 2026 won't
+    /// drag the chart back to 2020 just because the source has older rows in other
+    /// categories. Either value may be null when the scope has no transactions.
     /// </summary>
-    public async Task<(DateTime? Earliest, DateTime? Latest)> GetSourceTransactionDateRangeAsync(
-        int sourceId, CancellationToken ct = default)
+    public async Task<(DateTime? Earliest, DateTime? Latest)> GetScopeDateRangeAsync(
+        int sourceId,
+        IReadOnlyCollection<long>? leafIds,
+        IReadOnlyCollection<long>? accountIds,
+        CancellationToken ct = default)
     {
-        var bounds = await _db.Transactions
+        var q = _db.Transactions
             .Where(t => t.SourceId == sourceId)
-            .Where(t => t.Splitted != 1)
+            .Where(t => t.Splitted != 1);
+        if (leafIds is { Count: > 0 })
+        {
+            var leafList = leafIds.ToList();
+            q = q.Where(t => t.CategoryId.HasValue && leafList.Contains(t.CategoryId.Value));
+        }
+        if (accountIds is { Count: > 0 })
+        {
+            var acctList = accountIds.ToList();
+            q = q.Where(t => t.AccountId.HasValue && acctList.Contains(t.AccountId.Value));
+        }
+        var bounds = await q
             .GroupBy(_ => 1)
             .Select(g => new { Min = g.Min(t => (long?)t.Timestamp), Max = g.Max(t => (long?)t.Timestamp) })
             .FirstOrDefaultAsync(ct);
@@ -152,25 +167,40 @@ public class TransactionQueryService
 
     /// <summary>
     /// Bulk (timestamp, amount-in-euros) pairs across an arbitrary UTC range, scoped to the
-    /// given source + leaf categories. Used for chart-style queries (trailing-12-months,
-    /// trailing-8-quarters etc.) that don't fit into a single calendar-year window. Always
-    /// excludes split parents.
+    /// given source and either leaf-category set, account set, or both (AND when both are
+    /// supplied). Used for chart-style queries (trailing history, account net-flow series)
+    /// that don't fit into a single calendar-year window. Always excludes split parents.
     /// </summary>
     public async Task<List<(DateTime Date, decimal Amount)>> GetRawByDateRangeAsync(
         int sourceId,
-        IReadOnlyCollection<long> leafIds,
+        IReadOnlyCollection<long>? leafIds,
+        IReadOnlyCollection<long>? accountIds,
         DateTime startUtc,
         DateTime endExclusiveUtc,
         CancellationToken ct = default)
     {
-        if (leafIds.Count == 0) return new List<(DateTime, decimal)>();
-        var leafList = leafIds.ToList();
+        bool hasLeaves = leafIds is { Count: > 0 };
+        bool hasAccounts = accountIds is { Count: > 0 };
+        if (!hasLeaves && !hasAccounts) return new List<(DateTime, decimal)>();
+
         var range = TimeRange.Between(startUtc, endExclusiveUtc);
-        var raw = await _db.Transactions
+        var q = _db.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.Splitted != 1)
-            .Where(t => t.CategoryId.HasValue && leafList.Contains(t.CategoryId.Value))
-            .WithinUtc(range)
+            .WithinUtc(range);
+
+        if (hasLeaves)
+        {
+            var leafList = leafIds!.ToList();
+            q = q.Where(t => t.CategoryId.HasValue && leafList.Contains(t.CategoryId.Value));
+        }
+        if (hasAccounts)
+        {
+            var acctList = accountIds!.ToList();
+            q = q.Where(t => t.AccountId.HasValue && acctList.Contains(t.AccountId.Value));
+        }
+
+        var raw = await q
             .Select(t => new { t.Timestamp, t.Amount })
             .ToListAsync(ct);
         return raw
