@@ -442,14 +442,13 @@ public class BudgetService
             .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount })
             .ToListAsync();
 
-        decimal income = 0m, expense = 0m;
+        long incomeCents = 0, expenseCents = 0;
         foreach (var t in raw)
         {
-            var amt = (decimal)t.Amount;
-            if (leafIsIncome.GetValueOrDefault(t.CategoryId, false)) income += amt;
-            else expense += -amt;
+            if (leafIsIncome.GetValueOrDefault(t.CategoryId, false)) incomeCents += t.Amount;
+            else expenseCents += -t.Amount;
         }
-        return (income, expense);
+        return (incomeCents / 100m, expenseCents / 100m);
     }
 
     /// <summary>
@@ -607,25 +606,25 @@ public class BudgetService
             var monthStart = startDate.AddMonths(i);
             var range = TimeRange.Between(monthStart, monthStart.AddMonths(1));
 
-            var spent = isIncome
+            var spentCents = isIncome
                 ? await _budgetDb.Transactions
                     .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId == categoryId)
                     .WithinUtc(range)
                     .Where(t => t.Amount > 0)
-                    .SumAsync(t => (decimal)t.Amount)
+                    .SumAsync(t => t.Amount)
                 : await _budgetDb.Transactions
                     .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId == categoryId)
                     .WithinUtc(range)
                     .Where(t => t.Amount < 0)
-                    .SumAsync(t => -(decimal)t.Amount);
+                    .SumAsync(t => -t.Amount);
 
             results.Add(new MonthlySpending
             {
                 Year = monthStart.Year,
                 Month = monthStart.Month,
-                Amount = spent
+                Amount = spentCents / 100m
             });
         }
 
@@ -654,25 +653,25 @@ public class BudgetService
             var monthStart = startDate.AddMonths(i);
             var range = TimeRange.Between(monthStart, monthStart.AddMonths(1));
 
-            var spent = isIncome
+            var spentCents = isIncome
                 ? await _budgetDb.Transactions
                     .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
                     .WithinUtc(range)
                     .Where(t => t.Amount > 0)
-                    .SumAsync(t => (decimal)t.Amount)
+                    .SumAsync(t => t.Amount)
                 : await _budgetDb.Transactions
                     .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
                     .WithinUtc(range)
                     .Where(t => t.Amount < 0)
-                    .SumAsync(t => -(decimal)t.Amount);
+                    .SumAsync(t => -t.Amount);
 
             results.Add(new MonthlySpending
             {
                 Year = monthStart.Year,
                 Month = monthStart.Month,
-                Amount = spent
+                Amount = spentCents / 100m
             });
         }
 
@@ -1490,7 +1489,7 @@ public class BudgetService
                 arr = new decimal[12];
                 perCategoryMonthly[t.CategoryId] = arr;
             }
-            arr[month] += (decimal)t.Amount;
+            arr[month] += t.Amount / 100m;
         }
 
         foreach (var item in items)
@@ -1569,7 +1568,7 @@ public class BudgetService
         foreach (var t in raw)
         {
             perCategorySum.TryGetValue(t.CategoryId, out var s);
-            perCategorySum[t.CategoryId] = s + (decimal)t.Amount;
+            perCategorySum[t.CategoryId] = s + t.Amount / 100m;
         }
 
         foreach (var item in items)
@@ -1702,7 +1701,7 @@ public class BudgetService
                 arr = new decimal[months];
                 perCategoryMonthly[t.CategoryId] = arr;
             }
-            arr[monthIndex] += isIncome ? (decimal)t.Amount : -(decimal)t.Amount;
+            arr[monthIndex] += (isIncome ? t.Amount : -t.Amount) / 100m;
         }
 
         foreach (var item in items)
@@ -1882,11 +1881,11 @@ public class BudgetService
         decimal ytdSumAllScopes = 0m;
         if (clampedEnd > yearRange.StartTs)
         {
-            ytdSumAllScopes = (decimal)await _budgetDb.Transactions
+            ytdSumAllScopes = (await _budgetDb.Transactions
                 .Where(t => t.SourceId == sourceId)
                 .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
                 .WithinUtc(ytdRange)
-                .SumAsync(t => t.Amount);
+                .SumAsync(t => t.Amount)) / 100m;
         }
         // selectedYear in the future: clampedEnd == yearRange.StartTs, ytdSumAllScopes stays 0,
         // and StartingBalance defaults to currentBalance — a known approximation flagged in the UI.
@@ -1910,7 +1909,7 @@ public class BudgetService
             var date = DateTimeOffset.FromUnixTimeSeconds(t.Timestamp).UtcDateTime;
             int dayIndex = date.DayOfYear - 1;
             if (dayIndex < 0 || dayIndex >= daysInYear) continue;
-            result.DailyDelta[dayIndex] += (decimal)t.Amount;
+            result.DailyDelta[dayIndex] += t.Amount / 100m;
         }
 
         var today = DateTime.UtcNow.Date;
@@ -1980,8 +1979,8 @@ public class BudgetService
                     || !_budgetDb.Categories.Any(c => c.SourceId == sourceId && c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)));
 
             var count = await query.CountAsync();
-            var absSum = count == 0 ? 0m : (decimal)await query.SumAsync(t => Math.Abs(t.Amount));
-            result[sourceId] = new UncategorizedSummary { SourceId = sourceId, Count = count, AbsoluteAmount = absSum };
+            var absSumCents = count == 0 ? 0L : await query.SumAsync(t => Math.Abs(t.Amount));
+            result[sourceId] = new UncategorizedSummary { SourceId = sourceId, Count = count, AbsoluteAmount = absSumCents / 100m };
         }
         return result;
     }
@@ -2082,7 +2081,7 @@ public class BudgetService
                 {
                     if (t.Timestamp < trailingRange.StartTs || t.Timestamp >= trailingRange.EndTsExclusive) continue;
                     var day = DateTimeOffset.FromUnixTimeSeconds(t.Timestamp).UtcDateTime.Day;
-                    sample.Add((Math.Abs((decimal)t.Amount), day));
+                    sample.Add((Math.Abs(t.Amount) / 100m, day));
                     trailingCount++;
                 }
             }
@@ -2102,7 +2101,7 @@ public class BudgetService
                 foreach (var t in list)
                 {
                     var day = DateTimeOffset.FromUnixTimeSeconds(t.Timestamp).UtcDateTime.Day;
-                    sample.Add((Math.Abs((decimal)t.Amount), day));
+                    sample.Add((Math.Abs(t.Amount) / 100m, day));
                     allTimeCount++;
                 }
             }

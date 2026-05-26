@@ -66,7 +66,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("SourceId");
 
-                    b.ToTable("mm_accounts", (string)null);
+                    b.ToTable("mm_accounts");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Budget", b =>
@@ -102,7 +102,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("ProjectId");
 
-                    b.ToTable("budgets", (string)null);
+                    b.ToTable("budgets");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.BudgetContributionSplit", b =>
@@ -128,7 +128,7 @@ namespace OpenBudget.Migrations
                     b.HasIndex("BudgetId", "CategoryId", "ItemType")
                         .IsUnique();
 
-                    b.ToTable("budget_contribution_splits", (string)null);
+                    b.ToTable("budget_contribution_splits");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Category", b =>
@@ -170,7 +170,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("SourceId", "GroupId");
 
-                    b.ToTable("mm_categories", (string)null);
+                    b.ToTable("mm_categories");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.CategoryGroup", b =>
@@ -204,7 +204,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("SourceId");
 
-                    b.ToTable("mm_category_groups", (string)null);
+                    b.ToTable("mm_category_groups");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.CategoryTypeAssignment", b =>
@@ -230,7 +230,7 @@ namespace OpenBudget.Migrations
                     b.HasIndex("ProjectId", "CategoryId")
                         .IsUnique();
 
-                    b.ToTable("category_type_assignments", (string)null);
+                    b.ToTable("category_type_assignments");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.ImportSource", b =>
@@ -258,7 +258,7 @@ namespace OpenBudget.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("money_money_sources", (string)null);
+                    b.ToTable("money_money_sources");
 
                     b.HasData(
                         new
@@ -324,7 +324,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("BudgetId");
 
-                    b.ToTable("monthly_budget_entries", (string)null);
+                    b.ToTable("monthly_budget_entries");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Project", b =>
@@ -359,7 +359,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("SourceId");
 
-                    b.ToTable("projects", (string)null);
+                    b.ToTable("projects");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.ProjectAccountAssignment", b =>
@@ -385,7 +385,7 @@ namespace OpenBudget.Migrations
                     b.HasIndex("ProjectId", "AccountId")
                         .IsUnique();
 
-                    b.ToTable("project_account_assignments", (string)null);
+                    b.ToTable("project_account_assignments");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.ProjectCategoryAssignment", b =>
@@ -404,7 +404,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("ProjectId");
 
-                    b.ToTable("project_category_assignments", (string)null);
+                    b.ToTable("project_category_assignments");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.ProjectTrackingItem", b =>
@@ -429,7 +429,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("ProjectId");
 
-                    b.ToTable("project_tracking_items", (string)null);
+                    b.ToTable("project_tracking_items");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Transaction", b =>
@@ -442,8 +442,8 @@ namespace OpenBudget.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("local_account_key");
 
-                    b.Property<double>("Amount")
-                        .HasColumnType("REAL")
+                    b.Property<long>("Amount")
+                        .HasColumnType("INTEGER")
                         .HasColumnName("amount");
 
                     b.Property<long?>("CategoryId")
@@ -489,7 +489,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("SourceId", "CategoryId", "Timestamp");
 
-                    b.ToTable("mm_transactions", (string)null);
+                    b.ToTable("mm_transactions");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Budget", b =>

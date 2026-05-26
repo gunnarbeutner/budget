@@ -19,8 +19,13 @@ public class Transaction
     [Column("local_account_key")]
     public long? AccountId { get; set; }
 
+    /// <summary>
+    /// Transaction amount in integer cents (or the currency's smallest unit). Stored as a
+    /// long so DB-side SUM stays exact for typical personal-budget magnitudes — the previous
+    /// REAL column accumulated sub-cent rounding error in aggregates.
+    /// </summary>
     [Column("amount")]
-    public double Amount { get; set; }
+    public long Amount { get; set; }
 
     [Column("currency")]
     public string? Currency { get; set; }

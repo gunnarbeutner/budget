@@ -277,7 +277,12 @@ public class MoneyMoneyImportService
             cmd.Parameters["$local_account_key"].Value = r.IsDBNull(1)
                 ? DBNull.Value
                 : (object)SourceScope.Namespace(sourceId, r.GetInt64(1));
-            cmd.Parameters["$amount"].Value = r.IsDBNull(2) ? DBNull.Value : r.GetDouble(2);
+            // MoneyMoney stores amounts as REAL euros (or other currency); we keep them as
+            // integer cents downstream so DB-side SUM is exact. Round-half-to-even matches the
+            // C# default and avoids skew over large samples.
+            cmd.Parameters["$amount"].Value = r.IsDBNull(2)
+                ? DBNull.Value
+                : (object)(long)Math.Round(r.GetDouble(2) * 100.0, MidpointRounding.ToEven);
             cmd.Parameters["$currency"].Value = r.IsDBNull(3) ? DBNull.Value : r.GetString(3);
             cmd.Parameters["$timestamp"].Value = r.IsDBNull(4) ? DBNull.Value : r.GetInt64(4);
             cmd.Parameters["$name"].Value = r.IsDBNull(5) ? DBNull.Value : r.GetString(5);
