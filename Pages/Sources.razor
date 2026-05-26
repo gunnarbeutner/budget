@@ -4,20 +4,20 @@
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
 @inject BudgetDbContext Db
+@inject IStringLocalizer<Sources> L
 @using Microsoft.EntityFrameworkCore
 
-<PageTitle>MoneyMoney sources</PageTitle>
+<PageTitle>@L["PageTitle"]</PageTitle>
 
-<h1 class="mb-3">MoneyMoney sources</h1>
+<h1 class="mb-3">@L["Heading"]</h1>
 
 <p class="text-muted">
-    Each named source holds one MoneyMoney installation's data. Upload a fresh DB with
-    <code>POST /api/moneymoney-db/{name}</code> — the first upload to a new name registers it.
+    @L["Intro_Before"]<code>POST /api/moneymoney-db/{name}</code>@L["Intro_After"]
 </p>
 
 @if (sources == null)
 {
-    <div aria-busy="true" aria-label="Loading">
+    <div aria-busy="true" aria-label="@L["Status_Loading"]">
         <div class="skeleton skeleton-line mb-2" style="width: 70%;"></div>
         <div class="skeleton skeleton-line mb-2" style="width: 50%;"></div>
         <div class="skeleton skeleton-line" style="width: 60%;"></div>
@@ -25,19 +25,19 @@
 }
 else if (!sources.Any())
 {
-    <div class="alert alert-info">No sources registered yet.</div>
+    <div class="alert alert-info">@L["Empty"]</div>
 }
 else
 {
     <table class="table table-sm align-middle">
         <thead>
             <tr>
-                <th>Name</th>
-                <th>Created</th>
-                <th>Last upload</th>
-                <th class="text-end">Projects</th>
-                <th class="text-end">Transactions</th>
-                <th class="text-end">Bytes</th>
+                <th>@L["Table_Name"]</th>
+                <th>@L["Table_Created"]</th>
+                <th>@L["Table_LastUpload"]</th>
+                <th class="text-end">@L["Table_Projects"]</th>
+                <th class="text-end">@L["Table_Transactions"]</th>
+                <th class="text-end">@L["Table_Bytes"]</th>
                 <th></th>
             </tr>
         </thead>
@@ -54,7 +54,7 @@ else
                         }
                         else
                         {
-                            <span class="text-muted">never</span>
+                            <span class="text-muted">@L["Never"]</span>
                         }
                     </td>
                     <td class="text-end">@projectCounts.GetValueOrDefault(s.Id, 0)</td>
@@ -63,11 +63,11 @@ else
                     <td class="text-end">
                         @if (projectCounts.GetValueOrDefault(s.Id, 0) == 0 && s.Id != SourceScope.LegacySourceId)
                         {
-                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(s)">Delete</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(s)">@L["Button_Delete"]</button>
                         }
                         else
                         {
-                            <span class="text-muted small">in use</span>
+                            <span class="text-muted small">@L["InUse"]</span>
                         }
                     </td>
                 </tr>
@@ -82,16 +82,16 @@ else
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Delete source "@pendingDelete.Name"?</h5>
+                    <h5 class="modal-title">@L["Modal_Title", pendingDelete.Name]</h5>
                     <button type="button" class="btn-close" @onclick="() => pendingDelete = null"></button>
                 </div>
                 <div class="modal-body">
-                    <p>This wipes all mm_* rows for this source and removes the source entry.</p>
-                    <p class="text-danger">Projects bound to this source must be deleted first; the action will refuse otherwise.</p>
+                    <p>@L["Modal_Body"]</p>
+                    <p class="text-danger">@L["Modal_BodyWarning"]</p>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="() => pendingDelete = null">Cancel</button>
-                    <button type="button" class="btn btn-danger" @onclick="DeleteConfirmed">Delete</button>
+                    <button type="button" class="btn btn-secondary" @onclick="() => pendingDelete = null">@L["Button_Cancel"]</button>
+                    <button type="button" class="btn btn-danger" @onclick="DeleteConfirmed">@L["Button_Delete"]</button>
                 </div>
             </div>
         </div>
