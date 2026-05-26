@@ -101,12 +101,11 @@ function fadeColor(color, factor) {
     return color;
 }
 
-// Custom tooltip positioner: anchors to whichever outer edge of the hovered bar group has
-// room to grow into. Cursor in the left half of the chart → anchor on the right edge of the
-// bars so the tooltip extends rightward. Cursor in the right half → anchor on the left edge
-// so it extends leftward. Y tracks the cursor so Chart.js's auto-alignment can flip the
-// tooltip above/below depending on space — keeping it from extending past the chart bottom
-// when hovering middle-of-chart months.
+// Custom tooltip positioner: returns the outer edge of the hovered bar group as the caret
+// X (right edge if cursor in left half of chart, left edge if cursor in right half) plus
+// cursor Y. The external HTML tooltip handler reads caretX/Y from the model and decides
+// final placement in viewport coords (escaping canvas bounds so a tall tooltip doesn't
+// have to overlap the bars).
 if (window.Chart && Chart.Tooltip && Chart.Tooltip.positioners) {
     Chart.Tooltip.positioners.outerEdge = function (elements, eventPosition) {
         if (!elements || !elements.length) return false;
@@ -129,6 +128,122 @@ if (window.Chart && Chart.Tooltip && Chart.Tooltip.positioners) {
 
         return { x: anchorX, y: cursorY };
     };
+}
+
+// External HTML tooltip handler: renders the Chart.js tooltip as an absolutely-positioned
+// <div> attached to <body> so it can escape the canvas bounds. Chart.js's built-in tooltip
+// is drawn on the canvas and gets clipped/centered-on-cursor when it's tall, ending up
+// overlapping the bars. The external version sits in viewport space, opens horizontally
+// from the bar-group anchor based on cursor side, and caps height with a scroll fallback.
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function externalTooltipHandler(context) {
+    const { chart, tooltip } = context;
+    const elId = '__chartTooltip_' + chart.canvas.id;
+    let el = document.getElementById(elId);
+    if (!el) {
+        el = document.createElement('div');
+        el.id = elId;
+        Object.assign(el.style, {
+            position: 'fixed',
+            background: 'rgba(0, 0, 0, 0.85)',
+            color: 'white',
+            borderRadius: '4px',
+            padding: '8px 10px',
+            font: '600 11px system-ui, -apple-system, sans-serif',
+            lineHeight: '1.45',
+            pointerEvents: 'none',
+            zIndex: '10000',
+            opacity: '0',
+            transition: 'opacity 0.08s linear',
+            maxHeight: '70vh',
+            maxWidth: '340px',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
+            left: '0px',
+            top: '0px',
+        });
+        document.body.appendChild(el);
+    }
+
+    if (tooltip.opacity === 0) {
+        el.style.opacity = '0';
+        return;
+    }
+
+    // Build content from the tooltip model (Chart.js has already run filter+callbacks).
+    const titleLines = tooltip.title || [];
+    const bodyEntries = tooltip.body || [];
+    let html = '';
+    if (titleLines.length) {
+        html += '<div style="font-weight:700;font-size:12px;margin-bottom:6px;opacity:0.9;">'
+              + titleLines.map(escapeHtml).join('<br>')
+              + '</div>';
+    }
+    bodyEntries.forEach((entry, i) => {
+        const colors = (tooltip.labelColors && tooltip.labelColors[i]) || {};
+        const txtColor = (tooltip.labelTextColors && tooltip.labelTextColors[i]) || '#fff';
+        const bg = colors.backgroundColor || '#888';
+        const bd = colors.borderColor || bg;
+        const swatch = '<span style="display:inline-block;width:10px;height:10px;margin-right:6px;'
+                     + 'flex-shrink:0;vertical-align:middle;border-radius:2px;'
+                     + 'background:' + bg + ';border:1px solid ' + bd + ';"></span>';
+        (entry.lines || []).forEach(line => {
+            html += '<div style="color:' + txtColor + ';display:flex;align-items:center;'
+                  + 'white-space:nowrap;margin-bottom:2px;">'
+                  + swatch + '<span>' + escapeHtml(line) + '</span></div>';
+        });
+    });
+    el.innerHTML = html;
+    el.style.opacity = '1';
+
+    // Position: viewport coords. Anchor X is the bar group's outer edge (the outerEdge
+    // positioner picks the side AWAY from the cursor — right edge if cursor in left half,
+    // left edge if cursor in right half). Tooltip extends in that same direction so it
+    // ends up in the empty space beside the bars, never on top of them. Y is centered on
+    // the chart area's midpoint (stable — doesn't drift with cursor) and clamped to the
+    // viewport; if taller than viewport, internal scroll takes over.
+    const canvasRect = chart.canvas.getBoundingClientRect();
+    const anchorX = canvasRect.left + tooltip.caretX;
+    const chartArea = chart.chartArea;
+    const chartMidY = canvasRect.top + (chartArea.top + chartArea.bottom) / 2;
+    const margin = 8;
+
+    const ttWidth = el.offsetWidth;
+    const ttHeight = el.offsetHeight;
+    const vpWidth = window.innerWidth;
+    const vpHeight = window.innerHeight;
+
+    // Cursor side detection: use _eventPosition (Chart.js attaches the original mouse event
+    // coords during tooltip update) with a fallback to caretX (close enough — the anchor is
+    // a few px offset from the cursor inside the bar group).
+    const cursorXInCanvas = tooltip._eventPosition?.x ?? tooltip.caretX;
+    const chartCenter = (chartArea.left + chartArea.right) / 2;
+    const extendRight = cursorXInCanvas < chartCenter;
+    let leftPx = extendRight ? anchorX + 6 : anchorX - ttWidth - 6;
+
+    let topPx = chartMidY - ttHeight / 2;
+    if (topPx + ttHeight > vpHeight - margin) topPx = vpHeight - margin - ttHeight;
+    if (topPx < margin) topPx = margin;
+    if (leftPx + ttWidth > vpWidth - margin) leftPx = vpWidth - margin - ttWidth;
+    if (leftPx < margin) leftPx = margin;
+
+    el.style.left = leftPx + 'px';
+    el.style.top = topPx + 'px';
+}
+
+// Set the external handler on a chart's tooltip config (overrides the built-in canvas
+// tooltip with the HTML version). Called from renderChart + renderStackedBarChart.
+function enableExternalTooltip(chartConfig) {
+    chartConfig.options = chartConfig.options || {};
+    chartConfig.options.plugins = chartConfig.options.plugins || {};
+    const tt = chartConfig.options.plugins.tooltip = chartConfig.options.plugins.tooltip || {};
+    tt.enabled = false;
+    tt.external = externalTooltipHandler;
 }
 
 window.renderPieChart = function(elementId, chartData) {
@@ -426,6 +541,7 @@ window.renderStackedBarChart = function(elementId, chartData) {
     }
 
     attachTooltipHoverHighlight(chartData);
+    enableExternalTooltip(chartData);
 
     try {
         window.chartInstances[elementId] = new Chart(ctx, {
@@ -624,6 +740,7 @@ window.renderChart = function(elementId, chartData) {
     }
 
     attachTooltipHoverHighlight(chartData);
+    enableExternalTooltip(chartData);
 
     try {
         window.chartInstances[elementId] = new Chart(ctx, {
