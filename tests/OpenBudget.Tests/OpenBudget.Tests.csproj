@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\OpenBudget\OpenBudget.csproj" />
+    <ProjectReference Include="../../src/OpenBudget/OpenBudget.csproj" />
   </ItemGroup>
 
 </Project>

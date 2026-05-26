@@ -3,9 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.5.2.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenBudget", "src\OpenBudget\OpenBudget.csproj", "{C0019465-7296-9879-0E61-3A3A42063924}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenBudget", "src/OpenBudget/OpenBudget.csproj", "{C0019465-7296-9879-0E61-3A3A42063924}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenBudget.Tests", "tests\OpenBudget.Tests\OpenBudget.Tests.csproj", "{34E530DA-26CE-49E0-8B85-9BFB1048B284}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenBudget.Tests", "tests/OpenBudget.Tests/OpenBudget.Tests.csproj", "{34E530DA-26CE-49E0-8B85-9BFB1048B284}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
