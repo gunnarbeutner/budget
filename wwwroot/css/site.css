@@ -15,6 +15,14 @@
     --bs-card-border-radius: 0.875rem;
     --bs-card-inner-border-radius: calc(0.875rem - 1px);
     --bs-card-cap-bg: transparent;
+
+    /* Vertical "today" marker overlaid on dashboard progress bars. */
+    --today-marker-color: rgba(0, 0, 0, 0.7);
+}
+
+[data-bs-theme="dark"] {
+    --bs-card-border-color: rgba(255, 255, 255, 0.08);
+    --today-marker-color: rgba(255, 255, 255, 0.55);
 }
 
 html, body {
@@ -56,10 +64,6 @@ a, .btn-link {
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
-.card-header {
-    border-bottom-color: rgba(0, 0, 0, 0.06);
-}
-
 .project-card {
     transition: box-shadow .15s ease, transform .15s ease;
 }
@@ -68,10 +72,22 @@ a, .btn-link {
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
 }
 
-/* ---- Navbar: light, hairline border, no dark fill. ---- */
+[data-bs-theme="dark"] .card {
+    /* Drop the soft shadow — barely visible on dark and just adds noise. */
+    box-shadow: none;
+}
+
+[data-bs-theme="dark"] .project-card:hover {
+    /* Inset rim highlight + deeper drop reads as a lift even on dark surfaces. */
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08),
+                0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+/* ---- Navbar: light, hairline border. Routes through Bootstrap variables so
+   data-bs-theme="dark" flips the surface automatically. ---- */
 .navbar.app-navbar {
-    background-color: #fff;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    background-color: var(--bs-body-bg);
+    border-bottom: 1px solid var(--bs-border-color);
     padding-top: 0.6rem;
     padding-bottom: 0.6rem;
 }
@@ -90,6 +106,81 @@ a, .btn-link {
 .navbar.app-navbar .nav-link:hover,
 .navbar.app-navbar .nav-link.active {
     color: var(--bs-body-color);
+}
+
+/* ---- Tinted table rows: Bootstrap's static pastels don't flip for dark mode
+   and don't match our updated palette. Re-derive from the -rgb tokens with low
+   alpha so the same surface reads well on both light and dark backgrounds. ---- */
+.table-success,
+.table-warning,
+.table-danger,
+.table-primary,
+.table-secondary,
+.table-light {
+    --bs-table-color: var(--bs-body-color);
+    --bs-table-hover-color: var(--bs-body-color);
+    --bs-table-striped-color: var(--bs-body-color);
+    --bs-table-active-color: var(--bs-body-color);
+}
+
+.table-success {
+    --bs-table-bg: rgba(var(--bs-success-rgb), 0.10);
+    --bs-table-border-color: rgba(var(--bs-success-rgb), 0.25);
+    --bs-table-hover-bg: rgba(var(--bs-success-rgb), 0.15);
+}
+
+.table-warning {
+    --bs-table-bg: rgba(var(--bs-warning-rgb), 0.12);
+    --bs-table-border-color: rgba(var(--bs-warning-rgb), 0.30);
+    --bs-table-hover-bg: rgba(var(--bs-warning-rgb), 0.18);
+}
+
+.table-danger {
+    --bs-table-bg: rgba(var(--bs-danger-rgb), 0.10);
+    --bs-table-border-color: rgba(var(--bs-danger-rgb), 0.25);
+    --bs-table-hover-bg: rgba(var(--bs-danger-rgb), 0.15);
+}
+
+.table-primary {
+    --bs-table-bg: rgba(var(--bs-primary-rgb), 0.10);
+    --bs-table-border-color: rgba(var(--bs-primary-rgb), 0.25);
+    --bs-table-hover-bg: rgba(var(--bs-primary-rgb), 0.15);
+}
+
+.table-secondary,
+.table-light {
+    --bs-table-bg: var(--bs-tertiary-bg);
+    --bs-table-border-color: var(--bs-border-color);
+    --bs-table-hover-bg: var(--bs-secondary-bg);
+}
+
+[data-bs-theme="dark"] .table-success {
+    --bs-table-bg: rgba(var(--bs-success-rgb), 0.16);
+    --bs-table-hover-bg: rgba(var(--bs-success-rgb), 0.22);
+}
+
+[data-bs-theme="dark"] .table-warning {
+    --bs-table-bg: rgba(var(--bs-warning-rgb), 0.18);
+    --bs-table-hover-bg: rgba(var(--bs-warning-rgb), 0.25);
+}
+
+[data-bs-theme="dark"] .table-danger {
+    --bs-table-bg: rgba(var(--bs-danger-rgb), 0.16);
+    --bs-table-hover-bg: rgba(var(--bs-danger-rgb), 0.22);
+}
+
+[data-bs-theme="dark"] .table-primary {
+    --bs-table-bg: rgba(var(--bs-primary-rgb), 0.18);
+    --bs-table-hover-bg: rgba(var(--bs-primary-rgb), 0.25);
+}
+
+/* Readonly inputs need a visually distinct fill that adapts to theme. Bootstrap
+   only styles :disabled, not [readonly], so we add a matching rule here and the
+   markup can drop the non-adaptive `bg-light` utility. */
+.form-control[readonly],
+.form-control:disabled,
+.form-select:disabled {
+    background-color: var(--bs-secondary-bg);
 }
 
 /* ---- Pill-shaped segmented control. Works with two markup patterns:
