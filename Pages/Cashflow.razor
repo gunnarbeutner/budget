@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.WebUtilities
 @using System.Globalization
 @inject BudgetService BudgetService
+@inject ProjectService ProjectService
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject IJSRuntime JSRuntime
 @inject NavigationManager Navigation
@@ -636,7 +637,7 @@ else
             return;
         }
 
-        var project = await BudgetService.GetProjectAsync(initialProjectId.Value);
+        var project = await ProjectService.GetProjectAsync(initialProjectId.Value);
         if (project == null)
         {
             notFound = true;
@@ -817,8 +818,8 @@ else
         // Build the list of projects to roll up: this one, plus its immediate children. Each
         // child uses its own active budget for the year (so child projections stay self-
         // consistent even though the parent budget is the one driving "selected budget" UI).
-        var children = await BudgetService.GetChildProjectsAsync(selectedProjectId);
-        var parent = (await BudgetService.GetProjectAsync(selectedProjectId))!;
+        var children = await ProjectService.GetChildProjectsAsync(selectedProjectId);
+        var parent = (await ProjectService.GetProjectAsync(selectedProjectId))!;
 
         var parentSlice = await LoadOneProjectCashflowSliceAsync(
             parent, isSelectedProject: true, budgetIdOverride: selectedBudgetId);
@@ -945,7 +946,7 @@ else
             ProjectName = project.Name
         };
 
-        var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(project.Id);
+        var trackingItems = await ProjectService.GetProjectTrackingItemsAsync(project.Id);
         var hierarchyForSlice = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(project.SourceId);
 
         // Pre-load budget amounts so we can auto-include descendants of tracked groups that

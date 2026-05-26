@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.AspNetCore.WebUtilities
 @inject BudgetService BudgetService
+@inject ProjectService ProjectService
 @inject FreshnessService FreshnessService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -439,7 +440,7 @@ else
 
     private async Task LoadDashboard()
     {
-        var projects = await BudgetService.GetProjectsAsync();
+        var projects = await ProjectService.GetProjectsAsync();
         budgetSummaries = new List<ProjectSpendingSummary>();
 
         // - month: just the anchor month's slice of the budget vs that month's actuals
@@ -468,7 +469,7 @@ else
         }
 
         // Period-independent: linked-account balances are the same regardless of month/YTD/year.
-        projectBalances = await BudgetService.GetAllProjectsBalancesAsync();
+        projectBalances = await ProjectService.GetAllProjectsBalancesAsync();
 
         // Period-independent: data freshness reflects the most recent upload + per-account
         // refresh state. Surfaced at the top of the page so stale numbers can't masquerade as
@@ -476,7 +477,7 @@ else
         freshness = await FreshnessService.GetDataFreshnessAsync();
         freshnessBySourceId = freshness.ToDictionary(f => f.SourceId);
         uncategorized = await FreshnessService.GetUncategorizedTransactionSummaryAsync();
-        availableSources = await BudgetService.GetAllSourcesAsync();
+        availableSources = await ProjectService.GetAllSourcesAsync();
         sourceNamesById = availableSources.ToDictionary(s => s.Id, s => s.Name);
         if (!availableSources.Any(s => s.Id == newProjectSourceId))
         {
@@ -606,7 +607,7 @@ else
 
     private async Task MoveProject(int projectId, int direction)
     {
-        await BudgetService.MoveProjectAsync(projectId, direction);
+        await ProjectService.MoveProjectAsync(projectId, direction);
         await LoadDashboard();
     }
 
@@ -630,7 +631,7 @@ else
         var sourceId = availableSources.Any(s => s.Id == newProjectSourceId)
             ? newProjectSourceId
             : (availableSources.FirstOrDefault()?.Id ?? SourceScope.LegacySourceId);
-        await BudgetService.CreateProjectAsync(newProjectName, sourceId, newProjectDescription);
+        await ProjectService.CreateProjectAsync(newProjectName, sourceId, newProjectDescription);
         showCreateDialog = false;
         await LoadDashboard();
     }

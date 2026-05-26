@@ -7,213 +7,13 @@ public class BudgetService
 {
     private readonly BudgetDbContext _budgetDb;
     private readonly CategoryHierarchyService _hierarchy;
+    private readonly ProjectService _projects;
 
-    public BudgetService(BudgetDbContext budgetDb, CategoryHierarchyService hierarchy)
+    public BudgetService(BudgetDbContext budgetDb, CategoryHierarchyService hierarchy, ProjectService projects)
     {
         _budgetDb = budgetDb;
         _hierarchy = hierarchy;
-    }
-
-    /// <summary>
-    /// Get all budgets
-    /// </summary>
-    public async Task<List<Project>> GetProjectsAsync()
-    {
-        return await _budgetDb.Projects
-            .Include(b => b.CategoryAssignments)
-            .OrderBy(b => b.SortOrder)
-            .ThenByDescending(b => b.CreatedAt)
-            .ToListAsync();
-    }
-
-    /// <summary>
-    /// Get a specific budget with its assignments
-    /// </summary>
-    public async Task<Project?> GetProjectAsync(int projectId)
-    {
-        return await _budgetDb.Projects
-            .Include(b => b.CategoryAssignments)
-            .Include(b => b.TrackingItems)
-            .Include(b => b.CategoryTypeAssignments)
-            .FirstOrDefaultAsync(b => b.Id == projectId);
-    }
-
-    /// <summary>
-    /// Create a new budget bound to a specific MoneyMoney source.
-    /// </summary>
-    public async Task<Project> CreateProjectAsync(string name, int sourceId, string? description = null)
-    {
-        var maxSortOrder = await _budgetDb.Projects.AnyAsync()
-            ? await _budgetDb.Projects.MaxAsync(p => p.SortOrder)
-            : -1;
-
-        var project = new Project
-        {
-            Name = name,
-            Description = description,
-            CreatedAt = DateTime.UtcNow,
-            SortOrder = maxSortOrder + 1,
-            SourceId = sourceId
-        };
-
-        _budgetDb.Projects.Add(project);
-        await _budgetDb.SaveChangesAsync();
-
-        return project;
-    }
-
-    /// <summary>
-    /// Move a project up (direction = -1) or down (+1) in the dashboard order by swapping
-    /// SortOrder with its immediate neighbor. No-op when already at the edge.
-    /// </summary>
-    public async Task MoveProjectAsync(int projectId, int direction)
-    {
-        if (direction != -1 && direction != 1)
-            throw new ArgumentException("direction must be -1 or 1", nameof(direction));
-
-        var ordered = await _budgetDb.Projects
-            .OrderBy(p => p.SortOrder)
-            .ThenByDescending(p => p.CreatedAt)
-            .ToListAsync();
-
-        var index = ordered.FindIndex(p => p.Id == projectId);
-        if (index < 0) return;
-
-        var swapIndex = index + direction;
-        if (swapIndex < 0 || swapIndex >= ordered.Count) return;
-
-        // Renumber so the swap is unambiguous even if any rows shared a SortOrder before.
-        for (int i = 0; i < ordered.Count; i++)
-            ordered[i].SortOrder = i;
-        (ordered[index].SortOrder, ordered[swapIndex].SortOrder) =
-            (ordered[swapIndex].SortOrder, ordered[index].SortOrder);
-
-        await _budgetDb.SaveChangesAsync();
-    }
-
-    /// <summary>
-    /// Delete a budget
-    /// </summary>
-    public async Task DeleteProjectAsync(int projectId)
-    {
-        var project = await _budgetDb.Projects.FindAsync(projectId);
-        if (project != null)
-        {
-            _budgetDb.Projects.Remove(project);
-            await _budgetDb.SaveChangesAsync();
-        }
-    }
-
-    /// <summary>
-    /// Immediate children (one level) of a project, ordered by SortOrder. Used by the
-    /// Cashflow page to roll sub-projects' tracked flows into the parent's view.
-    /// </summary>
-    public async Task<List<Project>> GetChildProjectsAsync(int parentId)
-    {
-        return await _budgetDb.Projects
-            .Where(p => p.ParentProjectId == parentId)
-            .OrderBy(p => p.SortOrder)
-            .ThenByDescending(p => p.CreatedAt)
-            .ToListAsync();
-    }
-
-    /// <summary>
-    /// Set or clear a project's parent. Rejected when: parent is the project itself,
-    /// parent belongs to a different MoneyMoney source, parent is one of this project's
-    /// own descendants (cycle), or parent already has its own parent (we only support
-    /// single-level hierarchies for now). Returns the resolved Project on success.
-    /// </summary>
-    public async Task<Project> SetProjectParentAsync(int projectId, int? parentId)
-    {
-        var project = await _budgetDb.Projects.FindAsync(projectId)
-            ?? throw new ArgumentException("Project not found", nameof(projectId));
-
-        if (parentId == null)
-        {
-            project.ParentProjectId = null;
-            await _budgetDb.SaveChangesAsync();
-            return project;
-        }
-
-        if (parentId.Value == projectId)
-            throw new InvalidOperationException("A project cannot be its own parent.");
-
-        var parent = await _budgetDb.Projects.FindAsync(parentId.Value)
-            ?? throw new ArgumentException("Parent project not found", nameof(parentId));
-
-        if (parent.SourceId != project.SourceId)
-            throw new InvalidOperationException(
-                "Parent and child must share the same MoneyMoney source.");
-        if (parent.ParentProjectId != null)
-            throw new InvalidOperationException(
-                "Only single-level hierarchies are supported; the chosen parent is itself a child.");
-        // A would-be cycle requires the parent to already be a descendant of this project —
-        // but since we only allow single-level hierarchies, a project that already has children
-        // can't itself become someone else's child.
-        var hasChildren = await _budgetDb.Projects.AnyAsync(p => p.ParentProjectId == projectId);
-        if (hasChildren)
-            throw new InvalidOperationException(
-                "This project already has child projects; it can't itself become a child.");
-
-        project.ParentProjectId = parentId.Value;
-        await _budgetDb.SaveChangesAsync();
-        return project;
-    }
-
-    /// <summary>
-    /// Assign a category to a project. Budget amounts are configured on the Budget model.
-    /// </summary>
-    public async Task AssignCategoryToProjectAsync(int projectId, long categoryId)
-    {
-        var existing = await _budgetDb.ProjectCategoryAssignments
-            .FirstOrDefaultAsync(a => a.ProjectId == projectId && a.CategoryId == categoryId);
-
-        if (existing != null) return;
-
-        _budgetDb.ProjectCategoryAssignments.Add(new ProjectCategoryAssignment
-        {
-            ProjectId = projectId,
-            CategoryId = categoryId
-        });
-
-        await _budgetDb.SaveChangesAsync();
-    }
-
-    /// <summary>
-    /// Remove a category assignment from a budget
-    /// </summary>
-    public async Task RemoveCategoryFromProjectAsync(int projectId, long categoryId)
-    {
-        var assignment = await _budgetDb.ProjectCategoryAssignments
-            .FirstOrDefaultAsync(a => a.ProjectId == projectId && a.CategoryId == categoryId);
-
-        if (assignment != null)
-        {
-            _budgetDb.ProjectCategoryAssignments.Remove(assignment);
-            await _budgetDb.SaveChangesAsync();
-        }
-    }
-
-    /// <summary>
-    /// Resolve the SourceId for a project. Single FK lookup; callers that already loaded the
-    /// project should pass <c>project.SourceId</c> directly instead.
-    /// </summary>
-    public async Task<int> GetSourceIdForProjectAsync(int projectId)
-    {
-        return await _budgetDb.Projects
-            .Where(p => p.Id == projectId)
-            .Select(p => p.SourceId)
-            .FirstOrDefaultAsync();
-    }
-
-    /// <summary>
-    /// All registered MoneyMoney sources, ordered by name.
-    /// </summary>
-    public async Task<List<ImportSource>> GetAllSourcesAsync()
-    {
-        return await _budgetDb.ImportSources
-            .OrderBy(s => s.Name)
-            .ToListAsync();
+        _projects = projects;
     }
 
     /// <summary>
@@ -229,7 +29,7 @@ public class BudgetService
         if (toMonth < 1 || toMonth > 12) throw new ArgumentOutOfRangeException(nameof(toMonth));
         if (toMonth < fromMonth) throw new ArgumentException("toMonth must be >= fromMonth", nameof(toMonth));
 
-        var project = await GetProjectAsync(projectId);
+        var project = await _projects.GetProjectAsync(projectId);
         if (project == null)
             throw new ArgumentException("Project not found", nameof(projectId));
 
@@ -919,92 +719,6 @@ public class BudgetService
 
     #endregion
 
-    #region Project Tracking Items
-
-    /// <summary>
-    /// Get all tracking items for a project
-    /// </summary>
-    public async Task<List<ProjectTrackingItem>> GetProjectTrackingItemsAsync(int projectId)
-    {
-        return await _budgetDb.ProjectTrackingItems
-            .Where(pti => pti.ProjectId == projectId)
-            .ToListAsync();
-    }
-
-    /// <summary>
-    /// Add tracking items for any keys not already tracked by the project; never removes
-    /// existing ones. Used by BudgetEdit's save path so promoting a shadow row into a real
-    /// budget entry also makes that sub-cat tracked everywhere else.
-    /// </summary>
-    public async Task EnsureProjectTrackingIncludesAsync(
-        int projectId,
-        IEnumerable<(long Id, CategoryItemType ItemType)> keys)
-    {
-        var keyList = keys.Distinct().ToList();
-        if (keyList.Count == 0) return;
-
-        var existing = await _budgetDb.ProjectTrackingItems
-            .Where(pti => pti.ProjectId == projectId)
-            .ToListAsync();
-        var have = existing
-            .Select(e => e.CategoryGroupId.HasValue
-                ? (e.CategoryGroupId.Value, CategoryItemType.Group)
-                : (e.CategoryId!.Value, CategoryItemType.Category))
-            .ToHashSet();
-
-        bool added = false;
-        foreach (var key in keyList)
-        {
-            if (have.Contains(key)) continue;
-            _budgetDb.ProjectTrackingItems.Add(new ProjectTrackingItem
-            {
-                ProjectId = projectId,
-                CategoryGroupId = key.ItemType == CategoryItemType.Group ? key.Id : null,
-                CategoryId = key.ItemType == CategoryItemType.Category ? key.Id : null
-            });
-            added = true;
-        }
-        if (added) await _budgetDb.SaveChangesAsync();
-    }
-
-    /// <summary>
-    /// Update the tracking items for a project
-    /// </summary>
-    public async Task UpdateProjectTrackingItemsAsync(int projectId, HashSet<long> categoryGroupIds, HashSet<long> categoryIds)
-    {
-        // Remove existing tracking items
-        var existing = await _budgetDb.ProjectTrackingItems
-            .Where(pti => pti.ProjectId == projectId)
-            .ToListAsync();
-        _budgetDb.ProjectTrackingItems.RemoveRange(existing);
-
-        // Add new tracking items for category groups
-        foreach (var groupId in categoryGroupIds)
-        {
-            _budgetDb.ProjectTrackingItems.Add(new ProjectTrackingItem
-            {
-                ProjectId = projectId,
-                CategoryGroupId = groupId,
-                CategoryId = null
-            });
-        }
-
-        // Add new tracking items for individual categories
-        foreach (var categoryId in categoryIds)
-        {
-            _budgetDb.ProjectTrackingItems.Add(new ProjectTrackingItem
-            {
-                ProjectId = projectId,
-                CategoryGroupId = null,
-                CategoryId = categoryId
-            });
-        }
-
-        await _budgetDb.SaveChangesAsync();
-    }
-
-    #endregion
-
     #region Budget Trend Analysis
 
     /// <summary>
@@ -1171,7 +885,7 @@ public class BudgetService
             ta => (ta.CategoryId, ta.ItemType),
             ta => ta.IsIncome);
 
-        var sourceId = await GetSourceIdForProjectAsync(projectId);
+        var sourceId = await _projects.GetSourceIdForProjectAsync(projectId);
         var allCategories = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
 
         foreach (var item in allCategories)
@@ -1464,7 +1178,7 @@ public class BudgetService
     /// </summary>
     public async Task<List<int>> GetYearsWithTransactionsForProjectAsync(int projectId)
     {
-        var project = await GetProjectAsync(projectId);
+        var project = await _projects.GetProjectAsync(projectId);
         if (project == null) return new List<int>();
 
         var trackedKeys = project.TrackingItems.ToTrackedKeys().ToList();
@@ -1690,7 +1404,7 @@ public class BudgetService
         HashSet<long> projectLeafCategoryIds = new();
         if (sharedIds.Any())
         {
-            var trackingItems = await GetProjectTrackingItemsAsync(projectId);
+            var trackingItems = await _projects.GetProjectTrackingItemsAsync(projectId);
             var items = trackingItems.ToTrackedKeys().ToList();
             var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
             var itemToLeaf = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
@@ -1747,44 +1461,6 @@ public class BudgetService
         else if (year > today.Year) result.LastActualDayOfYear = 0;
         else result.LastActualDayOfYear = today.DayOfYear;
 
-        return result;
-    }
-
-    /// <summary>
-    /// Returns the current combined balance of each project's assigned accounts in a single
-    /// pass — two DB calls regardless of project count. Projects with no assignments are
-    /// omitted; the caller treats absence as "no accounts linked".
-    /// </summary>
-    public async Task<Dictionary<int, ProjectBalanceSummary>> GetAllProjectsBalancesAsync()
-    {
-        var assignments = await _budgetDb.ProjectAccountAssignments.ToListAsync();
-        if (!assignments.Any()) return new Dictionary<int, ProjectBalanceSummary>();
-
-        // AccountIds are namespaced globally unique across sources, so a single Contains() query
-        // resolves accounts for every project regardless of source.
-        var accountIds = assignments.Select(a => a.AccountId).Distinct().ToList();
-        var accounts = await _budgetDb.Accounts
-            .Where(a => accountIds.Contains(a.Id))
-            .ToListAsync();
-        var accountById = accounts.ToDictionary(a => a.Id);
-
-        var result = new Dictionary<int, ProjectBalanceSummary>();
-        foreach (var grp in assignments.GroupBy(a => a.ProjectId))
-        {
-            decimal balance = 0m;
-            int linkedCount = 0;
-            foreach (var assignment in grp)
-            {
-                if (!accountById.TryGetValue(assignment.AccountId, out var acc)) continue;
-                balance += acc.CurrentBalance ?? 0m;
-                linkedCount++;
-            }
-            result[grp.Key] = new ProjectBalanceSummary
-            {
-                Balance = balance,
-                AccountCount = linkedCount
-            };
-        }
         return result;
     }
 

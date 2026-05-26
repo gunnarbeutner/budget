@@ -3,6 +3,7 @@
 @using OpenBudget.Models
 @using OpenBudget.Shared
 @inject BudgetService BudgetService
+@inject ProjectService ProjectService
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject NavigationManager Navigation
 @inject IStringLocalizer<ProjectDetail> L
@@ -608,7 +609,7 @@ else
     private async Task LoadParentPickerAsync()
     {
         if (budget == null) return;
-        var children = await BudgetService.GetChildProjectsAsync(BudgetId);
+        var children = await ProjectService.GetChildProjectsAsync(BudgetId);
         hasOwnChildren = children.Any();
         childProjectNames = string.Join(", ", children.Select(c => c.Name));
 
@@ -618,7 +619,7 @@ else
             return;
         }
 
-        var all = await BudgetService.GetProjectsAsync();
+        var all = await ProjectService.GetProjectsAsync();
         eligibleParents = all
             .Where(p => p.Id != BudgetId)
             .Where(p => p.SourceId == budget.SourceId)
@@ -638,7 +639,7 @@ else
         }
         try
         {
-            await BudgetService.SetProjectParentAsync(BudgetId, newParentId);
+            await ProjectService.SetProjectParentAsync(BudgetId, newParentId);
             budget.ParentProjectId = newParentId;
         }
         catch (Exception ex)
@@ -691,7 +692,7 @@ else
 
     private async Task LoadBudget()
     {
-        budget = await BudgetService.GetProjectAsync(BudgetId);
+        budget = await ProjectService.GetProjectAsync(BudgetId);
 
         if (budget != null)
         {
@@ -725,7 +726,7 @@ else
         if (selectedCategoryId == 0)
             return;
 
-        await BudgetService.AssignCategoryToProjectAsync(BudgetId, selectedCategoryId);
+        await ProjectService.AssignCategoryToProjectAsync(BudgetId, selectedCategoryId);
 
         showAddCategoryDialog = false;
         await LoadBudget();
@@ -733,7 +734,7 @@ else
 
     private async Task RemoveCategory(long categoryId)
     {
-        await BudgetService.RemoveCategoryFromProjectAsync(BudgetId, categoryId);
+        await ProjectService.RemoveCategoryFromProjectAsync(BudgetId, categoryId);
         await LoadBudget();
     }
 
@@ -742,7 +743,7 @@ else
 
     private async Task DeleteProject()
     {
-        await BudgetService.DeleteProjectAsync(BudgetId);
+        await ProjectService.DeleteProjectAsync(BudgetId);
         showDeleteDialog = false;
         Navigation.NavigateTo("/");
     }
@@ -750,7 +751,7 @@ else
     // Tracking configuration methods
     private async Task LoadTrackingItems()
     {
-        var project = await BudgetService.GetProjectAsync(BudgetId);
+        var project = await ProjectService.GetProjectAsync(BudgetId);
         trackingItems = project?.TrackingItems.ToList() ?? new List<ProjectTrackingItem>();
         var sourceId = project?.SourceId ?? SourceScope.LegacySourceId;
 
@@ -836,7 +837,7 @@ else
 
     private async Task SaveTrackingConfiguration()
     {
-        await BudgetService.UpdateProjectTrackingItemsAsync(BudgetId, selectedTrackingGroupIds, selectedTrackingCategoryIds);
+        await ProjectService.UpdateProjectTrackingItemsAsync(BudgetId, selectedTrackingGroupIds, selectedTrackingCategoryIds);
         showTrackingDialog = false;
         await LoadTrackingItems();
     }

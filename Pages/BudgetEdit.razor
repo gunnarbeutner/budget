@@ -3,6 +3,7 @@
 @using OpenBudget.Models
 @using Microsoft.JSInterop
 @inject BudgetService BudgetService
+@inject ProjectService ProjectService
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -353,7 +354,7 @@
 
         // Tracked groups for shadow leaf expansion = editor groups + project-tracked groups.
         // Project-tracked groups not in the editor become "virtual" parent rows further down.
-        var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(budget.ProjectId);
+        var trackingItems = await ProjectService.GetProjectTrackingItemsAsync(budget.ProjectId);
         trackedItemKeys = trackingItems.ToTrackedKeys().ToHashSet();
         var trackedGroupIds = trackedItemKeys
             .Where(k => k.ItemType == CategoryItemType.Group)
@@ -544,7 +545,7 @@
         categoryFullPaths = allRowKeys.ToDictionary(k => k, BuildFullPath);
 
         // Build the "Add tracked item" list — project tracking items that aren't already in the editor.
-        var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(budget.ProjectId);
+        var trackingItems = await ProjectService.GetProjectTrackingItemsAsync(budget.ProjectId);
         availableToAdd.Clear();
         addCandidateNames.Clear();
 
@@ -690,7 +691,7 @@
             await BudgetService.SaveBudgetEntriesAsync(BudgetId, entries);
             // Promoted shadow rows need to be added to project tracking so Cashflow / Budgets
             // pick them up too. Existing tracking is preserved.
-            await BudgetService.EnsureProjectTrackingIncludesAsync(budget.ProjectId, editingEntries.Keys);
+            await ProjectService.EnsureProjectTrackingIncludesAsync(budget.ProjectId, editingEntries.Keys);
             Navigation.NavigateTo($"/budgets?projectId={budget.ProjectId}");
         }
         finally

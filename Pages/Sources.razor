@@ -2,6 +2,7 @@
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject BudgetService BudgetService
+@inject ProjectService ProjectService
 @inject BudgetDbContext Db
 @using Microsoft.EntityFrameworkCore
 
@@ -111,7 +112,7 @@ else
 
     private async Task LoadAsync()
     {
-        sources = await BudgetService.GetAllSourcesAsync();
+        sources = await ProjectService.GetAllSourcesAsync();
         projectCounts = await Db.Projects
             .GroupBy(p => p.SourceId)
             .Select(g => new { SourceId = g.Key, Count = g.Count() })

@@ -4,6 +4,7 @@
 @using System.Text.Json
 @using Microsoft.AspNetCore.WebUtilities
 @inject BudgetService BudgetService
+@inject ProjectService ProjectService
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
@@ -395,7 +396,7 @@
             return;
         }
 
-        var project = await BudgetService.GetProjectAsync(initialProjectId.Value);
+        var project = await ProjectService.GetProjectAsync(initialProjectId.Value);
         if (project == null)
         {
             notFound = true;
@@ -454,7 +455,7 @@
         await FilterCategoriesByBudget();
         allAvailableCategories = filteredCategories;
 
-        var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(selectedBudgetId);
+        var trackingItems = await ProjectService.GetProjectTrackingItemsAsync(selectedBudgetId);
 
         selectedCategoryGroupIds.Clear();
         selectedActualCategoryIds.Clear();
@@ -515,7 +516,7 @@
 
     private async Task FilterCategoriesByBudget()
     {
-        var budget = await BudgetService.GetProjectAsync(selectedBudgetId);
+        var budget = await ProjectService.GetProjectAsync(selectedBudgetId);
         if (budget == null || allCategories == null)
         {
             filteredCategories = new List<CategoryGroupWithChildCount>();

@@ -4,6 +4,7 @@
 @using OpenBudget.Shared
 @using Microsoft.AspNetCore.WebUtilities
 @inject BudgetService BudgetService
+@inject ProjectService ProjectService
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject NavigationManager Navigation
 @inject IStringLocalizer<BudgetWizard> L
@@ -277,7 +278,7 @@ else if (step == 3)
             return;
         }
 
-        projects = await BudgetService.GetProjectsAsync();
+        projects = await ProjectService.GetProjectsAsync();
         if (!projects.Any(p => p.Id == pid.Value))
         {
             notFound = true;
@@ -290,7 +291,7 @@ else if (step == 3)
 
     private async Task LoadCategories()
     {
-        var project = await BudgetService.GetProjectAsync(selectedProjectId);
+        var project = await ProjectService.GetProjectAsync(selectedProjectId);
         if (project == null)
             return;
 
@@ -339,7 +340,7 @@ else if (step == 3)
 
         await Task.Delay(100); // Allow UI to update
 
-        var sourceIdForPredict = await BudgetService.GetSourceIdForProjectAsync(selectedProjectId);
+        var sourceIdForPredict = await ProjectService.GetSourceIdForProjectAsync(selectedProjectId);
         incomeKeys = await BudgetService.GetIncomeItemsForProjectAsync(selectedProjectId);
 
         // Load the hierarchy once so we can look up parent names without per-item DB calls.
@@ -364,7 +365,7 @@ else if (step == 3)
         else
         {
             // Predict from history per tracking item (default behaviour).
-            var trackingItems = await BudgetService.GetProjectTrackingItemsAsync(selectedProjectId);
+            var trackingItems = await ProjectService.GetProjectTrackingItemsAsync(selectedProjectId);
             foreach (var item in trackingItems)
             {
                 if (item.CategoryGroupId.HasValue)
