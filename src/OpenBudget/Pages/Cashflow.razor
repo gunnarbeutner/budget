@@ -1443,10 +1443,40 @@ else
 
         // "breakeven" mode: distribute the global income gap by contribution-split %.
         if (totalMonthlyIncomeNeeded <= 0m) return;
+        int remainingMonths = 13 - firstProjectedMonth;
+        // Absorb what-ifs into the breakeven target so the annual split stays intact:
+        // attributed income what-ifs reduce how much each source still has to project, and
+        // expense what-ifs (which inflate annual expense via ApplyWhatIfsToCategories) raise
+        // the target accordingly. End result: annual income still matches annual expense
+        // even after the user injects an early payment.
+        decimal whatIfIncomeFuture = 0m;
+        decimal whatIfExpenseFuture = 0m;
+        foreach (var w in whatIfs)
+        {
+            var key = w.ParseCategory();
+            if (key == null) continue;
+            if (w.Amount == 0m) continue;
+            if (w.Date.Year != selectedYear) continue;
+            if (w.Date.Month < firstProjectedMonth) continue;
+            if (incomeCategories.Any(c => c.CategoryId == key.Value.Id && c.ItemType == key.Value.Type && c.IsAggregateRow))
+            {
+                whatIfIncomeFuture += w.Amount;
+            }
+            else if (expenseCategories.Any(c => c.CategoryId == key.Value.Id && c.ItemType == key.Value.Type && c.IsAggregateRow))
+            {
+                // ApplyWhatIfsToCategories stores -Amount on expense rows, so a negative
+                // (outflow) what-if raises expenses by |Amount|. Mirror that here.
+                whatIfExpenseFuture += -w.Amount;
+            }
+        }
+        decimal targetForSources = totalMonthlyIncomeNeeded * remainingMonths + whatIfExpenseFuture - whatIfIncomeFuture;
+        decimal adjustedPerMonth = remainingMonths > 0
+            ? Math.Max(0m, targetForSources / remainingMonths)
+            : 0m;
         foreach (var income in incomeCategories)
         {
             var split = contributionSplits.GetValueOrDefault(income.CategoryName, 0m);
-            var perMonth = totalMonthlyIncomeNeeded * (split / 100m);
+            var perMonth = adjustedPerMonth * (split / 100m);
             for (int m = firstProjectedMonth - 1; m < 12; m++)
             {
                 income.MonthlyAmounts[m] = perMonth;
