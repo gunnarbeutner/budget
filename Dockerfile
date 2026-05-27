@@ -1,8 +1,8 @@
-FROM mcr.microsoft.com/dotnet/aspnet:11.0-preview AS base
+FROM mcr.microsoft.com/dotnet/aspnet:11.0.0-preview.3 AS base
 WORKDIR /app
 EXPOSE 8080
 
-FROM mcr.microsoft.com/dotnet/sdk:11.0-preview AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0.100-preview.3 AS build
 WORKDIR /src
 COPY ["src/OpenBudget/OpenBudget.csproj", "src/OpenBudget/"]
 RUN dotnet restore "src/OpenBudget/OpenBudget.csproj"
