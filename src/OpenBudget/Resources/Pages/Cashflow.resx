@@ -331,4 +331,10 @@
   <data name="WhatIf_NoCategory" xml:space="preserve">
     <value>No category (balance only)</value>
   </data>
+  <data name="Section_Income" xml:space="preserve">
+    <value>Income</value>
+  </data>
+  <data name="Section_Expenses" xml:space="preserve">
+    <value>Expenses</value>
+  </data>
 </root>
