@@ -869,6 +869,19 @@
                 new[] { (gid, CategoryItemType.Group) }, hier);
             return map.TryGetValue((gid, CategoryItemType.Group), out var leaves) ? leaves.ToList() : null;
         }
+        if (selectionKind == "all")
+        {
+            // "All transactions" still means "all transactions in this project's scope" —
+            // expand every tracked item to its leaf categories. Without this the query falls
+            // through to "any transaction in the source", which surfaces categories the
+            // project doesn't track.
+            var trackedKeys = project.TrackingItems.ToTrackedKeys().ToList();
+            if (trackedKeys.Count == 0) return Array.Empty<long>();
+            var hier = await Hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+            var map = CategoryHierarchyService.BuildItemToLeafCategoryIds(trackedKeys, hier);
+            var union = map.Values.SelectMany(s => s).Distinct().ToList();
+            return union;
+        }
         return null;
     }
 
