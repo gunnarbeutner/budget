@@ -263,11 +263,27 @@ public class BrowseService
             .Select(BuildNode)
             .ToList();
 
-        // Accounts: project-linked, ordered like the rest of the app (MM sort, then name).
-        var assignments = await _db.ProjectAccountAssignments
+        // Accounts: project-linked, plus any account that has ever had a transaction in one
+        // of the project's tracked categories. Without the latter, a transaction in a tracked
+        // category but on an unassigned account would be visible in the tx list yet the rail
+        // wouldn't offer a way to filter to that account.
+        var assignedAccountIds = await _db.ProjectAccountAssignments
             .Where(a => a.ProjectId == projectId)
+            .Select(a => a.AccountId)
             .ToListAsync(ct);
-        var accountIds = assignments.Select(a => a.AccountId).ToList();
+        var accountIdSet = new HashSet<long>(assignedAccountIds);
+        if (allLeafIds.Count > 0)
+        {
+            var matchingAccountIds = await _db.Transactions
+                .Where(t => t.SourceId == project.SourceId)
+                .Where(t => t.Splitted != 1)
+                .Where(t => t.AccountId.HasValue && t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
+                .Select(t => t.AccountId!.Value)
+                .Distinct()
+                .ToListAsync(ct);
+            foreach (var id in matchingAccountIds) accountIdSet.Add(id);
+        }
+        var accountIds = accountIdSet.ToList();
         var accountNodes = new List<BrowseAccountNode>();
         if (accountIds.Count > 0)
         {
