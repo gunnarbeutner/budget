@@ -26,13 +26,13 @@
 
 <div class="d-flex flex-wrap mb-3 align-items-center gap-2 sticky-top bg-body border-bottom pb-2"
      style="margin-left: -0.5rem; margin-right: -0.5rem; padding-left: 0.5rem; padding-right: 0.5rem; z-index: 1020;">
+    <HomeLink />
     @* Mobile-only toggle for the left rail. On lg+ the rail is part of the grid; below lg
        it slides in as a drawer, opened via this button. *@
     <button type="button" class="btn btn-sm btn-outline-secondary d-lg-none"
             @onclick="ToggleRail" aria-label="@L["Aria_ToggleTree"]" aria-expanded="@railOpen.ToString().ToLower()">
         <i class="bi bi-list" aria-hidden="true"></i>
     </button>
-    <HomeLink />
     <h5 class="mb-0 me-2 browse-project-name">@(project?.Name ?? "")</h5>
 
     <button type="button" class="btn btn-sm btn-outline-secondary"
