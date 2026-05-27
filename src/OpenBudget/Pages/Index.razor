@@ -28,7 +28,7 @@
             @onclick="() => StepAnchor(-1)" aria-label="@L["Aria_Previous"]">
         <i class="bi bi-chevron-left" aria-hidden="true"></i>
     </button>
-    <h3 class="mb-0 d-inline-flex align-items-center gap-2 position-relative"
+    <h5 class="mb-0 d-inline-flex align-items-center gap-2 position-relative"
         role="button" tabindex="0"
         style="cursor: pointer;"
         title="@L["Title_PickMonth"]"
@@ -40,7 +40,7 @@
                max="@MaxMonthValue"
                @bind="AnchorMonthValue" @bind:format="yyyy-MM" @bind:after="OnAnchorPicked"
                tabindex="-1" aria-hidden="true" />
-    </h3>
+    </h5>
     <button type="button" class="btn btn-sm btn-outline-secondary"
             @onclick="() => StepAnchor(1)" aria-label="@L["Aria_Next"]"
             disabled="@IsAtMaxAnchor">
