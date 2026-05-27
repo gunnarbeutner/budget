@@ -910,14 +910,27 @@
 
     private static decimal? SumDescendantBudgets(BrowseCategoryNode node)
     {
+        // Roll up budgets only when every budgeted descendant matches the parent's direction.
+        // A "Gemeinsam" group that mixes income and expense kids has no single meaningful
+        // budget — abs-summing both sides gives a misleading number, so bail out instead.
         decimal sum = 0m;
         bool any = false;
-        foreach (var child in node.Children)
+        foreach (var d in EnumerateBudgetedDescendants(node))
         {
-            var contribution = child.Budget ?? SumDescendantBudgets(child);
-            if (contribution is { } v) { sum += v; any = true; }
+            if (d.IsIncome != node.IsIncome) return null;
+            sum += d.Budget!.Value;
+            any = true;
         }
         return any ? sum : null;
+    }
+
+    private static IEnumerable<BrowseCategoryNode> EnumerateBudgetedDescendants(BrowseCategoryNode node)
+    {
+        foreach (var child in node.Children)
+        {
+            if (child.Budget.HasValue) yield return child;
+            else foreach (var deeper in EnumerateBudgetedDescendants(child)) yield return deeper;
+        }
     }
 
     private bool showCategoryColumn => selectionKind != "category";
