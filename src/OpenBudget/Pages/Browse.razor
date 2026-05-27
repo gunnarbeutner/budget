@@ -147,9 +147,12 @@
                             @if (selectionKind != "account" && SelectionBudget is { } budget)
                             {
                                 var avail = budget - SelectionSpent;
+                                @* For income, exceeding the target (avail < 0) is the good
+                                   outcome; for expense, going over budget (avail < 0) is bad.
+                                   Same comparator, flipped color mapping. *@
                                 <div class="text-body-secondary small">
                                     @L["Header_Available"]
-                                    <span class="@(avail < 0 ? "text-danger fw-semibold" : "text-success fw-semibold")">
+                                    <span class="@((avail < 0) == SelectionIsIncome ? "text-success fw-semibold" : "text-danger fw-semibold")">
                                         @Formatting.FormatMoney(avail)
                                     </span>
                                 </div>
