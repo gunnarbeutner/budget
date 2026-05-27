@@ -796,13 +796,11 @@ window.scrollListToTxOffset = function(approxOffset) {
     const txScroll = list.closest('.tx-scroll');
     const overflowY = txScroll ? getComputedStyle(txScroll).overflowY : 'visible';
     const usesContainerScroll = txScroll && (overflowY === 'auto' || overflowY === 'scroll');
-    if (usesContainerScroll) {
-        txScroll.scrollTop = approxOffset;
-    } else {
-        // Page-level scroll: convert the in-list offset into a viewport-absolute Y.
-        const rect = list.getBoundingClientRect();
-        window.scrollTo({ top: window.scrollY + rect.top + approxOffset, behavior: 'instant' });
-    }
+    // Below lg the list shares the page scroll with the chart + header — auto-scrolling
+    // the whole document on a bar click jumps the chart out from under the tap and feels
+    // jarring. The .in-period highlight still updates so the rows are findable manually.
+    if (!usesContainerScroll) return;
+    txScroll.scrollTop = approxOffset;
     let attempts = 0;
     const fineTune = () => {
         const target = document.querySelector('.tx-row.in-period');
