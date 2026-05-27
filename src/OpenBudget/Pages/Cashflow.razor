@@ -148,8 +148,30 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                     <input type="number" step="1" class="form-control"
                                            @bind="entry.Amount" @bind:after="OnWhatIfChanged" />
                                 </div>
+                                <select class="form-select form-select-sm" style="max-width: 220px;"
+                                        @bind="entry.CategoryKey" @bind:after="OnWhatIfChanged">
+                                    <option value="">@L["WhatIf_NoCategory"]</option>
+                                    @if (incomeCategories.Any(c => c.IsAggregateRow))
+                                    {
+                                        <optgroup label="@L["Section_Income"]">
+                                            @foreach (var c in incomeCategories.Where(c => c.IsAggregateRow))
+                                            {
+                                                <option value="@CategoryKeyFor(c)">@c.CategoryName</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                    @if (expenseCategories.Any(c => c.IsAggregateRow))
+                                    {
+                                        <optgroup label="@L["Section_Expenses"]">
+                                            @foreach (var c in expenseCategories.Where(c => c.IsAggregateRow))
+                                            {
+                                                <option value="@CategoryKeyFor(c)">@c.CategoryName</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                </select>
                                 <input type="text" class="form-control form-control-sm" placeholder="@L["WhatIf_NotePlaceholder"]"
-                                       style="max-width: 320px;"
+                                       style="max-width: 280px;"
                                        @bind="entry.Note" @bind:after="OnWhatIfChanged" />
                                 <button type="button" class="btn btn-sm btn-outline-secondary"
                                         @onclick="() => RemoveWhatIf(idx)"
@@ -551,8 +573,24 @@ else
         public DateTime Date { get; set; } = DateTime.UtcNow.Date;
         public decimal Amount { get; set; }
         public string Note { get; set; } = "";
+        // Encoded as "type:id" (e.g. "1:42" = ItemType.Category, Id 42). Empty when the
+        // adjustment is unattributed — only the balance line moves, no category gets credited.
+        public string CategoryKey { get; set; } = "";
+
+        public (long Id, CategoryItemType Type)? ParseCategory()
+        {
+            if (string.IsNullOrEmpty(CategoryKey)) return null;
+            var parts = CategoryKey.Split(':');
+            if (parts.Length != 2) return null;
+            if (!int.TryParse(parts[0], out var t)) return null;
+            if (!long.TryParse(parts[1], out var id)) return null;
+            return (id, (CategoryItemType)t);
+        }
     }
     private List<WhatIfEntry> whatIfs = new();
+
+    private static string CategoryKeyFor(CategoryCashflow row) =>
+        $"{(int)row.ItemType}:{row.CategoryId}";
 
     /// <summary>"budget" (default) projects income from the selected budget's monthly income
     /// amounts (per-category, with seasonality intact). "breakeven" derives income at the level
@@ -986,6 +1024,7 @@ else
         // Attribute projected income to each source via the contribution splits and
         // recompute the rollup totals from the resulting per-source arrays.
         ApplyIncomeProjection();
+        ApplyWhatIfsToCategories();
         RecomputeTotals();
 
         await LoadBalanceDataAsync();
@@ -1247,11 +1286,13 @@ else
             }
         }
 
-        // Layer session-local what-if adjustments. Skip anything on or before the last actual
-        // day so we don't pretend to rewrite history, and skip entries whose date falls outside
-        // the selected year. Sign is taken at face value: positive = inflow, negative = outflow.
+        // Layer unattributed session-local what-ifs as raw daily deltas. Categorized ones are
+        // already folded into category MonthlyAmounts by ApplyWhatIfsToCategories and have
+        // flowed into the deltas above via the histogram spread. Skip anything on or before the
+        // last actual day so we don't pretend to rewrite history.
         foreach (var w in whatIfs)
         {
+            if (w.ParseCategory() != null) continue;
             if (w.Date.Year != selectedYear) continue;
             if (w.Amount == 0m) continue;
             int doy = w.Date.DayOfYear;
@@ -1438,6 +1479,7 @@ else
     {
         splitsDirty = true;
         ApplyIncomeProjection();
+        ApplyWhatIfsToCategories();
         RecomputeTotals();
         await LoadBalanceDataAsync();
         needsBalanceChartRender = hasAssignedAccounts && balanceDaily.Length > 0;
@@ -1465,10 +1507,52 @@ else
 
     private async Task OnWhatIfChanged()
     {
+        // Re-run the income projection from the base, then layer attributed what-ifs on top.
+        // Unattributed ones flow through as raw daily deltas inside LoadBalanceDataAsync.
+        ApplyIncomeProjection();
+        ApplyWhatIfsToCategories();
+        RecomputeTotals();
         await LoadBalanceDataAsync();
         needsBalanceChartRender = hasAssignedAccounts && balanceDaily.Length > 0;
         await RenderCashflowChart();
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Add each what-if entry's amount to its attributed category's monthly total. The
+    /// category bar chart picks the bump up automatically (it reads MonthlyAmounts), and
+    /// LoadBalanceDataAsync's histogram spreader carries it into the balance line. Entries
+    /// without a category are left to LoadBalanceDataAsync, which applies them as raw daily
+    /// deltas (exact day, no category attribution).
+    /// </summary>
+    private void ApplyWhatIfsToCategories()
+    {
+        foreach (var w in whatIfs)
+        {
+            var key = w.ParseCategory();
+            if (key == null) continue;
+            if (w.Amount == 0m) continue;
+            if (w.Date.Year != selectedYear) continue;
+            if (w.Date.DayOfYear <= lastActualDayOfYear) continue;
+            int monthIdx = w.Date.Month - 1;
+
+            var income = incomeCategories.FirstOrDefault(c =>
+                c.CategoryId == key.Value.Id && c.ItemType == key.Value.Type && c.IsAggregateRow);
+            if (income != null && monthIdx < income.MonthlyAmounts.Length)
+            {
+                income.MonthlyAmounts[monthIdx] += w.Amount;
+                continue;
+            }
+            var expense = expenseCategories.FirstOrDefault(c =>
+                c.CategoryId == key.Value.Id && c.ItemType == key.Value.Type && c.IsAggregateRow);
+            if (expense != null && monthIdx < expense.MonthlyAmounts.Length)
+            {
+                // Expense MonthlyAmounts holds positive magnitudes; a negative what-if (an
+                // outflow) should grow the expense bar, and a positive one (refund) should
+                // shrink it. Flip the sign.
+                expense.MonthlyAmounts[monthIdx] += -w.Amount;
+            }
+        }
     }
 
     private async Task SaveSplits()

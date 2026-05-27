@@ -328,4 +328,7 @@
   <data name="WhatIf_NotePlaceholder" xml:space="preserve">
     <value>Note (optional)</value>
   </data>
+  <data name="WhatIf_NoCategory" xml:space="preserve">
+    <value>No category (balance only)</value>
+  </data>
 </root>
