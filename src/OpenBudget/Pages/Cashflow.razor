@@ -1442,7 +1442,8 @@ else
         }
 
         // "breakeven" mode: distribute the global income gap by contribution-split %.
-        if (totalMonthlyIncomeNeeded <= 0m) return;
+        // No early return when the gap is zero — we still need to overwrite MonthlyAmounts so
+        // a previous run's what-if mutation doesn't linger after the user removes the entry.
         int remainingMonths = 13 - firstProjectedMonth;
         // Absorb what-ifs into the breakeven target so the annual split stays intact:
         // attributed income what-ifs reduce how much each source still has to project, and
