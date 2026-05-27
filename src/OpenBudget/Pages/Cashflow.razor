@@ -59,7 +59,18 @@
     </div>
 
     <div class="col-md-4">
-        <label class="form-label">@L["Label_IncomeProjection"]</label>
+        @{
+            var projectionHelp = incomeProjectionMode switch
+            {
+                "budget" => L["Projection_Budget_Help"].Value,
+                "recent" => L["Projection_LastMonth_Help"].Value,
+                _ => L["Projection_Breakeven_Help"].Value
+            };
+        }
+        <label class="form-label d-inline-flex align-items-center gap-1">
+            @L["Label_IncomeProjection"]
+            <i class="bi bi-info-circle text-muted" title="@projectionHelp" aria-hidden="true"></i>
+        </label>
         <div class="segmented segmented-block" role="group" aria-label="@L["Aria_IncomeProjectionMode"]">
             <input type="radio" class="btn-check" name="incomeProj" id="incomeProjBudget"
                    checked="@(incomeProjectionMode == "budget")"
@@ -76,29 +87,23 @@
                    @onchange="@(() => OnIncomeModeChanged("recent"))" />
             <label class="btn" for="incomeProjRecent">@L["Projection_LastMonth"]</label>
         </div>
-        <small class="form-text text-muted d-block mt-1">
-            @(incomeProjectionMode switch
-            {
-                "budget" => L["Projection_Budget_Help"],
-                "recent" => L["Projection_LastMonth_Help"],
-                _ => L["Projection_Breakeven_Help"]
-            })
-        </small>
-        <div class="form-check form-switch mt-2 small">
-            <input class="form-check-input" type="checkbox" id="balanceFloorEnabled"
-                   checked="@balanceFloorEnabled"
-                   @onchange="OnBalanceFloorToggleChanged" />
-            <label class="form-check-label" for="balanceFloorEnabled">
-                @L["BalanceFloor_Label"]
-            </label>
-            <div class="input-group input-group-sm mt-1" style="max-width: 180px;">
+        <div class="d-flex align-items-center gap-2 mt-2 small flex-wrap">
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="balanceFloorEnabled"
+                       checked="@balanceFloorEnabled"
+                       @onchange="OnBalanceFloorToggleChanged" />
+                <label class="form-check-label" for="balanceFloorEnabled">
+                    @L["BalanceFloor_Label"]
+                </label>
+            </div>
+            <div class="input-group input-group-sm" style="max-width: 140px;">
                 <span class="input-group-text">€</span>
                 <input type="number" class="form-control"
                        step="50"
                        disabled="@(!balanceFloorEnabled)"
                        @bind="balanceFloor" @bind:after="OnBalanceFloorChanged" />
             </div>
-            <small class="form-text text-muted d-block mt-1">@L["BalanceFloor_Help"]</small>
+            <i class="bi bi-info-circle text-muted" title="@L["BalanceFloor_Help"]" aria-hidden="true"></i>
         </div>
     </div>
 </div>
