@@ -147,12 +147,17 @@
                             @if (selectionKind != "account" && SelectionBudget is { } budget)
                             {
                                 var avail = budget - SelectionSpent;
-                                @* For income, exceeding the target (avail < 0) is the good
-                                   outcome; for expense, going over budget (avail < 0) is bad.
-                                   Same comparator, flipped color mapping. *@
+                                @* Direction-specific framing: income that hasn't been received
+                                   yet ("Expected") is a neutral forecast, not a deficit, so it
+                                   reads in the muted parent color rather than red. Exceeding an
+                                   income target still pops as green. Expense keeps the under/
+                                   over budget green/red mapping. *@
+                                string availClass = SelectionIsIncome
+                                    ? (avail < 0 ? "text-success fw-semibold" : "fw-semibold")
+                                    : (avail < 0 ? "text-danger fw-semibold" : "text-success fw-semibold");
                                 <div class="text-body-secondary small">
-                                    @L["Header_Available"]
-                                    <span class="@((avail < 0) == SelectionIsIncome ? "text-success fw-semibold" : "text-danger fw-semibold")">
+                                    @(SelectionIsIncome ? L["Header_Expected"] : L["Header_Available"])
+                                    <span class="@availClass">
                                         @Formatting.FormatMoney(avail)
                                     </span>
                                 </div>

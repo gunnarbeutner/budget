@@ -79,6 +79,7 @@
 
   <data name="Header_AllTransactions" xml:space="preserve"><value>All transactions</value></data>
   <data name="Header_Available" xml:space="preserve"><value>Remaining:</value></data>
+  <data name="Header_Expected" xml:space="preserve"><value>Expected:</value></data>
   <data name="Header_Budget" xml:space="preserve"><value>Budget:</value></data>
   <data name="Header_CurrentBalance" xml:space="preserve"><value>Current balance</value></data>
 
