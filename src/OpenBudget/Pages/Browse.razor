@@ -1139,6 +1139,11 @@
                 bars[i] = (bars[i].Label, closing, bars[i].IsAnchor);
             }
         }
+        // Y-axis inversion is only honest when every bar is non-positive: with invert on,
+        // positive values would grow downward. The moment one bucket has a positive value
+        // (a refund larger than the period's outflows, or income mixed into an "expense"
+        // group), drop the inversion so positive reads up and negative reads down again.
+        if (invertY && bars.Any(b => b.Value > 0)) invertY = false;
         chartInvertY = invertY;
         chartBars = bars;
     }
