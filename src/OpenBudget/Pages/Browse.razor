@@ -174,8 +174,12 @@
                                 }
                                 else
                                 {
-                                    <div class="h4 mb-0 @(SelectionSpent < 0 ? "text-success" : "text-danger")">
-                                        @Formatting.FormatMoney(-SelectionSpent)
+                                    @* Income shows the received amount as a positive number;
+                                       expense shows it as negative ("money gone"). Color follows
+                                       the natural-direction sign of SelectionSpent so a refund
+                                       on an expense reads green and a reversal on income reads red. *@
+                                    <div class="h4 mb-0 @((SelectionSpent > 0) == SelectionIsIncome ? "text-success" : "text-danger")">
+                                        @Formatting.FormatMoney(SelectionIsIncome ? SelectionSpent : -SelectionSpent)
                                     </div>
                                     @if (SelectionBudget is { } b2)
                                     {
@@ -886,6 +890,19 @@
     private decimal? SelectionAccountBalance => SelectedAccountNode?.Balance;
     private string? SelectionAccountCurrency => SelectedAccountNode?.Currency;
     private decimal SelectionAccountPeriodSum => SelectedAccountNode?.PeriodSum ?? 0m;
+
+    private bool SelectionIsIncome
+    {
+        get
+        {
+            if (tree == null) return false;
+            if (selectionKind == "category" && selectionId is { } cid)
+                return FindCategoryNode(tree.Categories, cid, CategoryItemType.Category)?.IsIncome ?? false;
+            if (selectionKind == "group" && selectionId is { } gid)
+                return FindCategoryNode(tree.Categories, gid, CategoryItemType.Group)?.IsIncome ?? false;
+            return false;
+        }
+    }
 
     private decimal? SelectionBudget
     {
