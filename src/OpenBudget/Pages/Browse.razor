@@ -832,6 +832,13 @@
         var (fm, tm) = PeriodRange;
         tree = await BrowseService.GetTreeAsync(ProjectId, anchor.Year, fm, tm);
         if (tree == null) { notFound = true; return; }
+        // If the URL selected a related (non-assigned) account, auto-expand the related
+        // section so the selected row is visible instead of hidden behind the toggle.
+        if (selectionKind == "account" && selectionId is { } selAcct
+            && tree.Accounts.FirstOrDefault(a => a.Id == selAcct) is { IsAssigned: false })
+        {
+            showRelatedAccounts = true;
+        }
         await ReloadTransactionsAsync();
     }
 
