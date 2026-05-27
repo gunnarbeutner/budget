@@ -317,7 +317,7 @@ a, .btn-link {
    content column. Collapses to a stacked layout below ~lg. ---- */
 .browse-layout {
     display: grid;
-    grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+    grid-template-columns: fit-content(420px) minmax(0, 1fr);
     gap: 1rem;
     align-items: start;
 }
@@ -346,6 +346,9 @@ a, .btn-link {
     overflow-y: auto;
     position: sticky;
     top: 5rem;
+    /* Inflates the grid track's auto-min-size so fit-content() above can't collapse the
+       rail below this width when a project has only short category names. */
+    min-width: 240px;
 }
 
 .browse-tree-section {
