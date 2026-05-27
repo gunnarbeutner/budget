@@ -17,8 +17,8 @@ public class TransactionQuery
     public string? SearchText { get; init; }
     public decimal? MinAbsAmount { get; init; }
     public decimal? MaxAbsAmount { get; init; }
-    public int Page { get; init; } = 0;
-    public int PageSize { get; init; } = 50;
+    public int Skip { get; init; } = 0;
+    public int Take { get; init; } = 50;
 }
 
 public readonly record struct TimeRangeFilter(int Year, int FromMonth, int ToMonth);

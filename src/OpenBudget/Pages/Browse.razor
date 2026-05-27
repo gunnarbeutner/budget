@@ -260,7 +260,7 @@
             </div>
 
             <div class="tx-scroll">
-            @if (page == null)
+            @if (txTotals == null)
             {
                 <div aria-busy="true">
                     @for (int i = 0; i < 6; i++)
@@ -269,7 +269,7 @@
                     }
                 </div>
             }
-            else if (page.TotalCount == 0)
+            else if (txTotals.Value.Count == 0)
             {
                 <div class="text-body-secondary py-4 text-center">
                     <i class="bi bi-inbox" style="font-size: 1.6rem;" aria-hidden="true"></i>
@@ -279,66 +279,58 @@
             else
             {
                 <div class="tx-list">
-                    @foreach (var row in page.Rows)
-                    {
-                        var inPeriod = IsInAnchorPeriod(row.Date);
-                        <div class="tx-row @(inPeriod ? "in-period" : "")">
-                            <div class="tx-date-col">
-                                <div class="tx-date">@row.Date.ToString("dd.MM.yyyy")</div>
-                                @if (showCategoryColumn && !string.IsNullOrEmpty(row.CategoryName))
-                                {
-                                    <div class="tx-badges">
-                                        <span class="badge text-bg-primary tx-badge">@row.CategoryName</span>
-                                    </div>
-                                }
+                    <Virtualize @ref="txVirtualize" ItemsProvider="LoadTxRowsAsync" Context="row" ItemSize="@itemSize">
+                        <ItemContent>
+                            @{ var inPeriod = IsInAnchorPeriod(row.Date); }
+                            <div class="tx-row @(inPeriod ? "in-period" : "")">
+                                <div class="tx-date-col">
+                                    <div class="tx-date">@row.Date.ToString("dd.MM.yyyy")</div>
+                                    @if (showCategoryColumn && !string.IsNullOrEmpty(row.CategoryName))
+                                    {
+                                        <div class="tx-badges">
+                                            <span class="badge text-bg-primary tx-badge">@row.CategoryName</span>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="tx-payee">
+                                    <span class="tx-name">@(row.Name ?? "")</span>
+                                    @if (!string.IsNullOrEmpty(row.Comment))
+                                    {
+                                        <span class="tx-comment text-body-secondary">@row.Comment</span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(row.Purpose))
+                                    {
+                                        <span class="tx-purpose text-body-secondary">@row.Purpose</span>
+                                    }
+                                </div>
+                                <div class="tx-account">
+                                    @if (showAccountColumn && !string.IsNullOrEmpty(row.AccountName))
+                                    {
+                                        <span class="badge text-bg-light border tx-badge">@row.AccountName</span>
+                                    }
+                                </div>
+                                <div class="tx-amount @(row.Amount < 0 ? "text-danger" : "text-success")">
+                                    @if (row.IsSplitChild)
+                                    {
+                                        <span class="badge text-bg-warning me-1" title="@L["Tx_SplitChildTitle"]">@L["Tx_SplitChild"]</span>
+                                    }
+                                    @Formatting.FormatMoney(row.Amount, row.Currency ?? "EUR")
+                                </div>
                             </div>
-                            <div class="tx-payee">
-                                <span class="tx-name">@(row.Name ?? "")</span>
-                                @if (!string.IsNullOrEmpty(row.Comment))
-                                {
-                                    <span class="tx-comment text-body-secondary">@row.Comment</span>
-                                }
-                                @if (!string.IsNullOrEmpty(row.Purpose))
-                                {
-                                    <span class="tx-purpose text-body-secondary">@row.Purpose</span>
-                                }
+                        </ItemContent>
+                        <Placeholder>
+                            <div class="tx-row">
+                                <div class="tx-date-col"><div class="skeleton skeleton-line"></div></div>
+                                <div class="tx-payee"><div class="skeleton skeleton-line"></div></div>
+                                <div class="tx-account"></div>
+                                <div class="tx-amount"></div>
                             </div>
-                            <div class="tx-account">
-                                @if (showAccountColumn && !string.IsNullOrEmpty(row.AccountName))
-                                {
-                                    <span class="badge text-bg-light border tx-badge">@row.AccountName</span>
-                                }
-                            </div>
-                            <div class="tx-amount @(row.Amount < 0 ? "text-danger" : "text-success")">
-                                @if (row.IsSplitChild)
-                                {
-                                    <span class="badge text-bg-warning me-1" title="@L["Tx_SplitChildTitle"]">@L["Tx_SplitChild"]</span>
-                                }
-                                @Formatting.FormatMoney(row.Amount, row.Currency ?? "EUR")
-                            </div>
-                        </div>
-                    }
+                        </Placeholder>
+                    </Virtualize>
                 </div>
 
-                <div class="d-flex justify-content-between align-items-center mt-3 small text-body-secondary">
-                    <div>
-                        @{
-                            var first = pageNumber * pageSize + 1;
-                            var last = Math.Min((pageNumber + 1) * pageSize, page.TotalCount);
-                        }
-                        @L["Footer_Range", first, last, page.TotalCount] · @L["Footer_Sum"] @Formatting.FormatMoney(page.TotalSum)
-                    </div>
-                    <div class="d-flex align-items-center gap-1">
-                        <button type="button" class="btn btn-sm btn-outline-secondary"
-                                @onclick="() => GoToPage(pageNumber - 1)" disabled="@(pageNumber == 0)">
-                            <i class="bi bi-chevron-left"></i>
-                        </button>
-                        <span>@(pageNumber + 1)</span>
-                        <button type="button" class="btn btn-sm btn-outline-secondary"
-                                @onclick="() => GoToPage(pageNumber + 1)" disabled="@(!HasNextPage)">
-                            <i class="bi bi-chevron-right"></i>
-                        </button>
-                    </div>
+                <div class="d-flex justify-content-end mt-3 small text-body-secondary">
+                    @L["Footer_Total", txTotals.Value.Count] · @L["Footer_Sum"] @Formatting.FormatMoney(txTotals.Value.Sum)
                 </div>
             }
             </div>
@@ -354,9 +346,15 @@
     private Project? project;
     private bool notFound;
 
-    // Tree + page data.
+    // Tree + tx totals (count + sum across the active filter, refreshed on filter change).
+    // The list rows themselves are streamed by <Virtualize> via LoadTxRowsAsync.
     private BrowseTree? tree;
-    private TransactionPage? page;
+    private (int Count, decimal Sum)? txTotals;
+    private Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize<TransactionRow>? txVirtualize;
+    // Approximate row height in CSS pixels — drives Virtualize's spacer math and the bar-click
+    // scroll-jump (offset = newerCount * itemSize). Real rows vary a few px either way; the
+    // post-load scrollIntoView fine-tunes the final position.
+    private const float itemSize = 56f;
 
     // URL state.
     private (int Year, int Month) anchor;
@@ -374,7 +372,6 @@
     private decimal? amountMax;
     private string amountMinInput = "";
     private string amountMaxInput = "";
-    private int pageNumber;
 
     // Chart series: bucketed Spent for the selected node, spanning the source's full history
     // (earliest transaction → anchor bucket). Granularity picks the bucket width (M/Q/Y); the
@@ -405,10 +402,6 @@
     // User-driven collapse of the chart row to reclaim vertical space. The chart canvas is
     // removed from the DOM when collapsed, so expanding re-renders via the chartDirty path.
     private bool chartCollapsed;
-    // After OnChartBarClicked has (potentially) jumped the tx list to a new page, ask JS to
-    // scroll the first .in-period row into view. Deferred to OnAfterRenderAsync so the new
-    // page has rendered before we look for the row.
-    private bool scrollToFirstInPeriodPending;
 
     // Mobile-only: the left rail is hidden by default and slides in as a drawer when
     // toggled. On lg+ the rail is part of the grid and this flag is ignored (CSS keeps
@@ -445,12 +438,6 @@
         {
             chartDirty = false;
             await RenderChartAsync();
-        }
-        if (scrollToFirstInPeriodPending)
-        {
-            scrollToFirstInPeriodPending = false;
-            try { await JS.InvokeVoidAsync("scrollFirstInPeriodIntoView"); }
-            catch (JSDisconnectedException) { /* page navigation in flight */ }
         }
     }
 
@@ -496,7 +483,6 @@
         { amountMin = minVal; amountMinInput = minRaw.ToString(); }
         if (query.TryGetValue("amax", out var maxRaw) && decimal.TryParse(maxRaw, NumberStyles.Number, CultureInfo.InvariantCulture, out var maxVal))
         { amountMax = maxVal; amountMaxInput = maxRaw.ToString(); }
-        if (query.TryGetValue("page", out var pgRaw) && int.TryParse(pgRaw, out var pg) && pg >= 0) pageNumber = pg;
         if (query.TryGetValue("g", out var g) && g.ToString() is var gv && (gv == "M" || gv == "Q" || gv == "Y" || gv == "D"))
             chartGranularity = gv;
         CoerceChartGranularityForSelection();
@@ -536,7 +522,6 @@
         ["q"] = string.IsNullOrWhiteSpace(searchEffective) ? null : searchEffective,
         ["amin"] = amountMin?.ToString(CultureInfo.InvariantCulture),
         ["amax"] = amountMax?.ToString(CultureInfo.InvariantCulture),
-        ["page"] = pageNumber == 0 ? null : pageNumber.ToString(),
         ["g"] = chartGranularity == "M" ? null : chartGranularity
     });
 
@@ -592,6 +577,7 @@
         anchor = (dt.Year, dt.Month);
         UpdateUrl();
         await ReloadHighlightAsync();
+        await JumpListToAnchorAsync();
     }
 
     private async Task GoToToday()
@@ -601,6 +587,7 @@
         anchor = (now.Year, now.Month);
         UpdateUrl();
         await ReloadHighlightAsync();
+        await JumpListToAnchorAsync();
     }
 
     private async Task SetPeriod(string value)
@@ -609,6 +596,7 @@
         period = value;
         UpdateUrl();
         await ReloadHighlightAsync();
+        await JumpListToAnchorAsync();
     }
 
     /// <summary>
@@ -631,7 +619,6 @@
     {
         selectionKind = "all"; selectionId = null;
         CoerceChartGranularityForSelection();
-        pageNumber = 0;
         railOpen = false;
         UpdateUrl();
         await ReloadTransactionsAsync();
@@ -656,7 +643,6 @@
     {
         selectionKind = "account"; selectionId = id;
         CoerceChartGranularityForSelection();
-        pageNumber = 0;
         railOpen = false;
         UpdateUrl();
         await ReloadTransactionsAsync();
@@ -667,16 +653,7 @@
         selectionKind = n.ItemType == CategoryItemType.Category ? "category" : "group";
         selectionId = n.Id;
         CoerceChartGranularityForSelection();
-        pageNumber = 0;
         railOpen = false;
-        UpdateUrl();
-        await ReloadTransactionsAsync();
-    }
-
-    private async Task GoToPage(int pg)
-    {
-        if (pg < 0) return;
-        pageNumber = pg;
         UpdateUrl();
         await ReloadTransactionsAsync();
     }
@@ -720,27 +697,30 @@
         {
             anchor = (y, m);
             chartSkipAnimation = true;
+            UpdateUrl();
+            await ReloadHighlightAsync();
         }
+        await JumpListToAnchorAsync();
+    }
 
-        // Jump the tx list to the page that contains the latest transaction at-or-before the
-        // clicked period — pageNumber = count(txns newer than period end) / pageSize.
+    /// <summary>
+    /// Scroll the virtualized tx list to the latest transaction at-or-before the current
+    /// anchor period. Hands JS an approximate pixel offset (<c>newerCount * itemSize</c>);
+    /// after Virtualize loads the items at that scroll position, the JS helper snaps the
+    /// first <c>.in-period</c> row to the top.
+    /// </summary>
+    private async Task JumpListToAnchorAsync()
+    {
+        if (project == null) return;
         var (_, tm) = PeriodRange;
         var periodEndExclusive = new DateTime(anchor.Year, tm, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
         var newerCount = await TransactionQueries.CountNewerThanAsync(
-            await BuildTransactionQueryAsync(), periodEndExclusive);
-        var newPage = newerCount / pageSize;
-        bool pageChanged = newPage != pageNumber;
-        pageNumber = newPage;
-
-        if (anchorChanged || pageChanged) UpdateUrl();
-        scrollToFirstInPeriodPending = true;
-
-        if (pageChanged) await ReloadTransactionsAsync();
-        else if (anchorChanged) await ReloadHighlightAsync();
-        else StateHasChanged();
+            await BuildTransactionQueryAsync(0, 1), periodEndExclusive);
+        try { await JS.InvokeVoidAsync("scrollListToTxOffset", newerCount * itemSize); }
+        catch (JSDisconnectedException) { /* navigation in flight */ }
     }
 
-    private async Task<TransactionQuery> BuildTransactionQueryAsync() => new()
+    private async Task<TransactionQuery> BuildTransactionQueryAsync(int skip = 0, int take = 50) => new()
     {
         SourceId = project!.SourceId,
         CategoryLeafIds = await ResolveSelectionLeavesAsync(),
@@ -748,9 +728,19 @@
         SearchText = string.IsNullOrWhiteSpace(searchEffective) ? null : searchEffective,
         MinAbsAmount = amountMin,
         MaxAbsAmount = amountMax,
-        Page = pageNumber,
-        PageSize = pageSize
+        Skip = skip,
+        Take = take
     };
+
+    private async ValueTask<Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderResult<TransactionRow>> LoadTxRowsAsync(
+        Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderRequest request)
+    {
+        if (project == null || tree == null)
+            return new(Array.Empty<TransactionRow>(), 0);
+        var q = await BuildTransactionQueryAsync(request.StartIndex, request.Count);
+        var result = await TransactionQueries.QueryAsync(q, request.CancellationToken);
+        return new(result.Rows, result.TotalCount);
+    }
 
     private async Task OnSearchInput(ChangeEventArgs e)
     {
@@ -761,7 +751,6 @@
         if (token != searchToken) return;
         if (searchEffective == searchInput) return;
         searchEffective = searchInput;
-        pageNumber = 0;
         UpdateUrl();
         await ReloadTransactionsAsync();
     }
@@ -770,7 +759,6 @@
     {
         var v = e.Value?.ToString();
         accountFilter = long.TryParse(v, out var af) ? af : null;
-        pageNumber = 0;
         UpdateUrl();
         await ReloadTransactionsAsync();
     }
@@ -779,7 +767,6 @@
     {
         amountMinInput = e.Value?.ToString() ?? "";
         amountMin = decimal.TryParse(amountMinInput, NumberStyles.Number, CultureInfo.InvariantCulture, out var v) ? v : null;
-        pageNumber = 0;
         UpdateUrl();
         await ReloadTransactionsAsync();
     }
@@ -788,7 +775,6 @@
     {
         amountMaxInput = e.Value?.ToString() ?? "";
         amountMax = decimal.TryParse(amountMaxInput, NumberStyles.Number, CultureInfo.InvariantCulture, out var v) ? v : null;
-        pageNumber = 0;
         UpdateUrl();
         await ReloadTransactionsAsync();
     }
@@ -799,7 +785,6 @@
         searchInput = ""; searchEffective = "";
         amountMin = null; amountMax = null;
         amountMinInput = ""; amountMaxInput = "";
-        pageNumber = 0;
         UpdateUrl();
         await ReloadTransactionsAsync();
     }
@@ -809,7 +794,7 @@
 
     private async Task ReloadAsync()
     {
-        tree = null; page = null;
+        tree = null; txTotals = null;
         StateHasChanged();
         var (fm, tm) = PeriodRange;
         tree = await BrowseService.GetTreeAsync(ProjectId, anchor.Year, fm, tm);
@@ -820,14 +805,14 @@
     private async Task ReloadTransactionsAsync()
     {
         if (project == null || tree == null) return;
-        page = null;
-        StateHasChanged();
 
         // The transaction list is intentionally unfiltered by the period anchor — matches
         // MoneyMoney's "Period: Show All" default. The anchor only drives chart-highlight
         // and the header period sum. Other filters (search/amount/account) still apply.
-        var query = await BuildTransactionQueryAsync();
-        page = await TransactionQueries.QueryAsync(query);
+        // Totals (count + sum) feed the footer; row data streams through <Virtualize> via
+        // LoadTxRowsAsync below.
+        txTotals = await TransactionQueries.QueryTotalsAsync(await BuildTransactionQueryAsync(0, 1));
+        if (txVirtualize is not null) await txVirtualize.RefreshDataAsync();
         await ComputeChartAsync();
         chartDirty = true;
         StateHasChanged();
@@ -936,8 +921,6 @@
             return Math.Max(chartBars.Length * barPx, 320);
         }
     }
-
-    private bool HasNextPage => page != null && (pageNumber + 1) * pageSize < page.TotalCount;
 
     private static BrowseCategoryNode? FindCategoryNode(IEnumerable<BrowseCategoryNode> nodes, long id, CategoryItemType type)
     {

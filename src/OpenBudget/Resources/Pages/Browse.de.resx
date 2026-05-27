@@ -98,6 +98,6 @@
   <data name="Tx_SplitChild" xml:space="preserve"><value>Split</value></data>
   <data name="Tx_SplitChildTitle" xml:space="preserve"><value>Teil einer Splitbuchung.</value></data>
 
-  <data name="Footer_Range" xml:space="preserve"><value>{0}–{1} von {2}</value></data>
+  <data name="Footer_Total" xml:space="preserve"><value>{0} Buchungen</value></data>
   <data name="Footer_Sum" xml:space="preserve"><value>Summe:</value></data>
 </root>

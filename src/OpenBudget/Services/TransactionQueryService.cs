@@ -26,8 +26,8 @@ public class TransactionQueryService
     public async Task<TransactionPage> QueryAsync(TransactionQuery query, CancellationToken ct = default)
     {
         if (query.SourceId <= 0) throw new ArgumentException("SourceId is required.", nameof(query));
-        if (query.Page < 0) throw new ArgumentOutOfRangeException(nameof(query), "Page must be >= 0.");
-        if (query.PageSize <= 0) throw new ArgumentOutOfRangeException(nameof(query), "PageSize must be > 0.");
+        if (query.Skip < 0) throw new ArgumentOutOfRangeException(nameof(query), "Skip must be >= 0.");
+        if (query.Take <= 0) throw new ArgumentOutOfRangeException(nameof(query), "Take must be > 0.");
 
         var baseQuery = BuildFilteredQuery(query);
 
@@ -37,8 +37,8 @@ public class TransactionQueryService
         var rowsRaw = await baseQuery
             .OrderByDescending(t => t.Timestamp)
             .ThenByDescending(t => t.Id)
-            .Skip(query.Page * query.PageSize)
-            .Take(query.PageSize)
+            .Skip(query.Skip)
+            .Take(query.Take)
             .Select(t => new
             {
                 t.Id,
@@ -89,9 +89,23 @@ public class TransactionQueryService
     }
 
     /// <summary>
+    /// Count and signed-sum totals for the filter set, without fetching any rows. The infinite-
+    /// scroll list calls Virtualize once per visible window, so footer totals (count + sum)
+    /// live on a separate call that refreshes when filters change.
+    /// </summary>
+    public async Task<(int Count, decimal Sum)> QueryTotalsAsync(TransactionQuery query, CancellationToken ct = default)
+    {
+        if (query.SourceId <= 0) throw new ArgumentException("SourceId is required.", nameof(query));
+        var q = BuildFilteredQuery(query);
+        var count = await q.CountAsync(ct);
+        var sumCents = count == 0 ? 0L : await q.SumAsync(t => t.Amount, ct);
+        return (count, sumCents / 100m);
+    }
+
+    /// <summary>
     /// Count of transactions strictly newer than <paramref name="endExclusiveUtc"/> for the
-    /// given filter set. Browse uses this to jump the tx list to the page that contains the
-    /// latest transaction at-or-before a chart bar's period: <c>page = count / pageSize</c>.
+    /// given filter set. Browse uses this to jump the tx list to the position of the latest
+    /// transaction at-or-before a chart bar's period.
     /// </summary>
     public async Task<int> CountNewerThanAsync(TransactionQuery query, DateTime endExclusiveUtc, CancellationToken ct = default)
     {

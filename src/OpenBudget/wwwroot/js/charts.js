@@ -785,14 +785,34 @@ window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values,
     }
 };
 
-// Scroll the first transaction row tagged as in-period into view. Walks the natural
-// scrollIntoView path so lg+ scrolls within .tx-scroll and below-lg scrolls the page —
-// no need to know which mode is active. Blazor calls this from OnAfterRenderAsync after
-// a chart bar click has loaded the page containing that period's latest transaction.
-window.scrollFirstInPeriodIntoView = function() {
-    const target = document.querySelector('.tx-row.in-period');
-    if (!target) return;
-    target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+// Bar-click / anchor-change scroll for the virtualized tx list. Blazor passes an approximate
+// pixel offset (newerCount * itemSize); we set the scrolling ancestor's scrollTop to that
+// position so Virtualize fetches the items around it. Once the matching .in-period row
+// renders, we snap it precisely to the top — polling briefly because Virtualize loads its
+// chunk asynchronously after the scroll fires.
+window.scrollListToTxOffset = function(approxOffset) {
+    const list = document.querySelector('.tx-list');
+    if (!list) return;
+    const txScroll = list.closest('.tx-scroll');
+    const overflowY = txScroll ? getComputedStyle(txScroll).overflowY : 'visible';
+    const usesContainerScroll = txScroll && (overflowY === 'auto' || overflowY === 'scroll');
+    if (usesContainerScroll) {
+        txScroll.scrollTop = approxOffset;
+    } else {
+        // Page-level scroll: convert the in-list offset into a viewport-absolute Y.
+        const rect = list.getBoundingClientRect();
+        window.scrollTo({ top: window.scrollY + rect.top + approxOffset, behavior: 'instant' });
+    }
+    let attempts = 0;
+    const fineTune = () => {
+        const target = document.querySelector('.tx-row.in-period');
+        if (target) {
+            target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        } else if (attempts++ < 12) {
+            setTimeout(fineTune, 50);
+        }
+    };
+    setTimeout(fineTune, 60);
 };
 
 window.renderChart = function(elementId, chartData) {

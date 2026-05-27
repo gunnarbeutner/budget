@@ -161,14 +161,14 @@ public class TransactionQueryServiceTests
         var page0 = await t.TransactionQueries.QueryAsync(new TransactionQuery
         {
             SourceId = 1,
-            PageSize = 5,
-            Page = 0,
+            Skip = 0,
+            Take = 5,
         });
         var page1 = await t.TransactionQueries.QueryAsync(new TransactionQuery
         {
             SourceId = 1,
-            PageSize = 5,
-            Page = 1,
+            Skip = 5,
+            Take = 5,
         });
 
         Assert.Equal(12, page0.TotalCount);
