@@ -724,8 +724,8 @@ window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values,
     // and tooltips, so a single helper keeps them consistent.
     const formatEuro = function(v) {
         const n = Number(v);
-        if (n < 0) return '-€' + Math.abs(n).toFixed(0);
-        return '€' + n.toFixed(0);
+        const abs = Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return (n < 0 ? '-€' : '€') + abs;
     };
     try {
         window.chartInstances[canvasId] = new Chart(ctx, {
