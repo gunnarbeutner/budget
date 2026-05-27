@@ -895,9 +895,29 @@
             if (selectionKind == "category" && selectionId is { } cid)
                 return FindCategoryNode(tree.Categories, cid, CategoryItemType.Category)?.Budget;
             if (selectionKind == "group" && selectionId is { } gid)
-                return FindCategoryNode(tree.Categories, gid, CategoryItemType.Group)?.Budget;
+            {
+                var node = FindCategoryNode(tree.Categories, gid, CategoryItemType.Group);
+                if (node == null) return null;
+                // A group that's not itself a tracked budget entry has Budget == null even when
+                // some sub-categories are tracked. Roll their budgets up so the header still
+                // reads "Available / Budget" for the group selection — without this the labels
+                // disappear and the header looks broken next to children that do show them.
+                return node.Budget ?? SumDescendantBudgets(node);
+            }
             return null;
         }
+    }
+
+    private static decimal? SumDescendantBudgets(BrowseCategoryNode node)
+    {
+        decimal sum = 0m;
+        bool any = false;
+        foreach (var child in node.Children)
+        {
+            var contribution = child.Budget ?? SumDescendantBudgets(child);
+            if (contribution is { } v) { sum += v; any = true; }
+        }
+        return any ? sum : null;
     }
 
     private bool showCategoryColumn => selectionKind != "category";
