@@ -313,4 +313,19 @@
   <data name="Chart_BalanceLabel" xml:space="preserve">
     <value>Balance</value>
   </data>
+  <data name="Card_WhatIfs" xml:space="preserve">
+    <value>What-if scenarios</value>
+  </data>
+  <data name="WhatIfs_Help" xml:space="preserve">
+    <value>One-off dated adjustments added to the balance line only — projected income and expenses are unchanged. Past-actual days are ignored. Session-local; cleared on reload.</value>
+  </data>
+  <data name="WhatIf_Add" xml:space="preserve">
+    <value>Add</value>
+  </data>
+  <data name="WhatIf_Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="WhatIf_NotePlaceholder" xml:space="preserve">
+    <value>Note (optional)</value>
+  </data>
 </root>

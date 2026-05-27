@@ -118,6 +118,52 @@
 }
 else if (incomeCategories.Any() || expenseCategories.Any())
 {
+    @* What-if scenarios: ad-hoc dated adjustments that only feed the balance line — handy for
+       "what if I pay €X in August" without rewriting any budgets. Session-local. *@
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 d-inline-flex align-items-center gap-1">
+                        @L["Card_WhatIfs"]
+                        <i class="bi bi-info-circle text-muted" title="@L["WhatIfs_Help"]" aria-hidden="true"></i>
+                    </h5>
+                    <button type="button" class="btn btn-sm btn-outline-primary"
+                            @onclick="AddWhatIf">
+                        <i class="bi bi-plus-lg"></i> @L["WhatIf_Add"]
+                    </button>
+                </div>
+                @if (whatIfs.Count > 0)
+                {
+                    <div class="card-body">
+                        @for (int i = 0; i < whatIfs.Count; i++)
+                        {
+                            var idx = i;
+                            var entry = whatIfs[idx];
+                            <div class="d-flex gap-2 mb-2 align-items-center flex-wrap">
+                                <input type="date" class="form-control form-control-sm" style="max-width: 160px;"
+                                       @bind="entry.Date" @bind:after="OnWhatIfChanged" />
+                                <div class="input-group input-group-sm" style="max-width: 160px;">
+                                    <span class="input-group-text">€</span>
+                                    <input type="number" step="1" class="form-control"
+                                           @bind="entry.Amount" @bind:after="OnWhatIfChanged" />
+                                </div>
+                                <input type="text" class="form-control form-control-sm" placeholder="@L["WhatIf_NotePlaceholder"]"
+                                       style="max-width: 320px;"
+                                       @bind="entry.Note" @bind:after="OnWhatIfChanged" />
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        @onclick="() => RemoveWhatIf(idx)"
+                                        aria-label="@L["WhatIf_Remove"]" title="@L["WhatIf_Remove"]">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
     @* Balance & watermarks first: the alerts here ("balance dips below floor on …") are the
        most decision-relevant content; the cashflow bar chart below provides the breakdown
        behind that line. *@
@@ -495,6 +541,18 @@ else
     private decimal totalMonthlyIncomeNeeded = 0m;
     private bool splitsDirty = false;
     private bool splitsSaving = false;
+
+    // Session-local "what if I pay €X on date D" adjustments. They only feed the balance
+    // line (cumulative deltas) — the income-projection mode, budgets, and category bar
+    // chart are untouched. Entries on or before the last actual day are ignored so we
+    // can't pretend to rewrite history.
+    public class WhatIfEntry
+    {
+        public DateTime Date { get; set; } = DateTime.UtcNow.Date;
+        public decimal Amount { get; set; }
+        public string Note { get; set; } = "";
+    }
+    private List<WhatIfEntry> whatIfs = new();
 
     /// <summary>"budget" (default) projects income from the selected budget's monthly income
     /// amounts (per-category, with seasonality intact). "breakeven" derives income at the level
@@ -1189,6 +1247,20 @@ else
             }
         }
 
+        // Layer session-local what-if adjustments. Skip anything on or before the last actual
+        // day so we don't pretend to rewrite history, and skip entries whose date falls outside
+        // the selected year. Sign is taken at face value: positive = inflow, negative = outflow.
+        foreach (var w in whatIfs)
+        {
+            if (w.Date.Year != selectedYear) continue;
+            if (w.Amount == 0m) continue;
+            int doy = w.Date.DayOfYear;
+            if (doy <= lastActualDayOfYear) continue;
+            int idx = doy - 1;
+            if (idx < 0 || idx >= deltas.Length) continue;
+            deltas[idx] += w.Amount;
+        }
+
         // Cumulate into the daily balance line.
         var balance = new decimal[deltas.Length];
         decimal running = startingBalance;
@@ -1367,6 +1439,32 @@ else
         splitsDirty = true;
         ApplyIncomeProjection();
         RecomputeTotals();
+        await LoadBalanceDataAsync();
+        needsBalanceChartRender = hasAssignedAccounts && balanceDaily.Length > 0;
+        await RenderCashflowChart();
+        StateHasChanged();
+    }
+
+    private void AddWhatIf()
+    {
+        // Default to the day after the last actual transaction (or Jan 1 for future years) so
+        // the new row starts somewhere the user actually cares about.
+        var defaultDay = lastActualDayOfYear > 0
+            ? new DateTime(selectedYear, 1, 1).AddDays(lastActualDayOfYear)
+            : new DateTime(selectedYear, 1, 1);
+        if (defaultDay.Year != selectedYear) defaultDay = new DateTime(selectedYear, 1, 1);
+        whatIfs.Add(new WhatIfEntry { Date = defaultDay, Amount = 0m });
+    }
+
+    private async Task RemoveWhatIf(int idx)
+    {
+        if (idx < 0 || idx >= whatIfs.Count) return;
+        whatIfs.RemoveAt(idx);
+        await OnWhatIfChanged();
+    }
+
+    private async Task OnWhatIfChanged()
+    {
         await LoadBalanceDataAsync();
         needsBalanceChartRender = hasAssignedAccounts && balanceDaily.Length > 0;
         await RenderCashflowChart();

@@ -313,4 +313,19 @@
   <data name="Chart_BalanceLabel" xml:space="preserve">
     <value>Saldo</value>
   </data>
+  <data name="Card_WhatIfs" xml:space="preserve">
+    <value>Was-wäre-wenn-Szenarien</value>
+  </data>
+  <data name="WhatIfs_Help" xml:space="preserve">
+    <value>Einmalige datierte Anpassungen — fließen nur in die Saldoprojektion ein, prognostizierte Einnahmen und Ausgaben bleiben unverändert. Bereits abgerechnete Tage werden ignoriert. Sitzungsbezogen, geht beim Neuladen verloren.</value>
+  </data>
+  <data name="WhatIf_Add" xml:space="preserve">
+    <value>Hinzufügen</value>
+  </data>
+  <data name="WhatIf_Remove" xml:space="preserve">
+    <value>Entfernen</value>
+  </data>
+  <data name="WhatIf_NotePlaceholder" xml:space="preserve">
+    <value>Notiz (optional)</value>
+  </data>
 </root>
