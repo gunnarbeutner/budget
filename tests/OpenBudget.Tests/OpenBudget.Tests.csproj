@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
@@ -15,7 +15,7 @@
     <!-- Match the main project's EF Core + Sqlite versions to silence MSB3277 reference
          conflicts and let the test project use EF Core types (DbContextOptionsBuilder,
          in-memory SqliteConnection) directly. -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.8" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="11.0.0-preview.4.26230.115" />
   </ItemGroup>
 
   <ItemGroup>
