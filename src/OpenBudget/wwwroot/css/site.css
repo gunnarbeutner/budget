@@ -325,7 +325,7 @@ a, .btn-link {
     .browse-main {
         display: flex;
         flex-direction: column;
-        max-height: calc(100vh - 6rem);
+        max-height: calc(100vh - 4.5rem);
     }
     .browse-main > .tx-scroll {
         flex: 1 1 auto;
@@ -340,7 +340,7 @@ a, .btn-link {
     padding: 0.5rem 0;
     /* Same bottom as .browse-main so the rail extends the full available height instead
        of stopping short. 6rem = page-level sticky toolbar + a touch of breathing room. */
-    max-height: calc(100vh - 6rem);
+    max-height: calc(100vh - 4.5rem);
     overflow-y: auto;
     position: sticky;
     top: 5rem;
