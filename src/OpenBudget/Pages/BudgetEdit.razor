@@ -17,7 +17,7 @@
 {
     <div class="d-flex align-items-center mb-3">
         <HomeLink />
-        <h1 class="mb-0">@L["NotFound_Heading"]</h1>
+        <h5 class="mb-0">@L["NotFound_Heading"]</h5>
     </div>
     <p class="text-muted">@L["NotFound_Body_Before", BudgetId] <a href="/">@L["NotFound_BackLink"]</a>.</p>
     return;
@@ -46,7 +46,7 @@
     <div class="d-flex align-items-center">
         <HomeLink />
         <div>
-            <h1 class="mb-0">@L["Header_Title"] @budget.Project?.Name <small class="text-muted">@budget.Name</small></h1>
+            <h5 class="mb-0">@L["Header_Title"] @budget.Project?.Name <small class="text-muted">@budget.Name</small></h5>
             @if (budget.LastModifiedAt.HasValue)
             {
                 <small class="text-muted">@L["Header_LastModified", budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")]</small>
