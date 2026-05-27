@@ -594,6 +594,11 @@ else
         }
     }
     private List<WhatIfEntry> whatIfs = new();
+    // Mutations ApplyWhatIfsToCategories has applied since the last call. We undo them at the
+    // top of the next run so removing or editing a what-if doesn't leave the previous bump
+    // baked into MonthlyAmounts — ApplyIncomeProjection only overwrites projected months, so
+    // entries that target a past or current month would otherwise persist forever.
+    private List<(CategoryCashflow Row, int MonthIdx, decimal Delta)> appliedWhatIfMutations = new();
 
     private static string CategoryKeyFor(CategoryCashflow row) =>
         $"{(int)row.ItemType}:{row.CategoryId}";
@@ -913,6 +918,9 @@ else
         expenseCategories.Clear();
         contributionSplits.Clear();
         rollupCollisions.Clear();
+        // Re-loading wipes the CategoryCashflow rows our previous what-if mutations referenced
+        // — drop the bookkeeping so we don't try to undo against stale row objects.
+        appliedWhatIfMutations.Clear();
 
         // Compute the projection window once — every sub-project uses the same calendar year,
         // so firstProjectedMonth is shared. Each child uses its own active budget for that
@@ -1572,6 +1580,16 @@ else
     /// </summary>
     private void ApplyWhatIfsToCategories()
     {
+        // Undo the previous run's mutations first so removing or changing a what-if doesn't
+        // leave stale increments on MonthlyAmounts. We undo before applying because the same
+        // row+month could be re-bumped this run; the order keeps the math symmetric.
+        foreach (var prev in appliedWhatIfMutations)
+        {
+            if (prev.MonthIdx < 0 || prev.MonthIdx >= prev.Row.MonthlyAmounts.Length) continue;
+            prev.Row.MonthlyAmounts[prev.MonthIdx] -= prev.Delta;
+        }
+        appliedWhatIfMutations.Clear();
+
         foreach (var w in whatIfs)
         {
             var key = w.ParseCategory();
@@ -1585,6 +1603,7 @@ else
             if (income != null && monthIdx < income.MonthlyAmounts.Length)
             {
                 income.MonthlyAmounts[monthIdx] += w.Amount;
+                appliedWhatIfMutations.Add((income, monthIdx, w.Amount));
                 continue;
             }
             var expense = expenseCategories.FirstOrDefault(c =>
@@ -1594,7 +1613,9 @@ else
                 // Expense MonthlyAmounts holds positive magnitudes; a negative what-if (an
                 // outflow) should grow the expense bar, and a positive one (refund) should
                 // shrink it. Flip the sign.
-                expense.MonthlyAmounts[monthIdx] += -w.Amount;
+                var delta = -w.Amount;
+                expense.MonthlyAmounts[monthIdx] += delta;
+                appliedWhatIfMutations.Add((expense, monthIdx, delta));
             }
         }
     }
