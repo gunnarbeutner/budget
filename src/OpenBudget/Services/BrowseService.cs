@@ -303,6 +303,7 @@ public class BrowseService
                 .Select(g => new { AccountId = g.Key, Sum = g.Sum(t => t.Amount) })
                 .ToDictionaryAsync(x => x.AccountId, x => x.Sum, ct);
 
+            var assignedAccountSet = new HashSet<long>(assignedAccountIds);
             foreach (var a in accounts)
             {
                 accountNodes.Add(new BrowseAccountNode
@@ -311,7 +312,8 @@ public class BrowseService
                     Name = a.Name ?? "",
                     Balance = a.CurrentBalance,
                     Currency = a.Currency,
-                    PeriodSum = accountPeriodSumsCents.TryGetValue(a.Id, out var s) ? s / 100m : 0m
+                    PeriodSum = accountPeriodSumsCents.TryGetValue(a.Id, out var s) ? s / 100m : 0m,
+                    IsAssigned = assignedAccountSet.Contains(a.Id)
                 });
             }
         }

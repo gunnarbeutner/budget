@@ -383,6 +383,25 @@ a, .btn-link {
     font-weight: 600;
 }
 
+/* Accounts surfaced because they happen to carry a tracked-category transaction (rather
+   than via an explicit ProjectAccountAssignment) read in a muted tone so the assigned
+   ones stay visually primary. */
+.browse-tree-row.related .browse-tree-name {
+    color: var(--bs-secondary-color);
+}
+
+.browse-tree-toggle {
+    padding: 0.15rem 0.6rem;
+    font-size: 0.78rem;
+    text-decoration: none;
+    color: var(--bs-secondary-color);
+}
+
+.browse-tree-toggle:hover {
+    color: var(--bs-body-color);
+    text-decoration: underline;
+}
+
 .browse-tree-name {
     flex: 1 1 auto;
     display: inline-flex;

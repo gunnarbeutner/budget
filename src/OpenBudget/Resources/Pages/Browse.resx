@@ -72,6 +72,8 @@
   <data name="Tree_Heading" xml:space="preserve"><value>Browse</value></data>
   <data name="Tree_AllTransactions" xml:space="preserve"><value>All transactions</value></data>
   <data name="Tree_Section_Accounts" xml:space="preserve"><value>Accounts</value></data>
+  <data name="Tree_ShowRelatedAccounts" xml:space="preserve"><value>Show {0} more</value></data>
+  <data name="Tree_HideRelatedAccounts" xml:space="preserve"><value>Show only assigned</value></data>
   <data name="Tree_Section_Categories" xml:space="preserve"><value>Categories</value></data>
   <data name="Aria_Tree" xml:space="preserve"><value>Browse tree</value></data>
   <data name="Aria_ToggleTree" xml:space="preserve"><value>Toggle browse tree</value></data>

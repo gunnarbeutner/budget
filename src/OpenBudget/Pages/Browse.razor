@@ -95,12 +95,16 @@
 
                 @if (tree.Accounts.Count > 0)
                 {
+                    var visibleAccounts = showRelatedAccounts
+                        ? (IEnumerable<BrowseAccountNode>)tree.Accounts
+                        : tree.Accounts.Where(a => a.IsAssigned);
+                    var hiddenRelatedCount = tree.Accounts.Count(a => !a.IsAssigned);
                     <div class="browse-tree-section">@L["Tree_Section_Accounts"]</div>
-                    @foreach (var a in tree.Accounts)
+                    @foreach (var a in visibleAccounts)
                     {
                         var accountId = a.Id;
                         bool isSel = selectionKind == "account" && selectionId == accountId;
-                        <div class="browse-tree-row @(isSel ? "selected" : "")"
+                        <div class="browse-tree-row @(isSel ? "selected" : "") @(!a.IsAssigned ? "related" : "")"
                              role="treeitem" tabindex="0" aria-selected="@isSel.ToString().ToLower()"
                              @onclick="() => SelectAccount(accountId)"
                              @onkeydown="e => OnAccountKeydown(e, accountId)">
@@ -112,6 +116,15 @@
                                 </span>
                             }
                         </div>
+                    }
+                    @if (hiddenRelatedCount > 0)
+                    {
+                        <button type="button" class="btn btn-link btn-sm browse-tree-toggle"
+                                @onclick="() => showRelatedAccounts = !showRelatedAccounts">
+                            @(showRelatedAccounts
+                                ? L["Tree_HideRelatedAccounts"]
+                                : L["Tree_ShowRelatedAccounts", hiddenRelatedCount])
+                        </button>
                     }
                 }
 
@@ -417,6 +430,11 @@
     // User-driven collapse of the chart row to reclaim vertical space. The chart canvas is
     // removed from the DOM when collapsed, so expanding re-renders via the chartDirty path.
     private bool chartCollapsed;
+
+    // Rail accounts section hides accounts that aren't explicitly assigned to the project
+    // by default; the toggle below the list flips this when the user wants to see related
+    // accounts (those with transactions in tracked categories but no direct assignment).
+    private bool showRelatedAccounts;
 
     // Mobile-only: the left rail is hidden by default and slides in as a drawer when
     // toggled. On lg+ the rail is part of the grid and this flag is ignored (CSS keeps

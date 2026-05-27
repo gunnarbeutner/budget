@@ -25,6 +25,13 @@ public class BrowseAccountNode
     public string? Currency { get; init; }
     /// <summary>Signed net flow over the current period (incoming − outgoing).</summary>
     public decimal PeriodSum { get; init; }
+    /// <summary>
+    /// True when this account is explicitly assigned to the project (via
+    /// ProjectAccountAssignments). False when it only shows up because a transaction in
+    /// one of the project's tracked categories happens to land on this account. The Browse
+    /// rail hides non-assigned accounts behind a "show more" toggle.
+    /// </summary>
+    public bool IsAssigned { get; init; }
 }
 
 public class BrowseCategoryNode
