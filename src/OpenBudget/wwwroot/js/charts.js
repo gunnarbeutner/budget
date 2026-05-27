@@ -714,7 +714,7 @@ const zeroLinePlugin = {
 // Browse page bar chart: handles its own rendering since it needs (a) a Blazor click bridge
 // for navigating to a clicked bar's month, and (b) auto-scrolling the container to the
 // right-most (most recent) bar on each render so the user lands looking at the anchor.
-window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values, bg, invertY, dotnetRef) {
+window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values, bg, invertY, dotnetRef, noAnimate) {
     const ctx = document.getElementById(canvasId);
     if (!ctx) return false;
     if (window.chartInstances[canvasId]) {
@@ -746,6 +746,9 @@ window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values,
                 // ratio against the wide width.
                 responsive: true,
                 maintainAspectRatio: false,
+                // Bar-click re-renders pass noAnimate=true so picking a month doesn't replay
+                // the grow-from-zero animation under the user's cursor.
+                animation: noAnimate ? false : undefined,
                 plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -780,6 +783,16 @@ window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values,
         console.error('Error creating browse chart:', error);
         return false;
     }
+};
+
+// Scroll the first transaction row tagged as in-period into view. Walks the natural
+// scrollIntoView path so lg+ scrolls within .tx-scroll and below-lg scrolls the page —
+// no need to know which mode is active. Blazor calls this from OnAfterRenderAsync after
+// a chart bar click has loaded the page containing that period's latest transaction.
+window.scrollFirstInPeriodIntoView = function() {
+    const target = document.querySelector('.tx-row.in-period');
+    if (!target) return;
+    target.scrollIntoView({ block: 'start', behavior: 'smooth' });
 };
 
 window.renderChart = function(elementId, chartData) {

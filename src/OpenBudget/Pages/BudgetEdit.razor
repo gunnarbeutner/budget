@@ -15,7 +15,10 @@
 
 @if (notFound)
 {
-    <h1>@L["NotFound_Heading"]</h1>
+    <div class="d-flex align-items-center mb-3">
+        <HomeLink />
+        <h1 class="mb-0">@L["NotFound_Heading"]</h1>
+    </div>
     <p class="text-muted">@L["NotFound_Body_Before", BudgetId] <a href="/">@L["NotFound_BackLink"]</a>.</p>
     return;
 }
@@ -40,12 +43,15 @@
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <div>
-        <h1 class="mb-0">@L["Header_Title"] @budget.Project?.Name <small class="text-muted">@budget.Name</small></h1>
-        @if (budget.LastModifiedAt.HasValue)
-        {
-            <small class="text-muted">@L["Header_LastModified", budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")]</small>
-        }
+    <div class="d-flex align-items-center">
+        <HomeLink />
+        <div>
+            <h1 class="mb-0">@L["Header_Title"] @budget.Project?.Name <small class="text-muted">@budget.Name</small></h1>
+            @if (budget.LastModifiedAt.HasValue)
+            {
+                <small class="text-muted">@L["Header_LastModified", budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")]</small>
+            }
+        </div>
     </div>
     <a href="/budgets?projectId=@budget.ProjectId" class="btn btn-secondary">@L["Button_BackToBudgets"]</a>
 </div>

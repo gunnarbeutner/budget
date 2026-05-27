@@ -78,14 +78,14 @@
   <data name="Aria_Close" xml:space="preserve"><value>Close</value></data>
 
   <data name="Header_AllTransactions" xml:space="preserve"><value>All transactions</value></data>
-  <data name="Header_Context_AllTransactions" xml:space="preserve"><value>Project</value></data>
-  <data name="Header_Context_Account" xml:space="preserve"><value>Account</value></data>
-  <data name="Header_Context_Category" xml:space="preserve"><value>Category</value></data>
-  <data name="Header_Budget" xml:space="preserve"><value>Budget:</value></data>
   <data name="Header_Available" xml:space="preserve"><value>Available:</value></data>
+  <data name="Header_Budget" xml:space="preserve"><value>Budget:</value></data>
   <data name="Header_CurrentBalance" xml:space="preserve"><value>Current balance</value></data>
 
   <data name="Chart_AriaGranularity" xml:space="preserve"><value>Chart granularity</value></data>
+  <data name="Chart_Collapse" xml:space="preserve"><value>Collapse chart</value></data>
+  <data name="Chart_Expand" xml:space="preserve"><value>Expand chart</value></data>
+  <data name="Chart_D" xml:space="preserve"><value>D</value></data>
   <data name="Chart_M" xml:space="preserve"><value>M</value></data>
   <data name="Chart_Q" xml:space="preserve"><value>Q</value></data>
   <data name="Chart_Y" xml:space="preserve"><value>Y</value></data>

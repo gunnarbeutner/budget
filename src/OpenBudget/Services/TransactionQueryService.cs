@@ -29,49 +29,7 @@ public class TransactionQueryService
         if (query.Page < 0) throw new ArgumentOutOfRangeException(nameof(query), "Page must be >= 0.");
         if (query.PageSize <= 0) throw new ArgumentOutOfRangeException(nameof(query), "PageSize must be > 0.");
 
-        var baseQuery = _db.Transactions
-            .Where(t => t.SourceId == query.SourceId)
-            .Where(t => t.Splitted != 1);
-
-        if (query.Period is { } period)
-        {
-            var range = TimeRange.Between(
-                new DateTime(period.Year, period.FromMonth, 1, 0, 0, 0, DateTimeKind.Utc),
-                new DateTime(period.Year, period.ToMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1));
-            baseQuery = baseQuery.WithinUtc(range);
-        }
-
-        if (query.CategoryLeafIds is { Count: > 0 } leafIds)
-        {
-            var leafList = leafIds.ToList();
-            baseQuery = baseQuery.Where(t => t.CategoryId.HasValue && leafList.Contains(t.CategoryId.Value));
-        }
-
-        if (query.AccountIds is { Count: > 0 } accountIds)
-        {
-            var accountList = accountIds.ToList();
-            baseQuery = baseQuery.Where(t => t.AccountId.HasValue && accountList.Contains(t.AccountId.Value));
-        }
-
-        if (!string.IsNullOrWhiteSpace(query.SearchText))
-        {
-            var needle = query.SearchText.Trim();
-            baseQuery = baseQuery.Where(t =>
-                (t.Name != null && EF.Functions.Like(t.Name, $"%{needle}%"))
-                || (t.Comment != null && EF.Functions.Like(t.Comment, $"%{needle}%"))
-                || (t.Purpose != null && EF.Functions.Like(t.Purpose, $"%{needle}%")));
-        }
-
-        if (query.MinAbsAmount is { } minAmt)
-        {
-            var minCents = (long)Math.Round(minAmt * 100m);
-            baseQuery = baseQuery.Where(t => t.Amount >= minCents || -t.Amount >= minCents);
-        }
-        if (query.MaxAbsAmount is { } maxAmt)
-        {
-            var maxCents = (long)Math.Round(maxAmt * 100m);
-            baseQuery = baseQuery.Where(t => (t.Amount >= 0 ? t.Amount : -t.Amount) <= maxCents);
-        }
+        var baseQuery = BuildFilteredQuery(query);
 
         var totalCount = await baseQuery.CountAsync(ct);
         var totalSumCents = totalCount == 0 ? 0L : await baseQuery.SumAsync(t => t.Amount, ct);
@@ -128,6 +86,69 @@ public class TransactionQueryService
             TotalCount = totalCount,
             TotalSum = totalSumCents / 100m
         };
+    }
+
+    /// <summary>
+    /// Count of transactions strictly newer than <paramref name="endExclusiveUtc"/> for the
+    /// given filter set. Browse uses this to jump the tx list to the page that contains the
+    /// latest transaction at-or-before a chart bar's period: <c>page = count / pageSize</c>.
+    /// </summary>
+    public async Task<int> CountNewerThanAsync(TransactionQuery query, DateTime endExclusiveUtc, CancellationToken ct = default)
+    {
+        if (query.SourceId <= 0) throw new ArgumentException("SourceId is required.", nameof(query));
+        var unixSeconds = new DateTimeOffset(DateTime.SpecifyKind(endExclusiveUtc, DateTimeKind.Utc)).ToUnixTimeSeconds();
+        return await BuildFilteredQuery(query)
+            .Where(t => t.Timestamp >= unixSeconds)
+            .CountAsync(ct);
+    }
+
+    private IQueryable<Transaction> BuildFilteredQuery(TransactionQuery query)
+    {
+        var baseQuery = _db.Transactions
+            .Where(t => t.SourceId == query.SourceId)
+            .Where(t => t.Splitted != 1);
+
+        if (query.Period is { } period)
+        {
+            var range = TimeRange.Between(
+                new DateTime(period.Year, period.FromMonth, 1, 0, 0, 0, DateTimeKind.Utc),
+                new DateTime(period.Year, period.ToMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1));
+            baseQuery = baseQuery.WithinUtc(range);
+        }
+
+        if (query.CategoryLeafIds is { Count: > 0 } leafIds)
+        {
+            var leafList = leafIds.ToList();
+            baseQuery = baseQuery.Where(t => t.CategoryId.HasValue && leafList.Contains(t.CategoryId.Value));
+        }
+
+        if (query.AccountIds is { Count: > 0 } accountIds)
+        {
+            var accountList = accountIds.ToList();
+            baseQuery = baseQuery.Where(t => t.AccountId.HasValue && accountList.Contains(t.AccountId.Value));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.SearchText))
+        {
+            var needle = query.SearchText.Trim();
+            baseQuery = baseQuery.Where(t =>
+                (t.Name != null && EF.Functions.Like(t.Name, $"%{needle}%"))
+                || (t.Comment != null && EF.Functions.Like(t.Comment, $"%{needle}%"))
+                || (t.Purpose != null && EF.Functions.Like(t.Purpose, $"%{needle}%")));
+        }
+
+        if (query.MinAbsAmount is { } minAmt)
+        {
+            var minCents = (long)Math.Round(minAmt * 100m);
+            baseQuery = baseQuery.Where(t => t.Amount >= minCents || -t.Amount >= minCents);
+        }
+        if (query.MaxAbsAmount is { } maxAmt)
+        {
+            var maxCents = (long)Math.Round(maxAmt * 100m);
+            baseQuery = baseQuery.Where(t => (t.Amount >= 0 ? t.Amount : -t.Amount) <= maxCents);
+        }
+
+        return baseQuery;
     }
 
     /// <summary>

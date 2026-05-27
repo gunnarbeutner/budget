@@ -24,7 +24,7 @@
     return;
 }
 
-<div class="d-flex flex-wrap mb-3 align-items-center gap-2 sticky-top bg-body border-bottom py-2"
+<div class="d-flex flex-wrap mb-3 align-items-center gap-2 sticky-top bg-body border-bottom pb-2"
      style="margin-left: -0.5rem; margin-right: -0.5rem; padding-left: 0.5rem; padding-right: 0.5rem; z-index: 1020;">
     @* Mobile-only toggle for the left rail. On lg+ the rail is part of the grid; below lg
        it slides in as a drawer, opened via this button. *@
@@ -32,10 +32,7 @@
             @onclick="ToggleRail" aria-label="@L["Aria_ToggleTree"]" aria-expanded="@railOpen.ToString().ToLower()">
         <i class="bi bi-list" aria-hidden="true"></i>
     </button>
-    <a href="/projects/@ProjectId" class="text-decoration-none text-body-secondary me-1"
-       title="@L["Aria_BackToProject"]" aria-label="@L["Aria_BackToProject"]">
-        <i class="bi bi-chevron-left"></i>
-    </a>
+    <HomeLink />
     <h5 class="mb-0 me-2 browse-project-name">@(project?.Name ?? "")</h5>
 
     <button type="button" class="btn btn-sm btn-outline-secondary"
@@ -143,8 +140,7 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
                         <div>
-                            <div class="text-body-secondary small text-uppercase">@SelectionContextLabel</div>
-                            <h3 class="mb-1">@SelectionName</h3>
+                            <h5 class="mb-1">@SelectionName</h5>
                             @if (selectionKind != "account" && SelectionBudget is { } budget)
                             {
                                 var avail = budget - SelectionSpent;
@@ -156,51 +152,73 @@
                                 </div>
                             }
                         </div>
-                        <div class="text-end">
-                            @if (selectionKind == "account" && SelectionAccountBalance is { } balance)
-                            {
-                                // Account header reads its current balance — independent of the
-                                // anchor period. The period net flow (incoming − outgoing) reads
-                                // as a smaller secondary line below.
-                                <div class="h2 mb-0 @(balance < 0 ? "text-danger" : "")">
-                                    @Formatting.FormatMoney(balance, SelectionAccountCurrency ?? "EUR")
-                                </div>
-                                <div class="text-body-secondary small">@L["Header_CurrentBalance"]</div>
-                                <div class="text-body-secondary small">
-                                    @AnchorHeading: <span class="@(SelectionAccountPeriodSum < 0 ? "text-danger" : "text-success")">
-                                        @Formatting.FormatMoney(SelectionAccountPeriodSum, SelectionAccountCurrency ?? "EUR")
-                                    </span>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="h2 mb-0 @(SelectionSpent < 0 ? "text-success" : "text-danger")">
-                                    @Formatting.FormatMoney(-SelectionSpent)
-                                </div>
-                                <div class="text-body-secondary small">@AnchorHeading</div>
-                                @if (SelectionBudget is { } b2)
+                        <div class="d-flex align-items-start gap-2">
+                            <div class="text-end">
+                                @if (selectionKind == "account" && SelectionAccountBalance is { } balance)
                                 {
-                                    <div class="text-body-secondary small">@L["Header_Budget"] @Formatting.FormatMoney(b2)</div>
+                                    // Account header reads its current balance — independent of the
+                                    // anchor period. The period net flow (incoming − outgoing) reads
+                                    // as a smaller secondary line below.
+                                    <div class="h4 mb-0 @(balance < 0 ? "text-danger" : "")">
+                                        @Formatting.FormatMoney(balance, SelectionAccountCurrency ?? "EUR")
+                                    </div>
+                                    <div class="text-body-secondary small">@L["Header_CurrentBalance"]</div>
+                                    <div class="text-body-secondary small">
+                                        @AnchorHeading: <span class="@(SelectionAccountPeriodSum < 0 ? "text-danger" : "text-success")">
+                                            @Formatting.FormatMoney(SelectionAccountPeriodSum, SelectionAccountCurrency ?? "EUR")
+                                        </span>
+                                    </div>
                                 }
+                                else
+                                {
+                                    <div class="h4 mb-0 @(SelectionSpent < 0 ? "text-success" : "text-danger")">
+                                        @Formatting.FormatMoney(-SelectionSpent)
+                                    </div>
+                                    @if (SelectionBudget is { } b2)
+                                    {
+                                        <div class="text-body-secondary small">@L["Header_Budget"] @Formatting.FormatMoney(b2)</div>
+                                    }
+                                }
+                            </div>
+                            @if (chartBars != null && chartBars.Length > 0)
+                            {
+                                <button type="button" class="btn btn-sm btn-link text-body-secondary p-0"
+                                        @onclick="ToggleChartCollapsed"
+                                        aria-expanded="@((!chartCollapsed).ToString().ToLower())"
+                                        aria-controls="browseChartScroll"
+                                        title="@(chartCollapsed ? L["Chart_Expand"] : L["Chart_Collapse"])"
+                                        aria-label="@(chartCollapsed ? L["Chart_Expand"] : L["Chart_Collapse"])">
+                                    <i class="bi @(chartCollapsed ? "bi-chevron-down" : "bi-chevron-up")" aria-hidden="true"></i>
+                                </button>
                             }
                         </div>
                     </div>
 
-                    @if (chartBars != null && chartBars.Length > 0)
+                    @if (chartBars != null && chartBars.Length > 0 && !chartCollapsed)
                     {
-                        <div class="d-flex justify-content-end mt-3">
-                            <div class="segmented" role="group" aria-label="@L["Chart_AriaGranularity"]">
-                                <button type="button" class="btn @(chartGranularity == "M" ? "active" : "")"
-                                        @onclick='() => SetChartGranularity("M")'>@L["Chart_M"]</button>
-                                <button type="button" class="btn @(chartGranularity == "Q" ? "active" : "")"
-                                        @onclick='() => SetChartGranularity("Q")'>@L["Chart_Q"]</button>
-                                <button type="button" class="btn @(chartGranularity == "Y" ? "active" : "")"
-                                        @onclick='() => SetChartGranularity("Y")'>@L["Chart_Y"]</button>
+                        <div class="d-flex gap-2 mt-3 align-items-start">
+                            <div id="browseChartScroll" class="browse-chart-scroll flex-grow-1">
+                                <div class="browse-chart" style="width: @(ChartCanvasWidthPx)px;">
+                                    <canvas id="browseChart" style="height: 140px;"></canvas>
+                                </div>
                             </div>
-                        </div>
-                        <div id="browseChartScroll" class="browse-chart-scroll mt-2">
-                            <div class="browse-chart" style="width: @(ChartCanvasWidthPx)px;">
-                                <canvas id="browseChart" style="height: 140px;"></canvas>
+                            <div class="segmented segmented-vertical" role="group" aria-label="@L["Chart_AriaGranularity"]">
+                                @if (selectionKind == "account")
+                                {
+                                    <button type="button" class="btn @(chartGranularity == "D" ? "active" : "")"
+                                            @onclick='() => SetChartGranularity("D")'>@L["Chart_D"]</button>
+                                    <button type="button" class="btn @(chartGranularity == "M" ? "active" : "")"
+                                            @onclick='() => SetChartGranularity("M")'>@L["Chart_M"]</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn @(chartGranularity == "M" ? "active" : "")"
+                                            @onclick='() => SetChartGranularity("M")'>@L["Chart_M"]</button>
+                                    <button type="button" class="btn @(chartGranularity == "Q" ? "active" : "")"
+                                            @onclick='() => SetChartGranularity("Q")'>@L["Chart_Q"]</button>
+                                    <button type="button" class="btn @(chartGranularity == "Y" ? "active" : "")"
+                                            @onclick='() => SetChartGranularity("Y")'>@L["Chart_Y"]</button>
+                                }
                             </div>
                         </div>
                     }
@@ -241,6 +259,7 @@
                 }
             </div>
 
+            <div class="tx-scroll">
             @if (page == null)
             {
                 <div aria-busy="true">
@@ -322,6 +341,7 @@
                     </div>
                 </div>
             }
+            </div>
         }
     </section>
 </div>
@@ -379,6 +399,16 @@
     // server prerender where JS calls are illegal — so we mark the chart dirty and let
     // OnAfterRenderAsync push it to the browser.
     private bool chartDirty;
+    // Set by OnChartBarClicked so the next chart render skips the grow-from-zero animation
+    // — animating while the user just clicked a bar feels jarring. Cleared after each render.
+    private bool chartSkipAnimation;
+    // User-driven collapse of the chart row to reclaim vertical space. The chart canvas is
+    // removed from the DOM when collapsed, so expanding re-renders via the chartDirty path.
+    private bool chartCollapsed;
+    // After OnChartBarClicked has (potentially) jumped the tx list to a new page, ask JS to
+    // scroll the first .in-period row into view. Deferred to OnAfterRenderAsync so the new
+    // page has rendered before we look for the row.
+    private bool scrollToFirstInPeriodPending;
 
     // Mobile-only: the left rail is hidden by default and slides in as a drawer when
     // toggled. On lg+ the rail is part of the grid and this flag is ignored (CSS keeps
@@ -415,6 +445,12 @@
         {
             chartDirty = false;
             await RenderChartAsync();
+        }
+        if (scrollToFirstInPeriodPending)
+        {
+            scrollToFirstInPeriodPending = false;
+            try { await JS.InvokeVoidAsync("scrollFirstInPeriodIntoView"); }
+            catch (JSDisconnectedException) { /* page navigation in flight */ }
         }
     }
 
@@ -461,8 +497,27 @@
         if (query.TryGetValue("amax", out var maxRaw) && decimal.TryParse(maxRaw, NumberStyles.Number, CultureInfo.InvariantCulture, out var maxVal))
         { amountMax = maxVal; amountMaxInput = maxRaw.ToString(); }
         if (query.TryGetValue("page", out var pgRaw) && int.TryParse(pgRaw, out var pg) && pg >= 0) pageNumber = pg;
-        if (query.TryGetValue("g", out var g) && g.ToString() is var gv && (gv == "M" || gv == "Q" || gv == "Y"))
+        if (query.TryGetValue("g", out var g) && g.ToString() is var gv && (gv == "M" || gv == "Q" || gv == "Y" || gv == "D"))
             chartGranularity = gv;
+        CoerceChartGranularityForSelection();
+    }
+
+    /// <summary>
+    /// Account view exposes D/M; category, group and "all" expose M/Q/Y. Snap chartGranularity
+    /// back to "M" whenever the current setting isn't valid for the active selection — happens
+    /// after navigating between an account and a category, or after loading a URL whose g=
+    /// value doesn't match its sel= scope.
+    /// </summary>
+    private void CoerceChartGranularityForSelection()
+    {
+        if (selectionKind == "account")
+        {
+            if (chartGranularity != "D" && chartGranularity != "M") chartGranularity = "M";
+        }
+        else
+        {
+            if (chartGranularity == "D") chartGranularity = "M";
+        }
     }
 
     private void UpdateUrl() => PageState.ReplaceQuery(Navigation, new Dictionary<string, object?>
@@ -575,6 +630,7 @@
     private async Task SelectAll()
     {
         selectionKind = "all"; selectionId = null;
+        CoerceChartGranularityForSelection();
         pageNumber = 0;
         railOpen = false;
         UpdateUrl();
@@ -599,6 +655,7 @@
     private async Task SelectAccount(long id)
     {
         selectionKind = "account"; selectionId = id;
+        CoerceChartGranularityForSelection();
         pageNumber = 0;
         railOpen = false;
         UpdateUrl();
@@ -609,6 +666,7 @@
     {
         selectionKind = n.ItemType == CategoryItemType.Category ? "category" : "group";
         selectionId = n.Id;
+        CoerceChartGranularityForSelection();
         pageNumber = 0;
         railOpen = false;
         UpdateUrl();
@@ -633,6 +691,19 @@
         StateHasChanged();
     }
 
+    private void ToggleChartCollapsed()
+    {
+        chartCollapsed = !chartCollapsed;
+        // Coming out of collapsed mode the canvas was unmounted, so the existing Chart.js
+        // instance is bound to a detached element. Re-render fresh; skip the animation so
+        // it doesn't replay every time the user toggles.
+        if (!chartCollapsed)
+        {
+            chartSkipAnimation = true;
+            chartDirty = true;
+        }
+    }
+
     /// <summary>
     /// Invoked from JS when the user clicks a bar in the chart. <paramref name="barIndex"/>
     /// is the bar's position in <see cref="chartBars"/>; we map it back through
@@ -641,14 +712,45 @@
     [JSInvokable]
     public async Task OnChartBarClicked(int barIndex)
     {
-        if (chartBarMonths == null) return;
+        if (chartBarMonths == null || project == null) return;
         if (barIndex < 0 || barIndex >= chartBarMonths.Length) return;
         var (y, m) = chartBarMonths[barIndex];
-        if (y == anchor.Year && m == anchor.Month) return;
-        anchor = (y, m);
-        UpdateUrl();
-        await ReloadHighlightAsync();
+        bool anchorChanged = !(y == anchor.Year && m == anchor.Month);
+        if (anchorChanged)
+        {
+            anchor = (y, m);
+            chartSkipAnimation = true;
+        }
+
+        // Jump the tx list to the page that contains the latest transaction at-or-before the
+        // clicked period — pageNumber = count(txns newer than period end) / pageSize.
+        var (_, tm) = PeriodRange;
+        var periodEndExclusive = new DateTime(anchor.Year, tm, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
+        var newerCount = await TransactionQueries.CountNewerThanAsync(
+            await BuildTransactionQueryAsync(), periodEndExclusive);
+        var newPage = newerCount / pageSize;
+        bool pageChanged = newPage != pageNumber;
+        pageNumber = newPage;
+
+        if (anchorChanged || pageChanged) UpdateUrl();
+        scrollToFirstInPeriodPending = true;
+
+        if (pageChanged) await ReloadTransactionsAsync();
+        else if (anchorChanged) await ReloadHighlightAsync();
+        else StateHasChanged();
     }
+
+    private async Task<TransactionQuery> BuildTransactionQueryAsync() => new()
+    {
+        SourceId = project!.SourceId,
+        CategoryLeafIds = await ResolveSelectionLeavesAsync(),
+        AccountIds = ResolveSelectionAccounts(),
+        SearchText = string.IsNullOrWhiteSpace(searchEffective) ? null : searchEffective,
+        MinAbsAmount = amountMin,
+        MaxAbsAmount = amountMax,
+        Page = pageNumber,
+        PageSize = pageSize
+    };
 
     private async Task OnSearchInput(ChangeEventArgs e)
     {
@@ -724,17 +826,7 @@
         // The transaction list is intentionally unfiltered by the period anchor — matches
         // MoneyMoney's "Period: Show All" default. The anchor only drives chart-highlight
         // and the header period sum. Other filters (search/amount/account) still apply.
-        var query = new TransactionQuery
-        {
-            SourceId = project.SourceId,
-            CategoryLeafIds = await ResolveSelectionLeavesAsync(),
-            AccountIds = ResolveSelectionAccounts(),
-            SearchText = string.IsNullOrWhiteSpace(searchEffective) ? null : searchEffective,
-            MinAbsAmount = amountMin,
-            MaxAbsAmount = amountMax,
-            Page = pageNumber,
-            PageSize = pageSize
-        };
+        var query = await BuildTransactionQueryAsync();
         page = await TransactionQueries.QueryAsync(query);
         await ComputeChartAsync();
         chartDirty = true;
@@ -761,13 +853,6 @@
         if (accountFilter is { } af) return new[] { af };
         return null;
     }
-
-    private string SelectionContextLabel => selectionKind switch
-    {
-        "account" => L["Header_Context_Account"],
-        "category" or "group" => L["Header_Context_Category"],
-        _ => L["Header_Context_AllTransactions"]
-    };
 
     private string SelectionName
     {
@@ -847,7 +932,7 @@
         get
         {
             if (chartBars == null) return 320;
-            int barPx = chartGranularity switch { "Y" => 64, "Q" => 52, _ => 36 };
+            int barPx = chartGranularity switch { "Y" => 64, "Q" => 52, "D" => 10, _ => 36 };
             return Math.Max(chartBars.Length * barPx, 320);
         }
     }
@@ -917,8 +1002,19 @@
             : anchorDate;
         var (windowStart, windowEndExclusive, bucketCount, bucketOf, labelOf) = ResolveChartWindow(earliest, rightEdge, chartGranularity);
 
+        // For the account-D running-balance pass below we need every transaction between the
+        // chart's right edge and "today" so we can back-compute the closing balance at the
+        // end of the window. Extend only the query window — bucketing still discards anything
+        // past windowEndExclusive via the standard bounds check.
+        var queryEndExclusive = windowEndExclusive;
+        var isAccountDaily = selectionKind == "account" && chartGranularity == "D";
+        if (isAccountDaily)
+        {
+            var tomorrow = DateTime.UtcNow.Date.AddDays(1);
+            if (tomorrow > queryEndExclusive) queryEndExclusive = tomorrow;
+        }
         var raw = await TransactionQueries.GetRawByDateRangeAsync(
-            project.SourceId, leaves, accounts, windowStart, windowEndExclusive);
+            project.SourceId, leaves, accounts, windowStart, queryEndExclusive);
 
         // Mark every bucket touching the anchor period as "anchor" — for M this is one
         // bucket, for YTD it's all buckets from Jan to anchor month, for Year all twelve
@@ -940,25 +1036,64 @@
             {
                 "Y" => cursor.AddYears(1),
                 "Q" => cursor.AddMonths(3),
+                "D" => cursor.AddDays(1),
                 _ => cursor.AddMonths(1)
             };
         }
         chartBarMonths = months;
         for (int m = fm; m <= tm; m++)
         {
-            var bucket = bucketOf(new DateTime(anchor.Year, m, 1));
-            if (bucket >= 0 && bucket < bucketCount)
+            if (chartGranularity == "D")
             {
-                bars[bucket] = (bars[bucket].Label, bars[bucket].Value, true);
+                var monthStart = new DateTime(anchor.Year, m, 1, 0, 0, 0, DateTimeKind.Utc);
+                var monthEnd = monthStart.AddMonths(1);
+                for (var d = monthStart; d < monthEnd; d = d.AddDays(1))
+                {
+                    var bucket = bucketOf(d);
+                    if (bucket >= 0 && bucket < bucketCount)
+                        bars[bucket] = (bars[bucket].Label, bars[bucket].Value, true);
+                }
+            }
+            else
+            {
+                var bucket = bucketOf(new DateTime(anchor.Year, m, 1));
+                if (bucket >= 0 && bucket < bucketCount)
+                {
+                    bars[bucket] = (bars[bucket].Label, bars[bucket].Value, true);
+                }
             }
         }
+        decimal sumAfterWindow = 0m;
         foreach (var (date, amount) in raw)
         {
             var b = bucketOf(date);
-            if (b < 0 || b >= bucketCount) continue;
+            if (b < 0 || b >= bucketCount)
+            {
+                // Out-of-window transactions only matter for the account-D back-walk below;
+                // ignore them otherwise. Anything before windowStart wouldn't be returned by
+                // the query, so only the "past the right edge" case can hit this branch.
+                if (isAccountDaily && date >= windowEndExclusive) sumAfterWindow += amount;
+                continue;
+            }
             // Sum raw signed amounts — MoneyMoney's convention is negative for outflows and
             // positive for inflows. Refunds against an expense bring the bar closer to zero.
             bars[b] = (bars[b].Label, bars[b].Value + amount, bars[b].IsAnchor);
+        }
+        // Account daily view shows the running closing balance per day (the natural view for
+        // a checking account), not net flow — daily flow is too sparse to be useful. Back-walk
+        // from the snapshot's current balance: balance[end] = current − Σ(txns after window),
+        // balance[i] = balance[i+1] − flow[i+1].
+        if (isAccountDaily && SelectionAccountBalance is { } currentBalance)
+        {
+            var dayFlows = new decimal[bucketCount];
+            for (int i = 0; i < bucketCount; i++) dayFlows[i] = bars[i].Value;
+            var closing = currentBalance - sumAfterWindow;
+            bars[bucketCount - 1] = (bars[bucketCount - 1].Label, closing, bars[bucketCount - 1].IsAnchor);
+            for (int i = bucketCount - 2; i >= 0; i--)
+            {
+                closing -= dayFlows[i + 1];
+                bars[i] = (bars[i].Label, closing, bars[i].IsAnchor);
+            }
         }
         chartInvertY = invertY;
         chartBars = bars;
@@ -1006,6 +1141,15 @@
                         return $"Q{q + 1}/{(y % 100):D2}";
                     });
             }
+            case "D":
+            {
+                var start = earliestTx.Date;
+                var end = anchorMonthStart.AddMonths(1);
+                int count = Math.Max(1, (int)(end - start).TotalDays);
+                return (DateTime.SpecifyKind(start, DateTimeKind.Utc), end, count,
+                    d => (int)(d.Date - start).TotalDays,
+                    i => start.AddDays(i).ToString("dd.MM"));
+            }
             default: // "M"
             {
                 int startTotal = earliestTx.Year * 12 + (earliestTx.Month - 1);
@@ -1043,10 +1187,12 @@
             ? "rgba(54, 162, 235, 0.9)"
             : "rgba(54, 162, 235, 0.4)").ToArray();
         ++lastRenderToken;
+        var noAnimate = chartSkipAnimation;
+        chartSkipAnimation = false;
         try
         {
             await JS.InvokeVoidAsync("renderBrowseChart", "browseChart", "browseChartScroll",
-                labels, values, bg, chartInvertY, selfRef);
+                labels, values, bg, chartInvertY, selfRef, noAnimate);
         }
         catch (JSDisconnectedException) { /* page navigation in flight */ }
     }

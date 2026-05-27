@@ -220,4 +220,7 @@
   <data name="RelativeAge_MonthsAgo" xml:space="preserve">
     <value>vor {0} Mon.</value>
   </data>
+  <data name="Aria_Sources" xml:space="preserve">
+    <value>Quellen</value>
+  </data>
 </root>

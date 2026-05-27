@@ -22,7 +22,7 @@
         _ => anchorDate.ToString("MMMM yyyy")
     };
 }
-<div class="d-flex flex-wrap mb-4 align-items-center gap-2 sticky-top bg-body border-bottom py-2"
+<div class="d-flex flex-wrap mb-4 align-items-center gap-2 sticky-top bg-body border-bottom pb-2"
      style="margin-left: -0.5rem; margin-right: -0.5rem; padding-left: 0.5rem; padding-right: 0.5rem;">
     <button type="button" class="btn btn-sm btn-outline-secondary"
             @onclick="() => StepAnchor(-1)" aria-label="@L["Aria_Previous"]">
@@ -61,6 +61,10 @@
                     @onclick='() => SetPeriod("year")'>@L["Button_Year"]</button>
         </div>
     </div>
+    <a href="/sources" class="text-decoration-none text-body-secondary ms-auto"
+       title="@L["Aria_Sources"]" aria-label="@L["Aria_Sources"]">
+        <i class="bi bi-gear" aria-hidden="true"></i>
+    </a>
 </div>
 
 @if (budgetSummaries == null)

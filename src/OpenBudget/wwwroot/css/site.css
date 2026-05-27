@@ -91,31 +91,6 @@ a, .btn-link {
                 0 4px 14px rgba(0, 0, 0, 0.4);
 }
 
-/* ---- Navbar: light, hairline border. Routes through Bootstrap variables so
-   data-bs-theme="dark" flips the surface automatically. ---- */
-.navbar.app-navbar {
-    background-color: var(--bs-body-bg);
-    border-bottom: 1px solid var(--bs-border-color);
-    padding-top: 0.6rem;
-    padding-bottom: 0.6rem;
-}
-
-.navbar.app-navbar .navbar-brand {
-    font-weight: 600;
-    color: var(--bs-body-color);
-    letter-spacing: -0.01em;
-}
-
-.navbar.app-navbar .nav-link {
-    color: var(--bs-secondary-color);
-    font-weight: 500;
-}
-
-.navbar.app-navbar .nav-link:hover,
-.navbar.app-navbar .nav-link.active {
-    color: var(--bs-body-color);
-}
-
 /* ---- Tinted table rows: Bootstrap's static pastels don't flip for dark mode
    and don't match our updated palette. Re-derive from the -rgb tokens with low
    alpha so the same surface reads well on both light and dark backgrounds. ---- */
@@ -211,6 +186,10 @@ a, .btn-link {
 
 .segmented.segmented-block .btn {
     flex: 1;
+}
+
+.segmented.segmented-vertical {
+    flex-direction: column;
 }
 
 .segmented .btn {
@@ -338,6 +317,23 @@ a, .btn-link {
     min-width: 0;
 }
 
+/* lg+: keep the chart/filters pinned and let only the transaction list scroll, so the
+   surrounding context (selection header, granularity buttons, filters) stays visible
+   no matter how far the user paginates. Below lg the page falls back to a single column
+   with the natural document scroll. */
+@media (min-width: 992px) {
+    .browse-main {
+        display: flex;
+        flex-direction: column;
+        max-height: calc(100vh - 6rem);
+    }
+    .browse-main > .tx-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+    }
+}
+
 .browse-rail {
     background-color: var(--bs-tertiary-bg);
     border-radius: 0.5rem;
@@ -422,6 +418,9 @@ a, .btn-link {
     padding: 0.25rem 0.5rem;
     /* Set via inline style: width grows with bucket count so each bar gets a stable px width
        even when the source has 10+ years of history. */
+    /* Center when narrower than the scroll wrapper; auto-margins collapse to 0 when the
+       chart overflows so horizontal scrolling still works normally. */
+    margin-inline: auto;
 }
 
 .browse-chart-scroll {
@@ -438,23 +437,31 @@ a, .btn-link {
    payee column flexes; the amount sticks to the right. Hover lift makes individual
    rows pop without needing a border per row. ---- */
 .tx-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.05rem;
+    /* One outer grid drives the column tracks; each .tx-row spans all four columns and
+       its children inherit the parent's tracks via grid-template-columns: subgrid. That
+       keeps the account / amount columns aligned across rows — without subgrid each row
+       sized its own auto columns to its own content. */
+    display: grid;
+    grid-template-columns: 8rem minmax(0, 1fr) auto auto;
+    row-gap: 0.05rem;
+    column-gap: 0.75rem;
 }
 
 .tx-row {
-    display: grid;
     /* Columns: date+category badge | payee+comment | account badge | amount.
        min-width:0 on the payee track keeps a long name from pushing the amount off-screen.
        Areas let us reshape the layout on phones without re-ordering the markup. */
-    grid-template-columns: 8rem minmax(0, 1fr) auto auto;
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     grid-template-areas: "date payee account amount";
-    gap: 0.75rem;
     align-items: start;
     padding: 0.5rem 0.5rem;
     border-radius: 0.375rem;
     transition: background-color .12s ease;
+    /* Bar-click → scrollFirstInPeriodIntoView lands the target row at the top of the
+       scroll viewport; the small margin keeps it from touching the very top edge. */
+    scroll-margin-top: 0.5rem;
 }
 
 .tx-date-col { grid-area: date; }
@@ -614,8 +621,14 @@ a, .btn-link {
     /* Three-row layout on phones — date + amount on top, payee spans the next row in full
        so long names stay readable, account badge sits underneath. The date column still
        carries its category badge below the date itself; on mobile that stack reads as a
-       small header for the row. */
+       small header for the row. Drop the outer subgrid so each row owns its own tracks. */
+    .tx-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.05rem;
+    }
     .tx-row {
+        grid-column: auto;
         grid-template-columns: minmax(0, 1fr) auto;
         grid-template-areas:
             "date  amount"
@@ -623,6 +636,8 @@ a, .btn-link {
             "account account";
         column-gap: 0.5rem;
         row-gap: 0.2rem;
+        /* Clear the sticky page-level toolbar when scrollIntoView snaps to the row. */
+        scroll-margin-top: 3.5rem;
     }
     .tx-account {
         justify-content: flex-start;

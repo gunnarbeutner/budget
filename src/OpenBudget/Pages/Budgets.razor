@@ -16,12 +16,18 @@
 
 @if (notFound)
 {
-    <h1>@L["NotFound_Heading"]</h1>
+    <div class="d-flex align-items-center mb-3">
+        <HomeLink />
+        <h1 class="mb-0">@L["NotFound_Heading"]</h1>
+    </div>
     <p class="text-muted">@L["NotFound_BodyBefore"]<a href="/">@L["NotFound_DashboardLink"]</a>@L["NotFound_BodyAfter"]</p>
     return;
 }
 
-<h1 class="mb-3">@L["Heading_Budgets"]@(projectName != null ? $" — {projectName}" : "")</h1>
+<div class="d-flex align-items-center mb-3">
+    <HomeLink />
+    <h1 class="mb-0">@L["Heading_Budgets"]@(projectName != null ? $" — {projectName}" : "")</h1>
+</div>
 
 <div class="row mb-3">
     <div class="col-md-12">
