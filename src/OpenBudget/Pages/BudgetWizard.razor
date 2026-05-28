@@ -23,16 +23,9 @@
 @{
     var wizardProjectName = projects?.FirstOrDefault(p => p.Id == selectedProjectId)?.Name;
 }
-@if (selectedProjectId > 0)
-{
-    <ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@wizardProjectName"
-                       Active="ProjectTab.Budgets"
-                       Subtitle="@L["Header_Title"]" />
-}
-else
-{
-    <PageHeader Title="@L["Header_Title"]" />
-}
+<ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@wizardProjectName"
+                   Active="ProjectTab.Budgets"
+                   Subtitle="@L["Header_Title"]" />
 
 @if (step == 1)
 {
@@ -290,6 +283,10 @@ else if (step == 3)
             return;
         }
 
+        // Set the id before the first await so the unconditional ProjectPageHeader renders with
+        // the real project (and its tabs) on the first interactive paint, not an id=0 flash.
+        selectedProjectId = pid.Value;
+
         projects = await ProjectService.GetProjectsAsync();
         if (!projects.Any(p => p.Id == pid.Value))
         {
@@ -297,7 +294,6 @@ else if (step == 3)
             return;
         }
 
-        selectedProjectId = pid.Value;
         availableSourceBudgets = await BudgetEntryService.GetBudgetsForProjectAsync(selectedProjectId);
     }
 
@@ -485,8 +481,9 @@ else if (step == 3)
 
     private void Reset()
     {
+        // "Create another" stays on the same project (its href preserves projectId), so leave
+        // selectedProjectId intact — zeroing it dropped the wizard into a project-less state.
         step = 1;
-        selectedProjectId = 0;
         selectedYear = DateTime.UtcNow.Year;
         budgetName = "";
         notes = "";

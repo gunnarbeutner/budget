@@ -21,15 +21,8 @@
     return;
 }
 
-@if (selectedBudgetId > 0)
-{
-    <ProjectPageHeader ProjectId="@selectedBudgetId" ProjectName="@projectName"
-                       Active="ProjectTab.Budgets" />
-}
-else
-{
-    <PageHeader Title="@L["Heading_Budgets"]" />
-}
+<ProjectPageHeader ProjectId="@selectedBudgetId" ProjectName="@projectName"
+                   Active="ProjectTab.Budgets" />
 
 <PeriodNav Anchor="(selectedYear, 1)" Period="@("year")" YearOnly="true"
            Years="availableYears" OnChanged="OnYearChanged" />
@@ -400,6 +393,10 @@ else
             return;
         }
 
+        // Set the id before the first await so the unconditional ProjectPageHeader renders with
+        // the real project (and its tabs) on the first interactive paint, not an id=0 flash.
+        selectedBudgetId = initialProjectId.Value;
+
         var project = await ProjectService.GetProjectAsync(initialProjectId.Value);
         if (project == null)
         {
@@ -407,7 +404,6 @@ else
             return;
         }
 
-        selectedBudgetId = project.Id;
         projectName = project.Name;
         projectSourceId = project.SourceId;
 
