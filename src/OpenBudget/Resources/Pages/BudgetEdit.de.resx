@@ -92,7 +92,7 @@
     <value>Notizen</value>
   </data>
   <data name="Form_ActiveLabel" xml:space="preserve">
-    <value>Aktiv für {0} — das Dashboard rechnet dieses Budget hoch. Beim Speichern wird jedes andere Budget für dasselbe Jahr deaktiviert.</value>
+    <value>Aktiv für {0} — das Dashboard berücksichtigt dieses Budget. Beim Speichern wird jedes andere Budget für dasselbe Jahr deaktiviert.</value>
   </data>
   <data name="Section_MonthlyAmounts" xml:space="preserve">
     <value>Monatliche Beträge</value>
