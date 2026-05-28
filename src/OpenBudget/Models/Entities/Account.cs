@@ -119,4 +119,22 @@ public class Account
         null => "—",
         _ => $"Type {Type}"
     };
+
+    /// <summary>
+    /// Bootstrap-Icons class name for the account type. Picked to roughly match how
+    /// MoneyMoney itself signals account kinds in its sidebar.
+    /// </summary>
+    [NotMapped]
+    public string KindIcon => Type switch
+    {
+        1 => "bi-bank",
+        2 => "bi-piggy-bank",
+        3 => "bi-credit-card-2-front",
+        4 => "bi-cash-stack",
+        5 => "bi-pencil-square",
+        6 => "bi-cash",
+        7 => "bi-graph-up-arrow",
+        8 => "bi-folder",
+        _ => "bi-question-circle"
+    };
 }

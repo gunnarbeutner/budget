@@ -1,0 +1,60 @@
+.tree-picker {
+    max-height: 24rem;
+    overflow-y: auto;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.375rem;
+    background-color: var(--bs-body-bg, #fff);
+}
+
+.tree-picker-row {
+    display: block;
+    width: 100%;
+    padding-top: 0.4rem;
+    padding-bottom: 0.4rem;
+    padding-right: 0.75rem;
+    border: 0;
+    background-color: transparent;
+    text-align: left;
+    color: inherit;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    line-height: 1.35;
+}
+
+.tree-picker-row:last-child {
+    border-bottom: 0;
+}
+
+.tree-picker-row:not(:disabled):hover {
+    background-color: rgba(13, 110, 253, 0.08);
+}
+
+.tree-picker-row.selected {
+    background-color: rgba(13, 110, 253, 0.18);
+    font-weight: 500;
+}
+
+/* Group/header rows: not clickable, styled as section labels. */
+.tree-picker-row.header {
+    color: var(--bs-secondary, #6c757d);
+    font-weight: 600;
+    background-color: rgba(0, 0, 0, 0.025);
+    cursor: default;
+}
+
+/* The native disabled state fades buttons; we don't want that for header rows since the
+   header style itself signals non-selectability. */
+.tree-picker-row:disabled {
+    opacity: 1;
+}
+
+.tree-picker-icon {
+    display: inline-block;
+    width: 1.25rem;
+    margin-right: 0.4rem;
+    color: var(--bs-secondary, #6c757d);
+    text-align: center;
+}
+
+.tree-picker-row.selected .tree-picker-icon {
+    color: inherit;
+}

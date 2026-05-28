@@ -1,0 +1,44 @@
+@typeparam TId where TId : IEquatable<TId>
+@using System.Globalization
+
+@* Single-select picker over a flat depth-first list of nodes. Visual indent comes from
+   padding-left scaled by Level — no NBSP hacks, and unlike the native <select> it can
+   show real selection / hover styling and non-clickable group headers. Two-way binds
+   SelectedId; the caller owns the "0 means nothing selected" convention if applicable. *@
+<div class="tree-picker">
+    @if (Nodes != null)
+    {
+        @foreach (var node in Nodes)
+        {
+            var selected = node.Selectable && EqualityComparer<TId?>.Default.Equals(SelectedId, node.Id);
+            var depthRem = (0.75 + node.Level * 1.25).ToString("0.##", CultureInfo.InvariantCulture);
+            var classes = "tree-picker-row"
+                + (selected ? " selected" : "")
+                + (!node.Selectable ? " header" : "");
+            <button type="button"
+                    class="@classes"
+                    style="@($"padding-left: {depthRem}rem;")"
+                    disabled="@(!node.Selectable)"
+                    @onclick="@(() => Select(node.Id))">
+                @if (!string.IsNullOrEmpty(node.Icon))
+                {
+                    <i class="@($"bi {node.Icon} tree-picker-icon")" aria-hidden="true"></i>
+                }
+                @node.Label
+            </button>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<TreePickerNode<TId>>? Nodes { get; set; }
+    [Parameter] public TId? SelectedId { get; set; }
+    [Parameter] public EventCallback<TId> SelectedIdChanged { get; set; }
+
+    private async Task Select(TId id)
+    {
+        if (EqualityComparer<TId?>.Default.Equals(SelectedId, id)) return;
+        SelectedId = id;
+        await SelectedIdChanged.InvokeAsync(id);
+    }
+}
