@@ -196,6 +196,12 @@
   <data name="Form_DescriptionLabel" xml:space="preserve">
     <value>Beschreibung (optional)</value>
   </data>
+  <data name="Form_SourceLabel" xml:space="preserve">
+    <value>MoneyMoney-Quelle</value>
+  </data>
+  <data name="Alert_WarningsHeading" xml:space="preserve">
+    <value>Warnungen</value>
+  </data>
   <data name="Button_Cancel" xml:space="preserve">
     <value>Abbrechen</value>
   </data>

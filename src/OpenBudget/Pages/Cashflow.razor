@@ -358,7 +358,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                             <ul class="mb-0 mt-1">
                                 @foreach (var col in rollupCollisions)
                                 {
-                                    <li>@($"{(col.ItemType == CategoryItemType.Group ? "Group" : "Category")} #{col.CategoryId}") &mdash; @col.ChildName</li>
+                                    <li>@(col.ItemType == CategoryItemType.Group ? L["Rollup_ItemKind_Group"] : L["Rollup_ItemKind_Category"]) #@col.CategoryId &mdash; @col.ChildName</li>
                                 }
                             </ul>
                         </div>
