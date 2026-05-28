@@ -562,6 +562,13 @@ else
     private List<CategoryCashflow> incomeCategories = new();
     private List<CategoryCashflow> expenseCategories = new();
     private Dictionary<string, decimal> contributionSplits = new();
+    /// <summary>
+    /// Snapshot of contributionSplits matching the last known persisted state — refreshed on
+    /// page load and after a successful SaveSplits. Compared against the live dictionary to
+    /// derive splitsDirty, so editing splits and then restoring them to the saved values
+    /// correctly clears the "unsaved changes" hint.
+    /// </summary>
+    private Dictionary<string, decimal> savedContributionSplits = new();
     private decimal totalExpenses = 0;
     private decimal netCashflow = 0;
     private bool needsChartRender = false;
@@ -1014,6 +1021,7 @@ else
                     : equalSplit;
             }
         }
+        savedContributionSplits = new Dictionary<string, decimal>(contributionSplits);
         splitsDirty = false;
 
         // Fetch real account deltas + day-of-month histograms once. Both the balance chart and
@@ -1521,7 +1529,7 @@ else
 
     private async Task RecalculateContributions()
     {
-        splitsDirty = true;
+        splitsDirty = SplitsDifferFromSaved();
         ResetMonthlyAmountsToBase();
         ApplyIncomeProjection();
         ApplyWhatIfsToCategories();
@@ -1614,6 +1622,17 @@ else
         }
     }
 
+    private bool SplitsDifferFromSaved()
+    {
+        if (contributionSplits.Count != savedContributionSplits.Count) return true;
+        foreach (var kv in contributionSplits)
+        {
+            if (!savedContributionSplits.TryGetValue(kv.Key, out var saved) || saved != kv.Value)
+                return true;
+        }
+        return false;
+    }
+
     private async Task SaveSplits()
     {
         if (selectedBudgetId <= 0 || !incomeCategories.Any()) return;
@@ -1627,6 +1646,7 @@ else
                 .Select(c => (c.CategoryId, c.ItemType, Percent: contributionSplits.GetValueOrDefault(c.CategoryName, 0m)))
                 .ToList();
             await BudgetEntryService.SaveBudgetContributionSplitsAsync(selectedBudgetId, payload);
+            savedContributionSplits = new Dictionary<string, decimal>(contributionSplits);
             splitsDirty = false;
         }
         finally
