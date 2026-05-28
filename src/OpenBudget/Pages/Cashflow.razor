@@ -593,11 +593,6 @@ else
         }
     }
     private List<WhatIfEntry> whatIfs = new();
-    // Mutations ApplyWhatIfsToCategories has applied since the last call. We undo them at the
-    // top of the next run so removing or editing a what-if doesn't leave the previous bump
-    // baked into MonthlyAmounts — ApplyIncomeProjection only overwrites projected months, so
-    // entries that target a past or current month would otherwise persist forever.
-    private List<(CategoryCashflow Row, int MonthIdx, decimal Delta)> appliedWhatIfMutations = new();
 
     private static string CategoryKeyFor(CategoryCashflow row) =>
         $"{(int)row.ItemType}:{row.CategoryId}";
@@ -714,6 +709,14 @@ else
         public CategoryItemType ItemType { get; set; }
         public string CategoryName { get; set; } = "";
         public decimal[] MonthlyAmounts { get; set; } = new decimal[12];
+        /// <summary>
+        /// Pristine snapshot taken at load time: actuals (past months) + self-corrected expense
+        /// projection (future months for expenses) + zeros (future months for income, since
+        /// ApplyIncomeProjection writes those). The recompute pipeline resets MonthlyAmounts to
+        /// this each time before re-projecting and re-applying what-ifs, so each pass is a pure
+        /// function of (base, projection settings, what-ifs) — no mutation-tracking required.
+        /// </summary>
+        public decimal[] BaseMonthlyAmounts { get; set; } = new decimal[12];
 
         /// <summary>
         /// The project this row's actuals and projected amounts came from. For a project with
@@ -915,9 +918,6 @@ else
         expenseCategories.Clear();
         contributionSplits.Clear();
         rollupCollisions.Clear();
-        // Re-loading wipes the CategoryCashflow rows our previous what-if mutations referenced
-        // — drop the bookkeeping so we don't try to undo against stale row objects.
-        appliedWhatIfMutations.Clear();
 
         // Compute the projection window once — every sub-project uses the same calendar year,
         // so firstProjectedMonth is shared. Each child uses its own active budget for that
@@ -1031,6 +1031,7 @@ else
 
         // Attribute projected income to each source via the contribution splits and
         // recompute the rollup totals from the resulting per-source arrays.
+        ResetMonthlyAmountsToBase();
         ApplyIncomeProjection();
         ApplyWhatIfsToCategories();
         RecomputeTotals();
@@ -1190,6 +1191,7 @@ else
                     ItemType = category.ItemType,
                     CategoryName = category.Name,
                     MonthlyAmounts = income,
+                    BaseMonthlyAmounts = (decimal[])income.Clone(),
                     OriginProjectId = project.Id,
                     OriginProjectName = project.Name,
                     IsAggregateRow = isAggregateRow
@@ -1204,6 +1206,7 @@ else
                     ItemType = category.ItemType,
                     CategoryName = category.Name,
                     MonthlyAmounts = expenses,
+                    BaseMonthlyAmounts = (decimal[])expenses.Clone(),
                     OriginProjectId = project.Id,
                     OriginProjectName = project.Name,
                     IsAggregateRow = isAggregateRow
@@ -1519,6 +1522,7 @@ else
     private async Task RecalculateContributions()
     {
         splitsDirty = true;
+        ResetMonthlyAmountsToBase();
         ApplyIncomeProjection();
         ApplyWhatIfsToCategories();
         RecomputeTotals();
@@ -1549,6 +1553,7 @@ else
     {
         // Re-run the income projection from the base, then layer attributed what-ifs on top.
         // Unattributed ones flow through as raw daily deltas inside LoadBalanceDataAsync.
+        ResetMonthlyAmountsToBase();
         ApplyIncomeProjection();
         ApplyWhatIfsToCategories();
         RecomputeTotals();
@@ -1559,24 +1564,29 @@ else
     }
 
     /// <summary>
+    /// Restores every row's MonthlyAmounts to the load-time snapshot. Called at the top of
+    /// every recompute pass so ApplyIncomeProjection sees clean inputs (no leftover what-if
+    /// mutations) and ApplyWhatIfsToCategories layers onto a known baseline.
+    /// </summary>
+    private void ResetMonthlyAmountsToBase()
+    {
+        foreach (var row in incomeCategories)
+            Array.Copy(row.BaseMonthlyAmounts, row.MonthlyAmounts, row.MonthlyAmounts.Length);
+        foreach (var row in expenseCategories)
+            Array.Copy(row.BaseMonthlyAmounts, row.MonthlyAmounts, row.MonthlyAmounts.Length);
+    }
+
+    /// <summary>
     /// Add each what-if entry's amount to its attributed category's monthly total. The
     /// category bar chart picks the bump up automatically (it reads MonthlyAmounts), and
     /// LoadBalanceDataAsync's histogram spreader carries it into the balance line. Entries
     /// without a category are left to LoadBalanceDataAsync, which applies them as raw daily
-    /// deltas (exact day, no category attribution).
+    /// deltas (exact day, no category attribution). Pre-condition: MonthlyAmounts has been
+    /// reset to base and ApplyIncomeProjection has written the current projection, so the
+    /// only thing left to do here is layer the what-if deltas on top.
     /// </summary>
     private void ApplyWhatIfsToCategories()
     {
-        // Undo the previous run's mutations first so removing or changing a what-if doesn't
-        // leave stale increments on MonthlyAmounts. We undo before applying because the same
-        // row+month could be re-bumped this run; the order keeps the math symmetric.
-        foreach (var prev in appliedWhatIfMutations)
-        {
-            if (prev.MonthIdx < 0 || prev.MonthIdx >= prev.Row.MonthlyAmounts.Length) continue;
-            prev.Row.MonthlyAmounts[prev.MonthIdx] -= prev.Delta;
-        }
-        appliedWhatIfMutations.Clear();
-
         foreach (var w in whatIfs)
         {
             var key = w.ParseCategory();
@@ -1590,7 +1600,6 @@ else
             if (income != null && monthIdx < income.MonthlyAmounts.Length)
             {
                 income.MonthlyAmounts[monthIdx] += w.Amount;
-                appliedWhatIfMutations.Add((income, monthIdx, w.Amount));
                 continue;
             }
             var expense = expenseCategories.FirstOrDefault(c =>
@@ -1600,9 +1609,7 @@ else
                 // Expense MonthlyAmounts holds positive magnitudes; a negative what-if (an
                 // outflow) should grow the expense bar, and a positive one (refund) should
                 // shrink it. Flip the sign.
-                var delta = -w.Amount;
-                expense.MonthlyAmounts[monthIdx] += delta;
-                appliedWhatIfMutations.Add((expense, monthIdx, delta));
+                expense.MonthlyAmounts[monthIdx] += -w.Amount;
             }
         }
     }
