@@ -42,18 +42,15 @@
     return;
 }
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <div class="d-flex align-items-center">
-        <HomeLink />
-        <div>
-            <h5 class="mb-0">@L["Header_Title"] @budget.Project?.Name <small class="text-muted">@budget.Name</small></h5>
-            @if (budget.LastModifiedAt.HasValue)
-            {
-                <small class="text-muted">@L["Header_LastModified", budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")]</small>
-            }
-        </div>
+<div class="d-flex align-items-center mb-3">
+    <HomeLink />
+    <div>
+        <h5 class="mb-0">@L["Header_Title"] @budget.Project?.Name <small class="text-muted">@budget.Name</small></h5>
+        @if (budget.LastModifiedAt.HasValue)
+        {
+            <small class="text-muted">@L["Header_LastModified", budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")]</small>
+        }
     </div>
-    <a href="/budgets?projectId=@budget.ProjectId" class="btn btn-secondary">@L["Button_BackToBudgets"]</a>
 </div>
 
 <div class="card mb-3">
