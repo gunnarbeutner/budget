@@ -24,7 +24,11 @@ public class MoneyMoneyImportService
 
     private static readonly string[] ExpectedAccountColumns =
     {
-        "name", "iban", "currency", "type", "portfolio", "balances", "sort", "refresh_tsp", "error"
+        "name", "iban", "currency", "type", "portfolio", "balances", "sort", "refresh_tsp", "error", "group_key"
+    };
+    private static readonly string[] ExpectedAccountGroupColumns =
+    {
+        "name", "group_key", "sort"
     };
     private static readonly string[] ExpectedCategoryColumns =
     {
@@ -117,12 +121,15 @@ public class MoneyMoneyImportService
         try
         {
             // Wipe previous rows for this source. Order matters: transactions reference
-            // accounts/categories via FKs (Restrict), so transactions go first.
+            // accounts/categories via FKs (Restrict), so transactions go first. Accounts
+            // reference account_groups, so accounts go before account_groups.
             await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_transactions WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_categories WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_category_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_accounts WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_account_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
 
+            int accountGroupCount = await CopyAccountGroupsAsync(src, db, sourceId, ct);
             int accountCount = await CopyAccountsAsync(src, db, sourceId, ct);
             int groupCount = await CopyCategoryGroupsAsync(src, db, sourceId, ct);
             int categoryCount = await CopyCategoriesAsync(src, db, sourceId, ct);
@@ -136,14 +143,15 @@ public class MoneyMoneyImportService
             await tx.CommitAsync(ct);
 
             _logger.LogInformation(
-                "Imported MoneyMoney source '{Source}' (id={SourceId}): {Accounts} accounts, {Groups} groups, {Categories} categories, {Transactions} transactions ({Bytes} bytes)",
-                sourceName, sourceId, accountCount, groupCount, categoryCount, txCount, fileSize);
+                "Imported MoneyMoney source '{Source}' (id={SourceId}): {Accounts} accounts, {AccountGroups} account groups, {Groups} groups, {Categories} categories, {Transactions} transactions ({Bytes} bytes)",
+                sourceName, sourceId, accountCount, accountGroupCount, groupCount, categoryCount, txCount, fileSize);
 
             return new ImportResult
             {
                 SourceId = sourceId,
                 SourceName = sourceName,
                 AccountsImported = accountCount,
+                AccountGroupsImported = accountGroupCount,
                 CategoryGroupsImported = groupCount,
                 CategoriesImported = categoryCount,
                 TransactionsImported = txCount,
@@ -170,6 +178,21 @@ public class MoneyMoneyImportService
         WarnIfMissing(src, "categories", ExpectedCategoryColumns, sourceName);
         WarnIfMissing(src, "category_groups", ExpectedCategoryGroupColumns, sourceName);
         WarnIfMissing(src, "transactions", ExpectedTransactionColumns, sourceName);
+        // account_groups is only present in newer exporter builds; if the table is missing we
+        // skip the check rather than warn — CopyAccountGroupsAsync handles the absence below.
+        if (TableExists(src, "account_groups"))
+        {
+            WarnIfMissing(src, "account_groups", ExpectedAccountGroupColumns, sourceName);
+        }
+    }
+
+    private static bool TableExists(SqliteConnection src, string table)
+    {
+        using var cmd = src.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = $name";
+        cmd.Parameters.AddWithValue("$name", table);
+        var result = cmd.ExecuteScalar();
+        return result != null && result != DBNull.Value;
     }
 
     private void WarnIfMissing(SqliteConnection src, string table, string[] expected, string sourceName)
@@ -211,10 +234,18 @@ public class MoneyMoneyImportService
 
     private static async Task<int> CopyAccountsAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
     {
-        const string select = "SELECT rowid, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error FROM accounts";
+        // group_key is the FK into account_groups; older exporters (pre-account-groups) won't
+        // have account_groups but the column itself has always been on accounts. Probe anyway
+        // so we degrade cleanly if a forked schema ever drops it.
+        bool hasGroupKey = await ColumnExistsAsync(src, "accounts", "group_key", ct);
+        string groupKeyExpr = hasGroupKey ? "group_key" : "NULL AS group_key";
+        string select = $"""
+            SELECT rowid, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, {groupKeyExpr}
+            FROM accounts
+            """;
         const string insert = """
-            INSERT INTO mm_accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error)
-            VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error)
+            INSERT INTO mm_accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key)
+            VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key)
             """;
         return await BulkCopyAsync(src, db, select, insert, sourceId, (cmd, r) =>
         {
@@ -230,7 +261,33 @@ public class MoneyMoneyImportService
             cmd.Parameters["$sort"].Value = r.IsDBNull(7) ? DBNull.Value : r.GetInt64(7);
             cmd.Parameters["$refresh_tsp"].Value = r.IsDBNull(8) ? DBNull.Value : r.GetInt64(8);
             cmd.Parameters["$error"].Value = r.IsDBNull(9) ? DBNull.Value : r.GetString(9);
-        }, new[] { "$id", "$sid", "$name", "$iban", "$currency", "$type", "$portfolio", "$balances", "$sort", "$refresh_tsp", "$error" }, ct);
+            cmd.Parameters["$group_key"].Value = r.IsDBNull(10)
+                ? DBNull.Value
+                : NamespaceParentKey(sourceId, r.GetInt64(10));
+        }, new[] { "$id", "$sid", "$name", "$iban", "$currency", "$type", "$portfolio", "$balances", "$sort", "$refresh_tsp", "$error", "$group_key" }, ct);
+    }
+
+    private static async Task<int> CopyAccountGroupsAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
+    {
+        // account_groups landed in the exporter after the first releases; tolerate its absence
+        // so a stale exporter upload still imports (accounts simply land without a parent ref).
+        if (!TableExists(src, "account_groups")) return 0;
+        const string select = "SELECT rowid, name, group_key, sort FROM account_groups";
+        const string insert = """
+            INSERT INTO mm_account_groups (Id, SourceId, name, group_key, sort)
+            VALUES ($id, $sid, $name, $group_key, $sort)
+            """;
+        return await BulkCopyAsync(src, db, select, insert, sourceId, (cmd, r) =>
+        {
+            long rowid = r.GetInt64(0);
+            cmd.Parameters["$id"].Value = SourceScope.Namespace(sourceId, rowid);
+            cmd.Parameters["$sid"].Value = sourceId;
+            cmd.Parameters["$name"].Value = r.IsDBNull(1) ? DBNull.Value : r.GetString(1);
+            cmd.Parameters["$group_key"].Value = r.IsDBNull(2)
+                ? DBNull.Value
+                : NamespaceParentKey(sourceId, r.GetInt64(2));
+            cmd.Parameters["$sort"].Value = r.IsDBNull(3) ? DBNull.Value : r.GetInt64(3);
+        }, new[] { "$id", "$sid", "$name", "$group_key", "$sort" }, ct);
     }
 
     private static async Task<int> CopyCategoryGroupsAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
@@ -248,7 +305,7 @@ public class MoneyMoneyImportService
             cmd.Parameters["$name"].Value = r.IsDBNull(1) ? DBNull.Value : r.GetString(1);
             cmd.Parameters["$group_key"].Value = r.IsDBNull(2)
                 ? DBNull.Value
-                : NamespaceParentGroup(sourceId, r.GetInt64(2));
+                : NamespaceParentKey(sourceId, r.GetInt64(2));
             cmd.Parameters["$sort"].Value = r.IsDBNull(3) ? DBNull.Value : r.GetInt64(3);
             cmd.Parameters["$color"].Value = r.IsDBNull(4) ? DBNull.Value : r.GetString(4);
         }, new[] { "$id", "$sid", "$name", "$group_key", "$sort", "$color" }, ct);
@@ -272,7 +329,7 @@ public class MoneyMoneyImportService
             cmd.Parameters["$rules"].Value = r.IsDBNull(4) ? DBNull.Value : r.GetString(4);
             cmd.Parameters["$group_key"].Value = r.IsDBNull(5)
                 ? DBNull.Value
-                : (object)SourceScope.Namespace(sourceId, r.GetInt64(5));
+                : NamespaceParentKey(sourceId, r.GetInt64(5));
             cmd.Parameters["$sort"].Value = r.IsDBNull(6) ? DBNull.Value : r.GetInt64(6);
         }, new[] { "$id", "$sid", "$name", "$type", "$color", "$rules", "$group_key", "$sort" }, ct);
     }
@@ -319,12 +376,15 @@ public class MoneyMoneyImportService
         }, new[] { "$id", "$sid", "$local_account_key", "$amount", "$currency", "$timestamp", "$name", "$comment", "$purpose", "$category_key", "$checkmark", "$splitted" }, ct);
     }
 
-    private static object NamespaceParentGroup(int sourceId, long parentRowid)
+    /// <summary>
+    /// Namespace a MoneyMoney parent/group rowid into our ID space. MoneyMoney uses
+    /// <c>0</c> as the "no parent" / "no group" sentinel; we map that to <see cref="DBNull"/>
+    /// so the FK actually resolves (and the deferred FK check at migration commit doesn't
+    /// trip on dangling references).
+    /// </summary>
+    private static object NamespaceParentKey(int sourceId, long parentRowid)
     {
-        // ParentGroupId stays as a foreign key into mm_category_groups (Id column), so apply
-        // the same namespacing. 0 is the "no parent" sentinel; namespace it too so it sits in
-        // this source's space (queries treat 0/sentinel as roots).
-        return (object)SourceScope.Namespace(sourceId, parentRowid);
+        return parentRowid == 0 ? DBNull.Value : (object)SourceScope.Namespace(sourceId, parentRowid);
     }
 
     private static async Task<int> BulkCopyAsync(
@@ -371,6 +431,7 @@ public class ImportResult
     public int SourceId { get; set; }
     public string SourceName { get; set; } = string.Empty;
     public int AccountsImported { get; set; }
+    public int AccountGroupsImported { get; set; }
     public int CategoryGroupsImported { get; set; }
     public int CategoriesImported { get; set; }
     public int TransactionsImported { get; set; }

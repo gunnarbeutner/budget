@@ -632,7 +632,7 @@ enum Exporter {
         let attachSQL = "ATTACH DATABASE \(quote(output)) AS export KEY '';"
         try exec(db, attachSQL)
 
-        for table in ["category_groups", "categories", "accounts", "transactions"] {
+        for table in ["account_groups", "category_groups", "categories", "accounts", "transactions"] {
             try exec(db, "CREATE TABLE export.\(table) AS SELECT * FROM \(table);")
         }
         try exec(db, "DETACH DATABASE export;")

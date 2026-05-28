@@ -420,14 +420,14 @@ else
 @if (showAddAccountDialog)
 {
     <div class="modal show d-block" tabindex="-1">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">@L["Modal_AddAccount_Title"]</h5>
                     <button type="button" class="btn-close" @onclick="HideAddAccountDialog"></button>
                 </div>
                 <div class="modal-body">
-                    @if (allAccounts == null || accountAssignments == null)
+                    @if (allAccounts == null || accountAssignments == null || allAccountGroups == null)
                     {
                         <p><em>@L["Status_LoadingAccounts"]</em></p>
                     }
@@ -443,14 +443,21 @@ else
                         {
                             <div class="mb-3">
                                 <label class="form-label">@L["Form_AccountLabel"]</label>
-                                <select class="form-select" @bind="addAccountSelectedId" size="12">
+                                <select class="form-select" @bind="addAccountSelectedId" size="15">
                                     <option value="0">@L["Form_SelectAccount"]</option>
-                                    @foreach (var account in unassigned)
+                                    @foreach (var node in BuildAccountPickerNodes(allAccountGroups, unassigned))
                                     {
-                                        var balance = account.CurrentBalance;
-                                        var label = $"{account.Name} ({account.KindLabel})"
-                                            + (balance.HasValue ? $" — {FormatMoney(balance.Value, account.Currency ?? "")}" : "");
-                                        <option value="@account.Id">@label</option>
+                                        @* NBSPs survive HTML normalization where regular spaces collapse, so the tree
+                                           indent stays visible inside <option>. *@
+                                        var indent = new string(' ', node.Level * 4);
+                                        if (node.IsGroup)
+                                        {
+                                            <option value="0" disabled>@indent@node.Label</option>
+                                        }
+                                        else
+                                        {
+                                            <option value="@node.AccountId">@indent@node.Label</option>
+                                        }
                                     }
                                 </select>
                             </div>
@@ -583,6 +590,7 @@ else
     // Account assignments
     private List<ProjectAccountAssignment>? accountAssignments;
     private List<Account>? allAccounts;
+    private List<AccountGroup>? allAccountGroups;
     private bool showAddAccountDialog = false;
     private long addAccountSelectedId = 0;
     private AccountScope addAccountSelectedScope = AccountScope.Shared;
@@ -599,6 +607,105 @@ else
     {
         public CategoryGroupWithChildCount CategoryGroup { get; set; } = null!;
         public int Level { get; set; }
+    }
+
+    /// <summary>
+    /// Flat row in the Add Account tree picker. Groups render as disabled headers; accounts
+    /// are the selectable leaves. Level controls the indent.
+    /// </summary>
+    private class AccountPickerNode
+    {
+        public int Level { get; set; }
+        public bool IsGroup { get; set; }
+        public long AccountId { get; set; }
+        public string Label { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Walk MoneyMoney's account_groups hierarchy and produce a flat, depth-first list of
+    /// rows for the Add-Account picker: each visited group emits a disabled header followed
+    /// by its sub-groups (recursively) and then its leaf accounts. Sorting at every level
+    /// matches MoneyMoney's <c>sort</c> field. Sub-trees that contain no <paramref name="unassigned"/>
+    /// account are pruned so the picker doesn't show dead branches. Accounts whose
+    /// <c>group_key</c> doesn't resolve to a known group are bucketed under "Other" at the bottom.
+    /// </summary>
+    private List<AccountPickerNode> BuildAccountPickerNodes(List<AccountGroup> groups, List<Account> unassigned)
+    {
+        // Root = any group whose ParentGroupId doesn't point at another known group. MoneyMoney
+        // stores top-level groups with group_key=0; namespacing turns that into a value that
+        // doesn't resolve to a real group ID, so the "unresolved parent" check covers both
+        // null and the namespaced-zero sentinel.
+        var groupById = groups.ToDictionary(g => g.Id);
+        bool IsRoot(AccountGroup g) =>
+            !g.ParentGroupId.HasValue || !groupById.ContainsKey(g.ParentGroupId.Value);
+
+        var childGroupsByParent = groups
+            .Where(g => !IsRoot(g))
+            .GroupBy(g => g.ParentGroupId!.Value)
+            .ToDictionary(g => g.Key, g => g
+                .OrderBy(x => x.Sort ?? long.MaxValue)
+                .ThenBy(x => x.Name)
+                .ToList());
+        var rootGroups = groups
+            .Where(IsRoot)
+            .OrderBy(g => g.Sort ?? long.MaxValue)
+            .ThenBy(g => g.Name)
+            .ToList();
+        var accountsByGroup = unassigned
+            .Where(a => a.GroupId.HasValue && groupById.ContainsKey(a.GroupId.Value))
+            .GroupBy(a => a.GroupId!.Value)
+            .ToDictionary(g => g.Key, g => g
+                .OrderBy(a => a.Sort ?? long.MaxValue)
+                .ThenBy(a => a.Name)
+                .ToList());
+        var orphans = unassigned
+            .Where(a => !a.GroupId.HasValue || !groupById.ContainsKey(a.GroupId!.Value))
+            .OrderBy(a => a.Sort ?? long.MaxValue)
+            .ThenBy(a => a.Name)
+            .ToList();
+
+        bool HasUnassignedInSubtree(AccountGroup group)
+        {
+            if (accountsByGroup.ContainsKey(group.Id)) return true;
+            if (!childGroupsByParent.TryGetValue(group.Id, out var subs)) return false;
+            foreach (var sub in subs)
+                if (HasUnassignedInSubtree(sub)) return true;
+            return false;
+        }
+
+        AccountPickerNode MakeAccountNode(Account account, int level)
+        {
+            var balance = account.CurrentBalance;
+            var label = $"{account.Name} ({account.KindLabel})"
+                + (balance.HasValue ? $" — {FormatMoney(balance.Value, account.Currency ?? "")}" : "");
+            return new AccountPickerNode { Level = level, IsGroup = false, AccountId = account.Id, Label = label };
+        }
+
+        var nodes = new List<AccountPickerNode>();
+
+        void Walk(AccountGroup group, int level)
+        {
+            if (!HasUnassignedInSubtree(group)) return;
+            nodes.Add(new AccountPickerNode { Level = level, IsGroup = true, Label = group.Name ?? "—" });
+            if (childGroupsByParent.TryGetValue(group.Id, out var subs))
+            {
+                foreach (var sub in subs) Walk(sub, level + 1);
+            }
+            if (accountsByGroup.TryGetValue(group.Id, out var accounts))
+            {
+                foreach (var a in accounts) nodes.Add(MakeAccountNode(a, level + 1));
+            }
+        }
+
+        foreach (var root in rootGroups) Walk(root, 0);
+
+        if (orphans.Any())
+        {
+            nodes.Add(new AccountPickerNode { Level = 0, IsGroup = true, Label = L["AddAccount_OtherGroup"] });
+            foreach (var a in orphans) nodes.Add(MakeAccountNode(a, 1));
+        }
+
+        return nodes;
     }
 
     protected override async Task OnInitializedAsync()
@@ -658,6 +765,10 @@ else
         if (allAccounts == null && budget != null)
         {
             allAccounts = await BudgetService.GetAllAccountsAsync(budget.SourceId);
+        }
+        if (allAccountGroups == null && budget != null)
+        {
+            allAccountGroups = await BudgetService.GetAllAccountGroupsAsync(budget.SourceId);
         }
     }
 

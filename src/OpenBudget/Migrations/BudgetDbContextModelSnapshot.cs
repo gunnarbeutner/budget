@@ -12,10 +12,15 @@ namespace OpenBudget.Migrations
     [DbContext(typeof(BudgetDbContext))]
     partial class BudgetDbContextModelSnapshot : ModelSnapshot
     {
+        // If you encounter a merge conflict in the line below, it means you need to
+        // discard one of the migration branches and recreate its migrations on top of
+        // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
+        public override string LatestMigrationId => "20260528093732_AddAccountGroups";
+
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.8");
+            modelBuilder.HasAnnotation("ProductVersion", "11.0.0-preview.3.26207.106");
 
             modelBuilder.Entity("OpenBudget.Models.Account", b =>
                 {
@@ -34,6 +39,10 @@ namespace OpenBudget.Migrations
                     b.Property<string>("Error")
                         .HasColumnType("TEXT")
                         .HasColumnName("error");
+
+                    b.Property<long?>("GroupId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("group_key");
 
                     b.Property<string>("Iban")
                         .HasColumnType("TEXT")
@@ -64,9 +73,41 @@ namespace OpenBudget.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("GroupId");
+
                     b.HasIndex("SourceId");
 
                     b.ToTable("mm_accounts");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.AccountGroup", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("name");
+
+                    b.Property<long?>("ParentGroupId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("group_key");
+
+                    b.Property<long?>("Sort")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("sort");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParentGroupId");
+
+                    b.HasIndex("SourceId");
+
+                    b.ToTable("mm_account_groups");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Budget", b =>
@@ -496,6 +537,26 @@ namespace OpenBudget.Migrations
                     b.ToTable("mm_transactions");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.Account", b =>
+                {
+                    b.HasOne("OpenBudget.Models.AccountGroup", "Group")
+                        .WithMany("Accounts")
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.AccountGroup", b =>
+                {
+                    b.HasOne("OpenBudget.Models.AccountGroup", "ParentGroup")
+                        .WithMany("SubGroups")
+                        .HasForeignKey("ParentGroupId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ParentGroup");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.Budget", b =>
                 {
                     b.HasOne("OpenBudget.Models.Project", "Project")
@@ -631,6 +692,13 @@ namespace OpenBudget.Migrations
             modelBuilder.Entity("OpenBudget.Models.Account", b =>
                 {
                     b.Navigation("Transactions");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.AccountGroup", b =>
+                {
+                    b.Navigation("Accounts");
+
+                    b.Navigation("SubGroups");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Budget", b =>

@@ -643,6 +643,19 @@ public class BudgetService
             .ToListAsync();
     }
 
+    /// <summary>
+    /// Returns the MoneyMoney account groups for a source, ordered by sort then name. The
+    /// Add-Account picker turns this list (plus the accounts) into a tree.
+    /// </summary>
+    public async Task<List<AccountGroup>> GetAllAccountGroupsAsync(int sourceId)
+    {
+        return await _budgetDb.AccountGroups
+            .Where(g => g.SourceId == sourceId)
+            .OrderBy(g => g.Sort)
+            .ThenBy(g => g.Name)
+            .ToListAsync();
+    }
+
     public async Task<List<ProjectAccountAssignment>> GetProjectAccountAssignmentsAsync(int projectId)
     {
         return await _budgetDb.ProjectAccountAssignments

@@ -244,6 +244,9 @@
   <data name="AddAccount_AllAssigned" xml:space="preserve">
     <value>All accounts are already assigned.</value>
   </data>
+  <data name="AddAccount_OtherGroup" xml:space="preserve">
+    <value>Other</value>
+  </data>
   <data name="Form_AccountLabel" xml:space="preserve">
     <value>Account</value>
   </data>

@@ -156,6 +156,7 @@ app.MapDelete("/api/moneymoney-sources/{name}", async (
     await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_categories WHERE SourceId = {0}", new object[] { source.Id }, ct);
     await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_category_groups WHERE SourceId = {0}", new object[] { source.Id }, ct);
     await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_accounts WHERE SourceId = {0}", new object[] { source.Id }, ct);
+    await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_account_groups WHERE SourceId = {0}", new object[] { source.Id }, ct);
     db.ImportSources.Remove(source);
     await db.SaveChangesAsync(ct);
 
@@ -216,6 +217,7 @@ static async Task<IResult> HandleUploadAsync(
             result.SourceId,
             result.SourceName,
             result.AccountsImported,
+            result.AccountGroupsImported,
             result.CategoryGroupsImported,
             result.CategoriesImported,
             result.TransactionsImported,

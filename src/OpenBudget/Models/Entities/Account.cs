@@ -48,6 +48,14 @@ public class Account
     public long? Sort { get; set; }
 
     /// <summary>
+    /// MoneyMoney <c>accounts.group_key</c>, mapped to <see cref="AccountGroup.Id"/> via
+    /// the same namespacing scheme. Null for orphans; MoneyMoney itself anchors every
+    /// account under a group in practice.
+    /// </summary>
+    [Column("group_key")]
+    public long? GroupId { get; set; }
+
+    /// <summary>
     /// Unix-seconds timestamp of MoneyMoney's last successful refresh of this account. Null for
     /// manually-maintained accounts (cash, real estate) that never auto-refresh.
     /// </summary>
@@ -63,6 +71,7 @@ public class Account
 
     // Navigation properties
     public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
+    public AccountGroup? Group { get; set; }
 
     /// <summary>
     /// Parses the first numeric amount out of MoneyMoney's "balances" string ("11:5203.710000,3:EUR,").

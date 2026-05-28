@@ -29,6 +29,7 @@ public class BudgetDbContext : DbContext
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<CategoryGroup> CategoryGroups => Set<CategoryGroup>();
     public DbSet<Account> Accounts => Set<Account>();
+    public DbSet<AccountGroup> AccountGroups => Set<AccountGroup>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -161,5 +162,20 @@ public class BudgetDbContext : DbContext
 
         modelBuilder.Entity<Account>()
             .HasIndex(a => a.SourceId);
+
+        modelBuilder.Entity<Account>()
+            .HasOne(a => a.Group)
+            .WithMany(g => g.Accounts)
+            .HasForeignKey(a => a.GroupId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<AccountGroup>()
+            .HasOne(ag => ag.ParentGroup)
+            .WithMany(ag => ag.SubGroups)
+            .HasForeignKey(ag => ag.ParentGroupId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<AccountGroup>()
+            .HasIndex(ag => ag.SourceId);
     }
 }
