@@ -805,7 +805,13 @@ window.scrollListToTxOffset = function(approxOffset) {
     const fineTune = () => {
         const target = document.querySelector('.tx-row.in-period');
         if (target) {
-            target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+            // Scroll ONLY the txScroll container — `target.scrollIntoView()` here would
+            // scroll every ancestor that needs to (including the page), jumping the
+            // whole layout down to align the row under the sticky period bar.
+            const targetRect = target.getBoundingClientRect();
+            const scrollRect = txScroll.getBoundingClientRect();
+            const offset = targetRect.top - scrollRect.top + txScroll.scrollTop;
+            txScroll.scrollTo({ top: offset, behavior: 'smooth' });
         } else if (attempts++ < 12) {
             setTimeout(fineTune, 50);
         }
