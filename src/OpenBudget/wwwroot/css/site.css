@@ -677,6 +677,37 @@ a, .btn-link {
     padding: 0.5rem;
 }
 
+/* ---- Recurring layout primitives ----
+   Names hoisted from `style="..."` attributes that were repeating across pages with
+   minor drift (different widths, half-different bleed, etc.). Add new utilities here
+   when an inline style appears in two or more places — that's the signal it deserves
+   a name. */
+
+/* Right-aligned numeric input cell used in budget tables (BudgetEdit, BudgetWizard).
+   The min-width keeps thousands-separators legible without making the column gigantic. */
+.amount-input {
+    min-width: 80px;
+    text-align: right;
+}
+
+/* Filter / picker inputs in toolbars. Three sizes so adjacent inputs read as a rhythm
+   instead of drifting between 140/160/200/220/280 like before. Pick the size by the
+   widest realistic content: -sm = number/date, -md = single-line select, -lg = text
+   search. */
+.filter-input-sm { max-width: 160px; }
+.filter-input-md { max-width: 220px; }
+.filter-input-lg { max-width: 280px; }
+
+/* Sticky page toolbars (Index dashboard, Browse) extend their background across the
+   page gutter via negative margins so the border-bottom feels page-wide once the bar
+   is stuck. The numbers match `.container`'s default horizontal padding (0.5rem). */
+.bleed-sticky {
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+}
+
 /* ---- Vertical spacing rhythm ----
    We don't have a custom spacing utility — these are just the conventions used across
    pages so the eye reads consistent rhythm instead of "amateurish bumps." When adding

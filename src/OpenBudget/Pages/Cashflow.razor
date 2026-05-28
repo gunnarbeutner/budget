@@ -90,7 +90,7 @@
                     @L["BalanceFloor_Label"]
                 </label>
             </div>
-            <div class="input-group input-group-sm" style="max-width: 140px;">
+            <div class="input-group input-group-sm filter-input-sm">
                 <span class="input-group-text">€</span>
                 <input type="number" class="form-control"
                        step="50"
@@ -139,15 +139,15 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                             var idx = i;
                             var entry = whatIfs[idx];
                             <div class="d-flex gap-2 mb-2 align-items-center flex-wrap">
-                                <input type="date" class="form-control form-control-sm" style="max-width: 160px;"
+                                <input type="date" class="form-control form-control-sm filter-input-sm"
                                        min="@MinWhatIfDateStr" max="@MaxWhatIfDateStr"
                                        @bind="entry.Date" @bind:after="OnWhatIfChanged" />
-                                <div class="input-group input-group-sm" style="max-width: 160px;">
+                                <div class="input-group input-group-sm filter-input-sm">
                                     <span class="input-group-text">€</span>
                                     <input type="number" step="1" class="form-control"
                                            @bind="entry.Amount" @bind:after="OnWhatIfChanged" />
                                 </div>
-                                <select class="form-select form-select-sm" style="max-width: 220px;"
+                                <select class="form-select form-select-sm filter-input-md"
                                         @bind="entry.CategoryKey" @bind:after="OnWhatIfChanged">
                                     <option value="">@L["WhatIf_NoCategory"]</option>
                                     @if (incomeCategories.Any(c => c.IsAggregateRow))

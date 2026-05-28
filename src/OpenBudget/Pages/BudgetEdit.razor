@@ -131,16 +131,14 @@
                         <td class="text-end">
                             @if (readOnly)
                             {
-                                <input type="number" class="form-control form-control-sm text-body-secondary"
-                                       style="min-width: 80px; text-align: right;"
+                                <input type="number" class="form-control form-control-sm text-body-secondary amount-input"
                                        step="0.01"
                                        readonly
                                        value="@monthsForDisplay[idx].ToString("0.##")" />
                             }
                             else if (isShadowRow)
                             {
-                                <input type="number" class="form-control form-control-sm"
-                                       style="min-width: 80px; text-align: right;"
+                                <input type="number" class="form-control form-control-sm amount-input"
                                        step="0.01"
                                        placeholder="0"
                                        @bind="shadowEntries[node.Key][idx]"
@@ -148,8 +146,7 @@
                             }
                             else
                             {
-                                <input type="number" class="form-control form-control-sm"
-                                       style="min-width: 80px; text-align: right;"
+                                <input type="number" class="form-control form-control-sm amount-input"
                                        step="0.01"
                                        @bind="editingEntries[node.Key][idx]"
                                        @bind:after="OnMonthsChanged" />
