@@ -21,6 +21,7 @@ builder.Services.AddScoped<BudgetService>();
 builder.Services.AddScoped<FreshnessService>();
 builder.Services.AddScoped<TransactionQueryService>();
 builder.Services.AddScoped<BrowseService>();
+builder.Services.AddScoped<ProjectTimeState>();
 builder.Services.AddSingleton<MoneyMoneyImportService>();
 
 // Localization: resx files live under /Resources mirroring the namespace

@@ -61,6 +61,9 @@
   <data name="PageTitle" xml:space="preserve">
     <value>Budgets</value>
   </data>
+  <data name="Compare_YearMismatch" xml:space="preserve">
+    <value>Dieses Budget gilt für {0}, nicht für {1}.</value>
+  </data>
   <data name="NotFound_Heading" xml:space="preserve">
     <value>Nicht gefunden</value>
   </data>

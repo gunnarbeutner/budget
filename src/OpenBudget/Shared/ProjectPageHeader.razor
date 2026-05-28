@@ -2,17 +2,21 @@
 @using OpenBudget.Services
 @inject ProjectService ProjectService
 @inject NavigationManager Navigation
+@inject ProjectTimeState TimeState
 @inject IStringLocalizer<ProjectPageHeader> L
 
 @* Combined page-header for any project-scoped page: HomeLink + project selector +
-   inline tab strip (Browse / Budgets / Cashflow) + settings cog. On md+ everything
-   sits in one row to save vertical space; on narrower screens the tabs wrap below
-   the selector.
+   inline tab strip (Overview / Browse / Budgets / Cashflow) + settings cog. On md+
+   everything sits in one row to save vertical space; on narrower screens the tabs wrap
+   below the selector.
 
    The project name doubles as a switcher: click it and a dropdown lists the user's
    other projects, each linking to the same view but for that project. Uses
    <details>/<summary> so there's no JS dependency — clicking another link triggers
    navigation, which collapses the dropdown naturally.
+
+   Active marks the current tab; leave it null on the settings page (/projects/{id}),
+   where the cog becomes the active tab.
 
    Usage:
 
@@ -20,8 +24,7 @@
                           Active="ProjectTab.Cashflow"
                           Subtitle="@lastModified" />
 
-       <ProjectPageHeader ProjectId="@projectId" ProjectName="@name"
-                          ShowSettingsLink="false" />   // on the settings page itself
+       <ProjectPageHeader ProjectId="@projectId" ProjectName="@name" />   // settings page
 *@
 
 <div class="project-page-header d-flex flex-wrap align-items-center gap-2 mb-2">
@@ -73,8 +76,13 @@
     <nav class="nav nav-underline project-page-tabs" aria-label="@L["Aria_Sections"]">
         @* On narrow screens hide the tab labels — icons + aria-label keep them
            accessible and let the whole bar fit on a single row. *@
+        <a class="nav-link @(Active == ProjectTab.Overview ? "active" : "")"
+           href="@($"/projects/{ProjectId}/overview{MonthQuery}")" aria-label="@L["Tab_Overview"]">
+            <i class="bi bi-grid-1x2" aria-hidden="true"></i>
+            <span class="d-none d-md-inline ms-1">@L["Tab_Overview"]</span>
+        </a>
         <a class="nav-link @(Active == ProjectTab.Browse ? "active" : "")"
-           href="/projects/@ProjectId/browse" aria-label="@L["Tab_Browse"]">
+           href="@($"/projects/{ProjectId}/browse{MonthQuery}")" aria-label="@L["Tab_Browse"]">
             <i class="bi bi-list-ul" aria-hidden="true"></i>
             <span class="d-none d-md-inline ms-1">@L["Tab_Browse"]</span>
         </a>
@@ -88,14 +96,13 @@
             <i class="bi bi-graph-up" aria-hidden="true"></i>
             <span class="d-none d-md-inline ms-1">@L["Tab_Cashflow"]</span>
         </a>
-        @if (ShowSettingsLink)
-        {
-            <a class="nav-link project-page-tabs-settings"
-               href="/projects/@ProjectId"
-               title="@L["Tab_Settings_Tooltip"]" aria-label="@L["Tab_Settings_Tooltip"]">
-                <i class="bi bi-gear" aria-hidden="true"></i>
-            </a>
-        }
+        @* The settings cog reads as a secondary affordance on the data tabs, but on the
+           settings page itself (Active == null) it's the active tab — underlined like the rest. *@
+        <a class="nav-link project-page-tabs-settings @(Active == null ? "active" : "")"
+           href="/projects/@ProjectId"
+           title="@L["Tab_Settings_Tooltip"]" aria-label="@L["Tab_Settings_Tooltip"]">
+            <i class="bi bi-gear" aria-hidden="true"></i>
+        </a>
     </nav>
 </div>
 
@@ -109,16 +116,38 @@
     [Parameter, EditorRequired] public string? ProjectName { get; set; }
     /// <summary>The active primary tab, or null when on the settings page itself.</summary>
     [Parameter] public ProjectTab? Active { get; set; }
+    /// <summary>Current time anchor + period, forwarded to the Overview/Browse tabs so switching
+    /// between the two month-model views keeps the user on the same month. Only the pages that use
+    /// that model (Overview, Browse) pass these; from Budgets/Cashflow they stay null and the links
+    /// fall back to the current month.</summary>
+    [Parameter] public int? Year { get; set; }
+    [Parameter] public int? Month { get; set; }
+    [Parameter] public string? Period { get; set; }
     /// <summary>Small grey text shown next to the project name (e.g. "· BudgetName" on BudgetEdit).</summary>
     [Parameter] public RenderFragment? TitleSuffix { get; set; }
     /// <summary>Secondary line below the header (e.g. "Last modified ...", wizard mode label).</summary>
     [Parameter] public string? Subtitle { get; set; }
-    /// <summary>Hide the settings cog on the settings page itself (where it would point to where the user already is).</summary>
-    [Parameter] public bool ShowSettingsLink { get; set; } = true;
     /// <summary>Set to false on pages where HomeLink doesn't apply.</summary>
     [Parameter] public bool ShowHomeLink { get; set; } = true;
 
     private List<Project>? otherProjects;
+
+    /// <summary>"?year=&month=&period=" suffix for the month-model tabs, or "" when no anchor is
+    /// known. The Overview/Browse pages pass the anchor explicitly; from the year-only tabs
+    /// (Budgets/Cashflow) the params fall back to the shared ProjectTimeState so the links still
+    /// carry — and the destination URL still shows — the last month-model selection. Period is
+    /// omitted when it's the "month" default to keep the URL clean.</summary>
+    private string MonthQuery
+    {
+        get
+        {
+            var year = Year ?? TimeState.Year;
+            var month = Month ?? TimeState.Month;
+            if (year is null || month is null) return "";
+            var period = Period ?? TimeState.Period;
+            return $"?year={year}&month={month}" + (period is { Length: > 0 } p && p != "month" ? $"&period={p}" : "");
+        }
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -132,7 +161,8 @@
     {
         var url = Active switch
         {
-            ProjectTab.Browse => $"/projects/{projectId}/browse",
+            ProjectTab.Overview => $"/projects/{projectId}/overview{MonthQuery}",
+            ProjectTab.Browse => $"/projects/{projectId}/browse{MonthQuery}",
             ProjectTab.Budgets => $"/budgets?projectId={projectId}",
             ProjectTab.Cashflow => $"/cashflow?projectId={projectId}",
             // No Active = on the settings page; switching keeps you on settings for the new project.

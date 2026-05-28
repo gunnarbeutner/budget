@@ -720,23 +720,45 @@ a, .btn-link {
 }
 .project-page-tabs .nav-link.active {
     color: var(--bs-body-color, #212529);
-    font-weight: 500;
+    /* Keep the real font-weight at 400 (Bootstrap's nav-underline would bold the active link
+       to 700). A weight change resizes the label, and since the strip is right-anchored that
+       shifts the whole nav — and its icons — by a pixel on every tab change. */
+    font-weight: 400;
 }
 
-/* Settings cog is a secondary affordance, not a tab — drop the underline interaction
-   so it doesn't look like "active section" on hover. */
-.project-page-tabs-settings {
+/* Give the active label a heavier *look* without changing its width: text-shadow is painted,
+   not laid out, so there's no reflow. Applied to the label span only, so the icon stays crisp. */
+.project-page-tabs .nav-link.active span {
+    text-shadow: 0.4px 0 0 currentColor;
+}
+
+/* Settings cog: a secondary affordance on the data tabs (muted, no active underline on
+   hover), but on the settings page itself it carries .active and underlines like any other
+   tab. Only suppress the underline when it's NOT the active tab. */
+.project-page-tabs-settings:not(.active) {
     color: var(--bs-secondary, #6c757d) !important;
     --bs-nav-underline-link-active-color: transparent;
-}
-.project-page-tabs-settings::after,
-.project-page-tabs-settings.active {
     border-bottom-color: transparent !important;
 }
-.project-page-tabs-settings:hover {
+.project-page-tabs-settings:not(.active):hover {
     color: var(--bs-body-color, #212529) !important;
     background-color: rgba(0, 0, 0, 0.03);
     border-radius: 0.25rem;
+}
+
+/* PeriodNav heading (the month / year label). A touch smaller than a stock h5 so it
+   sits in better proportion with the small toolbar buttons and segmented control. */
+.period-nav-heading {
+    font-size: 1.1rem;
+}
+
+/* Keep the bar the same height in both modes so the row sits at a consistent vertical
+   position from page to page. Year-only mode (Budgets/Cashflow) lacks the segmented
+   control, which is a few px taller than the btn-sm buttons and otherwise sets the
+   full-mode height — without this floor its bar would come up short. The value matches
+   full mode: the ~35px segmented control + the bar's 0.5rem vertical padding. */
+.period-nav {
+    min-height: 2.6875rem;
 }
 
 /* Project selector: <details>/<summary> dressed up as a dropdown. No JS needed. */

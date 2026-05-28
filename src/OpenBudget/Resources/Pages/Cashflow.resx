@@ -61,6 +61,9 @@
   <data name="PageTitle" xml:space="preserve">
     <value>Cashflow</value>
   </data>
+  <data name="Budget_YearMismatch" xml:space="preserve">
+    <value>This budget is for {0}, not {1}.</value>
+  </data>
   <data name="PageTitle_WithProject" xml:space="preserve">
     <value>Cashflow — {0}</value>
   </data>

@@ -1,0 +1,211 @@
+@using System.Globalization
+@using OpenBudget.Services
+@inject IJSRuntime JS
+@inject IStringLocalizer<PeriodNav> L
+
+@* Shared sticky time-navigation strip: prev / next / today, with the current period as a
+   heading in the middle. The single source of time-nav chrome across the app, so every view
+   shares one vocabulary instead of each rolling its own.
+
+   Two modes:
+   • Full (default): a month-YTD-year segmented control + a clickable month heading. Used by
+     the dashboard, project Overview, and Browse — the views that work at month granularity.
+   • Year-only (YearOnly=true): no segmented control; the chevrons step through Years and the
+     heading is the bare year. Used by Budgets / Cashflow, which are inherently annual.
+
+   Controlled component: the parent owns Anchor + Period and reloads its data in OnChanged.
+   We never mutate the parameters locally — every interaction reports the *next* state and
+   waits for the parent to feed it back down. In year-only mode OnChanged reports
+   (year, 1, "year") and only Year is meaningful.
+
+   ShowMonthPicker turns the heading into a clickable <input type="month"> (full mode only).
+   Leading / Trailing are page-specific slots (e.g. a rail toggle on the left, a Sources link
+   pinned right).
+
+   Usage:
+
+       <PeriodNav Anchor="anchor" Period="period" ShowMonthPicker="true" OnChanged="OnPeriodChanged" />
+       <PeriodNav Anchor="(selectedYear, 1)" Period="@("year")" YearOnly="true"
+                  Years="availableYears" OnChanged="OnYearChanged" />
+*@
+
+<div class="period-nav d-flex flex-wrap mb-2 align-items-center gap-2 sticky-top bg-body py-1 bleed-sticky"
+     style="z-index: 1020;">
+    @if (Leading != null)
+    {
+        @Leading
+    }
+
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            @onclick="() => Step(-1)" aria-label="@L["Aria_Previous"]"
+            disabled="@PrevDisabled">
+        <i class="bi bi-chevron-left" aria-hidden="true"></i>
+    </button>
+
+    @if (YearOnly)
+    {
+        @* Same wording as full mode's "year" period (Heading_Year) so the year label reads
+           identically across all views. *@
+        <h5 class="period-nav-heading mb-0">@L["Heading_Year", Anchor.Year]</h5>
+    }
+    else if (ShowMonthPicker)
+    {
+        <h5 class="period-nav-heading mb-0 d-inline-flex align-items-center gap-2 position-relative"
+            role="button" tabindex="0" style="cursor: pointer;"
+            title="@L["Title_PickMonth"]"
+            @onclick="OpenMonthPicker" @onkeydown="OnHeadingKey">
+            <span>@HeadingText</span>
+            <input @ref="monthInputRef" type="month"
+                   style="position: absolute; left: 50%; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0;"
+                   max="@MaxMonthValue"
+                   value="@MonthValue" @onchange="OnMonthInput"
+                   tabindex="-1" aria-hidden="true" />
+        </h5>
+    }
+    else
+    {
+        <span class="text-body-secondary small browse-anchor-label">@HeadingText</span>
+    }
+
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            @onclick="() => Step(1)" aria-label="@L["Aria_Next"]"
+            disabled="@NextDisabled">
+        <i class="bi bi-chevron-right" aria-hidden="true"></i>
+    </button>
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            @onclick="TodayClicked" disabled="@TodayDisabled">@L["Button_Today"]</button>
+
+    @if (!YearOnly)
+    {
+        <div class="segmented" role="group" aria-label="@L["Aria_Period"]">
+            <button type="button" class="btn @(Period == "month" ? "active" : "")"
+                    @onclick='() => SetPeriod("month")'>@L["Button_Month"]</button>
+            <button type="button" class="btn @(Period == "ytd" ? "active" : "")"
+                    @onclick='() => SetPeriod("ytd")'>@L["Button_YTD"]</button>
+            <button type="button" class="btn @(Period == "year" ? "active" : "")"
+                    @onclick='() => SetPeriod("year")'>@L["Button_Year"]</button>
+        </div>
+    }
+
+    @if (Trailing != null)
+    {
+        <div class="ms-auto d-flex align-items-center gap-2">
+            @Trailing
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public (int Year, int Month) Anchor { get; set; }
+    [Parameter, EditorRequired] public string Period { get; set; } = "month";
+
+    /// <summary>Fired with the next (year, month, period) after any interaction. The parent
+    /// stores it and reloads, then feeds the new values back as parameters.</summary>
+    [Parameter] public EventCallback<(int Year, int Month, string Period)> OnChanged { get; set; }
+
+    /// <summary>Render the heading as a clickable month picker rather than a plain label (full mode only).</summary>
+    [Parameter] public bool ShowMonthPicker { get; set; }
+
+    /// <summary>Year-only mode: drop the period segmented control and step through <see cref="Years"/>.</summary>
+    [Parameter] public bool YearOnly { get; set; }
+
+    /// <summary>The selectable years in year-only mode; the chevrons step between adjacent entries.</summary>
+    [Parameter] public IReadOnlyList<int>? Years { get; set; }
+
+    [Parameter] public RenderFragment? Leading { get; set; }
+    [Parameter] public RenderFragment? Trailing { get; set; }
+
+    private ElementReference monthInputRef;
+
+    private List<int> SortedYears => Years?.OrderBy(y => y).ToList() ?? new List<int>();
+
+    private string HeadingText
+    {
+        get
+        {
+            var d = new DateTime(Anchor.Year, Anchor.Month, 1);
+            return Period switch
+            {
+                "year" => L["Heading_Year", Anchor.Year].Value,
+                "ytd" => L["Heading_YTD", d.ToString("MMMM yyyy")].Value,
+                _ => d.ToString("MMMM yyyy")
+            };
+        }
+    }
+
+    private string MonthValue => $"{Anchor.Year:D4}-{Anchor.Month:D2}";
+    private string MaxMonthValue
+    {
+        get { var now = DateTime.Now; return $"{now.Year:D4}-{now.Month:D2}"; }
+    }
+
+    // The adjacent selectable year in the given direction, or null at the ends / when the
+    // current year isn't in the list. Year-only mode steps between list entries (not raw ±1)
+    // so it never lands on a year with no data, mirroring the old <select>.
+    private int? AdjacentYear(int direction)
+    {
+        var ys = SortedYears;
+        var idx = ys.IndexOf(Anchor.Year);
+        if (idx < 0) return null;
+        var ni = idx + direction;
+        return ni >= 0 && ni < ys.Count ? ys[ni] : (int?)null;
+    }
+
+    private bool PrevDisabled => YearOnly && AdjacentYear(-1) is null;
+    private bool NextDisabled => YearOnly
+        ? AdjacentYear(1) is null
+        : Anchoring.IsAtMax(Anchor, Period, DateTime.Now);
+    private bool TodayDisabled => YearOnly
+        ? !(SortedYears.Contains(DateTime.Now.Year) && DateTime.Now.Year != Anchor.Year)
+        : Anchoring.IsToday(Anchor, DateTime.Now);
+
+    private async Task Step(int direction)
+    {
+        if (YearOnly)
+        {
+            if (AdjacentYear(direction) is { } yr)
+                await OnChanged.InvokeAsync((yr, 1, "year"));
+            return;
+        }
+        var next = Anchoring.Step(Anchor, Period, direction, DateTime.Now);
+        if (next == Anchor) return;
+        await OnChanged.InvokeAsync((next.Year, next.Month, Period));
+    }
+
+    private async Task TodayClicked()
+    {
+        var now = DateTime.Now;
+        if (YearOnly)
+        {
+            if (SortedYears.Contains(now.Year) && now.Year != Anchor.Year)
+                await OnChanged.InvokeAsync((now.Year, 1, "year"));
+            return;
+        }
+        if (Anchoring.IsToday(Anchor, now)) return;
+        await OnChanged.InvokeAsync((now.Year, now.Month, Period));
+    }
+
+    private async Task SetPeriod(string value)
+    {
+        if (value == Period) return;
+        await OnChanged.InvokeAsync((Anchor.Year, Anchor.Month, value));
+    }
+
+    private async Task OnMonthInput(ChangeEventArgs e)
+    {
+        if (DateTime.TryParseExact(e.Value?.ToString(), "yyyy-MM",
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+        {
+            var clamped = Anchoring.Clamp((dt.Year, dt.Month), DateTime.Now);
+            if (clamped == Anchor) return;
+            await OnChanged.InvokeAsync((clamped.Year, clamped.Month, Period));
+        }
+    }
+
+    private async Task OpenMonthPicker() => await JS.InvokeVoidAsync("showPickerOn", monthInputRef);
+
+    private async Task OnHeadingKey(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " " or "Spacebar") await OpenMonthPicker();
+    }
+}

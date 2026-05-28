@@ -10,6 +10,7 @@
 @inject ProjectService ProjectService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject ProjectTimeState TimeState
 @inject IStringLocalizer<Browse> L
 @implements IDisposable
 
@@ -25,41 +26,20 @@
 }
 
 <ProjectPageHeader ProjectId="@ProjectId" ProjectName="@(project?.Name ?? "")"
-                   Active="ProjectTab.Browse" />
+                   Active="ProjectTab.Browse"
+                   Year="anchor.Year" Month="anchor.Month" Period="@period" />
 
-@* Period nav, sticky so the user can re-anchor while scrolling a long tx list.
-   No negative top margin — the spacing above mirrors what every other project page
-   has between its header and first content row (driven by ProjectPageHeader's
-   own mb-2). py-1 + mb-2 keep the strip compact below. *@
-<div class="d-flex flex-wrap mb-2 align-items-center gap-2 sticky-top bg-body py-1 bleed-sticky"
-     style="z-index: 1020;">
-    @* Mobile-only toggle for the left rail. On lg+ the rail is part of the grid; below lg
-       it slides in as a drawer, opened via this button. *@
-    <button type="button" class="btn btn-sm btn-outline-secondary d-lg-none"
-            @onclick="ToggleRail" aria-label="@L["Aria_ToggleTree"]" aria-expanded="@railOpen.ToString().ToLower()">
-        <i class="bi bi-list" aria-hidden="true"></i>
-    </button>
-
-    <button type="button" class="btn btn-sm btn-outline-secondary"
-            @onclick="() => StepAnchor(-1)" aria-label="@L["Aria_Previous"]">
-        <i class="bi bi-chevron-left" aria-hidden="true"></i>
-    </button>
-    <span class="text-body-secondary small browse-anchor-label">@AnchorHeading</span>
-    <button type="button" class="btn btn-sm btn-outline-secondary"
-            @onclick="() => StepAnchor(1)" aria-label="@L["Aria_Next"]" disabled="@IsAtMaxAnchor">
-        <i class="bi bi-chevron-right" aria-hidden="true"></i>
-    </button>
-    <button type="button" class="btn btn-sm btn-outline-secondary"
-            @onclick="GoToToday" disabled="@IsTodayAnchor">@L["Button_Today"]</button>
-    <div class="segmented" role="group" aria-label="@L["Aria_Period"]">
-        <button type="button" class="btn @(period == "month" ? "active" : "")"
-                @onclick='() => SetPeriod("month")'>@L["Button_Month"]</button>
-        <button type="button" class="btn @(period == "ytd" ? "active" : "")"
-                @onclick='() => SetPeriod("ytd")'>@L["Button_YTD"]</button>
-        <button type="button" class="btn @(period == "year" ? "active" : "")"
-                @onclick='() => SetPeriod("year")'>@L["Button_Year"]</button>
-    </div>
-</div>
+@* Shared period nav, sticky so the user can re-anchor while scrolling a long tx list.
+   The mobile-only left-rail toggle rides in the Leading slot (on lg+ the rail is part of
+   the grid; below lg it slides in as a drawer, opened via this button). *@
+<PeriodNav Anchor="anchor" Period="@period" ShowMonthPicker="true" OnChanged="OnPeriodChanged">
+    <Leading>
+        <button type="button" class="btn btn-sm btn-outline-secondary d-lg-none"
+                @onclick="ToggleRail" aria-label="@L["Aria_ToggleTree"]" aria-expanded="@railOpen.ToString().ToLower()">
+            <i class="bi bi-list" aria-hidden="true"></i>
+        </button>
+    </Leading>
+</PeriodNav>
 
 <div class="browse-layout">
     @if (railOpen)
@@ -479,7 +459,10 @@
     private void ReadStateFromQuery()
     {
         var now = DateTime.Now;
-        anchor = (now.Year, now.Month);
+        // Seed from the remembered selection (survives a detour through Budgets/Cashflow),
+        // falling back to the current month on a fresh session.
+        anchor = (TimeState.Year ?? now.Year, TimeState.Month ?? now.Month);
+        period = TimeState.Period ?? "month";
         var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
 
         if (query.TryGetValue("year", out var y) && int.TryParse(y, out var py) && py >= 1900 && py <= now.Year)
@@ -494,6 +477,8 @@
 
         if (query.TryGetValue("period", out var p) && p.ToString() is var pv && (pv == "month" || pv == "ytd" || pv == "year"))
             period = pv;
+
+        RememberTimeState();
 
         if (query.TryGetValue("sel", out var s) && !string.IsNullOrWhiteSpace(s))
         {
@@ -581,57 +566,22 @@
         }
     }
 
-    private bool IsAtMaxAnchor
+    private async Task OnPeriodChanged((int Year, int Month, string Period) sel)
     {
-        get
-        {
-            var now = DateTime.Now;
-            if (period == "year") return anchor.Year >= now.Year;
-            return anchor.Year > now.Year || (anchor.Year == now.Year && anchor.Month >= now.Month);
-        }
-    }
-
-    private bool IsTodayAnchor
-    {
-        get
-        {
-            var now = DateTime.Now;
-            return anchor.Year == now.Year && anchor.Month == now.Month;
-        }
-    }
-
-    private async Task StepAnchor(int direction)
-    {
-        var dt = new DateTime(anchor.Year, anchor.Month, 1);
-        dt = period == "year" ? dt.AddYears(direction) : dt.AddMonths(direction);
-        var now = DateTime.Now;
-        var max = new DateTime(now.Year, now.Month, 1);
-        if (dt > max) dt = max;
-        if (dt.Year < 1900) return;
-        if (dt.Year == anchor.Year && dt.Month == anchor.Month) return;
-        anchor = (dt.Year, dt.Month);
+        if (sel.Year == anchor.Year && sel.Month == anchor.Month && sel.Period == period) return;
+        anchor = (sel.Year, sel.Month);
+        period = sel.Period;
+        RememberTimeState();
         UpdateUrl();
         await ReloadHighlightAsync();
         await JumpListToAnchorAsync();
     }
 
-    private async Task GoToToday()
+    private void RememberTimeState()
     {
-        var now = DateTime.Now;
-        if (anchor.Year == now.Year && anchor.Month == now.Month) return;
-        anchor = (now.Year, now.Month);
-        UpdateUrl();
-        await ReloadHighlightAsync();
-        await JumpListToAnchorAsync();
-    }
-
-    private async Task SetPeriod(string value)
-    {
-        if (period == value) return;
-        period = value;
-        UpdateUrl();
-        await ReloadHighlightAsync();
-        await JumpListToAnchorAsync();
+        TimeState.Year = anchor.Year;
+        TimeState.Month = anchor.Month;
+        TimeState.Period = period;
     }
 
     /// <summary>

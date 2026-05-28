@@ -31,25 +31,19 @@ else
     <PageHeader Title="@L["Heading_Budgets"]" />
 }
 
+<PeriodNav Anchor="(selectedYear, 1)" Period="@("year")" YearOnly="true"
+           Years="availableYears" OnChanged="OnYearChanged" />
+
 <div class="row mb-4">
     <div class="col-md-12">
         <div class="card">
             <div class="card-body">
                 <div class="row">
-                    <div class="col-md-6">
-                        <label class="form-label">@L["Form_YearLabel"]</label>
-                        <select class="form-select" value="@selectedYear" @onchange="OnYearChanged">
-                            @if (availableYears != null)
-                            {
-                                foreach (var y in availableYears)
-                                {
-                                    <option value="@y">@y</option>
-                                }
-                            }
-                        </select>
-                    </div>
-                    <div class="col-md-6">
+                    <div class="col-md-12">
                         <label class="form-label">@L["Form_CompareWithBudgetLabel"]</label>
+                        @{
+                            var selectedBudget = availableBudgets?.FirstOrDefault(b => b.Id == selectedCompareBudgetId);
+                        }
                         @* flex-wrap so the action buttons drop to a second row instead of
                            squeezing the budget selector to a sliver (or pushing the last
                            button out of the card). min-width keeps the select readable
@@ -67,9 +61,6 @@ else
                                 }
                             </select>
                             <a class="btn btn-primary text-nowrap" href="/budgets/wizard?projectId=@selectedBudgetId">@L["Button_NewBudget"]</a>
-                            @{
-                                var selectedBudget = availableBudgets?.FirstOrDefault(b => b.Id == selectedCompareBudgetId);
-                            }
                             @if (selectedBudget != null)
                             {
                                 <a class="btn btn-outline-primary text-nowrap" href="/budgets/@selectedBudget.Id/edit">@L["Button_Edit"]</a>
@@ -83,6 +74,13 @@ else
                                         @onclick="() => ShowDeleteBudgetDialog(selectedBudget)">@L["Button_Delete"]</button>
                             }
                         </div>
+                        @if (selectedBudget != null && selectedBudget.Year != selectedYear)
+                        {
+                            <div class="small text-body-secondary mt-2">
+                                <i class="bi bi-exclamation-triangle-fill text-warning" aria-hidden="true"></i>
+                                @L["Compare_YearMismatch", selectedBudget.Year, selectedYear]
+                            </div>
+                        }
                     </div>
                 </div>
             </div>
@@ -631,27 +629,25 @@ else
         }
     }
 
-    private async Task OnYearChanged(ChangeEventArgs e)
+    private async Task OnYearChanged((int Year, int Month, string Period) sel)
     {
-        if (int.TryParse(e.Value?.ToString(), out var y))
+        if (sel.Year == selectedYear) return;
+        selectedYear = sel.Year;
+        // Re-pick the active budget for the new year unless the user already picked one
+        // that matches it.
+        if (availableBudgets != null)
         {
-            selectedYear = y;
-            // Re-pick the active budget for the new year unless the user already picked one
-            // that matches it.
-            if (availableBudgets != null)
+            var currentMatch = availableBudgets.FirstOrDefault(b => b.Id == selectedCompareBudgetId);
+            if (currentMatch == null || currentMatch.Year != selectedYear)
             {
-                var currentMatch = availableBudgets.FirstOrDefault(b => b.Id == selectedCompareBudgetId);
-                if (currentMatch == null || currentMatch.Year != selectedYear)
-                {
-                    selectedCompareBudgetId = availableBudgets
-                        .FirstOrDefault(b => b.Year == selectedYear && b.IsActive)?.Id ?? 0;
-                }
+                selectedCompareBudgetId = availableBudgets
+                    .FirstOrDefault(b => b.Year == selectedYear && b.IsActive)?.Id ?? 0;
             }
-            // New scope = fresh auto-default; user toggles are scoped to (budget, year).
-            expandedVarianceKeys.Clear();
-            sessionAutoDefaultApplied = false;
-            await LoadCategoryTrends();
         }
+        // New scope = fresh auto-default; user toggles are scoped to (budget, year).
+        expandedVarianceKeys.Clear();
+        sessionAutoDefaultApplied = false;
+        await LoadCategoryTrends();
     }
 
     private async Task OnCompareBudgetChanged(ChangeEventArgs e)

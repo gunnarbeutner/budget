@@ -13,3 +13,90 @@
     background-color: var(--card-accent, var(--bs-secondary));
     flex-shrink: 0;
 }
+
+/* ---- Portfolio list: one slim row per project. Replaces the old grid of full-detail
+   cards — per-project detail now lives on the Overview tab, so a row only has to convey
+   status-at-a-glance and link inward. The hover lift + status accent + rounded chrome
+   echo .project-card / .tx-row so the dashboard reads as the same app, not a new screen. */
+.portfolio-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.portfolio-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(9rem, auto) auto;
+    align-items: center;
+    gap: 0.4rem 1.25rem;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid var(--bs-border-color);
+    border-left: 3px solid var(--card-accent, var(--bs-border-color));
+    border-radius: 0.75rem;
+    background-color: var(--bs-body-bg);
+    transition: box-shadow .15s ease, border-color .15s ease;
+}
+
+.portfolio-row.status-success { --card-accent: var(--bs-success); }
+.portfolio-row.status-warning { --card-accent: var(--bs-warning); }
+.portfolio-row.status-danger  { --card-accent: var(--bs-danger);  }
+
+.portfolio-row:hover {
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+.portfolio-identity {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.portfolio-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.portfolio-sub {
+    font-size: 0.8rem;
+    margin-top: 0.1rem;
+}
+
+.portfolio-health {
+    text-align: right;
+}
+
+/* Badge + actions must sit above the name's stretched-link overlay to stay
+   hoverable / clickable; the overlay covers the rest of the row for jump-in. */
+.portfolio-badge {
+    position: relative;
+    z-index: 2;
+}
+
+.portfolio-actions {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    justify-self: end;
+}
+
+/* Phones: drop the dedicated health column to a full-width line under the identity. */
+@media (max-width: 575.98px) {
+    .portfolio-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+        row-gap: 0.5rem;
+    }
+    .portfolio-health {
+        grid-column: 1 / -1;
+        text-align: left;
+    }
+    .portfolio-actions {
+        grid-column: 2;
+        grid-row: 1;
+    }
+}

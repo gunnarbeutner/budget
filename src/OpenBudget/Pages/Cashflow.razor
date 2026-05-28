@@ -32,25 +32,14 @@ else
     <PageHeader Title="@L["Heading_Cashflow"]" />
 }
 
+<PeriodNav Anchor="(selectedYear, 1)" Period="@("year")" YearOnly="true"
+           Years="availableYears" OnChanged="OnYearChanged" />
+
 @* Grid widths are tuned for the income-projection segmented control's German labels
-   ("Letzten Monat wiederholen" is ~25 chars wide). Year only ever holds a 4-digit
-   value so it gets the narrowest column; Budget needs a bit more for the name; the
+   ("Letzten Monat wiederholen" is ~25 chars wide). Budget needs room for the name; the
    rest goes to the projection picker so its three buttons fit on one row. *@
 <div class="row mb-4">
-    <div class="col-md-2">
-        <label class="form-label">@L["Label_Year"]</label>
-        <select class="form-select" @bind="selectedYear" @bind:after="OnYearChanged">
-            @if (availableYears != null)
-            {
-                foreach (var y in availableYears)
-                {
-                    <option value="@y">@y</option>
-                }
-            }
-        </select>
-    </div>
-
-    <div class="col-md-3">
+    <div class="col-md-4">
         <label class="form-label">@L["Label_BudgetOptional"]</label>
         <select class="form-select" @bind="selectedBudgetId" @bind:after="OnBudgetChanged">
             <option value="0">@L["Option_NoBudget"]</option>
@@ -62,9 +51,19 @@ else
                 }
             }
         </select>
+        @{
+            var pickedBudget = availableBudgets?.FirstOrDefault(b => b.Id == selectedBudgetId);
+        }
+        @if (pickedBudget != null && pickedBudget.Year != selectedYear)
+        {
+            <div class="small text-body-secondary mt-1">
+                <i class="bi bi-exclamation-triangle-fill text-warning" aria-hidden="true"></i>
+                @L["Budget_YearMismatch", pickedBudget.Year, selectedYear]
+            </div>
+        }
     </div>
 
-    <div class="col-md-7">
+    <div class="col-md-8">
         @{
             var projectionHelp = incomeProjectionMode switch
             {
@@ -906,8 +905,10 @@ else
         UpdateUrl();
     }
 
-    private async Task OnYearChanged()
+    private async Task OnYearChanged((int Year, int Month, string Period) sel)
     {
+        if (sel.Year == selectedYear) return;
+        selectedYear = sel.Year;
         // Re-pick the active budget for the new year unless the user already chose one
         // for it explicitly.
         var currentMatch = availableBudgets?.FirstOrDefault(b => b.Id == selectedBudgetId);
