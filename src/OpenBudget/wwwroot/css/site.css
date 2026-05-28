@@ -665,3 +665,14 @@ a, .btn-link {
         align-self: start;
     }
 }
+
+/* Scrollable, lightly-framed container for the checkbox tree shown in tracking-config
+   dialogs (ProjectDetail "Configure Tracking" and Budgets categories card). Shared so
+   the two stay visually identical. */
+.tracking-tree-scroll {
+    max-height: 500px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    padding: 0.5rem;
+}

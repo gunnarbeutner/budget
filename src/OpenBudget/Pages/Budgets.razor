@@ -253,7 +253,7 @@
             @if (categoriesExpanded)
             {
                 <div class="card-body">
-                    <div style="max-height: 500px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.25rem; padding: 0.5rem;">
+                    <div class="tracking-tree-scroll">
                         @if (allAvailableCategories != null && allActualCategories != null)
                         {
                             var filteredGroupIds = allAvailableCategories
@@ -291,28 +291,19 @@
     </div>
 </div>
 
-@if (budgetPendingDelete != null)
-{
-    <div class="modal show d-block" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">@L["Modal_DeleteBudget_Title"]</h5>
-                    <button type="button" class="btn-close" @onclick="HideDeleteBudgetDialog"></button>
-                </div>
-                <div class="modal-body">
-                    <p>@L["Modal_DeleteBudget_Body", budgetPendingDelete.Year, string.IsNullOrEmpty(budgetPendingDelete.Notes) ? "" : L["Modal_DeleteBudget_Notes", budgetPendingDelete.Notes].Value]</p>
-                    <p class="text-muted small mb-0">@L["Modal_DeleteBudget_Warning"]</p>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="HideDeleteBudgetDialog">@L["Button_Cancel"]</button>
-                    <button class="btn btn-danger" @onclick="ConfirmDeleteBudget">@L["Button_Delete"]</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="modal-backdrop show"></div>
-}
+<Modal Show="@(budgetPendingDelete != null)" Title="@L["Modal_DeleteBudget_Title"]" OnClose="@HideDeleteBudgetDialog">
+    <ChildContent>
+        @if (budgetPendingDelete != null)
+        {
+            <p>@L["Modal_DeleteBudget_Body", budgetPendingDelete.Year, string.IsNullOrEmpty(budgetPendingDelete.Notes) ? "" : L["Modal_DeleteBudget_Notes", budgetPendingDelete.Notes].Value]</p>
+            <p class="text-muted small mb-0">@L["Modal_DeleteBudget_Warning"]</p>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-secondary" @onclick="HideDeleteBudgetDialog">@L["Button_Cancel"]</button>
+        <button class="btn btn-danger" @onclick="ConfirmDeleteBudget">@L["Button_Delete"]</button>
+    </Footer>
+</Modal>
 
 @code {
     private List<CategoryGroupWithChildCount>? allCategories;

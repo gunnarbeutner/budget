@@ -340,182 +340,133 @@ else
 
 }
 
-@if (showDeleteDialog)
-{
-    <div class="modal show d-block" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">@L["Modal_DeleteProject_Title"]</h5>
-                    <button type="button" class="btn-close" @onclick="HideDeleteDialog"></button>
-                </div>
-                <div class="modal-body">
-                    <p>@L["Modal_DeleteProject_Body_Before"]<strong>@budget?.Name</strong>@L["Modal_DeleteProject_Body_After"]</p>
-                    <p class="text-muted small mb-0">@L["Modal_DeleteProject_Warning"]</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="HideDeleteDialog">@L["Button_Cancel"]</button>
-                    <button type="button" class="btn btn-danger" @onclick="DeleteProject">@L["Button_Delete"]</button>
-                </div>
-            </div>
+<Modal Show="@showDeleteDialog" Title="@L["Modal_DeleteProject_Title"]" OnClose="@HideDeleteDialog">
+    <ChildContent>
+        <p>@L["Modal_DeleteProject_Body_Before"]<strong>@budget?.Name</strong>@L["Modal_DeleteProject_Body_After"]</p>
+        <p class="text-muted small mb-0">@L["Modal_DeleteProject_Warning"]</p>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="HideDeleteDialog">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-danger" @onclick="DeleteProject">@L["Button_Delete"]</button>
+    </Footer>
+</Modal>
+
+<Modal Show="@showTrackingDialog" Title="@L["Modal_ConfigureTracking_Title"]" SizeClass="modal-xl" OnClose="@HideTrackingDialog">
+    <ChildContent>
+        <p class="text-muted">
+            @L["Modal_ConfigureTracking_Description"]
+        </p>
+
+        <div class="tracking-tree-scroll">
+            @if (allAvailableCategories != null && allActualCategories != null)
+            {
+                // Treat any group whose parent is outside the filtered subset as a render
+                // root, since IsRootCategory only matches MoneyMoney's top-level groups and
+                // the project might be scoped to a sub-tree.
+                var filteredGroupIds = allAvailableCategories
+                    .Where(c => c.ItemType == CategoryItemType.Group)
+                    .Select(c => c.Id)
+                    .ToHashSet();
+                @foreach (var rootCat in allAvailableCategories
+                    .Where(c => c.ItemType == CategoryItemType.Group
+                        && !filteredGroupIds.Contains(c.ParentCategoryGroupId ?? -1))
+                    .OrderBy(c => c.CategoryGroup.Name))
+                {
+                    <CategoryTree
+                        CategoryGroup="@rootCat"
+                        Level="0"
+                        RenderMode="CategoryTreeRenderMode.Checkbox"
+                        ParentSelected="false"
+                        SelectedCategoryGroupIds="@selectedTrackingGroupIds"
+                        SelectedCategoryIds="@selectedTrackingCategoryIds"
+                        OnCategoryGroupToggle="@HandleTrackingGroupToggle"
+                        OnCategoryToggle="@HandleTrackingCategoryToggle"
+                        AllCategories="@allAvailableCategories"
+                        ActualCategories="@allActualCategories" />
+                }
+            }
         </div>
-    </div>
-    <div class="modal-backdrop show"></div>
-}
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="HideTrackingDialog">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-primary" @onclick="SaveTrackingConfiguration">@L["Button_Save"]</button>
+    </Footer>
+</Modal>
 
-@if (showTrackingDialog)
-{
-    <div class="modal show d-block" tabindex="-1">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">@L["Modal_ConfigureTracking_Title"]</h5>
-                    <button type="button" class="btn-close" @onclick="HideTrackingDialog"></button>
+<Modal Show="@showAddAccountDialog" Title="@L["Modal_AddAccount_Title"]" SizeClass="modal-lg" OnClose="@HideAddAccountDialog">
+    <ChildContent>
+        @if (allAccounts == null || accountAssignments == null || allAccountGroups == null)
+        {
+            <p><em>@L["Status_LoadingAccounts"]</em></p>
+        }
+        else
+        {
+            var assignedIds = accountAssignments.Select(a => a.AccountId).ToHashSet();
+            var unassigned = allAccounts.Where(a => !assignedIds.Contains(a.Id)).ToList();
+            if (!unassigned.Any())
+            {
+                <p class="text-muted mb-0">@L["AddAccount_AllAssigned"]</p>
+            }
+            else
+            {
+                <div class="mb-3">
+                    <label class="form-label">@L["Form_AccountLabel"]</label>
+                    <TreePicker TId="long"
+                                Nodes="@BuildAccountPickerNodes(allAccountGroups, unassigned)"
+                                SelectedId="@addAccountSelectedId"
+                                SelectedIdChanged="@(id => addAccountSelectedId = id)" />
                 </div>
-                <div class="modal-body">
-                    <p class="text-muted">
-                        @L["Modal_ConfigureTracking_Description"]
-                    </p>
+                <div class="mb-3">
+                    <label class="form-label">@L["Form_ScopeLabel"]</label>
+                    <div class="segmented segmented-block" role="group">
+                        <input type="radio" class="btn-check" name="addAccountScope" id="addAccountScopeShared"
+                               checked="@(addAccountSelectedScope == AccountScope.Shared)"
+                               @onchange="@(() => addAccountSelectedScope = AccountScope.Shared)" />
+                        <label class="btn" for="addAccountScopeShared">@L["Scope_Shared"]</label>
 
-                    <div style="max-height: 500px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.25rem; padding: 0.5rem;">
-                        @if (allAvailableCategories != null && allActualCategories != null)
-                        {
-                            // Treat any group whose parent is outside the filtered subset as a render
-                            // root, since IsRootCategory only matches MoneyMoney's top-level groups and
-                            // the project might be scoped to a sub-tree.
-                            var filteredGroupIds = allAvailableCategories
-                                .Where(c => c.ItemType == CategoryItemType.Group)
-                                .Select(c => c.Id)
-                                .ToHashSet();
-                            @foreach (var rootCat in allAvailableCategories
-                                .Where(c => c.ItemType == CategoryItemType.Group
-                                    && !filteredGroupIds.Contains(c.ParentCategoryGroupId ?? -1))
-                                .OrderBy(c => c.CategoryGroup.Name))
-                            {
-                                <CategoryTree
-                                    CategoryGroup="@rootCat"
-                                    Level="0"
-                                    RenderMode="CategoryTreeRenderMode.Checkbox"
-                                    ParentSelected="false"
-                                    SelectedCategoryGroupIds="@selectedTrackingGroupIds"
-                                    SelectedCategoryIds="@selectedTrackingCategoryIds"
-                                    OnCategoryGroupToggle="@HandleTrackingGroupToggle"
-                                    OnCategoryToggle="@HandleTrackingCategoryToggle"
-                                    AllCategories="@allAvailableCategories"
-                                    ActualCategories="@allActualCategories" />
-                            }
-                        }
+                        <input type="radio" class="btn-check" name="addAccountScope" id="addAccountScopeExclusive"
+                               checked="@(addAccountSelectedScope == AccountScope.Exclusive)"
+                               @onchange="@(() => addAccountSelectedScope = AccountScope.Exclusive)" />
+                        <label class="btn" for="addAccountScopeExclusive">@L["Scope_Exclusive"]</label>
                     </div>
+                    <small class="form-text text-muted">
+                        @L["AddAccount_ScopeHelp"]
+                    </small>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="HideTrackingDialog">@L["Button_Cancel"]</button>
-                    <button type="button" class="btn btn-primary" @onclick="SaveTrackingConfiguration">@L["Button_Save"]</button>
-                </div>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="HideAddAccountDialog">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-primary"
+                @onclick="AddAccount"
+                disabled="@(addAccountSelectedId == 0)">@L["Button_AddAccount"]</button>
+    </Footer>
+</Modal>
+
+<Modal Show="@showAddCategoryDialog" Title="@L["Modal_AddCategory_Title"]" SizeClass="modal-lg" OnClose="@HideAddCategoryDialog">
+    <ChildContent>
+        @if (availableCategoriesWithCounts == null)
+        {
+            <p><em>@L["Status_LoadingCategories"]</em></p>
+        }
+        else
+        {
+            <div class="mb-3">
+                <label class="form-label">@L["Form_SelectCategoryLabel"]</label>
+                <TreePicker TId="long"
+                            Nodes="@BuildCategoryPickerNodes(availableCategoriesWithCounts)"
+                            SelectedId="@selectedCategoryId"
+                            SelectedIdChanged="@(id => selectedCategoryId = id)" />
+                <small class="form-text text-muted">@L["AddCategory_Help"]</small>
             </div>
-        </div>
-    </div>
-    <div class="modal-backdrop show"></div>
-}
-
-@if (showAddAccountDialog)
-{
-    <div class="modal show d-block" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">@L["Modal_AddAccount_Title"]</h5>
-                    <button type="button" class="btn-close" @onclick="HideAddAccountDialog"></button>
-                </div>
-                <div class="modal-body">
-                    @if (allAccounts == null || accountAssignments == null || allAccountGroups == null)
-                    {
-                        <p><em>@L["Status_LoadingAccounts"]</em></p>
-                    }
-                    else
-                    {
-                        var assignedIds = accountAssignments.Select(a => a.AccountId).ToHashSet();
-                        var unassigned = allAccounts.Where(a => !assignedIds.Contains(a.Id)).ToList();
-                        if (!unassigned.Any())
-                        {
-                            <p class="text-muted mb-0">@L["AddAccount_AllAssigned"]</p>
-                        }
-                        else
-                        {
-                            <div class="mb-3">
-                                <label class="form-label">@L["Form_AccountLabel"]</label>
-                                <TreePicker TId="long"
-                                            Nodes="@BuildAccountPickerNodes(allAccountGroups, unassigned)"
-                                            SelectedId="@addAccountSelectedId"
-                                            SelectedIdChanged="@(id => addAccountSelectedId = id)" />
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">@L["Form_ScopeLabel"]</label>
-                                <div class="segmented segmented-block" role="group">
-                                    <input type="radio" class="btn-check" name="addAccountScope" id="addAccountScopeShared"
-                                           checked="@(addAccountSelectedScope == AccountScope.Shared)"
-                                           @onchange="@(() => addAccountSelectedScope = AccountScope.Shared)" />
-                                    <label class="btn" for="addAccountScopeShared">@L["Scope_Shared"]</label>
-
-                                    <input type="radio" class="btn-check" name="addAccountScope" id="addAccountScopeExclusive"
-                                           checked="@(addAccountSelectedScope == AccountScope.Exclusive)"
-                                           @onchange="@(() => addAccountSelectedScope = AccountScope.Exclusive)" />
-                                    <label class="btn" for="addAccountScopeExclusive">@L["Scope_Exclusive"]</label>
-                                </div>
-                                <small class="form-text text-muted">
-                                    @L["AddAccount_ScopeHelp"]
-                                </small>
-                            </div>
-                        }
-                    }
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="HideAddAccountDialog">@L["Button_Cancel"]</button>
-                    <button type="button" class="btn btn-primary"
-                            @onclick="AddAccount"
-                            disabled="@(addAccountSelectedId == 0)">@L["Button_AddAccount"]</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="modal-backdrop show"></div>
-}
-
-@if (showAddCategoryDialog)
-{
-    <div class="modal show d-block" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">@L["Modal_AddCategory_Title"]</h5>
-                    <button type="button" class="btn-close" @onclick="HideAddCategoryDialog"></button>
-                </div>
-                <div class="modal-body">
-                    @if (availableCategoriesWithCounts == null)
-                    {
-                        <p><em>@L["Status_LoadingCategories"]</em></p>
-                    }
-                    else
-                    {
-                        <div class="mb-3">
-                            <label class="form-label">@L["Form_SelectCategoryLabel"]</label>
-                            <TreePicker TId="long"
-                                        Nodes="@BuildCategoryPickerNodes(availableCategoriesWithCounts)"
-                                        SelectedId="@selectedCategoryId"
-                                        SelectedIdChanged="@(id => selectedCategoryId = id)" />
-                            <small class="form-text text-muted">@L["AddCategory_Help"]</small>
-                        </div>
-
-                    }
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="HideAddCategoryDialog">@L["Button_Cancel"]</button>
-                    <button type="button" class="btn btn-primary" @onclick="AddCategory" disabled="@(selectedCategoryId == 0)">@L["Button_AddCategory"]</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="modal-backdrop show"></div>
-}
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="HideAddCategoryDialog">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-primary" @onclick="AddCategory" disabled="@(selectedCategoryId == 0)">@L["Button_AddCategory"]</button>
+    </Footer>
+</Modal>
 
 @code {
     [Parameter]

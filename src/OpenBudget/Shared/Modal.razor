@@ -1,0 +1,98 @@
+@* Bootstrap modal wrapper that handles the Esc-to-close / backdrop-click-to-close
+   affordances every dialog in this app was missing. ChildContent is the modal body;
+   Footer is an optional named slot for action buttons.
+
+   Usage:
+
+       <Modal Show="@showDialog"
+              Title="@L["Modal_Title"]"
+              SizeClass="modal-lg"
+              OnClose="@(() => showDialog = false)">
+           <p>Body content goes here.</p>
+           <Footer>
+               <button class="btn btn-secondary" @onclick="@(() => showDialog = false)">Cancel</button>
+               <button class="btn btn-primary" @onclick="Save">Save</button>
+           </Footer>
+       </Modal>
+
+   Esc-handling relies on the .modal element holding focus, so we FocusAsync the ref
+   on the first render after Show flips true. *@
+
+@if (Show)
+{
+    <div class="modal show d-block" tabindex="-1"
+         @ref="_modalRef"
+         @onkeydown="OnKeyDown"
+         @onclick="OnBackdropClick">
+        <div class="modal-dialog @SizeClass" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                @if (!string.IsNullOrEmpty(Title) || ShowCloseButton)
+                {
+                    <div class="modal-header">
+                        <h5 class="modal-title">@Title</h5>
+                        @if (ShowCloseButton)
+                        {
+                            <button type="button" class="btn-close" aria-label="Close" @onclick="Close"></button>
+                        }
+                    </div>
+                }
+                <div class="modal-body">
+                    @ChildContent
+                </div>
+                @if (Footer != null)
+                {
+                    <div class="modal-footer">
+                        @Footer
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+}
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public string? Title { get; set; }
+    /// <summary>"modal-sm", "modal-lg", "modal-xl", or empty for default width.</summary>
+    [Parameter] public string SizeClass { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public bool ShowCloseButton { get; set; } = true;
+    /// <summary>Whether clicking the dark area outside the dialog closes it. Disable when
+    /// the user is partway through a form whose accidental loss would hurt.</summary>
+    [Parameter] public bool CloseOnBackdropClick { get; set; } = true;
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private ElementReference _modalRef;
+    private bool _focused;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Focus the modal element when it first appears so subsequent keydown events
+        // (Esc in particular) actually fire — Blazor's @onkeydown only reaches the
+        // handler if the event happens inside the focused element.
+        if (Show && !_focused)
+        {
+            _focused = true;
+            try { await _modalRef.FocusAsync(); }
+            catch { /* Element may have been disposed mid-render; ignored. */ }
+        }
+        else if (!Show && _focused)
+        {
+            _focused = false;
+        }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await Close();
+    }
+
+    private async Task OnBackdropClick(MouseEventArgs e)
+    {
+        if (CloseOnBackdropClick) await Close();
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+}

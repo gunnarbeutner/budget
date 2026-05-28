@@ -268,28 +268,16 @@
     <a href="/budgets?projectId=@budget.ProjectId" class="btn btn-secondary">@L["Button_Cancel"]</a>
 </div>
 
-@if (showRepredictDialog)
-{
-    <div class="modal show d-block" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">@L["Modal_RepredictTitle"]</h5>
-                    <button type="button" class="btn-close" @onclick="HideRepredictDialog"></button>
-                </div>
-                <div class="modal-body">
-                    <p>@L["Modal_RepredictBody"]</p>
-                    <p class="text-muted small mb-0">@L["Modal_RepredictHint"]</p>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="HideRepredictDialog">@L["Button_Cancel"]</button>
-                    <button class="btn btn-primary" @onclick="Repredict">@L["Button_Repredict"]</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="modal-backdrop show"></div>
-}
+<Modal Show="@showRepredictDialog" Title="@L["Modal_RepredictTitle"]" OnClose="@HideRepredictDialog">
+    <ChildContent>
+        <p>@L["Modal_RepredictBody"]</p>
+        <p class="text-muted small mb-0">@L["Modal_RepredictHint"]</p>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-secondary" @onclick="HideRepredictDialog">@L["Button_Cancel"]</button>
+        <button class="btn btn-primary" @onclick="Repredict">@L["Button_Repredict"]</button>
+    </Footer>
+</Modal>
 
 @code {
     [Parameter] public int BudgetId { get; set; }

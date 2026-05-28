@@ -323,46 +323,34 @@ else
     <button class="btn btn-primary" @onclick="ShowCreateDialog">@L["Button_NewProject"]</button>
 </div>
 
-@if (showCreateDialog)
-{
-    <div class="modal show d-block" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">@L["Modal_CreateNewProject"]</h5>
-                    <button type="button" class="btn-close" @onclick="HideCreateDialog"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="projectName" class="form-label">@L["Form_NameLabel"]</label>
-                        <input type="text" class="form-control" id="projectName" @bind="newProjectName" />
-                    </div>
-                    <div class="mb-3">
-                        <label for="projectDescription" class="form-label">@L["Form_DescriptionLabel"]</label>
-                        <textarea class="form-control" id="projectDescription" @bind="newProjectDescription" rows="3"></textarea>
-                    </div>
-                    @if (availableSources.Count > 1)
-                    {
-                        <div class="mb-3">
-                            <label for="projectSource" class="form-label">MoneyMoney source</label>
-                            <select id="projectSource" class="form-select" @bind="newProjectSourceId">
-                                @foreach (var s in availableSources)
-                                {
-                                    <option value="@s.Id">@s.Name</option>
-                                }
-                            </select>
-                        </div>
-                    }
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" @onclick="HideCreateDialog">@L["Button_Cancel"]</button>
-                    <button type="button" class="btn btn-primary" @onclick="CreateProject" disabled="@string.IsNullOrWhiteSpace(newProjectName)">@L["Button_Create"]</button>
-                </div>
-            </div>
+<Modal Show="@showCreateDialog" Title="@L["Modal_CreateNewProject"]" OnClose="@HideCreateDialog">
+    <ChildContent>
+        <div class="mb-3">
+            <label for="projectName" class="form-label">@L["Form_NameLabel"]</label>
+            <input type="text" class="form-control" id="projectName" @bind="newProjectName" />
         </div>
-    </div>
-    <div class="modal-backdrop show"></div>
-}
+        <div class="mb-3">
+            <label for="projectDescription" class="form-label">@L["Form_DescriptionLabel"]</label>
+            <textarea class="form-control" id="projectDescription" @bind="newProjectDescription" rows="3"></textarea>
+        </div>
+        @if (availableSources.Count > 1)
+        {
+            <div class="mb-3">
+                <label for="projectSource" class="form-label">MoneyMoney source</label>
+                <select id="projectSource" class="form-select" @bind="newProjectSourceId">
+                    @foreach (var s in availableSources)
+                    {
+                        <option value="@s.Id">@s.Name</option>
+                    }
+                </select>
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="HideCreateDialog">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-primary" @onclick="CreateProject" disabled="@string.IsNullOrWhiteSpace(newProjectName)">@L["Button_Create"]</button>
+    </Footer>
+</Modal>
 
 @code {
     private List<ProjectSpendingSummary>? budgetSummaries;
