@@ -621,14 +621,9 @@ a, .btn-link {
     z-index: 1040;
 }
 
-/* Trim the top bar on narrow screens — the project name eats the row otherwise. */
+/* Wrap the anchor label to its own row on narrow screens so the period buttons stay
+   on one line. */
 @media (max-width: 575.98px) {
-    .browse-project-name {
-        max-width: 9rem;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
     .browse-anchor-label {
         order: 1;
         width: 100%;
@@ -708,6 +703,85 @@ a, .btn-link {
     padding-right: 0.5rem;
 }
 
+/* ---- ProjectPageHeader ----
+   The single-row project bar: HomeLink + project selector + inline tabs + settings.
+   The container owns the bottom border so the tabs sit visually anchored to it. */
+.project-page-header {
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+    padding-bottom: 0.25rem;
+}
+
+.project-page-tabs .nav-link {
+    color: var(--bs-secondary, #6c757d);
+    padding: 0.4rem 0.6rem;
+}
+.project-page-tabs .nav-link:hover {
+    color: var(--bs-body-color, #212529);
+}
+.project-page-tabs .nav-link.active {
+    color: var(--bs-body-color, #212529);
+    font-weight: 500;
+}
+
+/* Settings cog is a secondary affordance, not a tab — drop the underline interaction
+   so it doesn't look like "active section" on hover. */
+.project-page-tabs-settings {
+    color: var(--bs-secondary, #6c757d) !important;
+    --bs-nav-underline-link-active-color: transparent;
+}
+.project-page-tabs-settings::after,
+.project-page-tabs-settings.active {
+    border-bottom-color: transparent !important;
+}
+.project-page-tabs-settings:hover {
+    color: var(--bs-body-color, #212529) !important;
+    background-color: rgba(0, 0, 0, 0.03);
+    border-radius: 0.25rem;
+}
+
+/* Project selector: <details>/<summary> dressed up as a dropdown. No JS needed. */
+.project-selector {
+    position: relative;
+}
+.project-selector-toggle {
+    list-style: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.5rem;
+    border-radius: 0.25rem;
+    user-select: none;
+}
+.project-selector-toggle::-webkit-details-marker { display: none; }
+.project-selector-toggle::marker { content: ""; }
+.project-selector-name {
+    font-size: 1.25rem;
+    font-weight: 500;
+    color: var(--bs-body-color, #212529);
+}
+.project-selector-caret {
+    font-size: 0.65rem;
+    color: var(--bs-secondary, #6c757d);
+}
+.project-selector[open] .project-selector-toggle,
+.project-selector-toggle:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+.project-selector-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 0.25rem;
+    min-width: 14rem;
+    max-height: 60vh;
+    overflow-y: auto;
+    z-index: 1050;
+}
+
+.project-page-header-suffix {
+    font-size: 0.95rem;
+}
+
 /* ---- Vertical spacing rhythm ----
    We don't have a custom spacing utility — these are just the conventions used across
    pages so the eye reads consistent rhythm instead of "amateurish bumps." When adding
@@ -720,4 +794,8 @@ a, .btn-link {
      mb-2: tight inline groups (chip cluster, label-over-input within a form-group,
            consecutive alerts in a chain).
 
-   Skeleton placeholders mirror the same rule for whatever they're standing in for. */
+   Skeleton placeholders mirror the same rule for whatever they're standing in for.
+
+   Exception: ProjectPageHeader uses mb-2 so the header → first content gap reads as
+   "section chrome" rather than "two sibling top-level sections" — the header is
+   visually one unit with its first row of content (filter strip, period nav, etc.). */

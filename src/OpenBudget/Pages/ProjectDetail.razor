@@ -24,12 +24,9 @@
 }
 else
 {
-    <PageHeader Title="@budget.Name" Subtitle="@budget.Description">
-        <Actions>
-            <a class="btn btn-outline-primary" href="/projects/@BudgetId/browse">@L["Button_Browse"]</a>
-            <button class="btn btn-outline-danger" @onclick="ShowDeleteDialog">@L["Button_DeleteProject"]</button>
-        </Actions>
-    </PageHeader>
+    <ProjectPageHeader ProjectId="@BudgetId" ProjectName="@budget.Name"
+                       Subtitle="@budget.Description"
+                       ShowSettingsLink="false" />
 
     <div class="row mb-4">
         <div class="col-12">
@@ -328,6 +325,12 @@ else
         </div>
     </div>
 
+    @* Destructive action lives at the very bottom of the page, well below the data the
+       user might be configuring — far enough from the title bar that it can't be hit
+       by accident. *@
+    <div class="border-top pt-3 mt-4">
+        <button class="btn btn-outline-danger" @onclick="ShowDeleteDialog">@L["Button_DeleteProject"]</button>
+    </div>
 }
 
 <Modal Show="@showDeleteDialog" Title="@L["Modal_DeleteProject_Title"]" OnClose="@HideDeleteDialog">

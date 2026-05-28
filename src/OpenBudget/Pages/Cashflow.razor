@@ -22,7 +22,15 @@
     return;
 }
 
-<PageHeader Title="@(projectName != null ? L["Heading_Cashflow_WithProject", projectName] : L["Heading_Cashflow"])" />
+@if (selectedProjectId > 0)
+{
+    <ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@projectName"
+                       Active="ProjectTab.Cashflow" />
+}
+else
+{
+    <PageHeader Title="@L["Heading_Cashflow"]" />
+}
 
 <div class="row mb-4">
     <div class="col-md-4">

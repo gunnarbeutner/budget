@@ -24,16 +24,21 @@
     return;
 }
 
-<div class="d-flex flex-wrap mb-4 align-items-center gap-2 sticky-top bg-body border-bottom pb-2 bleed-sticky"
+<ProjectPageHeader ProjectId="@ProjectId" ProjectName="@(project?.Name ?? "")"
+                   Active="ProjectTab.Browse" />
+
+@* Period nav, sticky so the user can re-anchor while scrolling a long tx list.
+   No negative top margin — the spacing above mirrors what every other project page
+   has between its header and first content row (driven by ProjectPageHeader's
+   own mb-2). py-1 + mb-2 keep the strip compact below. *@
+<div class="d-flex flex-wrap mb-2 align-items-center gap-2 sticky-top bg-body py-1 bleed-sticky"
      style="z-index: 1020;">
-    <HomeLink />
     @* Mobile-only toggle for the left rail. On lg+ the rail is part of the grid; below lg
        it slides in as a drawer, opened via this button. *@
     <button type="button" class="btn btn-sm btn-outline-secondary d-lg-none"
             @onclick="ToggleRail" aria-label="@L["Aria_ToggleTree"]" aria-expanded="@railOpen.ToString().ToLower()">
         <i class="bi bi-list" aria-hidden="true"></i>
     </button>
-    <h5 class="mb-0 me-2 browse-project-name">@(project?.Name ?? "")</h5>
 
     <button type="button" class="btn btn-sm btn-outline-secondary"
             @onclick="() => StepAnchor(-1)" aria-label="@L["Aria_Previous"]">

@@ -39,12 +39,12 @@
     return;
 }
 
-<PageHeader Title="@($"{L["Header_Title"]} {budget.Project?.Name}")"
-            Subtitle="@(budget.LastModifiedAt.HasValue ? L["Header_LastModified", budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")].Value : null)">
-    <TitleSuffix>
-        <small class="text-body-secondary">@budget.Name</small>
-    </TitleSuffix>
-</PageHeader>
+<ProjectPageHeader ProjectId="@budget.ProjectId"
+                   ProjectName="@(budget.Project?.Name ?? "")"
+                   Active="ProjectTab.Budgets"
+                   Subtitle="@(budget.LastModifiedAt.HasValue ? L["Header_LastModified", budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")].Value : null)">
+    <TitleSuffix>· @budget.Name</TitleSuffix>
+</ProjectPageHeader>
 
 <div class="card mb-4">
     <div class="card-body">

@@ -20,7 +20,19 @@
     return;
 }
 
-<PageHeader Title="@L["Header_Title"]" />
+@{
+    var wizardProjectName = projects?.FirstOrDefault(p => p.Id == selectedProjectId)?.Name;
+}
+@if (selectedProjectId > 0)
+{
+    <ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@wizardProjectName"
+                       Active="ProjectTab.Budgets"
+                       Subtitle="@L["Header_Title"]" />
+}
+else
+{
+    <PageHeader Title="@L["Header_Title"]" />
+}
 
 @if (step == 1)
 {

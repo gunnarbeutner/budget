@@ -1,0 +1,143 @@
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject ProjectService ProjectService
+@inject NavigationManager Navigation
+@inject IStringLocalizer<ProjectPageHeader> L
+
+@* Combined page-header for any project-scoped page: HomeLink + project selector +
+   inline tab strip (Browse / Budgets / Cashflow) + settings cog. On md+ everything
+   sits in one row to save vertical space; on narrower screens the tabs wrap below
+   the selector.
+
+   The project name doubles as a switcher: click it and a dropdown lists the user's
+   other projects, each linking to the same view but for that project. Uses
+   <details>/<summary> so there's no JS dependency — clicking another link triggers
+   navigation, which collapses the dropdown naturally.
+
+   Usage:
+
+       <ProjectPageHeader ProjectId="@projectId" ProjectName="@name"
+                          Active="ProjectTab.Cashflow"
+                          Subtitle="@lastModified" />
+
+       <ProjectPageHeader ProjectId="@projectId" ProjectName="@name"
+                          ShowSettingsLink="false" />   // on the settings page itself
+*@
+
+<div class="project-page-header d-flex flex-wrap align-items-center gap-2 mb-2">
+    @if (ShowHomeLink)
+    {
+        <HomeLink />
+    }
+    <details class="project-selector">
+        <summary class="project-selector-toggle">
+            <span class="project-selector-name">@(ProjectName ?? "")</span>
+            <i class="bi bi-caret-down-fill ms-1 project-selector-caret" aria-hidden="true"></i>
+        </summary>
+        <ul class="project-selector-menu dropdown-menu show">
+            @if (otherProjects == null)
+            {
+                <li><span class="dropdown-item-text text-body-secondary small">@L["Selector_Loading"]</span></li>
+            }
+            else if (otherProjects.Count == 0)
+            {
+                <li><span class="dropdown-item-text text-body-secondary small">@L["Selector_NoOthers"]</span></li>
+            }
+            else
+            {
+                @foreach (var p in otherProjects)
+                {
+                    @* forceLoad on click: Blazor's SPA navigation reuses the same page
+                       component when only query/route params change, so OnInitializedAsync
+                       wouldn't fire and the data wouldn't refresh. A full reload also
+                       collapses the <details> dropdown naturally. *@
+                    <li>
+                        <button type="button" class="dropdown-item"
+                                @onclick="@(() => SwitchTo(p.Id))">@p.Name</button>
+                    </li>
+                }
+            }
+        </ul>
+    </details>
+    @if (TitleSuffix != null)
+    {
+        <span class="project-page-header-suffix text-body-secondary">@TitleSuffix</span>
+    }
+
+    @* Flex spacer: when everything fits on one row this expands and pushes the tabs
+       right. When the tabs wrap to a new line the spacer stays on row 1 (filling
+       leftover space there), and the tabs sit flush left on row 2. ms-auto would
+       have pushed them right even when wrapped, which felt off. *@
+    <div class="flex-grow-1"></div>
+
+    <nav class="nav nav-underline project-page-tabs" aria-label="@L["Aria_Sections"]">
+        @* On narrow screens hide the tab labels — icons + aria-label keep them
+           accessible and let the whole bar fit on a single row. *@
+        <a class="nav-link @(Active == ProjectTab.Browse ? "active" : "")"
+           href="/projects/@ProjectId/browse" aria-label="@L["Tab_Browse"]">
+            <i class="bi bi-list-ul" aria-hidden="true"></i>
+            <span class="d-none d-md-inline ms-1">@L["Tab_Browse"]</span>
+        </a>
+        <a class="nav-link @(Active == ProjectTab.Budgets ? "active" : "")"
+           href="/budgets?projectId=@ProjectId" aria-label="@L["Tab_Budgets"]">
+            <i class="bi bi-calendar3" aria-hidden="true"></i>
+            <span class="d-none d-md-inline ms-1">@L["Tab_Budgets"]</span>
+        </a>
+        <a class="nav-link @(Active == ProjectTab.Cashflow ? "active" : "")"
+           href="/cashflow?projectId=@ProjectId" aria-label="@L["Tab_Cashflow"]">
+            <i class="bi bi-graph-up" aria-hidden="true"></i>
+            <span class="d-none d-md-inline ms-1">@L["Tab_Cashflow"]</span>
+        </a>
+        @if (ShowSettingsLink)
+        {
+            <a class="nav-link project-page-tabs-settings"
+               href="/projects/@ProjectId"
+               title="@L["Tab_Settings_Tooltip"]" aria-label="@L["Tab_Settings_Tooltip"]">
+                <i class="bi bi-gear" aria-hidden="true"></i>
+            </a>
+        }
+    </nav>
+</div>
+
+@if (!string.IsNullOrEmpty(Subtitle))
+{
+    <div class="project-page-header-subtitle text-body-secondary small mb-2">@Subtitle</div>
+}
+
+@code {
+    [Parameter, EditorRequired] public int ProjectId { get; set; }
+    [Parameter, EditorRequired] public string? ProjectName { get; set; }
+    /// <summary>The active primary tab, or null when on the settings page itself.</summary>
+    [Parameter] public ProjectTab? Active { get; set; }
+    /// <summary>Small grey text shown next to the project name (e.g. "· BudgetName" on BudgetEdit).</summary>
+    [Parameter] public RenderFragment? TitleSuffix { get; set; }
+    /// <summary>Secondary line below the header (e.g. "Last modified ...", wizard mode label).</summary>
+    [Parameter] public string? Subtitle { get; set; }
+    /// <summary>Hide the settings cog on the settings page itself (where it would point to where the user already is).</summary>
+    [Parameter] public bool ShowSettingsLink { get; set; } = true;
+    /// <summary>Set to false on pages where HomeLink doesn't apply.</summary>
+    [Parameter] public bool ShowHomeLink { get; set; } = true;
+
+    private List<Project>? otherProjects;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Loaded per render so a switch to another project triggers a fresh fetch;
+        // the underlying service is scoped so this is cheap.
+        var all = await ProjectService.GetProjectsAsync();
+        otherProjects = all.Where(p => p.Id != ProjectId).OrderBy(p => p.Name).ToList();
+    }
+
+    private void SwitchTo(int projectId)
+    {
+        var url = Active switch
+        {
+            ProjectTab.Browse => $"/projects/{projectId}/browse",
+            ProjectTab.Budgets => $"/budgets?projectId={projectId}",
+            ProjectTab.Cashflow => $"/cashflow?projectId={projectId}",
+            // No Active = on the settings page; switching keeps you on settings for the new project.
+            _ => $"/projects/{projectId}",
+        };
+        Navigation.NavigateTo(url, forceLoad: true);
+    }
+}
