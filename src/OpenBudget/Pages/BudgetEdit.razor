@@ -15,10 +15,7 @@
 
 @if (notFound)
 {
-    <div class="d-flex align-items-center mb-4">
-        <HomeLink />
-        <h5 class="mb-0">@L["NotFound_Heading"]</h5>
-    </div>
+    <PageHeader Title="@L["NotFound_Heading"]" />
     <p class="text-body-secondary">@L["NotFound_Body_Before", BudgetId] <a href="/">@L["NotFound_BackLink"]</a>.</p>
     return;
 }
@@ -42,16 +39,12 @@
     return;
 }
 
-<div class="d-flex align-items-center mb-4">
-    <HomeLink />
-    <div>
-        <h5 class="mb-0">@L["Header_Title"] @budget.Project?.Name <small class="text-body-secondary">@budget.Name</small></h5>
-        @if (budget.LastModifiedAt.HasValue)
-        {
-            <small class="text-body-secondary">@L["Header_LastModified", budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")]</small>
-        }
-    </div>
-</div>
+<PageHeader Title="@($"{L["Header_Title"]} {budget.Project?.Name}")"
+            Subtitle="@(budget.LastModifiedAt.HasValue ? L["Header_LastModified", budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")].Value : null)">
+    <TitleSuffix>
+        <small class="text-body-secondary">@budget.Name</small>
+    </TitleSuffix>
+</PageHeader>
 
 <div class="card mb-4">
     <div class="card-body">

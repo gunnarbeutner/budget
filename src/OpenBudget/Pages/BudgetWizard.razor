@@ -15,18 +15,12 @@
 
 @if (notFound)
 {
-    <div class="d-flex align-items-center mb-4">
-        <HomeLink />
-        <h5 class="mb-0">@L["NotFound_Heading"]</h5>
-    </div>
+    <PageHeader Title="@L["NotFound_Heading"]" />
     <p class="text-body-secondary">@L["NotFound_Before"]<a href="/">@L["NotFound_LinkText"]</a>@L["NotFound_After"]</p>
     return;
 }
 
-<div class="d-flex align-items-center mb-4">
-    <HomeLink />
-    <h5 class="mb-0">@L["Header_Title"]</h5>
-</div>
+<PageHeader Title="@L["Header_Title"]" />
 
 @if (step == 1)
 {
