@@ -121,7 +121,7 @@ else
                             disabled="@isLast" @onclick="() => MoveProject(projectId, 1)">
                         <i class="bi bi-arrow-down" aria-hidden="true"></i>
                     </button>
-                    <a href="/projects/@projectId" class="text-body-secondary text-decoration-none"
+                    <a href="@($"/projects/{projectId}/settings")" class="text-body-secondary text-decoration-none"
                        title="@L["Aria_ProjectSettings"]" aria-label="@L["Aria_ProjectSettings"]">
                         <i class="bi bi-gear" aria-hidden="true"></i>
                     </a>

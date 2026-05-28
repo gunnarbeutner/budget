@@ -1,4 +1,4 @@
-@page "/budgets"
+@page "/projects/{ProjectId:int}/budgets"
 @using OpenBudget.Services
 @using OpenBudget.Models
 @using System.Text.Json
@@ -21,7 +21,7 @@
     return;
 }
 
-<ProjectPageHeader ProjectId="@selectedBudgetId" ProjectName="@projectName"
+<ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@projectName"
                    Active="ProjectTab.Budgets" />
 
 <PeriodNav Anchor="(selectedYear, 1)" Period="@("year")" YearOnly="true"
@@ -53,7 +53,7 @@
                                     }
                                 }
                             </select>
-                            <a class="btn btn-primary text-nowrap" href="/budgets/wizard?projectId=@selectedBudgetId">@L["Button_NewBudget"]</a>
+                            <a class="btn btn-primary text-nowrap" href="@($"/projects/{selectedProjectId}/budgets/new")">@L["Button_NewBudget"]</a>
                             @if (selectedBudget != null)
                             {
                                 <a class="btn btn-outline-primary text-nowrap" href="/budgets/@selectedBudget.Id/edit">@L["Button_Edit"]</a>
@@ -327,8 +327,10 @@
     private List<VarianceSummary>? varianceSummary;
     private List<Budget>? availableBudgets;
     /// <summary>Budget the user has clicked Delete on, awaiting confirmation in the modal.</summary>
+    [Parameter] public int ProjectId { get; set; }
+
     private Budget? budgetPendingDelete;
-    private int selectedBudgetId = 0;
+    private int selectedProjectId = 0;
     private int selectedCompareBudgetId = 0;
     private int selectedYear = DateTime.UtcNow.Year;
     private List<int>? availableYears;
@@ -357,7 +359,7 @@
     // per session unless localStorage holds a user-set override. Reset on year/budget change
     // so a fresh budget gets the same friendly default before the user touches anything.
     private bool sessionAutoDefaultApplied = false;
-    private string ExpandScope => $"budgets-variance:{selectedBudgetId}:{selectedYear}";
+    private string ExpandScope => $"budgets-variance:{selectedProjectId}:{selectedYear}";
 
     private void ToggleCategoriesPanel() => categoriesExpanded = !categoriesExpanded;
 
@@ -384,20 +386,11 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // This page is project-scoped via ?projectId=<id>; the only way to land here legitimately
-        // is from the dashboard buttons. A bare URL or unknown project is an actual 404.
-        var initialProjectId = ReadProjectIdFromQuery();
-        if (!initialProjectId.HasValue)
-        {
-            notFound = true;
-            return;
-        }
+        // Project-scoped via the {ProjectId} route segment; the :int constraint already rejects
+        // non-numeric ids at routing, so the only failure left is an unknown project (404).
+        selectedProjectId = ProjectId;
 
-        // Set the id before the first await so the unconditional ProjectPageHeader renders with
-        // the real project (and its tabs) on the first interactive paint, not an id=0 flash.
-        selectedBudgetId = initialProjectId.Value;
-
-        var project = await ProjectService.GetProjectAsync(initialProjectId.Value);
+        var project = await ProjectService.GetProjectAsync(ProjectId);
         if (project == null)
         {
             notFound = true;
@@ -424,7 +417,7 @@
         // have transactions in. Default to the current year, or the closest available if the
         // current year isn't in the dataset. Falls back to a single-entry list with the
         // current year so the dropdown isn't empty when a project has no transactions yet.
-        availableYears = await BudgetService.GetYearsWithTransactionsForProjectAsync(selectedBudgetId);
+        availableYears = await BudgetService.GetYearsWithTransactionsForProjectAsync(selectedProjectId);
         if (!availableYears.Any())
             availableYears = new List<int> { DateTime.UtcNow.Year };
         if (!availableYears.Contains(selectedYear))
@@ -434,14 +427,12 @@
         await LoadCategoryTrends();
     }
 
-    private int? ReadProjectIdFromQuery() => PageState.ReadIntQuery(Navigation, "projectId");
-
     private async Task LoadProjectContext()
     {
-        if (selectedBudgetId <= 0 || allCategories == null) return;
+        if (selectedProjectId <= 0 || allCategories == null) return;
 
-        incomeItems = await BudgetService.GetIncomeItemsForProjectAsync(selectedBudgetId);
-        availableBudgets = await BudgetEntryService.GetBudgetsForProjectAsync(selectedBudgetId);
+        incomeItems = await BudgetService.GetIncomeItemsForProjectAsync(selectedProjectId);
+        availableBudgets = await BudgetEntryService.GetBudgetsForProjectAsync(selectedProjectId);
 
         // Default the budget-comparison dropdown to the project's active budget for the
         // currently-selected year, unless the user already picked a budget that still applies.
@@ -455,7 +446,7 @@
         await FilterCategoriesByBudget();
         allAvailableCategories = filteredCategories;
 
-        var trackingItems = await ProjectService.GetProjectTrackingItemsAsync(selectedBudgetId);
+        var trackingItems = await ProjectService.GetProjectTrackingItemsAsync(selectedProjectId);
 
         selectedCategoryGroupIds.Clear();
         selectedActualCategoryIds.Clear();
@@ -516,7 +507,7 @@
 
     private async Task FilterCategoriesByBudget()
     {
-        var budget = await ProjectService.GetProjectAsync(selectedBudgetId);
+        var budget = await ProjectService.GetProjectAsync(selectedProjectId);
         if (budget == null || allCategories == null)
         {
             filteredCategories = new List<CategoryGroupWithChildCount>();
@@ -659,7 +650,7 @@
 
     private async Task RefreshBudgets()
     {
-        availableBudgets = await BudgetEntryService.GetBudgetsForProjectAsync(selectedBudgetId);
+        availableBudgets = await BudgetEntryService.GetBudgetsForProjectAsync(selectedProjectId);
     }
 
     private async Task SetBudgetActive(int budgetId)

@@ -1,4 +1,4 @@
-@page "/projects/{BudgetId:int}"
+@page "/projects/{ProjectId:int}/settings"
 @using OpenBudget.Services
 @using OpenBudget.Models
 @using OpenBudget.Shared
@@ -24,7 +24,7 @@
 }
 else
 {
-    <ProjectPageHeader ProjectId="@BudgetId" ProjectName="@budget.Name"
+    <ProjectPageHeader ProjectId="@ProjectId" ProjectName="@budget.Name"
                        Subtitle="@budget.Description" />
 
     <div class="row mb-4">
@@ -462,7 +462,7 @@ else
 
 @code {
     [Parameter]
-    public int BudgetId { get; set; }
+    public int ProjectId { get; set; }
 
     private Project? budget;
     private Dictionary<long, string> categoryNames = new();
@@ -669,7 +669,7 @@ else
     private async Task LoadParentPickerAsync()
     {
         if (budget == null) return;
-        var children = await ProjectService.GetChildProjectsAsync(BudgetId);
+        var children = await ProjectService.GetChildProjectsAsync(ProjectId);
         hasOwnChildren = children.Any();
         childProjectNames = string.Join(", ", children.Select(c => c.Name));
 
@@ -681,7 +681,7 @@ else
 
         var all = await ProjectService.GetProjectsAsync();
         eligibleParents = all
-            .Where(p => p.Id != BudgetId)
+            .Where(p => p.Id != ProjectId)
             .Where(p => p.SourceId == budget.SourceId)
             .Where(p => p.ParentProjectId == null)   // only top-level parents (single-level hierarchy)
             .OrderBy(p => p.Name)
@@ -699,7 +699,7 @@ else
         }
         try
         {
-            await ProjectService.SetProjectParentAsync(BudgetId, newParentId);
+            await ProjectService.SetProjectParentAsync(ProjectId, newParentId);
             budget.ParentProjectId = newParentId;
         }
         catch (Exception ex)
@@ -710,7 +710,7 @@ else
 
     private async Task LoadAccountAssignments()
     {
-        accountAssignments = await BudgetService.GetProjectAccountAssignmentsAsync(BudgetId);
+        accountAssignments = await BudgetService.GetProjectAccountAssignmentsAsync(ProjectId);
         if (allAccounts == null && budget != null)
         {
             allAccounts = await BudgetService.GetAllAccountsAsync(budget.SourceId);
@@ -733,20 +733,20 @@ else
     private async Task AddAccount()
     {
         if (addAccountSelectedId == 0) return;
-        await BudgetService.AssignAccountToProjectAsync(BudgetId, addAccountSelectedId, addAccountSelectedScope);
+        await BudgetService.AssignAccountToProjectAsync(ProjectId, addAccountSelectedId, addAccountSelectedScope);
         showAddAccountDialog = false;
         await LoadAccountAssignments();
     }
 
     private async Task SetAccountScope(long accountId, AccountScope scope)
     {
-        await BudgetService.SetAccountScopeAsync(BudgetId, accountId, scope);
+        await BudgetService.SetAccountScopeAsync(ProjectId, accountId, scope);
         await LoadAccountAssignments();
     }
 
     private async Task RemoveAccount(long accountId)
     {
-        await BudgetService.RemoveAccountFromProjectAsync(BudgetId, accountId);
+        await BudgetService.RemoveAccountFromProjectAsync(ProjectId, accountId);
         await LoadAccountAssignments();
     }
 
@@ -756,7 +756,7 @@ else
 
     private async Task LoadBudget()
     {
-        budget = await ProjectService.GetProjectAsync(BudgetId);
+        budget = await ProjectService.GetProjectAsync(ProjectId);
 
         if (budget != null)
         {
@@ -790,7 +790,7 @@ else
         if (selectedCategoryId == 0)
             return;
 
-        await ProjectService.AssignCategoryToProjectAsync(BudgetId, selectedCategoryId);
+        await ProjectService.AssignCategoryToProjectAsync(ProjectId, selectedCategoryId);
 
         showAddCategoryDialog = false;
         await LoadBudget();
@@ -798,7 +798,7 @@ else
 
     private async Task RemoveCategory(long categoryId)
     {
-        await ProjectService.RemoveCategoryFromProjectAsync(BudgetId, categoryId);
+        await ProjectService.RemoveCategoryFromProjectAsync(ProjectId, categoryId);
         await LoadBudget();
     }
 
@@ -807,7 +807,7 @@ else
 
     private async Task DeleteProject()
     {
-        await ProjectService.DeleteProjectAsync(BudgetId);
+        await ProjectService.DeleteProjectAsync(ProjectId);
         showDeleteDialog = false;
         Navigation.NavigateTo("/");
     }
@@ -815,7 +815,7 @@ else
     // Tracking configuration methods
     private async Task LoadTrackingItems()
     {
-        var project = await ProjectService.GetProjectAsync(BudgetId);
+        var project = await ProjectService.GetProjectAsync(ProjectId);
         trackingItems = project?.TrackingItems.ToList() ?? new List<ProjectTrackingItem>();
         var sourceId = project?.SourceId ?? SourceScope.LegacySourceId;
 
@@ -901,7 +901,7 @@ else
 
     private async Task SaveTrackingConfiguration()
     {
-        await ProjectService.UpdateProjectTrackingItemsAsync(BudgetId, selectedTrackingGroupIds, selectedTrackingCategoryIds);
+        await ProjectService.UpdateProjectTrackingItemsAsync(ProjectId, selectedTrackingGroupIds, selectedTrackingCategoryIds);
         showTrackingDialog = false;
         await LoadTrackingItems();
     }
@@ -1042,7 +1042,7 @@ else
         incomeExpenseCategories = BuildHierarchy(filteredCategories);
 
         // Load category type assignments
-        categoryTypeAssignments = await BudgetService.GetCategoryTypeAssignmentsAsync(BudgetId);
+        categoryTypeAssignments = await BudgetService.GetCategoryTypeAssignmentsAsync(ProjectId);
 
         isLoadingCategoryTypes = false;
         StateHasChanged();
@@ -1138,13 +1138,13 @@ else
     private async Task SetCategoryType(long categoryId, CategoryItemType itemType, bool isIncome)
     {
         // Set for this item
-        await BudgetService.SetCategoryTypeAsync(BudgetId, categoryId, itemType, isIncome);
+        await BudgetService.SetCategoryTypeAsync(ProjectId, categoryId, itemType, isIncome);
 
         // Clear explicit assignments for all descendants so they inherit
         var descendantItems = GetAllDescendantItems(categoryId, itemType);
         foreach (var (id, type) in descendantItems)
         {
-            await BudgetService.DeleteCategoryTypeAsync(BudgetId, id, type);
+            await BudgetService.DeleteCategoryTypeAsync(ProjectId, id, type);
         }
 
         await LoadIncomeExpenseConfiguration();
@@ -1153,13 +1153,13 @@ else
     private async Task ClearCategoryType(long categoryId, CategoryItemType itemType)
     {
         // Clear for this item
-        await BudgetService.DeleteCategoryTypeAsync(BudgetId, categoryId, itemType);
+        await BudgetService.DeleteCategoryTypeAsync(ProjectId, categoryId, itemType);
 
         // Also clear for all descendants
         var descendantItems = GetAllDescendantItems(categoryId, itemType);
         foreach (var (id, type) in descendantItems)
         {
-            await BudgetService.DeleteCategoryTypeAsync(BudgetId, id, type);
+            await BudgetService.DeleteCategoryTypeAsync(ProjectId, id, type);
         }
 
         await LoadIncomeExpenseConfiguration();

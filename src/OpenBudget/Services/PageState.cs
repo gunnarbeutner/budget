@@ -4,9 +4,9 @@ using Microsoft.AspNetCore.WebUtilities;
 namespace OpenBudget.Services;
 
 /// <summary>
-/// URL-state primitives shared by the project-scoped pages. Avoids the (previously) duplicated
-/// ReadProjectIdFromQuery / UpdateUrl pairs and centralises the "don't 302-loop on identical
-/// URL" guard that ServerPrerendered would otherwise hit.
+/// URL-state primitives shared by the project-scoped pages for the view-state query params
+/// (year, month, budgetId, …) that survive alongside the path. Centralises the reads and the
+/// "don't 302-loop on identical URL" guard that ServerPrerendered would otherwise hit.
 /// </summary>
 public static class PageState
 {

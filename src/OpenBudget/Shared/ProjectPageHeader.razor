@@ -87,19 +87,19 @@
             <span class="d-none d-md-inline ms-1">@L["Tab_Browse"]</span>
         </a>
         <a class="nav-link @(Active == ProjectTab.Budgets ? "active" : "")"
-           href="/budgets?projectId=@ProjectId" aria-label="@L["Tab_Budgets"]">
+           href="@($"/projects/{ProjectId}/budgets")" aria-label="@L["Tab_Budgets"]">
             <i class="bi bi-calendar3" aria-hidden="true"></i>
             <span class="d-none d-md-inline ms-1">@L["Tab_Budgets"]</span>
         </a>
         <a class="nav-link @(Active == ProjectTab.Cashflow ? "active" : "")"
-           href="/cashflow?projectId=@ProjectId" aria-label="@L["Tab_Cashflow"]">
+           href="@($"/projects/{ProjectId}/cashflow")" aria-label="@L["Tab_Cashflow"]">
             <i class="bi bi-graph-up" aria-hidden="true"></i>
             <span class="d-none d-md-inline ms-1">@L["Tab_Cashflow"]</span>
         </a>
         @* The settings cog reads as a secondary affordance on the data tabs, but on the
            settings page itself (Active == null) it's the active tab — underlined like the rest. *@
         <a class="nav-link project-page-tabs-settings @(Active == null ? "active" : "")"
-           href="/projects/@ProjectId"
+           href="@($"/projects/{ProjectId}/settings")"
            title="@L["Tab_Settings_Tooltip"]" aria-label="@L["Tab_Settings_Tooltip"]">
             <i class="bi bi-gear" aria-hidden="true"></i>
         </a>
@@ -163,10 +163,10 @@
         {
             ProjectTab.Overview => $"/projects/{projectId}/overview{MonthQuery}",
             ProjectTab.Browse => $"/projects/{projectId}/browse{MonthQuery}",
-            ProjectTab.Budgets => $"/budgets?projectId={projectId}",
-            ProjectTab.Cashflow => $"/cashflow?projectId={projectId}",
+            ProjectTab.Budgets => $"/projects/{projectId}/budgets",
+            ProjectTab.Cashflow => $"/projects/{projectId}/cashflow",
             // No Active = on the settings page; switching keeps you on settings for the new project.
-            _ => $"/projects/{projectId}",
+            _ => $"/projects/{projectId}/settings",
         };
         Navigation.NavigateTo(url, forceLoad: true);
     }

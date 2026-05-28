@@ -1,4 +1,4 @@
-@page "/cashflow"
+@page "/projects/{ProjectId:int}/cashflow"
 @using OpenBudget.Services
 @using OpenBudget.Models
 @using Microsoft.JSInterop
@@ -210,7 +210,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                     @if (!hasAssignedAccounts)
                     {
                         <div class="alert alert-info mb-0 py-2 small">
-                            @L["Balance_NoAccountsAssigned_Before"]<a href="/projects/@selectedProjectId">@L["Balance_NoAccountsAssigned_LinkText"]</a>@L["Balance_NoAccountsAssigned_After"]
+                            @L["Balance_NoAccountsAssigned_Before"]<a href="@($"/projects/{selectedProjectId}/settings")">@L["Balance_NoAccountsAssigned_LinkText"]</a>@L["Balance_NoAccountsAssigned_After"]
                         </div>
                     }
                     else if (balanceDaily.Length == 0)
@@ -547,6 +547,8 @@ else
 }
 
 @code {
+    [Parameter] public int ProjectId { get; set; }
+
     private List<Budget>? availableBudgets;
     private List<int>? availableYears;
     private int selectedYear = DateTime.UtcNow.Year;
@@ -758,20 +760,11 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        // This page is project-scoped via ?projectId=<id>; the only way to land here legitimately
-        // is from the dashboard buttons. A bare URL or unknown project is an actual 404.
-        var initialProjectId = ReadProjectIdFromQuery();
-        if (!initialProjectId.HasValue)
-        {
-            notFound = true;
-            return;
-        }
+        // Project-scoped via the {ProjectId} route segment; the :int constraint already rejects
+        // non-numeric ids at routing, so the only failure left is an unknown project (404).
+        selectedProjectId = ProjectId;
 
-        // Set the id before the first await so the unconditional ProjectPageHeader renders with
-        // the real project (and its tabs) on the first interactive paint, not an id=0 flash.
-        selectedProjectId = initialProjectId.Value;
-
-        var project = await ProjectService.GetProjectAsync(initialProjectId.Value);
+        var project = await ProjectService.GetProjectAsync(ProjectId);
         if (project == null)
         {
             notFound = true;
@@ -808,8 +801,6 @@ else
         // belong to this project (LoadAvailableBudgets re-picks the active one in that case).
         UpdateUrl();
     }
-
-    private int? ReadProjectIdFromQuery() => PageState.ReadIntQuery(Navigation, "projectId");
 
     /// <summary>
     /// Overlays URL query parameters onto the view-shaping fields. Defaults stay in place when
@@ -848,7 +839,6 @@ else
     /// </summary>
     private void UpdateUrl() => PageState.ReplaceQuery(Navigation, new Dictionary<string, object?>
     {
-        ["projectId"] = selectedProjectId,
         ["year"] = selectedYear,
         ["budgetId"] = selectedBudgetId == 0 ? null : selectedBudgetId,
         ["mode"] = incomeProjectionMode == "budget" ? null : incomeProjectionMode,
