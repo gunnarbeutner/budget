@@ -16,7 +16,7 @@
 
 @if (notFound)
 {
-    <div class="d-flex align-items-center mb-3">
+    <div class="d-flex align-items-center mb-4">
         <HomeLink />
         <h5 class="mb-0">@L["NotFound_Heading"]</h5>
     </div>
@@ -24,12 +24,12 @@
     return;
 }
 
-<div class="d-flex align-items-center mb-3">
+<div class="d-flex align-items-center mb-4">
     <HomeLink />
     <h5 class="mb-0">@L["Heading_Budgets"]@(projectName != null ? $" — {projectName}" : "")</h5>
 </div>
 
-<div class="row mb-3">
+<div class="row mb-4">
     <div class="col-md-12">
         <div class="card">
             <div class="card-body">
@@ -243,7 +243,7 @@
     </div>
 </div>
 
-<div class="row mt-3">
+<div class="row mt-4">
     <div class="col-12">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center" role="button" @onclick="ToggleCategoriesPanel" style="cursor: pointer;">

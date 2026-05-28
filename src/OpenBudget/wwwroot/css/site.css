@@ -676,3 +676,17 @@ a, .btn-link {
     border-radius: 0.25rem;
     padding: 0.5rem;
 }
+
+/* ---- Vertical spacing rhythm ----
+   We don't have a custom spacing utility — these are just the conventions used across
+   pages so the eye reads consistent rhythm instead of "amateurish bumps." When adding
+   new markup, pick the level by role:
+
+     mb-4: between top-level page sections — page header → first card, card → card,
+           sticky toolbar → first content row.
+     mb-3: inside a card-body, between sub-blocks (form-group, alert + content, a row
+           of inputs). Also between cells of a multi-column dashboard.
+     mb-2: tight inline groups (chip cluster, label-over-input within a form-group,
+           consecutive alerts in a chain).
+
+   Skeleton placeholders mirror the same rule for whatever they're standing in for. */

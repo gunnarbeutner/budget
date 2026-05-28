@@ -17,7 +17,7 @@
 
 @if (notFound)
 {
-    <div class="d-flex align-items-center mb-3">
+    <div class="d-flex align-items-center mb-4">
         <HomeLink />
         <h5 class="mb-0">@L["NotFound_Heading"]</h5>
     </div>
@@ -25,7 +25,7 @@
     return;
 }
 
-<div class="d-flex align-items-center mb-3">
+<div class="d-flex align-items-center mb-4">
     <HomeLink />
     <h5 class="mb-0">@(projectName != null ? L["Heading_Cashflow_WithProject", projectName] : L["Heading_Cashflow"])</h5>
 </div>
@@ -124,7 +124,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
        hypothetical injections. *@
     @if (selectedYear == DateTime.UtcNow.Year)
     {
-    <div class="row mb-3">
+    <div class="row mb-4">
         <div class="col-12">
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
