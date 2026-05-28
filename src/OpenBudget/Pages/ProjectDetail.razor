@@ -31,7 +31,7 @@ else
                 <h5 class="mb-0">@budget.Name</h5>
                 @if (!string.IsNullOrEmpty(budget.Description))
                 {
-                    <p class="text-muted mb-0">@budget.Description</p>
+                    <p class="text-body-secondary mb-0">@budget.Description</p>
                 }
             </div>
         </div>
@@ -48,10 +48,10 @@ else
                     <h5 class="mb-0">@L["ParentProject_Heading"]</h5>
                 </div>
                 <div class="card-body">
-                    <p class="text-muted small mb-2">@L["ParentProject_Description"]</p>
+                    <p class="text-body-secondary small mb-2">@L["ParentProject_Description"]</p>
                     @if (hasOwnChildren)
                     {
-                        <p class="text-muted mb-0"><em>@L["ParentProject_HasChildren", childProjectNames]</em></p>
+                        <p class="text-body-secondary mb-0"><em>@L["ParentProject_HasChildren", childProjectNames]</em></p>
                     }
                     else
                     {
@@ -94,7 +94,7 @@ else
                 <div class="card-body">
                     @if (!budget.CategoryAssignments.Any())
                     {
-                        <p class="text-muted">@L["CategoryAssignments_Empty"]</p>
+                        <p class="text-body-secondary">@L["CategoryAssignments_Empty"]</p>
                     }
                     else
                     {
@@ -133,16 +133,16 @@ else
                     <button class="btn btn-sm btn-primary" @onclick="ShowAddAccountDialog">@L["Button_AddAccount"]</button>
                 </div>
                 <div class="card-body">
-                    <p class="text-muted small mb-3">
+                    <p class="text-body-secondary small mb-3">
                         @L["Accounts_Description_Before"]<strong>@L["Accounts_Description_Shared"]</strong>@L["Accounts_Description_Middle"]<strong>@L["Accounts_Description_Exclusive"]</strong>@L["Accounts_Description_After"]
                     </p>
                     @if (accountAssignments == null || allAccounts == null)
                     {
-                        <p class="text-muted mb-0"><em>@L["Status_LoadingEllipsis"]</em></p>
+                        <p class="text-body-secondary mb-0"><em>@L["Status_LoadingEllipsis"]</em></p>
                     }
                     else if (!accountAssignments.Any())
                     {
-                        <p class="text-muted mb-0">@L["Accounts_Empty"]</p>
+                        <p class="text-body-secondary mb-0">@L["Accounts_Empty"]</p>
                     }
                     else
                     {
@@ -178,12 +178,12 @@ else
                                                 {
                                                     var refreshClass = refreshAge.Value.TotalDays > 7 ? "text-danger fw-semibold"
                                                         : refreshAge.Value.TotalHours > 36 ? "text-warning fw-semibold"
-                                                        : "text-muted";
+                                                        : "text-body-secondary";
                                                     <span class="small @refreshClass" title="@(lastRefresh!.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))">@FormatRelativeAge(refreshAge.Value)</span>
                                                 }
                                                 else
                                                 {
-                                                    <span class="small text-muted">@L["Refresh_Manual"]</span>
+                                                    <span class="small text-body-secondary">@L["Refresh_Manual"]</span>
                                                 }
                                                 @if (!string.IsNullOrWhiteSpace(refreshError))
                                                 {
@@ -225,7 +225,7 @@ else
                     <h5 class="mb-0">@L["IncomeExpense_Heading"]</h5>
                 </div>
                 <div class="card-body">
-                    <p class="text-muted">
+                    <p class="text-body-secondary">
                         @L["IncomeExpense_Description"]
                     </p>
 
@@ -312,12 +312,12 @@ else
                     <button class="btn btn-sm btn-primary" @onclick="ShowTrackingDialog">@L["Button_ConfigureTracking"]</button>
                 </div>
                 <div class="card-body">
-                    <p class="text-muted">
+                    <p class="text-body-secondary">
                         @L["Tracking_Description"]
                     </p>
                     @if (trackingItems == null || !trackingItems.Any())
                     {
-                        <p class="text-muted">@L["Tracking_Empty"]</p>
+                        <p class="text-body-secondary">@L["Tracking_Empty"]</p>
                     }
                     else
                     {
@@ -343,7 +343,7 @@ else
 <Modal Show="@showDeleteDialog" Title="@L["Modal_DeleteProject_Title"]" OnClose="@HideDeleteDialog">
     <ChildContent>
         <p>@L["Modal_DeleteProject_Body_Before"]<strong>@budget?.Name</strong>@L["Modal_DeleteProject_Body_After"]</p>
-        <p class="text-muted small mb-0">@L["Modal_DeleteProject_Warning"]</p>
+        <p class="text-body-secondary small mb-0">@L["Modal_DeleteProject_Warning"]</p>
     </ChildContent>
     <Footer>
         <button type="button" class="btn btn-secondary" @onclick="HideDeleteDialog">@L["Button_Cancel"]</button>
@@ -353,7 +353,7 @@ else
 
 <Modal Show="@showTrackingDialog" Title="@L["Modal_ConfigureTracking_Title"]" SizeClass="modal-xl" OnClose="@HideTrackingDialog">
     <ChildContent>
-        <p class="text-muted">
+        <p class="text-body-secondary">
             @L["Modal_ConfigureTracking_Description"]
         </p>
 
@@ -405,7 +405,7 @@ else
             var unassigned = allAccounts.Where(a => !assignedIds.Contains(a.Id)).ToList();
             if (!unassigned.Any())
             {
-                <p class="text-muted mb-0">@L["AddAccount_AllAssigned"]</p>
+                <p class="text-body-secondary mb-0">@L["AddAccount_AllAssigned"]</p>
             }
             else
             {
@@ -429,7 +429,7 @@ else
                                @onchange="@(() => addAccountSelectedScope = AccountScope.Exclusive)" />
                         <label class="btn" for="addAccountScopeExclusive">@L["Scope_Exclusive"]</label>
                     </div>
-                    <small class="form-text text-muted">
+                    <small class="form-text text-body-secondary">
                         @L["AddAccount_ScopeHelp"]
                     </small>
                 </div>
@@ -458,7 +458,7 @@ else
                             Nodes="@BuildCategoryPickerNodes(availableCategoriesWithCounts)"
                             SelectedId="@selectedCategoryId"
                             SelectedIdChanged="@(id => selectedCategoryId = id)" />
-                <small class="form-text text-muted">@L["AddCategory_Help"]</small>
+                <small class="form-text text-body-secondary">@L["AddCategory_Help"]</small>
             </div>
         }
     </ChildContent>

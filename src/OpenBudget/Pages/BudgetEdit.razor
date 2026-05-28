@@ -19,7 +19,7 @@
         <HomeLink />
         <h5 class="mb-0">@L["NotFound_Heading"]</h5>
     </div>
-    <p class="text-muted">@L["NotFound_Body_Before", BudgetId] <a href="/">@L["NotFound_BackLink"]</a>.</p>
+    <p class="text-body-secondary">@L["NotFound_Body_Before", BudgetId] <a href="/">@L["NotFound_BackLink"]</a>.</p>
     return;
 }
 
@@ -45,10 +45,10 @@
 <div class="d-flex align-items-center mb-3">
     <HomeLink />
     <div>
-        <h5 class="mb-0">@L["Header_Title"] @budget.Project?.Name <small class="text-muted">@budget.Name</small></h5>
+        <h5 class="mb-0">@L["Header_Title"] @budget.Project?.Name <small class="text-body-secondary">@budget.Name</small></h5>
         @if (budget.LastModifiedAt.HasValue)
         {
-            <small class="text-muted">@L["Header_LastModified", budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")]</small>
+            <small class="text-body-secondary">@L["Header_LastModified", budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")]</small>
         }
     </div>
 </div>
@@ -92,7 +92,7 @@
     <div class="card-body p-0">
         @if (editingEntries.Count == 0)
         {
-            <p class="text-muted m-3">@L["Empty_NoRows"]</p>
+            <p class="text-body-secondary m-3">@L["Empty_NoRows"]</p>
         }
         else
         {
@@ -119,7 +119,7 @@
                                 @(expandedKeys.Contains(node.Key) ? "▾" : "▸")
                             </button>
                         }
-                        <span class="@(IsAutoSummed(node.Key) ? "text-muted" : "") @(IsShadow(node.Key) ? "fst-italic text-muted" : "")">
+                        <span class="@(IsAutoSummed(node.Key) ? "text-body-secondary" : "") @(IsShadow(node.Key) ? "fst-italic text-body-secondary" : "")">
                             @categoryNames.GetValueOrDefault(node.Key, L["Picker_Unknown"])
                         </span>
                     </td>
@@ -138,7 +138,7 @@
                         <td class="text-end">
                             @if (readOnly)
                             {
-                                <input type="number" class="form-control form-control-sm text-muted"
+                                <input type="number" class="form-control form-control-sm text-body-secondary"
                                        style="min-width: 80px; text-align: right;"
                                        step="0.01"
                                        readonly
@@ -261,7 +261,7 @@
 <Modal Show="@showRepredictDialog" Title="@L["Modal_RepredictTitle"]" OnClose="@HideRepredictDialog">
     <ChildContent>
         <p>@L["Modal_RepredictBody"]</p>
-        <p class="text-muted small mb-0">@L["Modal_RepredictHint"]</p>
+        <p class="text-body-secondary small mb-0">@L["Modal_RepredictHint"]</p>
     </ChildContent>
     <Footer>
         <button class="btn btn-secondary" @onclick="HideRepredictDialog">@L["Button_Cancel"]</button>

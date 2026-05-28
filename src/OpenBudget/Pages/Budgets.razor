@@ -20,7 +20,7 @@
         <HomeLink />
         <h5 class="mb-0">@L["NotFound_Heading"]</h5>
     </div>
-    <p class="text-muted">@L["NotFound_BodyBefore"]<a href="/">@L["NotFound_DashboardLink"]</a>@L["NotFound_BodyAfter"]</p>
+    <p class="text-body-secondary">@L["NotFound_BodyBefore"]<a href="/">@L["NotFound_DashboardLink"]</a>@L["NotFound_BodyAfter"]</p>
     return;
 }
 
@@ -96,7 +96,7 @@
                 }
                 else if (!categoryTrends.Any())
                 {
-                    <p class="text-muted">@L["Status_NoTrendData"]</p>
+                    <p class="text-body-secondary">@L["Status_NoTrendData"]</p>
                 }
                 else
                 {
@@ -141,7 +141,7 @@
                                             // numbers with Σ so the value reads as a roll-up rather than a user input.
                                             // Expansion adds nothing to the parent's styling — it just toggles whether
                                             // the sub-cat rows below are visible.
-                                            var rowClass = item.IsAutoSummed ? "text-muted fst-italic"
+                                            var rowClass = item.IsAutoSummed ? "text-body-secondary fst-italic"
                                                 : !item.HasBudget ? ""
                                                 : percentOfBudget > 110 ? "table-danger"
                                                 : percentOfBudget > 90 ? "table-warning"
@@ -279,7 +279,7 @@
                             }
                         }
                     </div>
-                    <small class="form-text text-muted mt-2 d-block">
+                    <small class="form-text text-body-secondary mt-2 d-block">
                         <strong>@L["HowToUse_Heading"]</strong><br/>
                         • @L["HowToUse_Item1"]<br/>
                         • @L["HowToUse_Item2"]<br/>
@@ -296,7 +296,7 @@
         @if (budgetPendingDelete != null)
         {
             <p>@L["Modal_DeleteBudget_Body", budgetPendingDelete.Year, string.IsNullOrEmpty(budgetPendingDelete.Notes) ? "" : L["Modal_DeleteBudget_Notes", budgetPendingDelete.Notes].Value]</p>
-            <p class="text-muted small mb-0">@L["Modal_DeleteBudget_Warning"]</p>
+            <p class="text-body-secondary small mb-0">@L["Modal_DeleteBudget_Warning"]</p>
         }
     </ChildContent>
     <Footer>

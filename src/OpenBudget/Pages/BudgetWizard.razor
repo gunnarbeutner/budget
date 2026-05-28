@@ -19,7 +19,7 @@
         <HomeLink />
         <h5 class="mb-0">@L["NotFound_Heading"]</h5>
     </div>
-    <p class="text-muted">@L["NotFound_Before"]<a href="/">@L["NotFound_LinkText"]</a>@L["NotFound_After"]</p>
+    <p class="text-body-secondary">@L["NotFound_Before"]<a href="/">@L["NotFound_LinkText"]</a>@L["NotFound_After"]</p>
     return;
 }
 
@@ -48,7 +48,7 @@
             <div class="mb-3">
                 <label class="form-label">@L["Form_NameLabel"]</label>
                 <input type="text" class="form-control" @bind="budgetName" placeholder="@DateTime.UtcNow.ToString("yyyy-MM-dd")" />
-                <small class="form-text text-muted">@L["Form_NameHelp"]</small>
+                <small class="form-text text-body-secondary">@L["Form_NameHelp"]</small>
             </div>
 
             <div class="mb-3">
@@ -64,7 +64,7 @@
                            @onchange="@(() => sourceMode = "predict")" />
                     <label class="form-check-label" for="sourceModePredict">
                         @L["Form_SourcePredict"]
-                        <small class="form-text text-muted d-block">@L["Form_SourcePredictHelp"]</small>
+                        <small class="form-text text-body-secondary d-block">@L["Form_SourcePredictHelp"]</small>
                     </label>
                 </div>
                 <div class="form-check">
@@ -74,7 +74,7 @@
                            @onchange="@(() => sourceMode = "clone")" />
                     <label class="form-check-label" for="sourceModeClone">
                         @L["Form_SourceClone"]
-                        <small class="form-text text-muted d-block">@L["Form_SourceCloneHelp"]</small>
+                        <small class="form-text text-body-secondary d-block">@L["Form_SourceCloneHelp"]</small>
                     </label>
                 </div>
                 @if (sourceMode == "clone")
@@ -119,7 +119,7 @@ else if (step == 2)
             }
             else if (predictions != null && categoryNames != null)
             {
-                <p class="text-muted">
+                <p class="text-body-secondary">
                     @L["Predictions_Intro"]
                 </p>
 

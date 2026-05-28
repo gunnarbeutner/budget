@@ -21,7 +21,7 @@
         <HomeLink />
         <h5 class="mb-0">@L["NotFound_Heading"]</h5>
     </div>
-    <p class="text-muted">
+    <p class="text-body-secondary">
         @L["NotFound_Body_Before"]<a href="/">@L["NotFound_Body_LinkText"]</a>@L["NotFound_Body_After"]
     </p>
     return;
@@ -111,7 +111,7 @@
                             <span class="browse-tree-name"><i class="bi bi-bank me-1" aria-hidden="true"></i>@a.Name</span>
                             @if (a.Balance.HasValue)
                             {
-                                <span class="browse-tree-amount @(a.Balance < 0 ? "text-danger" : "text-muted")">
+                                <span class="browse-tree-amount @(a.Balance < 0 ? "text-danger" : "text-body-secondary")">
                                     @Formatting.FormatMoney(a.Balance.Value, a.Currency ?? "EUR")
                                 </span>
                             }

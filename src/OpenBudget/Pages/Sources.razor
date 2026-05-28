@@ -14,7 +14,7 @@
     <h5 class="mb-0">@L["Heading"]</h5>
 </div>
 
-<p class="text-muted">
+<p class="text-body-secondary">
     @L["Intro_Before"]<code>POST /api/moneymoney-db/{name}</code>@L["Intro_After"]
 </p>
 
@@ -57,7 +57,7 @@ else
                         }
                         else
                         {
-                            <span class="text-muted">@L["Never"]</span>
+                            <span class="text-body-secondary">@L["Never"]</span>
                         }
                     </td>
                     <td class="text-end">@projectCounts.GetValueOrDefault(s.Id, 0)</td>
@@ -70,7 +70,7 @@ else
                         }
                         else
                         {
-                            <span class="text-muted small">@L["InUse"]</span>
+                            <span class="text-body-secondary small">@L["InUse"]</span>
                         }
                     </td>
                 </tr>

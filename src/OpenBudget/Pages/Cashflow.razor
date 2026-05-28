@@ -21,7 +21,7 @@
         <HomeLink />
         <h5 class="mb-0">@L["NotFound_Heading"]</h5>
     </div>
-    <p class="text-muted">@L["NotFound_Body_Before"]<a href="/">@L["NotFound_Body_LinkText"]</a>@L["NotFound_Body_After"]</p>
+    <p class="text-body-secondary">@L["NotFound_Body_Before"]<a href="/">@L["NotFound_Body_LinkText"]</a>@L["NotFound_Body_After"]</p>
     return;
 }
 
@@ -69,7 +69,7 @@
         }
         <label class="form-label d-inline-flex align-items-center gap-1">
             @L["Label_IncomeProjection"]
-            <i class="bi bi-info-circle text-muted" title="@projectionHelp" aria-hidden="true"></i>
+            <i class="bi bi-info-circle text-body-secondary" title="@projectionHelp" aria-hidden="true"></i>
         </label>
         <div class="segmented segmented-block" role="group" aria-label="@L["Aria_IncomeProjectionMode"]">
             <input type="radio" class="btn-check" name="incomeProj" id="incomeProjBudget"
@@ -103,7 +103,7 @@
                        disabled="@(!balanceFloorEnabled)"
                        @bind="balanceFloor" @bind:after="OnBalanceFloorChanged" />
             </div>
-            <i class="bi bi-info-circle text-muted" title="@L["BalanceFloor_Help"]" aria-hidden="true"></i>
+            <i class="bi bi-info-circle text-body-secondary" title="@L["BalanceFloor_Help"]" aria-hidden="true"></i>
         </div>
     </div>
 </div>
@@ -130,7 +130,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 d-inline-flex align-items-center gap-1">
                         @L["Card_WhatIfs"]
-                        <i class="bi bi-info-circle text-muted" title="@L["WhatIfs_Help"]" aria-hidden="true"></i>
+                        <i class="bi bi-info-circle text-body-secondary" title="@L["WhatIfs_Help"]" aria-hidden="true"></i>
                     </h5>
                     <button type="button" class="btn btn-sm btn-outline-primary"
                             @onclick="AddWhatIf">
@@ -202,7 +202,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                     <h5 class="mb-0">@L["Card_AccountBalanceWatermarks", selectedYear]</h5>
                     @if (hasAssignedAccounts && balanceDaily.Length > 0)
                     {
-                        <small class="text-muted">
+                        <small class="text-body-secondary">
                             @L["Balance_YearMin"] <span class="@(yearMinBalance < 0 ? "text-danger fw-semibold" : "fw-semibold")">@FormatEuro(yearMinBalance)</span>
                             @L["Balance_YearMin_On", FormatMonthDay(new DateTime(selectedYear, 1, 1).AddDays(yearMinDayOfYear - 1))]
                         </small>
@@ -217,11 +217,11 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                     }
                     else if (balanceDaily.Length == 0)
                     {
-                        <p class="text-muted mb-0">@L["Balance_NoData"]</p>
+                        <p class="text-body-secondary mb-0">@L["Balance_NoData"]</p>
                     }
                     else
                     {
-                        <p class="text-muted small mb-2">
+                        <p class="text-body-secondary small mb-2">
                             @L["Balance_StartingBalance_Before"]<strong>@FormatEuro(startingBalance)</strong>@L["Balance_StartingBalance_After"]
                         </p>
                         @if (balanceFloorEnabled && balanceDaily.Length > 0 && yearMinBalance < EffectiveFloor)
@@ -319,8 +319,8 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                 </div>
                 <div class="card-body">
                     <details class="mb-3">
-                        <summary class="text-muted small" style="cursor: pointer;">@L["Calculator_HowItWorks_Summary"]</summary>
-                        <div class="text-muted small mt-2">
+                        <summary class="text-body-secondary small" style="cursor: pointer;">@L["Calculator_HowItWorks_Summary"]</summary>
+                        <div class="text-body-secondary small mt-2">
                             @(incomeProjectionMode switch
                             {
                                 "budget" => L["Calculator_HowItWorks_Budget"],
@@ -391,7 +391,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                         var yearly = income.MonthlyAmounts.Sum();
                                         <tr>
                                             <td>@income.CategoryName</td>
-                                            @if (showOrigin) { <td><small class="text-muted">@income.OriginProjectName</small></td> }
+                                            @if (showOrigin) { <td><small class="text-body-secondary">@income.OriginProjectName</small></td> }
                                             <td class="text-end">@FormatEuro(sourceMonthAmount)</td>
                                             <td class="text-end">@FormatEuro(yearly)</td>
                                         </tr>
@@ -435,7 +435,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                 var splitsValid = splitsTotal == 100m;
                             }
                             <div class="d-flex justify-content-between align-items-center">
-                                <small class="@(splitsValid ? "text-muted" : "text-danger fw-semibold")">
+                                <small class="@(splitsValid ? "text-body-secondary" : "text-danger fw-semibold")">
                                     @L["Splits_Total", splitsTotal]
                                     @if (!splitsValid)
                                     {
@@ -447,7 +447,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                     <div class="d-flex align-items-center gap-2">
                                         @if (splitsDirty)
                                         {
-                                            <small class="text-muted">@L["Splits_UnsavedChanges"]</small>
+                                            <small class="text-body-secondary">@L["Splits_UnsavedChanges"]</small>
                                         }
                                         <button class="btn btn-sm btn-outline-primary"
                                                 disabled="@(!splitsDirty || splitsSaving)"
@@ -458,7 +458,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                                 }
                                 else
                                 {
-                                    <small class="text-muted">@L["Splits_SelectBudgetToSave"]</small>
+                                    <small class="text-body-secondary">@L["Splits_SelectBudgetToSave"]</small>
                                 }
                             </div>
                         </div>
@@ -486,7 +486,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
 
                                         <tr>
                                             <td>@income.CategoryName</td>
-                                            @if (showOrigin) { <td><small class="text-muted">@income.OriginProjectName</small></td> }
+                                            @if (showOrigin) { <td><small class="text-body-secondary">@income.OriginProjectName</small></td> }
                                             <td class="text-end">@FormatEuro(totalIncome)</td>
                                             <td class="text-end">@split%</td>
                                             <td class="text-end">@FormatEuro(requiredContribution)</td>
@@ -508,7 +508,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                     }
                     else
                     {
-                        <p class="text-muted">@L["NoIncomeCategories"]</p>
+                        <p class="text-body-secondary">@L["NoIncomeCategories"]</p>
                     }
                 </div>
             </div>
