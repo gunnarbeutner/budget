@@ -566,7 +566,6 @@ else
     private decimal netCashflow = 0;
     private bool needsChartRender = false;
     private int firstProjectedMonth = 13;
-    private decimal totalMonthlyIncomeNeeded = 0m;
     private bool splitsDirty = false;
     private bool splitsSaving = false;
 
@@ -745,8 +744,6 @@ else
         public List<CategoryCashflow> IncomeCategories { get; set; } = new();
         public List<CategoryCashflow> ExpenseCategories { get; set; } = new();
         public HashSet<(long Id, CategoryItemType ItemType)> Keys { get; set; } = new();
-        public decimal TotalExpensesForProjection { get; set; }
-        public decimal TotalIncomeYtd { get; set; }
         public List<(long Id, CategoryItemType ItemType)> ProjectionItems { get; set; } = new();
         public Dictionary<(long Id, CategoryItemType ItemType), decimal[]>? BudgetAmounts { get; set; }
     }
@@ -983,15 +980,7 @@ else
             expenseCategories.AddRange(slice.ExpenseCategories);
         }
 
-        // Aggregated projection totals (sum across all slices) feed the income contribution
-        // calculator's "Total Expenses" reference and the breakeven-mode income gap.
         bool projecting = firstProjectedMonth <= 12;
-        var totalExpensesForProjection = slices.Sum(s => s.TotalExpensesForProjection);
-        var totalIncomeYtd = slices.Sum(s => s.TotalIncomeYtd);
-        var remainingMonthsForProjection = 13 - firstProjectedMonth;
-        totalMonthlyIncomeNeeded = projecting && remainingMonthsForProjection > 0
-            ? Math.Max(0m, (totalExpensesForProjection - totalIncomeYtd) / remainingMonthsForProjection)
-            : 0m;
 
         // For "budget" projection mode, ApplyIncomeProjection looks at budgetMonthlyAmounts
         // keyed by (catId, itemType) — but with rollup, each row in incomeCategories carries
@@ -1179,29 +1168,6 @@ else
                     var projected = Math.Max(0m, cumulTarget - cumulSpent);
                     expenses[m] = projected;
                     cumulSpent += projected;
-                }
-            }
-        }
-
-        if (projecting)
-        {
-            foreach (var cat in availableCategories)
-            {
-                bool isIncome = incomeItems!.Contains((cat.Id, cat.ItemType));
-                var (income, expenses) = batch[(cat.Id, cat.ItemType)];
-                // Only aggregate over leaves-of-tracking-tree so a tracked group + sub-cat pair
-                // doesn't double-count. Per-row totals stay natural for display.
-                if (!aggregateKeys.Contains((cat.Id, cat.ItemType))) continue;
-                if (!isIncome)
-                {
-                    // expenses already carries self-corrected projection from the pre-pass —
-                    // summing it gives the row's whole-year planned spend (annual budget in
-                    // the typical case, capped at actuals if an early overrun never catches up).
-                    slice.TotalExpensesForProjection += expenses.Sum();
-                }
-                else
-                {
-                    slice.TotalIncomeYtd += income.Take(firstProjectedMonth - 1).Sum();
                 }
             }
         }
@@ -1449,43 +1415,64 @@ else
             return;
         }
 
-        // "breakeven" mode: distribute the global income gap by contribution-split %.
-        // No early return when the gap is zero — we still need to overwrite MonthlyAmounts so
-        // a previous run's what-if mutation doesn't linger after the user removes the entry.
+        // "breakeven" mode: per-source prepayment math. Each source's annual obligation is
+        // (annual expenses × its split%); attributed what-ifs count toward THAT source's
+        // remaining obligation only — not the global pool — so one person prepaying their
+        // share doesn't shift the burden onto the others. Annual split is preserved as long
+        // as nobody overpays their target. Future months are filled with the per-source
+        // remainder spread flat across the projection window.
+        //
+        // We unconditionally overwrite future MonthlyAmounts (even when remaining is zero)
+        // so a previous run's what-if mutation doesn't linger after the user removes it.
         int remainingMonths = 13 - firstProjectedMonth;
-        // Absorb every what-if (past, current, or future month) into the breakeven target so
-        // the annual split stays intact: attributed income what-ifs reduce how much each
-        // source still has to project, and expense what-ifs (which inflate annual expense via
-        // ApplyWhatIfsToCategories) raise the target accordingly. Past/current what-ifs are
-        // absorbed by the only thing the projection can still touch — the remaining future
-        // months — keeping annual income matched to annual expense.
-        decimal whatIfIncomeTotal = 0m;
+
         decimal whatIfExpenseTotal = 0m;
+        var whatIfIncomeBySource = new Dictionary<string, decimal>();
         foreach (var w in whatIfs)
         {
             var key = w.ParseCategory();
             if (key == null) continue;
             if (w.Amount == 0m) continue;
             if (w.Date.Year != selectedYear) continue;
-            if (incomeCategories.Any(c => c.CategoryId == key.Value.Id && c.ItemType == key.Value.Type && c.IsAggregateRow))
+            var incomeRow = incomeCategories.FirstOrDefault(c =>
+                c.CategoryId == key.Value.Id && c.ItemType == key.Value.Type && c.IsAggregateRow);
+            if (incomeRow != null)
             {
-                whatIfIncomeTotal += w.Amount;
+                whatIfIncomeBySource.TryGetValue(incomeRow.CategoryName, out var prev);
+                whatIfIncomeBySource[incomeRow.CategoryName] = prev + w.Amount;
+                continue;
             }
-            else if (expenseCategories.Any(c => c.CategoryId == key.Value.Id && c.ItemType == key.Value.Type && c.IsAggregateRow))
+            if (expenseCategories.Any(c =>
+                c.CategoryId == key.Value.Id && c.ItemType == key.Value.Type && c.IsAggregateRow))
             {
                 // ApplyWhatIfsToCategories stores -Amount on expense rows, so a negative
-                // (outflow) what-if raises expenses by |Amount|. Mirror that here.
+                // (outflow) what-if raises annual expenses by |Amount|. Mirror that here.
                 whatIfExpenseTotal += -w.Amount;
             }
         }
-        decimal targetForSources = totalMonthlyIncomeNeeded * remainingMonths + whatIfExpenseTotal - whatIfIncomeTotal;
-        decimal adjustedPerMonth = remainingMonths > 0
-            ? Math.Max(0m, targetForSources / remainingMonths)
-            : 0m;
+
+        // Aggregate expense rows currently carry actuals + self-corrected projection (the
+        // pre-pass in LoadOneProjectCashflowSliceAsync). Expense what-ifs are layered on
+        // afterwards by ApplyWhatIfsToCategories, so add their contribution here to land
+        // on the post-what-if annual expense target.
+        decimal annualExpenseTarget = expenseCategories
+            .Where(c => c.IsAggregateRow)
+            .Sum(c => c.MonthlyAmounts.Sum()) + whatIfExpenseTotal;
+
         foreach (var income in incomeCategories)
         {
             var split = contributionSplits.GetValueOrDefault(income.CategoryName, 0m);
-            var perMonth = adjustedPerMonth * (split / 100m);
+            decimal perMonth = 0m;
+            if (income.IsAggregateRow && split > 0m && remainingMonths > 0)
+            {
+                decimal sourceAnnualTarget = annualExpenseTarget * (split / 100m);
+                decimal sourceYtd = 0m;
+                for (int m = 0; m < firstProjectedMonth - 1; m++)
+                    sourceYtd += income.MonthlyAmounts[m];
+                decimal sourceWhatIfs = whatIfIncomeBySource.GetValueOrDefault(income.CategoryName, 0m);
+                decimal sourceRemaining = Math.Max(0m, sourceAnnualTarget - sourceYtd - sourceWhatIfs);
+                perMonth = sourceRemaining / remainingMonths;
+            }
             for (int m = firstProjectedMonth - 1; m < 12; m++)
             {
                 income.MonthlyAmounts[m] = perMonth;
