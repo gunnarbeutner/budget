@@ -87,14 +87,7 @@
         <div class="d-flex gap-2">
             @if (availableToAdd.Any())
             {
-                <select class="form-select form-select-sm" @bind="addSelection" style="min-width: 280px;">
-                    <option value="">@L["Picker_AddTrackedItem"]</option>
-                    @foreach (var key in availableToAdd.OrderBy(k => addCandidateNames.GetValueOrDefault(k, "")))
-                    {
-                        <option value="@SerializeKey(key)">@addCandidateNames.GetValueOrDefault(key, L["Picker_Unknown"])</option>
-                    }
-                </select>
-                <button class="btn btn-sm btn-outline-primary" @onclick="AddSelected" disabled="@string.IsNullOrEmpty(addSelection)">@L["Button_Add"]</button>
+                <button class="btn btn-sm btn-outline-primary" @onclick="ShowAddTrackedDialog">@L["Picker_AddTrackedItem"]</button>
             }
             <button class="btn btn-sm btn-outline-secondary" @onclick="ShowRepredictDialog" disabled="@(editingEntries.Count == 0)">@L["Button_Repredict"]</button>
         </div>
@@ -279,6 +272,19 @@
     </Footer>
 </Modal>
 
+<Modal Show="@showAddTrackedDialog" Title="@L["Picker_AddTrackedItem"]" SizeClass="modal-lg" OnClose="@HideAddTrackedDialog">
+    <ChildContent>
+        <TreePicker TId="string"
+                    Nodes="@BuildAddTrackedNodes()"
+                    SelectedId="@addSelection"
+                    SelectedIdChanged="@(id => addSelection = id)" />
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-secondary" @onclick="HideAddTrackedDialog">@L["Button_Cancel"]</button>
+        <button class="btn btn-primary" @onclick="AddSelected" disabled="@string.IsNullOrEmpty(addSelection)">@L["Button_Add"]</button>
+    </Footer>
+</Modal>
+
 @code {
     [Parameter] public int BudgetId { get; set; }
 
@@ -286,6 +292,7 @@
     private bool notFound = false;
     private bool isSaving = false;
     private bool showRepredictDialog = false;
+    private bool showAddTrackedDialog = false;
 
     private Dictionary<(long Id, CategoryItemType ItemType), decimal[]> editingEntries = new();
     // Shadow rows: leaf sub-cats under a tracked group that have transactions in the budget's
@@ -648,11 +655,43 @@
     {
         if (string.IsNullOrEmpty(addSelection)) return;
         if (!TryDeserializeKey(addSelection, out var key)) return;
-        if (editingEntries.ContainsKey(key)) return;
+        if (editingEntries.ContainsKey(key))
+        {
+            addSelection = "";
+            showAddTrackedDialog = false;
+            return;
+        }
 
         editingEntries[key] = new decimal[12];
         addSelection = "";
+        showAddTrackedDialog = false;
         await RefreshAfterEditAsync();
+    }
+
+    private void ShowAddTrackedDialog()
+    {
+        addSelection = "";
+        showAddTrackedDialog = true;
+    }
+
+    private void HideAddTrackedDialog() => showAddTrackedDialog = false;
+
+    /// <summary>
+    /// Project tracking items not yet in the editor, as TreePicker rows. The list is flat
+    /// (no nested groups): the project's tracking config already determines which items show
+    /// up here, and reusing the global category hierarchy would clutter the picker with
+    /// untracked ancestor groups the user can't pick anyway. Names use the same parent-prefix
+    /// disambiguation as the rest of the editor.
+    /// </summary>
+    private List<TreePickerNode<string>> BuildAddTrackedNodes()
+    {
+        return availableToAdd
+            .OrderBy(k => addCandidateNames.GetValueOrDefault(k, ""))
+            .Select(k => new TreePickerNode<string>(
+                SerializeKey(k), Level: 0, Selectable: true,
+                Label: addCandidateNames.GetValueOrDefault(k, L["Picker_Unknown"].Value),
+                Icon: "bi-tag-fill"))
+            .ToList();
     }
 
     private async Task RefreshAfterEditAsync()
