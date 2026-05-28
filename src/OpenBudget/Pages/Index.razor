@@ -5,7 +5,6 @@
 @using Microsoft.AspNetCore.WebUtilities
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
-@inject FreshnessService FreshnessService
 @inject NavigationManager Navigation
 @inject IStringLocalizer<Index> L
 
@@ -67,7 +66,6 @@ else
             var overallPercent = ProjectStatus.OverallPercent(summary);
             var balanceInfo = projectBalances.GetValueOrDefault(projectId);
             var hasBalance = balanceInfo is { AccountCount: > 0 };
-            var alert = ProjectStatus.BuildAlert(summary, freshnessBySourceId, uncategorized, L, DateTime.UtcNow);
             var overviewUrl = $"/projects/{projectId}/overview{AnchorQuery()}";
 
             <div class="portfolio-row status-@statusClass">
@@ -76,13 +74,6 @@ else
                     <div style="min-width: 0;">
                         <div class="portfolio-name">
                             <a href="@overviewUrl" class="stretched-link text-reset text-decoration-none">@summary.ProjectName</a>
-                            @if (alert is { } a)
-                            {
-                                <span class="portfolio-badge badge bg-@(a.Severity) ms-2"
-                                      title="@string.Join(" ", a.Lines)" aria-label="@string.Join(" ", a.Lines)">
-                                    <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
-                                </span>
-                            }
                         </div>
                         @if (hasBalance)
                         {
@@ -175,8 +166,6 @@ else
 @code {
     private List<ProjectSpendingSummary>? budgetSummaries;
     private Dictionary<int, ProjectBalanceSummary> projectBalances = new();
-    private Dictionary<int, DataFreshness> freshnessBySourceId = new();
-    private Dictionary<int, UncategorizedSummary>? uncategorized;
     private List<ImportSource> availableSources = new();
     private bool showCreateDialog = false;
     private string newProjectName = "";
@@ -250,10 +239,8 @@ else
             }
         }
 
-        // Period-independent context for the status accents + alert badges.
+        // Period-independent context for the status accents.
         projectBalances = await ProjectService.GetAllProjectsBalancesAsync();
-        freshnessBySourceId = (await FreshnessService.GetDataFreshnessAsync()).ToDictionary(f => f.SourceId);
-        uncategorized = await FreshnessService.GetUncategorizedTransactionSummaryAsync();
         availableSources = await ProjectService.GetAllSourcesAsync();
         if (!availableSources.Any(s => s.Id == newProjectSourceId))
         {

@@ -69,13 +69,8 @@
     text-align: right;
 }
 
-/* Badge + actions must sit above the name's stretched-link overlay to stay
+/* Actions must sit above the name's stretched-link overlay to stay
    hoverable / clickable; the overlay covers the rest of the row for jump-in. */
-.portfolio-badge {
-    position: relative;
-    z-index: 2;
-}
-
 .portfolio-actions {
     position: relative;
     z-index: 2;
