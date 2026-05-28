@@ -26,6 +26,14 @@
 
     /* Vertical "today" marker overlaid on dashboard progress bars. */
     --today-marker-color: rgba(0, 0, 0, 0.7);
+
+    /* The single page-identity title size/weight. Both page headers — the plain PageHeader
+       (Sources, not-found) and the project name in ProjectPageHeader — read from this so the
+       "what am I looking at" title is one type, defined once, instead of two h5-ish values that
+       could drift apart. (PeriodNav's heading is deliberately a touch smaller — it's a control
+       label, not the page title — so it keeps its own size.) */
+    --page-title-size: 1.25rem;
+    --page-title-weight: 500;
 }
 
 [data-bs-theme="dark"] {
@@ -777,9 +785,16 @@ a, .btn-link {
 .project-selector-toggle::-webkit-details-marker { display: none; }
 .project-selector-toggle::marker { content: ""; }
 .project-selector-name {
-    font-size: 1.25rem;
-    font-weight: 500;
+    font-size: var(--page-title-size);
+    font-weight: var(--page-title-weight);
     color: var(--bs-body-color, #212529);
+}
+
+/* PageHeader title: same page-identity type as the project selector name, sourced from the
+   shared token rather than relying on the bare <h5> default so the two stay in lockstep. */
+.page-header-title {
+    font-size: var(--page-title-size);
+    font-weight: var(--page-title-weight);
 }
 .project-selector-caret {
     font-size: 0.65rem;
