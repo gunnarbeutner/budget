@@ -449,7 +449,7 @@ else
                                     {
                                         @* NBSPs survive HTML normalization where regular spaces collapse, so the tree
                                            indent stays visible inside <option>. *@
-                                        var indent = new string(' ', node.Level * 4);
+                                        var indent = new string('\u00A0', node.Level * 4);
                                         if (node.IsGroup)
                                         {
                                             <option value="0" disabled>@indent@node.Label</option>
@@ -513,37 +513,12 @@ else
                             <label class="form-label">@L["Form_SelectCategoryLabel"]</label>
                             <select class="form-select" @bind="selectedCategoryId" size="15">
                                 <option value="0">@L["Form_SelectCategory"]</option>
-                                @{
-                                    // Group by parent to show hierarchy
-                                    var rootCategories = availableCategoriesWithCounts.Where(c => c.IsRootCategory).OrderBy(c => c.CategoryGroup.Name);
-
-                                    foreach (var rootCat in rootCategories)
-                                    {
-                                        var childInfo = rootCat.DirectChildCount > 0 ? L["Form_SubCategories", rootCat.DirectChildCount].Value : "";
-                                        <option value="@rootCat.CategoryGroup.Id">@rootCat.CategoryGroup.Name@childInfo</option>
-
-                                        // Show first-level children (e.g., Auslagen, Barauszahlung under Umbuchungen)
-                                        var firstLevelChildren = availableCategoriesWithCounts
-                                            .Where(c => c.ParentCategoryGroupId == rootCat.CategoryGroup.Id)
-                                            .OrderBy(c => c.CategoryGroup.Name);
-
-                                        foreach (var child1 in firstLevelChildren)
-                                        {
-                                            var child1Info = child1.DirectChildCount > 0 ? L["Form_SubCategories", child1.DirectChildCount].Value : "";
-                                            <option value="@child1.CategoryGroup.Id">  ↳ @child1.CategoryGroup.Name@child1Info</option>
-
-                                            // Show second-level children (e.g., Sparkasse under Barauszahlung)
-                                            var secondLevelChildren = availableCategoriesWithCounts
-                                                .Where(c => c.ParentCategoryGroupId == child1.CategoryGroup.Id)
-                                                .OrderBy(c => c.CategoryGroup.Name);
-
-                                            foreach (var child2 in secondLevelChildren)
-                                            {
-                                                var child2Info = child2.DirectChildCount > 0 ? L["Form_SubCategories", child2.DirectChildCount].Value : "";
-                                                <option value="@child2.CategoryGroup.Id">    ↳↳ @child2.CategoryGroup.Name@child2Info</option>
-                                            }
-                                        }
-                                    }
+                                @foreach (var node in BuildCategoryPickerNodes(availableCategoriesWithCounts))
+                                {
+                                    @* NBSP indent — regular spaces collapse inside <option>, NBSPs do not. The
+                                       \u escape keeps the special character intact through editors and copy/paste. *@
+                                    var indent = new string('\u00A0', node.Level * 4);
+                                    <option value="@node.Id">@indent@node.Label</option>
                                 }
                             </select>
                             <small class="form-text text-muted">@L["AddCategory_Help"]</small>
@@ -619,6 +594,78 @@ else
         public bool IsGroup { get; set; }
         public long AccountId { get; set; }
         public string Label { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Flat row in the Add Category tree picker. Every row is selectable (assigning a group
+    /// tracks the whole subtree, assigning a leaf tracks just that category); Level controls
+    /// the indent.
+    /// </summary>
+    private class CategoryPickerNode
+    {
+        public int Level { get; set; }
+        public long Id { get; set; }
+        public string Label { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Walk the unified category hierarchy and produce a flat, depth-first list of rows for
+    /// the Add Category picker. Every level mixes sub-groups and leaf categories sorted
+    /// together by MoneyMoney's <c>sort</c> field, so the order matches what the user sees
+    /// in MoneyMoney. Nodes with empty/null names are skipped — those are the source's
+    /// "unsorted" sentinel rows we don't want users picking.
+    /// </summary>
+    private List<CategoryPickerNode> BuildCategoryPickerNodes(List<CategoryGroupWithChildCount> items)
+    {
+        var groupChildrenByParent = items
+            .Where(c => c.ItemType == CategoryItemType.Group && c.ParentCategoryGroupId.HasValue)
+            .GroupBy(c => c.ParentCategoryGroupId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var categoryChildrenByParent = items
+            .Where(c => c.ItemType == CategoryItemType.Category && c.ParentCategoryGroupId.HasValue)
+            .GroupBy(c => c.ParentCategoryGroupId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var roots = items
+            .Where(c => c.ItemType == CategoryItemType.Group && c.IsRootCategory)
+            .OrderBy(c => c.CategoryGroup.Sort ?? long.MaxValue)
+            .ThenBy(c => c.CategoryGroup.Name)
+            .ToList();
+
+        var nodes = new List<CategoryPickerNode>();
+
+        long SortKey(CategoryGroupWithChildCount c) =>
+            (c.ItemType == CategoryItemType.Group ? c.CategoryGroup.Sort : c.Category?.Sort) ?? long.MaxValue;
+
+        void Walk(CategoryGroupWithChildCount item, int level)
+        {
+            var name = item.Name;
+            if (string.IsNullOrWhiteSpace(name)) return;
+
+            var isGroup = item.ItemType == CategoryItemType.Group;
+            var label = name;
+            if (isGroup && item.DirectChildCount > 0)
+            {
+                label += L["Form_SubCategories", item.DirectChildCount].Value;
+            }
+            nodes.Add(new CategoryPickerNode { Level = level, Id = item.Id, Label = label });
+
+            if (!isGroup) return;
+
+            var children = new List<CategoryGroupWithChildCount>();
+            if (groupChildrenByParent.TryGetValue(item.CategoryGroup.Id, out var subGroups))
+                children.AddRange(subGroups);
+            if (categoryChildrenByParent.TryGetValue(item.CategoryGroup.Id, out var cats))
+                children.AddRange(cats);
+
+            foreach (var c in children.OrderBy(SortKey).ThenBy(c => c.Name))
+            {
+                Walk(c, level + 1);
+            }
+        }
+
+        foreach (var root in roots) Walk(root, 0);
+        return nodes;
     }
 
     /// <summary>
