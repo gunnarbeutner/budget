@@ -105,23 +105,38 @@ public class BudgetEntryService
     public async Task UpdateBudgetAsync(Budget budget)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        budget.LastModifiedAt = DateTime.UtcNow;
 
-        if (budget.IsActive)
+        // budget arrives detached from another context with MonthlyEntries + Project included, so
+        // db.Budgets.Update(budget) would attach that whole graph and mark every node Modified —
+        // silently rewriting monthly entries (and the read-only-ish Project nav) on a metadata
+        // save. Load the tracked row instead and copy only the editable scalar columns; entry
+        // edits go through SaveBudgetEntriesAsync.
+        var target = await db.Budgets.FindAsync(budget.Id);
+        if (target == null)
+            throw new ArgumentException("Budget not found", nameof(budget));
+
+        var now = DateTime.UtcNow;
+        target.Name = budget.Name;
+        target.Year = budget.Year;
+        target.Notes = budget.Notes;
+        target.IsActive = budget.IsActive;
+        target.LastModifiedAt = now;
+        budget.LastModifiedAt = now; // keep the caller's in-memory copy in sync for re-render
+
+        if (target.IsActive)
         {
             var siblings = await db.Budgets
-                .Where(b => b.ProjectId == budget.ProjectId
-                            && b.Year == budget.Year
-                            && b.Id != budget.Id
+                .Where(b => b.ProjectId == target.ProjectId
+                            && b.Year == target.Year
+                            && b.Id != target.Id
                             && b.IsActive)
                 .ToListAsync();
             foreach (var sibling in siblings)
                 sibling.IsActive = false;
         }
 
-        db.Budgets.Update(budget);
         await db.SaveChangesAsync();
-        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: budget.ProjectId));
+        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: target.ProjectId));
     }
 
     public async Task DeleteBudgetAsync(int budgetId)
