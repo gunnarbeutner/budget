@@ -373,7 +373,47 @@
         catch (InvalidOperationException) { }
     }
 
-    protected override async Task OnInitializedAsync()
+    // Guards the per-project load so it runs once on first render and again only when the
+    // {ProjectId} route param changes — i.e. a client-side switch via the header's project
+    // picker, where the component is reused and OnInitializedAsync would not re-run.
+    private int _loadedProjectId;
+    // Set after each per-project load so OnAfterRenderAsync re-runs the localStorage variance
+    // expand-state restore (JS interop, browser-only) for the newly loaded project — on a switch
+    // OnAfterRenderAsync's firstRender is already false.
+    private bool _needsExpandRestore;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedProjectId == ProjectId) return;
+        _loadedProjectId = ProjectId;
+        ResetForProjectSwitch();
+        await InitForProjectAsync();
+    }
+
+    // On a client-side switch the component is reused, so reset all per-project state to its
+    // initial values; InitForProjectAsync then rebuilds it for the new project.
+    private void ResetForProjectSwitch()
+    {
+        notFound = false;
+        budgetPendingDelete = null;
+        selectedCompareBudgetId = 0;
+        selectedYear = DateTime.UtcNow.Year;
+        categoriesExpanded = false;
+        expandedVarianceKeys = new();
+        shadowSubcatsByGroup = new();
+        budgetedDescendantsByGroup = new();
+        sessionAutoDefaultApplied = false;
+        allCategories = null;
+        allAvailableCategories = null;
+        allActualCategories = null;
+        categoryTrends = null;
+        availableBudgets = null;
+        availableYears = null;
+        selectedActualCategoryIds = new();
+        incomeItems = new();
+    }
+
+    private async Task InitForProjectAsync()
     {
         // Project-scoped via the {ProjectId} route segment; the :int constraint already rejects
         // non-numeric ids at routing, so the only failure left is an unknown project (404).
@@ -414,6 +454,7 @@
 
         await LoadProjectContext();
         await LoadCategoryTrends();
+        _needsExpandRestore = true;
     }
 
     private async Task LoadProjectContext()
@@ -562,31 +603,37 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && selectedCompareBudgetId > 0)
+        // Re-run after every per-project load (first render and project switch), not just
+        // firstRender, since a client-side switch leaves firstRender false.
+        if (_needsExpandRestore)
         {
-            try
+            _needsExpandRestore = false;
+            if (selectedCompareBudgetId > 0)
             {
-                var hasPreference = await JS.InvokeAsync<bool>("expandState.hasPreference", ExpandScope);
-                if (hasPreference)
+                try
                 {
-                    var stored = await JS.InvokeAsync<string[]>("expandState.get", ExpandScope);
-                    expandedVarianceKeys.Clear();
-                    foreach (var s in stored)
+                    var hasPreference = await JS.InvokeAsync<bool>("expandState.hasPreference", ExpandScope);
+                    if (hasPreference)
                     {
-                        var parts = s.Split(':');
-                        if (parts.Length == 2
-                            && int.TryParse(parts[0], out var typeInt)
-                            && long.TryParse(parts[1], out var id))
+                        var stored = await JS.InvokeAsync<string[]>("expandState.get", ExpandScope);
+                        expandedVarianceKeys.Clear();
+                        foreach (var s in stored)
                         {
-                            expandedVarianceKeys.Add((id, (CategoryItemType)typeInt));
+                            var parts = s.Split(':');
+                            if (parts.Length == 2
+                                && int.TryParse(parts[0], out var typeInt)
+                                && long.TryParse(parts[1], out var id))
+                            {
+                                expandedVarianceKeys.Add((id, (CategoryItemType)typeInt));
+                            }
                         }
+                        await LoadCategoryTrends();
+                        needsTrendChartRender = true;
+                        StateHasChanged();
                     }
-                    await LoadCategoryTrends();
-                    needsTrendChartRender = true;
-                    StateHasChanged();
                 }
+                catch { /* localStorage unavailable — keep server-side auto-defaults */ }
             }
-            catch { /* localStorage unavailable — keep server-side auto-defaults */ }
         }
 
         if (needsTrendChartRender && categoryTrends != null && categoryTrends.Any())
