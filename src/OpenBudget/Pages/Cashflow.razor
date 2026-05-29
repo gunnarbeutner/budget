@@ -1521,22 +1521,6 @@ else
         }
     }
 
-    private async Task<HashSet<long>> GetAllSubGroupIdsAsync(long categoryGroupId, List<CategoryGroupWithChildCount> allCategories)
-    {
-        var result = new HashSet<long>();
-        var children = allCategories.Where(c => c.ParentCategoryGroupId == categoryGroupId).ToList();
-        foreach (var child in children)
-        {
-            result.Add(child.CategoryGroup.Id);
-            var subIds = await GetAllSubGroupIdsAsync(child.CategoryGroup.Id, allCategories);
-            foreach (var subId in subIds)
-            {
-                result.Add(subId);
-            }
-        }
-        return result;
-    }
-
     private async Task RecalculateContributions()
     {
         splitsDirty = SplitsDifferFromSaved();

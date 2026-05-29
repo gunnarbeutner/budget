@@ -557,15 +557,6 @@
             .ToList();
     }
 
-    private void GetAllSubGroupIds(long categoryGroupId, HashSet<long> result)
-    {
-        if (allCategories == null) return;
-
-        // Use shared helper method from CategoryGroupWithChildCount
-        // Only collect CategoryGroups, not leaf categories
-        CategoryGroupWithChildCount.CollectDescendantIds(categoryGroupId, allCategories, result, includeLeafCategories: false);
-    }
-
     private async Task HandleCategoryGroupToggle((long Id, bool IsChecked) args)
     {
         if (allAvailableCategories != null)
