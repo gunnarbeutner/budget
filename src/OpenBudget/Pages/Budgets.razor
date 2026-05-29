@@ -750,25 +750,15 @@
         // Build the map of groups whose descendants carry the budget. Auto-default expansion
         // (below) opens these so the breakdown is visible without a click, but the caret still
         // works — user can collapse to see just the auto-summed parent.
-        budgetedDescendantsByGroup.Clear();
+        budgetedDescendantsByGroup = new();
         if (selectedCompareBudgetId > 0 && allCategories != null)
         {
             var budgetKeys = (await BudgetEntryService.GetMonthlyBudgetAmountsAsync(selectedCompareBudgetId))
                 .Where(kvp => kvp.Value.Any(m => m != 0m))
                 .Select(kvp => kvp.Key)
                 .ToHashSet();
-            foreach (var groupId in selectedCategoryGroupIds)
-            {
-                var groupKey = (groupId, CategoryItemType.Group);
-                var descendants = CategoryGroupWithChildCount.CollectDescendants(
-                    groupId, allCategories, includeLeafCategories: true);
-                var budgeted = descendants
-                    .Select(d => (d.Id, d.ItemType))
-                    .Where(k => budgetKeys.Contains(k))
-                    .ToList();
-                if (budgeted.Count > 0)
-                    budgetedDescendantsByGroup[groupKey] = budgeted;
-            }
+            budgetedDescendantsByGroup = BudgetTrendMath.ResolveBudgetedDescendants(
+                budgetKeys, selectedCategoryGroupIds, allCategories);
         }
 
         if (!sessionAutoDefaultApplied && selectedCompareBudgetId > 0)
@@ -863,7 +853,7 @@
             if (!categoryDisplayNames.TryGetValue(key, out var name)) continue;
 
             categoryTrends[name] = trend;
-            categorySortKeys[name] = ComputeMoneyMoneySortKey(key);
+            categorySortKeys[name] = BudgetTrendMath.ComputeSortKey(key, allActualCategories, allCategories);
             if (aggregateKeys.Contains(key)) aggregateRowNames.Add(name);
             else if (selectedCompareBudgetId > 0) chartHiddenNames.Add(name);
         }
@@ -874,15 +864,6 @@
 
         if (selectedCompareBudgetId > 0 && categoryTrends.Any())
         {
-            budgetTrends = new Dictionary<string, List<MonthlySpending>>();
-            varianceSummary = new List<VarianceSummary>();
-
-            // Collect all months being displayed across all categories
-            var allDisplayedMonths = categoryTrends.Values
-                .SelectMany(trend => trend.Select(m => (m.Year, m.Month)))
-                .Distinct()
-                .ToHashSet();
-
             // Effective budget amounts. Tracked groups whose descendants carry the budget
             // (and the group has no entry of its own) get an injected zero stored amount so
             // ComputeEffectiveAmounts auto-sums them from their descendants — otherwise the
@@ -900,50 +881,9 @@
             var compareBudget = await BudgetEntryService.GetBudgetAsync(selectedCompareBudgetId);
             var budgetYear = compareBudget?.Year ?? selectedYear;
 
-            // aggregateRowNames is already populated by the trend-loading pass above using
-            // the same chart tree projection; reconstruct the key set here for filtering.
-            var aggregateKeySetForVariance = batchKeys
-                .Where(k => categoryDisplayNames.TryGetValue(k, out var n) && aggregateRowNames.Contains(n))
-                .ToHashSet();
-
-            foreach (var key in batchKeys)
-            {
-                var categoryName = categoryDisplayNames.GetValueOrDefault(key);
-                if (categoryName == null) continue;
-
-                // Shadow sub-cats (expanded under a group) have no MonthlyBudgetEntry so
-                // budgetEffective doesn't list them — fall back to zero budget so they still
-                // get a row showing their actuals. HasBudget=false drives the "—" rendering.
-                var hasBudget = budgetEffective.Effective.TryGetValue(key, out var monthlyArr);
-                var stored = monthlyArr ?? new decimal[12];
-
-                var trend = Enumerable.Range(1, 12)
-                    .Select(m => new MonthlySpending { Year = budgetYear, Month = m, Amount = stored[m - 1] })
-                    .Where(m => allDisplayedMonths.Contains((m.Year, m.Month)))
-                    .ToList();
-                var actualTrend = categoryTrends.GetValueOrDefault(categoryName);
-
-                // Drop only the truly empty rows: no budget allocation AND no actuals.
-                if (!trend.Any(m => m.Amount != 0m) && (actualTrend == null || actualTrend.All(m => m.Amount == 0m)))
-                    continue;
-
-                if (hasBudget && trend.Any(m => m.Amount != 0m))
-                    budgetTrends[categoryName] = trend;
-                var budgetTotal = trend.Sum(m => m.Amount);
-                var actualTotal = actualTrend?.Sum(m => m.Amount) ?? 0m;
-                varianceSummary.Add(new VarianceSummary
-                {
-                    CategoryId = key.Id,
-                    ItemType = key.ItemType,
-                    CategoryName = categoryName,
-                    BudgetAmount = budgetTotal,
-                    ActualAmount = actualTotal,
-                    Variance = actualTotal - budgetTotal,
-                    IsAggregateRow = aggregateKeySetForVariance.Contains(key),
-                    HasBudget = hasBudget,
-                    IsAutoSummed = budgetEffective.AutoSummed.Contains(key)
-                });
-            }
+            // Variance rows + per-category budget trend series (pure assembly; see BudgetTrendMath).
+            (budgetTrends, varianceSummary) = BudgetTrendMath.BuildVarianceRows(
+                batchKeys, categoryDisplayNames, budgetEffective, categoryTrends, aggregateRowNames, budgetYear);
         }
 
         if (categoryTrends.Any())
@@ -951,44 +891,6 @@
             needsTrendChartRender = true;
             StateHasChanged();
         }
-    }
-
-    /// <summary>
-    /// Build a sort key reflecting an item's position in MoneyMoney's tree (ancestor sort
-    /// values, then own sort, then id for stability). Lexicographic compare on the resulting
-    /// string yields the same order MoneyMoney itself displays.
-    /// </summary>
-    private string ComputeMoneyMoneySortKey((long Id, CategoryItemType ItemType) key)
-    {
-        var parts = new List<string>();
-        long? walkUp = null;
-
-        if (key.ItemType == CategoryItemType.Category)
-        {
-            var cat = allActualCategories?.FirstOrDefault(c => c.Id == key.Id);
-            parts.Insert(0, (cat?.Sort ?? long.MaxValue).ToString("D19"));
-            walkUp = cat?.GroupId;
-        }
-        else
-        {
-            var groupItem = allCategories?.FirstOrDefault(c =>
-                c.ItemType == CategoryItemType.Group && c.Id == key.Id);
-            parts.Insert(0, (groupItem?.CategoryGroup.Sort ?? long.MaxValue).ToString("D19"));
-            walkUp = groupItem?.ParentCategoryGroupId;
-        }
-
-        while (walkUp.HasValue)
-        {
-            var parent = allCategories?.FirstOrDefault(c =>
-                c.ItemType == CategoryItemType.Group && c.Id == walkUp.Value);
-            if (parent == null) break;
-            parts.Insert(0, (parent.CategoryGroup.Sort ?? long.MaxValue).ToString("D19"));
-            walkUp = parent.ParentCategoryGroupId;
-        }
-
-        // Append the item's id as a stable tiebreaker.
-        parts.Add(key.Id.ToString("D19"));
-        return string.Join(".", parts);
     }
 
     private async Task RenderStackedBarChart()
