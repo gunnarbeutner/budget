@@ -885,7 +885,7 @@ else
 
             // Filter to only categories in the project
             allAvailableCategories = allCategoryGroups
-                .Where(c => c.CategoryGroup.Id != 1 && projectCategoryGroupIds.Contains(c.CategoryGroup.Id))
+                .Where(c => c.CategoryGroup.Id != SourceScope.SentinelRoot(sourceId) && projectCategoryGroupIds.Contains(c.CategoryGroup.Id))
                 .ToList();
         }
 
