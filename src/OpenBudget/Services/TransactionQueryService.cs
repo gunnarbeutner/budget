@@ -16,11 +16,11 @@ namespace OpenBudget.Services;
 /// </summary>
 public class TransactionQueryService
 {
-    private readonly BudgetDbContext _db;
+    private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
 
-    public TransactionQueryService(BudgetDbContext db)
+    public TransactionQueryService(IDbContextFactory<BudgetDbContext> dbFactory)
     {
-        _db = db;
+        _dbFactory = dbFactory;
     }
 
     public async Task<TransactionPage> QueryAsync(TransactionQuery query, CancellationToken ct = default)
@@ -29,7 +29,8 @@ public class TransactionQueryService
         if (query.Skip < 0) throw new ArgumentOutOfRangeException(nameof(query), "Skip must be >= 0.");
         if (query.Take <= 0) throw new ArgumentOutOfRangeException(nameof(query), "Take must be > 0.");
 
-        var baseQuery = BuildFilteredQuery(query);
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var baseQuery = BuildFilteredQuery(db, query);
 
         var totalCount = await baseQuery.CountAsync(ct);
         var totalSumCents = totalCount == 0 ? 0L : await baseQuery.SumAsync(t => t.Amount, ct);
@@ -59,10 +60,10 @@ public class TransactionQueryService
         var acctIds = rowsRaw.Where(r => r.AccountId.HasValue).Select(r => r.AccountId!.Value).Distinct().ToList();
         var catNames = catIds.Count == 0
             ? new Dictionary<long, string>()
-            : await _db.Categories.Where(c => catIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name ?? "", ct);
+            : await db.Categories.Where(c => catIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name ?? "", ct);
         var acctNames = acctIds.Count == 0
             ? new Dictionary<long, string>()
-            : await _db.Accounts.Where(a => acctIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.Name ?? "", ct);
+            : await db.Accounts.Where(a => acctIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.Name ?? "", ct);
 
         var rows = rowsRaw.Select(r => new TransactionRow
         {
@@ -96,7 +97,8 @@ public class TransactionQueryService
     public async Task<(int Count, decimal Sum)> QueryTotalsAsync(TransactionQuery query, CancellationToken ct = default)
     {
         if (query.SourceId <= 0) throw new ArgumentException("SourceId is required.", nameof(query));
-        var q = BuildFilteredQuery(query);
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var q = BuildFilteredQuery(db, query);
         var count = await q.CountAsync(ct);
         var sumCents = count == 0 ? 0L : await q.SumAsync(t => t.Amount, ct);
         return (count, sumCents / 100m);
@@ -111,14 +113,15 @@ public class TransactionQueryService
     {
         if (query.SourceId <= 0) throw new ArgumentException("SourceId is required.", nameof(query));
         var unixSeconds = new DateTimeOffset(DateTime.SpecifyKind(endExclusiveUtc, DateTimeKind.Utc)).ToUnixTimeSeconds();
-        return await BuildFilteredQuery(query)
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await BuildFilteredQuery(db, query)
             .Where(t => t.Timestamp >= unixSeconds)
             .CountAsync(ct);
     }
 
-    private IQueryable<Transaction> BuildFilteredQuery(TransactionQuery query)
+    private static IQueryable<Transaction> BuildFilteredQuery(BudgetDbContext db, TransactionQuery query)
     {
-        var baseQuery = _db.Transactions
+        var baseQuery = db.Transactions
             .Where(t => t.SourceId == query.SourceId)
             .Where(t => t.Splitted != 1);
 
@@ -178,7 +181,8 @@ public class TransactionQueryService
         IReadOnlyCollection<long>? accountIds,
         CancellationToken ct = default)
     {
-        var q = _db.Transactions
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var q = db.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.Splitted != 1);
         if (leafIds is { Count: > 0 })
@@ -219,7 +223,8 @@ public class TransactionQueryService
         if (!hasLeaves && !hasAccounts) return new List<(DateTime, decimal)>();
 
         var range = TimeRange.Between(startUtc, endExclusiveUtc);
-        var q = _db.Transactions
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var q = db.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.Splitted != 1)
             .WithinUtc(range);

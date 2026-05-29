@@ -5,21 +5,24 @@ namespace OpenBudget.Services;
 
 public class BudgetService
 {
-    private readonly BudgetDbContext _budgetDb;
+    private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly CategoryHierarchyService _hierarchy;
     private readonly ProjectService _projects;
     private readonly BudgetEntryService _budgets;
+    private readonly ChangeNotificationService _notifier;
 
     public BudgetService(
-        BudgetDbContext budgetDb,
+        IDbContextFactory<BudgetDbContext> dbFactory,
         CategoryHierarchyService hierarchy,
         ProjectService projects,
-        BudgetEntryService budgets)
+        BudgetEntryService budgets,
+        ChangeNotificationService notifier)
     {
-        _budgetDb = budgetDb;
+        _dbFactory = dbFactory;
         _hierarchy = hierarchy;
         _projects = projects;
         _budgets = budgets;
+        _notifier = notifier;
     }
 
     /// <summary>
@@ -34,6 +37,8 @@ public class BudgetService
         if (fromMonth < 1 || fromMonth > 12) throw new ArgumentOutOfRangeException(nameof(fromMonth));
         if (toMonth < 1 || toMonth > 12) throw new ArgumentOutOfRangeException(nameof(toMonth));
         if (toMonth < fromMonth) throw new ArgumentException("toMonth must be >= fromMonth", nameof(toMonth));
+
+        await using var db = await _dbFactory.CreateDbContextAsync();
 
         var project = await _projects.GetProjectAsync(projectId);
         if (project == null)
@@ -90,7 +95,7 @@ public class BudgetService
         var groupNameLookup = allCategoriesWithCounts
             .Where(c => c.ItemType == CategoryItemType.Group)
             .ToDictionary(c => c.Id, c => c.CategoryGroup.Name ?? "Unknown");
-        var leafCategoryNameLookup = (await _budgetDb.Categories.Where(c => c.SourceId == project.SourceId).ToListAsync())
+        var leafCategoryNameLookup = (await db.Categories.Where(c => c.SourceId == project.SourceId).ToListAsync())
             .ToDictionary(c => c.Id, c => c.Name ?? "Unknown");
 
         var (monthIncome, monthExpenses) = await AggregateIncomeExpenseForRangeAsync(
@@ -203,6 +208,7 @@ public class BudgetService
         var ancestorList = ancestorGroupIds.Distinct().ToList();
         if (ancestorList.Count == 0) return new HashSet<long>();
 
+        await using var db = await _dbFactory.CreateDbContextAsync();
         var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
         var candidateLeaves = new HashSet<long>();
         foreach (var groupId in ancestorList)
@@ -218,7 +224,7 @@ public class BudgetService
         var range = TimeRange.Between(end.AddYears(-1), end);
 
         var leafList = candidateLeaves.ToList();
-        var hits = await _budgetDb.Transactions
+        var hits = await db.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && leafList.Contains(t.CategoryId.Value))
             .WithinUtc(range)
@@ -241,6 +247,7 @@ public class BudgetService
     {
         if (items.Count == 0) return (0m, 0m);
 
+        await using var db = await _dbFactory.CreateDbContextAsync();
         var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
         var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
@@ -249,7 +256,7 @@ public class BudgetService
         Dictionary<long, bool> leafIsIncome;
         if (projectId.HasValue)
         {
-            var typeAssignments = await _budgetDb.CategoryTypeAssignments
+            var typeAssignments = await db.CategoryTypeAssignments
                 .Where(cta => cta.ProjectId == projectId.Value)
                 .ToListAsync();
             var assignmentLookup = typeAssignments.ToDictionary(
@@ -261,7 +268,7 @@ public class BudgetService
         }
         else
         {
-            var types = await _budgetDb.Categories
+            var types = await db.Categories
                 .Where(c => c.SourceId == sourceId && allLeafIds.Contains(c.Id))
                 .Select(c => new { c.Id, c.Type })
                 .ToListAsync();
@@ -272,7 +279,7 @@ public class BudgetService
             new DateTime(year, fromMonth, 1, 0, 0, 0, DateTimeKind.Utc),
             new DateTime(year, toMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1));
 
-        var raw = await _budgetDb.Transactions
+        var raw = await db.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .WithinUtc(range)
@@ -293,7 +300,8 @@ public class BudgetService
     /// </summary>
     public async Task<List<CategoryTypeAssignment>> GetCategoryTypeAssignmentsAsync(int projectId)
     {
-        return await _budgetDb.CategoryTypeAssignments
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.CategoryTypeAssignments
             .Where(cta => cta.ProjectId == projectId)
             .ToListAsync();
     }
@@ -304,7 +312,8 @@ public class BudgetService
     /// </summary>
     public async Task<HashSet<(long Id, CategoryItemType ItemType)>> GetIncomeItemsForProjectAsync(int projectId)
     {
-        var typeAssignments = await _budgetDb.CategoryTypeAssignments
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var typeAssignments = await db.CategoryTypeAssignments
             .Where(cta => cta.ProjectId == projectId)
             .ToListAsync();
 
@@ -335,7 +344,8 @@ public class BudgetService
     /// </summary>
     public async Task SetCategoryTypeAsync(int projectId, long categoryId, CategoryItemType itemType, bool isIncome)
     {
-        var existing = await _budgetDb.CategoryTypeAssignments
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var existing = await db.CategoryTypeAssignments
             .FirstOrDefaultAsync(cta => cta.ProjectId == projectId && cta.CategoryId == categoryId && cta.ItemType == itemType);
 
         if (existing != null)
@@ -344,7 +354,7 @@ public class BudgetService
         }
         else
         {
-            _budgetDb.CategoryTypeAssignments.Add(new CategoryTypeAssignment
+            db.CategoryTypeAssignments.Add(new CategoryTypeAssignment
             {
                 ProjectId = projectId,
                 CategoryId = categoryId,
@@ -353,7 +363,8 @@ public class BudgetService
             });
         }
 
-        await _budgetDb.SaveChangesAsync();
+        await db.SaveChangesAsync();
+        _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
     }
 
     /// <summary>
@@ -361,13 +372,15 @@ public class BudgetService
     /// </summary>
     public async Task DeleteCategoryTypeAsync(int projectId, long categoryId, CategoryItemType itemType)
     {
-        var existing = await _budgetDb.CategoryTypeAssignments
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var existing = await db.CategoryTypeAssignments
             .FirstOrDefaultAsync(cta => cta.ProjectId == projectId && cta.CategoryId == categoryId && cta.ItemType == itemType);
 
         if (existing != null)
         {
-            _budgetDb.CategoryTypeAssignments.Remove(existing);
-            await _budgetDb.SaveChangesAsync();
+            db.CategoryTypeAssignments.Remove(existing);
+            await db.SaveChangesAsync();
+            _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
         }
     }
 
@@ -445,6 +458,7 @@ public class BudgetService
 
         if (!items.Any()) return result;
 
+        await using var db = await _dbFactory.CreateDbContextAsync();
         var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
         var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
 
@@ -454,7 +468,7 @@ public class BudgetService
         Dictionary<long, bool> leafIsIncome;
         if (projectId.HasValue)
         {
-            var typeAssignments = await _budgetDb.CategoryTypeAssignments
+            var typeAssignments = await db.CategoryTypeAssignments
                 .Where(cta => cta.ProjectId == projectId.Value)
                 .ToListAsync();
             var assignmentLookup = typeAssignments.ToDictionary(
@@ -467,14 +481,14 @@ public class BudgetService
         }
         else
         {
-            var types = await _budgetDb.Categories
+            var types = await db.Categories
                 .Where(c => c.SourceId == sourceId && allLeafIds.Contains(c.Id))
                 .Select(c => new { c.Id, c.Type })
                 .ToListAsync();
             leafIsIncome = types.ToDictionary(c => c.Id, c => c.Type == 2);
         }
 
-        var raw = await _budgetDb.Transactions
+        var raw = await db.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .WithinUtc(TimeRange.Year(year))
@@ -530,6 +544,7 @@ public class BudgetService
         foreach (var item in items) result[item] = 0m;
         if (!items.Any()) return result;
 
+        await using var db = await _dbFactory.CreateDbContextAsync();
         var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
         var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
 
@@ -539,7 +554,7 @@ public class BudgetService
         Dictionary<long, bool> leafIsIncome;
         if (projectId.HasValue)
         {
-            var typeAssignments = await _budgetDb.CategoryTypeAssignments
+            var typeAssignments = await db.CategoryTypeAssignments
                 .Where(cta => cta.ProjectId == projectId.Value)
                 .ToListAsync();
             var assignmentLookup = typeAssignments.ToDictionary(
@@ -551,14 +566,14 @@ public class BudgetService
         }
         else
         {
-            var types = await _budgetDb.Categories
+            var types = await db.Categories
                 .Where(c => c.SourceId == sourceId && allLeafIds.Contains(c.Id))
                 .Select(c => new { c.Id, c.Type })
                 .ToListAsync();
             leafIsIncome = types.ToDictionary(c => c.Id, c => c.Type == 2);
         }
 
-        var raw = await _budgetDb.Transactions
+        var raw = await db.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .WithinUtc(TimeRange.Month(year, month))
@@ -593,10 +608,11 @@ public class BudgetService
     /// </summary>
     public async Task<List<int>> GetYearsWithTransactionsAsync(int sourceId)
     {
-        var minTs = await _budgetDb.Transactions
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var minTs = await db.Transactions
             .Where(t => t.SourceId == sourceId)
             .MinAsync(t => (long?)t.Timestamp);
-        var maxTs = await _budgetDb.Transactions
+        var maxTs = await db.Transactions
             .Where(t => t.SourceId == sourceId)
             .MaxAsync(t => (long?)t.Timestamp);
         return YearsBetween(minTs, maxTs);
@@ -609,6 +625,7 @@ public class BudgetService
     /// </summary>
     public async Task<List<int>> GetYearsWithTransactionsForProjectAsync(int projectId)
     {
+        await using var db = await _dbFactory.CreateDbContextAsync();
         var project = await _projects.GetProjectAsync(projectId);
         if (project == null) return new List<int>();
 
@@ -620,11 +637,11 @@ public class BudgetService
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
         if (!allLeafIds.Any()) return new List<int>();
 
-        var minTs = await _budgetDb.Transactions
+        var minTs = await db.Transactions
             .Where(t => t.SourceId == project.SourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .MinAsync(t => (long?)t.Timestamp);
-        var maxTs = await _budgetDb.Transactions
+        var maxTs = await db.Transactions
             .Where(t => t.SourceId == project.SourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .MaxAsync(t => (long?)t.Timestamp);
@@ -650,7 +667,8 @@ public class BudgetService
     /// </summary>
     public async Task<List<Account>> GetAllAccountsAsync(int sourceId)
     {
-        return await _budgetDb.Accounts
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Accounts
             .Where(a => a.SourceId == sourceId)
             .OrderBy(a => a.Sort)
             .ThenBy(a => a.Name)
@@ -663,7 +681,8 @@ public class BudgetService
     /// </summary>
     public async Task<List<AccountGroup>> GetAllAccountGroupsAsync(int sourceId)
     {
-        return await _budgetDb.AccountGroups
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.AccountGroups
             .Where(g => g.SourceId == sourceId)
             .OrderBy(g => g.Sort)
             .ThenBy(g => g.Name)
@@ -672,14 +691,16 @@ public class BudgetService
 
     public async Task<List<ProjectAccountAssignment>> GetProjectAccountAssignmentsAsync(int projectId)
     {
-        return await _budgetDb.ProjectAccountAssignments
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.ProjectAccountAssignments
             .Where(paa => paa.ProjectId == projectId)
             .ToListAsync();
     }
 
     public async Task AssignAccountToProjectAsync(int projectId, long accountId, AccountScope scope)
     {
-        var existing = await _budgetDb.ProjectAccountAssignments
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var existing = await db.ProjectAccountAssignments
             .FirstOrDefaultAsync(paa => paa.ProjectId == projectId && paa.AccountId == accountId);
         if (existing != null)
         {
@@ -687,32 +708,37 @@ public class BudgetService
         }
         else
         {
-            _budgetDb.ProjectAccountAssignments.Add(new ProjectAccountAssignment
+            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment
             {
                 ProjectId = projectId,
                 AccountId = accountId,
                 Scope = scope
             });
         }
-        await _budgetDb.SaveChangesAsync();
+        await db.SaveChangesAsync();
+        _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
     }
 
     public async Task SetAccountScopeAsync(int projectId, long accountId, AccountScope scope)
     {
-        var existing = await _budgetDb.ProjectAccountAssignments
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var existing = await db.ProjectAccountAssignments
             .FirstOrDefaultAsync(paa => paa.ProjectId == projectId && paa.AccountId == accountId);
         if (existing == null) return;
         existing.Scope = scope;
-        await _budgetDb.SaveChangesAsync();
+        await db.SaveChangesAsync();
+        _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
     }
 
     public async Task RemoveAccountFromProjectAsync(int projectId, long accountId)
     {
-        var existing = await _budgetDb.ProjectAccountAssignments
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var existing = await db.ProjectAccountAssignments
             .FirstOrDefaultAsync(paa => paa.ProjectId == projectId && paa.AccountId == accountId);
         if (existing == null) return;
-        _budgetDb.ProjectAccountAssignments.Remove(existing);
-        await _budgetDb.SaveChangesAsync();
+        db.ProjectAccountAssignments.Remove(existing);
+        await db.SaveChangesAsync();
+        _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
     }
 
     #endregion

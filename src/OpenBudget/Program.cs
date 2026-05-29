@@ -23,6 +23,7 @@ builder.Services.AddScoped<TransactionQueryService>();
 builder.Services.AddScoped<BrowseService>();
 builder.Services.AddScoped<ProjectTimeState>();
 builder.Services.AddSingleton<MoneyMoneyImportService>();
+builder.Services.AddSingleton<ChangeNotificationService>();
 
 // Localization: resx files live under /Resources mirroring the namespace
 // (e.g. Pages/Index.razor → Resources/Pages/Index.de.resx). Culture is picked from the
@@ -63,17 +64,23 @@ var uploadStagingDir = Path.Combine(dataDir, "uploads");
 Directory.CreateDirectory(dataDir);
 Directory.CreateDirectory(uploadStagingDir);
 
-builder.Services.AddDbContext<BudgetDbContext>(options =>
+// Use a context *factory* rather than a scoped DbContext. In Blazor Server "scoped" means the
+// lifetime of the SignalR circuit, so a scoped context would live for the whole browser session
+// and serve stale, change-tracker-cached entities after another session writes. Short-lived
+// factory contexts (one per operation) always read current DB state. See ChangeNotificationService
+// for the companion cross-circuit refresh signal.
+builder.Services.AddDbContextFactory<BudgetDbContext>(options =>
 {
     options.UseSqlite($"Data Source={budgetDbPath}");
-}, ServiceLifetime.Scoped);
+});
 
 var app = builder.Build();
 
 // Initialize budget database (apply migrations on startup so Docker volumes stay in sync).
 using (var scope = app.Services.CreateScope())
 {
-    var budgetDb = scope.ServiceProvider.GetRequiredService<BudgetDbContext>();
+    var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<BudgetDbContext>>();
+    using var budgetDb = dbFactory.CreateDbContext();
     budgetDb.Database.Migrate();
 }
 
@@ -123,11 +130,13 @@ app.MapPost("/api/moneymoney-db/{name}", async (
 // references it, with the offending project list in the response.
 app.MapDelete("/api/moneymoney-sources/{name}", async (
     string name,
-    BudgetDbContext db,
+    IDbContextFactory<BudgetDbContext> dbFactory,
+    ChangeNotificationService notifier,
     ILogger<Program> logger,
     HttpRequest request,
     CancellationToken ct) =>
 {
+    await using var db = await dbFactory.CreateDbContextAsync(ct);
     var expectedToken = Environment.GetEnvironmentVariable("MONEYMONEY_DB_UPLOAD_TOKEN");
     if (string.IsNullOrEmpty(expectedToken))
         return Results.Problem("Source deletion disabled: MONEYMONEY_DB_UPLOAD_TOKEN is not set.", statusCode: StatusCodes.Status503ServiceUnavailable);
@@ -160,6 +169,9 @@ app.MapDelete("/api/moneymoney-sources/{name}", async (
     await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_account_groups WHERE SourceId = {0}", new object[] { source.Id }, ct);
     db.ImportSources.Remove(source);
     await db.SaveChangesAsync(ct);
+
+    notifier.Publish(new DataChange(DataArea.Sources, SourceId: source.Id));
+    notifier.Publish(new DataChange(DataArea.MoneyMoneyData, SourceId: source.Id));
 
     logger.LogInformation("Deleted MoneyMoney source '{Name}' (id={Id}).", name, source.Id);
     return Results.Ok(new { status = "deleted", name });

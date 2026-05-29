@@ -1,4 +1,5 @@
 @page "/projects/{ProjectId:int}/budgets/new"
+@inherits DataChangeAwareComponent
 @using OpenBudget.Services
 @using OpenBudget.Models
 @using OpenBudget.Shared
@@ -26,6 +27,8 @@
 <ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@wizardProjectName"
                    Active="ProjectTab.Budgets"
                    Subtitle="@L["Header_Title"]" />
+
+<DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
 @if (step == 1)
 {
@@ -288,6 +291,17 @@ else if (step == 3)
         }
 
         availableSourceBudgets = await BudgetEntryService.GetBudgetsForProjectAsync(selectedProjectId);
+    }
+
+    // The wizard holds unsaved selections/predictions, so banner rather than auto-reload.
+    protected override bool AutoReloadOnChange => false;
+    protected override bool IsRelevantChange(DataChange change) =>
+        change.Area is DataArea.MoneyMoneyData or DataArea.Sources
+        || change.ProjectId is null || change.ProjectId == ProjectId;
+    protected override Task ReloadAfterChangeAsync()
+    {
+        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+        return Task.CompletedTask;
     }
 
     private async Task LoadCategories()

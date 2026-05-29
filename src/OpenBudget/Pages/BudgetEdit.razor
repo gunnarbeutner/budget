@@ -1,4 +1,5 @@
 @page "/budgets/{BudgetId:int}/edit"
+@inherits DataChangeAwareComponent
 @using OpenBudget.Services
 @using OpenBudget.Models
 @using Microsoft.JSInterop
@@ -19,6 +20,8 @@
     <p class="text-body-secondary">@L["NotFound_Body_Before", BudgetId] <a href="/">@L["NotFound_BackLink"]</a>.</p>
     return;
 }
+
+<DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
 @if (budget == null)
 {
@@ -335,6 +338,18 @@
         await LoadShadowsAsync();
         await RefreshNamesAndCandidates();
         RebuildTrees();
+    }
+
+    // This whole page is an unsaved editing buffer, so never auto-reload — surface a banner and
+    // let the user reload (discarding edits) on their terms.
+    protected override bool AutoReloadOnChange => false;
+    protected override bool IsRelevantChange(DataChange change) =>
+        change.Area is DataArea.MoneyMoneyData or DataArea.Sources
+        || change.ProjectId is null || change.ProjectId == budget?.ProjectId;
+    protected override Task ReloadAfterChangeAsync()
+    {
+        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+        return Task.CompletedTask;
     }
 
     private async Task LoadShadowsAsync()

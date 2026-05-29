@@ -1,0 +1,18 @@
+@* Non-destructive "another session changed this data" prompt shown on editor pages, where an
+   automatic reload would discard the user's in-progress edits. Clicking Reload re-fetches.
+   Text is overridable per page for localization; defaults are English. *@
+
+@if (Pending)
+{
+    <div class="alert alert-warning d-flex align-items-center justify-content-between" role="alert">
+        <span>@Message</span>
+        <button type="button" class="btn btn-sm btn-warning ms-3" @onclick="OnReload">@ReloadText</button>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Pending { get; set; }
+    [Parameter] public EventCallback OnReload { get; set; }
+    [Parameter] public string Message { get; set; } = "This data was changed in another session.";
+    [Parameter] public string ReloadText { get; set; } = "Reload";
+}

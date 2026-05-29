@@ -1,4 +1,5 @@
 @page "/projects/{ProjectId:int}/cashflow"
+@inherits DataChangeAwareComponent
 @using OpenBudget.Services
 @using OpenBudget.Models
 @using Microsoft.JSInterop
@@ -24,6 +25,8 @@
 
 <ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@projectName"
                    Active="ProjectTab.Cashflow" />
+
+<DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
 <PeriodNav Anchor="(selectedYear, 1)" Period="@("year")" YearOnly="true"
            Years="availableYears" OnChanged="OnYearChanged" />
@@ -756,6 +759,20 @@ else
         public HashSet<(long Id, CategoryItemType ItemType)> Keys { get; set; } = new();
         public List<(long Id, CategoryItemType ItemType)> ProjectionItems { get; set; } = new();
         public Dictionary<(long Id, CategoryItemType ItemType), decimal[]>? BudgetAmounts { get; set; }
+    }
+
+    // Editing splits / projection settings here is unsaved state, so surface a banner instead
+    // of auto-reloading and discarding it.
+    protected override bool AutoReloadOnChange => false;
+    protected override bool IsRelevantChange(DataChange change) => change.Area switch
+    {
+        DataArea.MoneyMoneyData or DataArea.Sources => change.SourceId == projectSourceId,
+        _ => change.ProjectId is null || change.ProjectId == ProjectId,
+    };
+    protected override Task ReloadAfterChangeAsync()
+    {
+        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+        return Task.CompletedTask;
     }
 
     protected override async Task OnInitializedAsync()

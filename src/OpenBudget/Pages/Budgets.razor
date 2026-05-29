@@ -1,4 +1,5 @@
 @page "/projects/{ProjectId:int}/budgets"
+@inherits DataChangeAwareComponent
 @using OpenBudget.Services
 @using OpenBudget.Models
 @using System.Text.Json
@@ -23,6 +24,8 @@
 
 <ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@projectName"
                    Active="ProjectTab.Budgets" />
+
+<DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
 <PeriodNav Anchor="(selectedYear, 1)" Period="@("year")" YearOnly="true"
            Years="availableYears" OnChanged="OnYearChanged" />
@@ -382,6 +385,19 @@
         catch { /* localStorage unavailable */ }
         await LoadCategoryTrends();
         needsTrendChartRender = true;
+    }
+
+    // The compare/trend UI holds transient selection state, so banner rather than auto-reload.
+    protected override bool AutoReloadOnChange => false;
+    protected override bool IsRelevantChange(DataChange change) => change.Area switch
+    {
+        DataArea.MoneyMoneyData or DataArea.Sources => change.SourceId == projectSourceId,
+        _ => change.ProjectId is null || change.ProjectId == ProjectId,
+    };
+    protected override Task ReloadAfterChangeAsync()
+    {
+        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+        return Task.CompletedTask;
     }
 
     protected override async Task OnInitializedAsync()

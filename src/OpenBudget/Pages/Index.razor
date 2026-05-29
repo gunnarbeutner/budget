@@ -1,4 +1,5 @@
 @page "/"
+@inherits DataChangeAwareComponent
 @using System.Globalization
 @using OpenBudget.Services
 @using OpenBudget.Models
@@ -183,6 +184,10 @@ else
         ReadStateFromQuery();
         await LoadDashboard();
     }
+
+    // Any committed change anywhere can move a dashboard number (balances, spending, project list).
+    protected override bool IsRelevantChange(DataChange change) => true;
+    protected override Task ReloadAfterChangeAsync() => LoadDashboard();
 
     private void ReadStateFromQuery()
     {

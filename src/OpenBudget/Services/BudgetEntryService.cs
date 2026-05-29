@@ -10,18 +10,24 @@ namespace OpenBudget.Services;
 /// </summary>
 public class BudgetEntryService
 {
-    private readonly BudgetDbContext _db;
+    private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly CategoryHierarchyService _hierarchy;
+    private readonly ChangeNotificationService _notifier;
 
-    public BudgetEntryService(BudgetDbContext db, CategoryHierarchyService hierarchy)
+    public BudgetEntryService(
+        IDbContextFactory<BudgetDbContext> dbFactory,
+        CategoryHierarchyService hierarchy,
+        ChangeNotificationService notifier)
     {
-        _db = db;
+        _dbFactory = dbFactory;
         _hierarchy = hierarchy;
+        _notifier = notifier;
     }
 
     public async Task<List<Budget>> GetBudgetsForProjectAsync(int projectId)
     {
-        return await _db.Budgets
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Budgets
             .Where(b => b.ProjectId == projectId)
             .Include(b => b.MonthlyEntries)
             .OrderByDescending(b => b.Year)
@@ -32,7 +38,8 @@ public class BudgetEntryService
 
     public async Task<Budget?> GetBudgetAsync(int budgetId)
     {
-        return await _db.Budgets
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Budgets
             .Include(b => b.MonthlyEntries)
             .Include(b => b.Project)
             .ThenInclude(p => p.CategoryAssignments)
@@ -46,6 +53,7 @@ public class BudgetEntryService
     /// </summary>
     public async Task<Budget> CreateBudgetAsync(int projectId, int year, string? name = null, string? notes = null, bool makeActive = true)
     {
+        await using var db = await _dbFactory.CreateDbContextAsync();
         var createdAt = DateTime.UtcNow;
         var budget = new Budget
         {
@@ -59,32 +67,35 @@ public class BudgetEntryService
 
         if (makeActive)
         {
-            var siblings = await _db.Budgets
+            var siblings = await db.Budgets
                 .Where(b => b.ProjectId == projectId && b.Year == year && b.IsActive)
                 .ToListAsync();
             foreach (var sibling in siblings)
                 sibling.IsActive = false;
         }
 
-        _db.Budgets.Add(budget);
-        await _db.SaveChangesAsync();
+        db.Budgets.Add(budget);
+        await db.SaveChangesAsync();
+        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: budget.ProjectId));
         return budget;
     }
 
     /// <summary>Mark a budget as the active one for its (project, year), deactivating siblings.</summary>
     public async Task SetActiveBudgetAsync(int budgetId)
     {
-        var target = await _db.Budgets.FindAsync(budgetId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var target = await db.Budgets.FindAsync(budgetId);
         if (target == null) return;
 
-        var siblings = await _db.Budgets
+        var siblings = await db.Budgets
             .Where(b => b.ProjectId == target.ProjectId && b.Year == target.Year && b.Id != target.Id && b.IsActive)
             .ToListAsync();
         foreach (var sibling in siblings)
             sibling.IsActive = false;
 
         target.IsActive = true;
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
+        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: target.ProjectId));
     }
 
     /// <summary>
@@ -93,11 +104,12 @@ public class BudgetEntryService
     /// </summary>
     public async Task UpdateBudgetAsync(Budget budget)
     {
+        await using var db = await _dbFactory.CreateDbContextAsync();
         budget.LastModifiedAt = DateTime.UtcNow;
 
         if (budget.IsActive)
         {
-            var siblings = await _db.Budgets
+            var siblings = await db.Budgets
                 .Where(b => b.ProjectId == budget.ProjectId
                             && b.Year == budget.Year
                             && b.Id != budget.Id
@@ -107,17 +119,20 @@ public class BudgetEntryService
                 sibling.IsActive = false;
         }
 
-        _db.Budgets.Update(budget);
-        await _db.SaveChangesAsync();
+        db.Budgets.Update(budget);
+        await db.SaveChangesAsync();
+        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: budget.ProjectId));
     }
 
     public async Task DeleteBudgetAsync(int budgetId)
     {
-        var budget = await _db.Budgets.FindAsync(budgetId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var budget = await db.Budgets.FindAsync(budgetId);
         if (budget != null)
         {
-            _db.Budgets.Remove(budget);
-            await _db.SaveChangesAsync();
+            db.Budgets.Remove(budget);
+            await db.SaveChangesAsync();
+            _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: budget.ProjectId));
         }
     }
 
@@ -131,23 +146,24 @@ public class BudgetEntryService
         int budgetId,
         IReadOnlyCollection<(long Id, CategoryItemType ItemType, decimal[] Months)> entries)
     {
-        var budget = await _db.Budgets.FindAsync(budgetId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var budget = await db.Budgets.FindAsync(budgetId);
         if (budget == null)
             throw new ArgumentException("Budget not found", nameof(budgetId));
 
-        var project = await _db.Projects.FindAsync(budget.ProjectId);
+        var project = await db.Projects.FindAsync(budget.ProjectId);
         var sourceId = project?.SourceId ?? SourceScope.LegacySourceId;
         var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
         var normalized = NormalizeBudgetEntries(entries, hierarchy);
 
-        var existing = await _db.MonthlyBudgetEntries
+        var existing = await db.MonthlyBudgetEntries
             .Where(e => e.BudgetId == budgetId)
             .ToListAsync();
 
         var desiredKeys = normalized.Select(e => (e.Id, e.ItemType)).ToHashSet();
         foreach (var row in existing.Where(e => !desiredKeys.Contains((e.CategoryId, e.ItemType))))
         {
-            _db.MonthlyBudgetEntries.Remove(row);
+            db.MonthlyBudgetEntries.Remove(row);
         }
 
         foreach (var (id, itemType, months) in normalized)
@@ -164,14 +180,15 @@ public class BudgetEntryService
                     CategoryId = id,
                     ItemType = itemType
                 };
-                _db.MonthlyBudgetEntries.Add(row);
+                db.MonthlyBudgetEntries.Add(row);
             }
             for (int m = 1; m <= 12; m++)
                 row.SetMonthAmount(m, months[m - 1]);
         }
 
         budget.LastModifiedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
+        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: budget.ProjectId));
     }
 
     /// <summary>
@@ -210,7 +227,8 @@ public class BudgetEntryService
     /// </summary>
     public async Task<Dictionary<(long Id, CategoryItemType ItemType), decimal>> GetBudgetContributionSplitsAsync(int budgetId)
     {
-        var rows = await _db.BudgetContributionSplits
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var rows = await db.BudgetContributionSplits
             .Where(s => s.BudgetId == budgetId)
             .ToListAsync();
         return rows.ToDictionary(r => (r.CategoryId, r.ItemType), r => r.Percent);
@@ -224,14 +242,15 @@ public class BudgetEntryService
         int budgetId,
         IReadOnlyCollection<(long Id, CategoryItemType ItemType, decimal Percent)> splits)
     {
-        var existing = await _db.BudgetContributionSplits
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var existing = await db.BudgetContributionSplits
             .Where(s => s.BudgetId == budgetId)
             .ToListAsync();
 
         var desiredKeys = splits.Select(s => (s.Id, s.ItemType)).ToHashSet();
         foreach (var row in existing.Where(r => !desiredKeys.Contains((r.CategoryId, r.ItemType))))
         {
-            _db.BudgetContributionSplits.Remove(row);
+            db.BudgetContributionSplits.Remove(row);
         }
 
         foreach (var (id, itemType, percent) in splits)
@@ -239,7 +258,7 @@ public class BudgetEntryService
             var row = existing.FirstOrDefault(r => r.CategoryId == id && r.ItemType == itemType);
             if (row == null)
             {
-                _db.BudgetContributionSplits.Add(new BudgetContributionSplit
+                db.BudgetContributionSplits.Add(new BudgetContributionSplit
                 {
                     BudgetId = budgetId,
                     CategoryId = id,
@@ -253,7 +272,9 @@ public class BudgetEntryService
             }
         }
 
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
+        var projectId = await db.Budgets.Where(b => b.Id == budgetId).Select(b => (int?)b.ProjectId).FirstOrDefaultAsync();
+        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: projectId));
     }
 
     /// <summary>
@@ -263,7 +284,8 @@ public class BudgetEntryService
     /// </summary>
     public async Task<Dictionary<(long Id, CategoryItemType ItemType), decimal[]>> GetMonthlyBudgetAmountsAsync(int budgetId)
     {
-        var entries = await _db.MonthlyBudgetEntries
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var entries = await db.MonthlyBudgetEntries
             .Where(e => e.BudgetId == budgetId)
             .ToListAsync();
 
@@ -285,7 +307,8 @@ public class BudgetEntryService
     /// </summary>
     public async Task<BudgetEffectiveAmounts> ComputeBudgetEffectiveAmountsAsync(int budgetId)
     {
-        var budget = await _db.Budgets
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var budget = await db.Budgets
             .Include(b => b.MonthlyEntries)
             .Include(b => b.Project)
             .FirstOrDefaultAsync(b => b.Id == budgetId);

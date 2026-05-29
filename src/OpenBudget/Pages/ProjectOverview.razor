@@ -1,4 +1,5 @@
 @page "/projects/{ProjectId:int}/overview"
+@inherits DataChangeAwareComponent
 @using System.Globalization
 @using OpenBudget.Services
 @using OpenBudget.Models
@@ -278,6 +279,13 @@ else
         }
         await LoadSummaryAsync();
     }
+
+    protected override bool IsRelevantChange(DataChange change) => change.Area switch
+    {
+        DataArea.MoneyMoneyData or DataArea.Sources => project != null && change.SourceId == project.SourceId,
+        _ => change.ProjectId is null || change.ProjectId == ProjectId,
+    };
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
 
     private async Task LoadSummaryAsync()
     {

@@ -44,13 +44,18 @@ public class MoneyMoneyImportService
         "unformatted_purpose", "category_key", "checkmark", "splitted"
     };
 
-    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
+    private readonly ChangeNotificationService _notifier;
     private readonly ILogger<MoneyMoneyImportService> _logger;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _perSourceLocks = new();
 
-    public MoneyMoneyImportService(IServiceScopeFactory scopeFactory, ILogger<MoneyMoneyImportService> logger)
+    public MoneyMoneyImportService(
+        IDbContextFactory<BudgetDbContext> dbFactory,
+        ChangeNotificationService notifier,
+        ILogger<MoneyMoneyImportService> logger)
     {
-        _scopeFactory = scopeFactory;
+        _dbFactory = dbFactory;
+        _notifier = notifier;
         _logger = logger;
     }
 
@@ -75,8 +80,7 @@ public class MoneyMoneyImportService
 
     private async Task<ImportResult> ImportInternalAsync(string sourceName, string sqliteFilePath, CancellationToken ct)
     {
-        using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<BudgetDbContext>();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
 
         // Find-or-create the source row before we open the import transaction, so its identity
         // is visible immediately and a parallel call for the same name (different file) finds it.
@@ -145,6 +149,11 @@ public class MoneyMoneyImportService
             _logger.LogInformation(
                 "Imported MoneyMoney source '{Source}' (id={SourceId}): {Accounts} accounts, {AccountGroups} account groups, {Groups} groups, {Categories} categories, {Transactions} transactions ({Bytes} bytes)",
                 sourceName, sourceId, accountCount, accountGroupCount, groupCount, categoryCount, txCount, fileSize);
+
+            // Tell every open browser session their imported data changed so pages reload —
+            // a fresh upload moves balances and spending on every project bound to this source.
+            _notifier.Publish(new DataChange(DataArea.MoneyMoneyData, SourceId: sourceId));
+            _notifier.Publish(new DataChange(DataArea.Sources, SourceId: sourceId));
 
             return new ImportResult
             {

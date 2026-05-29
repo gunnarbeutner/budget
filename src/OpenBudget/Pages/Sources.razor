@@ -1,9 +1,11 @@
 @page "/sources"
+@inherits DataChangeAwareComponent
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
-@inject BudgetDbContext Db
+@inject IDbContextFactory<BudgetDbContext> DbFactory
+@inject ChangeNotificationService Notifier
 @inject IStringLocalizer<Sources> L
 @using Microsoft.EntityFrameworkCore
 
@@ -100,14 +102,20 @@ else
         await LoadAsync();
     }
 
+    // Source registrations, imports, and project counts all show on this page.
+    protected override bool IsRelevantChange(DataChange change) =>
+        change.Area is DataArea.Sources or DataArea.MoneyMoneyData or DataArea.Projects;
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
     private async Task LoadAsync()
     {
         sources = await ProjectService.GetAllSourcesAsync();
-        projectCounts = await Db.Projects
+        await using var db = await DbFactory.CreateDbContextAsync();
+        projectCounts = await db.Projects
             .GroupBy(p => p.SourceId)
             .Select(g => new { SourceId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.SourceId, x => x.Count);
-        transactionCounts = await Db.Transactions
+        transactionCounts = await db.Transactions
             .GroupBy(t => t.SourceId)
             .Select(g => new { SourceId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.SourceId, x => x.Count);
@@ -122,19 +130,23 @@ else
     {
         if (pendingDelete == null) return;
         var sourceId = pendingDelete.Id;
-        if (await Db.Projects.AnyAsync(p => p.SourceId == sourceId))
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (await db.Projects.AnyAsync(p => p.SourceId == sourceId))
         {
             // UI shouldn't even offer the button in this case, but guard anyway.
             pendingDelete = null;
             return;
         }
-        await Db.Database.ExecuteSqlRawAsync("DELETE FROM mm_transactions WHERE SourceId = {0}", new object[] { sourceId });
-        await Db.Database.ExecuteSqlRawAsync("DELETE FROM mm_categories WHERE SourceId = {0}", new object[] { sourceId });
-        await Db.Database.ExecuteSqlRawAsync("DELETE FROM mm_category_groups WHERE SourceId = {0}", new object[] { sourceId });
-        await Db.Database.ExecuteSqlRawAsync("DELETE FROM mm_accounts WHERE SourceId = {0}", new object[] { sourceId });
-        Db.ImportSources.Remove(pendingDelete);
-        await Db.SaveChangesAsync();
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_transactions WHERE SourceId = {0}", new object[] { sourceId });
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_categories WHERE SourceId = {0}", new object[] { sourceId });
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_category_groups WHERE SourceId = {0}", new object[] { sourceId });
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_accounts WHERE SourceId = {0}", new object[] { sourceId });
+        db.ImportSources.Remove(pendingDelete);
+        await db.SaveChangesAsync();
+        var deletedId = sourceId;
         pendingDelete = null;
+        Notifier.Publish(new DataChange(DataArea.Sources, SourceId: deletedId));
+        Notifier.Publish(new DataChange(DataArea.MoneyMoneyData, SourceId: deletedId));
         await LoadAsync();
     }
 }

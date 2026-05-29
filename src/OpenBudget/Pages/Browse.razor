@@ -12,7 +12,7 @@
 @inject IJSRuntime JS
 @inject ProjectTimeState TimeState
 @inject IStringLocalizer<Browse> L
-@implements IDisposable
+@inherits DataChangeAwareComponent
 
 <PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
 
@@ -428,10 +428,18 @@
     private void ToggleRail() => railOpen = !railOpen;
     private void CloseRail() => railOpen = false;
 
-    public void Dispose()
+    public override void Dispose()
     {
         selfRef?.Dispose();
+        base.Dispose();
     }
+
+    protected override bool IsRelevantChange(DataChange change) => change.Area switch
+    {
+        DataArea.MoneyMoneyData or DataArea.Sources => project != null && change.SourceId == project.SourceId,
+        _ => change.ProjectId is null || change.ProjectId == ProjectId,
+    };
+    protected override Task ReloadAfterChangeAsync() => ReloadAsync();
 
     // Debounce search keystrokes — we throttle by token instead of timer/JS interop.
     private long searchToken;

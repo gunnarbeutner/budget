@@ -13,20 +13,20 @@ namespace OpenBudget.Services;
 /// </summary>
 public class BrowseService
 {
-    private readonly BudgetDbContext _db;
+    private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly CategoryHierarchyService _hierarchy;
     private readonly ProjectService _projects;
     private readonly BudgetEntryService _entries;
     private readonly BudgetService _budgets;
 
     public BrowseService(
-        BudgetDbContext db,
+        IDbContextFactory<BudgetDbContext> dbFactory,
         CategoryHierarchyService hierarchy,
         ProjectService projects,
         BudgetEntryService entries,
         BudgetService budgets)
     {
-        _db = db;
+        _dbFactory = dbFactory;
         _hierarchy = hierarchy;
         _projects = projects;
         _entries = entries;
@@ -41,6 +41,7 @@ public class BrowseService
         var project = await _projects.GetProjectAsync(projectId);
         if (project == null) return null;
 
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
         var trackedKeys = project.TrackingItems.ToTrackedKeys().ToList();
         var trackedSet = trackedKeys.ToHashSet();
@@ -77,7 +78,7 @@ public class BrowseService
         //
         // When no assignments exist (older projects that only set TrackingItems), we fall back
         // to using tracking items themselves as roots so those projects keep rendering.
-        var assignedGroupIds = await _db.ProjectCategoryAssignments
+        var assignedGroupIds = await db.ProjectCategoryAssignments
             .Where(a => a.ProjectId == projectId)
             .Select(a => a.CategoryId)
             .ToListAsync(ct);
@@ -157,7 +158,7 @@ public class BrowseService
         var perLeafSumCents = new Dictionary<long, long>();
         if (allLeafIds.Count > 0)
         {
-            var raw = await _db.Transactions
+            var raw = await db.Transactions
                 .Where(t => t.SourceId == project.SourceId)
                 .Where(t => t.Splitted != 1)
                 .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
@@ -267,14 +268,14 @@ public class BrowseService
         // of the project's tracked categories. Without the latter, a transaction in a tracked
         // category but on an unassigned account would be visible in the tx list yet the rail
         // wouldn't offer a way to filter to that account.
-        var assignedAccountIds = await _db.ProjectAccountAssignments
+        var assignedAccountIds = await db.ProjectAccountAssignments
             .Where(a => a.ProjectId == projectId)
             .Select(a => a.AccountId)
             .ToListAsync(ct);
         var accountIdSet = new HashSet<long>(assignedAccountIds);
         if (allLeafIds.Count > 0)
         {
-            var matchingAccountIds = await _db.Transactions
+            var matchingAccountIds = await db.Transactions
                 .Where(t => t.SourceId == project.SourceId)
                 .Where(t => t.Splitted != 1)
                 .Where(t => t.AccountId.HasValue && t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
@@ -287,14 +288,14 @@ public class BrowseService
         var accountNodes = new List<BrowseAccountNode>();
         if (accountIds.Count > 0)
         {
-            var accounts = await _db.Accounts
+            var accounts = await db.Accounts
                 .Where(a => accountIds.Contains(a.Id))
                 .OrderBy(a => a.Sort)
                 .ThenBy(a => a.Name)
                 .ToListAsync(ct);
 
             // Per-account net flow over the period — one query covering all linked accounts.
-            var accountPeriodSumsCents = await _db.Transactions
+            var accountPeriodSumsCents = await db.Transactions
                 .Where(t => t.SourceId == project.SourceId)
                 .Where(t => t.Splitted != 1)
                 .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))

@@ -10,16 +10,16 @@ namespace OpenBudget.Services;
 /// </summary>
 public class CashflowProjectionService
 {
-    private readonly BudgetDbContext _db;
+    private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly CategoryHierarchyService _hierarchy;
     private readonly ProjectService _projects;
 
     public CashflowProjectionService(
-        BudgetDbContext db,
+        IDbContextFactory<BudgetDbContext> dbFactory,
         CategoryHierarchyService hierarchy,
         ProjectService projects)
     {
-        _db = db;
+        _dbFactory = dbFactory;
         _hierarchy = hierarchy;
         _projects = projects;
     }
@@ -37,14 +37,15 @@ public class CashflowProjectionService
     /// </summary>
     public async Task<ProjectDailyDeltaResult> GetProjectActualDailyDeltaAsync(int projectId, int year)
     {
-        var project = await _db.Projects
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var project = await db.Projects
             .Where(p => p.Id == projectId)
             .Select(p => new { p.Id, p.SourceId })
             .FirstOrDefaultAsync();
         if (project == null) return new ProjectDailyDeltaResult { DailyDelta = Array.Empty<decimal>() };
         var sourceId = project.SourceId;
 
-        var assignments = await _db.ProjectAccountAssignments
+        var assignments = await db.ProjectAccountAssignments
             .Where(paa => paa.ProjectId == projectId)
             .ToListAsync();
 
@@ -60,7 +61,7 @@ public class CashflowProjectionService
         var exclusiveIds = assignments.Where(a => a.Scope == AccountScope.Exclusive).Select(a => a.AccountId).ToHashSet();
         var sharedIds = assignments.Where(a => a.Scope == AccountScope.Shared).Select(a => a.AccountId).ToHashSet();
 
-        var accounts = await _db.Accounts
+        var accounts = await db.Accounts
             .Where(a => a.SourceId == sourceId && accountIds.Contains(a.Id))
             .ToListAsync();
         decimal currentBalance = accounts.Sum(a => a.CurrentBalance ?? 0m);
@@ -90,7 +91,7 @@ public class CashflowProjectionService
         decimal ytdSumAllScopes = 0m;
         if (clampedEnd > yearRange.StartTs)
         {
-            ytdSumAllScopes = (await _db.Transactions
+            ytdSumAllScopes = (await db.Transactions
                 .Where(t => t.SourceId == sourceId)
                 .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
                 .WithinUtc(ytdRange)
@@ -100,7 +101,7 @@ public class CashflowProjectionService
         // and StartingBalance defaults to currentBalance — a known approximation flagged in the UI.
         result.StartingBalance = currentBalance - ytdSumAllScopes;
 
-        var yearTxns = await _db.Transactions
+        var yearTxns = await db.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
             .WithinUtc(ytdRange)
@@ -165,7 +166,8 @@ public class CashflowProjectionService
 
         // Single transaction scan across all relevant leaves; trailing-year vs all-time are then
         // computed in-memory per item without further round trips.
-        var allTxns = await _db.Transactions
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var allTxns = await db.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount, t.Timestamp })

@@ -11,11 +11,11 @@ namespace OpenBudget.Services;
 /// </summary>
 public class FreshnessService
 {
-    private readonly BudgetDbContext _db;
+    private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
 
-    public FreshnessService(BudgetDbContext db)
+    public FreshnessService(IDbContextFactory<BudgetDbContext> dbFactory)
     {
-        _db = db;
+        _dbFactory = dbFactory;
     }
 
     /// <summary>
@@ -25,11 +25,12 @@ public class FreshnessService
     /// </summary>
     public async Task<List<DataFreshness>> GetDataFreshnessAsync()
     {
-        var sources = await _db.ImportSources
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var sources = await db.ImportSources
             .OrderBy(s => s.Name)
             .ToListAsync();
 
-        var accountsBySource = (await _db.Accounts
+        var accountsBySource = (await db.Accounts
             .Select(a => new { a.SourceId, a.Id, a.Name, a.RefreshTimestamp, a.Error })
             .ToListAsync())
             .GroupBy(a => a.SourceId)
@@ -66,15 +67,16 @@ public class FreshnessService
     {
         // Group per source so the dashboard can render a banner per source. Two queries (count
         // and sum) per source — fine even at a dozen sources.
-        var sourceIds = await _db.ImportSources.Select(s => s.Id).ToListAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var sourceIds = await db.ImportSources.Select(s => s.Id).ToListAsync();
         var result = new Dictionary<int, UncategorizedSummary>();
         foreach (var sourceId in sourceIds)
         {
-            var query = _db.Transactions
+            var query = db.Transactions
                 .Where(t => t.SourceId == sourceId)
                 .Where(t => t.Splitted != 1)
                 .Where(t => t.CategoryId == null
-                    || !_db.Categories.Any(c => c.SourceId == sourceId && c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)));
+                    || !db.Categories.Any(c => c.SourceId == sourceId && c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)));
 
             var count = await query.CountAsync();
             var absSumCents = count == 0 ? 0L : await query.SumAsync(t => Math.Abs(t.Amount));

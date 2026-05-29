@@ -10,16 +10,19 @@ namespace OpenBudget.Services;
 /// </summary>
 public class ProjectService
 {
-    private readonly BudgetDbContext _db;
+    private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
+    private readonly ChangeNotificationService _notifier;
 
-    public ProjectService(BudgetDbContext db)
+    public ProjectService(IDbContextFactory<BudgetDbContext> dbFactory, ChangeNotificationService notifier)
     {
-        _db = db;
+        _dbFactory = dbFactory;
+        _notifier = notifier;
     }
 
     public async Task<List<Project>> GetProjectsAsync()
     {
-        return await _db.Projects
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Projects
             .Include(b => b.CategoryAssignments)
             .OrderBy(b => b.SortOrder)
             .ThenByDescending(b => b.CreatedAt)
@@ -29,7 +32,8 @@ public class ProjectService
     /// <summary>Get a project with assignments, tracking items, and category-type assignments.</summary>
     public async Task<Project?> GetProjectAsync(int projectId)
     {
-        return await _db.Projects
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Projects
             .Include(b => b.CategoryAssignments)
             .Include(b => b.TrackingItems)
             .Include(b => b.CategoryTypeAssignments)
@@ -38,8 +42,9 @@ public class ProjectService
 
     public async Task<Project> CreateProjectAsync(string name, int sourceId, string? description = null)
     {
-        var maxSortOrder = await _db.Projects.AnyAsync()
-            ? await _db.Projects.MaxAsync(p => p.SortOrder)
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var maxSortOrder = await db.Projects.AnyAsync()
+            ? await db.Projects.MaxAsync(p => p.SortOrder)
             : -1;
 
         var project = new Project
@@ -51,8 +56,9 @@ public class ProjectService
             SourceId = sourceId
         };
 
-        _db.Projects.Add(project);
-        await _db.SaveChangesAsync();
+        db.Projects.Add(project);
+        await db.SaveChangesAsync();
+        _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: project.Id));
         return project;
     }
 
@@ -65,7 +71,8 @@ public class ProjectService
         if (direction != -1 && direction != 1)
             throw new ArgumentException("direction must be -1 or 1", nameof(direction));
 
-        var ordered = await _db.Projects
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var ordered = await db.Projects
             .OrderBy(p => p.SortOrder)
             .ThenByDescending(p => p.CreatedAt)
             .ToListAsync();
@@ -82,23 +89,27 @@ public class ProjectService
         (ordered[index].SortOrder, ordered[swapIndex].SortOrder) =
             (ordered[swapIndex].SortOrder, ordered[index].SortOrder);
 
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
+        _notifier.Publish(new DataChange(DataArea.Projects));
     }
 
     public async Task DeleteProjectAsync(int projectId)
     {
-        var project = await _db.Projects.FindAsync(projectId);
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var project = await db.Projects.FindAsync(projectId);
         if (project != null)
         {
-            _db.Projects.Remove(project);
-            await _db.SaveChangesAsync();
+            db.Projects.Remove(project);
+            await db.SaveChangesAsync();
+            _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
         }
     }
 
     /// <summary>Immediate children (one level) of a project, ordered by SortOrder.</summary>
     public async Task<List<Project>> GetChildProjectsAsync(int parentId)
     {
-        return await _db.Projects
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Projects
             .Where(p => p.ParentProjectId == parentId)
             .OrderBy(p => p.SortOrder)
             .ThenByDescending(p => p.CreatedAt)
@@ -113,20 +124,22 @@ public class ProjectService
     /// </summary>
     public async Task<Project> SetProjectParentAsync(int projectId, int? parentId)
     {
-        var project = await _db.Projects.FindAsync(projectId)
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var project = await db.Projects.FindAsync(projectId)
             ?? throw new ArgumentException("Project not found", nameof(projectId));
 
         if (parentId == null)
         {
             project.ParentProjectId = null;
-            await _db.SaveChangesAsync();
+            await db.SaveChangesAsync();
+            _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
             return project;
         }
 
         if (parentId.Value == projectId)
             throw new InvalidOperationException("A project cannot be its own parent.");
 
-        var parent = await _db.Projects.FindAsync(parentId.Value)
+        var parent = await db.Projects.FindAsync(parentId.Value)
             ?? throw new ArgumentException("Parent project not found", nameof(parentId));
 
         if (parent.SourceId != project.SourceId)
@@ -135,38 +148,43 @@ public class ProjectService
         if (parent.ParentProjectId != null)
             throw new InvalidOperationException(
                 "Only single-level hierarchies are supported; the chosen parent is itself a child.");
-        var hasChildren = await _db.Projects.AnyAsync(p => p.ParentProjectId == projectId);
+        var hasChildren = await db.Projects.AnyAsync(p => p.ParentProjectId == projectId);
         if (hasChildren)
             throw new InvalidOperationException(
                 "This project already has child projects; it can't itself become a child.");
 
         project.ParentProjectId = parentId.Value;
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
+        _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
         return project;
     }
 
     public async Task AssignCategoryToProjectAsync(int projectId, long categoryId)
     {
-        var existing = await _db.ProjectCategoryAssignments
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var existing = await db.ProjectCategoryAssignments
             .FirstOrDefaultAsync(a => a.ProjectId == projectId && a.CategoryId == categoryId);
         if (existing != null) return;
 
-        _db.ProjectCategoryAssignments.Add(new ProjectCategoryAssignment
+        db.ProjectCategoryAssignments.Add(new ProjectCategoryAssignment
         {
             ProjectId = projectId,
             CategoryId = categoryId
         });
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
+        _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
     }
 
     public async Task RemoveCategoryFromProjectAsync(int projectId, long categoryId)
     {
-        var assignment = await _db.ProjectCategoryAssignments
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var assignment = await db.ProjectCategoryAssignments
             .FirstOrDefaultAsync(a => a.ProjectId == projectId && a.CategoryId == categoryId);
         if (assignment != null)
         {
-            _db.ProjectCategoryAssignments.Remove(assignment);
-            await _db.SaveChangesAsync();
+            db.ProjectCategoryAssignments.Remove(assignment);
+            await db.SaveChangesAsync();
+            _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
         }
     }
 
@@ -176,7 +194,8 @@ public class ProjectService
     /// </summary>
     public async Task<int> GetSourceIdForProjectAsync(int projectId)
     {
-        return await _db.Projects
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Projects
             .Where(p => p.Id == projectId)
             .Select(p => p.SourceId)
             .FirstOrDefaultAsync();
@@ -185,28 +204,31 @@ public class ProjectService
     /// <summary>All registered MoneyMoney sources, ordered by name.</summary>
     public async Task<List<ImportSource>> GetAllSourcesAsync()
     {
-        return await _db.ImportSources
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.ImportSources
             .OrderBy(s => s.Name)
             .ToListAsync();
     }
 
     public async Task<List<ProjectTrackingItem>> GetProjectTrackingItemsAsync(int projectId)
     {
-        return await _db.ProjectTrackingItems
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.ProjectTrackingItems
             .Where(pti => pti.ProjectId == projectId)
             .ToListAsync();
     }
 
     public async Task UpdateProjectTrackingItemsAsync(int projectId, HashSet<long> categoryGroupIds, HashSet<long> categoryIds)
     {
-        var existing = await _db.ProjectTrackingItems
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var existing = await db.ProjectTrackingItems
             .Where(pti => pti.ProjectId == projectId)
             .ToListAsync();
-        _db.ProjectTrackingItems.RemoveRange(existing);
+        db.ProjectTrackingItems.RemoveRange(existing);
 
         foreach (var groupId in categoryGroupIds)
         {
-            _db.ProjectTrackingItems.Add(new ProjectTrackingItem
+            db.ProjectTrackingItems.Add(new ProjectTrackingItem
             {
                 ProjectId = projectId,
                 CategoryGroupId = groupId,
@@ -216,7 +238,7 @@ public class ProjectService
 
         foreach (var categoryId in categoryIds)
         {
-            _db.ProjectTrackingItems.Add(new ProjectTrackingItem
+            db.ProjectTrackingItems.Add(new ProjectTrackingItem
             {
                 ProjectId = projectId,
                 CategoryGroupId = null,
@@ -224,7 +246,8 @@ public class ProjectService
             });
         }
 
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
+        _notifier.Publish(new DataChange(DataArea.TrackingItems, ProjectId: projectId));
     }
 
     /// <summary>
@@ -234,13 +257,14 @@ public class ProjectService
     /// </summary>
     public async Task<Dictionary<int, ProjectBalanceSummary>> GetAllProjectsBalancesAsync()
     {
-        var assignments = await _db.ProjectAccountAssignments.ToListAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var assignments = await db.ProjectAccountAssignments.ToListAsync();
         if (!assignments.Any()) return new Dictionary<int, ProjectBalanceSummary>();
 
         // AccountIds are namespaced globally unique across sources, so a single Contains() query
         // resolves accounts for every project regardless of source.
         var accountIds = assignments.Select(a => a.AccountId).Distinct().ToList();
-        var accounts = await _db.Accounts
+        var accounts = await db.Accounts
             .Where(a => accountIds.Contains(a.Id))
             .ToListAsync();
         var accountById = accounts.ToDictionary(a => a.Id);

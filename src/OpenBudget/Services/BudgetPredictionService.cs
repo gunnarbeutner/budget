@@ -10,18 +10,19 @@ namespace OpenBudget.Services;
 /// </summary>
 public class BudgetPredictionService
 {
-    private readonly BudgetDbContext _db;
+    private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly CategoryHierarchyService _hierarchy;
 
-    public BudgetPredictionService(BudgetDbContext db, CategoryHierarchyService hierarchy)
+    public BudgetPredictionService(IDbContextFactory<BudgetDbContext> dbFactory, CategoryHierarchyService hierarchy)
     {
-        _db = db;
+        _dbFactory = dbFactory;
         _hierarchy = hierarchy;
     }
 
     /// <summary>Monthly spending (or income) for an individual leaf category over the last N months.</summary>
     public async Task<List<MonthlySpending>> GetMonthlySpendingForCategoryAsync(long categoryId, int sourceId, int months = 12, bool isIncome = false)
     {
+        await using var db = await _dbFactory.CreateDbContextAsync();
         var now = DateTimeOffset.UtcNow;
         var startDate = new DateTimeOffset(new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc)).AddMonths(-(months - 1));
 
@@ -33,13 +34,13 @@ public class BudgetPredictionService
             var range = TimeRange.Between(monthStart, monthStart.AddMonths(1));
 
             var spentCents = isIncome
-                ? await _db.Transactions
+                ? await db.Transactions
                     .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId == categoryId)
                     .WithinUtc(range)
                     .Where(t => t.Amount > 0)
                     .SumAsync(t => t.Amount)
-                : await _db.Transactions
+                : await db.Transactions
                     .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId == categoryId)
                     .WithinUtc(range)
@@ -68,6 +69,7 @@ public class BudgetPredictionService
         if (!categoryIds.Any())
             return new List<MonthlySpending>();
 
+        await using var db = await _dbFactory.CreateDbContextAsync();
         var now = DateTimeOffset.UtcNow;
         var startDate = new DateTimeOffset(new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc)).AddMonths(-(months - 1));
 
@@ -79,13 +81,13 @@ public class BudgetPredictionService
             var range = TimeRange.Between(monthStart, monthStart.AddMonths(1));
 
             var spentCents = isIncome
-                ? await _db.Transactions
+                ? await db.Transactions
                     .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
                     .WithinUtc(range)
                     .Where(t => t.Amount > 0)
                     .SumAsync(t => t.Amount)
-                : await _db.Transactions
+                : await db.Transactions
                     .Where(t => t.SourceId == sourceId)
                     .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
                     .WithinUtc(range)
@@ -140,7 +142,8 @@ public class BudgetPredictionService
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
         if (!allLeafIds.Any()) return result;
 
-        var rawQuery = _db.Transactions
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var rawQuery = db.Transactions
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .WithinUtc(TimeRange.Between(startDate, startDate.AddMonths(months)));

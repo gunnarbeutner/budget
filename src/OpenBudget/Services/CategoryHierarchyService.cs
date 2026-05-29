@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Models;
 
@@ -10,26 +11,40 @@ namespace OpenBudget.Services;
 /// caching) and unrelated to the project/budget/cashflow concerns it used to share a class
 /// with.
 /// </summary>
-public class CategoryHierarchyService
+public class CategoryHierarchyService : IDisposable
 {
-    private readonly BudgetDbContext _db;
+    private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
+    private readonly ChangeNotificationService _notifier;
 
-    // Per-instance cache of GetAllCategoriesWithChildCountsAsync results. The hierarchy is
-    // read-only within this service's lifetime — uploads happen in a separate scope via the
-    // singleton import service — and was being fetched ~5× per dashboard render before this.
-    // The service is scoped per Blazor circuit and dispatched single-threadedly, so no lock
-    // is needed.
-    private readonly Dictionary<int, List<CategoryGroupWithChildCount>> _hierarchyBySourceId = new();
+    // Per-instance cache of GetAllCategoriesWithChildCountsAsync results. The hierarchy was
+    // being fetched ~5× per dashboard render before this. The service is scoped per Blazor
+    // circuit, but the cache must be invalidated when another session imports/deletes a source
+    // (see OnDataChanged) — that notification fires on the *publishing* circuit's thread, so a
+    // ConcurrentDictionary is used rather than a plain one to make clear-vs-read race-safe.
+    private readonly ConcurrentDictionary<int, List<CategoryGroupWithChildCount>> _hierarchyBySourceId = new();
 
-    public CategoryHierarchyService(BudgetDbContext db)
+    public CategoryHierarchyService(IDbContextFactory<BudgetDbContext> dbFactory, ChangeNotificationService notifier)
     {
-        _db = db;
+        _dbFactory = dbFactory;
+        _notifier = notifier;
+        _notifier.Changed += OnDataChanged;
     }
+
+    // A MoneyMoney import or source deletion in any session changes the category hierarchy, so
+    // drop the cache; the next read for that circuit refetches the current structure.
+    private void OnDataChanged(DataChange change)
+    {
+        if (change.Area is DataArea.MoneyMoneyData or DataArea.Sources)
+            _hierarchyBySourceId.Clear();
+    }
+
+    public void Dispose() => _notifier.Changed -= OnDataChanged;
 
     /// <summary>All MoneyMoney leaf categories (mm_categories) for a source, name-ordered.</summary>
     public async Task<List<Category>> GetAllCategoriesAsync(int sourceId)
     {
-        return await _db.Categories
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Categories
             .Where(c => c.SourceId == sourceId)
             .OrderBy(c => c.Name)
             .ToListAsync();
@@ -46,12 +61,14 @@ public class CategoryHierarchyService
 
         var sentinelRoot = SourceScope.SentinelRoot(sourceId);
 
-        var allCategoryGroups = await _db.CategoryGroups
+        await using var db = await _dbFactory.CreateDbContextAsync();
+
+        var allCategoryGroups = await db.CategoryGroups
             .Where(cg => cg.SourceId == sourceId)
             .OrderBy(cg => cg.Name)
             .ToListAsync();
 
-        var allCategories = await _db.Categories
+        var allCategories = await db.Categories
             .Where(c => c.SourceId == sourceId)
             .OrderBy(c => c.Name)
             .ToListAsync();
@@ -105,7 +122,8 @@ public class CategoryHierarchyService
     /// </summary>
     public async Task<CategoryGroup?> GetCategoryWithSubCategoriesAsync(long categoryGroupId)
     {
-        return await _db.CategoryGroups
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.CategoryGroups
             .FirstOrDefaultAsync(cg => cg.Id == categoryGroupId);
     }
 
@@ -114,11 +132,12 @@ public class CategoryHierarchyService
     /// </summary>
     public async Task<List<long>> GetAllCategoryIdsForGroupAsync(long categoryGroupId, int sourceId)
     {
+        await using var db = await _dbFactory.CreateDbContextAsync();
         var categoryIds = new List<long>();
-        var groupIds = await GetAllCategoryGroupIdsRecursiveAsync(categoryGroupId, sourceId);
+        var groupIds = await GetAllCategoryGroupIdsRecursiveAsync(db, categoryGroupId, sourceId);
         foreach (var groupId in groupIds)
         {
-            var categoriesInGroup = await _db.Categories
+            var categoriesInGroup = await db.Categories
                 .Where(c => c.SourceId == sourceId && c.GroupId == groupId)
                 .Select(c => c.Id)
                 .ToListAsync();
@@ -127,15 +146,15 @@ public class CategoryHierarchyService
         return categoryIds;
     }
 
-    private async Task<List<long>> GetAllCategoryGroupIdsRecursiveAsync(long categoryGroupId, int sourceId)
+    private async Task<List<long>> GetAllCategoryGroupIdsRecursiveAsync(BudgetDbContext db, long categoryGroupId, int sourceId)
     {
         var groupIds = new List<long> { categoryGroupId };
-        var subGroups = await _db.CategoryGroups
+        var subGroups = await db.CategoryGroups
             .Where(cg => cg.SourceId == sourceId && cg.ParentGroupId == categoryGroupId)
             .ToListAsync();
         foreach (var subGroup in subGroups)
         {
-            var subGroupIds = await GetAllCategoryGroupIdsRecursiveAsync(subGroup.Id, sourceId);
+            var subGroupIds = await GetAllCategoryGroupIdsRecursiveAsync(db, subGroup.Id, sourceId);
             groupIds.AddRange(subGroupIds);
         }
         return groupIds;
