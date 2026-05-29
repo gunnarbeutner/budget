@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Accounts_Heading" xml:space="preserve">
+    <value>Accounts</value>
+  </data>
+  <data name="Button_AddAccount" xml:space="preserve">
+    <value>Add Account</value>
+  </data>
+  <data name="Accounts_Description_Before" xml:space="preserve">
+    <value>Link MoneyMoney accounts that fund this project. </value>
+  </data>
+  <data name="Accounts_Description_Shared" xml:space="preserve">
+    <value>Shared</value>
+  </data>
+  <data name="Accounts_Description_Middle" xml:space="preserve">
+    <value> only counts transactions whose category is assigned to the project (use for a main account that mixes traffic). </value>
+  </data>
+  <data name="Accounts_Description_Exclusive" xml:space="preserve">
+    <value>Exclusive</value>
+  </data>
+  <data name="Accounts_Description_After" xml:space="preserve">
+    <value> counts every transaction in the account (use for dedicated accounts like a rental Mietkautionskonto).</value>
+  </data>
+  <data name="Status_LoadingEllipsis" xml:space="preserve">
+    <value>Loading…</value>
+  </data>
+  <data name="Accounts_Empty" xml:space="preserve">
+    <value>No accounts assigned yet.</value>
+  </data>
+  <data name="Table_Account" xml:space="preserve">
+    <value>Account</value>
+  </data>
+  <data name="Table_Kind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="Table_CurrentBalance" xml:space="preserve">
+    <value>Current balance</value>
+  </data>
+  <data name="Table_LastRefresh" xml:space="preserve">
+    <value>Last refresh</value>
+  </data>
+  <data name="Table_Scope" xml:space="preserve">
+    <value>Scope</value>
+  </data>
+  <data name="Account_MissingName" xml:space="preserve">
+    <value>Account #{0} (missing)</value>
+  </data>
+  <data name="Dash" xml:space="preserve">
+    <value>—</value>
+  </data>
+  <data name="Refresh_Manual" xml:space="preserve">
+    <value>manual</value>
+  </data>
+  <data name="Refresh_Error" xml:space="preserve">
+    <value>error</value>
+  </data>
+  <data name="Scope_Shared" xml:space="preserve">
+    <value>Shared</value>
+  </data>
+  <data name="Scope_Exclusive" xml:space="preserve">
+    <value>Exclusive</value>
+  </data>
+  <data name="Button_Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="Modal_AddAccount_Title" xml:space="preserve">
+    <value>Add Account to Project</value>
+  </data>
+  <data name="Status_LoadingAccounts" xml:space="preserve">
+    <value>Loading accounts...</value>
+  </data>
+  <data name="AddAccount_AllAssigned" xml:space="preserve">
+    <value>All accounts are already assigned.</value>
+  </data>
+  <data name="Form_AccountLabel" xml:space="preserve">
+    <value>Account</value>
+  </data>
+  <data name="Form_ScopeLabel" xml:space="preserve">
+    <value>Scope</value>
+  </data>
+  <data name="AddAccount_ScopeHelp" xml:space="preserve">
+    <value>Shared: only transactions in the project's categories count. Exclusive: every transaction in the account counts.</value>
+  </data>
+  <data name="Button_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="AddAccount_OtherGroup" xml:space="preserve">
+    <value>Other</value>
+  </data>
+  <data name="RelativeAge_Future" xml:space="preserve">
+    <value>in the future</value>
+  </data>
+  <data name="RelativeAge_JustNow" xml:space="preserve">
+    <value>just now</value>
+  </data>
+  <data name="RelativeAge_MinutesAgo" xml:space="preserve">
+    <value>{0}m ago</value>
+  </data>
+  <data name="RelativeAge_HoursAgo" xml:space="preserve">
+    <value>{0}h ago</value>
+  </data>
+  <data name="RelativeAge_DaysAgo" xml:space="preserve">
+    <value>{0}d ago</value>
+  </data>
+  <data name="RelativeAge_MonthsAgo" xml:space="preserve">
+    <value>{0}mo ago</value>
+  </data>
+</root>

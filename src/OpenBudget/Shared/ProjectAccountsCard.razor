@@ -1,0 +1,270 @@
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject IStringLocalizer<ProjectAccountsCard> L
+
+@* Project-settings panel: MoneyMoney accounts funding this project, their scope (Shared vs
+   Exclusive), refresh freshness, and an Add dialog backed by a grouped TreePicker.
+   Presentational — the page owns the data (Assignments/AllAccounts/AllAccountGroups) and the
+   service calls; this raises OnAdd / OnRemove / OnScopeChange. *@
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">@L["Accounts_Heading"]</h5>
+                <button class="btn btn-sm btn-primary" @onclick="OpenDialog">@L["Button_AddAccount"]</button>
+            </div>
+            <div class="card-body">
+                <p class="text-body-secondary small mb-3">
+                    @L["Accounts_Description_Before"]<strong>@L["Accounts_Description_Shared"]</strong>@L["Accounts_Description_Middle"]<strong>@L["Accounts_Description_Exclusive"]</strong>@L["Accounts_Description_After"]
+                </p>
+                @if (Assignments == null || AllAccounts == null)
+                {
+                    <p class="text-body-secondary mb-0"><em>@L["Status_LoadingEllipsis"]</em></p>
+                }
+                else if (!Assignments.Any())
+                {
+                    <p class="text-body-secondary mb-0">@L["Accounts_Empty"]</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>@L["Table_Account"]</th>
+                                    <th>@L["Table_Kind"]</th>
+                                    <th class="text-end">@L["Table_CurrentBalance"]</th>
+                                    <th>@L["Table_LastRefresh"]</th>
+                                    <th>@L["Table_Scope"]</th>
+                                    <th class="text-end"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var assignment in Assignments)
+                                {
+                                    var account = AllAccounts.FirstOrDefault(a => a.Id == assignment.AccountId);
+                                    var name = account?.Name ?? L["Account_MissingName", assignment.AccountId].Value;
+                                    var kind = account?.KindLabel ?? L["Dash"].Value;
+                                    var balance = account?.CurrentBalance;
+                                    var currency = account?.Currency ?? "";
+                                    var lastRefresh = account?.LastRefreshUtc;
+                                    var refreshAge = lastRefresh.HasValue ? DateTime.UtcNow - lastRefresh.Value : (TimeSpan?)null;
+                                    var refreshError = account?.Error;
+                                    <tr @key="assignment.AccountId">
+                                        <td>@name</td>
+                                        <td><span class="badge bg-secondary">@kind</span></td>
+                                        <td class="text-end">@(balance.HasValue ? Formatting.FormatMoney(balance.Value, currency) : L["Dash"].Value)</td>
+                                        <td>
+                                            @if (refreshAge.HasValue)
+                                            {
+                                                var refreshClass = refreshAge.Value.TotalDays > 7 ? "text-danger fw-semibold"
+                                                    : refreshAge.Value.TotalHours > 36 ? "text-warning fw-semibold"
+                                                    : "text-body-secondary";
+                                                <span class="small @refreshClass" title="@(lastRefresh!.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))">@Formatting.FormatRelativeAge(refreshAge.Value, L)</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="small text-body-secondary">@L["Refresh_Manual"]</span>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(refreshError))
+                                            {
+                                                <span class="badge bg-danger ms-1" title="@refreshError">@L["Refresh_Error"]</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            <div class="segmented" role="group">
+                                                <button type="button"
+                                                        class="btn @(assignment.Scope == AccountScope.Shared ? "active" : "")"
+                                                        @onclick="() => OnScopeChange.InvokeAsync((assignment.AccountId, AccountScope.Shared))">
+                                                    @L["Scope_Shared"]
+                                                </button>
+                                                <button type="button"
+                                                        class="btn @(assignment.Scope == AccountScope.Exclusive ? "active" : "")"
+                                                        @onclick="() => OnScopeChange.InvokeAsync((assignment.AccountId, AccountScope.Exclusive))">
+                                                    @L["Scope_Exclusive"]
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td class="text-end">
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => OnRemove.InvokeAsync(assignment.AccountId)">@L["Button_Remove"]</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<Modal Show="@_showDialog" Title="@L["Modal_AddAccount_Title"]" SizeClass="modal-lg" OnClose="CloseDialog">
+    <ChildContent>
+        @if (AllAccounts == null || Assignments == null || AllAccountGroups == null)
+        {
+            <p><em>@L["Status_LoadingAccounts"]</em></p>
+        }
+        else
+        {
+            var assignedIds = Assignments.Select(a => a.AccountId).ToHashSet();
+            var unassigned = AllAccounts.Where(a => !assignedIds.Contains(a.Id)).ToList();
+            if (!unassigned.Any())
+            {
+                <p class="text-body-secondary mb-0">@L["AddAccount_AllAssigned"]</p>
+            }
+            else
+            {
+                <div class="mb-3">
+                    <label class="form-label">@L["Form_AccountLabel"]</label>
+                    <TreePicker TId="long"
+                                Nodes="@BuildAccountPickerNodes(AllAccountGroups, unassigned)"
+                                SelectedId="@_selectedId"
+                                SelectedIdChanged="@(id => _selectedId = id)" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">@L["Form_ScopeLabel"]</label>
+                    <div class="segmented segmented-block" role="group">
+                        <input type="radio" class="btn-check" name="addAccountScope" id="addAccountScopeShared"
+                               checked="@(_selectedScope == AccountScope.Shared)"
+                               @onchange="@(() => _selectedScope = AccountScope.Shared)" />
+                        <label class="btn" for="addAccountScopeShared">@L["Scope_Shared"]</label>
+
+                        <input type="radio" class="btn-check" name="addAccountScope" id="addAccountScopeExclusive"
+                               checked="@(_selectedScope == AccountScope.Exclusive)"
+                               @onchange="@(() => _selectedScope = AccountScope.Exclusive)" />
+                        <label class="btn" for="addAccountScopeExclusive">@L["Scope_Exclusive"]</label>
+                    </div>
+                    <small class="form-text text-body-secondary">
+                        @L["AddAccount_ScopeHelp"]
+                    </small>
+                </div>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="CloseDialog">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-primary"
+                @onclick="ConfirmAddAsync"
+                disabled="@(_selectedId == 0)">@L["Button_AddAccount"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    /// <summary>Accounts assigned to the project; null shows a loading note.</summary>
+    [Parameter] public IReadOnlyList<ProjectAccountAssignment>? Assignments { get; set; }
+    /// <summary>All accounts in the project's source (for names/balances + the picker).</summary>
+    [Parameter] public List<Account>? AllAccounts { get; set; }
+    /// <summary>Account-group hierarchy for the Add picker.</summary>
+    [Parameter] public List<AccountGroup>? AllAccountGroups { get; set; }
+    /// <summary>Raised with the chosen account id + scope when the user confirms Add.</summary>
+    [Parameter] public EventCallback<(long AccountId, AccountScope Scope)> OnAdd { get; set; }
+    /// <summary>Raised with the account id to unassign.</summary>
+    [Parameter] public EventCallback<long> OnRemove { get; set; }
+    /// <summary>Raised with the account id + new scope when a row's scope toggle is clicked.</summary>
+    [Parameter] public EventCallback<(long AccountId, AccountScope Scope)> OnScopeChange { get; set; }
+
+    private bool _showDialog;
+    private long _selectedId;
+    private AccountScope _selectedScope = AccountScope.Shared;
+
+    private void OpenDialog()
+    {
+        _selectedId = 0;
+        _selectedScope = AccountScope.Shared;
+        _showDialog = true;
+    }
+
+    private void CloseDialog() => _showDialog = false;
+
+    private async Task ConfirmAddAsync()
+    {
+        if (_selectedId == 0) return;
+        _showDialog = false;
+        await OnAdd.InvokeAsync((_selectedId, _selectedScope));
+    }
+
+    /// <summary>
+    /// Walk MoneyMoney's account_groups hierarchy and produce a flat, depth-first list of
+    /// rows for the Add-Account picker: each visited group emits a disabled header followed
+    /// by its sub-groups (recursively) and then its leaf accounts. Sorting at every level
+    /// matches MoneyMoney's <c>sort</c> field. Sub-trees that contain no <paramref name="unassigned"/>
+    /// account are pruned so the picker doesn't show dead branches. Accounts whose
+    /// <c>group_key</c> doesn't resolve to a known group are bucketed under "Other" at the bottom.
+    /// </summary>
+    private List<TreePickerNode<long>> BuildAccountPickerNodes(List<AccountGroup> groups, List<Account> unassigned)
+    {
+        var groupById = groups.ToDictionary(g => g.Id);
+        bool IsRoot(AccountGroup g) =>
+            !g.ParentGroupId.HasValue || !groupById.ContainsKey(g.ParentGroupId.Value);
+
+        var childGroupsByParent = groups
+            .Where(g => !IsRoot(g))
+            .GroupBy(g => g.ParentGroupId!.Value)
+            .ToDictionary(g => g.Key, g => g
+                .OrderBy(x => x.Sort ?? long.MaxValue)
+                .ThenBy(x => x.Name)
+                .ToList());
+        var rootGroups = groups
+            .Where(IsRoot)
+            .OrderBy(g => g.Sort ?? long.MaxValue)
+            .ThenBy(g => g.Name)
+            .ToList();
+        var accountsByGroup = unassigned
+            .Where(a => a.GroupId.HasValue && groupById.ContainsKey(a.GroupId.Value))
+            .GroupBy(a => a.GroupId!.Value)
+            .ToDictionary(g => g.Key, g => g
+                .OrderBy(a => a.Sort ?? long.MaxValue)
+                .ThenBy(a => a.Name)
+                .ToList());
+        var orphans = unassigned
+            .Where(a => !a.GroupId.HasValue || !groupById.ContainsKey(a.GroupId!.Value))
+            .OrderBy(a => a.Sort ?? long.MaxValue)
+            .ThenBy(a => a.Name)
+            .ToList();
+
+        bool HasUnassignedInSubtree(AccountGroup group)
+        {
+            if (accountsByGroup.ContainsKey(group.Id)) return true;
+            if (!childGroupsByParent.TryGetValue(group.Id, out var subs)) return false;
+            foreach (var sub in subs)
+                if (HasUnassignedInSubtree(sub)) return true;
+            return false;
+        }
+
+        TreePickerNode<long> MakeAccountNode(Account account, int level)
+        {
+            var balance = account.CurrentBalance;
+            var label = $"{account.Name} ({account.KindLabel})"
+                + (balance.HasValue ? $" — {Formatting.FormatMoney(balance.Value, account.Currency ?? "")}" : "");
+            return new TreePickerNode<long>(account.Id, level, Selectable: true, label, Icon: account.KindIcon);
+        }
+
+        var nodes = new List<TreePickerNode<long>>();
+
+        void Walk(AccountGroup group, int level)
+        {
+            if (!HasUnassignedInSubtree(group)) return;
+            nodes.Add(new TreePickerNode<long>(group.Id, level, Selectable: false, group.Name ?? "—", Icon: "bi-folder"));
+            if (childGroupsByParent.TryGetValue(group.Id, out var subs))
+            {
+                foreach (var sub in subs) Walk(sub, level + 1);
+            }
+            if (accountsByGroup.TryGetValue(group.Id, out var accounts))
+            {
+                foreach (var a in accounts) nodes.Add(MakeAccountNode(a, level + 1));
+            }
+        }
+
+        foreach (var root in rootGroups) Walk(root, 0);
+
+        if (orphans.Any())
+        {
+            nodes.Add(new TreePickerNode<long>(0, 0, Selectable: false, L["AddAccount_OtherGroup"], Icon: "bi-folder"));
+            foreach (var a in orphans) nodes.Add(MakeAccountNode(a, 1));
+        }
+
+        return nodes;
+    }
+}
