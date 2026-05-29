@@ -144,6 +144,10 @@ public class MoneyMoneyImportService
             source.LastUploadSizeBytes = fileSize;
             await db.SaveChangesAsync(ct);
 
+            // FKs were enforced-off for the copy; validate the final state before committing so a
+            // dangling reference (i.e. an import bug) is surfaced rather than silently persisted.
+            await LogForeignKeyViolationsAsync(destConn, db.Database.CurrentTransaction?.GetDbTransaction() as SqliteTransaction, sourceName, ct);
+
             await tx.CommitAsync(ct);
 
             _logger.LogInformation(
@@ -179,6 +183,36 @@ public class MoneyMoneyImportService
             pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
             await pragmaOn.ExecuteNonQueryAsync(ct);
         }
+    }
+
+    /// <summary>
+    /// Runs PRAGMA foreign_key_check over the destination and logs any dangling references left
+    /// after the copy. foreign_key_check works regardless of the foreign_keys enforcement pragma,
+    /// so it catches integrity bugs even though enforcement was off during the import.
+    /// </summary>
+    private async Task LogForeignKeyViolationsAsync(
+        SqliteConnection destConn, SqliteTransaction? tx, string sourceName, CancellationToken ct)
+    {
+        await using var cmd = destConn.CreateCommand();
+        if (tx != null) cmd.Transaction = tx;
+        cmd.CommandText = "PRAGMA foreign_key_check";
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+        int violations = 0;
+        while (await reader.ReadAsync(ct))
+        {
+            violations++;
+            var table = reader.IsDBNull(0) ? "?" : reader.GetString(0);
+            var rowid = reader.IsDBNull(1) ? "?" : reader.GetValue(1).ToString();
+            var parent = reader.IsDBNull(2) ? "?" : reader.GetString(2);
+            _logger.LogWarning(
+                "FK violation after importing '{Source}': {Table} row {RowId} references missing {Parent}.",
+                sourceName, table, rowid, parent);
+        }
+        if (violations > 0)
+            _logger.LogWarning(
+                "Import of '{Source}' left {Count} dangling foreign-key reference(s); data was committed but may render incorrectly.",
+                sourceName, violations);
     }
 
     private void WarnOnSchemaDrift(SqliteConnection src, string sourceName)
@@ -419,6 +453,9 @@ public class MoneyMoneyImportService
         if (destTx != null) insertCmd.Transaction = destTx;
         foreach (var p in parameterNames)
             insertCmd.Parameters.Add(new SqliteParameter(p, DBNull.Value));
+        // Compile the statement once; the loop below reuses it per row, so without Prepare SQLite
+        // would re-parse the same INSERT tens of thousands of times.
+        insertCmd.Prepare();
 
         await using var selectCmd = src.CreateCommand();
         selectCmd.CommandText = selectSql;
