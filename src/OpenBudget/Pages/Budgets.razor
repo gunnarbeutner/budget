@@ -1051,10 +1051,10 @@
                         position = "outerEdge",
                         // Drop the standalone budget rows when a matching actual row is also
                         // in the tooltip — that actual row will inline the budget value below.
-                        filter = "function(item, idx, array) { if (item.dataset.stack !== 'budget') return true; const key = item.dataset.highlightGroup; return !array.some(o => o.dataset.stack !== 'budget' && o.dataset.highlightGroup === key); }",
+                        filter = new { kind = "budgetActualFilter" },
                         callbacks = new
                         {
-                            label = "function(context) { const ds = context.dataset; const key = ds.highlightGroup || ds.label; const isBudget = ds.stack === 'budget'; if (isBudget) { return key + ': — / €' + context.parsed.y.toFixed(2); } const budgetDs = context.chart.data.datasets.find(d => d.stack === 'budget' && d.highlightGroup === key); const budgetVal = budgetDs ? budgetDs.data[context.dataIndex] : null; const actual = '€' + context.parsed.y.toFixed(2); return key + ': ' + actual + (budgetVal != null ? ' / €' + Number(budgetVal).toFixed(2) : ''); }"
+                            label = new { kind = "budgetActualLabel" }
                         }
                     }
                 },
@@ -1081,7 +1081,7 @@
                         },
                         ticks = new
                         {
-                            callback = "function(value) { return '€' + value.toFixed(2); }"
+                            callback = new { kind = "euroTicks", decimals = 2 }
                         }
                     }
                 }

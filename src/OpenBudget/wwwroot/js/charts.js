@@ -13,6 +13,84 @@ window.destroyChart = function (elementId) {
     }
 };
 
+// Chart.js callbacks (tick/label/title formatters, tooltip filters) used to be shipped from C#
+// as JS function-body strings and eval'd here. Instead, C# now passes a small descriptor
+// { kind, ...params } and we look the builder up by name. No eval, and a stray/unknown kind
+// degrades to "no custom formatter" rather than executing arbitrary text. Add a new kind here
+// and reference it by name from C# rather than passing code.
+const chartCallbackFactories = {
+    // y-axis tick / value formatter: '€' + value with p.decimals places (default 0).
+    euroTicks: function (p) {
+        const d = (p && typeof p.decimals === 'number') ? p.decimals : 0;
+        return function (value) { return '€' + Number(value).toFixed(d); };
+    },
+    // tooltip label: "<dataset label>: €<y, 2 decimals>".
+    datasetEuroLabel: function () {
+        return function (context) { return context.dataset.label + ': €' + context.parsed.y.toFixed(2); };
+    },
+    // balance-chart tooltip title: reconstruct the calendar date from the day-of-year index
+    // (labels[] only carries month names on day 1). p.year is the chart's year.
+    dayOfYearDate: function (p) {
+        const year = p.year;
+        return function (items) {
+            if (!items.length) return '';
+            const i = items[0].dataIndex;
+            const dt = new Date(year, 0, 1 + i);
+            return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        };
+    },
+    // balance-chart tooltip label: "<p.label>: €<localized y, 2 decimals>".
+    localizedEuroLabel: function (p) {
+        const label = p.label;
+        return function (context) {
+            return label + ': €' + context.parsed.y.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        };
+    },
+    // budget stacked-bar tooltip label: actual value, inlining the matching budget value.
+    budgetActualLabel: function () {
+        return function (context) {
+            const ds = context.dataset;
+            const key = ds.highlightGroup || ds.label;
+            const isBudget = ds.stack === 'budget';
+            if (isBudget) { return key + ': — / €' + context.parsed.y.toFixed(2); }
+            const budgetDs = context.chart.data.datasets.find(d => d.stack === 'budget' && d.highlightGroup === key);
+            const budgetVal = budgetDs ? budgetDs.data[context.dataIndex] : null;
+            const actual = '€' + context.parsed.y.toFixed(2);
+            return key + ': ' + actual + (budgetVal != null ? ' / €' + Number(budgetVal).toFixed(2) : '');
+        };
+    },
+    // budget stacked-bar tooltip filter: drop a standalone budget row when a matching actual row
+    // is already in the tooltip (that actual row inlines the budget value).
+    budgetActualFilter: function () {
+        return function (item, idx, array) {
+            if (item.dataset.stack !== 'budget') return true;
+            const key = item.dataset.highlightGroup;
+            return !array.some(o => o.dataset.stack !== 'budget' && o.dataset.highlightGroup === key);
+        };
+    }
+};
+
+// Resolve a { kind, ...params } descriptor (or undefined) to the actual Chart.js callback.
+function resolveChartCallback(spec) {
+    if (!spec || typeof spec !== 'object' || !spec.kind) return undefined;
+    const factory = chartCallbackFactories[spec.kind];
+    if (!factory) { console.warn('Unknown chart callback kind:', spec.kind); return undefined; }
+    return factory(spec);
+}
+
+// Replace the descriptor objects on a chart config's tooltip/tick callbacks with real functions.
+function resolveChartCallbacks(chartData) {
+    const cbs = chartData.options?.plugins?.tooltip?.callbacks;
+    if (cbs) {
+        if (cbs.label) cbs.label = resolveChartCallback(cbs.label);
+        if (cbs.title) cbs.title = resolveChartCallback(cbs.title);
+    }
+    const tt = chartData.options?.plugins?.tooltip;
+    if (tt && tt.filter) tt.filter = resolveChartCallback(tt.filter);
+    const yticks = chartData.options?.scales?.y?.ticks;
+    if (yticks && yticks.callback) yticks.callback = resolveChartCallback(yticks.callback);
+}
+
 // Open the native picker on a date/month input that's visually hidden — used to make
 // the dashboard heading double as the month-picker trigger. Falls back to focus+click
 // for browsers that don't expose showPicker() yet (pre-Safari 16.4).
@@ -539,18 +617,8 @@ window.renderStackedBarChart = function(elementId, chartData) {
         window.chartInstances[elementId].destroy();
     }
 
-    // Parse callback functions from strings
-    if (chartData.options?.plugins?.tooltip?.callbacks) {
-        if (chartData.options.plugins.tooltip.callbacks.label) {
-            chartData.options.plugins.tooltip.callbacks.label = eval('(' + chartData.options.plugins.tooltip.callbacks.label + ')');
-        }
-    }
-    if (typeof chartData.options?.plugins?.tooltip?.filter === 'string') {
-        chartData.options.plugins.tooltip.filter = eval('(' + chartData.options.plugins.tooltip.filter + ')');
-    }
-    if (chartData.options?.scales?.y?.ticks?.callback) {
-        chartData.options.scales.y.ticks.callback = eval('(' + chartData.options.scales.y.ticks.callback + ')');
-    }
+    // Turn the { kind, ...params } callback descriptors from C# into real functions.
+    resolveChartCallbacks(chartData);
 
     attachTooltipHoverHighlight(chartData);
     enableExternalTooltip(chartData);
@@ -843,21 +911,8 @@ window.renderChart = function(elementId, chartData) {
         window.chartInstances[elementId].destroy();
     }
 
-    // Parse callback functions from strings
-    if (chartData.options?.plugins?.tooltip?.callbacks) {
-        if (chartData.options.plugins.tooltip.callbacks.label) {
-            chartData.options.plugins.tooltip.callbacks.label = eval('(' + chartData.options.plugins.tooltip.callbacks.label + ')');
-        }
-        if (chartData.options.plugins.tooltip.callbacks.title) {
-            chartData.options.plugins.tooltip.callbacks.title = eval('(' + chartData.options.plugins.tooltip.callbacks.title + ')');
-        }
-    }
-    if (typeof chartData.options?.plugins?.tooltip?.filter === 'string') {
-        chartData.options.plugins.tooltip.filter = eval('(' + chartData.options.plugins.tooltip.filter + ')');
-    }
-    if (chartData.options?.scales?.y?.ticks?.callback) {
-        chartData.options.scales.y.ticks.callback = eval('(' + chartData.options.scales.y.ticks.callback + ')');
-    }
+    // Turn the { kind, ...params } callback descriptors from C# into real functions.
+    resolveChartCallbacks(chartData);
 
     attachTooltipHoverHighlight(chartData);
     enableExternalTooltip(chartData);

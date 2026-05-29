@@ -1541,7 +1541,7 @@ else
                         position = "outerEdge",
                         callbacks = new
                         {
-                            label = "function(context) { return context.dataset.label + ': €' + context.parsed.y.toFixed(2); }"
+                            label = new { kind = "datasetEuroLabel" }
                         }
                     },
                     // Picked up by the forecastShading plugin in wwwroot/js/charts.js. 13 means
@@ -1568,7 +1568,7 @@ else
                         grace = "30%",
                         ticks = new
                         {
-                            callback = "function(value) { return '€' + value.toFixed(0); }"
+                            callback = new { kind = "euroTicks", decimals = 0 }
                         },
                         title = new
                         {
@@ -1650,8 +1650,8 @@ else
                         {
                             // Reconstruct the full date from the data index — labels[] only carries
                             // month names on day-1, so we can't use the label string for tooltips.
-                            title = $"function(items) {{ if (!items.length) return ''; var i = items[0].dataIndex; var d = new Date({selectedYear}, 0, 1 + i); return d.toLocaleDateString('en-US', {{ month: 'short', day: 'numeric' }}); }}",
-                            label = $"function(context) {{ return '{L["Chart_BalanceLabel"].Value}: €' + context.parsed.y.toLocaleString('de-DE', {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}); }}"
+                            title = new { kind = "dayOfYearDate", year = selectedYear },
+                            label = new { kind = "localizedEuroLabel", label = L["Chart_BalanceLabel"].Value }
                         }
                     },
                     forecastShading = new
@@ -1680,7 +1680,7 @@ else
                     {
                         ticks = new
                         {
-                            callback = "function(value) { return '€' + value.toFixed(0); }"
+                            callback = new { kind = "euroTicks", decimals = 0 }
                         },
                         title = new { display = true, text = L["Chart_BalanceAxis"].Value }
                     }
