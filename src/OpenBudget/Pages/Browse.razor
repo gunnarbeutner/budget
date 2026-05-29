@@ -62,63 +62,13 @@
         }
         else
         {
-            <div class="browse-tree" role="tree">
-                @{
-                    bool allSelected = selectionKind == "all";
-                }
-                <div class="browse-tree-row @(allSelected ? "selected" : "")"
-                     role="treeitem" tabindex="0" aria-selected="@allSelected.ToString().ToLower()"
-                     @onclick="SelectAll"
-                     @onkeydown="OnAllKeydown">
-                    <span class="browse-tree-name fw-semibold">
-                        <i class="bi bi-list-ul me-1" aria-hidden="true"></i>@L["Tree_AllTransactions"]
-                    </span>
-                </div>
-
-                @if (tree.Accounts.Count > 0)
-                {
-                    var visibleAccounts = showRelatedAccounts
-                        ? (IEnumerable<BrowseAccountNode>)tree.Accounts
-                        : tree.Accounts.Where(a => a.IsAssigned);
-                    var hiddenRelatedCount = tree.Accounts.Count(a => !a.IsAssigned);
-                    <div class="browse-tree-section">@L["Tree_Section_Accounts"]</div>
-                    @foreach (var a in visibleAccounts)
-                    {
-                        var accountId = a.Id;
-                        bool isSel = selectionKind == "account" && selectionId == accountId;
-                        <div @key="accountId" class="browse-tree-row @(isSel ? "selected" : "") @(!a.IsAssigned ? "related" : "")"
-                             role="treeitem" tabindex="0" aria-selected="@isSel.ToString().ToLower()"
-                             @onclick="() => SelectAccount(accountId)"
-                             @onkeydown="e => OnAccountKeydown(e, accountId)">
-                            <span class="browse-tree-name"><i class="bi bi-bank me-1" aria-hidden="true"></i>@a.Name</span>
-                            @if (a.Balance.HasValue)
-                            {
-                                <span class="browse-tree-amount @(a.Balance < 0 ? "text-danger" : "text-body-secondary")">
-                                    @Formatting.FormatMoney(a.Balance.Value, a.Currency ?? "EUR")
-                                </span>
-                            }
-                        </div>
-                    }
-                    @if (hiddenRelatedCount > 0)
-                    {
-                        <button type="button" class="btn btn-link btn-sm browse-tree-toggle"
-                                @onclick="() => showRelatedAccounts = !showRelatedAccounts">
-                            @(showRelatedAccounts
-                                ? L["Tree_HideRelatedAccounts"]
-                                : L["Tree_ShowRelatedAccounts", hiddenRelatedCount])
-                        </button>
-                    }
-                }
-
-                @if (tree.Categories.Count > 0)
-                {
-                    <div class="browse-tree-section">@L["Tree_Section_Categories"]</div>
-                    @foreach (var c in tree.Categories)
-                    {
-                        @RenderCategoryNode(c, 0)
-                    }
-                }
-            </div>
+            <BrowseTreeRail Tree="tree"
+                            SelectionKind="selectionKind"
+                            SelectionId="selectionId"
+                            @bind-ShowRelatedAccounts="showRelatedAccounts"
+                            OnSelectAll="SelectAll"
+                            OnSelectAccount="SelectAccount"
+                            OnSelectCategory="SelectCategoryNode" />
         }
     </aside>
 
@@ -629,21 +579,6 @@
         await ReloadTransactionsAsync();
     }
 
-    private async Task OnAllKeydown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" || e.Key == " ") await SelectAll();
-    }
-
-    private async Task OnAccountKeydown(KeyboardEventArgs e, long id)
-    {
-        if (e.Key == "Enter" || e.Key == " ") await SelectAccount(id);
-    }
-
-    private async Task OnCategoryKeydown(KeyboardEventArgs e, BrowseCategoryNode n)
-    {
-        if (e.Key == "Enter" || e.Key == " ") await SelectCategoryNode(n);
-    }
-
     private async Task SelectAccount(long id)
     {
         selectionKind = "account"; selectionId = id;
@@ -1126,75 +1061,4 @@
         catch (JSDisconnectedException) { /* page navigation in flight */ }
     }
 
-    // NOTE: deliberately no builder.SetKey(...) on these nodes. The tree structure is stable
-    // across the re-renders this page actually does (selection / period / search change classes
-    // and values, not the node set), so positional diffing is correct here. A SetKey was tried and
-    // removed because it caused a 500 (see commit "Fix Browse 500: drop SetKey on the recursive
-    // category node") — don't reintroduce one without reproducing that crash first.
-    private RenderFragment RenderCategoryNode(BrowseCategoryNode node, int level) => builder =>
-    {
-        bool isSelected = (selectionKind == (node.ItemType == CategoryItemType.Category ? "category" : "group"))
-                          && selectionId == node.Id;
-
-        builder.OpenElement(0, "div");
-        builder.AddAttribute(1, "class", "browse-tree-row" + (isSelected ? " selected" : "") + (node.IsTracked ? " tracked" : ""));
-        builder.AddAttribute(2, "role", "treeitem");
-        builder.AddAttribute(3, "tabindex", "0");
-        builder.AddAttribute(4, "aria-selected", isSelected ? "true" : "false");
-        // FormattableString.Invariant: CSS lengths need a decimal point, but Razor's $""
-        // interpolation defaults to CurrentCulture — German renders "1,5rem", which browsers
-        // silently drop as invalid and the tree flattens.
-        builder.AddAttribute(5, "style", FormattableString.Invariant($"padding-left: {0.5 + level * 1.0:0.##}rem;"));
-        builder.AddAttribute(6, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, () => SelectCategoryNode(node)));
-        builder.AddAttribute(7, "onkeydown", EventCallback.Factory.Create<KeyboardEventArgs>(this, e => OnCategoryKeydown(e, node)));
-
-        builder.OpenElement(10, "span");
-        builder.AddAttribute(11, "class", "browse-tree-name");
-        if (!string.IsNullOrEmpty(node.Color))
-        {
-            builder.OpenElement(12, "span");
-            builder.AddAttribute(13, "class", "browse-color-dot");
-            builder.AddAttribute(14, "style", $"background:{node.Color};");
-            builder.CloseElement();
-        }
-        else
-        {
-            builder.OpenElement(15, "i");
-            builder.AddAttribute(16, "class", node.ItemType == CategoryItemType.Group ? "bi bi-folder me-1" : "bi bi-tag me-1");
-            builder.CloseElement();
-        }
-        builder.AddContent(20, node.Name);
-        builder.CloseElement(); // span.browse-tree-name
-
-        builder.OpenElement(30, "span");
-        builder.AddAttribute(31, "class", "browse-tree-amount");
-        // Show the spent side whenever the node has any context to anchor it: either an
-        // actual non-zero spent value, OR a budget pair on its right ("€0,00 | €120,00" reads
-        // cleanly; a bare " | €120,00" reads as a missing value).
-        bool hasBudgetContext = node.Remaining.HasValue;
-        if (node.Spent != 0m || hasBudgetContext)
-        {
-            builder.OpenElement(32, "span");
-            builder.AddAttribute(33, "class", node.IsIncome ? "text-success" : "text-danger");
-            builder.AddContent(34, Formatting.FormatMoney(node.IsIncome ? node.Spent : -node.Spent));
-            builder.CloseElement();
-        }
-        if (node.Remaining is { } rem)
-        {
-            builder.AddContent(35, " | ");
-            builder.OpenElement(36, "span");
-            builder.AddAttribute(37, "class", rem < 0 ? "text-danger" : "text-success");
-            builder.AddContent(38, Formatting.FormatMoney(rem));
-            builder.CloseElement();
-        }
-        builder.CloseElement(); // span.browse-tree-amount
-
-        builder.CloseElement(); // div.browse-tree-row
-
-        // Children rendered as siblings at the next indent level.
-        foreach (var c in node.Children)
-        {
-            builder.AddContent(50, RenderCategoryNode(c, level + 1));
-        }
-    };
 }
