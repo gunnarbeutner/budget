@@ -169,7 +169,7 @@ else
                 {
                     var selPrefix = cat.ItemType == CategoryItemType.Group ? "grp" : "cat";
                     var catUrl = $"/projects/{ProjectId}/browse{AnchorQuery()}&sel={selPrefix}-{cat.CategoryId}";
-                    <div class="mb-3">
+                    <div class="mb-3" @key="(cat.ItemType, cat.CategoryId)">
                         <a href="@catUrl" class="d-flex justify-content-between align-items-center text-decoration-none text-reset">
                             <span>@cat.CategoryName</span>
                             @if (summary.HasBudget)

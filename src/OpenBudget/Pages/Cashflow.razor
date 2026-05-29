@@ -145,7 +145,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                         {
                             var idx = i;
                             var entry = whatIfs[idx];
-                            <div class="d-flex gap-2 mb-2 align-items-center flex-wrap">
+                            <div class="d-flex gap-2 mb-2 align-items-center flex-wrap" @key="entry">
                                 <input type="date" class="form-control form-control-sm filter-input-sm"
                                        min="@MinWhatIfDateStr" max="@MaxWhatIfDateStr"
                                        @bind="entry.Date" @bind:after="OnWhatIfChanged" />

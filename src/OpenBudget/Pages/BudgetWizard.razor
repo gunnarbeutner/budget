@@ -154,7 +154,7 @@ else if (step == 2)
                                 </tr>
                                 @foreach (var (key, amounts) in wizIncomeRows)
                                 {
-                                    <tr>
+                                    <tr @key="key">
                                         <td>@categoryNames.GetValueOrDefault(key, L["Category_Unknown"])</td>
                                         @for (int m = 0; m < 12; m++)
                                         {
@@ -186,7 +186,7 @@ else if (step == 2)
                                 </tr>
                                 @foreach (var (key, amounts) in wizExpenseRows)
                                 {
-                                    <tr>
+                                    <tr @key="key">
                                         <td>@categoryNames.GetValueOrDefault(key, L["Category_Unknown"])</td>
                                         @for (int m = 0; m < 12; m++)
                                         {
