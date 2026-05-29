@@ -430,8 +430,20 @@
 
     public override void Dispose()
     {
+        // Best-effort: free the Chart.js instance JS-side so navigating away doesn't leave it
+        // (and the onClick closure capturing selfRef) in window.chartInstances until the canvas
+        // id is reused. Fire-and-forget because Dispose is synchronous; swallow the cases where
+        // JS is unreachable (circuit already gone, or server-side prerender disposal).
+        _ = DestroyChartAsync();
         selfRef?.Dispose();
         base.Dispose();
+    }
+
+    private async Task DestroyChartAsync()
+    {
+        try { await JS.InvokeVoidAsync("destroyChart", "browseChart"); }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
     }
 
     protected override bool IsRelevantChange(DataChange change) => change.Area switch

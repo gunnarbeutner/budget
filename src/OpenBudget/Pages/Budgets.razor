@@ -401,6 +401,23 @@
         return Task.CompletedTask;
     }
 
+    public override void Dispose()
+    {
+        // Best-effort: free the Chart.js instance JS-side so navigating away doesn't leave it
+        // in window.chartInstances until the canvas id is reused. Fire-and-forget because Dispose
+        // is synchronous; swallow the cases where JS is unreachable (circuit already gone, or
+        // server-side prerender disposal).
+        _ = DestroyChartAsync();
+        base.Dispose();
+    }
+
+    private async Task DestroyChartAsync()
+    {
+        try { await JS.InvokeVoidAsync("destroyChart", "trendStackedBarChart"); }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         // Project-scoped via the {ProjectId} route segment; the :int constraint already rejects

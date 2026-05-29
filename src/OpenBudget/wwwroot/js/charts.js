@@ -1,6 +1,18 @@
 // Chart rendering functions
 window.chartInstances = window.chartInstances || {};
 
+// Destroy a chart created by any of the render* helpers and drop it from the registry.
+// Components call this from Dispose so navigating away doesn't leak the Chart.js instance
+// (and its canvas/event listeners) in window.chartInstances until the same element id is
+// reused. Safe to call for an unknown / already-destroyed id.
+window.destroyChart = function (elementId) {
+    const inst = window.chartInstances[elementId];
+    if (inst) {
+        try { inst.destroy(); } catch { /* canvas already torn down */ }
+        delete window.chartInstances[elementId];
+    }
+};
+
 // Open the native picker on a date/month input that's visually hidden — used to make
 // the dashboard heading double as the month-picker trigger. Falls back to focus+click
 // for browsers that don't expose showPicker() yet (pre-Safari 16.4).

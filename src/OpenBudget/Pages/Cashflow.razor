@@ -696,6 +696,27 @@ else
         return Task.CompletedTask;
     }
 
+    public override void Dispose()
+    {
+        // Best-effort: free the Chart.js instances JS-side so navigating away doesn't leave them
+        // in window.chartInstances until their canvas ids are reused. Fire-and-forget because
+        // Dispose is synchronous; swallow the cases where JS is unreachable (circuit already gone,
+        // or server-side prerender disposal).
+        _ = DestroyChartsAsync();
+        base.Dispose();
+    }
+
+    private async Task DestroyChartsAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("destroyChart", "cashflowChart");
+            await JSRuntime.InvokeVoidAsync("destroyChart", "balanceChart");
+        }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         // Project-scoped via the {ProjectId} route segment; the :int constraint already rejects
