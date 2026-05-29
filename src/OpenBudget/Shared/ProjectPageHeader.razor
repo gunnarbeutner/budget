@@ -131,6 +131,7 @@
     [Parameter] public bool ShowHomeLink { get; set; } = true;
 
     private List<Project>? otherProjects;
+    private int? _loadedForProjectId;
 
     /// <summary>"?year=&month=&period=" suffix for the month-model tabs, or "" when no anchor is
     /// known. The Overview/Browse pages pass the anchor explicitly; from the year-only tabs
@@ -151,8 +152,12 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        // Loaded per render so a switch to another project triggers a fresh fetch;
-        // the underlying service is scoped so this is cheap.
+        // The other-projects list depends only on ProjectId, but OnParametersSetAsync fires on
+        // every parameter change (period nav, data-change reloads). Refetch only when the project
+        // actually changes so a dropdown that's usually never opened doesn't re-query the project
+        // list on every re-render. Switching projects does a forceLoad, so a fresh instance reloads.
+        if (_loadedForProjectId == ProjectId) return;
+        _loadedForProjectId = ProjectId;
         var all = await ProjectService.GetProjectsAsync();
         otherProjects = all.Where(p => p.Id != ProjectId).OrderBy(p => p.Name).ToList();
     }
