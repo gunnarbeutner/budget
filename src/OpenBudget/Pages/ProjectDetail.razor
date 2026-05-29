@@ -37,46 +37,12 @@ else
                        SaveError="parentSaveError"
                        OnParentChanged="OnParentChanged" />
 
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">@L["CategoryAssignments_Heading"]</h5>
-                    <button class="btn btn-sm btn-primary" @onclick="ShowAddCategoryDialog">@L["Button_AddCategory"]</button>
-                </div>
-                <div class="card-body">
-                    @if (!budget.CategoryAssignments.Any())
-                    {
-                        <p class="text-body-secondary">@L["CategoryAssignments_Empty"]</p>
-                    }
-                    else
-                    {
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>@L["Table_Category"]</th>
-                                    <th></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var assignment in budget.CategoryAssignments)
-                                {
-                                    var categoryName = categoryNames.GetValueOrDefault(assignment.CategoryId, L["Status_Loading"].Value);
-
-                                    <tr @key="assignment.CategoryId">
-                                        <td>@categoryName</td>
-                                        <td>
-                                            <button class="btn btn-sm btn-danger" @onclick="() => RemoveCategory(assignment.CategoryId)">@L["Button_Remove"]</button>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    }
-                </div>
-            </div>
-        </div>
-    </div>
+    <ProjectCategoryAssignmentsCard Assignments="budget.CategoryAssignments.ToList()"
+                                    CategoryNames="categoryNames"
+                                    AvailableCategories="availableCategoriesWithCounts"
+                                    OnAddDialogOpening="LoadAvailableCategoriesAsync"
+                                    OnAdd="AddCategory"
+                                    OnRemove="RemoveCategory" />
 
     <div class="row mt-4">
         <div class="col-12">
@@ -404,29 +370,6 @@ else
     </Footer>
 </Modal>
 
-<Modal Show="@showAddCategoryDialog" Title="@L["Modal_AddCategory_Title"]" SizeClass="modal-lg" OnClose="@HideAddCategoryDialog">
-    <ChildContent>
-        @if (availableCategoriesWithCounts == null)
-        {
-            <p><em>@L["Status_LoadingCategories"]</em></p>
-        }
-        else
-        {
-            <div class="mb-3">
-                <label class="form-label">@L["Form_SelectCategoryLabel"]</label>
-                <TreePicker TId="long"
-                            Nodes="@BuildCategoryPickerNodes(availableCategoriesWithCounts)"
-                            SelectedId="@selectedCategoryId"
-                            SelectedIdChanged="@(id => selectedCategoryId = id)" />
-                <small class="form-text text-body-secondary">@L["AddCategory_Help"]</small>
-            </div>
-        }
-    </ChildContent>
-    <Footer>
-        <button type="button" class="btn btn-secondary" @onclick="HideAddCategoryDialog">@L["Button_Cancel"]</button>
-        <button type="button" class="btn btn-primary" @onclick="AddCategory" disabled="@(selectedCategoryId == 0)">@L["Button_AddCategory"]</button>
-    </Footer>
-</Modal>
 
 @code {
     [Parameter]
@@ -436,8 +379,6 @@ else
     private Dictionary<long, string> categoryNames = new();
     private List<CategoryGroupWithChildCount>? availableCategoriesWithCounts;
 
-    private bool showAddCategoryDialog = false;
-    private long selectedCategoryId = 0;
     private bool showDeleteDialog = false;
 
     // Tracking configuration
@@ -476,67 +417,6 @@ else
         public int Level { get; set; }
     }
 
-    /// <summary>
-    /// Walk the unified category hierarchy and produce a flat, depth-first list of rows for
-    /// the Add Category picker. Every level mixes sub-groups and leaf categories sorted
-    /// together by MoneyMoney's <c>sort</c> field, so the order matches what the user sees
-    /// in MoneyMoney. Nodes with empty/null names are skipped — those are the source's
-    /// "unsorted" sentinel rows we don't want users picking.
-    /// </summary>
-    private List<TreePickerNode<long>> BuildCategoryPickerNodes(List<CategoryGroupWithChildCount> items)
-    {
-        var groupChildrenByParent = items
-            .Where(c => c.ItemType == CategoryItemType.Group && c.ParentCategoryGroupId.HasValue)
-            .GroupBy(c => c.ParentCategoryGroupId!.Value)
-            .ToDictionary(g => g.Key, g => g.ToList());
-        var categoryChildrenByParent = items
-            .Where(c => c.ItemType == CategoryItemType.Category && c.ParentCategoryGroupId.HasValue)
-            .GroupBy(c => c.ParentCategoryGroupId!.Value)
-            .ToDictionary(g => g.Key, g => g.ToList());
-
-        var roots = items
-            .Where(c => c.ItemType == CategoryItemType.Group && c.IsRootCategory)
-            .OrderBy(c => c.CategoryGroup.Sort ?? long.MaxValue)
-            .ThenBy(c => c.CategoryGroup.Name)
-            .ToList();
-
-        var nodes = new List<TreePickerNode<long>>();
-
-        long SortKey(CategoryGroupWithChildCount c) =>
-            (c.ItemType == CategoryItemType.Group ? c.CategoryGroup.Sort : c.Category?.Sort) ?? long.MaxValue;
-
-        void Walk(CategoryGroupWithChildCount item, int level)
-        {
-            var name = item.Name;
-            if (string.IsNullOrWhiteSpace(name)) return;
-
-            var isGroup = item.ItemType == CategoryItemType.Group;
-            var label = name;
-            if (isGroup && item.DirectChildCount > 0)
-            {
-                label += L["Form_SubCategories", item.DirectChildCount].Value;
-            }
-            // MoneyMoney doesn't visually distinguish category groups from leaf categories,
-            // so we use the same icon for both — only the indent signals depth.
-            nodes.Add(new TreePickerNode<long>(item.Id, level, Selectable: true, label, Icon: "bi-tag-fill"));
-
-            if (!isGroup) return;
-
-            var children = new List<CategoryGroupWithChildCount>();
-            if (groupChildrenByParent.TryGetValue(item.CategoryGroup.Id, out var subGroups))
-                children.AddRange(subGroups);
-            if (categoryChildrenByParent.TryGetValue(item.CategoryGroup.Id, out var cats))
-                children.AddRange(cats);
-
-            foreach (var c in children.OrderBy(SortKey).ThenBy(c => c.Name))
-            {
-                Walk(c, level + 1);
-            }
-        }
-
-        foreach (var root in roots) Walk(root, 0);
-        return nodes;
-    }
 
     /// <summary>
     /// Walk MoneyMoney's account_groups hierarchy and produce a flat, depth-first list of
@@ -749,27 +629,19 @@ else
         }
     }
 
-    private async Task ShowAddCategoryDialog()
+    // Raised by ProjectCategoryAssignmentsCard when its Add dialog opens; load the picker data.
+    private async Task LoadAvailableCategoriesAsync()
     {
         var sourceId = budget?.SourceId ?? SourceScope.LegacySourceId;
         availableCategoriesWithCounts = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(sourceId);
-        selectedCategoryId = 0;
-        showAddCategoryDialog = true;
     }
 
-    private void HideAddCategoryDialog()
+    private async Task AddCategory(long categoryId)
     {
-        showAddCategoryDialog = false;
-    }
-
-    private async Task AddCategory()
-    {
-        if (selectedCategoryId == 0)
+        if (categoryId == 0)
             return;
 
-        await ProjectService.AssignCategoryToProjectAsync(ProjectId, selectedCategoryId);
-
-        showAddCategoryDialog = false;
+        await ProjectService.AssignCategoryToProjectAsync(ProjectId, categoryId);
         await LoadBudget();
     }
 

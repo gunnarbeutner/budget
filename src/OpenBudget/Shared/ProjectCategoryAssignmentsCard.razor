@@ -1,0 +1,161 @@
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject IStringLocalizer<ProjectCategoryAssignmentsCard> L
+
+@* Project-settings panel: the categories assigned to this project, plus an Add dialog backed by
+   a TreePicker. Presentational — the page owns the data (Assignments/CategoryNames), loads the
+   picker's AvailableCategories when the dialog opens (OnAddDialogOpening), and performs the
+   assign/remove service calls (OnAdd/OnRemove). This component owns only its dialog + selection. *@
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">@L["CategoryAssignments_Heading"]</h5>
+                <button class="btn btn-sm btn-primary" @onclick="OpenDialogAsync">@L["Button_AddCategory"]</button>
+            </div>
+            <div class="card-body">
+                @if (!Assignments.Any())
+                {
+                    <p class="text-body-secondary">@L["CategoryAssignments_Empty"]</p>
+                }
+                else
+                {
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>@L["Table_Category"]</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var assignment in Assignments)
+                            {
+                                var categoryName = CategoryNames.GetValueOrDefault(assignment.CategoryId, L["Status_Loading"].Value);
+                                <tr @key="assignment.CategoryId">
+                                    <td>@categoryName</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-danger" @onclick="() => OnRemove.InvokeAsync(assignment.CategoryId)">@L["Button_Remove"]</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<Modal Show="@_showDialog" Title="@L["Modal_AddCategory_Title"]" SizeClass="modal-lg" OnClose="CloseDialog">
+    <ChildContent>
+        @if (AvailableCategories == null)
+        {
+            <p><em>@L["Status_LoadingCategories"]</em></p>
+        }
+        else
+        {
+            <div class="mb-3">
+                <label class="form-label">@L["Form_SelectCategoryLabel"]</label>
+                <TreePicker TId="long"
+                            Nodes="@BuildCategoryPickerNodes(AvailableCategories)"
+                            SelectedId="@_selectedCategoryId"
+                            SelectedIdChanged="@(id => _selectedCategoryId = id)" />
+                <small class="form-text text-body-secondary">@L["AddCategory_Help"]</small>
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="CloseDialog">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-primary" @onclick="ConfirmAddAsync" disabled="@(_selectedCategoryId == 0)">@L["Button_AddCategory"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    /// <summary>Categories currently assigned to the project.</summary>
+    [Parameter, EditorRequired] public IReadOnlyCollection<ProjectCategoryAssignment> Assignments { get; set; } = Array.Empty<ProjectCategoryAssignment>();
+    /// <summary>Display names keyed by assigned category id (loaded by the page).</summary>
+    [Parameter, EditorRequired] public IReadOnlyDictionary<long, string> CategoryNames { get; set; } = new Dictionary<long, string>();
+    /// <summary>Hierarchy for the Add picker; null shows a loading note. Loaded on dialog open.</summary>
+    [Parameter] public List<CategoryGroupWithChildCount>? AvailableCategories { get; set; }
+    /// <summary>Raised when the Add dialog opens so the page can load <see cref="AvailableCategories"/>.</summary>
+    [Parameter] public EventCallback OnAddDialogOpening { get; set; }
+    /// <summary>Raised with the chosen category id when the user confirms Add.</summary>
+    [Parameter] public EventCallback<long> OnAdd { get; set; }
+    /// <summary>Raised with the category id to unassign.</summary>
+    [Parameter] public EventCallback<long> OnRemove { get; set; }
+
+    private bool _showDialog;
+    private long _selectedCategoryId;
+
+    private async Task OpenDialogAsync()
+    {
+        _selectedCategoryId = 0;
+        _showDialog = true;
+        await OnAddDialogOpening.InvokeAsync();
+    }
+
+    private void CloseDialog() => _showDialog = false;
+
+    private async Task ConfirmAddAsync()
+    {
+        if (_selectedCategoryId == 0) return;
+        _showDialog = false;
+        await OnAdd.InvokeAsync(_selectedCategoryId);
+    }
+
+    private List<TreePickerNode<long>> BuildCategoryPickerNodes(List<CategoryGroupWithChildCount> items)
+    {
+        var groupChildrenByParent = items
+            .Where(c => c.ItemType == CategoryItemType.Group && c.ParentCategoryGroupId.HasValue)
+            .GroupBy(c => c.ParentCategoryGroupId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var categoryChildrenByParent = items
+            .Where(c => c.ItemType == CategoryItemType.Category && c.ParentCategoryGroupId.HasValue)
+            .GroupBy(c => c.ParentCategoryGroupId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var roots = items
+            .Where(c => c.ItemType == CategoryItemType.Group && c.IsRootCategory)
+            .OrderBy(c => c.CategoryGroup.Sort ?? long.MaxValue)
+            .ThenBy(c => c.CategoryGroup.Name)
+            .ToList();
+
+        var nodes = new List<TreePickerNode<long>>();
+
+        long SortKey(CategoryGroupWithChildCount c) =>
+            (c.ItemType == CategoryItemType.Group ? c.CategoryGroup.Sort : c.Category?.Sort) ?? long.MaxValue;
+
+        void Walk(CategoryGroupWithChildCount item, int level)
+        {
+            var name = item.Name;
+            if (string.IsNullOrWhiteSpace(name)) return;
+
+            var isGroup = item.ItemType == CategoryItemType.Group;
+            var label = name;
+            if (isGroup && item.DirectChildCount > 0)
+            {
+                label += L["Form_SubCategories", item.DirectChildCount].Value;
+            }
+            // MoneyMoney doesn't visually distinguish category groups from leaf categories,
+            // so we use the same icon for both — only the indent signals depth.
+            nodes.Add(new TreePickerNode<long>(item.Id, level, Selectable: true, label, Icon: "bi-tag-fill"));
+
+            if (!isGroup) return;
+
+            var children = new List<CategoryGroupWithChildCount>();
+            if (groupChildrenByParent.TryGetValue(item.CategoryGroup.Id, out var subGroups))
+                children.AddRange(subGroups);
+            if (categoryChildrenByParent.TryGetValue(item.CategoryGroup.Id, out var cats))
+                children.AddRange(cats);
+
+            foreach (var c in children.OrderBy(SortKey).ThenBy(c => c.Name))
+            {
+                Walk(c, level + 1);
+            }
+        }
+
+        foreach (var root in roots) Walk(root, 0);
+        return nodes;
+    }
+}
