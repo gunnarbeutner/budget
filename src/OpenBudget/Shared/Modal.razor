@@ -18,9 +18,13 @@
    Esc-handling relies on the .modal element holding focus, so we FocusAsync the ref
    on the first render after Show flips true. *@
 
+@implements IAsyncDisposable
+
 @if (Show)
 {
     <div class="modal show d-block" tabindex="-1"
+         role="dialog" aria-modal="true"
+         aria-labelledby="@(string.IsNullOrEmpty(Title) ? null : _titleId)"
          @ref="_modalRef"
          @onkeydown="OnKeyDown"
          @onclick="OnBackdropClick">
@@ -29,7 +33,7 @@
                 @if (!string.IsNullOrEmpty(Title) || ShowCloseButton)
                 {
                     <div class="modal-header">
-                        <h5 class="modal-title">@Title</h5>
+                        <h5 class="modal-title" id="@_titleId">@Title</h5>
                         @if (ShowCloseButton)
                         {
                             <button type="button" class="btn-close" aria-label="Close" @onclick="Close"></button>
@@ -52,6 +56,8 @@
 }
 
 @code {
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
     [Parameter] public bool Show { get; set; }
     [Parameter] public string? Title { get; set; }
     /// <summary>"modal-sm", "modal-lg", "modal-xl", or empty for default width.</summary>
@@ -66,22 +72,33 @@
 
     private ElementReference _modalRef;
     private bool _focused;
+    // Stable per-instance id so aria-labelledby can point the dialog at its title.
+    private readonly string _titleId = $"modal-title-{Guid.NewGuid():N}";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Focus the modal element when it first appears so subsequent keydown events
-        // (Esc in particular) actually fire — Blazor's @onkeydown only reaches the
-        // handler if the event happens inside the focused element.
+        // On open: move focus into the dialog, trap Tab within it, and remember the trigger so
+        // focus returns there on close. Esc-to-close still rides the @onkeydown handler below
+        // (keydown bubbles from the focused child up to the .modal element).
         if (Show && !_focused)
         {
             _focused = true;
-            try { await _modalRef.FocusAsync(); }
-            catch { /* Element may have been disposed mid-render; ignored. */ }
+            try { await JS.InvokeVoidAsync("modalA11y.activate", _modalRef); }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { }
         }
         else if (!Show && _focused)
         {
             _focused = false;
+            await DeactivateAsync();
         }
+    }
+
+    private async Task DeactivateAsync()
+    {
+        try { await JS.InvokeVoidAsync("modalA11y.deactivate"); }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)
@@ -95,4 +112,11 @@
     }
 
     private Task Close() => OnClose.InvokeAsync();
+
+    // If the modal is torn down while still open (e.g. navigation), release the Tab trap and
+    // restore focus rather than leaving it stranded in a removed subtree.
+    public async ValueTask DisposeAsync()
+    {
+        if (_focused) await DeactivateAsync();
+    }
 }
