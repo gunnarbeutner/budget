@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="IncomeExpense_Heading" xml:space="preserve">
+    <value>Category Income/Expense Configuration</value>
+  </data>
+  <data name="IncomeExpense_Description" xml:space="preserve">
+    <value>Configure which categories are income vs expense for cashflow analysis. Categories not marked as income will default to expenses. Settings on parent categories inherit to children.</value>
+  </data>
+  <data name="Status_Loading" xml:space="preserve">
+    <value>Loading...</value>
+  </data>
+  <data name="Table_Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Table_Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Table_Action" xml:space="preserve">
+    <value>Action</value>
+  </data>
+  <data name="Type_Income" xml:space="preserve">
+    <value>Income</value>
+  </data>
+  <data name="Type_Expense" xml:space="preserve">
+    <value>Expense</value>
+  </data>
+  <data name="Type_Inherited_Suffix" xml:space="preserve">
+    <value> (inherited)</value>
+  </data>
+  <data name="Type_Default_Suffix" xml:space="preserve">
+    <value> (default)</value>
+  </data>
+  <data name="Button_Clear" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="IncomeExpense_Empty" xml:space="preserve">
+    <value>No categories assigned to this project yet.</value>
+  </data>
+</root>

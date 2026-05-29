@@ -1,0 +1,134 @@
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject IStringLocalizer<ProjectIncomeExpenseCard> L
+
+@* Project-settings panel: mark each assigned category (and descendants, via inheritance) as
+   income or expense for cashflow analysis. Presentational — the page builds the leveled
+   hierarchy + type assignments and performs the set/clear+cascade service calls; this renders
+   the table, resolves the effective type per row, and raises OnSetType / OnClearType. *@
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">@L["IncomeExpense_Heading"]</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-body-secondary">
+                    @L["IncomeExpense_Description"]
+                </p>
+
+                @if (IsLoading)
+                {
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">@L["Status_Loading"]</span>
+                        </div>
+                    </div>
+                }
+                else if (Categories.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>@L["Table_Category"]</th>
+                                    <th>@L["Table_Type"]</th>
+                                    <th>@L["Table_Action"]</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var categoryWithLevel in Categories)
+                                {
+                                    var typeInfo = GetCategoryType(categoryWithLevel.CategoryGroup.Id, categoryWithLevel.CategoryGroup.ItemType);
+                                    var isIncome = typeInfo.IsIncome;
+                                    var isInherited = typeInfo.IsInherited;
+                                    var isExplicit = typeInfo.IsExplicit;
+
+                                    var displayType = isIncome ? L["Type_Income"].Value : L["Type_Expense"].Value;
+                                    if (isInherited) displayType += L["Type_Inherited_Suffix"].Value;
+                                    else if (!isExplicit) displayType += L["Type_Default_Suffix"].Value;
+
+                                    var badgeClass = isIncome ? "bg-success" : "bg-danger";
+                                    if (isInherited || !isExplicit) badgeClass = isIncome ? "bg-success bg-opacity-50" : "bg-danger bg-opacity-50";
+
+                                    <tr @key="(categoryWithLevel.CategoryGroup.Id, categoryWithLevel.CategoryGroup.ItemType)">
+                                        <td style="padding-left: @((categoryWithLevel.Level * 20))px">@categoryWithLevel.CategoryGroup.Name</td>
+                                        <td><span class="badge @badgeClass">@displayType</span></td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <button type="button" class="btn btn-outline-success"
+                                                        @onclick="() => OnSetType.InvokeAsync((categoryWithLevel.CategoryGroup.Id, categoryWithLevel.CategoryGroup.ItemType, true))"
+                                                        disabled="@isInherited">
+                                                    @L["Type_Income"]
+                                                </button>
+                                                <button type="button" class="btn btn-outline-danger"
+                                                        @onclick="() => OnSetType.InvokeAsync((categoryWithLevel.CategoryGroup.Id, categoryWithLevel.CategoryGroup.ItemType, false))"
+                                                        disabled="@isInherited">
+                                                    @L["Type_Expense"]
+                                                </button>
+                                                @if (isExplicit)
+                                                {
+                                                    <button type="button" class="btn btn-outline-secondary"
+                                                            @onclick="() => OnClearType.InvokeAsync((categoryWithLevel.CategoryGroup.Id, categoryWithLevel.CategoryGroup.ItemType))">
+                                                        @L["Button_Clear"]
+                                                    </button>
+                                                }
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="alert alert-info">
+                        @L["IncomeExpense_Empty"]
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>Assigned categories + their descendants, flattened with indent levels.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<CategoryWithLevel> Categories { get; set; } = Array.Empty<CategoryWithLevel>();
+    /// <summary>Explicit income/expense assignments; rows without one inherit or default to expense.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<CategoryTypeAssignment> TypeAssignments { get; set; } = Array.Empty<CategoryTypeAssignment>();
+    /// <summary>Show a spinner instead of the table while the page reloads.</summary>
+    [Parameter] public bool IsLoading { get; set; }
+    /// <summary>Raised to set a category's type (id, itemType, isIncome).</summary>
+    [Parameter] public EventCallback<(long Id, CategoryItemType ItemType, bool IsIncome)> OnSetType { get; set; }
+    /// <summary>Raised to clear a category's explicit type (id, itemType).</summary>
+    [Parameter] public EventCallback<(long Id, CategoryItemType ItemType)> OnClearType { get; set; }
+
+    // Resolve the effective type for a row: explicit assignment > nearest ancestor's > default
+    // (expense). IsInherited means an ancestor decides it; IsExplicit means this row sets it.
+    private (bool IsIncome, bool IsInherited, bool IsExplicit) GetCategoryType(long categoryId, CategoryItemType itemType)
+    {
+        var explicitAssignment = TypeAssignments.FirstOrDefault(a => a.CategoryId == categoryId && a.ItemType == itemType);
+        if (explicitAssignment != null)
+        {
+            return (explicitAssignment.IsIncome, false, true);
+        }
+
+        var allCats = Categories.Select(c => c.CategoryGroup).ToList();
+        var currentItem = allCats.FirstOrDefault(c => c.Id == categoryId && c.ItemType == itemType);
+
+        while (currentItem != null && currentItem.ParentCategoryGroupId.HasValue)
+        {
+            // Parents are always CategoryGroups.
+            var parentAssignment = TypeAssignments.FirstOrDefault(a => a.CategoryId == currentItem.ParentCategoryGroupId.Value && a.ItemType == CategoryItemType.Group);
+            if (parentAssignment != null)
+            {
+                return (parentAssignment.IsIncome, true, false);
+            }
+            currentItem = allCats.FirstOrDefault(c => c.ItemType == CategoryItemType.Group && c.Id == currentItem.ParentCategoryGroupId.Value);
+        }
+
+        return (false, false, false);
+    }
+}
