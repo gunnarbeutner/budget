@@ -1098,9 +1098,6 @@
         bool isSelected = (selectionKind == (node.ItemType == CategoryItemType.Category ? "category" : "group"))
                           && selectionId == node.Id;
 
-        // Key by identity: nodes render as siblings reusing the same sequence numbers, so without
-        // a key Blazor would diff by position and mis-associate rows when the tree reshapes.
-        builder.SetKey((node.ItemType, node.Id));
         builder.OpenElement(0, "div");
         builder.AddAttribute(1, "class", "browse-tree-row" + (isSelected ? " selected" : "") + (node.IsTracked ? " tracked" : ""));
         builder.AddAttribute(2, "role", "treeitem");
