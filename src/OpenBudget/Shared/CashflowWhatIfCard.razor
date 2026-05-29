@@ -1,0 +1,95 @@
+@using OpenBudget.Services
+@inject IStringLocalizer<CashflowWhatIfCard> L
+
+@* Cashflow what-if scenarios: ad-hoc dated adjustments that feed only the balance line.
+   Presentational — the page owns the WhatIfs list and the recompute pipeline; this binds the
+   shared entry objects and raises OnChanged after edits, OnAdd to append, OnRemove(idx) to drop.
+   Category options are precomputed by the page (income + expense aggregate rows). *@
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 d-inline-flex align-items-center gap-1">
+                    @L["Card_WhatIfs"]
+                    <i class="bi bi-info-circle text-body-secondary" title="@L["WhatIfs_Help"]" aria-hidden="true"></i>
+                </h5>
+                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OnAdd.InvokeAsync()">
+                    <i class="bi bi-plus-lg"></i> @L["WhatIf_Add"]
+                </button>
+            </div>
+            @if (WhatIfs.Count > 0)
+            {
+                <div class="card-body">
+                    @for (int i = 0; i < WhatIfs.Count; i++)
+                    {
+                        var idx = i;
+                        var entry = WhatIfs[idx];
+                        <div class="d-flex gap-2 mb-2 align-items-center flex-wrap" @key="entry">
+                            <input type="date" class="form-control form-control-sm filter-input-sm"
+                                   min="@MinDateStr" max="@MaxDateStr"
+                                   @bind="entry.Date" @bind:after="RaiseChanged" />
+                            <div class="input-group input-group-sm filter-input-sm">
+                                <span class="input-group-text">€</span>
+                                <input type="number" step="1" class="form-control"
+                                       @bind="entry.Amount" @bind:after="RaiseChanged" />
+                            </div>
+                            <select class="form-select form-select-sm filter-input-md"
+                                    @bind="entry.CategoryKey" @bind:after="RaiseChanged">
+                                <option value="">@L["WhatIf_NoCategory"]</option>
+                                @if (IncomeOptions.Count > 0)
+                                {
+                                    <optgroup label="@L["Section_Income"]">
+                                        @foreach (var (key, name) in IncomeOptions)
+                                        {
+                                            <option value="@key">@name</option>
+                                        }
+                                    </optgroup>
+                                }
+                                @if (ExpenseOptions.Count > 0)
+                                {
+                                    <optgroup label="@L["Section_Expenses"]">
+                                        @foreach (var (key, name) in ExpenseOptions)
+                                        {
+                                            <option value="@key">@name</option>
+                                        }
+                                    </optgroup>
+                                }
+                            </select>
+                            <input type="text" class="form-control form-control-sm" placeholder="@L["WhatIf_NotePlaceholder"]"
+                                   style="max-width: 280px;"
+                                   @bind="entry.Note" @bind:after="RaiseChanged" />
+                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                    @onclick="() => OnRemove.InvokeAsync(idx)"
+                                    aria-label="@L["WhatIf_Remove"]" title="@L["WhatIf_Remove"]">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>The page's what-if list (shared — inputs bind the entry objects directly).</summary>
+    [Parameter, EditorRequired] public List<WhatIfEntry> WhatIfs { get; set; } = new();
+    /// <summary>Selected year, bounding the date inputs to that calendar year.</summary>
+    [Parameter, EditorRequired] public int Year { get; set; }
+    /// <summary>Income aggregate-row options for the category dropdown (key, display name).</summary>
+    [Parameter] public IReadOnlyList<(string Key, string Name)> IncomeOptions { get; set; } = Array.Empty<(string, string)>();
+    /// <summary>Expense aggregate-row options for the category dropdown.</summary>
+    [Parameter] public IReadOnlyList<(string Key, string Name)> ExpenseOptions { get; set; } = Array.Empty<(string, string)>();
+    /// <summary>Raised after any field edit so the page re-runs the projection/recompute.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+    /// <summary>Raised to append a new what-if entry.</summary>
+    [Parameter] public EventCallback OnAdd { get; set; }
+    /// <summary>Raised with the index to remove.</summary>
+    [Parameter] public EventCallback<int> OnRemove { get; set; }
+
+    private string MinDateStr => new DateTime(Year, 1, 1).ToString("yyyy-MM-dd");
+    private string MaxDateStr => new DateTime(Year, 12, 31).ToString("yyyy-MM-dd");
+
+    private Task RaiseChanged() => OnChanged.InvokeAsync();
+}

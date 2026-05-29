@@ -123,74 +123,16 @@ else if (incomeCategories.Any() || expenseCategories.Any())
        "what if I pay €X in August" without rewriting any budgets. Session-local. Only shown
        when viewing the current calendar year; past- and future-year tabs don't accept
        hypothetical injections. *@
+    @* Only shown for the current calendar year — past/future tabs don't accept hypotheticals. *@
     @if (selectedYear == DateTime.UtcNow.Year)
     {
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0 d-inline-flex align-items-center gap-1">
-                        @L["Card_WhatIfs"]
-                        <i class="bi bi-info-circle text-body-secondary" title="@L["WhatIfs_Help"]" aria-hidden="true"></i>
-                    </h5>
-                    <button type="button" class="btn btn-sm btn-outline-primary"
-                            @onclick="AddWhatIf">
-                        <i class="bi bi-plus-lg"></i> @L["WhatIf_Add"]
-                    </button>
-                </div>
-                @if (whatIfs.Count > 0)
-                {
-                    <div class="card-body">
-                        @for (int i = 0; i < whatIfs.Count; i++)
-                        {
-                            var idx = i;
-                            var entry = whatIfs[idx];
-                            <div class="d-flex gap-2 mb-2 align-items-center flex-wrap" @key="entry">
-                                <input type="date" class="form-control form-control-sm filter-input-sm"
-                                       min="@MinWhatIfDateStr" max="@MaxWhatIfDateStr"
-                                       @bind="entry.Date" @bind:after="OnWhatIfChanged" />
-                                <div class="input-group input-group-sm filter-input-sm">
-                                    <span class="input-group-text">€</span>
-                                    <input type="number" step="1" class="form-control"
-                                           @bind="entry.Amount" @bind:after="OnWhatIfChanged" />
-                                </div>
-                                <select class="form-select form-select-sm filter-input-md"
-                                        @bind="entry.CategoryKey" @bind:after="OnWhatIfChanged">
-                                    <option value="">@L["WhatIf_NoCategory"]</option>
-                                    @if (incomeCategories.Any(c => c.IsAggregateRow))
-                                    {
-                                        <optgroup label="@L["Section_Income"]">
-                                            @foreach (var c in incomeCategories.Where(c => c.IsAggregateRow))
-                                            {
-                                                <option value="@CategoryKeyFor(c)">@c.CategoryName</option>
-                                            }
-                                        </optgroup>
-                                    }
-                                    @if (expenseCategories.Any(c => c.IsAggregateRow))
-                                    {
-                                        <optgroup label="@L["Section_Expenses"]">
-                                            @foreach (var c in expenseCategories.Where(c => c.IsAggregateRow))
-                                            {
-                                                <option value="@CategoryKeyFor(c)">@c.CategoryName</option>
-                                            }
-                                        </optgroup>
-                                    }
-                                </select>
-                                <input type="text" class="form-control form-control-sm" placeholder="@L["WhatIf_NotePlaceholder"]"
-                                       style="max-width: 280px;"
-                                       @bind="entry.Note" @bind:after="OnWhatIfChanged" />
-                                <button type="button" class="btn btn-sm btn-outline-secondary"
-                                        @onclick="() => RemoveWhatIf(idx)"
-                                        aria-label="@L["WhatIf_Remove"]" title="@L["WhatIf_Remove"]">
-                                    <i class="bi bi-x-lg"></i>
-                                </button>
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
-        </div>
-    </div>
+        <CashflowWhatIfCard WhatIfs="whatIfs"
+                            Year="selectedYear"
+                            IncomeOptions="WhatIfOptions(incomeCategories)"
+                            ExpenseOptions="WhatIfOptions(expenseCategories)"
+                            OnChanged="OnWhatIfChanged"
+                            OnAdd="AddWhatIf"
+                            OnRemove="RemoveWhatIf" />
     }
 
     @* Balance & watermarks first: the alerts here ("balance dips below floor on …") are the
@@ -588,10 +530,12 @@ else
     private static string CategoryKeyFor(CategoryCashflow row) =>
         $"{(int)row.ItemType}:{row.CategoryId}";
 
-    // The what-if card is only rendered when selectedYear == current calendar year, so the
-    // date picker can stay clamped to that year's range without further dance.
-    private string MinWhatIfDateStr => new DateTime(selectedYear, 1, 1).ToString("yyyy-MM-dd");
-    private string MaxWhatIfDateStr => new DateTime(selectedYear, 12, 31).ToString("yyyy-MM-dd");
+    // Aggregate-row options for the what-if category dropdown (CashflowWhatIfCard renders them
+    // grouped into Income/Expense optgroups).
+    private static List<(string Key, string Name)> WhatIfOptions(List<CategoryCashflow> rows) =>
+        rows.Where(c => c.IsAggregateRow)
+            .Select(c => (CategoryKeyFor(c), c.CategoryName ?? ""))
+            .ToList();
 
     /// <summary>"budget" (default) projects income from the selected budget's monthly income
     /// amounts (per-category, with seasonality intact). "breakeven" derives income at the level
