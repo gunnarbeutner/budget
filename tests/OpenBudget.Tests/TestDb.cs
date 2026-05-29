@@ -15,10 +15,12 @@ internal sealed class TestDb : IAsyncDisposable
 {
     public SqliteConnection Connection { get; }
     public BudgetDbContext Db { get; }
+    public ChangeNotificationService Notifier { get; }
     public CategoryHierarchyService Hierarchy { get; }
     public ProjectService Projects { get; }
     public BudgetEntryService Entries { get; }
     public BudgetService Spending { get; }
+    public BudgetPredictionService Predictions { get; }
     public TransactionQueryService TransactionQueries { get; }
     public BrowseService Browse { get; }
 
@@ -31,12 +33,31 @@ internal sealed class TestDb : IAsyncDisposable
             .Options;
         Db = new BudgetDbContext(options);
         Db.Database.EnsureCreated();
-        Hierarchy = new CategoryHierarchyService(Db);
-        Projects = new ProjectService(Db);
-        Entries = new BudgetEntryService(Db, Hierarchy);
-        Spending = new BudgetService(Db, Hierarchy, Projects, Entries);
-        TransactionQueries = new TransactionQueryService(Db);
-        Browse = new BrowseService(Db, Hierarchy, Projects, Entries, Spending);
+
+        // Production services take an IDbContextFactory (one short-lived context per operation).
+        // In tests every context shares this single open :memory: connection, so they all see the
+        // same database — disposing a per-operation context doesn't drop the schema or data.
+        var factory = new SharedConnectionDbContextFactory(options);
+        Notifier = new ChangeNotificationService();
+        Hierarchy = new CategoryHierarchyService(factory, Notifier);
+        Projects = new ProjectService(factory, Notifier);
+        Entries = new BudgetEntryService(factory, Hierarchy, Notifier);
+        Spending = new BudgetService(factory, Hierarchy, Projects, Entries, Notifier);
+        Predictions = new BudgetPredictionService(factory, Hierarchy);
+        TransactionQueries = new TransactionQueryService(factory);
+        Browse = new BrowseService(factory, Hierarchy, Projects, Entries, Spending);
+    }
+
+    /// <summary>
+    /// An <see cref="IDbContextFactory{TContext}"/> that hands out fresh contexts over a single
+    /// shared connection. With an in-memory SQLite database the data lives as long as the
+    /// connection is open, so every context created here reads/writes the same store.
+    /// </summary>
+    private sealed class SharedConnectionDbContextFactory : IDbContextFactory<BudgetDbContext>
+    {
+        private readonly DbContextOptions<BudgetDbContext> _options;
+        public SharedConnectionDbContextFactory(DbContextOptions<BudgetDbContext> options) => _options = options;
+        public BudgetDbContext CreateDbContext() => new(_options);
     }
 
     public async ValueTask DisposeAsync()
