@@ -110,6 +110,10 @@ app.MapStaticAssets();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
+// Lightweight liveness probe for the container HEALTHCHECK. Deliberately doesn't touch the
+// database — it answers "is the process up and serving HTTP", which is what a restart fixes.
+app.MapGet("/healthz", () => Results.Ok("healthy"));
+
 // POST /api/moneymoney-db/{name} — uploads a fresh MoneyMoney SQLite file and imports it into
 // the named source. First upload to a new name auto-registers the source.
 // Auth: requires "Authorization: Bearer <MONEYMONEY_DB_UPLOAD_TOKEN env var>".
