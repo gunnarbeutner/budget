@@ -151,7 +151,7 @@
                                             // Tree indent already disambiguates sub-cat vs. parent — drop the "Parent › Name"
                                             // prefix that BuildDisplayNames adds for the flat chart legend.
                                             var bareName = BareCategoryName(node.Key) ?? item.CategoryName;
-                                            <tr class="@rowClass">
+                                            <tr @key="node.Key" class="@rowClass">
                                                 <td style="@(FormattableString.Invariant($"padding-left: {0.5 + node.Level * 1.25}rem; white-space: nowrap;"))">
                                                     @if (canExpand)
                                                     {
@@ -211,7 +211,7 @@
                                         {
                                             var total = trend.Sum(m => m.Amount);
                                             var avg = trend.Count > 0 ? total / trend.Count : 0m;
-                                            <tr>
+                                            <tr @key="name">
                                                 <td>@name</td>
                                                 <td class="text-end">€@total.ToString("N2")</td>
                                                 <td class="text-end">€@avg.ToString("N2")</td>
@@ -267,6 +267,7 @@
                                 .OrderBy(c => c.CategoryGroup.Name))
                             {
                                 <CategoryTree
+                                    @key="rootCat.CategoryGroup.Id"
                                     CategoryGroup="@rootCat"
                                     Level="0"
                                     RenderMode="CategoryTreeRenderMode.Checkbox"

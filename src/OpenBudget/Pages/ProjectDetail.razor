@@ -99,7 +99,7 @@ else
                                 {
                                     var categoryName = categoryNames.GetValueOrDefault(assignment.CategoryId, L["Status_Loading"].Value);
 
-                                    <tr>
+                                    <tr @key="assignment.CategoryId">
                                         <td>@categoryName</td>
                                         <td>
                                             <button class="btn btn-sm btn-danger" @onclick="() => RemoveCategory(assignment.CategoryId)">@L["Button_Remove"]</button>
@@ -158,7 +158,7 @@ else
                                         var lastRefresh = account?.LastRefreshUtc;
                                         var refreshAge = lastRefresh.HasValue ? DateTime.UtcNow - lastRefresh.Value : (TimeSpan?)null;
                                         var refreshError = account?.Error;
-                                        <tr>
+                                        <tr @key="assignment.AccountId">
                                             <td>@name</td>
                                             <td><span class="badge bg-secondary">@kind</span></td>
                                             <td class="text-end">@(balance.HasValue ? FormatMoney(balance.Value, currency) : L["Dash"].Value)</td>
@@ -252,7 +252,7 @@ else
                                         var badgeClass = isIncome ? "bg-success" : "bg-danger";
                                         if (isInherited || !isExplicit) badgeClass = isIncome ? "bg-success bg-opacity-50" : "bg-danger bg-opacity-50";
 
-                                        <tr>
+                                        <tr @key="(categoryWithLevel.CategoryGroup.Id, categoryWithLevel.CategoryGroup.ItemType)">
                                             <td style="padding-left: @((categoryWithLevel.Level * 20))px">@categoryWithLevel.CategoryGroup.Name</td>
                                             <td><span class="badge @badgeClass">@displayType</span></td>
                                             <td>
@@ -318,7 +318,7 @@ else
                                     : trackingCategoryNames.GetValueOrDefault(item.CategoryId!.Value, L["Status_Loading"].Value);
                                 var type = item.CategoryGroupId.HasValue ? L["Tracking_Item_Group"].Value : L["Tracking_Item_Category"].Value;
 
-                                <span class="badge bg-secondary">@L["Tracking_Item_Label", name, type]</span>
+                                <span @key="item.Id" class="badge bg-secondary">@L["Tracking_Item_Label", name, type]</span>
                             }
                         </div>
                     }
@@ -368,6 +368,7 @@ else
                     .OrderBy(c => c.CategoryGroup.Name))
                 {
                     <CategoryTree
+                        @key="rootCat.CategoryGroup.Id"
                         CategoryGroup="@rootCat"
                         Level="0"
                         RenderMode="CategoryTreeRenderMode.Checkbox"

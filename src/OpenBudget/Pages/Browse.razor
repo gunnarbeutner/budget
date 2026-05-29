@@ -86,7 +86,7 @@
                     {
                         var accountId = a.Id;
                         bool isSel = selectionKind == "account" && selectionId == accountId;
-                        <div class="browse-tree-row @(isSel ? "selected" : "") @(!a.IsAssigned ? "related" : "")"
+                        <div @key="accountId" class="browse-tree-row @(isSel ? "selected" : "") @(!a.IsAssigned ? "related" : "")"
                              role="treeitem" tabindex="0" aria-selected="@isSel.ToString().ToLower()"
                              @onclick="() => SelectAccount(accountId)"
                              @onkeydown="e => OnAccountKeydown(e, accountId)">
@@ -259,7 +259,7 @@
                         <option value="">@L["Filter_AnyAccount"]</option>
                         @foreach (var a in tree.Accounts)
                         {
-                            <option value="@a.Id">@a.Name</option>
+                            <option @key="a.Id" value="@a.Id">@a.Name</option>
                         }
                     </select>
                 }
@@ -1249,6 +1249,9 @@
         bool isSelected = (selectionKind == (node.ItemType == CategoryItemType.Category ? "category" : "group"))
                           && selectionId == node.Id;
 
+        // Key by identity: nodes render as siblings reusing the same sequence numbers, so without
+        // a key Blazor would diff by position and mis-associate rows when the tree reshapes.
+        builder.SetKey((node.ItemType, node.Id));
         builder.OpenElement(0, "div");
         builder.AddAttribute(1, "class", "browse-tree-row" + (isSelected ? " selected" : "") + (node.IsTracked ? " tracked" : ""));
         builder.AddAttribute(2, "role", "treeitem");

@@ -103,7 +103,7 @@
             var expenseYear = SectionYear(expenseTree);
 
             RenderFragment<TrackedRowNode> RowTr = node =>
-                @<tr class="@(IsShadow(node.Key) ? "table-light" : "")">
+                @<tr @key="node.Key" class="@(IsShadow(node.Key) ? "table-light" : "")">
                     <td title="@categoryFullPaths.GetValueOrDefault(node.Key, "")"
                         style="@(FormattableString.Invariant($"padding-left: {0.5 + node.Level * 1.25}rem; white-space: nowrap;"))">
                         @if (node.HasChildren)

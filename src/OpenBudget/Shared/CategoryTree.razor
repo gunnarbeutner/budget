@@ -78,6 +78,12 @@ else if (RenderMode == CategoryTreeRenderMode.Dropdown)
 
         foreach (var child in allChildren)
         {
+            // Key each child by identity so Blazor diffs by id, not loop position — the frames
+            // below reuse fixed sequence numbers, so without a key a re-sort (OrderBy Name above)
+            // would bleed checkbox state onto the wrong row.
+            builder.SetKey(child.Type == "Category"
+                ? $"C-{((Category)child.Item).Id}"
+                : $"G-{((CategoryGroupWithChildCount)child.Item).CategoryGroup.Id}");
             if (child.Type == "Category")
             {
                 var category = (Category)child.Item;
@@ -173,6 +179,9 @@ else if (RenderMode == CategoryTreeRenderMode.Dropdown)
 
         foreach (var child in allChildrenDropdown)
         {
+            builder.SetKey(child.Type == "Category"
+                ? $"C-{((Category)child.Item).Id}"
+                : $"G-{((CategoryGroupWithChildCount)child.Item).CategoryGroup.Id}");
             if (child.Type == "Category")
             {
                 var category = (Category)child.Item;
