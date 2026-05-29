@@ -1039,8 +1039,6 @@
             }
         };
 
-        await Task.Delay(100); // Give the DOM time to render
-
         try
         {
             await JS.InvokeVoidAsync("renderStackedBarChart", "trendStackedBarChart", chartData);
