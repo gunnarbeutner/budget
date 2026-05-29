@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Card_IncomeContributionCalculator" xml:space="preserve">
+    <value>Income Contribution Calculator</value>
+  </data>
+  <data name="Calculator_HowItWorks_Summary" xml:space="preserve">
+    <value>How this works</value>
+  </data>
+  <data name="Calculator_HowItWorks_Budget" xml:space="preserve">
+    <value>Both income and expenses for future months come straight from the selected budget's per-category monthly amounts. The split percentages below describe how expenses would be apportioned across income sources — they don't change the projection in this mode.</value>
+  </data>
+  <data name="Calculator_HowItWorks_Recent" xml:space="preserve">
+    <value>Each income category's last completed calendar month is repeated flat across the remaining months. "Projected Yearly" = past actuals + last-month income × remaining months. Use this to see whether current income covers the rest of the year's budgeted expenses.</value>
+  </data>
+  <data name="Calculator_HowItWorks_Breakeven" xml:space="preserve">
+    <value>Each row's split percentage determines what share of the year's projected expenses that income source needs to cover. "Required" = total expenses × split. "Remaining" = the source's income minus what it owes. Edit the splits to model different ways to divide responsibility; Save persists them on the selected budget.</value>
+  </data>
+  <data name="Calculator_Range_Recent" xml:space="preserve">
+    <value>{0} are projected — expenses from the selected budget, income repeated from {1} actuals; earlier months use actual transactions.</value>
+  </data>
+  <data name="Calculator_Range_Budget" xml:space="preserve">
+    <value>{0} are projected from the selected budget for both income and expenses; earlier months use actual transactions.</value>
+  </data>
+  <data name="Calculator_Range_Breakeven" xml:space="preserve">
+    <value>{0} are projected from the selected budget; earlier months use actual transactions.</value>
+  </data>
+  <data name="Rollup_CollisionWarning" xml:space="preserve">
+    <value>The parent project and one or more child projects track the same category. Their transactions are being summed twice in the rollup; remove the duplicate tracking item from one side.</value>
+  </data>
+  <data name="Rollup_ItemKind_Group" xml:space="preserve">
+    <value>Group</value>
+  </data>
+  <data name="Rollup_ItemKind_Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Table_IncomeCategory" xml:space="preserve">
+    <value>Income Category</value>
+  </data>
+  <data name="Table_Origin" xml:space="preserve">
+    <value>From</value>
+  </data>
+  <data name="Table_SourceMonth" xml:space="preserve">
+    <value>Source-month ({0})</value>
+  </data>
+  <data name="Table_ProjectedYearly" xml:space="preserve">
+    <value>Projected yearly</value>
+  </data>
+  <data name="Table_TotalIncome" xml:space="preserve">
+    <value>Total income</value>
+  </data>
+  <data name="Table_VsProjectedYearlyExpenses" xml:space="preserve">
+    <value>vs. projected yearly expenses ({0})</value>
+  </data>
+  <data name="Label_ContributionSplit" xml:space="preserve">
+    <value>Contribution Split</value>
+  </data>
+  <data name="Splits_Total" xml:space="preserve">
+    <value>Total: {0}%</value>
+  </data>
+  <data name="Splits_ShouldSumTo100" xml:space="preserve">
+    <value> — should sum to 100%</value>
+  </data>
+  <data name="Splits_UnsavedChanges" xml:space="preserve">
+    <value>unsaved changes</value>
+  </data>
+  <data name="Button_Saving" xml:space="preserve">
+    <value>Saving…</value>
+  </data>
+  <data name="Button_SaveSplits" xml:space="preserve">
+    <value>Save splits</value>
+  </data>
+  <data name="Splits_SelectBudgetToSave" xml:space="preserve">
+    <value>Select a budget to save splits.</value>
+  </data>
+  <data name="Table_YearlyIncome" xml:space="preserve">
+    <value>Yearly Income</value>
+  </data>
+  <data name="Table_SplitPercent" xml:space="preserve">
+    <value>Split %</value>
+  </data>
+  <data name="Table_RequiredContribution" xml:space="preserve">
+    <value>Required Contribution</value>
+  </data>
+  <data name="Table_Remaining" xml:space="preserve">
+    <value>Remaining</value>
+  </data>
+  <data name="Table_Total" xml:space="preserve">
+    <value>Total</value>
+  </data>
+  <data name="NoIncomeCategories" xml:space="preserve">
+    <value>No income categories found for the selected period.</value>
+  </data>
+</root>

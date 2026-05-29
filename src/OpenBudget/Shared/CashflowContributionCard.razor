@@ -1,0 +1,236 @@
+@using OpenBudget.Services
+@inject IStringLocalizer<CashflowContributionCard> L
+
+@* Cashflow income-contribution calculator. Presentational — the page owns the projection
+   pipeline and persistence; this renders the projection-mode-dependent tables, binds the
+   shared ContributionSplits dictionary, and raises OnSplitChanged (recompute) / OnSaveSplits. *@
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">@L["Card_IncomeContributionCalculator"]</h5>
+            </div>
+            <div class="card-body">
+                <details class="mb-3">
+                    <summary class="text-body-secondary small" style="cursor: pointer;">@L["Calculator_HowItWorks_Summary"]</summary>
+                    <div class="text-body-secondary small mt-2">
+                        @(ProjectionMode switch
+                        {
+                            "budget" => L["Calculator_HowItWorks_Budget"],
+                            "recent" => L["Calculator_HowItWorks_Recent"],
+                            _ => L["Calculator_HowItWorks_Breakeven"]
+                        })
+                    </div>
+                </details>
+
+                @if (FirstProjectedMonth <= 12)
+                {
+                    var rangeLabel = $"{new DateTime(SelectedYear, FirstProjectedMonth, 1):MMMM}–{new DateTime(SelectedYear, 12, 1):MMMM}";
+                    <div class="alert alert-info py-2 small">
+                        @if (ProjectionMode == "recent" && RecentIncomePerItem != null)
+                        {
+                            var sourceLabel = new DateTime(RecentIncomeSourceMonth.Year, RecentIncomeSourceMonth.Month, 1).ToString("MMMM yyyy");
+                            <text>@L["Calculator_Range_Recent", rangeLabel, sourceLabel]</text>
+                        }
+                        else if (ProjectionMode == "budget")
+                        {
+                            <text>@L["Calculator_Range_Budget", rangeLabel]</text>
+                        }
+                        else
+                        {
+                            <text>@L["Calculator_Range_Breakeven", rangeLabel]</text>
+                        }
+                    </div>
+                }
+
+                @if (RollupCollisions.Any())
+                {
+                    <div class="alert alert-warning py-2 small mb-3">
+                        @L["Rollup_CollisionWarning"]
+                        <ul class="mb-0 mt-1">
+                            @foreach (var col in RollupCollisions)
+                            {
+                                <li>@(col.ItemType == CategoryItemType.Group ? L["Rollup_ItemKind_Group"] : L["Rollup_ItemKind_Category"]) #@col.CategoryId &mdash; @col.ChildName</li>
+                            }
+                        </ul>
+                    </div>
+                }
+
+                @{
+                    var showOrigin = IncomeCategories.Select(c => c.OriginProjectId).Distinct().Count() > 1;
+                }
+
+                @if (IncomeCategories.Any() && ProjectionMode == "recent")
+                {
+                    var sourceMonthLabel = new DateTime(RecentIncomeSourceMonth.Year, RecentIncomeSourceMonth.Month, 1).ToString("MMM yyyy");
+                    var yearlyIncome = IncomeCategories.Where(c => c.IsAggregateRow).Sum(c => c.MonthlyAmounts.Sum());
+                    var netYearly = yearlyIncome - TotalExpenses;
+                    var netClass = netYearly >= 0 ? "text-success" : "text-danger";
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>@L["Table_IncomeCategory"]</th>
+                                    @if (showOrigin) { <th>@L["Table_Origin"]</th> }
+                                    <th class="text-end">@L["Table_SourceMonth", sourceMonthLabel]</th>
+                                    <th class="text-end">@L["Table_ProjectedYearly"]</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var income in IncomeCategories.Where(c => c.IsAggregateRow))
+                                {
+                                    var sourceMonthAmount = RecentIncomePerItem?.GetValueOrDefault((income.CategoryId, income.ItemType), 0m) ?? 0m;
+                                    var yearly = income.MonthlyAmounts.Sum();
+                                    <tr>
+                                        <td>@income.CategoryName</td>
+                                        @if (showOrigin) { <td><small class="text-body-secondary">@income.OriginProjectName</small></td> }
+                                        <td class="text-end">@Formatting.FormatMoney(sourceMonthAmount)</td>
+                                        <td class="text-end">@Formatting.FormatMoney(yearly)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr class="table-primary">
+                                    <th colspan="@(showOrigin ? 2 : 1)">@L["Table_TotalIncome"]</th>
+                                    <th></th>
+                                    <th class="text-end">@Formatting.FormatMoney(yearlyIncome)</th>
+                                </tr>
+                                <tr>
+                                    <th colspan="@(showOrigin ? 3 : 2)" class="text-end">@L["Table_VsProjectedYearlyExpenses", Formatting.FormatMoney(TotalExpenses)]</th>
+                                    <th class="text-end @netClass">@Formatting.FormatMoney(netYearly)</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                }
+                else if (IncomeCategories.Any())
+                {
+                    <div class="mb-3">
+                        <label class="form-label">@L["Label_ContributionSplit"]</label>
+                        <div class="row">
+                            @foreach (var income in IncomeCategories.Where(c => c.IsAggregateRow))
+                            {
+                                <div class="col-md-3 mb-2">
+                                    <label class="form-label small">@income.CategoryName</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" class="form-control"
+                                               @bind="ContributionSplits[income.CategoryName]"
+                                               @bind:after="RaiseSplitChanged"
+                                               min="0" max="100" step="1" />
+                                        <span class="input-group-text">%</span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        @{
+                            var splitsTotal = ContributionSplits.Values.Sum();
+                            var splitsValid = splitsTotal == 100m;
+                        }
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="@(splitsValid ? "text-body-secondary" : "text-danger fw-semibold")">
+                                @L["Splits_Total", splitsTotal]
+                                @if (!splitsValid)
+                                {
+                                    <span>@L["Splits_ShouldSumTo100"]</span>
+                                }
+                            </small>
+                            @if (SelectedBudgetId > 0)
+                            {
+                                <div class="d-flex align-items-center gap-2">
+                                    @if (SplitsDirty)
+                                    {
+                                        <small class="text-body-secondary">@L["Splits_UnsavedChanges"]</small>
+                                    }
+                                    <button class="btn btn-sm btn-outline-primary"
+                                            disabled="@(!SplitsDirty || SplitsSaving)"
+                                            @onclick="() => OnSaveSplits.InvokeAsync()">
+                                        @(SplitsSaving ? L["Button_Saving"] : L["Button_SaveSplits"])
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <small class="text-body-secondary">@L["Splits_SelectBudgetToSave"]</small>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>@L["Table_IncomeCategory"]</th>
+                                    @if (showOrigin) { <th>@L["Table_Origin"]</th> }
+                                    <th class="text-end">@L["Table_YearlyIncome"]</th>
+                                    <th class="text-end">@L["Table_SplitPercent"]</th>
+                                    <th class="text-end">@L["Table_RequiredContribution"]</th>
+                                    <th class="text-end">@L["Table_Remaining"]</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var income in IncomeCategories.Where(c => c.IsAggregateRow))
+                                {
+                                    var split = ContributionSplits.GetValueOrDefault(income.CategoryName, 0);
+                                    var totalIncome = income.MonthlyAmounts.Sum();
+                                    var requiredContribution = TotalExpenses * split / 100;
+                                    var remaining = totalIncome - requiredContribution;
+                                    var remainingClass = remaining >= 0 ? "text-success" : "text-danger";
+
+                                    <tr>
+                                        <td>@income.CategoryName</td>
+                                        @if (showOrigin) { <td><small class="text-body-secondary">@income.OriginProjectName</small></td> }
+                                        <td class="text-end">@Formatting.FormatMoney(totalIncome)</td>
+                                        <td class="text-end">@split%</td>
+                                        <td class="text-end">@Formatting.FormatMoney(requiredContribution)</td>
+                                        <td class="text-end @remainingClass">@Formatting.FormatMoney(remaining)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr class="table-primary">
+                                    <th colspan="@(showOrigin ? 2 : 1)">@L["Table_Total"]</th>
+                                    <th class="text-end">@Formatting.FormatMoney(IncomeCategories.Where(c => c.IsAggregateRow).Sum(c => c.MonthlyAmounts.Sum()))</th>
+                                    <th class="text-end @(splitsValid ? "" : "text-danger")">@splitsTotal%</th>
+                                    <th class="text-end">@Formatting.FormatMoney(TotalExpenses)</th>
+                                    <th class="text-end">@Formatting.FormatMoney(IncomeCategories.Where(c => c.IsAggregateRow).Sum(c => c.MonthlyAmounts.Sum()) - TotalExpenses)</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <p class="text-body-secondary">@L["NoIncomeCategories"]</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>All income cashflow rows (aggregate rows drive the tables; full list drives the origin column).</summary>
+    [Parameter, EditorRequired] public List<CategoryCashflow> IncomeCategories { get; set; } = new();
+    /// <summary>"budget" | "recent" | "breakeven".</summary>
+    [Parameter, EditorRequired] public string ProjectionMode { get; set; } = "budget";
+    /// <summary>First month (1-12) projected rather than actual; 13 = none projected.</summary>
+    [Parameter] public int FirstProjectedMonth { get; set; } = 13;
+    [Parameter, EditorRequired] public int SelectedYear { get; set; }
+    /// <summary>Per-item source-month income for the "recent" projection table; null when N/A.</summary>
+    [Parameter] public Dictionary<(long Id, CategoryItemType ItemType), decimal>? RecentIncomePerItem { get; set; }
+    [Parameter] public (int Year, int Month) RecentIncomeSourceMonth { get; set; }
+    /// <summary>Rollup collisions to warn about (item that's both rolled up and separately tracked).</summary>
+    [Parameter] public IReadOnlyCollection<(long CategoryId, CategoryItemType ItemType, string ChildName)> RollupCollisions { get; set; } = Array.Empty<(long, CategoryItemType, string)>();
+    [Parameter, EditorRequired] public decimal TotalExpenses { get; set; }
+    /// <summary>Editable split percentages keyed by income category name (shared with the page).</summary>
+    [Parameter, EditorRequired] public Dictionary<string, decimal> ContributionSplits { get; set; } = new();
+    [Parameter] public bool SplitsDirty { get; set; }
+    [Parameter] public bool SplitsSaving { get; set; }
+    [Parameter] public int SelectedBudgetId { get; set; }
+    /// <summary>Raised after a split percentage edit so the page recomputes (dirty + chart).</summary>
+    [Parameter] public EventCallback OnSplitChanged { get; set; }
+    /// <summary>Raised when the user saves the splits to the selected budget.</summary>
+    [Parameter] public EventCallback OnSaveSplits { get; set; }
+
+    private Task RaiseSplitChanged() => OnSplitChanged.InvokeAsync();
+}
