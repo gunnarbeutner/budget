@@ -82,18 +82,6 @@
   <data name="CategoryAssignments_Heading" xml:space="preserve">
     <value>Category Assignments</value>
   </data>
-  <data name="ParentProject_Heading" xml:space="preserve">
-    <value>Parent project</value>
-  </data>
-  <data name="ParentProject_Description" xml:space="preserve">
-    <value>When this project has a parent, its tracked income and expenses also appear in the parent's Cashflow view (chart + per-category table). Budgets stay project-scoped — each project keeps its own.</value>
-  </data>
-  <data name="ParentProject_None" xml:space="preserve">
-    <value>None (top-level project)</value>
-  </data>
-  <data name="ParentProject_HasChildren" xml:space="preserve">
-    <value>This project is itself a parent of: {0}. Remove the child relationships first to assign a parent to this project.</value>
-  </data>
   <data name="Button_AddCategory" xml:space="preserve">
     <value>Add Category</value>
   </data>

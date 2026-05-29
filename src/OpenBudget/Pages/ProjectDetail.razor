@@ -30,48 +30,12 @@ else
 
     <DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">@L["ParentProject_Heading"]</h5>
-                </div>
-                <div class="card-body">
-                    <p class="text-body-secondary small mb-2">@L["ParentProject_Description"]</p>
-                    @if (hasOwnChildren)
-                    {
-                        <p class="text-body-secondary mb-0"><em>@L["ParentProject_HasChildren", childProjectNames]</em></p>
-                    }
-                    else
-                    {
-                        <div class="row g-2 align-items-center">
-                            <div class="col-md-6">
-                                <select class="form-select form-select-sm"
-                                        value="@(budget.ParentProjectId?.ToString() ?? "")"
-                                        @onchange="OnParentChanged"
-                                        disabled="@(eligibleParents == null)">
-                                    <option value="">@L["ParentProject_None"]</option>
-                                    @if (eligibleParents != null)
-                                    {
-                                        foreach (var p in eligibleParents)
-                                        {
-                                            <option value="@p.Id">@p.Name</option>
-                                        }
-                                    }
-                                </select>
-                            </div>
-                            @if (!string.IsNullOrEmpty(parentSaveError))
-                            {
-                                <div class="col-md-6">
-                                    <small class="text-danger">@parentSaveError</small>
-                                </div>
-                            }
-                        </div>
-                    }
-                </div>
-            </div>
-        </div>
-    </div>
+    <ProjectParentCard HasOwnChildren="hasOwnChildren"
+                       ChildProjectNames="childProjectNames"
+                       ParentProjectId="budget.ParentProjectId"
+                       EligibleParents="eligibleParents"
+                       SaveError="parentSaveError"
+                       OnParentChanged="OnParentChanged" />
 
     <div class="row mb-4">
         <div class="col-12">
@@ -706,15 +670,10 @@ else
             .ToList();
     }
 
-    private async Task OnParentChanged(ChangeEventArgs e)
+    private async Task OnParentChanged(int? newParentId)
     {
         if (budget == null) return;
         parentSaveError = null;
-        int? newParentId = null;
-        if (e.Value is string s && int.TryParse(s, out var pid))
-        {
-            newParentId = pid;
-        }
         try
         {
             await ProjectService.SetProjectParentAsync(ProjectId, newParentId);

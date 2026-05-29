@@ -1,0 +1,70 @@
+@using OpenBudget.Models
+@inject IStringLocalizer<ProjectParentCard> L
+
+@* Project-settings panel: pick a parent project (single-level hierarchy). Presentational —
+   the parent page owns the data load and the save; this raises OnParentChanged with the new
+   parent id (null = top-level) and renders any SaveError the parent hands back. *@
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">@L["ParentProject_Heading"]</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-body-secondary small mb-2">@L["ParentProject_Description"]</p>
+                @if (HasOwnChildren)
+                {
+                    <p class="text-body-secondary mb-0"><em>@L["ParentProject_HasChildren", ChildProjectNames ?? ""]</em></p>
+                }
+                else
+                {
+                    <div class="row g-2 align-items-center">
+                        <div class="col-md-6">
+                            <select class="form-select form-select-sm"
+                                    value="@(ParentProjectId?.ToString() ?? "")"
+                                    @onchange="HandleChange"
+                                    disabled="@(EligibleParents == null)">
+                                <option value="">@L["ParentProject_None"]</option>
+                                @if (EligibleParents != null)
+                                {
+                                    foreach (var p in EligibleParents)
+                                    {
+                                        <option value="@p.Id">@p.Name</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                        @if (!string.IsNullOrEmpty(SaveError))
+                        {
+                            <div class="col-md-6">
+                                <small class="text-danger">@SaveError</small>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>This project is itself a parent, so it can't take a parent (single-level rule).</summary>
+    [Parameter, EditorRequired] public bool HasOwnChildren { get; set; }
+    /// <summary>Comma-joined child names, shown when <see cref="HasOwnChildren"/> is true.</summary>
+    [Parameter] public string? ChildProjectNames { get; set; }
+    /// <summary>The currently-selected parent id, or null for a top-level project.</summary>
+    [Parameter] public int? ParentProjectId { get; set; }
+    /// <summary>Assignable parents; null renders the select disabled (still loading).</summary>
+    [Parameter] public List<Project>? EligibleParents { get; set; }
+    /// <summary>Error from the last save attempt, shown next to the select.</summary>
+    [Parameter] public string? SaveError { get; set; }
+    /// <summary>Raised with the chosen parent id (null = top-level) when the selection changes.</summary>
+    [Parameter] public EventCallback<int?> OnParentChanged { get; set; }
+
+    private async Task HandleChange(ChangeEventArgs e)
+    {
+        int? newParentId = (e.Value is string s && int.TryParse(s, out var pid)) ? pid : null;
+        await OnParentChanged.InvokeAsync(newParentId);
+    }
+}
