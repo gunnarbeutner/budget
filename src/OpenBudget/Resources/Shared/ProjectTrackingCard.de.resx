@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Tracking_Heading" xml:space="preserve">
+    <value>Konfiguration Budgetverfolgung</value>
+  </data>
+  <data name="Button_ConfigureTracking" xml:space="preserve">
+    <value>Verfolgung konfigurieren</value>
+  </data>
+  <data name="Tracking_Description" xml:space="preserve">
+    <value>Lege fest, welche Kategorien/Gruppen für Budgets und Analysen verfolgt werden. Dies bestimmt, was bei der Budgeterstellung und Ausgabenanalyse erscheint.</value>
+  </data>
+  <data name="Tracking_Empty" xml:space="preserve">
+    <value>Keine Verfolgungseinträge konfiguriert. Klicke auf "Verfolgung konfigurieren", um sie einzurichten.</value>
+  </data>
+  <data name="Status_Loading" xml:space="preserve">
+    <value>Wird geladen...</value>
+  </data>
+  <data name="Tracking_Item_Group" xml:space="preserve">
+    <value>Gruppe</value>
+  </data>
+  <data name="Tracking_Item_Category" xml:space="preserve">
+    <value>Kategorie</value>
+  </data>
+  <data name="Tracking_Item_Label" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="Modal_ConfigureTracking_Title" xml:space="preserve">
+    <value>Budgetverfolgung konfigurieren</value>
+  </data>
+  <data name="Modal_ConfigureTracking_Description" xml:space="preserve">
+    <value>Wähle aus, welche Kategorien/Gruppen für Budgets und Analysen verfolgt werden sollen. Wird eine übergeordnete Kategorie abgewählt, werden ihre Unterelemente automatisch ausgewählt, um eine feinere Steuerung zu ermöglichen.</value>
+  </data>
+  <data name="Button_Cancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="Button_Save" xml:space="preserve">
+    <value>Speichern</value>
+  </data>
+</root>

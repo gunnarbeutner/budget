@@ -1,0 +1,187 @@
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject IStringLocalizer<ProjectTrackingCard> L
+
+@* Project-settings panel: choose which categories/groups this project tracks, via a checkbox
+   CategoryTree dialog with one-level-per-subtree semantics (checking a group clears its
+   descendants; unchecking selects its immediate children). Presentational — the page loads the
+   tracked items + the project-scoped category set (OnConfigureOpening) and persists on save
+   (OnSave); this owns the dialog + the in-progress selection. *@
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">@L["Tracking_Heading"]</h5>
+                <button class="btn btn-sm btn-primary" @onclick="OpenDialogAsync">@L["Button_ConfigureTracking"]</button>
+            </div>
+            <div class="card-body">
+                <p class="text-body-secondary">
+                    @L["Tracking_Description"]
+                </p>
+                @if (TrackingItems == null || !TrackingItems.Any())
+                {
+                    <p class="text-body-secondary">@L["Tracking_Empty"]</p>
+                }
+                else
+                {
+                    <div class="d-flex flex-wrap gap-2">
+                        @foreach (var item in TrackingItems)
+                        {
+                            var name = item.CategoryGroupId.HasValue
+                                ? TrackingCategoryNames.GetValueOrDefault(item.CategoryGroupId.Value, L["Status_Loading"].Value)
+                                : TrackingCategoryNames.GetValueOrDefault(item.CategoryId!.Value, L["Status_Loading"].Value);
+                            var type = item.CategoryGroupId.HasValue ? L["Tracking_Item_Group"].Value : L["Tracking_Item_Category"].Value;
+
+                            <span @key="item.Id" class="badge bg-secondary">@L["Tracking_Item_Label", name, type]</span>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<Modal Show="@_showDialog" Title="@L["Modal_ConfigureTracking_Title"]" SizeClass="modal-xl" OnClose="CloseDialog">
+    <ChildContent>
+        <p class="text-body-secondary">
+            @L["Modal_ConfigureTracking_Description"]
+        </p>
+
+        <div class="tracking-tree-scroll">
+            @if (AvailableCategories != null && ActualCategories != null)
+            {
+                // Treat any group whose parent is outside the filtered subset as a render
+                // root, since IsRootCategory only matches MoneyMoney's top-level groups and
+                // the project might be scoped to a sub-tree.
+                var filteredGroupIds = AvailableCategories
+                    .Where(c => c.ItemType == CategoryItemType.Group)
+                    .Select(c => c.Id)
+                    .ToHashSet();
+                @foreach (var rootCat in AvailableCategories
+                    .Where(c => c.ItemType == CategoryItemType.Group
+                        && !filteredGroupIds.Contains(c.ParentCategoryGroupId ?? -1))
+                    .OrderBy(c => c.CategoryGroup.Name))
+                {
+                    <CategoryTree
+                        @key="rootCat.CategoryGroup.Id"
+                        CategoryGroup="@rootCat"
+                        Level="0"
+                        RenderMode="CategoryTreeRenderMode.Checkbox"
+                        ParentSelected="false"
+                        SelectedCategoryGroupIds="@_selectedGroupIds"
+                        SelectedCategoryIds="@_selectedCategoryIds"
+                        OnCategoryGroupToggle="@HandleGroupToggle"
+                        OnCategoryToggle="@HandleCategoryToggle"
+                        AllCategories="@AvailableCategories"
+                        ActualCategories="@ActualCategories" />
+                }
+            }
+        </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="CloseDialog">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-primary" @onclick="SaveAsync">@L["Button_Save"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    /// <summary>Currently-tracked items (for the badge list + initial dialog selection).</summary>
+    [Parameter] public IReadOnlyList<ProjectTrackingItem>? TrackingItems { get; set; }
+    /// <summary>Display names keyed by tracked group/category id.</summary>
+    [Parameter, EditorRequired] public IReadOnlyDictionary<long, string> TrackingCategoryNames { get; set; } = new Dictionary<long, string>();
+    /// <summary>Project-scoped category hierarchy for the tree; null hides the tree (loading).</summary>
+    [Parameter] public List<CategoryGroupWithChildCount>? AvailableCategories { get; set; }
+    /// <summary>Leaf categories backing the tree's actual-vs-group disambiguation.</summary>
+    [Parameter] public List<Category>? ActualCategories { get; set; }
+    /// <summary>Raised when the dialog opens so the page can load Available/ActualCategories.</summary>
+    [Parameter] public EventCallback OnConfigureOpening { get; set; }
+    /// <summary>Raised on save with the chosen group + leaf-category id sets.</summary>
+    [Parameter] public EventCallback<(HashSet<long> GroupIds, HashSet<long> CategoryIds)> OnSave { get; set; }
+
+    private bool _showDialog;
+    private readonly HashSet<long> _selectedGroupIds = new();
+    private readonly HashSet<long> _selectedCategoryIds = new();
+
+    private async Task OpenDialogAsync()
+    {
+        // Seed the selection from the current tracking items (available synchronously), reveal the
+        // dialog, then ask the page to load the category tree.
+        _selectedGroupIds.Clear();
+        _selectedCategoryIds.Clear();
+        if (TrackingItems != null)
+        {
+            foreach (var item in TrackingItems)
+            {
+                if (item.CategoryGroupId.HasValue) _selectedGroupIds.Add(item.CategoryGroupId.Value);
+                else if (item.CategoryId.HasValue) _selectedCategoryIds.Add(item.CategoryId.Value);
+            }
+        }
+        _showDialog = true;
+        await OnConfigureOpening.InvokeAsync();
+    }
+
+    private void CloseDialog() => _showDialog = false;
+
+    private async Task SaveAsync()
+    {
+        _showDialog = false;
+        await OnSave.InvokeAsync((_selectedGroupIds, _selectedCategoryIds));
+    }
+
+    private void HandleGroupToggle((long Id, bool IsChecked) args)
+    {
+        if (args.IsChecked)
+        {
+            _selectedGroupIds.Add(args.Id);
+            RemoveDescendantsFromSelection(args.Id);
+        }
+        else
+        {
+            _selectedGroupIds.Remove(args.Id);
+            SelectImmediateChildren(args.Id);
+        }
+    }
+
+    private void HandleCategoryToggle((long Id, bool IsChecked) args)
+    {
+        if (args.IsChecked) _selectedCategoryIds.Add(args.Id);
+        else _selectedCategoryIds.Remove(args.Id);
+    }
+
+    private void RemoveDescendantsFromSelection(long parentCategoryGroupId)
+    {
+        if (AvailableCategories == null) return;
+
+        // Use the shared helper, which handles ID-collision between Groups and Categories
+        // correctly (Category items have a placeholder CategoryGroup.Id pointing at their
+        // parent group; recursing on that value caused a stack overflow).
+        var descendants = CategoryGroupWithChildCount.CollectDescendants(
+            parentCategoryGroupId, AvailableCategories, includeLeafCategories: true);
+
+        foreach (var descendant in descendants)
+        {
+            if (descendant.ItemType == CategoryItemType.Group)
+                _selectedGroupIds.Remove(descendant.Id);
+            else
+                _selectedCategoryIds.Remove(descendant.Id);
+        }
+    }
+
+    private void SelectImmediateChildren(long parentCategoryGroupId)
+    {
+        if (AvailableCategories == null) return;
+
+        // Filter children by ItemType so a Category item (whose ParentCategoryGroupId would
+        // also match) doesn't get treated as a sub-Group.
+        var childGroups = AvailableCategories
+            .Where(c => c.ItemType == CategoryItemType.Group && c.ParentCategoryGroupId == parentCategoryGroupId)
+            .ToList();
+        var childCategories = AvailableCategories
+            .Where(c => c.ItemType == CategoryItemType.Category && c.ParentCategoryGroupId == parentCategoryGroupId)
+            .ToList();
+
+        foreach (var child in childGroups) _selectedGroupIds.Add(child.Id);
+        foreach (var child in childCategories) _selectedCategoryIds.Add(child.Id);
+    }
+}
