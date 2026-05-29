@@ -186,6 +186,46 @@ public class MoneyMoneyImportService
     }
 
     /// <summary>
+    /// Deletes every imported row for a source — transactions, categories, category groups,
+    /// accounts, account groups — in one transaction. FK enforcement is disabled on the connection
+    /// first because mm_account_groups and mm_category_groups carry self-referential group_key FKs
+    /// (ON DELETE RESTRICT): a bulk delete would otherwise fail with "FOREIGN KEY constraint failed"
+    /// the moment a parent group is removed while a child still points at it. The PRAGMA must be
+    /// toggled outside any transaction or SQLite silently ignores it, and it's restored in the
+    /// finally so EF's later SaveChanges behave normally. Does not remove the money_money_sources
+    /// row itself — the caller owns that.
+    /// </summary>
+    public static async Task DeleteSourceDataAsync(BudgetDbContext db, int sourceId, CancellationToken ct = default)
+    {
+        var conn = (SqliteConnection)db.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await conn.OpenAsync(ct);
+        await using (var pragmaOff = conn.CreateCommand())
+        {
+            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
+            await pragmaOff.ExecuteNonQueryAsync(ct);
+        }
+        try
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            // Order mirrors FK direction for clarity even with enforcement off: transactions
+            // reference accounts/categories; accounts reference account_groups.
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_transactions WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_categories WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_category_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_accounts WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_account_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await tx.CommitAsync(ct);
+        }
+        finally
+        {
+            await using var pragmaOn = conn.CreateCommand();
+            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
+            await pragmaOn.ExecuteNonQueryAsync(ct);
+        }
+    }
+
+    /// <summary>
     /// Runs PRAGMA foreign_key_check over the destination and logs any dangling references left
     /// after the copy. foreign_key_check works regardless of the foreign_keys enforcement pragma,
     /// so it catches integrity bugs even though enforcement was off during the import.

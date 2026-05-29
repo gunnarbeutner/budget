@@ -110,7 +110,7 @@
     <value>Delete source "{0}"?</value>
   </data>
   <data name="Modal_Body" xml:space="preserve">
-    <value>This wipes all mm_* rows for this source and removes the source entry.</value>
+    <value>Deletes all imported accounts, categories, and transactions for this source, and removes the source itself.</value>
   </data>
   <data name="Modal_BodyWarning" xml:space="preserve">
     <value>Projects bound to this source must be deleted first; the action will refuse otherwise.</value>

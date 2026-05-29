@@ -110,7 +110,7 @@
     <value>Quelle „{0}" löschen?</value>
   </data>
   <data name="Modal_Body" xml:space="preserve">
-    <value>Alle mm_*-Zeilen dieser Quelle werden entfernt und der Quelleneintrag gelöscht.</value>
+    <value>Löscht alle importierten Konten, Kategorien und Buchungen dieser Quelle und entfernt die Quelle selbst.</value>
   </data>
   <data name="Modal_BodyWarning" xml:space="preserve">
     <value>Projekte, die diese Quelle nutzen, müssen vorher gelöscht werden; andernfalls wird die Aktion abgebrochen.</value>
