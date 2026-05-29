@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 namespace OpenBudget.Services;
 
 /// <summary>
@@ -35,6 +37,13 @@ public readonly record struct DataChange(DataArea Area, int? ProjectId = null, i
 /// </summary>
 public sealed class ChangeNotificationService
 {
+    private readonly ILogger<ChangeNotificationService>? _logger;
+
+    public ChangeNotificationService(ILogger<ChangeNotificationService>? logger = null)
+    {
+        _logger = logger;
+    }
+
     /// <summary>
     /// Raised on the publishing circuit's thread. Handlers must marshal back onto their own
     /// component dispatcher (via ComponentBase.InvokeAsync) before touching component state.
@@ -52,8 +61,10 @@ public sealed class ChangeNotificationService
         if (handlers == null) return;
         foreach (var handler in handlers.GetInvocationList())
         {
+            // A dead/faulty subscriber must not propagate into the writer, but log it: a swallowed
+            // exception here usually means a handler (not just a torn-down circuit) has a bug.
             try { ((Action<DataChange>)handler)(change); }
-            catch { /* a dead/faulty subscriber must not propagate into the writer */ }
+            catch (Exception ex) { _logger?.LogWarning(ex, "A change-notification handler threw for {Change}.", change); }
         }
     }
 }
