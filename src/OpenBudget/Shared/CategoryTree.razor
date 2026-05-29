@@ -80,10 +80,12 @@ else if (RenderMode == CategoryTreeRenderMode.Dropdown)
         {
             // Key each child by identity so Blazor diffs by id, not loop position — the frames
             // below reuse fixed sequence numbers, so without a key a re-sort (OrderBy Name above)
-            // would bleed checkbox state onto the wrong row.
-            builder.SetKey(child.Type == "Category"
+            // would bleed checkbox state onto the wrong row. SetKey must be called *after* the
+            // frame is opened — calling it before any Open keys the enclosing region and throws
+            // "Cannot set a key on a frame of type Region".
+            var childKey = child.Type == "Category"
                 ? $"C-{((Category)child.Item).Id}"
-                : $"G-{((CategoryGroupWithChildCount)child.Item).CategoryGroup.Id}");
+                : $"G-{((CategoryGroupWithChildCount)child.Item).CategoryGroup.Id}";
             if (child.Type == "Category")
             {
                 var category = (Category)child.Item;
@@ -95,6 +97,7 @@ else if (RenderMode == CategoryTreeRenderMode.Dropdown)
                 var catDisabled = parentSelected;
 
                 builder.OpenElement(14, "div");
+                builder.SetKey(childKey);
                 builder.AddAttribute(15, "class", "form-check");
                 builder.AddAttribute(16, "style", $"padding-left: {catIndentPx}px;");
 
@@ -123,6 +126,7 @@ else if (RenderMode == CategoryTreeRenderMode.Dropdown)
             {
                 var childGroup = (CategoryGroupWithChildCount)child.Item;
                 builder.OpenComponent<CategoryTree>(28);
+                builder.SetKey(childKey);
                 builder.AddAttribute(29, "CategoryGroup", childGroup);
                 builder.AddAttribute(30, "Level", level + 1);
                 builder.AddAttribute(31, "RenderMode", CategoryTreeRenderMode.Checkbox);
@@ -179,13 +183,14 @@ else if (RenderMode == CategoryTreeRenderMode.Dropdown)
 
         foreach (var child in allChildrenDropdown)
         {
-            builder.SetKey(child.Type == "Category"
+            var childKey = child.Type == "Category"
                 ? $"C-{((Category)child.Item).Id}"
-                : $"G-{((CategoryGroupWithChildCount)child.Item).CategoryGroup.Id}");
+                : $"G-{((CategoryGroupWithChildCount)child.Item).CategoryGroup.Id}";
             if (child.Type == "Category")
             {
                 var category = (Category)child.Item;
                 builder.OpenElement(3, "option");
+                builder.SetKey(childKey);
                 builder.AddAttribute(4, "value", $"C-{category.Id}");
                 builder.AddContent(5, $"{childIndent}{category.Name}");
                 builder.CloseElement();
@@ -194,6 +199,7 @@ else if (RenderMode == CategoryTreeRenderMode.Dropdown)
             {
                 var childGroup = (CategoryGroupWithChildCount)child.Item;
                 builder.OpenComponent<CategoryTree>(6);
+                builder.SetKey(childKey);
                 builder.AddAttribute(7, "CategoryGroup", childGroup);
                 builder.AddAttribute(8, "Level", level + 1);
                 builder.AddAttribute(9, "RenderMode", CategoryTreeRenderMode.Dropdown);
