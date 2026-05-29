@@ -137,12 +137,19 @@ else
             pendingDelete = null;
             return;
         }
+        // Wipe all imported data for the source plus the source row atomically — a failure
+        // midway would otherwise leave half-deleted, inconsistent data behind. Accounts FK-
+        // reference account groups (Restrict), so delete accounts before their groups. Mirrors
+        // the DELETE /api/moneymoney-sources endpoint in Program.cs.
+        await using var tx = await db.Database.BeginTransactionAsync();
         await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_transactions WHERE SourceId = {0}", new object[] { sourceId });
         await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_categories WHERE SourceId = {0}", new object[] { sourceId });
         await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_category_groups WHERE SourceId = {0}", new object[] { sourceId });
         await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_accounts WHERE SourceId = {0}", new object[] { sourceId });
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_account_groups WHERE SourceId = {0}", new object[] { sourceId });
         db.ImportSources.Remove(pendingDelete);
         await db.SaveChangesAsync();
+        await tx.CommitAsync();
         var deletedId = sourceId;
         pendingDelete = null;
         Notifier.Publish(new DataChange(DataArea.Sources, SourceId: deletedId));
