@@ -12,6 +12,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @inject IStringLocalizer<Budgets> L
+@inject ILogger<Budgets> Logger
 
 <PageTitle>@L["PageTitle"]@(projectName != null ? $" — {projectName}" : "")</PageTitle>
 
@@ -1045,7 +1046,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error rendering stacked bar chart: {ex.Message}");
+            Logger.LogError(ex, "Error rendering the budget trend stacked bar chart.");
         }
     }
 

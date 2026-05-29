@@ -8,6 +8,7 @@
 @inject ProjectService ProjectService
 @inject NavigationManager Navigation
 @inject IStringLocalizer<Index> L
+@inject ILogger<Index> Logger
 
 @* The dashboard is now a lean *portfolio*: one slim row per project for a fast scan + jump-in,
    plus the collection-level actions (reorder, create, sources). The rich per-project detail —
@@ -241,7 +242,7 @@ else
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading summary for project {project.Id}: {ex.Message}");
+                Logger.LogError(ex, "Error loading spending summary for project {ProjectId}.", project.Id);
             }
         }
 
