@@ -837,27 +837,26 @@ else
         trackingItems = project?.TrackingItems.ToList() ?? new List<ProjectTrackingItem>();
         var sourceId = project?.SourceId ?? SourceScope.LegacySourceId;
 
-        // Load names for tracking items
-        if (trackingItems != null)
+        // Load names for tracking items. Fetch the leaf-category list at most once instead of
+        // re-querying the whole list per leaf-category tracking item (was an N+1).
+        List<Category>? leafCategories = null;
+        foreach (var item in trackingItems)
         {
-            foreach (var item in trackingItems)
+            if (item.CategoryGroupId.HasValue)
             {
-                if (item.CategoryGroupId.HasValue)
+                var categoryGroup = await CategoryHierarchyService.GetCategoryWithSubCategoriesAsync(item.CategoryGroupId.Value);
+                if (categoryGroup != null)
                 {
-                    var categoryGroup = await CategoryHierarchyService.GetCategoryWithSubCategoriesAsync(item.CategoryGroupId.Value);
-                    if (categoryGroup != null)
-                    {
-                        trackingCategoryNames[item.CategoryGroupId.Value] = categoryGroup.Name ?? L["Unknown"].Value;
-                    }
+                    trackingCategoryNames[item.CategoryGroupId.Value] = categoryGroup.Name ?? L["Unknown"].Value;
                 }
-                else if (item.CategoryId.HasValue)
+            }
+            else if (item.CategoryId.HasValue)
+            {
+                leafCategories ??= await CategoryHierarchyService.GetAllCategoriesAsync(sourceId);
+                var category = leafCategories.FirstOrDefault(c => c.Id == item.CategoryId.Value);
+                if (category != null)
                 {
-                    var categories = await CategoryHierarchyService.GetAllCategoriesAsync(sourceId);
-                    var category = categories.FirstOrDefault(c => c.Id == item.CategoryId.Value);
-                    if (category != null)
-                    {
-                        trackingCategoryNames[item.CategoryId.Value] = category.Name ?? L["Unknown"].Value;
-                    }
+                    trackingCategoryNames[item.CategoryId.Value] = category.Name ?? L["Unknown"].Value;
                 }
             }
         }
