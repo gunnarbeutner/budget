@@ -406,12 +406,35 @@
     // Debounce search keystrokes — we throttle by token instead of timer/JS interop.
     private long searchToken;
 
-    protected override async Task OnInitializedAsync()
+    // Guards the per-project load so it runs once on first render and again only when the
+    // {ProjectId} route param changes — i.e. a client-side switch via the header's project
+    // picker, where the component is reused and OnInitializedAsync would not re-run.
+    private int _loadedProjectId;
+
+    protected override async Task OnParametersSetAsync()
     {
+        if (_loadedProjectId == ProjectId) return;
+        _loadedProjectId = ProjectId;
+        ResetForProjectSwitch();
         ReadStateFromQuery();
         project = await ProjectService.GetProjectAsync(ProjectId);
         if (project == null) { notFound = true; return; }
         await ReloadAsync();
+    }
+
+    // On a client-side switch the component is reused, so reset all per-project view state to its
+    // initial values before re-reading the (filter-less) switch URL — otherwise the previous
+    // project's selection/filters/chart would linger.
+    private void ResetForProjectSwitch()
+    {
+        notFound = false;
+        tree = null; txTotals = null; chartBars = null; chartBarMonths = null;
+        selectionKind = "all"; selectionId = null;
+        accountFilter = null;
+        searchInput = ""; searchEffective = "";
+        amountMin = null; amountMax = null; amountMinInput = ""; amountMaxInput = "";
+        chartGranularity = "M";
+        showRelatedAccounts = false; railOpen = false; chartCollapsed = false;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
