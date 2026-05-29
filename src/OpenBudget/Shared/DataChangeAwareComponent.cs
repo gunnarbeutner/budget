@@ -25,6 +25,8 @@ public abstract class DataChangeAwareComponent : ComponentBase, IDisposable
     /// </summary>
     protected bool ExternalChangePending { get; private set; }
 
+    private bool _disposed;
+
     protected override void OnInitialized()
     {
         ChangeNotifier.Changed += OnExternalChange;
@@ -33,11 +35,14 @@ public abstract class DataChangeAwareComponent : ComponentBase, IDisposable
 
     private void OnExternalChange(DataChange change)
     {
-        if (!IsRelevantChange(change)) return;
+        if (_disposed || !IsRelevantChange(change)) return;
         // The event fires on the *publishing* circuit's thread; hop back onto this component's
         // dispatcher before touching its state or calling StateHasChanged.
         _ = InvokeAsync(async () =>
         {
+            // The circuit may have been torn down while this was queued; touching a disposed
+            // component's state or calling StateHasChanged on it would throw.
+            if (_disposed) return;
             if (AutoReloadOnChange)
             {
                 await ReloadAfterChangeAsync();
@@ -67,5 +72,9 @@ public abstract class DataChangeAwareComponent : ComponentBase, IDisposable
     /// <summary>Re-fetch the page's data (or force a fresh navigation).</summary>
     protected abstract Task ReloadAfterChangeAsync();
 
-    public virtual void Dispose() => ChangeNotifier.Changed -= OnExternalChange;
+    public virtual void Dispose()
+    {
+        _disposed = true;
+        ChangeNotifier.Changed -= OnExternalChange;
+    }
 }
