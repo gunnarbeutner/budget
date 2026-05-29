@@ -18,6 +18,7 @@ namespace OpenBudget.Shared;
 public abstract class DataChangeAwareComponent : ComponentBase, IDisposable
 {
     [Inject] protected ChangeNotificationService ChangeNotifier { get; set; } = default!;
+    [Inject] protected ChangeOrigin ChangeOrigin { get; set; } = default!;
 
     /// <summary>
     /// True when a relevant change arrived that we deliberately did not auto-apply (editor
@@ -33,9 +34,12 @@ public abstract class DataChangeAwareComponent : ComponentBase, IDisposable
         base.OnInitialized();
     }
 
-    private void OnExternalChange(DataChange change)
+    private void OnExternalChange(DataChange change, Guid? origin)
     {
-        if (_disposed || !IsRelevantChange(change)) return;
+        // Ignore the echo of a change this same circuit published — the action that made it has
+        // already updated this component's view inline, so re-reloading (or, on editor pages,
+        // raising the "changed in another session" banner) would be wrong.
+        if (_disposed || origin == ChangeOrigin.Id || !IsRelevantChange(change)) return;
         // The event fires on the *publishing* circuit's thread; hop back onto this component's
         // dispatcher before touching its state or calling StateHasChanged.
         _ = InvokeAsync(async () =>

@@ -24,6 +24,9 @@ builder.Services.AddScoped<BrowseService>();
 builder.Services.AddScoped<ProjectTimeState>();
 builder.Services.AddSingleton<MoneyMoneyImportService>();
 builder.Services.AddSingleton<ChangeNotificationService>();
+// Per-circuit origin id, stamped onto changes this circuit publishes so its own components can
+// ignore the echo of their commits (see ChangeOrigin / DataChangeAwareComponent).
+builder.Services.AddScoped<ChangeOrigin>();
 
 // Localization: resx files live under /Resources mirroring the namespace
 // (e.g. Pages/Index.razor → Resources/Pages/Index.de.resx). Culture is picked from the

@@ -29,6 +29,18 @@ public enum DataArea
 public readonly record struct DataChange(DataArea Area, int? ProjectId = null, int? SourceId = null);
 
 /// <summary>
+/// Per-circuit identity stamped onto the changes a circuit publishes. A component compares an
+/// incoming change's origin against its own circuit's id so it can ignore the echo of its own
+/// commits — it already updated its view inline — while still reacting to changes made by other
+/// sessions. Registered scoped, so there is exactly one instance per Blazor circuit, shared by
+/// that circuit's components and the scoped data services they call.
+/// </summary>
+public sealed class ChangeOrigin
+{
+    public Guid Id { get; } = Guid.NewGuid();
+}
+
+/// <summary>
 /// In-process pub/sub that lets one Blazor circuit tell every other circuit "this data changed,
 /// reload it". The app runs as a single process, so an in-memory event is sufficient — no Redis
 /// or DB polling. Registered as a singleton; writers call <see cref="Publish"/> after a
@@ -45,17 +57,21 @@ public sealed class ChangeNotificationService
     }
 
     /// <summary>
-    /// Raised on the publishing circuit's thread. Handlers must marshal back onto their own
-    /// component dispatcher (via ComponentBase.InvokeAsync) before touching component state.
+    /// Raised on the publishing circuit's thread. The second argument is the <see cref="ChangeOrigin"/>
+    /// id of the circuit that published the change, or null for changes with no circuit origin
+    /// (e.g. an API upload/delete). Handlers must marshal back onto their own component dispatcher
+    /// (via ComponentBase.InvokeAsync) before touching component state.
     /// </summary>
-    public event Action<DataChange>? Changed;
+    public event Action<DataChange, Guid?>? Changed;
 
     /// <summary>
-    /// Notify all subscribers of a committed change. Each handler is invoked in isolation: a
+    /// Notify all subscribers of a committed change. <paramref name="origin"/> is the publishing
+    /// circuit's <see cref="ChangeOrigin"/> id (null for changes not tied to a circuit) so a
+    /// subscriber can skip the echo of its own commit. Each handler is invoked in isolation: a
     /// throwing or torn-down subscriber (e.g. a circuit that just disconnected) must never break
     /// the writer that triggered the publish.
     /// </summary>
-    public void Publish(DataChange change)
+    public void Publish(DataChange change, Guid? origin = null)
     {
         var handlers = Changed;
         if (handlers == null) return;
@@ -63,7 +79,7 @@ public sealed class ChangeNotificationService
         {
             // A dead/faulty subscriber must not propagate into the writer, but log it: a swallowed
             // exception here usually means a handler (not just a torn-down circuit) has a bug.
-            try { ((Action<DataChange>)handler)(change); }
+            try { ((Action<DataChange, Guid?>)handler)(change, origin); }
             catch (Exception ex) { _logger?.LogWarning(ex, "A change-notification handler threw for {Change}.", change); }
         }
     }

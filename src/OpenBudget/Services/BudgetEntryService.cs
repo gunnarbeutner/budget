@@ -13,16 +13,22 @@ public class BudgetEntryService
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly CategoryHierarchyService _hierarchy;
     private readonly ChangeNotificationService _notifier;
+    private readonly ChangeOrigin _origin;
 
     public BudgetEntryService(
         IDbContextFactory<BudgetDbContext> dbFactory,
         CategoryHierarchyService hierarchy,
-        ChangeNotificationService notifier)
+        ChangeNotificationService notifier,
+        ChangeOrigin origin)
     {
         _dbFactory = dbFactory;
         _hierarchy = hierarchy;
         _notifier = notifier;
+        _origin = origin;
     }
+
+    // Publish a change stamped with this circuit's origin so our own components skip the echo.
+    private void Notify(DataChange change) => _notifier.Publish(change, _origin.Id);
 
     public async Task<List<Budget>> GetBudgetsForProjectAsync(int projectId)
     {
@@ -101,7 +107,7 @@ public class BudgetEntryService
 
         db.Budgets.Add(budget);
         await db.SaveChangesAsync();
-        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: budget.ProjectId));
+        Notify(new DataChange(DataArea.Budgets, ProjectId: budget.ProjectId));
         return budget;
     }
 
@@ -120,7 +126,7 @@ public class BudgetEntryService
 
         target.IsActive = true;
         await db.SaveChangesAsync();
-        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: target.ProjectId));
+        Notify(new DataChange(DataArea.Budgets, ProjectId: target.ProjectId));
     }
 
     /// <summary>
@@ -164,7 +170,7 @@ public class BudgetEntryService
         }
 
         await db.SaveChangesAsync();
-        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: target.ProjectId));
+        Notify(new DataChange(DataArea.Budgets, ProjectId: target.ProjectId));
     }
 
     public async Task DeleteBudgetAsync(int budgetId)
@@ -175,7 +181,7 @@ public class BudgetEntryService
         {
             db.Budgets.Remove(budget);
             await db.SaveChangesAsync();
-            _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: budget.ProjectId));
+            Notify(new DataChange(DataArea.Budgets, ProjectId: budget.ProjectId));
         }
     }
 
@@ -198,7 +204,7 @@ public class BudgetEntryService
 
         budget.LastModifiedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
-        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: budget.ProjectId));
+        Notify(new DataChange(DataArea.Budgets, ProjectId: budget.ProjectId));
     }
 
     /// <summary>
@@ -259,7 +265,7 @@ public class BudgetEntryService
         // the new version.
         budget.LastModifiedAt = now;
         budget.Version = target.Version;
-        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: target.ProjectId));
+        Notify(new DataChange(DataArea.Budgets, ProjectId: target.ProjectId));
     }
 
     /// <summary>
@@ -393,7 +399,7 @@ public class BudgetEntryService
 
         await db.SaveChangesAsync();
         var projectId = await db.Budgets.Where(b => b.Id == budgetId).Select(b => (int?)b.ProjectId).FirstOrDefaultAsync();
-        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: projectId));
+        Notify(new DataChange(DataArea.Budgets, ProjectId: projectId));
     }
 
     /// <summary>

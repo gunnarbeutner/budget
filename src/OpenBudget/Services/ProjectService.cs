@@ -12,12 +12,17 @@ public class ProjectService
 {
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly ChangeNotificationService _notifier;
+    private readonly ChangeOrigin _origin;
 
-    public ProjectService(IDbContextFactory<BudgetDbContext> dbFactory, ChangeNotificationService notifier)
+    public ProjectService(IDbContextFactory<BudgetDbContext> dbFactory, ChangeNotificationService notifier, ChangeOrigin origin)
     {
         _dbFactory = dbFactory;
         _notifier = notifier;
+        _origin = origin;
     }
+
+    // Publish a change stamped with this circuit's origin so our own components skip the echo.
+    private void Notify(DataChange change) => _notifier.Publish(change, _origin.Id);
 
     public async Task<List<Project>> GetProjectsAsync()
     {
@@ -60,7 +65,7 @@ public class ProjectService
 
         db.Projects.Add(project);
         await db.SaveChangesAsync();
-        _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: project.Id));
+        Notify(new DataChange(DataArea.Projects, ProjectId: project.Id));
         return project;
     }
 
@@ -92,7 +97,7 @@ public class ProjectService
             (ordered[swapIndex].SortOrder, ordered[index].SortOrder);
 
         await db.SaveChangesAsync();
-        _notifier.Publish(new DataChange(DataArea.Projects));
+        Notify(new DataChange(DataArea.Projects));
     }
 
     public async Task DeleteProjectAsync(int projectId)
@@ -103,7 +108,7 @@ public class ProjectService
         {
             db.Projects.Remove(project);
             await db.SaveChangesAsync();
-            _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
+            Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
         }
     }
 
@@ -135,7 +140,7 @@ public class ProjectService
         {
             project.ParentProjectId = null;
             await db.SaveChangesAsync();
-            _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
+            Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
             return project;
         }
 
@@ -158,7 +163,7 @@ public class ProjectService
 
         project.ParentProjectId = parentId.Value;
         await db.SaveChangesAsync();
-        _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
+        Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
         return project;
     }
 
@@ -175,7 +180,7 @@ public class ProjectService
             CategoryId = categoryId
         });
         await db.SaveChangesAsync();
-        _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
+        Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
     }
 
     public async Task RemoveCategoryFromProjectAsync(int projectId, long categoryId)
@@ -187,7 +192,7 @@ public class ProjectService
         {
             db.ProjectCategoryAssignments.Remove(assignment);
             await db.SaveChangesAsync();
-            _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
+            Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
         }
     }
 
@@ -252,7 +257,7 @@ public class ProjectService
         }
 
         await db.SaveChangesAsync();
-        _notifier.Publish(new DataChange(DataArea.TrackingItems, ProjectId: projectId));
+        Notify(new DataChange(DataArea.TrackingItems, ProjectId: projectId));
     }
 
     /// <summary>

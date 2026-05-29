@@ -10,20 +10,26 @@ public class BudgetService
     private readonly ProjectService _projects;
     private readonly BudgetEntryService _budgets;
     private readonly ChangeNotificationService _notifier;
+    private readonly ChangeOrigin _origin;
 
     public BudgetService(
         IDbContextFactory<BudgetDbContext> dbFactory,
         CategoryHierarchyService hierarchy,
         ProjectService projects,
         BudgetEntryService budgets,
-        ChangeNotificationService notifier)
+        ChangeNotificationService notifier,
+        ChangeOrigin origin)
     {
         _dbFactory = dbFactory;
         _hierarchy = hierarchy;
         _projects = projects;
         _budgets = budgets;
         _notifier = notifier;
+        _origin = origin;
     }
+
+    // Publish a change stamped with this circuit's origin so our own components skip the echo.
+    private void Notify(DataChange change) => _notifier.Publish(change, _origin.Id);
 
     /// <summary>
     /// Spending summary for a project across a month range [fromMonth, toMonth] within a year.
@@ -393,7 +399,7 @@ public class BudgetService
         }
 
         await db.SaveChangesAsync();
-        _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
+        Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
     }
 
     /// <summary>
@@ -409,7 +415,7 @@ public class BudgetService
         {
             db.CategoryTypeAssignments.Remove(existing);
             await db.SaveChangesAsync();
-            _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
+            Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
         }
     }
 
@@ -697,7 +703,7 @@ public class BudgetService
             });
         }
         await db.SaveChangesAsync();
-        _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
+        Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
     }
 
     public async Task SetAccountScopeAsync(int projectId, long accountId, AccountScope scope)
@@ -708,7 +714,7 @@ public class BudgetService
         if (existing == null) return;
         existing.Scope = scope;
         await db.SaveChangesAsync();
-        _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
+        Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
     }
 
     public async Task RemoveAccountFromProjectAsync(int projectId, long accountId)
@@ -719,7 +725,7 @@ public class BudgetService
         if (existing == null) return;
         db.ProjectAccountAssignments.Remove(existing);
         await db.SaveChangesAsync();
-        _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId));
+        Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
     }
 
     #endregion

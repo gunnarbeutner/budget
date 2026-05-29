@@ -32,7 +32,9 @@ public class CategoryHierarchyService : IDisposable
 
     // A MoneyMoney import or source deletion in any session changes the category hierarchy, so
     // drop the cache; the next read for that circuit refetches the current structure.
-    private void OnDataChanged(DataChange change)
+    // origin is unused: a cache invalidation should happen regardless of which circuit triggered
+    // the change (and MoneyMoney/Sources changes originate from the API import, with no circuit).
+    private void OnDataChanged(DataChange change, Guid? origin)
     {
         if (change.Area is DataArea.MoneyMoneyData or DataArea.Sources)
             _hierarchyBySourceId.Clear();
