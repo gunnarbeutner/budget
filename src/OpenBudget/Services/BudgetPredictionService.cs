@@ -20,43 +20,8 @@ public class BudgetPredictionService
     }
 
     /// <summary>Monthly spending (or income) for an individual leaf category over the last N months.</summary>
-    public async Task<List<MonthlySpending>> GetMonthlySpendingForCategoryAsync(long categoryId, int sourceId, int months = 12, bool isIncome = false)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var now = DateTimeOffset.UtcNow;
-        var startDate = new DateTimeOffset(new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc)).AddMonths(-(months - 1));
-
-        var results = new List<MonthlySpending>();
-
-        for (int i = 0; i < months; i++)
-        {
-            var monthStart = startDate.AddMonths(i);
-            var range = TimeRange.Between(monthStart, monthStart.AddMonths(1));
-
-            var spentCents = isIncome
-                ? await db.Transactions
-                    .Where(t => t.SourceId == sourceId)
-                    .Where(t => t.CategoryId == categoryId)
-                    .WithinUtc(range)
-                    .Where(t => t.Amount > 0)
-                    .SumAsync(t => t.Amount)
-                : await db.Transactions
-                    .Where(t => t.SourceId == sourceId)
-                    .Where(t => t.CategoryId == categoryId)
-                    .WithinUtc(range)
-                    .Where(t => t.Amount < 0)
-                    .SumAsync(t => -t.Amount);
-
-            results.Add(new MonthlySpending
-            {
-                Year = monthStart.Year,
-                Month = monthStart.Month,
-                Amount = spentCents / 100m
-            });
-        }
-
-        return results;
-    }
+    public Task<List<MonthlySpending>> GetMonthlySpendingForCategoryAsync(long categoryId, int sourceId, int months = 12, bool isIncome = false)
+        => ComputeMonthlyHistoryAsync(sourceId, new[] { categoryId }, months, isIncome);
 
     /// <summary>
     /// Monthly spending (or income) for a category group over the last N months, summing over
@@ -64,44 +29,52 @@ public class BudgetPredictionService
     /// </summary>
     public async Task<List<MonthlySpending>> GetMonthlySpendingAsync(long categoryGroupId, int sourceId, int months = 12, bool isIncome = false)
     {
-        var categoryIds = await _hierarchy.GetAllCategoryIdsForGroupAsync(categoryGroupId, sourceId);
+        // Resolve the group's descendant leaves from the cached hierarchy rather than walking
+        // sub-groups with a query per level.
+        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var key = (categoryGroupId, CategoryItemType.Group);
+        var leafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(new[] { key }, hierarchy)[key];
 
-        if (!categoryIds.Any())
+        if (leafIds.Count == 0)
             return new List<MonthlySpending>();
 
-        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await ComputeMonthlyHistoryAsync(sourceId, leafIds.ToList(), months, isIncome);
+    }
+
+    /// <summary>
+    /// Monthly outflow (or income) for a set of leaf categories over the last <paramref name="months"/>
+    /// calendar months ending in the current month. One windowed query, bucketed in memory by
+    /// month — replaces the former query-per-month loop.
+    /// </summary>
+    private async Task<List<MonthlySpending>> ComputeMonthlyHistoryAsync(
+        int sourceId, IReadOnlyList<long> leafIds, int months, bool isIncome)
+    {
         var now = DateTimeOffset.UtcNow;
         var startDate = new DateTimeOffset(new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc)).AddMonths(-(months - 1));
 
-        var results = new List<MonthlySpending>();
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var query = db.Transactions
+            .Where(t => t.SourceId == sourceId)
+            .Where(t => t.CategoryId.HasValue && leafIds.Contains(t.CategoryId.Value))
+            .WithinUtc(TimeRange.Between(startDate, startDate.AddMonths(months)));
+        query = isIncome ? query.Where(t => t.Amount > 0) : query.Where(t => t.Amount < 0);
+        var raw = await query.Select(t => new { t.Amount, t.Timestamp }).ToListAsync();
 
-        for (int i = 0; i < months; i++)
+        var monthly = new decimal[months];
+        foreach (var t in raw)
         {
-            var monthStart = startDate.AddMonths(i);
-            var range = TimeRange.Between(monthStart, monthStart.AddMonths(1));
-
-            var spentCents = isIncome
-                ? await db.Transactions
-                    .Where(t => t.SourceId == sourceId)
-                    .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
-                    .WithinUtc(range)
-                    .Where(t => t.Amount > 0)
-                    .SumAsync(t => t.Amount)
-                : await db.Transactions
-                    .Where(t => t.SourceId == sourceId)
-                    .Where(t => t.CategoryId.HasValue && categoryIds.Contains(t.CategoryId.Value))
-                    .WithinUtc(range)
-                    .Where(t => t.Amount < 0)
-                    .SumAsync(t => -t.Amount);
-
-            results.Add(new MonthlySpending
-            {
-                Year = monthStart.Year,
-                Month = monthStart.Month,
-                Amount = spentCents / 100m
-            });
+            var ts = DateTimeOffset.FromUnixTimeSeconds(t.Timestamp).UtcDateTime;
+            var monthIndex = ((ts.Year - startDate.Year) * 12) + (ts.Month - startDate.Month);
+            if (monthIndex < 0 || monthIndex >= months) continue;
+            monthly[monthIndex] += (isIncome ? t.Amount : -t.Amount) / 100m;
         }
 
+        var results = new List<MonthlySpending>(months);
+        for (int i = 0; i < months; i++)
+        {
+            var d = startDate.AddMonths(i);
+            results.Add(new MonthlySpending { Year = d.Year, Month = d.Month, Amount = monthly[i] });
+        }
         return results;
     }
 

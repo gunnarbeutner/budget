@@ -128,39 +128,6 @@ public class CategoryHierarchyService : IDisposable
     }
 
     /// <summary>
-    /// All leaf-category IDs reachable from a group (including via descendant sub-groups).
-    /// </summary>
-    public async Task<List<long>> GetAllCategoryIdsForGroupAsync(long categoryGroupId, int sourceId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var categoryIds = new List<long>();
-        var groupIds = await GetAllCategoryGroupIdsRecursiveAsync(db, categoryGroupId, sourceId);
-        foreach (var groupId in groupIds)
-        {
-            var categoriesInGroup = await db.Categories
-                .Where(c => c.SourceId == sourceId && c.GroupId == groupId)
-                .Select(c => c.Id)
-                .ToListAsync();
-            categoryIds.AddRange(categoriesInGroup);
-        }
-        return categoryIds;
-    }
-
-    private async Task<List<long>> GetAllCategoryGroupIdsRecursiveAsync(BudgetDbContext db, long categoryGroupId, int sourceId)
-    {
-        var groupIds = new List<long> { categoryGroupId };
-        var subGroups = await db.CategoryGroups
-            .Where(cg => cg.SourceId == sourceId && cg.ParentGroupId == categoryGroupId)
-            .ToListAsync();
-        foreach (var subGroup in subGroups)
-        {
-            var subGroupIds = await GetAllCategoryGroupIdsRecursiveAsync(db, subGroup.Id, sourceId);
-            groupIds.AddRange(subGroupIds);
-        }
-        return groupIds;
-    }
-
-    /// <summary>
     /// Resolve each tracked (Id, ItemType) tuple to the set of leaf categories beneath it.
     /// Pure: only depends on the already-fetched hierarchy. Used everywhere a tracked-row's
     /// "natural total" needs to expand to the union of leaves underneath.
