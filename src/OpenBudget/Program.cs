@@ -184,11 +184,14 @@ static async Task<IResult> HandleUploadAsync(
     string stagingDir,
     CancellationToken ct)
 {
-    // SQLite files can run to hundreds of MB; lift Kestrel's default request size cap for this
-    // endpoint by clearing the per-request limit feature before we touch the body.
+    // SQLite files can run to hundreds of MB, so lift Kestrel's ~30 MB default for this endpoint.
+    // Raise it to a generous-but-finite ceiling rather than clearing it (null = unbounded): the
+    // body is streamed to disk on the same volume as budgets.db before validation, so an
+    // unbounded cap is a trivial disk-fill DoS for anyone holding the upload token.
+    const long maxUploadBytes = 2L * 1024 * 1024 * 1024; // 2 GiB
     var sizeFeature = request.HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
     if (sizeFeature != null && !sizeFeature.IsReadOnly)
-        sizeFeature.MaxRequestBodySize = null;
+        sizeFeature.MaxRequestBodySize = maxUploadBytes;
 
     var expectedToken = Environment.GetEnvironmentVariable("MONEYMONEY_DB_UPLOAD_TOKEN");
     if (string.IsNullOrEmpty(expectedToken))
