@@ -1126,6 +1126,11 @@
         catch (JSDisconnectedException) { /* page navigation in flight */ }
     }
 
+    // NOTE: deliberately no builder.SetKey(...) on these nodes. The tree structure is stable
+    // across the re-renders this page actually does (selection / period / search change classes
+    // and values, not the node set), so positional diffing is correct here. A SetKey was tried and
+    // removed because it caused a 500 (see commit "Fix Browse 500: drop SetKey on the recursive
+    // category node") — don't reintroduce one without reproducing that crash first.
     private RenderFragment RenderCategoryNode(BrowseCategoryNode node, int level) => builder =>
     {
         bool isSelected = (selectionKind == (node.ItemType == CategoryItemType.Category ? "category" : "group"))
