@@ -641,10 +641,10 @@
         return (key, L["Picker_Unknown"], null, null);
     }
 
-    private void RemoveRow((long Id, CategoryItemType ItemType) key)
+    private async Task RemoveRow((long Id, CategoryItemType ItemType) key)
     {
         editingEntries.Remove(key);
-        _ = RefreshAfterEditAsync();
+        await RefreshAfterEditAsync();
     }
 
     private async Task AddSelected()

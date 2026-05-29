@@ -907,8 +907,9 @@ else
                 }
             }
         }
-
-        StateHasChanged();
+        // No StateHasChanged needed here: this is the tail of an async event handler, so the
+        // framework re-renders automatically once it returns. (The one above is required because
+        // it reveals the dialog before the await.)
     }
 
     private void HideTrackingDialog()
@@ -1062,7 +1063,9 @@ else
         categoryTypeAssignments = await BudgetService.GetCategoryTypeAssignmentsAsync(ProjectId);
 
         isLoadingCategoryTypes = false;
-        StateHasChanged();
+        // No trailing StateHasChanged needed: this method is always awaited (from
+        // OnInitializedAsync or an event handler), both of which re-render on completion. The
+        // StateHasChanged above is required — it shows the spinner before the awaits.
     }
 
     private List<CategoryWithLevel> BuildHierarchy(List<CategoryGroupWithChildCount> categories)
