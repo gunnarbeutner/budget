@@ -32,7 +32,9 @@
     {
         <HomeLink />
     }
-    <details class="project-selector">
+    @* @key on ProjectId so a client-side project switch recreates the element fresh (closed),
+       replacing the full-reload that previously collapsed the dropdown for us. *@
+    <details class="project-selector" @key="ProjectId">
         <summary class="project-selector-toggle">
             <span class="project-selector-name">@(ProjectName ?? "")</span>
             <i class="bi bi-caret-down-fill ms-1 project-selector-caret" aria-hidden="true"></i>
@@ -50,10 +52,11 @@
             {
                 @foreach (var p in otherProjects)
                 {
-                    @* forceLoad on click: Blazor's SPA navigation reuses the same page
-                       component when only query/route params change, so OnInitializedAsync
-                       wouldn't fire and the data wouldn't refresh. A full reload also
-                       collapses the <details> dropdown naturally. *@
+                    @* Client-side nav: the destination is usually the same page component for a
+                       different {ProjectId}. Each project-scoped page reloads its data when
+                       ProjectId changes via a guarded OnParametersSetAsync, so a full reload (and
+                       the circuit teardown + prerender re-run it triggers) isn't needed. The
+                       <details> dropdown collapses on its own via @key on ProjectId. *@
                     <li>
                         <button type="button" class="dropdown-item"
                                 @onclick="@(() => SwitchTo(p.Id))">@p.Name</button>
@@ -173,6 +176,6 @@
             // No Active = on the settings page; switching keeps you on settings for the new project.
             _ => $"/projects/{projectId}/settings",
         };
-        Navigation.NavigateTo(url, forceLoad: true);
+        Navigation.NavigateTo(url);
     }
 }
