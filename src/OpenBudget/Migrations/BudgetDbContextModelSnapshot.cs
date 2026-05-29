@@ -15,7 +15,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20260528093732_AddAccountGroups";
+        public override string LatestMigrationId => "20260529115330_AddBudgetVersion";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -134,6 +134,10 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<int>("ProjectId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("Year")

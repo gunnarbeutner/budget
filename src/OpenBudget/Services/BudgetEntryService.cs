@@ -168,13 +168,87 @@ public class BudgetEntryService
         if (budget == null)
             throw new ArgumentException("Budget not found", nameof(budgetId));
 
+        await ApplyEntriesAsync(db, budget, entries);
+
+        budget.LastModifiedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: budget.ProjectId));
+    }
+
+    /// <summary>
+    /// Save budget metadata <em>and</em> its full monthly-entry set in a single transaction,
+    /// guarded by optimistic concurrency on <paramref name="expectedVersion"/> (the Version the
+    /// editor loaded). If another session saved the budget in the meantime, the version no longer
+    /// matches and EF throws <see cref="DbUpdateConcurrencyException"/> — the editor surfaces that
+    /// as a conflict instead of silently overwriting the other edit. This is the editor's save
+    /// path; <see cref="SaveBudgetEntriesAsync"/> stays for the wizard (new budgets, no contention).
+    /// </summary>
+    public async Task SaveBudgetAsync(
+        Budget budget,
+        IReadOnlyCollection<(long Id, CategoryItemType ItemType, decimal[] Months)> entries,
+        int expectedVersion)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var target = await db.Budgets.FindAsync(budget.Id);
+        if (target == null)
+            throw new ArgumentException("Budget not found", nameof(budget));
+
+        // Compare against the version the caller loaded, not the row's current value (the row was
+        // just re-read, so its current value can't conflict with itself). EF puts the original
+        // value in the UPDATE's WHERE clause.
+        db.Entry(target).Property(b => b.Version).OriginalValue = expectedVersion;
+
+        var now = DateTime.UtcNow;
+        target.Name = budget.Name;
+        target.Year = budget.Year;
+        target.Notes = budget.Notes;
+        target.IsActive = budget.IsActive;
+        target.LastModifiedAt = now;
+        target.Version = expectedVersion + 1;
+
+        if (target.IsActive)
+        {
+            var siblings = await db.Budgets
+                .Where(b => b.ProjectId == target.ProjectId
+                            && b.Year == target.Year
+                            && b.Id != target.Id
+                            && b.IsActive)
+                .ToListAsync();
+            foreach (var sibling in siblings)
+                sibling.IsActive = false;
+        }
+
+        await ApplyEntriesAsync(db, target, entries);
+
+        // One transaction: the budget UPDATE (version-guarded), sibling deactivation, and all
+        // entry inserts/updates/deletes commit together or not at all.
+        await db.SaveChangesAsync();
+
+        // Keep the caller's in-memory copy current so a re-render (and any subsequent save) sees
+        // the new version.
+        budget.LastModifiedAt = now;
+        budget.Version = target.Version;
+        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: target.ProjectId));
+    }
+
+    /// <summary>
+    /// Reconcile the MonthlyBudgetEntry rows for <paramref name="budget"/> against the supplied
+    /// set on the given context: rows whose (CategoryId, ItemType) key is absent are removed, the
+    /// rest upserted. Does not call SaveChanges — the caller commits so metadata + entries land in
+    /// one transaction.
+    /// </summary>
+    private async Task ApplyEntriesAsync(
+        BudgetDbContext db,
+        Budget budget,
+        IReadOnlyCollection<(long Id, CategoryItemType ItemType, decimal[] Months)> entries)
+    {
         var project = await db.Projects.FindAsync(budget.ProjectId);
         var sourceId = project?.SourceId ?? SourceScope.LegacySourceId;
         var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
         var normalized = NormalizeBudgetEntries(entries, hierarchy);
 
         var existing = await db.MonthlyBudgetEntries
-            .Where(e => e.BudgetId == budgetId)
+            .Where(e => e.BudgetId == budget.Id)
             .ToListAsync();
 
         var desiredKeys = normalized.Select(e => (e.Id, e.ItemType)).ToHashSet();
@@ -193,7 +267,7 @@ public class BudgetEntryService
             {
                 row = new MonthlyBudgetEntry
                 {
-                    BudgetId = budgetId,
+                    BudgetId = budget.Id,
                     CategoryId = id,
                     ItemType = itemType
                 };
@@ -202,10 +276,6 @@ public class BudgetEntryService
             for (int m = 1; m <= 12; m++)
                 row.SetMonthAmount(m, months[m - 1]);
         }
-
-        budget.LastModifiedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
-        _notifier.Publish(new DataChange(DataArea.Budgets, ProjectId: budget.ProjectId));
     }
 
     /// <summary>

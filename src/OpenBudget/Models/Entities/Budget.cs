@@ -38,6 +38,15 @@ public class Budget
 
     public DateTime? LastModifiedAt { get; set; }
 
+    /// <summary>
+    /// Optimistic-concurrency token, bumped on every editor save (see
+    /// <c>BudgetEntryService.SaveBudgetAsync</c>). The editor passes back the value it loaded; if
+    /// another session saved in the meantime the row's version no longer matches and the save is
+    /// rejected with a conflict instead of silently overwriting the other edit. Managed manually
+    /// (incremented in code) because SQLite has no native rowversion.
+    /// </summary>
+    public int Version { get; set; }
+
     // Navigation properties
     public Project Project { get; set; } = null!;
     public ICollection<MonthlyBudgetEntry> MonthlyEntries { get; set; } = new List<MonthlyBudgetEntry>();

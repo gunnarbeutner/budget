@@ -63,6 +63,14 @@ public class BudgetDbContext : DbContext
             .HasForeignKey(b => b.ProjectId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Optimistic-concurrency token: EF includes its original value in the WHERE clause of the
+        // UPDATE, so a save whose loaded Version no longer matches the row touches 0 rows and
+        // throws DbUpdateConcurrencyException. Incremented manually in SaveBudgetAsync (SQLite has
+        // no auto rowversion).
+        modelBuilder.Entity<Budget>()
+            .Property(b => b.Version)
+            .IsConcurrencyToken();
+
         modelBuilder.Entity<MonthlyBudgetEntry>()
             .HasOne(mbe => mbe.Budget)
             .WithMany(b => b.MonthlyEntries)

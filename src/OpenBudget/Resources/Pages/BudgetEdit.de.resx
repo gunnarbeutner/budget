@@ -145,6 +145,9 @@
   <data name="Button_Save" xml:space="preserve">
     <value>Speichern</value>
   </data>
+  <data name="SaveConflict" xml:space="preserve">
+    <value>Dieses Budget wurde seit dem Öffnen in einer anderen Sitzung geändert. Deine Änderungen wurden nicht gespeichert. Lade neu, um die aktuelle Version zu erhalten (das verwirft deine Änderungen), und trage sie dann erneut ein.</value>
+  </data>
   <data name="Button_Saving" xml:space="preserve">
     <value>Wird gespeichert…</value>
   </data>

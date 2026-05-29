@@ -145,6 +145,9 @@
   <data name="Button_Save" xml:space="preserve">
     <value>Save</value>
   </data>
+  <data name="SaveConflict" xml:space="preserve">
+    <value>This budget was changed in another session since you opened it. Your changes were not saved. Reload to get the latest version (this discards your edits), then re-apply them.</value>
+  </data>
   <data name="Button_Saving" xml:space="preserve">
     <value>Saving…</value>
   </data>

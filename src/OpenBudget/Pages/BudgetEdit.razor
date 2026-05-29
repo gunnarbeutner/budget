@@ -3,6 +3,7 @@
 @using OpenBudget.Services
 @using OpenBudget.Models
 @using Microsoft.JSInterop
+@using Microsoft.EntityFrameworkCore
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
 @inject BudgetEntryService BudgetEntryService
@@ -246,6 +247,11 @@
     </div>
 </div>
 
+@if (saveConflict)
+{
+    <div class="alert alert-warning" role="alert">@L["SaveConflict"]</div>
+}
+
 <div class="d-flex gap-2">
     <button class="btn btn-primary" @onclick="Save" disabled="@isSaving">@(isSaving ? L["Button_Saving"] : L["Button_Save"])</button>
     <a href="@($"/projects/{budget.ProjectId}/budgets")" class="btn btn-secondary">@L["Button_Cancel"]</a>
@@ -281,6 +287,10 @@
     private Budget? budget;
     private bool notFound = false;
     private bool isSaving = false;
+    private bool saveConflict = false;
+    // The Budget.Version loaded for this edit session; passed back on save so a concurrent edit
+    // by another session is detected instead of silently overwritten.
+    private int loadedVersion;
     private bool showRepredictDialog = false;
     private bool showAddTrackedDialog = false;
 
@@ -323,6 +333,7 @@
             notFound = true;
             return;
         }
+        loadedVersion = budget.Version;
 
         await LoadHierarchyLookups();
         incomeKeys = await BudgetService.GetIncomeItemsForProjectAsync(budget.ProjectId);
@@ -720,14 +731,21 @@
     {
         if (budget == null) return;
         isSaving = true;
+        saveConflict = false;
         try
         {
-            await BudgetEntryService.UpdateBudgetAsync(budget);
             var entries = editingEntries
                 .Select(kvp => (kvp.Key.Id, kvp.Key.ItemType, kvp.Value))
                 .ToList();
-            await BudgetEntryService.SaveBudgetEntriesAsync(BudgetId, entries);
+            // Metadata + entries commit atomically, guarded by the version we loaded.
+            await BudgetEntryService.SaveBudgetAsync(budget, entries, loadedVersion);
             Navigation.NavigateTo($"/projects/{budget.ProjectId}/budgets");
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Another session saved this budget since we loaded it. Don't overwrite their work —
+            // surface a conflict and let the user reload (the banner / reload discards edits).
+            saveConflict = true;
         }
         finally
         {
