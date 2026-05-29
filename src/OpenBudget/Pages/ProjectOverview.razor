@@ -212,8 +212,19 @@ else
     private (int Year, int Month) anchor;
     private string period = "month";
 
-    protected override async Task OnInitializedAsync()
+    // Guards the per-project load so it runs once on first render and again only when the
+    // {ProjectId} route param actually changes — i.e. a client-side switch via the header's
+    // project picker, where the component is reused and OnInitializedAsync does not re-run.
+    private int _loadedProjectId;
+
+    protected override async Task OnParametersSetAsync()
     {
+        if (_loadedProjectId == ProjectId) return;
+        _loadedProjectId = ProjectId;
+        notFound = false;
+        summary = null;
+        balance = null;
+        alert = null;
         ReadStateFromQuery();
         await LoadAsync();
     }
