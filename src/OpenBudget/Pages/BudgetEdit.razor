@@ -569,17 +569,11 @@
         List<((long Id, CategoryItemType ItemType) Key, string BaseName, string? ParentName, long? ParentGroupId)> labels,
         HashSet<long> trackedGroupIds)
     {
-        var nameCounts = labels
-            .GroupBy(l => l.BaseName)
-            .ToDictionary(g => g.Key, g => g.Count());
-
-        return labels.ToDictionary(
-            l => l.Key,
-            l => !string.IsNullOrEmpty(l.ParentName)
-                && (nameCounts[l.BaseName] > 1
-                    || (l.ParentGroupId.HasValue && trackedGroupIds.Contains(l.ParentGroupId.Value)))
-                ? $"{l.ParentName} › {l.BaseName}"
-                : l.BaseName);
+        var parentGroupByKey = labels.ToDictionary(l => l.Key, l => l.ParentGroupId);
+        return CategoryDisplay.Disambiguate(
+            labels.Select(l => (l.Key, l.BaseName, l.ParentName)),
+            key => parentGroupByKey.TryGetValue(key, out var pg)
+                && pg.HasValue && trackedGroupIds.Contains(pg.Value));
     }
 
     private string BuildFullPath((long Id, CategoryItemType ItemType) key)

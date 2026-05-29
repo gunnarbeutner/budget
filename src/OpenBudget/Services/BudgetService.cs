@@ -109,7 +109,11 @@ public class BudgetService
                 shadowedParents.Add(key);
         }
 
-        var categorySpending = new List<CategorySpending>();
+        // Resolve the visible rows first (drop shadowed parents and any key whose name no longer
+        // resolves), then disambiguate names across that set: two tracked leaves that share a bare
+        // name — e.g. an umlagefähig vs. nicht-umlagefähig "Reparaturen" — read as "Parent › Name".
+        var entryByKey = allCategoriesWithCounts.ToDictionary(c => (c.Id, c.ItemType));
+        var visible = new List<((long Id, CategoryItemType ItemType) Key, string BaseName, string? ParentName)>();
         foreach (var key in trackedKeys)
         {
             if (shadowedParents.Contains(key)) continue;
@@ -119,6 +123,16 @@ public class BudgetService
                 : leafCategoryNameLookup.GetValueOrDefault(key.Id);
             if (name == null) continue;
 
+            string? parentName = entryByKey.TryGetValue(key, out var entry) && entry.ParentCategoryGroupId.HasValue
+                ? groupNameLookup.GetValueOrDefault(entry.ParentCategoryGroupId.Value)
+                : null;
+            visible.Add((key, name, parentName));
+        }
+        var displayNames = CategoryDisplay.Disambiguate(visible);
+
+        var categorySpending = new List<CategorySpending>();
+        foreach (var (key, _, _) in visible)
+        {
             bool isIncome = incomeItemsSet.Contains(key);
             decimal spent = 0m;
             if (ieBatch.TryGetValue(key, out var ie))
@@ -135,7 +149,7 @@ public class BudgetService
             {
                 CategoryId = key.Id,
                 ItemType = key.ItemType,
-                CategoryName = name,
+                CategoryName = displayNames[key],
                 IsIncome = isIncome,
                 Budget = budgetAmount,
                 Spent = spent,

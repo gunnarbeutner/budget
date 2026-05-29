@@ -692,14 +692,13 @@
     /// <summary>
     /// Resolves a unique display name for every selected (Id, ItemType). Bare category name is
     /// used unless two or more selections share it, in which case both are qualified as
-    /// "Parent group > Name" so they're distinguishable in the chart, variance table, and
-    /// summary.
+    /// "Parent group › Name" so they're distinguishable in the chart, variance table, and
+    /// summary. See <see cref="CategoryDisplay.Disambiguate" /> for the shared rule.
     /// </summary>
     private Dictionary<(long Id, CategoryItemType ItemType), string> BuildDisplayNames(
         IEnumerable<(long Id, CategoryItemType ItemType)> keys)
     {
-        var bare = new Dictionary<(long, CategoryItemType), string>();
-        foreach (var key in keys)
+        var items = keys.Select(key =>
         {
             string name;
             if (key.ItemType == CategoryItemType.Group)
@@ -713,24 +712,9 @@
                 var category = allActualCategories?.FirstOrDefault(c => c.Id == key.Id);
                 name = category?.Name ?? L["Unknown"];
             }
-            bare[key] = name;
-        }
-
-        var counts = bare.Values.GroupBy(n => n).ToDictionary(g => g.Key, g => g.Count());
-        var result = new Dictionary<(long, CategoryItemType), string>();
-        foreach (var (key, name) in bare)
-        {
-            if (counts[name] > 1)
-            {
-                var parent = ResolveParentGroupName(key) ?? L["RootLabel"];
-                result[key] = $"{parent} > {name}";
-            }
-            else
-            {
-                result[key] = name;
-            }
-        }
-        return result;
+            return (key, name, (string?)(ResolveParentGroupName(key) ?? L["RootLabel"]));
+        });
+        return CategoryDisplay.Disambiguate(items);
     }
 
     private string? ResolveParentGroupName((long Id, CategoryItemType ItemType) key)

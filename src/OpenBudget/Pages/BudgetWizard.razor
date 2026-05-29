@@ -417,24 +417,16 @@ else if (step == 3)
             }
         }
 
-        var nameCounts = labels
-            .GroupBy(l => l.BaseName)
-            .ToDictionary(g => g.Key, g => g.Count());
         var rowGroupIds = labels
             .Where(l => l.Key.ItemType == CategoryItemType.Group)
             .Select(l => l.Key.Id)
             .ToHashSet();
+        var parentGroupByKey = labels.ToDictionary(l => l.Key, l => l.ParentGroupId);
 
-        categoryNames = new Dictionary<(long Id, CategoryItemType ItemType), string>();
-        foreach (var (key, baseName, parentName, parentGroupId) in labels)
-        {
-            var prefix = !string.IsNullOrEmpty(parentName)
-                && (nameCounts[baseName] > 1
-                    || (parentGroupId.HasValue && rowGroupIds.Contains(parentGroupId.Value)));
-            categoryNames[key] = prefix
-                ? $"{parentName} › {baseName}"
-                : baseName;
-        }
+        categoryNames = CategoryDisplay.Disambiguate(
+            labels.Select(l => (l.Key, l.BaseName, l.ParentName)),
+            key => parentGroupByKey.TryGetValue(key, out var pg)
+                && pg.HasValue && rowGroupIds.Contains(pg.Value));
 
         isGenerating = false;
     }
