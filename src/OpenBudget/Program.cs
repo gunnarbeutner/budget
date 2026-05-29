@@ -241,7 +241,9 @@ static async Task<IResult> HandleUploadAsync(
     catch (Exception ex)
     {
         logger.LogError(ex, "MoneyMoney DB upload failed for source '{Source}'.", sourceName);
-        return Results.Problem("Upload failed: " + ex.Message, statusCode: StatusCodes.Status500InternalServerError);
+        // Don't echo ex.Message to the caller — it can carry file paths / SQLite internals. The
+        // detail is in the server log above; the client just needs to know it failed.
+        return Results.Problem("Upload failed. See server logs for details.", statusCode: StatusCodes.Status500InternalServerError);
     }
     finally
     {
