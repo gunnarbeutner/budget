@@ -136,16 +136,13 @@ app.MapDelete("/api/moneymoney-sources/{name}", async (
     HttpRequest request,
     CancellationToken ct) =>
 {
-    await using var db = await dbFactory.CreateDbContextAsync(ct);
     var expectedToken = Environment.GetEnvironmentVariable("MONEYMONEY_DB_UPLOAD_TOKEN");
     if (string.IsNullOrEmpty(expectedToken))
         return Results.Problem("Source deletion disabled: MONEYMONEY_DB_UPLOAD_TOKEN is not set.", statusCode: StatusCodes.Status503ServiceUnavailable);
-    if (!request.Headers.TryGetValue("Authorization", out var authHeader)
-        || !string.Equals(authHeader.ToString(), $"Bearer {expectedToken}", StringComparison.Ordinal))
-    {
+    if (!UploadAuth.IsAuthorized(request.Headers.Authorization.ToString(), expectedToken))
         return Results.Unauthorized();
-    }
 
+    await using var db = await dbFactory.CreateDbContextAsync(ct);
     var source = await db.ImportSources.FirstOrDefaultAsync(s => s.Name == name, ct);
     if (source == null) return Results.NotFound();
 
@@ -196,11 +193,8 @@ static async Task<IResult> HandleUploadAsync(
     var expectedToken = Environment.GetEnvironmentVariable("MONEYMONEY_DB_UPLOAD_TOKEN");
     if (string.IsNullOrEmpty(expectedToken))
         return Results.Problem("Upload endpoint disabled: MONEYMONEY_DB_UPLOAD_TOKEN is not set.", statusCode: StatusCodes.Status503ServiceUnavailable);
-    if (!request.Headers.TryGetValue("Authorization", out var authHeader)
-        || !string.Equals(authHeader.ToString(), $"Bearer {expectedToken}", StringComparison.Ordinal))
-    {
+    if (!UploadAuth.IsAuthorized(request.Headers.Authorization.ToString(), expectedToken))
         return Results.Unauthorized();
-    }
 
     Directory.CreateDirectory(stagingDir);
     var tempPath = Path.Combine(stagingDir, $"{sourceName}-{Guid.NewGuid():N}.sqlite");
