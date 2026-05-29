@@ -53,8 +53,31 @@ public class BudgetEntryService
     /// (project, year), deactivating any sibling that was active. If <paramref name="name"/>
     /// is null/empty we use today's date in YYYY-MM-DD form.
     /// </summary>
+    // A budget is a yearly plan; clamp to a sane window so a typo can't persist year 0 / 99999.
+    // Matches the editor's <input min/max>.
+    internal const int MinBudgetYear = 2000;
+    internal const int MaxBudgetYear = 2100;
+
+    /// <summary>Trim + reject an empty or over-long budget name. Returns the normalized value.</summary>
+    internal static string ValidateAndNormalizeName(string? name)
+    {
+        var trimmed = name?.Trim() ?? "";
+        if (trimmed.Length == 0)
+            throw new ArgumentException("Budget name must not be empty.", nameof(name));
+        if (trimmed.Length > 200)
+            throw new ArgumentException("Budget name must be 200 characters or fewer.", nameof(name));
+        return trimmed;
+    }
+
+    internal static void ValidateYear(int year)
+    {
+        if (year < MinBudgetYear || year > MaxBudgetYear)
+            throw new ArgumentException($"Budget year must be between {MinBudgetYear} and {MaxBudgetYear}.", nameof(year));
+    }
+
     public async Task<Budget> CreateBudgetAsync(int projectId, int year, string? name = null, string? notes = null, bool makeActive = true)
     {
+        ValidateYear(year);
         await using var db = await _dbFactory.CreateDbContextAsync();
         var createdAt = DateTime.UtcNow;
         var budget = new Budget
@@ -117,8 +140,11 @@ public class BudgetEntryService
         if (target == null)
             throw new ArgumentException("Budget not found", nameof(budget));
 
+        var name = ValidateAndNormalizeName(budget.Name);
+        ValidateYear(budget.Year);
+
         var now = DateTime.UtcNow;
-        target.Name = budget.Name;
+        target.Name = name;
         target.Year = budget.Year;
         target.Notes = budget.Notes;
         target.IsActive = budget.IsActive;
@@ -198,8 +224,13 @@ public class BudgetEntryService
         // value in the UPDATE's WHERE clause.
         db.Entry(target).Property(b => b.Version).OriginalValue = expectedVersion;
 
+        // Authoritative validation — the UI also checks, but the service must never persist an
+        // empty name or a nonsense year regardless of caller.
+        var name = ValidateAndNormalizeName(budget.Name);
+        ValidateYear(budget.Year);
+
         var now = DateTime.UtcNow;
-        target.Name = budget.Name;
+        target.Name = name;
         target.Year = budget.Year;
         target.Notes = budget.Notes;
         target.IsActive = budget.IsActive;

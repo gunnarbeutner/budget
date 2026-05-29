@@ -77,4 +77,45 @@ public class SaveBudgetAsyncTests
         var amounts = await t.Entries.GetMonthlyBudgetAmountsAsync(created.Id);
         Assert.Equal(60m, amounts[(101L, CategoryItemType.Category)][0]); // not 999
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Rejects_an_empty_name(string badName)
+    {
+        await using var t = new TestDb();
+        t.AddProject(1);
+        var created = t.AddBudget(1, 2026);
+        await t.Db.SaveChangesAsync();
+
+        var loaded = await t.Entries.GetBudgetAsync(created.Id);
+        loaded!.Name = badName;
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            t.Entries.SaveBudgetAsync(loaded, System.Array.Empty<(long, CategoryItemType, decimal[])>(), expectedVersion: 0));
+
+        // Nothing persisted: name unchanged, version not bumped.
+        var reloaded = await t.Entries.GetBudgetAsync(created.Id);
+        Assert.Equal("2026", reloaded!.Name);
+        Assert.Equal(0, reloaded.Version);
+    }
+
+    [Fact]
+    public async Task Rejects_an_out_of_range_year()
+    {
+        await using var t = new TestDb();
+        t.AddProject(1);
+        var created = t.AddBudget(1, 2026);
+        await t.Db.SaveChangesAsync();
+
+        var loaded = await t.Entries.GetBudgetAsync(created.Id);
+        loaded!.Year = 1800;
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            t.Entries.SaveBudgetAsync(loaded, System.Array.Empty<(long, CategoryItemType, decimal[])>(), expectedVersion: 0));
+
+        var reloaded = await t.Entries.GetBudgetAsync(created.Id);
+        Assert.Equal(2026, reloaded!.Year);
+        Assert.Equal(0, reloaded.Version);
+    }
 }

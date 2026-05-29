@@ -148,6 +148,12 @@
   <data name="SaveConflict" xml:space="preserve">
     <value>Dieses Budget wurde seit dem Öffnen in einer anderen Sitzung geändert. Deine Änderungen wurden nicht gespeichert. Lade neu, um die aktuelle Version zu erhalten (das verwirft deine Änderungen), und trage sie dann erneut ein.</value>
   </data>
+  <data name="Validation_NameRequired" xml:space="preserve">
+    <value>Bitte gib einen Budgetnamen ein.</value>
+  </data>
+  <data name="Validation_YearRange" xml:space="preserve">
+    <value>Das Jahr muss zwischen 2000 und 2100 liegen.</value>
+  </data>
   <data name="Button_Saving" xml:space="preserve">
     <value>Wird gespeichert…</value>
   </data>

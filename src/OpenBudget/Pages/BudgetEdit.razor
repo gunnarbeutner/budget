@@ -251,6 +251,10 @@
 {
     <div class="alert alert-warning" role="alert">@L["SaveConflict"]</div>
 }
+@if (validationError != null)
+{
+    <div class="alert alert-danger" role="alert">@validationError</div>
+}
 
 <div class="d-flex gap-2">
     <button class="btn btn-primary" @onclick="Save" disabled="@isSaving">@(isSaving ? L["Button_Saving"] : L["Button_Save"])</button>
@@ -288,6 +292,7 @@
     private bool notFound = false;
     private bool isSaving = false;
     private bool saveConflict = false;
+    private string? validationError;
     // The Budget.Version loaded for this edit session; passed back on save so a concurrent edit
     // by another session is detected instead of silently overwritten.
     private int loadedVersion;
@@ -730,8 +735,24 @@
     private async Task Save()
     {
         if (budget == null) return;
-        isSaving = true;
         saveConflict = false;
+        validationError = null;
+
+        // Client-side validation for a friendly message; the service validates authoritatively too.
+        var name = (budget.Name ?? "").Trim();
+        if (name.Length == 0)
+        {
+            validationError = L["Validation_NameRequired"];
+            return;
+        }
+        if (budget.Year < 2000 || budget.Year > 2100)
+        {
+            validationError = L["Validation_YearRange"];
+            return;
+        }
+        budget.Name = name;
+
+        isSaving = true;
         try
         {
             var entries = editingEntries
@@ -746,6 +767,11 @@
             // Another session saved this budget since we loaded it. Don't overwrite their work —
             // surface a conflict and let the user reload (the banner / reload discards edits).
             saveConflict = true;
+        }
+        catch (ArgumentException ex)
+        {
+            // Backstop: the service rejected the input (should be caught client-side above).
+            validationError = ex.Message;
         }
         finally
         {
