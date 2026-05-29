@@ -31,10 +31,10 @@ else
     <DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
     <ProjectParentCard HasOwnChildren="hasOwnChildren"
-                       ChildProjectNames="childProjectNames"
+                       ChildProjectNames="@childProjectNames"
                        ParentProjectId="budget.ParentProjectId"
                        EligibleParents="eligibleParents"
-                       SaveError="parentSaveError"
+                       SaveError="@parentSaveError"
                        OnParentChanged="OnParentChanged" />
 
     <ProjectCategoryAssignmentsCard Assignments="budget.CategoryAssignments.ToList()"
