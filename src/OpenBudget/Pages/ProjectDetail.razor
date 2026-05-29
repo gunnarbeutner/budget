@@ -121,8 +121,21 @@ else
     private string? parentSaveError;
 
 
-    protected override async Task OnInitializedAsync()
+    // Guards the per-project load so it runs once on first render and again only when the
+    // {ProjectId} route param changes — i.e. a client-side switch via the header's project
+    // picker, where the component is reused and OnInitializedAsync would not re-run.
+    private int _loadedProjectId;
+
+    protected override async Task OnParametersSetAsync()
     {
+        if (_loadedProjectId == ProjectId) return;
+        _loadedProjectId = ProjectId;
+        // Reset transient dialog/error state and clear budget so the skeleton shows while the new
+        // project loads; the load methods below overwrite the rest of the per-project state.
+        budget = null;
+        showDeleteDialog = false;
+        parentSaveError = null;
+        isLoadingCategoryTypes = false;
         await LoadBudget();
         await LoadTrackingItems();
         await LoadIncomeExpenseConfiguration();
