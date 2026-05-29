@@ -46,61 +46,48 @@
       </xsd:complexType>
     </xsd:element>
   </xsd:schema>
-  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
-  <resheader name="version"><value>2.0</value></resheader>
-  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
-  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
-
-  <data name="PageTitle" xml:space="preserve"><value>Browse</value></data>
-  <data name="PageTitle_WithProject" xml:space="preserve"><value>Browse · {0}</value></data>
-  <data name="NotFound_Heading" xml:space="preserve"><value>Project not found</value></data>
-  <data name="NotFound_Body_Before" xml:space="preserve"><value>Go back to the </value></data>
-  <data name="NotFound_Body_LinkText" xml:space="preserve"><value>dashboard</value></data>
-  <data name="NotFound_Body_After" xml:space="preserve"><value>.</value></data>
-
-  <data name="Aria_BackToProject" xml:space="preserve"><value>Back to project</value></data>
-  <data name="Aria_Previous" xml:space="preserve"><value>Previous</value></data>
-  <data name="Aria_Next" xml:space="preserve"><value>Next</value></data>
-  <data name="Aria_Period" xml:space="preserve"><value>Period</value></data>
-  <data name="Button_Today" xml:space="preserve"><value>Today</value></data>
-  <data name="Button_Month" xml:space="preserve"><value>Month</value></data>
-  <data name="Button_YTD" xml:space="preserve"><value>YTD</value></data>
-  <data name="Button_Year" xml:space="preserve"><value>Year</value></data>
-  <data name="Heading_Year" xml:space="preserve"><value>Year {0}</value></data>
-  <data name="Heading_YTD" xml:space="preserve"><value>YTD through {0}</value></data>
-
-  <data name="Tree_Heading" xml:space="preserve"><value>Browse</value></data>
-  <data name="Tree_AllTransactions" xml:space="preserve"><value>All transactions</value></data>
-  <data name="Tree_Section_Accounts" xml:space="preserve"><value>Accounts</value></data>
-  <data name="Tree_ShowRelatedAccounts" xml:space="preserve"><value>Show {0} more</value></data>
-  <data name="Tree_HideRelatedAccounts" xml:space="preserve"><value>Show only assigned</value></data>
-  <data name="Tree_Section_Categories" xml:space="preserve"><value>Categories</value></data>
-  <data name="Aria_Tree" xml:space="preserve"><value>Browse tree</value></data>
-  <data name="Aria_ToggleTree" xml:space="preserve"><value>Toggle browse tree</value></data>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
   <data name="Aria_Close" xml:space="preserve"><value>Close</value></data>
-
-  <data name="Header_AllTransactions" xml:space="preserve"><value>All transactions</value></data>
-  <data name="Header_Available" xml:space="preserve"><value>Remaining:</value></data>
-  <data name="Header_Expected" xml:space="preserve"><value>Expected:</value></data>
-  <data name="Header_Budget" xml:space="preserve"><value>Budget:</value></data>
-  <data name="Header_CurrentBalance" xml:space="preserve"><value>Current balance</value></data>
-
+  <data name="Aria_ToggleTree" xml:space="preserve"><value>Toggle browse tree</value></data>
+  <data name="Aria_Tree" xml:space="preserve"><value>Browse tree</value></data>
   <data name="Chart_AriaGranularity" xml:space="preserve"><value>Chart granularity</value></data>
   <data name="Chart_Collapse" xml:space="preserve"><value>Collapse chart</value></data>
-  <data name="Chart_Expand" xml:space="preserve"><value>Expand chart</value></data>
   <data name="Chart_D" xml:space="preserve"><value>D</value></data>
+  <data name="Chart_Expand" xml:space="preserve"><value>Expand chart</value></data>
   <data name="Chart_M" xml:space="preserve"><value>M</value></data>
   <data name="Chart_Q" xml:space="preserve"><value>Q</value></data>
   <data name="Chart_Y" xml:space="preserve"><value>Y</value></data>
-
-  <data name="Filter_SearchPlaceholder" xml:space="preserve"><value>Search name or comment…</value></data>
+  <data name="Empty_NoTransactions" xml:space="preserve"><value>No transactions match the current filter.</value></data>
   <data name="Filter_AnyAccount" xml:space="preserve"><value>Any account</value></data>
   <data name="Filter_Clear" xml:space="preserve"><value>Clear filters</value></data>
-
-  <data name="Empty_NoTransactions" xml:space="preserve"><value>No transactions match the current filter.</value></data>
+  <data name="Filter_SearchPlaceholder" xml:space="preserve"><value>Search name or comment…</value></data>
+  <data name="Footer_Sum" xml:space="preserve"><value>Sum:</value></data>
+  <data name="Footer_Total" xml:space="preserve"><value>{0} transactions</value></data>
+  <data name="Header_AllTransactions" xml:space="preserve"><value>All transactions</value></data>
+  <data name="Header_Available" xml:space="preserve"><value>Remaining:</value></data>
+  <data name="Header_Budget" xml:space="preserve"><value>Budget:</value></data>
+  <data name="Header_CurrentBalance" xml:space="preserve"><value>Current balance</value></data>
+  <data name="Header_Expected" xml:space="preserve"><value>Expected:</value></data>
+  <data name="Heading_YTD" xml:space="preserve"><value>YTD through {0}</value></data>
+  <data name="Heading_Year" xml:space="preserve"><value>Year {0}</value></data>
+  <data name="NotFound_Body_After" xml:space="preserve"><value>.</value></data>
+  <data name="NotFound_Body_Before" xml:space="preserve"><value>Go back to the </value></data>
+  <data name="NotFound_Body_LinkText" xml:space="preserve"><value>dashboard</value></data>
+  <data name="NotFound_Heading" xml:space="preserve"><value>Project not found</value></data>
+  <data name="PageTitle" xml:space="preserve"><value>Browse</value></data>
+  <data name="PageTitle_WithProject" xml:space="preserve"><value>Browse · {0}</value></data>
+  <data name="Tree_Heading" xml:space="preserve"><value>Browse</value></data>
   <data name="Tx_SplitChild" xml:space="preserve"><value>Split</value></data>
   <data name="Tx_SplitChildTitle" xml:space="preserve"><value>One leg of a split transaction.</value></data>
-
-  <data name="Footer_Total" xml:space="preserve"><value>{0} transactions</value></data>
-  <data name="Footer_Sum" xml:space="preserve"><value>Sum:</value></data>
 </root>

@@ -46,61 +46,48 @@
       </xsd:complexType>
     </xsd:element>
   </xsd:schema>
-  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
-  <resheader name="version"><value>2.0</value></resheader>
-  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
-  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
-
-  <data name="PageTitle" xml:space="preserve"><value>Durchsuchen</value></data>
-  <data name="PageTitle_WithProject" xml:space="preserve"><value>Durchsuchen · {0}</value></data>
-  <data name="NotFound_Heading" xml:space="preserve"><value>Projekt nicht gefunden</value></data>
-  <data name="NotFound_Body_Before" xml:space="preserve"><value>Zurück zum </value></data>
-  <data name="NotFound_Body_LinkText" xml:space="preserve"><value>Dashboard</value></data>
-  <data name="NotFound_Body_After" xml:space="preserve"><value>.</value></data>
-
-  <data name="Aria_BackToProject" xml:space="preserve"><value>Zurück zum Projekt</value></data>
-  <data name="Aria_Previous" xml:space="preserve"><value>Zurück</value></data>
-  <data name="Aria_Next" xml:space="preserve"><value>Weiter</value></data>
-  <data name="Aria_Period" xml:space="preserve"><value>Zeitraum</value></data>
-  <data name="Button_Today" xml:space="preserve"><value>Heute</value></data>
-  <data name="Button_Month" xml:space="preserve"><value>Monat</value></data>
-  <data name="Button_YTD" xml:space="preserve"><value>YTD</value></data>
-  <data name="Button_Year" xml:space="preserve"><value>Jahr</value></data>
-  <data name="Heading_Year" xml:space="preserve"><value>Jahr {0}</value></data>
-  <data name="Heading_YTD" xml:space="preserve"><value>YTD bis {0}</value></data>
-
-  <data name="Tree_Heading" xml:space="preserve"><value>Durchsuchen</value></data>
-  <data name="Tree_AllTransactions" xml:space="preserve"><value>Alle Buchungen</value></data>
-  <data name="Tree_Section_Accounts" xml:space="preserve"><value>Konten</value></data>
-  <data name="Tree_ShowRelatedAccounts" xml:space="preserve"><value>{0} weitere anzeigen</value></data>
-  <data name="Tree_HideRelatedAccounts" xml:space="preserve"><value>Nur zugewiesene</value></data>
-  <data name="Tree_Section_Categories" xml:space="preserve"><value>Kategorien</value></data>
-  <data name="Aria_Tree" xml:space="preserve"><value>Navigationsbaum</value></data>
-  <data name="Aria_ToggleTree" xml:space="preserve"><value>Navigationsbaum umschalten</value></data>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
   <data name="Aria_Close" xml:space="preserve"><value>Schließen</value></data>
-
-  <data name="Header_AllTransactions" xml:space="preserve"><value>Alle Buchungen</value></data>
-  <data name="Header_Available" xml:space="preserve"><value>Verbleibend:</value></data>
-  <data name="Header_Expected" xml:space="preserve"><value>Erwartet:</value></data>
-  <data name="Header_Budget" xml:space="preserve"><value>Budget:</value></data>
-  <data name="Header_CurrentBalance" xml:space="preserve"><value>Aktueller Kontostand</value></data>
-
+  <data name="Aria_ToggleTree" xml:space="preserve"><value>Navigationsbaum umschalten</value></data>
+  <data name="Aria_Tree" xml:space="preserve"><value>Navigationsbaum</value></data>
   <data name="Chart_AriaGranularity" xml:space="preserve"><value>Diagrammgranularität</value></data>
   <data name="Chart_Collapse" xml:space="preserve"><value>Diagramm einklappen</value></data>
-  <data name="Chart_Expand" xml:space="preserve"><value>Diagramm ausklappen</value></data>
   <data name="Chart_D" xml:space="preserve"><value>T</value></data>
+  <data name="Chart_Expand" xml:space="preserve"><value>Diagramm ausklappen</value></data>
   <data name="Chart_M" xml:space="preserve"><value>M</value></data>
   <data name="Chart_Q" xml:space="preserve"><value>Q</value></data>
   <data name="Chart_Y" xml:space="preserve"><value>J</value></data>
-
-  <data name="Filter_SearchPlaceholder" xml:space="preserve"><value>Name oder Kommentar suchen…</value></data>
+  <data name="Empty_NoTransactions" xml:space="preserve"><value>Keine Buchungen im aktuellen Filter.</value></data>
   <data name="Filter_AnyAccount" xml:space="preserve"><value>Alle Konten</value></data>
   <data name="Filter_Clear" xml:space="preserve"><value>Filter zurücksetzen</value></data>
-
-  <data name="Empty_NoTransactions" xml:space="preserve"><value>Keine Buchungen im aktuellen Filter.</value></data>
+  <data name="Filter_SearchPlaceholder" xml:space="preserve"><value>Name oder Kommentar suchen…</value></data>
+  <data name="Footer_Sum" xml:space="preserve"><value>Summe:</value></data>
+  <data name="Footer_Total" xml:space="preserve"><value>{0} Buchungen</value></data>
+  <data name="Header_AllTransactions" xml:space="preserve"><value>Alle Buchungen</value></data>
+  <data name="Header_Available" xml:space="preserve"><value>Verbleibend:</value></data>
+  <data name="Header_Budget" xml:space="preserve"><value>Budget:</value></data>
+  <data name="Header_CurrentBalance" xml:space="preserve"><value>Aktueller Kontostand</value></data>
+  <data name="Header_Expected" xml:space="preserve"><value>Erwartet:</value></data>
+  <data name="Heading_YTD" xml:space="preserve"><value>YTD bis {0}</value></data>
+  <data name="Heading_Year" xml:space="preserve"><value>Jahr {0}</value></data>
+  <data name="NotFound_Body_After" xml:space="preserve"><value>.</value></data>
+  <data name="NotFound_Body_Before" xml:space="preserve"><value>Zurück zum </value></data>
+  <data name="NotFound_Body_LinkText" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="NotFound_Heading" xml:space="preserve"><value>Projekt nicht gefunden</value></data>
+  <data name="PageTitle" xml:space="preserve"><value>Durchsuchen</value></data>
+  <data name="PageTitle_WithProject" xml:space="preserve"><value>Durchsuchen · {0}</value></data>
+  <data name="Tree_Heading" xml:space="preserve"><value>Durchsuchen</value></data>
   <data name="Tx_SplitChild" xml:space="preserve"><value>Split</value></data>
   <data name="Tx_SplitChildTitle" xml:space="preserve"><value>Teil einer Splitbuchung.</value></data>
-
-  <data name="Footer_Total" xml:space="preserve"><value>{0} Buchungen</value></data>
-  <data name="Footer_Sum" xml:space="preserve"><value>Summe:</value></data>
 </root>
