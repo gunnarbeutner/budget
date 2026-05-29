@@ -12,7 +12,7 @@ else if (RenderMode == CategoryTreeRenderMode.Dropdown)
 }
 
 @code {
-    [Parameter] public CategoryGroupWithChildCount CategoryGroup { get; set; } = null!;
+    [Parameter, EditorRequired] public CategoryGroupWithChildCount CategoryGroup { get; set; } = null!;
     [Parameter] public int Level { get; set; } = 0;
     [Parameter] public CategoryTreeRenderMode RenderMode { get; set; } = CategoryTreeRenderMode.Checkbox;
     [Parameter] public bool ParentSelected { get; set; } = false;
