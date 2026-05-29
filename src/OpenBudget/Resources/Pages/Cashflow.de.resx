@@ -58,92 +58,38 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="PageTitle" xml:space="preserve">
-    <value>Cashflow</value>
+  <data name="Alert_CurrentlyNegative_BodyPart" xml:space="preserve">
+    <value> — unter {0}. Prognostizierter Tiefststand {1} am {2}. Eine Aufstockung um ca. {3} jetzt würde die Linie bis Jahresende über {4} halten.</value>
   </data>
-  <data name="Budget_YearMismatch" xml:space="preserve">
-    <value>Dieses Budget gilt für {0}, nicht für {1}.</value>
+  <data name="Alert_CurrentlyNegative_HeadingPart" xml:space="preserve">
+    <value>Der Saldo beträgt aktuell {0}</value>
   </data>
-  <data name="PageTitle_WithProject" xml:space="preserve">
-    <value>Cashflow — {0}</value>
+  <data name="Alert_FutureNegative_BodyPart" xml:space="preserve">
+    <value> und erreicht den Tiefststand von {0} am {1}. Eine Aufstockung des Projekts um ca. {2} vor dem {3} hält die Linie ganzjährig über {4}.</value>
   </data>
-  <data name="Heading_Cashflow" xml:space="preserve">
-    <value>Cashflow</value>
+  <data name="Alert_FutureNegative_HeadingPart_Floor" xml:space="preserve">
+    <value>Der Saldo fällt voraussichtlich am {1} erstmals unter {0}</value>
   </data>
-  <data name="Heading_Cashflow_WithProject" xml:space="preserve">
-    <value>Cashflow — {0}</value>
+  <data name="Alert_FutureNegative_HeadingPart_Zero" xml:space="preserve">
+    <value>Der Saldo wird voraussichtlich am {0} erstmals negativ</value>
   </data>
-  <data name="NotFound_Heading" xml:space="preserve">
-    <value>Nicht gefunden</value>
+  <data name="Alert_PastDip_After" xml:space="preserve">
+    <value> am {0} in diesem Jahr. Aktuell {1} und voraussichtlich über {2}.</value>
   </data>
-  <data name="NotFound_Body_Before" xml:space="preserve">
-    <value>Kein Projekt angegeben. Öffnen Sie diese Seite über ein Projekt im </value>
-  </data>
-  <data name="NotFound_Body_LinkText" xml:space="preserve">
-    <value>Dashboard</value>
-  </data>
-  <data name="NotFound_Body_After" xml:space="preserve">
-    <value>.</value>
-  </data>
-  <data name="Label_Year" xml:space="preserve">
-    <value>Jahr</value>
-  </data>
-  <data name="Label_BudgetOptional" xml:space="preserve">
-    <value>Budget (optional)</value>
-  </data>
-  <data name="Option_NoBudget" xml:space="preserve">
-    <value>-- Kein Budget --</value>
-  </data>
-  <data name="Option_BudgetEntry" xml:space="preserve">
-    <value>{0} — {1}</value>
-  </data>
-  <data name="Option_BudgetEntry_Active" xml:space="preserve">
-    <value>{0} — {1} (aktiv)</value>
-  </data>
-  <data name="Label_IncomeProjection" xml:space="preserve">
-    <value>Einnahmen-Prognose</value>
+  <data name="Alert_PastDip_Before" xml:space="preserve">
+    <value>Der Saldo sank zwischenzeitlich auf </value>
   </data>
   <data name="Aria_IncomeProjectionMode" xml:space="preserve">
     <value>Einnahmen-Prognosemodus</value>
   </data>
-  <data name="Projection_Budget" xml:space="preserve">
-    <value>Aus dem Budget</value>
-  </data>
-  <data name="Projection_Budget_Help" xml:space="preserve">
-    <value>Künftige Monate übernehmen die monatlichen Einnahmen pro Kategorie direkt aus dem ausgewählten Budget — Saisonalität und Einmalposten (Nachzahlung, Boni) bleiben erhalten.</value>
-  </data>
-  <data name="Projection_Breakeven" xml:space="preserve">
-    <value>Auf Kostendeckung</value>
-  </data>
-  <data name="Projection_Breakeven_Help" xml:space="preserve">
-    <value>Künftige Monate zeigen Einnahmen auf dem Niveau, das nötig ist, um die budgetierten Ausgaben zu decken.</value>
-  </data>
-  <data name="Projection_LastMonth" xml:space="preserve">
-    <value>Letzten Monat wiederholen</value>
-  </data>
-  <data name="Projection_LastMonth_Help" xml:space="preserve">
-    <value>Künftige Monate wiederholen den letzten abgeschlossenen Monat jeder Einnahmenkategorie — nützlich, um zu prüfen, ob die aktuellen Einnahmen die geplanten Ausgaben decken.</value>
+  <data name="BalanceFloor_Help" xml:space="preserve">
+    <value>Betrifft nur die Prognose-Warnung — ändert die prognostizierten Einnahmen nicht. Plane lieber eine einmalige Aufstockung als dauerhaft höhere Einnahmen.</value>
   </data>
   <data name="BalanceFloor_Label" xml:space="preserve">
     <value>Warnung, wenn Saldo unter</value>
   </data>
-  <data name="BalanceFloor_Help" xml:space="preserve">
-    <value>Betrifft nur die Prognose-Warnung — ändert die prognostizierten Einnahmen nicht. Plane lieber eine einmalige Aufstockung als dauerhaft höhere Einnahmen.</value>
-  </data>
-  <data name="Status_Loading" xml:space="preserve">
-    <value>Wird geladen...</value>
-  </data>
-  <data name="Card_MonthlyCashflow" xml:space="preserve">
-    <value>Monatlicher Cashflow - {0}</value>
-  </data>
-  <data name="Card_AccountBalanceWatermarks" xml:space="preserve">
-    <value>Kontostand &amp; Tiefststände - {0}</value>
-  </data>
-  <data name="Balance_YearMin" xml:space="preserve">
-    <value>Jahres-Tiefstand:</value>
-  </data>
-  <data name="Balance_YearMin_On" xml:space="preserve">
-    <value>am {0}</value>
+  <data name="Balance_NoAccountsAssigned_After" xml:space="preserve">
+    <value> und verknüpfen Sie die MoneyMoney-Konten, die dieses Projekt finanzieren, um eine echte Saldolinie anzuzeigen.</value>
   </data>
   <data name="Balance_NoAccountsAssigned_Before" xml:space="preserve">
     <value>Diesem Projekt sind keine Konten zugeordnet. Öffnen Sie die </value>
@@ -151,167 +97,29 @@
   <data name="Balance_NoAccountsAssigned_LinkText" xml:space="preserve">
     <value>Projekteinstellungen</value>
   </data>
-  <data name="Balance_NoAccountsAssigned_After" xml:space="preserve">
-    <value> und verknüpfen Sie die MoneyMoney-Konten, die dieses Projekt finanzieren, um eine echte Saldolinie anzuzeigen.</value>
-  </data>
   <data name="Balance_NoData" xml:space="preserve">
     <value>Keine Daten.</value>
-  </data>
-  <data name="Balance_StartingBalance_Before" xml:space="preserve">
-    <value>Anfangsstand 1. Januar: </value>
   </data>
   <data name="Balance_StartingBalance_After" xml:space="preserve">
     <value>. Die durchgezogene Linie zeigt echte Transaktionen; der schattierte Bereich zeigt prognostizierte Beträge, verteilt über die Tage jedes Monats anhand der aus der Historie gelernten Tagesmuster pro Kategorie.</value>
   </data>
-  <data name="Floor_TheXFloor" xml:space="preserve">
-    <value>die Untergrenze von {0}</value>
+  <data name="Balance_StartingBalance_Before" xml:space="preserve">
+    <value>Anfangsstand 1. Januar: </value>
   </data>
-  <data name="Floor_Zero" xml:space="preserve">
-    <value>null</value>
+  <data name="Balance_YearMin" xml:space="preserve">
+    <value>Jahres-Tiefstand:</value>
   </data>
-  <data name="Alert_FutureNegative_HeadingPart_Zero" xml:space="preserve">
-    <value>Der Saldo wird voraussichtlich am {0} erstmals negativ</value>
+  <data name="Balance_YearMin_On" xml:space="preserve">
+    <value>am {0}</value>
   </data>
-  <data name="Alert_FutureNegative_HeadingPart_Floor" xml:space="preserve">
-    <value>Der Saldo fällt voraussichtlich am {1} erstmals unter {0}</value>
+  <data name="Budget_YearMismatch" xml:space="preserve">
+    <value>Dieses Budget gilt für {0}, nicht für {1}.</value>
   </data>
-  <data name="Alert_FutureNegative_BodyPart" xml:space="preserve">
-    <value> und erreicht den Tiefststand von {0} am {1}. Eine Aufstockung des Projekts um ca. {2} vor dem {3} hält die Linie ganzjährig über {4}.</value>
+  <data name="Card_AccountBalanceWatermarks" xml:space="preserve">
+    <value>Kontostand &amp; Tiefststände - {0}</value>
   </data>
-  <data name="Alert_CurrentlyNegative_HeadingPart" xml:space="preserve">
-    <value>Der Saldo beträgt aktuell {0}</value>
-  </data>
-  <data name="Alert_CurrentlyNegative_BodyPart" xml:space="preserve">
-    <value> — unter {0}. Prognostizierter Tiefststand {1} am {2}. Eine Aufstockung um ca. {3} jetzt würde die Linie bis Jahresende über {4} halten.</value>
-  </data>
-  <data name="Alert_PastDip_Before" xml:space="preserve">
-    <value>Der Saldo sank zwischenzeitlich auf </value>
-  </data>
-  <data name="Alert_PastDip_After" xml:space="preserve">
-    <value> am {0} in diesem Jahr. Aktuell {1} und voraussichtlich über {2}.</value>
-  </data>
-  <data name="Table_Month" xml:space="preserve">
-    <value>Monat</value>
-  </data>
-  <data name="Table_LowestBalance" xml:space="preserve">
-    <value>Tiefster Stand</value>
-  </data>
-  <data name="Table_HighestBalance" xml:space="preserve">
-    <value>Höchster Stand</value>
-  </data>
-  <data name="Table_MonthEndBalance" xml:space="preserve">
-    <value>Monatsendstand</value>
-  </data>
-  <data name="Card_IncomeContributionCalculator" xml:space="preserve">
-    <value>Einnahmen-Beitragsrechner</value>
-  </data>
-  <data name="Calculator_HowItWorks_Summary" xml:space="preserve">
-    <value>So funktioniert's</value>
-  </data>
-  <data name="Calculator_HowItWorks_Budget" xml:space="preserve">
-    <value>Einnahmen und Ausgaben für künftige Monate kommen direkt aus den monatlichen Beträgen pro Kategorie im ausgewählten Budget. Die Aufteilungsanteile unten beschreiben, wie die Ausgaben auf die Einnahmequellen verteilt würden — sie beeinflussen die Prognose in diesem Modus nicht.</value>
-  </data>
-  <data name="Calculator_HowItWorks_Recent" xml:space="preserve">
-    <value>Der letzte abgeschlossene Kalendermonat jeder Einnahmenkategorie wird konstant über die verbleibenden Monate wiederholt. „Prognose Jahr" = bisherige Ist-Werte + Einnahmen des Vormonats × verbleibende Monate. So lässt sich prüfen, ob die aktuellen Einnahmen die budgetierten Ausgaben für den Rest des Jahres decken.</value>
-  </data>
-  <data name="Calculator_HowItWorks_Breakeven" xml:space="preserve">
-    <value>Der Aufteilungsanteil jeder Zeile bestimmt, welchen Anteil der prognostizierten Jahresausgaben diese Einnahmequelle decken muss. „Erforderlich" = Gesamtausgaben × Anteil. „Verbleibend" = Einnahmen der Quelle minus erforderlicher Beitrag. Passe die Anteile an, um verschiedene Verteilungen durchzuspielen; „Speichern" hinterlegt sie am ausgewählten Budget.</value>
-  </data>
-  <data name="Calculator_Range_Budget" xml:space="preserve">
-    <value>{0} sind für Einnahmen und Ausgaben aus dem ausgewählten Budget prognostiziert; frühere Monate verwenden echte Transaktionen.</value>
-  </data>
-  <data name="Calculator_Range_Recent" xml:space="preserve">
-    <value>{0} sind prognostiziert — Ausgaben aus dem ausgewählten Budget, Einnahmen aus den Ist-Werten von {1} wiederholt; frühere Monate verwenden echte Transaktionen.</value>
-  </data>
-  <data name="Calculator_Range_Breakeven" xml:space="preserve">
-    <value>{0} sind aus dem ausgewählten Budget prognostiziert; frühere Monate verwenden echte Transaktionen.</value>
-  </data>
-  <data name="Table_IncomeCategory" xml:space="preserve">
-    <value>Einnahmenkategorie</value>
-  </data>
-  <data name="Table_Origin" xml:space="preserve">
-    <value>Aus</value>
-  </data>
-  <data name="Rollup_CollisionWarning" xml:space="preserve">
-    <value>Das übergeordnete Projekt und ein oder mehrere Unterprojekte erfassen dieselbe Kategorie. Deren Transaktionen werden in der Zusammenfassung doppelt gezählt; entferne das doppelte Erfassungselement auf einer Seite.</value>
-  </data>
-  <data name="Rollup_ItemKind_Group" xml:space="preserve">
-    <value>Gruppe</value>
-  </data>
-  <data name="Rollup_ItemKind_Category" xml:space="preserve">
-    <value>Kategorie</value>
-  </data>
-  <data name="Table_SourceMonth" xml:space="preserve">
-    <value>Quellmonat ({0})</value>
-  </data>
-  <data name="Table_ProjectedYearly" xml:space="preserve">
-    <value>Prognostiziert jährlich</value>
-  </data>
-  <data name="Table_TotalIncome" xml:space="preserve">
-    <value>Gesamteinnahmen</value>
-  </data>
-  <data name="Table_VsProjectedYearlyExpenses" xml:space="preserve">
-    <value>vs. prognostizierte Jahresausgaben ({0})</value>
-  </data>
-  <data name="Label_ContributionSplit" xml:space="preserve">
-    <value>Beitragsaufteilung</value>
-  </data>
-  <data name="Splits_Total" xml:space="preserve">
-    <value>Gesamt: {0}%</value>
-  </data>
-  <data name="Splits_ShouldSumTo100" xml:space="preserve">
-    <value> — Summe sollte 100% ergeben</value>
-  </data>
-  <data name="Splits_UnsavedChanges" xml:space="preserve">
-    <value>ungespeicherte Änderungen</value>
-  </data>
-  <data name="Button_Saving" xml:space="preserve">
-    <value>Wird gespeichert…</value>
-  </data>
-  <data name="Button_SaveSplits" xml:space="preserve">
-    <value>Aufteilung speichern</value>
-  </data>
-  <data name="Splits_SelectBudgetToSave" xml:space="preserve">
-    <value>Wählen Sie ein Budget aus, um die Aufteilung zu speichern.</value>
-  </data>
-  <data name="Table_YearlyIncome" xml:space="preserve">
-    <value>Jahreseinnahmen</value>
-  </data>
-  <data name="Table_SplitPercent" xml:space="preserve">
-    <value>Anteil %</value>
-  </data>
-  <data name="Table_RequiredContribution" xml:space="preserve">
-    <value>Erforderlicher Beitrag</value>
-  </data>
-  <data name="Table_Remaining" xml:space="preserve">
-    <value>Verbleibend</value>
-  </data>
-  <data name="Table_Total" xml:space="preserve">
-    <value>Gesamt</value>
-  </data>
-  <data name="NoIncomeCategories" xml:space="preserve">
-    <value>Keine Einnahmenkategorien für den ausgewählten Zeitraum gefunden.</value>
-  </data>
-  <data name="Card_Summary" xml:space="preserve">
-    <value>Zusammenfassung</value>
-  </data>
-  <data name="Summary_TotalIncome" xml:space="preserve">
-    <value>Gesamteinnahmen</value>
-  </data>
-  <data name="Summary_TotalExpenses" xml:space="preserve">
-    <value>Gesamtausgaben</value>
-  </data>
-  <data name="Summary_NetCashflow" xml:space="preserve">
-    <value>Netto-Cashflow</value>
-  </data>
-  <data name="NoData_YearAndFilters" xml:space="preserve">
-    <value>Keine Daten für das ausgewählte Jahr und die Filter gefunden.</value>
-  </data>
-  <data name="Chart_DatasetIncome" xml:space="preserve">
-    <value>{0} (Einnahmen)</value>
-  </data>
-  <data name="Chart_DatasetExpense" xml:space="preserve">
-    <value>{0} (Ausgaben)</value>
+  <data name="Card_MonthlyCashflow" xml:space="preserve">
+    <value>Monatlicher Cashflow - {0}</value>
   </data>
   <data name="Chart_AmountAxis" xml:space="preserve">
     <value>Betrag (€)</value>
@@ -322,28 +130,85 @@
   <data name="Chart_BalanceLabel" xml:space="preserve">
     <value>Saldo</value>
   </data>
-  <data name="Card_WhatIfs" xml:space="preserve">
-    <value>Was-wäre-wenn-Szenarien</value>
+  <data name="Chart_DatasetExpense" xml:space="preserve">
+    <value>{0} (Ausgaben)</value>
   </data>
-  <data name="WhatIfs_Help" xml:space="preserve">
-    <value>Einmalige datierte Anpassungen — fließen nur in die Saldoprojektion ein, prognostizierte Einnahmen und Ausgaben bleiben unverändert. Bereits abgerechnete Tage werden ignoriert. Sitzungsbezogen, geht beim Neuladen verloren.</value>
+  <data name="Chart_DatasetIncome" xml:space="preserve">
+    <value>{0} (Einnahmen)</value>
   </data>
-  <data name="WhatIf_Add" xml:space="preserve">
-    <value>Hinzufügen</value>
+  <data name="Floor_TheXFloor" xml:space="preserve">
+    <value>die Untergrenze von {0}</value>
   </data>
-  <data name="WhatIf_Remove" xml:space="preserve">
-    <value>Entfernen</value>
+  <data name="Floor_Zero" xml:space="preserve">
+    <value>null</value>
   </data>
-  <data name="WhatIf_NotePlaceholder" xml:space="preserve">
-    <value>Notiz (optional)</value>
+  <data name="Label_BudgetOptional" xml:space="preserve">
+    <value>Budget (optional)</value>
   </data>
-  <data name="WhatIf_NoCategory" xml:space="preserve">
-    <value>Keine Kategorie (nur Saldo)</value>
+  <data name="Label_IncomeProjection" xml:space="preserve">
+    <value>Einnahmen-Prognose</value>
   </data>
-  <data name="Section_Income" xml:space="preserve">
-    <value>Einnahmen</value>
+  <data name="NoData_YearAndFilters" xml:space="preserve">
+    <value>Keine Daten für das ausgewählte Jahr und die Filter gefunden.</value>
   </data>
-  <data name="Section_Expenses" xml:space="preserve">
-    <value>Ausgaben</value>
+  <data name="NotFound_Body_After" xml:space="preserve">
+    <value>.</value>
+  </data>
+  <data name="NotFound_Body_Before" xml:space="preserve">
+    <value>Kein Projekt angegeben. Öffnen Sie diese Seite über ein Projekt im </value>
+  </data>
+  <data name="NotFound_Body_LinkText" xml:space="preserve">
+    <value>Dashboard</value>
+  </data>
+  <data name="NotFound_Heading" xml:space="preserve">
+    <value>Nicht gefunden</value>
+  </data>
+  <data name="Option_BudgetEntry" xml:space="preserve">
+    <value>{0} — {1}</value>
+  </data>
+  <data name="Option_BudgetEntry_Active" xml:space="preserve">
+    <value>{0} — {1} (aktiv)</value>
+  </data>
+  <data name="Option_NoBudget" xml:space="preserve">
+    <value>-- Kein Budget --</value>
+  </data>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Cashflow</value>
+  </data>
+  <data name="PageTitle_WithProject" xml:space="preserve">
+    <value>Cashflow — {0}</value>
+  </data>
+  <data name="Projection_Breakeven" xml:space="preserve">
+    <value>Auf Kostendeckung</value>
+  </data>
+  <data name="Projection_Breakeven_Help" xml:space="preserve">
+    <value>Künftige Monate zeigen Einnahmen auf dem Niveau, das nötig ist, um die budgetierten Ausgaben zu decken.</value>
+  </data>
+  <data name="Projection_Budget" xml:space="preserve">
+    <value>Aus dem Budget</value>
+  </data>
+  <data name="Projection_Budget_Help" xml:space="preserve">
+    <value>Künftige Monate übernehmen die monatlichen Einnahmen pro Kategorie direkt aus dem ausgewählten Budget — Saisonalität und Einmalposten (Nachzahlung, Boni) bleiben erhalten.</value>
+  </data>
+  <data name="Projection_LastMonth" xml:space="preserve">
+    <value>Letzten Monat wiederholen</value>
+  </data>
+  <data name="Projection_LastMonth_Help" xml:space="preserve">
+    <value>Künftige Monate wiederholen den letzten abgeschlossenen Monat jeder Einnahmenkategorie — nützlich, um zu prüfen, ob die aktuellen Einnahmen die geplanten Ausgaben decken.</value>
+  </data>
+  <data name="Status_Loading" xml:space="preserve">
+    <value>Wird geladen...</value>
+  </data>
+  <data name="Table_HighestBalance" xml:space="preserve">
+    <value>Höchster Stand</value>
+  </data>
+  <data name="Table_LowestBalance" xml:space="preserve">
+    <value>Tiefster Stand</value>
+  </data>
+  <data name="Table_Month" xml:space="preserve">
+    <value>Monat</value>
+  </data>
+  <data name="Table_MonthEndBalance" xml:space="preserve">
+    <value>Monatsendstand</value>
   </data>
 </root>
