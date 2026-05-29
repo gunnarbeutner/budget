@@ -1,0 +1,37 @@
+@using OpenBudget.Services
+@inject IStringLocalizer<CashflowSummaryCard> L
+
+@* Cashflow summary: yearly income / expenses / net totals. Purely presentational — the page
+   computes the three figures and passes them in. *@
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">@L["Card_Summary"]</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <h6>@L["Summary_TotalIncome"]</h6>
+                        <h3 class="text-success">@Formatting.FormatMoney(TotalIncome)</h3>
+                    </div>
+                    <div class="col-md-4">
+                        <h6>@L["Summary_TotalExpenses"]</h6>
+                        <h3 class="text-danger">@Formatting.FormatMoney(TotalExpenses)</h3>
+                    </div>
+                    <div class="col-md-4">
+                        <h6>@L["Summary_NetCashflow"]</h6>
+                        <h3 class="@(NetCashflow >= 0 ? "text-success" : "text-danger")">@Formatting.FormatMoney(NetCashflow)</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public decimal TotalIncome { get; set; }
+    [Parameter, EditorRequired] public decimal TotalExpenses { get; set; }
+    [Parameter, EditorRequired] public decimal NetCashflow { get; set; }
+}
