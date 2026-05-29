@@ -264,6 +264,7 @@ public class BudgetService
         else if (projectId.HasValue)
         {
             var typeAssignments = await db.CategoryTypeAssignments
+                .AsNoTracking()
                 .Where(cta => cta.ProjectId == projectId.Value)
                 .ToListAsync();
             var assignmentLookup = typeAssignments.ToDictionary(
@@ -328,6 +329,7 @@ public class BudgetService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.CategoryTypeAssignments
+            .AsNoTracking()
             .Where(cta => cta.ProjectId == projectId)
             .ToListAsync();
     }
@@ -340,6 +342,7 @@ public class BudgetService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         var typeAssignments = await db.CategoryTypeAssignments
+            .AsNoTracking()
             .Where(cta => cta.ProjectId == projectId)
             .ToListAsync();
 
@@ -644,6 +647,7 @@ public class BudgetService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.Accounts
+            .AsNoTracking()
             .Where(a => a.SourceId == sourceId)
             .OrderBy(a => a.Sort)
             .ThenBy(a => a.Name)
@@ -658,6 +662,7 @@ public class BudgetService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.AccountGroups
+            .AsNoTracking()
             .Where(g => g.SourceId == sourceId)
             .OrderBy(g => g.Sort)
             .ThenBy(g => g.Name)
@@ -668,6 +673,7 @@ public class BudgetService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.ProjectAccountAssignments
+            .AsNoTracking()
             .Where(paa => paa.ProjectId == projectId)
             .ToListAsync();
     }

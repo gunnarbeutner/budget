@@ -23,6 +23,7 @@ public class ProjectService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.Projects
+            .AsNoTracking()
             .Include(b => b.CategoryAssignments)
             .OrderBy(b => b.SortOrder)
             .ThenByDescending(b => b.CreatedAt)
@@ -34,6 +35,7 @@ public class ProjectService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.Projects
+            .AsNoTracking()
             .Include(b => b.CategoryAssignments)
             .Include(b => b.TrackingItems)
             .Include(b => b.CategoryTypeAssignments)
@@ -110,6 +112,7 @@ public class ProjectService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.Projects
+            .AsNoTracking()
             .Where(p => p.ParentProjectId == parentId)
             .OrderBy(p => p.SortOrder)
             .ThenByDescending(p => p.CreatedAt)
@@ -206,6 +209,7 @@ public class ProjectService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.ImportSources
+            .AsNoTracking()
             .OrderBy(s => s.Name)
             .ToListAsync();
     }
@@ -214,6 +218,7 @@ public class ProjectService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.ProjectTrackingItems
+            .AsNoTracking()
             .Where(pti => pti.ProjectId == projectId)
             .ToListAsync();
     }
@@ -258,13 +263,14 @@ public class ProjectService
     public async Task<Dictionary<int, ProjectBalanceSummary>> GetAllProjectsBalancesAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var assignments = await db.ProjectAccountAssignments.ToListAsync();
+        var assignments = await db.ProjectAccountAssignments.AsNoTracking().ToListAsync();
         if (!assignments.Any()) return new Dictionary<int, ProjectBalanceSummary>();
 
         // AccountIds are namespaced globally unique across sources, so a single Contains() query
         // resolves accounts for every project regardless of source.
         var accountIds = assignments.Select(a => a.AccountId).Distinct().ToList();
         var accounts = await db.Accounts
+            .AsNoTracking()
             .Where(a => accountIds.Contains(a.Id))
             .ToListAsync();
         var accountById = accounts.ToDictionary(a => a.Id);

@@ -28,6 +28,7 @@ public class BudgetEntryService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.Budgets
+            .AsNoTracking()
             .Where(b => b.ProjectId == projectId)
             .Include(b => b.MonthlyEntries)
             .OrderByDescending(b => b.Year)
@@ -40,6 +41,7 @@ public class BudgetEntryService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.Budgets
+            .AsNoTracking()
             .Include(b => b.MonthlyEntries)
             .Include(b => b.Project)
             .ThenInclude(p => p.CategoryAssignments)
@@ -244,6 +246,7 @@ public class BudgetEntryService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         var rows = await db.BudgetContributionSplits
+            .AsNoTracking()
             .Where(s => s.BudgetId == budgetId)
             .ToListAsync();
         return rows.ToDictionary(r => (r.CategoryId, r.ItemType), r => r.Percent);
@@ -301,6 +304,7 @@ public class BudgetEntryService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         var entries = await db.MonthlyBudgetEntries
+            .AsNoTracking()
             .Where(e => e.BudgetId == budgetId)
             .ToListAsync();
 
@@ -324,6 +328,7 @@ public class BudgetEntryService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         var budget = await db.Budgets
+            .AsNoTracking()
             .Include(b => b.MonthlyEntries)
             .Include(b => b.Project)
             .FirstOrDefaultAsync(b => b.Id == budgetId);

@@ -45,6 +45,7 @@ public class CategoryHierarchyService : IDisposable
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.Categories
+            .AsNoTracking()
             .Where(c => c.SourceId == sourceId)
             .OrderBy(c => c.Name)
             .ToListAsync();
@@ -64,11 +65,13 @@ public class CategoryHierarchyService : IDisposable
         await using var db = await _dbFactory.CreateDbContextAsync();
 
         var allCategoryGroups = await db.CategoryGroups
+            .AsNoTracking()
             .Where(cg => cg.SourceId == sourceId)
             .OrderBy(cg => cg.Name)
             .ToListAsync();
 
         var allCategories = await db.Categories
+            .AsNoTracking()
             .Where(c => c.SourceId == sourceId)
             .OrderBy(c => c.Name)
             .ToListAsync();
@@ -124,6 +127,7 @@ public class CategoryHierarchyService : IDisposable
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.CategoryGroups
+            .AsNoTracking()
             .FirstOrDefaultAsync(cg => cg.Id == categoryGroupId);
     }
 
