@@ -236,25 +236,32 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Computes the net income/expense aggregate over a month range for a set of tracked items,
-    /// deduplicated via the leaf-category union so a tracked group + tracked sub-cat under it
-    /// don't double-count. Per-leaf classification (project-aware if projectId given) routes
-    /// each leaf's transaction sum into income or expense.
+    /// Shared by the income/expense aggregation methods: expands each tracked item to its leaf
+    /// categories, unions them (so a tracked group + tracked sub-cat under it don't double-count),
+    /// and classifies each leaf as income or expense. Classification is project-aware when
+    /// <paramref name="projectId"/> is given (type assignments + ancestor inheritance), else it
+    /// falls back to MoneyMoney's native Type==2 marker. Reads on <paramref name="db"/> so the
+    /// caller's single short-lived context is reused.
     /// </summary>
-    private async Task<(decimal Income, decimal Expense)> AggregateIncomeExpenseForRangeAsync(
-        IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
-        int year, int fromMonth, int toMonth, int sourceId, int? projectId)
+    private async Task<(Dictionary<(long, CategoryItemType), HashSet<long>> ItemToLeafIds,
+                        List<long> AllLeafIds,
+                        Dictionary<long, bool> LeafIsIncome)>
+        ResolveLeavesAndIncomeAsync(
+            BudgetDbContext db,
+            IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
+            int sourceId,
+            int? projectId)
     {
-        if (items.Count == 0) return (0m, 0m);
-
-        await using var db = await _dbFactory.CreateDbContextAsync();
         var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
         var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
-        if (allLeafIds.Count == 0) return (0m, 0m);
 
         Dictionary<long, bool> leafIsIncome;
-        if (projectId.HasValue)
+        if (allLeafIds.Count == 0)
+        {
+            leafIsIncome = new Dictionary<long, bool>();
+        }
+        else if (projectId.HasValue)
         {
             var typeAssignments = await db.CategoryTypeAssignments
                 .Where(cta => cta.ProjectId == projectId.Value)
@@ -274,6 +281,25 @@ public class BudgetService
                 .ToListAsync();
             leafIsIncome = types.ToDictionary(c => c.Id, c => c.Type == 2);
         }
+
+        return (itemToLeafIds, allLeafIds, leafIsIncome);
+    }
+
+    /// <summary>
+    /// Computes the net income/expense aggregate over a month range for a set of tracked items,
+    /// deduplicated via the leaf-category union so a tracked group + tracked sub-cat under it
+    /// don't double-count. Per-leaf classification (project-aware if projectId given) routes
+    /// each leaf's transaction sum into income or expense.
+    /// </summary>
+    private async Task<(decimal Income, decimal Expense)> AggregateIncomeExpenseForRangeAsync(
+        IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
+        int year, int fromMonth, int toMonth, int sourceId, int? projectId)
+    {
+        if (items.Count == 0) return (0m, 0m);
+
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var (_, allLeafIds, leafIsIncome) = await ResolveLeavesAndIncomeAsync(db, items, sourceId, projectId);
+        if (allLeafIds.Count == 0) return (0m, 0m);
 
         var range = TimeRange.Between(
             new DateTime(year, fromMonth, 1, 0, 0, 0, DateTimeKind.Utc),
@@ -459,34 +485,8 @@ public class BudgetService
         if (!items.Any()) return result;
 
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
-        var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
-
-        var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
+        var (itemToLeafIds, allLeafIds, leafIsIncome) = await ResolveLeavesAndIncomeAsync(db, items, sourceId, projectId);
         if (!allLeafIds.Any()) return result;
-
-        Dictionary<long, bool> leafIsIncome;
-        if (projectId.HasValue)
-        {
-            var typeAssignments = await db.CategoryTypeAssignments
-                .Where(cta => cta.ProjectId == projectId.Value)
-                .ToListAsync();
-            var assignmentLookup = typeAssignments.ToDictionary(
-                ta => (ta.CategoryId, ta.ItemType),
-                ta => ta.IsIncome);
-
-            leafIsIncome = allLeafIds.ToDictionary(
-                id => id,
-                id => ResolveCategoryTypeWithInheritance(id, CategoryItemType.Category, allCategoriesWithCounts, assignmentLookup));
-        }
-        else
-        {
-            var types = await db.Categories
-                .Where(c => c.SourceId == sourceId && allLeafIds.Contains(c.Id))
-                .Select(c => new { c.Id, c.Type })
-                .ToListAsync();
-            leafIsIncome = types.ToDictionary(c => c.Id, c => c.Type == 2);
-        }
 
         var raw = await db.Transactions
             .Where(t => t.SourceId == sourceId)
@@ -545,33 +545,8 @@ public class BudgetService
         if (!items.Any()) return result;
 
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
-        var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
-
-        var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
+        var (itemToLeafIds, allLeafIds, leafIsIncome) = await ResolveLeavesAndIncomeAsync(db, items, sourceId, projectId);
         if (!allLeafIds.Any()) return result;
-
-        Dictionary<long, bool> leafIsIncome;
-        if (projectId.HasValue)
-        {
-            var typeAssignments = await db.CategoryTypeAssignments
-                .Where(cta => cta.ProjectId == projectId.Value)
-                .ToListAsync();
-            var assignmentLookup = typeAssignments.ToDictionary(
-                ta => (ta.CategoryId, ta.ItemType),
-                ta => ta.IsIncome);
-            leafIsIncome = allLeafIds.ToDictionary(
-                id => id,
-                id => ResolveCategoryTypeWithInheritance(id, CategoryItemType.Category, allCategoriesWithCounts, assignmentLookup));
-        }
-        else
-        {
-            var types = await db.Categories
-                .Where(c => c.SourceId == sourceId && allLeafIds.Contains(c.Id))
-                .Select(c => new { c.Id, c.Type })
-                .ToListAsync();
-            leafIsIncome = types.ToDictionary(c => c.Id, c => c.Type == 2);
-        }
 
         var raw = await db.Transactions
             .Where(t => t.SourceId == sourceId)
