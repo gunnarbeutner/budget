@@ -27,6 +27,7 @@ public class FreshnessService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         var sources = await db.ImportSources
+            .AsNoTracking()
             .OrderBy(s => s.Name)
             .ToListAsync();
 

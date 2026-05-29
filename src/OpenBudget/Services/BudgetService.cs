@@ -95,7 +95,7 @@ public class BudgetService
         var groupNameLookup = allCategoriesWithCounts
             .Where(c => c.ItemType == CategoryItemType.Group)
             .ToDictionary(c => c.Id, c => c.CategoryGroup.Name ?? "Unknown");
-        var leafCategoryNameLookup = (await db.Categories.Where(c => c.SourceId == project.SourceId).ToListAsync())
+        var leafCategoryNameLookup = (await db.Categories.AsNoTracking().Where(c => c.SourceId == project.SourceId).ToListAsync())
             .ToDictionary(c => c.Id, c => c.Name ?? "Unknown");
 
         var (monthIncome, monthExpenses) = await AggregateIncomeExpenseForRangeAsync(

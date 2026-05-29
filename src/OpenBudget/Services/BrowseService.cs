@@ -289,6 +289,7 @@ public class BrowseService
         if (accountIds.Count > 0)
         {
             var accounts = await db.Accounts
+                .AsNoTracking()
                 .Where(a => accountIds.Contains(a.Id))
                 .OrderBy(a => a.Sort)
                 .ThenBy(a => a.Name)
