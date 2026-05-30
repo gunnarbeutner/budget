@@ -629,6 +629,45 @@ public class BudgetService
         return YearsBetween(minTs, maxTs);
     }
 
+    /// <summary>
+    /// The earliest and latest transaction months as (year, month) tuples, restricted to the
+    /// leaves of a project's tracking items — so the month navigator on a project page (Overview /
+    /// Browse) is bounded by the project's own data, not the whole source. The max may be in the
+    /// future (pending, future-dated rows), which is intentional: it lets navigation reach those
+    /// months. Both null when the project tracks nothing or its categories have no transactions, in
+    /// which case the caller falls back to the current month. Split parents are excluded.
+    /// </summary>
+    public async Task<((int Year, int Month)? Min, (int Year, int Month)? Max)> GetMonthBoundsForProjectAsync(int projectId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var project = await _projects.GetProjectAsync(projectId);
+        if (project == null) return (null, null);
+
+        var trackedKeys = project.TrackingItems.ToTrackedKeys().ToList();
+        if (trackedKeys.Count == 0) return (null, null);
+
+        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(trackedKeys, allCategoriesWithCounts);
+        var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
+        if (allLeafIds.Count == 0) return (null, null);
+
+        var bounds = await db.Transactions
+            .Where(t => t.SourceId == project.SourceId)
+            .Where(t => t.Splitted != 1)
+            .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
+            .GroupBy(_ => 1)
+            .Select(g => new { Min = g.Min(t => (long?)t.Timestamp), Max = g.Max(t => (long?)t.Timestamp) })
+            .FirstOrDefaultAsync();
+        return (ToMonth(bounds?.Min), ToMonth(bounds?.Max));
+
+        static (int Year, int Month)? ToMonth(long? unixSeconds)
+        {
+            if (unixSeconds is not { } s) return null;
+            var d = DateTimeOffset.FromUnixTimeSeconds(s).UtcDateTime;
+            return (d.Year, d.Month);
+        }
+    }
+
     private static List<int> YearsBetween(long? minTs, long? maxTs)
     {
         if (!minTs.HasValue || !maxTs.HasValue) return new List<int>();

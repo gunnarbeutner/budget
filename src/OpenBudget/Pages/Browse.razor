@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.AspNetCore.WebUtilities
 @inject BrowseService BrowseService
+@inject BudgetService BudgetService
 @inject TransactionQueryService TransactionQueries
 @inject CategoryHierarchyService Hierarchy
 @inject ProjectService ProjectService
@@ -405,16 +406,18 @@
     protected override async Task ReloadAfterChangeAsync()
     {
         if (project != null)
-            (monthMin, monthMax) = await TransactionQueries.GetMonthBoundsAsync(project.SourceId);
+            (monthMin, monthMax) = await BudgetService.GetMonthBoundsForProjectAsync(ProjectId);
         await ReloadAsync();
     }
 
     // Debounce search keystrokes — we throttle by token instead of timer/JS interop.
     private long searchToken;
 
-    // The selectable month window for this source (first..last transaction; the latter may be in the
-    // future — pending rows). Null until loaded / when the source has no transactions, in which case
-    // EffectiveMin/Max fall back to [1900-01 .. current month].
+    // The selectable month window for *this project's* tracked categories (first..last transaction;
+    // the latter may be in the future — pending rows). Bounds the navigator to the project's own data
+    // rather than the whole source, and stays stable across the in-project category/account selection.
+    // Null until loaded / when the project has no transactions, in which case EffectiveMin/Max fall
+    // back to [1900-01 .. current month].
     private (int Year, int Month)? monthMin;
     private (int Year, int Month)? monthMax;
     private (int Year, int Month) EffectiveMin => monthMin ?? (1900, 1);
@@ -432,7 +435,7 @@
         ResetForProjectSwitch();
         project = await ProjectService.GetProjectAsync(ProjectId);
         if (project == null) { notFound = true; return; }
-        (monthMin, monthMax) = await TransactionQueries.GetMonthBoundsAsync(project.SourceId);
+        (monthMin, monthMax) = await BudgetService.GetMonthBoundsForProjectAsync(ProjectId);
         ReadStateFromQuery();
         await ReloadAsync();
     }

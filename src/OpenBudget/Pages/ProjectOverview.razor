@@ -5,7 +5,6 @@
 @using OpenBudget.Models
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
-@inject TransactionQueryService TransactionQueries
 @inject FreshnessService FreshnessService
 @inject NavigationManager Navigation
 @inject ProjectTimeState TimeState
@@ -219,9 +218,10 @@ else
     // project picker, where the component is reused and OnInitializedAsync does not re-run.
     private int _loadedProjectId;
 
-    // The selectable month window, derived from the source's first/last transaction (the latter may
-    // be in the future — pending rows). Null until loaded / when the source has no transactions, in
-    // which case EffectiveMin/Max fall back to [1900-01 .. current month].
+    // The selectable month window, derived from the first/last transaction in *this project's* tracked
+    // categories (not the whole source; the latter may be in the future — pending rows). Null until
+    // loaded / when the project has no transactions, in which case EffectiveMin/Max fall back to
+    // [1900-01 .. current month].
     private (int Year, int Month)? monthMin;
     private (int Year, int Month)? monthMax;
     private (int Year, int Month) EffectiveMin => monthMin ?? (1900, 1);
@@ -300,7 +300,7 @@ else
             notFound = true;
             return;
         }
-        (monthMin, monthMax) = await TransactionQueries.GetMonthBoundsAsync(project.SourceId);
+        (monthMin, monthMax) = await BudgetService.GetMonthBoundsForProjectAsync(ProjectId);
     }
 
     protected override bool IsRelevantChange(DataChange change) => change.Area switch
