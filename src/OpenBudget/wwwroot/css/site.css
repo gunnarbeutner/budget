@@ -898,8 +898,15 @@ a, .btn-link {
         max-height: none !important;
     }
 
-    /* Repeat table headers across pages and keep rows whole. */
+    /* Repeat table headers across pages and keep rows/cells whole. Both the legacy
+       page-break-inside and the modern break-inside are needed for cross-browser effect, and
+       applying it to the cells (not just the row) is what actually stops a cell from splitting. */
     thead { display: table-header-group; }
     tr,
-    .tx-row { page-break-inside: avoid; }
+    td,
+    th,
+    .tx-row {
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
 }
