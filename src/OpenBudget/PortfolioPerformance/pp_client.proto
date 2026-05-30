@@ -1,7 +1,9 @@
 syntax = "proto3";
 
+import "google/protobuf/timestamp.proto";
+
 // Minimal subset of PortfolioPerformance's client.proto — only the messages and fields the
-// taxonomy import reads. Field numbers MUST match the upstream schema
+// taxonomy and lot import read. Field numbers MUST match the upstream schema
 // (portfolio-performance/portfolio, name.abuchen.portfolio/src/.../model/client.proto); proto3
 // silently skips the many fields we omit (prices, transactions, accounts, well-known-type
 // fields, …), which also keeps us off the google.protobuf.Timestamp/Any/Struct imports.
@@ -19,6 +21,44 @@ message PSecurity {
   string isin = 7;          // join key to mm_securities; empty for crypto
   string tickerSymbol = 8;
   string wkn = 9;
+}
+
+message PPortfolio {
+  string uuid = 1;            // referenced by PTransaction.portfolio / .otherPortfolio
+  string name = 2;            // depot name, e.g. "comdirect Depot" — matched to an MM depot account
+}
+
+// One entry of PortfolioPerformance's unified client-level transaction ledger. We read only the
+// security-bearing rows (purchases, sales, deliveries, transfers) to reconstruct FIFO lots; cash
+// movements (deposits, dividends, fees, …) are skipped. Money is scaled ×100 (cents), shares ×1e8.
+message PTransaction {
+  enum Type {
+    PURCHASE = 0;
+    SALE = 1;
+    INBOUND_DELIVERY = 2;
+    OUTBOUND_DELIVERY = 3;
+    SECURITY_TRANSFER = 4;
+    CASH_TRANSFER = 5;
+    DEPOSIT = 6;
+    REMOVAL = 7;
+    DIVIDEND = 8;
+    INTEREST = 9;
+    INTEREST_CHARGE = 10;
+    TAX = 11;
+    TAX_REFUND = 12;
+    FEE = 13;
+    FEE_REFUND = 14;
+  }
+
+  string uuid = 1;
+  Type type = 2;
+  optional string portfolio = 4;          // owning depot (source side for a transfer)
+  optional string otherPortfolio = 6;     // target depot for a SECURITY_TRANSFER
+  google.protobuf.Timestamp date = 9;
+  string currencyCode = 10;
+  int64 amount = 11;                       // total transaction value incl. fees (cents)
+  optional int64 shares = 12;              // ×1e8
+  optional string security = 14;           // a PSecurity.uuid; absent for pure cash transactions
 }
 
 message PTaxonomy {
@@ -43,5 +83,7 @@ message PTaxonomy {
 message PClient {
   int32 version = 1;
   repeated PSecurity securities = 2;
+  repeated PPortfolio portfolios = 4;
+  repeated PTransaction transactions = 5;
   repeated PTaxonomy taxonomies = 8;
 }
