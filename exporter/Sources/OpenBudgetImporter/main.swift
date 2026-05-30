@@ -662,7 +662,13 @@ enum Exporter {
         let attachSQL = "ATTACH DATABASE \(quote(output)) AS export KEY '';"
         try exec(db, attachSQL)
 
-        for table in ["account_groups", "category_groups", "categories", "accounts", "transactions"] {
+        // securities + portfolio_chart back the portfolio holdings view; both are absent on very
+        // old MoneyMoney schemas, but every shipping version that has depot accounts has them.
+        let tables = [
+            "account_groups", "category_groups", "categories", "accounts", "transactions",
+            "securities", "portfolio_chart",
+        ]
+        for table in tables {
             try exec(db, "CREATE TABLE export.\(table) AS SELECT * FROM \(table);")
         }
         try exec(db, "DETACH DATABASE export;")
