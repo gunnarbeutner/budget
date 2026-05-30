@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve"><value>Rebalance</value></data>
+  <data name="PageTitle_WithProject" xml:space="preserve"><value>Rebalance — {0}</value></data>
+  <data name="NotFound_Heading" xml:space="preserve"><value>Project not found</value></data>
+  <data name="NotFound_Body_Before" xml:space="preserve"><value>Go back to the </value></data>
+  <data name="NotFound_Body_LinkText" xml:space="preserve"><value>dashboard</value></data>
+  <data name="NotFound_Body_After" xml:space="preserve"><value>.</value></data>
+  <data name="Empty_NoSecurities" xml:space="preserve"><value>No securities in this project. Assign a depot account to it first.</value></data>
+  <data name="Intro" xml:space="preserve"><value>Pick the securities to rebalance, optionally add cash, and set a target for each.</value></data>
+  <data name="Cash_Label" xml:space="preserve"><value>Cash to add</value></data>
+  <data name="Mode_Label" xml:space="preserve"><value>Target</value></data>
+  <data name="Mode_Ratio" xml:space="preserve"><value>By ratio</value></data>
+  <data name="Mode_Amount" xml:space="preserve"><value>By amount</value></data>
+  <data name="Reset" xml:space="preserve"><value>Reset</value></data>
+  <data name="Col_Security" xml:space="preserve"><value>Security</value></data>
+  <data name="Col_Current" xml:space="preserve"><value>Current</value></data>
+  <data name="Col_TargetAmount" xml:space="preserve"><value>Target (€)</value></data>
+  <data name="Col_Weight" xml:space="preserve"><value>Weight</value></data>
+  <data name="Col_Trade" xml:space="preserve"><value>Trade</value></data>
+  <data name="Col_After" xml:space="preserve"><value>After</value></data>
+  <data name="Buy" xml:space="preserve"><value>Buy</value></data>
+  <data name="Sell" xml:space="preserve"><value>Sell</value></data>
+  <data name="Hold" xml:space="preserve"><value>—</value></data>
+  <data name="Summary_Pool" xml:space="preserve"><value>Pool</value></data>
+  <data name="Summary_Buys" xml:space="preserve"><value>Total buys</value></data>
+  <data name="Summary_Sells" xml:space="preserve"><value>Total sells</value></data>
+  <data name="Summary_Leftover" xml:space="preserve"><value>Leftover cash</value></data>
+  <data name="Summary_Shortfall" xml:space="preserve"><value>Shortfall</value></data>
+  <data name="Infeasible_Warning" xml:space="preserve"><value>The targets need more than the pool can fund. Reduce a target, add cash, or sell elsewhere.</value></data>
+  <data name="Disclaimer" xml:space="preserve"><value>Suggestions only — not investment or tax advice. Selling positions can realise taxable gains (and German Vorabpauschale).</value></data>
+</root>

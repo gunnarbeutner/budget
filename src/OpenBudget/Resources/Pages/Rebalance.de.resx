@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve"><value>Umschichten</value></data>
+  <data name="PageTitle_WithProject" xml:space="preserve"><value>Umschichten — {0}</value></data>
+  <data name="NotFound_Heading" xml:space="preserve"><value>Projekt nicht gefunden</value></data>
+  <data name="NotFound_Body_Before" xml:space="preserve"><value>Zurück zum </value></data>
+  <data name="NotFound_Body_LinkText" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="NotFound_Body_After" xml:space="preserve"><value>.</value></data>
+  <data name="Empty_NoSecurities" xml:space="preserve"><value>Keine Wertpapiere in diesem Projekt. Weise ihm zuerst ein Depotkonto zu.</value></data>
+  <data name="Intro" xml:space="preserve"><value>Wähle die umzuschichtenden Wertpapiere, füge optional Bargeld hinzu und lege je Wertpapier ein Ziel fest.</value></data>
+  <data name="Cash_Label" xml:space="preserve"><value>Bargeld hinzufügen</value></data>
+  <data name="Mode_Label" xml:space="preserve"><value>Ziel</value></data>
+  <data name="Mode_Ratio" xml:space="preserve"><value>Nach Verhältnis</value></data>
+  <data name="Mode_Amount" xml:space="preserve"><value>Nach Betrag</value></data>
+  <data name="Reset" xml:space="preserve"><value>Zurücksetzen</value></data>
+  <data name="Col_Security" xml:space="preserve"><value>Wertpapier</value></data>
+  <data name="Col_Current" xml:space="preserve"><value>Aktuell</value></data>
+  <data name="Col_TargetAmount" xml:space="preserve"><value>Ziel (€)</value></data>
+  <data name="Col_Weight" xml:space="preserve"><value>Gewicht</value></data>
+  <data name="Col_Trade" xml:space="preserve"><value>Order</value></data>
+  <data name="Col_After" xml:space="preserve"><value>Nachher</value></data>
+  <data name="Buy" xml:space="preserve"><value>Kauf</value></data>
+  <data name="Sell" xml:space="preserve"><value>Verkauf</value></data>
+  <data name="Hold" xml:space="preserve"><value>—</value></data>
+  <data name="Summary_Pool" xml:space="preserve"><value>Gesamt</value></data>
+  <data name="Summary_Buys" xml:space="preserve"><value>Käufe gesamt</value></data>
+  <data name="Summary_Sells" xml:space="preserve"><value>Verkäufe gesamt</value></data>
+  <data name="Summary_Leftover" xml:space="preserve"><value>Restbargeld</value></data>
+  <data name="Summary_Shortfall" xml:space="preserve"><value>Fehlbetrag</value></data>
+  <data name="Infeasible_Warning" xml:space="preserve"><value>Die Ziele übersteigen das verfügbare Vermögen. Reduziere ein Ziel, füge Bargeld hinzu oder verkaufe anderswo.</value></data>
+  <data name="Disclaimer" xml:space="preserve"><value>Nur Vorschläge — keine Anlage- oder Steuerberatung. Verkäufe können steuerpflichtige Gewinne (und Vorabpauschale) auslösen.</value></data>
+</root>

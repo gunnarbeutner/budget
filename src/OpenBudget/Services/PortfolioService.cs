@@ -61,6 +61,38 @@ public class PortfolioService
         return await BuildAsync(db, project.SourceId, holdings, accountId: 0, merge: true, ct);
     }
 
+    /// <summary>
+    /// Combined holdings across every portfolio (depot) account assigned to a project — resolves
+    /// the depots itself, so callers without the Browse tree can use it (e.g. the rebalance page).
+    /// Null when the project has no assigned depots holding anything.
+    /// </summary>
+    public async Task<AccountHoldings?> GetProjectHoldingsAsync(int projectId, CancellationToken ct = default)
+    {
+        var project = await _projects.GetProjectAsync(projectId);
+        if (project == null) return null;
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var assignedIds = await db.ProjectAccountAssignments
+            .Where(a => a.ProjectId == projectId)
+            .Select(a => a.AccountId)
+            .ToListAsync(ct);
+        if (assignedIds.Count == 0) return null;
+
+        var depotIds = await db.Accounts
+            .Where(a => assignedIds.Contains(a.Id) && (a.Type == 7 || a.Portfolio == 1))
+            .Select(a => a.Id)
+            .ToListAsync(ct);
+        if (depotIds.Count == 0) return null;
+
+        var holdings = await db.Holdings
+            .AsNoTracking()
+            .Where(h => h.SourceId == project.SourceId && depotIds.Contains(h.AccountId))
+            .ToListAsync(ct);
+        if (holdings.Count == 0) return null;
+
+        return await BuildAsync(db, project.SourceId, holdings, accountId: 0, merge: true, ct);
+    }
+
     private static async Task<AccountHoldings> BuildAsync(
         BudgetDbContext db, int sourceId, List<Holding> holdings, long accountId, bool merge, CancellationToken ct)
     {
@@ -99,11 +131,19 @@ public class PortfolioService
         };
     }
 
+    // Stable identity for a holding row: ISIN, else symbol, else name (prefixed so an ISIN value
+    // can't collide with a same-text symbol). Also the merge key for combined views.
+    private static string KeyOf(Holding h) =>
+        !string.IsNullOrEmpty(h.Isin) ? "isin:" + h.Isin
+        : !string.IsNullOrEmpty(h.Symbol) ? "sym:" + h.Symbol
+        : "name:" + (h.Name ?? "");
+
     private static List<HoldingRow> BuildRows(List<Holding> holdings, decimal total) =>
         holdings
             .OrderByDescending(h => h.Amount ?? 0)
             .Select(h => new HoldingRow
             {
+                Key = KeyOf(h),
                 Name = h.Name ?? h.Isin ?? h.Symbol ?? "—",
                 Isin = h.Isin,
                 Wkn = h.Wkn,
@@ -122,15 +162,10 @@ public class PortfolioService
 
     private static List<HoldingRow> BuildMergedRows(List<Holding> holdings, decimal total)
     {
-        // Merge key: ISIN when present, else symbol, else name — so the same security held in two
-        // depots becomes one row (and ISIN-less crypto still merges by symbol/name).
-        static string Key(Holding h) =>
-            !string.IsNullOrEmpty(h.Isin) ? "isin:" + h.Isin
-            : !string.IsNullOrEmpty(h.Symbol) ? "sym:" + h.Symbol
-            : "name:" + (h.Name ?? "");
-
+        // Merge by KeyOf so the same security held in two depots becomes one row (and ISIN-less
+        // crypto still merges by symbol/name).
         var rows = new List<HoldingRow>();
-        foreach (var g in holdings.GroupBy(Key, StringComparer.Ordinal))
+        foreach (var g in holdings.GroupBy(KeyOf, StringComparer.Ordinal))
         {
             var members = g.ToList();
             decimal value = members.Sum(h => (decimal)(h.Amount ?? 0));
@@ -143,6 +178,7 @@ public class PortfolioService
             var first = members[0];
             rows.Add(new HoldingRow
             {
+                Key = g.Key,
                 Name = members.Select(h => h.Name).FirstOrDefault(n => !string.IsNullOrEmpty(n))
                     ?? first.Isin ?? first.Symbol ?? "—",
                 Isin = first.Isin,

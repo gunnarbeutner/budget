@@ -70,6 +70,9 @@
   <data name="Tab_Cashflow" xml:space="preserve">
     <value>Cashflow</value>
   </data>
+  <data name="Tab_Rebalance" xml:space="preserve">
+    <value>Rebalance</value>
+  </data>
   <data name="Tab_Settings_Tooltip" xml:space="preserve">
     <value>Project settings</value>
   </data>

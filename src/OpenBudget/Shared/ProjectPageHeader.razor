@@ -99,6 +99,11 @@
             <i class="bi bi-graph-up" aria-hidden="true"></i>
             <span class="d-none d-md-inline ms-1">@L["Tab_Cashflow"]</span>
         </a>
+        <a class="nav-link @(Active == ProjectTab.Rebalance ? "active" : "")"
+           href="@($"/projects/{ProjectId}/rebalance")" aria-label="@L["Tab_Rebalance"]">
+            <i class="bi bi-sliders" aria-hidden="true"></i>
+            <span class="d-none d-md-inline ms-1">@L["Tab_Rebalance"]</span>
+        </a>
         @* The settings cog reads as a secondary affordance on the data tabs, but on the
            settings page itself (Active == null) it's the active tab — underlined like the rest. *@
         <a class="nav-link project-page-tabs-settings @(Active == null ? "active" : "")"
@@ -173,6 +178,7 @@
             ProjectTab.Browse => $"/projects/{projectId}/browse{MonthQuery}",
             ProjectTab.Budgets => $"/projects/{projectId}/budgets",
             ProjectTab.Cashflow => $"/projects/{projectId}/cashflow",
+            ProjectTab.Rebalance => $"/projects/{projectId}/rebalance",
             // No Active = on the settings page; switching keeps you on settings for the new project.
             _ => $"/projects/{projectId}/settings",
         };

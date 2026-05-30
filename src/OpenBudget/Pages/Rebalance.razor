@@ -1,0 +1,255 @@
+@page "/projects/{ProjectId:int}/rebalance"
+@inherits DataChangeAwareComponent
+@using System.Globalization
+@using OpenBudget.Services
+@using OpenBudget.Models
+@inject PortfolioService Portfolio
+@inject ProjectService ProjectService
+@inject IStringLocalizer<Rebalance> L
+
+<PageTitle>@(projectName != null ? L["PageTitle_WithProject", projectName] : L["PageTitle"])</PageTitle>
+
+@if (notFound)
+{
+    <PageHeader Title="@L["NotFound_Heading"]" />
+    <p class="text-body-secondary">@L["NotFound_Body_Before"]<a href="/">@L["NotFound_Body_LinkText"]</a>@L["NotFound_Body_After"]</p>
+    return;
+}
+
+<ProjectPageHeader ProjectId="ProjectId" ProjectName="@projectName" Active="ProjectTab.Rebalance" />
+
+<DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
+
+@if (loading)
+{
+    <div class="card mb-3" aria-busy="true"><div class="card-body">
+        <div class="skeleton skeleton-line-lg" style="width: 30%;"></div>
+        <div class="skeleton skeleton-block mt-3"></div>
+    </div></div>
+}
+else if (securities.Count == 0)
+{
+    <div class="text-body-secondary py-5 text-center">
+        <i class="bi bi-sliders" style="font-size: 1.8rem;" aria-hidden="true"></i>
+        <div class="mt-2">@L["Empty_NoSecurities"]</div>
+    </div>
+}
+else
+{
+    var plan = BuildPlan();
+
+    <p class="text-body-secondary">@L["Intro"]</p>
+
+    <div class="d-flex flex-wrap align-items-end gap-3 mb-3">
+        <div>
+            <label class="form-label small mb-1" for="cashInput">@L["Cash_Label"]</label>
+            <div class="input-group input-group-sm" style="width: 12rem;">
+                <span class="input-group-text">€</span>
+                <input id="cashInput" type="number" step="1000" min="0" class="form-control text-end"
+                       value="@FormatNum(cash)" @onchange="OnCashChanged" />
+            </div>
+        </div>
+        <div>
+            <div class="form-label small mb-1">@L["Mode_Label"]</div>
+            <div class="segmented" role="group" aria-label="@L["Mode_Label"]">
+                <button type="button" class="btn @(mode == RebalanceTargetMode.Ratio ? "active" : "")"
+                        @onclick="() => SetMode(RebalanceTargetMode.Ratio)">@L["Mode_Ratio"]</button>
+                <button type="button" class="btn @(mode == RebalanceTargetMode.Amount ? "active" : "")"
+                        @onclick="() => SetMode(RebalanceTargetMode.Amount)">@L["Mode_Amount"]</button>
+            </div>
+        </div>
+        <button type="button" class="btn btn-sm btn-link" @onclick="ResetTargets">@L["Reset"]</button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr>
+                    <th style="width: 2rem;"></th>
+                    <th>@L["Col_Security"]</th>
+                    <th class="text-end">@L["Col_Current"]</th>
+                    <th class="text-end" style="width: 9rem;">@(mode == RebalanceTargetMode.Amount ? L["Col_TargetAmount"] : L["Col_Weight"])</th>
+                    <th class="text-end">@L["Col_Trade"]</th>
+                    <th class="text-end">@L["Col_After"]</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in securities)
+                {
+                    var included = selected.Contains(s.Key);
+                    var row = plan.Rows.FirstOrDefault(r => r.Key == s.Key);
+                    <tr @key="s.Key" class="@(included ? "" : "text-body-secondary")">
+                        <td>
+                            <input type="checkbox" class="form-check-input" checked="@included"
+                                   @onchange="e => ToggleSelected(s.Key, e.Value)" aria-label="@s.Name" />
+                        </td>
+                        <td>
+                            <div class="@(included ? "fw-semibold" : "")">@s.Name</div>
+                            @if (!string.IsNullOrEmpty(s.Isin))
+                            {
+                                <div class="text-body-secondary small">@s.Isin</div>
+                            }
+                        </td>
+                        <td class="text-end">
+                            <div>@Formatting.FormatMoney(s.Value, s.PriceCurrency ?? "EUR")</div>
+                            @if (row is { } cr)
+                            {
+                                <div class="text-body-secondary small">@cr.CurrentFraction.ToString("P1", CultureInfo.CurrentCulture)</div>
+                            }
+                        </td>
+                        <td class="text-end">
+                            @if (included)
+                            {
+                                <input type="number" step="@(mode == RebalanceTargetMode.Amount ? "1000" : "1")" min="0"
+                                       class="form-control form-control-sm text-end"
+                                       value="@FormatNum(targets.GetValueOrDefault(s.Key))"
+                                       @onchange="e => OnTargetChanged(s.Key, e.Value)" />
+                            }
+                            else
+                            {
+                                <span class="text-body-secondary">—</span>
+                            }
+                        </td>
+                        <td class="text-end">
+                            @if (included && row is { } tr2 && Math.Abs(tr2.Delta) >= 0.005m)
+                            {
+                                <span class="@(tr2.Delta < 0 ? "text-danger" : "text-success")">
+                                    @(tr2.Delta < 0 ? L["Sell"] : L["Buy"]) @Formatting.FormatMoney(Math.Abs(tr2.Delta), s.PriceCurrency ?? "EUR")
+                                </span>
+                            }
+                            else if (included)
+                            {
+                                <span class="text-body-secondary">@L["Hold"]</span>
+                            }
+                        </td>
+                        <td class="text-end">
+                            @if (included && row is { } ar)
+                            {
+                                <div>@Formatting.FormatMoney(ar.TargetValue, s.PriceCurrency ?? "EUR")</div>
+                                <div class="text-body-secondary small">@ar.TargetFraction.ToString("P1", CultureInfo.CurrentCulture)</div>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card mt-3"><div class="card-body">
+        <div class="row g-3">
+            <div class="col-6 col-md-3">
+                <div class="text-body-secondary small">@L["Summary_Pool"]</div>
+                <div class="h5 mb-0">@Formatting.FormatMoney(plan.Pool)</div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="text-body-secondary small">@L["Summary_Buys"]</div>
+                <div class="h5 mb-0 text-success">@Formatting.FormatMoney(plan.TotalBuys)</div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="text-body-secondary small">@L["Summary_Sells"]</div>
+                <div class="h5 mb-0 text-danger">@Formatting.FormatMoney(plan.TotalSells)</div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="text-body-secondary small">@(plan.Feasible ? L["Summary_Leftover"] : L["Summary_Shortfall"])</div>
+                <div class="h5 mb-0 @(plan.Feasible ? "" : "text-danger")">
+                    @Formatting.FormatMoney(plan.Feasible ? plan.Leftover : plan.Pool - SumTargets())
+                </div>
+            </div>
+        </div>
+        @if (!plan.Feasible)
+        {
+            <div class="alert alert-warning mt-3 mb-0 py-2 small">@L["Infeasible_Warning"]</div>
+        }
+    </div></div>
+
+    <p class="text-body-secondary small mt-3"><i class="bi bi-info-circle me-1" aria-hidden="true"></i>@L["Disclaimer"]</p>
+}
+
+@code {
+    [Parameter] public int ProjectId { get; set; }
+
+    private string? projectName;
+    private bool notFound;
+    private bool loading = true;
+    private int _loadedProjectId = -1;
+    private int sourceId;
+
+    private List<HoldingRow> securities = new();
+    private readonly HashSet<string> selected = new(StringComparer.Ordinal);
+    private Dictionary<string, decimal> targets = new(StringComparer.Ordinal);
+    private decimal cash;
+    private RebalanceTargetMode mode = RebalanceTargetMode.Ratio;
+
+    protected override bool IsRelevantChange(DataChange change) =>
+        change.Area == DataArea.MoneyMoneyData && (change.SourceId == null || change.SourceId == sourceId);
+
+    protected override async Task ReloadAfterChangeAsync() => await LoadAsync();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedProjectId == ProjectId) return;
+        _loadedProjectId = ProjectId;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        notFound = false;
+        var project = await ProjectService.GetProjectAsync(ProjectId);
+        if (project == null) { notFound = true; loading = false; return; }
+        projectName = project.Name;
+        sourceId = project.SourceId;
+
+        var holdings = await Portfolio.GetProjectHoldingsAsync(ProjectId);
+        securities = holdings?.Rows ?? new List<HoldingRow>();
+        ResetTargets();
+        loading = false;
+    }
+
+    // Default: every security selected, targeted at its current value — so the plan opens with
+    // zero trades and the user nudges from there (works as weights in Ratio mode too).
+    private void ResetTargets()
+    {
+        selected.Clear();
+        targets = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        foreach (var s in securities)
+        {
+            selected.Add(s.Key);
+            targets[s.Key] = decimal.Round(s.Value, 2);
+        }
+        cash = 0m;
+    }
+
+    private RebalancePlan BuildPlan()
+    {
+        var items = securities
+            .Where(s => selected.Contains(s.Key))
+            .Select(s => new RebalanceInput { Key = s.Key, Name = s.Name, CurrentValue = s.Value })
+            .ToList();
+        return RebalanceMath.ComputePlan(items, cash, mode, targets);
+    }
+
+    private decimal SumTargets() =>
+        mode == RebalanceTargetMode.Amount
+            ? securities.Where(s => selected.Contains(s.Key)).Sum(s => Math.Max(0m, targets.GetValueOrDefault(s.Key)))
+            : 0m;
+
+    private void ToggleSelected(string key, object? value)
+    {
+        if (value is true || (value is string vs && bool.TryParse(vs, out var b) && b)) selected.Add(key);
+        else selected.Remove(key);
+    }
+
+    private void SetMode(RebalanceTargetMode m) => mode = m;
+
+    private void OnCashChanged(ChangeEventArgs e) => cash = ParseNum(e.Value);
+
+    private void OnTargetChanged(string key, object? value) => targets[key] = ParseNum(value);
+
+    // <input type="number"> posts its value in invariant form (decimal point), regardless of UI culture.
+    private static decimal ParseNum(object? value) =>
+        decimal.TryParse(value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? Math.Max(0m, v) : 0m;
+
+    private static string FormatNum(decimal v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+}

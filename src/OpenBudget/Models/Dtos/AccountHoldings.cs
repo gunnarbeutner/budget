@@ -33,6 +33,8 @@ public class TaxonomyLookThrough
 
 public class HoldingRow
 {
+    /// <summary>Stable identity (ISIN, else symbol, else name) — used to track selection across renders.</summary>
+    public string Key { get; init; } = "";
     public string Name { get; init; } = "";
     public string? Isin { get; init; }
     public string? Wkn { get; init; }

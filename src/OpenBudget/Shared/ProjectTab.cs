@@ -20,4 +20,5 @@ public enum ProjectTab
     Browse,
     Budgets,
     Cashflow,
+    Rebalance,
 }
