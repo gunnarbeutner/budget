@@ -54,16 +54,16 @@
     <div class="card-body">
         <div class="row g-3">
             <div class="col-md-5">
-                <label class="form-label">@L["Form_NameLabel"]</label>
-                <input type="text" class="form-control" maxlength="200" @bind="budget.Name" />
+                <label class="form-label" for="budget-name">@L["Form_NameLabel"]</label>
+                <input type="text" class="form-control" id="budget-name" maxlength="200" @bind="budget.Name" />
             </div>
             <div class="col-md-2">
-                <label class="form-label">@L["Form_YearLabel"]</label>
-                <input type="number" class="form-control" min="2000" max="2100" @bind="budget.Year" />
+                <label class="form-label" for="budget-year">@L["Form_YearLabel"]</label>
+                <input type="number" class="form-control" id="budget-year" min="2000" max="2100" @bind="budget.Year" />
             </div>
             <div class="col-md-5">
-                <label class="form-label">@L["Form_NotesLabel"]</label>
-                <input type="text" class="form-control" @bind="budget.Notes" />
+                <label class="form-label" for="budget-notes">@L["Form_NotesLabel"]</label>
+                <input type="text" class="form-control" id="budget-notes" @bind="budget.Notes" />
             </div>
         </div>
         <div class="form-check mt-3">

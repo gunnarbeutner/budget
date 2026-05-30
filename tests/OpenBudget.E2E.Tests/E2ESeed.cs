@@ -17,6 +17,7 @@ internal static class E2ESeed
     public const int ProjectId = 1;
     public const string ProjectName = "E2E Demo Project";
     public const int BudgetYear = 2026;
+    public const int BudgetId = 1;            // the seeded active budget, for /budgets/{id}/edit
 
     private const long GroupId = 100;
     private const long ExpenseCategoryId = 200;
@@ -85,6 +86,7 @@ internal static class E2ESeed
 
         var budget = new Budget
         {
+            Id = BudgetId,
             ProjectId = ProjectId,
             Year = BudgetYear,
             Name = $"{BudgetYear}",

@@ -28,6 +28,11 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
         builder.UseEnvironment("Test");
         builder.ConfigureServices(services =>
         {
+            // Surface circuit-fatal exceptions to the browser console so E2E failures point at the
+            // real server error instead of a bare "circuit terminated".
+            services.Configure<Microsoft.AspNetCore.Components.Server.CircuitOptions>(
+                o => o.DetailedErrors = true);
+
             // Swap the app's DbContextFactory (data/budgets.db) for one over our temp file.
             // Migrations still auto-apply on startup (Program.cs), creating the schema fresh.
             var toRemove = services
