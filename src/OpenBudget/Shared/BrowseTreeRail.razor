@@ -36,7 +36,7 @@
                  role="treeitem" tabindex="0" aria-selected="@isSel.ToString().ToLower()"
                  @onclick="() => OnSelectAccount.InvokeAsync(accountId)"
                  @onkeydown="e => OnAccountKeydown(e, accountId)">
-                <span class="browse-tree-name"><i class="bi bi-bank me-1" aria-hidden="true"></i>@a.Name</span>
+                <span class="browse-tree-name"><i class="bi @(a.IsPortfolio ? "bi-graph-up-arrow" : "bi-bank") me-1" aria-hidden="true"></i>@a.Name</span>
                 @if (a.Balance.HasValue)
                 {
                     <span class="browse-tree-amount @(a.Balance < 0 ? "text-danger" : "text-body-secondary")">

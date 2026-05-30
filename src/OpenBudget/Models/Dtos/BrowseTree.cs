@@ -26,6 +26,12 @@ public class BrowseAccountNode
     /// <summary>Signed net flow over the current period (incoming − outgoing).</summary>
     public decimal PeriodSum { get; init; }
     /// <summary>
+    /// True for a securities depot (MoneyMoney type 7 / portfolio flag). For these,
+    /// <see cref="Balance"/> reflects the holdings' market value rather than the packed cash
+    /// balance blob, and selecting the account in Browse surfaces its holdings.
+    /// </summary>
+    public bool IsPortfolio { get; init; }
+    /// <summary>
     /// True when this account is explicitly assigned to the project (via
     /// ProjectAccountAssignments). False when it only shows up because a transaction in
     /// one of the project's tracked categories happens to land on this account. The Browse

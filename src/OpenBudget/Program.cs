@@ -18,6 +18,7 @@ builder.Services.AddScoped<BudgetService>();
 builder.Services.AddScoped<FreshnessService>();
 builder.Services.AddScoped<TransactionQueryService>();
 builder.Services.AddScoped<BrowseService>();
+builder.Services.AddScoped<PortfolioService>();
 builder.Services.AddScoped<ProjectTimeState>();
 builder.Services.AddSingleton<MoneyMoneyImportService>();
 builder.Services.AddSingleton<ChangeNotificationService>();

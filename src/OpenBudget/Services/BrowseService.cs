@@ -304,16 +304,36 @@ public class BrowseService
                 .Select(g => new { AccountId = g.Key, Sum = g.Sum(t => t.Amount) })
                 .ToDictionaryAsync(x => x.AccountId, x => x.Sum, ct);
 
+            // Depot accounts (type 7 / portfolio flag) report holdings market value as their
+            // balance — the packed "balances" blob doesn't reflect securities. One grouped query
+            // over all depots in view; non-depot accounts keep their parsed cash balance.
+            var depotIds = accounts
+                .Where(a => a.Type == 7 || a.Portfolio == 1)
+                .Select(a => a.Id)
+                .ToList();
+            var holdingsValueByAccount = depotIds.Count == 0
+                ? new Dictionary<long, double>()
+                : await db.Holdings
+                    .Where(h => depotIds.Contains(h.AccountId))
+                    .GroupBy(h => h.AccountId)
+                    .Select(g => new { AccountId = g.Key, Value = g.Sum(h => h.Amount ?? 0) })
+                    .ToDictionaryAsync(x => x.AccountId, x => x.Value, ct);
+
             var assignedAccountSet = new HashSet<long>(assignedAccountIds);
             foreach (var a in accounts)
             {
+                bool isPortfolio = a.Type == 7 || a.Portfolio == 1;
+                decimal? balance = isPortfolio
+                    ? (holdingsValueByAccount.TryGetValue(a.Id, out var hv) ? (decimal)hv : a.CurrentBalance)
+                    : a.CurrentBalance;
                 accountNodes.Add(new BrowseAccountNode
                 {
                     Id = a.Id,
                     Name = a.Name ?? "",
-                    Balance = a.CurrentBalance,
+                    Balance = balance,
                     Currency = a.Currency,
                     PeriodSum = accountPeriodSumsCents.TryGetValue(a.Id, out var s) ? s / 100m : 0m,
+                    IsPortfolio = isPortfolio,
                     IsAssigned = assignedAccountSet.Contains(a.Id)
                 });
             }

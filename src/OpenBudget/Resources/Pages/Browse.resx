@@ -90,4 +90,13 @@
   <data name="Tree_Heading" xml:space="preserve"><value>Browse</value></data>
   <data name="Tx_SplitChild" xml:space="preserve"><value>Split</value></data>
   <data name="Tx_SplitChildTitle" xml:space="preserve"><value>One leg of a split transaction.</value></data>
+  <data name="Holdings_Title" xml:space="preserve"><value>Holdings</value></data>
+  <data name="Holdings_PositionCount" xml:space="preserve"><value>{0} positions</value></data>
+  <data name="Holdings_Allocation" xml:space="preserve"><value>Asset allocation</value></data>
+  <data name="Holdings_ColName" xml:space="preserve"><value>Security</value></data>
+  <data name="Holdings_ColQuantity" xml:space="preserve"><value>Quantity</value></data>
+  <data name="Holdings_ColPrice" xml:space="preserve"><value>Price</value></data>
+  <data name="Holdings_ColValue" xml:space="preserve"><value>Value</value></data>
+  <data name="Holdings_ColGain" xml:space="preserve"><value>Gain</value></data>
+  <data name="Holdings_Total" xml:space="preserve"><value>Total</value></data>
 </root>
