@@ -96,6 +96,21 @@ public class PortfolioPerformanceFileTests
     }
 
     [Fact]
+    public void ExtractPortfolios_returns_named_depots_falling_back_to_uuid()
+    {
+        var client = new PClient();
+        client.Portfolios.Add(new PPortfolio { Uuid = "p1", Name = "Example-Depot" });
+        client.Portfolios.Add(new PPortfolio { Uuid = "p2", Name = "" });
+
+        var got = PortfolioPerformanceFile.ExtractPortfolios(client, sourceId: 3);
+
+        Assert.Equal(2, got.Count);
+        Assert.All(got, p => Assert.Equal(3, p.SourceId));
+        Assert.Equal("Example-Depot", got.Single(p => p.Uuid == "p1").Name);
+        Assert.Equal("p2", got.Single(p => p.Uuid == "p2").Name);   // blank name → uuid
+    }
+
+    [Fact]
     public void ReadClient_rejects_a_file_without_the_signature()
     {
         var zip = new MemoryStream();

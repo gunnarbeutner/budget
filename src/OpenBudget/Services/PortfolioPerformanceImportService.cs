@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
+using OpenBudget.Models;
 
 namespace OpenBudget.Services;
 
@@ -56,19 +57,37 @@ public class PortfolioPerformanceImportService
 
         // Parse outside the transaction — it's CPU/IO over the file, no DB work. InvalidDataException
         // (wrong format / not a PPPBV1 file) propagates to the caller for a 400.
-        var (rows, securities) = await Task.Run(() =>
+        var (rows, securities, portfolios, lots) = await Task.Run(() =>
         {
             using var fs = File.OpenRead(portfolioFilePath);
             var client = PortfolioPerformanceFile.ReadClient(fs);
+            var openLots = FifoLedger.BuildOpenLots(client)
+                .Select(l => new PpLot
+                {
+                    SourceId = sourceId,
+                    PortfolioUuid = l.PortfolioUuid,
+                    Isin = l.Isin,
+                    Acquired = l.Acquired,
+                    Shares = l.Shares,
+                    Cost = l.Cost,
+                    Currency = l.Currency
+                })
+                .ToList();
             return (PortfolioPerformanceFile.Flatten(client, sourceId),
-                    PortfolioPerformanceFile.ExtractSecurities(client, sourceId));
+                    PortfolioPerformanceFile.ExtractSecurities(client, sourceId),
+                    PortfolioPerformanceFile.ExtractPortfolios(client, sourceId),
+                    openLots);
         }, ct);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_security_taxonomy WHERE SourceId = {0}", new object[] { sourceId }, ct);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_security WHERE SourceId = {0}", new object[] { sourceId }, ct);
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_lot WHERE SourceId = {0}", new object[] { sourceId }, ct);
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_portfolio WHERE SourceId = {0}", new object[] { sourceId }, ct);
         db.SecurityTaxonomies.AddRange(rows);
         db.PpSecurities.AddRange(securities);
+        db.PpPortfolios.AddRange(portfolios);
+        db.PpLots.AddRange(lots);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 
@@ -76,8 +95,8 @@ public class PortfolioPerformanceImportService
         int distinctTaxonomies = rows.Select(r => r.TaxonomyName).Distinct(StringComparer.Ordinal).Count();
 
         _logger.LogInformation(
-            "Imported PortfolioPerformance taxonomy for source '{Source}' (id={SourceId}): {Rows} rows, {Isins} securities, {Taxonomies} taxonomies",
-            sourceName, sourceId, rows.Count, distinctIsins, distinctTaxonomies);
+            "Imported PortfolioPerformance data for source '{Source}' (id={SourceId}): {Rows} taxonomy rows, {Isins} classified securities, {Taxonomies} taxonomies, {Portfolios} depots, {Lots} open lots",
+            sourceName, sourceId, rows.Count, distinctIsins, distinctTaxonomies, portfolios.Count, lots.Count);
 
         // The Browse holdings view reads taxonomy alongside MoneyMoney data, so signal the same area.
         _notifier.Publish(new DataChange(DataArea.MoneyMoneyData, SourceId: sourceId));
@@ -88,7 +107,9 @@ public class PortfolioPerformanceImportService
             SourceName = sourceName,
             RowsImported = rows.Count,
             SecuritiesClassified = distinctIsins,
-            TaxonomiesImported = distinctTaxonomies
+            TaxonomiesImported = distinctTaxonomies,
+            PortfoliosImported = portfolios.Count,
+            LotsImported = lots.Count
         };
     }
 }
@@ -100,4 +121,6 @@ public class PpImportResult
     public int RowsImported { get; set; }
     public int SecuritiesClassified { get; set; }
     public int TaxonomiesImported { get; set; }
+    public int PortfoliosImported { get; set; }
+    public int LotsImported { get; set; }
 }

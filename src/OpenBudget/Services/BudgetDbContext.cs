@@ -34,6 +34,8 @@ public class BudgetDbContext : DbContext
     public DbSet<PortfolioChartPoint> PortfolioChartPoints => Set<PortfolioChartPoint>();
     public DbSet<SecurityTaxonomy> SecurityTaxonomies => Set<SecurityTaxonomy>();
     public DbSet<PpSecurity> PpSecurities => Set<PpSecurity>();
+    public DbSet<PpPortfolio> PpPortfolios => Set<PpPortfolio>();
+    public DbSet<PpLot> PpLots => Set<PpLot>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -223,5 +225,12 @@ public class BudgetDbContext : DbContext
         // and looked up by source+ISIN to merge against held securities.
         modelBuilder.Entity<PpSecurity>()
             .HasIndex(s => new { s.SourceId, s.Isin });
+
+        // PortfolioPerformance depots + reconstructed FIFO lots. Scoped by source; lots are read by
+        // source (then grouped by ISIN/depot in memory for the tax engine).
+        modelBuilder.Entity<PpPortfolio>()
+            .HasIndex(p => p.SourceId);
+        modelBuilder.Entity<PpLot>()
+            .HasIndex(l => new { l.SourceId, l.Isin });
     }
 }

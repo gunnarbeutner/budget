@@ -112,6 +112,16 @@ public static class PortfolioPerformanceFile
     }
 
     /// <summary>
+    /// The depots (portfolios) catalogued in the file, as <see cref="PpPortfolio"/> rows for the
+    /// given source — the candidates a user maps to their MoneyMoney depot accounts.
+    /// </summary>
+    public static List<PpPortfolio> ExtractPortfolios(PClient client, int sourceId) =>
+        client.Portfolios
+            .Where(p => !string.IsNullOrEmpty(p.Uuid))
+            .Select(p => new PpPortfolio { SourceId = sourceId, Uuid = p.Uuid, Name = string.IsNullOrEmpty(p.Name) ? p.Uuid : p.Name })
+            .ToList();
+
+    /// <summary>
     /// Names from the taxonomy's top level down to <paramref name="classification"/>, " / "-joined.
     /// The synthetic root (the node with no parent) is excluded so paths read as "Equity / North
     /// America" rather than "Asset Classes / Equity / North America".

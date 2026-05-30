@@ -15,7 +15,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20260530225031_AddPpSecurityCatalog";
+        public override string LatestMigrationId => "20260530235316_AddPpPortfolioAndLot";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -474,6 +474,67 @@ namespace OpenBudget.Migrations
                     b.HasIndex("SourceId", "AccountId", "Timestamp");
 
                     b.ToTable("mm_portfolio_chart");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.PpLot", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly>("Acquired")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("Cost")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Isin")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PortfolioUuid")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("Shares")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceId", "Isin");
+
+                    b.ToTable("pp_lot");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.PpPortfolio", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Uuid")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceId");
+
+                    b.ToTable("pp_portfolio");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.PpSecurity", b =>
