@@ -171,6 +171,12 @@ else
                                         @onclick="() => ToggleNoBuy(s.Key)" disabled="@(!included)">
                                     <i class="bi @(noBuy.Contains(s.Key) ? "bi-cart-x-fill" : "bi-cart-x")" aria-hidden="true"></i>
                                 </button>
+                                @* The button is hidden on paper (it's a .btn); when "don't buy" is on, keep a
+                                   static marker so the printed plan still shows the constraint. *@
+                                @if (noBuy.Contains(s.Key))
+                                {
+                                    <i class="bi bi-cart-x-fill ms-1 d-none d-print-inline" title="@L["NoBuy_Tooltip"]" aria-hidden="true"></i>
+                                }
                             </div>
                             <div class="text-body-secondary small">@s.Isin</div>
                         </td>

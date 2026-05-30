@@ -884,6 +884,14 @@ a, .btn-link {
         display: none !important;
     }
 
+    /* The project name is a click/hover chip on screen (padded so the hover background
+       has room). On paper there's no chip — drop the padding so the title sits flush
+       with the content below it instead of indented. */
+    .project-selector-toggle {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+
     /* Flatten cards for clean ink. */
     .card {
         border: 1px solid #ccc !important;
