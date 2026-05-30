@@ -36,7 +36,8 @@ else if (securities.Count == 0)
 }
 else
 {
-    var plan = BuildPlan();
+    var solved = RegionMode ? SolveRegions() : null;
+    var plan = RegionMode ? BuildRegionPlan(solved) : BuildManualPlan();
 
     <p class="text-body-secondary">@L["Intro"]</p>
 
@@ -52,68 +53,63 @@ else
         <div>
             <div class="form-label small mb-1">@L["Mode_Label"]</div>
             <div class="segmented" role="group" aria-label="@L["Mode_Label"]">
-                <button type="button" class="btn @(mode == RebalanceTargetMode.Ratio ? "active" : "")"
-                        @onclick="() => SetMode(RebalanceTargetMode.Ratio)">@L["Mode_Ratio"]</button>
-                <button type="button" class="btn @(mode == RebalanceTargetMode.Amount ? "active" : "")"
-                        @onclick="() => SetMode(RebalanceTargetMode.Amount)">@L["Mode_Amount"]</button>
+                <button type="button" class="btn @(targetBy == "ratio" ? "active" : "")"
+                        @onclick='() => SetTargetBy("ratio")'>@L["Mode_Ratio"]</button>
+                <button type="button" class="btn @(targetBy == "amount" ? "active" : "")"
+                        @onclick='() => SetTargetBy("amount")'>@L["Mode_Amount"]</button>
+                @if (taxonomyNames.Count > 0)
+                {
+                    <button type="button" class="btn @(targetBy == "region" ? "active" : "")"
+                            @onclick='() => SetTargetBy("region")'>@L["Mode_Region"]</button>
+                }
             </div>
         </div>
         <button type="button" class="btn btn-sm btn-link" @onclick="ResetTargets">@L["Reset"]</button>
     </div>
 
-    @if (taxonomyNames.Count > 0)
+    @if (RegionMode)
     {
-        <div class="mb-3">
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ToggleRegionPanel">
-                <i class="bi bi-globe me-1" aria-hidden="true"></i>@L["Region_Toggle"]
-            </button>
-            @if (showRegionPanel)
-            {
-                var solved = SolveRegions();
-                <div class="card mt-2"><div class="card-body">
-                    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-                        <label class="small text-body-secondary mb-0" for="taxSel">@L["Region_Taxonomy"]</label>
-                        <select id="taxSel" class="form-select form-select-sm" style="width:auto"
-                                value="@regionTaxonomy" @onchange="OnRegionTaxonomyChanged">
-                            @foreach (var t in taxonomyNames)
-                            {
-                                <option value="@t">@t</option>
-                            }
-                        </select>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-2" style="max-width: 32rem;">
-                            <thead><tr>
-                                <th>@L["Region_Class"]</th>
-                                <th class="text-end" style="width: 8rem;">@L["Region_Target"]</th>
-                                <th class="text-end" style="width: 8rem;">@L["Region_Achieved"]</th>
-                            </tr></thead>
-                            <tbody>
-                                @foreach (var cls in regionList)
-                                {
-                                    <tr @key="cls">
-                                        <td>@cls</td>
-                                        <td class="text-end">
-                                            <div class="input-group input-group-sm">
-                                                <input type="number" step="1" min="0" class="form-control text-end"
-                                                       value="@FormatNum(regionTargets.GetValueOrDefault(cls))"
-                                                       @onchange="e => OnRegionTargetChanged(cls, e.Value)" />
-                                                <span class="input-group-text">%</span>
-                                            </div>
-                                        </td>
-                                        <td class="text-end text-body-secondary">
-                                            @(solved is { } sv ? sv.Achieved.GetValueOrDefault(cls).ToString("0.#", CultureInfo.InvariantCulture) + "%" : "")
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-primary" @onclick="ApplyRegionTargets">@L["Region_Apply"]</button>
-                    <span class="text-body-secondary small ms-2">@L["Region_Note"]</span>
-                </div></div>
-            }
-        </div>
+        <div class="card mb-3"><div class="card-body">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                <label class="small text-body-secondary mb-0" for="taxSel">@L["Region_Taxonomy"]</label>
+                <select id="taxSel" class="form-select form-select-sm" style="width:auto"
+                        value="@regionTaxonomy" @onchange="OnRegionTaxonomyChanged">
+                    @foreach (var t in taxonomyNames)
+                    {
+                        <option value="@t">@t</option>
+                    }
+                </select>
+                <span class="text-body-secondary small ms-2">@L["Region_Note"]</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0" style="max-width: 32rem;">
+                    <thead><tr>
+                        <th>@L["Region_Class"]</th>
+                        <th class="text-end" style="width: 8rem;">@L["Region_Target"]</th>
+                        <th class="text-end" style="width: 8rem;">@L["Region_Achieved"]</th>
+                    </tr></thead>
+                    <tbody>
+                        @foreach (var cls in regionList)
+                        {
+                            <tr @key="cls">
+                                <td>@cls</td>
+                                <td class="text-end">
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" step="1" min="0" class="form-control text-end"
+                                               value="@FormatNum(regionTargets.GetValueOrDefault(cls))"
+                                               @onchange="e => OnRegionTargetChanged(cls, e.Value)" />
+                                        <span class="input-group-text">%</span>
+                                    </div>
+                                </td>
+                                <td class="text-end text-body-secondary">
+                                    @(solved is { } sv ? sv.Achieved.GetValueOrDefault(cls).ToString("0.#", CultureInfo.InvariantCulture) + "%" : "")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div></div>
     }
 
     <div class="table-responsive">
@@ -123,7 +119,7 @@ else
                     <th style="width: 2rem;"></th>
                     <th>@L["Col_Security"]</th>
                     <th class="text-end">@L["Col_Current"]</th>
-                    <th class="text-end" style="width: 9rem;">@(mode == RebalanceTargetMode.Amount ? L["Col_TargetAmount"] : L["Col_Weight"])</th>
+                    <th class="text-end" style="width: 9rem;">@(RegionMode ? L["Col_Solved"] : targetBy == "amount" ? L["Col_TargetAmount"] : L["Col_Weight"])</th>
                     <th class="text-end">@L["Col_Trade"]</th>
                     <th class="text-end">@L["Col_After"]</th>
                 </tr>
@@ -158,9 +154,9 @@ else
                             <div class="text-body-secondary small">@(row is { } cr ? (MarkupString)cr.CurrentFraction.ToString("P1", CultureInfo.CurrentCulture) : Nbsp)</div>
                         </td>
                         <td class="text-end">
-                            <input type="number" step="@(mode == RebalanceTargetMode.Amount ? "1000" : "1")" min="0"
-                                   class="form-control form-control-sm text-end" disabled="@(!included)"
-                                   value="@FormatNum(targets.GetValueOrDefault(s.Key))"
+                            <input type="number" step="@(targetBy == "amount" ? "1000" : "1")" min="0"
+                                   class="form-control form-control-sm text-end" disabled="@(!included || RegionMode)"
+                                   value="@FormatNum(RegionMode ? (row?.TargetValue ?? 0m) : targets.GetValueOrDefault(s.Key))"
                                    @onchange="e => OnTargetChanged(s.Key, e.Value)" />
                         </td>
                         <td class="text-end">
@@ -241,12 +237,14 @@ else
     private readonly HashSet<string> noBuy = new(StringComparer.Ordinal);
     private Dictionary<string, decimal> targets = new(StringComparer.Ordinal);
     private decimal cash;
-    private RebalanceTargetMode mode = RebalanceTargetMode.Ratio;
+    // "ratio" | "amount" (manual per-security targets) | "region" (solver-driven, live).
+    private string targetBy = "ratio";
+    private bool RegionMode => targetBy == "region";
+    private RebalanceTargetMode ManualMode => targetBy == "amount" ? RebalanceTargetMode.Amount : RebalanceTargetMode.Ratio;
 
     // Region/taxonomy targeting: solved into per-security targets via RebalanceSolver.
     private List<string> taxonomyNames = new();
     private string? regionTaxonomy;
-    private bool showRegionPanel;
     private List<string> regionList = new();
     private Dictionary<string, decimal> regionTargets = new(StringComparer.Ordinal);                  // class -> percent
     private Dictionary<string, Dictionary<string, decimal>> securityWeights = new(StringComparer.Ordinal); // isin -> class -> fraction
@@ -278,7 +276,7 @@ else
         securities = holdings?.Rows ?? new List<HoldingRow>();
         taxonomyNames = holdings?.Taxonomies.Select(t => t.TaxonomyName).ToList() ?? new List<string>();
         regionTaxonomy = taxonomyNames.FirstOrDefault();
-        showRegionPanel = false;
+        targetBy = "ratio";
         regionList = new List<string>();
         regionTargets = new Dictionary<string, decimal>(StringComparer.Ordinal);
         securityWeights = new Dictionary<string, Dictionary<string, decimal>>(StringComparer.Ordinal);
@@ -301,13 +299,48 @@ else
         cash = 0m;
     }
 
-    private RebalancePlan BuildPlan()
+    private RebalancePlan BuildManualPlan()
     {
         var items = securities
             .Where(s => selected.Contains(s.Key))
             .Select(s => new RebalanceInput { Key = s.Key, Name = s.Name, CurrentValue = s.Value })
             .ToList();
-        return RebalanceMath.ComputePlan(items, cash, mode, targets, noBuy);
+        return RebalanceMath.ComputePlan(items, cash, ManualMode, targets, noBuy);
+    }
+
+    // Region mode: the per-security plan is the solver's output directly, so editing a region
+    // target updates the trades live (no apply step).
+    private RebalancePlan BuildRegionPlan((List<HoldingRow> Sel, double[] F, Dictionary<string, decimal> Achieved)? solved)
+    {
+        if (solved is not { } sv) return new RebalancePlan();
+        decimal pool = sv.Sel.Sum(s => s.Value) + cash;
+        var rows = new List<RebalanceRow>(sv.Sel.Count);
+        for (int i = 0; i < sv.Sel.Count; i++)
+        {
+            var s = sv.Sel[i];
+            decimal targetValue = decimal.Round((decimal)sv.F[i] * pool, 2);
+            rows.Add(new RebalanceRow
+            {
+                Key = s.Key,
+                Name = s.Name,
+                CurrentValue = s.Value,
+                CurrentFraction = pool > 0m ? s.Value / pool : 0m,
+                TargetValue = targetValue,
+                TargetFraction = pool > 0m ? targetValue / pool : 0m,
+                Delta = targetValue - s.Value
+            });
+        }
+        decimal totalTarget = rows.Sum(r => r.TargetValue);
+        return new RebalancePlan
+        {
+            Pool = pool,
+            Cash = cash,
+            TotalBuys = rows.Where(r => r.Delta > 0m).Sum(r => r.Delta),
+            TotalSells = rows.Where(r => r.Delta < 0m).Sum(r => -r.Delta),
+            Leftover = Math.Max(0m, pool - totalTarget),
+            Feasible = true,
+            Rows = rows
+        };
     }
 
     private void ToggleNoBuy(string key)
@@ -316,7 +349,7 @@ else
     }
 
     private decimal SumTargets() =>
-        mode == RebalanceTargetMode.Amount
+        targetBy == "amount"
             ? securities.Where(s => selected.Contains(s.Key)).Sum(s => Math.Max(0m, targets.GetValueOrDefault(s.Key)))
             : 0m;
 
@@ -326,19 +359,26 @@ else
         else selected.Remove(key);
     }
 
-    private void SetMode(RebalanceTargetMode m) => mode = m;
+    // Switch the target mode. Leaving region mode hands its solved mix to the manual targets so the
+    // user can fine-tune from it; entering it loads the taxonomy weights once.
+    private async Task SetTargetBy(string v)
+    {
+        if (v == targetBy) return;
+        if (RegionMode && v != "region" && SolveRegions() is { } solved)
+        {
+            decimal pool = solved.Sel.Sum(s => s.Value) + cash;
+            for (int i = 0; i < solved.Sel.Count; i++)
+                targets[solved.Sel[i].Key] = decimal.Round((decimal)solved.F[i] * pool, 2);
+        }
+        targetBy = v;
+        if (v == "region" && regionList.Count == 0) await LoadRegionWeightsAsync();
+    }
 
     private void OnCashChanged(ChangeEventArgs e) => cash = ParseNum(e.Value);
 
     private void OnTargetChanged(string key, object? value) => targets[key] = ParseNum(value);
 
     // ----- Region/taxonomy targeting -----
-
-    private async Task ToggleRegionPanel()
-    {
-        showRegionPanel = !showRegionPanel;
-        if (showRegionPanel) await LoadRegionWeightsAsync();
-    }
 
     private async Task OnRegionTaxonomyChanged(ChangeEventArgs e)
     {
@@ -411,17 +451,6 @@ else
     }
 
     private void OnRegionTargetChanged(string cls, object? value) => regionTargets[cls] = ParseNum(value);
-
-    // Solve for the per-security mix and write it into the targets, then switch to Ratio mode so the
-    // main table shows the suggested trades (which the user can still fine-tune).
-    private void ApplyRegionTargets()
-    {
-        if (SolveRegions() is not { } solved) return;
-        decimal pool = solved.Sel.Sum(s => s.Value) + cash;
-        for (int i = 0; i < solved.Sel.Count; i++)
-            targets[solved.Sel[i].Key] = decimal.Round((decimal)solved.F[i] * pool, 2);
-        mode = RebalanceTargetMode.Ratio;
-    }
 
     // <input type="number"> posts its value in invariant form (decimal point), regardless of UI culture.
     private static decimal ParseNum(object? value) =>
