@@ -173,16 +173,29 @@ final class ConfigViewModel: ObservableObject {
     @Published var sourceName: String = Config.sourceName ?? ""
     @Published var token: String = Keychain.token ?? ""
     @Published var dbPassword: String = Keychain.dbPassword ?? ""
+    @Published var portfolioPath: String = Config.portfolioPath ?? ""
     @Published var status: String = ""
     @Published var working: Bool = false
     @Published var isInstalled: Bool = LaunchAgent.isInstalled
+
+    /// Opens a file picker for the PortfolioPerformance ".portfolio" file and stores the chosen
+    /// path. Runs on the main actor; NSOpenPanel must.
+    func choosePortfolioFile() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if panel.runModal() == .OK, let url = panel.url {
+            self.portfolioPath = url.path
+        }
+    }
 
     func saveAndInstall() async {
         await runWorking {
             self.status = "Saving and installing..."
             let urls = Config.parseURLs(self.baseURLsText)
             try Config.validate(baseURLs: urls, sourceName: self.sourceName, token: self.token)
-            Config.save(baseURLs: urls, sourceName: self.sourceName)
+            Config.save(baseURLs: urls, sourceName: self.sourceName, portfolioPath: self.portfolioPath)
             try Keychain.setToken(self.token)
             try Keychain.setDBPassword(self.dbPassword)
             try LaunchAgent.install()
@@ -259,6 +272,18 @@ struct ConfigView: View {
                 SecureField("MoneyMoney password", text: $vm.dbPassword)
                     .textFieldStyle(.roundedBorder)
                     .help("Leave empty if MoneyMoney has no database password set. Stored in macOS Keychain.")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("PortfolioPerformance file (optional)")
+                        .font(.callout)
+                    HStack {
+                        TextField("Path to your .portfolio file", text: $vm.portfolioPath)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Browse…") { vm.choosePortfolioFile() }
+                    }
+                    .help(
+                        "Optional. When set, every export also uploads this file so security taxonomy "
+                            + "(regions, asset classes) is available alongside your holdings.")
+                }
             }
 
             HStack {
@@ -304,6 +329,7 @@ enum Config {
     // URL doesn't disappear when they upgrade to the multi-URL build.
     private static let legacyBaseURLKey = "baseURL"
     private static let sourceNameKey = "sourceName"
+    private static let portfolioPathKey = "portfolioPath"
 
     /// Returns the configured URLs. Reads the multi-URL array if present; otherwise falls
     /// back to (and migrates) the legacy single-URL key.
@@ -319,9 +345,17 @@ enum Config {
 
     static var sourceName: String? { UserDefaults.standard.string(forKey: sourceNameKey) }
 
-    static func save(baseURLs: [String], sourceName: String) {
+    /// Path to the user's PortfolioPerformance ".portfolio" file. Optional — nil/empty means the
+    /// export ships only MoneyMoney data.
+    static var portfolioPath: String? {
+        guard let p = UserDefaults.standard.string(forKey: portfolioPathKey), !p.isEmpty else { return nil }
+        return p
+    }
+
+    static func save(baseURLs: [String], sourceName: String, portfolioPath: String) {
         UserDefaults.standard.set(baseURLs, forKey: baseURLsKey)
         UserDefaults.standard.set(sourceName, forKey: sourceNameKey)
+        UserDefaults.standard.set(portfolioPath, forKey: portfolioPathKey)
         // Once the multi-URL key is populated, drop the legacy scalar so the two can't drift.
         UserDefaults.standard.removeObject(forKey: legacyBaseURLKey)
     }
@@ -599,12 +633,37 @@ enum Exporter {
         for baseURL in baseURLs {
             logger("Exported \(size) bytes → uploading to \(baseURL)/api/moneymoney-db/\(sourceName)")
             do {
-                try await upload(file: outFile, baseURL: baseURL, sourceName: sourceName, token: token, logger: logger)
+                try await upload(
+                    file: outFile, baseURL: baseURL, apiPath: "api/moneymoney-db/\(sourceName)",
+                    token: token, logger: logger)
             } catch {
                 logger("✗ Upload to \(baseURL) failed: \(error.localizedDescription)")
                 failures.append((baseURL, error))
             }
         }
+
+        // Optional: also ship the PortfolioPerformance file (security taxonomy) to each target. It
+        // rides the same token + source name. A missing or unconfigured file isn't an error — the
+        // taxonomy just supplements the MoneyMoney holdings.
+        if let portfolioPath = Config.portfolioPath {
+            if FileManager.default.fileExists(atPath: portfolioPath) {
+                let portfolioFile = URL(fileURLWithPath: portfolioPath)
+                for baseURL in baseURLs {
+                    logger("Uploading PortfolioPerformance file → \(baseURL)/api/portfolioperformance/\(sourceName)")
+                    do {
+                        try await upload(
+                            file: portfolioFile, baseURL: baseURL,
+                            apiPath: "api/portfolioperformance/\(sourceName)", token: token, logger: logger)
+                    } catch {
+                        logger("✗ PortfolioPerformance upload to \(baseURL) failed: \(error.localizedDescription)")
+                        failures.append(("\(baseURL) (PortfolioPerformance)", error))
+                    }
+                }
+            } else {
+                logger("PortfolioPerformance file configured but not found at \(portfolioPath); skipping.")
+            }
+        }
+
         if !failures.isEmpty {
             let summary =
                 failures
@@ -707,12 +766,12 @@ enum Exporter {
     }
 
     private static func upload(
-        file: URL, baseURL: String, sourceName: String, token: String, logger: @escaping (String) -> Void
+        file: URL, baseURL: String, apiPath: String, token: String, logger: @escaping (String) -> Void
     ) async throws {
         guard
             let url = URL(
                 string:
-                    "\(baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/api/moneymoney-db/\(sourceName)"
+                    "\(baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/\(apiPath)"
             )
         else {
             throw AppError.invalidConfig("Could not assemble upload URL")
