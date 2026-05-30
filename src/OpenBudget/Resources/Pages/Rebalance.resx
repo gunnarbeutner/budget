@@ -70,7 +70,7 @@
   <data name="Mode_Label" xml:space="preserve"><value>Target</value></data>
   <data name="Mode_Ratio" xml:space="preserve"><value>By ratio</value></data>
   <data name="Mode_Amount" xml:space="preserve"><value>By amount</value></data>
-  <data name="Mode_Region" xml:space="preserve"><value>By region</value></data>
+  <data name="Mode_Region" xml:space="preserve"><value>By taxonomy</value></data>
   <data name="Col_Solved" xml:space="preserve"><value>Target</value></data>
   <data name="Reset" xml:space="preserve"><value>Reset</value></data>
   <data name="Col_Security" xml:space="preserve"><value>Security</value></data>

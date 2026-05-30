@@ -9,6 +9,9 @@ namespace OpenBudget.Services;
 /// </summary>
 public static class RebalanceMath
 {
+    /// <summary>Trades smaller than this are treated as no-ops (solver/rounding noise, sub-share).</summary>
+    public const decimal TradeEpsilon = 1m;
+
     public static RebalancePlan ComputePlan(
         IReadOnlyList<RebalanceInput> items,
         decimal cash,
@@ -38,6 +41,9 @@ public static class RebalanceMath
             // and the un-allocated amount falls into leftover (the solver redistributes; manual modes
             // leave it as cash).
             if (noBuy != null && noBuy.Contains(i.Key) && targetValue > i.CurrentValue)
+                targetValue = i.CurrentValue;
+            // Suppress trade dust — a sub-€1 delta is rounding/solver noise, not a real order.
+            if (Math.Abs(targetValue - i.CurrentValue) < TradeEpsilon)
                 targetValue = i.CurrentValue;
 
             rows.Add(new RebalanceRow

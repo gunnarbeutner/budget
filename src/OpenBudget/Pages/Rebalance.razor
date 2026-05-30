@@ -113,7 +113,7 @@ else
     }
 
     <div class="table-responsive">
-        <table class="table table-sm align-middle">
+        <table class="table table-sm align-top">
             <thead>
                 <tr>
                     <th style="width: 2rem;"></th>
@@ -147,7 +147,7 @@ else
                                     <i class="bi @(noBuy.Contains(s.Key) ? "bi-cart-x-fill" : "bi-cart-x")" aria-hidden="true"></i>
                                 </button>
                             </div>
-                            <div class="text-body-secondary small">@(string.IsNullOrEmpty(s.Isin) ? Nbsp : (MarkupString)s.Isin)</div>
+                            <div class="text-body-secondary small">@s.Isin</div>
                         </td>
                         <td class="text-end">
                             <div>@Formatting.FormatMoney(s.Value, s.PriceCurrency ?? "EUR")</div>
@@ -319,6 +319,8 @@ else
         {
             var s = sv.Sel[i];
             decimal targetValue = decimal.Round((decimal)sv.F[i] * pool, 2);
+            // Suppress trade dust — a sub-€1 delta is solver/rounding noise, not a real order.
+            if (Math.Abs(targetValue - s.Value) < RebalanceMath.TradeEpsilon) targetValue = s.Value;
             rows.Add(new RebalanceRow
             {
                 Key = s.Key,

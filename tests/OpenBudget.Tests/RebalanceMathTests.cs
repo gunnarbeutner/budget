@@ -71,6 +71,17 @@ public class RebalanceMathTests
     }
 
     [Fact]
+    public void Sub_euro_deltas_are_suppressed_as_holds()
+    {
+        var items = new[] { Item("A", 1000m) };
+        var targets = new Dictionary<string, decimal>(StringComparer.Ordinal) { ["A"] = 1000.40m };
+
+        var plan = RebalanceMath.ComputePlan(items, cash: 0m, RebalanceTargetMode.Amount, targets);
+
+        Assert.Equal(0m, plan.Rows.Single().Delta); // 0.40 € is dust, not a trade
+    }
+
+    [Fact]
     public void Amount_mode_flags_over_allocation_as_infeasible()
     {
         var items = new[] { Item("A", 600m) };
