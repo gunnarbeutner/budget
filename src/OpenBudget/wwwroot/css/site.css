@@ -850,7 +850,7 @@ a, .btn-link {
    printed page reads like a clean report. d-print-none on HomeLink / the
    change banner handles the two elements without a stable class here. */
 @media print {
-    @page { margin: 1.5cm; }
+    @page { margin: 1cm; }
 
     body { background: #fff !important; }
 
@@ -867,6 +867,15 @@ a, .btn-link {
         border: 1px solid #ccc !important;
         box-shadow: none !important;
     }
+
+    /* Compact spacing so a small report (e.g. a 5-security rebalance) fits one page:
+       tighter cards, table rows, headings and inter-section gaps. */
+    .card > .card-body { padding: .5rem .75rem !important; }
+    .table-sm > :not(caption) > * > * { padding: .12rem .35rem !important; }
+    h1, h2, h3, h4, h5, .h4, .h5 { font-size: 1rem !important; margin-bottom: .25rem !important; }
+    .mb-2, .mb-3, .mb-4 { margin-bottom: .4rem !important; }
+    .mt-3 { margin-top: .4rem !important; }
+    p { margin-bottom: .4rem; }
 
     /* Inputs print as their value, not a box with spinners. */
     .form-control,
