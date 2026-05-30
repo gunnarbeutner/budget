@@ -39,10 +39,12 @@ internal sealed class TestDb : IAsyncDisposable
         // same database — disposing a per-operation context doesn't drop the schema or data.
         var factory = new SharedConnectionDbContextFactory(options);
         Notifier = new ChangeNotificationService();
+        // Stand-in for the per-circuit origin the DI container would supply in the live app.
+        var origin = new ChangeOrigin();
         Hierarchy = new CategoryHierarchyService(factory, Notifier);
-        Projects = new ProjectService(factory, Notifier);
-        Entries = new BudgetEntryService(factory, Hierarchy, Notifier);
-        Spending = new BudgetService(factory, Hierarchy, Projects, Entries, Notifier);
+        Projects = new ProjectService(factory, Notifier, origin);
+        Entries = new BudgetEntryService(factory, Hierarchy, Notifier, origin);
+        Spending = new BudgetService(factory, Hierarchy, Projects, Entries, Notifier, origin);
         Predictions = new BudgetPredictionService(factory, Hierarchy);
         TransactionQueries = new TransactionQueryService(factory);
         Browse = new BrowseService(factory, Hierarchy, Projects, Entries, Spending);
