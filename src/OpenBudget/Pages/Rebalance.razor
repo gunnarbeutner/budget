@@ -74,10 +74,11 @@ else
         <button type="button" class="btn btn-sm btn-link" @onclick="ResetTargets">@L["Reset"]</button>
     </div>
 
+    <div class="rebal-body">
     @if (RegionMode)
     {
         <div class="card mb-3"><div class="card-body">
-            <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-3 d-print-none">
                 <label class="small text-body-secondary mb-0" for="taxSel">@L["Region_Taxonomy"]</label>
                 <select id="taxSel" class="form-select form-select-sm" style="width:auto"
                         value="@regionTaxonomy" @onchange="OnRegionTaxonomyChanged">
@@ -86,8 +87,10 @@ else
                         <option value="@t">@t</option>
                     }
                 </select>
-                <span class="text-body-secondary small ms-2 d-print-none">@L["Region_Note"]</span>
+                <span class="text-body-secondary small ms-2">@L["Region_Note"]</span>
             </div>
+            @* Print shows the taxonomy name as a heading (the dropdown is hidden). *@
+            <div class="d-none d-print-block fw-semibold mb-2">@regionTaxonomy</div>
             <div class="table-responsive">
                 <table class="table table-sm align-middle mb-0 no-last-border" style="max-width: 32rem;">
                     <thead><tr>
@@ -120,7 +123,7 @@ else
     }
 
     <div class="table-responsive">
-        <table class="table table-sm align-top">
+        <table class="table table-sm align-top no-last-border">
             <thead>
                 <tr>
                     <th style="width: 2rem;" class="d-print-none"></th>
@@ -208,6 +211,7 @@ else
             </tbody>
         </table>
     </div>
+    </div>@* /.rebal-body *@
 
     <div class="card mt-3"><div class="card-body">
         <div class="row g-3">
