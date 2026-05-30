@@ -837,6 +837,12 @@ a, .btn-link {
    "section chrome" rather than "two sibling top-level sections" — the header is
    visually one unit with its first row of content (filter strip, period nav, etc.). */
 
+/* Drop the trailing bottom border Bootstrap puts on a table's last row — reads as a stray
+   horizontal rule under the final row (e.g. the rebalance taxonomy-target table). */
+.no-last-border > tbody > tr:last-child > * {
+    border-bottom: 0;
+}
+
 /* ── Print ─────────────────────────────────────────────────────────────────
    The app is screen-first: nav tabs, the sticky period bar, buttons and raw
    input boxes are all noise on paper. Strip the interactive chrome, render

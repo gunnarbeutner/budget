@@ -9,6 +9,12 @@
 
 <PageTitle>@(projectName != null ? L["PageTitle_WithProject", projectName] : L["PageTitle"])</PageTitle>
 
+@* The plan is wide (security + current/target/trade/after, each with shares); default printing
+   to landscape. Scoped to this page via HeadContent so other pages stay portrait. *@
+<HeadContent>
+    <style media="print">@@page { size: landscape; }</style>
+</HeadContent>
+
 @if (notFound)
 {
     <PageHeader Title="@L["NotFound_Heading"]" />
@@ -80,10 +86,10 @@ else
                         <option value="@t">@t</option>
                     }
                 </select>
-                <span class="text-body-secondary small ms-2">@L["Region_Note"]</span>
+                <span class="text-body-secondary small ms-2 d-print-none">@L["Region_Note"]</span>
             </div>
             <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0" style="max-width: 32rem;">
+                <table class="table table-sm align-middle mb-0 no-last-border" style="max-width: 32rem;">
                     <thead><tr>
                         <th>@L["Region_Class"]</th>
                         <th class="text-end" style="width: 8rem;">@L["Region_Target"]</th>
