@@ -134,7 +134,8 @@ else
                     var included = selected.Contains(s.Key);
                     var row = plan.Rows.FirstOrDefault(r => r.Key == s.Key);
                     @* Every cell renders the same line structure regardless of selection (disabled
-                       input + min-height second lines) so toggling a security doesn't reflow the row. *@
+                       input + a non-breaking-space placeholder on each second line, so empty lines
+                       keep the exact text height) — toggling a security doesn't reflow the row. *@
                     <tr @key="s.Key" class="@(included ? "" : "text-body-secondary")">
                         <td>
                             <input type="checkbox" class="form-check-input" checked="@included"
@@ -150,11 +151,11 @@ else
                                     <i class="bi @(noBuy.Contains(s.Key) ? "bi-cart-x-fill" : "bi-cart-x")" aria-hidden="true"></i>
                                 </button>
                             </div>
-                            <div class="text-body-secondary small" style="min-height:1.2rem">@s.Isin</div>
+                            <div class="text-body-secondary small">@(string.IsNullOrEmpty(s.Isin) ? Nbsp : (MarkupString)s.Isin)</div>
                         </td>
                         <td class="text-end">
                             <div>@Formatting.FormatMoney(s.Value, s.PriceCurrency ?? "EUR")</div>
-                            <div class="text-body-secondary small" style="min-height:1.2rem">@(row is { } cr ? cr.CurrentFraction.ToString("P1", CultureInfo.CurrentCulture) : "")</div>
+                            <div class="text-body-secondary small">@(row is { } cr ? (MarkupString)cr.CurrentFraction.ToString("P1", CultureInfo.CurrentCulture) : Nbsp)</div>
                         </td>
                         <td class="text-end">
                             <input type="number" step="@(mode == RebalanceTargetMode.Amount ? "1000" : "1")" min="0"
@@ -178,12 +179,12 @@ else
                             @if (included && row is { } ar)
                             {
                                 <div>@Formatting.FormatMoney(ar.TargetValue, s.PriceCurrency ?? "EUR")</div>
-                                <div class="text-body-secondary small" style="min-height:1.2rem">@ar.TargetFraction.ToString("P1", CultureInfo.CurrentCulture)</div>
+                                <div class="text-body-secondary small">@ar.TargetFraction.ToString("P1", CultureInfo.CurrentCulture)</div>
                             }
                             else
                             {
                                 <div>@L["Hold"]</div>
-                                <div class="text-body-secondary small" style="min-height:1.2rem"></div>
+                                <div class="text-body-secondary small">@Nbsp</div>
                             }
                         </td>
                     </tr>
@@ -224,6 +225,9 @@ else
 
 @code {
     [Parameter] public int ProjectId { get; set; }
+
+    // Holds an otherwise-empty second line at full text height so toggling a row doesn't reflow it.
+    private readonly MarkupString Nbsp = (MarkupString)"&nbsp;";
 
     private string? projectName;
     private bool notFound;
