@@ -36,34 +36,40 @@ public class PortfolioService
             .ToListAsync(ct);
         if (holdings.Count == 0) return null;
 
+        return await BuildAsync(db, project.SourceId, holdings, accountId, merge: false, ct);
+    }
+
+    /// <summary>
+    /// Combined holdings across several of a project's portfolio accounts — a unified view when a
+    /// project holds more than one depot. Positions sharing an ISIN (or, for ISIN-less crypto, a
+    /// symbol/name) are merged across accounts into one row. Null when the accounts hold nothing.
+    /// </summary>
+    public async Task<AccountHoldings?> GetCombinedHoldingsAsync(
+        int projectId, IReadOnlyCollection<long> accountIds, CancellationToken ct = default)
+    {
+        if (accountIds.Count == 0) return null;
+        var project = await _projects.GetProjectAsync(projectId);
+        if (project == null) return null;
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var holdings = await db.Holdings
+            .AsNoTracking()
+            .Where(h => h.SourceId == project.SourceId && accountIds.Contains(h.AccountId))
+            .ToListAsync(ct);
+        if (holdings.Count == 0) return null;
+
+        return await BuildAsync(db, project.SourceId, holdings, accountId: 0, merge: true, ct);
+    }
+
+    private static async Task<AccountHoldings> BuildAsync(
+        BudgetDbContext db, int sourceId, List<Holding> holdings, long accountId, bool merge, CancellationToken ct)
+    {
         // Total drives both the per-row share and the allocation fractions. A depot can briefly
         // total zero (all dust / a fresh empty position), so guard the divisions.
         decimal total = holdings.Sum(h => (decimal)(h.Amount ?? 0));
         var currency = holdings.FirstOrDefault(h => !string.IsNullOrEmpty(h.AmountCurrency))?.AmountCurrency ?? "EUR";
 
-        var rows = holdings
-            .OrderByDescending(h => h.Amount ?? 0)
-            .Select(h =>
-            {
-                decimal value = (decimal)(h.Amount ?? 0);
-                return new HoldingRow
-                {
-                    Name = h.Name ?? h.Isin ?? h.Symbol ?? "—",
-                    Isin = h.Isin,
-                    Wkn = h.Wkn,
-                    Symbol = h.Symbol,
-                    AssetClassLabel = h.AssetClassLabel,
-                    Quantity = h.Quantity,
-                    Price = h.Price.HasValue ? (decimal)h.Price.Value : null,
-                    PriceCurrency = h.PriceCurrency,
-                    Value = value,
-                    ShareOfAccount = total != 0 ? value / total : 0m,
-                    CostBasis = h.CostBasis.HasValue ? (decimal)h.CostBasis.Value : null,
-                    Gain = h.UnrealizedGain.HasValue ? (decimal)h.UnrealizedGain.Value : null,
-                    GainFraction = h.UnrealizedGainFraction
-                };
-            })
-            .ToList();
+        var rows = merge ? BuildMergedRows(holdings, total) : BuildRows(holdings, total);
 
         var allocation = holdings
             .GroupBy(h => h.AssetClassLabel, StringComparer.Ordinal)
@@ -80,7 +86,7 @@ public class PortfolioService
             .OrderByDescending(s => s.Value)
             .ToList();
 
-        var taxonomies = await BuildLookThroughAsync(db, project.SourceId, holdings, total, ct);
+        var taxonomies = await BuildLookThroughAsync(db, sourceId, holdings, total, ct);
 
         return new AccountHoldings
         {
@@ -91,6 +97,69 @@ public class PortfolioService
             Allocation = allocation,
             Taxonomies = taxonomies
         };
+    }
+
+    private static List<HoldingRow> BuildRows(List<Holding> holdings, decimal total) =>
+        holdings
+            .OrderByDescending(h => h.Amount ?? 0)
+            .Select(h => new HoldingRow
+            {
+                Name = h.Name ?? h.Isin ?? h.Symbol ?? "—",
+                Isin = h.Isin,
+                Wkn = h.Wkn,
+                Symbol = h.Symbol,
+                AssetClassLabel = h.AssetClassLabel,
+                Quantity = h.Quantity,
+                Price = h.Price.HasValue ? (decimal)h.Price.Value : null,
+                PriceCurrency = h.PriceCurrency,
+                Value = (decimal)(h.Amount ?? 0),
+                ShareOfAccount = total != 0 ? (decimal)(h.Amount ?? 0) / total : 0m,
+                CostBasis = h.CostBasis.HasValue ? (decimal)h.CostBasis.Value : null,
+                Gain = h.UnrealizedGain.HasValue ? (decimal)h.UnrealizedGain.Value : null,
+                GainFraction = h.UnrealizedGainFraction
+            })
+            .ToList();
+
+    private static List<HoldingRow> BuildMergedRows(List<Holding> holdings, decimal total)
+    {
+        // Merge key: ISIN when present, else symbol, else name — so the same security held in two
+        // depots becomes one row (and ISIN-less crypto still merges by symbol/name).
+        static string Key(Holding h) =>
+            !string.IsNullOrEmpty(h.Isin) ? "isin:" + h.Isin
+            : !string.IsNullOrEmpty(h.Symbol) ? "sym:" + h.Symbol
+            : "name:" + (h.Name ?? "");
+
+        var rows = new List<HoldingRow>();
+        foreach (var g in holdings.GroupBy(Key, StringComparer.Ordinal))
+        {
+            var members = g.ToList();
+            decimal value = members.Sum(h => (decimal)(h.Amount ?? 0));
+            double quantity = members.Sum(h => h.Quantity);
+            // Cost basis only when every member has one, else a partial gain would mislead.
+            decimal? costBasis = members.All(h => h.CostBasis.HasValue)
+                ? members.Sum(h => (decimal)h.CostBasis!.Value)
+                : null;
+            decimal? gain = costBasis.HasValue ? value - costBasis.Value : null;
+            var first = members[0];
+            rows.Add(new HoldingRow
+            {
+                Name = members.Select(h => h.Name).FirstOrDefault(n => !string.IsNullOrEmpty(n))
+                    ?? first.Isin ?? first.Symbol ?? "—",
+                Isin = first.Isin,
+                Wkn = first.Wkn,
+                Symbol = first.Symbol,
+                AssetClassLabel = first.AssetClassLabel,
+                Quantity = quantity,
+                Price = first.Price.HasValue ? (decimal)first.Price.Value : null,
+                PriceCurrency = first.PriceCurrency,
+                Value = value,
+                ShareOfAccount = total != 0 ? value / total : 0m,
+                CostBasis = costBasis,
+                Gain = gain,
+                GainFraction = costBasis is > 0 && gain.HasValue ? (double)(gain.Value / costBasis.Value) : null
+            });
+        }
+        return rows.OrderByDescending(r => r.Value).ToList();
     }
 
     /// <summary>

@@ -28,6 +28,18 @@
             : Tree.Accounts.Where(a => a.IsAssigned);
         var hiddenRelatedCount = Tree.Accounts.Count(a => !a.IsAssigned);
         <div class="browse-tree-section">@L["Tree_Section_Accounts"]</div>
+        @if (Tree.Accounts.Count(a => a.IsPortfolio) >= 2)
+        {
+            bool portfolioSel = SelectionKind == "portfolio";
+            <div class="browse-tree-row @(portfolioSel ? "selected" : "")"
+                 role="treeitem" tabindex="0" aria-selected="@portfolioSel.ToString().ToLower()"
+                 @onclick="() => OnSelectPortfolio.InvokeAsync()"
+                 @onkeydown="OnPortfolioKeydown">
+                <span class="browse-tree-name fw-semibold">
+                    <i class="bi bi-collection me-1" aria-hidden="true"></i>@L["Tree_AllSecurities"]
+                </span>
+            </div>
+        }
         @foreach (var a in visibleAccounts)
         {
             var accountId = a.Id;
@@ -76,6 +88,7 @@
     [Parameter] public EventCallback<bool> ShowRelatedAccountsChanged { get; set; }
     [Parameter] public EventCallback OnSelectAll { get; set; }
     [Parameter] public EventCallback<long> OnSelectAccount { get; set; }
+    [Parameter] public EventCallback OnSelectPortfolio { get; set; }
     [Parameter] public EventCallback<BrowseCategoryNode> OnSelectCategory { get; set; }
 
     private async Task OnAllKeydown(KeyboardEventArgs e)
@@ -86,6 +99,11 @@
     private async Task OnAccountKeydown(KeyboardEventArgs e, long id)
     {
         if (e.Key == "Enter" || e.Key == " ") await OnSelectAccount.InvokeAsync(id);
+    }
+
+    private async Task OnPortfolioKeydown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == " ") await OnSelectPortfolio.InvokeAsync();
     }
 
     private async Task OnCategoryKeydown(KeyboardEventArgs e, BrowseCategoryNode node)

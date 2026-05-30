@@ -63,4 +63,5 @@
   <data name="Tree_HideRelatedAccounts" xml:space="preserve"><value>Nur zugewiesene</value></data>
   <data name="Tree_ShowRelatedAccounts" xml:space="preserve"><value>{0} weitere anzeigen</value></data>
   <data name="Tree_Section_Categories" xml:space="preserve"><value>Kategorien</value></data>
+  <data name="Tree_AllSecurities" xml:space="preserve"><value>Alle Wertpapiere</value></data>
 </root>

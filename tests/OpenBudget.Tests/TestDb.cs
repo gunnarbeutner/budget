@@ -24,6 +24,7 @@ internal sealed class TestDb : IAsyncDisposable
     public TransactionQueryService TransactionQueries { get; }
     public BrowseService Browse { get; }
     public CashflowProjectionService Cashflow { get; }
+    public PortfolioService Portfolio { get; }
 
     public TestDb()
     {
@@ -50,6 +51,7 @@ internal sealed class TestDb : IAsyncDisposable
         TransactionQueries = new TransactionQueryService(factory);
         Browse = new BrowseService(factory, Hierarchy, Projects, Entries, Spending);
         Cashflow = new CashflowProjectionService(factory, Hierarchy, Projects);
+        Portfolio = new PortfolioService(factory, Projects);
     }
 
     /// <summary>

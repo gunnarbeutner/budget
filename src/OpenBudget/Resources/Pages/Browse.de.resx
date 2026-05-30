@@ -100,4 +100,6 @@
   <data name="Holdings_ColGain" xml:space="preserve"><value>Gewinn</value></data>
   <data name="Holdings_Total" xml:space="preserve"><value>Gesamt</value></data>
   <data name="Holdings_LookThrough" xml:space="preserve"><value>Durchschau:</value></data>
+  <data name="Header_AllSecurities" xml:space="preserve"><value>Alle Wertpapiere</value></data>
+  <data name="Header_TotalValue" xml:space="preserve"><value>Gesamtwert</value></data>
 </root>

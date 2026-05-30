@@ -71,6 +71,7 @@
                             @bind-ShowRelatedAccounts="showRelatedAccounts"
                             OnSelectAll="SelectAll"
                             OnSelectAccount="SelectAccount"
+                            OnSelectPortfolio="SelectPortfolio"
                             OnSelectCategory="SelectCategoryNode" />
         }
     </aside>
@@ -127,6 +128,11 @@
                                             @Formatting.FormatMoney(SelectionAccountPeriodSum, SelectionAccountCurrency ?? "EUR")
                                         </span>
                                     </div>
+                                }
+                                else if (selectionKind == "portfolio" && holdings is { } ph)
+                                {
+                                    <div class="h4 mb-0">@Formatting.FormatMoney(ph.TotalValue, ph.Currency)</div>
+                                    <div class="text-body-secondary small">@L["Header_TotalValue"]</div>
                                 }
                                 else
                                 {
@@ -188,7 +194,7 @@
                 </div>
             </div>
 
-            @if (selectionKind == "account" && holdings is { } h)
+            @if ((selectionKind == "account" || selectionKind == "portfolio") && holdings is { } h)
             {
                 var allocColors = ChartPalette.Templates(h.Allocation.Count);
                 <div class="card mb-4 holdings-card">
@@ -647,6 +653,10 @@
             {
                 selectionKind = "account"; selectionId = aid;
             }
+            else if (raw == "securities")
+            {
+                selectionKind = "portfolio"; selectionId = null;
+            }
         }
 
         if (query.TryGetValue("acct", out var af) && long.TryParse(af, out var afl)) accountFilter = afl;
@@ -688,6 +698,7 @@
             "category" => $"cat-{selectionId}",
             "group" => $"grp-{selectionId}",
             "account" => $"acct-{selectionId}",
+            "portfolio" => "securities",
             _ => null
         },
         ["acct"] = accountFilter?.ToString(),
@@ -764,6 +775,19 @@
     private async Task SelectAccount(long id)
     {
         selectionKind = "account"; selectionId = id;
+        CoerceChartGranularityForSelection();
+        railOpen = false;
+        UpdateUrl();
+        await ReloadTransactionsAsync();
+    }
+
+    // Portfolio (depot) accounts in the rail. The combined "All securities" view aggregates these.
+    private List<long> PortfolioAccountIds() =>
+        tree?.Accounts.Where(a => a.IsPortfolio).Select(a => a.Id).ToList() ?? new List<long>();
+
+    private async Task SelectPortfolio()
+    {
+        selectionKind = "portfolio"; selectionId = null;
         CoerceChartGranularityForSelection();
         railOpen = false;
         UpdateUrl();
@@ -941,17 +965,16 @@
         // Holdings are independent of the tx filters/period; load them only while a depot account
         // is selected and clear them otherwise so the card doesn't linger on the next selection.
         if (selectionKind == "account" && SelectedAccountNode is { IsPortfolio: true } depot)
-        {
             holdings = await Portfolio.GetAccountHoldingsAsync(ProjectId, depot.Id);
-            // Keep the look-through selection valid for the newly loaded account.
-            if (holdings?.Taxonomies is { Count: > 0 } taxos
-                && (holdingsTaxonomy is null || taxos.All(t => t.TaxonomyName != holdingsTaxonomy)))
-                holdingsTaxonomy = taxos[0].TaxonomyName;
-        }
+        else if (selectionKind == "portfolio")
+            holdings = await Portfolio.GetCombinedHoldingsAsync(ProjectId, PortfolioAccountIds());
         else
-        {
             holdings = null;
-        }
+
+        // Keep the look-through taxonomy selection valid for the newly loaded holdings.
+        if (holdings?.Taxonomies is { Count: > 0 } taxos
+            && (holdingsTaxonomy is null || taxos.All(t => t.TaxonomyName != holdingsTaxonomy)))
+            holdingsTaxonomy = taxos[0].TaxonomyName;
 
         // The transaction list is intentionally unfiltered by the period anchor — matches
         // MoneyMoney's "Period: Show All" default. The anchor only drives chart-highlight
@@ -1013,6 +1036,12 @@
     private IReadOnlyCollection<long>? ResolveSelectionAccounts()
     {
         if (selectionKind == "account" && selectionId is { } aid) return new[] { aid };
+        // Combined securities view: the transaction list spans all the project's depot accounts.
+        if (selectionKind == "portfolio")
+        {
+            var ids = PortfolioAccountIds();
+            return ids.Count > 0 ? ids : null;
+        }
         if (accountFilter is { } af) return new[] { af };
         return null;
     }
@@ -1023,6 +1052,8 @@
         {
             if (selectionKind == "account" && selectionId is { } aid && tree != null)
                 return tree.Accounts.FirstOrDefault(a => a.Id == aid)?.Name ?? "";
+            if (selectionKind == "portfolio")
+                return L["Header_AllSecurities"];
             if ((selectionKind == "category" || selectionKind == "group") && selectionId is { } cid && tree != null)
                 return FindCategoryNode(tree.Categories, cid, selectionKind == "category" ? CategoryItemType.Category : CategoryItemType.Group)?.Name ?? "";
             return L["Header_AllTransactions"];
