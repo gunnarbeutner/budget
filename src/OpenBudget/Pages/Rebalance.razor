@@ -126,7 +126,10 @@ else
                     <th style="width: 2rem;" class="d-print-none"></th>
                     <th>@L["Col_Security"]</th>
                     <th class="text-end">@L["Col_Current"]</th>
-                    <th class="text-end" style="width: 9rem;">@(RegionMode ? L["Col_Solved"] : targetBy == "amount" ? L["Col_TargetAmount"] : L["Col_Weight"])</th>
+                    @if (!RegionMode)
+                    {
+                        <th class="text-end" style="width: 9rem;">@(targetBy == "amount" ? L["Col_TargetAmount"] : L["Col_Weight"])</th>
+                    }
                     <th class="text-end">@L["Col_Trade"]</th>
                     <th class="text-end">@L["Col_After"]</th>
                 </tr>
@@ -165,12 +168,15 @@ else
                             <div>@Formatting.FormatMoney(s.Value, s.PriceCurrency ?? "EUR")</div>
                             <div class="text-body-secondary small">@(row is { } cr ? cr.CurrentFraction.ToString("P1", CultureInfo.CurrentCulture) + " · " : "")@FormatShares(curShares, whole)@sh</div>
                         </td>
-                        <td class="text-end">
-                            <input type="number" step="@(targetBy == "amount" ? "1000" : "1")" min="0"
-                                   class="form-control form-control-sm text-end" disabled="@(!included || RegionMode)"
-                                   value="@FormatNum(RegionMode ? (row?.TargetValue ?? 0m) : targets.GetValueOrDefault(s.Key))"
-                                   @onchange="e => OnTargetChanged(s.Key, e.Value)" />
-                        </td>
+                        @if (!RegionMode)
+                        {
+                            <td class="text-end">
+                                <input type="number" step="@(targetBy == "amount" ? "1000" : "1")" min="0"
+                                       class="form-control form-control-sm text-end" disabled="@(!included)"
+                                       value="@FormatNum(targets.GetValueOrDefault(s.Key))"
+                                       @onchange="e => OnTargetChanged(s.Key, e.Value)" />
+                            </td>
+                        }
                         <td class="text-end">
                             @if (included && row is { } tr2 && Math.Abs(tr2.Delta) >= 0.005m)
                             {
