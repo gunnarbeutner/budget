@@ -44,10 +44,14 @@
         <a class="dismiss">🗙</a>
     </div>
 
-    <script src="_framework/blazor.server.js"></script>
+    @* Load the JS that Blazor interop calls into (chart helpers, expand-state, UI behaviors)
+       BEFORE blazor.server.js. Otherwise the circuit can go interactive and fire a chart render
+       (e.g. Cashflow's OnAfterRenderAsync) before charts.js has run, throwing
+       "renderChart is not a function" — an unhandled JSException that terminates the circuit. *@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
     <script src="js/charts.js" asp-append-version="true"></script>
     <script src="js/expandState.js" asp-append-version="true"></script>
     <script src="js/uiBehaviors.js" asp-append-version="true"></script>
+    <script src="_framework/blazor.server.js"></script>
 </body>
 </html>

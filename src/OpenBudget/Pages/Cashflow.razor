@@ -1369,7 +1369,7 @@ else
             }
         };
 
-        await JSRuntime.InvokeVoidAsync("renderChart", "cashflowChart", chartData);
+        await InvokeRenderChartAsync("cashflowChart", chartData);
     }
 
     private async Task RenderBalanceChart()
@@ -1477,7 +1477,24 @@ else
             }
         };
 
-        await JSRuntime.InvokeVoidAsync("renderChart", "balanceChart", chartData);
+        await InvokeRenderChartAsync("balanceChart", chartData);
+    }
+
+    /// <summary>
+    /// Renders a chart via JS interop, swallowing the recoverable failure modes so a transient
+    /// hiccup never tears down the whole circuit (the other chart pages guard the same way):
+    /// JSDisconnectedException (navigation in flight) and a JSException for the brief window where
+    /// the page is interactive before charts.js has loaded. The chart re-renders on the next pass.
+    /// </summary>
+    private async Task InvokeRenderChartAsync(string canvasId, object chartData)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("renderChart", canvasId, chartData);
+        }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { }
+        catch (InvalidOperationException) { }
     }
 
     /// <summary>
