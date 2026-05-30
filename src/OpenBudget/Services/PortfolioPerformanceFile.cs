@@ -88,6 +88,30 @@ public static class PortfolioPerformanceFile
     }
 
     /// <summary>
+    /// The ISIN-bearing securities catalogued in the file, as <see cref="PpSecurity"/> rows for the
+    /// given source. ISIN-less securities (e.g. crypto) are skipped — the ISIN is the join key to
+    /// holdings and taxonomy, so a catalogue entry without one couldn't be matched up. A duplicate
+    /// ISIN (never seen in practice) degrades to last-wins rather than producing two rows.
+    /// </summary>
+    public static List<PpSecurity> ExtractSecurities(PClient client, int sourceId)
+    {
+        var byIsin = new Dictionary<string, PpSecurity>(StringComparer.Ordinal);
+        foreach (var s in client.Securities)
+        {
+            if (string.IsNullOrEmpty(s.Isin)) continue;
+            byIsin[s.Isin] = new PpSecurity
+            {
+                SourceId = sourceId,
+                Isin = s.Isin,
+                Name = string.IsNullOrEmpty(s.Name) ? s.Isin : s.Name,
+                TickerSymbol = string.IsNullOrEmpty(s.TickerSymbol) ? null : s.TickerSymbol,
+                Wkn = string.IsNullOrEmpty(s.Wkn) ? null : s.Wkn
+            };
+        }
+        return byIsin.Values.ToList();
+    }
+
+    /// <summary>
     /// Names from the taxonomy's top level down to <paramref name="classification"/>, " / "-joined.
     /// The synthetic root (the node with no parent) is excluded so paths read as "Equity / North
     /// America" rather than "Asset Classes / Equity / North America".

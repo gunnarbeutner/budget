@@ -33,6 +33,7 @@ public class BudgetDbContext : DbContext
     public DbSet<Holding> Holdings => Set<Holding>();
     public DbSet<PortfolioChartPoint> PortfolioChartPoints => Set<PortfolioChartPoint>();
     public DbSet<SecurityTaxonomy> SecurityTaxonomies => Set<SecurityTaxonomy>();
+    public DbSet<PpSecurity> PpSecurities => Set<PpSecurity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -217,5 +218,10 @@ public class BudgetDbContext : DbContext
             .HasIndex(t => new { t.SourceId, t.Isin });
         modelBuilder.Entity<SecurityTaxonomy>()
             .HasIndex(t => new { t.SourceId, t.TaxonomyId });
+
+        // PortfolioPerformance security catalogue. App-native (not namespaced); scoped by source
+        // and looked up by source+ISIN to merge against held securities.
+        modelBuilder.Entity<PpSecurity>()
+            .HasIndex(s => new { s.SourceId, s.Isin });
     }
 }

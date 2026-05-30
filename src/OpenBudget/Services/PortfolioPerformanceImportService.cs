@@ -56,16 +56,19 @@ public class PortfolioPerformanceImportService
 
         // Parse outside the transaction — it's CPU/IO over the file, no DB work. InvalidDataException
         // (wrong format / not a PPPBV1 file) propagates to the caller for a 400.
-        var rows = await Task.Run(() =>
+        var (rows, securities) = await Task.Run(() =>
         {
             using var fs = File.OpenRead(portfolioFilePath);
             var client = PortfolioPerformanceFile.ReadClient(fs);
-            return PortfolioPerformanceFile.Flatten(client, sourceId);
+            return (PortfolioPerformanceFile.Flatten(client, sourceId),
+                    PortfolioPerformanceFile.ExtractSecurities(client, sourceId));
         }, ct);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_security_taxonomy WHERE SourceId = {0}", new object[] { sourceId }, ct);
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_security WHERE SourceId = {0}", new object[] { sourceId }, ct);
         db.SecurityTaxonomies.AddRange(rows);
+        db.PpSecurities.AddRange(securities);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 

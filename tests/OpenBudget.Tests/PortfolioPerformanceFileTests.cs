@@ -74,6 +74,28 @@ public class PortfolioPerformanceFileTests
     }
 
     [Fact]
+    public void ExtractSecurities_keeps_only_isin_bearing_securities()
+    {
+        var securities = PortfolioPerformanceFile.ExtractSecurities(SampleClient(), sourceId: 7);
+
+        // The gold security has no ISIN and is dropped; only the ETF is catalogued.
+        var sec = Assert.Single(securities);
+        Assert.Equal(7, sec.SourceId);
+        Assert.Equal("IE000WORLD0", sec.Isin);
+        Assert.Equal("World ETF", sec.Name);
+    }
+
+    [Fact]
+    public void ExtractSecurities_falls_back_to_isin_when_the_name_is_missing()
+    {
+        var client = new PClient();
+        client.Securities.Add(new PSecurity { Uuid = "u", Isin = "IE00NONAME0" }); // no Name
+
+        var sec = Assert.Single(PortfolioPerformanceFile.ExtractSecurities(client, sourceId: 1));
+        Assert.Equal("IE00NONAME0", sec.Name);
+    }
+
+    [Fact]
     public void ReadClient_rejects_a_file_without_the_signature()
     {
         var zip = new MemoryStream();

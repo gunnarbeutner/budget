@@ -15,7 +15,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20260530145923_AddSecurityTaxonomy";
+        public override string LatestMigrationId => "20260530225031_AddPpSecurityCatalog";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -474,6 +474,36 @@ namespace OpenBudget.Migrations
                     b.HasIndex("SourceId", "AccountId", "Timestamp");
 
                     b.ToTable("mm_portfolio_chart");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.PpSecurity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Isin")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TickerSymbol")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Wkn")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceId", "Isin");
+
+                    b.ToTable("pp_security");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Project", b =>
