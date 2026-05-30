@@ -99,4 +99,5 @@
   <data name="Holdings_ColValue" xml:space="preserve"><value>Wert</value></data>
   <data name="Holdings_ColGain" xml:space="preserve"><value>Gewinn</value></data>
   <data name="Holdings_Total" xml:space="preserve"><value>Gesamt</value></data>
+  <data name="Holdings_LookThrough" xml:space="preserve"><value>Durchschau:</value></data>
 </root>

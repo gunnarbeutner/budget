@@ -80,13 +80,102 @@ public class PortfolioService
             .OrderByDescending(s => s.Value)
             .ToList();
 
+        var taxonomies = await BuildLookThroughAsync(db, project.SourceId, holdings, total, ct);
+
         return new AccountHoldings
         {
             AccountId = accountId,
             Currency = currency,
             TotalValue = total,
             Rows = rows,
-            Allocation = allocation
+            Allocation = allocation,
+            Taxonomies = taxonomies
         };
+    }
+
+    /// <summary>
+    /// Distributes each holding's value across a PortfolioPerformance taxonomy's top-level
+    /// classifications by ISIN-matched weights. Holdings with no (or partial) coverage contribute
+    /// their remaining value to an "Unclassified" slice, so each taxonomy's slices sum to the
+    /// account total. Returns only taxonomies that classify at least some value.
+    /// </summary>
+    private static async Task<List<TaxonomyLookThrough>> BuildLookThroughAsync(
+        BudgetDbContext db, int sourceId, List<Holding> holdings, decimal total, CancellationToken ct)
+    {
+        // Value per ISIN within this account (same ETF held twice would sum).
+        var valueByIsin = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        foreach (var h in holdings)
+        {
+            if (string.IsNullOrEmpty(h.Isin)) continue;
+            valueByIsin.TryGetValue(h.Isin, out var v);
+            valueByIsin[h.Isin] = v + (decimal)(h.Amount ?? 0);
+        }
+        if (valueByIsin.Count == 0) return new List<TaxonomyLookThrough>();
+
+        var isins = valueByIsin.Keys.ToList();
+        var taxRows = await db.SecurityTaxonomies
+            .AsNoTracking()
+            .Where(t => t.SourceId == sourceId && isins.Contains(t.Isin))
+            .ToListAsync(ct);
+        if (taxRows.Count == 0) return new List<TaxonomyLookThrough>();
+
+        var result = new List<TaxonomyLookThrough>();
+        foreach (var taxGroup in taxRows.GroupBy(t => t.TaxonomyName, StringComparer.Ordinal))
+        {
+            var byTopLevel = new Dictionary<string, decimal>(StringComparer.Ordinal);
+            // Track how much of each ISIN's value this taxonomy assigns, to compute the remainder.
+            var assignedFractionByIsin = new Dictionary<string, decimal>(StringComparer.Ordinal);
+
+            foreach (var row in taxGroup)
+            {
+                if (!valueByIsin.TryGetValue(row.Isin, out var isinValue)) continue;
+                decimal weight = row.WeightBp / 10000m;
+                string topLevel = TopLevel(row);
+                byTopLevel.TryGetValue(topLevel, out var bucket);
+                byTopLevel[topLevel] = bucket + isinValue * weight;
+                assignedFractionByIsin.TryGetValue(row.Isin, out var af);
+                assignedFractionByIsin[row.Isin] = af + weight;
+            }
+
+            // Unassigned remainder: each ISIN's value not covered by this taxonomy, plus the value
+            // of holdings with no row in this taxonomy at all.
+            decimal unclassified = 0m;
+            foreach (var (isin, value) in valueByIsin)
+            {
+                assignedFractionByIsin.TryGetValue(isin, out var af);
+                if (af < 1m) unclassified += value * (1m - af);
+            }
+
+            var slices = byTopLevel
+                .Select(kv => new AssetClassSlice
+                {
+                    Label = kv.Key,
+                    Value = kv.Value,
+                    Fraction = total != 0 ? kv.Value / total : 0m
+                })
+                .OrderByDescending(s => s.Value)
+                .ToList();
+            if (unclassified > 0.005m)
+            {
+                slices.Add(new AssetClassSlice
+                {
+                    Label = "Unclassified",
+                    Value = unclassified,
+                    Fraction = total != 0 ? unclassified / total : 0m
+                });
+            }
+
+            result.Add(new TaxonomyLookThrough { TaxonomyName = taxGroup.Key, Slices = slices });
+        }
+
+        return result.OrderBy(t => t.TaxonomyName, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>Top-level classification name: the first segment of the path, or the leaf name when flat.</summary>
+    private static string TopLevel(SecurityTaxonomy row)
+    {
+        if (string.IsNullOrEmpty(row.ClassificationPath)) return row.ClassificationName;
+        int slash = row.ClassificationPath.IndexOf(" / ", StringComparison.Ordinal);
+        return slash < 0 ? row.ClassificationPath : row.ClassificationPath[..slash];
     }
 }

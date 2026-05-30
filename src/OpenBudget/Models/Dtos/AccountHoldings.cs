@@ -12,6 +12,23 @@ public class AccountHoldings
     public decimal TotalValue { get; init; }
     public List<HoldingRow> Rows { get; init; } = new();
     public List<AssetClassSlice> Allocation { get; init; } = new();
+    /// <summary>
+    /// PortfolioPerformance look-through allocations (e.g. by Region or Asset Class), one entry per
+    /// taxonomy that covers at least one of this account's holdings. Empty when no taxonomy has been
+    /// uploaded or none of the holdings carry a matching ISIN (e.g. a pure-crypto depot).
+    /// </summary>
+    public List<TaxonomyLookThrough> Taxonomies { get; init; } = new();
+}
+
+/// <summary>
+/// A look-through breakdown of the account by one PortfolioPerformance taxonomy: each holding's
+/// value distributed across top-level classifications by its assigned weights, with the unassigned
+/// remainder rolled into an "Unclassified" slice so the slices sum to the account total.
+/// </summary>
+public class TaxonomyLookThrough
+{
+    public string TaxonomyName { get; init; } = "";
+    public List<AssetClassSlice> Slices { get; init; } = new();
 }
 
 public class HoldingRow

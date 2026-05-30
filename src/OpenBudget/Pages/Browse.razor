@@ -222,6 +222,45 @@
                             </div>
                         }
 
+                        @if (h.Taxonomies.Count > 0)
+                        {
+                            var selectedTax = h.Taxonomies.FirstOrDefault(t => t.TaxonomyName == holdingsTaxonomy) ?? h.Taxonomies[0];
+                            var ltColors = ChartPalette.Templates(selectedTax.Slices.Count);
+                            <div class="mb-3">
+                                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                                    <span class="text-body-secondary small">@L["Holdings_LookThrough"]</span>
+                                    <div class="btn-group btn-group-sm" role="group" aria-label="@L["Holdings_LookThrough"]">
+                                        @foreach (var t in h.Taxonomies)
+                                        {
+                                            <button type="button"
+                                                    class="btn @(t.TaxonomyName == selectedTax.TaxonomyName ? "btn-primary" : "btn-outline-secondary")"
+                                                    @onclick="() => SelectHoldingsTaxonomy(t.TaxonomyName)">@t.TaxonomyName</button>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="holdings-alloc-bar" role="img" aria-label="@selectedTax.TaxonomyName"
+                                     style="display:flex;height:10px;border-radius:4px;overflow:hidden;">
+                                    @for (int i = 0; i < selectedTax.Slices.Count; i++)
+                                    {
+                                        var slice = selectedTax.Slices[i];
+                                        <div style="width:@CssPercent(slice.Fraction);background:@ChartPalette.WithAlpha(ltColors[i], 0.85);"
+                                             title="@slice.Label @FormatPercent(slice.Fraction)"></div>
+                                    }
+                                </div>
+                                <div class="d-flex flex-wrap gap-3 mt-2 small">
+                                    @for (int i = 0; i < selectedTax.Slices.Count; i++)
+                                    {
+                                        var slice = selectedTax.Slices[i];
+                                        <span class="d-inline-flex align-items-center gap-1">
+                                            <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:@ChartPalette.WithAlpha(ltColors[i], 0.85);"></span>
+                                            @slice.Label
+                                            <span class="text-body-secondary">@FormatPercent(slice.Fraction)</span>
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+                        }
+
                         <div class="table-responsive">
                             <table class="table table-sm align-middle holdings-table mb-0">
                                 <thead>
@@ -413,6 +452,8 @@
     // Live holdings for the selected depot account; null whenever the selection isn't a
     // portfolio account (or it holds nothing). Drives the holdings card above the tx list.
     private AccountHoldings? holdings;
+    // Which PortfolioPerformance taxonomy the holdings card's look-through is showing.
+    private string? holdingsTaxonomy;
     private Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize<TransactionRow>? txVirtualize;
     // Approximate row height in CSS pixels — drives Virtualize's spacer math and the bar-click
     // scroll-jump (offset = newerCount * itemSize). Real rows vary a few px either way; the
@@ -549,7 +590,7 @@
     private void ResetForProjectSwitch()
     {
         notFound = false;
-        tree = null; txTotals = null; holdings = null; chartBars = null; chartBarMonths = null;
+        tree = null; txTotals = null; holdings = null; holdingsTaxonomy = null; chartBars = null; chartBarMonths = null;
         selectionKind = "all"; selectionId = null;
         accountFilter = null;
         searchInput = ""; searchEffective = "";
@@ -900,9 +941,17 @@
         // Holdings are independent of the tx filters/period; load them only while a depot account
         // is selected and clear them otherwise so the card doesn't linger on the next selection.
         if (selectionKind == "account" && SelectedAccountNode is { IsPortfolio: true } depot)
+        {
             holdings = await Portfolio.GetAccountHoldingsAsync(ProjectId, depot.Id);
+            // Keep the look-through selection valid for the newly loaded account.
+            if (holdings?.Taxonomies is { Count: > 0 } taxos
+                && (holdingsTaxonomy is null || taxos.All(t => t.TaxonomyName != holdingsTaxonomy)))
+                holdingsTaxonomy = taxos[0].TaxonomyName;
+        }
         else
+        {
             holdings = null;
+        }
 
         // The transaction list is intentionally unfiltered by the period anchor — matches
         // MoneyMoney's "Period: Show All" default. The anchor only drives chart-highlight
@@ -1075,6 +1124,10 @@
     // Holdings card formatting. Percent for display follows the UI culture; the allocation-bar
     // segment widths must use an invariant decimal point or a German "25,0%" silently voids the
     // CSS width (same trap as the rail's padding-left — see BrowseTreeRail).
+    // Switches the holdings look-through taxonomy. Data is already loaded, so this is pure view
+    // state — Blazor re-renders after the synchronous handler returns.
+    private void SelectHoldingsTaxonomy(string taxonomyName) => holdingsTaxonomy = taxonomyName;
+
     private static string FormatPercent(decimal fraction) => fraction.ToString("P1", CultureInfo.CurrentCulture);
 
     private static string CssPercent(decimal fraction) =>
