@@ -87,4 +87,11 @@
   <data name="Summary_Shortfall" xml:space="preserve"><value>Fehlbetrag</value></data>
   <data name="Infeasible_Warning" xml:space="preserve"><value>Die Ziele übersteigen das verfügbare Vermögen. Reduziere ein Ziel, füge Bargeld hinzu oder verkaufe anderswo.</value></data>
   <data name="Disclaimer" xml:space="preserve"><value>Nur Vorschläge — keine Anlage- oder Steuerberatung. Verkäufe können steuerpflichtige Gewinne (und Vorabpauschale) auslösen.</value></data>
+  <data name="Region_Toggle" xml:space="preserve"><value>Nach Region steuern…</value></data>
+  <data name="Region_Taxonomy" xml:space="preserve"><value>Taxonomie</value></data>
+  <data name="Region_Class" xml:space="preserve"><value>Klasse</value></data>
+  <data name="Region_Target" xml:space="preserve"><value>Ziel</value></data>
+  <data name="Region_Achieved" xml:space="preserve"><value>Erreichbar</value></data>
+  <data name="Region_Apply" xml:space="preserve"><value>Auf Wertpapiere anwenden</value></data>
+  <data name="Region_Note" xml:space="preserve"><value>Berechnet die bestmögliche Mischung und füllt die Ziele oben aus.</value></data>
 </root>

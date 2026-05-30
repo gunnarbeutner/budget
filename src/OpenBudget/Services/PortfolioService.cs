@@ -93,6 +93,39 @@ public class PortfolioService
         return await BuildAsync(db, project.SourceId, holdings, accountId: 0, merge: true, ct);
     }
 
+    /// <summary>
+    /// Per-security top-level classification weights for one taxonomy, keyed by ISIN. Each inner
+    /// dictionary maps a top-level class (e.g. a region) to the security's fraction in it; the
+    /// remainder up to 1 is unclassified. Securities not present have no taxonomy coverage.
+    /// </summary>
+    public async Task<Dictionary<string, Dictionary<string, decimal>>> GetSecurityTaxonomyWeightsAsync(
+        int projectId, string taxonomyName, IReadOnlyCollection<string> isins, CancellationToken ct = default)
+    {
+        var result = new Dictionary<string, Dictionary<string, decimal>>(StringComparer.Ordinal);
+        if (isins.Count == 0) return result;
+        var project = await _projects.GetProjectAsync(projectId);
+        if (project == null) return result;
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var rows = await db.SecurityTaxonomies
+            .AsNoTracking()
+            .Where(t => t.SourceId == project.SourceId && t.TaxonomyName == taxonomyName && isins.Contains(t.Isin))
+            .ToListAsync(ct);
+
+        foreach (var g in rows.GroupBy(t => t.Isin, StringComparer.Ordinal))
+        {
+            var byClass = new Dictionary<string, decimal>(StringComparer.Ordinal);
+            foreach (var t in g)
+            {
+                var top = TopLevel(t);
+                byClass.TryGetValue(top, out var v);
+                byClass[top] = v + t.WeightBp / 10000m;
+            }
+            result[g.Key] = byClass;
+        }
+        return result;
+    }
+
     private static async Task<AccountHoldings> BuildAsync(
         BudgetDbContext db, int sourceId, List<Holding> holdings, long accountId, bool merge, CancellationToken ct)
     {

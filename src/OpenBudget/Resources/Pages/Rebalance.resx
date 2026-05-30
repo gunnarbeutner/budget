@@ -87,4 +87,11 @@
   <data name="Summary_Shortfall" xml:space="preserve"><value>Shortfall</value></data>
   <data name="Infeasible_Warning" xml:space="preserve"><value>The targets need more than the pool can fund. Reduce a target, add cash, or sell elsewhere.</value></data>
   <data name="Disclaimer" xml:space="preserve"><value>Suggestions only — not investment or tax advice. Selling positions can realise taxable gains (and German Vorabpauschale).</value></data>
+  <data name="Region_Toggle" xml:space="preserve"><value>Target by region…</value></data>
+  <data name="Region_Taxonomy" xml:space="preserve"><value>Taxonomy</value></data>
+  <data name="Region_Class" xml:space="preserve"><value>Class</value></data>
+  <data name="Region_Target" xml:space="preserve"><value>Target</value></data>
+  <data name="Region_Achieved" xml:space="preserve"><value>Achievable</value></data>
+  <data name="Region_Apply" xml:space="preserve"><value>Apply to securities</value></data>
+  <data name="Region_Note" xml:space="preserve"><value>Solves for the closest achievable mix and fills the targets above.</value></data>
 </root>
