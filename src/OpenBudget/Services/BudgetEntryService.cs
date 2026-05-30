@@ -142,10 +142,7 @@ public class BudgetEntryService
         // silently rewriting monthly entries (and the read-only-ish Project nav) on a metadata
         // save. Load the tracked row instead and copy only the editable scalar columns; entry
         // edits go through SaveBudgetEntriesAsync.
-        var target = await db.Budgets.FindAsync(budget.Id);
-        if (target == null)
-            throw new ArgumentException("Budget not found", nameof(budget));
-
+        var target = await db.Budgets.FindAsync(budget.Id) ?? throw new ArgumentException("Budget not found", nameof(budget));
         var name = ValidateAndNormalizeName(budget.Name);
         ValidateYear(budget.Year);
 
@@ -196,10 +193,7 @@ public class BudgetEntryService
         IReadOnlyCollection<(long Id, CategoryItemType ItemType, decimal[] Months)> entries)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var budget = await db.Budgets.FindAsync(budgetId);
-        if (budget == null)
-            throw new ArgumentException("Budget not found", nameof(budgetId));
-
+        var budget = await db.Budgets.FindAsync(budgetId) ?? throw new ArgumentException("Budget not found", nameof(budgetId));
         await ApplyEntriesAsync(db, budget, entries);
 
         budget.LastModifiedAt = DateTime.UtcNow;
@@ -221,9 +215,7 @@ public class BudgetEntryService
         int expectedVersion)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var target = await db.Budgets.FindAsync(budget.Id);
-        if (target == null)
-            throw new ArgumentException("Budget not found", nameof(budget));
+        var target = await db.Budgets.FindAsync(budget.Id) ?? throw new ArgumentException("Budget not found", nameof(budget));
 
         // Compare against the version the caller loaded, not the row's current value (the row was
         // just re-read, so its current value can't conflict with itself). EF puts the original

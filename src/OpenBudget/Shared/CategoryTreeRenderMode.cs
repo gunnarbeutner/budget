@@ -1,8 +1,7 @@
-namespace OpenBudget.Shared
+namespace OpenBudget.Shared;
+
+public enum CategoryTreeRenderMode
 {
-    public enum CategoryTreeRenderMode
-    {
-        Checkbox,
-        Dropdown
-    }
+    Checkbox,
+    Dropdown
 }

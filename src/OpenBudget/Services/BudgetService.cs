@@ -46,10 +46,7 @@ public class BudgetService
 
         await using var db = await _dbFactory.CreateDbContextAsync();
 
-        var project = await _projects.GetProjectAsync(projectId);
-        if (project == null)
-            throw new ArgumentException("Project not found", nameof(projectId));
-
+        var project = await _projects.GetProjectAsync(projectId) ?? throw new ArgumentException("Project not found", nameof(projectId));
         var budgets = await _budgets.GetBudgetsForProjectAsync(projectId);
         // Prefer the budget the user explicitly marked active; fall back to the most recently
         // modified one for the year if nothing is active (legacy data, edge cases).

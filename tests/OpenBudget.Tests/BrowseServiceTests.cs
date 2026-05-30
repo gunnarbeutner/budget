@@ -220,7 +220,9 @@ public class BrowseServiceTests
         giro.Balances = "11:1234.56,3:EUR,";
         t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment
         {
-            ProjectId = 1, AccountId = 500, Scope = AccountScope.Shared
+            ProjectId = 1,
+            AccountId = 500,
+            Scope = AccountScope.Shared
         });
         await t.Db.SaveChangesAsync();
 

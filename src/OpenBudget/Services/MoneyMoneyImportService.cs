@@ -486,11 +486,10 @@ public class MoneyMoneyImportService
         var destConn = (SqliteConnection)db.Database.GetDbConnection();
         if (destConn.State != System.Data.ConnectionState.Open)
             await destConn.OpenAsync(ct);
-        var destTx = db.Database.CurrentTransaction?.GetDbTransaction() as SqliteTransaction;
 
         await using var insertCmd = destConn.CreateCommand();
         insertCmd.CommandText = insertSql;
-        if (destTx != null) insertCmd.Transaction = destTx;
+        if (db.Database.CurrentTransaction?.GetDbTransaction() is SqliteTransaction destTx) insertCmd.Transaction = destTx;
         foreach (var p in parameterNames)
             insertCmd.Parameters.Add(new SqliteParameter(p, DBNull.Value));
         // Compile the statement once; the loop below reuses it per row, so without Prepare SQLite

@@ -1,0 +1,15 @@
+# Normalize line endings to LF in the repo for all text files. Keeps
+# `dotnet format --verify-no-changes` and the .editorconfig (end_of_line = lf)
+# from fighting checkouts on different platforms.
+* text=auto eol=lf
+
+# Binary assets git should never touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.db binary
+*.sqlite binary

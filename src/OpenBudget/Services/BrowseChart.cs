@@ -59,7 +59,8 @@ public static class BrowseChart
                         int y = totalQ / 4;
                         int q = totalQ - y * 4;
                         return $"Q{q + 1}/{(y % 100):D2}";
-                    });
+                    }
+                );
             }
             case "D":
             {
@@ -92,7 +93,8 @@ public static class BrowseChart
                         int y = total / 12;
                         int m = total - y * 12;
                         return $"{monthNames[m]} '{(y % 100):D2}";
-                    });
+                    }
+                );
             }
         }
     }
