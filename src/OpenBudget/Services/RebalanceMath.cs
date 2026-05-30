@@ -14,13 +14,17 @@ public static class RebalanceMath
 
     /// <summary>
     /// Rounds a target value so the implied trade is a whole number of units — you can't trade a
-    /// fraction of a share. A sub-share move rounds to zero, i.e. a Hold. No-op for fractional
-    /// assets (crypto) or when the price is unknown.
+    /// fraction of a share. Rounds the trade <i>toward zero</i> (a partial share is never crossed),
+    /// so a sub-share move becomes a Hold and a buy never deploys past its fractional target. That
+    /// last point matters: rounding to nearest could round a buy up and spend more than the pool
+    /// holds, pushing leftover cash negative. Toward-zero keeps the plan within budget — the
+    /// un-investable remainder simply stays as (non-negative) leftover. No-op for fractional assets
+    /// (crypto) or when the price is unknown.
     /// </summary>
     public static decimal QuantizeTarget(decimal current, decimal target, decimal? price, bool wholeShares)
     {
         if (!wholeShares || price is not { } p || p <= 0m) return target;
-        decimal tradeShares = Math.Round((target - current) / p, MidpointRounding.AwayFromZero);
+        decimal tradeShares = Math.Truncate((target - current) / p);
         return current + tradeShares * p;
     }
 

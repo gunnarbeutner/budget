@@ -41,6 +41,18 @@
     --today-marker-color: rgba(255, 255, 255, 0.55);
 }
 
+/* emerald-500 (#10b981) is vivid enough for fills (bg-success badges/buttons) but reads
+   too light as *text* on white — only ~2.3:1, well under readable, and it's worst on
+   paper. Deepen text-success to emerald-700 so the green amounts/"Buy" labels carry.
+   Fills are untouched; dark mode keeps a bright emerald that suits dark surfaces. */
+.text-success {
+    color: #047857 !important;
+}
+
+[data-bs-theme="dark"] .text-success {
+    color: #34d399 !important;
+}
+
 html, body {
     font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI",
                  Roboto, "Helvetica Neue", Arial, sans-serif;

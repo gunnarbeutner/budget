@@ -103,12 +103,14 @@ else
                             @foreach (var cls in regionList)
                             {
                                 <td @key="cls" class="text-end">
-                                    <div class="input-group input-group-sm">
+                                    <div class="input-group input-group-sm d-print-none">
                                         <input type="number" step="1" min="0" class="form-control text-end"
                                                value="@FormatNum(regionTargets.GetValueOrDefault(cls))"
                                                @onchange="e => OnRegionTargetChanged(cls, e.Value)" />
                                         <span class="input-group-text">%</span>
                                     </div>
+                                    @* Print renders the value as plain text so it right-aligns like the Achievable row. *@
+                                    <span class="d-none d-print-inline">@FormatNum(regionTargets.GetValueOrDefault(cls))%</span>
                                 </td>
                             }
                         </tr>
