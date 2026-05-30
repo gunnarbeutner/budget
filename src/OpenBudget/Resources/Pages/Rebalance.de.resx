@@ -65,7 +65,9 @@
   <data name="NotFound_Body_LinkText" xml:space="preserve"><value>Dashboard</value></data>
   <data name="NotFound_Body_After" xml:space="preserve"><value>.</value></data>
   <data name="Empty_NoSecurities" xml:space="preserve"><value>Keine Wertpapiere in diesem Projekt. Weise ihm zuerst ein Depotkonto zu.</value></data>
-  <data name="Intro" xml:space="preserve"><value>Wähle die umzuschichtenden Wertpapiere, füge optional Bargeld hinzu und lege je Wertpapier ein Ziel fest.</value></data>
+  <data name="Intro_Ratio" xml:space="preserve"><value>Wähle die umzuschichtenden Wertpapiere, füge optional Bargeld hinzu und lege je Wertpapier ein Zielgewicht fest.</value></data>
+  <data name="Intro_Amount" xml:space="preserve"><value>Wähle die umzuschichtenden Wertpapiere, füge optional Bargeld hinzu und lege je Wertpapier einen Zielbetrag fest.</value></data>
+  <data name="Intro_Taxonomy" xml:space="preserve"><value>Wähle die umzuschichtenden Wertpapiere, füge optional Bargeld hinzu und lege je Klasse ein Ziel fest — die Orders werden berechnet.</value></data>
   <data name="Cash_Label" xml:space="preserve"><value>Bargeld hinzufügen</value></data>
   <data name="Mode_Label" xml:space="preserve"><value>Ziel</value></data>
   <data name="Mode_Ratio" xml:space="preserve"><value>Nach Verhältnis</value></data>

@@ -45,7 +45,7 @@ else
     var solved = RegionMode ? SolveRegions() : null;
     var plan = RegionMode ? BuildRegionPlan(solved) : BuildManualPlan();
 
-    <p class="text-body-secondary d-print-none">@L["Intro"]</p>
+    <p class="text-body-secondary d-print-none">@L[IntroKey]</p>
 
     <div class="d-flex flex-wrap align-items-end gap-3 mb-3">
         <div>
@@ -255,6 +255,12 @@ else
     private string targetBy = "ratio";
     private bool RegionMode => targetBy == "region";
     private RebalanceTargetMode ManualMode => targetBy == "amount" ? RebalanceTargetMode.Amount : RebalanceTargetMode.Ratio;
+    private string IntroKey => targetBy switch
+    {
+        "amount" => "Intro_Amount",
+        "region" => "Intro_Taxonomy",
+        _ => "Intro_Ratio"
+    };
 
     // Region/taxonomy targeting: solved into per-security targets via RebalanceSolver.
     private List<string> taxonomyNames = new();

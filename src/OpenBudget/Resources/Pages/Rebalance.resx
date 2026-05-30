@@ -65,7 +65,9 @@
   <data name="NotFound_Body_LinkText" xml:space="preserve"><value>dashboard</value></data>
   <data name="NotFound_Body_After" xml:space="preserve"><value>.</value></data>
   <data name="Empty_NoSecurities" xml:space="preserve"><value>No securities in this project. Assign a depot account to it first.</value></data>
-  <data name="Intro" xml:space="preserve"><value>Pick the securities to rebalance, optionally add cash, and set a target for each.</value></data>
+  <data name="Intro_Ratio" xml:space="preserve"><value>Pick the securities to rebalance, optionally add cash, and set a target weight for each.</value></data>
+  <data name="Intro_Amount" xml:space="preserve"><value>Pick the securities to rebalance, optionally add cash, and set a target amount for each.</value></data>
+  <data name="Intro_Taxonomy" xml:space="preserve"><value>Pick the securities to rebalance, optionally add cash, and set a target per class — the trades are solved for you.</value></data>
   <data name="Cash_Label" xml:space="preserve"><value>Cash to add</value></data>
   <data name="Mode_Label" xml:space="preserve"><value>Target</value></data>
   <data name="Mode_Ratio" xml:space="preserve"><value>By ratio</value></data>
