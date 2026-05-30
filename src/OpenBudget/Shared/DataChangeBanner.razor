@@ -4,7 +4,7 @@
 
 @if (Pending)
 {
-    <div class="alert alert-warning d-flex align-items-center justify-content-between" role="alert">
+    <div class="alert alert-warning d-flex align-items-center justify-content-between d-print-none" role="alert">
         <span>@Message</span>
         <button type="button" class="btn btn-sm btn-warning ms-3" @onclick="OnReload">@ReloadText</button>
     </div>

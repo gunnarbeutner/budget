@@ -836,3 +836,64 @@ a, .btn-link {
    Exception: ProjectPageHeader uses mb-2 so the header → first content gap reads as
    "section chrome" rather than "two sibling top-level sections" — the header is
    visually one unit with its first row of content (filter strip, period nav, etc.). */
+
+/* ── Print ─────────────────────────────────────────────────────────────────
+   The app is screen-first: nav tabs, the sticky period bar, buttons and raw
+   input boxes are all noise on paper. Strip the interactive chrome, render
+   inputs as plain values, flatten surfaces, and fix table pagination so a
+   printed page reads like a clean report. d-print-none on HomeLink / the
+   change banner handles the two elements without a stable class here. */
+@media print {
+    @page { margin: 1.5cm; }
+
+    body { background: #fff !important; }
+
+    /* Navigation + one-off actions that mean nothing on paper. */
+    .period-nav,
+    .project-page-tabs,
+    .btn,
+    .segmented {
+        display: none !important;
+    }
+
+    /* Flatten cards for clean ink. */
+    .card {
+        border: 1px solid #ccc !important;
+        box-shadow: none !important;
+    }
+
+    /* Inputs print as their value, not a box with spinners. */
+    .form-control,
+    .form-select {
+        border: none !important;
+        padding: 0 !important;
+        background: transparent !important;
+        color: inherit !important;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+    .form-control::-webkit-inner-spin-button,
+    .form-control::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    .input-group,
+    .input-group-sm { width: auto !important; }
+    .input-group-text {
+        border: none !important;
+        background: transparent !important;
+        padding: 0 .15rem !important;
+    }
+
+    /* Let everything flow; don't anchor the period bar or clip scroll viewports. */
+    .sticky-top { position: static !important; }
+    .tx-scroll,
+    .table-responsive,
+    .browse-chart-scroll,
+    .browse-tree {
+        overflow: visible !important;
+        max-height: none !important;
+    }
+
+    /* Repeat table headers across pages and keep rows whole. */
+    thead { display: table-header-group; }
+    tr,
+    .tx-row { page-break-inside: avoid; }
+}
