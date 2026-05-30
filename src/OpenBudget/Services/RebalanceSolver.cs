@@ -28,11 +28,21 @@ public static class RebalanceSolver
     /// returned fractions sum to that lower total (the rest stays as cash).
     /// </param>
     /// <returns>Fraction of the pool per security: length N, each ≥ 0, ≤ its cap, summing to ≤ 1.</returns>
+    /// <param name="current">
+    /// Optional current pool fraction per security. When supplied, a small turnover penalty
+    /// (<paramref name="lambda"/>·‖f − current‖²) is added so that among region-equivalent
+    /// solutions the one closest to today's holdings wins — i.e. trade as little as possible. This
+    /// removes gratuitous churn between securities the look-through can't tell apart (e.g. the Acc
+    /// and Dist share classes of the same fund).
+    /// </param>
+    /// <param name="lambda">Turnover-penalty weight; small so region matching still dominates.</param>
     public static double[] Solve(
         IReadOnlyList<double[]> securityRegionWeights,
         IReadOnlyList<double> target,
         IReadOnlyList<double>? upperBounds = null,
-        int iterations = 4000)
+        IReadOnlyList<double>? current = null,
+        double lambda = 0.02,
+        int iterations = 8000)
     {
         int n = securityRegionWeights.Count;
         if (n == 0) return Array.Empty<double>();
@@ -44,16 +54,25 @@ public static class RebalanceSolver
         // Invest the whole pool when the caps allow it; otherwise as much as they do (rest = cash).
         double budget = Math.Min(1.0, capSum);
 
-        // Start at the capped budget spread within the caps.
-        var f = new double[n];
-        for (int i = 0; i < n; i++) f[i] = capSum > 0 ? caps[i] / capSum * budget : 0.0;
+        bool useTurnover = current != null && lambda > 0;
+        double lam = useTurnover ? lambda : 0.0;
+        var cur = new double[n];
+        if (useTurnover)
+            for (int i = 0; i < n; i++) cur[i] = Math.Max(0.0, current![i]);
 
-        // Step size from a Lipschitz bound: L = 2·λmax(AᵀA) ≤ 2·‖A‖_F². A[k][i] = weights[i][k].
+        // Start at current (so the min-turnover tiebreak converges from the right place) when we
+        // have it, otherwise spread within the caps.
+        var f = new double[n];
+        if (useTurnover) Array.Copy(cur, f, n);
+        else for (int i = 0; i < n; i++) f[i] = capSum > 0 ? caps[i] / capSum * budget : 0.0;
+        ProjectToCappedSimplex(f, caps, budget);
+
+        // Step size from a Lipschitz bound: L = 2·λmax(AᵀA) + 2·lam ≤ 2·‖A‖_F² + 2·lam.
         double normF2 = 0;
         for (int i = 0; i < n; i++)
             for (int k = 0; k < r; k++)
                 normF2 += securityRegionWeights[i][k] * securityRegionWeights[i][k];
-        double eta = 1.0 / Math.Max(1e-9, 2.0 * normF2);
+        double eta = 1.0 / Math.Max(1e-9, 2.0 * normF2 + 2.0 * lam);
 
         var achieved = new double[r];
         var grad = new double[n];
@@ -73,7 +92,7 @@ public static class RebalanceSolver
                 var wi = securityRegionWeights[i];
                 double g = 0;
                 for (int k = 0; k < r; k++) g += achieved[k] * wi[k];
-                grad[i] = 2.0 * g;
+                grad[i] = 2.0 * g + (useTurnover ? 2.0 * lam * (f[i] - cur[i]) : 0.0);
             }
 
             for (int i = 0; i < n; i++) f[i] -= eta * grad[i];

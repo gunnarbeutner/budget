@@ -394,8 +394,11 @@ else
         var upper = sel
             .Select(s => noBuy.Contains(s.Key) && pool > 0m ? (double)(s.Value / pool) : 1.0)
             .ToList();
+        // Current mix drives the turnover penalty so the solver trades as little as possible
+        // (otherwise it churns between look-through-identical securities like Acc/Dist share classes).
+        var current = sel.Select(s => pool > 0m ? (double)(s.Value / pool) : 0.0).ToList();
 
-        var f = RebalanceSolver.Solve(vectors, tgt, upper);
+        var f = RebalanceSolver.Solve(vectors, tgt, upper, current);
 
         var achieved = new Dictionary<string, decimal>(StringComparer.Ordinal);
         for (int k = 0; k < regionList.Count; k++)

@@ -82,6 +82,24 @@ public class RebalanceSolverTests
     }
 
     [Fact]
+    public void Turnover_penalty_avoids_churn_between_identical_securities()
+    {
+        // Two share classes of the same fund: identical region vectors, so the region objective is
+        // indifferent to how they're split. Held 80/20 today, with the target already matching the
+        // region mix — the min-turnover solution should leave them at 80/20, not reshuffle to 50/50.
+        var weights = new[]
+        {
+            new[] { 1.0, 0.0 },
+            new[] { 1.0, 0.0 }
+        };
+        var f = RebalanceSolver.Solve(
+            weights, new[] { 1.0, 0.0 }, upperBounds: null, current: new[] { 0.8, 0.2 });
+
+        Assert.Equal(0.8, f[0], precision: 2);
+        Assert.Equal(0.2, f[1], precision: 2);
+    }
+
+    [Fact]
     public void Result_is_a_distribution_nonnegative_and_sums_to_one()
     {
         var weights = new[]
