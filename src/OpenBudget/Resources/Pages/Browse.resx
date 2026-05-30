@@ -86,7 +86,7 @@
   <data name="NotFound_Body_LinkText" xml:space="preserve"><value>dashboard</value></data>
   <data name="NotFound_Heading" xml:space="preserve"><value>Project not found</value></data>
   <data name="PageTitle" xml:space="preserve"><value>Browse</value></data>
-  <data name="PageTitle_WithProject" xml:space="preserve"><value>Browse · {0}</value></data>
+  <data name="PageTitle_WithProject" xml:space="preserve"><value>Browse — {0}</value></data>
   <data name="Tree_Heading" xml:space="preserve"><value>Browse</value></data>
   <data name="Tx_SplitChild" xml:space="preserve"><value>Split</value></data>
   <data name="Tx_SplitChildTitle" xml:space="preserve"><value>One leg of a split transaction.</value></data>

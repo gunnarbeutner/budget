@@ -62,7 +62,7 @@
     <value>Overview</value>
   </data>
   <data name="PageTitle_WithProject" xml:space="preserve">
-    <value>{0} — Overview</value>
+    <value>Overview — {0}</value>
   </data>
   <data name="NotFound_Heading" xml:space="preserve">
     <value>Project not found</value>
