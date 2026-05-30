@@ -163,4 +163,10 @@
   <data name="RelativeAge_MonthsAgo" xml:space="preserve">
     <value>{0}mo ago</value>
   </data>
+  <data name="Scope_Informational" xml:space="preserve">
+    <value>Informational</value>
+  </data>
+  <data name="Scope_Informational_Help" xml:space="preserve">
+    <value>Shown in Browse and balance totals only; excluded from budget and cashflow.</value>
+  </data>
 </root>

@@ -280,21 +280,47 @@ public class ProjectService
             .ToListAsync();
         var accountById = accounts.ToDictionary(a => a.Id);
 
+        // Depot accounts report holdings market value rather than the cash blob (mirrors
+        // BrowseService), so an informational securities depot contributes its real value to the
+        // total. One grouped query over every assigned depot in view.
+        var depotIds = accounts.Where(a => a.Type == 7 || a.Portfolio == 1).Select(a => a.Id).ToList();
+        var holdingsValueByAccount = depotIds.Count == 0
+            ? new Dictionary<long, double>()
+            : await db.Holdings
+                .Where(h => depotIds.Contains(h.AccountId))
+                .GroupBy(h => h.AccountId)
+                .Select(g => new { AccountId = g.Key, Value = g.Sum(h => h.Amount ?? 0) })
+                .ToDictionaryAsync(x => x.AccountId, x => x.Value);
+
+        decimal BalanceOf(Account a) =>
+            (a.Type == 7 || a.Portfolio == 1) && holdingsValueByAccount.TryGetValue(a.Id, out var hv)
+                ? (decimal)hv
+                : a.CurrentBalance ?? 0m;
+
         var result = new Dictionary<int, ProjectBalanceSummary>();
         foreach (var grp in assignments.GroupBy(a => a.ProjectId))
         {
-            decimal balance = 0m;
-            int linkedCount = 0;
+            decimal cashflowBalance = 0m, totalBalance = 0m;
+            int cashflowCount = 0, totalCount = 0;
             foreach (var assignment in grp)
             {
                 if (!accountById.TryGetValue(assignment.AccountId, out var acc)) continue;
-                balance += acc.CurrentBalance ?? 0m;
-                linkedCount++;
+                decimal b = BalanceOf(acc);
+                totalBalance += b;
+                totalCount++;
+                // Informational accounts count toward the total only, not the cashflow balance.
+                if (assignment.Scope != AccountScope.Informational)
+                {
+                    cashflowBalance += b;
+                    cashflowCount++;
+                }
             }
             result[grp.Key] = new ProjectBalanceSummary
             {
-                Balance = balance,
-                AccountCount = linkedCount
+                Balance = cashflowBalance,
+                AccountCount = cashflowCount,
+                TotalBalance = totalBalance,
+                TotalAccountCount = totalCount
             };
         }
         return result;

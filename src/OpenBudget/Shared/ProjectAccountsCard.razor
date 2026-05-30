@@ -84,6 +84,12 @@
                                                         @onclick="() => OnScopeChange.InvokeAsync((assignment.AccountId, AccountScope.Exclusive))">
                                                     @L["Scope_Exclusive"]
                                                 </button>
+                                                <button type="button"
+                                                        class="btn @(assignment.Scope == AccountScope.Informational ? "active" : "")"
+                                                        title="@L["Scope_Informational_Help"]"
+                                                        @onclick="() => OnScopeChange.InvokeAsync((assignment.AccountId, AccountScope.Informational))">
+                                                    @L["Scope_Informational"]
+                                                </button>
                                             </div>
                                         </td>
                                         <td class="text-end">

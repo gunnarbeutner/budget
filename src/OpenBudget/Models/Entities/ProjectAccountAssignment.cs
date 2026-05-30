@@ -8,11 +8,14 @@ namespace OpenBudget.Models;
 /// Exclusive: every transaction in the account counts (dedicated rental account, Mietkautionskonto).
 /// Shared: only transactions whose category is in the project's category set count
 /// (main household giro that sees mixed traffic).
+/// Informational: linked for the Browse tab and balance totals only — excluded from budget and
+/// cashflow math (e.g. a securities depot whose buys/sells shouldn't distort the cash projection).
 /// </summary>
 public enum AccountScope
 {
     Shared = 0,
-    Exclusive = 1
+    Exclusive = 1,
+    Informational = 2
 }
 
 /// <summary>

@@ -160,4 +160,7 @@
   <data name="RelativeAge_MonthsAgo" xml:space="preserve">
     <value>{0}mo ago</value>
   </data>
+  <data name="Label_TotalAllAccounts" xml:space="preserve">
+    <value>All accounts: {0}</value>
+  </data>
 </root>

@@ -229,4 +229,7 @@
   <data name="Aria_Sources" xml:space="preserve">
     <value>Quellen</value>
   </data>
+  <data name="Label_TotalAllAccounts" xml:space="preserve">
+    <value>Alle Konten: {0}</value>
+  </data>
 </root>

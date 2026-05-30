@@ -87,6 +87,12 @@ else
                                 <span class="text-body-secondary">·
                                     @L[balanceInfo.AccountCount == 1 ? "Label_Account_One" : "Label_Account_Other", balanceInfo.AccountCount]</span>
                             </div>
+                            @if (balanceInfo.HasInformational)
+                            {
+                                <div class="portfolio-sub text-nowrap text-body-secondary small">
+                                    @L["Label_TotalAllAccounts", Formatting.FormatMoney(balanceInfo.TotalBalance)]
+                                </div>
+                            }
                         }
                     </div>
                 </div>
