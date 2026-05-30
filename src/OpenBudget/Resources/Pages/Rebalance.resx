@@ -94,4 +94,5 @@
   <data name="Region_Achieved" xml:space="preserve"><value>Achievable</value></data>
   <data name="Region_Apply" xml:space="preserve"><value>Apply to securities</value></data>
   <data name="Region_Note" xml:space="preserve"><value>Solves for the closest achievable mix and fills the targets above.</value></data>
+  <data name="NoBuy_Tooltip" xml:space="preserve"><value>Don't buy more — hold or sell only</value></data>
 </root>

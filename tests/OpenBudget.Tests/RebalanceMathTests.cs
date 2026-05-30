@@ -57,6 +57,20 @@ public class RebalanceMathTests
     }
 
     [Fact]
+    public void NoBuy_caps_a_securitys_target_at_its_current_value()
+    {
+        // Ratio 2:1 over a 1200 pool would push A to 800 (a 200 buy); marking A no-buy holds it at 600.
+        var items = new[] { Item("A", 600m), Item("B", 400m) };
+        var targets = new Dictionary<string, decimal>(StringComparer.Ordinal) { ["A"] = 2m, ["B"] = 1m };
+        var noBuy = new HashSet<string>(StringComparer.Ordinal) { "A" };
+
+        var plan = RebalanceMath.ComputePlan(items, cash: 200m, RebalanceTargetMode.Ratio, targets, noBuy);
+
+        Assert.Equal(0m, plan.Rows.Single(r => r.Key == "A").Delta);   // not bought past current
+        Assert.Equal(600m, plan.Rows.Single(r => r.Key == "A").TargetValue);
+    }
+
+    [Fact]
     public void Amount_mode_flags_over_allocation_as_infeasible()
     {
         var items = new[] { Item("A", 600m) };

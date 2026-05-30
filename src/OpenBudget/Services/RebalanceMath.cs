@@ -13,7 +13,8 @@ public static class RebalanceMath
         IReadOnlyList<RebalanceInput> items,
         decimal cash,
         RebalanceTargetMode mode,
-        IReadOnlyDictionary<string, decimal> targets)
+        IReadOnlyDictionary<string, decimal> targets,
+        IReadOnlySet<string>? noBuy = null)
     {
         decimal selectedCurrent = items.Sum(i => i.CurrentValue);
         decimal pool = selectedCurrent + cash;
@@ -33,6 +34,12 @@ public static class RebalanceMath
                 RebalanceTargetMode.Ratio => sumWeights > 0m ? t / sumWeights * pool : 0m,
                 _ => 0m
             };
+            // "Don't buy more" caps the target at the current value — selling/holding stays allowed,
+            // and the un-allocated amount falls into leftover (the solver redistributes; manual modes
+            // leave it as cash).
+            if (noBuy != null && noBuy.Contains(i.Key) && targetValue > i.CurrentValue)
+                targetValue = i.CurrentValue;
+
             rows.Add(new RebalanceRow
             {
                 Key = i.Key,

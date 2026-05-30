@@ -94,4 +94,5 @@
   <data name="Region_Achieved" xml:space="preserve"><value>Erreichbar</value></data>
   <data name="Region_Apply" xml:space="preserve"><value>Auf Wertpapiere anwenden</value></data>
   <data name="Region_Note" xml:space="preserve"><value>Berechnet die bestmögliche Mischung und füllt die Ziele oben aus.</value></data>
+  <data name="NoBuy_Tooltip" xml:space="preserve"><value>Nicht nachkaufen — nur halten oder verkaufen</value></data>
 </root>

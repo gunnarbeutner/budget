@@ -52,6 +52,36 @@ public class RebalanceSolverTests
     }
 
     [Fact]
+    public void Upper_bound_caps_a_no_buy_security_and_routes_the_rest_elsewhere()
+    {
+        // A is region 0, B region 1; target wants 50/50, but A is capped at 0.2 (no buying it).
+        var weights = new[]
+        {
+            new[] { 1.0, 0.0 },
+            new[] { 0.0, 1.0 }
+        };
+        var f = RebalanceSolver.Solve(weights, new[] { 0.5, 0.5 }, upperBounds: new[] { 0.2, 1.0 });
+
+        Assert.True(f[0] <= 0.2 + 1e-3);   // respects the cap
+        Assert.Equal(0.8, f[1], precision: 2); // the rest goes to B
+    }
+
+    [Fact]
+    public void When_every_security_is_capped_below_full_the_pool_is_under_invested()
+    {
+        var weights = new[]
+        {
+            new[] { 1.0, 0.0 },
+            new[] { 0.0, 1.0 }
+        };
+        var f = RebalanceSolver.Solve(weights, new[] { 0.5, 0.5 }, upperBounds: new[] { 0.3, 0.3 });
+
+        Assert.True(f[0] <= 0.3 + 1e-3);
+        Assert.True(f[1] <= 0.3 + 1e-3);
+        Assert.Equal(0.6, f.Sum(), precision: 2); // only 60% can be invested; rest stays cash
+    }
+
+    [Fact]
     public void Result_is_a_distribution_nonnegative_and_sums_to_one()
     {
         var weights = new[]

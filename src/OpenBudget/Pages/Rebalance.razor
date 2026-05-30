@@ -141,7 +141,15 @@ else
                                    @onchange="e => ToggleSelected(s.Key, e.Value)" aria-label="@s.Name" />
                         </td>
                         <td>
-                            <div class="fw-semibold">@s.Name</div>
+                            <div class="fw-semibold">
+                                @s.Name
+                                <button type="button"
+                                        class="btn btn-link btn-sm p-0 ms-1 align-baseline @(noBuy.Contains(s.Key) ? "text-warning" : "text-body-secondary")"
+                                        title="@L["NoBuy_Tooltip"]" aria-pressed="@noBuy.Contains(s.Key).ToString().ToLower()"
+                                        @onclick="() => ToggleNoBuy(s.Key)" disabled="@(!included)">
+                                    <i class="bi @(noBuy.Contains(s.Key) ? "bi-cart-x-fill" : "bi-cart-x")" aria-hidden="true"></i>
+                                </button>
+                            </div>
                             <div class="text-body-secondary small" style="min-height:1.2rem">@s.Isin</div>
                         </td>
                         <td class="text-end">
@@ -225,6 +233,8 @@ else
 
     private List<HoldingRow> securities = new();
     private readonly HashSet<string> selected = new(StringComparer.Ordinal);
+    // Securities the rebalance may hold or sell but not buy more of (e.g. distributing ETFs).
+    private readonly HashSet<string> noBuy = new(StringComparer.Ordinal);
     private Dictionary<string, decimal> targets = new(StringComparer.Ordinal);
     private decimal cash;
     private RebalanceTargetMode mode = RebalanceTargetMode.Ratio;
@@ -277,6 +287,7 @@ else
     private void ResetTargets()
     {
         selected.Clear();
+        noBuy.Clear();
         targets = new Dictionary<string, decimal>(StringComparer.Ordinal);
         foreach (var s in securities)
         {
@@ -292,7 +303,12 @@ else
             .Where(s => selected.Contains(s.Key))
             .Select(s => new RebalanceInput { Key = s.Key, Name = s.Name, CurrentValue = s.Value })
             .ToList();
-        return RebalanceMath.ComputePlan(items, cash, mode, targets);
+        return RebalanceMath.ComputePlan(items, cash, mode, targets, noBuy);
+    }
+
+    private void ToggleNoBuy(string key)
+    {
+        if (!noBuy.Remove(key)) noBuy.Add(key);
     }
 
     private decimal SumTargets() =>
@@ -368,7 +384,14 @@ else
             .Select(r => sum > 0m ? (double)(Math.Max(0m, regionTargets.GetValueOrDefault(r)) / sum) : 1.0 / regionList.Count)
             .ToArray();
 
-        var f = RebalanceSolver.Solve(vectors, tgt);
+        // "Don't buy more" caps a security at its current pool fraction, so the solver can only hold
+        // or sell it and routes new money elsewhere.
+        decimal pool = sel.Sum(s => s.Value) + cash;
+        var upper = sel
+            .Select(s => noBuy.Contains(s.Key) && pool > 0m ? (double)(s.Value / pool) : 1.0)
+            .ToList();
+
+        var f = RebalanceSolver.Solve(vectors, tgt, upper);
 
         var achieved = new Dictionary<string, decimal>(StringComparer.Ordinal);
         for (int k = 0; k < regionList.Count; k++)
