@@ -25,10 +25,35 @@ jobs:
       - name: Run tests
         run: dotnet test tests/OpenBudget.Tests/OpenBudget.Tests.csproj --no-restore --verbosity minimal
 
+  e2e:
+    # Browser end-to-end tests. Kept in their own job (and out of budget.sln) because they
+    # boot the app on Kestrel and drive Chromium — slower and with heavier dependencies than
+    # the unit run.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build E2E test project
+        run: dotnet build tests/OpenBudget.E2E.Tests/OpenBudget.E2E.Tests.csproj --verbosity minimal
+
+      - name: Install Playwright browser
+        # Bundled script generated into the build output; --with-deps pulls the Chromium
+        # system libraries the runner image doesn't ship with.
+        run: pwsh tests/OpenBudget.E2E.Tests/bin/Debug/net11.0/playwright.ps1 install --with-deps chromium
+
+      - name: Run E2E tests
+        run: dotnet test tests/OpenBudget.E2E.Tests/OpenBudget.E2E.Tests.csproj --no-build --verbosity minimal
+
   build-and-push:
-    # Only push the image when tests pass. PR runs hit `test` only — they don't have
-    # packages:write and the build step would 401 against GHCR anyway.
-    needs: test
+    # Only push the image when both the unit and E2E suites pass. PR runs hit `test`/`e2e`
+    # only — they don't have packages:write and the build step would 401 against GHCR anyway.
+    needs: [test, e2e]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
