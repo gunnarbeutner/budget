@@ -50,10 +50,45 @@ jobs:
       - name: Run E2E tests
         run: dotnet test tests/OpenBudget.E2E.Tests/OpenBudget.E2E.Tests.csproj --no-build --verbosity minimal
 
+  lint:
+    # Static analysis gate. The Roslyn/Sonar/Meziantou analyzers themselves run as part of the
+    # `test`/`e2e` builds (TreatWarningsAsErrors fails those on any violation); this job adds the
+    # formatting check that a plain build doesn't enforce, plus workflow-YAML linting.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: |
+          dotnet restore budget.sln
+          dotnet restore tests/OpenBudget.E2E.Tests/OpenBudget.E2E.Tests.csproj
+
+      - name: Verify formatting (dotnet format)
+        # Fails if any file isn't formatted per .editorconfig, or if a code-style (IDExxxx) rule
+        # such as "remove unnecessary usings" would change the tree. The E2E project is verified
+        # separately because it's intentionally kept out of budget.sln.
+        run: |
+          dotnet format whitespace budget.sln --verify-no-changes --no-restore
+          dotnet format style budget.sln --verify-no-changes --no-restore
+          dotnet format whitespace tests/OpenBudget.E2E.Tests/OpenBudget.E2E.Tests.csproj --verify-no-changes --no-restore
+          dotnet format style tests/OpenBudget.E2E.Tests/OpenBudget.E2E.Tests.csproj --verify-no-changes --no-restore
+
+      - name: Lint GitHub Actions workflows (actionlint)
+        uses: docker://rhysd/actionlint:latest
+        with:
+          args: -color
+
   build-and-push:
-    # Only push the image when both the unit and E2E suites pass. PR runs hit `test`/`e2e`
-    # only — they don't have packages:write and the build step would 401 against GHCR anyway.
-    needs: [test, e2e]
+    # Only push the image when the unit/E2E suites and the lint gate all pass. PR runs hit
+    # `test`/`e2e`/`lint` only — they don't have packages:write and the build step would 401
+    # against GHCR anyway.
+    needs: [test, e2e, lint]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
