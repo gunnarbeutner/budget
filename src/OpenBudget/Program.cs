@@ -1,9 +1,6 @@
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
-using OpenBudget.Models;
 using OpenBudget.Services;
 using System.Globalization;
 
@@ -83,8 +80,8 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<BudgetDbContext>>();
-    using var budgetDb = dbFactory.CreateDbContext();
-    budgetDb.Database.Migrate();
+    await using var budgetDb = await dbFactory.CreateDbContextAsync();
+    await budgetDb.Database.MigrateAsync();
 }
 
 // ForwardedHeaders must be the first middleware so downstream components see the right scheme.
@@ -177,7 +174,7 @@ app.MapDelete("/api/moneymoney-sources/{name}", async (
     return Results.Ok(new { status = "deleted", name });
 });
 
-app.Run();
+await app.RunAsync();
 
 static async Task<IResult> HandleUploadAsync(
     string sourceName,
@@ -255,4 +252,9 @@ static async Task<IResult> HandleUploadAsync(
 
 // Exposes the implicit top-level Program class so WebApplicationFactory<Program> in the E2E
 // test project can boot this exact app (same DI/middleware wiring) on a real Kestrel port.
-public partial class Program;
+// The private constructor keeps it non-instantiable: top-level statements own the entry point,
+// so this type only exists as a reference handle, never an object (S1118).
+public partial class Program
+{
+    private Program() { }
+}

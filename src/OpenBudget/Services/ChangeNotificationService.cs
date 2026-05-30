@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+using System.Runtime.InteropServices;
 
 namespace OpenBudget.Services;
 
@@ -26,6 +26,7 @@ public enum DataArea
 /// are set when the change is scoped to one project or source so subscribers can ignore changes
 /// to data they aren't showing; null means "applies broadly within this area".
 /// </summary>
+[StructLayout(LayoutKind.Auto)]
 public readonly record struct DataChange(DataArea Area, int? ProjectId = null, int? SourceId = null);
 
 /// <summary>

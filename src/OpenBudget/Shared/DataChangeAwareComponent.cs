@@ -76,9 +76,19 @@ public abstract class DataChangeAwareComponent : ComponentBase, IDisposable
     /// <summary>Re-fetch the page's data (or force a fresh navigation).</summary>
     protected abstract Task ReloadAfterChangeAsync();
 
-    public virtual void Dispose()
+    public void Dispose()
     {
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed) return;
+        if (disposing)
+        {
+            ChangeNotifier.Changed -= OnExternalChange;
+        }
         _disposed = true;
-        ChangeNotifier.Changed -= OnExternalChange;
     }
 }

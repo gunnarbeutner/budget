@@ -269,7 +269,7 @@ public class ProjectService
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         var assignments = await db.ProjectAccountAssignments.AsNoTracking().ToListAsync();
-        if (!assignments.Any()) return new Dictionary<int, ProjectBalanceSummary>();
+        if (assignments.Count == 0) return new Dictionary<int, ProjectBalanceSummary>();
 
         // AccountIds are namespaced globally unique across sources, so a single Contains() query
         // resolves accounts for every project regardless of source.

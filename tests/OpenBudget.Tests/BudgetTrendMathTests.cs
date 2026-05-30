@@ -84,11 +84,12 @@ public class BudgetTrendMathTests
         effective.Effective[GroupKey(100)] = Jan(40m);
         effective.Effective[CatKey(101)] = Jan(25m);
         var actuals = new Dictionary<string, List<MonthlySpending>>
+(StringComparer.Ordinal)
         {
             ["GroupA"] = new() { new MonthlySpending { Year = 2026, Month = 1, Amount = 50m } },
             ["LeafX"] = new() { new MonthlySpending { Year = 2026, Month = 1, Amount = 30m } },
         };
-        var aggregateRowNames = new HashSet<string> { "GroupA" };
+        var aggregateRowNames = new HashSet<string>(StringComparer.Ordinal) { "GroupA" };
 
         var (budgetTrends, variance) = BudgetTrendMath.BuildVarianceRows(
             batchKeys, names, effective, actuals, aggregateRowNames, budgetYear: 2026);
@@ -119,12 +120,13 @@ public class BudgetTrendMathTests
         var names = new Dictionary<(long, CategoryItemType), string> { [CatKey(101)] = "Shadow" };
         var effective = new BudgetEffectiveAmounts(); // no entry for 101 → HasBudget false
         var actuals = new Dictionary<string, List<MonthlySpending>>
+(StringComparer.Ordinal)
         {
             ["Shadow"] = new() { new MonthlySpending { Year = 2026, Month = 1, Amount = 30m } },
         };
 
         var (budgetTrends, variance) = BudgetTrendMath.BuildVarianceRows(
-            batchKeys, names, effective, actuals, new HashSet<string>(), budgetYear: 2026);
+            batchKeys, names, effective, actuals, new HashSet<string>(StringComparer.Ordinal), budgetYear: 2026);
 
         var row = Assert.Single(variance);
         Assert.False(row.HasBudget);

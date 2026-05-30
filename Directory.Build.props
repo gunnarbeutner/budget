@@ -1,0 +1,61 @@
+<Project>
+
+  <!-- Repo-wide build + analysis settings. Applies to every project (main, unit
+       tests, E2E) so the same rules run locally and in CI. Per-rule severities
+       and test-only relaxations live in .editorconfig. -->
+
+  <PropertyGroup>
+    <!-- Built-in .NET (Roslyn) analyzers, cranked to the full rule set. -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>All</AnalysisMode>
+
+    <!-- Make IDExxxx code-style rules (var, file-scoped namespaces, etc.) run as
+         part of `dotnet build`, not just in the IDE. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- Enabled solely so IDE0005 (remove unnecessary usings) runs during build, not just in
+         the IDE — see https://github.com/dotnet/roslyn/issues/41640. We don't author or ship XML
+         docs, so all the doc-comment *content* warnings this turns on (missing comments, malformed
+         XML in prose ///-comments, unresolved crefs) are suppressed in NoWarn below. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- Warnings fail the build everywhere. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- Curated set of rules disabled repo-wide. These are context-inappropriate
+         for a Blazor Server app (not a published library) or pure style noise.
+         Kept here rather than in .editorconfig because NoWarn applies to Razor-
+         generated code too, which per-path editorconfig severities do not.
+           CA2007/MA0004  ConfigureAwait(false) — library guidance, wrong for app UI code
+           CA1515         make types internal — ASP.NET needs them public
+           CA1062         validate args for null — nullable reference types cover this
+           MA0016/CA2227/CA1002/CA1819/CA1024/CA1716/CA1003/MA0046  deliberate app API shape (Action-based events)
+           MA0048/MA0006/MA0051  file/name/length pedantry
+           IDE0058        unused expression value (fluent/builder noise)
+           S6562          DateTimeKind on logical calendar dates
+           CA1848/CA1873  LoggerMessage perf micro-opt
+           S6618/S6608/S2325/S3267/S3358  Sonar style/perf opinions
+           CA1031         catch general Exception (intentional in top-level handlers)
+           S125           "commented-out code": false-positives on this codebase's prose comments -->
+    <NoWarn>$(NoWarn);CS1570;CS1571;CS1572;CS1573;CS1574;CS1580;CS1584;CS1587;CS1589;CS1590;CS1591;CS1592;CS1710;CS1711;CS1712;CS1723;CS1734;CA2007;MA0004;CA1515;CA1062;MA0016;CA2227;CA1002;CA1819;CA1024;CA1716;CA1003;MA0046;MA0048;MA0006;MA0051;IDE0058;S6562;CA1848;CA1873;S6618;S6608;S2325;CA1031;S3267;S3358;S125</NoWarn>
+  </PropertyGroup>
+
+  <!-- Third-party analyzers. PrivateAssets=all keeps them out of any downstream
+       package closure; they are build-time only. -->
+  <ItemGroup>
+    <PackageReference Include="Roslynator.Analyzers" Version="4.15.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.27.0.140913">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Meziantou.Analyzer" Version="3.0.98">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

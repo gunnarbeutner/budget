@@ -53,7 +53,7 @@ public class CashflowProjectionService
         var result = new ProjectDailyDeltaResult
         {
             DailyDelta = new decimal[daysInYear],
-            HasAccounts = assignments.Any()
+            HasAccounts = assignments.Count > 0
         };
         if (!result.HasAccounts) return result;
 
@@ -68,7 +68,7 @@ public class CashflowProjectionService
 
         // Resolve project's leaf category IDs once — only needed when at least one account is Shared.
         HashSet<long> projectLeafCategoryIds = new();
-        if (sharedIds.Any())
+        if (sharedIds.Count > 0)
         {
             var trackingItems = await _projects.GetProjectTrackingItemsAsync(projectId);
             var items = trackingItems.ToTrackedKeys().ToList();
@@ -147,13 +147,13 @@ public class CashflowProjectionService
         const int MinSampleSize = 3;
 
         var result = new Dictionary<(long, CategoryItemType), DayOfMonthDistribution>();
-        if (!items.Any()) return result;
+        if (items.Count == 0) return result;
 
         var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
         var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
 
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
-        if (!allLeafIds.Any())
+        if (allLeafIds.Count == 0)
         {
             foreach (var item in items) result[item] = DayOfMonthDistribution.Day1Fallback();
             return result;

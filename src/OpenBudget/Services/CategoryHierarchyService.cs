@@ -11,7 +11,7 @@ namespace OpenBudget.Services;
 /// caching) and unrelated to the project/budget/cashflow concerns it used to share a class
 /// with.
 /// </summary>
-public class CategoryHierarchyService : IDisposable
+public sealed class CategoryHierarchyService : IDisposable
 {
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly ChangeNotificationService _notifier;
@@ -40,7 +40,11 @@ public class CategoryHierarchyService : IDisposable
             _hierarchyBySourceId.Clear();
     }
 
-    public void Dispose() => _notifier.Changed -= OnDataChanged;
+    public void Dispose()
+    {
+        _notifier.Changed -= OnDataChanged;
+        GC.SuppressFinalize(this);
+    }
 
     /// <summary>All MoneyMoney leaf categories (mm_categories) for a source, name-ordered.</summary>
     public async Task<List<Category>> GetAllCategoriesAsync(int sourceId)

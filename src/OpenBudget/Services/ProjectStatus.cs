@@ -68,7 +68,7 @@ public static class ProjectStatus
             }
 
             var errorAccounts = f.AccountsWithErrors.ToList();
-            if (errorAccounts.Any())
+            if (errorAccounts.Count > 0)
             {
                 var errorKey = errorAccounts.Count == 1 ? "Freshness_RefreshErrors_One" : "Freshness_RefreshErrors_Other";
                 lines.Add($"{L[errorKey, errorAccounts.Count]} {string.Join(", ", errorAccounts.Select(a => a.Name ?? $"#{a.AccountId}"))}.");
@@ -90,7 +90,7 @@ public static class ProjectStatus
             severity = MaxSeverity(severity, uncatSev);
         }
 
-        return lines.Any() ? (severity, lines) : null;
+        return lines.Count > 0 ? (severity, lines) : null;
     }
 
     private static string MaxSeverity(string a, string b)

@@ -85,9 +85,9 @@ public class Account
             if (string.IsNullOrWhiteSpace(Balances)) return null;
             // Match "<tag>:<number>" pairs and pick the first one with a fractional part —
             // the currency entry shows up as "3:EUR" with no number, which the regex skips.
-            var match = Regex.Match(Balances, @"\d+:(-?\d+\.\d+)");
+            var match = Regex.Match(Balances, @"\d+:(?<amount>-?\d+\.\d+)", RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
             if (!match.Success) return null;
-            return decimal.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+            return decimal.TryParse(match.Groups["amount"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
                 ? value
                 : null;
         }

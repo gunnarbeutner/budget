@@ -1,5 +1,3 @@
-using OpenBudget.Models;
-
 namespace OpenBudget.Services;
 
 /// <summary>
@@ -81,7 +79,7 @@ public static class TrackedRowTree
             if (sa.HasValue && sa.Value != sb!.Value) return sa.Value.CompareTo(sb!.Value);
             var na = nameLookup?.Invoke(a) ?? "";
             var nb = nameLookup?.Invoke(b) ?? "";
-            var cmp = string.Compare(na, nb, StringComparison.CurrentCultureIgnoreCase);
+            var cmp = string.Compare(na, nb, StringComparison.OrdinalIgnoreCase);
             return cmp != 0 ? cmp : a.Item1.CompareTo(b.Item1);
         });
         roots.Sort(comparer);

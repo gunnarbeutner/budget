@@ -270,12 +270,6 @@ else if (step == 3)
     private int sourceBudgetId = 0;
     private List<Budget>? availableSourceBudgets;
 
-    // Category selection
-    private List<CategoryGroupWithChildCount>? allAvailableCategories;
-    private List<Category>? allActualCategories;
-    private HashSet<long> selectedCategoryGroupIds = new();
-    private HashSet<long> selectedActualCategoryIds = new();
-
     protected override async Task OnInitializedAsync()
     {
         // Project-scoped via the {ProjectId} route segment; the :int constraint rejects
@@ -302,49 +296,6 @@ else if (step == 3)
     {
         Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
         return Task.CompletedTask;
-    }
-
-    private async Task LoadCategories()
-    {
-        var project = await ProjectService.GetProjectAsync(selectedProjectId);
-        if (project == null)
-            return;
-
-        // Load all category groups/categories for the project
-        var allCategoryGroups = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(project.SourceId);
-        allActualCategories = await CategoryHierarchyService.GetAllCategoriesAsync(project.SourceId);
-
-        // Get all category group IDs that are in the project
-        var projectCategoryGroupIds = new HashSet<long>();
-        foreach (var assignment in project.CategoryAssignments)
-        {
-            projectCategoryGroupIds.Add(assignment.CategoryId);
-            GetAllSubGroupIds(assignment.CategoryId, projectCategoryGroupIds, allCategoryGroups);
-        }
-
-        // Filter to only categories in the project
-        var sentinelRoot = SourceScope.SentinelRoot(project.SourceId);
-        allAvailableCategories = allCategoryGroups
-            .Where(c => c.CategoryGroup.Id != sentinelRoot && projectCategoryGroupIds.Contains(c.CategoryGroup.Id))
-            .ToList();
-
-        // Initialize with top-level assignments selected
-        selectedCategoryGroupIds = project.CategoryAssignments
-            .Select(a => a.CategoryId)
-            .ToHashSet();
-        selectedActualCategoryIds.Clear();
-
-        step = 2;
-    }
-
-    private void GetAllSubGroupIds(long categoryGroupId, HashSet<long> result, List<CategoryGroupWithChildCount> allCategories)
-    {
-        var children = allCategories.Where(c => c.ParentCategoryGroupId == categoryGroupId).ToList();
-        foreach (var child in children)
-        {
-            result.Add(child.CategoryGroup.Id);
-            GetAllSubGroupIds(child.CategoryGroup.Id, result, allCategories);
-        }
     }
 
     private async Task GeneratePredictions()
@@ -445,25 +396,6 @@ else if (step == 3)
         isGenerating = false;
     }
 
-    private async Task HandleCategoryGroupToggle((long Id, bool IsChecked) args)
-    {
-        if (allAvailableCategories != null)
-        {
-            CategorySelection.ApplyGroupToggle(
-                args.Id, args.IsChecked,
-                selectedCategoryGroupIds, selectedActualCategoryIds,
-                allAvailableCategories);
-        }
-        await Task.CompletedTask;
-    }
-
-    private async Task HandleCategoryToggle((long Id, bool IsChecked) args)
-    {
-        if (args.IsChecked) selectedActualCategoryIds.Add(args.Id);
-        else selectedActualCategoryIds.Remove(args.Id);
-        await Task.CompletedTask;
-    }
-
     private async Task SaveBudget()
     {
         if (predictions == null)
@@ -488,10 +420,6 @@ else if (step == 3)
         notes = "";
         predictions = null;
         categoryNames = null;
-        allAvailableCategories = null;
-        allActualCategories = null;
-        selectedCategoryGroupIds.Clear();
-        selectedActualCategoryIds.Clear();
         sourceMode = "predict";
         sourceBudgetId = 0;
     }

@@ -25,8 +25,8 @@ public static class CategoryDisplay
     {
         var list = items.ToList();
         var nameCounts = list
-            .GroupBy(i => i.BaseName)
-            .ToDictionary(g => g.Key, g => g.Count());
+            .GroupBy(i => i.BaseName, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
 
         return list.ToDictionary(
             i => i.Key,

@@ -53,14 +53,14 @@ public static class BudgetTrendMath
         if (key.ItemType == CategoryItemType.Category)
         {
             var cat = allActualCategories?.FirstOrDefault(c => c.Id == key.Id);
-            parts.Insert(0, (cat?.Sort ?? long.MaxValue).ToString("D19"));
+            parts.Insert(0, (cat?.Sort ?? long.MaxValue).ToString("D19", System.Globalization.CultureInfo.InvariantCulture));
             walkUp = cat?.GroupId;
         }
         else
         {
             var groupItem = allCategories?.FirstOrDefault(c =>
                 c.ItemType == CategoryItemType.Group && c.Id == key.Id);
-            parts.Insert(0, (groupItem?.CategoryGroup.Sort ?? long.MaxValue).ToString("D19"));
+            parts.Insert(0, (groupItem?.CategoryGroup.Sort ?? long.MaxValue).ToString("D19", System.Globalization.CultureInfo.InvariantCulture));
             walkUp = groupItem?.ParentCategoryGroupId;
         }
 
@@ -69,12 +69,12 @@ public static class BudgetTrendMath
             var parent = allCategories?.FirstOrDefault(c =>
                 c.ItemType == CategoryItemType.Group && c.Id == walkUp.Value);
             if (parent == null) break;
-            parts.Insert(0, (parent.CategoryGroup.Sort ?? long.MaxValue).ToString("D19"));
+            parts.Insert(0, (parent.CategoryGroup.Sort ?? long.MaxValue).ToString("D19", System.Globalization.CultureInfo.InvariantCulture));
             walkUp = parent.ParentCategoryGroupId;
         }
 
         // Append the item's id as a stable tiebreaker.
-        parts.Add(key.Id.ToString("D19"));
+        parts.Add(key.Id.ToString("D19", System.Globalization.CultureInfo.InvariantCulture));
         return string.Join(".", parts);
     }
 
@@ -106,7 +106,7 @@ public static class BudgetTrendMath
             .Where(k => categoryDisplayNames.TryGetValue(k, out var n) && aggregateRowNames.Contains(n))
             .ToHashSet();
 
-        var budgetTrends = new Dictionary<string, List<MonthlySpending>>();
+        var budgetTrends = new Dictionary<string, List<MonthlySpending>>(StringComparer.Ordinal);
         var varianceSummary = new List<VarianceSummary>();
 
         foreach (var key in batchKeys)

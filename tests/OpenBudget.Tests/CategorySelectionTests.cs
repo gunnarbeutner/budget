@@ -1,4 +1,3 @@
-using OpenBudget.Models;
 using OpenBudget.Services;
 using Xunit;
 using static OpenBudget.Tests.Hierarchy;

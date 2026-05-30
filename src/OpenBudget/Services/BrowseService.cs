@@ -82,7 +82,6 @@ public class BrowseService
             .Where(a => a.ProjectId == projectId)
             .Select(a => a.CategoryId)
             .ToListAsync(ct);
-        var assignedSet = assignedGroupIds.ToHashSet();
 
         var inTree = new HashSet<(long Id, CategoryItemType ItemType)>();
         var rootKeys = new List<(long Id, CategoryItemType ItemType)>();
@@ -207,7 +206,7 @@ public class BrowseService
         var byParent = hierarchy
             .Where(h => inTree.Contains((h.Id, h.ItemType)))
             .GroupBy(h => h.ParentCategoryGroupId)
-            .ToDictionary(g => g.Key ?? -1L, g => g.OrderBy(SortKey).ThenBy(h => h.Name).ToList());
+            .ToDictionary(g => g.Key ?? -1L, g => g.OrderBy(SortKey).ThenBy(h => h.Name, StringComparer.Ordinal).ToList());
 
 
         BrowseCategoryNode BuildNode(CategoryGroupWithChildCount entry)
@@ -260,7 +259,7 @@ public class BrowseService
             .ToList();
         var categoryNodes = topEntries
             .OrderBy(SortKey)
-            .ThenBy(e => e.Name)
+            .ThenBy(e => e.Name, StringComparer.Ordinal)
             .Select(BuildNode)
             .ToList();
 

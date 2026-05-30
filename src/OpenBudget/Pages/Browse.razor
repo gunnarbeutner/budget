@@ -301,8 +301,6 @@
 @code {
     [Parameter] public int ProjectId { get; set; }
 
-    private const int pageSize = 50;
-
     private Project? project;
     private bool notFound;
 
@@ -346,7 +344,6 @@
     // read "−300 €"). Income categories and accounts use the natural axis where positive
     // goes up and negative goes down.
     private bool chartInvertY;
-    private long lastRenderToken;
 
     // JS ↔ Blazor bridge for chart bar clicks. Allocated once per page lifetime; the chart
     // re-render hands the same reference each time so click events route back to us.
@@ -378,22 +375,25 @@
     private void ToggleRail() => railOpen = !railOpen;
     private void CloseRail() => railOpen = false;
 
-    public override void Dispose()
+    protected override void Dispose(bool disposing)
     {
-        // Best-effort: free the Chart.js instance JS-side so navigating away doesn't leave it
-        // (and the onClick closure capturing selfRef) in window.chartInstances until the canvas
-        // id is reused. Fire-and-forget because Dispose is synchronous; swallow the cases where
-        // JS is unreachable (circuit already gone, or server-side prerender disposal).
-        _ = DestroyChartAsync();
-        selfRef?.Dispose();
-        base.Dispose();
+        if (disposing)
+        {
+            // Best-effort: free the Chart.js instance JS-side so navigating away doesn't leave it
+            // (and the onClick closure capturing selfRef) in window.chartInstances until the canvas
+            // id is reused. Fire-and-forget because Dispose is synchronous; swallow the cases where
+            // JS is unreachable (circuit already gone, or server-side prerender disposal).
+            _ = DestroyChartAsync();
+            selfRef?.Dispose();
+        }
+        base.Dispose(disposing);
     }
 
     private async Task DestroyChartAsync()
     {
         try { await JS.InvokeVoidAsync("destroyChart", "browseChart"); }
-        catch (JSDisconnectedException) { }
-        catch (InvalidOperationException) { }
+        catch (JSDisconnectedException) { /* no-op: circuit already gone */ }
+        catch (InvalidOperationException) { /* no-op: JS unreachable (prerender disposal) */ }
     }
 
     protected override bool IsRelevantChange(DataChange change) => change.Area switch
@@ -1073,7 +1073,6 @@
         var bg = chartBars.Select(b => b.IsAnchor
             ? "rgba(54, 162, 235, 0.9)"
             : "rgba(54, 162, 235, 0.4)").ToArray();
-        ++lastRenderToken;
         var noAnimate = chartSkipAnimation;
         chartSkipAnimation = false;
         try

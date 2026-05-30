@@ -90,7 +90,7 @@ public class BudgetEntryService
         {
             ProjectId = projectId,
             Year = year,
-            Name = string.IsNullOrWhiteSpace(name) ? createdAt.ToString("yyyy-MM-dd") : name.Trim(),
+            Name = string.IsNullOrWhiteSpace(name) ? createdAt.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) : name.Trim(),
             Notes = notes,
             CreatedAt = createdAt,
             IsActive = makeActive
@@ -289,7 +289,7 @@ public class BudgetEntryService
         foreach (var (id, itemType, months) in normalized)
         {
             if (months.Length != 12)
-                throw new ArgumentException($"Entry ({id}, {itemType}) needs exactly 12 monthly amounts; got {months.Length}.");
+                throw new ArgumentException($"Entry ({id}, {itemType}) needs exactly 12 monthly amounts; got {months.Length}.", nameof(entries));
 
             var row = existing.FirstOrDefault(e => e.CategoryId == id && e.ItemType == itemType);
             if (row == null)

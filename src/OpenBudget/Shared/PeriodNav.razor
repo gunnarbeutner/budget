@@ -117,7 +117,7 @@
 
     private ElementReference monthInputRef;
 
-    private List<int> SortedYears => Years?.OrderBy(y => y).ToList() ?? new List<int>();
+    private List<int> GetSortedYears() => Years?.OrderBy(y => y).ToList() ?? new List<int>();
 
     private string HeadingText
     {
@@ -144,7 +144,7 @@
     // so it never lands on a year with no data, mirroring the old <select>.
     private int? AdjacentYear(int direction)
     {
-        var ys = SortedYears;
+        var ys = GetSortedYears();
         var idx = ys.IndexOf(Anchor.Year);
         if (idx < 0) return null;
         var ni = idx + direction;
@@ -156,7 +156,7 @@
         ? AdjacentYear(1) is null
         : Anchoring.IsAtMax(Anchor, Period, DateTime.Now);
     private bool TodayDisabled => YearOnly
-        ? !(SortedYears.Contains(DateTime.Now.Year) && DateTime.Now.Year != Anchor.Year)
+        ? !(GetSortedYears().Contains(DateTime.Now.Year) && DateTime.Now.Year != Anchor.Year)
         : Anchoring.IsToday(Anchor, DateTime.Now);
 
     private async Task Step(int direction)
@@ -177,7 +177,7 @@
         var now = DateTime.Now;
         if (YearOnly)
         {
-            if (SortedYears.Contains(now.Year) && now.Year != Anchor.Year)
+            if (GetSortedYears().Contains(now.Year) && now.Year != Anchor.Year)
                 await OnChanged.InvokeAsync((now.Year, 1, "year"));
             return;
         }

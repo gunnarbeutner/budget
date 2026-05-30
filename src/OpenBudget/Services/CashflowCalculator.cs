@@ -59,8 +59,8 @@ public class WhatIfEntry
         if (string.IsNullOrEmpty(CategoryKey)) return null;
         var parts = CategoryKey.Split(':');
         if (parts.Length != 2) return null;
-        if (!int.TryParse(parts[0], out var t)) return null;
-        if (!long.TryParse(parts[1], out var id)) return null;
+        if (!int.TryParse(parts[0], System.Globalization.CultureInfo.InvariantCulture, out var t)) return null;
+        if (!long.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var id)) return null;
         return (id, (CategoryItemType)t);
     }
 }

@@ -1,4 +1,3 @@
-using OpenBudget.Services;
 using Xunit;
 
 namespace OpenBudget.Tests;

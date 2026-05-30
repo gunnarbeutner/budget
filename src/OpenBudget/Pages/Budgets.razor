@@ -266,7 +266,7 @@
     private List<CategoryGroupWithChildCount>? allCategories;
     private List<CategoryGroupWithChildCount>? filteredCategories;
     private List<CategoryGroupWithChildCount>? allAvailableCategories;
-    private HashSet<long> selectedCategoryGroupIds = new();
+    private readonly HashSet<long> selectedCategoryGroupIds = new();
     private HashSet<long> selectedActualCategoryIds = new();
     private HashSet<(long Id, CategoryItemType ItemType)> incomeItems = new();
     private List<Category>? allActualCategories;
@@ -356,21 +356,24 @@
         return Task.CompletedTask;
     }
 
-    public override void Dispose()
+    protected override void Dispose(bool disposing)
     {
-        // Best-effort: free the Chart.js instance JS-side so navigating away doesn't leave it
-        // in window.chartInstances until the canvas id is reused. Fire-and-forget because Dispose
-        // is synchronous; swallow the cases where JS is unreachable (circuit already gone, or
-        // server-side prerender disposal).
-        _ = DestroyChartAsync();
-        base.Dispose();
+        if (disposing)
+        {
+            // Best-effort: free the Chart.js instance JS-side so navigating away doesn't leave it
+            // in window.chartInstances until the canvas id is reused. Fire-and-forget because Dispose
+            // is synchronous; swallow the cases where JS is unreachable (circuit already gone, or
+            // server-side prerender disposal).
+            _ = DestroyChartAsync();
+        }
+        base.Dispose(disposing);
     }
 
     private async Task DestroyChartAsync()
     {
         try { await JS.InvokeVoidAsync("destroyChart", "trendStackedBarChart"); }
-        catch (JSDisconnectedException) { }
-        catch (InvalidOperationException) { }
+        catch (JSDisconnectedException) { /* no-op: circuit already gone */ }
+        catch (InvalidOperationException) { /* no-op: JS unreachable (prerender disposal) */ }
     }
 
     // Guards the per-project load so it runs once on first render and again only when the

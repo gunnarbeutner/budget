@@ -308,11 +308,11 @@
     // Virtual parent rows: tracked groups (from the project) whose budget rows live only on
     // their descendants. Rendered auto-summed so the hierarchy stays visible even when the
     // group itself has no MonthlyBudgetEntry. Never persisted — Save() ignores them.
-    private HashSet<(long Id, CategoryItemType ItemType)> virtualGroupKeys = new();
+    private readonly HashSet<(long Id, CategoryItemType ItemType)> virtualGroupKeys = new();
     private HashSet<(long Id, CategoryItemType ItemType)> trackedItemKeys = new();
     private Dictionary<(long Id, CategoryItemType ItemType), string> categoryNames = new();
     private Dictionary<(long Id, CategoryItemType ItemType), string> categoryFullPaths = new();
-    private List<(long Id, CategoryItemType ItemType)> availableToAdd = new();
+    private readonly List<(long Id, CategoryItemType ItemType)> availableToAdd = new();
     private Dictionary<(long Id, CategoryItemType ItemType), string> addCandidateNames = new();
     private HashSet<(long Id, CategoryItemType ItemType)> incomeKeys = new();
     private string addSelection = "";
@@ -327,7 +327,7 @@
     private List<TrackedRowNode> incomeTree = new();
     private List<TrackedRowNode> expenseTree = new();
     private BudgetEffectiveAmounts effective = new();
-    private HashSet<(long Id, CategoryItemType ItemType)> expandedKeys = new();
+    private readonly HashSet<(long Id, CategoryItemType ItemType)> expandedKeys = new();
     private string ExpandScope => $"budget-edit:{BudgetId}";
 
     protected override async Task OnInitializedAsync()
@@ -371,7 +371,6 @@
     private async Task LoadShadowsAsync()
     {
         if (budget == null) return;
-        var sourceId = budget.Project?.SourceId ?? SourceScope.LegacySourceId;
 
         // Tracked groups for shadow leaf expansion = editor groups + project-tracked groups.
         // Project-tracked groups not in the editor become "virtual" parent rows further down.

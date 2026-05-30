@@ -11,7 +11,7 @@ public class ChartPaletteTests
     {
         var templates = ChartPalette.Templates(5);
         Assert.Equal(5, templates.Length);
-        Assert.All(templates, t => Assert.Contains("{0}", t));
+        Assert.All(templates, t => Assert.Contains("{0}", t, StringComparison.Ordinal));
     }
 
     [Fact]

@@ -43,7 +43,7 @@ public static class Formatting
 /// </summary>
 public static class ChartPalette
 {
-    private static readonly string[] _templates = new[]
+    private static readonly string[] TemplatePalette = new[]
     {
         "rgba(255, 99, 132, {0})",
         "rgba(54, 162, 235, {0})",
@@ -61,7 +61,7 @@ public static class ChartPalette
     public static string[] Templates(int count)
     {
         var result = new string[count];
-        for (int i = 0; i < count; i++) result[i] = _templates[i % _templates.Length];
+        for (int i = 0; i < count; i++) result[i] = TemplatePalette[i % TemplatePalette.Length];
         return result;
     }
 

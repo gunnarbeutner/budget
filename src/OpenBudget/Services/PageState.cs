@@ -14,7 +14,7 @@ public static class PageState
     public static int? ReadIntQuery(NavigationManager nav, string key)
     {
         var query = QueryHelpers.ParseQuery(nav.ToAbsoluteUri(nav.Uri).Query);
-        if (query.TryGetValue(key, out var value) && int.TryParse(value, out var parsed))
+        if (query.TryGetValue(key, out var value) && int.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
             return parsed;
         return null;
     }
@@ -27,7 +27,7 @@ public static class PageState
     /// </summary>
     public static void ReplaceQuery(NavigationManager nav, IReadOnlyDictionary<string, object?> parameters)
     {
-        var uri = nav.GetUriWithQueryParameters(new Dictionary<string, object?>(parameters));
+        var uri = nav.GetUriWithQueryParameters(new Dictionary<string, object?>(parameters, StringComparer.Ordinal));
         if (uri == nav.Uri) return;
         nav.NavigateTo(uri, forceLoad: false, replace: true);
     }

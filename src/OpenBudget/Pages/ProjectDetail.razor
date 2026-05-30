@@ -91,14 +91,14 @@ else
     public int ProjectId { get; set; }
 
     private Project? budget;
-    private Dictionary<long, string> categoryNames = new();
+    private readonly Dictionary<long, string> categoryNames = new();
     private List<CategoryGroupWithChildCount>? availableCategoriesWithCounts;
 
     private bool showDeleteDialog = false;
 
     // Tracking configuration
     private List<ProjectTrackingItem>? trackingItems;
-    private Dictionary<long, string> trackingCategoryNames = new();
+    private readonly Dictionary<long, string> trackingCategoryNames = new();
     private List<CategoryGroupWithChildCount>? allAvailableCategories;
     private List<Category>? allActualCategories;
 

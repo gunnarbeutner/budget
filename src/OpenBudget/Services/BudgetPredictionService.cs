@@ -94,7 +94,7 @@ public class BudgetPredictionService
         foreach (var item in items)
             result[item] = new List<MonthlySpending>();
 
-        if (!items.Any()) return result;
+        if (items.Count == 0) return result;
 
         var startDate = new DateTimeOffset(new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc));
 
@@ -103,7 +103,7 @@ public class BudgetPredictionService
 
         foreach (var item in items)
         {
-            if (!itemToLeafIds[item].Any()) continue;
+            if (itemToLeafIds[item].Count == 0) continue;
             var list = result[item];
             for (int m = 0; m < months; m++)
             {
@@ -113,7 +113,7 @@ public class BudgetPredictionService
         }
 
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
-        if (!allLeafIds.Any()) return result;
+        if (allLeafIds.Count == 0) return result;
 
         await using var db = await _dbFactory.CreateDbContextAsync();
         var rawQuery = db.Transactions
@@ -144,7 +144,7 @@ public class BudgetPredictionService
         foreach (var item in items)
         {
             var list = result[item];
-            if (!list.Any()) continue;
+            if (list.Count == 0) continue;
             foreach (var leafId in itemToLeafIds[item])
             {
                 if (!perCategoryMonthly.TryGetValue(leafId, out var monthly)) continue;
@@ -188,7 +188,7 @@ public class BudgetPredictionService
 
         var monthlyData = await GetMonthlySpendingForCategoryAsync(categoryId, sourceId, 24, isIncome);
 
-        if (!monthlyData.Any())
+        if (monthlyData.Count == 0)
             return predictions;
 
         var previousYearData = monthlyData
@@ -204,7 +204,7 @@ public class BudgetPredictionService
             .Take(12)
             .ToList();
 
-        if (!recentData.Any())
+        if (recentData.Count == 0)
         {
             var avg = monthlyData.Average(m => m.Amount);
             for (int i = 0; i < 12; i++) predictions[i] = avg;
@@ -248,7 +248,7 @@ public class BudgetPredictionService
 
         var monthlyData = await GetMonthlySpendingAsync(categoryGroupId, sourceId, 24, isIncome);
 
-        if (!monthlyData.Any())
+        if (monthlyData.Count == 0)
             return predictions;
 
         var previousYearData = monthlyData
@@ -264,7 +264,7 @@ public class BudgetPredictionService
             .Take(12)
             .ToList();
 
-        if (!recentData.Any())
+        if (recentData.Count == 0)
         {
             var avgAmount = monthlyData.Average(m => m.Amount);
             for (int i = 0; i < 12; i++)
@@ -274,7 +274,7 @@ public class BudgetPredictionService
 
         var recentTotal = recentData.Sum(m => m.Amount);
 
-        if (previousYearData.Any() && previousYearData.Count == 12)
+        if (previousYearData.Count > 0 && previousYearData.Count == 12)
         {
             var previousYearTotal = previousYearData.Sum(m => m.Amount);
 

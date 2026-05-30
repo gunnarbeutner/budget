@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace OpenBudget.Models;
 
 /// <summary>
@@ -17,10 +19,11 @@ public class TransactionQuery
     public string? SearchText { get; init; }
     public decimal? MinAbsAmount { get; init; }
     public decimal? MaxAbsAmount { get; init; }
-    public int Skip { get; init; } = 0;
+    public int Skip { get; init; }
     public int Take { get; init; } = 50;
 }
 
+[StructLayout(LayoutKind.Auto)]
 public readonly record struct TimeRangeFilter(int Year, int FromMonth, int ToMonth);
 
 public class TransactionPage

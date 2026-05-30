@@ -296,7 +296,7 @@ public class BudgetService
     /// each leaf's transaction sum into income or expense.
     /// </summary>
     private async Task<(decimal Income, decimal Expense)> AggregateIncomeExpenseForRangeAsync(
-        IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
+        List<(long Id, CategoryItemType ItemType)> items,
         int year, int fromMonth, int toMonth, int sourceId, int? projectId)
     {
         if (items.Count == 0) return (0m, 0m);
@@ -350,7 +350,7 @@ public class BudgetService
             .ToListAsync();
 
         var result = new HashSet<(long, CategoryItemType)>();
-        if (!typeAssignments.Any())
+        if (typeAssignments.Count == 0)
             return result;
 
         var assignmentLookup = typeAssignments.ToDictionary(
@@ -421,7 +421,7 @@ public class BudgetService
     /// Checks for explicit assignment first, then walks up parent chain for inherited assignments.
     /// Returns true if category is income (explicit or inherited), false otherwise (default: expense).
     /// </summary>
-    private bool ResolveCategoryTypeWithInheritance(
+    private static bool ResolveCategoryTypeWithInheritance(
         long categoryId,
         CategoryItemType itemType,
         List<CategoryGroupWithChildCount> allCategories,
@@ -488,11 +488,11 @@ public class BudgetService
         foreach (var item in items)
             result[item] = (new decimal[12], new decimal[12]);
 
-        if (!items.Any()) return result;
+        if (items.Count == 0) return result;
 
         await using var db = await _dbFactory.CreateDbContextAsync();
         var (itemToLeafIds, allLeafIds, leafIsIncome) = await ResolveLeavesAndIncomeAsync(db, items, sourceId, projectId);
-        if (!allLeafIds.Any()) return result;
+        if (allLeafIds.Count == 0) return result;
 
         var raw = await db.Transactions
             .Where(t => t.SourceId == sourceId)
@@ -548,11 +548,11 @@ public class BudgetService
     {
         var result = new Dictionary<(long, CategoryItemType), decimal>();
         foreach (var item in items) result[item] = 0m;
-        if (!items.Any()) return result;
+        if (items.Count == 0) return result;
 
         await using var db = await _dbFactory.CreateDbContextAsync();
         var (itemToLeafIds, allLeafIds, leafIsIncome) = await ResolveLeavesAndIncomeAsync(db, items, sourceId, projectId);
-        if (!allLeafIds.Any()) return result;
+        if (allLeafIds.Count == 0) return result;
 
         var raw = await db.Transactions
             .Where(t => t.SourceId == sourceId)
@@ -611,12 +611,12 @@ public class BudgetService
         if (project == null) return new List<int>();
 
         var trackedKeys = project.TrackingItems.ToTrackedKeys().ToList();
-        if (!trackedKeys.Any()) return new List<int>();
+        if (trackedKeys.Count == 0) return new List<int>();
 
         var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
         var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(trackedKeys, allCategoriesWithCounts);
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
-        if (!allLeafIds.Any()) return new List<int>();
+        if (allLeafIds.Count == 0) return new List<int>();
 
         var minTs = await db.Transactions
             .Where(t => t.SourceId == project.SourceId)

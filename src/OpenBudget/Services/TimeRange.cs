@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using OpenBudget.Models;
 
 namespace OpenBudget.Services;
@@ -7,6 +8,7 @@ namespace OpenBudget.Services;
 /// All comparisons against <see cref="Transaction.Timestamp"/> use this convention so a
 /// boundary timestamp belongs to exactly one range.
 /// </summary>
+[StructLayout(LayoutKind.Auto)]
 public readonly record struct TimeRange(long StartTs, long EndTsExclusive)
 {
     public static TimeRange Month(int year, int month)

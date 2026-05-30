@@ -224,6 +224,31 @@ dotnet_naming_rule.private_fields_underscore.style = underscore_camel
 dotnet_naming_rule.private_fields_underscore.severity = warning
 
 #######################################
+# Analyzer ruleset (curated strict)   #
+#######################################
+# AnalysisMode=All + Roslynator + Sonar + Meziantou enables thousands of rules.
+# Rules disabled repo-wide live in <NoWarn> in Directory.Build.props (that also
+# covers Razor-generated code, which per-path editorconfig severities do not).
+# Here we only *demote* a few pure-style rules to suggestion so they show in the
+# IDE without breaking the build. Everything else stays at warning => build error.
+[*.{cs,razor}]
+
+# Collection expressions ([] syntax): nice to adopt, but a suggestion not a gate.
+dotnet_diagnostic.IDE0028.severity = suggestion
+dotnet_diagnostic.IDE0300.severity = suggestion
+dotnet_diagnostic.IDE0301.severity = suggestion
+dotnet_diagnostic.IDE0305.severity = suggestion
+
+#######################################
+# Generated EF migrations: don't lint  #
+#######################################
+# Sonar ignores the generated_code hint, so silence the rules its hand-written
+# migration scaffolding trips (underscore-prefixed class names, etc.).
+[src/OpenBudget/Migrations/**.cs]
+dotnet_diagnostic.S101.severity = none
+dotnet_analyzer_diagnostic.severity = none
+
+#######################################
 # Test projects: relax a few rules    #
 #######################################
 # Test method names often use underscores (Method_State_Expectation) and tests
@@ -231,6 +256,13 @@ dotnet_naming_rule.private_fields_underscore.severity = warning
 [tests/**/*.cs]
 dotnet_diagnostic.CA1707.severity = none   # underscores in member names
 dotnet_diagnostic.CA1515.severity = none   # public types can stay public in tests
+dotnet_diagnostic.CA1861.severity = none   # inline constant arrays are fine as test data
+dotnet_diagnostic.CA1307.severity = none   # string comparison in assertions doesn't need a culture
+dotnet_diagnostic.S6966.severity = none    # synchronous dispose in test teardown is fine
+dotnet_diagnostic.MA0009.severity = none   # regexes match fixed test strings, no ReDoS surface
+dotnet_diagnostic.CA1822.severity = none   # test fixture helpers needn't be static
+dotnet_diagnostic.CA1056.severity = none   # test URL helpers can be strings, not Uri
+dotnet_diagnostic.S927.severity = none     # param names may differ from the overridden interface in tests
 
 #######################################
 # Generated code: never analyze       #

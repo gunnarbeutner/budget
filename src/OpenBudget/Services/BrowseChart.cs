@@ -33,7 +33,7 @@ public static class BrowseChart
                 var end = new DateTime(endYear + 1, 1, 1, 0, 0, 0, DateTimeKind.Utc);
                 return (start, end, count,
                     d => d.Year - startYear,
-                    i => (startYear + i).ToString());
+                    i => (startYear + i).ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
             case "Q":
             {
@@ -69,7 +69,7 @@ public static class BrowseChart
                 int count = Math.Max(1, (int)(end - start).TotalDays);
                 return (DateTime.SpecifyKind(start, DateTimeKind.Utc), end, count,
                     d => (int)(d.Date - start).TotalDays,
-                    i => start.AddDays(i).ToString("dd.MM"));
+                    i => start.AddDays(i).ToString("dd.MM", System.Globalization.CultureInfo.InvariantCulture));
             }
             default: // "M"
             {

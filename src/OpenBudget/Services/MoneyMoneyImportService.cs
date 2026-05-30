@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +21,7 @@ namespace OpenBudget.Services;
 public class MoneyMoneyImportService
 {
     // URL-safe slug; same shape we accept in the upload route.
-    public static readonly Regex SlugRegex = new("^[a-z0-9][a-z0-9-]{0,99}$", RegexOptions.Compiled);
+    public static readonly Regex SlugRegex = new("^[a-z0-9][a-z0-9-]{0,99}$", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
     private static readonly string[] ExpectedAccountColumns =
     {
@@ -44,10 +45,33 @@ public class MoneyMoneyImportService
         "unformatted_purpose", "category_key", "checkmark", "splitted"
     };
 
+    // Bound parameter names for each table's INSERT, hoisted out of the per-table copy calls so
+    // the arrays aren't reallocated on every import (CA1861); they mirror the VALUES lists below.
+    private static readonly string[] AccountInsertParameters =
+    {
+        "$id", "$sid", "$name", "$iban", "$currency", "$type", "$portfolio", "$balances", "$sort", "$refresh_tsp", "$error", "$group_key"
+    };
+    private static readonly string[] AccountGroupInsertParameters =
+    {
+        "$id", "$sid", "$name", "$group_key", "$sort"
+    };
+    private static readonly string[] CategoryGroupInsertParameters =
+    {
+        "$id", "$sid", "$name", "$group_key", "$sort", "$color"
+    };
+    private static readonly string[] CategoryInsertParameters =
+    {
+        "$id", "$sid", "$name", "$type", "$color", "$rules", "$group_key", "$sort"
+    };
+    private static readonly string[] TransactionInsertParameters =
+    {
+        "$id", "$sid", "$local_account_key", "$amount", "$currency", "$timestamp", "$name", "$comment", "$purpose", "$category_key", "$checkmark", "$splitted"
+    };
+
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly ChangeNotificationService _notifier;
     private readonly ILogger<MoneyMoneyImportService> _logger;
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _perSourceLocks = new();
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _perSourceLocks = new(StringComparer.Ordinal);
 
     public MoneyMoneyImportService(
         IDbContextFactory<BudgetDbContext> dbFactory,
@@ -242,9 +266,9 @@ public class MoneyMoneyImportService
         while (await reader.ReadAsync(ct))
         {
             violations++;
-            var table = reader.IsDBNull(0) ? "?" : reader.GetString(0);
-            var rowid = reader.IsDBNull(1) ? "?" : reader.GetValue(1).ToString();
-            var parent = reader.IsDBNull(2) ? "?" : reader.GetString(2);
+            var table = await reader.IsDBNullAsync(0, ct) ? "?" : reader.GetString(0);
+            var rowid = await reader.IsDBNullAsync(1, ct) ? "?" : reader.GetValue(1).ToString();
+            var parent = await reader.IsDBNullAsync(2, ct) ? "?" : reader.GetString(2);
             _logger.LogWarning(
                 "FK violation after importing '{Source}': {Table} row {RowId} references missing {Parent}.",
                 sourceName, table, rowid, parent);
@@ -278,6 +302,8 @@ public class MoneyMoneyImportService
         return result != null && result != DBNull.Value;
     }
 
+    [SuppressMessage("Security", "CA2100:Review SQL queries for security vulnerabilities",
+        Justification = "Table name is a compile-time-constant identifier from our own import code, never user input; PRAGMA cannot be parameterized.")]
     private void WarnIfMissing(SqliteConnection src, string table, string[] expected, string sourceName)
     {
         using var cmd = src.CreateCommand();
@@ -302,6 +328,8 @@ public class MoneyMoneyImportService
     /// optional columns (e.g. SEPA <c>purpose</c>) backward-compatible with older MoneyMoney
     /// snapshots that may not carry them.
     /// </summary>
+    [SuppressMessage("Security", "CA2100:Review SQL queries for security vulnerabilities",
+        Justification = "Table name is a compile-time-constant identifier from our own import code, never user input; PRAGMA cannot be parameterized.")]
     private static async Task<bool> ColumnExistsAsync(SqliteConnection src, string table, string column, CancellationToken ct)
     {
         await using var cmd = src.CreateCommand();
@@ -330,7 +358,7 @@ public class MoneyMoneyImportService
             INSERT INTO mm_accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key)
             VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key)
             """;
-        return await BulkCopyAsync(src, db, select, insert, sourceId, (cmd, r) =>
+        return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {
             long rowid = r.GetInt64(0);
             cmd.Parameters["$id"].Value = SourceScope.Namespace(sourceId, rowid);
@@ -347,7 +375,7 @@ public class MoneyMoneyImportService
             cmd.Parameters["$group_key"].Value = r.IsDBNull(10)
                 ? DBNull.Value
                 : NamespaceParentKey(sourceId, r.GetInt64(10));
-        }, new[] { "$id", "$sid", "$name", "$iban", "$currency", "$type", "$portfolio", "$balances", "$sort", "$refresh_tsp", "$error", "$group_key" }, ct);
+        }, AccountInsertParameters, ct);
     }
 
     private static async Task<int> CopyAccountGroupsAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
@@ -360,7 +388,7 @@ public class MoneyMoneyImportService
             INSERT INTO mm_account_groups (Id, SourceId, name, group_key, sort)
             VALUES ($id, $sid, $name, $group_key, $sort)
             """;
-        return await BulkCopyAsync(src, db, select, insert, sourceId, (cmd, r) =>
+        return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {
             long rowid = r.GetInt64(0);
             cmd.Parameters["$id"].Value = SourceScope.Namespace(sourceId, rowid);
@@ -370,7 +398,7 @@ public class MoneyMoneyImportService
                 ? DBNull.Value
                 : NamespaceParentKey(sourceId, r.GetInt64(2));
             cmd.Parameters["$sort"].Value = r.IsDBNull(3) ? DBNull.Value : r.GetInt64(3);
-        }, new[] { "$id", "$sid", "$name", "$group_key", "$sort" }, ct);
+        }, AccountGroupInsertParameters, ct);
     }
 
     private static async Task<int> CopyCategoryGroupsAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
@@ -380,7 +408,7 @@ public class MoneyMoneyImportService
             INSERT INTO mm_category_groups (Id, SourceId, name, group_key, sort, color)
             VALUES ($id, $sid, $name, $group_key, $sort, $color)
             """;
-        return await BulkCopyAsync(src, db, select, insert, sourceId, (cmd, r) =>
+        return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {
             long rowid = r.GetInt64(0);
             cmd.Parameters["$id"].Value = SourceScope.Namespace(sourceId, rowid);
@@ -391,7 +419,7 @@ public class MoneyMoneyImportService
                 : NamespaceParentKey(sourceId, r.GetInt64(2));
             cmd.Parameters["$sort"].Value = r.IsDBNull(3) ? DBNull.Value : r.GetInt64(3);
             cmd.Parameters["$color"].Value = r.IsDBNull(4) ? DBNull.Value : r.GetString(4);
-        }, new[] { "$id", "$sid", "$name", "$group_key", "$sort", "$color" }, ct);
+        }, CategoryGroupInsertParameters, ct);
     }
 
     private static async Task<int> CopyCategoriesAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
@@ -401,7 +429,7 @@ public class MoneyMoneyImportService
             INSERT INTO mm_categories (Id, SourceId, name, type, color, rules, group_key, sort)
             VALUES ($id, $sid, $name, $type, $color, $rules, $group_key, $sort)
             """;
-        return await BulkCopyAsync(src, db, select, insert, sourceId, (cmd, r) =>
+        return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {
             long rowid = r.GetInt64(0);
             cmd.Parameters["$id"].Value = SourceScope.Namespace(sourceId, rowid);
@@ -414,7 +442,7 @@ public class MoneyMoneyImportService
                 ? DBNull.Value
                 : NamespaceParentKey(sourceId, r.GetInt64(5));
             cmd.Parameters["$sort"].Value = r.IsDBNull(6) ? DBNull.Value : r.GetInt64(6);
-        }, new[] { "$id", "$sid", "$name", "$type", "$color", "$rules", "$group_key", "$sort" }, ct);
+        }, CategoryInsertParameters, ct);
     }
 
     private static async Task<int> CopyTransactionsAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
@@ -433,19 +461,19 @@ public class MoneyMoneyImportService
             INSERT INTO mm_transactions (Id, SourceId, local_account_key, amount, currency, timestamp, name, comment, purpose, category_key, checkmark, splitted)
             VALUES ($id, $sid, $local_account_key, $amount, $currency, $timestamp, $name, $comment, $purpose, $category_key, $checkmark, $splitted)
             """;
-        return await BulkCopyAsync(src, db, select, insert, sourceId, (cmd, r) =>
+        return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {
             long rowid = r.GetInt64(0);
             cmd.Parameters["$id"].Value = SourceScope.Namespace(sourceId, rowid);
             cmd.Parameters["$sid"].Value = sourceId;
             cmd.Parameters["$local_account_key"].Value = r.IsDBNull(1)
                 ? DBNull.Value
-                : (object)SourceScope.Namespace(sourceId, r.GetInt64(1));
+                : SourceScope.Namespace(sourceId, r.GetInt64(1));
             // MoneyMoney stores amounts as REAL euros (or other currency); we keep them as
             // integer cents downstream so DB-side SUM is exact.
             cmd.Parameters["$amount"].Value = r.IsDBNull(2)
                 ? DBNull.Value
-                : (object)MoneyMath.EurosToCents(r.GetDouble(2));
+                : MoneyMath.EurosToCents(r.GetDouble(2));
             cmd.Parameters["$currency"].Value = r.IsDBNull(3) ? DBNull.Value : r.GetString(3);
             cmd.Parameters["$timestamp"].Value = r.IsDBNull(4) ? DBNull.Value : r.GetInt64(4);
             cmd.Parameters["$name"].Value = r.IsDBNull(5) ? DBNull.Value : r.GetString(5);
@@ -453,10 +481,10 @@ public class MoneyMoneyImportService
             cmd.Parameters["$purpose"].Value = r.IsDBNull(7) ? DBNull.Value : r.GetString(7);
             cmd.Parameters["$category_key"].Value = r.IsDBNull(8)
                 ? DBNull.Value
-                : (object)SourceScope.Namespace(sourceId, r.GetInt64(8));
+                : SourceScope.Namespace(sourceId, r.GetInt64(8));
             cmd.Parameters["$checkmark"].Value = r.IsDBNull(9) ? DBNull.Value : r.GetInt64(9);
             cmd.Parameters["$splitted"].Value = r.IsDBNull(10) ? DBNull.Value : r.GetInt64(10);
-        }, new[] { "$id", "$sid", "$local_account_key", "$amount", "$currency", "$timestamp", "$name", "$comment", "$purpose", "$category_key", "$checkmark", "$splitted" }, ct);
+        }, TransactionInsertParameters, ct);
     }
 
     /// <summary>
@@ -467,15 +495,16 @@ public class MoneyMoneyImportService
     /// </summary>
     private static object NamespaceParentKey(int sourceId, long parentRowid)
     {
-        return parentRowid == 0 ? DBNull.Value : (object)SourceScope.Namespace(sourceId, parentRowid);
+        return parentRowid == 0 ? DBNull.Value : SourceScope.Namespace(sourceId, parentRowid);
     }
 
+    [SuppressMessage("Security", "CA2100:Review SQL queries for security vulnerabilities",
+        Justification = "select/insert SQL is built by callers from constant column lists, not user input; row values are bound as parameters.")]
     private static async Task<int> BulkCopyAsync(
         SqliteConnection src,
         BudgetDbContext db,
         string selectSql,
         string insertSql,
-        int sourceId,
         Action<SqliteCommand, SqliteDataReader> bind,
         string[] parameterNames,
         CancellationToken ct)
@@ -494,7 +523,7 @@ public class MoneyMoneyImportService
             insertCmd.Parameters.Add(new SqliteParameter(p, DBNull.Value));
         // Compile the statement once; the loop below reuses it per row, so without Prepare SQLite
         // would re-parse the same INSERT tens of thousands of times.
-        insertCmd.Prepare();
+        await insertCmd.PrepareAsync(ct);
 
         await using var selectCmd = src.CreateCommand();
         selectCmd.CommandText = selectSql;

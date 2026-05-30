@@ -85,8 +85,8 @@
         {
             _focused = true;
             try { await JS.InvokeVoidAsync("modalA11y.activate", _modalRef); }
-            catch (JSDisconnectedException) { }
-            catch (InvalidOperationException) { }
+            catch (JSDisconnectedException) { /* no-op: circuit already gone */ }
+            catch (InvalidOperationException) { /* no-op: JS unreachable (prerender) */ }
         }
         else if (!Show && _focused)
         {
@@ -98,8 +98,8 @@
     private async Task DeactivateAsync()
     {
         try { await JS.InvokeVoidAsync("modalA11y.deactivate"); }
-        catch (JSDisconnectedException) { }
-        catch (InvalidOperationException) { }
+        catch (JSDisconnectedException) { /* no-op: circuit already gone */ }
+        catch (InvalidOperationException) { /* no-op: JS unreachable (prerender) */ }
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)

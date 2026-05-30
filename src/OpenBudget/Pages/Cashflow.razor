@@ -338,11 +338,6 @@ else
     /// <summary>Per-item income for <see cref="recentIncomeSourceMonth"/>. Populated by
     /// LoadCashflowData in "recent" mode; null otherwise.</summary>
     private Dictionary<(long Id, CategoryItemType ItemType), decimal>? recentIncomePerItem;
-    /// <summary>Per-item monthly budget amounts (12-element arrays) for the selected budget.
-    /// Used by "budget" mode to project income, and by expense projection below. Populated
-    /// when a budget is selected and the page is projecting (firstProjectedMonth ≤ 12).</summary>
-    private Dictionary<(long Id, CategoryItemType ItemType), decimal[]>? budgetMonthlyAmounts;
-
     /// <summary>When the selected project has child projects, each child uses its own active
     /// budget for the year. Keyed by ProjectId so ApplyIncomeProjection can route each row's
     /// future months to the right budget. Includes the parent's own entry.</summary>
@@ -404,7 +399,7 @@ else
     /// display, the keys it covers (used to detect collisions when the parent and a child
     /// track the same item), and the budget amounts that drive its own projection.
     /// </summary>
-    private class ProjectCashflowSlice
+    private sealed class ProjectCashflowSlice
     {
         public int ProjectId { get; set; }
         public string ProjectName { get; set; } = "";
@@ -429,14 +424,17 @@ else
         return Task.CompletedTask;
     }
 
-    public override void Dispose()
+    protected override void Dispose(bool disposing)
     {
-        // Best-effort: free the Chart.js instances JS-side so navigating away doesn't leave them
-        // in window.chartInstances until their canvas ids are reused. Fire-and-forget because
-        // Dispose is synchronous; swallow the cases where JS is unreachable (circuit already gone,
-        // or server-side prerender disposal).
-        _ = DestroyChartsAsync();
-        base.Dispose();
+        if (disposing)
+        {
+            // Best-effort: free the Chart.js instances JS-side so navigating away doesn't leave them
+            // in window.chartInstances until their canvas ids are reused. Fire-and-forget because
+            // Dispose is synchronous; swallow the cases where JS is unreachable (circuit already gone,
+            // or server-side prerender disposal).
+            _ = DestroyChartsAsync();
+        }
+        base.Dispose(disposing);
     }
 
     private async Task DestroyChartsAsync()
@@ -446,8 +444,8 @@ else
             await JSRuntime.InvokeVoidAsync("destroyChart", "cashflowChart");
             await JSRuntime.InvokeVoidAsync("destroyChart", "balanceChart");
         }
-        catch (JSDisconnectedException) { }
-        catch (InvalidOperationException) { }
+        catch (JSDisconnectedException) { /* no-op: circuit already gone */ }
+        catch (InvalidOperationException) { /* no-op: JS unreachable (prerender disposal) */ }
     }
 
     // Guards the per-project load so it runs once on first render and again only when the
@@ -482,7 +480,6 @@ else
         incomeCategories = new();
         expenseCategories = new();
         recentIncomePerItem = null;
-        budgetMonthlyAmounts = null;
         budgetMonthlyAmountsByProject = new();
         rollupCollisions = new();
         cachedDeltaResult = null;
@@ -709,7 +706,6 @@ else
 
         // Cross-slice collision detection: a key tracked by the parent AND a child would
         // double-count the same transactions. Record the offending keys so the page can warn.
-        var keysByProject = slices.ToDictionary(s => s.ProjectId, s => s.Keys);
         foreach (var key in parentSlice.Keys)
         {
             foreach (var child in slices.Skip(1))
@@ -730,15 +726,13 @@ else
 
         bool projecting = firstProjectedMonth <= 12;
 
-        // For "budget" projection mode, ApplyIncomeProjection looks at budgetMonthlyAmounts
+        // For "budget" projection mode, ApplyIncomeProjection looks at per-project budget amounts
         // keyed by (catId, itemType) — but with rollup, each row in incomeCategories carries
         // its origin project. We stitch together a per-origin lookup so income rows from child
         // projects use the child's budget values for their future months.
         budgetMonthlyAmountsByProject = slices
             .Where(s => s.BudgetAmounts != null)
             .ToDictionary(s => s.ProjectId, s => s.BudgetAmounts!);
-        // Back-compat: ApplyIncomeProjection still also reads budgetMonthlyAmounts (parent's).
-        budgetMonthlyAmounts = parentSlice.BudgetAmounts;
 
         // Seed contribution splits: prefer the budget's saved splits when a budget is
         // selected, fall back to equal splits otherwise. Items missing from the saved set
@@ -1492,9 +1486,9 @@ else
         {
             await JSRuntime.InvokeVoidAsync("renderChart", canvasId, chartData);
         }
-        catch (JSDisconnectedException) { }
-        catch (JSException) { }
-        catch (InvalidOperationException) { }
+        catch (JSDisconnectedException) { /* no-op: circuit already gone */ }
+        catch (JSException) { /* no-op: chart render raced a teardown */ }
+        catch (InvalidOperationException) { /* no-op: JS unreachable (prerender disposal) */ }
     }
 
     /// <summary>
