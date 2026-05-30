@@ -78,37 +78,26 @@ else
                 {
                     var included = selected.Contains(s.Key);
                     var row = plan.Rows.FirstOrDefault(r => r.Key == s.Key);
+                    @* Every cell renders the same line structure regardless of selection (disabled
+                       input + min-height second lines) so toggling a security doesn't reflow the row. *@
                     <tr @key="s.Key" class="@(included ? "" : "text-body-secondary")">
                         <td>
                             <input type="checkbox" class="form-check-input" checked="@included"
                                    @onchange="e => ToggleSelected(s.Key, e.Value)" aria-label="@s.Name" />
                         </td>
                         <td>
-                            <div class="@(included ? "fw-semibold" : "")">@s.Name</div>
-                            @if (!string.IsNullOrEmpty(s.Isin))
-                            {
-                                <div class="text-body-secondary small">@s.Isin</div>
-                            }
+                            <div class="fw-semibold">@s.Name</div>
+                            <div class="text-body-secondary small" style="min-height:1.2rem">@s.Isin</div>
                         </td>
                         <td class="text-end">
                             <div>@Formatting.FormatMoney(s.Value, s.PriceCurrency ?? "EUR")</div>
-                            @if (row is { } cr)
-                            {
-                                <div class="text-body-secondary small">@cr.CurrentFraction.ToString("P1", CultureInfo.CurrentCulture)</div>
-                            }
+                            <div class="text-body-secondary small" style="min-height:1.2rem">@(row is { } cr ? cr.CurrentFraction.ToString("P1", CultureInfo.CurrentCulture) : "")</div>
                         </td>
                         <td class="text-end">
-                            @if (included)
-                            {
-                                <input type="number" step="@(mode == RebalanceTargetMode.Amount ? "1000" : "1")" min="0"
-                                       class="form-control form-control-sm text-end"
-                                       value="@FormatNum(targets.GetValueOrDefault(s.Key))"
-                                       @onchange="e => OnTargetChanged(s.Key, e.Value)" />
-                            }
-                            else
-                            {
-                                <span class="text-body-secondary">—</span>
-                            }
+                            <input type="number" step="@(mode == RebalanceTargetMode.Amount ? "1000" : "1")" min="0"
+                                   class="form-control form-control-sm text-end" disabled="@(!included)"
+                                   value="@FormatNum(targets.GetValueOrDefault(s.Key))"
+                                   @onchange="e => OnTargetChanged(s.Key, e.Value)" />
                         </td>
                         <td class="text-end">
                             @if (included && row is { } tr2 && Math.Abs(tr2.Delta) >= 0.005m)
@@ -117,7 +106,7 @@ else
                                     @(tr2.Delta < 0 ? L["Sell"] : L["Buy"]) @Formatting.FormatMoney(Math.Abs(tr2.Delta), s.PriceCurrency ?? "EUR")
                                 </span>
                             }
-                            else if (included)
+                            else
                             {
                                 <span class="text-body-secondary">@L["Hold"]</span>
                             }
@@ -126,7 +115,12 @@ else
                             @if (included && row is { } ar)
                             {
                                 <div>@Formatting.FormatMoney(ar.TargetValue, s.PriceCurrency ?? "EUR")</div>
-                                <div class="text-body-secondary small">@ar.TargetFraction.ToString("P1", CultureInfo.CurrentCulture)</div>
+                                <div class="text-body-secondary small" style="min-height:1.2rem">@ar.TargetFraction.ToString("P1", CultureInfo.CurrentCulture)</div>
+                            }
+                            else
+                            {
+                                <div>@L["Hold"]</div>
+                                <div class="text-body-secondary small" style="min-height:1.2rem"></div>
                             }
                         </td>
                     </tr>
