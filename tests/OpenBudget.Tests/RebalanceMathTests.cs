@@ -71,6 +71,17 @@ public class RebalanceMathTests
     }
 
     [Fact]
+    public void Whole_share_rounding_rounds_trades_to_units_and_holds_sub_share_moves()
+    {
+        // Price 100, current 1000 (10 shares). Target 1240 wants +2.4 shares → rounds to +2 (1200).
+        Assert.Equal(1200m, RebalanceMath.QuantizeTarget(1000m, 1240m, price: 100m, wholeShares: true));
+        // Target 1040 wants +0.4 shares → rounds to 0 → Hold at current.
+        Assert.Equal(1000m, RebalanceMath.QuantizeTarget(1000m, 1040m, price: 100m, wholeShares: true));
+        // Fractional assets (gold) keep the exact target.
+        Assert.Equal(1040m, RebalanceMath.QuantizeTarget(1000m, 1040m, price: 100m, wholeShares: false));
+    }
+
+    [Fact]
     public void Sub_euro_deltas_are_suppressed_as_holds()
     {
         var items = new[] { Item("A", 1000m) };

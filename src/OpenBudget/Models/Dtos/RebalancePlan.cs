@@ -15,6 +15,10 @@ public class RebalanceInput
     public string Key { get; init; } = "";
     public string Name { get; init; } = "";
     public decimal CurrentValue { get; init; }
+    /// <summary>Per-unit price, used to round trades to whole units. Null when unknown.</summary>
+    public decimal? Price { get; init; }
+    /// <summary>Round trades to whole units (shares/stocks/ETFs); false for fractional assets (crypto).</summary>
+    public bool WholeShares { get; init; }
 }
 
 public class RebalanceRow

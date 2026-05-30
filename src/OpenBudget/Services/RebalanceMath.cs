@@ -12,6 +12,18 @@ public static class RebalanceMath
     /// <summary>Trades smaller than this are treated as no-ops (solver/rounding noise, sub-share).</summary>
     public const decimal TradeEpsilon = 1m;
 
+    /// <summary>
+    /// Rounds a target value so the implied trade is a whole number of units — you can't trade a
+    /// fraction of a share. A sub-share move rounds to zero, i.e. a Hold. No-op for fractional
+    /// assets (crypto) or when the price is unknown.
+    /// </summary>
+    public static decimal QuantizeTarget(decimal current, decimal target, decimal? price, bool wholeShares)
+    {
+        if (!wholeShares || price is not { } p || p <= 0m) return target;
+        decimal tradeShares = Math.Round((target - current) / p, MidpointRounding.AwayFromZero);
+        return current + tradeShares * p;
+    }
+
     public static RebalancePlan ComputePlan(
         IReadOnlyList<RebalanceInput> items,
         decimal cash,
@@ -42,7 +54,9 @@ public static class RebalanceMath
             // leave it as cash).
             if (noBuy != null && noBuy.Contains(i.Key) && targetValue > i.CurrentValue)
                 targetValue = i.CurrentValue;
-            // Suppress trade dust — a sub-€1 delta is rounding/solver noise, not a real order.
+            // Round share-based trades to whole units (sub-share → Hold).
+            targetValue = QuantizeTarget(i.CurrentValue, targetValue, i.Price, i.WholeShares);
+            // Suppress remaining trade dust — a sub-€1 delta is rounding/solver noise, not a real order.
             if (Math.Abs(targetValue - i.CurrentValue) < TradeEpsilon)
                 targetValue = i.CurrentValue;
 

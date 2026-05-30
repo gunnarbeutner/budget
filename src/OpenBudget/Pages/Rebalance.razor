@@ -130,6 +130,11 @@ else
                 {
                     var included = selected.Contains(s.Key);
                     var row = plan.Rows.FirstOrDefault(r => r.Key == s.Key);
+                    var whole = IsWholeShare(s);
+                    var sh = whole ? " sh" : "";
+                    var curShares = (decimal)s.Quantity;
+                    decimal? tradeShares = (s.Price is { } unitPrice && unitPrice > 0m && row is { } rr) ? rr.Delta / unitPrice : null;
+                    var afterShares = curShares + (tradeShares ?? 0m);
                     @* Every cell renders the same line structure regardless of selection (disabled
                        input + a non-breaking-space placeholder on each second line, so empty lines
                        keep the exact text height) — toggling a security doesn't reflow the row. *@
@@ -152,7 +157,7 @@ else
                         </td>
                         <td class="text-end">
                             <div>@Formatting.FormatMoney(s.Value, s.PriceCurrency ?? "EUR")</div>
-                            <div class="text-body-secondary small">@(row is { } cr ? (MarkupString)cr.CurrentFraction.ToString("P1", CultureInfo.CurrentCulture) : Nbsp)</div>
+                            <div class="text-body-secondary small">@(row is { } cr ? cr.CurrentFraction.ToString("P1", CultureInfo.CurrentCulture) + " · " : "")@FormatShares(curShares, whole)@sh</div>
                         </td>
                         <td class="text-end">
                             <input type="number" step="@(targetBy == "amount" ? "1000" : "1")" min="0"
@@ -163,20 +168,22 @@ else
                         <td class="text-end">
                             @if (included && row is { } tr2 && Math.Abs(tr2.Delta) >= 0.005m)
                             {
-                                <span class="@(tr2.Delta < 0 ? "text-danger" : "text-success")">
+                                <div class="@(tr2.Delta < 0 ? "text-danger" : "text-success")">
                                     @(tr2.Delta < 0 ? L["Sell"] : L["Buy"]) @Formatting.FormatMoney(Math.Abs(tr2.Delta), s.PriceCurrency ?? "EUR")
-                                </span>
+                                </div>
+                                <div class="text-body-secondary small">@(tradeShares is { } ts ? (ts < 0 ? "−" : "+") + FormatShares(Math.Abs(ts), whole) + sh : "")</div>
                             }
                             else
                             {
-                                <span class="text-body-secondary">@L["Hold"]</span>
+                                <div class="text-body-secondary">@L["Hold"]</div>
+                                <div class="text-body-secondary small">@Nbsp</div>
                             }
                         </td>
                         <td class="text-end">
                             @if (included && row is { } ar)
                             {
                                 <div>@Formatting.FormatMoney(ar.TargetValue, s.PriceCurrency ?? "EUR")</div>
-                                <div class="text-body-secondary small">@ar.TargetFraction.ToString("P1", CultureInfo.CurrentCulture)</div>
+                                <div class="text-body-secondary small">@ar.TargetFraction.ToString("P1", CultureInfo.CurrentCulture) · @FormatShares(afterShares, whole)@sh</div>
                             }
                             else
                             {
@@ -304,7 +311,14 @@ else
     {
         var items = securities
             .Where(s => selected.Contains(s.Key))
-            .Select(s => new RebalanceInput { Key = s.Key, Name = s.Name, CurrentValue = s.Value })
+            .Select(s => new RebalanceInput
+            {
+                Key = s.Key,
+                Name = s.Name,
+                CurrentValue = s.Value,
+                Price = s.Price,
+                WholeShares = IsWholeShare(s)
+            })
             .ToList();
         return RebalanceMath.ComputePlan(items, cash, ManualMode, targets, noBuy);
     }
@@ -320,7 +334,8 @@ else
         {
             var s = sv.Sel[i];
             decimal targetValue = decimal.Round((decimal)sv.F[i] * pool, 2);
-            // Suppress trade dust — a sub-€1 delta is solver/rounding noise, not a real order.
+            // Round share-based trades to whole units, then suppress sub-€1 dust.
+            targetValue = RebalanceMath.QuantizeTarget(s.Value, targetValue, s.Price, IsWholeShare(s));
             if (Math.Abs(targetValue - s.Value) < RebalanceMath.TradeEpsilon) targetValue = s.Value;
             rows.Add(new RebalanceRow
             {
@@ -460,4 +475,11 @@ else
         decimal.TryParse(value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? Math.Max(0m, v) : 0m;
 
     private static string FormatNum(decimal v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+
+    // ISIN-bearing securities (ETFs/stocks) trade in whole units; crypto (no ISIN) is fractional.
+    private static bool IsWholeShare(HoldingRow s) => !string.IsNullOrEmpty(s.Isin);
+
+    private static string FormatShares(decimal shares, bool whole) =>
+        whole ? shares.ToString("N0", CultureInfo.CurrentCulture)
+              : shares.ToString("0.######", CultureInfo.CurrentCulture);
 }
