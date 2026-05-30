@@ -9,12 +9,6 @@
 
 <PageTitle>@(projectName != null ? L["PageTitle_WithProject", projectName] : L["PageTitle"])</PageTitle>
 
-@* The plan is wide (security + current/target/trade/after, each with shares); default printing
-   to landscape. Scoped to this page via HeadContent so other pages stay portrait. *@
-<HeadContent>
-    <style media="print">@@page { size: landscape; }</style>
-</HeadContent>
-
 @if (notFound)
 {
     <PageHeader Title="@L["NotFound_Heading"]" />
@@ -74,7 +68,6 @@ else
         <button type="button" class="btn btn-sm btn-link" @onclick="ResetTargets">@L["Reset"]</button>
     </div>
 
-    <div class="rebal-body">
     @if (RegionMode)
     {
         <div class="card mb-3"><div class="card-body">
@@ -91,19 +84,25 @@ else
             </div>
             @* Print shows the taxonomy name as a heading (the dropdown is hidden). *@
             <div class="d-none d-print-block fw-semibold mb-2">@regionTaxonomy</div>
+            @* Classes laid out as columns (Target / Achievable as the two rows) so the panel is
+               short and wide — it stacks above the securities table and prints compactly. *@
             <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0 no-last-border" style="max-width: 32rem;">
-                    <thead><tr>
-                        <th>@L["Region_Class"]</th>
-                        <th class="text-end" style="width: 8rem;">@L["Region_Target"]</th>
-                        <th class="text-end" style="width: 8rem;">@L["Region_Achieved"]</th>
-                    </tr></thead>
+                <table class="table table-sm align-middle mb-0 no-last-border rebal-class-table">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            @foreach (var cls in regionList)
+                            {
+                                <th @key="cls" class="text-end">@cls</th>
+                            }
+                        </tr>
+                    </thead>
                     <tbody>
-                        @foreach (var cls in regionList)
-                        {
-                            <tr @key="cls">
-                                <td>@cls</td>
-                                <td class="text-end">
+                        <tr>
+                            <th class="fw-normal text-body-secondary small">@L["Region_Target"]</th>
+                            @foreach (var cls in regionList)
+                            {
+                                <td @key="cls" class="text-end">
                                     <div class="input-group input-group-sm">
                                         <input type="number" step="1" min="0" class="form-control text-end"
                                                value="@FormatNum(regionTargets.GetValueOrDefault(cls))"
@@ -111,11 +110,17 @@ else
                                         <span class="input-group-text">%</span>
                                     </div>
                                 </td>
-                                <td class="text-end text-body-secondary">
+                            }
+                        </tr>
+                        <tr>
+                            <th class="fw-normal text-body-secondary small">@L["Region_Achieved"]</th>
+                            @foreach (var cls in regionList)
+                            {
+                                <td @key="cls" class="text-end text-body-secondary">
                                     @(solved is { } sv ? sv.Achieved.GetValueOrDefault(cls).ToString("0.#", CultureInfo.InvariantCulture) + "%" : "")
                                 </td>
-                            </tr>
-                        }
+                            }
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -211,7 +216,6 @@ else
             </tbody>
         </table>
     </div>
-    </div>@* /.rebal-body *@
 
     <div class="card mt-3"><div class="card-body">
         <div class="row g-3">

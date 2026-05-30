@@ -843,6 +843,16 @@ a, .btn-link {
     border-bottom: 0;
 }
 
+/* Rebalance class table is transposed (classes as columns): keep labels/values on one line and
+   give each class column enough room for its "%" input. */
+.rebal-class-table th,
+.rebal-class-table td {
+    white-space: nowrap;
+}
+.rebal-class-table tbody td {
+    min-width: 4.5rem;
+}
+
 /* ── Print ─────────────────────────────────────────────────────────────────
    The app is screen-first: nav tabs, the sticky period bar, buttons and raw
    input boxes are all noise on paper. Strip the interactive chrome, render
@@ -897,6 +907,13 @@ a, .btn-link {
         padding: 0 .15rem !important;
     }
 
+    /* Class table: the Target value is an input (smaller, black) and Achievable is muted table
+       text — that editable/muted distinction is screen-only. In print render them as one
+       consistent pair: same size and colour. */
+    .rebal-class-table .form-control,
+    .rebal-class-table .input-group-text { font-size: inherit !important; }
+    .rebal-class-table .text-body-secondary { color: inherit !important; }
+
     /* Let everything flow; don't anchor the period bar or clip scroll viewports. */
     .sticky-top { position: static !important; }
     .tx-scroll,
@@ -905,24 +922,6 @@ a, .btn-link {
     .browse-tree {
         overflow: visible !important;
         max-height: none !important;
-    }
-
-    /* Landscape has width to spare: sit the rebalance taxonomy panel beside the (full-width-needing)
-       securities table instead of stacking it on top, so the report fits one page. On screen
-       .rebal-body is a plain block, so the panel stays above the table for editing. */
-    .rebal-body {
-        display: flex;
-        gap: 1rem;
-        align-items: flex-start;
-    }
-    .rebal-body > .card {
-        flex: 0 0 27%;
-        margin-bottom: 0 !important;
-    }
-    .rebal-body > .card .table-responsive > table { max-width: none !important; }
-    .rebal-body > .table-responsive {
-        flex: 1 1 auto;
-        min-width: 0;
     }
 
     /* Repeat table headers across pages and keep rows/cells whole. Both the legacy
@@ -937,3 +936,4 @@ a, .btn-link {
         break-inside: avoid;
     }
 }
+
