@@ -44,6 +44,15 @@ public class MoneyMoneyImportService
         "local_account_key", "amount", "currency", "timestamp", "name", "comment",
         "unformatted_purpose", "category_key", "checkmark", "splitted"
     };
+    private static readonly string[] ExpectedSecurityColumns =
+    {
+        "account_key", "ident", "isin", "wpn", "symbol", "quantity", "amount", "amount_cur",
+        "price", "price_cur", "purchase", "asset_class", "deleted"
+    };
+    private static readonly string[] ExpectedPortfolioChartColumns =
+    {
+        "account_key", "currency", "timestamp", "balance", "securities_key"
+    };
 
     // Bound parameter names for each table's INSERT, hoisted out of the per-table copy calls so
     // the arrays aren't reallocated on every import (CA1861); they mirror the VALUES lists below.
@@ -66,6 +75,14 @@ public class MoneyMoneyImportService
     private static readonly string[] TransactionInsertParameters =
     {
         "$id", "$sid", "$local_account_key", "$amount", "$currency", "$timestamp", "$name", "$comment", "$purpose", "$category_key", "$checkmark", "$splitted"
+    };
+    private static readonly string[] SecurityInsertParameters =
+    {
+        "$id", "$sid", "$account_key", "$name", "$isin", "$wkn", "$symbol", "$quantity", "$amount", "$amount_cur", "$price", "$price_cur", "$purchase", "$asset_class"
+    };
+    private static readonly string[] PortfolioChartInsertParameters =
+    {
+        "$id", "$sid", "$account_key", "$currency", "$timestamp", "$balance", "$securities_key"
     };
 
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
@@ -148,10 +165,12 @@ public class MoneyMoneyImportService
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         try
         {
-            // Wipe previous rows for this source. Order matters: transactions reference
-            // accounts/categories via FKs (Restrict), so transactions go first. Accounts
+            // Wipe previous rows for this source. Order matters: transactions and securities
+            // reference accounts/categories via FKs (Restrict), so they go first. Accounts
             // reference account_groups, so accounts go before account_groups.
             await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_transactions WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_portfolio_chart WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_securities WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_categories WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_category_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_accounts WHERE SourceId = {0}", new object[] { sourceId }, ct);
@@ -162,6 +181,8 @@ public class MoneyMoneyImportService
             int groupCount = await CopyCategoryGroupsAsync(src, db, sourceId, ct);
             int categoryCount = await CopyCategoriesAsync(src, db, sourceId, ct);
             int txCount = await CopyTransactionsAsync(src, db, sourceId, ct);
+            int securityCount = await CopySecuritiesAsync(src, db, sourceId, ct);
+            int portfolioChartCount = await CopyPortfolioChartAsync(src, db, sourceId, ct);
 
             long fileSize = new FileInfo(sqliteFilePath).Length;
             source.LastUploadAt = DateTime.UtcNow;
@@ -175,8 +196,8 @@ public class MoneyMoneyImportService
             await tx.CommitAsync(ct);
 
             _logger.LogInformation(
-                "Imported MoneyMoney source '{Source}' (id={SourceId}): {Accounts} accounts, {AccountGroups} account groups, {Groups} groups, {Categories} categories, {Transactions} transactions ({Bytes} bytes)",
-                sourceName, sourceId, accountCount, accountGroupCount, groupCount, categoryCount, txCount, fileSize);
+                "Imported MoneyMoney source '{Source}' (id={SourceId}): {Accounts} accounts, {AccountGroups} account groups, {Groups} groups, {Categories} categories, {Transactions} transactions, {Securities} securities, {PortfolioChart} portfolio-chart points ({Bytes} bytes)",
+                sourceName, sourceId, accountCount, accountGroupCount, groupCount, categoryCount, txCount, securityCount, portfolioChartCount, fileSize);
 
             // Tell every open browser session their imported data changed so pages reload —
             // a fresh upload moves balances and spending on every project bound to this source.
@@ -192,6 +213,8 @@ public class MoneyMoneyImportService
                 CategoryGroupsImported = groupCount,
                 CategoriesImported = categoryCount,
                 TransactionsImported = txCount,
+                SecuritiesImported = securityCount,
+                PortfolioChartPointsImported = portfolioChartCount,
                 FileSizeBytes = fileSize
             };
         }
@@ -232,9 +255,11 @@ public class MoneyMoneyImportService
         try
         {
             await using var tx = await db.Database.BeginTransactionAsync(ct);
-            // Order mirrors FK direction for clarity even with enforcement off: transactions
-            // reference accounts/categories; accounts reference account_groups.
+            // Order mirrors FK direction for clarity even with enforcement off: transactions and
+            // securities reference accounts/categories; accounts reference account_groups.
             await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_transactions WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_portfolio_chart WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_securities WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_categories WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_category_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_accounts WHERE SourceId = {0}", new object[] { sourceId }, ct);
@@ -290,6 +315,16 @@ public class MoneyMoneyImportService
         if (TableExists(src, "account_groups"))
         {
             WarnIfMissing(src, "account_groups", ExpectedAccountGroupColumns, sourceName);
+        }
+        // securities / portfolio_chart likewise only appear in exporter builds that copy them; the
+        // copy methods tolerate their absence, so only check columns when the table is present.
+        if (TableExists(src, "securities"))
+        {
+            WarnIfMissing(src, "securities", ExpectedSecurityColumns, sourceName);
+        }
+        if (TableExists(src, "portfolio_chart"))
+        {
+            WarnIfMissing(src, "portfolio_chart", ExpectedPortfolioChartColumns, sourceName);
         }
     }
 
@@ -487,6 +522,69 @@ public class MoneyMoneyImportService
         }, TransactionInsertParameters, ct);
     }
 
+    private static async Task<int> CopySecuritiesAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
+    {
+        // securities only ships in exporter builds that copy it; tolerate its absence so a stale
+        // upload still imports the rest. Only live positions are carried over — MoneyMoney keeps
+        // sold/closed holdings around with deleted=1, which would otherwise pollute the depot view.
+        if (!TableExists(src, "securities")) return 0;
+        const string select = """
+            SELECT rowid, account_key, ident, isin, wpn, symbol, quantity, amount, amount_cur, price, price_cur, purchase, asset_class
+            FROM securities
+            WHERE COALESCE(deleted, 0) = 0
+            """;
+        const string insert = """
+            INSERT INTO mm_securities (Id, SourceId, account_key, name, isin, wkn, symbol, quantity, amount, amount_cur, price, price_cur, purchase, asset_class)
+            VALUES ($id, $sid, $account_key, $name, $isin, $wkn, $symbol, $quantity, $amount, $amount_cur, $price, $price_cur, $purchase, $asset_class)
+            """;
+        return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
+        {
+            long rowid = r.GetInt64(0);
+            cmd.Parameters["$id"].Value = SourceScope.Namespace(sourceId, rowid);
+            cmd.Parameters["$sid"].Value = sourceId;
+            cmd.Parameters["$account_key"].Value = SourceScope.Namespace(sourceId, r.GetInt64(1));
+            cmd.Parameters["$name"].Value = r.IsDBNull(2) ? DBNull.Value : r.GetString(2);
+            cmd.Parameters["$isin"].Value = r.IsDBNull(3) ? DBNull.Value : r.GetString(3);
+            cmd.Parameters["$wkn"].Value = r.IsDBNull(4) ? DBNull.Value : r.GetString(4);
+            cmd.Parameters["$symbol"].Value = r.IsDBNull(5) ? DBNull.Value : r.GetString(5);
+            // quantity/amount/price/purchase stay REAL — crypto carries sub-cent quantities and
+            // these are market valuations, not the cents-as-long ledger used for transactions.
+            cmd.Parameters["$quantity"].Value = r.IsDBNull(6) ? 0d : r.GetDouble(6);
+            cmd.Parameters["$amount"].Value = r.IsDBNull(7) ? DBNull.Value : r.GetDouble(7);
+            cmd.Parameters["$amount_cur"].Value = r.IsDBNull(8) ? DBNull.Value : r.GetString(8);
+            cmd.Parameters["$price"].Value = r.IsDBNull(9) ? DBNull.Value : r.GetDouble(9);
+            cmd.Parameters["$price_cur"].Value = r.IsDBNull(10) ? DBNull.Value : r.GetString(10);
+            cmd.Parameters["$purchase"].Value = r.IsDBNull(11) ? DBNull.Value : r.GetDouble(11);
+            cmd.Parameters["$asset_class"].Value = r.IsDBNull(12) ? DBNull.Value : r.GetInt64(12);
+        }, SecurityInsertParameters, ct);
+    }
+
+    private static async Task<int> CopyPortfolioChartAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
+    {
+        // portfolio_chart, like securities, only ships in newer exporter builds. securities_key is
+        // namespaced but carries no FK (it can reference deleted positions we don't import), so a
+        // 0 sentinel maps to NULL like other parent keys.
+        if (!TableExists(src, "portfolio_chart")) return 0;
+        const string select = "SELECT rowid, account_key, currency, timestamp, balance, securities_key FROM portfolio_chart";
+        const string insert = """
+            INSERT INTO mm_portfolio_chart (Id, SourceId, account_key, currency, timestamp, balance, securities_key)
+            VALUES ($id, $sid, $account_key, $currency, $timestamp, $balance, $securities_key)
+            """;
+        return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
+        {
+            long rowid = r.GetInt64(0);
+            cmd.Parameters["$id"].Value = SourceScope.Namespace(sourceId, rowid);
+            cmd.Parameters["$sid"].Value = sourceId;
+            cmd.Parameters["$account_key"].Value = SourceScope.Namespace(sourceId, r.GetInt64(1));
+            cmd.Parameters["$currency"].Value = r.IsDBNull(2) ? DBNull.Value : r.GetString(2);
+            cmd.Parameters["$timestamp"].Value = r.IsDBNull(3) ? DBNull.Value : r.GetInt64(3);
+            cmd.Parameters["$balance"].Value = r.IsDBNull(4) ? DBNull.Value : r.GetDouble(4);
+            cmd.Parameters["$securities_key"].Value = r.IsDBNull(5)
+                ? DBNull.Value
+                : NamespaceParentKey(sourceId, r.GetInt64(5));
+        }, PortfolioChartInsertParameters, ct);
+    }
+
     /// <summary>
     /// Namespace a MoneyMoney parent/group rowid into our ID space. MoneyMoney uses
     /// <c>0</c> as the "no parent" / "no group" sentinel; we map that to <see cref="DBNull"/>
@@ -549,5 +647,7 @@ public class ImportResult
     public int CategoryGroupsImported { get; set; }
     public int CategoriesImported { get; set; }
     public int TransactionsImported { get; set; }
+    public int SecuritiesImported { get; set; }
+    public int PortfolioChartPointsImported { get; set; }
     public long FileSizeBytes { get; set; }
 }

@@ -71,7 +71,18 @@ public class Account
 
     // Navigation properties
     public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
+    public ICollection<Holding> Holdings { get; set; } = new List<Holding>();
     public AccountGroup? Group { get; set; }
+
+    /// <summary>
+    /// Sum of the market value of this account's holdings (<see cref="Holding.Amount"/>). For a
+    /// depot (<see cref="Type"/> == 7) this is the meaningful balance — the packed
+    /// <see cref="Balances"/> blob does not reflect securities value. Null when no holdings are
+    /// loaded; callers must <c>Include(a =&gt; a.Holdings)</c> first.
+    /// </summary>
+    [NotMapped]
+    public decimal? HoldingsValue =>
+        Holdings.Count == 0 ? null : (decimal)Holdings.Sum(s => s.Amount ?? 0);
 
     /// <summary>
     /// Parses the first numeric amount out of MoneyMoney's "balances" string ("11:5203.710000,3:EUR,").

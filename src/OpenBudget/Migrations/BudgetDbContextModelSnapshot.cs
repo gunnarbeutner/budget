@@ -15,7 +15,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20260529115330_AddBudgetVersion";
+        public override string LatestMigrationId => "20260530142807_AddSecuritiesAndPortfolioChart";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -278,6 +278,72 @@ namespace OpenBudget.Migrations
                     b.ToTable("category_type_assignments");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.Holding", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("AccountId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("account_key");
+
+                    b.Property<double?>("Amount")
+                        .HasColumnType("REAL")
+                        .HasColumnName("amount");
+
+                    b.Property<string>("AmountCurrency")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("amount_cur");
+
+                    b.Property<long?>("AssetClass")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("asset_class");
+
+                    b.Property<string>("Isin")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("isin");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("name");
+
+                    b.Property<double?>("Price")
+                        .HasColumnType("REAL")
+                        .HasColumnName("price");
+
+                    b.Property<string>("PriceCurrency")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("price_cur");
+
+                    b.Property<double?>("Purchase")
+                        .HasColumnType("REAL")
+                        .HasColumnName("purchase");
+
+                    b.Property<double>("Quantity")
+                        .HasColumnType("REAL")
+                        .HasColumnName("quantity");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Symbol")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("symbol");
+
+                    b.Property<string>("Wkn")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("wkn");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("SourceId", "AccountId");
+
+                    b.ToTable("mm_securities");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.ImportSource", b =>
                 {
                     b.Property<int>("Id")
@@ -370,6 +436,44 @@ namespace OpenBudget.Migrations
                     b.HasIndex("BudgetId");
 
                     b.ToTable("monthly_budget_entries");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.PortfolioChartPoint", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("AccountId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("account_key");
+
+                    b.Property<double?>("Balance")
+                        .HasColumnType("REAL")
+                        .HasColumnName("balance");
+
+                    b.Property<string>("Currency")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("currency");
+
+                    b.Property<long?>("SecurityId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("securities_key");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Timestamp")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("timestamp");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("SourceId", "AccountId", "Timestamp");
+
+                    b.ToTable("mm_portfolio_chart");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Project", b =>
@@ -614,6 +718,17 @@ namespace OpenBudget.Migrations
                     b.Navigation("Project");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.Holding", b =>
+                {
+                    b.HasOne("OpenBudget.Models.Account", "Account")
+                        .WithMany("Holdings")
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.MonthlyBudgetEntry", b =>
                 {
                     b.HasOne("OpenBudget.Models.Budget", "Budget")
@@ -623,6 +738,17 @@ namespace OpenBudget.Migrations
                         .IsRequired();
 
                     b.Navigation("Budget");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.PortfolioChartPoint", b =>
+                {
+                    b.HasOne("OpenBudget.Models.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Account");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Project", b =>
@@ -695,6 +821,8 @@ namespace OpenBudget.Migrations
 
             modelBuilder.Entity("OpenBudget.Models.Account", b =>
                 {
+                    b.Navigation("Holdings");
+
                     b.Navigation("Transactions");
                 });
 

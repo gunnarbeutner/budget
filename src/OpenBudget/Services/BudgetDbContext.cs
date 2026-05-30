@@ -30,6 +30,8 @@ public class BudgetDbContext : DbContext
     public DbSet<CategoryGroup> CategoryGroups => Set<CategoryGroup>();
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<AccountGroup> AccountGroups => Set<AccountGroup>();
+    public DbSet<Holding> Holdings => Set<Holding>();
+    public DbSet<PortfolioChartPoint> PortfolioChartPoints => Set<PortfolioChartPoint>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -185,5 +187,27 @@ public class BudgetDbContext : DbContext
 
         modelBuilder.Entity<AccountGroup>()
             .HasIndex(ag => ag.SourceId);
+
+        // Holdings belong to an account; Restrict mirrors how transactions hang off accounts so a
+        // referenced account can't be deleted out from under its securities mid-import.
+        modelBuilder.Entity<Holding>()
+            .HasOne(s => s.Account)
+            .WithMany(a => a.Holdings)
+            .HasForeignKey(s => s.AccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Holding>()
+            .HasIndex(s => new { s.SourceId, s.AccountId });
+
+        // portfolio_chart hangs off accounts only; securities_key deliberately has no FK (it can
+        // reference historical positions the import skips — see PortfolioChartPoint remarks).
+        modelBuilder.Entity<PortfolioChartPoint>()
+            .HasOne(p => p.Account)
+            .WithMany()
+            .HasForeignKey(p => p.AccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PortfolioChartPoint>()
+            .HasIndex(p => new { p.SourceId, p.AccountId, p.Timestamp });
     }
 }
