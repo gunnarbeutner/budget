@@ -23,6 +23,7 @@
 @if (Show)
 {
     <div class="modal show d-block" tabindex="-1"
+         data-testid="modal-dialog"
          role="dialog" aria-modal="true"
          aria-labelledby="@(string.IsNullOrEmpty(Title) ? null : _titleId)"
          @ref="_modalRef"

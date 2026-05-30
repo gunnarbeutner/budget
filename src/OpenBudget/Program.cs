@@ -252,3 +252,7 @@ static async Task<IResult> HandleUploadAsync(
         }
     }
 }
+
+// Exposes the implicit top-level Program class so WebApplicationFactory<Program> in the E2E
+// test project can boot this exact app (same DI/middleware wiring) on a real Kestrel port.
+public partial class Program;
