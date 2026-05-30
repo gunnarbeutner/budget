@@ -55,6 +55,18 @@ public class HoldingRow
     public double? GainFraction { get; init; }
 }
 
+/// <summary>
+/// A security from the PortfolioPerformance catalogue offered for adding to a rebalance even
+/// though it isn't currently held. Carries just enough to display, search, and join by ISIN.
+/// </summary>
+public class CatalogSecurity
+{
+    public string Isin { get; init; } = "";
+    public string Name { get; init; } = "";
+    public string? Symbol { get; init; }
+    public string? Wkn { get; init; }
+}
+
 public class AssetClassSlice
 {
     public string Label { get; init; } = "";

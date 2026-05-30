@@ -126,6 +126,31 @@ public class PortfolioService
         return result;
     }
 
+    /// <summary>
+    /// Catalogued PortfolioPerformance securities for the project's source that aren't already in
+    /// <paramref name="excludeIsins"/> (i.e. not currently held), ordered by name — the candidates a
+    /// user can add to a rebalance to plan buying into a position they don't yet own.
+    /// </summary>
+    public async Task<List<CatalogSecurity>> GetAddableSecuritiesAsync(
+        int projectId, IReadOnlyCollection<string> excludeIsins, CancellationToken ct = default)
+    {
+        var project = await _projects.GetProjectAsync(projectId);
+        if (project == null) return new List<CatalogSecurity>();
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var exclude = new HashSet<string>(excludeIsins, StringComparer.Ordinal);
+        var rows = await db.PpSecurities
+            .AsNoTracking()
+            .Where(s => s.SourceId == project.SourceId)
+            .OrderBy(s => s.Name)
+            .ToListAsync(ct);
+
+        return rows
+            .Where(s => !exclude.Contains(s.Isin))
+            .Select(s => new CatalogSecurity { Isin = s.Isin, Name = s.Name, Symbol = s.TickerSymbol, Wkn = s.Wkn })
+            .ToList();
+    }
+
     private static async Task<AccountHoldings> BuildAsync(
         BudgetDbContext db, int sourceId, List<Holding> holdings, long accountId, bool merge, CancellationToken ct)
     {

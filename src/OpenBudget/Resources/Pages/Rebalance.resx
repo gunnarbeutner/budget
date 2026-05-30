@@ -97,4 +97,7 @@
   <data name="Region_Achieved" xml:space="preserve"><value>Achievable</value></data>
   <data name="Region_Note" xml:space="preserve"><value>The trades below update live for the closest achievable mix.</value></data>
   <data name="NoBuy_Tooltip" xml:space="preserve"><value>Don't buy more — hold or sell only</value></data>
+  <data name="Add_Placeholder" xml:space="preserve"><value>Add a security you don't hold…</value></data>
+  <data name="Added_NotHeld" xml:space="preserve"><value>not held</value></data>
+  <data name="Added_Remove" xml:space="preserve"><value>Remove</value></data>
 </root>

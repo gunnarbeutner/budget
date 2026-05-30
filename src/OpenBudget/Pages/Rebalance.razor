@@ -154,6 +154,9 @@ else
                     var curShares = (decimal)s.Quantity;
                     decimal? tradeShares = (s.Price is { } unitPrice && unitPrice > 0m && row is { } rr) ? rr.Delta / unitPrice : null;
                     var afterShares = curShares + (tradeShares ?? 0m);
+                    // Unit counts need a price (or a real holding). An added, not-held security has
+                    // neither yet, so show percentages only — "· 0 sh" would misread as "holds none".
+                    var showUnits = s.Price is > 0m || s.Quantity > 0;
                     @* Every cell renders the same line structure regardless of selection (disabled
                        input + a non-breaking-space placeholder on each second line, so empty lines
                        keep the exact text height) — toggling a security doesn't reflow the row. *@
@@ -177,12 +180,19 @@ else
                                 {
                                     <i class="bi bi-cart-x-fill ms-1 d-none d-print-inline" title="@L["NoBuy_Tooltip"]" aria-hidden="true"></i>
                                 }
+                                @if (addedKeys.Contains(s.Key))
+                                {
+                                    <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline text-body-secondary d-print-none"
+                                            title="@L["Added_Remove"]" @onclick="() => RemoveAdded(s.Key)">
+                                        <i class="bi bi-x-circle" aria-hidden="true"></i>
+                                    </button>
+                                }
                             </div>
-                            <div class="text-body-secondary small">@s.Isin</div>
+                            <div class="text-body-secondary small">@s.Isin@(addedKeys.Contains(s.Key) ? " · " + L["Added_NotHeld"] : "")</div>
                         </td>
                         <td class="text-end">
                             <div>@Formatting.FormatMoney(s.Value, s.PriceCurrency ?? "EUR")</div>
-                            <div class="text-body-secondary small">@(row is { } cr ? cr.CurrentFraction.ToString("P1", CultureInfo.CurrentCulture) + " · " : "")@FormatShares(curShares, whole)@sh</div>
+                            <div class="text-body-secondary small">@JoinDot(row is { } cr ? cr.CurrentFraction.ToString("P1", CultureInfo.CurrentCulture) : null, showUnits ? FormatShares(curShares, whole) + sh : null)</div>
                         </td>
                         @if (!RegionMode)
                         {
@@ -211,7 +221,7 @@ else
                             @if (included && row is { } ar)
                             {
                                 <div>@Formatting.FormatMoney(ar.TargetValue, s.PriceCurrency ?? "EUR")</div>
-                                <div class="text-body-secondary small">@ar.TargetFraction.ToString("P1", CultureInfo.CurrentCulture) · @FormatShares(afterShares, whole)@sh</div>
+                                <div class="text-body-secondary small">@JoinDot(ar.TargetFraction.ToString("P1", CultureInfo.CurrentCulture), showUnits ? FormatShares(afterShares, whole) + sh : null)</div>
                             }
                             else
                             {
@@ -224,6 +234,24 @@ else
             </tbody>
         </table>
     </div>
+
+    @if (AddableOptions.Any())
+    {
+        @* Add a security you don't hold (from the PortfolioPerformance catalogue) to plan buying
+           into it. Datalist gives type-to-filter with no JS; the value carries the ISIN so the
+           pick is unambiguous. Screen-only — it's an editing affordance, not part of the plan. *@
+        <div class="d-print-none mb-3" style="max-width: 26rem;">
+            <input class="form-control form-control-sm" list="rebal-addable" value="@addQuery"
+                   placeholder="@L["Add_Placeholder"]" aria-label="@L["Add_Placeholder"]"
+                   @onchange="OnAddSecurity" />
+            <datalist id="rebal-addable">
+                @foreach (var a in AddableOptions)
+                {
+                    <option @key="a.Isin" value="@($"{a.Name} · {a.Isin}")"></option>
+                }
+            </datalist>
+        </div>
+    }
 
     <div class="card mt-3"><div class="card-body">
         <div class="row g-3">
@@ -268,6 +296,12 @@ else
     private int sourceId;
 
     private List<HoldingRow> securities = new();
+    // Securities the user added from the PortfolioPerformance catalogue (not currently held). Kept
+    // in `securities` as Value=0 rows; tracked here so they can be marked, removed, and cleared on
+    // reload. Ephemeral — a per-session scratchpad, never persisted.
+    private readonly HashSet<string> addedKeys = new(StringComparer.Ordinal);
+    private List<CatalogSecurity> addable = new();
+    private string addQuery = "";
     private readonly HashSet<string> selected = new(StringComparer.Ordinal);
     // Securities the rebalance may hold or sell but not buy more of (e.g. distributing ETFs).
     private readonly HashSet<string> noBuy = new(StringComparer.Ordinal);
@@ -318,6 +352,12 @@ else
         securities = holdings?.Rows ?? new List<HoldingRow>();
         taxonomyNames = holdings?.Taxonomies.Select(t => t.TaxonomyName).ToList() ?? new List<string>();
         regionTaxonomy = taxonomyNames.FirstOrDefault();
+        // Catalogue securities a user can add — everything PortfolioPerformance knows for this source
+        // that isn't already held. Added rows are ephemeral, so start clean on every (re)load.
+        addedKeys.Clear();
+        addQuery = "";
+        var heldIsins = securities.Where(s => !string.IsNullOrEmpty(s.Isin)).Select(s => s.Isin!).ToList();
+        addable = await Portfolio.GetAddableSecuritiesAsync(ProjectId, heldIsins);
         targetBy = "ratio";
         regionList = new List<string>();
         regionTargets = new Dictionary<string, decimal>(StringComparer.Ordinal);
@@ -400,6 +440,60 @@ else
         if (!noBuy.Remove(key)) noBuy.Add(key);
     }
 
+    // Catalogue picks still offerable: not already in the working list (held or already added).
+    private IEnumerable<CatalogSecurity> AddableOptions
+    {
+        get
+        {
+            var present = securities.Where(s => !string.IsNullOrEmpty(s.Isin))
+                .Select(s => s.Isin!).ToHashSet(StringComparer.Ordinal);
+            return addable.Where(a => !present.Contains(a.Isin));
+        }
+    }
+
+    // Joins non-empty sub-line parts with " · " so a missing unit count doesn't leave a dangling dot.
+    private static string JoinDot(params string?[] parts) =>
+        string.Join(" · ", parts.Where(p => !string.IsNullOrEmpty(p)));
+
+    private async Task OnAddSecurity(ChangeEventArgs e)
+    {
+        addQuery = "";
+        var val = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(val)) return;
+        // The datalist option value is "Name · ISIN"; fall back to a bare ISIN if the user typed one.
+        var pick = AddableOptions.FirstOrDefault(a => $"{a.Name} · {a.Isin}" == val)
+                   ?? AddableOptions.FirstOrDefault(a => string.Equals(a.Isin, val.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (pick == null) return;
+
+        var key = "isin:" + pick.Isin;
+        if (securities.Any(s => s.Key == key)) return;
+        securities.Add(new HoldingRow
+        {
+            Key = key,
+            Name = pick.Name,
+            Isin = pick.Isin,
+            Symbol = pick.Symbol,
+            Wkn = pick.Wkn,
+            Value = 0m,
+            Quantity = 0
+        });
+        addedKeys.Add(key);
+        selected.Add(key);
+        targets[key] = 0m;
+        // Pull in the new security's taxonomy weights/classes without clobbering entered targets.
+        if (RegionMode) await LoadRegionWeightsAsync(preserveTargets: true);
+    }
+
+    private async Task RemoveAdded(string key)
+    {
+        securities.RemoveAll(s => s.Key == key);
+        addedKeys.Remove(key);
+        selected.Remove(key);
+        noBuy.Remove(key);
+        targets.Remove(key);
+        if (RegionMode) await LoadRegionWeightsAsync(preserveTargets: true);
+    }
+
     private decimal SumTargets() =>
         targetBy == "amount"
             ? securities.Where(s => selected.Contains(s.Key)).Sum(s => Math.Max(0m, targets.GetValueOrDefault(s.Key)))
@@ -438,7 +532,9 @@ else
         await LoadRegionWeightsAsync();
     }
 
-    private async Task LoadRegionWeightsAsync()
+    // preserveTargets keeps the user's entered class targets across a securities change (add/remove),
+    // filling any newly-introduced class at 0; otherwise targets open at the current achieved mix.
+    private async Task LoadRegionWeightsAsync(bool preserveTargets = false)
     {
         if (string.IsNullOrEmpty(regionTaxonomy)) { regionList = new List<string>(); return; }
         var isins = securities.Where(s => !string.IsNullOrEmpty(s.Isin)).Select(s => s.Isin!).Distinct(StringComparer.Ordinal).ToList();
@@ -447,6 +543,11 @@ else
             .OrderBy(x => x, StringComparer.Ordinal).ToList();
         classes.Add(UnclassifiedLabel);
         regionList = classes;
+        if (preserveTargets)
+        {
+            regionTargets = regionList.ToDictionary(r => r, r => regionTargets.GetValueOrDefault(r), StringComparer.Ordinal);
+            return;
+        }
         // Open at the current achieved mix so the user nudges from status quo.
         var solved = SolveRegions();
         regionTargets = solved?.Achieved ?? regionList.ToDictionary(r => r, _ => 0m, StringComparer.Ordinal);

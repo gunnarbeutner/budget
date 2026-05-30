@@ -97,4 +97,7 @@
   <data name="Region_Achieved" xml:space="preserve"><value>Erreichbar</value></data>
   <data name="Region_Note" xml:space="preserve"><value>Die Orders unten aktualisieren sich live für die bestmögliche Mischung.</value></data>
   <data name="NoBuy_Tooltip" xml:space="preserve"><value>Nicht nachkaufen — nur halten oder verkaufen</value></data>
+  <data name="Add_Placeholder" xml:space="preserve"><value>Wertpapier hinzufügen, das du nicht hältst…</value></data>
+  <data name="Added_NotHeld" xml:space="preserve"><value>nicht im Bestand</value></data>
+  <data name="Added_Remove" xml:space="preserve"><value>Entfernen</value></data>
 </root>
