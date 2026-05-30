@@ -8,6 +8,10 @@ namespace OpenBudget.Models;
 /// </summary>
 public class OpenLot
 {
+    /// <summary>The PortfolioPerformance depot (portfolio uuid) currently holding this lot. German
+    /// FIFO is per depot per security, and a transfer moves a lot here keeping its acquisition date.</summary>
+    public string PortfolioUuid { get; init; } = "";
+
     /// <summary>ISIN of the security this lot belongs to.</summary>
     public string Isin { get; init; } = "";
 
