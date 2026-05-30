@@ -205,6 +205,35 @@ public class TransactionQueryService
     }
 
     /// <summary>
+    /// The earliest and latest transaction months as (year, month) tuples, for bounding the month
+    /// navigator (<see cref="Anchoring"/> / PeriodNav). Pass a <paramref name="sourceId"/> to scope
+    /// to one source (Overview, Browse); pass null for the whole DB (the dashboard, which spans every
+    /// source). Both values are null when no transactions match — the caller then falls back to the
+    /// current month. The max may be in the future (e.g. MoneyMoney's pending, future-dated rows),
+    /// which is intentional: it lets navigation reach those months. Split parents are excluded.
+    /// </summary>
+    public async Task<((int Year, int Month)? Min, (int Year, int Month)? Max)> GetMonthBoundsAsync(
+        int? sourceId,
+        CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var q = db.Transactions.Where(t => t.Splitted != 1);
+        if (sourceId is { } sid) q = q.Where(t => t.SourceId == sid);
+        var bounds = await q
+            .GroupBy(_ => 1)
+            .Select(g => new { Min = g.Min(t => (long?)t.Timestamp), Max = g.Max(t => (long?)t.Timestamp) })
+            .FirstOrDefaultAsync(ct);
+        return (ToMonth(bounds?.Min), ToMonth(bounds?.Max));
+
+        static (int Year, int Month)? ToMonth(long? unixSeconds)
+        {
+            if (unixSeconds is not { } s) return null;
+            var d = DateTimeOffset.FromUnixTimeSeconds(s).UtcDateTime;
+            return (d.Year, d.Month);
+        }
+    }
+
+    /// <summary>
     /// Bulk (timestamp, amount-in-euros) pairs across an arbitrary UTC range, scoped to the
     /// given source and either leaf-category set, account set, or both (AND when both are
     /// supplied). Used for chart-style queries (trailing history, account net-flow series)

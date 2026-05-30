@@ -32,7 +32,8 @@
 @* Shared period nav, sticky so the user can re-anchor while scrolling a long tx list.
    The mobile-only left-rail toggle rides in the Leading slot (on lg+ the rail is part of
    the grid; below lg it slides in as a drawer, opened via this button). *@
-<PeriodNav Anchor="anchor" Period="@period" ShowMonthPicker="true" OnChanged="OnPeriodChanged">
+<PeriodNav Anchor="anchor" Period="@period" ShowMonthPicker="true"
+           MinMonth="monthMin" MaxMonth="monthMax" OnChanged="OnPeriodChanged">
     <Leading>
         <button type="button" class="btn btn-sm btn-outline-secondary d-lg-none"
                 @onclick="ToggleRail" aria-label="@L["Aria_ToggleTree"]" aria-expanded="@railOpen.ToString().ToLower()">
@@ -401,10 +402,23 @@
         DataArea.MoneyMoneyData or DataArea.Sources => project != null && change.SourceId == project.SourceId,
         _ => change.ProjectId is null || change.ProjectId == ProjectId,
     };
-    protected override Task ReloadAfterChangeAsync() => ReloadAsync();
+    protected override async Task ReloadAfterChangeAsync()
+    {
+        if (project != null)
+            (monthMin, monthMax) = await TransactionQueries.GetMonthBoundsAsync(project.SourceId);
+        await ReloadAsync();
+    }
 
     // Debounce search keystrokes — we throttle by token instead of timer/JS interop.
     private long searchToken;
+
+    // The selectable month window for this source (first..last transaction; the latter may be in the
+    // future — pending rows). Null until loaded / when the source has no transactions, in which case
+    // EffectiveMin/Max fall back to [1900-01 .. current month].
+    private (int Year, int Month)? monthMin;
+    private (int Year, int Month)? monthMax;
+    private (int Year, int Month) EffectiveMin => monthMin ?? (1900, 1);
+    private (int Year, int Month) EffectiveMax => monthMax ?? (DateTime.Now.Year, DateTime.Now.Month);
 
     // Guards the per-project load so it runs once on first render and again only when the
     // {ProjectId} route param changes — i.e. a client-side switch via the header's project
@@ -416,9 +430,10 @@
         if (_loadedProjectId == ProjectId) return;
         _loadedProjectId = ProjectId;
         ResetForProjectSwitch();
-        ReadStateFromQuery();
         project = await ProjectService.GetProjectAsync(ProjectId);
         if (project == null) { notFound = true; return; }
+        (monthMin, monthMax) = await TransactionQueries.GetMonthBoundsAsync(project.SourceId);
+        ReadStateFromQuery();
         await ReloadAsync();
     }
 
@@ -458,15 +473,12 @@
         period = TimeState.Period ?? "month";
         var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
 
-        if (query.TryGetValue("year", out var y) && int.TryParse(y, out var py) && py >= 1900 && py <= now.Year)
+        if (query.TryGetValue("year", out var y) && int.TryParse(y, out var py) && py >= 1900)
             anchor.Year = py;
         if (query.TryGetValue("month", out var m) && int.TryParse(m, out var pm) && pm is >= 1 and <= 12)
             anchor.Month = pm;
-        // Clamp future anchor.
-        var picked = new DateTime(anchor.Year, anchor.Month, 1);
-        var max = new DateTime(now.Year, now.Month, 1);
-        if (picked > max) picked = max;
-        anchor = (picked.Year, picked.Month);
+        // Clamp into the source's [first..last transaction] month window.
+        anchor = Anchoring.Clamp(anchor, EffectiveMin, EffectiveMax);
 
         if (query.TryGetValue("period", out var p) && p.ToString() is var pv && (pv == "month" || pv == "ytd" || pv == "year"))
             period = pv;

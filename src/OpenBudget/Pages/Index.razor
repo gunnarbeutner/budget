@@ -6,6 +6,7 @@
 @using Microsoft.AspNetCore.WebUtilities
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
+@inject TransactionQueryService TransactionQueries
 @inject NavigationManager Navigation
 @inject IStringLocalizer<Index> L
 @inject ILogger<Index> Logger
@@ -18,7 +19,8 @@
 
 <PageTitle>@L["PageTitle"]</PageTitle>
 
-<PeriodNav Anchor="anchor" Period="@period" ShowMonthPicker="true" OnChanged="OnPeriodChanged">
+<PeriodNav Anchor="anchor" Period="@period" ShowMonthPicker="true"
+           MinMonth="monthMin" MaxMonth="monthMax" OnChanged="OnPeriodChanged">
     <Trailing>
         <a href="/sources" class="text-decoration-none text-body-secondary small d-inline-flex align-items-center gap-1"
            title="@L["Aria_Sources"]">
@@ -180,15 +182,30 @@ else
     // The user-selected reference point; period reinterprets it (see Anchoring).
     private (int Year, int Month) anchor;
 
+    // The selectable month window across every source (the dashboard spans them all). The latest
+    // bound may sit in the future — pending, future-dated rows. Null until loaded / when there are no
+    // transactions, in which case EffectiveMin/Max fall back to [1900-01 .. current month].
+    private (int Year, int Month)? monthMin;
+    private (int Year, int Month)? monthMax;
+    private (int Year, int Month) EffectiveMin => monthMin ?? (1900, 1);
+    private (int Year, int Month) EffectiveMax => monthMax ?? (DateTime.Now.Year, DateTime.Now.Month);
+
     protected override async Task OnInitializedAsync()
     {
+        await RefreshBoundsAsync();
         ReadStateFromQuery();
         await LoadDashboard();
     }
 
     // Any committed change anywhere can move a dashboard number (balances, spending, project list).
     protected override bool IsRelevantChange(DataChange change) => true;
-    protected override Task ReloadAfterChangeAsync() => LoadDashboard();
+    protected override async Task ReloadAfterChangeAsync()
+    {
+        await RefreshBoundsAsync();
+        await LoadDashboard();
+    }
+
+    private async Task RefreshBoundsAsync() => (monthMin, monthMax) = await TransactionQueries.GetMonthBoundsAsync(null);
 
     private void ReadStateFromQuery()
     {
@@ -203,7 +220,7 @@ else
         if (PageState.ReadIntQuery(Navigation, "year") is { } y &&
             PageState.ReadIntQuery(Navigation, "month") is { } m && m is >= 1 and <= 12)
         {
-            anchor = Anchoring.Clamp((y, m), now);
+            anchor = Anchoring.Clamp((y, m), EffectiveMin, EffectiveMax);
         }
     }
 

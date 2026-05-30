@@ -2,11 +2,16 @@ namespace OpenBudget.Services;
 
 /// <summary>
 /// Pure helpers for the month / YTD / year "anchor + period" time model shared by the
-/// dashboard, project Overview, and Browse. Centralises the range math, future-clamping,
+/// dashboard, project Overview, and Browse. Centralises the range math, bound-clamping,
 /// and the today-marker position that used to be copy-pasted between those pages.
 ///
 /// An anchor is a (year, month) reference point. The period reinterprets it:
 ///   "month" → just the anchor month, "ytd" → Jan..anchorMonth, "year" → Jan..Dec.
+///
+/// Navigation is bounded by an inclusive [min, max] month window derived from the data
+/// (earliest..latest transaction), NOT by "now": the past bound stops you scrolling into
+/// empty months before the first transaction, and the future bound lets you reach
+/// future-dated rows (e.g. MoneyMoney's pending transactions) that sit beyond today.
 /// </summary>
 public static class Anchoring
 {
@@ -18,33 +23,36 @@ public static class Anchoring
         _ => (anchorMonth, anchorMonth),
     };
 
-    /// <summary>Pull an anchor back to the current month if it's in the future; floor the year at 1900.</summary>
-    public static (int Year, int Month) Clamp((int Year, int Month) anchor, DateTime now)
+    /// <summary>Month-granularity ordinal for comparing (year, month) points.</summary>
+    private static int Ordinal((int Year, int Month) m) => m.Year * 12 + (m.Month - 1);
+
+    /// <summary>Clamp an anchor into the inclusive [min, max] month window.</summary>
+    public static (int Year, int Month) Clamp((int Year, int Month) anchor, (int Year, int Month) min, (int Year, int Month) max)
     {
-        var year = Math.Max(anchor.Year, 1900);
-        var picked = new DateTime(year, anchor.Month, 1);
-        var max = new DateTime(now.Year, now.Month, 1);
-        if (picked > max) picked = max;
-        return (picked.Year, picked.Month);
+        if (Ordinal(anchor) < Ordinal(min)) return min;
+        if (Ordinal(anchor) > Ordinal(max)) return max;
+        return anchor;
     }
 
-    /// <summary>Step the anchor one period (a month, or a year in "year" mode), clamped to the present.</summary>
-    public static (int Year, int Month) Step((int Year, int Month) anchor, string period, int direction, DateTime now)
+    /// <summary>Step the anchor one period (a month, or a year in "year" mode), clamped to [min, max].</summary>
+    public static (int Year, int Month) Step((int Year, int Month) anchor, string period, int direction, (int Year, int Month) min, (int Year, int Month) max)
     {
         var dt = new DateTime(anchor.Year, anchor.Month, 1);
         dt = period == "year" ? dt.AddYears(direction) : dt.AddMonths(direction);
-        return Clamp((dt.Year, dt.Month), now);
+        return Clamp((dt.Year, dt.Month), min, max);
     }
 
-    /// <summary>True when stepping forward would land in the future — used to disable the "next" button.</summary>
-    public static bool IsAtMax((int Year, int Month) anchor, string period, DateTime now)
+    /// <summary>True when stepping forward would pass the max bound — used to disable the "next" button.</summary>
+    public static bool IsAtMax((int Year, int Month) anchor, string period, (int Year, int Month) max)
         => period == "year"
-            ? anchor.Year >= now.Year
-            : anchor.Year > now.Year || (anchor.Year == now.Year && anchor.Month >= now.Month);
+            ? anchor.Year >= max.Year
+            : Ordinal(anchor) >= Ordinal(max);
 
-    /// <summary>True when the anchor already sits on the current month — used to disable "Today".</summary>
-    public static bool IsToday((int Year, int Month) anchor, DateTime now)
-        => anchor.Year == now.Year && anchor.Month == now.Month;
+    /// <summary>True when stepping back would pass the min bound — used to disable the "prev" button.</summary>
+    public static bool IsAtMin((int Year, int Month) anchor, string period, (int Year, int Month) min)
+        => period == "year"
+            ? anchor.Year <= min.Year
+            : Ordinal(anchor) <= Ordinal(min);
 
     /// <summary>
     /// Position of "today" within the selected period as a percentage [0..100], or null when today
