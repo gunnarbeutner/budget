@@ -17,6 +17,15 @@ MACOS_DIR="$CONTENTS/MacOS"
 FRAMEWORKS_DIR="$CONTENTS/Frameworks"
 BIN="$MACOS_DIR/OpenBudgetImporter"
 
+# Lint first so a style regression fails fast before the (slower) release build. swift-format
+# ships with the Swift 6 toolchain as `swift format`; skip gracefully on older toolchains.
+if swift format --version >/dev/null 2>&1; then
+    echo "Linting Swift sources (swift format lint --strict)..."
+    swift format lint --strict --recursive --configuration "$DIR/.swift-format" "$DIR/Sources"
+else
+    echo "swift format unavailable (needs Swift 6+); skipping lint."
+fi
+
 echo "Compiling OpenBudgetImporter (swift build -c release)..."
 swift build -c release --package-path "$DIR"
 

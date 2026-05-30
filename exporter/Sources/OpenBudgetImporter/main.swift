@@ -13,8 +13,8 @@
 
 import AppKit
 import Foundation
-import Security
 import SQLCipher
+import Security
 import SwiftUI
 
 // MARK: - Mode dispatch
@@ -87,21 +87,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Application menu (the bold leftmost item — name comes from CFBundleName).
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "Hide OpenBudgetImporter",
-                        action: #selector(NSApplication.hide(_:)),
-                        keyEquivalent: "h")
-        let hideOthers = NSMenuItem(title: "Hide Others",
-                                    action: #selector(NSApplication.hideOtherApplications(_:)),
-                                    keyEquivalent: "h")
+        appMenu.addItem(
+            withTitle: "Hide OpenBudgetImporter",
+            action: #selector(NSApplication.hide(_:)),
+            keyEquivalent: "h")
+        let hideOthers = NSMenuItem(
+            title: "Hide Others",
+            action: #selector(NSApplication.hideOtherApplications(_:)),
+            keyEquivalent: "h")
         hideOthers.keyEquivalentModifierMask = [.command, .option]
         appMenu.addItem(hideOthers)
-        appMenu.addItem(withTitle: "Show All",
-                        action: #selector(NSApplication.unhideAllApplications(_:)),
-                        keyEquivalent: "")
+        appMenu.addItem(
+            withTitle: "Show All",
+            action: #selector(NSApplication.unhideAllApplications(_:)),
+            keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Quit OpenBudgetImporter",
-                        action: #selector(NSApplication.terminate(_:)),
-                        keyEquivalent: "q")
+        appMenu.addItem(
+            withTitle: "Quit OpenBudgetImporter",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q")
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 
@@ -110,39 +114,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // menu items exist.
         let editMenuItem = NSMenuItem()
         let editMenu = NSMenu(title: "Edit")
-        editMenu.addItem(withTitle: "Undo",
-                         action: Selector(("undo:")),
-                         keyEquivalent: "z")
-        let redo = NSMenuItem(title: "Redo",
-                              action: Selector(("redo:")),
-                              keyEquivalent: "z")
+        editMenu.addItem(
+            withTitle: "Undo",
+            action: Selector(("undo:")),
+            keyEquivalent: "z")
+        let redo = NSMenuItem(
+            title: "Redo",
+            action: Selector(("redo:")),
+            keyEquivalent: "z")
         redo.keyEquivalentModifierMask = [.command, .shift]
         editMenu.addItem(redo)
         editMenu.addItem(NSMenuItem.separator())
-        editMenu.addItem(withTitle: "Cut",
-                         action: #selector(NSText.cut(_:)),
-                         keyEquivalent: "x")
-        editMenu.addItem(withTitle: "Copy",
-                         action: #selector(NSText.copy(_:)),
-                         keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste",
-                         action: #selector(NSText.paste(_:)),
-                         keyEquivalent: "v")
-        editMenu.addItem(withTitle: "Select All",
-                         action: #selector(NSText.selectAll(_:)),
-                         keyEquivalent: "a")
+        editMenu.addItem(
+            withTitle: "Cut",
+            action: #selector(NSText.cut(_:)),
+            keyEquivalent: "x")
+        editMenu.addItem(
+            withTitle: "Copy",
+            action: #selector(NSText.copy(_:)),
+            keyEquivalent: "c")
+        editMenu.addItem(
+            withTitle: "Paste",
+            action: #selector(NSText.paste(_:)),
+            keyEquivalent: "v")
+        editMenu.addItem(
+            withTitle: "Select All",
+            action: #selector(NSText.selectAll(_:)),
+            keyEquivalent: "a")
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
 
         // Window menu so Cmd-W closes, Cmd-M minimizes.
         let windowMenuItem = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")
-        windowMenu.addItem(withTitle: "Minimize",
-                           action: #selector(NSWindow.performMiniaturize(_:)),
-                           keyEquivalent: "m")
-        windowMenu.addItem(withTitle: "Close",
-                           action: #selector(NSWindow.performClose(_:)),
-                           keyEquivalent: "w")
+        windowMenu.addItem(
+            withTitle: "Minimize",
+            action: #selector(NSWindow.performMiniaturize(_:)),
+            keyEquivalent: "m")
+        windowMenu.addItem(
+            withTitle: "Close",
+            action: #selector(NSWindow.performClose(_:)),
+            keyEquivalent: "w")
         windowMenuItem.submenu = windowMenu
         mainMenu.addItem(windowMenuItem)
         NSApp.windowsMenu = windowMenu
@@ -233,11 +245,14 @@ struct ConfigView: View {
                         .font(.system(.body, design: .monospaced))
                         .frame(minHeight: 60, maxHeight: 100)
                         .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.4)))
-                        .help("One URL per line, e.g. https://budget.example.com. Every export uploads to each in turn.")
+                        .help(
+                            "One URL per line, e.g. https://budget.example.com. Every export uploads to each in turn.")
                 }
                 TextField("Source name (slug)", text: $vm.sourceName)
                     .textFieldStyle(.roundedBorder)
-                    .help("Lowercase letters/digits/hyphens. The first upload with a new name registers it on the server.")
+                    .help(
+                        "Lowercase letters/digits/hyphens. The first upload with a new name registers it on the server."
+                    )
                 SecureField("API token", text: $vm.token)
                     .textFieldStyle(.roundedBorder)
                     .help("Matches the server's MONEYMONEY_DB_UPLOAD_TOKEN env var. Stored in macOS Keychain.")
@@ -250,7 +265,9 @@ struct ConfigView: View {
                 Button(vm.isInstalled ? "Save & restart" : "Save & install") {
                     Task { await vm.saveAndInstall() }
                 }
-                .disabled(vm.working || Config.parseURLs(vm.baseURLsText).isEmpty || vm.sourceName.isEmpty || vm.token.isEmpty)
+                .disabled(
+                    vm.working || Config.parseURLs(vm.baseURLsText).isEmpty || vm.sourceName.isEmpty || vm.token.isEmpty
+                )
                 Button("Run now") { Task { await vm.runNow() } }
                     .disabled(vm.working)
                 Button("Uninstall") { Task { await vm.uninstall() } }
@@ -332,7 +349,8 @@ enum Config {
         }
         let slugRange = sourceName.range(of: "^[a-z0-9][a-z0-9-]{0,99}$", options: .regularExpression)
         guard slugRange != nil else {
-            throw AppError.invalidConfig("Source name must be a lowercase slug (a-z, 0-9, -). Start with a letter or digit.")
+            throw AppError.invalidConfig(
+                "Source name must be a lowercase slug (a-z, 0-9, -). Start with a letter or digit.")
         }
         if token.isEmpty {
             throw AppError.invalidConfig("API token is required.")
@@ -370,7 +388,7 @@ enum Keychain {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+            kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         let status = SecItemCopyMatching(q as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data, let s = String(data: data, encoding: .utf8) else {
@@ -384,7 +402,7 @@ enum Keychain {
         let common: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account
+            kSecAttrAccount as String: account,
         ]
         // Try update first, then add — handles both "first run" and "user changed value".
         let updateStatus = SecItemUpdate(
@@ -407,7 +425,7 @@ enum Keychain {
         let q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account
+            kSecAttrAccount as String: account,
         ]
         let status = SecItemDelete(q as CFDictionary)
         if status != errSecSuccess && status != errSecItemNotFound {
@@ -434,32 +452,32 @@ enum LaunchAgent {
         let bundlePath = Bundle.main.bundlePath
         let logPath = LogFile.path
         let plist = """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>Label</key>
-            <string>\(label)</string>
-            <key>ProgramArguments</key>
-            <array>
-                <string>/usr/bin/open</string>
-                <string>-W</string>
-                <string>-a</string>
-                <string>\(escapeXML(bundlePath))</string>
-                <string>--args</string>
-                <string>--run-once</string>
-            </array>
-            <key>StartInterval</key>
-            <integer>\(intervalSeconds)</integer>
-            <key>RunAtLoad</key>
-            <true/>
-            <key>StandardErrorPath</key>
-            <string>\(escapeXML(logPath))</string>
-            <key>StandardOutPath</key>
-            <string>\(escapeXML(logPath))</string>
-        </dict>
-        </plist>
-        """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+                <key>Label</key>
+                <string>\(label)</string>
+                <key>ProgramArguments</key>
+                <array>
+                    <string>/usr/bin/open</string>
+                    <string>-W</string>
+                    <string>-a</string>
+                    <string>\(escapeXML(bundlePath))</string>
+                    <string>--args</string>
+                    <string>--run-once</string>
+                </array>
+                <key>StartInterval</key>
+                <integer>\(intervalSeconds)</integer>
+                <key>RunAtLoad</key>
+                <true/>
+                <key>StandardErrorPath</key>
+                <string>\(escapeXML(logPath))</string>
+                <key>StandardOutPath</key>
+                <string>\(escapeXML(logPath))</string>
+            </dict>
+            </plist>
+            """
         let dir = (plistPath as NSString).deletingLastPathComponent
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         try plist.write(toFile: plistPath, atomically: true, encoding: .utf8)
@@ -498,7 +516,7 @@ enum LaunchAgent {
     /// (`&`, `<`). Paths can't contain quotes meaningfully on macOS.
     private static func escapeXML(_ s: String) -> String {
         s.replacingOccurrences(of: "&", with: "&amp;")
-         .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: "<", with: "&lt;")
     }
 }
 
@@ -535,7 +553,8 @@ enum LogFile {
 // MARK: - Exporter: decrypts MoneyMoney DB in-process, uploads to budget server
 
 enum Exporter {
-    private static let moneyMoneyDBPath = "\(NSHomeDirectory())/Library/Containers/com.moneymoney-app.retail/Data/Library/Application Support/MoneyMoney/Database/MoneyMoney.sqlite"
+    private static let moneyMoneyDBPath =
+        "\(NSHomeDirectory())/Library/Containers/com.moneymoney-app.retail/Data/Library/Application Support/MoneyMoney/Database/MoneyMoney.sqlite"
     // MoneyMoney's cipher key when the user hasn't set a password. The user-supplied password
     // (from Keychain) overrides this when present; cipher compatibility is the same either way.
     private static let defaultCipherKey = "nopasswd"
@@ -544,13 +563,17 @@ enum Exporter {
     static func runOnce(logger: @escaping @Sendable (String) -> Void) async throws {
         let baseURLs = Config.baseURLs
         guard !baseURLs.isEmpty,
-              let sourceName = Config.sourceName, !sourceName.isEmpty,
-              let token = Keychain.token, !token.isEmpty else {
-            throw AppError.invalidConfig("Missing config — open OpenBudgetImporter.app to set base URLs, source name, and token.")
+            let sourceName = Config.sourceName, !sourceName.isEmpty,
+            let token = Keychain.token, !token.isEmpty
+        else {
+            throw AppError.invalidConfig(
+                "Missing config — open OpenBudgetImporter.app to set base URLs, source name, and token.")
         }
 
         guard FileManager.default.fileExists(atPath: moneyMoneyDBPath) else {
-            throw AppError.fileMissing("MoneyMoney database not found at \(moneyMoneyDBPath). Is MoneyMoney installed and has it ever been opened?")
+            throw AppError.fileMissing(
+                "MoneyMoney database not found at \(moneyMoneyDBPath). Is MoneyMoney installed and has it ever been opened?"
+            )
         }
 
         let scratch = try TempDirectory()
@@ -583,7 +606,8 @@ enum Exporter {
             }
         }
         if !failures.isEmpty {
-            let summary = failures
+            let summary =
+                failures
                 .map { "\($0.0): \($0.1.localizedDescription)" }
                 .joined(separator: "; ")
             throw AppError.upload("\(failures.count)/\(baseURLs.count) target(s) failed — \(summary)")
@@ -626,7 +650,8 @@ enum Exporter {
         do {
             try exec(db, "SELECT count(*) FROM sqlite_master;")
         } catch AppError.sqlcipher(let raw) where raw.contains("file is not a database") {
-            let hint = cipherKey == defaultCipherKey
+            let hint =
+                cipherKey == defaultCipherKey
                 ? "MoneyMoney password is set but no password is configured here — open OpenBudgetImporter.app and fill in the MoneyMoney password field."
                 : "The configured MoneyMoney password does not match — re-open OpenBudgetImporter.app and re-enter it."
             throw AppError.sqlcipher(hint)
@@ -658,8 +683,15 @@ enum Exporter {
         "'\(s.replacingOccurrences(of: "'", with: "''"))'"
     }
 
-    private static func upload(file: URL, baseURL: String, sourceName: String, token: String, logger: @escaping (String) -> Void) async throws {
-        guard let url = URL(string: "\(baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/api/moneymoney-db/\(sourceName)") else {
+    private static func upload(
+        file: URL, baseURL: String, sourceName: String, token: String, logger: @escaping (String) -> Void
+    ) async throws {
+        guard
+            let url = URL(
+                string:
+                    "\(baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/api/moneymoney-db/\(sourceName)"
+            )
+        else {
             throw AppError.invalidConfig("Could not assemble upload URL")
         }
         var request = URLRequest(url: url)
