@@ -15,7 +15,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20260530142807_AddSecuritiesAndPortfolioChart";
+        public override string LatestMigrationId => "20260530145923_AddSecurityTaxonomy";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -579,6 +579,51 @@ namespace OpenBudget.Migrations
                     b.HasIndex("ProjectId");
 
                     b.ToTable("project_tracking_items");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.SecurityTaxonomy", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ClassificationId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClassificationName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClassificationPath")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Isin")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TaxonomyId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TaxonomyName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("WeightBp")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceId", "Isin");
+
+                    b.HasIndex("SourceId", "TaxonomyId");
+
+                    b.ToTable("pp_security_taxonomy");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Transaction", b =>

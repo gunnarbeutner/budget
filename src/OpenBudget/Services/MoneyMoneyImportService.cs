@@ -264,6 +264,9 @@ public class MoneyMoneyImportService
             await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_category_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_accounts WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_account_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            // App-native PortfolioPerformance taxonomy is scoped to the same source; drop it too so
+            // removing a source leaves nothing behind.
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_security_taxonomy WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await tx.CommitAsync(ct);
         }
         finally

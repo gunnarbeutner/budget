@@ -32,6 +32,7 @@ public class BudgetDbContext : DbContext
     public DbSet<AccountGroup> AccountGroups => Set<AccountGroup>();
     public DbSet<Holding> Holdings => Set<Holding>();
     public DbSet<PortfolioChartPoint> PortfolioChartPoints => Set<PortfolioChartPoint>();
+    public DbSet<SecurityTaxonomy> SecurityTaxonomies => Set<SecurityTaxonomy>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -209,5 +210,12 @@ public class BudgetDbContext : DbContext
 
         modelBuilder.Entity<PortfolioChartPoint>()
             .HasIndex(p => new { p.SourceId, p.AccountId, p.Timestamp });
+
+        // PortfolioPerformance taxonomy, joined to holdings by ISIN. App-native (not namespaced);
+        // scoped + indexed by source, and by source+taxonomy for the per-taxonomy lookups.
+        modelBuilder.Entity<SecurityTaxonomy>()
+            .HasIndex(t => new { t.SourceId, t.Isin });
+        modelBuilder.Entity<SecurityTaxonomy>()
+            .HasIndex(t => new { t.SourceId, t.TaxonomyId });
     }
 }

@@ -21,6 +21,7 @@ builder.Services.AddScoped<BrowseService>();
 builder.Services.AddScoped<PortfolioService>();
 builder.Services.AddScoped<ProjectTimeState>();
 builder.Services.AddSingleton<MoneyMoneyImportService>();
+builder.Services.AddSingleton<PortfolioPerformanceImportService>();
 builder.Services.AddSingleton<ChangeNotificationService>();
 // Per-circuit origin id, stamped onto changes this circuit publishes so its own components can
 // ignore the echo of their commits (see ChangeOrigin / DataChangeAwareComponent).
@@ -129,6 +130,22 @@ app.MapPost("/api/moneymoney-db/{name}", async (
         return Results.BadRequest($"Invalid source name '{name}'. Use lowercase letters, digits, and hyphens; start with letter/digit.");
 
     return await HandleUploadAsync(name, request, importer, logger, uploadStagingDir, ct);
+});
+
+// POST /api/portfolioperformance/{name} — uploads a PortfolioPerformance ".portfolio" file and
+// imports its security taxonomy (region/asset-class look-through) for an existing source.
+// Auth: same "Authorization: Bearer <MONEYMONEY_DB_UPLOAD_TOKEN>" as the MoneyMoney upload.
+app.MapPost("/api/portfolioperformance/{name}", async (
+    string name,
+    HttpRequest request,
+    PortfolioPerformanceImportService importer,
+    ILogger<Program> logger,
+    CancellationToken ct) =>
+{
+    if (!MoneyMoneyImportService.IsValidSlug(name))
+        return Results.BadRequest($"Invalid source name '{name}'. Use lowercase letters, digits, and hyphens; start with letter/digit.");
+
+    return await HandlePortfolioPerformanceUploadAsync(name, request, importer, logger, uploadStagingDir, ct);
 });
 
 // DELETE /api/moneymoney-sources/{name} — removes a source. Refused with 409 when any project
@@ -240,6 +257,81 @@ static async Task<IResult> HandleUploadAsync(
         logger.LogError(ex, "MoneyMoney DB upload failed for source '{Source}'.", sourceName);
         // Don't echo ex.Message to the caller — it can carry file paths / SQLite internals. The
         // detail is in the server log above; the client just needs to know it failed.
+        return Results.Problem("Upload failed. See server logs for details.", statusCode: StatusCodes.Status500InternalServerError);
+    }
+    finally
+    {
+        if (File.Exists(tempPath))
+        {
+            try { File.Delete(tempPath); } catch { /* best-effort cleanup */ }
+        }
+    }
+}
+
+static async Task<IResult> HandlePortfolioPerformanceUploadAsync(
+    string sourceName,
+    HttpRequest request,
+    PortfolioPerformanceImportService importer,
+    ILogger<Program> logger,
+    string stagingDir,
+    CancellationToken ct)
+{
+    // PP files are small (single-digit MB), but allow generous headroom over Kestrel's ~30 MB
+    // default rather than leaving it unbounded.
+    const long maxUploadBytes = 256L * 1024 * 1024;
+    var sizeFeature = request.HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+    if (sizeFeature != null && !sizeFeature.IsReadOnly)
+        sizeFeature.MaxRequestBodySize = maxUploadBytes;
+
+    var expectedToken = Environment.GetEnvironmentVariable("MONEYMONEY_DB_UPLOAD_TOKEN");
+    if (string.IsNullOrEmpty(expectedToken))
+        return Results.Problem("Upload endpoint disabled: MONEYMONEY_DB_UPLOAD_TOKEN is not set.", statusCode: StatusCodes.Status503ServiceUnavailable);
+    if (!UploadAuth.IsAuthorized(request.Headers.Authorization.ToString(), expectedToken))
+        return Results.Unauthorized();
+
+    Directory.CreateDirectory(stagingDir);
+    var tempPath = Path.Combine(stagingDir, $"{sourceName}-{Guid.NewGuid():N}.portfolio");
+    try
+    {
+        await using (var tempStream = File.Create(tempPath))
+        {
+            await request.Body.CopyToAsync(tempStream, ct);
+        }
+
+        // PortfolioPerformance ".portfolio" files are ZIP archives — magic "PK\x03\x04".
+        await using (var checkStream = File.OpenRead(tempPath))
+        {
+            var magic = new byte[4];
+            var read = await checkStream.ReadAsync(magic.AsMemory(0, 4), ct);
+            if (read < 4 || magic[0] != 'P' || magic[1] != 'K' || magic[2] != 0x03 || magic[3] != 0x04)
+                return Results.BadRequest("Uploaded payload is not a PortfolioPerformance (.portfolio) file.");
+        }
+
+        var result = await importer.ImportFromFileAsync(sourceName, tempPath, ct);
+        return Results.Ok(new
+        {
+            status = "ok",
+            result.SourceId,
+            result.SourceName,
+            result.RowsImported,
+            result.SecuritiesClassified,
+            result.TaxonomiesImported
+        });
+    }
+    catch (KeyNotFoundException ex)
+    {
+        // Unknown source — the MoneyMoney data must be imported first.
+        return Results.NotFound(new { error = ex.Message });
+    }
+    catch (InvalidDataException ex)
+    {
+        // Wrong format (XML / encrypted / not a PP file). The message is safe to surface and is
+        // actionable ("save as the default binary format without encryption").
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "PortfolioPerformance upload failed for source '{Source}'.", sourceName);
         return Results.Problem("Upload failed. See server logs for details.", statusCode: StatusCodes.Status500InternalServerError);
     }
     finally

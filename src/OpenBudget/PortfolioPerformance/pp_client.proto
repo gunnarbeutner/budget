@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+// Minimal subset of PortfolioPerformance's client.proto — only the messages and fields the
+// taxonomy import reads. Field numbers MUST match the upstream schema
+// (portfolio-performance/portfolio, name.abuchen.portfolio/src/.../model/client.proto); proto3
+// silently skips the many fields we omit (prices, transactions, accounts, well-known-type
+// fields, …), which also keeps us off the google.protobuf.Timestamp/Any/Struct imports.
+//
+// The on-disk PP file is a ZIP whose single "data.portfolio" entry is the 6-byte ASCII signature
+// "PPPBV1" followed immediately by a serialized PClient. Strip the signature, then parse PClient.
+
+package ppimport;
+
+option csharp_namespace = "OpenBudget.PortfolioPerformance.Proto";
+
+message PSecurity {
+  string uuid = 1;          // referenced by Assignment.investmentVehicle
+  string name = 3;
+  string isin = 7;          // join key to mm_securities; empty for crypto
+  string tickerSymbol = 8;
+  string wkn = 9;
+}
+
+message PTaxonomy {
+  message Assignment {
+    string investmentVehicle = 1;   // a PSecurity.uuid
+    int32 weight = 2;               // 10000 == 100%
+  }
+
+  message Classification {
+    string id = 1;
+    string parentId = 2;            // empty for the taxonomy root
+    string name = 3;
+    int32 weight = 6;
+    repeated Assignment assignments = 9;
+  }
+
+  string id = 1;
+  string name = 2;                  // e.g. "Regions", "Asset Classes"
+  repeated Classification classifications = 5;
+}
+
+message PClient {
+  int32 version = 1;
+  repeated PSecurity securities = 2;
+  repeated PTaxonomy taxonomies = 8;
+}
