@@ -56,9 +56,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false)
-        window.center()
         window.title = "OpenBudget Export"
-        window.contentView = NSHostingView(rootView: content)
+        let hosting = NSHostingView(rootView: content)
+        window.contentView = hosting
+        // Size the window to the view's natural height instead of the fixed contentRect.
+        // The multi-line URLs editor makes the content taller than 440pt; without this the
+        // top-anchored VStack overflows and clips the title off the top edge.
+        window.setContentSize(hosting.fittingSize)
+        window.center()
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
 
