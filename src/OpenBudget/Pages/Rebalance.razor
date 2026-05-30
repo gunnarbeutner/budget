@@ -44,13 +44,14 @@ else
     <div class="d-flex flex-wrap align-items-end gap-3 mb-3">
         <div>
             <label class="form-label small mb-1" for="cashInput">@L["Cash_Label"]</label>
-            <div class="input-group input-group-sm" style="width: 12rem;">
+            <div class="input-group input-group-sm d-print-none" style="width: 12rem;">
                 <span class="input-group-text">€</span>
                 <input id="cashInput" type="number" step="1000" min="0" class="form-control text-end"
                        value="@FormatNum(cash)" @onchange="OnCashChanged" />
             </div>
+            <div class="d-none d-print-block h6 mb-0">@Formatting.FormatMoney(cash)</div>
         </div>
-        <div>
+        <div class="d-print-none">
             <div class="form-label small mb-1">@L["Mode_Label"]</div>
             <div class="segmented" role="group" aria-label="@L["Mode_Label"]">
                 <button type="button" class="btn @(targetBy == "ratio" ? "active" : "")"
@@ -116,7 +117,7 @@ else
         <table class="table table-sm align-top">
             <thead>
                 <tr>
-                    <th style="width: 2rem;"></th>
+                    <th style="width: 2rem;" class="d-print-none"></th>
                     <th>@L["Col_Security"]</th>
                     <th class="text-end">@L["Col_Current"]</th>
                     <th class="text-end" style="width: 9rem;">@(RegionMode ? L["Col_Solved"] : targetBy == "amount" ? L["Col_TargetAmount"] : L["Col_Weight"])</th>
@@ -132,8 +133,8 @@ else
                     @* Every cell renders the same line structure regardless of selection (disabled
                        input + a non-breaking-space placeholder on each second line, so empty lines
                        keep the exact text height) — toggling a security doesn't reflow the row. *@
-                    <tr @key="s.Key" class="@(included ? "" : "text-body-secondary")">
-                        <td>
+                    <tr @key="s.Key" class="@(included ? "" : "text-body-secondary d-print-none")">
+                        <td class="d-print-none">
                             <input type="checkbox" class="form-check-input" checked="@included"
                                    @onchange="e => ToggleSelected(s.Key, e.Value)" aria-label="@s.Name" />
                         </td>
