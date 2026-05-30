@@ -66,6 +66,38 @@ public class CombinedHoldingsTests
     }
 
     [Fact]
+    public async Task LookThrough_rolls_unmatched_value_including_gold_into_unclassified()
+    {
+        await using var t = new TestDb();
+        t.AddProject(1);
+        t.AddAccount(20, "Depot").Type = 7;
+        // 300 of classified equity, 700 of ISIN-less gold.
+        AddHolding(t, 20, "IE000EQ0", "EQ", "Equity ETF", quantity: 3, amount: 300, purchasePerUnit: null);
+        AddHolding(t, 20, null, "XAU", "Gold", quantity: 1, amount: 700, purchasePerUnit: null);
+        t.Db.SecurityTaxonomies.Add(new SecurityTaxonomy
+        {
+            SourceId = 1,
+            Isin = "IE000EQ0",
+            TaxonomyId = "t1",
+            TaxonomyName = "Regions",
+            ClassificationId = "c1",
+            ClassificationName = "America",
+            ClassificationPath = "America",
+            WeightBp = 10000
+        });
+        await t.Db.SaveChangesAsync();
+
+        var view = await t.Portfolio.GetAccountHoldingsAsync(1, 20);
+
+        Assert.NotNull(view);
+        var regions = view!.Taxonomies.Single(x => x.TaxonomyName == "Regions");
+        // The crux: slices sum to the whole account value, not just the classified part.
+        Assert.Equal(1000m, regions.Slices.Sum(s => s.Value));
+        Assert.Equal(300m, regions.Slices.Single(s => s.Label == "America").Value);
+        Assert.Equal(700m, regions.Slices.Single(s => s.Label == "Unclassified").Value);
+    }
+
+    [Fact]
     public async Task Combined_returns_null_when_no_holdings()
     {
         await using var t = new TestDb();

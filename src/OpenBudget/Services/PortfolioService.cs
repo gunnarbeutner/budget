@@ -192,9 +192,6 @@ public class PortfolioService
         foreach (var taxGroup in taxRows.GroupBy(t => t.TaxonomyName, StringComparer.Ordinal))
         {
             var byTopLevel = new Dictionary<string, decimal>(StringComparer.Ordinal);
-            // Track how much of each ISIN's value this taxonomy assigns, to compute the remainder.
-            var assignedFractionByIsin = new Dictionary<string, decimal>(StringComparer.Ordinal);
-
             foreach (var row in taxGroup)
             {
                 if (!valueByIsin.TryGetValue(row.Isin, out var isinValue)) continue;
@@ -202,18 +199,15 @@ public class PortfolioService
                 string topLevel = TopLevel(row);
                 byTopLevel.TryGetValue(topLevel, out var bucket);
                 byTopLevel[topLevel] = bucket + isinValue * weight;
-                assignedFractionByIsin.TryGetValue(row.Isin, out var af);
-                assignedFractionByIsin[row.Isin] = af + weight;
             }
 
-            // Unassigned remainder: each ISIN's value not covered by this taxonomy, plus the value
-            // of holdings with no row in this taxonomy at all.
-            decimal unclassified = 0m;
-            foreach (var (isin, value) in valueByIsin)
-            {
-                assignedFractionByIsin.TryGetValue(isin, out var af);
-                if (af < 1m) unclassified += value * (1m - af);
-            }
+            // Everything the taxonomy doesn't place is Unclassified: the unassigned slice of
+            // classified securities AND every holding with no matching row at all — most importantly
+            // ISIN-less crypto. Computing it as total minus the classified value keeps the slices
+            // summing to the account total, instead of silently dropping the unmatched value (which
+            // made a crypto-heavy combined view sum to far less than 100%).
+            decimal classified = byTopLevel.Values.Sum();
+            decimal unclassified = Math.Max(0m, total - classified);
 
             var slices = byTopLevel
                 .Select(kv => new AssetClassSlice
