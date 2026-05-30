@@ -657,6 +657,23 @@ enum Exporter {
             throw AppError.sqlcipher(hint)
         }
 
+        // MoneyMoney declares securities.ident COLLATE LOCALIZED, a collation that only exists
+        // inside the MoneyMoney process. Any query against that table — including the
+        // CREATE TABLE … AS SELECT copy below — fails with "no such collation sequence: LOCALIZED"
+        // until we register a stand-in. The copy drops the collation on the destination table, so
+        // a plain byte comparison is enough; we never sort on it here.
+        let collationResult = sqlite3_create_collation(db, "LOCALIZED", SQLITE_UTF8, nil) {
+            _, len1, p1, len2, p2 in
+            let n = Int(min(len1, len2))
+            let cmp = n > 0 ? memcmp(p1, p2, n) : 0
+            if cmp != 0 { return cmp < 0 ? -1 : 1 }
+            if len1 == len2 { return 0 }
+            return len1 < len2 ? -1 : 1
+        }
+        guard collationResult == SQLITE_OK else {
+            throw AppError.sqlcipher("sqlite3_create_collation(LOCALIZED) failed: \(collationResult)")
+        }
+
         // Empty output (existing file would cause ATTACH to refuse if it has a different schema).
         try? FileManager.default.removeItem(atPath: output)
         let attachSQL = "ATTACH DATABASE \(quote(output)) AS export KEY '';"
