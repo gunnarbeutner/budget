@@ -151,6 +151,53 @@ public class PortfolioService
             .ToList();
     }
 
+    /// <summary>
+    /// The reconstructed FIFO tax lots for a project, grouped by ISIN — scoped to the project's depot
+    /// accounts via the PortfolioPerformance depot links. Empty when the project has no depots, no
+    /// linked PP depots, or no lots. Drives the realised-gain estimate on the rebalance page.
+    /// </summary>
+    public async Task<Dictionary<string, List<OpenLot>>> GetProjectLotsAsync(int projectId, CancellationToken ct = default)
+    {
+        var empty = new Dictionary<string, List<OpenLot>>(StringComparer.Ordinal);
+        var project = await _projects.GetProjectAsync(projectId);
+        if (project == null) return empty;
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var assignedIds = await db.ProjectAccountAssignments
+            .Where(a => a.ProjectId == projectId).Select(a => a.AccountId).ToListAsync(ct);
+        if (assignedIds.Count == 0) return empty;
+
+        var depotIds = await db.Accounts
+            .Where(a => assignedIds.Contains(a.Id) && (a.Type == 7 || a.Portfolio == 1))
+            .Select(a => a.Id).ToListAsync(ct);
+        if (depotIds.Count == 0) return empty;
+
+        // The PP depots linked to those MoneyMoney depots.
+        var ppUuids = await db.PpPortfolioLinks
+            .Where(l => l.SourceId == project.SourceId && depotIds.Contains(l.AccountId))
+            .Select(l => l.PpPortfolioUuid).ToListAsync(ct);
+        if (ppUuids.Count == 0) return empty;
+
+        var lots = await db.PpLots.AsNoTracking()
+            .Where(l => l.SourceId == project.SourceId && ppUuids.Contains(l.PortfolioUuid))
+            .ToListAsync(ct);
+
+        return lots
+            .GroupBy(l => l.Isin, StringComparer.Ordinal)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(x => new OpenLot
+                {
+                    PortfolioUuid = x.PortfolioUuid,
+                    Isin = x.Isin,
+                    Acquired = x.Acquired,
+                    Shares = x.Shares,
+                    Cost = x.Cost,
+                    Currency = x.Currency
+                }).ToList(),
+                StringComparer.Ordinal);
+    }
+
     private static async Task<AccountHoldings> BuildAsync(
         BudgetDbContext db, int sourceId, List<Holding> holdings, long accountId, bool merge, CancellationToken ct)
     {

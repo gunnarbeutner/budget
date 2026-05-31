@@ -100,4 +100,8 @@
   <data name="Add_Placeholder" xml:space="preserve"><value>Add a security you don't hold…</value></data>
   <data name="Added_NotHeld" xml:space="preserve"><value>not held</value></data>
   <data name="Added_Remove" xml:space="preserve"><value>Remove</value></data>
+  <data name="Tax_RealisedGain" xml:space="preserve"><value>Realised gain (est.)</value></data>
+  <data name="Tax_Taxable" xml:space="preserve"><value>Taxable</value></data>
+  <data name="Tax_Caveat" xml:space="preserve"><value>After Teilfreistellung, before Sparer-Pauschbetrag — not tax advice</value></data>
+  <data name="Tax_Excluded" xml:space="preserve"><value>{0} sold position(s) without lot data excluded</value></data>
 </root>

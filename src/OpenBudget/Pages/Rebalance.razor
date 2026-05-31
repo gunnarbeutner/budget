@@ -38,6 +38,7 @@ else
 {
     var solved = RegionMode ? SolveRegions() : null;
     var plan = RegionMode ? BuildRegionPlan(solved) : BuildManualPlan();
+    var tax = EstimateTax(plan);
 
     <p class="text-body-secondary d-print-none">@L[IntroKey]</p>
 
@@ -280,6 +281,27 @@ else
         }
     </div></div>
 
+    @if (tax.Covered > 0)
+    {
+        <div class="card mt-3"><div class="card-body py-2">
+            <div class="row g-3 align-items-center">
+                <div class="col-auto">
+                    <div class="text-body-secondary small">@L["Tax_RealisedGain"]</div>
+                    <div class="h6 mb-0 @(tax.Gross < 0 ? "text-danger" : "")">@Formatting.FormatMoney(tax.Gross)</div>
+                </div>
+                <div class="col-auto">
+                    <div class="text-body-secondary small">@L["Tax_Taxable"]</div>
+                    <div class="h6 mb-0">@Formatting.FormatMoney(tax.Taxable)</div>
+                </div>
+                <div class="col">
+                    <div class="text-body-secondary small">
+                        @L["Tax_Caveat"]@(tax.Uncovered > 0 ? " · " + L["Tax_Excluded", tax.Uncovered] : "")
+                    </div>
+                </div>
+            </div>
+        </div></div>
+    }
+
     <p class="text-body-secondary small mt-3"><i class="bi bi-info-circle me-1" aria-hidden="true"></i>@L["Disclaimer"]</p>
 }
 
@@ -302,6 +324,10 @@ else
     private readonly HashSet<string> addedKeys = new(StringComparer.Ordinal);
     private List<CatalogSecurity> addable = new();
     private string addQuery = "";
+    // FIFO tax lots for the project's linked depots, by ISIN — drives the realised-gain estimate.
+    private Dictionary<string, List<OpenLot>> taxLots = new(StringComparer.Ordinal);
+    // Default Teilfreistellung for an equity fund; a per-security override comes later.
+    private const decimal DefaultTeilfreistellung = 0.30m;
     private readonly HashSet<string> selected = new(StringComparer.Ordinal);
     // Securities the rebalance may hold or sell but not buy more of (e.g. distributing ETFs).
     private readonly HashSet<string> noBuy = new(StringComparer.Ordinal);
@@ -358,6 +384,7 @@ else
         addQuery = "";
         var heldIsins = securities.Where(s => !string.IsNullOrEmpty(s.Isin)).Select(s => s.Isin!).ToList();
         addable = await Portfolio.GetAddableSecuritiesAsync(ProjectId, heldIsins);
+        taxLots = await Portfolio.GetProjectLotsAsync(ProjectId);
         targetBy = "ratio";
         regionList = new List<string>();
         regionTargets = new Dictionary<string, decimal>(StringComparer.Ordinal);
@@ -492,6 +519,33 @@ else
         noBuy.Remove(key);
         targets.Remove(key);
         if (RegionMode) await LoadRegionWeightsAsync(preserveTargets: true);
+    }
+
+    private readonly record struct TaxReadout(decimal Gross, decimal Taxable, int Covered, int Uncovered);
+
+    // Estimate the realised gain of the plan's sells from the FIFO lots (Abgeltungsteuer securities
+    // only, for now). Sold positions without lot data (crypto, unlinked depots, no price) are counted
+    // as uncovered so the estimate doesn't silently understate.
+    private TaxReadout EstimateTax(RebalancePlan plan)
+    {
+        decimal gross = 0m, taxable = 0m;
+        int covered = 0, uncovered = 0;
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        foreach (var r in plan.Rows.Where(r => r.Delta < 0m))
+        {
+            var s = securities.FirstOrDefault(x => x.Key == r.Key);
+            if (s?.Isin is not { Length: > 0 } isin || s.Price is not { } price || price <= 0m
+                || !taxLots.TryGetValue(isin, out var lots) || lots.Count == 0)
+            {
+                uncovered++;
+                continue;
+            }
+            var rg = TaxMath.RealizeSale(lots, -r.Delta / price, price, today, TaxAssetKind.Security, DefaultTeilfreistellung);
+            gross += rg.GrossGain;
+            taxable += rg.TaxableGain;
+            covered++;
+        }
+        return new TaxReadout(gross, taxable, covered, uncovered);
     }
 
     private decimal SumTargets() =>

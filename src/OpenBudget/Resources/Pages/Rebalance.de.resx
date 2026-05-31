@@ -100,4 +100,8 @@
   <data name="Add_Placeholder" xml:space="preserve"><value>Wertpapier hinzufügen, das du nicht hältst…</value></data>
   <data name="Added_NotHeld" xml:space="preserve"><value>nicht im Bestand</value></data>
   <data name="Added_Remove" xml:space="preserve"><value>Entfernen</value></data>
+  <data name="Tax_RealisedGain" xml:space="preserve"><value>Realisierter Gewinn (geschätzt)</value></data>
+  <data name="Tax_Taxable" xml:space="preserve"><value>Steuerpflichtig</value></data>
+  <data name="Tax_Caveat" xml:space="preserve"><value>Nach Teilfreistellung, vor Sparer-Pauschbetrag — keine Steuerberatung</value></data>
+  <data name="Tax_Excluded" xml:space="preserve"><value>{0} Verkaufsposition(en) ohne Lot-Daten ausgeschlossen</value></data>
 </root>
