@@ -30,9 +30,10 @@ public class SecurityTaxServiceTests
         Assert.Equal((int)InstrumentTaxKind.MovableSection23, gold.Kind);        // ISIN-less → gold §23
         Assert.False(gold.HasIsin);
 
-        // Reclassify a position to real estate (§23, 10 yr).
-        await t.SecurityTax.SetAsync(1, "gold", (int)InstrumentTaxKind.RealEstateSection23, 0);
+        // Reclassify a position to real estate (§23, 10 yr) with an inherited acquisition date.
+        await t.SecurityTax.SetAsync(1, "gold", (int)InstrumentTaxKind.RealEstateSection23, 0, new DateOnly(2008, 5, 1));
         var after = (await t.SecurityTax.GetSettingsAsync(1)).Single(s => s.Uuid == "gold");
         Assert.Equal((int)InstrumentTaxKind.RealEstateSection23, after.Kind);
+        Assert.Equal(new DateOnly(2008, 5, 1), after.AcquiredOverride);
     }
 }

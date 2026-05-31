@@ -69,6 +69,8 @@
   <data name="Kind_0" xml:space="preserve"><value>Security (Abgeltungsteuer)</value></data>
   <data name="Kind_1" xml:space="preserve"><value>Crypto (§23, 1 yr)</value></data>
   <data name="Kind_2" xml:space="preserve"><value>Real estate (§23, 10 yr)</value></data>
+  <data name="Col_Details" xml:space="preserve"><value>Details</value></data>
+  <data name="Acquired_Hint" xml:space="preserve"><value>Original acquisition date — set for inherited or gifted assets (§23 counts from the predecessor's purchase).</value></data>
   <data name="NoIsin" xml:space="preserve"><value>no ISIN</value></data>
   <data name="Teilfreistellung_NA" xml:space="preserve"><value>—</value></data>
   <data name="Empty" xml:space="preserve"><value>No securities with reconstructed lots for this source yet. Upload a PortfolioPerformance file with transactions first.</value></data>

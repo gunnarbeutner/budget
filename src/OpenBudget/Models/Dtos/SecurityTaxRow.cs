@@ -10,5 +10,7 @@ public class SecurityTaxRow
     /// <summary><see cref="InstrumentTaxKind"/> as an int.</summary>
     public int Kind { get; init; }
     public int TeilfreistellungBp { get; init; }
+    /// <summary>Original acquisition date override for §23 (inherited/gifted assets), or null.</summary>
+    public DateOnly? AcquiredOverride { get; init; }
     public bool HasIsin => !string.IsNullOrEmpty(Isin);
 }

@@ -268,20 +268,27 @@ public class PortfolioService
         {
             InstrumentTaxKind kind;
             decimal rate;
+            DateOnly? acquiredOverride = null;
             if (settings.TryGetValue(keyUuid[key], out var ov))
             {
                 kind = (InstrumentTaxKind)ov.Kind;
                 rate = ov.TeilfreistellungBp / 10000m;
+                acquiredOverride = ov.AcquiredOverride;
             }
             else
             {
                 kind = SecurityTaxService.DefaultKind(keyIsin[key]);
                 rate = SecurityTaxService.DefaultTeilfreistellungBp / 10000m;
             }
+            // An inherited/gifted asset's §23 clock runs from the predecessor's acquisition, so
+            // re-date its lots to the override before realising.
+            var lotsForProfile = acquiredOverride is { } acq
+                ? lotList.Select(l => new OpenLot { PortfolioUuid = l.PortfolioUuid, SecurityUuid = l.SecurityUuid, Isin = l.Isin, Acquired = acq, Shares = l.Shares, Cost = l.Cost, Currency = l.Currency }).ToList()
+                : lotList;
             var (assetKind, years) = TaxMath.Resolve(kind);
             result[key] = new TaxProfile
             {
-                Lots = lotList,
+                Lots = lotsForProfile,
                 AssetKind = assetKind,
                 SpekulationsfristYears = years,
                 TeilfreistellungRate = rate

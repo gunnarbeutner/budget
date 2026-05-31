@@ -49,24 +49,26 @@ public class SecurityTaxService
                     Isin = isin,
                     Name = sec?.Name ?? u,
                     Kind = has ? ov!.Kind : (int)DefaultKind(isin),
-                    TeilfreistellungBp = has ? ov!.TeilfreistellungBp : DefaultTeilfreistellungBp
+                    TeilfreistellungBp = has ? ov!.TeilfreistellungBp : DefaultTeilfreistellungBp,
+                    AcquiredOverride = has ? ov!.AcquiredOverride : null
                 };
             })
             .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    public async Task SetAsync(int sourceId, string uuid, int kind, int teilfreistellungBp, CancellationToken ct = default)
+    public async Task SetAsync(int sourceId, string uuid, int kind, int teilfreistellungBp, DateOnly? acquiredOverride, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var existing = await db.SecurityTaxSettings
             .FirstOrDefaultAsync(s => s.SourceId == sourceId && s.SecurityUuid == uuid, ct);
         if (existing is null)
-            db.SecurityTaxSettings.Add(new SecurityTaxSetting { SourceId = sourceId, SecurityUuid = uuid, Kind = kind, TeilfreistellungBp = teilfreistellungBp });
+            db.SecurityTaxSettings.Add(new SecurityTaxSetting { SourceId = sourceId, SecurityUuid = uuid, Kind = kind, TeilfreistellungBp = teilfreistellungBp, AcquiredOverride = acquiredOverride });
         else
         {
             existing.Kind = kind;
             existing.TeilfreistellungBp = teilfreistellungBp;
+            existing.AcquiredOverride = acquiredOverride;
         }
         await db.SaveChangesAsync(ct);
     }

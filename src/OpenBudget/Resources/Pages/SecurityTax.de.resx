@@ -69,6 +69,8 @@
   <data name="Kind_0" xml:space="preserve"><value>Wertpapier (Abgeltungsteuer)</value></data>
   <data name="Kind_1" xml:space="preserve"><value>Krypto (§23, 1 Jahr)</value></data>
   <data name="Kind_2" xml:space="preserve"><value>Immobilie (§23, 10 Jahre)</value></data>
+  <data name="Col_Details" xml:space="preserve"><value>Details</value></data>
+  <data name="Acquired_Hint" xml:space="preserve"><value>Ursprüngliches Anschaffungsdatum — bei geerbten oder geschenkten Vermögenswerten (§23 zählt ab Anschaffung des Rechtsvorgängers).</value></data>
   <data name="NoIsin" xml:space="preserve"><value>keine ISIN</value></data>
   <data name="Teilfreistellung_NA" xml:space="preserve"><value>—</value></data>
   <data name="Empty" xml:space="preserve"><value>Noch keine Wertpapiere mit rekonstruierten Lots für diese Quelle. Lade zuerst eine PortfolioPerformance-Datei mit Transaktionen hoch.</value></data>

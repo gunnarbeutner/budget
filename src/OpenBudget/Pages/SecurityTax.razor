@@ -1,5 +1,6 @@
 @page "/sources/{SourceId:int}/tax"
 @inherits DataChangeAwareComponent
+@using System.Globalization
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject SecurityTaxService TaxService
@@ -31,7 +32,7 @@ else
             <tr>
                 <th>@L["Col_Security"]</th>
                 <th style="width: 15rem;">@L["Col_Kind"]</th>
-                <th style="width: 16rem;">@L["Col_Teilfreistellung"]</th>
+                <th style="width: 18rem;">@L["Col_Details"]</th>
             </tr>
         </thead>
         <tbody>
@@ -64,7 +65,12 @@ else
                         }
                         else
                         {
-                            <span class="text-body-secondary small">@L["Teilfreistellung_NA"]</span>
+                            @* §23: let the user set the original acquisition date for an inherited/gifted
+                               asset, where the Spekulationsfrist counts from the predecessor's purchase. *@
+                            <input type="date" class="form-control form-control-sm"
+                                   value="@(r.AcquiredOverride?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))"
+                                   @onchange="e => OnAcquiredChanged(r, e.Value)" />
+                            <div class="text-body-secondary small">@L["Acquired_Hint"]</div>
                         }
                     </td>
                 </tr>
@@ -110,14 +116,21 @@ else
     private async Task OnKindChanged(SecurityTaxRow r, object? value)
     {
         if (!int.TryParse(value?.ToString(), out var kind)) return;
-        await TaxService.SetAsync(SourceId, r.Uuid, kind, r.TeilfreistellungBp);
+        await TaxService.SetAsync(SourceId, r.Uuid, kind, r.TeilfreistellungBp, r.AcquiredOverride);
         rows = await TaxService.GetSettingsAsync(SourceId);
     }
 
     private async Task OnTeilfreistellungChanged(SecurityTaxRow r, object? value)
     {
         if (!int.TryParse(value?.ToString(), out var bp)) return;
-        await TaxService.SetAsync(SourceId, r.Uuid, r.Kind, bp);
+        await TaxService.SetAsync(SourceId, r.Uuid, r.Kind, bp, r.AcquiredOverride);
+        rows = await TaxService.GetSettingsAsync(SourceId);
+    }
+
+    private async Task OnAcquiredChanged(SecurityTaxRow r, object? value)
+    {
+        DateOnly? date = DateOnly.TryParse(value?.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+        await TaxService.SetAsync(SourceId, r.Uuid, r.Kind, r.TeilfreistellungBp, date);
         rows = await TaxService.GetSettingsAsync(SourceId);
     }
 }

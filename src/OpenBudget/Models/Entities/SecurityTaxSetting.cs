@@ -27,4 +27,11 @@ public class SecurityTaxSetting
     /// bond funds), 1500 (mixed fund), 3000 (equity fund), 6000 (domestic real-estate fund),
     /// 8000 (foreign real-estate fund). Only meaningful when <see cref="Kind"/> is Security.</summary>
     public int TeilfreistellungBp { get; set; }
+
+    /// <summary>
+    /// Original acquisition date to use for the §23 Spekulationsfrist instead of the dates the lots
+    /// carry — for an inherited or gifted asset, where §23 attributes the predecessor's acquisition,
+    /// not the (later) date the position entered PortfolioPerformance. Null = use the lot dates.
+    /// </summary>
+    public DateOnly? AcquiredOverride { get; set; }
 }
