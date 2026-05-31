@@ -15,7 +15,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20260530235316_AddPpPortfolioAndLot";
+        public override string LatestMigrationId => "20260530235718_AddPpPortfolioLink";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -535,6 +535,30 @@ namespace OpenBudget.Migrations
                     b.HasIndex("SourceId");
 
                     b.ToTable("pp_portfolio");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.PpPortfolioLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("AccountId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PpPortfolioUuid")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceId", "PpPortfolioUuid")
+                        .IsUnique();
+
+                    b.ToTable("pp_portfolio_link");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.PpSecurity", b =>

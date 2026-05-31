@@ -36,6 +36,7 @@ public class BudgetDbContext : DbContext
     public DbSet<PpSecurity> PpSecurities => Set<PpSecurity>();
     public DbSet<PpPortfolio> PpPortfolios => Set<PpPortfolio>();
     public DbSet<PpLot> PpLots => Set<PpLot>();
+    public DbSet<PpPortfolioLink> PpPortfolioLinks => Set<PpPortfolioLink>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -232,5 +233,10 @@ public class BudgetDbContext : DbContext
             .HasIndex(p => p.SourceId);
         modelBuilder.Entity<PpLot>()
             .HasIndex(l => new { l.SourceId, l.Isin });
+
+        // Depot mapping is user config (not rebuilt on upload); one link per PP depot per source.
+        modelBuilder.Entity<PpPortfolioLink>()
+            .HasIndex(l => new { l.SourceId, l.PpPortfolioUuid })
+            .IsUnique();
     }
 }

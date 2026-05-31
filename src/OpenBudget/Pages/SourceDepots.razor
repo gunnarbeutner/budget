@@ -1,0 +1,99 @@
+@page "/sources/{SourceId:int}/depots"
+@inherits DataChangeAwareComponent
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject DepotMappingService DepotMapping
+@inject ProjectService ProjectService
+@inject IStringLocalizer<SourceDepots> L
+
+<PageTitle>@(sourceName != null ? L["PageTitle_WithSource", sourceName] : L["PageTitle"])</PageTitle>
+
+<PageHeader Title="@L["Heading"]" />
+<p><a href="/sources"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a></p>
+
+@if (loading)
+{
+    <div class="skeleton skeleton-block" aria-busy="true"></div>
+}
+else if (notFound)
+{
+    <div class="alert alert-warning">@L["NotFound"]</div>
+}
+else if (mapping.Depots.Count == 0)
+{
+    <div class="alert alert-info">@L["Empty"]</div>
+}
+else
+{
+    <p class="text-body-secondary">@L["Intro"]</p>
+    <table class="table table-sm align-middle">
+        <thead>
+            <tr>
+                <th>@L["Col_Depot"]</th>
+                <th class="text-end">@L["Col_Lots"]</th>
+                <th style="width: 22rem;">@L["Col_MmDepot"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var d in mapping.Depots)
+            {
+                <tr @key="d.PpUuid">
+                    <td><strong>@d.PpName</strong></td>
+                    <td class="text-end text-body-secondary">
+                        @(d.LotCount > 0 ? L["Lots_Summary", d.LotCount, d.IsinCount] : L["Lots_None"])
+                    </td>
+                    <td>
+                        <select class="form-select form-select-sm"
+                                value="@(d.LinkedAccountId?.ToString() ?? "")"
+                                @onchange="e => OnLinkChanged(d.PpUuid, e.Value)">
+                            <option value="">@L["NotLinked"]</option>
+                            @foreach (var a in mapping.Accounts)
+                            {
+                                <option value="@a.Id">@a.Name</option>
+                            }
+                        </select>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter] public int SourceId { get; set; }
+
+    private DepotMapping mapping = new();
+    private string? sourceName;
+    private bool loading = true;
+    private bool notFound;
+    private int _loadedSourceId = -1;
+
+    protected override bool IsRelevantChange(DataChange change) =>
+        change.Area is DataArea.MoneyMoneyData or DataArea.Sources && (change.SourceId == null || change.SourceId == SourceId);
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedSourceId == SourceId) return;
+        _loadedSourceId = SourceId;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        var sources = await ProjectService.GetAllSourcesAsync();
+        var source = sources.FirstOrDefault(s => s.Id == SourceId);
+        if (source == null) { notFound = true; loading = false; return; }
+        sourceName = source.Name;
+        mapping = await DepotMapping.GetAsync(SourceId);
+        loading = false;
+    }
+
+    private async Task OnLinkChanged(string ppUuid, object? value)
+    {
+        long? accountId = long.TryParse(value?.ToString(), out var id) ? id : null;
+        await DepotMapping.SaveLinkAsync(SourceId, ppUuid, accountId);
+        mapping = await DepotMapping.GetAsync(SourceId);
+    }
+}

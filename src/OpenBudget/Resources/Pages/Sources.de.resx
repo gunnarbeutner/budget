@@ -103,6 +103,9 @@
   <data name="Button_Delete" xml:space="preserve">
     <value>Löschen</value>
   </data>
+  <data name="Button_Depots" xml:space="preserve">
+    <value>Depots</value>
+  </data>
   <data name="Button_Cancel" xml:space="preserve">
     <value>Abbrechen</value>
   </data>

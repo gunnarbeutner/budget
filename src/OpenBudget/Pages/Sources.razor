@@ -63,6 +63,10 @@ else
                     <td class="text-end">@transactionCounts.GetValueOrDefault(s.Id, 0).ToString("N0")</td>
                     <td class="text-end">@(s.LastUploadSizeBytes.HasValue ? s.LastUploadSizeBytes.Value.ToString("N0") : "—")</td>
                     <td class="text-end">
+                        @if (ppDepotCounts.GetValueOrDefault(s.Id, 0) > 0)
+                        {
+                            <a class="btn btn-sm btn-outline-secondary me-1" href="@($"/sources/{s.Id}/depots")">@L["Button_Depots"]</a>
+                        }
                         @if (projectCounts.GetValueOrDefault(s.Id, 0) == 0 && s.Id != SourceScope.LegacySourceId)
                         {
                             <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(s)">@L["Button_Delete"]</button>
@@ -95,6 +99,7 @@ else
     private List<ImportSource>? sources;
     private Dictionary<int, int> projectCounts = new();
     private Dictionary<int, int> transactionCounts = new();
+    private Dictionary<int, int> ppDepotCounts = new();
     private ImportSource? pendingDelete;
 
     protected override async Task OnInitializedAsync()
@@ -117,6 +122,10 @@ else
             .ToDictionaryAsync(x => x.SourceId, x => x.Count);
         transactionCounts = await db.Transactions
             .GroupBy(t => t.SourceId)
+            .Select(g => new { SourceId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.SourceId, x => x.Count);
+        ppDepotCounts = await db.PpPortfolios
+            .GroupBy(p => p.SourceId)
             .Select(g => new { SourceId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.SourceId, x => x.Count);
     }
