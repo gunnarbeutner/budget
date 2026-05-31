@@ -27,6 +27,7 @@ internal sealed class TestDb : IAsyncDisposable
     public PortfolioService Portfolio { get; }
     public DepotMappingService DepotMapping { get; }
     public SecurityTaxService SecurityTax { get; }
+    public InstrumentMappingService InstrumentMapping { get; }
 
     public TestDb()
     {
@@ -56,6 +57,7 @@ internal sealed class TestDb : IAsyncDisposable
         Portfolio = new PortfolioService(factory, Projects);
         DepotMapping = new DepotMappingService(factory);
         SecurityTax = new SecurityTaxService(factory);
+        InstrumentMapping = new InstrumentMappingService(factory);
     }
 
     /// <summary>

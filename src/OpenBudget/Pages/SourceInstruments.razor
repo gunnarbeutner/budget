@@ -1,0 +1,96 @@
+@page "/sources/{SourceId:int}/instruments"
+@inherits DataChangeAwareComponent
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject InstrumentMappingService Mapping
+@inject ProjectService ProjectService
+@inject IStringLocalizer<SourceInstruments> L
+
+<PageTitle>@(sourceName != null ? L["PageTitle_WithSource", sourceName] : L["PageTitle"])</PageTitle>
+
+<PageHeader Title="@L["Heading"]" />
+<p><a href="/sources"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a></p>
+
+@if (loading)
+{
+    <div class="skeleton skeleton-block" aria-busy="true"></div>
+}
+else if (notFound)
+{
+    <div class="alert alert-warning">@L["NotFound"]</div>
+}
+else if (mapping.Instruments.Count == 0)
+{
+    <div class="alert alert-info">@L["Empty"]</div>
+}
+else
+{
+    <p class="text-body-secondary">@L["Intro"]</p>
+    <table class="table table-sm align-middle">
+        <thead>
+            <tr>
+                <th>@L["Col_Instrument"]</th>
+                <th class="text-end">@L["Col_Lots"]</th>
+                <th style="width: 24rem;">@L["Col_Holding"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var i in mapping.Instruments)
+            {
+                <tr @key="i.PpUuid">
+                    <td><strong>@i.PpName</strong></td>
+                    <td class="text-end text-body-secondary">@L["Lots_Summary", i.LotCount]</td>
+                    <td>
+                        <select class="form-select form-select-sm"
+                                value="@(i.LinkedHoldingKey ?? "")"
+                                @onchange="e => OnLinkChanged(i.PpUuid, e.Value)">
+                            <option value="">@L["NotLinked"]</option>
+                            @foreach (var h in mapping.Holdings)
+                            {
+                                <option value="@h.Key">@h.Name</option>
+                            }
+                        </select>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter] public int SourceId { get; set; }
+
+    private InstrumentMapping mapping = new();
+    private string? sourceName;
+    private bool loading = true;
+    private bool notFound;
+    private int _loadedSourceId = -1;
+
+    protected override bool IsRelevantChange(DataChange change) =>
+        change.Area is DataArea.MoneyMoneyData or DataArea.Sources && (change.SourceId == null || change.SourceId == SourceId);
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedSourceId == SourceId) return;
+        _loadedSourceId = SourceId;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        var sources = await ProjectService.GetAllSourcesAsync();
+        var source = sources.FirstOrDefault(s => s.Id == SourceId);
+        if (source == null) { notFound = true; loading = false; return; }
+        sourceName = source.Name;
+        mapping = await Mapping.GetAsync(SourceId);
+        loading = false;
+    }
+
+    private async Task OnLinkChanged(string ppUuid, object? value)
+    {
+        await Mapping.SaveLinkAsync(SourceId, ppUuid, value?.ToString());
+        mapping = await Mapping.GetAsync(SourceId);
+    }
+}

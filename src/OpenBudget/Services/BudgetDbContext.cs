@@ -38,6 +38,7 @@ public class BudgetDbContext : DbContext
     public DbSet<PpLot> PpLots => Set<PpLot>();
     public DbSet<PpPortfolioLink> PpPortfolioLinks => Set<PpPortfolioLink>();
     public DbSet<SecurityTaxSetting> SecurityTaxSettings => Set<SecurityTaxSetting>();
+    public DbSet<PpSecurityLink> PpSecurityLinks => Set<PpSecurityLink>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -243,6 +244,11 @@ public class BudgetDbContext : DbContext
         // Per-security tax overrides (user config); one row per ISIN per source.
         modelBuilder.Entity<SecurityTaxSetting>()
             .HasIndex(s => new { s.SourceId, s.Isin })
+            .IsUnique();
+
+        // Instrument mapping (user config); one link per ISIN-less PP instrument per source.
+        modelBuilder.Entity<PpSecurityLink>()
+            .HasIndex(l => new { l.SourceId, l.PpSecurityUuid })
             .IsUnique();
     }
 }

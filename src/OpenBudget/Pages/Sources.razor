@@ -66,6 +66,7 @@ else
                         @if (ppDepotCounts.GetValueOrDefault(s.Id, 0) > 0)
                         {
                             <a class="btn btn-sm btn-outline-secondary me-1" href="@($"/sources/{s.Id}/depots")">@L["Button_Depots"]</a>
+                            <a class="btn btn-sm btn-outline-secondary me-1" href="@($"/sources/{s.Id}/instruments")">@L["Button_Instruments"]</a>
                             <a class="btn btn-sm btn-outline-secondary me-1" href="@($"/sources/{s.Id}/tax")">@L["Button_Tax"]</a>
                         }
                         @if (projectCounts.GetValueOrDefault(s.Id, 0) == 0 && s.Id != SourceScope.LegacySourceId)
