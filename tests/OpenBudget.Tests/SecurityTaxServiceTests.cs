@@ -7,29 +7,32 @@ namespace OpenBudget.Tests;
 public class SecurityTaxServiceTests
 {
     [Fact]
-    public async Task Lists_lot_bearing_securities_defaulting_to_30_percent_and_saves_an_override()
+    public async Task Lists_instruments_with_default_kinds_and_saves_an_override()
     {
         await using var t = new TestDb();
         t.Db.PpSecurities.AddRange(
-            new PpSecurity { SourceId = 1, Isin = "IE00EQ", Name = "Equity ETF" },
-            new PpSecurity { SourceId = 1, Isin = "IE00BD", Name = "Bond ETF" });
+            new PpSecurity { SourceId = 1, Uuid = "etf", Isin = "IE00EQ", Name = "Equity ETF" },
+            new PpSecurity { SourceId = 1, Uuid = "gold", Isin = "", Name = "Gold" });
         t.Db.PpLots.AddRange(
-            new PpLot { SourceId = 1, PortfolioUuid = "p", Isin = "IE00EQ", Acquired = new DateOnly(2020, 1, 1), Shares = 1m, Cost = 1m },
-            new PpLot { SourceId = 1, PortfolioUuid = "p", Isin = "IE00BD", Acquired = new DateOnly(2020, 1, 1), Shares = 1m, Cost = 1m });
+            new PpLot { SourceId = 1, PortfolioUuid = "p", SecurityUuid = "etf", Isin = "IE00EQ", Acquired = new DateOnly(2020, 1, 1), Shares = 1m, Cost = 1m },
+            new PpLot { SourceId = 1, PortfolioUuid = "p", SecurityUuid = "gold", Isin = "", Acquired = new DateOnly(2020, 1, 1), Shares = 1m, Cost = 1m });
         await t.Db.SaveChangesAsync();
 
         var settings = await t.SecurityTax.GetSettingsAsync(1);
         Assert.Equal(2, settings.Count);
-        Assert.All(settings, s => Assert.Equal(SecurityTaxService.DefaultTeilfreistellungBp, s.TeilfreistellungBp)); // 30% default
-        Assert.Contains(settings, s => s.Isin == "IE00EQ" && s.Name == "Equity ETF");
-        Assert.Empty(await t.SecurityTax.GetRatesAsync(1));   // no overrides yet
 
-        // Override the bond ETF to 0%.
-        await t.SecurityTax.SetTeilfreistellungAsync(1, "IE00BD", 0);
+        var etf = settings.Single(s => s.Uuid == "etf");
+        Assert.Equal((int)InstrumentTaxKind.Security, etf.Kind);               // ISIN → Security
+        Assert.Equal(SecurityTaxService.DefaultTeilfreistellungBp, etf.TeilfreistellungBp);
+        Assert.True(etf.HasIsin);
 
-        var rates = await t.SecurityTax.GetRatesAsync(1);
-        Assert.Equal(0m, rates["IE00BD"]);
-        Assert.False(rates.ContainsKey("IE00EQ"));            // unset securities stay on the default
-        Assert.Equal(0, (await t.SecurityTax.GetSettingsAsync(1)).Single(s => s.Isin == "IE00BD").TeilfreistellungBp);
+        var gold = settings.Single(s => s.Uuid == "gold");
+        Assert.Equal((int)InstrumentTaxKind.MovableSection23, gold.Kind);        // ISIN-less → gold §23
+        Assert.False(gold.HasIsin);
+
+        // Reclassify a position to real estate (§23, 10 yr).
+        await t.SecurityTax.SetAsync(1, "gold", (int)InstrumentTaxKind.RealEstateSection23, 0);
+        var after = (await t.SecurityTax.GetSettingsAsync(1)).Single(s => s.Uuid == "gold");
+        Assert.Equal((int)InstrumentTaxKind.RealEstateSection23, after.Kind);
     }
 }

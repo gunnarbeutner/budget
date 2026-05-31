@@ -30,25 +30,42 @@ else
         <thead>
             <tr>
                 <th>@L["Col_Security"]</th>
+                <th style="width: 15rem;">@L["Col_Kind"]</th>
                 <th style="width: 16rem;">@L["Col_Teilfreistellung"]</th>
             </tr>
         </thead>
         <tbody>
             @foreach (var r in rows)
             {
-                <tr @key="r.Isin">
+                <tr @key="r.Uuid">
                     <td>
                         <div class="fw-semibold">@r.Name</div>
-                        <div class="text-body-secondary small">@r.Isin</div>
+                        <div class="text-body-secondary small">@(r.HasIsin ? r.Isin : L["NoIsin"])</div>
                     </td>
                     <td>
-                        <select class="form-select form-select-sm" value="@r.TeilfreistellungBp"
-                                @onchange="e => OnRateChanged(r.Isin, e.Value)">
-                            @foreach (var bp in Options)
+                        <select class="form-select form-select-sm" value="@r.Kind"
+                                @onchange="e => OnKindChanged(r, e.Value)">
+                            @foreach (var k in Kinds)
                             {
-                                <option value="@bp">@($"{bp / 100}%") — @L[$"Type_{bp}"]</option>
+                                <option value="@k">@L[$"Kind_{k}"]</option>
                             }
                         </select>
+                    </td>
+                    <td>
+                        @if (r.Kind == (int)InstrumentTaxKind.Security)
+                        {
+                            <select class="form-select form-select-sm" value="@r.TeilfreistellungBp"
+                                    @onchange="e => OnTeilfreistellungChanged(r, e.Value)">
+                                @foreach (var bp in TeilfreistellungOptions)
+                                {
+                                    <option value="@bp">@($"{bp / 100}%") — @L[$"Type_{bp}"]</option>
+                                }
+                            </select>
+                        }
+                        else
+                        {
+                            <span class="text-body-secondary small">@L["Teilfreistellung_NA"]</span>
+                        }
                     </td>
                 </tr>
             }
@@ -59,8 +76,8 @@ else
 @code {
     [Parameter] public int SourceId { get; set; }
 
-    // Teilfreistellung rates in basis points and the fund type each maps to.
-    private static readonly int[] Options = { 0, 1500, 3000, 6000, 8000 };
+    private static readonly int[] Kinds = { 0, 1, 2 };                              // InstrumentTaxKind
+    private static readonly int[] TeilfreistellungOptions = { 0, 1500, 3000, 6000, 8000 };
 
     private List<SecurityTaxRow> rows = new();
     private string? sourceName;
@@ -90,10 +107,17 @@ else
         loading = false;
     }
 
-    private async Task OnRateChanged(string isin, object? value)
+    private async Task OnKindChanged(SecurityTaxRow r, object? value)
+    {
+        if (!int.TryParse(value?.ToString(), out var kind)) return;
+        await TaxService.SetAsync(SourceId, r.Uuid, kind, r.TeilfreistellungBp);
+        rows = await TaxService.GetSettingsAsync(SourceId);
+    }
+
+    private async Task OnTeilfreistellungChanged(SecurityTaxRow r, object? value)
     {
         if (!int.TryParse(value?.ToString(), out var bp)) return;
-        await TaxService.SetTeilfreistellungAsync(SourceId, isin, bp);
+        await TaxService.SetAsync(SourceId, r.Uuid, r.Kind, bp);
         rows = await TaxService.GetSettingsAsync(SourceId);
     }
 }

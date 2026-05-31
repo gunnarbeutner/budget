@@ -241,9 +241,9 @@ public class BudgetDbContext : DbContext
             .HasIndex(l => new { l.SourceId, l.PpPortfolioUuid })
             .IsUnique();
 
-        // Per-security tax overrides (user config); one row per ISIN per source.
+        // Per-instrument tax overrides (user config); one row per instrument (uuid) per source.
         modelBuilder.Entity<SecurityTaxSetting>()
-            .HasIndex(s => new { s.SourceId, s.Isin })
+            .HasIndex(s => new { s.SourceId, s.SecurityUuid })
             .IsUnique();
 
         // Instrument mapping (user config); one link per ISIN-less PP instrument per source.

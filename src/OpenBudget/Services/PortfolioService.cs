@@ -198,6 +198,98 @@ public class PortfolioService
                 StringComparer.Ordinal);
     }
 
+    /// <summary>
+    /// Tax profiles for a project keyed by rebalance-position identity ("isin:…" for securities, the
+    /// mapped holding key for ISIN-less instruments): the FIFO lots (scoped to the project's linked
+    /// depots) plus the resolved regime from the per-instrument tax settings. The rebalance read-out
+    /// looks these up by position key to estimate realised gains. ISIN-less lots with no instrument
+    /// mapping are dropped (nothing to attach them to).
+    /// </summary>
+    public async Task<Dictionary<string, TaxProfile>> GetProjectTaxProfilesAsync(int projectId, CancellationToken ct = default)
+    {
+        var empty = new Dictionary<string, TaxProfile>(StringComparer.Ordinal);
+        var project = await _projects.GetProjectAsync(projectId);
+        if (project == null) return empty;
+        int sourceId = project.SourceId;
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var assignedIds = await db.ProjectAccountAssignments
+            .Where(a => a.ProjectId == projectId).Select(a => a.AccountId).ToListAsync(ct);
+        if (assignedIds.Count == 0) return empty;
+        var depotIds = await db.Accounts
+            .Where(a => assignedIds.Contains(a.Id) && (a.Type == 7 || a.Portfolio == 1))
+            .Select(a => a.Id).ToListAsync(ct);
+        if (depotIds.Count == 0) return empty;
+        var ppUuids = await db.PpPortfolioLinks
+            .Where(l => l.SourceId == sourceId && depotIds.Contains(l.AccountId))
+            .Select(l => l.PpPortfolioUuid).ToListAsync(ct);
+        if (ppUuids.Count == 0) return empty;
+
+        var lots = await db.PpLots.AsNoTracking()
+            .Where(l => l.SourceId == sourceId && ppUuids.Contains(l.PortfolioUuid)).ToListAsync(ct);
+        if (lots.Count == 0) return empty;
+
+        var instrumentLinks = await db.PpSecurityLinks.AsNoTracking()
+            .Where(l => l.SourceId == sourceId)
+            .ToDictionaryAsync(l => l.PpSecurityUuid, l => l.MmHoldingKey, ct);
+        var settings = await db.SecurityTaxSettings.AsNoTracking()
+            .Where(s => s.SourceId == sourceId).ToDictionaryAsync(s => s.SecurityUuid, ct);
+
+        // Group lots under the rebalance position they belong to.
+        var byKey = new Dictionary<string, List<OpenLot>>(StringComparer.Ordinal);
+        var keyUuid = new Dictionary<string, string>(StringComparer.Ordinal);
+        var keyIsin = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var l in lots)
+        {
+            string key;
+            if (!string.IsNullOrEmpty(l.Isin)) key = "isin:" + l.Isin;
+            else if (instrumentLinks.TryGetValue(l.SecurityUuid, out var mmKey)) key = mmKey;
+            else continue;   // ISIN-less but unmapped
+            if (!byKey.TryGetValue(key, out var list))
+            {
+                byKey[key] = list = new List<OpenLot>();
+                keyUuid[key] = l.SecurityUuid;
+                keyIsin[key] = l.Isin;
+            }
+            list.Add(new OpenLot
+            {
+                PortfolioUuid = l.PortfolioUuid,
+                SecurityUuid = l.SecurityUuid,
+                Isin = l.Isin,
+                Acquired = l.Acquired,
+                Shares = l.Shares,
+                Cost = l.Cost,
+                Currency = l.Currency
+            });
+        }
+
+        var result = new Dictionary<string, TaxProfile>(StringComparer.Ordinal);
+        foreach (var (key, lotList) in byKey)
+        {
+            InstrumentTaxKind kind;
+            decimal rate;
+            if (settings.TryGetValue(keyUuid[key], out var ov))
+            {
+                kind = (InstrumentTaxKind)ov.Kind;
+                rate = ov.TeilfreistellungBp / 10000m;
+            }
+            else
+            {
+                kind = SecurityTaxService.DefaultKind(keyIsin[key]);
+                rate = SecurityTaxService.DefaultTeilfreistellungBp / 10000m;
+            }
+            var (assetKind, years) = TaxMath.Resolve(kind);
+            result[key] = new TaxProfile
+            {
+                Lots = lotList,
+                AssetKind = assetKind,
+                SpekulationsfristYears = years,
+                TeilfreistellungRate = rate
+            };
+        }
+        return result;
+    }
+
     private static async Task<AccountHoldings> BuildAsync(
         BudgetDbContext db, int sourceId, List<Holding> holdings, long accountId, bool merge, CancellationToken ct)
     {

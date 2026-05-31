@@ -62,9 +62,15 @@
   <data name="PageTitle_WithSource" xml:space="preserve"><value>Security tax settings — {0}</value></data>
   <data name="Heading" xml:space="preserve"><value>Security tax settings</value></data>
   <data name="Back" xml:space="preserve"><value>Back to sources</value></data>
-  <data name="Intro" xml:space="preserve"><value>Set each fund's Teilfreistellung — the fraction of its gains exempt from tax. Defaults to 30% (equity fund). Only securities with reconstructed lots are listed.</value></data>
-  <data name="Col_Security" xml:space="preserve"><value>Security</value></data>
+  <data name="Intro" xml:space="preserve"><value>Classify each instrument's tax treatment — which sets the regime and §23 holding period — and, for funds, its Teilfreistellung (the gain fraction exempt from tax). Only instruments with reconstructed lots are listed.</value></data>
+  <data name="Col_Security" xml:space="preserve"><value>Instrument</value></data>
+  <data name="Col_Kind" xml:space="preserve"><value>Tax treatment</value></data>
   <data name="Col_Teilfreistellung" xml:space="preserve"><value>Teilfreistellung</value></data>
+  <data name="Kind_0" xml:space="preserve"><value>Security (Abgeltungsteuer)</value></data>
+  <data name="Kind_1" xml:space="preserve"><value>Crypto (§23, 1 yr)</value></data>
+  <data name="Kind_2" xml:space="preserve"><value>Real estate (§23, 10 yr)</value></data>
+  <data name="NoIsin" xml:space="preserve"><value>no ISIN</value></data>
+  <data name="Teilfreistellung_NA" xml:space="preserve"><value>—</value></data>
   <data name="Empty" xml:space="preserve"><value>No securities with reconstructed lots for this source yet. Upload a PortfolioPerformance file with transactions first.</value></data>
   <data name="NotFound" xml:space="preserve"><value>Source not found.</value></data>
   <data name="Type_0" xml:space="preserve"><value>direct shares / bond fund</value></data>

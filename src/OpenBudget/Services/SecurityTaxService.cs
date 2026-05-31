@@ -4,10 +4,10 @@ using OpenBudget.Models;
 namespace OpenBudget.Services;
 
 /// <summary>
-/// Reads and writes per-security tax parameters (<see cref="SecurityTaxSetting"/>) — for now the
-/// Teilfreistellung rate. Lists the securities that actually have reconstructed lots (the ones a
-/// realised gain can be computed for), so the settings screen stays to the tax-relevant set rather
-/// than the whole catalogue.
+/// Reads and writes per-instrument tax parameters (<see cref="SecurityTaxSetting"/>): the tax kind
+/// and, for securities, the Teilfreistellung rate. Lists every instrument that has reconstructed lots
+/// — ISIN securities and the ISIN-less ones (crypto, real estate) alike — keyed by PortfolioPerformance
+/// security uuid.
 /// </summary>
 public class SecurityTaxService
 {
@@ -18,50 +18,56 @@ public class SecurityTaxService
 
     public SecurityTaxService(IDbContextFactory<BudgetDbContext> dbFactory) => _dbFactory = dbFactory;
 
+    /// <summary>The default kind for an unconfigured instrument: ISIN-bearing ⇒ a security, ISIN-less
+    /// ⇒ crypto §23 (the common case; the user reclassifies real estate to the 10-year kind).</summary>
+    public static InstrumentTaxKind DefaultKind(string isin) =>
+        string.IsNullOrEmpty(isin) ? InstrumentTaxKind.MovableSection23 : InstrumentTaxKind.Security;
+
     public async Task<List<SecurityTaxRow>> GetSettingsAsync(int sourceId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var lotIsins = await db.PpLots.AsNoTracking()
-            .Where(l => l.SourceId == sourceId && l.Isin != "").Select(l => l.Isin).Distinct().ToListAsync(ct);
-        if (lotIsins.Count == 0) return new List<SecurityTaxRow>();
+        var lotUuids = await db.PpLots.AsNoTracking()
+            .Where(l => l.SourceId == sourceId).Select(l => l.SecurityUuid).Distinct().ToListAsync(ct);
+        if (lotUuids.Count == 0) return new List<SecurityTaxRow>();
 
-        var names = await db.PpSecurities.AsNoTracking()
-            .Where(s => s.SourceId == sourceId && lotIsins.Contains(s.Isin))
-            .ToDictionaryAsync(s => s.Isin, s => s.Name, ct);
+        var secs = await db.PpSecurities.AsNoTracking()
+            .Where(s => s.SourceId == sourceId && lotUuids.Contains(s.Uuid))
+            .ToDictionaryAsync(s => s.Uuid, ct);
         var overrides = await db.SecurityTaxSettings.AsNoTracking()
             .Where(s => s.SourceId == sourceId)
-            .ToDictionaryAsync(s => s.Isin, s => s.TeilfreistellungBp, ct);
+            .ToDictionaryAsync(s => s.SecurityUuid, ct);
 
-        return lotIsins
-            .Select(i => new SecurityTaxRow
+        return lotUuids
+            .Select(u =>
             {
-                Isin = i,
-                Name = names.GetValueOrDefault(i, i),
-                TeilfreistellungBp = overrides.GetValueOrDefault(i, DefaultTeilfreistellungBp)
+                secs.TryGetValue(u, out var sec);
+                var isin = sec?.Isin ?? "";
+                var has = overrides.TryGetValue(u, out var ov);
+                return new SecurityTaxRow
+                {
+                    Uuid = u,
+                    Isin = isin,
+                    Name = sec?.Name ?? u,
+                    Kind = has ? ov!.Kind : (int)DefaultKind(isin),
+                    TeilfreistellungBp = has ? ov!.TeilfreistellungBp : DefaultTeilfreistellungBp
+                };
             })
             .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    /// <summary>Teilfreistellung rates (0..1) by ISIN for securities the user has overridden — the
-    /// caller falls back to <see cref="DefaultTeilfreistellungBp"/> for the rest.</summary>
-    public async Task<Dictionary<string, decimal>> GetRatesAsync(int sourceId, CancellationToken ct = default)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var rows = await db.SecurityTaxSettings.AsNoTracking()
-            .Where(s => s.SourceId == sourceId).ToListAsync(ct);
-        return rows.ToDictionary(s => s.Isin, s => s.TeilfreistellungBp / 10000m, StringComparer.Ordinal);
-    }
-
-    public async Task SetTeilfreistellungAsync(int sourceId, string isin, int bp, CancellationToken ct = default)
+    public async Task SetAsync(int sourceId, string uuid, int kind, int teilfreistellungBp, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var existing = await db.SecurityTaxSettings
-            .FirstOrDefaultAsync(s => s.SourceId == sourceId && s.Isin == isin, ct);
+            .FirstOrDefaultAsync(s => s.SourceId == sourceId && s.SecurityUuid == uuid, ct);
         if (existing is null)
-            db.SecurityTaxSettings.Add(new SecurityTaxSetting { SourceId = sourceId, Isin = isin, TeilfreistellungBp = bp });
+            db.SecurityTaxSettings.Add(new SecurityTaxSetting { SourceId = sourceId, SecurityUuid = uuid, Kind = kind, TeilfreistellungBp = teilfreistellungBp });
         else
-            existing.TeilfreistellungBp = bp;
+        {
+            existing.Kind = kind;
+            existing.TeilfreistellungBp = teilfreistellungBp;
+        }
         await db.SaveChangesAsync(ct);
     }
 }

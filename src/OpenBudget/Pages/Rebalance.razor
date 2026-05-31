@@ -5,7 +5,6 @@
 @using OpenBudget.Models
 @inject PortfolioService Portfolio
 @inject ProjectService ProjectService
-@inject SecurityTaxService SecurityTax
 @inject IStringLocalizer<Rebalance> L
 
 <PageTitle>@(projectName != null ? L["PageTitle_WithProject", projectName] : L["PageTitle"])</PageTitle>
@@ -325,11 +324,9 @@ else
     private readonly HashSet<string> addedKeys = new(StringComparer.Ordinal);
     private List<CatalogSecurity> addable = new();
     private string addQuery = "";
-    // FIFO tax lots for the project's linked depots, by ISIN — drives the realised-gain estimate.
-    private Dictionary<string, List<OpenLot>> taxLots = new(StringComparer.Ordinal);
-    // Per-security Teilfreistellung overrides (ISIN → rate); the rest use the equity-fund default.
-    private Dictionary<string, decimal> teilfreistellungRates = new(StringComparer.Ordinal);
-    private const decimal DefaultTeilfreistellung = SecurityTaxService.DefaultTeilfreistellungBp / 10000m;
+    // Tax profiles for the project's positions (lots + regime), keyed by position identity — drives
+    // the realised-gain estimate.
+    private Dictionary<string, TaxProfile> taxProfiles = new(StringComparer.Ordinal);
     private readonly HashSet<string> selected = new(StringComparer.Ordinal);
     // Securities the rebalance may hold or sell but not buy more of (e.g. distributing ETFs).
     private readonly HashSet<string> noBuy = new(StringComparer.Ordinal);
@@ -386,8 +383,7 @@ else
         addQuery = "";
         var heldIsins = securities.Where(s => !string.IsNullOrEmpty(s.Isin)).Select(s => s.Isin!).ToList();
         addable = await Portfolio.GetAddableSecuritiesAsync(ProjectId, heldIsins);
-        taxLots = await Portfolio.GetProjectLotsAsync(ProjectId);
-        teilfreistellungRates = await SecurityTax.GetRatesAsync(sourceId);
+        taxProfiles = await Portfolio.GetProjectTaxProfilesAsync(ProjectId);
         targetBy = "ratio";
         regionList = new List<string>();
         regionTargets = new Dictionary<string, decimal>(StringComparer.Ordinal);
@@ -537,14 +533,14 @@ else
         foreach (var r in plan.Rows.Where(r => r.Delta < 0m))
         {
             var s = securities.FirstOrDefault(x => x.Key == r.Key);
-            if (s?.Isin is not { Length: > 0 } isin || s.Price is not { } price || price <= 0m
-                || !taxLots.TryGetValue(isin, out var lots) || lots.Count == 0)
+            if (s?.Price is not { } price || price <= 0m
+                || !taxProfiles.TryGetValue(r.Key, out var profile) || profile.Lots.Count == 0)
             {
                 uncovered++;
                 continue;
             }
-            var rate = teilfreistellungRates.GetValueOrDefault(isin, DefaultTeilfreistellung);
-            var rg = TaxMath.RealizeSale(lots, -r.Delta / price, price, today, TaxAssetKind.Security, rate);
+            var rg = TaxMath.RealizeSale(profile.Lots, -r.Delta / price, price, today,
+                profile.AssetKind, profile.TeilfreistellungRate, profile.SpekulationsfristYears);
             gross += rg.GrossGain;
             taxable += rg.TaxableGain;
             covered++;

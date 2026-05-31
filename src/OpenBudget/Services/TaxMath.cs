@@ -13,6 +13,16 @@ namespace OpenBudget.Services;
 /// </summary>
 public static class TaxMath
 {
+    /// <summary>Maps a user-facing instrument classification to the regime and §23 holding period
+    /// the <see cref="RealizeSale"/> overload needs.</summary>
+    public static (TaxAssetKind Kind, int SpekulationsfristYears) Resolve(InstrumentTaxKind kind) => kind switch
+    {
+        InstrumentTaxKind.MovableSection23 => (TaxAssetKind.PrivateSale, 1),
+        InstrumentTaxKind.RealEstateSection23 => (TaxAssetKind.PrivateSale, 10),
+        InstrumentTaxKind.Security => (TaxAssetKind.Security, 0),
+        _ => (TaxAssetKind.Security, 0)
+    };
+
     /// <summary>
     /// Realises a sale of <paramref name="sharesToSell"/> units at <paramref name="pricePerShare"/>
     /// on <paramref name="saleDate"/>, consuming <paramref name="lots"/> oldest-first.

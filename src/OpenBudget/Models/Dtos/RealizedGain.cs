@@ -1,5 +1,18 @@
 namespace OpenBudget.Models;
 
+/// <summary>The user-facing tax classification of an instrument, which fixes both the regime and the
+/// §23 holding period. Stored per instrument; mapped to a <see cref="TaxAssetKind"/> + period by
+/// <see cref="Services.TaxMath.Resolve"/>.</summary>
+public enum InstrumentTaxKind
+{
+    /// <summary>Share/ETF/fund — Abgeltungsteuer with Teilfreistellung, no holding period.</summary>
+    Security = 0,
+    /// <summary>Crypto &amp; other movable §23 assets — tax-free after 1 year.</summary>
+    MovableSection23 = 1,
+    /// <summary>Real estate — §23 with a 10-year holding period.</summary>
+    RealEstateSection23 = 2
+}
+
 /// <summary>How a security's gains are taxed in Germany — they follow two different regimes.</summary>
 public enum TaxAssetKind
 {
