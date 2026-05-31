@@ -43,7 +43,9 @@ else
     <p class="text-body-secondary d-print-none">@L[IntroKey]</p>
 
     <div class="d-flex flex-wrap align-items-end gap-3 mb-3">
-        <div>
+        @* On paper, "Cash to add €0.00" is just noise — drop the whole block when no cash is added.
+           On screen it always stays (it's the control for entering cash). *@
+        <div class="@(cash == 0m ? "d-print-none" : "")">
             <label class="form-label small mb-1" for="cashInput">@L["Cash_Label"]</label>
             <div class="input-group input-group-sm d-print-none" style="width: 12rem;">
                 <span class="input-group-text">€</span>
