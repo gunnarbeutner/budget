@@ -35,11 +35,18 @@ public static class RebalanceSolver
     /// removes gratuitous churn between securities the look-through can't tell apart (e.g. the Acc
     /// and Dist share classes of the same fund).
     /// </param>
+    /// <param name="lowerBounds">
+    /// Optional per-security floor on the pool fraction (length N). Setting a security's lower and
+    /// upper bound to the same value <i>pins</i> it to a fixed target (forcing a specific sale/buy)
+    /// while the solver still optimises the rest to best match the taxonomy — the pinned holdings
+    /// count toward the achieved mix. Null means no floors (each ≥ 0).
+    /// </param>
     /// <param name="lambda">Turnover-penalty weight; small so region matching still dominates.</param>
     public static double[] Solve(
         IReadOnlyList<double[]> securityRegionWeights,
         IReadOnlyList<double> target,
         IReadOnlyList<double>? upperBounds = null,
+        IReadOnlyList<double>? lowerBounds = null,
         IReadOnlyList<double>? current = null,
         double lambda = 0.02,
         int iterations = 8000)
@@ -49,10 +56,18 @@ public static class RebalanceSolver
         int r = target.Count;
 
         var caps = new double[n];
-        double capSum = 0;
-        for (int i = 0; i < n; i++) { caps[i] = upperBounds != null ? Math.Clamp(upperBounds[i], 0, 1) : 1.0; capSum += caps[i]; }
+        var lows = new double[n];
+        double capSum = 0, lowSum = 0;
+        for (int i = 0; i < n; i++)
+        {
+            caps[i] = upperBounds != null ? Math.Clamp(upperBounds[i], 0, 1) : 1.0;
+            lows[i] = lowerBounds != null ? Math.Clamp(lowerBounds[i], 0, caps[i]) : 0.0;
+            capSum += caps[i];
+            lowSum += lows[i];
+        }
         // Invest the whole pool when the caps allow it; otherwise as much as they do (rest = cash).
-        double budget = Math.Min(1.0, capSum);
+        // Never below the pinned floors (lowSum), even if those over-commit the pool.
+        double budget = Math.Max(Math.Min(1.0, capSum), lowSum);
 
         bool useTurnover = current != null && lambda > 0;
         double lam = useTurnover ? lambda : 0.0;
@@ -65,7 +80,7 @@ public static class RebalanceSolver
         var f = new double[n];
         if (useTurnover) Array.Copy(cur, f, n);
         else for (int i = 0; i < n; i++) f[i] = capSum > 0 ? caps[i] / capSum * budget : 0.0;
-        ProjectToCappedSimplex(f, caps, budget);
+        ProjectToBoxSimplex(f, lows, caps, budget);
 
         // Step size from a Lipschitz bound: L = 2·λmax(AᵀA) + 2·lam ≤ 2·‖A‖_F² + 2·lam.
         double normF2 = 0;
@@ -96,24 +111,25 @@ public static class RebalanceSolver
             }
 
             for (int i = 0; i < n; i++) f[i] -= eta * grad[i];
-            ProjectToCappedSimplex(f, caps, budget);
+            ProjectToBoxSimplex(f, lows, caps, budget);
         }
         return f;
     }
 
     /// <summary>
-    /// Euclidean projection onto { 0 ≤ xᵢ ≤ capᵢ, Σx = budget }. Finds the threshold τ with
-    /// Σ clamp(vᵢ − τ, 0, capᵢ) = budget by bisection — the sum is monotonically decreasing in τ,
-    /// so this converges robustly regardless of how many caps bind.
+    /// Euclidean projection onto { lowᵢ ≤ xᵢ ≤ capᵢ, Σx = budget }. Finds the threshold τ with
+    /// Σ clamp(vᵢ − τ, lowᵢ, capᵢ) = budget by bisection — the sum is monotonically decreasing in τ,
+    /// so this converges robustly regardless of how many bounds bind. A pinned variable (lowᵢ = capᵢ)
+    /// is held at that value.
     /// </summary>
-    private static void ProjectToCappedSimplex(double[] v, double[] caps, double budget)
+    private static void ProjectToBoxSimplex(double[] v, double[] lows, double[] caps, double budget)
     {
         int n = v.Length;
         double lo = double.MaxValue, hi = double.MinValue;
         for (int i = 0; i < n; i++)
         {
             lo = Math.Min(lo, v[i] - caps[i]); // τ at which xᵢ hits its cap
-            hi = Math.Max(hi, v[i]);           // τ at which xᵢ hits 0
+            hi = Math.Max(hi, v[i] - lows[i]); // τ at which xᵢ hits its floor
         }
 
         double a = lo - 1.0, b = hi + 1.0;
@@ -121,10 +137,10 @@ public static class RebalanceSolver
         {
             double tau = 0.5 * (a + b);
             double sum = 0;
-            for (int i = 0; i < n; i++) sum += Math.Clamp(v[i] - tau, 0.0, caps[i]);
+            for (int i = 0; i < n; i++) sum += Math.Clamp(v[i] - tau, lows[i], caps[i]);
             if (sum > budget) a = tau; else b = tau; // sum decreases as τ grows
         }
         double t = 0.5 * (a + b);
-        for (int i = 0; i < n; i++) v[i] = Math.Clamp(v[i] - t, 0.0, caps[i]);
+        for (int i = 0; i < n; i++) v[i] = Math.Clamp(v[i] - t, lows[i], caps[i]);
     }
 }

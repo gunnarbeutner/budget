@@ -82,6 +82,41 @@ public class RebalanceSolverTests
     }
 
     [Fact]
+    public void A_pinned_security_is_forced_while_the_rest_fit_the_taxonomy()
+    {
+        // A is region 0, B and C are region 1. Pin A to 0.2 (lower = upper); the remaining 0.8 has
+        // nowhere to go but region 1, so the mix lands at 0.2/0.8 — the closest to 50/50 with A fixed.
+        var weights = new[]
+        {
+            new[] { 1.0, 0.0 },
+            new[] { 0.0, 1.0 },
+            new[] { 0.0, 1.0 }
+        };
+        var f = RebalanceSolver.Solve(weights, new[] { 0.5, 0.5 },
+            upperBounds: new[] { 0.2, 1.0, 1.0 }, lowerBounds: new[] { 0.2, 0.0, 0.0 });
+
+        Assert.Equal(0.2, f[0], precision: 3);          // forced to its pin
+        Assert.Equal(0.8, f[1] + f[2], precision: 2);   // the free pool fills region 1
+        Assert.Equal(1.0, f.Sum(), precision: 3);
+    }
+
+    [Fact]
+    public void A_high_pin_forces_a_buy_above_the_taxonomy_target()
+    {
+        // Target wants only 50% region 0, but A (region 0) is pinned to 0.7 — it's forced there.
+        var weights = new[]
+        {
+            new[] { 1.0, 0.0 },
+            new[] { 0.0, 1.0 }
+        };
+        var f = RebalanceSolver.Solve(weights, new[] { 0.5, 0.5 },
+            upperBounds: new[] { 0.7, 1.0 }, lowerBounds: new[] { 0.7, 0.0 });
+
+        Assert.Equal(0.7, f[0], precision: 3);   // pinned above target
+        Assert.Equal(0.3, f[1], precision: 3);
+    }
+
+    [Fact]
     public void Turnover_penalty_avoids_churn_between_identical_securities()
     {
         // Two share classes of the same fund: identical region vectors, so the region objective is

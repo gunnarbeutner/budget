@@ -104,4 +104,6 @@
   <data name="Tax_Taxable" xml:space="preserve"><value>Steuerpflichtig (geschätzt)</value></data>
   <data name="Tax_Caveat" xml:space="preserve"><value>Nach Teilfreistellung, vor Sparer-Pauschbetrag</value></data>
   <data name="Tax_Excluded" xml:space="preserve"><value>{0} Verkaufsposition(en) ohne Lot-Daten ausgeschlossen</value></data>
+  <data name="Col_Fixed" xml:space="preserve"><value>Fest (€)</value></data>
+  <data name="Fixed_Placeholder" xml:space="preserve"><value>auto</value></data>
 </root>

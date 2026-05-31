@@ -143,6 +143,10 @@ else
                     {
                         <th class="text-end" style="width: 9rem;">@(targetBy == "amount" ? L["Col_TargetAmount"] : L["Col_Weight"])</th>
                     }
+                    @if (RegionMode)
+                    {
+                        <th class="text-end d-print-none" style="width: 9rem;">@L["Col_Fixed"]</th>
+                    }
                     <th class="text-end">@L["Col_Trade"]</th>
                     <th class="text-end">@L["Col_After"]</th>
                 </tr>
@@ -204,6 +208,17 @@ else
                                        class="form-control form-control-sm text-end" disabled="@(!included)"
                                        value="@FormatNum(targets.GetValueOrDefault(s.Key))"
                                        @onchange="e => OnTargetChanged(s.Key, e.Value)" />
+                            </td>
+                        }
+                        @if (RegionMode)
+                        {
+                            @* Optional fixed € target — pins this security so the solver forces the
+                               value (a specific sale/buy) and fits the rest to the taxonomy. Blank = auto. *@
+                            <td class="text-end d-print-none">
+                                <input type="number" step="1000" min="0" class="form-control form-control-sm text-end"
+                                       disabled="@(!included)" placeholder="@L["Fixed_Placeholder"]"
+                                       value="@(regionPins.TryGetValue(s.Key, out var pin) ? FormatNum(pin) : "")"
+                                       @onchange="e => OnRegionPinChanged(s.Key, e.Value)" />
                             </td>
                         }
                         <td class="text-end">
@@ -350,6 +365,7 @@ else
     private string? regionTaxonomy;
     private List<string> regionList = new();
     private Dictionary<string, decimal> regionTargets = new(StringComparer.Ordinal);                  // class -> percent
+    private readonly Dictionary<string, decimal> regionPins = new(StringComparer.Ordinal);            // key -> fixed € target (taxonomy mode)
     private Dictionary<string, Dictionary<string, decimal>> securityWeights = new(StringComparer.Ordinal); // isin -> class -> fraction
     private static readonly Dictionary<string, decimal> EmptyWeights = new(StringComparer.Ordinal);
     private const string UnclassifiedLabel = "Unclassified";
@@ -400,6 +416,7 @@ else
     {
         selected.Clear();
         noBuy.Clear();
+        regionPins.Clear();
         targets = new Dictionary<string, decimal>(StringComparer.Ordinal);
         foreach (var s in securities)
         {
@@ -523,6 +540,7 @@ else
         selected.Remove(key);
         noBuy.Remove(key);
         targets.Remove(key);
+        regionPins.Remove(key);
         if (RegionMode) await LoadRegionWeightsAsync(preserveTargets: true);
     }
 
@@ -641,17 +659,33 @@ else
             .Select(r => sum > 0m ? (double)(Math.Max(0m, regionTargets.GetValueOrDefault(r)) / sum) : 1.0 / regionList.Count)
             .ToArray();
 
-        // "Don't buy more" caps a security at its current pool fraction, so the solver can only hold
-        // or sell it and routes new money elsewhere.
         decimal pool = sel.Sum(s => s.Value) + cash;
-        var upper = sel
-            .Select(s => noBuy.Contains(s.Key) && pool > 0m ? (double)(s.Value / pool) : 1.0)
-            .ToList();
+        // Bounds per security: a fixed target pins it (lower = upper) so the solver forces that
+        // value while still fitting the rest to the taxonomy; "don't buy more" caps at the current
+        // fraction; otherwise free to range [0, 1].
+        var upper = new List<double>(sel.Count);
+        var lower = new List<double>(sel.Count);
+        bool anyPin = false;
+        foreach (var s in sel)
+        {
+            if (pool > 0m && regionPins.TryGetValue(s.Key, out var pinned))
+            {
+                double frac = (double)(Math.Max(0m, pinned) / pool);
+                upper.Add(frac);
+                lower.Add(frac);
+                anyPin = true;
+            }
+            else
+            {
+                upper.Add(noBuy.Contains(s.Key) && pool > 0m ? (double)(s.Value / pool) : 1.0);
+                lower.Add(0.0);
+            }
+        }
         // Current mix drives the turnover penalty so the solver trades as little as possible
         // (otherwise it churns between look-through-identical securities like Acc/Dist share classes).
         var current = sel.Select(s => pool > 0m ? (double)(s.Value / pool) : 0.0).ToList();
 
-        var f = RebalanceSolver.Solve(vectors, tgt, upper, current);
+        var f = RebalanceSolver.Solve(vectors, tgt, upper, anyPin ? lower : null, current);
 
         var achieved = new Dictionary<string, decimal>(StringComparer.Ordinal);
         for (int k = 0; k < regionList.Count; k++)
@@ -664,6 +698,13 @@ else
     }
 
     private void OnRegionTargetChanged(string cls, object? value) => regionTargets[cls] = ParseNum(value);
+
+    // A blank fixed-target input clears the pin; any value pins the security to that € target.
+    private void OnRegionPinChanged(string key, object? value)
+    {
+        if (string.IsNullOrWhiteSpace(value?.ToString())) regionPins.Remove(key);
+        else regionPins[key] = ParseNum(value);
+    }
 
     // <input type="number"> posts its value in invariant form (decimal point), regardless of UI culture.
     private static decimal ParseNum(object? value) =>
