@@ -1,3 +1,4 @@
+using OpenBudget.Services;
 using Xunit;
 
 namespace OpenBudget.Tests;
@@ -38,21 +39,44 @@ public class MonthlySpendingHistoryTests
     }
 
     [Fact]
-    public async Task Category_history_income_mode_keeps_only_positive_amounts()
+    public async Task Category_history_expense_mode_nets_refunds_against_spending()
     {
+        // A refund booked to an expense category (positive amount) must reduce that month's
+        // actual, matching GetSpendingSummaryAsync. Regression: the history used to drop all
+        // positive amounts in expense mode, inflating the actual by the full gross spend.
         await using var t = new TestDb();
         t.AddGroup(100);
         t.AddLeaf(101, parent: 100);
         t.AddProject(1);
         var thisMonth = MonthMidpoint(0);
-        t.AddTransaction(id: 1, categoryId: 101, amountCents: 8000, date: thisMonth);  // income
-        t.AddTransaction(id: 2, categoryId: 101, amountCents: -3000, date: thisMonth); // expense, ignored
+        t.AddTransaction(id: 1, categoryId: 101, amountCents: -10000, date: thisMonth); // spend €100
+        t.AddTransaction(id: 2, categoryId: 101, amountCents: 3000, date: thisMonth);   // refund €30
+        await t.Db.SaveChangesAsync();
+
+        var result = await t.Predictions.GetMonthlySpendingForCategoryAsync(101, sourceId: 1, months: 12);
+
+        Assert.Equal(70m, result.Single(m => m.Year == thisMonth.Year && m.Month == thisMonth.Month).Amount);
+        Assert.Equal(70m, result.Sum(m => m.Amount));
+    }
+
+    [Fact]
+    public async Task Category_history_income_mode_nets_against_negative_corrections()
+    {
+        // Income mode nets too: a negative correction in an income category reduces the income,
+        // mirroring the expense-mode netting and GetSpendingSummaryAsync's per-leaf sum.
+        await using var t = new TestDb();
+        t.AddGroup(100);
+        t.AddLeaf(101, parent: 100);
+        t.AddProject(1);
+        var thisMonth = MonthMidpoint(0);
+        t.AddTransaction(id: 1, categoryId: 101, amountCents: 8000, date: thisMonth);  // income €80
+        t.AddTransaction(id: 2, categoryId: 101, amountCents: -3000, date: thisMonth); // correction -€30
         await t.Db.SaveChangesAsync();
 
         var result = await t.Predictions.GetMonthlySpendingForCategoryAsync(101, sourceId: 1, months: 12, isIncome: true);
 
-        Assert.Equal(80m, result.Single(m => m.Year == thisMonth.Year && m.Month == thisMonth.Month).Amount);
-        Assert.Equal(80m, result.Sum(m => m.Amount));
+        Assert.Equal(50m, result.Single(m => m.Year == thisMonth.Year && m.Month == thisMonth.Month).Amount);
+        Assert.Equal(50m, result.Sum(m => m.Amount));
     }
 
     [Fact]
@@ -72,6 +96,29 @@ public class MonthlySpendingHistoryTests
         var result = await t.Predictions.GetMonthlySpendingAsync(100, sourceId: 1, months: 12);
 
         Assert.Equal(55m, result.Single(m => m.Year == thisMonth.Year && m.Month == thisMonth.Month).Amount);
+    }
+
+    [Fact]
+    public async Task Batch_expense_nets_refunds_per_month()
+    {
+        // The Budgets-page variance "Actual" column reads GetMonthlySpendingBatchAsync. Mirrors
+        // the real "Gesundheit" case: gross spend in a month minus a Krankenkasse-style refund
+        // booked to the same expense category must net, not show the gross outflow.
+        await using var t = new TestDb();
+        t.AddGroup(100);
+        t.AddLeaf(101, parent: 100);
+        t.AddProject(1);
+        var april = new System.DateTime(2026, 4, 15, 0, 0, 0, System.DateTimeKind.Utc);
+        t.AddTransaction(id: 1, categoryId: 101, amountCents: -112183, date: april); // gross spend €1121.83
+        t.AddTransaction(id: 2, categoryId: 101, amountCents: 101079, date: april);  // refunds €1010.79
+        await t.Db.SaveChangesAsync();
+
+        var batch = await t.Predictions.GetMonthlySpendingBatchAsync(
+            new[] { (101L, CategoryItemType.Category) }, year: 2026, sourceId: 1);
+
+        var trend = batch[(101L, CategoryItemType.Category)];
+        Assert.Equal(111.04m, trend.Single(m => m.Month == 4).Amount);
+        Assert.Equal(111.04m, trend.Sum(m => m.Amount));
     }
 
     [Fact]

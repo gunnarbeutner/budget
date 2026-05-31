@@ -42,9 +42,12 @@ public class BudgetPredictionService
     }
 
     /// <summary>
-    /// Monthly outflow (or income) for a set of leaf categories over the last <paramref name="months"/>
+    /// Net monthly spending (or income) for a set of leaf categories over the last <paramref name="months"/>
     /// calendar months ending in the current month. One windowed query, bucketed in memory by
-    /// month — replaces the former query-per-month loop.
+    /// month — replaces the former query-per-month loop. All transactions in the window net
+    /// together (expense mode negates, so a refund booked to an expense category reduces that
+    /// month's actual); this matches <see cref="BudgetService.GetSpendingSummaryAsync"/>, the
+    /// canonical "actual" the Project Overview shows.
     /// </summary>
     private async Task<List<MonthlySpending>> ComputeMonthlyHistoryAsync(
         int sourceId, IReadOnlyList<long> leafIds, int months, bool isIncome)
@@ -57,7 +60,6 @@ public class BudgetPredictionService
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && leafIds.Contains(t.CategoryId.Value))
             .WithinUtc(TimeRange.Between(startDate, startDate.AddMonths(months)));
-        query = isIncome ? query.Where(t => t.Amount > 0) : query.Where(t => t.Amount < 0);
         var raw = await query.Select(t => new { t.Amount, t.Timestamp }).ToListAsync();
 
         var monthly = new decimal[months];
@@ -79,8 +81,10 @@ public class BudgetPredictionService
     }
 
     /// <summary>
-    /// Batched monthly outflow (negative transactions, negated to positive — or positive for
-    /// income) for a calendar year. Items with no leaf categories get an empty list.
+    /// Batched net monthly spending for a calendar year: every transaction in a leaf nets together
+    /// (expense mode negates so refunds reduce the actual, income mode keeps the natural sign),
+    /// matching <see cref="BudgetService.GetSpendingSummaryAsync"/>. Items with no leaf categories
+    /// get an empty list.
     /// </summary>
     public async Task<Dictionary<(long Id, CategoryItemType ItemType), List<MonthlySpending>>>
         GetMonthlySpendingBatchAsync(
@@ -120,9 +124,6 @@ public class BudgetPredictionService
             .Where(t => t.SourceId == sourceId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .WithinUtc(TimeRange.Between(startDate, startDate.AddMonths(months)));
-        rawQuery = isIncome
-            ? rawQuery.Where(t => t.Amount > 0)
-            : rawQuery.Where(t => t.Amount < 0);
         var raw = await rawQuery
             .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount, t.Timestamp })
             .ToListAsync();
