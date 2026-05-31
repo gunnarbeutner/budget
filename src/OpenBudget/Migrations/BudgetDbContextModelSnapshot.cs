@@ -15,7 +15,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20260531005634_AddAcquiredOverrideToTaxSetting";
+        public override string LatestMigrationId => "20260531020132_AddLatestPriceToCatalog";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -571,12 +571,18 @@ namespace OpenBudget.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Currency")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Isin")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("Price")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("SourceId")

@@ -15,12 +15,21 @@ package ppimport;
 
 option csharp_namespace = "OpenBudget.PortfolioPerformance.Proto";
 
+// A PortfolioPerformance price point. Prices are scaled ×1e8; we read only the close (date,
+// high/low/volume are skipped by proto3).
+message PFullHistoricalPrice {
+  int64 date = 1;   // epoch day
+  int64 close = 2;  // price ×1e8
+}
+
 message PSecurity {
   string uuid = 1;          // referenced by Assignment.investmentVehicle
   string name = 3;
+  string currencyCode = 4;  // the security's quote currency
   string isin = 7;          // join key to mm_securities; empty for crypto
   string tickerSymbol = 8;
   string wkn = 9;
+  PFullHistoricalPrice latest = 16;   // latest quote (online feed); absent for some securities
 }
 
 message PPortfolio {

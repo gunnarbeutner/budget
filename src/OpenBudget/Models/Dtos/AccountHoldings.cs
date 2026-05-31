@@ -65,6 +65,9 @@ public class CatalogSecurity
     public string Name { get; init; } = "";
     public string? Symbol { get; init; }
     public string? Wkn { get; init; }
+    /// <summary>Latest quoted price per unit (for share counts on a manually-added security), or null.</summary>
+    public decimal? Price { get; init; }
+    public string? Currency { get; init; }
 }
 
 public class AssetClassSlice

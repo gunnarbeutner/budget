@@ -98,6 +98,8 @@ public static class PortfolioPerformanceFile
         foreach (var s in client.Securities)
         {
             if (string.IsNullOrEmpty(s.Uuid)) continue;
+            // Latest quote, ×1e8; absent or zero ⇒ no price.
+            decimal? price = s.Latest is { Close: > 0 } latest ? latest.Close / 100_000_000m : null;
             byUuid[s.Uuid] = new PpSecurity
             {
                 SourceId = sourceId,
@@ -105,7 +107,9 @@ public static class PortfolioPerformanceFile
                 Isin = s.Isin ?? "",
                 Name = string.IsNullOrEmpty(s.Name) ? (string.IsNullOrEmpty(s.Isin) ? s.Uuid : s.Isin) : s.Name,
                 TickerSymbol = string.IsNullOrEmpty(s.TickerSymbol) ? null : s.TickerSymbol,
-                Wkn = string.IsNullOrEmpty(s.Wkn) ? null : s.Wkn
+                Wkn = string.IsNullOrEmpty(s.Wkn) ? null : s.Wkn,
+                Price = price,
+                Currency = price is null || string.IsNullOrEmpty(s.CurrencyCode) ? null : s.CurrencyCode
             };
         }
         return byUuid.Values.ToList();

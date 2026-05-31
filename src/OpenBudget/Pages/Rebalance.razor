@@ -503,7 +503,11 @@ else
             Symbol = pick.Symbol,
             Wkn = pick.Wkn,
             Value = 0m,
-            Quantity = 0
+            Quantity = 0,
+            // Use the catalogue price only when it's EUR — the pool is in EUR, so a foreign-quoted
+            // price would give a wrong share count. Without a usable price the row shows € only.
+            Price = string.Equals(pick.Currency, "EUR", StringComparison.OrdinalIgnoreCase) ? pick.Price : null,
+            PriceCurrency = pick.Currency
         });
         addedKeys.Add(key);
         selected.Add(key);

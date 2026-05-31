@@ -35,4 +35,12 @@ public class PpSecurity
     public string? TickerSymbol { get; set; }
 
     public string? Wkn { get; set; }
+
+    /// <summary>Latest quoted price per unit from PortfolioPerformance, in <see cref="Currency"/>, or
+    /// null when the security has no latest quote. Lets a manually-added (not-held) security show
+    /// share counts and round to whole shares.</summary>
+    public decimal? Price { get; set; }
+
+    /// <summary>Quote currency of <see cref="Price"/>.</summary>
+    public string? Currency { get; set; }
 }

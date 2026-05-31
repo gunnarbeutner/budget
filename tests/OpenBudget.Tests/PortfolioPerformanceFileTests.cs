@@ -102,6 +102,30 @@ public class PortfolioPerformanceFileTests
     }
 
     [Fact]
+    public void ExtractSecurities_reads_the_latest_quote_as_the_price()
+    {
+        var client = new PClient();
+        client.Securities.Add(new PSecurity
+        {
+            Uuid = "etf",
+            Isin = "IE00X",
+            Name = "World ETF",
+            CurrencyCode = "EUR",
+            Latest = new PFullHistoricalPrice { Date = 20000, Close = 9512000000L }  // 95.12 ×1e8
+        });
+        client.Securities.Add(new PSecurity { Uuid = "np", Isin = "IE00Y", Name = "No price" }); // no latest quote
+
+        var got = PortfolioPerformanceFile.ExtractSecurities(client, sourceId: 1);
+
+        var etf = got.Single(s => s.Uuid == "etf");
+        Assert.Equal(95.12m, etf.Price);
+        Assert.Equal("EUR", etf.Currency);
+        var np = got.Single(s => s.Uuid == "np");
+        Assert.Null(np.Price);
+        Assert.Null(np.Currency);
+    }
+
+    [Fact]
     public void ExtractPortfolios_returns_named_depots_falling_back_to_uuid()
     {
         var client = new PClient();

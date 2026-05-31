@@ -147,7 +147,7 @@ public class PortfolioService
 
         return rows
             .Where(s => !exclude.Contains(s.Isin))
-            .Select(s => new CatalogSecurity { Isin = s.Isin, Name = s.Name, Symbol = s.TickerSymbol, Wkn = s.Wkn })
+            .Select(s => new CatalogSecurity { Isin = s.Isin, Name = s.Name, Symbol = s.TickerSymbol, Wkn = s.Wkn, Price = s.Price, Currency = s.Currency })
             .ToList();
     }
 
