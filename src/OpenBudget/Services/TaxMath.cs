@@ -20,13 +20,17 @@ public static class TaxMath
     /// <param name="teilfreistellungRate">Fraction of a <see cref="TaxAssetKind.Security"/> gain that
     /// is tax-exempt (e.g. 0.30 for an equity fund). Applied symmetrically — it also shrinks a
     /// deductible loss. Ignored for private sales.</param>
+    /// <param name="spekulationsfristYears">The §23 holding period after which a
+    /// <see cref="TaxAssetKind.PrivateSale"/> is tax-free: 1 for movable assets (crypto, gold), 10
+    /// for real estate. Ignored for securities.</param>
     public static RealizedGain RealizeSale(
         IReadOnlyList<OpenLot> lots,
         decimal sharesToSell,
         decimal pricePerShare,
         DateOnly saleDate,
         TaxAssetKind kind,
-        decimal teilfreistellungRate = 0m)
+        decimal teilfreistellungRate = 0m,
+        int spekulationsfristYears = 1)
     {
         var results = new List<TaxLotResult>();
         decimal remaining = sharesToSell;
@@ -43,8 +47,9 @@ public static class TaxMath
             decimal gross = proceeds - cost;
 
             int holdingDays = saleDate.DayNumber - lot.Acquired.DayNumber;
-            // §23: more than a full year held ⇒ out of scope (gain and loss alike).
-            bool exempt = kind == TaxAssetKind.PrivateSale && saleDate > lot.Acquired.AddYears(1);
+            // §23: held past the Spekulationsfrist (1 year movable, 10 years real estate) ⇒ out of
+            // scope (gain and loss alike).
+            bool exempt = kind == TaxAssetKind.PrivateSale && saleDate > lot.Acquired.AddYears(spekulationsfristYears);
 
             decimal taxable = exempt
                 ? 0m

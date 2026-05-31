@@ -92,6 +92,24 @@ public class TaxMathTests
     }
 
     [Fact]
+    public void Real_estate_uses_a_ten_year_speculation_period()
+    {
+        var lots = new[] { Lot(2018, 1, 1, 1, 200000) };
+
+        // Sold after 7 years — still inside the 10-year window, so the whole gain is taxable income.
+        var within = TaxMath.RealizeSale(lots, 1, 300000, new DateOnly(2025, 1, 1),
+            TaxAssetKind.PrivateSale, spekulationsfristYears: 10);
+        Assert.False(within.Lots[0].HoldingPeriodExempt);
+        Assert.Equal(100000m, within.TaxableGain);
+
+        // Sold after 11 years — past the window, tax-free.
+        var after = TaxMath.RealizeSale(lots, 1, 300000, new DateOnly(2029, 1, 1),
+            TaxAssetKind.PrivateSale, spekulationsfristYears: 10);
+        Assert.True(after.Lots[0].HoldingPeriodExempt);
+        Assert.Equal(0m, after.TaxableGain);
+    }
+
+    [Fact]
     public void Teilfreistellung_also_shrinks_a_deductible_loss()
     {
         var lots = new[] { Lot(2020, 1, 1, 10, 2000) };

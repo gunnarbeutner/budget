@@ -7,8 +7,9 @@ public enum TaxAssetKind
     /// holding-period exemption; a fund's <see cref="Services.TaxMath"/> Teilfreistellung applies.</summary>
     Security,
 
-    /// <summary>§23 private sale (crypto, physical gold, …): tax-free once held more than a year,
-    /// otherwise the gain is ordinary income (counts toward zvE). No Teilfreistellung.</summary>
+    /// <summary>§23 private sale: tax-free once held past the Spekulationsfrist — one year for
+    /// movable assets (crypto, gold), ten years for real estate — otherwise the gain is ordinary
+    /// income (counts toward zvE). No Teilfreistellung. The period is passed per call.</summary>
     PrivateSale
 }
 
