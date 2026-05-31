@@ -21,7 +21,12 @@ public class PpLot
     /// <summary>The PortfolioPerformance depot holding this lot (a <see cref="PpPortfolio.Uuid"/>).</summary>
     public string PortfolioUuid { get; set; } = "";
 
-    /// <summary>ISIN of the security; the join key to holdings and taxonomy.</summary>
+    /// <summary>PortfolioPerformance security UUID — identity for every instrument, including the
+    /// ISIN-less ones mapped to MoneyMoney holdings by hand.</summary>
+    public string SecurityUuid { get; set; } = "";
+
+    /// <summary>ISIN of the security, or empty for ISIN-less instruments. The join key to holdings
+    /// and taxonomy when present.</summary>
     public string Isin { get; set; } = "";
 
     /// <summary>Acquisition (trade) date of the lot — preserved across depot transfers.</summary>

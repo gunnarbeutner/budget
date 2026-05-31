@@ -66,6 +66,7 @@ public class PortfolioPerformanceImportService
                 {
                     SourceId = sourceId,
                     PortfolioUuid = l.PortfolioUuid,
+                    SecurityUuid = l.SecurityUuid,
                     Isin = l.Isin,
                     Acquired = l.Acquired,
                     Shares = l.Shares,

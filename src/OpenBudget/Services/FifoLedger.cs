@@ -26,28 +26,30 @@ public static class FifoLedger
 
     public static List<OpenLot> BuildOpenLots(PClient client)
     {
+        // Every security has a uuid; the ISIN may be empty (crypto, real estate). Key by uuid so
+        // ISIN-less instruments are reconstructed too — they join to MoneyMoney by a manual mapping.
         var uuidToIsin = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var s in client.Securities)
             if (!string.IsNullOrEmpty(s.Uuid) && !string.IsNullOrEmpty(s.Isin))
                 uuidToIsin[s.Uuid] = s.Isin;
 
-        // Group the share-moving transactions (incl. transfers) by ISIN.
-        var byIsin = new Dictionary<string, List<PTransaction>>(StringComparer.Ordinal);
-        var isinCurrency = new Dictionary<string, string>(StringComparer.Ordinal);
+        // Group the share-moving transactions (incl. transfers) by security uuid.
+        var byUuid = new Dictionary<string, List<PTransaction>>(StringComparer.Ordinal);
+        var uuidCurrency = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var t in client.Transactions)
         {
             if (string.IsNullOrEmpty(t.Security) || t.Date is null) continue;
-            if (!uuidToIsin.TryGetValue(t.Security, out var isin)) continue;
             if (!IsAddition(t.Type) && !IsRemoval(t.Type) && t.Type != PType.SecurityTransfer) continue;
-            if (!byIsin.TryGetValue(isin, out var list)) byIsin[isin] = list = new List<PTransaction>();
+            if (!byUuid.TryGetValue(t.Security, out var list)) byUuid[t.Security] = list = new List<PTransaction>();
             list.Add(t);
-            if (!isinCurrency.ContainsKey(isin) && !string.IsNullOrEmpty(t.CurrencyCode))
-                isinCurrency[isin] = t.CurrencyCode;
+            if (!uuidCurrency.ContainsKey(t.Security) && !string.IsNullOrEmpty(t.CurrencyCode))
+                uuidCurrency[t.Security] = t.CurrencyCode;
         }
 
         var lots = new List<OpenLot>();
-        foreach (var (isin, txns) in byIsin)
+        foreach (var (uuid, txns) in byUuid)
         {
+            var isin = uuidToIsin.GetValueOrDefault(uuid, "");
             // One FIFO queue per depot, each kept in acquisition-date order.
             var depots = new Dictionary<string, LinkedList<Lot>>(StringComparer.Ordinal);
             LinkedList<Lot> Depot(string uuid)
@@ -70,12 +72,13 @@ public static class FifoLedger
                     Consume(Depot(portfolio), shares, target: Depot(t.OtherPortfolio ?? ""));
             }
 
-            var currency = isinCurrency.GetValueOrDefault(isin, "EUR");
-            foreach (var (uuid, queue) in depots)
+            var currency = uuidCurrency.GetValueOrDefault(uuid, "EUR");
+            foreach (var (depotUuid, queue) in depots)
                 foreach (var lot in queue)
                     lots.Add(new OpenLot
                     {
-                        PortfolioUuid = uuid,
+                        PortfolioUuid = depotUuid,
+                        SecurityUuid = uuid,
                         Isin = isin,
                         Acquired = lot.Acquired,
                         Shares = lot.Shares,

@@ -141,7 +141,7 @@ public class PortfolioService
         var exclude = new HashSet<string>(excludeIsins, StringComparer.Ordinal);
         var rows = await db.PpSecurities
             .AsNoTracking()
-            .Where(s => s.SourceId == project.SourceId)
+            .Where(s => s.SourceId == project.SourceId && s.Isin != "")   // adding non-held is ISIN-keyed
             .OrderBy(s => s.Name)
             .ToListAsync(ct);
 
@@ -179,7 +179,7 @@ public class PortfolioService
         if (ppUuids.Count == 0) return empty;
 
         var lots = await db.PpLots.AsNoTracking()
-            .Where(l => l.SourceId == project.SourceId && ppUuids.Contains(l.PortfolioUuid))
+            .Where(l => l.SourceId == project.SourceId && l.Isin != "" && ppUuids.Contains(l.PortfolioUuid))
             .ToListAsync(ct);
 
         return lots

@@ -21,8 +21,12 @@ public class PpSecurity
 
     public int SourceId { get; set; }
 
-    /// <summary>ISIN of the security; the join key to <see cref="Holding.Isin"/> and
-    /// <see cref="SecurityTaxonomy.Isin"/>.</summary>
+    /// <summary>PortfolioPerformance security UUID — stable identity for every instrument, including
+    /// the ISIN-less ones (crypto, real estate) that join to MoneyMoney via a manual mapping.</summary>
+    public string Uuid { get; set; } = "";
+
+    /// <summary>ISIN of the security, or empty for ISIN-less instruments (crypto, real estate). The
+    /// join key to <see cref="Holding.Isin"/> / <see cref="SecurityTaxonomy.Isin"/> when present.</summary>
     public string Isin { get; set; } = "";
 
     /// <summary>Display name, e.g. "Vanguard FTSE All-World UCITS ETF".</summary>

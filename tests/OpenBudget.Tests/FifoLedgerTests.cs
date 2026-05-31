@@ -105,6 +105,30 @@ public class FifoLedgerTests
     }
 
     [Fact]
+    public void Reconstructs_lots_for_an_isin_less_instrument_keyed_by_uuid()
+    {
+        var c = new PClient();
+        c.Securities.Add(new PSecurity { Uuid = "gold", Name = "Gold" }); // no ISIN
+        var dt = DateTime.SpecifyKind(DateTime.Parse("2021-01-01", CultureInfo.InvariantCulture), DateTimeKind.Utc);
+        c.Transactions.Add(new PTransaction
+        {
+            Type = PType.Purchase,
+            Security = "gold",
+            CurrencyCode = "EUR",
+            Portfolio = "vault",
+            Date = Timestamp.FromDateTime(dt),
+            Shares = (long)(2m * 100_000_000m),
+            Amount = (long)(60000m * 100m)
+        });
+
+        var lot = Assert.Single(FifoLedger.BuildOpenLots(c));
+        Assert.Equal("gold", lot.SecurityUuid);
+        Assert.Equal("", lot.Isin);                 // ISIN-less, joined to MoneyMoney by mapping later
+        Assert.Equal(2m, lot.Shares);
+        Assert.Equal(60000m, lot.Cost);
+    }
+
+    [Fact]
     public void Inbound_delivery_opens_a_lot_and_a_full_sale_closes_everything()
     {
         var client = ClientWith(

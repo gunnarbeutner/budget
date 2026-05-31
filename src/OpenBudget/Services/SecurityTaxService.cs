@@ -22,7 +22,7 @@ public class SecurityTaxService
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var lotIsins = await db.PpLots.AsNoTracking()
-            .Where(l => l.SourceId == sourceId).Select(l => l.Isin).Distinct().ToListAsync(ct);
+            .Where(l => l.SourceId == sourceId && l.Isin != "").Select(l => l.Isin).Distinct().ToListAsync(ct);
         if (lotIsins.Count == 0) return new List<SecurityTaxRow>();
 
         var names = await db.PpSecurities.AsNoTracking()

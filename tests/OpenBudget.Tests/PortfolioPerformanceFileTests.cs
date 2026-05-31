@@ -74,25 +74,31 @@ public class PortfolioPerformanceFileTests
     }
 
     [Fact]
-    public void ExtractSecurities_keeps_only_isin_bearing_securities()
+    public void ExtractSecurities_catalogues_every_uuid_bearing_security_isin_or_not()
     {
         var securities = PortfolioPerformanceFile.ExtractSecurities(SampleClient(), sourceId: 7);
 
-        // The gold security has no ISIN and is dropped; only the ETF is catalogued.
-        var sec = Assert.Single(securities);
-        Assert.Equal(7, sec.SourceId);
-        Assert.Equal("IE000WORLD0", sec.Isin);
-        Assert.Equal("World ETF", sec.Name);
+        Assert.Equal(2, securities.Count);
+        var etf = securities.Single(s => s.Uuid == "sec-etf");
+        Assert.Equal(7, etf.SourceId);
+        Assert.Equal("IE000WORLD0", etf.Isin);
+        Assert.Equal("World ETF", etf.Name);
+        // The ISIN-less gold is catalogued too, with an empty ISIN — it maps to MoneyMoney by hand.
+        var gold = securities.Single(s => s.Uuid == "sec-gold");
+        Assert.Equal("", gold.Isin);
+        Assert.Equal("Gold", gold.Name);
     }
 
     [Fact]
-    public void ExtractSecurities_falls_back_to_isin_when_the_name_is_missing()
+    public void ExtractSecurities_falls_back_to_isin_then_uuid_when_the_name_is_missing()
     {
         var client = new PClient();
-        client.Securities.Add(new PSecurity { Uuid = "u", Isin = "IE00NONAME0" }); // no Name
+        client.Securities.Add(new PSecurity { Uuid = "u1", Isin = "IE00NONAME0" });  // no Name → ISIN
+        client.Securities.Add(new PSecurity { Uuid = "u2" });                        // no Name, no ISIN → uuid
 
-        var sec = Assert.Single(PortfolioPerformanceFile.ExtractSecurities(client, sourceId: 1));
-        Assert.Equal("IE00NONAME0", sec.Name);
+        var got = PortfolioPerformanceFile.ExtractSecurities(client, sourceId: 1);
+        Assert.Equal("IE00NONAME0", got.Single(s => s.Uuid == "u1").Name);
+        Assert.Equal("u2", got.Single(s => s.Uuid == "u2").Name);
     }
 
     [Fact]

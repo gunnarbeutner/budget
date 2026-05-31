@@ -12,7 +12,11 @@ public class OpenLot
     /// FIFO is per depot per security, and a transfer moves a lot here keeping its acquisition date.</summary>
     public string PortfolioUuid { get; init; } = "";
 
-    /// <summary>ISIN of the security this lot belongs to.</summary>
+    /// <summary>PortfolioPerformance security UUID — the stable identity for every instrument,
+    /// including ISIN-less ones (crypto, real estate).</summary>
+    public string SecurityUuid { get; init; } = "";
+
+    /// <summary>ISIN of the security, or empty for ISIN-less instruments (crypto, real estate).</summary>
     public string Isin { get; init; } = "";
 
     /// <summary>Acquisition date — the trade date of the buy/inbound that opened the lot. A lot

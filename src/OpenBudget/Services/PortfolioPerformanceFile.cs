@@ -88,27 +88,27 @@ public static class PortfolioPerformanceFile
     }
 
     /// <summary>
-    /// The ISIN-bearing securities catalogued in the file, as <see cref="PpSecurity"/> rows for the
-    /// given source. ISIN-less securities (e.g. crypto) are skipped — the ISIN is the join key to
-    /// holdings and taxonomy, so a catalogue entry without one couldn't be matched up. A duplicate
-    /// ISIN (never seen in practice) degrades to last-wins rather than producing two rows.
+    /// Every catalogued security as a <see cref="PpSecurity"/> row for the given source, keyed by
+    /// uuid — including the ISIN-less instruments (crypto, real estate) that join to MoneyMoney by a
+    /// manual mapping rather than by ISIN. A security with neither uuid nor a usable name is skipped.
     /// </summary>
     public static List<PpSecurity> ExtractSecurities(PClient client, int sourceId)
     {
-        var byIsin = new Dictionary<string, PpSecurity>(StringComparer.Ordinal);
+        var byUuid = new Dictionary<string, PpSecurity>(StringComparer.Ordinal);
         foreach (var s in client.Securities)
         {
-            if (string.IsNullOrEmpty(s.Isin)) continue;
-            byIsin[s.Isin] = new PpSecurity
+            if (string.IsNullOrEmpty(s.Uuid)) continue;
+            byUuid[s.Uuid] = new PpSecurity
             {
                 SourceId = sourceId,
-                Isin = s.Isin,
-                Name = string.IsNullOrEmpty(s.Name) ? s.Isin : s.Name,
+                Uuid = s.Uuid,
+                Isin = s.Isin ?? "",
+                Name = string.IsNullOrEmpty(s.Name) ? (string.IsNullOrEmpty(s.Isin) ? s.Uuid : s.Isin) : s.Name,
                 TickerSymbol = string.IsNullOrEmpty(s.TickerSymbol) ? null : s.TickerSymbol,
                 Wkn = string.IsNullOrEmpty(s.Wkn) ? null : s.Wkn
             };
         }
-        return byIsin.Values.ToList();
+        return byUuid.Values.ToList();
     }
 
     /// <summary>
