@@ -106,4 +106,6 @@
   <data name="Tax_Excluded" xml:space="preserve"><value>{0} Verkaufsposition(en) ohne Lot-Daten ausgeschlossen</value></data>
   <data name="Col_Fixed" xml:space="preserve"><value>Fest (€)</value></data>
   <data name="Fixed_Placeholder" xml:space="preserve"><value>auto</value></data>
+  <data name="Exempt_Label" xml:space="preserve"><value>ausgenommen</value></data>
+  <data name="Exempt_Tooltip" xml:space="preserve"><value>Diese Position aus dem Taxonomie-Ausgleich ausnehmen — nur der Rest des Portfolios trifft die Zielaufteilung.</value></data>
 </root>

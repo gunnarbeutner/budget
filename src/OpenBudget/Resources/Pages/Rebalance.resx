@@ -106,4 +106,6 @@
   <data name="Tax_Excluded" xml:space="preserve"><value>{0} sold position(s) without lot data excluded</value></data>
   <data name="Col_Fixed" xml:space="preserve"><value>Fixed (€)</value></data>
   <data name="Fixed_Placeholder" xml:space="preserve"><value>auto</value></data>
+  <data name="Exempt_Label" xml:space="preserve"><value>exempt</value></data>
+  <data name="Exempt_Tooltip" xml:space="preserve"><value>Exclude this holding from the taxonomy balance — only the rest of the portfolio matches the target split.</value></data>
 </root>

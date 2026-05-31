@@ -213,12 +213,20 @@ else
                         @if (RegionMode)
                         {
                             @* Optional fixed € target — pins this security so the solver forces the
-                               value (a specific sale/buy) and fits the rest to the taxonomy. Blank = auto. *@
+                               value (a specific sale/buy) and fits the rest to the taxonomy. Blank = auto.
+                               "Exempt" then drops it from the balance so only the rest matches the split. *@
                             <td class="text-end d-print-none">
                                 <input type="number" step="1000" min="0" class="form-control form-control-sm text-end"
                                        disabled="@(!included)" placeholder="@L["Fixed_Placeholder"]"
                                        value="@(regionPins.TryGetValue(s.Key, out var pin) ? FormatNum(pin) : "")"
                                        @onchange="e => OnRegionPinChanged(s.Key, e.Value)" />
+                                <div class="form-check form-check-reverse mt-1">
+                                    <input type="checkbox" class="form-check-input" id="@($"exempt-{s.Key}")"
+                                           checked="@regionExempt.Contains(s.Key)" disabled="@(!included)"
+                                           @onchange="() => ToggleRegionExempt(s.Key)" />
+                                    <label class="form-check-label small text-body-secondary" for="@($"exempt-{s.Key}")"
+                                           title="@L["Exempt_Tooltip"]">@L["Exempt_Label"]</label>
+                                </div>
                             </td>
                         }
                         <td class="text-end">
@@ -366,6 +374,7 @@ else
     private List<string> regionList = new();
     private Dictionary<string, decimal> regionTargets = new(StringComparer.Ordinal);                  // class -> percent
     private readonly Dictionary<string, decimal> regionPins = new(StringComparer.Ordinal);            // key -> fixed € target (taxonomy mode)
+    private readonly HashSet<string> regionExempt = new(StringComparer.Ordinal);                      // keys excluded from the taxonomy balance
     private Dictionary<string, Dictionary<string, decimal>> securityWeights = new(StringComparer.Ordinal); // isin -> class -> fraction
     private static readonly Dictionary<string, decimal> EmptyWeights = new(StringComparer.Ordinal);
     private const string UnclassifiedLabel = "Unclassified";
@@ -417,6 +426,7 @@ else
         selected.Clear();
         noBuy.Clear();
         regionPins.Clear();
+        regionExempt.Clear();
         targets = new Dictionary<string, decimal>(StringComparer.Ordinal);
         foreach (var s in securities)
         {
@@ -541,6 +551,7 @@ else
         noBuy.Remove(key);
         targets.Remove(key);
         regionPins.Remove(key);
+        regionExempt.Remove(key);
         if (RegionMode) await LoadRegionWeightsAsync(preserveTargets: true);
     }
 
@@ -685,13 +696,41 @@ else
         // (otherwise it churns between look-through-identical securities like Acc/Dist share classes).
         var current = sel.Select(s => pool > 0m ? (double)(s.Value / pool) : 0.0).ToList();
 
-        var f = RebalanceSolver.Solve(vectors, tgt, upper, anyPin ? lower : null, current);
+        // Exempt securities are pinned but excluded from the region balance: the rest of the
+        // portfolio should hit the target on its own. Excluding a security from a Σf·w − target
+        // objective is the same as zeroing its weight vector and folding the target into the others'
+        // (vᵢ = wᵢ − target), matched against a zero target. No exemptions ⇒ the original call.
+        bool anyExempt = sel.Any(s => regionExempt.Contains(s.Key));
+        double[] f;
+        if (!anyExempt)
+        {
+            f = RebalanceSolver.Solve(vectors, tgt, upper, anyPin ? lower : null, current);
+        }
+        else
+        {
+            var objVectors = sel
+                .Select((s, i) => regionExempt.Contains(s.Key)
+                    ? new double[regionList.Count]
+                    : vectors[i].Select((w, k) => w - tgt[k]).ToArray())
+                .ToList();
+            f = RebalanceSolver.Solve(objVectors, new double[regionList.Count], upper, anyPin ? lower : null, current);
+        }
 
+        // Achieved mix: over the whole portfolio normally, but over just the non-exempt part when
+        // some securities are exempt (that's the slice the target actually constrains).
         var achieved = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        double objTotal = anyExempt
+            ? Enumerable.Range(0, sel.Count).Where(i => !regionExempt.Contains(sel[i].Key)).Sum(i => f[i])
+            : 1.0;
         for (int k = 0; k < regionList.Count; k++)
         {
             double a = 0;
-            for (int i = 0; i < sel.Count; i++) a += f[i] * vectors[i][k];
+            for (int i = 0; i < sel.Count; i++)
+            {
+                if (anyExempt && regionExempt.Contains(sel[i].Key)) continue;
+                a += f[i] * vectors[i][k];
+            }
+            if (anyExempt && objTotal > 0) a /= objTotal;   // normalise to the constrained slice
             achieved[regionList[k]] = decimal.Round((decimal)a * 100m, 1);
         }
         return (sel, f, achieved);
@@ -704,6 +743,11 @@ else
     {
         if (string.IsNullOrWhiteSpace(value?.ToString())) regionPins.Remove(key);
         else regionPins[key] = ParseNum(value);
+    }
+
+    private void ToggleRegionExempt(string key)
+    {
+        if (!regionExempt.Remove(key)) regionExempt.Add(key);
     }
 
     // <input type="number"> posts its value in invariant form (decimal point), regardless of UI culture.

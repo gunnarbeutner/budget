@@ -117,6 +117,26 @@ public class RebalanceSolverTests
     }
 
     [Fact]
+    public void An_exempt_security_is_ignored_by_the_fit_while_the_rest_hit_the_target()
+    {
+        // Exemption is modelled by zeroing the exempt security's objective vector and folding the
+        // 50/50 target into the others (wᵢ − target) against a zero target. E is pinned to 0.5 and
+        // ignored; A (region 0) and B (region 1) split the remaining 0.5 evenly to hit 50/50.
+        var target = new[] { 0.5, 0.5 };
+        var a = new[] { 1.0 - target[0], 0.0 - target[1] };
+        var b = new[] { 0.0 - target[0], 1.0 - target[1] };
+        var e = new[] { 0.0, 0.0 };   // exempt → zero objective vector
+
+        var f = RebalanceSolver.Solve(
+            new[] { a, b, e }, new[] { 0.0, 0.0 },
+            upperBounds: new[] { 1.0, 1.0, 0.5 }, lowerBounds: new[] { 0.0, 0.0, 0.5 });
+
+        Assert.Equal(0.5, f[2], precision: 3);   // pinned + ignored
+        Assert.Equal(0.25, f[0], precision: 2);  // the rest balance to the target among themselves
+        Assert.Equal(0.25, f[1], precision: 2);
+    }
+
+    [Fact]
     public void Turnover_penalty_avoids_churn_between_identical_securities()
     {
         // Two share classes of the same fund: identical region vectors, so the region objective is
