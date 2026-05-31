@@ -20,6 +20,7 @@ builder.Services.AddScoped<TransactionQueryService>();
 builder.Services.AddScoped<BrowseService>();
 builder.Services.AddScoped<PortfolioService>();
 builder.Services.AddScoped<DepotMappingService>();
+builder.Services.AddScoped<SecurityTaxService>();
 builder.Services.AddScoped<ProjectTimeState>();
 builder.Services.AddSingleton<MoneyMoneyImportService>();
 builder.Services.AddSingleton<PortfolioPerformanceImportService>();

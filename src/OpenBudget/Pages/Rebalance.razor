@@ -5,6 +5,7 @@
 @using OpenBudget.Models
 @inject PortfolioService Portfolio
 @inject ProjectService ProjectService
+@inject SecurityTaxService SecurityTax
 @inject IStringLocalizer<Rebalance> L
 
 <PageTitle>@(projectName != null ? L["PageTitle_WithProject", projectName] : L["PageTitle"])</PageTitle>
@@ -326,8 +327,9 @@ else
     private string addQuery = "";
     // FIFO tax lots for the project's linked depots, by ISIN — drives the realised-gain estimate.
     private Dictionary<string, List<OpenLot>> taxLots = new(StringComparer.Ordinal);
-    // Default Teilfreistellung for an equity fund; a per-security override comes later.
-    private const decimal DefaultTeilfreistellung = 0.30m;
+    // Per-security Teilfreistellung overrides (ISIN → rate); the rest use the equity-fund default.
+    private Dictionary<string, decimal> teilfreistellungRates = new(StringComparer.Ordinal);
+    private const decimal DefaultTeilfreistellung = SecurityTaxService.DefaultTeilfreistellungBp / 10000m;
     private readonly HashSet<string> selected = new(StringComparer.Ordinal);
     // Securities the rebalance may hold or sell but not buy more of (e.g. distributing ETFs).
     private readonly HashSet<string> noBuy = new(StringComparer.Ordinal);
@@ -385,6 +387,7 @@ else
         var heldIsins = securities.Where(s => !string.IsNullOrEmpty(s.Isin)).Select(s => s.Isin!).ToList();
         addable = await Portfolio.GetAddableSecuritiesAsync(ProjectId, heldIsins);
         taxLots = await Portfolio.GetProjectLotsAsync(ProjectId);
+        teilfreistellungRates = await SecurityTax.GetRatesAsync(sourceId);
         targetBy = "ratio";
         regionList = new List<string>();
         regionTargets = new Dictionary<string, decimal>(StringComparer.Ordinal);
@@ -540,7 +543,8 @@ else
                 uncovered++;
                 continue;
             }
-            var rg = TaxMath.RealizeSale(lots, -r.Delta / price, price, today, TaxAssetKind.Security, DefaultTeilfreistellung);
+            var rate = teilfreistellungRates.GetValueOrDefault(isin, DefaultTeilfreistellung);
+            var rg = TaxMath.RealizeSale(lots, -r.Delta / price, price, today, TaxAssetKind.Security, rate);
             gross += rg.GrossGain;
             taxable += rg.TaxableGain;
             covered++;

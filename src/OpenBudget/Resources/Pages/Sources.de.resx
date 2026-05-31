@@ -106,6 +106,9 @@
   <data name="Button_Depots" xml:space="preserve">
     <value>Depots</value>
   </data>
+  <data name="Button_Tax" xml:space="preserve">
+    <value>Steuer</value>
+  </data>
   <data name="Button_Cancel" xml:space="preserve">
     <value>Abbrechen</value>
   </data>

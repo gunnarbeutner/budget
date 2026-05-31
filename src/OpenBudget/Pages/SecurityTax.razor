@@ -1,0 +1,99 @@
+@page "/sources/{SourceId:int}/tax"
+@inherits DataChangeAwareComponent
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject SecurityTaxService TaxService
+@inject ProjectService ProjectService
+@inject IStringLocalizer<SecurityTax> L
+
+<PageTitle>@(sourceName != null ? L["PageTitle_WithSource", sourceName] : L["PageTitle"])</PageTitle>
+
+<PageHeader Title="@L["Heading"]" />
+<p><a href="/sources"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a></p>
+
+@if (loading)
+{
+    <div class="skeleton skeleton-block" aria-busy="true"></div>
+}
+else if (notFound)
+{
+    <div class="alert alert-warning">@L["NotFound"]</div>
+}
+else if (rows.Count == 0)
+{
+    <div class="alert alert-info">@L["Empty"]</div>
+}
+else
+{
+    <p class="text-body-secondary">@L["Intro"]</p>
+    <table class="table table-sm align-middle">
+        <thead>
+            <tr>
+                <th>@L["Col_Security"]</th>
+                <th style="width: 16rem;">@L["Col_Teilfreistellung"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in rows)
+            {
+                <tr @key="r.Isin">
+                    <td>
+                        <div class="fw-semibold">@r.Name</div>
+                        <div class="text-body-secondary small">@r.Isin</div>
+                    </td>
+                    <td>
+                        <select class="form-select form-select-sm" value="@r.TeilfreistellungBp"
+                                @onchange="e => OnRateChanged(r.Isin, e.Value)">
+                            @foreach (var bp in Options)
+                            {
+                                <option value="@bp">@($"{bp / 100}%") — @L[$"Type_{bp}"]</option>
+                            }
+                        </select>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter] public int SourceId { get; set; }
+
+    // Teilfreistellung rates in basis points and the fund type each maps to.
+    private static readonly int[] Options = { 0, 1500, 3000, 6000, 8000 };
+
+    private List<SecurityTaxRow> rows = new();
+    private string? sourceName;
+    private bool loading = true;
+    private bool notFound;
+    private int _loadedSourceId = -1;
+
+    protected override bool IsRelevantChange(DataChange change) =>
+        change.Area is DataArea.MoneyMoneyData or DataArea.Sources && (change.SourceId == null || change.SourceId == SourceId);
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedSourceId == SourceId) return;
+        _loadedSourceId = SourceId;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        var sources = await ProjectService.GetAllSourcesAsync();
+        var source = sources.FirstOrDefault(s => s.Id == SourceId);
+        if (source == null) { notFound = true; loading = false; return; }
+        sourceName = source.Name;
+        rows = await TaxService.GetSettingsAsync(SourceId);
+        loading = false;
+    }
+
+    private async Task OnRateChanged(string isin, object? value)
+    {
+        if (!int.TryParse(value?.ToString(), out var bp)) return;
+        await TaxService.SetTeilfreistellungAsync(SourceId, isin, bp);
+        rows = await TaxService.GetSettingsAsync(SourceId);
+    }
+}
