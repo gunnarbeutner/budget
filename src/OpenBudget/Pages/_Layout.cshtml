@@ -24,6 +24,9 @@
     <meta name="apple-mobile-web-app-title" content="Budget" />
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
     <script src="js/theme.js" asp-append-version="true"></script>
+    @* Captures the browser's IANA timezone into the `tz` cookie before Blazor connects, so the
+       first interactive render already knows the user's zone (see ClockService / App.razor). *@
+    <script src="js/timezone.js" asp-append-version="true"></script>
     <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
     <link rel="stylesheet" href="css/bootstrap-icons/bootstrap-icons.min.css" />
     <link href="css/site.css" rel="stylesheet" asp-append-version="true" />

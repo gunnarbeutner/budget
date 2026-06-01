@@ -5,4 +5,4 @@
     Layout = "_Layout";
 }
 
-<component type="typeof(App)" render-mode="ServerPrerendered" />
+<component type="typeof(App)" render-mode="ServerPrerendered" param-TimeZoneId="@ViewContext.HttpContext.Request.Cookies["tz"]" />

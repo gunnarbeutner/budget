@@ -1,4 +1,6 @@
-﻿<Router AppAssembly="@typeof(App).Assembly">
+﻿@inject OpenBudget.Services.ClockService Clock
+
+<Router AppAssembly="@typeof(App).Assembly">
     <Found Context="routeData">
         <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
         <FocusOnNavigate RouteData="@routeData" Selector="h1" />
@@ -10,3 +12,12 @@
         </LayoutView>
     </NotFound>
 </Router>
+
+@code {
+    // The browser's IANA timezone, captured into the `tz` cookie by wwwroot/js/timezone.js and
+    // forwarded here from _Host.cshtml. Seeding it on the root component means ClockService is
+    // already correct before any page's OnInitialized runs.
+    [Parameter] public string? TimeZoneId { get; set; }
+
+    protected override void OnInitialized() => Clock.SetZone(TimeZoneId);
+}

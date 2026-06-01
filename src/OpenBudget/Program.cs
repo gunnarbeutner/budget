@@ -23,6 +23,9 @@ builder.Services.AddScoped<DepotMappingService>();
 builder.Services.AddScoped<SecurityTaxService>();
 builder.Services.AddScoped<InstrumentMappingService>();
 builder.Services.AddScoped<ProjectTimeState>();
+// Per-circuit holder for the browser's timezone (seeded from the tz cookie by App.razor) so all
+// pages render dates/times and "current period" decisions in the user's zone, not the server's.
+builder.Services.AddScoped<ClockService>();
 builder.Services.AddSingleton<MoneyMoneyImportService>();
 builder.Services.AddSingleton<PortfolioPerformanceImportService>();
 builder.Services.AddSingleton<ChangeNotificationService>();
