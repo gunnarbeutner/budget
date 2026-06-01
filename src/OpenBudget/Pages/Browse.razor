@@ -572,7 +572,7 @@
     private (int Year, int Month)? monthMin;
     private (int Year, int Month)? monthMax;
     private (int Year, int Month) EffectiveMin => monthMin ?? (1900, 1);
-    private (int Year, int Month) EffectiveMax => monthMax ?? (DateTime.Now.Year, DateTime.Now.Month);
+    private (int Year, int Month) EffectiveMax => monthMax ?? (Clock.NowLocal.Year, Clock.NowLocal.Month);
 
     // Guards the per-project load so it runs once on first render and again only when the
     // {ProjectId} route param changes — i.e. a client-side switch via the header's project
@@ -620,7 +620,7 @@
 
     private void ReadStateFromQuery()
     {
-        var now = DateTime.Now;
+        var now = Clock.NowLocal;
         // Seed from the remembered selection (survives a detour through Budgets/Cashflow),
         // falling back to the current month on a fresh session.
         anchor = (TimeState.Year ?? now.Year, TimeState.Month ?? now.Month);
@@ -1266,7 +1266,7 @@
         var isAccountDaily = selectionKind == "account" && chartGranularity == "D";
         if (isAccountDaily)
         {
-            var tomorrow = DateTime.UtcNow.Date.AddDays(1);
+            var tomorrow = Clock.Today.AddDays(1);
             if (tomorrow > queryEndExclusive) queryEndExclusive = tomorrow;
         }
         var raw = await TransactionQueries.GetRawByDateRangeAsync(

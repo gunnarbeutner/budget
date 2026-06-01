@@ -2,6 +2,7 @@
 @using OpenBudget.Services
 @inject IJSRuntime JS
 @inject IStringLocalizer<PeriodNav> L
+@inject ClockService Clock
 
 @* Shared sticky time-navigation strip: prev / next / today, with the current period as a
    heading in the middle. The single source of time-nav chrome across the app, so every view
@@ -150,12 +151,12 @@
     private (int Year, int Month) EffectiveMin => MinMonth ?? (1900, 1);
     private (int Year, int Month) EffectiveMax
     {
-        get { var now = DateTime.Now; return MaxMonth ?? (now.Year, now.Month); }
+        get { var now = Clock.NowLocal; return MaxMonth ?? (now.Year, now.Month); }
     }
     // Where the "Today" button lands: the real current month, clamped into the data window.
     private (int Year, int Month) TodayTarget
     {
-        get { var now = DateTime.Now; return Anchoring.Clamp((now.Year, now.Month), EffectiveMin, EffectiveMax); }
+        get { var now = Clock.NowLocal; return Anchoring.Clamp((now.Year, now.Month), EffectiveMin, EffectiveMax); }
     }
 
     private string MinMonthValue => $"{EffectiveMin.Year:D4}-{EffectiveMin.Month:D2}";
@@ -180,7 +181,7 @@
         ? AdjacentYear(1) is null
         : Anchoring.IsAtMax(Anchor, Period, EffectiveMax);
     private bool TodayDisabled => YearOnly
-        ? !(GetSortedYears().Contains(DateTime.Now.Year) && DateTime.Now.Year != Anchor.Year)
+        ? !(GetSortedYears().Contains(Clock.NowLocal.Year) && Clock.NowLocal.Year != Anchor.Year)
         : Anchor == TodayTarget;
 
     private async Task Step(int direction)
@@ -200,7 +201,7 @@
     {
         if (YearOnly)
         {
-            var now = DateTime.Now;
+            var now = Clock.NowLocal;
             if (GetSortedYears().Contains(now.Year) && now.Year != Anchor.Year)
                 await OnChanged.InvokeAsync((now.Year, 1, "year"));
             return;

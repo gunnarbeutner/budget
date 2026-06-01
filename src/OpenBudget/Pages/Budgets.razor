@@ -13,6 +13,7 @@
 @inject NavigationManager Navigation
 @inject IStringLocalizer<Budgets> L
 @inject ILogger<Budgets> Logger
+@inject ClockService Clock
 
 <PageTitle>@L["PageTitle"]@(projectName != null ? $" — {projectName}" : "")</PageTitle>
 
@@ -291,7 +292,9 @@
     private Budget? budgetPendingDelete;
     private int selectedProjectId = 0;
     private int selectedCompareBudgetId = 0;
-    private int selectedYear = DateTime.UtcNow.Year;
+    // Set from the browser's current year in ResetForProjectSwitch (which runs before the first
+    // render), since a field initializer can't reach the injected ClockService.
+    private int selectedYear;
     private List<int>? availableYears;
     private bool categoriesExpanded = false;
     private string? projectName;
@@ -400,7 +403,7 @@
         notFound = false;
         budgetPendingDelete = null;
         selectedCompareBudgetId = 0;
-        selectedYear = DateTime.UtcNow.Year;
+        selectedYear = Clock.NowLocal.Year;
         categoriesExpanded = false;
         expandedVarianceKeys = new();
         shadowSubcatsByGroup = new();
@@ -451,7 +454,7 @@
         // current year so the dropdown isn't empty when a project has no transactions yet.
         availableYears = await BudgetService.GetYearsWithTransactionsForProjectAsync(selectedProjectId);
         if (!availableYears.Any())
-            availableYears = new List<int> { DateTime.UtcNow.Year };
+            availableYears = new List<int> { Clock.NowLocal.Year };
         if (!availableYears.Contains(selectedYear))
             selectedYear = availableYears.First();
 

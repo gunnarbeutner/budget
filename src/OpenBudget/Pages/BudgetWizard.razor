@@ -254,7 +254,7 @@ else if (step == 3)
     [Parameter] public int ProjectId { get; set; }
 
     private int selectedProjectId;
-    private int selectedYear = DateTime.UtcNow.Year;
+    private int selectedYear;
     private string budgetName = "";
     private string notes = "";
     private int step = 1;
@@ -277,6 +277,7 @@ else if (step == 3)
         // non-numeric ids at routing, so an unknown project is the only failure left (404).
         // No free-floating project picker — the wizard is always entered for a known project.
         selectedProjectId = ProjectId;
+        selectedYear = Clock.NowLocal.Year;
 
         projects = await ProjectService.GetProjectsAsync();
         if (!projects.Any(p => p.Id == ProjectId))
@@ -416,7 +417,7 @@ else if (step == 3)
         // "Create another" stays on the same project (its href preserves projectId), so leave
         // selectedProjectId intact — zeroing it dropped the wizard into a project-less state.
         step = 1;
-        selectedYear = DateTime.UtcNow.Year;
+        selectedYear = Clock.NowLocal.Year;
         budgetName = "";
         notes = "";
         predictions = null;

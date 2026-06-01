@@ -6,6 +6,7 @@
 @inject PortfolioService Portfolio
 @inject ProjectService ProjectService
 @inject IStringLocalizer<Rebalance> L
+@inject ClockService Clock
 
 <PageTitle>@(projectName != null ? L["PageTitle_WithProject", projectName] : L["PageTitle"])</PageTitle>
 
@@ -564,7 +565,7 @@ else
     {
         decimal gross = 0m, taxable = 0m;
         int covered = 0, uncovered = 0;
-        var today = DateOnly.FromDateTime(DateTime.Today);
+        var today = DateOnly.FromDateTime(Clock.Today);
         foreach (var r in plan.Rows.Where(r => r.Delta < 0m))
         {
             var s = securities.FirstOrDefault(x => x.Key == r.Key);
