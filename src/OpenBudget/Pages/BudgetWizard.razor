@@ -11,6 +11,7 @@
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject NavigationManager Navigation
 @inject IStringLocalizer<BudgetWizard> L
+@inject ClockService Clock
 
 <PageTitle>@L["PageTitle"]</PageTitle>
 
@@ -49,7 +50,7 @@
 
             <div class="mb-3">
                 <label class="form-label" for="wizardBudgetName">@L["Form_NameLabel"]</label>
-                <input type="text" class="form-control" id="wizardBudgetName" @bind="budgetName" placeholder="@DateTime.UtcNow.ToString("yyyy-MM-dd")" />
+                <input type="text" class="form-control" id="wizardBudgetName" @bind="budgetName" placeholder="@Clock.Today.ToString("yyyy-MM-dd")" />
                 <small class="form-text text-body-secondary">@L["Form_NameHelp"]</small>
             </div>
 

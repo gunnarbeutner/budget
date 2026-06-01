@@ -14,6 +14,7 @@
 @inject IJSRuntime JS
 @inject ProjectTimeState TimeState
 @inject IStringLocalizer<Browse> L
+@inject ClockService Clock
 @inherits DataChangeAwareComponent
 
 <PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
@@ -391,7 +392,7 @@
                             @{ var inPeriod = IsInAnchorPeriod(row.Date); }
                             <div class="tx-row @(inPeriod ? "in-period" : "")">
                                 <div class="tx-date-col">
-                                    <div class="tx-date">@row.Date.ToString("dd.MM.yyyy")</div>
+                                    <div class="tx-date">@Clock.ToLocal(row.Date).ToString("dd.MM.yyyy")</div>
                                     @if (showCategoryColumn && !string.IsNullOrEmpty(row.CategoryName))
                                     {
                                         <div class="tx-badges">

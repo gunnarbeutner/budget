@@ -7,6 +7,7 @@
 @inject IDbContextFactory<BudgetDbContext> DbFactory
 @inject ChangeNotificationService Notifier
 @inject IStringLocalizer<Sources> L
+@inject ClockService Clock
 @using Microsoft.EntityFrameworkCore
 
 <PageTitle>@L["PageTitle"]</PageTitle>
@@ -48,11 +49,11 @@ else
             {
                 <tr>
                     <td><strong>@s.Name</strong></td>
-                    <td><span title="@s.CreatedAt.ToString("u")">@s.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</span></td>
+                    <td><span title="@s.CreatedAt.ToString("u")">@Clock.ToLocal(s.CreatedAt).ToString("yyyy-MM-dd")</span></td>
                     <td>
                         @if (s.LastUploadAt.HasValue)
                         {
-                            <span title="@s.LastUploadAt.Value.ToString("u")">@s.LastUploadAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span>
+                            <span title="@s.LastUploadAt.Value.ToString("u")">@Clock.ToLocal(s.LastUploadAt.Value).ToString("yyyy-MM-dd HH:mm")</span>
                         }
                         else
                         {

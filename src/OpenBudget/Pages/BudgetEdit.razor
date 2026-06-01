@@ -12,6 +12,7 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject IStringLocalizer<BudgetEdit> L
+@inject ClockService Clock
 
 <PageTitle>@(budget != null ? L["PageTitle_WithName", budget.Project?.Name ?? "", budget.Name ?? ""] : L["PageTitle"])</PageTitle>
 
@@ -46,7 +47,7 @@
 <ProjectPageHeader ProjectId="@budget.ProjectId"
                    ProjectName="@(budget.Project?.Name ?? "")"
                    Active="ProjectTab.Budgets"
-                   Subtitle="@(budget.LastModifiedAt.HasValue ? L["Header_LastModified", budget.LastModifiedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")].Value : null)">
+                   Subtitle="@(budget.LastModifiedAt.HasValue ? L["Header_LastModified", Clock.ToLocal(budget.LastModifiedAt.Value).ToString("yyyy-MM-dd HH:mm")].Value : null)">
     <TitleSuffix>· @budget.Name</TitleSuffix>
 </ProjectPageHeader>
 

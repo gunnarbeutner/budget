@@ -1,6 +1,7 @@
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject IStringLocalizer<ProjectAccountsCard> L
+@inject ClockService Clock
 
 @* Project-settings panel: MoneyMoney accounts funding this project, their scope (Shared vs
    Exclusive), refresh freshness, and an Add dialog backed by a grouped TreePicker.
@@ -61,7 +62,7 @@
                                                 var refreshClass = refreshAge.Value.TotalDays > 7 ? "text-danger fw-semibold"
                                                     : refreshAge.Value.TotalHours > 36 ? "text-warning fw-semibold"
                                                     : "text-body-secondary";
-                                                <span class="small @refreshClass" title="@(lastRefresh!.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))">@Formatting.FormatRelativeAge(refreshAge.Value, L)</span>
+                                                <span class="small @refreshClass" title="@(Clock.ToLocal(lastRefresh!.Value).ToString("yyyy-MM-dd HH:mm"))">@Formatting.FormatRelativeAge(refreshAge.Value, L)</span>
                                             }
                                             else
                                             {

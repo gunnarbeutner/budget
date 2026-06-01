@@ -9,6 +9,7 @@
 @inject NavigationManager Navigation
 @inject ProjectTimeState TimeState
 @inject IStringLocalizer<ProjectOverview> L
+@inject ClockService Clock
 
 @* The project's landing tab: the at-a-glance summary that used to be crammed into a
    dashboard card, now given the full content column and always fully expanded. Owns the
@@ -333,6 +334,6 @@ else
 
         var freshness = (await FreshnessService.GetDataFreshnessAsync()).ToDictionary(f => f.SourceId);
         var uncategorized = await FreshnessService.GetUncategorizedTransactionSummaryAsync();
-        alert = ProjectStatus.BuildAlert(summary, freshness, uncategorized, L, DateTime.UtcNow);
+        alert = ProjectStatus.BuildAlert(summary, freshness, uncategorized, L, Clock.UtcNow, Clock.Zone);
     }
 }

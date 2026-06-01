@@ -41,7 +41,8 @@ public static class ProjectStatus
         IReadOnlyDictionary<int, DataFreshness> freshnessBySourceId,
         IReadOnlyDictionary<int, UncategorizedSummary>? uncategorized,
         IStringLocalizer L,
-        DateTime nowUtc)
+        DateTime nowUtc,
+        TimeZoneInfo zone)
     {
         var lines = new List<string>();
         string severity = "secondary";
@@ -61,7 +62,7 @@ public static class ProjectStatus
             {
                 string ageLabel = age.HasValue ? Formatting.FormatRelativeAge(age.Value, L) : L["Freshness_Unknown"];
                 var uploadedExtra = f.DbUploadedUtc.HasValue
-                    ? $" ({f.DbUploadedUtc.Value.ToLocalTime():yyyy-MM-dd HH:mm})"
+                    ? $" ({TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(f.DbUploadedUtc.Value, DateTimeKind.Utc), zone):yyyy-MM-dd HH:mm})"
                     : "";
                 lines.Add($"{L["Freshness_Uploaded"]} {ageLabel}{uploadedExtra}.");
                 severity = freshSev;
