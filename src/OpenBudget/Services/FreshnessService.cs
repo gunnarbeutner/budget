@@ -76,8 +76,7 @@ public class FreshnessService
             var query = db.Transactions
                 .Where(t => t.SourceId == sourceId)
                 .Where(t => t.Splitted != 1)
-                .Where(t => t.CategoryId == null
-                    || !db.Categories.Any(c => c.SourceId == sourceId && c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)));
+                .WhereUncategorized(db, sourceId);
 
             var count = await query.CountAsync();
             var absSumCents = count == 0 ? 0L : await query.SumAsync(t => Math.Abs(t.Amount));

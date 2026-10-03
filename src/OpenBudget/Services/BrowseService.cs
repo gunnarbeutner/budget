@@ -339,6 +339,12 @@ public class BrowseService
             }
         }
 
+        var uncategorizedCount = await db.Transactions
+            .Where(t => t.SourceId == project.SourceId)
+            .Where(t => t.Splitted != 1)
+            .WhereUncategorized(db, project.SourceId)
+            .CountAsync(ct);
+
         return new BrowseTree
         {
             ProjectId = projectId,
@@ -346,7 +352,8 @@ public class BrowseService
             FromMonth = fromMonth,
             ToMonth = toMonth,
             Accounts = accountNodes,
-            Categories = categoryNodes
+            Categories = categoryNodes,
+            UncategorizedCount = uncategorizedCount
         };
     }
 }

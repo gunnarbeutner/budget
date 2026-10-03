@@ -73,6 +73,7 @@
                             OnSelectAll="SelectAll"
                             OnSelectAccount="SelectAccount"
                             OnSelectPortfolio="SelectPortfolio"
+                            OnSelectUncategorized="SelectUncategorized"
                             OnSelectCategory="SelectCategoryNode" />
         }
     </aside>
@@ -128,6 +129,15 @@
                                         @AnchorHeading: <span class="@(SelectionAccountPeriodSum < 0 ? "text-danger" : "text-success")">
                                             @Formatting.FormatMoney(SelectionAccountPeriodSum, SelectionAccountCurrency ?? "EUR")
                                         </span>
+                                    </div>
+                                }
+                                else if (selectionKind == "uncategorized")
+                                {
+                                    @* No budget or period semantics here: just the net sum of the
+                                       uncategorized rows the list below shows. *@
+                                    var uncatSum = txTotals?.Sum ?? 0m;
+                                    <div class="h4 mb-0 @(uncatSum < 0 ? "text-danger" : "text-success")">
+                                        @Formatting.FormatMoney(uncatSum)
                                     </div>
                                 }
                                 else if (selectionKind == "portfolio" && holdings is { } ph)
@@ -654,6 +664,10 @@
             {
                 selectionKind = "account"; selectionId = aid;
             }
+            else if (raw == "uncategorized")
+            {
+                selectionKind = "uncategorized"; selectionId = null;
+            }
             else if (raw == "securities")
             {
                 selectionKind = "portfolio"; selectionId = null;
@@ -700,6 +714,7 @@
             "group" => $"grp-{selectionId}",
             "account" => $"acct-{selectionId}",
             "portfolio" => "securities",
+            "uncategorized" => "uncategorized",
             _ => null
         },
         ["acct"] = accountFilter?.ToString(),
@@ -795,6 +810,15 @@
         await ReloadTransactionsAsync();
     }
 
+    private async Task SelectUncategorized()
+    {
+        selectionKind = "uncategorized"; selectionId = null;
+        CoerceChartGranularityForSelection();
+        railOpen = false;
+        UpdateUrl();
+        await ReloadTransactionsAsync();
+    }
+
     private async Task SelectCategoryNode(BrowseCategoryNode n)
     {
         selectionKind = n.ItemType == CategoryItemType.Category ? "category" : "group";
@@ -870,6 +894,7 @@
     private async Task<TransactionQuery> BuildTransactionQueryAsync(int skip = 0, int take = 50) => new()
     {
         SourceId = project!.SourceId,
+        UncategorizedOnly = selectionKind == "uncategorized",
         CategoryLeafIds = await ResolveSelectionLeavesAsync(),
         AccountIds = ResolveSelectionAccounts(),
         SearchText = string.IsNullOrWhiteSpace(searchEffective) ? null : searchEffective,
@@ -1055,6 +1080,8 @@
                 return tree.Accounts.FirstOrDefault(a => a.Id == aid)?.Name ?? "";
             if (selectionKind == "portfolio")
                 return L["Header_AllSecurities"];
+            if (selectionKind == "uncategorized")
+                return L["Header_Uncategorized"];
             if ((selectionKind == "category" || selectionKind == "group") && selectionId is { } cid && tree != null)
                 return FindCategoryNode(tree.Categories, cid, selectionKind == "category" ? CategoryItemType.Category : CategoryItemType.Group)?.Name ?? "";
             return L["Header_AllTransactions"];

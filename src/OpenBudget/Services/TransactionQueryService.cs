@@ -133,7 +133,11 @@ public class TransactionQueryService
             baseQuery = baseQuery.WithinUtc(range);
         }
 
-        if (query.CategoryLeafIds is { Count: > 0 } leafIds)
+        if (query.UncategorizedOnly)
+        {
+            baseQuery = baseQuery.WhereUncategorized(db, query.SourceId);
+        }
+        else if (query.CategoryLeafIds is { Count: > 0 } leafIds)
         {
             var leafList = leafIds.ToList();
             baseQuery = baseQuery.Where(t => t.CategoryId.HasValue && leafList.Contains(t.CategoryId.Value));

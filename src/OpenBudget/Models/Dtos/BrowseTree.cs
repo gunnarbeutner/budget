@@ -15,6 +15,8 @@ public class BrowseTree
     public int ToMonth { get; init; }
     public List<BrowseAccountNode> Accounts { get; init; } = new();
     public List<BrowseCategoryNode> Categories { get; init; } = new();
+    /// <summary>All-time count of the source's uncategorized transactions (split parents excluded).</summary>
+    public int UncategorizedCount { get; init; }
 }
 
 public class BrowseAccountNode

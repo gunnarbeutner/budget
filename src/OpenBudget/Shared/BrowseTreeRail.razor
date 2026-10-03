@@ -21,6 +21,20 @@
         </span>
     </div>
 
+    @if (Tree.UncategorizedCount > 0 || SelectionKind == "uncategorized")
+    {
+        bool uncatSelected = SelectionKind == "uncategorized";
+        <div class="browse-tree-row @(uncatSelected ? "selected" : "")"
+             role="treeitem" tabindex="0" aria-selected="@uncatSelected.ToString().ToLower()"
+             @onclick="() => OnSelectUncategorized.InvokeAsync()"
+             @onkeydown="OnUncategorizedKeydown">
+            <span class="browse-tree-name fw-semibold">
+                <i class="bi bi-question-circle me-1" aria-hidden="true"></i>@L["Tree_Uncategorized"]
+            </span>
+            <span class="browse-tree-amount text-body-secondary">@Tree.UncategorizedCount</span>
+        </div>
+    }
+
     @if (Tree.Accounts.Count > 0)
     {
         var visibleAccounts = ShowRelatedAccounts
@@ -89,6 +103,7 @@
     [Parameter] public EventCallback OnSelectAll { get; set; }
     [Parameter] public EventCallback<long> OnSelectAccount { get; set; }
     [Parameter] public EventCallback OnSelectPortfolio { get; set; }
+    [Parameter] public EventCallback OnSelectUncategorized { get; set; }
     [Parameter] public EventCallback<BrowseCategoryNode> OnSelectCategory { get; set; }
 
     private async Task OnAllKeydown(KeyboardEventArgs e)
@@ -99,6 +114,11 @@
     private async Task OnAccountKeydown(KeyboardEventArgs e, long id)
     {
         if (e.Key == "Enter" || e.Key == " ") await OnSelectAccount.InvokeAsync(id);
+    }
+
+    private async Task OnUncategorizedKeydown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == " ") await OnSelectUncategorized.InvokeAsync();
     }
 
     private async Task OnPortfolioKeydown(KeyboardEventArgs e)

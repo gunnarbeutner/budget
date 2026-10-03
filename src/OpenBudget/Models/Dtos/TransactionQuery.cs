@@ -15,6 +15,11 @@ public class TransactionQuery
     public int SourceId { get; init; }
     public IReadOnlyCollection<long>? CategoryLeafIds { get; init; }
     public IReadOnlyCollection<long>? AccountIds { get; init; }
+    /// <summary>
+    /// Only uncategorized transactions (no category, or MoneyMoney's empty-named sentinel).
+    /// Takes precedence over <see cref="CategoryLeafIds"/>.
+    /// </summary>
+    public bool UncategorizedOnly { get; init; }
     public TimeRangeFilter? Period { get; init; }
     public string? SearchText { get; init; }
     public decimal? MinAbsAmount { get; init; }

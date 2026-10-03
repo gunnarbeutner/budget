@@ -13,6 +13,27 @@ namespace OpenBudget.Tests;
 public class TransactionQueryServiceTests
 {
     [Fact]
+    public async Task UncategorizedOnly_matches_null_and_sentinel_categories_but_not_split_parents()
+    {
+        await using var t = new TestDb();
+        t.AddGroup(100);
+        t.AddLeaf(101, parent: 100);
+        t.Db.Categories.Add(new Category { Id = 1, SourceId = 1, Name = "" }); // MoneyMoney's sentinel
+        t.AddTransaction(id: 1, categoryId: 101, amountCents: -1000, date: new DateTime(2026, 5, 1));
+        t.AddTransaction(id: 2, categoryId: 1, amountCents: -2000, date: new DateTime(2026, 5, 2));
+        t.AddTransaction(id: 3, categoryId: 1, amountCents: -4000, date: new DateTime(2026, 5, 3), splitted: 1);
+        t.AddTransaction(id: 4, categoryId: 101, amountCents: -8000, date: new DateTime(2026, 5, 4), sourceId: 2);
+        await t.Db.SaveChangesAsync();
+        t.Db.Transactions.Add(new Transaction { Id = 5, SourceId = 1, CategoryId = null, Amount = -500, Timestamp = 1 });
+        await t.Db.SaveChangesAsync();
+
+        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = 1, UncategorizedOnly = true });
+
+        Assert.Equal(new long[] { 2, 5 }, page.Rows.Select(r => r.Id).OrderBy(i => i).ToArray());
+        Assert.Equal(-25m, page.TotalSum);
+    }
+
+    [Fact]
     public async Task Split_parent_rows_are_excluded()
     {
         await using var t = new TestDb();

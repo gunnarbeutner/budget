@@ -59,6 +59,7 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="Tree_AllTransactions" xml:space="preserve"><value>All transactions</value></data>
+  <data name="Tree_Uncategorized" xml:space="preserve"><value>Uncategorized</value></data>
   <data name="Tree_Section_Accounts" xml:space="preserve"><value>Accounts</value></data>
   <data name="Tree_HideRelatedAccounts" xml:space="preserve"><value>Show only assigned</value></data>
   <data name="Tree_ShowRelatedAccounts" xml:space="preserve"><value>Show {0} more</value></data>
