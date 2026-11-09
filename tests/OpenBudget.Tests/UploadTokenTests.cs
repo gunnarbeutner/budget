@@ -59,7 +59,7 @@ public sealed class UploadTokenTests : IDisposable
     }
 
     [Fact]
-    public async Task Legacy_token_upload_to_the_bob_source_replaces_only_lisas_data()
+    public async Task Legacy_token_upload_to_the_bob_source_replaces_only_bobs_data()
     {
         await _host.SeedWorldAsync();
         var aliceBefore = await CountsAsync(AccessWorld.SourceAlice);
