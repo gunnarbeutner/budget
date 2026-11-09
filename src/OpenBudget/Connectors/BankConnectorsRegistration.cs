@@ -1,6 +1,7 @@
 using OpenBudget.Auth;
 using OpenBudget.Browser;
 using OpenBudget.Connectors.FakeBank;
+using OpenBudget.Connectors.FinTs;
 using OpenBudget.Connectors.Scalable;
 using OpenBudget.Connectors.Sync;
 using OpenBudget.Services;
@@ -23,7 +24,15 @@ public static class BankConnectorsRegistration
             var configuration = sp.GetRequiredService<IConfiguration>();
             var fakeEnabled = env.IsEnvironment("Test")
                 || string.Equals(configuration[EnableFakeBankVariable], "true", StringComparison.OrdinalIgnoreCase);
-            var registrations = new List<ConnectorRegistration> { ScalableConnector.CreateRegistration(new ScalableOptions()) };
+            // FinTS banks are always offered; without the product registration (OPENBUDGET_FINTS_PRODUCT_ID) a sync says so.
+            var fints = FinTsOptions.FromConfiguration(configuration);
+            List<ConnectorRegistration> registrations =
+            [
+                ScalableConnector.CreateRegistration(new ScalableOptions()),
+                IngConnector.Registration(fints),
+                BaaderConnector.Registration(fints),
+                PsdNuernbergConnector.Registration(fints),
+            ];
             if (fakeEnabled) registrations.Add(FakeBankConnector.Registration);
             return new ConnectorRegistry(registrations);
         });

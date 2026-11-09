@@ -1,0 +1,151 @@
+using OpenBudget.Connectors;
+using OpenBudget.Connectors.FinTs;
+using Xunit;
+
+namespace OpenBudget.Tests.Connectors.FinTs;
+
+public sealed class FinTsParserTests
+{
+    private static FinTsBankData DataOf(string bank)
+    {
+        var first = FinTsResponse.Parse(FinTsFixture.Load(bank).BankMessages.First());
+        return FinTsBankData.Create(FinTsBankData.ExtractBpd(first.Segments) ?? [], FinTsBankData.ExtractUpd(first.Segments) ?? []);
+    }
+
+    [Fact]
+    public void Camt_booked_and_pending_entries_come_from_the_right_documents()
+    {
+        var response = FinTsResponse.Parse(FinTsFixture.Load("ing").BankMessages.ElementAt(1));
+        var hicaz = response.Of("HICAZ").Single();
+        var booked = CamtParser.Parse(hicaz.Element(2), bookedDocument: true);
+        var pending = CamtParser.Parse(hicaz.Element(3), bookedDocument: false);
+
+        Assert.Equal(2, booked.Count);
+        Assert.Equal(-42.50m, booked[0].Amount);
+        Assert.Equal(new DateOnly(2026, 11, 3), booked[0].BookingDate);
+        Assert.Equal("Example Grocer", booked[0].Name);
+        Assert.Equal("Example purchase 1", booked[0].Purpose);
+        Assert.Equal("TESTREF1", booked[0].BankTransactionId);
+        Assert.Equal(1500.00m, booked[1].Amount);
+        Assert.Equal("Example Employer", booked[1].Name);
+        Assert.All(booked, t => Assert.True(t.Booked));
+
+        var p = Assert.Single(pending);
+        Assert.False(p.Booked);
+        Assert.Equal(-9.99m, p.Amount);
+        Assert.Null(p.BankTransactionId);
+    }
+
+    [Fact]
+    public void Camt_reads_newer_versions_and_reversals()
+    {
+        const string xml = "<Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:camt.052.001.08\"><BkToCstmrAcctRpt><Rpt><Ntry><Amt Ccy=\"USD\">5.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><RvslInd>true</RvslInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><DtTm>2026-02-03T10:00:00</DtTm></BookgDt><AcctSvcrRef>NOTPROVIDED</AcctSvcrRef><NtryDtls><TxDtls><RltdPties><Dbtr><Pty><Nm>Payer</Nm></Pty></Dbtr></RltdPties><RmtInf><Ustrd>one</Ustrd><Ustrd>two</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry></Rpt></BkToCstmrAcctRpt></Document>";
+        var t = Assert.Single(CamtParser.Parse(xml, bookedDocument: true));
+        Assert.Equal(5.00m, t.Amount);
+        Assert.Equal("USD", t.Currency);
+        Assert.Equal("one two", t.Purpose);
+        Assert.Null(t.BankTransactionId);
+        Assert.Equal(new DateOnly(2026, 2, 3), t.BookingDate);
+    }
+
+    [Fact]
+    public void Camt_with_a_doctype_is_refused()
+    {
+        Assert.Throws<FinTsProtocolException>(() => CamtParser.Parse("<!DOCTYPE x [<!ENTITY a \"b\">]><Document/>", true));
+    }
+
+    [Fact]
+    public void Mt940_entries_are_read_with_name_purpose_sign_and_reference()
+    {
+        const string mt940 = ":20:STARTUMS\r\n:25:12345678/1234567\r\n:28C:0/1\r\n:60F:C261031EUR1000,00\r\n"
+            + ":61:2611031103D12,30NMSCREF123//BANKREF9\r\n:86:177?00SEPA-Lastschrift?10931?20EREF+E1?21SVWZ+Cheap?22 stuff here?32Example Shop\r\n"
+            + ":61:261105C1500,00NTRFNONREF\r\n:86:166?00Gutschrift?20Salary ?21November?32Example Employer\r\n"
+            + ":62F:C261105EUR2487,70\r\n-";
+        var list = Mt940Parser.Parse(mt940, "EUR", booked: true);
+        Assert.Equal(2, list.Count);
+        Assert.Equal(-12.30m, list[0].Amount);
+        Assert.Equal(new DateOnly(2026, 11, 3), list[0].BookingDate);
+        Assert.Equal("Example Shop", list[0].Name);
+        Assert.Equal("Cheap stuff here", list[0].Purpose);
+        Assert.Equal("BANKREF9", list[0].BankTransactionId);
+        Assert.Equal(1500.00m, list[1].Amount);
+        Assert.Equal("Salary November", list[1].Purpose);
+        Assert.Null(list[1].BankTransactionId);
+        Assert.All(list, t => Assert.Equal("EUR", t.Currency));
+    }
+
+    [Fact]
+    public void Mt535_positions_have_isin_quantity_price_and_value()
+    {
+        const string mt535 = ":16R:GENL\r\n:28E:1/ONLY\r\n:16S:GENL\r\n:16R:FIN\r\n:35B:ISIN XX0000000001/DE/A0EXAM\r\nExample World ETF\r\n"
+            + ":90B::MRKT//ACTU/EUR100,25\r\n:93B::AGGR//UNIT/10,5\r\n:19A::HOLD//EUR1052,63\r\n:16S:FIN\r\n"
+            + ":16R:FIN\r\n:35B:ISIN XX0000000002\r\nExample Bond Fund\r\n:90A::MRKT//PRCT/101,5\r\n:93B::AGGR//FAMT/4000,\r\n:19A::HOLD//EUR4060,\r\n:16S:FIN\r\n-";
+        var list = Mt535Parser.Parse(mt535);
+        Assert.Equal(2, list.Count);
+        Assert.Equal(("XX0000000001", "A0EXAM", "Example World ETF", 10.5m, 100.25m, "EUR", 1052.63m), (list[0].Isin, list[0].Wkn, list[0].Name, list[0].Quantity, list[0].Price, list[0].PriceCurrency, list[0].Value));
+        Assert.Equal(("XX0000000002", 4000m, 4060m), (list[1].Isin, list[1].Quantity, list[1].Value));
+    }
+
+    [Fact]
+    public void Balance_reads_booked_and_pending()
+    {
+        var hisal = FinTsWire.Parse("HISAL:4:5:3+9000002::280:50010517+Girokonto+EUR+C:1234,56:EUR:20261109+D:10,:EUR:20261109'").Single();
+        var balance = FinTsBalance.FromSegment(hisal)!;
+        Assert.Equal(1234.56m, balance.Booked);
+        Assert.Equal(-10m, balance.WithPending);
+    }
+
+    [Fact]
+    public void Ing_parameters_list_three_accounts_and_one_step_free_methods()
+    {
+        var data = DataOf("ing");
+        Assert.Equal(9, data.BpdVersion);
+        Assert.Equal(3, data.Accounts.Count);
+        Assert.Equal([RemoteAccountType.Giro, RemoteAccountType.Savings, RemoteAccountType.Giro], data.Accounts.Select(a => a.Kind));
+        Assert.Equal(5, data.BestVersion("HKSAL", [5, 6, 7]));
+        Assert.Equal(1, data.BestVersion("HKCAZ", [1]));
+        Assert.Equal(6, data.BestVersion("HKWPD", [5, 6]));
+        Assert.False(data.NeedsTan("HKCAZ"));
+        Assert.Null(data.BestVersion("HKEKA", [3, 4, 5]));
+        Assert.Empty(data.Methods); // the single ING method comes as an old HITANS v1, which has no HKTAN
+    }
+
+    [Fact]
+    public void Baader_parameters_have_two_tan_methods_with_the_right_hktan_versions()
+    {
+        var data = DataOf("baader");
+        Assert.Equal(7, data.BestVersion("HKSAL", [5, 6, 7]));
+        Assert.True(data.NeedsTan("HKCAZ"));
+        Assert.False(data.NeedsTan("HKWPD"));
+        var sms = data.Methods.Single(m => m.Id == "930");
+        var app = data.Methods.Single(m => m.Id == "940");
+        Assert.Equal((6, false, 6, true), (sms.HktanVersion, sms.Decoupled, sms.MaxInputLength, sms.Numeric));
+        Assert.Equal((7, true, 999), (app.HktanVersion, app.Decoupled, app.MaxPolls));
+        Assert.Equal("BDWBDEMMXXX", data.Accounts[0].Bic);
+        Assert.Equal(RemoteAccountType.Giro, data.Accounts[0].Kind);
+        Assert.Equal(RemoteAccountType.Depot, data.Accounts[1].Kind);
+        Assert.Null(data.Accounts[1].Iban);
+        Assert.Equal("9000011", data.Accounts[1].RemoteId);
+    }
+
+    [Fact]
+    public void Psd_upd_carries_the_inventory_marker_per_account()
+    {
+        var data = DataOf("psd");
+        Assert.Equal(3, data.Accounts.Count);
+        Assert.Equal(42, data.UpdVersion);
+        Assert.Equal(["2026-06-27-03.10.51.000453", "2025-12-03-16.16.10.000743", "2026-01-05-19.52.44.000423"], data.Accounts.Select(a => a.Inventory));
+        Assert.All(data.Accounts, a => Assert.True(a.Allows("HKEKA")));
+        Assert.Equal([RemoteAccountType.Savings, RemoteAccountType.Other, RemoteAccountType.Savings], data.Accounts.Select(a => a.Kind));
+    }
+
+    [Fact]
+    public void Bpd_and_upd_survive_being_cached_as_text()
+    {
+        var data = DataOf("baader");
+        var again = FinTsBankData.Create(FinTsWire.Parse(FinTsWire.Write(data.BpdSegments)), FinTsWire.Parse(FinTsWire.Write(data.UpdSegments)));
+        Assert.Equal(data.Methods, again.Methods);
+        Assert.Equal(data.Accounts.Select(a => a.RemoteId), again.Accounts.Select(a => a.RemoteId));
+        Assert.Equal(data.BpdVersion, again.BpdVersion);
+    }
+}
