@@ -31,6 +31,7 @@ public sealed class FakeBankConnector : IBankConnector
     private int _polls;
     private bool _refreshCodeAsked;
     private bool _statementCodeAsked;
+    private bool _refreshed;
 
     public FakeBankConnector(ConnectorContext context) => _context = context;
 
@@ -115,6 +116,7 @@ public sealed class FakeBankConnector : IBankConnector
 
     public Task<ConnectorStep<AccountRefresh>> RefreshAsync(RemoteAccount account, DateOnly? since, ChallengeAnswer? answer, CancellationToken ct)
     {
+        _refreshed = true;
         var first = string.Equals(account.RemoteId, GiroId, StringComparison.Ordinal);
         if (first && _settings.RefreshCode && !_refreshCodeAsked)
         {
@@ -218,7 +220,8 @@ public sealed class FakeBankConnector : IBankConnector
 
     public Task<ConnectorSession?> LogoutAsync(CancellationToken ct)
     {
-        _session.Values["syncs"] = (CompletedSyncs + 1).ToString(CultureInfo.InvariantCulture);
+        // Only a session that actually read accounts counts as a completed sync (drives pending -> booked).
+        if (_refreshed) _session.Values["syncs"] = (CompletedSyncs + 1).ToString(CultureInfo.InvariantCulture);
         _context.Logger.LogDebug("Fake bank logout.");
         return Task.FromResult<ConnectorSession?>(_session);
     }

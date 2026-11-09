@@ -4,6 +4,9 @@ using Microsoft.EntityFrameworkCore;
 using OpenBudget.Auth;
 using OpenBudget.Cli;
 using OpenBudget.Compat;
+using OpenBudget.Connectors;
+using OpenBudget.Connectors.Sync;
+using System.Security.Claims;
 using OpenBudget.Importers;
 using OpenBudget.Services;
 using System.Globalization;
@@ -104,6 +107,7 @@ Directory.CreateDirectory(uploadStagingDir);
 // (see AuthRegistration.AddOpenBudgetDatabase): its contexts filter reads and guard writes.
 builder.Services.AddOpenBudgetDatabase(budgetDbPath);
 builder.Services.AddOpenBudgetAuth(builder.Environment, builder.Environment.ContentRootPath);
+builder.Services.AddBankConnectors(builder.Configuration, builder.Environment, builder.Environment.ContentRootPath);
 
 var app = builder.Build();
 
@@ -172,6 +176,28 @@ app.MapPost("/api/portfolioperformance/{name}", async (
 
     return await HandlePortfolioPerformanceUploadAsync(name, request, importer, authorizer, logger, uploadStagingDir, ct);
 }).AllowAnonymous();
+
+// GET /statements/{id} — a downloaded bank statement (PDF). Authorization is the account's visibility:
+// the lookup runs through a context scoped to the signed-in user, so documents of accounts they cannot
+// see (or another user's account-less documents) are simply "not found".
+app.MapGet("/statements/{id:long}", async (
+    long id,
+    bool? download,
+    HttpContext http,
+    SystemDbContextFactory system,
+    BankStatementStore store,
+    CancellationToken ct) =>
+{
+    var scope = await AccessScopeProvider.ComputeAsync(system, http.User.FindFirstValue(ClaimTypes.NameIdentifier), ct);
+    if (!scope.IsAuthenticated) return Results.NotFound();
+    await using var db = await system.CreateDbContextAsync(ct);
+    db.Scope = scope;
+    var file = await BankLoginService.OpenStatementAsync(db, store, id, ct);
+    if (file == null) return Results.NotFound();
+    return download == true
+        ? Results.File(file.Value.Path, "application/pdf", file.Value.DownloadName)
+        : Results.File(file.Value.Path, "application/pdf");
+});
 
 // DELETE /api/sources/{name} — removes a source. Refused with 409 when any project
 // references it, with the offending project list in the response. The old route is kept as an
