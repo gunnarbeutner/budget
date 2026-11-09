@@ -131,7 +131,12 @@ public sealed partial class ScalableConnector : IBankConnector
             var form = ScalableLoginForm.Parse(html, page)
                 ?? throw new ConnectorException($"Scalable's login page ({page.AbsolutePath}) has no sign-in form this connector understands.");
             var sentPassword = form.PasswordField != null;
-            (status, page, html) = await PostFormAsync(form.Action, form.Fill(credentials.Username, credentials.Secret), ct);
+            var fields = form.Fill(credentials.Username, credentials.Secret);
+            // Names only, never values: shows whether the e-mail address and password were actually sent.
+            Log.LogInformation("Submitting Scalable's sign-in form to {Path} with fields [{Fields}] (username field: {User}, password field: {Password}, username empty: {Empty}).",
+                form.Action.AbsolutePath, string.Join(", ", fields.Select(f => f.Key)), form.UsernameField ?? "(none)", form.PasswordField ?? "(none)",
+                string.IsNullOrWhiteSpace(credentials.Username));
+            (status, page, html) = await PostFormAsync(form.Action, fields, ct);
             Log.LogDebug("Scalable login form step {Step}: HTTP {Status}, landed on {Path}.", step + 1, status, page.AbsolutePath);
 
             if (IsAppHost(page)) break;
@@ -164,9 +169,9 @@ public sealed partial class ScalableConnector : IBankConnector
     {
         foreach (var pattern in new[]
         {
+            // Only errors the server rendered. The page always carries hidden client-side validation templates
+            // (id="error-cs-…", class="ulp-error-info") with texts like "Bitte geben Sie eine E-Mail-Adresse ein." — ignore those.
             @"id=""error-element-[a-z-]+""[^>]*>(?<t>.*?)</",
-            @"class=""[^""]*ulp-input-error-message[^""]*""[^>]*>(?<t>.*?)</",
-            @"class=""[^""]*ulp-error-info[^""]*""[^>]*>(?<t>.*?)</",
             @"id=""prompt-alert""[^>]*>(?:\s*<[^>]+>)*(?<t>[^<]+)<",
         })
         {
@@ -181,11 +186,14 @@ public sealed partial class ScalableConnector : IBankConnector
         return null;
     }
 
+    /// <summary>
+    /// True only when the page actually renders a captcha (a captcha input or a captcha provider frame). The normal sign-in
+    /// page always mentions captcha providers in its scripts, so keywords alone mean nothing.
+    /// </summary>
     internal static bool HasCaptcha(string html) =>
-        html.Contains("ulp-captcha", StringComparison.OrdinalIgnoreCase)
-        || html.Contains("captcha", StringComparison.OrdinalIgnoreCase) && html.Contains("name=\"captcha\"", StringComparison.OrdinalIgnoreCase)
-        || html.Contains("recaptcha", StringComparison.OrdinalIgnoreCase) || html.Contains("hcaptcha", StringComparison.OrdinalIgnoreCase)
-        || html.Contains("friendly-challenge", StringComparison.OrdinalIgnoreCase) || html.Contains("arkose", StringComparison.OrdinalIgnoreCase);
+        System.Text.RegularExpressions.Regex.IsMatch(html,
+            @"<input[^>]+name=""captcha""|<iframe[^>]+(recaptcha|hcaptcha|friendlycaptcha|arkoselabs)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
 
     private static bool LooksLikeWrongCredentials(string message) =>
         System.Text.RegularExpressions.Regex.IsMatch(message, "(falsch|ung(ü|ue)ltig|wrong|incorrect|invalid)",

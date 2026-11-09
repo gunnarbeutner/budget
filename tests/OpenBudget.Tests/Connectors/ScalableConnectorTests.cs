@@ -362,6 +362,8 @@ public sealed class ScalableConnectorTests
     [InlineData("<span id=\"error-element-password\" class=\"ulp-input-error-message\">Wrong email or password</span>", "Wrong email or password")]
     [InlineData("<div id=\"prompt-alert\"><p>Too many login attempts.</p></div>", "Too many login attempts.")]
     [InlineData("<form><input name=\"password\"></form>", null)]
+    // The always-present client-side validation template is not an error.
+    [InlineData("<div id=\"error-cs-username-required\" class=\"ulp-error-info aria-error-check\">Bitte geben Sie eine E-Mail-Adresse ein.</div>", null)]
     public void The_login_error_shown_by_the_sign_in_page_is_extracted(string html, string? expected)
     {
         Assert.Equal(expected, OpenBudget.Connectors.Scalable.ScalableConnector.ExtractLoginError(html));
@@ -370,7 +372,10 @@ public sealed class ScalableConnectorTests
     [Fact]
     public void A_captcha_on_the_sign_in_page_is_detected()
     {
-        Assert.True(OpenBudget.Connectors.Scalable.ScalableConnector.HasCaptcha("<div class=\"ulp-captcha-container\"></div>"));
+        Assert.True(OpenBudget.Connectors.Scalable.ScalableConnector.HasCaptcha("<div><input type=\"text\" name=\"captcha\"></div>"));
+        Assert.True(OpenBudget.Connectors.Scalable.ScalableConnector.HasCaptcha("<iframe src=\"https://www.google.com/recaptcha/api2/anchor\"></iframe>"));
+        // The normal page mentions captcha providers in its scripts without showing one.
+        Assert.False(OpenBudget.Connectors.Scalable.ScalableConnector.HasCaptcha("<script>var p={captcha:{provider:'recaptcha'},hcaptcha:1,arkose:2};</script><div class=\"ulp-captcha-container\"></div>"));
         Assert.False(OpenBudget.Connectors.Scalable.ScalableConnector.HasCaptcha("<form><input name=\"password\"></form>"));
     }
 }
