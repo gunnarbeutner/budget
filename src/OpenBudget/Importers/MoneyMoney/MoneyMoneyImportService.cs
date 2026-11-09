@@ -174,6 +174,13 @@ public class MoneyMoneyImportService
                 .Select(p => p.Key)
                 .ToHashSet();
 
+            // Balance / refresh state of accounts handed to a connector belongs to that connector.
+            var foreignState = foreignAccountIds.Count == 0
+                ? new Dictionary<long, ForeignAccountState>()
+                : await db.Accounts
+                    .Where(a => a.SourceId == sourceId && foreignAccountIds.Contains(a.Id))
+                    .ToDictionaryAsync(a => a.Id, a => new ForeignAccountState(a.Balances, a.RefreshTimestamp, a.Error), ct);
+
             // Only MoneyMoney-owned transactions are replaced; accounts owned by another provider
             // keep theirs untouched.
             await db.Database.ExecuteSqlRawAsync(
@@ -184,20 +191,33 @@ public class MoneyMoneyImportService
                        OR local_account_key NOT IN (SELECT Id FROM accounts WHERE SourceId = {0} AND provider <> {1}))
                 """,
                 new object[] { sourceId, AccountProviders.MoneyMoney }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM portfolio_chart WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM holdings WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            // Likewise positions / portfolio history of connector-owned accounts stay as the connector wrote them.
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                DELETE FROM portfolio_chart
+                WHERE SourceId = {0}
+                  AND account_key NOT IN (SELECT Id FROM accounts WHERE SourceId = {0} AND provider <> {1})
+                """,
+                new object[] { sourceId, AccountProviders.MoneyMoney }, ct);
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                DELETE FROM holdings
+                WHERE SourceId = {0}
+                  AND account_key NOT IN (SELECT Id FROM accounts WHERE SourceId = {0} AND provider <> {1})
+                """,
+                new object[] { sourceId, AccountProviders.MoneyMoney }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM categories WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM category_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM accounts WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM account_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
 
             int accountGroupCount = await CopyAccountGroupsAsync(src, db, sourceId, ct);
-            int accountCount = await CopyAccountsAsync(src, db, sourceId, providers, ct);
+            int accountCount = await CopyAccountsAsync(src, db, sourceId, providers, foreignState, ct);
             int groupCount = await CopyCategoryGroupsAsync(src, db, sourceId, ct);
             int categoryCount = await CopyCategoriesAsync(src, db, sourceId, ct);
             int txCount = await CopyTransactionsAsync(src, db, sourceId, foreignAccountIds, ct);
-            int securityCount = await CopySecuritiesAsync(src, db, sourceId, ct);
-            int portfolioChartCount = await CopyPortfolioChartAsync(src, db, sourceId, ct);
+            int securityCount = await CopySecuritiesAsync(src, db, sourceId, foreignAccountIds, ct);
+            int portfolioChartCount = await CopyPortfolioChartAsync(src, db, sourceId, foreignAccountIds, ct);
 
             long fileSize = new FileInfo(sqliteFilePath).Length;
             source.LastUploadAt = DateTime.UtcNow;
@@ -355,7 +375,8 @@ public class MoneyMoneyImportService
     }
 
     private static async Task<int> CopyAccountsAsync(
-        SqliteConnection src, BudgetDbContext db, int sourceId, IReadOnlyDictionary<long, string> providers, CancellationToken ct)
+        SqliteConnection src, BudgetDbContext db, int sourceId, IReadOnlyDictionary<long, string> providers,
+        Dictionary<long, ForeignAccountState> foreignState, CancellationToken ct)
     {
         // group_key is the FK into account_groups; older exporters (pre-account-groups) won't
         // have account_groups but the column itself has always been on accounts. Probe anyway
@@ -389,6 +410,13 @@ public class MoneyMoneyImportService
             cmd.Parameters["$group_key"].Value = r.IsDBNull(10)
                 ? DBNull.Value
                 : NamespaceParentKey(sourceId, r.GetInt64(10));
+            if (foreignState.TryGetValue(id, out var kept))
+            {
+                // A connector owns this account: keep its balance and refresh state rather than MoneyMoney's.
+                cmd.Parameters["$balances"].Value = (object?)kept.Balances ?? DBNull.Value;
+                cmd.Parameters["$refresh_tsp"].Value = (object?)kept.RefreshTimestamp ?? DBNull.Value;
+                cmd.Parameters["$error"].Value = (object?)kept.Error ?? DBNull.Value;
+            }
         }, AccountInsertParameters, ct);
     }
 
@@ -549,7 +577,7 @@ public class MoneyMoneyImportService
         return sums;
     }
 
-    private static async Task<int> CopySecuritiesAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
+    private static async Task<int> CopySecuritiesAsync(SqliteConnection src, BudgetDbContext db, int sourceId, HashSet<long> foreignAccountIds, CancellationToken ct)
     {
         // securities only ships in exporter builds that copy it; tolerate its absence so a stale
         // upload still imports the rest. Only live positions are carried over — MoneyMoney keeps
@@ -583,10 +611,10 @@ public class MoneyMoneyImportService
             cmd.Parameters["$price_cur"].Value = r.IsDBNull(10) ? DBNull.Value : r.GetString(10);
             cmd.Parameters["$purchase"].Value = r.IsDBNull(11) ? DBNull.Value : r.GetDouble(11);
             cmd.Parameters["$asset_class"].Value = r.IsDBNull(12) ? DBNull.Value : r.GetInt64(12);
-        }, SecurityInsertParameters, ct);
+        }, SecurityInsertParameters, ct, skipRow: r => foreignAccountIds.Contains(SourceScope.Namespace(sourceId, r.GetInt64(1))));
     }
 
-    private static async Task<int> CopyPortfolioChartAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
+    private static async Task<int> CopyPortfolioChartAsync(SqliteConnection src, BudgetDbContext db, int sourceId, HashSet<long> foreignAccountIds, CancellationToken ct)
     {
         // portfolio_chart, like securities, only ships in newer exporter builds. securities_key is
         // namespaced but carries no FK (it can reference deleted positions we don't import), so a
@@ -609,7 +637,7 @@ public class MoneyMoneyImportService
             cmd.Parameters["$securities_key"].Value = r.IsDBNull(5)
                 ? DBNull.Value
                 : NamespaceParentKey(sourceId, r.GetInt64(5));
-        }, PortfolioChartInsertParameters, ct);
+        }, PortfolioChartInsertParameters, ct, skipRow: r => foreignAccountIds.Contains(SourceScope.Namespace(sourceId, r.GetInt64(1))));
     }
 
     /// <summary>
@@ -666,6 +694,9 @@ public class MoneyMoneyImportService
         return count;
     }
 }
+
+/// <summary>Balance and refresh state of an account owned by a bank connector, preserved across MoneyMoney imports.</summary>
+internal sealed record ForeignAccountState(string? Balances, long? RefreshTimestamp, string? Error);
 
 public class ImportResult
 {

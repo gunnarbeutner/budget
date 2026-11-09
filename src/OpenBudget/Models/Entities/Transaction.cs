@@ -87,6 +87,14 @@ public class Transaction
     [Column("split_original_amount")]
     public long? SplitOriginalAmount { get; set; }
 
+    /// <summary>
+    /// Identity of a row delivered by a bank connector (the bank's transaction id, or a stable hash of
+    /// date/amount/name/purpose plus an occurrence counter when the bank gives none). Null for rows
+    /// imported from MoneyMoney. Used to recognise rows again on later syncs.
+    /// </summary>
+    [Column("external_id")]
+    public string? ExternalId { get; set; }
+
     [NotMapped]
     public DateTime Date => DateTimeOffset.FromUnixTimeSeconds(Timestamp).DateTime;
 

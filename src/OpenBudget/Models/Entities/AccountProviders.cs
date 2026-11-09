@@ -4,4 +4,10 @@ namespace OpenBudget.Models;
 public static class AccountProviders
 {
     public const string MoneyMoney = "moneymoney";
+
+    /// <summary>
+    /// Nobody refreshes the account any more (a connector-created account whose connector link was
+    /// removed). Its data stays; it can be linked to a connector again.
+    /// </summary>
+    public const string Manual = "manual";
 }

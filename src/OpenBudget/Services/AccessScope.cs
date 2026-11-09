@@ -95,6 +95,7 @@ public sealed class AccessScope
     /// </summary>
     public bool IsChangeVisible(DataChange change)
     {
+        if (change.UserId != null && !string.Equals(change.UserId, UserId, StringComparison.Ordinal)) return false;
         if (change.ProjectId is { } projectId && !_roles.ContainsKey(projectId)) return false;
         if (change.SourceId is { } sourceId && !CanSeeSource(sourceId)) return false;
         return true;

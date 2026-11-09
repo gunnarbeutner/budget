@@ -54,6 +54,13 @@ public partial class BudgetDbContext
         modelBuilder.Entity<PpPortfolioLink>().HasQueryFilter(l =>
             ScopeUnrestricted || ScopeOwnedSourceIds.Contains(l.SourceId) || ScopeSharedAccountIds.Contains(l.AccountId));
 
+        // Bank logins are strictly personal. Statements follow their account (shared viewers may read them); account-less ones are owner-only.
+        modelBuilder.Entity<BankLogin>().HasQueryFilter(b => ScopeUnrestricted || b.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<BankLoginAccount>().HasQueryFilter(a => ScopeUnrestricted || a.BankLogin.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<BankStatement>().HasQueryFilter(s =>
+            ScopeUnrestricted || s.OwnerUserId == ScopeUserId
+            || (s.AccountId.HasValue && (ScopeSharedAccountIds.Contains(s.AccountId.Value) || (s.SourceId.HasValue && ScopeOwnedSourceIds.Contains(s.SourceId.Value)))));
+
         // PortfolioPerformance data feeds the project-scoped rebalance view, so it follows the
         // source's visibility; the owner-only mapping/tax pages are guarded separately.
         modelBuilder.Entity<SecurityTaxonomy>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
@@ -92,6 +99,7 @@ public partial class BudgetDbContext
     private async Task EnforceWriteAccessAsync(AccessScope scope, CancellationToken ct)
     {
         var budgetEntries = new List<int>();
+        var loginAccountLogins = new List<int>();
 
         foreach (var entry in ChangeTracker.Entries().ToList())
         {
@@ -135,6 +143,17 @@ public partial class BudgetDbContext
                     EnforceSourceWrite(scope, entry, source);
                     break;
 
+                case BankLogin login:
+                    EnforceLoginWrite(scope, entry, login);
+                    break;
+                case BankStatement statement:
+                    if (!scope.IsAuthenticated || statement.OwnerUserId != scope.UserId)
+                        throw new AccessDeniedException("Statements can only be changed by the login's owner.");
+                    break;
+                case BankLoginAccount remote:
+                    loginAccountLogins.Add(remote.BankLoginId);
+                    break;
+
                 default:
                     // Imported/per-source rows (accounts, transactions, mappings, ...) carry a SourceId.
                     if (entry.Metadata.FindProperty("SourceId") != null)
@@ -142,6 +161,20 @@ public partial class BudgetDbContext
                     else if (entry.Entity is AppUser)
                         throw new AccessDeniedException("Users are managed through the CLI only.");
                     break;
+            }
+        }
+
+        // Remote accounts belong to a login; only that login's owner may touch them. The login is
+        // resolved through the (owner-filtered) set, so someone else's login is simply not found.
+        var loginIds = loginAccountLogins.Distinct().ToList();
+        if (loginIds.Count > 0)
+        {
+            var visible = await Set<BankLogin>().AsNoTracking().Where(l => loginIds.Contains(l.Id)).Select(l => l.Id).ToListAsync(ct);
+            foreach (var id in loginIds)
+            {
+                var pending = ChangeTracker.Entries<BankLogin>().Any(e => e.State == EntityState.Added && e.Entity.Id == id);
+                if (!visible.Contains(id) && !pending)
+                    throw new AccessDeniedException($"Bank login {id} is not accessible.");
             }
         }
 
@@ -193,6 +226,15 @@ public partial class BudgetDbContext
             throw new AccessDeniedException("Project ownership and source cannot be changed here.");
         if (changed.Contains(nameof(Project.ParentProjectId), StringComparer.Ordinal) && project.ParentProjectId is { } newParent)
             scope.RequireRole(newParent, ProjectRole.Owner);
+    }
+
+    private static void EnforceLoginWrite(AccessScope scope, Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, BankLogin login)
+    {
+        if (!scope.IsAuthenticated || login.OwnerUserId != scope.UserId)
+            throw new AccessDeniedException("Bank logins can only be changed by their owner.");
+        if (entry.State == EntityState.Modified && entry.Property(nameof(BankLogin.OwnerUserId)).IsModified
+            && !string.Equals((string?)entry.Property(nameof(BankLogin.OwnerUserId)).OriginalValue, scope.UserId, StringComparison.Ordinal))
+            throw new AccessDeniedException("Bank login ownership cannot be changed.");
     }
 
     private static void EnforceSourceWrite(AccessScope scope, Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, ImportSource source)

@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261109173110_AddUsersAndSharing";
+        public override string LatestMigrationId => "20261109195612_AddBankConnectors";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -306,6 +306,184 @@ namespace OpenBudget.Migrations
                         .HasDatabaseName("UserNameIndex");
 
                     b.ToTable("AspNetUsers", (string)null);
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.BankLogin", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ConnectorType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("CredentialsInvalid")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EncryptedCredentials")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EncryptedSession")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSyncAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("RefreshInterval")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.ToTable("bank_logins");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.BankLoginAccount", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BankLoginId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Closed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("CreatedByConnector")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Iban")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastStatementAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastStatementsAttemptAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSuccessAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LinkedAccountId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RemoteId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("StatementsEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("StatementsInterval")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("SyncFloorUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BankLoginId", "RemoteId")
+                        .IsUnique();
+
+                    b.ToTable("bank_login_accounts");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.BankStatement", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("AccountId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BankLoginId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FilePath")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Identifier")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("BankLoginId", "Identifier")
+                        .IsUnique();
+
+                    b.ToTable("bank_statements");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Budget", b =>
@@ -1089,6 +1267,10 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("currency");
 
+                    b.Property<string>("ExternalId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("external_id");
+
                     b.Property<string>("Name")
                         .HasColumnType("TEXT")
                         .HasColumnName("name");
@@ -1185,6 +1367,17 @@ namespace OpenBudget.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ParentGroup");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.BankLoginAccount", b =>
+                {
+                    b.HasOne("OpenBudget.Models.BankLogin", "BankLogin")
+                        .WithMany("Accounts")
+                        .HasForeignKey("BankLoginId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("BankLogin");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Budget", b =>
@@ -1372,6 +1565,11 @@ namespace OpenBudget.Migrations
                     b.Navigation("Accounts");
 
                     b.Navigation("SubGroups");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.BankLogin", b =>
+                {
+                    b.Navigation("Accounts");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Budget", b =>

@@ -61,6 +61,9 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<PpPortfolioLink> PpPortfolioLinks => Set<PpPortfolioLink>();
     public DbSet<SecurityTaxSetting> SecurityTaxSettings => Set<SecurityTaxSetting>();
     public DbSet<PpSecurityLink> PpSecurityLinks => Set<PpSecurityLink>();
+    public DbSet<BankLogin> BankLogins => Set<BankLogin>();
+    public DbSet<BankLoginAccount> BankLoginAccounts => Set<BankLoginAccount>();
+    public DbSet<BankStatement> BankStatements => Set<BankStatement>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -192,6 +195,20 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
             .HasIndex(t => new { t.SourceId, t.CategoryId, t.Timestamp });
         modelBuilder.Entity<Transaction>()
             .HasIndex(t => new { t.SourceId, t.AccountId });
+
+        // Bank connectors (see BudgetDbContext.Access for who can see them).
+        modelBuilder.Entity<BankLogin>().HasIndex(b => b.OwnerUserId);
+        modelBuilder.Entity<BankLogin>().Property(b => b.RefreshInterval).HasConversion<int>();
+        modelBuilder.Entity<BankLoginAccount>()
+            .HasOne(a => a.BankLogin).WithMany(b => b.Accounts).HasForeignKey(a => a.BankLoginId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<BankLoginAccount>().HasIndex(a => new { a.BankLoginId, a.RemoteId }).IsUnique();
+        modelBuilder.Entity<BankLoginAccount>().Property(a => a.Type).HasConversion<int>();
+        modelBuilder.Entity<BankLoginAccount>().Property(a => a.StatementsInterval).HasConversion<int>();
+        // Statements deliberately have no foreign key to the login: they follow the visibility of
+        // their account (viewers of a shared account may read them) while the login stays private.
+        modelBuilder.Entity<BankStatement>().HasIndex(s => new { s.BankLoginId, s.Identifier }).IsUnique();
+        modelBuilder.Entity<BankStatement>().HasIndex(s => s.AccountId);
 
         modelBuilder.Entity<CategoryGroup>()
             .HasOne(cg => cg.ParentGroup)
