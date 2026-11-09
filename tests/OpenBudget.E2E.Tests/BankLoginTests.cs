@@ -47,6 +47,8 @@ public sealed class BankLoginTests : EndToEndTestBase
         await SeedGiroAsync();
         await GoToAsync("/banklogins");
 
+        // The real banks are offered too; pick the fake one explicitly.
+        await Page.Locator("#new-login-connector").SelectOptionAsync("fake");
         await Page.Locator("#new-login-name").FillAsync("My fake bank");
         await Page.Locator("#new-login-username").FillAsync("demo+code");
         await Page.Locator("#new-login-pin").FillAsync("1234");
@@ -86,6 +88,8 @@ public sealed class BankLoginTests : EndToEndTestBase
         await GoToAsync("/banklogins");
         await Page.Locator("#new-login-username").FillAsync("demo");
         await Page.Locator("#new-login-pin").FillAsync("1234");
+        // The real banks are offered too; pick the fake one explicitly.
+        await Page.Locator("#new-login-connector").SelectOptionAsync("fake");
         await Page.Locator("#new-login-name").FillAsync("Private login");
         await Page.Locator("#new-login-add").ClickAsync();
         await Expect(Page.Locator("[data-bank-login='Private login']")).ToBeVisibleAsync();

@@ -201,6 +201,16 @@ Some banks cannot be signed in to by a program (captcha, device checks, 2FA). A 
 - Needs Chromium: the Docker image has it (about 1 GB more than a plain ASP.NET image, mostly Chromium's graphics libraries; 1.5 GB in total); elsewhere set `CHROME_PATH`. The browser is only started when a login needs it and is closed a minute after the last one ended. Without a Chromium, such connectors fail with "browser not available" and everything else is unaffected.
 - A connector declares it as a challenge: `ConnectorChallenge.WebLogin(message, new WebLoginSpec(startUrl, cookieDomains, successUrlPrefix, successWhen))`; connectors that need no username/PIN set `CredentialRequirement.None` in their registration.
 
+### FinTS banks (ING, Baader Bank, PSD Bank Nürnberg)
+
+The connectors `ING`, `Baader Bank` and `PSD Bank Nürnberg` talk FinTS 3.0 (PIN/TAN) through a small built-in client (no third-party package, `src/OpenBudget/Connectors/FinTs/`). The login is the bank's login name and PIN; they are stored like every other bank credential.
+
+**Product registration (required).** FinTS banks only accept registered applications. Register OpenBudget with the Deutsche Kreditwirtschaft (<https://www.hbci-zka.de/register/prod_register.htm>) and pass the product ID in the environment variable `OPENBUDGET_FINTS_PRODUCT_ID` (container environment, `.env`, secret store; never commit it). Without it a FinTS sync fails with "FinTS product registration not configured" and nothing is sent to the bank. The product version sent along is the application's version.
+
+What each bank offers: ING: Girokonto and Extra-Konto (balance, transactions; VL-Spar and the Postbox need a separate web part and are not available yet). Baader Bank: cash account (balance, transactions) and depot positions; statements are not available yet. PSD Bank Nürnberg: accounts and the electronic account statements as PDF (HKEKA). The client reads transactions as camt.052 (HKCAZ), falls back to MT940 (HKKAZ) when a bank has no HKCAZ, reads balances (HKSAL) and depots (HKWPD).
+
+TAN handling follows the bank: a choice of TAN methods becomes a choice dialog (remembered afterwards), a TAN becomes a code dialog, app approval (pushTAN, decoupled) becomes the usual approval wait that is polled until the bank confirms. Bank parameters (BPD/UPD) and the customer system id are cached in the encrypted login session; for Atruvia banks (PSD) an unchanged per-account inventory marker in the UPD lets a sync skip fetching transactions.
+
 ### Fake bank (for trying things out)
 
 `OPENBUDGET_ENABLE_FAKE_BANK=true` (always on in tests) offers "Example Bank (fake)" with obviously made-up data. Any username and PIN work (PIN `wrong` is rejected). Flags after a `+` in the username trigger behaviours: `code` (answer 123456), `choice`, `approve` / `approve5` (completes after N polls), `image` (answer 4711), `loginfail`, `syncerror`, `refreshcode`, `statementcode`, `web` (sign in on a web page in the remote browser: opens example.com and is done once you click through to iana.org; `OPENBUDGET_FAKE_BANK_WEBLOGIN_URL` / `_SUCCESS` change the pages), `pending` (a reservation that becomes booked on the next sync), `dups` (identical same-day bookings), `noid` (no bank transaction ids), `statements`. Example: `demo+code+pending+statements`.
