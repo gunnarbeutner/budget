@@ -57,4 +57,10 @@ public class TransactionRow
     public decimal Amount { get; init; }
     public string? Currency { get; init; }
     public bool IsSplitChild { get; init; }
+
+    /// <summary>Unallocated rest of a split booking whose parts don't add up to the total.</summary>
+    public bool IsSplitRemainder { get; init; }
+
+    /// <summary>True while the booking is only reserved ("vorgemerkt") and not yet booked.</summary>
+    public bool IsPending { get; init; }
 }

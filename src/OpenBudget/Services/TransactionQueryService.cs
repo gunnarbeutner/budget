@@ -8,7 +8,8 @@ namespace OpenBudget.Services;
 /// (Splitted == 1), to match the rollup semantics used everywhere else in the app — a parent's
 /// real categories live on its children, so showing it as a row would double-count visually.
 /// Split children (Splitted == 2) come through as normal rows and get flagged so the UI can
-/// mark them.
+/// mark them. Parents whose children don't cover their amount were rewritten at import time into
+/// uncategorized remainder rows (Splitted == 3) and therefore show up (and count) like normal rows.
 ///
 /// The category filter takes an already-resolved leaf-id set rather than an (item, type) tuple
 /// — leaf resolution happens via <see cref="CategoryHierarchyService.BuildItemToLeafCategoryIds"/>
@@ -51,7 +52,8 @@ public class TransactionQueryService
                 t.AccountId,
                 t.Amount,
                 t.Currency,
-                t.Splitted
+                t.Splitted,
+                t.Booked
             })
             .ToListAsync(ct);
 
@@ -78,7 +80,9 @@ public class TransactionQueryService
             AccountName = r.AccountId.HasValue ? acctNames.GetValueOrDefault(r.AccountId.Value) : null,
             Amount = r.Amount / 100m,
             Currency = r.Currency,
-            IsSplitChild = r.Splitted == 2
+            IsSplitChild = r.Splitted == SplitState.Child,
+            IsSplitRemainder = r.Splitted == SplitState.Remainder,
+            IsPending = !r.Booked
         }).ToList();
 
         return new TransactionPage

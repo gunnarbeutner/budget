@@ -41,6 +41,7 @@ public class MoneyMoneyImportService
         "local_account_key", "amount", "currency", "timestamp", "name", "comment",
         "unformatted_purpose", "category_key", "checkmark", "splitted"
     };
+    private static readonly string[] OptionalTransactionColumns = { "booked", "split_key" };
     private static readonly string[] ExpectedSecurityColumns =
     {
         "account_key", "ident", "isin", "wpn", "symbol", "quantity", "amount", "amount_cur",
@@ -55,7 +56,7 @@ public class MoneyMoneyImportService
     // the arrays aren't reallocated on every import (CA1861); they mirror the VALUES lists below.
     private static readonly string[] AccountInsertParameters =
     {
-        "$id", "$sid", "$name", "$iban", "$currency", "$type", "$portfolio", "$balances", "$sort", "$refresh_tsp", "$error", "$group_key"
+        "$id", "$sid", "$name", "$iban", "$currency", "$type", "$portfolio", "$balances", "$sort", "$refresh_tsp", "$error", "$group_key", "$provider"
     };
     private static readonly string[] AccountGroupInsertParameters =
     {
@@ -71,7 +72,7 @@ public class MoneyMoneyImportService
     };
     private static readonly string[] TransactionInsertParameters =
     {
-        "$id", "$sid", "$local_account_key", "$amount", "$currency", "$timestamp", "$name", "$comment", "$purpose", "$category_key", "$checkmark", "$splitted"
+        "$id", "$sid", "$local_account_key", "$amount", "$currency", "$timestamp", "$name", "$comment", "$purpose", "$category_key", "$checkmark", "$splitted", "$booked", "$split_parent_id", "$split_original_amount"
     };
     private static readonly string[] SecurityInsertParameters =
     {
@@ -163,7 +164,26 @@ public class MoneyMoneyImportService
             // Wipe previous rows for this source. Order matters: transactions and securities
             // reference accounts/categories via FKs (Restrict), so they go first. Accounts
             // reference account_groups, so accounts go before account_groups.
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM transactions WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            // Remember each account's provider (keyed by Id, which MoneyMoney keeps stable) before
+            // the accounts are replaced, so accounts handed over to another connector stay that way.
+            var providers = await db.Accounts
+                .Where(a => a.SourceId == sourceId)
+                .ToDictionaryAsync(a => a.Id, a => a.Provider, ct);
+            var foreignAccountIds = providers
+                .Where(p => p.Value != AccountProviders.MoneyMoney)
+                .Select(p => p.Key)
+                .ToHashSet();
+
+            // Only MoneyMoney-owned transactions are replaced; accounts owned by another provider
+            // keep theirs untouched.
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                DELETE FROM transactions
+                WHERE SourceId = {0}
+                  AND (local_account_key IS NULL
+                       OR local_account_key NOT IN (SELECT Id FROM accounts WHERE SourceId = {0} AND provider <> {1}))
+                """,
+                new object[] { sourceId, AccountProviders.MoneyMoney }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM portfolio_chart WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM holdings WHERE SourceId = {0}", new object[] { sourceId }, ct);
             await db.Database.ExecuteSqlRawAsync("DELETE FROM categories WHERE SourceId = {0}", new object[] { sourceId }, ct);
@@ -172,10 +192,10 @@ public class MoneyMoneyImportService
             await db.Database.ExecuteSqlRawAsync("DELETE FROM account_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
 
             int accountGroupCount = await CopyAccountGroupsAsync(src, db, sourceId, ct);
-            int accountCount = await CopyAccountsAsync(src, db, sourceId, ct);
+            int accountCount = await CopyAccountsAsync(src, db, sourceId, providers, ct);
             int groupCount = await CopyCategoryGroupsAsync(src, db, sourceId, ct);
             int categoryCount = await CopyCategoriesAsync(src, db, sourceId, ct);
-            int txCount = await CopyTransactionsAsync(src, db, sourceId, ct);
+            int txCount = await CopyTransactionsAsync(src, db, sourceId, foreignAccountIds, ct);
             int securityCount = await CopySecuritiesAsync(src, db, sourceId, ct);
             int portfolioChartCount = await CopyPortfolioChartAsync(src, db, sourceId, ct);
 
@@ -263,6 +283,9 @@ public class MoneyMoneyImportService
         WarnIfMissing(src, "categories", ExpectedCategoryColumns, sourceName);
         WarnIfMissing(src, "category_groups", ExpectedCategoryGroupColumns, sourceName);
         WarnIfMissing(src, "transactions", ExpectedTransactionColumns, sourceName);
+        // booked / split_key only exist in newer MoneyMoney versions or exporter builds; without
+        // them rows import as booked and split children can't be linked to their parents.
+        WarnIfMissing(src, "transactions", OptionalTransactionColumns, sourceName);
         // account_groups is only present in newer exporter builds; if the table is missing we
         // skip the check rather than warn — CopyAccountGroupsAsync handles the absence below.
         if (TableExists(src, "account_groups"))
@@ -331,7 +354,8 @@ public class MoneyMoneyImportService
         return false;
     }
 
-    private static async Task<int> CopyAccountsAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
+    private static async Task<int> CopyAccountsAsync(
+        SqliteConnection src, BudgetDbContext db, int sourceId, IReadOnlyDictionary<long, string> providers, CancellationToken ct)
     {
         // group_key is the FK into account_groups; older exporters (pre-account-groups) won't
         // have account_groups but the column itself has always been on accounts. Probe anyway
@@ -343,14 +367,16 @@ public class MoneyMoneyImportService
             FROM accounts
             """;
         const string insert = """
-            INSERT INTO accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key)
-            VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key)
+            INSERT INTO accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider)
+            VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider)
             """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {
             long rowid = r.GetInt64(0);
-            cmd.Parameters["$id"].Value = SourceScope.Namespace(sourceId, rowid);
+            long id = SourceScope.Namespace(sourceId, rowid);
+            cmd.Parameters["$id"].Value = id;
             cmd.Parameters["$sid"].Value = sourceId;
+            cmd.Parameters["$provider"].Value = providers.GetValueOrDefault(id, AccountProviders.MoneyMoney);
             cmd.Parameters["$name"].Value = r.IsDBNull(1) ? DBNull.Value : r.GetString(1);
             cmd.Parameters["$iban"].Value = r.IsDBNull(2) ? DBNull.Value : r.GetString(2);
             cmd.Parameters["$currency"].Value = r.IsDBNull(3) ? DBNull.Value : r.GetString(3);
@@ -433,7 +459,8 @@ public class MoneyMoneyImportService
         }, CategoryInsertParameters, ct);
     }
 
-    private static async Task<int> CopyTransactionsAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
+    private static async Task<int> CopyTransactionsAsync(
+        SqliteConnection src, BudgetDbContext db, int sourceId, HashSet<long> foreignAccountIds, CancellationToken ct)
     {
         // MoneyMoney's SEPA "Verwendungszweck" lives in unformatted_purpose (verified against
         // a live MoneyMoney 2.5-era SQLCipher db: rows there carry the BILLCOLL/EREF/MREF/CRED
@@ -441,13 +468,22 @@ public class MoneyMoneyImportService
         // have it — probe at runtime and substitute NULL so the import still succeeds.
         bool hasPurpose = await ColumnExistsAsync(src, "transactions", "unformatted_purpose", ct);
         string purposeExpr = hasPurpose ? "unformatted_purpose" : "NULL AS unformatted_purpose";
+        // booked: 0 = pending ("vorgemerkt"). Missing column => everything counts as booked.
+        bool hasBooked = await ColumnExistsAsync(src, "transactions", "booked", ct);
+        string bookedExpr = hasBooked ? "booked" : "1 AS booked";
+        // split_key links a child (splitted=2) to its parent's rowid. Without it we cannot tell
+        // how much of a parent is allocated, so parents keep the legacy "excluded" behavior.
+        bool hasSplitKey = await ColumnExistsAsync(src, "transactions", "split_key", ct);
+        string splitKeyExpr = hasSplitKey ? "split_key" : "NULL AS split_key";
+        var childSumsCents = hasSplitKey ? await ReadSplitChildSumsAsync(src, ct) : new Dictionary<long, long>();
+
         string select = $"""
-            SELECT rowid, local_account_key, amount, currency, timestamp, name, comment, {purposeExpr}, category_key, checkmark, splitted
+            SELECT rowid, local_account_key, amount, currency, timestamp, name, comment, {purposeExpr}, category_key, checkmark, splitted, {bookedExpr}, {splitKeyExpr}
             FROM transactions
             """;
         const string insert = """
-            INSERT INTO transactions (Id, SourceId, local_account_key, amount, currency, timestamp, name, comment, purpose, category_key, checkmark, splitted)
-            VALUES ($id, $sid, $local_account_key, $amount, $currency, $timestamp, $name, $comment, $purpose, $category_key, $checkmark, $splitted)
+            INSERT INTO transactions (Id, SourceId, local_account_key, amount, currency, timestamp, name, comment, purpose, category_key, checkmark, splitted, booked, split_parent_id, split_original_amount)
+            VALUES ($id, $sid, $local_account_key, $amount, $currency, $timestamp, $name, $comment, $purpose, $category_key, $checkmark, $splitted, $booked, $split_parent_id, $split_original_amount)
             """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {
@@ -459,9 +495,8 @@ public class MoneyMoneyImportService
                 : SourceScope.Namespace(sourceId, r.GetInt64(1));
             // MoneyMoney stores amounts as REAL euros (or other currency); we keep them as
             // integer cents downstream so DB-side SUM is exact.
-            cmd.Parameters["$amount"].Value = r.IsDBNull(2)
-                ? DBNull.Value
-                : MoneyMath.EurosToCents(r.GetDouble(2));
+            long? amountCents = r.IsDBNull(2) ? null : MoneyMath.EurosToCents(r.GetDouble(2));
+            cmd.Parameters["$amount"].Value = (object?)amountCents ?? DBNull.Value;
             cmd.Parameters["$currency"].Value = r.IsDBNull(3) ? DBNull.Value : r.GetString(3);
             cmd.Parameters["$timestamp"].Value = r.IsDBNull(4) ? DBNull.Value : r.GetInt64(4);
             cmd.Parameters["$name"].Value = r.IsDBNull(5) ? DBNull.Value : r.GetString(5);
@@ -471,8 +506,47 @@ public class MoneyMoneyImportService
                 ? DBNull.Value
                 : SourceScope.Namespace(sourceId, r.GetInt64(8));
             cmd.Parameters["$checkmark"].Value = r.IsDBNull(9) ? DBNull.Value : r.GetInt64(9);
-            cmd.Parameters["$splitted"].Value = r.IsDBNull(10) ? DBNull.Value : r.GetInt64(10);
-        }, TransactionInsertParameters, ct);
+            long? splitted = r.IsDBNull(10) ? null : r.GetInt64(10);
+            cmd.Parameters["$splitted"].Value = (object?)splitted ?? DBNull.Value;
+            cmd.Parameters["$booked"].Value = r.IsDBNull(11) || r.GetInt64(11) != 0 ? 1 : 0;
+            cmd.Parameters["$split_parent_id"].Value = DBNull.Value;
+            cmd.Parameters["$split_original_amount"].Value = DBNull.Value;
+
+            if (splitted == SplitState.Child && hasSplitKey && !r.IsDBNull(12) && r.GetInt64(12) != 0)
+            {
+                cmd.Parameters["$split_parent_id"].Value = SourceScope.Namespace(sourceId, r.GetInt64(12));
+            }
+            else if (splitted == SplitState.Parent && hasSplitKey)
+            {
+                long original = amountCents ?? 0;
+                cmd.Parameters["$split_original_amount"].Value = original;
+                long remainder = SplitMath.Remainder(original, childSumsCents.GetValueOrDefault(rowid));
+                if (remainder != 0)
+                {
+                    // Children don't cover the parent: turn it into an uncategorized normal row
+                    // for the unallocated part so every total picks it up without special cases.
+                    cmd.Parameters["$splitted"].Value = SplitState.Remainder;
+                    cmd.Parameters["$amount"].Value = remainder;
+                    cmd.Parameters["$category_key"].Value = DBNull.Value;
+                }
+            }
+        }, TransactionInsertParameters, ct, skipRow: r =>
+            !r.IsDBNull(1) && foreignAccountIds.Contains(SourceScope.Namespace(sourceId, r.GetInt64(1))));
+    }
+
+    /// <summary>Sum of child amounts (cents) per split parent rowid.</summary>
+    private static async Task<Dictionary<long, long>> ReadSplitChildSumsAsync(SqliteConnection src, CancellationToken ct)
+    {
+        var sums = new Dictionary<long, long>();
+        await using var cmd = src.CreateCommand();
+        cmd.CommandText = "SELECT split_key, amount FROM transactions WHERE splitted = 2 AND split_key IS NOT NULL AND split_key <> 0 AND amount IS NOT NULL";
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            long parent = reader.GetInt64(0);
+            sums[parent] = sums.GetValueOrDefault(parent) + MoneyMath.EurosToCents(reader.GetDouble(1));
+        }
+        return sums;
     }
 
     private static async Task<int> CopySecuritiesAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
@@ -558,7 +632,8 @@ public class MoneyMoneyImportService
         string insertSql,
         Action<SqliteCommand, SqliteDataReader> bind,
         string[] parameterNames,
-        CancellationToken ct)
+        CancellationToken ct,
+        Func<SqliteDataReader, bool>? skipRow = null)
     {
         // Reader on the source DB; one INSERT command on the destination, executed once per row
         // inside a single Database transaction. SQLite handles ~50k inserts/sec like this when
@@ -583,6 +658,7 @@ public class MoneyMoneyImportService
         int count = 0;
         while (await reader.ReadAsync(ct))
         {
+            if (skipRow != null && skipRow(reader)) continue;
             bind(insertCmd, reader);
             await insertCmd.ExecuteNonQueryAsync(ct);
             count++;

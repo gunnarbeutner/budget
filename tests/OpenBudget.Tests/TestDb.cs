@@ -14,6 +14,8 @@ namespace OpenBudget.Tests;
 internal sealed class TestDb : IAsyncDisposable
 {
     public SqliteConnection Connection { get; }
+    public IDbContextFactory<BudgetDbContext> Factory { get; }
+    public AccountService Accounts { get; }
     public BudgetDbContext Db { get; }
     public ChangeNotificationService Notifier { get; }
     public CategoryHierarchyService Hierarchy { get; }
@@ -43,6 +45,8 @@ internal sealed class TestDb : IAsyncDisposable
         // In tests every context shares this single open :memory: connection, so they all see the
         // same database — disposing a per-operation context doesn't drop the schema or data.
         var factory = new SharedConnectionDbContextFactory(options);
+        Factory = factory;
+        Accounts = new AccountService(factory);
         Notifier = new ChangeNotificationService();
         // Stand-in for the per-circuit origin the DI container would supply in the live app.
         var origin = new ChangeOrigin();
