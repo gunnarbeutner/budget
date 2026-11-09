@@ -137,13 +137,59 @@ public sealed partial class ScalableConnector : IBankConnector
             if (IsAppHost(page)) break;
             var again = ScalableLoginForm.Parse(html, page);
             if (sentPassword && (status is 400 or 401 or 403 || again?.PasswordField != null))
-                return ConnectorStep.Fail<ConnectorSession?>("Scalable rejected the e-mail address or password.", credentialsRejected: true);
+            {
+                // The form also comes back for reasons other than a wrong password (captcha, too many attempts,
+                // blocked login); say what the page says instead of guessing.
+                var pageError = ExtractLoginError(html);
+                var captcha = HasCaptcha(html);
+                Log.LogInformation("Scalable returned the login form again: HTTP {Status} at {Path}; captcha: {Captcha}; message: {Message}",
+                    status, page.AbsolutePath, captcha, pageError ?? "(none)");
+                if (captcha)
+                    return ConnectorStep.Fail<ConnectorSession?>(
+                        "Scalable asks for a captcha before it accepts this login, which the connector can't solve. " +
+                        "Log in once on scalable.capital in a browser, then sync again." + (pageError != null ? $" (Scalable: {pageError})" : ""));
+                return ConnectorStep.Fail<ConnectorSession?>(
+                    pageError != null ? $"Scalable did not accept the login: {pageError}" : $"Scalable rejected the e-mail address or password (HTTP {status}).",
+                    credentialsRejected: pageError == null || LooksLikeWrongCredentials(pageError));
+            }
         }
 
         if (!IsAppHost(page))
             throw new ConnectorException($"Scalable's login did not complete (stopped at {page.AbsolutePath}).");
         return null;
     }
+
+    /// <summary>The error text Auth0's Universal Login shows next to the fields or above the form, if any.</summary>
+    internal static string? ExtractLoginError(string html)
+    {
+        foreach (var pattern in new[]
+        {
+            @"id=""error-element-[a-z-]+""[^>]*>(?<t>.*?)</",
+            @"class=""[^""]*ulp-input-error-message[^""]*""[^>]*>(?<t>.*?)</",
+            @"class=""[^""]*ulp-error-info[^""]*""[^>]*>(?<t>.*?)</",
+            @"id=""prompt-alert""[^>]*>(?:\s*<[^>]+>)*(?<t>[^<]+)<",
+        })
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(html, pattern,
+                System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
+            if (!m.Success) continue;
+            var text = System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(m.Groups["t"].Value, "<[^>]+>", " ",
+                System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1))).Trim();
+            text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1));
+            if (text.Length > 0) return text.Length <= 200 ? text : text[..200];
+        }
+        return null;
+    }
+
+    internal static bool HasCaptcha(string html) =>
+        html.Contains("ulp-captcha", StringComparison.OrdinalIgnoreCase)
+        || html.Contains("captcha", StringComparison.OrdinalIgnoreCase) && html.Contains("name=\"captcha\"", StringComparison.OrdinalIgnoreCase)
+        || html.Contains("recaptcha", StringComparison.OrdinalIgnoreCase) || html.Contains("hcaptcha", StringComparison.OrdinalIgnoreCase)
+        || html.Contains("friendly-challenge", StringComparison.OrdinalIgnoreCase) || html.Contains("arkose", StringComparison.OrdinalIgnoreCase);
+
+    private static bool LooksLikeWrongCredentials(string message) =>
+        System.Text.RegularExpressions.Regex.IsMatch(message, "(falsch|ung(ü|ue)ltig|wrong|incorrect|invalid)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
 
     private bool IsAppHost(Uri uri) => string.Equals(uri.Host, _options.BaseUri.Host, StringComparison.OrdinalIgnoreCase);
 

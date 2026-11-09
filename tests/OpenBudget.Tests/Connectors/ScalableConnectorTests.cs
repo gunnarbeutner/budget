@@ -357,4 +357,20 @@ public sealed class ScalableConnectorTests
     {
         Assert.Equal(expected, OpenBudget.Connectors.Scalable.ScalableConnector.ExtractUserId(html));
     }
+
+    [Theory]
+    [InlineData("<span id=\"error-element-password\" class=\"ulp-input-error-message\">Wrong email or password</span>", "Wrong email or password")]
+    [InlineData("<div id=\"prompt-alert\"><p>Too many login attempts.</p></div>", "Too many login attempts.")]
+    [InlineData("<form><input name=\"password\"></form>", null)]
+    public void The_login_error_shown_by_the_sign_in_page_is_extracted(string html, string? expected)
+    {
+        Assert.Equal(expected, OpenBudget.Connectors.Scalable.ScalableConnector.ExtractLoginError(html));
+    }
+
+    [Fact]
+    public void A_captcha_on_the_sign_in_page_is_detected()
+    {
+        Assert.True(OpenBudget.Connectors.Scalable.ScalableConnector.HasCaptcha("<div class=\"ulp-captcha-container\"></div>"));
+        Assert.False(OpenBudget.Connectors.Scalable.ScalableConnector.HasCaptcha("<form><input name=\"password\"></form>"));
+    }
 }
