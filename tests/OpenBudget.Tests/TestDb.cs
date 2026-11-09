@@ -30,6 +30,7 @@ internal sealed class TestDb : IAsyncDisposable
     public DepotMappingService DepotMapping { get; }
     public SecurityTaxService SecurityTax { get; }
     public InstrumentMappingService InstrumentMapping { get; }
+    public SystemDbContextFactory System { get; }
 
     public TestDb()
     {
@@ -46,6 +47,7 @@ internal sealed class TestDb : IAsyncDisposable
         // same database — disposing a per-operation context doesn't drop the schema or data.
         var factory = new SharedConnectionDbContextFactory(options);
         Factory = factory;
+        System = new SystemDbContextFactory(options);
         Accounts = new AccountService(factory);
         Notifier = new ChangeNotificationService();
         // Stand-in for the per-circuit origin the DI container would supply in the live app.
@@ -62,6 +64,20 @@ internal sealed class TestDb : IAsyncDisposable
         DepotMapping = new DepotMappingService(factory);
         SecurityTax = new SecurityTaxService(factory);
         InstrumentMapping = new InstrumentMappingService(factory);
+    }
+
+    /// <summary>
+    /// The service graph as <paramref name="userId"/> sees it: every context is user-scoped (global
+    /// query filters + write guard), exactly as in the running app. Null = logged out.
+    /// </summary>
+    public UserView ForUser(string? userId) => new(this, userId);
+
+    /// <summary>Seed a login (identity row only; no password).</summary>
+    public AppUser AddUser(string id, string name, bool admin = false)
+    {
+        var u = new AppUser { Id = id, UserName = name, NormalizedUserName = name.ToUpperInvariant(), IsAdmin = admin };
+        Db.Users.Add(u);
+        return u;
     }
 
     /// <summary>
@@ -206,4 +222,60 @@ internal sealed class TestDb : IAsyncDisposable
         Db.Accounts.Add(a);
         return a;
     }
+}
+
+/// <summary>Resolves a fixed user id, standing in for the Blazor auth state in tests.</summary>
+internal sealed class FixedCurrentUser : ICurrentUser
+{
+    private readonly string? _userId;
+
+    public FixedCurrentUser(string? userId) => _userId = userId;
+
+    public ValueTask<string?> GetUserIdAsync() => ValueTask.FromResult(_userId);
+}
+
+/// <summary>The app's service graph wired over user-scoped contexts for one user.</summary>
+internal sealed class UserView
+{
+    public UserView(TestDb t, string? userId)
+    {
+        Notifier = t.Notifier;
+        Access = new AccessScopeProvider(t.System, new FixedCurrentUser(userId), Notifier);
+        Factory = new ScopedDbContextFactory(t.System, Access);
+        var origin = new ChangeOrigin();
+        Hierarchy = new CategoryHierarchyService(Factory, Notifier);
+        Projects = new ProjectService(Factory, Notifier, origin);
+        Entries = new BudgetEntryService(Factory, Hierarchy, Notifier, origin);
+        Spending = new BudgetService(Factory, Hierarchy, Projects, Entries, Notifier, origin);
+        TransactionQueries = new TransactionQueryService(Factory);
+        Browse = new BrowseService(Factory, Hierarchy, Projects, Entries, Spending);
+        Cashflow = new CashflowProjectionService(Factory, Hierarchy, Projects);
+        Portfolio = new PortfolioService(Factory, Projects);
+        Freshness = new FreshnessService(Factory);
+        DepotMapping = new DepotMappingService(Factory);
+        SecurityTax = new SecurityTaxService(Factory);
+        InstrumentMapping = new InstrumentMappingService(Factory);
+        Accounts = new AccountService(Factory);
+        Sharing = new SharingService(Factory, t.System, Notifier, origin);
+        Sources = new SourceService(Factory, Notifier, origin);
+    }
+
+    public ChangeNotificationService Notifier { get; }
+    public AccessScopeProvider Access { get; }
+    public IDbContextFactory<BudgetDbContext> Factory { get; }
+    public CategoryHierarchyService Hierarchy { get; }
+    public ProjectService Projects { get; }
+    public BudgetEntryService Entries { get; }
+    public BudgetService Spending { get; }
+    public TransactionQueryService TransactionQueries { get; }
+    public BrowseService Browse { get; }
+    public CashflowProjectionService Cashflow { get; }
+    public PortfolioService Portfolio { get; }
+    public FreshnessService Freshness { get; }
+    public DepotMappingService DepotMapping { get; }
+    public SecurityTaxService SecurityTax { get; }
+    public InstrumentMappingService InstrumentMapping { get; }
+    public AccountService Accounts { get; }
+    public SharingService Sharing { get; }
+    public SourceService Sources { get; }
 }
