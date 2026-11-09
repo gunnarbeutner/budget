@@ -1,6 +1,7 @@
-@using OpenBudget.Models
+﻿@using OpenBudget.Models
 @using OpenBudget.Services
 @inject ProjectService ProjectService
+@inject AccessScopeProvider AccessProvider
 @inject NavigationManager Navigation
 @inject ProjectTimeState TimeState
 @inject IStringLocalizer<ProjectPageHeader> L
@@ -106,11 +107,14 @@
         </a>
         @* The settings cog reads as a secondary affordance on the data tabs, but on the
            settings page itself (Active == null) it's the active tab — underlined like the rest. *@
-        <a class="nav-link project-page-tabs-settings @(Active == null ? "active" : "")"
-           href="@($"/projects/{ProjectId}/settings")"
-           title="@L["Tab_Settings_Tooltip"]" aria-label="@L["Tab_Settings_Tooltip"]">
-            <i class="bi bi-gear" aria-hidden="true"></i>
-        </a>
+        @if (canEditProject)
+        {
+            <a class="nav-link project-page-tabs-settings @(Active == null ? "active" : "")"
+               href="@($"/projects/{ProjectId}/settings")"
+               title="@L["Tab_Settings_Tooltip"]" aria-label="@L["Tab_Settings_Tooltip"]">
+                <i class="bi bi-gear" aria-hidden="true"></i>
+            </a>
+        }
     </nav>
 </div>
 
@@ -140,6 +144,9 @@
 
     private List<Project>? otherProjects;
     private int? _loadedForProjectId;
+    // Settings (and budget editing) are for editors and owners; viewers get no cog.
+    private bool canEditProject;
+    private AccessScope scope = AccessScope.Anonymous;
 
     /// <summary>"?year=&month=&period=" suffix for the month-model tabs, or "" when no anchor is
     /// known. The Overview/Browse pages pass the anchor explicitly; from the year-only tabs
@@ -166,6 +173,8 @@
         // list on every re-render. Switching projects does a forceLoad, so a fresh instance reloads.
         if (_loadedForProjectId == ProjectId) return;
         _loadedForProjectId = ProjectId;
+        scope = await AccessProvider.GetAsync();
+        canEditProject = scope.CanEdit(ProjectId);
         var all = await ProjectService.GetProjectsAsync();
         otherProjects = all.Where(p => p.Id != ProjectId).OrderBy(p => p.Name).ToList();
     }
@@ -180,7 +189,7 @@
             ProjectTab.Cashflow => $"/projects/{projectId}/cashflow",
             ProjectTab.Rebalance => $"/projects/{projectId}/rebalance",
             // No Active = on the settings page; switching keeps you on settings for the new project.
-            _ => $"/projects/{projectId}/settings",
+            _ => scope.CanEdit(projectId) ? $"/projects/{projectId}/settings" : $"/projects/{projectId}/overview{MonthQuery}",
         };
         Navigation.NavigateTo(url);
     }

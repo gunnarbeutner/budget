@@ -1,4 +1,5 @@
 @page "/sources/{SourceId:int}/tax"
+@attribute [RequireSourceOwner]
 @inherits DataChangeAwareComponent
 @using System.Globalization
 @using OpenBudget.Models

@@ -28,8 +28,11 @@
                                     }
                                 }
                             </select>
-                            <a class="btn btn-primary text-nowrap" href="@($"/projects/{ProjectId}/budgets/new")">@L["Button_NewBudget"]</a>
-                            @if (selectedBudget != null)
+                            @if (CanEdit)
+                            {
+                                <a class="btn btn-primary text-nowrap" href="@($"/projects/{ProjectId}/budgets/new")">@L["Button_NewBudget"]</a>
+                            }
+                            @if (selectedBudget != null && CanEdit)
                             {
                                 <a class="btn btn-outline-primary text-nowrap" href="/budgets/@selectedBudget.Id/edit">@L["Button_Edit"]</a>
                                 @if (!selectedBudget.IsActive)
@@ -61,6 +64,8 @@
     [Parameter, EditorRequired] public int SelectedBudgetId { get; set; }
     [Parameter, EditorRequired] public int SelectedYear { get; set; }
     [Parameter, EditorRequired] public int ProjectId { get; set; }
+    /// <summary>Editors and owners may create/edit/activate/delete budgets; viewers only pick the comparison.</summary>
+    [Parameter] public bool CanEdit { get; set; } = true;
     /// <summary>Raised with the chosen budget id (0 = no comparison).</summary>
     [Parameter] public EventCallback<int> OnSelectedBudgetChanged { get; set; }
     /// <summary>Raised with the budget id to make active.</summary>

@@ -14,6 +14,7 @@
 @inject NavigationManager Navigation
 @inject IStringLocalizer<Cashflow> L
 @inject ClockService Clock
+@inject AccessScopeProvider AccessProvider
 
 <PageTitle>@(projectName != null ? L["PageTitle_WithProject", projectName] : L["PageTitle"])</PageTitle>
 
@@ -267,6 +268,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                               SplitsDirty="splitsDirty"
                               SplitsSaving="splitsSaving"
                               SelectedBudgetId="selectedBudgetId"
+                              CanSave="AccessProvider.Last.CanEdit(selectedProjectId)"
                               OnSplitChanged="RecalculateContributions"
                               OnSaveSplits="SaveSplits" />
 

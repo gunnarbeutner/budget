@@ -124,4 +124,34 @@
   <data name="Modal_BodyWarning" xml:space="preserve">
     <value>Projekte, die diese Quelle nutzen, müssen vorher gelöscht werden; andernfalls wird die Aktion abgebrochen.</value>
   </data>
+  <data name="Create_Placeholder" xml:space="preserve">
+    <value>Name der neuen Quelle, z. B. haushalt</value>
+  </data>
+  <data name="Create_Button" xml:space="preserve">
+    <value>Quelle anlegen</value>
+  </data>
+  <data name="Token_Show" xml:space="preserve">
+    <value>Upload-Token</value>
+  </data>
+  <data name="Token_Hide" xml:space="preserve">
+    <value>Token verbergen</value>
+  </data>
+  <data name="Token_Label" xml:space="preserve">
+    <value>Upload-Token (berechtigt nur zum Hochladen in diese Quelle)</value>
+  </data>
+  <data name="Token_Usage_Before" xml:space="preserve">
+    <value>Sende ihn als </value>
+  </data>
+  <data name="Token_Usage_After" xml:space="preserve">
+    <value> mit dem Upload. Behandle ihn wie ein Passwort.</value>
+  </data>
+  <data name="Token_Rotate" xml:space="preserve">
+    <value>Token erneuern</value>
+  </data>
+  <data name="Rotate_Title" xml:space="preserve">
+    <value>Upload-Token von {0} erneuern?</value>
+  </data>
+  <data name="Rotate_Body" xml:space="preserve">
+    <value>Der aktuelle Token funktioniert sofort nicht mehr; aktualisiere den Exporter mit dem neuen.</value>
+  </data>
 </root>

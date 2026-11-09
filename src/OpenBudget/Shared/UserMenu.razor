@@ -1,0 +1,39 @@
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Navigation
+@inject IStringLocalizer<UserMenu> L
+
+@* Who is signed in, plus the way to the account page (password, passkeys) and out. The account
+   and logout pages are plain server-rendered pages, not Blazor routes, so the links force a full
+   navigation instead of the router's client-side one. *@
+
+@if (userName != null)
+{
+    <div class="user-menu d-print-none d-flex justify-content-end align-items-center gap-3 small mb-2">
+        <a href="/Account" class="text-decoration-none text-body-secondary"
+           @onclick="@(() => Navigation.NavigateTo("/Account", forceLoad: true))" @onclick:preventDefault
+           title="@L["Account"]">
+            <i class="bi bi-person-circle" aria-hidden="true"></i> @userName
+        </a>
+        <a href="/Account/Logout" class="text-decoration-none text-body-secondary"
+           @onclick="@(() => Navigation.NavigateTo("/Account/Logout", forceLoad: true))" @onclick:preventDefault>
+            @L["LogOut"]
+        </a>
+    </div>
+}
+
+@code {
+    private string? userName;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var state = await AuthState.GetAuthenticationStateAsync();
+            userName = state.User.Identity?.IsAuthenticated == true ? state.User.Identity.Name : null;
+        }
+        catch (InvalidOperationException)
+        {
+            userName = null;   // no auth state (should not happen: every page requires login)
+        }
+    }
+}

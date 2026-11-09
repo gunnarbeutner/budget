@@ -14,6 +14,7 @@
 @inject IStringLocalizer<Budgets> L
 @inject ILogger<Budgets> Logger
 @inject ClockService Clock
+@inject AccessScopeProvider AccessProvider
 
 <PageTitle>@L["PageTitle"]@(projectName != null ? $" — {projectName}" : "")</PageTitle>
 
@@ -36,6 +37,7 @@
                     SelectedBudgetId="selectedCompareBudgetId"
                     SelectedYear="selectedYear"
                     ProjectId="selectedProjectId"
+                    CanEdit="AccessProvider.Last.CanEdit(selectedProjectId)"
                     OnSelectedBudgetChanged="OnCompareBudgetChanged"
                     OnMakeActive="SetBudgetActive"
                     OnDelete="ShowDeleteBudgetDialog" />

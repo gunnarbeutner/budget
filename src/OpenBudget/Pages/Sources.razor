@@ -3,9 +3,8 @@
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject BudgetService BudgetService
-@inject ProjectService ProjectService
+@inject SourceService SourceService
 @inject IDbContextFactory<BudgetDbContext> DbFactory
-@inject ChangeNotificationService Notifier
 @inject IStringLocalizer<Sources> L
 @inject ClockService Clock
 @using Microsoft.EntityFrameworkCore
@@ -17,6 +16,16 @@
 <p class="text-body-secondary">
     @L["Intro_Before"]<code>POST /api/import/moneymoney/{name}</code>@L["Intro_After"]
 </p>
+
+<form class="d-flex flex-wrap gap-2 align-items-start mb-3" @onsubmit="CreateSourceAsync" @onsubmit:preventDefault>
+    <input type="text" id="new-source-name" class="form-control w-auto" @bind="newSourceName" @bind:event="oninput"
+           placeholder="@L["Create_Placeholder"]" aria-label="@L["Create_Placeholder"]" maxlength="100" />
+    <button type="submit" class="btn btn-primary" id="new-source-create" disabled="@string.IsNullOrWhiteSpace(newSourceName)">@L["Create_Button"]</button>
+    @if (!string.IsNullOrEmpty(createError))
+    {
+        <div class="text-danger small align-self-center" role="alert">@createError</div>
+    }
+</form>
 
 @if (sources == null)
 {
@@ -63,7 +72,10 @@ else
                     <td class="text-end">@projectCounts.GetValueOrDefault(s.Id, 0)</td>
                     <td class="text-end">@transactionCounts.GetValueOrDefault(s.Id, 0).ToString("N0")</td>
                     <td class="text-end">@(s.LastUploadSizeBytes.HasValue ? s.LastUploadSizeBytes.Value.ToString("N0") : "—")</td>
-                    <td class="text-end">
+                    <td class="text-end text-nowrap">
+                        <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => ToggleToken(s.Id)">
+                            @(revealed.Contains(s.Id) ? L["Token_Hide"] : L["Token_Show"])
+                        </button>
                         @if (ppDepotCounts.GetValueOrDefault(s.Id, 0) > 0)
                         {
                             <a class="btn btn-sm btn-outline-secondary me-1" href="@($"/sources/{s.Id}/depots")">@L["Button_Depots"]</a>
@@ -80,10 +92,35 @@ else
                         }
                     </td>
                 </tr>
+                @if (revealed.Contains(s.Id))
+                {
+                    <tr class="table-light" data-source-token-row="@s.Name">
+                        <td colspan="7">
+                            <div class="small text-body-secondary mb-1">@L["Token_Label"]</div>
+                            <code class="user-select-all" data-source-token="@s.Name">@s.UploadToken</code>
+                            <div class="small text-body-secondary mt-2">
+                                @L["Token_Usage_Before"]<code>Authorization: Bearer &lt;token&gt;</code>@L["Token_Usage_After"]
+                            </div>
+                            <button class="btn btn-sm btn-outline-danger mt-2" @onclick="() => pendingRotate = s">@L["Token_Rotate"]</button>
+                        </td>
+                    </tr>
+                }
             }
         </tbody>
     </table>
 }
+
+<Modal Show="@(pendingRotate != null)"
+       Title="@(pendingRotate != null ? L["Rotate_Title", pendingRotate.Name].Value : "")"
+       OnClose="@(() => pendingRotate = null)">
+    <ChildContent>
+        <p>@L["Rotate_Body"]</p>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="() => pendingRotate = null">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-danger" @onclick="RotateConfirmed">@L["Token_Rotate"]</button>
+    </Footer>
+</Modal>
 
 <Modal Show="@(pendingDelete != null)"
        Title="@(pendingDelete != null ? L["Modal_Title", pendingDelete.Name].Value : "")"
@@ -104,6 +141,41 @@ else
     private Dictionary<int, int> transactionCounts = new();
     private Dictionary<int, int> ppDepotCounts = new();
     private ImportSource? pendingDelete;
+    private ImportSource? pendingRotate;
+    private readonly HashSet<int> revealed = new();
+    private string newSourceName = "";
+    private string? createError;
+
+    private void ToggleToken(int sourceId)
+    {
+        if (!revealed.Remove(sourceId)) revealed.Add(sourceId);
+    }
+
+    private async Task CreateSourceAsync()
+    {
+        createError = null;
+        try
+        {
+            var created = await SourceService.CreateSourceAsync(newSourceName);
+            newSourceName = "";
+            revealed.Add(created.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or AccessDeniedException)
+        {
+            createError = ex.Message;
+        }
+    }
+
+    private async Task RotateConfirmed()
+    {
+        if (pendingRotate == null) return;
+        var id = pendingRotate.Id;
+        pendingRotate = null;
+        await SourceService.RotateTokenAsync(id);
+        revealed.Add(id);
+        await LoadAsync();
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -117,7 +189,7 @@ else
 
     private async Task LoadAsync()
     {
-        sources = await ProjectService.GetAllSourcesAsync();
+        sources = await SourceService.GetOwnedSourcesAsync(ensureTokens: true);
         await using var db = await DbFactory.CreateDbContextAsync();
         projectCounts = await db.Projects
             .GroupBy(p => p.SourceId)
@@ -142,23 +214,10 @@ else
     {
         if (pendingDelete == null) return;
         var sourceId = pendingDelete.Id;
-        await using var db = await DbFactory.CreateDbContextAsync();
-        if (await db.Projects.AnyAsync(p => p.SourceId == sourceId))
-        {
-            // UI shouldn't even offer the button in this case, but guard anyway.
-            pendingDelete = null;
-            return;
-        }
-        // Wipe all imported data for the source, then remove the source row. The data wipe runs
-        // in its own FK-disabled transaction (see DeleteSourceDataAsync) because the account/
-        // category group tables have self-referential RESTRICT FKs that a plain bulk delete trips.
-        await SourceData.DeleteSourceDataAsync(db, sourceId);
-        db.ImportSources.Remove(pendingDelete);
-        await db.SaveChangesAsync();
-        var deletedId = sourceId;
         pendingDelete = null;
-        Notifier.Publish(new DataChange(DataArea.Sources, SourceId: deletedId));
-        Notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: deletedId));
+        // Owner-only; refused (false) while projects still use the source. The UI doesn't offer the
+        // button in that case, but guard anyway.
+        await SourceService.DeleteSourceAsync(sourceId);
         await LoadAsync();
     }
 }

@@ -1,0 +1,152 @@
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject SharingService Sharing
+@inject OpenBudget.Auth.UserDirectory Users
+@inject AccessScopeProvider AccessProvider
+@inject IStringLocalizer<ProjectSharingCard> L
+
+@* Project-settings panel (owner only): share this project with other users as viewer or editor,
+   change a role, or revoke access. Sub-projects inherit these shares automatically. Everything is
+   enforced server-side (SharingService / the database context); this card is just the UI. *@
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card" id="sharing-card">
+            <div class="card-header">
+                <h5 class="mb-0">@L["Sharing_Heading"]</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-body-secondary small mb-3">@L["Sharing_Description"]</p>
+
+                @if (!string.IsNullOrEmpty(error))
+                {
+                    <div class="alert alert-danger py-2" role="alert">@error</div>
+                }
+
+                @if (shares == null)
+                {
+                    <p class="text-body-secondary mb-0"><em>@L["Status_Loading"]</em></p>
+                }
+                else
+                {
+                    @if (shares.Count == 0)
+                    {
+                        <p class="text-body-secondary">@L["Sharing_None"]</p>
+                    }
+                    else
+                    {
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>@L["Table_User"]</th>
+                                    <th>@L["Table_Role"]</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var share in shares)
+                                {
+                                    var current = share;
+                                    <tr @key="share.UserId">
+                                        <td>@share.UserName</td>
+                                        <td>
+                                            <select class="form-select form-select-sm w-auto"
+                                                    aria-label="@L["Table_Role"]"
+                                                    value="@((int)share.Role)"
+                                                    @onchange="e => ChangeRole(current, e)">
+                                                <option value="@((int)ProjectRole.Viewer)">@L["Role_Viewer"]</option>
+                                                <option value="@((int)ProjectRole.Editor)">@L["Role_Editor"]</option>
+                                            </select>
+                                        </td>
+                                        <td class="text-end">
+                                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                                    @onclick="() => Revoke(current)">@L["Button_Revoke"]</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+
+                    @if (candidates.Count == 0)
+                    {
+                        <p class="text-body-secondary small mb-0">@L["Sharing_NoCandidates"]</p>
+                    }
+                    else
+                    {
+                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                            <select class="form-select w-auto" id="share-user" aria-label="@L["Table_User"]" @bind="newUserId">
+                                @foreach (var u in candidates)
+                                {
+                                    <option value="@u.Id">@u.Name</option>
+                                }
+                            </select>
+                            <select class="form-select w-auto" id="share-role" aria-label="@L["Table_Role"]" @bind="newRole">
+                                <option value="@((int)ProjectRole.Viewer)">@L["Role_Viewer"]</option>
+                                <option value="@((int)ProjectRole.Editor)">@L["Role_Editor"]</option>
+                            </select>
+                            <button type="button" class="btn btn-primary" id="share-add" @onclick="AddShare">@L["Button_Share"]</button>
+                        </div>
+                        <div class="form-text">@L["Role_Help"]</div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public int ProjectId { get; set; }
+
+    private List<ProjectShareInfo>? shares;
+    private List<(string Id, string Name)> candidates = new();
+    private string newUserId = "";
+    private int newRole = (int)ProjectRole.Viewer;
+    private string? error;
+    private int _loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor == ProjectId) return;
+        _loadedFor = ProjectId;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var scope = await AccessProvider.GetAsync();
+        shares = await Sharing.GetSharesAsync(ProjectId);
+        var sharedIds = shares.Select(s => s.UserId).ToHashSet(StringComparer.Ordinal);
+        candidates = (await Users.GetUsersAsync())
+            .Where(u => u.Id != scope.UserId && !sharedIds.Contains(u.Id))
+            .ToList();
+        if (!candidates.Any(c => c.Id == newUserId)) newUserId = candidates.FirstOrDefault().Id ?? "";
+    }
+
+    private async Task AddShare()
+    {
+        await Run(() => Sharing.SetShareAsync(ProjectId, newUserId, (ProjectRole)newRole));
+    }
+
+    private async Task ChangeRole(ProjectShareInfo share, ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var role))
+            await Run(() => Sharing.SetShareAsync(ProjectId, share.UserId, (ProjectRole)role));
+    }
+
+    private async Task Revoke(ProjectShareInfo share) => await Run(() => Sharing.RevokeShareAsync(ProjectId, share.UserId));
+
+    private async Task Run(Func<Task> action)
+    {
+        error = null;
+        try
+        {
+            await action();
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException or ArgumentException)
+        {
+            error = ex.Message;
+        }
+        await LoadAsync();
+    }
+}

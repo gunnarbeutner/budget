@@ -232,4 +232,19 @@
   <data name="Label_TotalAllAccounts" xml:space="preserve">
     <value>All accounts: {0}</value>
   </data>
+  <data name="Shared_Editor" xml:space="preserve">
+    <value>Shared by {0} · you can edit</value>
+  </data>
+  <data name="Shared_Viewer" xml:space="preserve">
+    <value>Shared by {0} · view only</value>
+  </data>
+  <data name="Hint_NoSources_Before" xml:space="preserve">
+    <value>To create projects you first need a source: </value>
+  </data>
+  <data name="Hint_NoSources_Link" xml:space="preserve">
+    <value>create one on the Sources page</value>
+  </data>
+  <data name="Hint_NoSources_After" xml:space="preserve">
+    <value>.</value>
+  </data>
 </root>

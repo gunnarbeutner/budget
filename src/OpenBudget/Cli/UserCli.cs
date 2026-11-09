@@ -42,7 +42,7 @@ public static class UserCli
         builder.Logging.ClearProviders();
         builder.Services.AddLogging();
         builder.Services.AddOpenBudgetDatabase(OpenBudgetPaths.DatabasePath(builder.Environment.ContentRootPath));
-        builder.Services.AddOpenBudgetIdentityCore(builder.Configuration);
+        builder.Services.AddOpenBudgetIdentityCore();
         Directory.CreateDirectory(OpenBudgetPaths.DataDir(builder.Environment.ContentRootPath));
 
         using var host = builder.Build();
@@ -155,13 +155,26 @@ public static class UserCli
         var (password, generated) = await ResolvePasswordAsync(flags, stdin, stderr, readSecret);
         if (password == null) return 2;
 
-        var token = await users.GeneratePasswordResetTokenAsync(user);
-        var result = await users.ResetPasswordAsync(user, token, password);
+        // Validate against the password policy first so a rejected password can't leave the user without one.
+        foreach (var validator in users.PasswordValidators)
+        {
+            var check = await validator.ValidateAsync(users, user, password);
+            if (!check.Succeeded)
+            {
+                await stderr.WriteLineAsync("Could not set password: " + string.Join("; ", check.Errors.Select(e => e.Description)));
+                return 1;
+            }
+        }
+
+        user.PasswordHash = users.PasswordHasher.HashPassword(user, password);
+        var result = await users.UpdateAsync(user);
         if (!result.Succeeded)
         {
             await stderr.WriteLineAsync("Could not set password: " + string.Join("; ", result.Errors.Select(e => e.Description)));
             return 1;
         }
+        // A new security stamp signs out every existing session of this user.
+        await users.UpdateSecurityStampAsync(user);
         await users.ResetAccessFailedCountAsync(user);
         await users.SetLockoutEndDateAsync(user, null);
         await stdout.WriteLineAsync($"Password updated for '{name}' (existing sessions are signed out).");
@@ -206,6 +219,14 @@ public static class UserCli
             sources = ownedSources.Count;
             projects = ownedProjects.Count;
             await db.SaveChangesAsync();
+            // Delete the user's dependent rows explicitly: the app's SQLite connections don't
+            // enforce foreign keys, so ON DELETE CASCADE can't be relied on.
+            var id = user.Id;
+            await db.ProjectShares.Where(sh => sh.UserId == id).ExecuteDeleteAsync();
+            await db.Set<IdentityUserPasskey<string>>().Where(p => p.UserId == id).ExecuteDeleteAsync();
+            await db.Set<IdentityUserClaim<string>>().Where(c => c.UserId == id).ExecuteDeleteAsync();
+            await db.Set<IdentityUserLogin<string>>().Where(l => l.UserId == id).ExecuteDeleteAsync();
+            await db.Set<IdentityUserToken<string>>().Where(t => t.UserId == id).ExecuteDeleteAsync();
             await tx.CommitAsync();
         }
 

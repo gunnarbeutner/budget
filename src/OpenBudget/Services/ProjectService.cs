@@ -118,6 +118,8 @@ public class ProjectService
         var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == projectId);
         if (project != null)
         {
+            // The app's SQLite connections don't enforce foreign keys, so don't rely on ON DELETE CASCADE.
+            await db.ProjectShares.Where(s => s.ProjectId == projectId).ExecuteDeleteAsync();
             db.Projects.Remove(project);
             await db.SaveChangesAsync();
             Notify(new DataChange(DataArea.Projects, ProjectId: projectId));

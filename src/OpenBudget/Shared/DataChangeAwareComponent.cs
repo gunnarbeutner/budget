@@ -19,6 +19,11 @@ public abstract class DataChangeAwareComponent : ComponentBase, IDisposable
 {
     [Inject] protected ChangeNotificationService ChangeNotifier { get; set; } = default!;
     [Inject] protected ChangeOrigin ChangeOrigin { get; set; } = default!;
+    [Inject] protected AccessScopeProvider Access { get; set; } = default!;
+
+    // The scope this component last saw; a change is considered if it is visible in the old OR the
+    // new scope, so revoked shares / deleted projects still refresh the page that was showing them.
+    private AccessScope _knownScope = AccessScope.Anonymous;
 
     /// <summary>
     /// True when a relevant change arrived that we deliberately did not auto-apply (editor
@@ -30,6 +35,7 @@ public abstract class DataChangeAwareComponent : ComponentBase, IDisposable
 
     protected override void OnInitialized()
     {
+        _knownScope = Access.Last;
         ChangeNotifier.Changed += OnExternalChange;
         base.OnInitialized();
     }
@@ -39,7 +45,7 @@ public abstract class DataChangeAwareComponent : ComponentBase, IDisposable
         // Ignore the echo of a change this same circuit published — the action that made it has
         // already updated this component's view inline, so re-reloading (or, on editor pages,
         // raising the "changed in another session" banner) would be wrong.
-        if (_disposed || origin == ChangeOrigin.Id || !IsRelevantChange(change)) return;
+        if (_disposed || origin == ChangeOrigin.Id) return;
         // The event fires on the *publishing* circuit's thread; hop back onto this component's
         // dispatcher before touching its state or calling StateHasChanged.
         _ = InvokeAsync(async () =>
@@ -47,6 +53,17 @@ public abstract class DataChangeAwareComponent : ComponentBase, IDisposable
             // The circuit may have been torn down while this was queued; touching a disposed
             // component's state or calling StateHasChanged on it would throw.
             if (_disposed) return;
+
+            // Ignore changes outside this user's scope (notifications carry only ids, but a
+            // component must not even react to other users' data). The provider has already
+            // dropped its cache for Projects/Sources changes, so this reads the fresh scope.
+            AccessScope current;
+            try { current = await Access.GetAsync(); }
+            catch (Exception) { return; }
+            var previous = _knownScope;
+            _knownScope = current;
+            if (!current.IsChangeVisible(change) && !previous.IsChangeVisible(change)) return;
+            if (!IsRelevantChange(change)) return;
             if (AutoReloadOnChange)
             {
                 await ReloadAfterChangeAsync();

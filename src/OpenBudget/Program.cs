@@ -40,6 +40,7 @@ builder.Services.AddScoped<SecurityTaxService>();
 builder.Services.AddScoped<InstrumentMappingService>();
 builder.Services.AddScoped<ProjectTimeState>();
 builder.Services.AddScoped<SharingService>();
+builder.Services.AddScoped<SourceService>();
 // Per-circuit holder for the browser's timezone (seeded from the tz cookie by App.razor) so all
 // pages render dates/times and "current period" decisions in the user's zone, not the server's.
 builder.Services.AddScoped<ClockService>();
@@ -102,7 +103,7 @@ Directory.CreateDirectory(uploadStagingDir);
 // for the companion cross-circuit refresh signal. The factory services receive is user-scoped
 // (see AuthRegistration.AddOpenBudgetDatabase): its contexts filter reads and guard writes.
 builder.Services.AddOpenBudgetDatabase(budgetDbPath);
-builder.Services.AddOpenBudgetAuth(builder.Configuration, builder.Environment, builder.Environment.ContentRootPath);
+builder.Services.AddOpenBudgetAuth(builder.Environment, builder.Environment.ContentRootPath);
 
 var app = builder.Build();
 

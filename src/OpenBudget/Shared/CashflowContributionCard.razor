@@ -142,11 +142,14 @@
                                     {
                                         <small class="text-body-secondary">@L["Splits_UnsavedChanges"]</small>
                                     }
-                                    <button class="btn btn-sm btn-outline-primary"
-                                            disabled="@(!SplitsDirty || SplitsSaving)"
-                                            @onclick="() => OnSaveSplits.InvokeAsync()">
-                                        @(SplitsSaving ? L["Button_Saving"] : L["Button_SaveSplits"])
-                                    </button>
+                                    @if (CanSave)
+                                    {
+                                        <button class="btn btn-sm btn-outline-primary"
+                                                disabled="@(!SplitsDirty || SplitsSaving)"
+                                                @onclick="() => OnSaveSplits.InvokeAsync()">
+                                            @(SplitsSaving ? L["Button_Saving"] : L["Button_SaveSplits"])
+                                        </button>
+                                    }
                                 </div>
                             }
                             else
@@ -227,6 +230,8 @@
     [Parameter] public bool SplitsDirty { get; set; }
     [Parameter] public bool SplitsSaving { get; set; }
     [Parameter] public int SelectedBudgetId { get; set; }
+    /// <summary>Viewers can try percentages (what-if) but not persist them.</summary>
+    [Parameter] public bool CanSave { get; set; } = true;
     /// <summary>Raised after a split percentage edit so the page recomputes (dirty + chart).</summary>
     [Parameter] public EventCallback OnSplitChanged { get; set; }
     /// <summary>Raised when the user saves the splits to the selected budget.</summary>

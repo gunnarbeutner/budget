@@ -1,4 +1,4 @@
-@page "/"
+﻿@page "/"
 @inherits DataChangeAwareComponent
 @using System.Globalization
 @using OpenBudget.Services
@@ -6,11 +6,14 @@
 @using Microsoft.AspNetCore.WebUtilities
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
+@inject SourceService SourceService
+@inject OpenBudget.Auth.UserDirectory Users
 @inject TransactionQueryService TransactionQueries
 @inject NavigationManager Navigation
 @inject IStringLocalizer<Index> L
 @inject ILogger<Index> Logger
 @inject ClockService Clock
+@inject AccessScopeProvider AccessProvider
 
 @* The dashboard is now a lean *portfolio*: one slim row per project for a fast scan + jump-in,
    plus the collection-level actions (reorder, create, sources). The rich per-project detail —
@@ -65,9 +68,12 @@ else
         @for (int i = 0; i < budgetSummaries.Count; i++)
         {
             var summary = budgetSummaries[i];
-            var isFirst = i == 0;
-            var isLast = i == budgetSummaries.Count - 1;
             var projectId = summary.ProjectId;
+            var role = scope.RoleFor(projectId);
+            var isOwner = role == ProjectRole.Owner;
+            // Reordering is the owner's, among their own projects only (shared ones keep their place).
+            var isFirst = !budgetSummaries.Take(i).Any(x => scope.IsOwner(x.ProjectId));
+            var isLast = !budgetSummaries.Skip(i + 1).Any(x => scope.IsOwner(x.ProjectId));
             var statusClass = ProjectStatus.StatusClass(summary);
             var overallPercent = ProjectStatus.OverallPercent(summary);
             var balanceInfo = projectBalances.GetValueOrDefault(projectId);
@@ -81,6 +87,12 @@ else
                         <div class="portfolio-name">
                             <a href="@overviewUrl" class="stretched-link text-reset text-decoration-none">@summary.ProjectName</a>
                         </div>
+                        @if (!isOwner)
+                        {
+                            <div class="portfolio-sub text-body-secondary small">
+                                @L[role == ProjectRole.Editor ? "Shared_Editor" : "Shared_Viewer", OwnerNameOf(projectId)]
+                            </div>
+                        }
                         @if (hasBalance)
                         {
                             <div class="portfolio-sub text-nowrap @(balanceInfo!.Balance < 0 ? "text-danger" : "")">
@@ -122,20 +134,26 @@ else
                 </div>
 
                 <div class="portfolio-actions">
-                    <button type="button" class="btn btn-link text-body-secondary p-0"
-                            title="@L["Aria_MoveUp"]" aria-label="@L["Aria_MoveUp"]"
-                            disabled="@isFirst" @onclick="() => MoveProject(projectId, -1)">
-                        <i class="bi bi-arrow-up" aria-hidden="true"></i>
-                    </button>
-                    <button type="button" class="btn btn-link text-body-secondary p-0"
-                            title="@L["Aria_MoveDown"]" aria-label="@L["Aria_MoveDown"]"
-                            disabled="@isLast" @onclick="() => MoveProject(projectId, 1)">
-                        <i class="bi bi-arrow-down" aria-hidden="true"></i>
-                    </button>
-                    <a href="@($"/projects/{projectId}/settings")" class="text-body-secondary text-decoration-none"
-                       title="@L["Aria_ProjectSettings"]" aria-label="@L["Aria_ProjectSettings"]">
-                        <i class="bi bi-gear" aria-hidden="true"></i>
-                    </a>
+                    @if (isOwner)
+                    {
+                        <button type="button" class="btn btn-link text-body-secondary p-0"
+                                title="@L["Aria_MoveUp"]" aria-label="@L["Aria_MoveUp"]"
+                                disabled="@isFirst" @onclick="() => MoveProject(projectId, -1)">
+                            <i class="bi bi-arrow-up" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" class="btn btn-link text-body-secondary p-0"
+                                title="@L["Aria_MoveDown"]" aria-label="@L["Aria_MoveDown"]"
+                                disabled="@isLast" @onclick="() => MoveProject(projectId, 1)">
+                            <i class="bi bi-arrow-down" aria-hidden="true"></i>
+                        </button>
+                    }
+                    @if (role >= ProjectRole.Editor)
+                    {
+                        <a href="@($"/projects/{projectId}/settings")" class="text-body-secondary text-decoration-none"
+                           title="@L["Aria_ProjectSettings"]" aria-label="@L["Aria_ProjectSettings"]">
+                            <i class="bi bi-gear" aria-hidden="true"></i>
+                        </a>
+                    }
                 </div>
             </div>
         }
@@ -143,7 +161,14 @@ else
 }
 
 <div class="mt-4">
-    <button class="btn btn-primary" @onclick="ShowCreateDialog">@L["Button_NewProject"]</button>
+    @if (availableSources.Count > 0)
+    {
+        <button class="btn btn-primary" @onclick="ShowCreateDialog">@L["Button_NewProject"]</button>
+    }
+    else if (budgetSummaries != null)
+    {
+        <span class="text-body-secondary small">@L["Hint_NoSources_Before"]<a href="/sources">@L["Hint_NoSources_Link"]</a>@L["Hint_NoSources_After"]</span>
+    }
 </div>
 
 <Modal Show="@showCreateDialog" Title="@L["Modal_CreateNewProject"]" OnClose="@HideCreateDialog">
@@ -182,7 +207,10 @@ else
     private bool showCreateDialog = false;
     private string newProjectName = "";
     private string newProjectDescription = "";
-    private int newProjectSourceId = SourceScope.LegacySourceId;
+    private int newProjectSourceId;
+    private AccessScope scope = AccessScope.Anonymous;
+    private Dictionary<string, string> ownerNames = new(StringComparer.Ordinal);
+    private Dictionary<int, string?> projectOwners = new();
 
     // "month" = anchor month only, "ytd" = Jan..anchor.Month, "year" = full anchor year.
     private string period = "month";
@@ -253,7 +281,10 @@ else
 
     private async Task LoadDashboard()
     {
+        scope = await AccessProvider.GetAsync();
         var projects = await ProjectService.GetProjectsAsync();
+        projectOwners = projects.ToDictionary(p => p.Id, p => p.OwnerUserId);
+        ownerNames = await Users.GetNamesAsync(projects.Where(p => p.OwnerUserId != null).Select(p => p.OwnerUserId!));
         budgetSummaries = new List<ProjectSpendingSummary>();
 
         var (fromMonth, toMonth) = Anchoring.Range(anchor.Month, period);
@@ -272,12 +303,16 @@ else
 
         // Period-independent context for the status accents.
         projectBalances = await ProjectService.GetAllProjectsBalancesAsync();
-        availableSources = await ProjectService.GetAllSourcesAsync();
+        // New projects can only go on sources the user owns.
+        availableSources = await SourceService.GetOwnedSourcesAsync();
         if (!availableSources.Any(s => s.Id == newProjectSourceId))
         {
-            newProjectSourceId = availableSources.FirstOrDefault()?.Id ?? SourceScope.LegacySourceId;
+            newProjectSourceId = availableSources.FirstOrDefault()?.Id ?? 0;
         }
     }
+
+    private string OwnerNameOf(int projectId) =>
+        projectOwners.GetValueOrDefault(projectId) is { } ownerId ? ownerNames.GetValueOrDefault(ownerId, "?") : "?";
 
     private async Task MoveProject(int projectId, int direction)
     {
@@ -299,9 +334,10 @@ else
         if (string.IsNullOrWhiteSpace(newProjectName))
             return;
 
+        if (availableSources.Count == 0) return;
         var sourceId = availableSources.Any(s => s.Id == newProjectSourceId)
             ? newProjectSourceId
-            : (availableSources.FirstOrDefault()?.Id ?? SourceScope.LegacySourceId);
+            : availableSources[0].Id;
         await ProjectService.CreateProjectAsync(newProjectName, sourceId, newProjectDescription);
         showCreateDialog = false;
         await LoadDashboard();

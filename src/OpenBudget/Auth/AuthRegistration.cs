@@ -36,14 +36,13 @@ public static class AuthRegistration
     }
 
     /// <summary>Identity core (users + passkeys on the same SQLite store); also what the CLI uses.</summary>
-    public static IServiceCollection AddOpenBudgetIdentityCore(this IServiceCollection services, IConfiguration config)
+    public static IServiceCollection AddOpenBudgetIdentityCore(this IServiceCollection services)
     {
         services.AddIdentityCore<AppUser>(o =>
             {
                 // Password hashing, password rules and lockout are Identity's defaults.
                 o.User.RequireUniqueEmail = false;
                 o.Stores.SchemaVersion = IdentitySchemaVersions.Version3; // adds the passkeys table
-
             })
             .AddEntityFrameworkStores<BudgetDbContext>()
             .AddSignInManager();
@@ -51,16 +50,15 @@ public static class AuthRegistration
         // Passkeys (WebAuthn) use ASP.NET Core Identity's built-in support. With no relying-party id
         // configured, ServerDomain stays null so the id defaults to the request host and the origin
         // must match the request's; with one configured, both are pinned to it.
-        var rpId = config[RelyingPartyIdSetting] ?? config["Passkeys:RelyingPartyId"];
-        if (!string.IsNullOrWhiteSpace(rpId))
+        // The setting is read when the options are first used (not at registration), so it reflects
+        // the final host configuration including environment variables.
+        services.AddOptions<IdentityPasskeyOptions>().Configure<IConfiguration>((o, cfg) =>
         {
-            rpId = rpId.Trim();
-            services.Configure<IdentityPasskeyOptions>(o =>
-            {
-                o.ServerDomain = rpId;
-                o.ValidateOrigin = ctx => ValueTask.FromResult(IsOriginAllowed(ctx.Origin, ctx.CrossOrigin, rpId));
-            });
-        }
+            var rpId = (cfg[RelyingPartyIdSetting] ?? cfg["Passkeys:RelyingPartyId"])?.Trim();
+            if (string.IsNullOrEmpty(rpId)) return;
+            o.ServerDomain = rpId;
+            o.ValidateOrigin = ctx => ValueTask.FromResult(IsOriginAllowed(ctx.Origin, ctx.CrossOrigin, rpId));
+        });
         return services;
     }
 
@@ -74,7 +72,7 @@ public static class AuthRegistration
         return hostOk && schemeOk;
     }
 
-    public static IServiceCollection AddOpenBudgetAuth(this IServiceCollection services, IConfiguration config, IHostEnvironment env, string contentRoot)
+    public static IServiceCollection AddOpenBudgetAuth(this IServiceCollection services, IHostEnvironment env, string contentRoot)
     {
         // Data-protection keys protect the auth cookie and antiforgery tokens. They MUST persist on
         // the data volume, otherwise every redeploy would log everyone out. (Tests use ephemeral keys.)
@@ -86,7 +84,7 @@ public static class AuthRegistration
             dp.PersistKeysToFileSystem(new DirectoryInfo(keysDir));
         }
 
-        services.AddOpenBudgetIdentityCore(config);
+        services.AddOpenBudgetIdentityCore();
 
         var relaxSecure = env.IsDevelopment() || env.IsEnvironment("Test");
         services.AddAuthentication(IdentityConstants.ApplicationScheme)

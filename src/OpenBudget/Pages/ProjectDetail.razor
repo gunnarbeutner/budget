@@ -1,4 +1,5 @@
 @page "/projects/{ProjectId:int}/settings"
+@attribute [RequireProjectRole(OpenBudget.Models.ProjectRole.Editor)]
 @inherits DataChangeAwareComponent
 @using OpenBudget.Services
 @using OpenBudget.Models
@@ -8,6 +9,7 @@
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject NavigationManager Navigation
 @inject IStringLocalizer<ProjectDetail> L
+@inject AccessScopeProvider AccessProvider
 
 <PageTitle>@(budget?.Name ?? L["PageTitle_Default"])</PageTitle>
 
@@ -30,12 +32,16 @@ else
 
     <DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
-    <ProjectParentCard HasOwnChildren="hasOwnChildren"
-                       ChildProjectNames="@childProjectNames"
-                       ParentProjectId="budget.ParentProjectId"
-                       EligibleParents="eligibleParents"
-                       SaveError="@parentSaveError"
-                       OnParentChanged="OnParentChanged" />
+    @* Parent, accounts, sharing and deletion are owner-only; editors get the category/tracking settings. *@
+    @if (isOwner)
+    {
+        <ProjectParentCard HasOwnChildren="hasOwnChildren"
+                           ChildProjectNames="@childProjectNames"
+                           ParentProjectId="budget.ParentProjectId"
+                           EligibleParents="eligibleParents"
+                           SaveError="@parentSaveError"
+                           OnParentChanged="OnParentChanged" />
+    }
 
     <ProjectCategoryAssignmentsCard Assignments="budget.CategoryAssignments.ToList()"
                                     CategoryNames="categoryNames"
@@ -44,12 +50,15 @@ else
                                     OnAdd="AddCategory"
                                     OnRemove="RemoveCategory" />
 
-    <ProjectAccountsCard Assignments="accountAssignments"
-                         AllAccounts="allAccounts"
-                         AllAccountGroups="allAccountGroups"
-                         OnAdd="AddAccount"
-                         OnRemove="RemoveAccount"
-                         OnScopeChange="OnScopeChange" />
+    @if (isOwner)
+    {
+        <ProjectAccountsCard Assignments="accountAssignments"
+                             AllAccounts="allAccounts"
+                             AllAccountGroups="allAccountGroups"
+                             OnAdd="AddAccount"
+                             OnRemove="RemoveAccount"
+                             OnScopeChange="OnScopeChange" />
+    }
 
     <ProjectIncomeExpenseCard Categories="incomeExpenseCategories"
                               TypeAssignments="categoryTypeAssignments"
@@ -67,9 +76,14 @@ else
     @* Destructive action lives at the very bottom of the page, well below the data the
        user might be configuring — far enough from the title bar that it can't be hit
        by accident. *@
-    <div class="border-top pt-3 mt-4">
-        <button class="btn btn-outline-danger" @onclick="ShowDeleteDialog">@L["Button_DeleteProject"]</button>
-    </div>
+    @if (isOwner)
+    {
+        <ProjectSharingCard ProjectId="ProjectId" />
+
+        <div class="border-top pt-3 mt-4">
+            <button class="btn btn-outline-danger" @onclick="ShowDeleteDialog">@L["Button_DeleteProject"]</button>
+        </div>
+    }
 }
 
 <Modal Show="@showDeleteDialog" Title="@L["Modal_DeleteProject_Title"]" OnClose="@HideDeleteDialog">
@@ -95,6 +109,10 @@ else
     private List<CategoryGroupWithChildCount>? availableCategoriesWithCounts;
 
     private bool showDeleteDialog = false;
+
+    // Owner-only sections (accounts, parent, sharing, delete). The route gate already guarantees at
+    // least editor access; the server enforces the owner-only rules regardless of what is rendered.
+    private bool isOwner;
 
     // Tracking configuration
     private List<ProjectTrackingItem>? trackingItems;
@@ -136,11 +154,15 @@ else
         showDeleteDialog = false;
         parentSaveError = null;
         isLoadingCategoryTypes = false;
+        isOwner = (await AccessProvider.GetAsync()).IsOwner(ProjectId);
         await LoadBudget();
         await LoadTrackingItems();
         await LoadIncomeExpenseConfiguration();
-        await LoadAccountAssignments();
-        await LoadParentPickerAsync();
+        if (isOwner)
+        {
+            await LoadAccountAssignments();
+            await LoadParentPickerAsync();
+        }
     }
 
     // Settings edits commit immediately, but dialogs may hold half-entered input — banner rather
@@ -174,6 +196,7 @@ else
         eligibleParents = all
             .Where(p => p.Id != ProjectId)
             .Where(p => p.SourceId == budget.SourceId)
+            .Where(p => AccessProvider.Last.IsOwner(p.Id))   // a parent must be one of your own projects
             .Where(p => p.ParentProjectId == null)   // only top-level parents (single-level hierarchy)
             .OrderBy(p => p.Name)
             .ToList();

@@ -124,4 +124,34 @@
   <data name="Modal_BodyWarning" xml:space="preserve">
     <value>Projects bound to this source must be deleted first; the action will refuse otherwise.</value>
   </data>
+  <data name="Create_Placeholder" xml:space="preserve">
+    <value>New source name, e.g. household</value>
+  </data>
+  <data name="Create_Button" xml:space="preserve">
+    <value>Create source</value>
+  </data>
+  <data name="Token_Show" xml:space="preserve">
+    <value>Upload token</value>
+  </data>
+  <data name="Token_Hide" xml:space="preserve">
+    <value>Hide token</value>
+  </data>
+  <data name="Token_Label" xml:space="preserve">
+    <value>Upload token (authorizes uploads to this source only)</value>
+  </data>
+  <data name="Token_Usage_Before" xml:space="preserve">
+    <value>Send it as </value>
+  </data>
+  <data name="Token_Usage_After" xml:space="preserve">
+    <value> with the upload request. Treat it like a password.</value>
+  </data>
+  <data name="Token_Rotate" xml:space="preserve">
+    <value>Rotate token</value>
+  </data>
+  <data name="Rotate_Title" xml:space="preserve">
+    <value>Rotate the upload token of {0}?</value>
+  </data>
+  <data name="Rotate_Body" xml:space="preserve">
+    <value>The current token stops working immediately; update the exporter with the new one.</value>
+  </data>
 </root>
