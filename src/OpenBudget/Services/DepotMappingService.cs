@@ -17,6 +17,8 @@ public class DepotMappingService
     public async Task<DepotMapping> GetAsync(int sourceId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        // Mapping / tax configuration is owner-only (the source's owner; refused for everyone else).
+        db.Scope?.RequireSourceOwner(sourceId);
 
         var portfolios = await db.PpPortfolios.AsNoTracking()
             .Where(p => p.SourceId == sourceId).OrderBy(p => p.Name).ToListAsync(ct);
@@ -60,6 +62,8 @@ public class DepotMappingService
     public async Task SaveLinkAsync(int sourceId, string ppUuid, long? accountId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        // Mapping / tax configuration is owner-only (the source's owner; refused for everyone else).
+        db.Scope?.RequireSourceOwner(sourceId);
         var existing = await db.PpPortfolioLinks
             .FirstOrDefaultAsync(l => l.SourceId == sourceId && l.PpPortfolioUuid == ppUuid, ct);
 

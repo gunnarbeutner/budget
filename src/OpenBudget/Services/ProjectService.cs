@@ -50,6 +50,9 @@ public class ProjectService
     public async Task<Project> CreateProjectAsync(string name, int sourceId, string? description = null)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
+        // A user can only create projects on sources they own (the context's write guard enforces it
+        // too); the new project is owned by the creator.
+        db.Scope?.RequireSourceOwner(sourceId);
         var maxSortOrder = await db.Projects.AnyAsync()
             ? await db.Projects.MaxAsync(p => p.SortOrder)
             : -1;
@@ -60,7 +63,8 @@ public class ProjectService
             Description = description,
             CreatedAt = DateTime.UtcNow,
             SortOrder = maxSortOrder + 1,
-            SourceId = sourceId
+            SourceId = sourceId,
+            OwnerUserId = db.Scope?.UserId
         };
 
         db.Projects.Add(project);
@@ -79,7 +83,15 @@ public class ProjectService
             throw new ArgumentException("direction must be -1 or 1", nameof(direction));
 
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var ordered = await db.Projects
+        // Dashboard order is the owner's: only owned projects are reordered (shared ones keep their
+        // place), so a user can never rewrite another user's project rows.
+        var query = db.Projects.AsQueryable();
+        if (db.Scope is { } scope)
+        {
+            var owned = scope.OwnedProjectIds;
+            query = query.Where(p => owned.Contains(p.Id));
+        }
+        var ordered = await query
             .OrderBy(p => p.SortOrder)
             .ThenByDescending(p => p.CreatedAt)
             .ToListAsync();
@@ -103,7 +115,7 @@ public class ProjectService
     public async Task DeleteProjectAsync(int projectId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var project = await db.Projects.FindAsync(projectId);
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == projectId);
         if (project != null)
         {
             db.Projects.Remove(project);
@@ -133,7 +145,7 @@ public class ProjectService
     public async Task<Project> SetProjectParentAsync(int projectId, int? parentId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var project = await db.Projects.FindAsync(projectId)
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == projectId)
             ?? throw new ArgumentException("Project not found", nameof(projectId));
 
         if (parentId == null)
@@ -147,7 +159,7 @@ public class ProjectService
         if (parentId.Value == projectId)
             throw new InvalidOperationException("A project cannot be its own parent.");
 
-        var parent = await db.Projects.FindAsync(parentId.Value)
+        var parent = await db.Projects.FirstOrDefaultAsync(p => p.Id == parentId.Value)
             ?? throw new ArgumentException("Parent project not found", nameof(parentId));
 
         if (parent.SourceId != project.SourceId)
@@ -209,7 +221,10 @@ public class ProjectService
             .FirstOrDefaultAsync();
     }
 
-    /// <summary>All registered import sources, ordered by name.</summary>
+    /// <summary>
+    /// Import sources visible to the current user (owned ones plus the sources of shared projects),
+    /// ordered by name. Only owned sources may be picked for new projects; see <c>SourceService</c>.
+    /// </summary>
     public async Task<List<ImportSource>> GetAllSourcesAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();

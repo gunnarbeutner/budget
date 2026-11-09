@@ -24,6 +24,8 @@ public static class SourceData
     /// </summary>
     public static async Task DeleteSourceDataAsync(BudgetDbContext db, int sourceId, CancellationToken ct = default)
     {
+        // Raw SQL below bypasses the context's write guard, so check ownership explicitly.
+        db.Scope?.RequireSourceOwner(sourceId);
         var conn = (SqliteConnection)db.Database.GetDbConnection();
         if (conn.State != System.Data.ConnectionState.Open)
             await conn.OpenAsync(ct);

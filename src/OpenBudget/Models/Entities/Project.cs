@@ -35,6 +35,15 @@ public class Project
     public ImportSource? Source { get; set; }
 
     /// <summary>
+    /// Owning user (AppUser.Id). Null only for legacy rows not yet claimed through the CLI; an
+    /// unowned project is invisible to everyone. Deliberately no database FK (see the migration).
+    /// </summary>
+    [MaxLength(450)]
+    public string? OwnerUserId { get; set; }
+
+    public ICollection<ProjectShare> Shares { get; set; } = new List<ProjectShare>();
+
+    /// <summary>
     /// Optional parent project. When set, the Cashflow page rolls this project's tracked
     /// flows into the parent's chart and per-category breakdown — but each project keeps
     /// its own budgets and budget editor scope. Parent and child must share the same

@@ -26,6 +26,8 @@ public class SecurityTaxService
     public async Task<List<SecurityTaxRow>> GetSettingsAsync(int sourceId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        // Mapping / tax configuration is owner-only (the source's owner; refused for everyone else).
+        db.Scope?.RequireSourceOwner(sourceId);
         var lotUuids = await db.PpLots.AsNoTracking()
             .Where(l => l.SourceId == sourceId).Select(l => l.SecurityUuid).Distinct().ToListAsync(ct);
         if (lotUuids.Count == 0) return new List<SecurityTaxRow>();
@@ -60,6 +62,8 @@ public class SecurityTaxService
     public async Task SetAsync(int sourceId, string uuid, int kind, int teilfreistellungBp, DateOnly? acquiredOverride, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        // Mapping / tax configuration is owner-only (the source's owner; refused for everyone else).
+        db.Scope?.RequireSourceOwner(sourceId);
         var existing = await db.SecurityTaxSettings
             .FirstOrDefaultAsync(s => s.SourceId == sourceId && s.SecurityUuid == uuid, ct);
         if (existing is null)

@@ -26,5 +26,20 @@ public class ImportSource
 
     public long? LastUploadSizeBytes { get; set; }
 
+    /// <summary>
+    /// Owning user (AppUser.Id). Null only for legacy rows not yet claimed through the CLI; an
+    /// unowned source is invisible to everyone. Accounts and transactions belong to the owner.
+    /// </summary>
+    [MaxLength(450)]
+    public string? OwnerUserId { get; set; }
+
+    /// <summary>
+    /// Per-source upload token (bearer). Authorizes uploads to this source only. Stored in clear
+    /// because the owner can view it on the Sources page. Null until generated; the legacy global
+    /// token (see LegacyCompat) keeps working for every source in addition.
+    /// </summary>
+    [MaxLength(100)]
+    public string? UploadToken { get; set; }
+
     public ICollection<Project> Projects { get; set; } = new List<Project>();
 }

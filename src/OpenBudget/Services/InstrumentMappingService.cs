@@ -23,6 +23,8 @@ public class InstrumentMappingService
     public async Task<InstrumentMapping> GetAsync(int sourceId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        // Mapping / tax configuration is owner-only (the source's owner; refused for everyone else).
+        db.Scope?.RequireSourceOwner(sourceId);
 
         // ISIN-less instruments that actually have reconstructed lots — the ones worth mapping.
         var lotsByUuid = (await db.PpLots.AsNoTracking()
@@ -69,6 +71,8 @@ public class InstrumentMappingService
     public async Task SaveLinkAsync(int sourceId, string ppUuid, string? holdingKey, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        // Mapping / tax configuration is owner-only (the source's owner; refused for everyone else).
+        db.Scope?.RequireSourceOwner(sourceId);
         var existing = await db.PpSecurityLinks
             .FirstOrDefaultAsync(l => l.SourceId == sourceId && l.PpSecurityUuid == ppUuid, ct);
 

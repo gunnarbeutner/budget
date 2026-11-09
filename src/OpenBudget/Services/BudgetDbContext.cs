@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Models;
 
@@ -6,15 +7,36 @@ namespace OpenBudget.Services;
 /// <summary>
 /// Single DbContext for everything: app-native rows (projects, budgets, assignments) and the
 /// imported data. IDs from the source app are namespaced at import time
-/// via <see cref="SourceScope.Namespace"/> so multiple sources coexist without collision.
+/// via <see cref="SourceScope.Namespace"/> so multiple sources coexist without collision. Also
+/// hosts the ASP.NET Core Identity tables (users, passkeys) so there is a single migration history.
+///
+/// ACCESS CONTROL lives here. When <see cref="Scope"/> is set (every context the application
+/// services get — see <see cref="ScopedDbContextFactory"/>), global query filters restrict every
+/// read to what the user may see and <see cref="SaveChangesAsync(bool, CancellationToken)"/> refuses
+/// writes the user's role doesn't allow. A null scope means a trusted system context (importers,
+/// CLI, migrations, tests) and is unrestricted.
 /// </summary>
-public class BudgetDbContext : DbContext
+public partial class BudgetDbContext : IdentityUserContext<AppUser>
 {
     public BudgetDbContext(DbContextOptions<BudgetDbContext> options)
         : base(options)
     {
     }
 
+    /// <summary>The user this context acts for; null = unrestricted system context.</summary>
+    public AccessScope? Scope { get; set; }
+
+    // Filter inputs. EF turns these context members into per-query parameters, so each context
+    // instance filters by its own scope. They are never null (a null scope is "unrestricted").
+    private bool ScopeUnrestricted => Scope == null;
+    private int[] ScopeVisibleProjectIds => Scope?.VisibleProjectIds ?? [];
+    private int[] ScopeOwnedProjectIds => Scope?.OwnedProjectIds ?? [];
+    private int[] ScopeOwnedSourceIds => Scope?.OwnedSourceIds ?? [];
+    private int[] ScopeVisibleSourceIds => Scope?.VisibleSourceIds ?? [];
+    private long[] ScopeSharedAccountIds => Scope?.SharedAccountIds ?? [];
+    private string ScopeUserId => Scope?.UserId ?? string.Empty;
+
+    public DbSet<ProjectShare> ProjectShares => Set<ProjectShare>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectCategoryAssignment> ProjectCategoryAssignments => Set<ProjectCategoryAssignment>();
     public DbSet<ProjectTrackingItem> ProjectTrackingItems => Set<ProjectTrackingItem>();
@@ -40,8 +62,9 @@ public class BudgetDbContext : DbContext
     public DbSet<SecurityTaxSetting> SecurityTaxSettings => Set<SecurityTaxSetting>();
     public DbSet<PpSecurityLink> PpSecurityLinks => Set<PpSecurityLink>();
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    protected override void OnModelCreating(ModelBuilder builder)
     {
+        var modelBuilder = builder;
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.Entity<ProjectCategoryAssignment>()
@@ -261,5 +284,7 @@ public class BudgetDbContext : DbContext
         modelBuilder.Entity<PpSecurityLink>()
             .HasIndex(l => new { l.SourceId, l.PpSecurityUuid })
             .IsUnique();
+
+        ConfigureAccessFilters(modelBuilder);
     }
 }
