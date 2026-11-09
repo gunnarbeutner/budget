@@ -125,8 +125,16 @@ public class BankLoginService
         RequireEnabled();
         var userId = await RequireUserAsync();
         var registration = _registry.Find(connectorType) ?? throw new ArgumentException("Unknown bank connector.", nameof(connectorType));
-        if (string.IsNullOrWhiteSpace(username)) throw new ArgumentException("A username is required.", nameof(username));
-        if (string.IsNullOrEmpty(secret)) throw new ArgumentException("A PIN or password is required.", nameof(secret));
+        if (registration.Credentials == CredentialRequirement.None)
+        {
+            username = "";
+            secret = "";
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(username)) throw new ArgumentException("A username is required.", nameof(username));
+            if (string.IsNullOrEmpty(secret)) throw new ArgumentException("A PIN or password is required.", nameof(secret));
+        }
 
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var login = new BankLogin
@@ -152,7 +160,8 @@ public class BankLoginService
         var login = await db.BankLogins.FirstOrDefaultAsync(l => l.Id == id, ct) ?? throw new AccessDeniedException("Bank login not found.");
         if (!string.IsNullOrWhiteSpace(displayName)) login.DisplayName = displayName.Trim();
         login.RefreshInterval = interval;
-        if (!string.IsNullOrWhiteSpace(username) || !string.IsNullOrEmpty(secret))
+        var needsCredentials = _registry.Find(login.ConnectorType)?.Credentials != CredentialRequirement.None;
+        if (needsCredentials && (!string.IsNullOrWhiteSpace(username) || !string.IsNullOrEmpty(secret)))
         {
             RequireEnabled();
             var current = BankSyncRunner.DecodeCredentials(_secrets, login.EncryptedCredentials);

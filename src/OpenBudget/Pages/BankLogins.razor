@@ -55,6 +55,8 @@
                 <label class="form-label" for="new-login-name">@L["Field_Name"]</label>
                 <input id="new-login-name" class="form-control" @bind="newName" maxlength="200" />
             </div>
+            @if (NeedsCredentials(SelectedConnector))
+            {
             <div class="col-md-2">
                 <label class="form-label" for="new-login-username">@L["Field_Username"]</label>
                 <input id="new-login-username" class="form-control" @bind="newUsername" @bind:event="oninput" autocomplete="off" />
@@ -63,6 +65,7 @@
                 <label class="form-label" for="new-login-pin">@L["Field_Pin"]</label>
                 <input id="new-login-pin" type="password" class="form-control" @bind="newPin" @bind:event="oninput" autocomplete="new-password" />
             </div>
+            }
             <div class="col-md-2">
                 <label class="form-label" for="new-login-interval">@L["Field_Interval"]</label>
                 <select id="new-login-interval" class="form-select" @bind="newInterval">
@@ -74,7 +77,7 @@
             </div>
             <div class="col-12 d-flex align-items-center gap-3">
                 <button type="submit" class="btn btn-primary" id="new-login-add"
-                        disabled="@(string.IsNullOrWhiteSpace(newUsername) || string.IsNullOrEmpty(newPin))">@L["Button_Add"]</button>
+                        disabled="@(NeedsCredentials(SelectedConnector) && (string.IsNullOrWhiteSpace(newUsername) || string.IsNullOrEmpty(newPin)))">@L["Button_Add"]</button>
                 @if (SelectedConnector is { } sel)
                 {
                     <span class="small text-body-secondary">@sel.Description</span>
@@ -295,14 +298,17 @@ else
                 <label class="form-label" for="edit-name">@L["Field_Name"]</label>
                 <input id="edit-name" class="form-control" @bind="editName" maxlength="200" />
             </div>
-            <div class="mb-2">
-                <label class="form-label" for="edit-username">@L["Field_Username"]</label>
-                <input id="edit-username" class="form-control" @bind="editUsername" autocomplete="off" />
-            </div>
-            <div class="mb-2">
-                <label class="form-label" for="edit-pin">@L["Field_PinKeep"]</label>
-                <input id="edit-pin" type="password" class="form-control" @bind="editPin" autocomplete="new-password" />
-            </div>
+            @if (NeedsCredentials(connectors.FirstOrDefault(c => c.ConnectorType == editing.ConnectorType)))
+            {
+                <div class="mb-2">
+                    <label class="form-label" for="edit-username">@L["Field_Username"]</label>
+                    <input id="edit-username" class="form-control" @bind="editUsername" autocomplete="off" />
+                </div>
+                <div class="mb-2">
+                    <label class="form-label" for="edit-pin">@L["Field_PinKeep"]</label>
+                    <input id="edit-pin" type="password" class="form-control" @bind="editPin" autocomplete="new-password" />
+                </div>
+            }
             <div class="mb-2">
                 <label class="form-label" for="edit-interval">@L["Field_Interval"]</label>
                 <select id="edit-interval" class="form-select" @bind="editInterval">
@@ -356,6 +362,8 @@ else
     private RefreshInterval editInterval;
     private string? editError;
     private BankLoginView? pendingDelete;
+
+    private static bool NeedsCredentials(ConnectorRegistration? c) => c == null || c.Credentials != CredentialRequirement.None;
 
     private ConnectorRegistration? SelectedConnector => connectors.FirstOrDefault(c => c.ConnectorType == newConnector);
 

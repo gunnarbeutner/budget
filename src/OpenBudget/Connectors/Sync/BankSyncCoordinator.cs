@@ -33,7 +33,8 @@ public sealed record BankSyncStatus(
     string? Error,
     ConnectorChallenge? Challenge,
     Guid ChallengeId,
-    DateTime? ChallengeExpiresAt);
+    DateTime? ChallengeExpiresAt,
+    string? WebLoginSessionId = null);
 
 public enum StartResult
 {
@@ -259,6 +260,19 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
 
         public void Report(string message) => Update(s => s with { Message = message });
 
+        public void ShowWebLogin(ConnectorChallenge challenge, string sessionId, DateTime expiresAt) =>
+            Update(s => s with
+            {
+                Phase = SyncPhase.WaitingForInput,
+                Challenge = challenge,
+                ChallengeId = Guid.NewGuid(),
+                ChallengeExpiresAt = expiresAt,
+                WebLoginSessionId = sessionId,
+            });
+
+        public void HideWebLogin() =>
+            Update(s => s with { Phase = SyncPhase.Running, Challenge = null, ChallengeExpiresAt = null, WebLoginSessionId = null });
+
         public async Task RunAsync(CancellationToken shutdown)
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(shutdown, _cts.Token);
@@ -282,6 +296,7 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
                 Error = outcome.Error,
                 Challenge = null,
                 ChallengeExpiresAt = null,
+                WebLoginSessionId = null,
                 Message = null,
             });
             foreach (var sourceId in outcome.AffectedSourceIds)
@@ -297,7 +312,7 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
             {
                 tcs = _answer;
                 challenge = _status.Challenge;
-                if (tcs == null || challenge == null || _status.ChallengeId != challengeId || challenge.Kind == ChallengeKind.Approval) return false;
+                if (tcs == null || challenge == null || _status.ChallengeId != challengeId || challenge.Kind is ChallengeKind.Approval or ChallengeKind.WebLogin) return false;
             }
             if (challenge.Kind == ChallengeKind.Choice && !challenge.Options.Any(o => string.Equals(o.Id, value, StringComparison.Ordinal))) return false;
             if (challenge.Kind is ChallengeKind.Code or ChallengeKind.Image && string.IsNullOrWhiteSpace(value)) return false;

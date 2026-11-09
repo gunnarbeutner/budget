@@ -1,11 +1,22 @@
 namespace OpenBudget.Connectors;
 
+/// <summary>Which credentials a connector needs the user to store.</summary>
+public enum CredentialRequirement
+{
+    /// <summary>Username and PIN/password (the default).</summary>
+    UsernameAndSecret,
+
+    /// <summary>Nothing: the user signs in on the bank's own page (a web login) each time the session is gone.</summary>
+    None,
+}
+
 /// <summary>One connector type the app can offer: its stable type string, labels and factory.</summary>
 public sealed record ConnectorRegistration(
     string ConnectorType,
     string DisplayName,
     string Description,
-    Func<ConnectorContext, IBankConnector> Create);
+    Func<ConnectorContext, IBankConnector> Create,
+    CredentialRequirement Credentials = CredentialRequirement.UsernameAndSecret);
 
 /// <summary>The connectors available in this installation, by type string.</summary>
 public sealed class ConnectorRegistry

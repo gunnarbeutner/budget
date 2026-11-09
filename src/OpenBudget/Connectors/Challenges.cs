@@ -14,6 +14,9 @@ public enum ChallengeKind
 
     /// <summary>Look at an image (photoTAN, captcha) and type what it encodes.</summary>
     Image,
+
+    /// <summary>Sign in on the bank's own web page, shown in a remote browser (see <see cref="WebLoginSpec"/>).</summary>
+    WebLogin,
 }
 
 public sealed record ChallengeOption(string Id, string Label);
@@ -48,6 +51,12 @@ public sealed class ConnectorChallenge
 
     /// <summary>For approvals: how long to wait between polls; the app default applies when null.</summary>
     public TimeSpan? PollInterval { get; private init; }
+
+    /// <summary>For web logins: where to sign in and what counts as done.</summary>
+    public WebLoginSpec? WebLoginSpec { get; private init; }
+
+    public static ConnectorChallenge WebLogin(string message, WebLoginSpec spec, string? reference = null) =>
+        new(ChallengeKind.WebLogin, message) { WebLoginSpec = spec, Reference = reference };
 
     public static ConnectorChallenge Choice(string message, IReadOnlyList<ChallengeOption> options, string? reference = null) =>
         new(ChallengeKind.Choice, message) { Options = options, Reference = reference };

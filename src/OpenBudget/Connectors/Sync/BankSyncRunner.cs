@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using OpenBudget.Browser;
 using OpenBudget.Models;
 using OpenBudget.Services;
 
@@ -15,6 +16,15 @@ public interface ISyncSink
 
     /// <summary>Asks the user; null when nobody answered in time (the step then fails).</summary>
     Task<ChallengeAnswer?> AskAsync(ConnectorChallenge challenge, CancellationToken ct);
+
+    /// <summary>A web login is open: show the remote browser of <paramref name="sessionId"/> to the owner until <see cref="HideWebLogin"/>.</summary>
+    void ShowWebLogin(ConnectorChallenge challenge, string sessionId, DateTime expiresAt)
+    {
+    }
+
+    void HideWebLogin()
+    {
+    }
 }
 
 public sealed record SyncOutcome(bool Success, string? Error, IReadOnlyCollection<int> AffectedSourceIds);
@@ -39,13 +49,18 @@ public sealed class BankSyncRunner
     private readonly ILoggerFactory _loggers;
     private readonly ILogger<BankSyncRunner> _logger;
     private readonly Func<BankHttpClient> _httpFactory;
+    private readonly IWebLoginService? _webLogins;
+
+    /// <summary>The login-wide state a challenge may need: whose browser to open and which cookie jar to fill.</summary>
+    private sealed record SyncContext(string OwnerUserId, BankHttpClient Http);
 
     /// <summary>Test seam: <paramref name="httpFactory"/> creates the per-sync HTTP client (default: a real one).</summary>
     public BankSyncRunner(
         SystemDbContextFactory system, ConnectorRegistry registry, SecretsProtector secrets,
         BankTransactionStore transactions, BankStatementStore statements, TimeProvider clock, ILoggerFactory loggers,
-        Func<BankHttpClient>? httpFactory = null)
+        Func<BankHttpClient>? httpFactory = null, IWebLoginService? webLogins = null)
     {
+        _webLogins = webLogins;
         _httpFactory = httpFactory ?? (() => new BankHttpClient());
         _system = system;
         _registry = registry;
@@ -89,6 +104,7 @@ public sealed class BankSyncRunner
         bool credentialsInvalid = false;
         IBankConnector? connector = null;
         using var http = _httpFactory();
+        var context = new SyncContext(login.OwnerUserId, http);
 
         try
         {
@@ -113,7 +129,7 @@ public sealed class BankSyncRunner
             connector = registration.Create(new ConnectorContext(http, _clock, _loggers.CreateLogger(registration.ConnectorType)));
 
             sink.Report("Logging in");
-            var loginStep = await DriveAsync(a => connector.LoginAsync(credentials, stored, a, ct), sink, ct);
+            var loginStep = await DriveAsync(a => connector.LoginAsync(credentials, stored, a, ct), sink, context, ct);
             if (loginStep.Status != StepStatus.Done)
             {
                 credentialsInvalid = loginStep.CredentialsRejected;
@@ -127,9 +143,9 @@ public sealed class BankSyncRunner
             await db.SaveChangesAsync(ct);
 
             if (request.Transactions)
-                await RefreshAccountsAsync(db, login, connector, remoteAccounts, sink, errors, affected, ct);
+                await RefreshAccountsAsync(db, login, connector, remoteAccounts, sink, context, errors, affected, ct);
             if (request.Statements)
-                await FetchStatementsAsync(db, login, connector, remoteAccounts, request, sink, errors, affected, ct);
+                await FetchStatementsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct);
         }
         catch (ConnectorException ex)
         {
@@ -184,16 +200,55 @@ public sealed class BankSyncRunner
 
     private static string Truncate(string text, int max) => text.Length <= max ? text : text[..max];
 
-    private static async Task<ConnectorStep<T>> DriveAsync<T>(Func<ChallengeAnswer?, Task<ConnectorStep<T>>> call, ISyncSink sink, CancellationToken ct)
+    private async Task<ConnectorStep<T>> DriveAsync<T>(
+        Func<ChallengeAnswer?, Task<ConnectorStep<T>>> call, ISyncSink sink, SyncContext context, CancellationToken ct)
     {
         ChallengeAnswer? answer = null;
         while (true)
         {
             var step = await call(answer);
             if (step.Status != StepStatus.Challenge) return step;
-            answer = await sink.AskAsync(step.Challenge!, ct);
+            answer = step.Challenge!.Kind == ChallengeKind.WebLogin
+                ? await RunWebLoginAsync(step.Challenge, sink, context, ct)
+                : await sink.AskAsync(step.Challenge, ct);
             if (answer == null) return ConnectorStep.Fail<T>("No answer was given in time; the request expired.");
         }
+    }
+
+    /// <summary>
+    /// Lets the owner sign in on the bank's page in an isolated browser that starts with this login's stored cookies
+    /// (so "remember this device" cookies can spare the 2FA) and hands every cookie of the connector's domains back
+    /// into the login's jar. The browser is destroyed afterwards; the jar (stored encrypted) is the only copy.
+    /// </summary>
+    private async Task<ChallengeAnswer> RunWebLoginAsync(ConnectorChallenge challenge, ISyncSink sink, SyncContext context, CancellationToken ct)
+    {
+        var spec = challenge.WebLoginSpec!;
+        if (_webLogins is not { IsAvailable: true })
+            throw new ConnectorException("Signing in on the bank's web page needs a browser, which is not available on this server (Chromium is not installed).");
+        WebLoginSession session;
+        try
+        {
+            session = await _webLogins.StartAsync(context.OwnerUserId, spec, context.Http.ExportCookies(), ct);
+        }
+        catch (BrowserActionException ex)
+        {
+            throw new ConnectorException(ex.Message, ex);
+        }
+        await using (session)
+        {
+            sink.ShowWebLogin(challenge, session.Id, session.ExpiresAt);
+            try
+            {
+                var result = await session.Completion.WaitAsync(ct);
+                if (!result.Success) throw new ConnectorException(result.Error ?? "The web login failed.");
+                context.Http.ReplaceCookies(spec, result.Cookies);
+            }
+            finally
+            {
+                sink.HideWebLogin();
+            }
+        }
+        return new ChallengeAnswer(challenge, null);
     }
 
     private static void UpsertAccounts(BankLogin login, IReadOnlyList<RemoteAccount> remote)
@@ -221,7 +276,7 @@ public sealed class BankSyncRunner
 
     private async Task RefreshAccountsAsync(
         BudgetDbContext db, BankLogin login, IBankConnector connector, IReadOnlyList<RemoteAccount> remote,
-        ISyncSink sink, List<string> errors, HashSet<int> affected, CancellationToken ct)
+        ISyncSink sink, SyncContext context, List<string> errors, HashSet<int> affected, CancellationToken ct)
     {
         foreach (var link in login.Accounts.Where(a => a.LinkedAccountId != null && !a.Closed).ToList())
         {
@@ -235,7 +290,7 @@ public sealed class BankSyncRunner
                     throw new ConnectorException("The linked account is no longer available for this login.");
 
                 var since = await ComputeSinceAsync(db, link, account, ct);
-                var step = await DriveAsync(a => connector.RefreshAsync(remoteAccount, since, a, ct), sink, ct);
+                var step = await DriveAsync(a => connector.RefreshAsync(remoteAccount, since, a, ct), sink, context, ct);
                 if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Refresh failed.");
 
                 var now = _clock.GetUtcNow().UtcDateTime;
@@ -286,7 +341,7 @@ public sealed class BankSyncRunner
 
     private async Task FetchStatementsAsync(
         BudgetDbContext db, BankLogin login, IBankConnector connector, IReadOnlyList<RemoteAccount> remote, SyncRequest request,
-        ISyncSink sink, List<string> errors, HashSet<int> affected, CancellationToken ct)
+        ISyncSink sink, SyncContext context, List<string> errors, HashSet<int> affected, CancellationToken ct)
     {
         var targets = login.Accounts
             .Where(a => a.StatementsEnabled && !a.Closed && a.LinkedAccountId != null
@@ -300,7 +355,7 @@ public sealed class BankSyncRunner
         var remoteTargets = targets.Select(t => remote.First(r => string.Equals(r.RemoteId, t.RemoteId, StringComparison.Ordinal))).ToList();
         try
         {
-            var step = await DriveAsync(a => connector.FetchStatementsAsync(remoteTargets, known, a, ct), sink, ct);
+            var step = await DriveAsync(a => connector.FetchStatementsAsync(remoteTargets, known, a, ct), sink, context, ct);
             if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Fetching statements failed.");
 
             foreach (var statement in step.Value!)

@@ -66,7 +66,12 @@ public sealed class ConnectorCredentials
 }
 
 /// <summary>A cookie of the connector's HTTP session, in a form that survives serialization.</summary>
-public sealed record CookieState(string Name, string Value, string Domain, string Path, DateTime? ExpiresUtc, bool Secure, bool HttpOnly);
+public sealed record CookieState(
+    string Name, string Value, string Domain, string Path, DateTime? ExpiresUtc, bool Secure, bool HttpOnly, string? SameSite = null)
+{
+    /// <summary>Never print the value (this record may end up in a log line by accident).</summary>
+    public override string ToString() => $"CookieState {{ Name = {Name}, Domain = {Domain}, Value = *** }}";
+}
 
 /// <summary>
 /// Everything a connector wants to remember between syncs (bank-side session tokens, device ids,

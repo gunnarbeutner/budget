@@ -74,28 +74,63 @@ public sealed class BankHttpClient : IBankHttpClient, IDisposable
         return await _http.SendAsync(request, ct);
     }
 
-    public IReadOnlyList<CookieState> ExportCookies() =>
-        _jar.GetAllCookies()
-            .Where(c => !c.Expired)
-            .Select(c => new CookieState(
-                c.Name, c.Value, c.Domain, c.Path,
-                c.Expires == DateTime.MinValue ? null : c.Expires.ToUniversalTime(),
-                c.Secure, c.HttpOnly))
-            .ToList();
+    // System.Net.Cookie has no SameSite; it is remembered on the side so a cookie that went through a real browser
+    // keeps it when it is handed back to one.
+    private readonly Dictionary<(string Name, string Domain, string Path), string> _sameSite = [];
+
+    private static (string Name, string Domain, string Path) KeyOf(string name, string domain, string path) =>
+        (name, domain.TrimStart('.').ToUpperInvariant(), path);
+
+    public IReadOnlyList<CookieState> ExportCookies()
+    {
+        lock (_sameSite)
+        {
+            return _jar.GetAllCookies()
+                .Where(c => !c.Expired)
+                .Select(c => new CookieState(
+                    c.Name, c.Value, c.Domain, c.Path,
+                    c.Expires == DateTime.MinValue ? null : c.Expires.ToUniversalTime(),
+                    c.Secure, c.HttpOnly,
+                    _sameSite.GetValueOrDefault(KeyOf(c.Name, c.Domain, c.Path))))
+                .ToList();
+        }
+    }
 
     public void ImportCookies(IEnumerable<CookieState> cookies)
     {
-        foreach (var c in cookies)
+        lock (_sameSite)
         {
-            if (c.ExpiresUtc is { } exp && exp <= DateTime.UtcNow) continue;
-            var cookie = new Cookie(c.Name, c.Value, c.Path, c.Domain)
+            foreach (var c in cookies)
             {
-                Secure = c.Secure,
-                HttpOnly = c.HttpOnly,
-            };
-            if (c.ExpiresUtc is { } e) cookie.Expires = e;
-            _jar.Add(cookie);
+                if (c.ExpiresUtc is { } exp && exp <= DateTime.UtcNow) continue;
+                var cookie = new Cookie(c.Name, c.Value, c.Path, c.Domain)
+                {
+                    Secure = c.Secure,
+                    HttpOnly = c.HttpOnly,
+                };
+                if (c.ExpiresUtc is { } e) cookie.Expires = e;
+                _jar.Add(cookie);
+                if (c.SameSite != null) _sameSite[KeyOf(c.Name, c.Domain, c.Path)] = c.SameSite;
+            }
         }
+    }
+
+    /// <summary>
+    /// After a web login: drops every cookie of the spec's domains from the jar and imports the browser's cookies in their
+    /// place (expired ones are skipped). Cookies of other domains stay.
+    /// </summary>
+    public void ReplaceCookies(WebLoginSpec spec, IEnumerable<CookieState> fromBrowser)
+    {
+        lock (_sameSite)
+        {
+            foreach (var c in _jar.GetAllCookies().ToList())
+            {
+                if (!spec.Matches(new CookieState(c.Name, c.Value, c.Domain, c.Path, null, c.Secure, c.HttpOnly))) continue;
+                c.Expired = true;
+                _sameSite.Remove(KeyOf(c.Name, c.Domain, c.Path));
+            }
+        }
+        ImportCookies(fromBrowser.Where(spec.Matches));
     }
 
     public void Dispose() => _http.Dispose();

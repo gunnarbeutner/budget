@@ -1,0 +1,84 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject IStringLocalizer<RemoteBrowser> L
+@* Live view of the isolated browser of a web login (bank sign-in page): the server streams the page as JPEG frames over a
+   WebSocket into the canvas, and this component forwards mouse, keyboard and paste input. The WebSocket only accepts the
+   signed-in owner of the session (see WebLoginEndpoints). Nothing typed or shown here is stored. *@
+<div class="rb-screen position-relative border rounded bg-body-tertiary" data-testid="remote-browser">
+    <canvas @ref="_canvas" class="rb-canvas w-100 d-block" tabindex="0" width="1280" height="800" aria-label="@L["Label"]"
+            style="@(_hasFrame ? "" : "display:none"); outline: none; cursor: default;"></canvas>
+    @if (!_hasFrame)
+    {
+        <div class="p-5 text-center text-body-secondary">
+            @if (_error == null)
+            {
+                <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span><span>@L["Connecting"]</span>
+            }
+            else
+            {
+                <span class="text-danger">@_error</span>
+            }
+        </div>
+    }
+    else if (_error != null)
+    {
+        <div class="alert alert-warning m-2" role="alert">@_error</div>
+    }
+</div>
+
+@code {
+    /// <summary>The web login session whose browser to show (its owner is checked again by the WebSocket endpoint).</summary>
+    [Parameter, EditorRequired] public string SessionId { get; set; } = "";
+
+    private ElementReference _canvas;
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _view;
+    private DotNetObjectReference<RemoteBrowser>? _self;
+    private string? _attachedTo;
+    private string? _error;
+    private bool _hasFrame;
+    private bool _disposed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_disposed || string.IsNullOrEmpty(SessionId) || _attachedTo == SessionId) return;
+        _attachedTo = SessionId;
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/remote-browser.js");
+            _self ??= DotNetObjectReference.Create(this);
+            if (_view != null) { await _view.InvokeVoidAsync("dispose"); await _view.DisposeAsync(); }
+            _view = await _module.InvokeAsync<IJSObjectReference>("attach", _canvas, _self, SessionId);
+            await _view.InvokeVoidAsync("focus");
+        }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+    }
+
+    [JSInvokable]
+    public void OnFirstFrame()
+    {
+        _hasFrame = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnSocketClosed(bool wasOpen)
+    {
+        // A closed socket after the login finished is normal (the dialog disappears with it); otherwise say so.
+        _error = L["Closed"];
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        try
+        {
+            if (_view != null) { await _view.InvokeVoidAsync("dispose"); await _view.DisposeAsync(); }
+            if (_module != null) await _module.DisposeAsync();
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or InvalidOperationException) { /* circuit gone */ }
+        _self?.Dispose();
+    }
+}

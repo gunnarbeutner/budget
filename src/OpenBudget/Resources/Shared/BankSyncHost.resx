@@ -82,4 +82,7 @@
   <data name="Rejected" xml:space="preserve">
     <value>That answer was not accepted.</value>
   </data>
+  <data name="WebLoginHint" xml:space="preserve">
+    <value>Sign in on the bank&#8217;s page below, including any confirmation it asks for. The sync continues by itself as soon as you are signed in.</value>
+  </data>
 </root>

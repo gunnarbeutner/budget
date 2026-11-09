@@ -4,6 +4,7 @@ using Xunit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using OpenBudget.Browser;
 using OpenBudget.Connectors;
 using OpenBudget.Connectors.FakeBank;
 using OpenBudget.Connectors.Sync;
@@ -21,6 +22,11 @@ internal sealed class BankWorldExtras
     public Func<BankHttpClient>? HttpFactory { get; init; }
 
     public ILoggerFactory? Loggers { get; init; }
+
+    /// <summary>A fake browser: when set, the runner gets a real <see cref="WebLoginService"/> over it.</summary>
+    public IBrowserHost? BrowserHost { get; init; }
+
+    public WebLoginOptions? WebLoginOptions { get; init; }
 }
 
 /// <summary>A clock that runs with real time plus an adjustable offset (so delays still work).</summary>
@@ -60,7 +66,11 @@ internal sealed class BankWorld : IAsyncDisposable
         Registry = new ConnectorRegistry([FakeBankConnector.Registration, .. _extras.Registrations]);
         StatementsDir = Path.Combine(Path.GetTempPath(), $"ob-stmts-{Guid.NewGuid():N}");
         StatementStore = new BankStatementStore(new BankStorageOptions(StatementsDir));
-        Runner = new BankSyncRunner(t.System, Registry, Secrets, new BankTransactionStore(), StatementStore, clock, _extras.Loggers ?? NullLoggerFactory.Instance, _extras.HttpFactory);
+        WebLogins = _extras.BrowserHost == null
+            ? null
+            : new WebLoginService(_extras.BrowserHost, _extras.WebLoginOptions ?? new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(10), SettleDelay = TimeSpan.Zero },
+                clock, _extras.Loggers ?? NullLoggerFactory.Instance);
+        Runner = new BankSyncRunner(t.System, Registry, Secrets, new BankTransactionStore(), StatementStore, clock, _extras.Loggers ?? NullLoggerFactory.Instance, _extras.HttpFactory, WebLogins);
         Coordinator = new BankSyncCoordinator(t.System, Runner, Secrets, t.Notifier, options, clock, NullLogger<BankSyncCoordinator>.Instance);
     }
 
@@ -72,6 +82,7 @@ internal sealed class BankWorld : IAsyncDisposable
     public ConnectorRegistry Registry { get; }
     public string StatementsDir { get; }
     public BankStatementStore StatementStore { get; }
+    public IWebLoginService? WebLogins { get; }
     public BankSyncRunner Runner { get; }
     public BankSyncCoordinator Coordinator { get; }
 
@@ -94,7 +105,7 @@ internal sealed class BankWorld : IAsyncDisposable
     public BankSyncCoordinator CoordinatorWithKey(string key)
     {
         var secrets = new SecretsProtector(key);
-        var runner = new BankSyncRunner(T.System, Registry, secrets, new BankTransactionStore(), StatementStore, Clock, _extras.Loggers ?? NullLoggerFactory.Instance, _extras.HttpFactory);
+        var runner = new BankSyncRunner(T.System, Registry, secrets, new BankTransactionStore(), StatementStore, Clock, _extras.Loggers ?? NullLoggerFactory.Instance, _extras.HttpFactory, WebLogins);
         return new BankSyncCoordinator(T.System, runner, secrets, T.Notifier, Options, Clock, NullLogger<BankSyncCoordinator>.Instance);
     }
 

@@ -23,6 +23,7 @@
 
 <Modal Show="@(challenge != null)"
        Title="@(challenge != null ? L["Title", LoginName(challenge.LoginId)].Value : "")"
+       SizeClass="@(challenge?.Challenge?.Kind == ChallengeKind.WebLogin ? "modal-xl" : "")"
        ShowCloseButton="false" CloseOnBackdropClick="false" OnClose="@(() => Task.CompletedTask)">
     <ChildContent>
         @if (challenge?.Challenge is { } c)
@@ -42,6 +43,10 @@
                                 </label>
                             }
                         </div>
+                        break;
+                    case ChallengeKind.WebLogin:
+                        <p class="small text-body-secondary">@L["WebLoginHint"]</p>
+                        <RemoteBrowser SessionId="@(challenge.WebLoginSessionId ?? "")" />
                         break;
                     case ChallengeKind.Approval:
                         <div class="d-flex align-items-center gap-2 text-body-secondary">
@@ -71,7 +76,7 @@
     </ChildContent>
     <Footer>
         <button type="button" class="btn btn-outline-secondary" id="bank-challenge-cancel" @onclick="CancelAsync">@L["CancelSync"]</button>
-        @if (challenge?.Challenge is { Kind: not ChallengeKind.Approval })
+        @if (challenge?.Challenge is { Kind: not (ChallengeKind.Approval or ChallengeKind.WebLogin) })
         {
             <button type="button" class="btn btn-primary" id="bank-challenge-submit" @onclick="SubmitAsync">@L["Submit"]</button>
         }

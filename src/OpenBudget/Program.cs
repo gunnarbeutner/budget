@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Auth;
+using OpenBudget.Browser;
 using OpenBudget.Cli;
 using OpenBudget.Compat;
 using OpenBudget.Connectors;
@@ -134,6 +135,9 @@ if (!app.Environment.IsDevelopment())
 
 app.UseStaticFiles();
 
+// The remote browser of web logins (bank sign-in pages) streams over a WebSocket.
+app.UseWebSockets();
+
 app.UseRequestLocalization();
 
 // Until the first user exists every page answers with only the setup instruction.
@@ -155,6 +159,8 @@ app.MapFallbackToPage("/_Host");
 
 // Lightweight liveness probe for the container HEALTHCHECK. Deliberately doesn't touch the
 // database — it answers "is the process up and serving HTTP", which is what a restart fixes.
+app.MapWebLoginEndpoints();
+
 app.MapGet("/healthz", () => Results.Ok("healthy")).AllowAnonymous();
 
 // The source app (and any future) importer upload endpoints live in the Importers module.
