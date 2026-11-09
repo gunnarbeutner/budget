@@ -19,38 +19,49 @@ internal static class E2ESeed
     public const int BudgetYear = 2026;
     public const int BudgetId = 1;            // the seeded active budget, for /budgets/{id}/edit
 
+    // Logins: the owner of the whole baseline world, and a second user to share with.
+    public const string UserName = "e2e";
+    public const string SecondUserName = "guest";
+    public const string Password = "E2e-Passw0rd!";
+
     private const long GroupId = 100;
     private const long ExpenseCategoryId = 200;
     private const long IncomeCategoryId = 201;
 
     private static readonly DateTime Fixed = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>Empty every table. The temp DB already has its schema (migrations ran on startup).</summary>
+    /// <summary>
+    /// Empty every table. The temp DB already has its schema (migrations ran on startup). Query
+    /// filters are ignored so rows orphaned by an earlier test (their parent deleted) go too.
+    /// </summary>
     public static async Task ResetAsync(IDbContextFactory<BudgetDbContext> factory)
     {
         await using var db = await factory.CreateDbContextAsync();
-        db.MonthlyBudgetEntries.RemoveRange(db.MonthlyBudgetEntries);
-        db.Budgets.RemoveRange(db.Budgets);
-        db.Transactions.RemoveRange(db.Transactions);
-        db.ProjectTrackingItems.RemoveRange(db.ProjectTrackingItems);
-        db.ProjectCategoryAssignments.RemoveRange(db.ProjectCategoryAssignments);
-        db.ProjectAccountAssignments.RemoveRange(db.ProjectAccountAssignments);
-        db.CategoryTypeAssignments.RemoveRange(db.CategoryTypeAssignments);
-        db.Projects.RemoveRange(db.Projects);
-        db.Categories.RemoveRange(db.Categories);
-        db.CategoryGroups.RemoveRange(db.CategoryGroups);
-        db.Accounts.RemoveRange(db.Accounts);
-        db.AccountGroups.RemoveRange(db.AccountGroups);
-        db.ImportSources.RemoveRange(db.ImportSources);
+        db.ProjectShares.RemoveRange(db.ProjectShares.IgnoreQueryFilters());
+        db.Set<Microsoft.AspNetCore.Identity.IdentityUserPasskey<string>>().RemoveRange(db.Set<Microsoft.AspNetCore.Identity.IdentityUserPasskey<string>>());
+        db.Users.RemoveRange(db.Users.IgnoreQueryFilters());
+        db.MonthlyBudgetEntries.RemoveRange(db.MonthlyBudgetEntries.IgnoreQueryFilters());
+        db.Budgets.RemoveRange(db.Budgets.IgnoreQueryFilters());
+        db.Transactions.RemoveRange(db.Transactions.IgnoreQueryFilters());
+        db.ProjectTrackingItems.RemoveRange(db.ProjectTrackingItems.IgnoreQueryFilters());
+        db.ProjectCategoryAssignments.RemoveRange(db.ProjectCategoryAssignments.IgnoreQueryFilters());
+        db.ProjectAccountAssignments.RemoveRange(db.ProjectAccountAssignments.IgnoreQueryFilters());
+        db.CategoryTypeAssignments.RemoveRange(db.CategoryTypeAssignments.IgnoreQueryFilters());
+        db.Projects.RemoveRange(db.Projects.IgnoreQueryFilters());
+        db.Categories.RemoveRange(db.Categories.IgnoreQueryFilters());
+        db.CategoryGroups.RemoveRange(db.CategoryGroups.IgnoreQueryFilters());
+        db.Accounts.RemoveRange(db.Accounts.IgnoreQueryFilters());
+        db.AccountGroups.RemoveRange(db.AccountGroups.IgnoreQueryFilters());
+        db.ImportSources.RemoveRange(db.ImportSources.IgnoreQueryFilters());
         await db.SaveChangesAsync();
     }
 
-    public static async Task SeedBaselineAsync(IDbContextFactory<BudgetDbContext> factory)
+    public static async Task SeedBaselineAsync(IDbContextFactory<BudgetDbContext> factory, string ownerUserId)
     {
         await using var db = await factory.CreateDbContextAsync();
 
-        db.ImportSources.Add(new ImportSource { Id = SourceId, Name = "legacy", CreatedAt = Fixed });
-        db.ImportSources.Add(new ImportSource { Id = SpareSourceId, Name = SpareSourceName, CreatedAt = Fixed });
+        db.ImportSources.Add(new ImportSource { Id = SourceId, Name = "legacy", CreatedAt = Fixed, OwnerUserId = ownerUserId, UploadToken = "e2e-token-legacy" });
+        db.ImportSources.Add(new ImportSource { Id = SpareSourceId, Name = SpareSourceName, CreatedAt = Fixed, OwnerUserId = ownerUserId, UploadToken = "e2e-token-spare" });
 
         // Category.Type is the source's raw type code; the app classifies income/expense per-project
         // via CategoryTypeAssignment (below), not via this column.
@@ -64,6 +75,7 @@ internal static class E2ESeed
             Name = ProjectName,
             Description = "Seeded by the E2E suite",
             SourceId = SourceId,
+            OwnerUserId = ownerUserId,
             SortOrder = 0,
             CreatedAt = Fixed,
         });

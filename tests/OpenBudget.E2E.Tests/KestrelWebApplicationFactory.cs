@@ -6,6 +6,9 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.AspNetCore.Identity;
+using OpenBudget.Auth;
+using OpenBudget.Models;
 using OpenBudget.Services;
 
 namespace OpenBudget.E2E.Tests;
@@ -42,8 +45,9 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
                 .ToList();
             foreach (var d in toRemove) services.Remove(d);
 
-            services.AddDbContextFactory<BudgetDbContext>(options =>
-                options.UseSqlite($"Data Source={_dbPath}"));
+            // Same wiring as production: user-scoped factory for the app, unrestricted
+            // SystemDbContextFactory for seeding.
+            services.AddOpenBudgetDatabase(_dbPath);
         });
     }
 
@@ -76,9 +80,22 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
     /// <summary>Wipe app + imported data and reseed the deterministic baseline world.</summary>
     public async Task ResetAndSeedAsync()
     {
-        var factory = Services.GetRequiredService<IDbContextFactory<BudgetDbContext>>();
+        var factory = Services.GetRequiredService<SystemDbContextFactory>();
         await E2ESeed.ResetAsync(factory);
-        await E2ESeed.SeedBaselineAsync(factory);
+        // The login every test uses (owns the baseline world) and a second user to share with.
+        var owner = await CreateUserAsync(E2ESeed.UserName, E2ESeed.Password);
+        await CreateUserAsync(E2ESeed.SecondUserName, E2ESeed.Password);
+        await E2ESeed.SeedBaselineAsync(factory, owner);
+    }
+
+    private async Task<string> CreateUserAsync(string name, string password)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+        var user = new AppUser { UserName = name };
+        var result = await users.CreateAsync(user, password);
+        if (!result.Succeeded) throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Description)));
+        return user.Id;
     }
 
     protected override void Dispose(bool disposing)
