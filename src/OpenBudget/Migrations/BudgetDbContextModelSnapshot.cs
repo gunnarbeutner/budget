@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261109232146_AddDefaultProjectForNewAccounts";
+        public override string LatestMigrationId => "20261109235433_AddTransactionEditingAndStructureTakeover";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -574,6 +574,12 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("rules");
 
+                    b.Property<bool>("ShowInCharts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true)
+                        .HasColumnName("show_in_charts");
+
                     b.Property<long?>("Sort")
                         .HasColumnType("INTEGER")
                         .HasColumnName("sort");
@@ -742,6 +748,9 @@ namespace OpenBudget.Migrations
 
                     b.Property<string>("OwnerUserId")
                         .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("StructureTakenOverAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("UploadToken")
@@ -1255,15 +1264,40 @@ namespace OpenBudget.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("amount");
 
+                    b.Property<string>("BankReference")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("bank_reference");
+
                     b.Property<bool>("Booked")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER")
                         .HasDefaultValue(true)
                         .HasColumnName("booked");
 
+                    b.Property<string>("BookingText")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("booking_text");
+
                     b.Property<long?>("CategoryId")
                         .HasColumnType("INTEGER")
                         .HasColumnName("category_key");
+
+                    b.Property<long?>("CategorySetAt")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("category_set_at");
+
+                    b.Property<string>("CategorySetBy")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("import")
+                        .HasColumnName("category_set_by");
+
+                    b.Property<bool>("Checked")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false)
+                        .HasColumnName("checked");
 
                     b.Property<long?>("Checkmark")
                         .HasColumnType("INTEGER")
@@ -1273,6 +1307,14 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("comment");
 
+                    b.Property<string>("CounterpartyBic")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("counterparty_bic");
+
+                    b.Property<string>("CounterpartyIban")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("counterparty_iban");
+
                     b.Property<string>("Currency")
                         .HasColumnType("TEXT")
                         .HasColumnName("currency");
@@ -1281,13 +1323,27 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("external_id");
 
+                    b.Property<bool>("IsNew")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_new");
+
                     b.Property<string>("Name")
                         .HasColumnType("TEXT")
                         .HasColumnName("name");
 
+                    b.Property<string>("Note")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("note");
+
                     b.Property<string>("Purpose")
                         .HasColumnType("TEXT")
                         .HasColumnName("purpose");
+
+                    b.Property<int?>("RuleId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("rule_id");
 
                     b.Property<int>("SourceId")
                         .HasColumnType("INTEGER");
@@ -1307,6 +1363,10 @@ namespace OpenBudget.Migrations
                     b.Property<long>("Timestamp")
                         .HasColumnType("INTEGER")
                         .HasColumnName("timestamp");
+
+                    b.Property<long?>("ValueTimestamp")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("value_timestamp");
 
                     b.HasKey("Id");
 

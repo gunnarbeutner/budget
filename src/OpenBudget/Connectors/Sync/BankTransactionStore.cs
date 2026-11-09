@@ -153,6 +153,14 @@ public sealed class BankTransactionStore
         Splitted = 0,
         Checkmark = 0,
         ExternalId = externalId,
+        // A booked row a connector inserts is "unread" until the user views or marks it; pending rows are only
+        // a snapshot that is rebuilt on every sync, so they never carry the marker.
+        IsNew = r.Booked,
+        ValueTimestamp = r.ValueDate is { } v ? ToTimestamp(v) : null,
+        CounterpartyIban = r.CounterpartyIban,
+        CounterpartyBic = r.CounterpartyBic,
+        BookingText = r.BookingText,
+        BankReference = r.BankTransactionId,
     };
 
     private static async Task ReplaceHoldingsAsync(BudgetDbContext db, Account account, IReadOnlyList<RemotePosition> positions, CancellationToken ct)

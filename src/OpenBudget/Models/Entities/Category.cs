@@ -37,6 +37,13 @@ public class Category
     [Column("sort")]
     public long? Sort { get; set; }
 
+    /// <summary>
+    /// "Show in charts" flag; once the source's structure is taken over (see <see cref="ImportSource.StructureTakenOverAt"/>)
+    /// OpenBudget owns it. Defaults to true.
+    /// </summary>
+    [Column("show_in_charts")]
+    public bool ShowInCharts { get; set; } = true;
+
     // Navigation properties
     public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
 

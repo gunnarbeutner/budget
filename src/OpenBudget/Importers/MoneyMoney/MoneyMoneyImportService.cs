@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using OpenBudget.Connectors.Sync;
 using OpenBudget.Models;
 using OpenBudget.Services;
 
@@ -72,7 +73,7 @@ public class MoneyMoneyImportService
     };
     private static readonly string[] TransactionInsertParameters =
     {
-        "$id", "$sid", "$local_account_key", "$amount", "$currency", "$timestamp", "$name", "$comment", "$purpose", "$category_key", "$checkmark", "$splitted", "$booked", "$split_parent_id", "$split_original_amount"
+        "$id", "$sid", "$local_account_key", "$amount", "$currency", "$timestamp", "$name", "$comment", "$purpose", "$category_key", "$checkmark", "$splitted", "$booked", "$split_parent_id", "$split_original_amount", "$note", "$checked"
     };
     private static readonly string[] SecurityInsertParameters =
     {
@@ -108,6 +109,21 @@ public class MoneyMoneyImportService
         try
         {
             return await ImportInternalAsync(sourceName, sqliteFilePath, ct);
+        }
+        finally
+        {
+            sem.Release();
+        }
+    }
+
+    /// <summary>Runs <paramref name="action"/> while no upload for the source is being imported (and blocks uploads meanwhile).</summary>
+    public async Task<T> WithSourceLockAsync<T>(string sourceName, Func<Task<T>> action, CancellationToken ct)
+    {
+        var sem = _perSourceLocks.GetOrAdd(sourceName, _ => new SemaphoreSlim(1, 1));
+        await sem.WaitAsync(ct);
+        try
+        {
+            return await action();
         }
         finally
         {
@@ -174,8 +190,13 @@ public class MoneyMoneyImportService
                 .Select(p => p.Key)
                 .ToHashSet();
 
+            // Once the owner took the structure over, accounts, groups and categories are OpenBudget's: they are
+            // kept (not wiped and re-copied), so ids, names, grouping and order survive; only what MoneyMoney
+            // still owns - balances of its accounts and all of its transactions - is refreshed.
+            bool takenOver = source.StructureTakenOverAt != null;
+
             // Balance / refresh state of accounts handed to a connector belongs to that connector.
-            var foreignState = foreignAccountIds.Count == 0
+            var foreignState = takenOver || foreignAccountIds.Count == 0
                 ? new Dictionary<long, ForeignAccountState>()
                 : await db.Accounts
                     .Where(a => a.SourceId == sourceId && foreignAccountIds.Contains(a.Id))
@@ -183,14 +204,33 @@ public class MoneyMoneyImportService
 
             // Only MoneyMoney-owned transactions are replaced; accounts owned by another provider
             // keep theirs untouched.
-            await db.Database.ExecuteSqlRawAsync(
-                """
-                DELETE FROM transactions
-                WHERE SourceId = {0}
-                  AND (local_account_key IS NULL
-                       OR local_account_key NOT IN (SELECT Id FROM accounts WHERE SourceId = {0} AND provider <> {1}))
-                """,
-                new object[] { sourceId, AccountProviders.MoneyMoney }, ct);
+            if (takenOver)
+            {
+                // An account MoneyMoney no longer delivers keeps its history: only accounts in this upload are replaced.
+                var uploaded = (await ReadRowidsAsync(src, "accounts", ct))
+                    .Select(r => SourceScope.Namespace(sourceId, r))
+                    .Where(id => !foreignAccountIds.Contains(id))
+                    .ToList();
+                await db.Transactions.Where(t => t.SourceId == sourceId && t.AccountId == null).ExecuteDeleteAsync(ct);
+                foreach (var chunk in uploaded.Chunk(500))
+                {
+                    var ids = chunk;
+                    await db.Transactions
+                        .Where(t => t.SourceId == sourceId && t.AccountId != null && ids.Contains(t.AccountId.Value))
+                        .ExecuteDeleteAsync(ct);
+                }
+            }
+            else
+            {
+                await db.Database.ExecuteSqlRawAsync(
+                    """
+                    DELETE FROM transactions
+                    WHERE SourceId = {0}
+                      AND (local_account_key IS NULL
+                           OR local_account_key NOT IN (SELECT Id FROM accounts WHERE SourceId = {0} AND provider <> {1}))
+                    """,
+                    new object[] { sourceId, AccountProviders.MoneyMoney }, ct);
+            }
             // Likewise positions / portfolio history of connector-owned accounts stay as the connector wrote them.
             await db.Database.ExecuteSqlRawAsync(
                 """
@@ -206,15 +246,20 @@ public class MoneyMoneyImportService
                   AND account_key NOT IN (SELECT Id FROM accounts WHERE SourceId = {0} AND provider <> {1})
                 """,
                 new object[] { sourceId, AccountProviders.MoneyMoney }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM categories WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM category_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM accounts WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM account_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            if (!takenOver)
+            {
+                await db.Database.ExecuteSqlRawAsync("DELETE FROM categories WHERE SourceId = {0}", new object[] { sourceId }, ct);
+                await db.Database.ExecuteSqlRawAsync("DELETE FROM category_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
+                await db.Database.ExecuteSqlRawAsync("DELETE FROM accounts WHERE SourceId = {0}", new object[] { sourceId }, ct);
+                await db.Database.ExecuteSqlRawAsync("DELETE FROM account_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            }
 
-            int accountGroupCount = await CopyAccountGroupsAsync(src, db, sourceId, ct);
-            int accountCount = await CopyAccountsAsync(src, db, sourceId, providers, foreignState, ct);
-            int groupCount = await CopyCategoryGroupsAsync(src, db, sourceId, ct);
-            int categoryCount = await CopyCategoriesAsync(src, db, sourceId, ct);
+            int accountGroupCount = takenOver ? 0 : await CopyAccountGroupsAsync(src, db, sourceId, ct);
+            int accountCount = await CopyAccountsAsync(src, db, sourceId, providers, foreignState, takenOver, ct);
+            int groupCount = takenOver ? 0 : await CopyCategoryGroupsAsync(src, db, sourceId, ct);
+            int categoryCount = takenOver
+                ? await CopyNewCategoriesAsync(src, db, sourceId, ct)
+                : await CopyCategoriesAsync(src, db, sourceId, ct);
             int txCount = await CopyTransactionsAsync(src, db, sourceId, foreignAccountIds, ct);
             int securityCount = await CopySecuritiesAsync(src, db, sourceId, foreignAccountIds, ct);
             int portfolioChartCount = await CopyPortfolioChartAsync(src, db, sourceId, foreignAccountIds, ct);
@@ -386,7 +431,7 @@ public class MoneyMoneyImportService
 
     private static async Task<int> CopyAccountsAsync(
         SqliteConnection src, BudgetDbContext db, int sourceId, IReadOnlyDictionary<long, string> providers,
-        Dictionary<long, ForeignAccountState> foreignState, CancellationToken ct)
+        Dictionary<long, ForeignAccountState> foreignState, bool keepStructure, CancellationToken ct)
     {
         // group_key is the FK into account_groups; older exporters (pre-account-groups) won't
         // have account_groups but the column itself has always been on accounts. Probe anyway
@@ -397,10 +442,20 @@ public class MoneyMoneyImportService
             SELECT rowid, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, {groupKeyExpr}
             FROM accounts
             """;
-        const string insert = """
-            INSERT INTO accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider)
-            VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider)
-            """;
+        // After a structure takeover an upload only inserts accounts it newly reports (ungrouped, unsorted: they land
+        // in "Other accounts") and refreshes the MoneyMoney-owned ones' bank-side fields; name, group and order stay.
+        string insert = keepStructure
+            ? """
+              INSERT INTO accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider)
+              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider)
+              ON CONFLICT(Id) DO UPDATE SET iban = excluded.iban, currency = excluded.currency, type = excluded.type,
+                  portfolio = excluded.portfolio, balances = excluded.balances, refresh_tsp = excluded.refresh_tsp, error = excluded.error
+              WHERE accounts.provider = 'moneymoney'
+              """
+            : """
+              INSERT INTO accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider)
+              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider)
+              """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {
             long rowid = r.GetInt64(0);
@@ -420,6 +475,11 @@ public class MoneyMoneyImportService
             cmd.Parameters["$group_key"].Value = r.IsDBNull(10)
                 ? DBNull.Value
                 : NamespaceParentKey(sourceId, r.GetInt64(10));
+            if (keepStructure)
+            {
+                cmd.Parameters["$sort"].Value = DBNull.Value;
+                cmd.Parameters["$group_key"].Value = DBNull.Value;
+            }
             if (foreignState.TryGetValue(id, out var kept))
             {
                 // A connector owns this account: keep its balance and refresh state rather than MoneyMoney's.
@@ -497,6 +557,67 @@ public class MoneyMoneyImportService
         }, CategoryInsertParameters, ct);
     }
 
+    /// <summary>Name of the category group that collects categories MoneyMoney reports after the structure takeover.</summary>
+    public const string NewCategoriesGroupName = "New categories";
+
+    /// <summary>The id of that group in a source (reserved rowid next to the connector range, never used by MoneyMoney rowids).</summary>
+    public static long NewCategoriesGroupId(int sourceId) =>
+        SourceScope.Namespace(sourceId, BankTransactionStore.ConnectorRowBase + 1);
+
+    [SuppressMessage("Security", "CA2100:Review SQL queries for security vulnerabilities",
+        Justification = "The statement is picked from two compile-time literals by a switch; no user input reaches it.")]
+    private static async Task<List<long>> ReadRowidsAsync(SqliteConnection src, string table, CancellationToken ct)
+    {
+        var ids = new List<long>();
+        if (!TableExists(src, table)) return ids;
+        await using var cmd = src.CreateCommand();
+        cmd.CommandText = table switch
+        {
+            "accounts" => "SELECT rowid FROM accounts",
+            "categories" => "SELECT rowid FROM categories",
+            _ => throw new ArgumentOutOfRangeException(nameof(table), table, null),
+        };
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct)) ids.Add(reader.GetInt64(0));
+        return ids;
+    }
+
+    /// <summary>
+    /// Structure-taken-over mode: categories the upload reports that OpenBudget does not know yet are added to the
+    /// "New categories" group (created on demand); known ones are left exactly as they are.
+    /// </summary>
+    private static async Task<int> CopyNewCategoriesAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
+    {
+        var known = (await db.Categories.Where(c => c.SourceId == sourceId).Select(c => c.Id).ToListAsync(ct)).ToHashSet();
+        var fresh = (await ReadRowidsAsync(src, "categories", ct)).Where(r => !known.Contains(SourceScope.Namespace(sourceId, r))).ToHashSet();
+        if (fresh.Count == 0) return 0;
+
+        var groupId = NewCategoriesGroupId(sourceId);
+        if (!await db.CategoryGroups.AnyAsync(g => g.Id == groupId, ct))
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "INSERT INTO category_groups (Id, SourceId, name, group_key, sort, color) VALUES ({0}, {1}, {2}, NULL, NULL, NULL)",
+                new object[] { groupId, sourceId, NewCategoriesGroupName }, ct);
+        }
+
+        const string select = "SELECT rowid, name, type, color, rules, group_key, sort FROM categories";
+        const string insert = """
+            INSERT INTO categories (Id, SourceId, name, type, color, rules, group_key, sort)
+            VALUES ($id, $sid, $name, $type, $color, $rules, $group_key, $sort)
+            """;
+        return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
+        {
+            cmd.Parameters["$id"].Value = SourceScope.Namespace(sourceId, r.GetInt64(0));
+            cmd.Parameters["$sid"].Value = sourceId;
+            cmd.Parameters["$name"].Value = r.IsDBNull(1) ? DBNull.Value : r.GetString(1);
+            cmd.Parameters["$type"].Value = r.IsDBNull(2) ? DBNull.Value : r.GetInt64(2);
+            cmd.Parameters["$color"].Value = r.IsDBNull(3) ? DBNull.Value : r.GetString(3);
+            cmd.Parameters["$rules"].Value = r.IsDBNull(4) ? DBNull.Value : r.GetString(4);
+            cmd.Parameters["$group_key"].Value = groupId;
+            cmd.Parameters["$sort"].Value = DBNull.Value;
+        }, CategoryInsertParameters, ct, skipRow: r => !fresh.Contains(r.GetInt64(0)));
+    }
+
     private static async Task<int> CopyTransactionsAsync(
         SqliteConnection src, BudgetDbContext db, int sourceId, HashSet<long> foreignAccountIds, CancellationToken ct)
     {
@@ -520,8 +641,8 @@ public class MoneyMoneyImportService
             FROM transactions
             """;
         const string insert = """
-            INSERT INTO transactions (Id, SourceId, local_account_key, amount, currency, timestamp, name, comment, purpose, category_key, checkmark, splitted, booked, split_parent_id, split_original_amount)
-            VALUES ($id, $sid, $local_account_key, $amount, $currency, $timestamp, $name, $comment, $purpose, $category_key, $checkmark, $splitted, $booked, $split_parent_id, $split_original_amount)
+            INSERT INTO transactions (Id, SourceId, local_account_key, amount, currency, timestamp, name, comment, purpose, category_key, checkmark, splitted, booked, split_parent_id, split_original_amount, note, "checked")
+            VALUES ($id, $sid, $local_account_key, $amount, $currency, $timestamp, $name, $comment, $purpose, $category_key, $checkmark, $splitted, $booked, $split_parent_id, $split_original_amount, $note, $checked)
             """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {
@@ -539,11 +660,14 @@ public class MoneyMoneyImportService
             cmd.Parameters["$timestamp"].Value = r.IsDBNull(4) ? DBNull.Value : r.GetInt64(4);
             cmd.Parameters["$name"].Value = r.IsDBNull(5) ? DBNull.Value : r.GetString(5);
             cmd.Parameters["$comment"].Value = r.IsDBNull(6) ? DBNull.Value : r.GetString(6);
+            // MoneyMoney-owned rows are read-only here: OpenBudget's note and check mark mirror MoneyMoney's.
+            cmd.Parameters["$note"].Value = r.IsDBNull(6) ? DBNull.Value : r.GetString(6);
             cmd.Parameters["$purpose"].Value = r.IsDBNull(7) ? DBNull.Value : r.GetString(7);
             cmd.Parameters["$category_key"].Value = r.IsDBNull(8)
                 ? DBNull.Value
                 : SourceScope.Namespace(sourceId, r.GetInt64(8));
             cmd.Parameters["$checkmark"].Value = r.IsDBNull(9) ? DBNull.Value : r.GetInt64(9);
+            cmd.Parameters["$checked"].Value = !r.IsDBNull(9) && r.GetInt64(9) > 0 ? 1 : 0;
             long? splitted = r.IsDBNull(10) ? null : r.GetInt64(10);
             cmd.Parameters["$splitted"].Value = (object?)splitted ?? DBNull.Value;
             cmd.Parameters["$booked"].Value = r.IsDBNull(11) || r.GetInt64(11) != 0 ? 1 : 0;

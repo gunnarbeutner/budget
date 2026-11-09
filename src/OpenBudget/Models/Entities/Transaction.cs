@@ -95,10 +95,71 @@ public class Transaction
     [Column("external_id")]
     public string? ExternalId { get; set; }
 
+    /// <summary>
+    /// OpenBudget's own note (<c>note</c>). For MoneyMoney-owned rows the import fills it from
+    /// MoneyMoney's <see cref="Comment"/> on every upload; for connector-owned rows the user edits it.
+    /// </summary>
+    [Column("note")]
+    public string? Note { get; set; }
+
+    /// <summary>
+    /// The check mark. MoneyMoney-owned rows mirror MoneyMoney's <see cref="Checkmark"/> on every upload;
+    /// for connector-owned rows the user toggles it.
+    /// </summary>
+    [Column("checked")]
+    public bool Checked { get; set; }
+
+    /// <summary>"Unread" marker: set on rows a bank connector inserts, cleared once viewed or marked.</summary>
+    [Column("is_new")]
+    public bool IsNew { get; set; }
+
+    /// <summary>Who chose the category; see <see cref="TransactionCategorySource"/>. Manual choices are never overwritten by rules.</summary>
+    [Column("category_set_by")]
+    public string CategorySetBy { get; set; } = TransactionCategorySource.Import;
+
+    /// <summary>The rule that set the category when <see cref="CategorySetBy"/> is "rule" (rules arrive in a later step).</summary>
+    [Column("rule_id")]
+    public int? RuleId { get; set; }
+
+    /// <summary>Unix seconds of the last manual categorization; feeds the "recently used" suggestions.</summary>
+    [Column("category_set_at")]
+    public long? CategorySetAt { get; set; }
+
+    /// <summary>The bank's value date (unix seconds), when the connector reports one.</summary>
+    [Column("value_timestamp")]
+    public long? ValueTimestamp { get; set; }
+
+    [Column("counterparty_iban")]
+    public string? CounterpartyIban { get; set; }
+
+    [Column("counterparty_bic")]
+    public string? CounterpartyBic { get; set; }
+
+    /// <summary>The bank's own booking text / transaction type ("Lastschrift", "Überweisung", ...).</summary>
+    [Column("booking_text")]
+    public string? BookingText { get; set; }
+
+    /// <summary>The bank's own transaction reference, when it gives one.</summary>
+    [Column("bank_reference")]
+    public string? BankReference { get; set; }
+
     [NotMapped]
     public DateTime Date => DateTimeOffset.FromUnixTimeSeconds(Timestamp).DateTime;
 
     // Navigation properties
     public Category? Category { get; set; }
     public Account? Account { get; set; }
+}
+
+/// <summary>Well-known values for <see cref="Transaction.CategorySetBy"/>.</summary>
+public static class TransactionCategorySource
+{
+    /// <summary>Delivered by the MoneyMoney upload (read-only in OpenBudget).</summary>
+    public const string Import = "import";
+
+    /// <summary>Chosen by a user in OpenBudget; never overwritten by rules.</summary>
+    public const string Manual = "manual";
+
+    /// <summary>Set by an OpenBudget rule (<see cref="Transaction.RuleId"/>).</summary>
+    public const string Rule = "rule";
 }

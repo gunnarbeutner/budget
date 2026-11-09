@@ -25,7 +25,10 @@ public sealed record RemoteTransaction(
     string? Name,
     string? Purpose,
     bool Booked,
-    string? BankTransactionId = null);
+    string? BankTransactionId = null,
+    string? CounterpartyIban = null,
+    string? CounterpartyBic = null,
+    string? BookingText = null);
 
 /// <summary>A depot position with its current price.</summary>
 public sealed record RemotePosition(

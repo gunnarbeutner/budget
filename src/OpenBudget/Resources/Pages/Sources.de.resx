@@ -160,4 +160,25 @@
   <data name="Link_BankLogins_Hint" xml:space="preserve">
     <value> - Banken direkt anbinden, statt oder neben MoneyMoney.</value>
   </data>
+  <data name="Takeover_Button" xml:space="preserve">
+    <value>Struktur aus MoneyMoney übernehmen</value>
+  </data>
+  <data name="Takeover_Done" xml:space="preserve">
+    <value>Struktur gehört OpenBudget seit {0}</value>
+  </data>
+  <data name="Takeover_DoneTitle" xml:space="preserve">
+    <value>Uploads liefern weiterhin Umsätze und Salden der MoneyMoney-Konten, ändern aber keine Namen, Gruppen, Reihenfolge oder Kategorien mehr.</value>
+  </data>
+  <data name="Takeover_Title" xml:space="preserve">
+    <value>Struktur von {0} übernehmen</value>
+  </data>
+  <data name="Takeover_Body" xml:space="preserve">
+    <value>OpenBudget übernimmt die Kontogruppen, Konten und den Kategorienbaum dieser Quelle mit Namen, Verschachtelung, Reihenfolge und Farben. Das lässt sich nicht rückgängig machen.</value>
+  </data>
+  <data name="Takeover_Body2" xml:space="preserve">
+    <value>Danach liefern MoneyMoney-Uploads weiterhin Umsätze und Salden der MoneyMoney-Konten, überschreiben die Struktur aber nicht mehr. Neue Konten landen in 'Weitere Konten', neue Kategorien in der Gruppe 'New categories'.</value>
+  </data>
+  <data name="Takeover_Confirm" xml:space="preserve">
+    <value>Übernehmen</value>
+  </data>
 </root>

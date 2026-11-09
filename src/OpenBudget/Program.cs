@@ -45,6 +45,7 @@ builder.Services.AddScoped<InstrumentMappingService>();
 builder.Services.AddScoped<ProjectTimeState>();
 builder.Services.AddScoped<SharingService>();
 builder.Services.AddScoped<SourceService>();
+builder.Services.AddScoped<StructureTakeoverService>();
 // Per-circuit holder for the browser's timezone (seeded from the tz cookie by App.razor) so all
 // pages render dates/times and "current period" decisions in the user's zone, not the server's.
 builder.Services.AddScoped<ClockService>();

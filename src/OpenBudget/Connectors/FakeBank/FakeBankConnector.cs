@@ -172,9 +172,9 @@ public sealed class FakeBankConnector : IBankConnector
         for (var m = 1; m <= 10; m++)
         {
             var ym = $"2026-{m:D2}";
-            list.Add(new RemoteTransaction(2500.00m, "EUR", new DateOnly(2026, m, 1), new DateOnly(2026, m, 1), "Example Employer", $"Salary {ym}", true, Id($"G-{ym}-SAL")));
-            list.Add(new RemoteTransaction(-800.00m, "EUR", new DateOnly(2026, m, 3), new DateOnly(2026, m, 3), "Example Landlord", $"Rent {ym}", true, Id($"G-{ym}-RENT")));
-            list.Add(new RemoteTransaction(-(40m + m) - 0.67m, "EUR", new DateOnly(2026, m, 12), new DateOnly(2026, m, 12), "Example Grocery Store", $"Groceries {ym}", true, Id($"G-{ym}-FOOD")));
+            list.Add(new RemoteTransaction(2500.00m, "EUR", new DateOnly(2026, m, 1), new DateOnly(2026, m, 1), "Example Employer", $"Salary {ym}", true, Id($"G-{ym}-SAL"), "DE89370400440532013000", "COBADEFFXXX", "Gehalt/Rente"));
+            list.Add(new RemoteTransaction(-800.00m, "EUR", new DateOnly(2026, m, 3), new DateOnly(2026, m, 3), "Example Landlord", $"Rent {ym}", true, Id($"G-{ym}-RENT"), "DE02120300000000202051", "BYLADEM1001", "Dauerauftrag"));
+            list.Add(new RemoteTransaction(-(40m + m) - 0.67m, "EUR", new DateOnly(2026, m, 12), new DateOnly(2026, m, 12), "Example Grocery Store", $"Groceries {ym}", true, Id($"G-{ym}-FOOD"), BookingText: "Lastschrift"));
             list.Add(new RemoteTransaction(-19.99m, "EUR", new DateOnly(2026, m, 20), new DateOnly(2026, m, 20), "Example Streaming", $"Subscription {ym}", true, Id($"G-{ym}-STREAM")));
         }
         list.Add(new RemoteTransaction(-52.10m, "EUR", new DateOnly(2026, 11, 2), new DateOnly(2026, 11, 2), "Example Grocery Store", "Groceries 2026-11", true, Id("G-2026-11-FOOD")));

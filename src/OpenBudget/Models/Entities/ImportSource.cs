@@ -41,5 +41,12 @@ public class ImportSource
     [MaxLength(100)]
     public string? UploadToken { get; set; }
 
+    /// <summary>
+    /// When the owner took over this source's structure (account groups, accounts' names/groups/order, category
+    /// groups, categories) from MoneyMoney. From then on MoneyMoney uploads still deliver transactions and balances
+    /// of MoneyMoney-owned accounts but never overwrite the structure. Null while MoneyMoney still owns it.
+    /// </summary>
+    public DateTime? StructureTakenOverAt { get; set; }
+
     public ICollection<Project> Projects { get; set; } = new List<Project>();
 }
