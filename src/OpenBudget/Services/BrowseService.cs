@@ -18,14 +18,17 @@ public class BrowseService
     private readonly ProjectService _projects;
     private readonly BudgetEntryService _entries;
     private readonly BudgetService _budgets;
+    private readonly AccessScopeProvider? _access;
 
     public BrowseService(
         IDbContextFactory<BudgetDbContext> dbFactory,
         CategoryHierarchyService hierarchy,
         ProjectService projects,
         BudgetEntryService entries,
-        BudgetService budgets)
+        BudgetService budgets,
+        AccessScopeProvider? access = null)
     {
+        _access = access;
         _dbFactory = dbFactory;
         _hierarchy = hierarchy;
         _projects = projects;
@@ -320,14 +323,41 @@ public class BrowseService
                     .ToDictionaryAsync(x => x.AccountId, x => x.Value, ct);
 
             var assignedAccountSet = new HashSet<long>(assignedAccountIds);
+
+            // Header details. Bank logins are owner-only through the query filter, so a viewer of a
+            // shared account gets no link here: no institution name, no sync button, and the account's
+            // own refresh timestamp as "last updated".
+            var viewerId = _access == null ? null : (await _access.GetAsync()).UserId;
+            var links = await db.BankLoginAccounts.AsNoTracking()
+                .Include(l => l.BankLogin)
+                .Where(l => l.LinkedAccountId != null && accountIds.Contains(l.LinkedAccountId.Value))
+                .ToListAsync(ct);
+            var linkByAccount = links.GroupBy(l => l.LinkedAccountId!.Value).ToDictionary(g => g.Key, g => g.First());
+            var pendingCents = await db.Transactions
+                .Where(t => !t.Booked && t.Splitted != 1)
+                .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
+                .GroupBy(t => t.AccountId!.Value)
+                .Select(g => new { AccountId = g.Key, Sum = g.Sum(t => t.Amount) })
+                .ToDictionaryAsync(x => x.AccountId, x => x.Sum, ct);
             foreach (var a in accounts)
             {
                 bool isPortfolio = a.Type == 7 || a.Portfolio == 1;
                 decimal? balance = isPortfolio
                     ? (holdingsValueByAccount.TryGetValue(a.Id, out var hv) ? (decimal)hv : a.CurrentBalance)
                     : a.CurrentBalance;
+                linkByAccount.TryGetValue(a.Id, out var link);
                 accountNodes.Add(new BrowseAccountNode
                 {
+                    GroupId = a.GroupId,
+                    Sort = a.Sort,
+                    Type = a.Type,
+                    Iban = a.Iban,
+                    Institution = link?.BankLogin.DisplayName,
+                    LastUpdatedUtc = AccountDisplay.SelectLastUpdated(link?.LastSuccessAt, a.RefreshTimestamp),
+                    Error = FirstNonEmpty(link?.LastError, link?.BankLogin.LastError, a.Error),
+                    PendingBalance = pendingCents.TryGetValue(a.Id, out var pc) && pc != 0 ? pc / 100m : null,
+                    SyncLoginId = link != null && viewerId != null && link.BankLogin.OwnerUserId == viewerId ? link.BankLoginId : null,
+                    Closed = link?.Closed ?? false,
                     Id = a.Id,
                     Name = a.Name ?? "",
                     Balance = balance,
@@ -338,6 +368,14 @@ public class BrowseService
                 });
             }
         }
+
+        var groupSources = accountNodes.Count == 0
+            ? []
+            : await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id)).Select(a => a.SourceId).Distinct().ToListAsync(ct);
+        var accountGroups = groupSources.Count == 0
+            ? []
+            : (await db.AccountGroups.AsNoTracking().Where(g => groupSources.Contains(g.SourceId)).ToListAsync(ct))
+                .Select(g => new AccountGroupInfo(g.Id, g.ParentGroupId, g.Name ?? "", g.Sort)).ToList();
 
         var uncategorizedCount = await db.Transactions
             .Where(t => t.SourceId == project.SourceId)
@@ -352,8 +390,11 @@ public class BrowseService
             FromMonth = fromMonth,
             ToMonth = toMonth,
             Accounts = accountNodes,
+            AccountGroups = accountGroups,
             Categories = categoryNodes,
             UncategorizedCount = uncategorizedCount
         };
     }
+
+    private static string? FirstNonEmpty(params string?[] values) => values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
 }

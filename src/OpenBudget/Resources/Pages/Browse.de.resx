@@ -107,4 +107,9 @@
   <data name="Holdings_LookThrough" xml:space="preserve"><value>Durchschau:</value></data>
   <data name="Header_AllSecurities" xml:space="preserve"><value>Alle Wertpapiere</value></data>
   <data name="Header_TotalValue" xml:space="preserve"><value>Gesamtwert</value></data>
+  <data name="Header_Pending" xml:space="preserve"><value>Vorgemerkt:</value></data>
+  <data name="Header_LastUpdated" xml:space="preserve"><value>Zuletzt aktualisiert:</value></data>
+  <data name="Header_Today" xml:space="preserve"><value>Heute</value></data>
+  <data name="Header_Yesterday" xml:space="preserve"><value>Gestern</value></data>
+  <data name="Header_SyncNow" xml:space="preserve"><value>Jetzt synchronisieren</value></data>
 </root>

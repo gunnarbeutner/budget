@@ -972,3 +972,13 @@ a, .btn-link {
     top: 0;
     z-index: 1100;
 }
+
+/* Account groups in the Browse rail: the sum stays bold and dark; closed accounts are dimmed. */
+.browse-tree-group .browse-tree-amount {
+    color: var(--bs-body-color);
+}
+
+.browse-tree-row.closed .browse-tree-name,
+.browse-tree-row.closed .browse-tree-amount {
+    opacity: 0.55;
+}

@@ -14,6 +14,8 @@ public class BrowseTree
     public int FromMonth { get; init; }
     public int ToMonth { get; init; }
     public List<BrowseAccountNode> Accounts { get; init; } = new();
+    /// <summary>Account groups of the sources behind <see cref="Accounts"/> (visible ones only); the rail prunes the empty ones.</summary>
+    public List<AccountGroupInfo> AccountGroups { get; init; } = new();
     public List<BrowseCategoryNode> Categories { get; init; } = new();
     /// <summary>All-time count of the source's uncategorized transactions (split parents excluded).</summary>
     public int UncategorizedCount { get; init; }
@@ -40,6 +42,22 @@ public class BrowseAccountNode
     /// rail hides non-assigned accounts behind a "show more" toggle.
     /// </summary>
     public bool IsAssigned { get; init; }
+    public long? GroupId { get; init; }
+    public long? Sort { get; init; }
+    public long? Type { get; init; }
+    public string? Iban { get; init; }
+    /// <summary>Bank login name for connector-linked accounts the viewer owns; null otherwise (MoneyMoney does not import a bank name).</summary>
+    public string? Institution { get; init; }
+    /// <summary>Last successful update (connector link, else the account's refresh timestamp), UTC.</summary>
+    public DateTime? LastUpdatedUtc { get; init; }
+    /// <summary>Why the last update attempt failed (connector or source app), or null.</summary>
+    public string? Error { get; init; }
+    /// <summary>Sum of not-yet-booked transactions; null when there are none.</summary>
+    public decimal? PendingBalance { get; init; }
+    /// <summary>The bank login that feeds this account, set only for its owner (who may start "Sync now").</summary>
+    public int? SyncLoginId { get; init; }
+    /// <summary>The bank no longer lists this account (closed).</summary>
+    public bool Closed { get; init; }
 }
 
 public class BrowseCategoryNode

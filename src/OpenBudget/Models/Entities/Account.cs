@@ -144,7 +144,10 @@ public class Account
     /// The source app itself signals account kinds in its sidebar.
     /// </summary>
     [NotMapped]
-    public string KindIcon => Type switch
+    public string KindIcon => IconForType(Type);
+
+    /// <summary>Bootstrap-Icons class for an account type code.</summary>
+    public static string IconForType(long? type) => type switch
     {
         1 => "bi-bank",
         2 => "bi-piggy-bank",

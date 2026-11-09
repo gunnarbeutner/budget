@@ -248,7 +248,7 @@ internal sealed class UserView
         Entries = new BudgetEntryService(Factory, Hierarchy, Notifier, origin);
         Spending = new BudgetService(Factory, Hierarchy, Projects, Entries, Notifier, origin);
         TransactionQueries = new TransactionQueryService(Factory);
-        Browse = new BrowseService(Factory, Hierarchy, Projects, Entries, Spending);
+        Browse = new BrowseService(Factory, Hierarchy, Projects, Entries, Spending, Access);
         Cashflow = new CashflowProjectionService(Factory, Hierarchy, Projects);
         Portfolio = new PortfolioService(Factory, Projects);
         Freshness = new FreshnessService(Factory);

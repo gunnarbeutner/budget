@@ -107,4 +107,9 @@
   <data name="Holdings_LookThrough" xml:space="preserve"><value>Look-through:</value></data>
   <data name="Header_AllSecurities" xml:space="preserve"><value>All securities</value></data>
   <data name="Header_TotalValue" xml:space="preserve"><value>Total value</value></data>
+  <data name="Header_Pending" xml:space="preserve"><value>Pending:</value></data>
+  <data name="Header_LastUpdated" xml:space="preserve"><value>Last updated:</value></data>
+  <data name="Header_Today" xml:space="preserve"><value>Today</value></data>
+  <data name="Header_Yesterday" xml:space="preserve"><value>Yesterday</value></data>
+  <data name="Header_SyncNow" xml:space="preserve"><value>Sync now</value></data>
 </root>

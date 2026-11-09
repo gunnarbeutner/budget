@@ -2,6 +2,7 @@
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject IStringLocalizer<BrowseTreeRail> L
+@inject IJSRuntime JS
 
 @* Browse left rail: the "All transactions" row, the accounts section (with show/hide for
    related accounts), and the recursive category tree. Presentational — the page owns the
@@ -54,22 +55,9 @@
                 </span>
             </div>
         }
-        @foreach (var a in visibleAccounts)
+        @foreach (var node in AccountNodes(visibleAccounts))
         {
-            var accountId = a.Id;
-            bool isSel = SelectionKind == "account" && SelectionId == accountId;
-            <div @key="accountId" class="browse-tree-row @(isSel ? "selected" : "") @(!a.IsAssigned ? "related" : "")"
-                 role="treeitem" tabindex="0" aria-selected="@isSel.ToString().ToLower()"
-                 @onclick="() => OnSelectAccount.InvokeAsync(accountId)"
-                 @onkeydown="e => OnAccountKeydown(e, accountId)">
-                <span class="browse-tree-name"><i class="bi @(a.IsPortfolio ? "bi-graph-up-arrow" : "bi-bank") me-1" aria-hidden="true"></i>@a.Name</span>
-                @if (a.Balance.HasValue)
-                {
-                    <span class="browse-tree-amount @(a.Balance < 0 ? "text-danger" : "text-body-secondary")">
-                        @Formatting.FormatMoney(a.Balance.Value, a.Currency ?? "EUR")
-                    </span>
-                }
-            </div>
+            @RenderAccountNode(node, 0)
         }
         @if (hiddenRelatedCount > 0)
         {
@@ -105,6 +93,87 @@
     [Parameter] public EventCallback OnSelectPortfolio { get; set; }
     [Parameter] public EventCallback OnSelectUncategorized { get; set; }
     [Parameter] public EventCallback<BrowseCategoryNode> OnSelectCategory { get; set; }
+
+    // Collapsed account groups, persisted in localStorage via expandState (as the keys of the
+    // collapsed groups: new groups default to expanded, like MoneyMoney's sidebar).
+    private const string CollapseScope = "browse-accounts-collapsed";
+    private readonly HashSet<string> collapsed = new(StringComparer.Ordinal);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var keys = await JS.InvokeAsync<string[]>("expandState.get", CollapseScope);
+            if (keys.Length > 0)
+            {
+                collapsed.UnionWith(keys);
+                StateHasChanged();
+            }
+        }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+        catch (InvalidOperationException) { /* JS unreachable (prerender) */ }
+    }
+
+    private async Task ToggleGroupAsync(string key)
+    {
+        if (!collapsed.Remove(key)) collapsed.Add(key);
+        try { await JS.InvokeVoidAsync("expandState.set", CollapseScope, collapsed.ToArray()); }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+        catch (InvalidOperationException) { /* JS unreachable (prerender) */ }
+    }
+
+    private List<AccountTreeNode> AccountNodes(IEnumerable<BrowseAccountNode> visible) =>
+        AccountTreeBuilder.Build(visible.ToList(), Tree.AccountGroups, L["Tree_OtherAccounts"]);
+
+    private async Task OnGroupKeydown(KeyboardEventArgs e, string key)
+    {
+        if (e.Key == "Enter" || e.Key == " ") await ToggleGroupAsync(key);
+    }
+
+    private string SumsText(AccountTreeNode n) =>
+        string.Join(" · ", n.Sums.Select(s => Formatting.FormatMoney(s.Amount, s.Currency)));
+
+    private RenderFragment RenderAccountNode(AccountTreeNode n, int level) => __builder =>
+    {
+        var pad = FormattableString.Invariant($"padding-left: {0.75 + level * 1.0:0.##}rem;");
+        if (n.Account is { } a)
+        {
+            var accountId = a.Id;
+            bool isSel = SelectionKind == "account" && SelectionId == accountId;
+            <div class="browse-tree-row @(isSel ? "selected" : "") @(!a.IsAssigned ? "related" : "") @(a.Closed ? "closed" : "")" style="@pad"
+                 role="treeitem" tabindex="0" aria-selected="@isSel.ToString().ToLower()" data-testid="tree-account"
+                 @onclick="() => OnSelectAccount.InvokeAsync(accountId)"
+                 @onkeydown="e => OnAccountKeydown(e, accountId)">
+                <span class="browse-tree-name"><i class="bi @(a.IsPortfolio ? "bi-graph-up-arrow" : Account.IconForType(a.Type)) me-1" aria-hidden="true"></i>@a.Name</span>
+                @if (a.Balance.HasValue)
+                {
+                    <span class="browse-tree-amount @(a.Balance < 0 ? "text-danger" : "text-body-secondary")">
+                        @Formatting.FormatMoney(a.Balance.Value, a.Currency ?? "EUR")
+                    </span>
+                }
+            </div>
+        }
+        else
+        {
+            var key = n.Key;
+            bool open = !collapsed.Contains(key);
+            <div class="browse-tree-row browse-tree-group" style="@pad"
+                 role="treeitem" tabindex="0" aria-expanded="@open.ToString().ToLower()" data-testid="tree-group"
+                 @onclick="() => ToggleGroupAsync(key)"
+                 @onkeydown="e => OnGroupKeydown(e, key)">
+                <span class="browse-tree-name fw-semibold"><i class="bi @(open ? "bi-chevron-down" : "bi-chevron-right") me-1" aria-hidden="true"></i>@n.Name</span>
+                <span class="browse-tree-amount fw-bold" data-testid="tree-group-sum">@SumsText(n)</span>
+            </div>
+            @if (open)
+            {
+                @foreach (var child in n.Children)
+                {
+                    @RenderAccountNode(child, level + 1)
+                }
+            }
+        }
+    };
 
     private async Task OnAllKeydown(KeyboardEventArgs e)
     {

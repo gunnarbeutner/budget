@@ -65,4 +65,5 @@
   <data name="Tree_ShowRelatedAccounts" xml:space="preserve"><value>Show {0} more</value></data>
   <data name="Tree_Section_Categories" xml:space="preserve"><value>Categories</value></data>
   <data name="Tree_AllSecurities" xml:space="preserve"><value>All securities</value></data>
+  <data name="Tree_OtherAccounts" xml:space="preserve"><value>Other accounts</value></data>
 </root>
