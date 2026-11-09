@@ -2,6 +2,7 @@
 using Microsoft.Data.Sqlite;
 using Xunit;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenBudget.Connectors;
 using OpenBudget.Connectors.FakeBank;
@@ -11,6 +12,16 @@ using OpenBudget.Models;
 using OpenBudget.Services;
 
 namespace OpenBudget.Tests.Connectors;
+
+/// <summary>Optional additions to a <see cref="BankWorld"/>: more connectors, a fake HTTP stack, a capturing logger.</summary>
+internal sealed class BankWorldExtras
+{
+    public IReadOnlyList<ConnectorRegistration> Registrations { get; init; } = [];
+
+    public Func<BankHttpClient>? HttpFactory { get; init; }
+
+    public ILoggerFactory? Loggers { get; init; }
+}
 
 /// <summary>A clock that runs with real time plus an adjustable offset (so delays still work).</summary>
 internal sealed class TestClock : TimeProvider
@@ -36,18 +47,20 @@ internal sealed class BankWorld : IAsyncDisposable
     public const string AliceSourceName = "alice-src";
 
     private readonly List<string> _files = [];
+    private readonly BankWorldExtras _extras;
 
-    private BankWorld(TestDb t, string? key, BankSyncOptions options, TestClock clock)
+    private BankWorld(TestDb t, string? key, BankSyncOptions options, TestClock clock, BankWorldExtras? extras)
     {
+        _extras = extras ?? new BankWorldExtras();
         T = t;
         Key = key;
         Options = options;
         Clock = clock;
         Secrets = new SecretsProtector(key);
-        Registry = new ConnectorRegistry([FakeBankConnector.Registration]);
+        Registry = new ConnectorRegistry([FakeBankConnector.Registration, .. _extras.Registrations]);
         StatementsDir = Path.Combine(Path.GetTempPath(), $"ob-stmts-{Guid.NewGuid():N}");
         StatementStore = new BankStatementStore(new BankStorageOptions(StatementsDir));
-        Runner = new BankSyncRunner(t.System, Registry, Secrets, new BankTransactionStore(), StatementStore, clock, NullLoggerFactory.Instance);
+        Runner = new BankSyncRunner(t.System, Registry, Secrets, new BankTransactionStore(), StatementStore, clock, _extras.Loggers ?? NullLoggerFactory.Instance, _extras.HttpFactory);
         Coordinator = new BankSyncCoordinator(t.System, Runner, Secrets, t.Notifier, options, clock, NullLogger<BankSyncCoordinator>.Instance);
     }
 
@@ -62,7 +75,7 @@ internal sealed class BankWorld : IAsyncDisposable
     public BankSyncRunner Runner { get; }
     public BankSyncCoordinator Coordinator { get; }
 
-    public static async Task<BankWorld> CreateAsync(string? key = "generate", TimeSpan? challengeTimeout = null)
+    public static async Task<BankWorld> CreateAsync(string? key = "generate", TimeSpan? challengeTimeout = null, BankWorldExtras? extras = null)
     {
         var t = new TestDb();
         t.AddUser(Alice, "alice");
@@ -74,14 +87,14 @@ internal sealed class BankWorld : IAsyncDisposable
         var options = new BankSyncOptions { ChallengeTimeout = challengeTimeout ?? TimeSpan.FromSeconds(30), DefaultPollInterval = TimeSpan.FromMilliseconds(20) };
         var clock = new TestClock();
         clock.Set(new DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc));
-        return new BankWorld(t, key == "generate" ? SecretsProtector.GenerateKey() : key, options, clock);
+        return new BankWorld(t, key == "generate" ? SecretsProtector.GenerateKey() : key, options, clock, extras);
     }
 
     /// <summary>A second protector over the same data but another key (simulates a rotated/wrong key).</summary>
     public BankSyncCoordinator CoordinatorWithKey(string key)
     {
         var secrets = new SecretsProtector(key);
-        var runner = new BankSyncRunner(T.System, Registry, secrets, new BankTransactionStore(), StatementStore, Clock, NullLoggerFactory.Instance);
+        var runner = new BankSyncRunner(T.System, Registry, secrets, new BankTransactionStore(), StatementStore, Clock, _extras.Loggers ?? NullLoggerFactory.Instance, _extras.HttpFactory);
         return new BankSyncCoordinator(T.System, runner, secrets, T.Notifier, Options, Clock, NullLogger<BankSyncCoordinator>.Instance);
     }
 

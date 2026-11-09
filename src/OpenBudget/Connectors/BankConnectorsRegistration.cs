@@ -1,5 +1,6 @@
 using OpenBudget.Auth;
 using OpenBudget.Connectors.FakeBank;
+using OpenBudget.Connectors.Scalable;
 using OpenBudget.Connectors.Sync;
 using OpenBudget.Services;
 
@@ -21,7 +22,9 @@ public static class BankConnectorsRegistration
             var configuration = sp.GetRequiredService<IConfiguration>();
             var fakeEnabled = env.IsEnvironment("Test")
                 || string.Equals(configuration[EnableFakeBankVariable], "true", StringComparison.OrdinalIgnoreCase);
-            return new ConnectorRegistry(fakeEnabled ? [FakeBankConnector.Registration] : []);
+            var registrations = new List<ConnectorRegistration> { ScalableConnector.CreateRegistration(ScalableOptions.FromEnvironment()) };
+            if (fakeEnabled) registrations.Add(FakeBankConnector.Registration);
+            return new ConnectorRegistry(registrations);
         });
         services.AddSingleton(sp => new BankStorageOptions(
             sp.GetRequiredService<IConfiguration>()[StatementsDirVariable] is { Length: > 0 } custom

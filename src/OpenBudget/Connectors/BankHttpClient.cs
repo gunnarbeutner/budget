@@ -25,16 +25,21 @@ public sealed class BankHttpClient : IBankHttpClient, IDisposable
     private readonly CookieContainer _jar = new();
     private readonly HttpClient _http;
 
-    public BankHttpClient() : this(null)
+    public BankHttpClient() : this(handlerFactory: null)
     {
     }
 
     /// <summary>Test seam: when <paramref name="handler"/> is null a SocketsHttpHandler bound to this client's cookie jar is used.</summary>
-    public BankHttpClient(HttpMessageHandler? handler)
+    public BankHttpClient(HttpMessageHandler? handler) : this(handlerFactory: handler == null ? null : _ => handler)
+    {
+    }
+
+    /// <summary>Test seam: builds the handler around this client's cookie jar (so a fake bank can emulate cookies and redirects).</summary>
+    public BankHttpClient(Func<CookieContainer, HttpMessageHandler>? handlerFactory)
     {
 #pragma warning disable CA2000 // owned by the HttpClient (disposeHandler: true)
         _http = new HttpClient(
-            handler ?? new SocketsHttpHandler { CookieContainer = _jar, UseCookies = true, AllowAutoRedirect = true },
+            handlerFactory?.Invoke(_jar) ?? new SocketsHttpHandler { CookieContainer = _jar, UseCookies = true, AllowAutoRedirect = true },
             disposeHandler: true);
 #pragma warning restore CA2000
         _http.Timeout = TimeSpan.FromSeconds(60);

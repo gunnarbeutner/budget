@@ -144,7 +144,7 @@ should use their own token only.
 
 ## Bank connectors
 
-Besides MoneyMoney uploads, OpenBudget can talk to banks directly through **connectors** (one per bank, registered by a stable type string). The framework is bank independent; it is proven end to end with a fake bank. Real banks are added later as further connectors.
+Besides MoneyMoney uploads, OpenBudget can talk to banks directly through **connectors** (one per bank, registered by a stable type string). The framework is bank independent; it is proven end to end with a fake bank; real banks are separate connectors (currently Scalable Capital).
 
 ### Secrets key (required)
 
@@ -169,6 +169,14 @@ Set it where the container is configured (`docker-compose.yml` `environment:`, `
 ### Statements
 
 Statement PDFs are stored on the data volume (`data/statements/<owner>/<login>/`) and indexed in the database, so each document is downloaded once. Downloading is configured **per account** (off by default; only for linked accounts the bank still lists): every month (default: tried at the start of a month, then daily until one arrived for the current month), every week, every day or only manually, plus a "Download now" button. Documents without an account (for example tax certificates) are fetched whenever any account of that login fetches statements and are visible to the owner only; account statements are visible to everyone who can see the account (owner and viewers of a shared project that uses it).
+
+### Scalable Capital (`scalable`)
+
+Log in with your Scalable e-mail address and password. The connector speaks to Scalable's web client interface (OAuth login form, GraphQL) over plain HTTP; the login is confirmed in the Scalable app (an approval dialog appears; Scalable's SMS 2FA is not supported yet). The session cookies are stored encrypted, so later syncs skip login and 2FA until Scalable ends the session (the log says how long a session lasted when it expires).
+
+Every broker portfolio shows up as two accounts: a **Depot** (positions; link it to a depot account) and a **Verrechnungskonto** (cash balance, IBAN and all bookings including security buys/sells and savings plans). Mailbox documents become statements: documents of a portfolio go to its depot (or, when only the cash account has statements switched on, to the cash account); documents without a portfolio are account-less. Savings accounts (Scalable's interest product) are not read yet.
+
+The 2FA requests of Scalable's login were never captured, so those GraphQL documents are best guesses. When the first live login fails, the login's last error quotes Scalable's GraphQL error messages (they name the wrong type or field) and the server log has them at Warning level. The documents and inputs can be corrected without a rebuild through environment variables: `OPENBUDGET_SCALABLE_IS2FA_INPUT` (JSON object, default `{}`), `OPENBUDGET_SCALABLE_START2FA_QUERY`, `OPENBUDGET_SCALABLE_START2FA_INPUT` (default `{}`), `OPENBUDGET_SCALABLE_VALIDATE2FA_QUERY` and `OPENBUDGET_SCALABLE_VALIDATE2FA_INPUT` (JSON template; `{mfaSessionId}` is replaced by the id Scalable returned).
 
 ### Fake bank (for trying things out)
 

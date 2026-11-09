@@ -38,11 +38,15 @@ public sealed class BankSyncRunner
     private readonly TimeProvider _clock;
     private readonly ILoggerFactory _loggers;
     private readonly ILogger<BankSyncRunner> _logger;
+    private readonly Func<BankHttpClient> _httpFactory;
 
+    /// <summary>Test seam: <paramref name="httpFactory"/> creates the per-sync HTTP client (default: a real one).</summary>
     public BankSyncRunner(
         SystemDbContextFactory system, ConnectorRegistry registry, SecretsProtector secrets,
-        BankTransactionStore transactions, BankStatementStore statements, TimeProvider clock, ILoggerFactory loggers)
+        BankTransactionStore transactions, BankStatementStore statements, TimeProvider clock, ILoggerFactory loggers,
+        Func<BankHttpClient>? httpFactory = null)
     {
+        _httpFactory = httpFactory ?? (() => new BankHttpClient());
         _system = system;
         _registry = registry;
         _secrets = secrets;
@@ -84,7 +88,7 @@ public sealed class BankSyncRunner
         bool loggedIn = false;
         bool credentialsInvalid = false;
         IBankConnector? connector = null;
-        using var http = new BankHttpClient();
+        using var http = _httpFactory();
 
         try
         {
