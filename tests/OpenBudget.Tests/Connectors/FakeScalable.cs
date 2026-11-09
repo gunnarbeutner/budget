@@ -102,6 +102,7 @@ internal sealed partial class FakeScalable : HttpMessageHandler
     public const string PortfolioId = "PF-1";
     public const string OtherPortfolioId = "PF-9";
     public const string PersonId = "person-1";
+    public const string UserId = "user-1";
     public const string Iban = "DE00000000000000000009";
     public const string SessionCookie = "sc_session";
     public const string MfaSessionId = "mfa-secret-id-777";
@@ -177,7 +178,9 @@ internal sealed partial class FakeScalable : HttpMessageHandler
         {
             "/auth/login" => Redirect($"https://{AuthHost}/authorize?client_id=x&scope=openid%20offline_access&response_type=code&redirect_uri=https%3A%2F%2Fde.scalable.capital%2Fauth%2Fcallback&state=S1"),
             "/auth/callback" => Callback(),
-            "/auth/onboarding-check" or "/auth/mfa-enforcement" or "/auth/mfa-check" => Text("ok", "text/html"),
+            "/auth/onboarding-check" or "/auth/mfa-enforcement" => Text("ok", "text/html"),
+            // Like the real page: the user id sits JSON-escaped in the Next.js payload of the MfaCheck component.
+            "/auth/mfa-check" => Text("<html><body><script>self.__next_f.push([1,\"12:[\\\"$\\\",\\\"$L24\\\",null,{\\\"userId\\\":\\\"" + UserId + "\\\"}]\\n\"])</script></body></html>", "text/html"),
             "/auth/graphql" => Graphql(body, session, auth: true),
             "/cockpit/graphql" or "/broker/api/data" => Graphql(body, session, auth: false),
             "/cockpit/api/download" => Download(uri, session),
@@ -244,6 +247,9 @@ internal sealed partial class FakeScalable : HttpMessageHandler
     private HttpResponseMessage AuthOperation(string op, JsonObject vars, string session)
     {
         var input = vars["input"] as JsonObject;
+        // The real 2FA inputs require the user id (Scalable: Field "userId" of required type "String!" was not provided).
+        if (op is "is2faOnLoginEnabled" or "start2faOnLogin" or "validate2faOnLogin" && input?["userId"]?.GetValue<string>() != UserId)
+            return Gql(new { errors = new[] { new { message = "Field \"userId\" of required type \"String!\" was not provided." } } });
         switch (op)
         {
             case "is2faOnLoginEnabled":

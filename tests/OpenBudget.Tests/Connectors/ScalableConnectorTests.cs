@@ -326,7 +326,7 @@ public sealed class ScalableConnectorTests
         Assert.Equal("{\"a\":1}", options.Is2faEnabledInputJson);
         Assert.Equal("mutation x { y }", options.Start2faQuery);
         Assert.Equal(new ScalableOptions().Validate2faInputTemplate, options.Validate2faInputTemplate);
-        Assert.Equal("{}", options.Start2faInputJson);
+        Assert.Equal(new ScalableOptions().Start2faInputJson, options.Start2faInputJson);
     }
 
     [Fact]
@@ -347,5 +347,14 @@ public sealed class ScalableConnectorTests
         var registration = ScalableConnector.CreateRegistration(new ScalableOptions());
         Assert.Equal("scalable", registration.ConnectorType);
         Assert.Equal("Scalable Capital", registration.DisplayName);
+    }
+
+    [Theory]
+    [InlineData("<script>self.__next_f.push([1,\"12:[\\\"$\\\",\\\"$L24\\\",null,{\\\"userId\\\":\\\"user-1\\\"}]\\n\"])</script>", "user-1")]
+    [InlineData("{\"middlewareProps\":{\"session\":{\"user\":{\"userId\":\"user-2\"}}}}", "user-2")]
+    [InlineData("<html>no id here</html>", null)]
+    public void The_user_id_for_the_2fa_queries_is_read_from_the_mfa_check_page(string html, string? expected)
+    {
+        Assert.Equal(expected, OpenBudget.Connectors.Scalable.ScalableConnector.ExtractUserId(html));
     }
 }

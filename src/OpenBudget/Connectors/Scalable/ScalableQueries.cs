@@ -71,5 +71,5 @@ internal static class ScalableTwoFactorDocuments
         "query validate2faOnLogin($input: Validate2faOnLoginInput!) { validate2faOnLogin(input: $input) { status } }";
 
     /// <summary>GUESS: variables of the validate call; <c>{mfaSessionId}</c> is replaced by the session id from start2faOnLogin.</summary>
-    public const string Validate2faInputTemplate = "{\"mfaSessionId\":\"{mfaSessionId}\"}";
+    public const string Validate2faInputTemplate = "{\"userId\":\"{userId}\",\"mfaSessionId\":\"{mfaSessionId}\"}";
 }

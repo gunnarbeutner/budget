@@ -23,6 +23,7 @@ public sealed partial class ScalableConnector : IBankConnector
     private ConnectorSession _session = new();
     private string? _personId;
     private string? _mfaSessionId;
+    private string? _authUserId;
     private string? _priorTwoFactorError;
     private bool _loggedInAtAll;
 
@@ -167,10 +168,26 @@ public sealed partial class ScalableConnector : IBankConnector
     {
         foreach (var path in new[] { "auth/onboarding-check", "auth/mfa-enforcement", "auth/mfa-check" })
         {
-            var (status, page, _) = await GetPageAsync(new Uri(_options.BaseUri, path), ct);
+            var (status, page, html) = await GetPageAsync(new Uri(_options.BaseUri, path), ct);
             Log.LogDebug("Scalable {Path}: HTTP {Status}, landed on {Landed}.", path, status, page.AbsolutePath);
+            // The 2FA queries need the user id; the mfa-check page carries it in its props ({"userId":"…"}).
+            _authUserId ??= ExtractUserId(html);
         }
+        if (_authUserId == null) Log.LogWarning("Scalable's mfa-check page did not contain a userId; the 2FA queries will likely fail.");
     }
+
+    /// <summary>Finds <c>"userId":"…"</c> in a page, also inside the JSON-escaped Next.js payload (<c>\"userId\":\"…\"</c>).</summary>
+    internal static string? ExtractUserId(string html)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(html, @"\\?""userId\\?""\s*:\s*\\?""(?<id>[^""\\]+)\\?""",
+            System.Text.RegularExpressions.RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
+        return m.Success ? m.Groups["id"].Value : null;
+    }
+
+    /// <summary>Fills the <c>{userId}</c> and <c>{mfaSessionId}</c> placeholders of an input template.</summary>
+    private string FillTemplate(string template) => template
+        .Replace("{userId}", System.Text.Json.JsonEncodedText.Encode(_authUserId ?? string.Empty).ToString(), StringComparison.Ordinal)
+        .Replace("{mfaSessionId}", System.Text.Json.JsonEncodedText.Encode(_mfaSessionId ?? string.Empty).ToString(), StringComparison.Ordinal);
 
     // ---- 2FA (app approval) ----
 
@@ -181,7 +198,7 @@ public sealed partial class ScalableConnector : IBankConnector
         try
         {
             var data = await _graphQl.ExecuteAsync(ScalableGraphQl.AuthPath, "is2faOnLoginEnabled", ScalableTwoFactorDocuments.Is2faOnLoginEnabled,
-                new JsonObject { ["input"] = ParseInput(_options.Is2faEnabledInputJson, nameof(ScalableOptions.Is2faEnabledInputJson)) }, ct);
+                new JsonObject { ["input"] = ParseInput(FillTemplate(_options.Is2faEnabledInputJson), nameof(ScalableOptions.Is2faEnabledInputJson)) }, ct);
             info = data.Path("is2faOnLoginEnabled");
         }
         catch (ConnectorException ex)
@@ -209,7 +226,7 @@ public sealed partial class ScalableConnector : IBankConnector
         try
         {
             var data = await _graphQl.ExecuteAsync(ScalableGraphQl.AuthPath, "start2faOnLogin", _options.Start2faQuery,
-                new JsonObject { ["input"] = ParseInput(_options.Start2faInputJson, nameof(ScalableOptions.Start2faInputJson)) }, ct);
+                new JsonObject { ["input"] = ParseInput(FillTemplate(_options.Start2faInputJson), nameof(ScalableOptions.Start2faInputJson)) }, ct);
             _mfaSessionId = data.Str("start2faOnLogin", "mfaSessionId")
                 ?? throw new ConnectorException("Scalable's start2faOnLogin answer had no mfaSessionId.");
         }
@@ -226,7 +243,7 @@ public sealed partial class ScalableConnector : IBankConnector
     private async Task<ConnectorStep<ConnectorSession?>> PollTwoFactorAsync(CancellationToken ct)
     {
         if (_mfaSessionId == null) return ConnectorStep.Fail<ConnectorSession?>("There is no 2FA request to wait for.");
-        var template = _options.Validate2faInputTemplate.Replace("{mfaSessionId}", System.Text.Json.JsonEncodedText.Encode(_mfaSessionId).ToString(), StringComparison.Ordinal);
+        var template = FillTemplate(_options.Validate2faInputTemplate);
         var data = await _graphQl.ExecuteAsync(ScalableGraphQl.AuthPath, "validate2faOnLogin", _options.Validate2faQuery,
             new JsonObject { ["input"] = ParseInput(template, nameof(ScalableOptions.Validate2faInputTemplate)) }, ct);
         var status = data.Str("validate2faOnLogin", "status") ?? "(none)";
