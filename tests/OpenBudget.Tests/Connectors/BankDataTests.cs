@@ -237,6 +237,32 @@ public sealed class BankDataTests
     }
 
     [Fact]
+    public async Task Cutover_day_bookings_worded_differently_by_the_bank_are_adopted_by_amount_and_count()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        var oct20 = new DateTime(2026, 10, 20, 0, 0, 0, DateTimeKind.Utc);
+        var (id, accountId) = await LinkedGiroAsync(w, "demo+dups",
+            Mm(1, -800, new DateTime(2026, 10, 3, 0, 0, 0, DateTimeKind.Utc), "Landlord", "Rent 2026-10"),
+            // The newest MoneyMoney day holds two identical bookings whose text shares nothing with the bank's.
+            Mm(1, -3.50, oct20, "KARTENZAHLUNG", "POS 0815 CAFE"),
+            Mm(1, -3.50, oct20, "KARTENZAHLUNG", "POS 0815 CAFE"));
+
+        var s = await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, true, false));
+        Assert.True(s.Succeeded, s.Error);
+
+        var rows = await w.TransactionsAsync(accountId);
+        // Both cutover-day bookings adopted (one each), none duplicated; the later grocery booking is new; rent untouched.
+        var coffee = rows.Where(t => t.Amount == -350).ToList();
+        Assert.Equal(2, coffee.Count);
+        Assert.All(coffee, t => Assert.Equal("KARTENZAHLUNG", t.Name));
+        Assert.Equal(new[] { "id:G-2026-10-COFFEE-A", "id:G-2026-10-COFFEE-B" }, coffee.Select(t => t.ExternalId).Order(StringComparer.Ordinal));
+        Assert.Single(rows, t => t.Amount == -5210);
+        Assert.Single(rows, t => t.Amount == -80000 && t.ExternalId == null);
+        // No booking from the bank exists twice.
+        Assert.All(rows.Where(t => t.ExternalId != null).GroupBy(t => t.ExternalId, StringComparer.Ordinal), g => Assert.Single(g));
+    }
+
+    [Fact]
     public async Task Boundary_without_booked_rows_fetches_everything()
     {
         await using var w = await BankWorld.CreateAsync();

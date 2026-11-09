@@ -17,7 +17,8 @@ public sealed record ApplyResult(int Inserted, int Adopted, int PendingStored, i
 /// date + amount + name + purpose plus an occurrence counter, so identical same-day bookings are kept
 /// as separate rows (counts are matched, never collapsed). Rows that predate the connector (MoneyMoney
 /// imports, no external id) are adopted instead of duplicated: first by amount + purpose + name on
-/// the same day, then by amount + purpose within a day. Row ids are allocated in the upper half of the
+/// the same day, then by amount + purpose within a day, then by amount alone within a day (texts differ
+/// between MoneyMoney and the bank; only rows around the cutover are candidates). Row ids are allocated in the upper half of the
 /// 40-bit rowid space of the account's source, where MoneyMoney imports never write.
 /// </summary>
 public sealed class BankTransactionStore
@@ -128,9 +129,14 @@ public sealed class BankTransactionStore
         var exact = legacy.Find(t => t.Amount == cents && Math.Abs(t.Timestamp - ts) < 86400
             && Normalize(t.Purpose) == purpose && Normalize(t.Name) == name);
         if (exact != null) return exact;
-        return purpose.Length == 0
+        var byPurpose = purpose.Length == 0
             ? null
             : legacy.Find(t => t.Amount == cents && Math.Abs(t.Timestamp - ts) < 86400 && Normalize(t.Purpose) == purpose);
+        if (byPurpose != null) return byPurpose;
+        // Banks word bookings differently from MoneyMoney (Scalable does), so text often never matches. The legacy
+        // rows considered here only cover the cutover window, where the same account, day and amount identify the
+        // booking well enough; each legacy row is adopted once, so identical bookings are still matched by count.
+        return legacy.Find(t => t.Amount == cents && Math.Abs(t.Timestamp - ts) < 86400);
     }
 
     private static Transaction NewRow(long id, int sourceId, long accountId, RemoteTransaction r, long cents, long ts, string? externalId) => new()
