@@ -110,7 +110,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Tag every push as the commit SHA so we can pin / roll back, and tag main
-      # as `latest` for the Watchtower auto-update flow on the deploy host.
+      # as `latest` for deployments that track the newest build.
       - name: Compute image tags
         id: meta
         uses: docker/metadata-action@v5
