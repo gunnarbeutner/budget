@@ -13,8 +13,14 @@
 # Bootstrap data: copy budgets.db into ./data/ before first start, or POST an importer snapshot
 # (see README, "Importers") after start.
 #
-# TLS: the app speaks plain HTTP on port 8080 and has no authentication. Keep it on a private
-# network and put a TLS-terminating reverse proxy (nginx / Caddy / Traefik) in front.
+# First start: no users exist yet and every page shows only a setup message. Create the first
+# admin (it also takes over a source of the same name and that source's projects):
+#   docker exec openbudget dotnet OpenBudget.dll users add <username> --admin
+# See README, "Users and sharing". Keep ./data on a persistent volume: it holds the database and
+# the data-protection keys (data/keys) that keep logins valid across redeploys.
+#
+# TLS: the app speaks plain HTTP on port 8080. Put a TLS-terminating reverse proxy (nginx / Caddy /
+# Traefik / Apache) in front; it must send X-Forwarded-Proto and X-Forwarded-Host.
 
 services:
   app:
@@ -30,3 +36,5 @@ services:
       # existing .env keeps working. The app returns 503 on uploads when neither is set.
       OPENBUDGET_UPLOAD_TOKEN: ${OPENBUDGET_UPLOAD_TOKEN:-}
       MONEYMONEY_DB_UPLOAD_TOKEN: ${MONEYMONEY_DB_UPLOAD_TOKEN:-}
+      # Optional: pin the passkey relying-party id (defaults to the request host).
+      # OPENBUDGET_RP_ID: budget.example.org
