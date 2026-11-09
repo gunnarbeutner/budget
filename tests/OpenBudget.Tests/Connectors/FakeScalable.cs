@@ -97,32 +97,17 @@ internal sealed class CapturingLoggerFactory : ILoggerFactory
 /// <summary>A made-up Scalable: the observed login flow and data shapes, with invented data (alice, Example ETF, DE00... IBAN).</summary>
 internal sealed partial class FakeScalable : HttpMessageHandler
 {
-    public const string Username = "alice@example.invalid";
-    public const string Password = "pw-alice-12345";
     public const string PortfolioId = "PF-1";
     public const string OtherPortfolioId = "PF-9";
     public const string PersonId = "person-1";
     public const string UserId = "user-1";
     public const string Iban = "DE00000000000000000009";
     public const string SessionCookie = "sc_session";
-    public const string MfaSessionId = "mfa-secret-id-777";
     private const string AppHost = "de.scalable.capital";
-    private const string AuthHost = "secure.scalable.capital";
 
     private readonly Lock _lock = new();
     private readonly HashSet<string> _signedIn = [];
-    private readonly HashSet<string> _approved = [];
     private int _sessionCounter;
-    private int _polls;
-
-    /// <summary>How many validate calls answer PENDING before SUCCESS.</summary>
-    public int PendingPolls { get; set; } = 3;
-
-    public bool AlreadyApproved { get; set; }
-
-    public bool Sms { get; set; }
-
-    public string? StartRejection { get; set; }
 
     public List<string> Requests { get; } = [];
 
@@ -147,8 +132,17 @@ internal sealed partial class FakeScalable : HttpMessageHandler
         lock (_lock)
         {
             _signedIn.Clear();
-            _approved.Clear();
-            _polls = 0;
+        }
+    }
+
+    /// <summary>What the user's sign-in in a real browser leaves behind: a new session and its cookie.</summary>
+    public CookieState SignIn()
+    {
+        lock (_lock)
+        {
+            var id = $"sess-{++_sessionCounter}-secretvalue";
+            _signedIn.Add(id);
+            return new CookieState(SessionCookie, id, AppHost, "/", DateTime.UtcNow.AddDays(30), true, true, "Lax");
         }
     }
 
@@ -173,63 +167,17 @@ internal sealed partial class FakeScalable : HttpMessageHandler
         var match = Regex.Match(cookie, SessionCookie + "=(?<v>[^;]+)", RegexOptions.None, TimeSpan.FromSeconds(2));
         var session = match.Success ? match.Groups["v"].Value : null;
 
-        if (uri.Host == AuthHost) return HandleAuthHost(request, uri, body);
         return uri.AbsolutePath switch
         {
-            "/auth/login" => Redirect($"https://{AuthHost}/authorize?client_id=x&scope=openid%20offline_access&response_type=code&redirect_uri=https%3A%2F%2Fde.scalable.capital%2Fauth%2Fcallback&state=S1"),
-            "/auth/callback" => Callback(),
-            "/auth/onboarding-check" or "/auth/mfa-enforcement" => Text("ok", "text/html"),
-            // Like the real page: the user id sits JSON-escaped in the Next.js payload of the MfaCheck component.
-            "/auth/mfa-check" => Text("<html><body><script>self.__next_f.push([1,\"12:[\\\"$\\\",\\\"$L24\\\",null,{\\\"userId\\\":\\\"" + UserId + "\\\"}]\\n\"])</script></body></html>", "text/html"),
-            "/auth/graphql" => Graphql(body, session, auth: true),
-            "/cockpit/graphql" or "/broker/api/data" => Graphql(body, session, auth: false),
+            "/cockpit/graphql" or "/broker/api/data" => Graphql(body, session),
             "/cockpit/api/download" => Download(uri, session),
             _ => new HttpResponseMessage(HttpStatusCode.NotFound),
         };
     }
 
-    private HttpResponseMessage HandleAuthHost(HttpRequestMessage request, Uri uri, string body)
-    {
-        switch (uri.AbsolutePath)
-        {
-            case "/authorize":
-                return Redirect($"https://{AuthHost}/u/login?state=S1&ui_locales=de");
-            case "/u/login" when request.Method == HttpMethod.Get:
-                return Text(LoginPage(null), "text/html");
-            case "/u/login":
-                var form = body.Split('&').Select(p => p.Split('=', 2)).ToDictionary(p => p[0], p => WebUtility.UrlDecode(p[1]), StringComparer.Ordinal);
-                if (form["state"] == "S1" && form["username"] == Username && form["password"] == Password && form["action"] == "default")
-                    return Redirect($"https://{AuthHost}/authorize/resume?state=S1");
-                return Text(LoginPage("Wrong email or password"), "text/html", HttpStatusCode.BadRequest);
-            case "/authorize/resume":
-                return Redirect($"https://{AppHost}/auth/callback?code=CODE1&state=S1");
-            default:
-                return new HttpResponseMessage(HttpStatusCode.NotFound);
-        }
-    }
-
-    private static string LoginPage(string? error) => $$"""
-        <html><body><form method="POST" action="" class="c">
-        <input type="hidden" name="state" value="S1">
-        <input type="text" id="username" name="username" value="">
-        <input type="password" name="password">
-        <button type="submit" name="action" value="default">Weiter</button>
-        </form>{{(error == null ? "" : $"<p class=\"err\">{error}</p>")}}</body></html>
-        """;
-
-    private HttpResponseMessage Callback()
-    {
-        var id = $"sess-{++_sessionCounter}-secretvalue";
-        _signedIn.Add(id);
-        if (AlreadyApproved) _approved.Add(id);
-        var response = Redirect($"https://{AppHost}/cockpit/");
-        response.Headers.Add("Set-Cookie", $"{SessionCookie}={id}; Path=/; Secure; HttpOnly");
-        return response;
-    }
-
     // ---- GraphQL ----
 
-    private HttpResponseMessage Graphql(string body, string? session, bool auth)
+    private HttpResponseMessage Graphql(string body, string? session)
     {
         var json = JsonNode.Parse(body)!.AsObject();
         var op = json["operationName"]!.GetValue<string>();
@@ -237,34 +185,10 @@ internal sealed partial class FakeScalable : HttpMessageHandler
         var vars = json["variables"]!.AsObject();
         Requests.Add($"graphql {op}");
 
-        var known = session != null && _signedIn.Contains(session);
-        if (!known || (!auth && !_approved.Contains(session!)))
+        if (session == null || !_signedIn.Contains(session))
             return Gql(new { errors = new[] { new { message = "Not authenticated", extensions = new { code = "UNAUTHENTICATED" } } }, data = (object?)null });
 
-        return auth ? AuthOperation(op, vars, session!) : DataOperation(op, query, vars);
-    }
-
-    private HttpResponseMessage AuthOperation(string op, JsonObject vars, string session)
-    {
-        var input = vars["input"] as JsonObject;
-        // The real 2FA inputs require the user id (Scalable: Field "userId" of required type "String!" was not provided).
-        if (op is "is2faOnLoginEnabled" or "start2faOnLogin" or "validate2faOnLogin" && input?["userId"]?.GetValue<string>() != UserId)
-            return Gql(new { errors = new[] { new { message = "Field \"userId\" of required type \"String!\" was not provided." } } });
-        switch (op)
-        {
-            case "is2faOnLoginEnabled":
-                return Gql(new { data = new { is2faOnLoginEnabled = new { enabled = true, isSms2faEnabled = Sms, hasApprovedSession = AlreadyApproved } } });
-            case "start2faOnLogin":
-                if (StartRejection != null) return Gql(new { errors = new[] { new { message = StartRejection } } });
-                return Gql(new { data = new { start2faOnLogin = new { mfaSessionId = MfaSessionId } } });
-            case "validate2faOnLogin":
-                if (input?["mfaSessionId"]?.GetValue<string>() != MfaSessionId) return Gql(new { errors = new[] { new { message = "Unknown mfaSessionId" } } });
-                if (++_polls <= PendingPolls) return Gql(new { data = new { validate2faOnLogin = new { status = "PENDING" } } });
-                _approved.Add(session);
-                return Gql(new { data = new { validate2faOnLogin = new { status = "SUCCESS" } } });
-            default:
-                return Gql(new { errors = new[] { new { message = $"Unknown operation {op}" } } });
-        }
+        return DataOperation(op, query, vars);
     }
 
     private HttpResponseMessage DataOperation(string op, string query, JsonObject vars)
@@ -424,20 +348,11 @@ internal sealed partial class FakeScalable : HttpMessageHandler
 
     private HttpResponseMessage Download(Uri uri, string? session)
     {
-        if (session == null || !_approved.Contains(session)) return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+        if (session == null || !_signedIn.Contains(session)) return new HttpResponseMessage(HttpStatusCode.Unauthorized);
         var id = uri.Query.Split("id=")[1];
         Downloads[id] = Downloads.GetValueOrDefault(id) + 1;
         var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Encoding.ASCII.GetBytes($"%PDF-1.4\n%document {id}\n%%EOF\n")) };
         response.Content.Headers.ContentType = new("application/pdf");
-        return response;
-    }
-
-    // ---- helpers ----
-
-    private static HttpResponseMessage Redirect(string to)
-    {
-        var response = new HttpResponseMessage(HttpStatusCode.Found);
-        response.Headers.Location = new Uri(to);
         return response;
     }
 

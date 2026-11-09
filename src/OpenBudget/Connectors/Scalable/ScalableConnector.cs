@@ -4,16 +4,17 @@ using System.Text.Json.Nodes;
 namespace OpenBudget.Connectors.Scalable;
 
 /// <summary>
-/// Scalable Capital (broker + Verrechnungskonto) over its web client's plain HTTP interface: an
-/// OAuth authorization-code login (Auth0 Universal Login form), an app-approval 2FA and GraphQL
-/// data queries. The cookie jar is the session; it is persisted so later syncs skip login and 2FA.
+/// Scalable Capital (broker + Verrechnungskonto) over its web client's GraphQL interface. The sign-in
+/// (Auth0 login, captcha, 2FA) is done by the user themselves on Scalable's own page in the app's remote
+/// browser (a web login); the cookies that produces are the session. They are persisted, so later syncs
+/// skip the sign-in until Scalable ends the session.
 /// Every broker portfolio becomes a depot account (positions) plus a cash account (balance,
 /// bookings), identified as "&lt;portfolioId&gt;:depot" / "&lt;portfolioId&gt;:cash".
 /// </summary>
 public sealed partial class ScalableConnector : IBankConnector
 {
     public const string TypeName = "scalable";
-    internal const string ApprovalReference = "scalable-2fa";
+    internal const string WebLoginReference = "scalable-web-login";
     private const string LoginAtKey = "loginAt";
     private const string LastOkAtKey = "lastOkAt";
 
@@ -22,9 +23,6 @@ public sealed partial class ScalableConnector : IBankConnector
     private readonly ScalableGraphQl _graphQl;
     private ConnectorSession _session = new();
     private string? _personId;
-    private string? _mfaSessionId;
-    private string? _authUserId;
-    private string? _priorTwoFactorError;
     private bool _loggedInAtAll;
 
     public ScalableConnector(ConnectorContext context, ScalableOptions options)
@@ -38,9 +36,10 @@ public sealed partial class ScalableConnector : IBankConnector
         TypeName,
         "Scalable Capital",
         "Scalable Capital broker portfolios and their cash account: positions, bookings and mailbox documents. "
-        + "Log in with your Scalable e-mail address and password; the login is confirmed in the Scalable app. "
-        + "The first live logins may need adjustments, see the README.",
-        ctx => new ScalableConnector(ctx, options));
+        + "No credentials are stored: you sign in on Scalable's own page (shown in a browser window inside OpenBudget, 2FA included) "
+        + "whenever the session has expired. Needs the server's browser (Chromium).",
+        ctx => new ScalableConnector(ctx, options),
+        CredentialRequirement.None);
 
     public string ConnectorType => TypeName;
 
@@ -50,33 +49,40 @@ public sealed partial class ScalableConnector : IBankConnector
 
     // ---- login ----
 
+    /// <summary>The page the user signs in on and what counts as signed in: Scalable's login redirects into the cockpit when done.</summary>
+    private WebLoginSpec WebLogin => new(
+        new Uri(_options.BaseUri, "auth/login"),
+        [_options.BaseUri.Host, "secure.scalable.capital"],
+        successUrlPrefix: new Uri(_options.BaseUri, "cockpit/"));
+
     public async Task<ConnectorStep<ConnectorSession?>> LoginAsync(
         ConnectorCredentials credentials, ConnectorSession? storedSession, ChallengeAnswer? answer, CancellationToken ct)
     {
+        _session = storedSession ?? new ConnectorSession();
+        _loggedInAtAll = false;
         try
         {
-            return answer == null
-                ? await StartLoginAsync(credentials, storedSession, ct)
-                : await PollTwoFactorAsync(ct);
+            if (answer == null)
+            {
+                if (storedSession is { Cookies.Count: > 0 } && await TryReuseSessionAsync(ct))
+                    return ConnectorStep.Done<ConnectorSession?>(_session);
+                return ConnectorStep.Ask<ConnectorSession?>(ConnectorChallenge.WebLogin(
+                    "Bitte melden Sie sich auf der Scalable-Seite an. / Please sign in on the Scalable page.", WebLogin, WebLoginReference));
+            }
+
+            // Back from the web login: the browser's cookies are in the jar now.
+            _personId = await FetchPersonIdAsync(ct);
         }
         catch (ScalableSessionExpiredException ex)
         {
-            Log.LogWarning(ex, "Scalable rejected the session during login: {Reason}", ex.Message);
-            throw new ConnectorException("Scalable did not accept the session during login (UNAUTHENTICATED).", ex);
+            Log.LogWarning(ex, "Scalable rejected the session: {Reason}", ex.Message);
+            throw new ConnectorException("Scalable does not accept the session (UNAUTHENTICATED); the sign-in did not complete.", ex);
         }
-    }
-
-    private async Task<ConnectorStep<ConnectorSession?>> StartLoginAsync(ConnectorCredentials credentials, ConnectorSession? stored, CancellationToken ct)
-    {
-        _session = stored ?? new ConnectorSession();
-        _loggedInAtAll = false;
-        if (stored is { Cookies.Count: > 0 } && await TryReuseSessionAsync(ct))
-            return ConnectorStep.Done<ConnectorSession?>(_session);
-
-        var rejected = await SignInAsync(credentials, ct);
-        if (rejected != null) return rejected;
-        await RunPostLoginChecksAsync(ct);
-        return await BeginTwoFactorAsync(ct);
+        _loggedInAtAll = true;
+        _session.Values[LoginAtKey] = Now.ToString("O", CultureInfo.InvariantCulture);
+        LogSessionCookies();
+        Log.LogInformation("Signed in to Scalable Capital through the web login.");
+        return ConnectorStep.Done<ConnectorSession?>(_session);
     }
 
     /// <summary>True when the stored cookies still authenticate; otherwise logs how long the session lasted.</summary>
@@ -117,221 +123,7 @@ public sealed partial class ScalableConnector : IBankConnector
         return data.Str("personOverview", "id") ?? throw new ConnectorException("Scalable's personOverview answer had no id.");
     }
 
-    // ---- OAuth sign-in (Auth0 Universal Login) ----
-
-    /// <summary>Walks authorize -> login form -> callback. Null on success, otherwise the failing step.</summary>
-    private async Task<ConnectorStep<ConnectorSession?>?> SignInAsync(ConnectorCredentials credentials, CancellationToken ct)
-    {
-        Log.LogInformation("Logging in to Scalable Capital.");
-        var (status, page, html) = await GetPageAsync(new Uri(_options.BaseUri, "auth/login"), ct);
-        Log.LogDebug("Scalable auth/login: HTTP {Status}, landed on {Path}.", status, page.AbsolutePath);
-
-        for (var step = 0; step < 3 && !IsAppHost(page); step++)
-        {
-            var form = ScalableLoginForm.Parse(html, page)
-                ?? throw new ConnectorException($"Scalable's login page ({page.AbsolutePath}) has no sign-in form this connector understands.");
-            var sentPassword = form.PasswordField != null;
-            var fields = form.Fill(credentials.Username, credentials.Secret);
-            // Names only, never values: shows whether the e-mail address and password were actually sent.
-            Log.LogInformation("Submitting Scalable's sign-in form to {Path} with fields [{Fields}] (username field: {User}, password field: {Password}, username empty: {Empty}).",
-                form.Action.AbsolutePath, string.Join(", ", fields.Select(f => f.Key)), form.UsernameField ?? "(none)", form.PasswordField ?? "(none)",
-                string.IsNullOrWhiteSpace(credentials.Username));
-            (status, page, html) = await PostFormAsync(form.Action, fields, ct);
-            Log.LogDebug("Scalable login form step {Step}: HTTP {Status}, landed on {Path}.", step + 1, status, page.AbsolutePath);
-
-            if (IsAppHost(page)) break;
-            var again = ScalableLoginForm.Parse(html, page);
-            if (sentPassword && (status is 400 or 401 or 403 || again?.PasswordField != null))
-            {
-                // The form also comes back for reasons other than a wrong password (captcha, too many attempts,
-                // blocked login); say what the page says instead of guessing.
-                var pageError = ExtractLoginError(html);
-                var captcha = HasCaptcha(html);
-                Log.LogInformation("Scalable returned the login form again: HTTP {Status} at {Path}; captcha: {Captcha}; message: {Message}",
-                    status, page.AbsolutePath, captcha, pageError ?? "(none)");
-                if (captcha)
-                    return ConnectorStep.Fail<ConnectorSession?>(
-                        "Scalable asks for a captcha before it accepts this login, which the connector can't solve. " +
-                        "Log in once on scalable.capital in a browser, then sync again." + (pageError != null ? $" (Scalable: {pageError})" : ""));
-                return ConnectorStep.Fail<ConnectorSession?>(
-                    pageError != null ? $"Scalable did not accept the login: {pageError}" : $"Scalable rejected the e-mail address or password (HTTP {status}).",
-                    credentialsRejected: pageError == null || LooksLikeWrongCredentials(pageError));
-            }
-        }
-
-        if (!IsAppHost(page))
-            throw new ConnectorException($"Scalable's login did not complete (stopped at {page.AbsolutePath}).");
-        return null;
-    }
-
-    /// <summary>The error text Auth0's Universal Login shows next to the fields or above the form, if any.</summary>
-    internal static string? ExtractLoginError(string html)
-    {
-        foreach (var pattern in new[]
-        {
-            // Only errors the server rendered. The page always carries hidden client-side validation templates
-            // (id="error-cs-…", class="ulp-error-info") with texts like "Bitte geben Sie eine E-Mail-Adresse ein." — ignore those.
-            @"id=""error-element-[a-z-]+""[^>]*>(?<t>.*?)</",
-            @"id=""prompt-alert""[^>]*>(?:\s*<[^>]+>)*(?<t>[^<]+)<",
-        })
-        {
-            var m = System.Text.RegularExpressions.Regex.Match(html, pattern,
-                System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
-            if (!m.Success) continue;
-            var text = System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(m.Groups["t"].Value, "<[^>]+>", " ",
-                System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1))).Trim();
-            text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1));
-            if (text.Length > 0) return text.Length <= 200 ? text : text[..200];
-        }
-        return null;
-    }
-
-    /// <summary>
-    /// True only when the page actually renders a captcha (a captcha input or a captcha provider frame). The normal sign-in
-    /// page always mentions captcha providers in its scripts, so keywords alone mean nothing.
-    /// </summary>
-    internal static bool HasCaptcha(string html) =>
-        System.Text.RegularExpressions.Regex.IsMatch(html,
-            @"<input[^>]+name=""captcha""|<iframe[^>]+(recaptcha|hcaptcha|friendlycaptcha|arkoselabs)",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
-
-    private static bool LooksLikeWrongCredentials(string message) =>
-        System.Text.RegularExpressions.Regex.IsMatch(message, "(falsch|ung(ü|ue)ltig|wrong|incorrect|invalid)",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
-
     private bool IsAppHost(Uri uri) => string.Equals(uri.Host, _options.BaseUri.Host, StringComparison.OrdinalIgnoreCase);
-
-    private async Task<(int Status, Uri Page, string Html)> GetPageAsync(Uri url, CancellationToken ct)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        using var response = await _context.Http.SendAsync(request, ct);
-        return await ReadPageAsync(response, url, ct);
-    }
-
-    private async Task<(int Status, Uri Page, string Html)> PostFormAsync(Uri url, List<KeyValuePair<string, string>> fields, CancellationToken ct)
-    {
-        using var response = await _context.Http.PostFormAsync(url, fields, ct);
-        return await ReadPageAsync(response, url, ct);
-    }
-
-    private static async Task<(int Status, Uri Page, string Html)> ReadPageAsync(HttpResponseMessage response, Uri requested, CancellationToken ct) =>
-        ((int)response.StatusCode, response.RequestMessage?.RequestUri ?? requested, await response.Content.ReadAsStringAsync(ct));
-
-    /// <summary>The follow-up requests the web client makes after the callback; their answers are not needed, only their cookies.</summary>
-    private async Task RunPostLoginChecksAsync(CancellationToken ct)
-    {
-        foreach (var path in new[] { "auth/onboarding-check", "auth/mfa-enforcement", "auth/mfa-check" })
-        {
-            var (status, page, html) = await GetPageAsync(new Uri(_options.BaseUri, path), ct);
-            Log.LogDebug("Scalable {Path}: HTTP {Status}, landed on {Landed}.", path, status, page.AbsolutePath);
-            // The 2FA queries need the user id; the mfa-check page carries it in its props ({"userId":"…"}).
-            _authUserId ??= ExtractUserId(html);
-        }
-        if (_authUserId == null) Log.LogWarning("Scalable's mfa-check page did not contain a userId; the 2FA queries will likely fail.");
-    }
-
-    /// <summary>Finds <c>"userId":"…"</c> in a page, also inside the JSON-escaped Next.js payload (<c>\"userId\":\"…\"</c>).</summary>
-    internal static string? ExtractUserId(string html)
-    {
-        var m = System.Text.RegularExpressions.Regex.Match(html, @"\\?""userId\\?""\s*:\s*\\?""(?<id>[^""\\]+)\\?""",
-            System.Text.RegularExpressions.RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
-        return m.Success ? m.Groups["id"].Value : null;
-    }
-
-    /// <summary>Fills the <c>{userId}</c> and <c>{mfaSessionId}</c> placeholders of an input template.</summary>
-    private string FillTemplate(string template) => template
-        .Replace("{userId}", System.Text.Json.JsonEncodedText.Encode(_authUserId ?? string.Empty).ToString(), StringComparison.Ordinal)
-        .Replace("{mfaSessionId}", System.Text.Json.JsonEncodedText.Encode(_mfaSessionId ?? string.Empty).ToString(), StringComparison.Ordinal);
-
-    // ---- 2FA (app approval) ----
-
-    private async Task<ConnectorStep<ConnectorSession?>> BeginTwoFactorAsync(CancellationToken ct)
-    {
-        _priorTwoFactorError = null;
-        System.Text.Json.JsonElement? info = null;
-        try
-        {
-            var data = await _graphQl.ExecuteAsync(ScalableGraphQl.AuthPath, "is2faOnLoginEnabled", ScalableTwoFactorDocuments.Is2faOnLoginEnabled,
-                new JsonObject { ["input"] = ParseInput(FillTemplate(_options.Is2faEnabledInputJson), nameof(ScalableOptions.Is2faEnabledInputJson)) }, ct);
-            info = data.Path("is2faOnLoginEnabled");
-        }
-        catch (ConnectorException ex)
-        {
-            // The input of this query is a guess: carry on as if 2FA were required and keep the message for a later failure.
-            _priorTwoFactorError = ex.Message;
-            Log.LogWarning(ex, "Scalable's 2FA status query failed; assuming 2FA is required: {Message}", ex.Message);
-        }
-
-        if (info is { } i)
-        {
-            if (i.Bool("isSms2faEnabled"))
-                throw new ConnectorException("Scalable uses SMS two-factor authentication for this login, which is not supported yet.");
-            if (!i.Bool("enabled") || i.Bool("hasApprovedSession"))
-            {
-                Log.LogInformation("Scalable needs no 2FA for this login.");
-                return await FinishLoginAsync(ct);
-            }
-        }
-        return await StartTwoFactorAsync(ct);
-    }
-
-    private async Task<ConnectorStep<ConnectorSession?>> StartTwoFactorAsync(CancellationToken ct)
-    {
-        try
-        {
-            var data = await _graphQl.ExecuteAsync(ScalableGraphQl.AuthPath, "start2faOnLogin", _options.Start2faQuery,
-                new JsonObject { ["input"] = ParseInput(FillTemplate(_options.Start2faInputJson), nameof(ScalableOptions.Start2faInputJson)) }, ct);
-            _mfaSessionId = data.Str("start2faOnLogin", "mfaSessionId")
-                ?? throw new ConnectorException("Scalable's start2faOnLogin answer had no mfaSessionId.");
-        }
-        catch (ConnectorException ex) when (_priorTwoFactorError != null)
-        {
-            throw new ConnectorException($"{ex.Message} (the earlier 2FA status query also failed: {_priorTwoFactorError})", ex);
-        }
-        Log.LogInformation("Waiting for the login to be approved in the Scalable app.");
-        return ConnectorStep.Ask<ConnectorSession?>(ConnectorChallenge.Approval(
-            "Bitte bestätigen Sie die Anmeldung in der Scalable-App. / Please confirm the login in the Scalable app.",
-            _options.PollInterval, ApprovalReference));
-    }
-
-    private async Task<ConnectorStep<ConnectorSession?>> PollTwoFactorAsync(CancellationToken ct)
-    {
-        if (_mfaSessionId == null) return ConnectorStep.Fail<ConnectorSession?>("There is no 2FA request to wait for.");
-        var template = FillTemplate(_options.Validate2faInputTemplate);
-        var data = await _graphQl.ExecuteAsync(ScalableGraphQl.AuthPath, "validate2faOnLogin", _options.Validate2faQuery,
-            new JsonObject { ["input"] = ParseInput(template, nameof(ScalableOptions.Validate2faInputTemplate)) }, ct);
-        var status = data.Str("validate2faOnLogin", "status") ?? "(none)";
-        switch (status.ToUpperInvariant())
-        {
-            case "SUCCESS":
-                return await FinishLoginAsync(ct);
-            case "PENDING":
-                return ConnectorStep.Ask<ConnectorSession?>(ConnectorChallenge.Approval(
-                    "Bitte bestätigen Sie die Anmeldung in der Scalable-App. / Please confirm the login in the Scalable app.",
-                    _options.PollInterval, ApprovalReference));
-            default:
-                Log.LogWarning("Scalable reported the 2FA status {Status}.", status);
-                return ConnectorStep.Fail<ConnectorSession?>($"Scalable did not approve the login (status {(status.Length <= 40 ? status : status[..40])}).");
-        }
-    }
-
-    private async Task<ConnectorStep<ConnectorSession?>> FinishLoginAsync(CancellationToken ct)
-    {
-        await GetPageAsync(new Uri(_options.BaseUri, "auth/mfa-check"), ct);
-        try
-        {
-            _personId = await FetchPersonIdAsync(ct);
-        }
-        catch (ScalableSessionExpiredException)
-        {
-            throw new ConnectorException("Scalable still reports the session as unauthenticated after login and 2FA.");
-        }
-        _loggedInAtAll = true;
-        _session.Values[LoginAtKey] = Now.ToString("O", CultureInfo.InvariantCulture);
-        LogSessionCookies();
-        Log.LogInformation("Logged in to Scalable Capital.");
-        return ConnectorStep.Done<ConnectorSession?>(_session);
-    }
 
     /// <summary>Cookie names and expiries only (never values): shows how long the session can last and whether a token cookie exists.</summary>
     private void LogSessionCookies()
@@ -339,18 +131,6 @@ public sealed partial class ScalableConnector : IBankConnector
         var cookies = _context.Http.ExportCookies()
             .Select(c => $"{c.Name}({(c.ExpiresUtc is { } e ? "expires " + e.ToString("u", CultureInfo.InvariantCulture) : "session")})");
         Log.LogInformation("Scalable session cookies after login: {Cookies}", string.Join(", ", cookies));
-    }
-
-    private static JsonObject ParseInput(string json, string setting)
-    {
-        try
-        {
-            return JsonNode.Parse(json) is JsonObject o ? o : throw new ConnectorException($"The Scalable setting {setting} must be a JSON object.");
-        }
-        catch (System.Text.Json.JsonException ex)
-        {
-            throw new ConnectorException($"The Scalable setting {setting} is not valid JSON.", ex);
-        }
     }
 
     public Task<ConnectorSession?> LogoutAsync(CancellationToken ct)

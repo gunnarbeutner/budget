@@ -45,7 +45,6 @@ internal sealed class ScalableGraphQl
 
     public const string CockpitPath = "cockpit/graphql";
     public const string BrokerPath = "broker/api/data";
-    public const string AuthPath = "auth/graphql";
 
     /// <summary>Runs one operation and returns its <c>data</c> object.</summary>
     public async Task<JsonElement> ExecuteAsync(string endpointPath, string operation, string query, JsonObject variables, CancellationToken ct)

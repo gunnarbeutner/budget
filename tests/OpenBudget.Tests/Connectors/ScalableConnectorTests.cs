@@ -24,6 +24,8 @@ public sealed class ScalableConnectorTests
 
         public required CapturingLoggerFactory Logs { get; init; }
 
+        public required FakeBrowserHost Browser { get; init; }
+
         public int LoginId { get; set; }
 
         public ValueTask DisposeAsync() => World.DisposeAsync();
@@ -31,20 +33,29 @@ public sealed class ScalableConnectorTests
         public BankLoginService Service => World.For(BankWorld.Alice);
     }
 
-    private static async Task<Rig> CreateAsync(string password = FakeScalable.Password, Action<FakeScalable>? configure = null)
+    private static async Task<Rig> CreateAsync()
     {
         var bank = new FakeScalable();
-        configure?.Invoke(bank);
         var logs = new CapturingLoggerFactory();
-        var options = new ScalableOptions { PollInterval = TimeSpan.FromMilliseconds(10) };
+        // The "user" signs in on Scalable's page: a session starts at Scalable and its cookie lands in the browser.
+        var browser = new FakeBrowserHost
+        {
+            User = session =>
+            {
+                session.SetCookie(bank.SignIn());
+                session.Url = new Uri("https://de.scalable.capital/cockpit/");
+                return Task.CompletedTask;
+            },
+        };
         var world = await BankWorld.CreateAsync(extras: new BankWorldExtras
         {
-            Registrations = [ScalableConnector.CreateRegistration(options)],
+            Registrations = [ScalableConnector.CreateRegistration(new ScalableOptions())],
             HttpFactory = bank.CreateClient,
             Loggers = logs,
+            BrowserHost = browser,
         });
-        var view = await world.For(BankWorld.Alice).CreateLoginAsync(ScalableConnector.TypeName, "Scalable", FakeScalable.Username, password);
-        return new Rig { World = world, Bank = bank, Logs = logs, LoginId = view.Id };
+        var view = await world.For(BankWorld.Alice).CreateLoginAsync(ScalableConnector.TypeName, "Scalable", "", "");
+        return new Rig { World = world, Bank = bank, Logs = logs, Browser = browser, LoginId = view.Id };
     }
 
     private static Task<BankSyncStatus> SyncAsync(Rig rig, SyncRequest? request = null) =>
@@ -62,7 +73,7 @@ public sealed class ScalableConnectorTests
     // ---- the happy path ----
 
     [Fact]
-    public async Task Full_login_with_app_approval_then_a_complete_sync()
+    public async Task Web_login_then_a_complete_sync()
     {
         await using var rig = await CreateAsync();
         var status = await SyncAsync(rig, new SyncRequest(rig.LoginId, false, false));
@@ -77,10 +88,10 @@ public sealed class ScalableConnectorTests
         Assert.Equal(FakeScalable.Iban, cash.Iban);
         Assert.Equal(RemoteAccountType.Giro, cash.Type);
 
-        // The framework's own flow was walked: form login, callback, 2FA polled until SUCCESS.
-        Assert.Equal(1, rig.Bank.Count("POST secure.scalable.capital/u/login"));
-        Assert.Equal(1, rig.Bank.Count("graphql start2faOnLogin"));
-        Assert.Equal(4, rig.Bank.Count("graphql validate2faOnLogin")); // PENDING x3, SUCCESS
+        // The user signed in once, on Scalable's login page in the (fake) browser, which was destroyed afterwards.
+        var browser = Assert.Single(rig.Browser.Sessions);
+        Assert.Equal("https://de.scalable.capital/auth/login", browser.StartedAt!.ToString());
+        Assert.True(browser.Disposed);
 
         await LinkAllAsync(rig);
         Assert.True((await SyncAsync(rig)).Succeeded);
@@ -115,22 +126,20 @@ public sealed class ScalableConnectorTests
     // ---- sessions ----
 
     [Fact]
-    public async Task A_stored_session_is_reused_without_login_or_two_factor()
+    public async Task A_stored_session_is_reused_without_a_web_login()
     {
         await using var rig = await CreateAsync();
         Assert.True((await SyncAsync(rig, new SyncRequest(rig.LoginId, false, false))).Succeeded);
-        Assert.Equal(1, rig.Bank.Count("POST secure.scalable.capital/u/login"));
+        Assert.Single(rig.Browser.Sessions);
 
         var second = await SyncAsync(rig, new SyncRequest(rig.LoginId, false, false));
         Assert.True(second.Succeeded, second.Error);
-        Assert.Equal(1, rig.Bank.Count("POST secure.scalable.capital/u/login"));
-        Assert.Equal(1, rig.Bank.Count("graphql start2faOnLogin"));
-        Assert.Equal(1, rig.Bank.Count("GET de.scalable.capital/auth/login"));
+        Assert.Single(rig.Browser.Sessions); // no second sign-in
         Assert.Contains(rig.Logs.Entries, e => e.Level == LogLevel.Information && e.Message.Contains("Reusing the stored Scalable session", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task An_expired_session_logs_in_again_and_logs_how_long_it_lasted()
+    public async Task An_expired_session_opens_a_web_login_seeded_with_the_stored_cookies_and_logs_how_long_it_lasted()
     {
         await using var rig = await CreateAsync();
         Assert.True((await SyncAsync(rig, new SyncRequest(rig.LoginId, false, false))).Succeeded);
@@ -139,60 +148,15 @@ public sealed class ScalableConnectorTests
         rig.Bank.ExpireSessions();
         var second = await SyncAsync(rig, new SyncRequest(rig.LoginId, false, false));
         Assert.True(second.Succeeded, second.Error);
-        Assert.Equal(2, rig.Bank.Count("POST secure.scalable.capital/u/login"));
-        Assert.Equal(2, rig.Bank.Count("graphql start2faOnLogin"));
+        Assert.Equal(2, rig.Browser.Sessions.Count);
+        Assert.Contains(rig.Browser.Sessions[1].Seeded, c => c.Name == FakeScalable.SessionCookie); // the jar travels into the browser
         var expired = Assert.Single(rig.Logs.Entries, e => e.Message.Contains("has expired", StringComparison.Ordinal));
         Assert.Equal(LogLevel.Information, expired.Level);
         Assert.Contains("30", expired.Message, StringComparison.Ordinal); // "created 30.0 hours ago"
 
         // The new session is the one stored.
         Assert.True((await SyncAsync(rig, new SyncRequest(rig.LoginId, false, false))).Succeeded);
-        Assert.Equal(2, rig.Bank.Count("POST secure.scalable.capital/u/login"));
-    }
-
-    [Fact]
-    public async Task No_approval_is_asked_when_scalable_reports_an_approved_session()
-    {
-        await using var rig = await CreateAsync(configure: b => b.AlreadyApproved = true);
-        var status = await SyncAsync(rig, new SyncRequest(rig.LoginId, false, false));
-        Assert.True(status.Succeeded, status.Error);
-        Assert.Equal(0, rig.Bank.Count("graphql start2faOnLogin"));
-    }
-
-    // ---- failures ----
-
-    [Fact]
-    public async Task A_wrong_password_is_reported_and_flags_the_credentials()
-    {
-        await using var rig = await CreateAsync(password: "not-the-password");
-        var status = await SyncAsync(rig);
-        Assert.False(status.Succeeded);
-        Assert.Contains("rejected", status.Error, StringComparison.OrdinalIgnoreCase);
-        Assert.True((await rig.Service.GetLoginAsync(rig.LoginId))!.CredentialsInvalid);
-        Assert.Equal(0, rig.Bank.Count("graphql start2faOnLogin"));
-        Assert.Equal(0, await rig.World.Coordinator.StartDueAsync(BankWorld.Alice));
-    }
-
-    [Fact]
-    public async Task Graphql_errors_surface_in_the_last_error_and_the_warning_log()
-    {
-        await using var rig = await CreateAsync(configure: b => b.StartRejection = "Unknown type \"Start2faOnLoginInput\".");
-        var status = await SyncAsync(rig);
-        Assert.False(status.Succeeded);
-        Assert.Contains("Unknown type \"Start2faOnLoginInput\"", status.Error, StringComparison.Ordinal);
-        Assert.Contains("start2faOnLogin", status.Error, StringComparison.Ordinal);
-        Assert.Contains("Unknown type", (await rig.Service.GetLoginAsync(rig.LoginId))!.LastError, StringComparison.Ordinal);
-        Assert.Contains(rig.Logs.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("Unknown type", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task Sms_two_factor_is_reported_as_not_supported()
-    {
-        await using var rig = await CreateAsync(configure: b => b.Sms = true);
-        var status = await SyncAsync(rig);
-        Assert.False(status.Succeeded);
-        Assert.Contains("SMS", status.Error, StringComparison.Ordinal);
-        Assert.Contains("not supported", status.Error, StringComparison.Ordinal);
+        Assert.Equal(2, rig.Browser.Sessions.Count);
     }
 
     [Fact]
@@ -204,7 +168,7 @@ public sealed class ScalableConnectorTests
 
         var logs = rig.Logs.All;
         Assert.NotEmpty(logs);
-        foreach (var secret in new[] { FakeScalable.Password, FakeScalable.Username, FakeScalable.MfaSessionId, "secretvalue", FakeScalable.PersonId, FakeScalable.Iban, "CODE1" })
+        foreach (var secret in new[] { "secretvalue", FakeScalable.PersonId, FakeScalable.Iban })
             Assert.DoesNotContain(secret, logs, StringComparison.Ordinal);
     }
 
@@ -291,91 +255,12 @@ public sealed class ScalableConnectorTests
     // ---- pieces ----
 
     [Fact]
-    public void The_login_form_is_parsed_with_hidden_fields_button_and_resolved_action()
-    {
-        const string html = """
-            <html><form action="/social" method="post"><input type="hidden" name="x" value="1"><button name="action" value="google">G</button></form>
-            <form method="POST" action="/u/login?state=ab&amp;x=1">
-              <input type="hidden" name="state" value="ab&amp;cd">
-              <input type=email name='user-name' autofocus>
-              <input type="password" name="pw">
-              <button type="submit" name="action" value="default">Go</button>
-            </form></html>
-            """;
-        var form = ScalableLoginForm.Parse(html, new Uri("https://secure.scalable.capital/u/login?state=ab"))!;
-        Assert.Equal("https://secure.scalable.capital/u/login?state=ab&x=1", form.Action.ToString());
-        Assert.Equal("user-name", form.UsernameField);
-        Assert.Equal("pw", form.PasswordField);
-        var fields = form.Fill("u", "p");
-        Assert.Contains(new KeyValuePair<string, string>("state", "ab&cd"), fields);
-        Assert.Contains(new KeyValuePair<string, string>("action", "default"), fields);
-        Assert.Contains(new KeyValuePair<string, string>("user-name", "u"), fields);
-        Assert.Contains(new KeyValuePair<string, string>("pw", "p"), fields);
-        Assert.Null(ScalableLoginForm.Parse("<html>no form</html>", new Uri("https://x.invalid/")));
-    }
-
-    [Fact]
-    public void Options_can_be_overridden_from_the_environment()
-    {
-        var options = ScalableOptions.FromVariables(new Dictionary<string, string?>(StringComparer.Ordinal)
-        {
-            [ScalableOptions.Is2faInputVariable] = "{\"a\":1}",
-            [ScalableOptions.Start2faQueryVariable] = "mutation x { y }",
-            [ScalableOptions.Validate2faInputVariable] = "  ",
-        });
-        Assert.Equal("{\"a\":1}", options.Is2faEnabledInputJson);
-        Assert.Equal("mutation x { y }", options.Start2faQuery);
-        Assert.Equal(new ScalableOptions().Validate2faInputTemplate, options.Validate2faInputTemplate);
-        Assert.Equal(new ScalableOptions().Start2faInputJson, options.Start2faInputJson);
-    }
-
-    [Fact]
-    public async Task A_broken_input_setting_fails_with_a_clear_message()
-    {
-        var bank = new FakeScalable();
-        var options = new ScalableOptions { Start2faInputJson = "[1,2" };
-        await using var world = await BankWorld.CreateAsync(extras: new BankWorldExtras { Registrations = [ScalableConnector.CreateRegistration(options)], HttpFactory = bank.CreateClient });
-        var view = await world.For(BankWorld.Alice).CreateLoginAsync(ScalableConnector.TypeName, "Scalable", FakeScalable.Username, FakeScalable.Password);
-        var status = await world.SyncAsync(BankWorld.Alice, view.Id, new SyncRequest(view.Id, true, false));
-        Assert.False(status.Succeeded);
-        Assert.Contains("Start2faInputJson", status.Error, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void The_connector_is_registered_with_its_display_name()
     {
         var registration = ScalableConnector.CreateRegistration(new ScalableOptions());
         Assert.Equal("scalable", registration.ConnectorType);
         Assert.Equal("Scalable Capital", registration.DisplayName);
+        Assert.Equal(CredentialRequirement.None, registration.Credentials);
     }
 
-    [Theory]
-    [InlineData("<script>self.__next_f.push([1,\"12:[\\\"$\\\",\\\"$L24\\\",null,{\\\"userId\\\":\\\"user-1\\\"}]\\n\"])</script>", "user-1")]
-    [InlineData("{\"middlewareProps\":{\"session\":{\"user\":{\"userId\":\"user-2\"}}}}", "user-2")]
-    [InlineData("<html>no id here</html>", null)]
-    public void The_user_id_for_the_2fa_queries_is_read_from_the_mfa_check_page(string html, string? expected)
-    {
-        Assert.Equal(expected, OpenBudget.Connectors.Scalable.ScalableConnector.ExtractUserId(html));
-    }
-
-    [Theory]
-    [InlineData("<span id=\"error-element-password\" class=\"ulp-input-error-message\">Wrong email or password</span>", "Wrong email or password")]
-    [InlineData("<div id=\"prompt-alert\"><p>Too many login attempts.</p></div>", "Too many login attempts.")]
-    [InlineData("<form><input name=\"password\"></form>", null)]
-    // The always-present client-side validation template is not an error.
-    [InlineData("<div id=\"error-cs-username-required\" class=\"ulp-error-info aria-error-check\">Bitte geben Sie eine E-Mail-Adresse ein.</div>", null)]
-    public void The_login_error_shown_by_the_sign_in_page_is_extracted(string html, string? expected)
-    {
-        Assert.Equal(expected, OpenBudget.Connectors.Scalable.ScalableConnector.ExtractLoginError(html));
-    }
-
-    [Fact]
-    public void A_captcha_on_the_sign_in_page_is_detected()
-    {
-        Assert.True(OpenBudget.Connectors.Scalable.ScalableConnector.HasCaptcha("<div><input type=\"text\" name=\"captcha\"></div>"));
-        Assert.True(OpenBudget.Connectors.Scalable.ScalableConnector.HasCaptcha("<iframe src=\"https://www.google.com/recaptcha/api2/anchor\"></iframe>"));
-        // The normal page mentions captcha providers in its scripts without showing one.
-        Assert.False(OpenBudget.Connectors.Scalable.ScalableConnector.HasCaptcha("<script>var p={captcha:{provider:'recaptcha'},hcaptcha:1,arkose:2};</script><div class=\"ulp-captcha-container\"></div>"));
-        Assert.False(OpenBudget.Connectors.Scalable.ScalableConnector.HasCaptcha("<form><input name=\"password\"></form>"));
-    }
 }

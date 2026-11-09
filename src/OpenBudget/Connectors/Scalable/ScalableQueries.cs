@@ -48,28 +48,3 @@ internal static class ScalableQueries
         "query getInventory($personId: ID!, $portfolioId: ID!) { account(id: $personId) { id brokerPortfolio(id: $portfolioId) { id crypto { id coins { id ticker name "
         + "inventory { id etpSecurity { id isin wkn name inventory { id position { filled fifoPrice } } quoteTick(includeSinceBuy: false) { id midPrice currency } } } } } } } }";
 }
-
-/// <summary>
-/// The login 2FA documents, ALL BEST GUESSES: Scalable's web client was only observed through
-/// its responses, never its request bodies. Only <c>is2faOnLoginEnabled</c> is known verbatim.
-/// When the first live login fails, the GraphQL error messages appear in the login's last error
-/// and name the wrong document, field or input; fix them here, or without a rebuild through the
-/// environment variables listed in <see cref="ScalableOptions"/>.
-/// </summary>
-internal static class ScalableTwoFactorDocuments
-{
-    /// <summary>Known verbatim. The input fields are NOT known (see <see cref="ScalableOptions.Is2faEnabledInputJson"/>).</summary>
-    public const string Is2faOnLoginEnabled =
-        "query is2faOnLoginEnabled($input: Is2faOnLoginEnabledInput!) { is2faOnLoginEnabled(input: $input) { enabled isSms2faEnabled hasApprovedSession } }";
-
-    /// <summary>GUESS (mutation; response observed as { start2faOnLogin { mfaSessionId } }).</summary>
-    public const string Start2faOnLogin =
-        "mutation start2faOnLogin($input: Start2faOnLoginInput!) { start2faOnLogin(input: $input) { mfaSessionId } }";
-
-    /// <summary>GUESS (response observed as { validate2faOnLogin { status } }; whether it is a query or a mutation is unknown).</summary>
-    public const string Validate2faOnLogin =
-        "query validate2faOnLogin($input: Validate2faOnLoginInput!) { validate2faOnLogin(input: $input) { status } }";
-
-    /// <summary>GUESS: variables of the validate call; <c>{mfaSessionId}</c> is replaced by the session id from start2faOnLogin.</summary>
-    public const string Validate2faInputTemplate = "{\"userId\":\"{userId}\",\"mfaSessionId\":\"{mfaSessionId}\"}";
-}
