@@ -428,6 +428,14 @@
                                     }
                                 </div>
                                 <div class="tx-amount @(row.Amount < 0 ? "text-danger" : "text-success")">
+                                    @if (row.IsPending)
+                                    {
+                                        <span class="badge text-bg-secondary me-1 tx-pending" title="@L["Tx_PendingTitle"]">@L["Tx_Pending"]</span>
+                                    }
+                                    @if (row.IsSplitRemainder)
+                                    {
+                                        <span class="badge text-bg-warning me-1" title="@L["Tx_SplitRemainderTitle"]">@L["Tx_SplitRemainder"]</span>
+                                    }
                                     @if (row.IsSplitChild)
                                     {
                                         <span class="badge text-bg-warning me-1" title="@L["Tx_SplitChildTitle"]">@L["Tx_SplitChild"]</span>

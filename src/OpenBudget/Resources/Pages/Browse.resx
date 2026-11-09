@@ -91,6 +91,10 @@
   <data name="Tree_Heading" xml:space="preserve"><value>Browse</value></data>
   <data name="Tx_SplitChild" xml:space="preserve"><value>Split</value></data>
   <data name="Tx_SplitChildTitle" xml:space="preserve"><value>One leg of a split transaction.</value></data>
+  <data name="Tx_Pending" xml:space="preserve"><value>Pending</value></data>
+  <data name="Tx_PendingTitle" xml:space="preserve"><value>Booking is still pending (not yet booked by the bank).</value></data>
+  <data name="Tx_SplitRemainder" xml:space="preserve"><value>Split remainder</value></data>
+  <data name="Tx_SplitRemainderTitle" xml:space="preserve"><value>Part of a split booking that is not allocated to any of its parts.</value></data>
   <data name="Holdings_Title" xml:space="preserve"><value>Holdings</value></data>
   <data name="Holdings_PositionCount" xml:space="preserve"><value>{0} positions</value></data>
   <data name="Holdings_Allocation" xml:space="preserve"><value>Asset allocation</value></data>

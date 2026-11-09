@@ -91,6 +91,10 @@
   <data name="Tree_Heading" xml:space="preserve"><value>Durchsuchen</value></data>
   <data name="Tx_SplitChild" xml:space="preserve"><value>Split</value></data>
   <data name="Tx_SplitChildTitle" xml:space="preserve"><value>Teil einer Splitbuchung.</value></data>
+  <data name="Tx_Pending" xml:space="preserve"><value>vorgemerkt</value></data>
+  <data name="Tx_PendingTitle" xml:space="preserve"><value>Die Buchung ist vorgemerkt und noch nicht von der Bank gebucht.</value></data>
+  <data name="Tx_SplitRemainder" xml:space="preserve"><value>Split-Rest</value></data>
+  <data name="Tx_SplitRemainderTitle" xml:space="preserve"><value>Teil einer Splitbuchung, der keinem Teilbetrag zugeordnet ist.</value></data>
   <data name="Holdings_Title" xml:space="preserve"><value>Bestände</value></data>
   <data name="Holdings_PositionCount" xml:space="preserve"><value>{0} Positionen</value></data>
   <data name="Holdings_Allocation" xml:space="preserve"><value>Anlageklassen</value></data>
