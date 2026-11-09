@@ -62,10 +62,10 @@ internal sealed partial class AppTestHost : IDisposable
 
     public SystemDbContextFactory System => Services.GetRequiredService<SystemDbContextFactory>();
 
-    public HttpClient CreateClient() => _factory.CreateClient(new WebApplicationFactoryClientOptions
+    public HttpClient CreateClient(string baseAddress = "https://localhost") => _factory.CreateClient(new WebApplicationFactoryClientOptions
     {
         AllowAutoRedirect = false,
-        BaseAddress = new Uri("https://localhost"),
+        BaseAddress = new Uri(baseAddress),
         HandleCookies = true,
     });
 

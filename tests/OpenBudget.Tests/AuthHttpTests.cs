@@ -110,6 +110,32 @@ public sealed class AuthHttpTests : IDisposable
     }
 
     [Fact]
+    public async Task Auth_cookie_is_secure_only_over_https()
+    {
+        await _host.StartAsync();
+        await _host.AddUserAsync("alice");
+
+        // https (behind the proxy via X-Forwarded-Proto): Secure.
+        using (var https = _host.CreateClient())
+        using (var login = await AppTestHost.LoginAsync(https, "alice"))
+        {
+            Assert.Equal(HttpStatusCode.Redirect, login.StatusCode);
+            Assert.Contains("; secure", AuthCookie(login), StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Plain http (a local container): not Secure, or Safari drops it and login silently fails.
+        using (var http = _host.CreateClient("http://localhost"))
+        using (var login = await AppTestHost.LoginAsync(http, "alice"))
+        {
+            Assert.Equal(HttpStatusCode.Redirect, login.StatusCode);
+            Assert.DoesNotContain("; secure", AuthCookie(login), StringComparison.OrdinalIgnoreCase);
+        }
+
+        static string AuthCookie(HttpResponseMessage r) =>
+            r.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("OpenBudget.Auth=", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Wrong_password_is_rejected_and_repeated_failures_lock_the_account()
     {
         await _host.StartAsync();

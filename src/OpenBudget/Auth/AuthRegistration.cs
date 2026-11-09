@@ -86,14 +86,16 @@ public static class AuthRegistration
 
         services.AddOpenBudgetIdentityCore();
 
-        var relaxSecure = env.IsDevelopment() || env.IsEnvironment("Test");
         services.AddAuthentication(IdentityConstants.ApplicationScheme)
             .AddIdentityCookies(b => b.ApplicationCookie?.Configure(o =>
             {
                 o.Cookie.Name = "OpenBudget.Auth";
                 o.Cookie.HttpOnly = true;
                 o.Cookie.SameSite = SameSiteMode.Lax;
-                o.Cookie.SecurePolicy = relaxSecure ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+                // Secure exactly when the request is HTTPS. Behind the TLS proxy that is always the
+                // case (X-Forwarded-Proto, see UseForwardedHeaders); over plain http (a local
+                // container) an always-Secure cookie is dropped by Safari and login silently fails.
+                o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
                 // 30-day session, renewed while in use.
                 o.ExpireTimeSpan = TimeSpan.FromDays(30);
                 o.SlidingExpiration = true;
