@@ -55,7 +55,7 @@ public sealed class UploadTokenTests : IDisposable
 
         // Both existing sources were reused, not duplicated.
         await using var db = await _host.System.CreateDbContextAsync();
-        Assert.Equal(new[] { "default", "alice", "bob" }, (await db.ImportSources.Select(s => s.Name).ToListAsync()).Order(StringComparer.Ordinal).ToArray());
+        Assert.Equal(new[] { "alice", "bob", "default" }, (await db.ImportSources.Select(s => s.Name).ToListAsync()).Order(StringComparer.Ordinal).ToArray());
     }
 
     [Fact]
