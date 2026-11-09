@@ -39,21 +39,39 @@ public sealed class BankHttpClient : IBankHttpClient, IDisposable
     {
 #pragma warning disable CA2000 // owned by the HttpClient (disposeHandler: true)
         _http = new HttpClient(
-            handlerFactory?.Invoke(_jar) ?? new SocketsHttpHandler { CookieContainer = _jar, UseCookies = true, AllowAutoRedirect = true },
+            handlerFactory?.Invoke(_jar) ?? new SocketsHttpHandler
+            {
+                CookieContainer = _jar,
+                UseCookies = true,
+                AllowAutoRedirect = true,
+                AutomaticDecompression = DecompressionMethods.All,
+            },
             disposeHandler: true);
 #pragma warning restore CA2000
         _http.Timeout = TimeSpan.FromSeconds(60);
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible; OpenBudget)");
+        // Look like the browser a person would use. Sign-in services with bot detection (Scalable's Auth0, for example)
+        // put up a captcha for clients that announce themselves as bots, which a connector cannot solve.
+        _http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", BrowserUserAgent);
+        _http.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        _http.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Language", "de-DE,de;q=0.9,en;q=0.8");
     }
 
     public Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) => _http.SendAsync(request, ct);
 
     public Task<string> GetStringAsync(Uri url, CancellationToken ct) => _http.GetStringAsync(url, ct);
 
+    /// <summary>Safari on macOS, the browser a person would sign in with.</summary>
+    public const string BrowserUserAgent =
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Safari/605.1.15";
+
     public async Task<HttpResponseMessage> PostFormAsync(Uri url, IEnumerable<KeyValuePair<string, string>> fields, CancellationToken ct)
     {
         using var content = new FormUrlEncodedContent(fields);
-        return await _http.PostAsync(url, content, ct);
+        using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+        // A browser submitting a form sends where it came from; sign-in pages check these.
+        request.Headers.TryAddWithoutValidation("Origin", url.GetLeftPart(UriPartial.Authority));
+        request.Headers.Referrer = url;
+        return await _http.SendAsync(request, ct);
     }
 
     public IReadOnlyList<CookieState> ExportCookies() =>
