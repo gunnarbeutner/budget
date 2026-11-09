@@ -275,6 +275,35 @@ public class AccessScopeTests
     }
 
     [Fact]
+    public async Task A_refused_project_delete_does_not_touch_the_callers_own_share()
+    {
+        await using var t = await AccessWorld.BuildAsync(ProjectRole.Viewer);
+        var bob = t.ForUser(AccessWorld.Bob);
+
+        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Projects.DeleteProjectAsync(AccessWorld.Shared));
+
+        await using var db = await t.System.CreateDbContextAsync();
+        Assert.Equal(1, await db.ProjectShares.CountAsync(s => s.ProjectId == AccessWorld.Shared && s.UserId == AccessWorld.Bob));
+        Assert.Equal(1, await db.Projects.CountAsync(p => p.Id == AccessWorld.Shared));
+    }
+
+    [Fact]
+    public async Task Deleting_a_budget_removes_its_entries_and_splits()
+    {
+        await using var t = await AccessWorld.BuildAsync(ProjectRole.Editor);
+        var alice = t.ForUser(AccessWorld.Alice);
+        var budget = (await alice.Entries.GetBudgetsForProjectAsync(AccessWorld.Shared)).Single();
+        await alice.Entries.SaveBudgetContributionSplitsAsync(budget.Id, new[] { (AccessWorld.SharedGroup, CategoryItemType.Group, 50m) });
+
+        await t.ForUser(AccessWorld.Bob).Entries.DeleteBudgetAsync(budget.Id);   // an editor may delete budgets
+
+        await using var db = await t.System.CreateDbContextAsync();
+        Assert.False(await db.Budgets.AnyAsync(b => b.Id == budget.Id));
+        Assert.False(await db.MonthlyBudgetEntries.AnyAsync(e => e.BudgetId == budget.Id));
+        Assert.False(await db.BudgetContributionSplits.AnyAsync(s => s.BudgetId == budget.Id));
+    }
+
+    [Fact]
     public async Task Nobody_can_write_into_a_project_they_cannot_see()
     {
         await using var t = await AccessWorld.BuildAsync();
