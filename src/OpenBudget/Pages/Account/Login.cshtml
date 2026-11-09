@@ -28,7 +28,7 @@
 </form>
 
 <div class="text-center text-body-secondary small mb-2">@L["Login_Or"]</div>
-<form method="post" asp-page-handler="PasskeyLogin" id="passkey-login-form" data-options-url="?handler=PasskeyOptions" data-no-passkey="@L["Passkey_Unsupported"].Value" data-failed="@L["Passkey_Failed"].Value">
+<form method="post" asp-page-handler="PasskeyLogin" id="passkey-login-form" data-options-url="@Url.Page("/Account/Login", "PasskeyOptions")" data-no-passkey="@L["Passkey_Unsupported"].Value" data-failed="@L["Passkey_Failed"].Value">
     <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
     <input type="hidden" name="credentialJson" id="credentialJson" />
     <button type="button" id="passkey-login" class="btn btn-outline-secondary w-100">

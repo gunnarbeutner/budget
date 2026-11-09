@@ -48,7 +48,7 @@
             </ul>
         }
         <form method="post" asp-page-handler="AddPasskey" id="passkey-register-form"
-              data-options-url="?handler=PasskeyCreationOptions" data-no-passkey="@L["Passkey_Unsupported"].Value" data-failed="@L["Passkey_RegisterFailed"].Value">
+              data-options-url="@Url.Page("/Account/Index", "PasskeyCreationOptions")" data-no-passkey="@L["Passkey_Unsupported"].Value" data-failed="@L["Passkey_RegisterFailed"].Value">
             <input type="hidden" name="credentialJson" id="credentialJson" />
             <div class="input-group">
                 <input type="text" name="passkeyName" id="passkeyName" class="form-control" maxlength="60" placeholder="@L["Passkeys_NamePlaceholder"]" aria-label="@L["Passkeys_NamePlaceholder"]" />
