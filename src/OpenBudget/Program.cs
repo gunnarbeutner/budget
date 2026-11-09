@@ -19,6 +19,7 @@ builder.Services.AddScoped<CashflowProjectionService>();
 builder.Services.AddScoped<BudgetService>();
 builder.Services.AddScoped<FreshnessService>();
 builder.Services.AddScoped<TransactionQueryService>();
+builder.Services.AddScoped<AccountService>();
 builder.Services.AddScoped<BrowseService>();
 builder.Services.AddScoped<PortfolioService>();
 builder.Services.AddScoped<DepotMappingService>();

@@ -152,6 +152,17 @@ public class BudgetDbContext : DbContext
             .HasForeignKey(t => t.AccountId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // Sentinel = the default (true) so an explicit Booked=false is inserted rather than being
+        // mistaken for "unset" and replaced by the column default.
+        modelBuilder.Entity<Transaction>()
+            .Property(t => t.Booked)
+            .HasDefaultValue(true)
+            .HasSentinel(true);
+
+        modelBuilder.Entity<Account>()
+            .Property(a => a.Provider)
+            .HasDefaultValue(AccountProviders.MoneyMoney);
+
         modelBuilder.Entity<Transaction>()
             .HasIndex(t => new { t.SourceId, t.Timestamp });
         modelBuilder.Entity<Transaction>()

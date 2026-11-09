@@ -55,12 +55,37 @@ public class Transaction
     public long? Checkmark { get; set; }
 
     /// <summary>
-    /// imported split marker. 0 = normal row, 1 = split parent (a placeholder; its real
-    /// category lives on the children), 2 = split child. Parents must be excluded from any
-    /// rollup or "uncategorized" count or they double-count against their children.
+    /// imported split marker; see <see cref="SplitState"/>. 0 = normal row, 1 = split parent that
+    /// is fully allocated to its children (a placeholder: excluded from every rollup so it does
+    /// not double-count), 2 = split child, 3 = split remainder (a parent whose children do not
+    /// add up to its amount; the import rewrites it into an uncategorized row carrying only the
+    /// unallocated part, so it counts like a normal row).
     /// </summary>
     [Column("splitted")]
     public long? Splitted { get; set; }
+
+    /// <summary>
+    /// False while the bank has only reserved the booking ("vorgemerkt" / pending); true once it
+    /// is booked. Pending rows still count toward totals like any other row. Defaults to true so
+    /// rows from sources that don't report pending state read as booked.
+    /// </summary>
+    [Column("booked")]
+    public bool Booked { get; set; } = true;
+
+    /// <summary>
+    /// For split children (<see cref="Splitted"/> == 2): the namespaced Id of the split parent
+    /// row (the source's <c>split_key</c>). Null for every other row.
+    /// </summary>
+    [Column("split_parent_id")]
+    public long? SplitParentId { get; set; }
+
+    /// <summary>
+    /// For split parents and split-remainder rows: the parent's original booking amount in
+    /// cents, before the import replaced <see cref="Amount"/> with the unallocated remainder.
+    /// Null for all other rows.
+    /// </summary>
+    [Column("split_original_amount")]
+    public long? SplitOriginalAmount { get; set; }
 
     [NotMapped]
     public DateTime Date => DateTimeOffset.FromUnixTimeSeconds(Timestamp).DateTime;

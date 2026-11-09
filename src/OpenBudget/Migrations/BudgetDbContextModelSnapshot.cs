@@ -15,7 +15,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261109160051_RenameToOpenBudgetNames";
+        public override string LatestMigrationId => "20261109170804_AddAccountProviderBookedAndSplitLinks";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -55,6 +55,13 @@ namespace OpenBudget.Migrations
                     b.Property<long?>("Portfolio")
                         .HasColumnType("INTEGER")
                         .HasColumnName("portfolio");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("moneymoney")
+                        .HasColumnName("provider");
 
                     b.Property<long?>("RefreshTimestamp")
                         .HasColumnType("INTEGER")
@@ -824,6 +831,12 @@ namespace OpenBudget.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("amount");
 
+                    b.Property<bool>("Booked")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true)
+                        .HasColumnName("booked");
+
                     b.Property<long?>("CategoryId")
                         .HasColumnType("INTEGER")
                         .HasColumnName("category_key");
@@ -850,6 +863,14 @@ namespace OpenBudget.Migrations
 
                     b.Property<int>("SourceId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<long?>("SplitOriginalAmount")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("split_original_amount");
+
+                    b.Property<long?>("SplitParentId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("split_parent_id");
 
                     b.Property<long?>("Splitted")
                         .HasColumnType("INTEGER")

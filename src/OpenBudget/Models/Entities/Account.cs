@@ -56,6 +56,14 @@ public class Account
     public long? GroupId { get; set; }
 
     /// <summary>
+    /// Which connector owns this account's transactions (see <see cref="AccountProviders"/>).
+    /// Defaults to MoneyMoney; MoneyMoney uploads only replace transactions of accounts with
+    /// that provider and preserve this value per account Id across re-imports.
+    /// </summary>
+    [Column("provider")]
+    public string Provider { get; set; } = AccountProviders.MoneyMoney;
+
+    /// <summary>
     /// Unix-seconds timestamp of the source's last successful refresh of this account. Null for
     /// manually-maintained accounts (cash, real estate) that never auto-refresh.
     /// </summary>
