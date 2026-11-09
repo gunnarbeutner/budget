@@ -97,6 +97,8 @@
 
 @code {
     [Parameter, EditorRequired] public int ProjectId { get; set; }
+    /// <summary>Raised after a share was added, changed or revoked (the default-project card depends on it).</summary>
+    [Parameter] public EventCallback OnSharesChanged { get; set; }
 
     private List<ProjectShareInfo>? shares;
     private List<(string Id, string Name)> candidates = new();
@@ -148,5 +150,6 @@
             error = ex.Message;
         }
         await LoadAsync();
+        await OnSharesChanged.InvokeAsync();
     }
 }

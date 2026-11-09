@@ -1,0 +1,135 @@
+@using OpenBudget.Services
+@inject ProjectService ProjectService
+@inject IStringLocalizer<ProjectDefaultCard> L
+
+@* Project-settings panel (owner only): make this project the default for new accounts, and the one-time helper
+   that assigns all of the owner's accounts that are in no project yet. Everything is enforced server-side
+   (ProjectService); a shared project can't be the default, and sharing clears the default automatically. *@
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card" id="default-project-card">
+            <div class="card-header">
+                <h5 class="mb-0">@L["Default_Heading"]</h5>
+            </div>
+            <div class="card-body">
+                @if (state == null)
+                {
+                    <p class="text-body-secondary mb-0"><em>@L["Status_Loading"]</em></p>
+                }
+                else
+                {
+                    @if (state.ClearedNotice)
+                    {
+                        <div class="alert alert-warning d-flex justify-content-between align-items-center py-2" role="alert" id="default-cleared-notice">
+                            <span>@L["Default_ClearedNotice"]</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-3" @onclick="DismissNotice">@L["Button_Dismiss"]</button>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(error))
+                    {
+                        <div class="alert alert-danger py-2" role="alert">@error</div>
+                    }
+
+                    <div class="form-check form-switch mb-1">
+                        <input class="form-check-input" type="checkbox" role="switch" id="default-project-toggle"
+                               checked="@state.IsDefault" disabled="@(state.IsShared && !state.IsDefault)"
+                               @onchange="Toggle" />
+                        <label class="form-check-label" for="default-project-toggle">@L["Default_Toggle"]</label>
+                    </div>
+                    <p class="text-body-secondary small mb-3" id="default-project-help">
+                        @(state.IsShared ? L["Default_SharedExplanation"] : L["Default_Description"])
+                    </p>
+
+                    <hr />
+                    <h6>@L["Assign_Heading"]</h6>
+                    <p class="text-body-secondary small">@L["Assign_Description"]</p>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="assign-unassigned"
+                            @onclick="OnAssignClicked">@L["Assign_Button"]</button>
+                    @if (assignedCount is { } n)
+                    {
+                        <span class="ms-3" id="assign-result" role="status">@(n == 1 ? L["Assign_Result_One"] : L["Assign_Result_Other", n])</span>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<Modal Show="@confirmShared" Title="@L["Assign_Confirm_Title"]" OnClose="@(() => confirmShared = false)">
+    <ChildContent>
+        <p>@L["Assign_Confirm_Body", state?.UnassignedAccounts ?? 0]</p>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="@(() => confirmShared = false)">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-primary" id="assign-confirm" @onclick="AssignAsync">@L["Assign_Confirm_Button"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public int ProjectId { get; set; }
+    /// <summary>Bumped by the page when sharing changed, so the card re-reads the shared state.</summary>
+    [Parameter] public int RefreshToken { get; set; }
+    /// <summary>Raised after accounts were assigned, so the page reloads its account list.</summary>
+    [Parameter] public EventCallback OnAccountsAssigned { get; set; }
+
+    private DefaultProjectState? state;
+    private string? error;
+    private int? assignedCount;
+    private bool confirmShared;
+    private int _loadedFor;
+    private int _loadedToken;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor == ProjectId && _loadedToken == RefreshToken) return;
+        if (_loadedFor != ProjectId) assignedCount = null;
+        _loadedFor = ProjectId;
+        _loadedToken = RefreshToken;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync() => state = await ProjectService.GetDefaultStateAsync(ProjectId);
+
+    private async Task Toggle(ChangeEventArgs e)
+    {
+        error = null;
+        try
+        {
+            await ProjectService.SetDefaultForNewAccountsAsync(ProjectId, e.Value is true);
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException)
+        {
+            error = ex.Message;
+        }
+        await LoadAsync();
+    }
+
+    private async Task DismissNotice()
+    {
+        await ProjectService.DismissDefaultClearedNoticeAsync(ProjectId);
+        await LoadAsync();
+    }
+
+    private async Task OnAssignClicked()
+    {
+        if (state is { IsShared: true }) confirmShared = true;
+        else await AssignAsync();
+    }
+
+    private async Task AssignAsync()
+    {
+        confirmShared = false;
+        error = null;
+        try
+        {
+            assignedCount = await ProjectService.AssignUnassignedAccountsAsync(ProjectId);
+            await OnAccountsAssigned.InvokeAsync();
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException)
+        {
+            error = ex.Message;
+        }
+        await LoadAsync();
+    }
+}

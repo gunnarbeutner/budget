@@ -247,4 +247,7 @@
   <data name="Hint_NoSources_After" xml:space="preserve">
     <value>.</value>
   </data>
+  <data name="Badge_DefaultForNewAccounts" xml:space="preserve">
+    <value>Default for new accounts</value>
+  </data>
 </root>

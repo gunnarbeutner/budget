@@ -134,6 +134,14 @@ invalidates registered passkeys.
   income/expense settings). Which accounts belong to a project, sharing itself,
   the parent project and deleting the project stay with the owner. Sub-projects
   inherit their parent's shares.
+- Each user can mark one of their own, unshared projects as the **default
+  project for new accounts** (Settings page, shown as a badge on the dashboard).
+  Accounts that newly appear in the user's sources - a new account in a MoneyMoney
+  upload, or one created by a bank connector - are assigned to it automatically;
+  existing assignments are never changed. Sharing the default project clears the
+  default (with a notice), so a new account never becomes visible to a sharee on
+  its own. A one-time button on the same card assigns all of the owner's accounts
+  that are in no project yet.
 - Someone a project is shared with sees only that project's assigned accounts
   and their transactions - never the rest of the owner's source. Anything outside
   a user's scope behaves like a page that does not exist.

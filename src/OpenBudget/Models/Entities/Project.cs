@@ -41,6 +41,20 @@ public class Project
     [MaxLength(450)]
     public string? OwnerUserId { get; set; }
 
+    /// <summary>
+    /// The owner's default project for new accounts: accounts that newly appear in one of the owner's
+    /// sources (MoneyMoney upload, connector-created) are assigned to it. At most one per owner, only
+    /// ever set on a project that is not shared (not itself and not through its parent) — sharing it
+    /// clears the flag, so a new account can never become visible to a sharee automatically.
+    /// </summary>
+    public bool IsDefaultForNewAccounts { get; set; }
+
+    /// <summary>
+    /// Set when sharing (or re-parenting under a shared project) cleared <see cref="IsDefaultForNewAccounts"/>;
+    /// the settings page shows a one-time notice until the owner dismisses it.
+    /// </summary>
+    public bool DefaultClearedNotice { get; set; }
+
     public ICollection<ProjectShare> Shares { get; set; } = new List<ProjectShare>();
 
     /// <summary>

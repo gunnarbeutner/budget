@@ -52,6 +52,8 @@ else
 
     @if (isOwner)
     {
+        <ProjectDefaultCard ProjectId="ProjectId" RefreshToken="sharingVersion" OnAccountsAssigned="LoadAccountAssignments" />
+
         <ProjectAccountsCard Assignments="accountAssignments"
                              AllAccounts="allAccounts"
                              AllAccountGroups="allAccountGroups"
@@ -78,7 +80,7 @@ else
        by accident. *@
     @if (isOwner)
     {
-        <ProjectSharingCard ProjectId="ProjectId" />
+        <ProjectSharingCard ProjectId="ProjectId" OnSharesChanged="@(() => sharingVersion++)" />
 
         <div class="border-top pt-3 mt-4">
             <button class="btn btn-outline-danger" @onclick="ShowDeleteDialog">@L["Button_DeleteProject"]</button>
@@ -113,6 +115,7 @@ else
     // Owner-only sections (accounts, parent, sharing, delete). The route gate already guarantees at
     // least editor access; the server enforces the owner-only rules regardless of what is rendered.
     private bool isOwner;
+    private int sharingVersion;
 
     // Tracking configuration
     private List<ProjectTrackingItem>? trackingItems;

@@ -316,6 +316,9 @@ public class BankLoginService
         link.LastSuccessAt = null;
         link.LastError = null;
         await writeDb.SaveChangesAsync(ct);
+        // A new account lands in the user's default project for new accounts, if they set one.
+        if (await DefaultProjectAssigner.AssignNewAccountsAsync(writeDb, userId, [account.Id], ct) > 0)
+            _notifier.Publish(new DataChange(DataArea.Projects), _origin.Id);
         Changed(userId);
         _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: source.Id), _origin.Id);
         return account.Id;

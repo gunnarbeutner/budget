@@ -87,6 +87,10 @@ else
                         <div class="portfolio-name">
                             <a href="@overviewUrl" class="stretched-link text-reset text-decoration-none">@summary.ProjectName</a>
                         </div>
+                        @if (isOwner && defaultProjectId == projectId)
+                        {
+                            <div class="portfolio-sub"><span class="badge text-bg-secondary" data-testid="default-project-badge">@L["Badge_DefaultForNewAccounts"]</span></div>
+                        }
                         @if (!isOwner)
                         {
                             <div class="portfolio-sub text-body-secondary small">
@@ -279,10 +283,13 @@ else
         await LoadDashboard();
     }
 
+    private int? defaultProjectId;
+
     private async Task LoadDashboard()
     {
         scope = await AccessProvider.GetAsync();
         var projects = await ProjectService.GetProjectsAsync();
+        defaultProjectId = projects.FirstOrDefault(p => p.IsDefaultForNewAccounts && scope.IsOwner(p.Id))?.Id;
         projectOwners = projects.ToDictionary(p => p.Id, p => p.OwnerUserId);
         ownerNames = await Users.GetNamesAsync(projects.Where(p => p.OwnerUserId != null).Select(p => p.OwnerUserId!));
         budgetSummaries = new List<ProjectSpendingSummary>();

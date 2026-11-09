@@ -20,6 +20,8 @@ public partial class BudgetDbContext
         modelBuilder.Entity<ProjectShare>().HasIndex(s => new { s.ProjectId, s.UserId }).IsUnique();
         modelBuilder.Entity<ProjectShare>().Property(s => s.Role).HasConversion<int>();
         modelBuilder.Entity<Project>().HasIndex(p => p.OwnerUserId);
+        modelBuilder.Entity<Project>().HasIndex(p => p.OwnerUserId, "IX_projects_OwnerUserId_Default")
+            .IsUnique().HasFilter("IsDefaultForNewAccounts = 1");
         modelBuilder.Entity<ImportSource>().HasIndex(s => s.OwnerUserId);
 
         // Projects and everything hanging off them.

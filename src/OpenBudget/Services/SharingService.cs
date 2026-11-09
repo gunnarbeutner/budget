@@ -64,6 +64,16 @@ public class SharingService
         else
             existing.Role = role;
 
+        // A shared project (and, through inheritance, its sub-projects) must not receive new accounts automatically.
+        var defaults = await db.Projects
+            .Where(p => (p.Id == projectId || p.ParentProjectId == projectId) && p.IsDefaultForNewAccounts)
+            .ToListAsync(ct);
+        foreach (var d in defaults)
+        {
+            d.IsDefaultForNewAccounts = false;
+            d.DefaultClearedNotice = true;
+        }
+
         await db.SaveChangesAsync(ct);
         _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId), _origin.Id);
     }

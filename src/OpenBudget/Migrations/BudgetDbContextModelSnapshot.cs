@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261109195612_AddBankConnectors";
+        public override string LatestMigrationId => "20261109232146_AddDefaultProjectForNewAccounts";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -1025,8 +1025,14 @@ namespace OpenBudget.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("DefaultClearedNotice")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Description")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsDefaultForNewAccounts")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -1053,6 +1059,10 @@ namespace OpenBudget.Migrations
                     b.HasIndex("ParentProjectId");
 
                     b.HasIndex("SourceId");
+
+                    b.HasIndex(new[] { "OwnerUserId" }, "IX_projects_OwnerUserId_Default")
+                        .IsUnique()
+                        .HasFilter("IsDefaultForNewAccounts = 1");
 
                     b.ToTable("projects");
                 });

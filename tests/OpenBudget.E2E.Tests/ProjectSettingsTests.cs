@@ -27,7 +27,7 @@ public sealed class ProjectSettingsTests : EndToEndTestBase
 
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Parent project" })).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Category Assignments" })).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Accounts" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Accounts", Exact = true })).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Category Income/Expense Configuration" })).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Budget Tracking Configuration" })).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Delete Project" })).ToBeVisibleAsync();
