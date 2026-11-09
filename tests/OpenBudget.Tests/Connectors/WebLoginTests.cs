@@ -264,6 +264,7 @@ public sealed class WebLoginTests
         var spec = new WebLoginSpec(Start, [Domain], new Uri("https://bank.example/home"), (_, cookies) => cookies.Any(c => c.Name == "auth"));
         await using var session = await service.StartAsync(BankWorld.Alice, spec, [], CancellationToken.None);
         var browser = host.Sessions.Single();
+        while (browser.StartedAt == null) await Task.Delay(5); // the login page has been requested; now the "user" moves on
 
         browser.Url = new Uri("https://bank.example/home"); // right page, no auth cookie yet
         await Task.Delay(100);

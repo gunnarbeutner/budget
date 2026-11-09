@@ -48,6 +48,13 @@ echo "OPENBUDGET_UPLOAD_TOKEN=$(openssl rand -hex 32)" > .env
 docker compose up -d
 ```
 
+The image includes Chromium (Debian trixie's package) for web logins, see
+[Web logins](#web-logins-signing-in-on-the-banks-own-page); it adds roughly
+400 MB over a plain ASP.NET image and is only started while someone signs in
+to such a bank. Set `CHROME_PATH` to use another Chromium; without one
+everything else keeps working and web-login banks report "browser not
+available".
+
 The container speaks plain HTTP on `:8080` and expects a TLS-terminating
 reverse proxy in front (it trusts `X-Forwarded-Proto`/`-For`/`-Host`). The web
 UI requires a login; the upload API stays token-authenticated.
@@ -172,15 +179,23 @@ Statement PDFs are stored on the data volume (`data/statements/<owner>/<login>/`
 
 ### Scalable Capital (`scalable`)
 
-Log in with your Scalable e-mail address and password. The connector speaks to Scalable's web client interface (OAuth login form, GraphQL) over plain HTTP; the login is confirmed in the Scalable app (an approval dialog appears; Scalable's SMS 2FA is not supported yet). The session cookies are stored encrypted, so later syncs skip login and 2FA until Scalable ends the session (the log says how long a session lasted when it expires).
+No credentials are stored: when the session is gone, OpenBudget opens a **web login** (see below) on Scalable's own login page, you sign in yourself (captcha and 2FA included) and the sync goes on. The connector then speaks to Scalable's web client GraphQL interface over plain HTTP with the cookies that sign-in produced. They are stored encrypted, so later syncs skip the sign-in until Scalable ends the session (the log says how long a session lasted when it expires).
 
 Every broker portfolio shows up as two accounts: a **Depot** (positions; link it to a depot account) and a **Verrechnungskonto** (cash balance, IBAN and all bookings including security buys/sells and savings plans). Mailbox documents become statements: documents of a portfolio go to its depot (or, when only the cash account has statements switched on, to the cash account); documents without a portfolio are account-less. Savings accounts (Scalable's interest product) are not read yet.
 
-The 2FA requests of Scalable's login were never captured, so those GraphQL documents are best guesses. When the first live login fails, the login's last error quotes Scalable's GraphQL error messages (they name the wrong type or field) and the server log has them at Warning level. The documents and inputs can be corrected without a rebuild through environment variables: `OPENBUDGET_SCALABLE_IS2FA_INPUT` (JSON object, default `{}`), `OPENBUDGET_SCALABLE_START2FA_QUERY`, `OPENBUDGET_SCALABLE_START2FA_INPUT` (default `{}`), `OPENBUDGET_SCALABLE_VALIDATE2FA_QUERY` and `OPENBUDGET_SCALABLE_VALIDATE2FA_INPUT` (JSON template; `{mfaSessionId}` is replaced by the id Scalable returned).
+### Web logins: signing in on the bank's own page
+
+Some banks cannot be signed in to by a program (captcha, device checks, 2FA). A connector can instead ask for a **web login**: the owner gets a dialog with a live view of the bank's sign-in page, running in a headless Chromium on the server, and signs in there themselves, 2FA included. Nothing typed is logged or stored.
+
+- Every web login gets its own throw-away browser context with no profile on disk; it is destroyed when the login completes, fails, is cancelled or after ten minutes. No bank session stays in a browser on the server, and bank sessions of different logins never mix.
+- The login's stored cookie jar (the encrypted session) goes both ways: its cookies for the connector's domains are put into the fresh browser first, so long-lived "remember this device" cookies can spare the 2FA, and after success all cookies of those domains (with expiry, flags and SameSite) replace the old ones in the jar. The encrypted jar in the database is the only persistent copy.
+- The view is streamed over a WebSocket (`/browser/ws/<session id>`) that only accepts the signed-in owner of that session (128-bit random id, owner check, same-origin check). A reverse proxy must pass WebSocket upgrades. Frames are never stored; input messages are validated and size-limited.
+- Needs Chromium: the Docker image has it (about 400 MB more than a plain ASP.NET image); elsewhere set `CHROME_PATH`. The browser is only started when a login needs it and is closed a minute after the last one ended. Without a Chromium, such connectors fail with "browser not available" and everything else is unaffected.
+- A connector declares it as a challenge: `ConnectorChallenge.WebLogin(message, new WebLoginSpec(startUrl, cookieDomains, successUrlPrefix, successWhen))`; connectors that need no username/PIN set `CredentialRequirement.None` in their registration.
 
 ### Fake bank (for trying things out)
 
-`OPENBUDGET_ENABLE_FAKE_BANK=true` (always on in tests) offers "Example Bank (fake)" with obviously made-up data. Any username and PIN work (PIN `wrong` is rejected). Flags after a `+` in the username trigger behaviours: `code` (answer 123456), `choice`, `approve` / `approve5` (completes after N polls), `image` (answer 4711), `loginfail`, `syncerror`, `refreshcode`, `statementcode`, `pending` (a reservation that becomes booked on the next sync), `dups` (identical same-day bookings), `noid` (no bank transaction ids), `statements`. Example: `demo+code+pending+statements`.
+`OPENBUDGET_ENABLE_FAKE_BANK=true` (always on in tests) offers "Example Bank (fake)" with obviously made-up data. Any username and PIN work (PIN `wrong` is rejected). Flags after a `+` in the username trigger behaviours: `code` (answer 123456), `choice`, `approve` / `approve5` (completes after N polls), `image` (answer 4711), `loginfail`, `syncerror`, `refreshcode`, `statementcode`, `web` (sign in on a web page in the remote browser: opens example.com and is done once you click through to iana.org; `OPENBUDGET_FAKE_BANK_WEBLOGIN_URL` / `_SUCCESS` change the pages), `pending` (a reservation that becomes booked on the next sync), `dups` (identical same-day bookings), `noid` (no bank transaction ids), `statements`. Example: `demo+code+pending+statements`.
 
 ## Importers
 

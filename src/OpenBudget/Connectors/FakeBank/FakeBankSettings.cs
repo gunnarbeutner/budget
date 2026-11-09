@@ -23,6 +23,9 @@ public sealed class FakeBankSettings
     /// <summary>Ask for an image code at login (answer 4711).</summary>
     public bool Image { get; private init; }
 
+    /// <summary>Sign in on a web page in the remote browser (start and success URLs: see <see cref="FakeBankConnector"/>).</summary>
+    public bool Web { get; private init; }
+
     /// <summary>Reject the credentials at login.</summary>
     public bool LoginFail { get; private init; }
 
@@ -66,6 +69,7 @@ public sealed class FakeBankSettings
         {
             Code = Has("CODE"),
             Choice = Has("CHOICE"),
+            Web = Has("WEB"),
             Approval = approve != null,
             ApprovalPolls = polls,
             Image = Has("IMAGE"),

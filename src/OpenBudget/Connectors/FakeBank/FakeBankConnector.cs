@@ -39,7 +39,7 @@ public sealed class FakeBankConnector : IBankConnector
         TypeName,
         "Example Bank (fake)",
         "A made-up bank for trying out the connector framework. Behaviour flags go after the username separated by '+': "
-        + "code, choice, approve[N], image, loginfail, syncerror, refreshcode, statementcode, pending, dups, noid, statements. "
+        + "code, choice, approve[N], image, loginfail, syncerror, refreshcode, statementcode, pending, dups, noid, statements, web. "
         + "Codes: 123456 (code), 4711 (image). Any PIN works except \"wrong\".",
         ctx => new FakeBankConnector(ctx));
 
@@ -63,6 +63,7 @@ public sealed class FakeBankConnector : IBankConnector
             if (_settings.Code) _loginStages.Add("code");
             if (_settings.Approval) _loginStages.Add("approval");
             if (_settings.Image) _loginStages.Add("image");
+            if (_settings.Web) _loginStages.Add("web");
 
             if (_settings.LoginFail || string.Equals(credentials.Secret, FakeBankSettings.RejectedSecret, StringComparison.Ordinal))
                 return Task.FromResult(ConnectorStep.Fail<ConnectorSession?>("Example Bank rejected the credentials.", credentialsRejected: true));
@@ -86,6 +87,9 @@ public sealed class FakeBankConnector : IBankConnector
                         return Task.FromResult(ConnectorStep.Fail<ConnectorSession?>("The image code was not accepted."));
                     _stage++;
                     break;
+                case "web":
+                    _stage++; // the framework already imported the cookies of the web login
+                    break;
                 default: // approval: the app only asks again
                     _polls++;
                     if (_polls >= _settings.ApprovalPolls) _stage++;
@@ -103,8 +107,27 @@ public sealed class FakeBankConnector : IBankConnector
         "choice" => ConnectorChallenge.Choice("Choose a TAN method.", [new ChallengeOption("app", "Example TAN app"), new ChallengeOption("sms", "Example SMS")], "fake-choice"),
         "code" => ConnectorChallenge.Code($"Enter the code {CodeAnswer} (fake bank).", 6, numeric: true, reference: "fake-code"),
         "image" => ConnectorChallenge.ImageCode($"Enter the code {ImageAnswer} (fake photoTAN).", TinyPng, "image/png", 4, numeric: true, reference: "fake-image"),
+        "web" => WebLoginChallenge(),
         _ => ConnectorChallenge.Approval("Approve the login in your Example Bank app (fake: completes by itself).", TimeSpan.FromMilliseconds(200), "fake-approval"),
     };
+
+    /// <summary>
+    /// Environment variables that point the fake web login somewhere (tests use a local page). By default it opens
+    /// example.com and is done once the page has moved on to iana.org, which a click on its "Learn more" link does.
+    /// </summary>
+    public const string WebLoginUrlVariable = "OPENBUDGET_FAKE_BANK_WEBLOGIN_URL";
+
+    public const string WebLoginSuccessVariable = "OPENBUDGET_FAKE_BANK_WEBLOGIN_SUCCESS";
+
+    private static ConnectorChallenge WebLoginChallenge()
+#pragma warning disable S1075 // demo defaults, overridable through the variables above
+    {
+        var start = new Uri(Environment.GetEnvironmentVariable(WebLoginUrlVariable) is { Length: > 0 } s ? s : "https://example.com/");
+        var success = new Uri(Environment.GetEnvironmentVariable(WebLoginSuccessVariable) is { Length: > 0 } t ? t : "https://www.iana.org/");
+        return ConnectorChallenge.WebLogin(
+            "Sign in on the (fake) bank's page below.", new WebLoginSpec(start, [start.Host, success.Host], successUrlPrefix: success), "fake-web");
+#pragma warning restore S1075
+    }
 
     public Task<IReadOnlyList<RemoteAccount>> ListAccountsAsync(CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<RemoteAccount>>(

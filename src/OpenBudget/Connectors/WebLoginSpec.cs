@@ -12,7 +12,8 @@ public sealed class WebLoginSpec
         Uri startUrl, IReadOnlyList<string> cookieDomains, Uri? successUrlPrefix = null,
         Func<Uri, IReadOnlyList<CookieState>, bool>? successWhen = null)
     {
-        if (!startUrl.IsAbsoluteUri || startUrl.Scheme != Uri.UriSchemeHttps)
+        // https only (a bank page); plain http is accepted for the machine's own loopback address, which tests use.
+        if (!startUrl.IsAbsoluteUri || !(startUrl.Scheme == Uri.UriSchemeHttps || (startUrl.Scheme == Uri.UriSchemeHttp && startUrl.IsLoopback)))
             throw new ArgumentException("The start URL must be an absolute https URL.", nameof(startUrl));
         if (cookieDomains.Count == 0 || cookieDomains.Any(string.IsNullOrWhiteSpace))
             throw new ArgumentException("At least one cookie domain is required.", nameof(cookieDomains));
