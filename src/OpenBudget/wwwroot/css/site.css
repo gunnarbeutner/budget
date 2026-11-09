@@ -957,3 +957,18 @@ a, .btn-link {
     }
 }
 
+
+/* Shown by wwwroot/js/reconnect.js while the Blazor connection is down. */
+#reconnect-banner {
+    background: var(--bs-warning-bg-subtle, lightyellow);
+    color: var(--bs-warning-text-emphasis, inherit);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    display: none;
+    left: 0;
+    padding: 0.4rem 1.25rem;
+    position: fixed;
+    right: 0;
+    text-align: center;
+    top: 0;
+    z-index: 1100;
+}

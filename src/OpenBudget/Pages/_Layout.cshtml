@@ -55,6 +55,9 @@
     <script src="js/charts.js" asp-append-version="true"></script>
     <script src="js/expandState.js" asp-append-version="true"></script>
     <script src="js/uiBehaviors.js" asp-append-version="true"></script>
-    <script src="_framework/blazor.server.js"></script>
+    @* autostart="false": reconnect.js starts Blazor with a reconnection handler that survives
+       background tabs and reloads when the server has dropped the circuit. *@
+    <script src="_framework/blazor.server.js" autostart="false"></script>
+    <script src="js/reconnect.js" asp-append-version="true"></script>
 </body>
 </html>

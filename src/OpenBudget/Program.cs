@@ -10,7 +10,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
-builder.Services.AddServerSideBlazor();
+builder.Services.AddServerSideBlazor(options =>
+{
+    // Keep a disconnected circuit for 30 minutes (default 3) so a tab left in the background
+    // can reconnect to its existing state instead of having to reload (see wwwroot/js/reconnect.js).
+    options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(30);
+});
 builder.Services.AddScoped<CategoryHierarchyService>();
 builder.Services.AddScoped<ProjectService>();
 builder.Services.AddScoped<BudgetEntryService>();
