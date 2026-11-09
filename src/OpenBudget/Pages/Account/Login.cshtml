@@ -14,7 +14,9 @@
 }
 <div class="alert alert-danger d-none" role="alert" id="passkey-error"></div>
 
-<form method="post" id="login-form" class="mb-3">
+@* Explicit target (asp-page keeps the antiforgery token): after a failed passkey attempt the page sits at ?handler=PasskeyLogin, and a
+   form without an action would post the password there. *@
+<form method="post" id="login-form" class="mb-3" asp-page="/Account/Login">
     <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
     <div class="mb-3">
         <label for="UserName" class="form-label">@L["Field_Username"]</label>

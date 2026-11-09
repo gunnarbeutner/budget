@@ -92,10 +92,40 @@ public class LoginModel : PageModel
             return Page();
         }
 
-        var result = await _signIn.PasskeySignInAsync(credentialJson);
-        if (result.Succeeded) return LocalRedirect(SafeReturnUrl());
+        // Verify the assertion ourselves (rather than PasskeySignInAsync) so a rejection is logged
+        // with its reason; the sign-in steps below mirror what PasskeySignInAsync does.
+        var assertion = await _signIn.PerformPasskeyAssertionAsync(credentialJson);
+        if (!assertion.Succeeded)
+        {
+            _logger.LogWarning("Passkey sign-in rejected: {Reason}", assertion.Failure?.Message);
+            Error = _l["Passkey_Failed"].Value;
+            return Page();
+        }
 
-        Error = result.IsLockedOut ? _l["Login_LockedOut"].Value : _l["Passkey_Failed"].Value;
-        return Page();
+        var user = assertion.User;
+        if (await _users.IsLockedOutAsync(user))
+        {
+            Error = _l["Login_LockedOut"].Value;
+            return Page();
+        }
+        if (!await _signIn.CanSignInAsync(user))
+        {
+            _logger.LogWarning("Passkey sign-in for {User} refused: the account cannot sign in.", user.UserName);
+            Error = _l["Passkey_Failed"].Value;
+            return Page();
+        }
+
+        // Store the updated signature counter / flags before signing in.
+        var updated = await _users.AddOrUpdatePasskeyAsync(user, assertion.Passkey);
+        if (!updated.Succeeded)
+        {
+            _logger.LogWarning("Passkey sign-in for {User} failed to update the passkey: {Errors}",
+                user.UserName, string.Join("; ", updated.Errors.Select(e => e.Description)));
+            Error = _l["Passkey_Failed"].Value;
+            return Page();
+        }
+
+        await _signIn.SignInAsync(user, isPersistent: true, authenticationMethod: "passkey");
+        return LocalRedirect(SafeReturnUrl());
     }
 }

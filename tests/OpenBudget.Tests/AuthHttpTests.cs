@@ -329,6 +329,13 @@ public sealed class AuthHttpTests : IDisposable
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);   // login form again, with the error
         Assert.Equal(HttpStatusCode.Redirect, (await AppTestHost.GetAsync(client, "/")).Status);
+
+        // The password form must still post to the login page itself, not back to ?handler=PasskeyLogin.
+        var body = await response.Content.ReadAsStringAsync();
+        var start = body.IndexOf("id=\"login-form\"", StringComparison.Ordinal);
+        var loginForm = body[start..body.IndexOf("</form>", start, StringComparison.Ordinal)];
+        Assert.Contains("action=\"/Account/Login\"", loginForm, StringComparison.Ordinal);
+        Assert.Contains("__RequestVerificationToken", loginForm, StringComparison.Ordinal);   // still posts successfully
     }
 
     [Fact]
