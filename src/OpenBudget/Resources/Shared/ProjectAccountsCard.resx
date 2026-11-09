@@ -169,4 +169,7 @@
   <data name="Scope_Informational_Help" xml:space="preserve">
     <value>Shown in Browse and balance totals only; excluded from budget and cashflow.</value>
   </data>
+  <data name="Statements_Link" xml:space="preserve">
+    <value>Statements</value>
+  </data>
 </root>

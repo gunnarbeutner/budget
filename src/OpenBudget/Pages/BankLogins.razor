@@ -1,0 +1,510 @@
+@page "/banklogins"
+@inherits DataChangeAwareComponent
+@using OpenBudget.Connectors
+@using OpenBudget.Connectors.Sync
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject BankLoginService Bank
+@inject IStringLocalizer<BankLogins> L
+@inject ClockService Clock
+
+<PageTitle>@L["PageTitle"]</PageTitle>
+
+<PageHeader Title="@L["Heading"]">
+    <Actions>
+        @if (Bank.IsEnabled)
+        {
+            <button class="btn btn-outline-primary" id="sync-all" @onclick="SyncAllAsync">
+                <i class="bi bi-arrow-repeat" aria-hidden="true"></i> @L["Button_SyncAll"]
+            </button>
+        }
+        <a class="btn btn-outline-secondary" href="/sources">@L["Link_Sources"]</a>
+    </Actions>
+</PageHeader>
+
+@if (!Bank.IsEnabled)
+{
+    <div class="alert alert-warning" role="alert" id="secrets-disabled">
+        <strong>@L["Disabled_Title"]</strong>
+        @L["Disabled_Body_Before"]<code>OPENBUDGET_SECRETS_KEY</code>@L["Disabled_Body_After"]
+        <div class="small text-body-secondary mt-1">@Bank.DisabledReason</div>
+    </div>
+    return;
+}
+
+<p class="text-body-secondary">@L["Intro"]</p>
+@if (!string.IsNullOrEmpty(message))
+{
+    <div class="alert alert-info py-2" role="status" id="bank-message">@message</div>
+}
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="mb-0">@L["Add_Heading"]</h5></div>
+    <div class="card-body">
+        <form class="row g-2" @onsubmit="AddLoginAsync" @onsubmit:preventDefault>
+            <div class="col-md-3">
+                <label class="form-label" for="new-login-connector">@L["Field_Connector"]</label>
+                <select id="new-login-connector" class="form-select" @bind="newConnector">
+                    @foreach (var c in connectors)
+                    {
+                        <option value="@c.ConnectorType">@c.DisplayName</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="new-login-name">@L["Field_Name"]</label>
+                <input id="new-login-name" class="form-control" @bind="newName" maxlength="200" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="new-login-username">@L["Field_Username"]</label>
+                <input id="new-login-username" class="form-control" @bind="newUsername" @bind:event="oninput" autocomplete="off" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="new-login-pin">@L["Field_Pin"]</label>
+                <input id="new-login-pin" type="password" class="form-control" @bind="newPin" @bind:event="oninput" autocomplete="new-password" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="new-login-interval">@L["Field_Interval"]</label>
+                <select id="new-login-interval" class="form-select" @bind="newInterval">
+                    @foreach (var i in Enum.GetValues<RefreshInterval>())
+                    {
+                        <option value="@i">@IntervalLabel(i)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-12 d-flex align-items-center gap-3">
+                <button type="submit" class="btn btn-primary" id="new-login-add"
+                        disabled="@(string.IsNullOrWhiteSpace(newUsername) || string.IsNullOrEmpty(newPin))">@L["Button_Add"]</button>
+                @if (SelectedConnector is { } sel)
+                {
+                    <span class="small text-body-secondary">@sel.Description</span>
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(addError))
+            {
+                <div class="col-12 text-danger small" role="alert">@addError</div>
+            }
+        </form>
+    </div>
+</div>
+
+@if (logins == null)
+{
+    <div aria-busy="true"><div class="skeleton skeleton-line mb-2" style="width: 60%;"></div></div>
+}
+else if (logins.Count == 0)
+{
+    <div class="alert alert-secondary">@L["Empty"]</div>
+}
+else
+{
+    @foreach (var login in logins)
+    {
+        var status = statuses.GetValueOrDefault(login.Id);
+        var running = status is { Phase: not SyncPhase.Finished };
+        var accounts = accountsByLogin.GetValueOrDefault(login.Id) ?? [];
+        var docs = statementsByLogin.GetValueOrDefault(login.Id) ?? [];
+        <div class="card mb-4" data-bank-login="@login.DisplayName" @key="login.Id">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                    <h5 class="mb-0 d-inline">@login.DisplayName</h5>
+                    <span class="text-body-secondary small ms-2">@login.ConnectorName</span>
+                    @if (running)
+                    {
+                        <span class="badge text-bg-primary ms-2" data-testid="login-status">
+                            @(status!.Phase == SyncPhase.Running ? L["Status_Syncing"] : status.Phase == SyncPhase.WaitingForApproval ? L["Status_WaitingApproval"] : L["Status_WaitingInput"])
+                        </span>
+                    }
+                    else if (login.CredentialsInvalid)
+                    {
+                        <span class="badge text-bg-danger ms-2" data-testid="login-status">@L["Status_ReenterCredentials"]</span>
+                    }
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-sm btn-primary" data-action="sync-now" disabled="@running" @onclick="() => SyncNowAsync(login.Id)">
+                        <i class="bi bi-arrow-repeat" aria-hidden="true"></i> @L["Button_SyncNow"]
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" data-action="edit" @onclick="() => OpenEdit(login)">@L["Button_Edit"]</button>
+                    <button class="btn btn-sm btn-outline-danger" data-action="delete" @onclick="() => pendingDelete = login">@L["Button_Delete"]</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row g-3 mb-3 small">
+                    <div class="col-md-4">
+                        <label class="form-label mb-1" for="@($"interval-{login.Id}")">@L["Field_Interval"]</label>
+                        <select id="@($"interval-{login.Id}")" class="form-select form-select-sm" value="@login.RefreshInterval"
+                                @onchange="e => SetIntervalAsync(login, e.Value?.ToString())">
+                            @foreach (var i in Enum.GetValues<RefreshInterval>())
+                            {
+                                <option value="@i" selected="@(i == login.RefreshInterval)">@IntervalLabel(i)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-body-secondary">@L["Label_LastSync"]</div>
+                        <div data-testid="last-sync">@(login.LastSyncAt is { } at ? Clock.ToLocal(at).ToString("yyyy-MM-dd HH:mm") : L["Never"].Value)</div>
+                    </div>
+                    <div class="col-md-4">
+                        @if (running && !string.IsNullOrEmpty(status!.Message))
+                        {
+                            <div class="text-body-secondary">@status.Message…</div>
+                        }
+                        @if (status is { Phase: SyncPhase.WaitingForInput or SyncPhase.WaitingForApproval })
+                        {
+                            <div class="text-primary">@L["Hint_Challenge"]</div>
+                        }
+                    </div>
+                </div>
+
+                @if (!running && !string.IsNullOrEmpty(login.LastError))
+                {
+                    <div class="alert alert-danger py-2" role="alert" data-testid="login-error">
+                        @(login.CredentialsInvalid ? L["Error_Credentials"].Value + " " : "")@login.LastError
+                    </div>
+                }
+                @if (!login.ConnectorAvailable)
+                {
+                    <div class="alert alert-warning py-2">@L["Error_ConnectorMissing", login.ConnectorType]</div>
+                }
+
+                <h6>@L["Accounts_Heading"]</h6>
+                @if (accounts.Count == 0)
+                {
+                    <p class="text-body-secondary small">@L["Accounts_Empty"]</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>@L["Table_Account"]</th>
+                                    <th>@L["Table_Link"]</th>
+                                    <th>@L["Table_Statements"]</th>
+                                    <th>@L["Table_Status"]</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var a in accounts)
+                                {
+                                    <tr data-bank-account="@a.RemoteId" @key="a.Id">
+                                        <td>
+                                            <strong>@a.Name</strong>
+                                            @if (a.Closed) { <span class="badge text-bg-secondary ms-1">@L["Badge_Closed"]</span> }
+                                            <div class="small text-body-secondary">@TypeLabel(a.Type) @(string.IsNullOrEmpty(a.Iban) ? "" : "· " + a.Iban)</div>
+                                        </td>
+                                        <td>
+                                            @if (a.LinkedAccountId != null)
+                                            {
+                                                <span data-testid="linked-to"><i class="bi bi-link-45deg" aria-hidden="true"></i> @(a.LinkedAccountName ?? "?")</span>
+                                                <button class="btn btn-sm btn-outline-secondary ms-2" data-action="unlink" @onclick="() => UnlinkAsync(a.Id)">@L["Button_Unlink"]</button>
+                                            }
+                                            else if (!a.Closed)
+                                            {
+                                                var candidates = candidatesByAccount.GetValueOrDefault(a.Id) ?? [];
+                                                <div class="d-flex flex-wrap gap-1">
+                                                    <select class="form-select form-select-sm w-auto" aria-label="@L["Link_Choose"]"
+                                                            @onchange="e => SetChoice(a.Id, e.Value)">
+                                                        <option value="">@L["Link_Choose"]</option>
+                                                        @foreach (var c in candidates)
+                                                        {
+                                                            <option value="@c.AccountId" selected="@(ChosenCandidate(a.Id, candidates) == c.AccountId.ToString())">@c.Name (@c.SourceName)@(c.SuggestedFor ? " ★" : "")</option>
+                                                        }
+                                                    </select>
+                                                    <button class="btn btn-sm btn-outline-primary" data-action="link"
+                                                            disabled="@string.IsNullOrEmpty(ChosenCandidate(a.Id, candidates))"
+                                                            @onclick="() => LinkAsync(a.Id, ChosenCandidate(a.Id, candidates))">@L["Button_Link"]</button>
+                                                    <button class="btn btn-sm btn-outline-success" data-action="create" @onclick="() => CreateAccountAsync(a.Id)">@L["Button_CreateAccount"]</button>
+                                                </div>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (a.LinkedAccountId != null && !a.Closed)
+                                            {
+                                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                                    <div class="form-check form-switch mb-0">
+                                                        <input class="form-check-input" type="checkbox" role="switch" id="@($"stmt-{a.Id}")" data-action="statements-toggle"
+                                                               checked="@a.StatementsEnabled" @onchange="e => SetStatementsAsync(a, (bool)(e.Value ?? false), a.StatementsInterval)" />
+                                                        <label class="form-check-label small" for="@($"stmt-{a.Id}")">@L["Statements_On"]</label>
+                                                    </div>
+                                                    @if (a.StatementsEnabled)
+                                                    {
+                                                        <select class="form-select form-select-sm w-auto" aria-label="@L["Statements_Interval"]"
+                                                                @onchange="e => SetStatementsAsync(a, true, ParseStatementsInterval(e.Value))">
+                                                            @foreach (var s in Enum.GetValues<StatementsInterval>())
+                                                            {
+                                                                <option value="@s" selected="@(s == a.StatementsInterval)">@StatementsLabel(s)</option>
+                                                            }
+                                                        </select>
+                                                        <button class="btn btn-sm btn-outline-secondary" data-action="download-statements" disabled="@running"
+                                                                @onclick="() => DownloadStatementsAsync(login.Id, a.Id)">@L["Button_DownloadNow"]</button>
+                                                    }
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <span class="small text-body-secondary">@L["Statements_NeedsLink"]</span>
+                                            }
+                                        </td>
+                                        <td class="small">
+                                            @if (a.LastSuccessAt is { } ok)
+                                            {
+                                                <div class="text-body-secondary">@L["Label_LastSync"]: @Clock.ToLocal(ok).ToString("yyyy-MM-dd HH:mm")</div>
+                                            }
+                                            @if (a.LastStatementAt is { } st)
+                                            {
+                                                <div class="text-body-secondary">@L["Label_LastStatement"]: @Clock.ToLocal(st).ToString("yyyy-MM-dd")</div>
+                                            }
+                                            @if (!string.IsNullOrEmpty(a.LastError))
+                                            {
+                                                <div class="text-danger">@a.LastError</div>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+
+                @if (docs.Count > 0)
+                {
+                    <h6 class="mt-3">@L["Documents_Heading", docs.Count]</h6>
+                    <ul class="list-unstyled small mb-0" data-testid="documents">
+                        @foreach (var d in docs)
+                        {
+                            <li>
+                                @d.Date.ToString("yyyy-MM-dd") · @d.Name
+                                <span class="text-body-secondary">(@(d.AccountName ?? L["Documents_NoAccount"].Value))</span>
+                                · <a href="@($"/statements/{d.Id}")" target="_blank" rel="noopener">@L["Link_View"]</a>
+                                · <a href="@($"/statements/{d.Id}?download=true")">@L["Link_Download"]</a>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+    }
+}
+
+<Modal Show="@(editing != null)" Title="@L["Edit_Title"]" OnClose="@(() => editing = null)">
+    <ChildContent>
+        @if (editing != null)
+        {
+            <div class="mb-2">
+                <label class="form-label" for="edit-name">@L["Field_Name"]</label>
+                <input id="edit-name" class="form-control" @bind="editName" maxlength="200" />
+            </div>
+            <div class="mb-2">
+                <label class="form-label" for="edit-username">@L["Field_Username"]</label>
+                <input id="edit-username" class="form-control" @bind="editUsername" autocomplete="off" />
+            </div>
+            <div class="mb-2">
+                <label class="form-label" for="edit-pin">@L["Field_PinKeep"]</label>
+                <input id="edit-pin" type="password" class="form-control" @bind="editPin" autocomplete="new-password" />
+            </div>
+            <div class="mb-2">
+                <label class="form-label" for="edit-interval">@L["Field_Interval"]</label>
+                <select id="edit-interval" class="form-select" @bind="editInterval">
+                    @foreach (var i in Enum.GetValues<RefreshInterval>())
+                    {
+                        <option value="@i">@IntervalLabel(i)</option>
+                    }
+                </select>
+            </div>
+            @if (!string.IsNullOrEmpty(editError)) { <div class="text-danger small">@editError</div> }
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="() => editing = null">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-primary" id="edit-save" @onclick="SaveEditAsync">@L["Button_Save"]</button>
+    </Footer>
+</Modal>
+
+<Modal Show="@(pendingDelete != null)" Title="@(pendingDelete != null ? L["Delete_Title", pendingDelete.DisplayName].Value : "")"
+       OnClose="@(() => pendingDelete = null)">
+    <ChildContent>
+        <p>@L["Delete_Body"]</p>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="() => pendingDelete = null">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-danger" id="delete-confirm" @onclick="DeleteConfirmedAsync">@L["Button_Delete"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    private List<BankLoginView>? logins;
+    private IReadOnlyList<ConnectorRegistration> connectors = [];
+    private readonly Dictionary<int, List<BankLoginAccountView>> accountsByLogin = new();
+    private readonly Dictionary<int, List<LinkCandidate>> candidatesByAccount = new();
+    private readonly Dictionary<int, List<StatementView>> statementsByLogin = new();
+    private readonly Dictionary<int, string> linkChoice = new();
+    private Dictionary<int, BankSyncStatus> statuses = new();
+
+    private string newConnector = "";
+    private string newName = "";
+    private string newUsername = "";
+    private string newPin = "";
+    private RefreshInterval newInterval = RefreshInterval.EveryTwoHours;
+    private string? addError;
+    private string? message;
+
+    private BankLoginView? editing;
+    private string editName = "";
+    private string editUsername = "";
+    private string editPin = "";
+    private RefreshInterval editInterval;
+    private string? editError;
+    private BankLoginView? pendingDelete;
+
+    private ConnectorRegistration? SelectedConnector => connectors.FirstOrDefault(c => c.ConnectorType == newConnector);
+
+    protected override async Task OnInitializedAsync()
+    {
+        connectors = Bank.GetConnectors();
+        newConnector = connectors.FirstOrDefault()?.ConnectorType ?? "";
+        await LoadAsync();
+    }
+
+    protected override bool IsRelevantChange(DataChange change) =>
+        change.Area is DataArea.BankSync or DataArea.Sources or DataArea.ImportedData;
+
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        if (!Bank.IsEnabled) return;
+        logins = await Bank.GetLoginsAsync();
+        statuses = (await Bank.GetStatusesAsync()).ToDictionary(s => s.LoginId);
+        accountsByLogin.Clear();
+        candidatesByAccount.Clear();
+        statementsByLogin.Clear();
+        foreach (var login in logins)
+        {
+            var accounts = await Bank.GetAccountsAsync(login.Id);
+            accountsByLogin[login.Id] = accounts;
+            foreach (var a in accounts.Where(a => a.LinkedAccountId == null && !a.Closed))
+                candidatesByAccount[a.Id] = await Bank.GetLinkCandidatesAsync(a.Id);
+            statementsByLogin[login.Id] = await Bank.GetLoginStatementsAsync(login.Id);
+        }
+    }
+
+    private string? ChosenCandidate(int loginAccountId, List<LinkCandidate> candidates)
+    {
+        if (linkChoice.TryGetValue(loginAccountId, out var chosen)) return string.IsNullOrEmpty(chosen) ? null : chosen;
+        return candidates.FirstOrDefault(c => c.SuggestedFor)?.AccountId.ToString();
+    }
+
+    private void SetChoice(int loginAccountId, object? value) => linkChoice[loginAccountId] = value?.ToString() ?? "";
+
+    private static StatementsInterval ParseStatementsInterval(object? value) =>
+        Enum.TryParse<StatementsInterval>(value?.ToString(), out var i) ? i : StatementsInterval.Monthly;
+
+    private string IntervalLabel(RefreshInterval i) => L[$"Interval_{i}"].Value;
+    private string StatementsLabel(StatementsInterval i) => L[$"StatementsInterval_{i}"].Value;
+    private string TypeLabel(RemoteAccountType t) => L[$"Type_{t}"].Value;
+
+    private async Task<bool> RunAsync(Func<Task> action)
+    {
+        message = null;
+        try
+        {
+            await action();
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or AccessDeniedException)
+        {
+            message = ex.Message;
+            return false;
+        }
+        finally
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task AddLoginAsync()
+    {
+        addError = null;
+        try
+        {
+            var created = await Bank.CreateLoginAsync(newConnector, newName, newUsername, newPin, newInterval);
+            newName = "";
+            newUsername = "";
+            newPin = "";
+            // Start a first sync right away so the bank's accounts get listed (and any challenge shows up).
+            await Bank.SyncNowAsync(created.Id);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or AccessDeniedException)
+        {
+            addError = ex.Message;
+        }
+        await LoadAsync();
+    }
+
+    private async Task SyncNowAsync(int id)
+    {
+        var result = await Bank.SyncNowAsync(id);
+        if (result == StartResult.AlreadyRunning) message = L["Message_AlreadyRunning"].Value;
+        await LoadAsync();
+    }
+
+    private async Task SyncAllAsync()
+    {
+        var started = await Bank.SyncAllAsync();
+        message = L["Message_SyncAll", started].Value;
+        await LoadAsync();
+    }
+
+    private Task SetIntervalAsync(BankLoginView login, string? value) =>
+        RunAsync(() => Enum.TryParse<RefreshInterval>(value, out var i)
+            ? Bank.UpdateLoginAsync(login.Id, login.DisplayName, i)
+            : Task.CompletedTask);
+
+    private void OpenEdit(BankLoginView login)
+    {
+        editing = login;
+        editName = login.DisplayName;
+        editUsername = login.Username ?? "";
+        editPin = "";
+        editInterval = login.RefreshInterval;
+        editError = null;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (editing == null) return;
+        editError = null;
+        try
+        {
+            await Bank.UpdateLoginAsync(editing.Id, editName, editInterval, editUsername, editPin);
+            editing = null;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or AccessDeniedException)
+        {
+            editError = ex.Message;
+        }
+        await LoadAsync();
+    }
+
+    private async Task DeleteConfirmedAsync()
+    {
+        if (pendingDelete == null) return;
+        var id = pendingDelete.Id;
+        pendingDelete = null;
+        await RunAsync(() => Bank.DeleteLoginAsync(id));
+    }
+
+    private Task LinkAsync(int loginAccountId, string? accountId) =>
+        RunAsync(() => long.TryParse(accountId, out var id) ? Bank.LinkAsync(loginAccountId, id) : Task.CompletedTask);
+
+    private Task CreateAccountAsync(int loginAccountId) => RunAsync(() => Bank.CreateAccountAsync(loginAccountId));
+
+    private Task UnlinkAsync(int loginAccountId) => RunAsync(() => Bank.UnlinkAsync(loginAccountId));
+
+    private Task SetStatementsAsync(BankLoginAccountView a, bool enabled, StatementsInterval interval) =>
+        RunAsync(() => Bank.SetStatementsAsync(a.Id, enabled, interval));
+
+    private Task DownloadStatementsAsync(int loginId, int loginAccountId) =>
+        RunAsync(async () => await Bank.DownloadStatementsAsync(loginId, loginAccountId));
+}

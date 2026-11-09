@@ -37,6 +37,9 @@ internal static class E2ESeed
     public static async Task ResetAsync(IDbContextFactory<BudgetDbContext> factory)
     {
         await using var db = await factory.CreateDbContextAsync();
+        db.BankStatements.RemoveRange(db.BankStatements.IgnoreQueryFilters());
+        db.BankLoginAccounts.RemoveRange(db.BankLoginAccounts.IgnoreQueryFilters());
+        db.BankLogins.RemoveRange(db.BankLogins.IgnoreQueryFilters());
         db.ProjectShares.RemoveRange(db.ProjectShares.IgnoreQueryFilters());
         db.Set<Microsoft.AspNetCore.Identity.IdentityUserPasskey<string>>().RemoveRange(db.Set<Microsoft.AspNetCore.Identity.IdentityUserPasskey<string>>());
         db.Users.RemoveRange(db.Users.IgnoreQueryFilters());

@@ -36,5 +36,8 @@ services:
       # existing .env keeps working. The app returns 503 on uploads when neither is set.
       OPENBUDGET_UPLOAD_TOKEN: ${OPENBUDGET_UPLOAD_TOKEN:-}
       MONEYMONEY_DB_UPLOAD_TOKEN: ${MONEYMONEY_DB_UPLOAD_TOKEN:-}
+      # Required for bank logins (see README, "Bank connectors"): `openssl rand -base64 32`. Not stored in ./data.
+      OPENBUDGET_SECRETS_KEY: ${OPENBUDGET_SECRETS_KEY:-}
+      # OPENBUDGET_ENABLE_FAKE_BANK: "true"   # offers a made-up bank for trying the connector flow
       # Optional: pin the passkey relying-party id (defaults to the request host).
       # OPENBUDGET_RP_ID: budget.example.org

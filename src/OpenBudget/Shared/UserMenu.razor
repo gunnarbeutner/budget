@@ -14,6 +14,9 @@
            title="@L["Account"]">
             <i class="bi bi-person-circle" aria-hidden="true"></i> @userName
         </a>
+        <a href="/banklogins" class="text-decoration-none text-body-secondary" data-testid="bank-logins-link">
+            <i class="bi bi-bank" aria-hidden="true"></i> @L["BankLogins"]
+        </a>
         <a href="/Account/Logout" class="text-decoration-none text-body-secondary"
            @onclick="@(() => Navigation.NavigateTo("/Account/Logout", forceLoad: true))" @onclick:preventDefault>
             @L["LogOut"]

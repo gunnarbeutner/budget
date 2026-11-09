@@ -169,4 +169,7 @@
   <data name="Scope_Informational_Help" xml:space="preserve">
     <value>Nur in Durchsuchen und in der Gesamtsumme sichtbar; aus Budget und Cashflow ausgeschlossen.</value>
   </data>
+  <data name="Statements_Link" xml:space="preserve">
+    <value>Kontoauszüge</value>
+  </data>
 </root>

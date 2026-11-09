@@ -1,0 +1,173 @@
+@inherits DataChangeAwareComponent
+@using OpenBudget.Connectors
+@using OpenBudget.Connectors.Sync
+@using OpenBudget.Services
+@inject BankLoginService Bank
+@inject NavigationManager Navigation
+@inject IStringLocalizer<BankSyncHost> L
+
+@* Header-area host for bank syncs of the signed-in user, available on every page: starts what is due
+   when a page loads, shows a small "syncing" marker, and presents the open challenge (code, method choice,
+   image, app approval) in a dialog the moment a sync asks for one. All state comes from the owner-scoped
+   BankLoginService, so nothing here ever shows another user's logins. *@
+
+@if (statuses.Any(s => s.Phase != SyncPhase.Finished))
+{
+    <div class="d-print-none d-flex justify-content-end small mb-2" data-testid="bank-sync-chip">
+        <span class="badge text-bg-secondary">
+            <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+            @L["Syncing", statuses.Count(s => s.Phase != SyncPhase.Finished)]
+        </span>
+    </div>
+}
+
+<Modal Show="@(challenge != null)"
+       Title="@(challenge != null ? L["Title", LoginName(challenge.LoginId)].Value : "")"
+       ShowCloseButton="false" CloseOnBackdropClick="false" OnClose="@(() => Task.CompletedTask)">
+    <ChildContent>
+        @if (challenge?.Challenge is { } c)
+        {
+            <div data-testid="bank-challenge" data-kind="@c.Kind">
+                <p>@c.Message</p>
+                @switch (c.Kind)
+                {
+                    case ChallengeKind.Choice:
+                        <div class="list-group mb-2">
+                            @foreach (var o in c.Options)
+                            {
+                                <label class="list-group-item">
+                                    <input class="form-check-input me-2" type="radio" name="bank-choice" value="@o.Id"
+                                           checked="@(selectedOption == o.Id)" @onchange="() => selectedOption = o.Id" />
+                                    @o.Label
+                                </label>
+                            }
+                        </div>
+                        break;
+                    case ChallengeKind.Approval:
+                        <div class="d-flex align-items-center gap-2 text-body-secondary">
+                            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span> @L["WaitingApproval"]
+                        </div>
+                        break;
+                    case ChallengeKind.Image:
+                        <img alt="@L["ImageAlt"]" class="img-fluid border mb-2" style="image-rendering: pixelated; min-width: 64px;"
+                             src="@($"data:{c.ImageContentType};base64,{Convert.ToBase64String(c.Image ?? [])}")" />
+                        <input id="bank-challenge-input" class="form-control" autocomplete="off" inputmode="@(c.Numeric ? "numeric" : "text")"
+                               maxlength="@(c.Length ?? 64)" @bind="answerText" @bind:event="oninput" @onkeydown="OnKeyDown" />
+                        break;
+                    case ChallengeKind.Code:
+                        <input id="bank-challenge-input" class="form-control" autocomplete="one-time-code" inputmode="@(c.Numeric ? "numeric" : "text")"
+                               maxlength="@(c.Length ?? 64)" @bind="answerText" @bind:event="oninput" @onkeydown="OnKeyDown" />
+                        break;
+                    default:
+                        break;
+                }
+                @if (challenge.ChallengeExpiresAt is { } expires)
+                {
+                    <div class="small text-body-secondary mt-2">@L["ExpiresAt", FormatTime(expires)]</div>
+                }
+                @if (!string.IsNullOrEmpty(error)) { <div class="text-danger small mt-2" role="alert">@error</div> }
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-outline-secondary" id="bank-challenge-cancel" @onclick="CancelAsync">@L["CancelSync"]</button>
+        @if (challenge?.Challenge is { Kind: not ChallengeKind.Approval })
+        {
+            <button type="button" class="btn btn-primary" id="bank-challenge-submit" @onclick="SubmitAsync">@L["Submit"]</button>
+        }
+    </Footer>
+</Modal>
+
+@code {
+    [Inject] private ClockService ClockSvc { get; set; } = default!;
+
+    private IReadOnlyList<BankSyncStatus> statuses = [];
+    private Dictionary<int, string> names = new();
+    private BankSyncStatus? challenge;
+    private Guid shownChallengeId;
+    private string answerText = "";
+    private string? selectedOption;
+    private string? error;
+    private bool subscribed;
+    private bool enabled;
+
+    private string FormatTime(DateTime utc) => ClockSvc.ToLocal(utc).ToString("HH:mm");
+
+    private string LoginName(int id) => names.GetValueOrDefault(id, "");
+
+    protected override bool IsRelevantChange(DataChange change) => change.Area == DataArea.BankSync;
+
+    protected override Task ReloadAfterChangeAsync() => RefreshAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Interactive only (not during prerender): the page-load trigger for this circuit.
+        if (!firstRender) return;
+        enabled = Bank.IsEnabled;
+        if (!enabled) return;
+        Navigation.LocationChanged += OnLocationChanged;
+        subscribed = true;
+        await StartDueSafeAsync();
+        await RefreshAsync();
+        StateHasChanged();
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) =>
+        _ = InvokeAsync(async () =>
+        {
+            await StartDueSafeAsync();
+            await RefreshAsync();
+            StateHasChanged();
+        });
+
+    private async Task StartDueSafeAsync()
+    {
+        try { await Bank.StartDueAsync(); }
+        catch (Exception ex) when (ex is InvalidOperationException or AccessDeniedException) { /* not signed in / disabled */ }
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (!enabled) return;
+        statuses = await Bank.GetStatusesAsync();
+        if (names.Count != statuses.Count || statuses.Any(s => !names.ContainsKey(s.LoginId)))
+            names = (await Bank.GetLoginsAsync()).ToDictionary(l => l.Id, l => l.DisplayName);
+
+        var open = statuses.FirstOrDefault(s => s.Challenge != null && s.Phase is SyncPhase.WaitingForInput or SyncPhase.WaitingForApproval);
+        if (open?.ChallengeId != shownChallengeId)
+        {
+            shownChallengeId = open?.ChallengeId ?? Guid.Empty;
+            answerText = "";
+            selectedOption = open?.Challenge?.Options.FirstOrDefault()?.Id;
+            error = null;
+        }
+        challenge = open;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SubmitAsync();
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (challenge?.Challenge is not { } c) return;
+        var value = c.Kind == ChallengeKind.Choice ? selectedOption : answerText.Trim();
+        var ok = await Bank.SubmitAnswerAsync(challenge.LoginId, challenge.ChallengeId, value);
+        error = ok ? null : L["Rejected"].Value;
+        await RefreshAsync();
+    }
+
+    private async Task CancelAsync()
+    {
+        if (challenge == null) return;
+        await Bank.CancelSyncAsync(challenge.LoginId);
+        await RefreshAsync();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && subscribed) Navigation.LocationChanged -= OnLocationChanged;
+        base.Dispose(disposing);
+    }
+}

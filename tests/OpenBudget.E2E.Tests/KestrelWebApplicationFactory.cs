@@ -29,6 +29,9 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Test");
+        // Bank connectors need a secrets key (the fake bank is always on in the Test environment).
+        builder.UseSetting("OPENBUDGET_SECRETS_KEY", Convert.ToBase64String(new byte[32].Select((_, i) => (byte)(i + 1)).ToArray()));
+        builder.UseSetting("OPENBUDGET_STATEMENTS_DIR", Path.Combine(Path.GetTempPath(), $"mmb-e2e-stmts-{Guid.NewGuid():N}"));
         builder.ConfigureServices(services =>
         {
             // Surface circuit-fatal exceptions to the browser console so E2E failures point at the

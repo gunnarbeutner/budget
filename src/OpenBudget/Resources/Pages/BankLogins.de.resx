@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Bank-Zugänge - OpenBudget</value>
+  </data>
+  <data name="Heading" xml:space="preserve">
+    <value>Bank-Zugänge</value>
+  </data>
+  <data name="Link_Sources" xml:space="preserve">
+    <value>Quellen</value>
+  </data>
+  <data name="Button_SyncAll" xml:space="preserve">
+    <value>Alle abgleichen</value>
+  </data>
+  <data name="Disabled_Title" xml:space="preserve">
+    <value>Bank-Zugänge sind deaktiviert.</value>
+  </data>
+  <data name="Disabled_Body_Before" xml:space="preserve">
+    <value> Der Geheimnis-Schlüssel ist nicht konfiguriert. Setze die Umgebungsvariable </value>
+  </data>
+  <data name="Disabled_Body_After" xml:space="preserve">
+    <value> auf einen Base64-codierten 256-Bit-Schlüssel (siehe README) und starte neu.</value>
+  </data>
+  <data name="Intro" xml:space="preserve">
+    <value>Verbinde deine Bankkonten direkt. Zugänge sind nur für dich sichtbar; Zugangsdaten werden verschlüsselt gespeichert. Abgleiche laufen nur, solange du OpenBudget geöffnet hast.</value>
+  </data>
+  <data name="Add_Heading" xml:space="preserve">
+    <value>Bank-Zugang hinzufügen</value>
+  </data>
+  <data name="Field_Connector" xml:space="preserve">
+    <value>Bank</value>
+  </data>
+  <data name="Field_Name" xml:space="preserve">
+    <value>Anzeigename</value>
+  </data>
+  <data name="Field_Username" xml:space="preserve">
+    <value>Benutzername</value>
+  </data>
+  <data name="Field_Pin" xml:space="preserve">
+    <value>PIN / Passwort</value>
+  </data>
+  <data name="Field_PinKeep" xml:space="preserve">
+    <value>PIN / Passwort (leer lassen zum Beibehalten)</value>
+  </data>
+  <data name="Field_Interval" xml:space="preserve">
+    <value>Aktualisierung</value>
+  </data>
+  <data name="Button_Add" xml:space="preserve">
+    <value>Zugang hinzufügen</value>
+  </data>
+  <data name="Empty" xml:space="preserve">
+    <value>Noch keine Bank-Zugänge.</value>
+  </data>
+  <data name="Status_Syncing" xml:space="preserve">
+    <value>Gleiche ab</value>
+  </data>
+  <data name="Status_WaitingInput" xml:space="preserve">
+    <value>Wartet auf deine Eingabe</value>
+  </data>
+  <data name="Status_WaitingApproval" xml:space="preserve">
+    <value>Wartet auf Freigabe in deiner App</value>
+  </data>
+  <data name="Status_ReenterCredentials" xml:space="preserve">
+    <value>Zugangsdaten neu eingeben</value>
+  </data>
+  <data name="Button_SyncNow" xml:space="preserve">
+    <value>Jetzt abgleichen</value>
+  </data>
+  <data name="Button_Edit" xml:space="preserve">
+    <value>Bearbeiten</value>
+  </data>
+  <data name="Button_Delete" xml:space="preserve">
+    <value>Löschen</value>
+  </data>
+  <data name="Button_Cancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="Button_Save" xml:space="preserve">
+    <value>Speichern</value>
+  </data>
+  <data name="Label_LastSync" xml:space="preserve">
+    <value>Letzter Abgleich</value>
+  </data>
+  <data name="Label_LastStatement" xml:space="preserve">
+    <value>Letzter Kontoauszug</value>
+  </data>
+  <data name="Never" xml:space="preserve">
+    <value>nie</value>
+  </data>
+  <data name="Hint_Challenge" xml:space="preserve">
+    <value>Die Bank wartet auf dich - siehe Dialog.</value>
+  </data>
+  <data name="Error_Credentials" xml:space="preserve">
+    <value>Die gespeicherten Zugangsdaten wurden abgelehnt oder sind nicht lesbar; bitte den Zugang bearbeiten und neu eingeben.</value>
+  </data>
+  <data name="Error_ConnectorMissing" xml:space="preserve">
+    <value>Der Konnektor "{0}" ist in dieser Installation nicht verfügbar.</value>
+  </data>
+  <data name="Accounts_Heading" xml:space="preserve">
+    <value>Konten</value>
+  </data>
+  <data name="Accounts_Empty" xml:space="preserve">
+    <value>Noch keine Konten - starte einen Abgleich, um sie aufzulisten.</value>
+  </data>
+  <data name="Table_Account" xml:space="preserve">
+    <value>Konto</value>
+  </data>
+  <data name="Table_Link" xml:space="preserve">
+    <value>Verknüpft mit</value>
+  </data>
+  <data name="Table_Statements" xml:space="preserve">
+    <value>Kontoauszüge</value>
+  </data>
+  <data name="Table_Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Badge_Closed" xml:space="preserve">
+    <value>aufgelöst</value>
+  </data>
+  <data name="Button_Unlink" xml:space="preserve">
+    <value>Trennen</value>
+  </data>
+  <data name="Link_Choose" xml:space="preserve">
+    <value>Mit vorhandenem Konto verknüpfen...</value>
+  </data>
+  <data name="Button_Link" xml:space="preserve">
+    <value>Verknüpfen</value>
+  </data>
+  <data name="Button_CreateAccount" xml:space="preserve">
+    <value>Neues Konto anlegen</value>
+  </data>
+  <data name="Statements_On" xml:space="preserve">
+    <value>Herunterladen</value>
+  </data>
+  <data name="Statements_Interval" xml:space="preserve">
+    <value>Kontoauszug-Intervall</value>
+  </data>
+  <data name="Statements_NeedsLink" xml:space="preserve">
+    <value>Erst das Konto verknüpfen.</value>
+  </data>
+  <data name="Button_DownloadNow" xml:space="preserve">
+    <value>Jetzt herunterladen</value>
+  </data>
+  <data name="Documents_Heading" xml:space="preserve">
+    <value>Dokumente ({0})</value>
+  </data>
+  <data name="Documents_NoAccount" xml:space="preserve">
+    <value>kein Konto</value>
+  </data>
+  <data name="Link_View" xml:space="preserve">
+    <value>Ansehen</value>
+  </data>
+  <data name="Link_Download" xml:space="preserve">
+    <value>Herunterladen</value>
+  </data>
+  <data name="Edit_Title" xml:space="preserve">
+    <value>Bank-Zugang bearbeiten</value>
+  </data>
+  <data name="Delete_Title" xml:space="preserve">
+    <value>{0} löschen?</value>
+  </data>
+  <data name="Delete_Body" xml:space="preserve">
+    <value>Dies entfernt die gespeicherten Zugangsdaten, die Sitzung und heruntergeladene Kontoauszüge. Bereits importierte Konten und Umsätze bleiben erhalten: von MoneyMoney übernommene Konten gehen an MoneyMoney zurück (der nächste Upload füllt sie neu), für diesen Zugang angelegte Konten bleiben bestehen, werden aber nicht mehr aktualisiert.</value>
+  </data>
+  <data name="Message_AlreadyRunning" xml:space="preserve">
+    <value>Für diesen Zugang läuft bereits ein Abgleich.</value>
+  </data>
+  <data name="Message_SyncAll" xml:space="preserve">
+    <value>{0} Abgleich(e) gestartet.</value>
+  </data>
+  <data name="Interval_EveryTwoHours" xml:space="preserve">
+    <value>Alle zwei Stunden</value>
+  </data>
+  <data name="Interval_FourTimesDaily" xml:space="preserve">
+    <value>Viermal täglich</value>
+  </data>
+  <data name="Interval_Daily" xml:space="preserve">
+    <value>Einmal täglich</value>
+  </data>
+  <data name="Interval_Weekly" xml:space="preserve">
+    <value>Einmal pro Woche</value>
+  </data>
+  <data name="Interval_ManualOnly" xml:space="preserve">
+    <value>Nur manuell (bei "Alle abgleichen" dabei)</value>
+  </data>
+  <data name="Interval_Never" xml:space="preserve">
+    <value>Nie (auch nicht bei "Alle abgleichen")</value>
+  </data>
+  <data name="StatementsInterval_Monthly" xml:space="preserve">
+    <value>Jeden Monat</value>
+  </data>
+  <data name="StatementsInterval_Weekly" xml:space="preserve">
+    <value>Jede Woche</value>
+  </data>
+  <data name="StatementsInterval_Daily" xml:space="preserve">
+    <value>Jeden Tag</value>
+  </data>
+  <data name="StatementsInterval_ManualOnly" xml:space="preserve">
+    <value>Nur manuell</value>
+  </data>
+  <data name="Type_Giro" xml:space="preserve">
+    <value>Girokonto</value>
+  </data>
+  <data name="Type_Savings" xml:space="preserve">
+    <value>Sparkonto</value>
+  </data>
+  <data name="Type_CreditCard" xml:space="preserve">
+    <value>Kreditkarte</value>
+  </data>
+  <data name="Type_Depot" xml:space="preserve">
+    <value>Depot</value>
+  </data>
+  <data name="Type_Other" xml:space="preserve">
+    <value>Sonstiges</value>
+  </data>
+</root>

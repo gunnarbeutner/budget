@@ -107,7 +107,7 @@ Directory.CreateDirectory(uploadStagingDir);
 // (see AuthRegistration.AddOpenBudgetDatabase): its contexts filter reads and guard writes.
 builder.Services.AddOpenBudgetDatabase(budgetDbPath);
 builder.Services.AddOpenBudgetAuth(builder.Environment, builder.Environment.ContentRootPath);
-builder.Services.AddBankConnectors(builder.Configuration, builder.Environment, builder.Environment.ContentRootPath);
+builder.Services.AddBankConnectors(builder.Environment, builder.Environment.ContentRootPath);
 
 var app = builder.Build();
 

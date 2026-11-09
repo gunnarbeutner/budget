@@ -64,4 +64,7 @@
   <data name="LogOut" xml:space="preserve">
     <value>Abmelden</value>
   </data>
+  <data name="BankLogins" xml:space="preserve">
+    <value>Bank-Zugänge</value>
+  </data>
 </root>

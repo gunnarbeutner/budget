@@ -17,6 +17,11 @@
     @L["Intro_Before"]<code>POST /api/import/moneymoney/{name}</code>@L["Intro_After"]
 </p>
 
+<p class="small">
+    <a href="/banklogins" id="bank-logins-link"><i class="bi bi-bank" aria-hidden="true"></i> @L["Link_BankLogins"]</a>
+    <span class="text-body-secondary">@L["Link_BankLogins_Hint"]</span>
+</p>
+
 <form class="d-flex flex-wrap gap-2 align-items-start mb-3" @onsubmit="CreateSourceAsync" @onsubmit:preventDefault>
     <input type="text" id="new-source-name" class="form-control w-auto" @bind="newSourceName" @bind:event="oninput"
            placeholder="@L["Create_Placeholder"]" aria-label="@L["Create_Placeholder"]" maxlength="100" />

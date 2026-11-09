@@ -11,19 +11,22 @@ public static class BankConnectorsRegistration
     public const string StatementsDirVariable = "OPENBUDGET_STATEMENTS_DIR";
 
     /// <summary>Registers the connector framework: secrets, registry, sync engine and the per-user service.</summary>
-    public static IServiceCollection AddBankConnectors(this IServiceCollection services, IConfiguration config, IHostEnvironment env, string contentRoot)
+    public static IServiceCollection AddBankConnectors(this IServiceCollection services, IHostEnvironment env, string contentRoot)
     {
-        var fakeEnabled = env.IsEnvironment("Test")
-            || string.Equals(config[EnableFakeBankVariable], "true", StringComparison.OrdinalIgnoreCase);
-        var statementsDir = config[StatementsDirVariable] is { Length: > 0 } custom
-            ? custom
-            : Path.Combine(OpenBudgetPaths.DataDir(contentRoot), "statements");
-
+        // Everything is resolved lazily from the final configuration (environment variables, test overrides).
         services.AddSingleton(TimeProvider.System);
-        services.AddSingleton(new SecretsProtector(config[SecretsProtector.KeyVariable]));
-        if (fakeEnabled) services.AddSingleton(FakeBankConnector.Registration);
-        services.AddSingleton<ConnectorRegistry>();
-        services.AddSingleton(new BankStorageOptions(statementsDir));
+        services.AddSingleton(sp => new SecretsProtector(sp.GetRequiredService<IConfiguration>()[SecretsProtector.KeyVariable]));
+        services.AddSingleton(sp =>
+        {
+            var configuration = sp.GetRequiredService<IConfiguration>();
+            var fakeEnabled = env.IsEnvironment("Test")
+                || string.Equals(configuration[EnableFakeBankVariable], "true", StringComparison.OrdinalIgnoreCase);
+            return new ConnectorRegistry(fakeEnabled ? [FakeBankConnector.Registration] : []);
+        });
+        services.AddSingleton(sp => new BankStorageOptions(
+            sp.GetRequiredService<IConfiguration>()[StatementsDirVariable] is { Length: > 0 } custom
+                ? custom
+                : Path.Combine(OpenBudgetPaths.DataDir(contentRoot), "statements")));
         services.AddSingleton(new BankSyncOptions());
         services.AddSingleton<BankStatementStore>();
         services.AddSingleton<BankTransactionStore>();

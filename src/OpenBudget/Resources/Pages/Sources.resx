@@ -154,4 +154,10 @@
   <data name="Rotate_Body" xml:space="preserve">
     <value>The current token stops working immediately; update the exporter with the new one.</value>
   </data>
+  <data name="Link_BankLogins" xml:space="preserve">
+    <value>Bank logins</value>
+  </data>
+  <data name="Link_BankLogins_Hint" xml:space="preserve">
+    <value> - connect banks directly instead of (or next to) MoneyMoney.</value>
+  </data>
 </root>

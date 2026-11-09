@@ -53,7 +53,13 @@
                                     var refreshAge = lastRefresh.HasValue ? DateTime.UtcNow - lastRefresh.Value : (TimeSpan?)null;
                                     var refreshError = account?.Error;
                                     <tr @key="assignment.AccountId">
-                                        <td>@name</td>
+                                        <td>
+                                            @name
+                                            @if (account != null && account.Provider != AccountProviders.MoneyMoney)
+                                            {
+                                                <a href="@($"/accounts/{account.Id}/statements")" class="small ms-2" title="@L["Statements_Link"]"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> @L["Statements_Link"]</a>
+                                            }
+                                        </td>
                                         <td><span class="badge bg-secondary">@kind</span></td>
                                         <td class="text-end">@(balance.HasValue ? Formatting.FormatMoney(balance.Value, currency) : L["Dash"].Value)</td>
                                         <td>
