@@ -1,0 +1,87 @@
+@page
+@model AccountIndexModel
+@inject IStringLocalizer<LoginModel> L
+@{
+    Layout = "_AuthLayout";
+    ViewData["Title"] = L["Account_Title"].Value;
+}
+
+<p><a href="/">&larr; @L["Account_Back"]</a></p>
+
+<h2 class="h5 mb-1">@L["Account_Heading"]</h2>
+<p class="text-body-secondary">@L["Account_SignedInAs"] <strong>@Model.UserName</strong>@(Model.IsAdmin ? " (" + L["Account_Admin"].Value + ")" : "")</p>
+
+@if (!string.IsNullOrEmpty(Model.Message))
+{
+    <div class="alert alert-success" role="status">@Model.Message</div>
+}
+@foreach (var e in Model.Errors)
+{
+    <div class="alert alert-danger" role="alert">@e</div>
+}
+<div class="alert alert-danger d-none" role="alert" id="passkey-error"></div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h3 class="h6">@L["Passkeys_Heading"]</h3>
+        <p class="small text-body-secondary">@L["Passkeys_Intro"]</p>
+        @if (Model.Passkeys.Count == 0)
+        {
+            <p class="text-body-secondary">@L["Passkeys_None"]</p>
+        }
+        else
+        {
+            <ul class="list-group mb-3">
+                @foreach (var p in Model.Passkeys)
+                {
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>
+                            <i class="bi bi-fingerprint" aria-hidden="true"></i> @p.Name
+                            <span class="text-body-secondary small">· @p.CreatedAt.ToString("yyyy-MM-dd")</span>
+                        </span>
+                        <form method="post" asp-page-handler="DeletePasskey" class="m-0">
+                            <input type="hidden" name="credentialId" value="@p.Id" />
+                            <button type="submit" class="btn btn-sm btn-outline-danger">@L["Passkeys_Remove"]</button>
+                        </form>
+                    </li>
+                }
+            </ul>
+        }
+        <form method="post" asp-page-handler="AddPasskey" id="passkey-register-form"
+              data-options-url="?handler=PasskeyCreationOptions" data-no-passkey="@L["Passkey_Unsupported"].Value" data-failed="@L["Passkey_RegisterFailed"].Value">
+            <input type="hidden" name="credentialJson" id="credentialJson" />
+            <div class="input-group">
+                <input type="text" name="passkeyName" id="passkeyName" class="form-control" maxlength="60" placeholder="@L["Passkeys_NamePlaceholder"]" aria-label="@L["Passkeys_NamePlaceholder"]" />
+                <button type="button" id="passkey-register" class="btn btn-primary">@L["Passkeys_Add"]</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h3 class="h6">@L["Password_Heading"]</h3>
+        <form method="post" asp-page-handler="ChangePassword">
+            <div class="mb-3">
+                <label for="currentPassword" class="form-label">@L["Password_Current"]</label>
+                <input id="currentPassword" name="currentPassword" type="password" class="form-control" autocomplete="current-password" required />
+            </div>
+            <div class="mb-3">
+                <label for="newPassword" class="form-label">@L["Password_New"]</label>
+                <input id="newPassword" name="newPassword" type="password" class="form-control" autocomplete="new-password" required />
+            </div>
+            <div class="mb-3">
+                <label for="confirmPassword" class="form-label">@L["Password_Confirm"]</label>
+                <input id="confirmPassword" name="confirmPassword" type="password" class="form-control" autocomplete="new-password" required />
+            </div>
+            <button type="submit" class="btn btn-primary">@L["Password_Change"]</button>
+        </form>
+    </div>
+</div>
+
+<a href="Account/Logout" class="btn btn-outline-secondary">@L["Account_LogOut"]</a>
+
+@section Scripts {
+    <script src="js/passkeys.js" asp-append-version="true"></script>
+    <script>OpenBudgetPasskeys.wireRegister();</script>
+}

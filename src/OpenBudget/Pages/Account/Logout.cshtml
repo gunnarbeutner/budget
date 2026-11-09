@@ -1,0 +1,13 @@
+@page
+@model LogoutModel
+@inject IStringLocalizer<LoginModel> L
+@{
+    Layout = "_AuthLayout";
+    ViewData["Title"] = L["Logout_Title"].Value;
+}
+
+<h2 class="h5 mb-3">@L["Logout_Heading"]</h2>
+<form method="post">
+    <button type="submit" class="btn btn-primary">@L["Logout_Confirm"]</button>
+    <a href="/" class="btn btn-link">@L["Logout_Cancel"]</a>
+</form>

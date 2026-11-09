@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Setup_Title" xml:space="preserve">
+    <value>Noch keine Benutzer</value>
+  </data>
+  <data name="Setup_Message" xml:space="preserve">
+    <value>OpenBudget hat noch keine Benutzer. Führe diesen Befehl auf dem Server aus, um den ersten Admin anzulegen:</value>
+  </data>
+  <data name="Login_Title" xml:space="preserve">
+    <value>Anmelden - OpenBudget</value>
+  </data>
+  <data name="Login_Heading" xml:space="preserve">
+    <value>Anmelden</value>
+  </data>
+  <data name="Field_Username" xml:space="preserve">
+    <value>Benutzername</value>
+  </data>
+  <data name="Field_Password" xml:space="preserve">
+    <value>Passwort</value>
+  </data>
+  <data name="Login_SignIn" xml:space="preserve">
+    <value>Anmelden</value>
+  </data>
+  <data name="Login_Or" xml:space="preserve">
+    <value>oder</value>
+  </data>
+  <data name="Login_Passkey" xml:space="preserve">
+    <value>Mit Passkey anmelden</value>
+  </data>
+  <data name="Login_Invalid" xml:space="preserve">
+    <value>Benutzername oder Passwort ungültig.</value>
+  </data>
+  <data name="Login_LockedOut" xml:space="preserve">
+    <value>Zu viele fehlgeschlagene Versuche. Bitte in ein paar Minuten erneut versuchen.</value>
+  </data>
+  <data name="Passkey_Unsupported" xml:space="preserve">
+    <value>Dieser Browser unterstützt keine Passkeys.</value>
+  </data>
+  <data name="Passkey_Failed" xml:space="preserve">
+    <value>Anmeldung mit Passkey fehlgeschlagen.</value>
+  </data>
+  <data name="Passkey_RegisterFailed" xml:space="preserve">
+    <value>Der Passkey konnte nicht registriert werden.</value>
+  </data>
+  <data name="Logout_Title" xml:space="preserve">
+    <value>Abmelden - OpenBudget</value>
+  </data>
+  <data name="Logout_Heading" xml:space="preserve">
+    <value>Von OpenBudget abmelden?</value>
+  </data>
+  <data name="Logout_Confirm" xml:space="preserve">
+    <value>Abmelden</value>
+  </data>
+  <data name="Logout_Cancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="Account_Title" xml:space="preserve">
+    <value>Konto - OpenBudget</value>
+  </data>
+  <data name="Account_Back" xml:space="preserve">
+    <value>Zurück zu OpenBudget</value>
+  </data>
+  <data name="Account_Heading" xml:space="preserve">
+    <value>Konto</value>
+  </data>
+  <data name="Account_SignedInAs" xml:space="preserve">
+    <value>Angemeldet als</value>
+  </data>
+  <data name="Account_Admin" xml:space="preserve">
+    <value>Admin</value>
+  </data>
+  <data name="Account_LogOut" xml:space="preserve">
+    <value>Abmelden</value>
+  </data>
+  <data name="Passkeys_Heading" xml:space="preserve">
+    <value>Passkeys</value>
+  </data>
+  <data name="Passkeys_Intro" xml:space="preserve">
+    <value>Melde dich mit Face ID, Touch ID oder einem Sicherheitsschlüssel an, statt dein Passwort einzutippen. Dein Passwort funktioniert weiterhin als Alternative.</value>
+  </data>
+  <data name="Passkeys_None" xml:space="preserve">
+    <value>Noch keine Passkeys registriert.</value>
+  </data>
+  <data name="Passkeys_Remove" xml:space="preserve">
+    <value>Entfernen</value>
+  </data>
+  <data name="Passkeys_NamePlaceholder" xml:space="preserve">
+    <value>Name, z. B. iPhone</value>
+  </data>
+  <data name="Passkeys_Add" xml:space="preserve">
+    <value>Passkey hinzufügen</value>
+  </data>
+  <data name="Passkeys_DefaultName" xml:space="preserve">
+    <value>Passkey</value>
+  </data>
+  <data name="Passkeys_Added" xml:space="preserve">
+    <value>Passkey hinzugefügt.</value>
+  </data>
+  <data name="Passkeys_Removed" xml:space="preserve">
+    <value>Passkey entfernt.</value>
+  </data>
+  <data name="Password_Heading" xml:space="preserve">
+    <value>Passwort ändern</value>
+  </data>
+  <data name="Password_Current" xml:space="preserve">
+    <value>Aktuelles Passwort</value>
+  </data>
+  <data name="Password_New" xml:space="preserve">
+    <value>Neues Passwort</value>
+  </data>
+  <data name="Password_Confirm" xml:space="preserve">
+    <value>Neues Passwort bestätigen</value>
+  </data>
+  <data name="Password_Change" xml:space="preserve">
+    <value>Passwort ändern</value>
+  </data>
+  <data name="Password_Required" xml:space="preserve">
+    <value>Aktuelles und neues Passwort eingeben.</value>
+  </data>
+  <data name="Password_Mismatch" xml:space="preserve">
+    <value>Die neuen Passwörter stimmen nicht überein.</value>
+  </data>
+  <data name="Password_Changed" xml:space="preserve">
+    <value>Passwort geändert.</value>
+  </data>
+</root>

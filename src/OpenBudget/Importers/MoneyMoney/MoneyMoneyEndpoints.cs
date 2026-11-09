@@ -1,4 +1,3 @@
-using OpenBudget.Compat;
 using OpenBudget.Services;
 
 namespace OpenBudget.Importers.MoneyMoney;
@@ -20,17 +19,20 @@ internal static class MoneyMoneyEndpoints
     public static void Map(IEndpointRouteBuilder app, string stagingDir)
     {
         Delegate handler = (string name, HttpRequest request, MoneyMoneyImportService importer,
-            ILogger<MoneyMoneyImportService> logger, CancellationToken ct) =>
-            HandleUploadAsync(name, request, importer, logger, stagingDir, ct);
+            UploadAuthorizer authorizer, ILogger<MoneyMoneyImportService> logger, CancellationToken ct) =>
+            HandleUploadAsync(name, request, importer, authorizer, logger, stagingDir, ct);
 
-        app.MapPost(Route, handler);
-        app.MapPost(LegacyExporterRoute, handler);
+        // Token-authenticated (see UploadAuthorizer), not user-authenticated: exempt from the
+        // app-wide login requirement.
+        app.MapPost(Route, handler).AllowAnonymous();
+        app.MapPost(LegacyExporterRoute, handler).AllowAnonymous();
     }
 
     internal static async Task<IResult> HandleUploadAsync(
         string sourceName,
         HttpRequest request,
         MoneyMoneyImportService importer,
+        UploadAuthorizer authorizer,
         ILogger logger,
         string stagingDir,
         CancellationToken ct)
@@ -47,11 +49,9 @@ internal static class MoneyMoneyEndpoints
         if (sizeFeature != null && !sizeFeature.IsReadOnly)
             sizeFeature.MaxRequestBodySize = maxUploadBytes;
 
-        var expectedToken = LegacyCompat.ResolveUploadToken(logger);
-        if (string.IsNullOrEmpty(expectedToken))
-            return Results.Problem($"Upload endpoint disabled: {LegacyCompat.UploadTokenVariable} is not set.", statusCode: StatusCodes.Status503ServiceUnavailable);
-        if (!UploadAuth.IsAuthorized(request.Headers.Authorization.ToString(), expectedToken))
-            return Results.Unauthorized();
+        // Legacy global token (all sources) or this source's own token (this source only).
+        var denied = UploadAuthorizer.ToFailure(await authorizer.AuthorizeAsync(request.Headers.Authorization.ToString(), sourceName, ct));
+        if (denied != null) return denied;
 
         Directory.CreateDirectory(stagingDir);
         var tempPath = Path.Combine(stagingDir, $"{sourceName}-{Guid.NewGuid():N}.sqlite");

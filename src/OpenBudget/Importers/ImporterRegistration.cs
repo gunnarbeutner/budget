@@ -1,4 +1,5 @@
 using OpenBudget.Importers.MoneyMoney;
+using OpenBudget.Services;
 
 namespace OpenBudget.Importers;
 
@@ -10,7 +11,10 @@ public static class ImporterRegistration
 {
     public static IServiceCollection AddImporters(this IServiceCollection services)
     {
-        services.AddSingleton<MoneyMoneyImportService>();
+        // Uploads are token-authenticated, not user-authenticated, so the importer uses the explicit
+        // unrestricted factory (a singleton can't consume the per-user scoped one anyway).
+        services.AddSingleton(sp => ActivatorUtilities.CreateInstance<MoneyMoneyImportService>(
+            sp, sp.GetRequiredService<SystemDbContextFactory>()));
         return services;
     }
 

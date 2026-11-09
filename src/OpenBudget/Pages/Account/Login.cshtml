@@ -1,0 +1,42 @@
+@page
+@model LoginModel
+@inject IStringLocalizer<LoginModel> L
+@{
+    Layout = "_AuthLayout";
+    ViewData["Title"] = L["Login_Title"].Value;
+}
+
+<h2 class="h5 mb-3">@L["Login_Heading"]</h2>
+
+@if (!string.IsNullOrEmpty(Model.Error))
+{
+    <div class="alert alert-danger" role="alert" id="login-error">@Model.Error</div>
+}
+<div class="alert alert-danger d-none" role="alert" id="passkey-error"></div>
+
+<form method="post" id="login-form" class="mb-3">
+    <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
+    <div class="mb-3">
+        <label for="UserName" class="form-label">@L["Field_Username"]</label>
+        <input id="UserName" name="UserName" class="form-control" value="@Model.UserName" autocomplete="username webauthn" autocapitalize="none" autocorrect="off" required autofocus />
+    </div>
+    <div class="mb-3">
+        <label for="Password" class="form-label">@L["Field_Password"]</label>
+        <input id="Password" name="Password" type="password" class="form-control" autocomplete="current-password" required />
+    </div>
+    <button type="submit" class="btn btn-primary w-100">@L["Login_SignIn"]</button>
+</form>
+
+<div class="text-center text-body-secondary small mb-2">@L["Login_Or"]</div>
+<form method="post" asp-page-handler="PasskeyLogin" id="passkey-login-form" data-options-url="?handler=PasskeyOptions" data-no-passkey="@L["Passkey_Unsupported"].Value" data-failed="@L["Passkey_Failed"].Value">
+    <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
+    <input type="hidden" name="credentialJson" id="credentialJson" />
+    <button type="button" id="passkey-login" class="btn btn-outline-secondary w-100">
+        <i class="bi bi-fingerprint" aria-hidden="true"></i> @L["Login_Passkey"]
+    </button>
+</form>
+
+@section Scripts {
+    <script src="js/passkeys.js" asp-append-version="true"></script>
+    <script>OpenBudgetPasskeys.wireLogin();</script>
+}

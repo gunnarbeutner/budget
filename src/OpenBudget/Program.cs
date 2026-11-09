@@ -1,10 +1,17 @@
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
+using OpenBudget.Auth;
+using OpenBudget.Cli;
 using OpenBudget.Compat;
 using OpenBudget.Importers;
 using OpenBudget.Services;
 using System.Globalization;
+
+// `OpenBudget users ...` is the operator CLI (run inside the container); it never starts the web
+// server. Handled before the web host is built so its flags aren't parsed as host configuration.
+if (args.Length > 0 && args[0].Equals("users", StringComparison.OrdinalIgnoreCase))
+    return await UserCli.RunAsync(args[1..]);
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,6 +23,7 @@ builder.Services.AddServerSideBlazor(options =>
     // can reconnect to its existing state instead of having to reload (see wwwroot/js/reconnect.js).
     options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(30);
 });
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CategoryHierarchyService>();
 builder.Services.AddScoped<ProjectService>();
 builder.Services.AddScoped<BudgetEntryService>();
@@ -31,11 +39,16 @@ builder.Services.AddScoped<DepotMappingService>();
 builder.Services.AddScoped<SecurityTaxService>();
 builder.Services.AddScoped<InstrumentMappingService>();
 builder.Services.AddScoped<ProjectTimeState>();
+builder.Services.AddScoped<SharingService>();
 // Per-circuit holder for the browser's timezone (seeded from the tz cookie by App.razor) so all
 // pages render dates/times and "current period" decisions in the user's zone, not the server's.
 builder.Services.AddScoped<ClockService>();
 builder.Services.AddImporters();
-builder.Services.AddSingleton<PortfolioPerformanceImportService>();
+// Importers run for token-authenticated uploads (no logged-in user), so they use the explicit
+// unrestricted factory rather than the user-scoped IDbContextFactory.
+builder.Services.AddSingleton(sp => ActivatorUtilities.CreateInstance<PortfolioPerformanceImportService>(
+    sp, sp.GetRequiredService<SystemDbContextFactory>()));
+builder.Services.AddSingleton<UploadAuthorizer>();
 builder.Services.AddSingleton<ChangeNotificationService>();
 // Per-circuit origin id, stamped onto changes this circuit publishes so its own components can
 // ignore the echo of their commits (see ChangeOrigin / DataChangeAwareComponent).
@@ -61,7 +74,9 @@ builder.Services.Configure<RequestLocalizationOptions>(options =>
 // with the wrong scheme.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // XForwardedHost: the passkey relying-party id defaults to the request host, which must be the
+    // public name (budget.example.org), not the proxy's backend address.
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
     // The proxy isn't on a known network in Docker; clear the allow-list so any upstream is trusted.
     options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
@@ -70,8 +85,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 // Configure database paths. Everything lives in budgets.db now — the imported data is
 // imported into the same store under namespaced IDs (see SourceScope) via the upload
 // endpoint below.
-var dataDir = Path.Combine(builder.Environment.ContentRootPath, "data");
-var budgetDbPath = Path.Combine(dataDir, "budgets.db");
+var dataDir = OpenBudgetPaths.DataDir(builder.Environment.ContentRootPath);
+var budgetDbPath = OpenBudgetPaths.DatabasePath(builder.Environment.ContentRootPath);
 var uploadStagingDir = Path.Combine(dataDir, "uploads");
 
 // Ensure the data dir exists before EF opens the SQLite file — fresh checkouts and Docker
@@ -84,19 +99,16 @@ Directory.CreateDirectory(uploadStagingDir);
 // lifetime of the SignalR circuit, so a scoped context would live for the whole browser session
 // and serve stale, change-tracker-cached entities after another session writes. Short-lived
 // factory contexts (one per operation) always read current DB state. See ChangeNotificationService
-// for the companion cross-circuit refresh signal.
-builder.Services.AddDbContextFactory<BudgetDbContext>(options =>
-{
-    options.UseSqlite($"Data Source={budgetDbPath}");
-});
+// for the companion cross-circuit refresh signal. The factory services receive is user-scoped
+// (see AuthRegistration.AddOpenBudgetDatabase): its contexts filter reads and guard writes.
+builder.Services.AddOpenBudgetDatabase(budgetDbPath);
+builder.Services.AddOpenBudgetAuth(builder.Configuration, builder.Environment, builder.Environment.ContentRootPath);
 
 var app = builder.Build();
 
 // Initialize budget database (apply migrations on startup so Docker volumes stay in sync).
-using (var scope = app.Services.CreateScope())
+await using (var budgetDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
 {
-    var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<BudgetDbContext>>();
-    await using var budgetDb = await dbFactory.CreateDbContextAsync();
     await budgetDb.Database.MigrateAsync();
 }
 
@@ -119,16 +131,26 @@ app.UseStaticFiles();
 
 app.UseRequestLocalization();
 
+// Until the first user exists every page answers with only the setup instruction.
+app.UseMiddleware<NoUsersMiddleware>();
+
 app.UseRouting();
 
-app.MapStaticAssets();
+app.UseAuthentication();
+app.UseAuthorization();
+
+// Everything below requires a logged-in user via the fallback authorization policy unless it opts
+// out with AllowAnonymous (static assets, health probe, the token-authenticated upload API; the
+// login page opts out itself).
+app.MapStaticAssets().AllowAnonymous();
 
 app.MapBlazorHub();
+app.MapRazorPages();
 app.MapFallbackToPage("/_Host");
 
 // Lightweight liveness probe for the container HEALTHCHECK. Deliberately doesn't touch the
 // database — it answers "is the process up and serving HTTP", which is what a restart fixes.
-app.MapGet("/healthz", () => Results.Ok("healthy"));
+app.MapGet("/healthz", () => Results.Ok("healthy")).AllowAnonymous();
 
 // The source app (and any future) importer upload endpoints live in the Importers module.
 app.MapImporterEndpoints(uploadStagingDir);
@@ -140,31 +162,30 @@ app.MapPost("/api/portfolioperformance/{name}", async (
     string name,
     HttpRequest request,
     PortfolioPerformanceImportService importer,
+    UploadAuthorizer authorizer,
     ILogger<Program> logger,
     CancellationToken ct) =>
 {
     if (!SourceData.IsValidSlug(name))
         return Results.BadRequest($"Invalid source name '{name}'. Use lowercase letters, digits, and hyphens; start with letter/digit.");
 
-    return await HandlePortfolioPerformanceUploadAsync(name, request, importer, logger, uploadStagingDir, ct);
-});
+    return await HandlePortfolioPerformanceUploadAsync(name, request, importer, authorizer, logger, uploadStagingDir, ct);
+}).AllowAnonymous();
 
 // DELETE /api/sources/{name} — removes a source. Refused with 409 when any project
 // references it, with the offending project list in the response. The old route is kept as an
 // alias for the already-installed exporter (see LegacyCompat).
 Delegate deleteSourceHandler = async (
     string name,
-    IDbContextFactory<BudgetDbContext> dbFactory,
+    SystemDbContextFactory dbFactory,
+    UploadAuthorizer authorizer,
     ChangeNotificationService notifier,
     ILogger<Program> logger,
     HttpRequest request,
     CancellationToken ct) =>
 {
-    var expectedToken = LegacyCompat.ResolveUploadToken(logger);
-    if (string.IsNullOrEmpty(expectedToken))
-        return Results.Problem($"Source deletion disabled: {LegacyCompat.UploadTokenVariable} is not set.", statusCode: StatusCodes.Status503ServiceUnavailable);
-    if (!UploadAuth.IsAuthorized(request.Headers.Authorization.ToString(), expectedToken))
-        return Results.Unauthorized();
+    var denied = UploadAuthorizer.ToFailure(await authorizer.AuthorizeAsync(request.Headers.Authorization.ToString(), name, ct));
+    if (denied != null) return denied;
 
     await using var db = await dbFactory.CreateDbContextAsync(ct);
     var source = await db.ImportSources.FirstOrDefaultAsync(s => s.Name == name, ct);
@@ -193,15 +214,17 @@ Delegate deleteSourceHandler = async (
     logger.LogInformation("Deleted source '{Name}' (id={Id}).", name, source.Id);
     return Results.Ok(new { status = "deleted", name });
 };
-app.MapDelete("/api/sources/{name}", deleteSourceHandler);
-app.MapDelete(LegacyCompat.LegacyDeleteSourceRoute, deleteSourceHandler);
+app.MapDelete("/api/sources/{name}", deleteSourceHandler).AllowAnonymous();
+app.MapDelete(LegacyCompat.LegacyDeleteSourceRoute, deleteSourceHandler).AllowAnonymous();
 
 await app.RunAsync();
+return 0;
 
 static async Task<IResult> HandlePortfolioPerformanceUploadAsync(
     string sourceName,
     HttpRequest request,
     PortfolioPerformanceImportService importer,
+    UploadAuthorizer authorizer,
     ILogger<Program> logger,
     string stagingDir,
     CancellationToken ct)
@@ -213,11 +236,8 @@ static async Task<IResult> HandlePortfolioPerformanceUploadAsync(
     if (sizeFeature != null && !sizeFeature.IsReadOnly)
         sizeFeature.MaxRequestBodySize = maxUploadBytes;
 
-    var expectedToken = LegacyCompat.ResolveUploadToken(logger);
-    if (string.IsNullOrEmpty(expectedToken))
-        return Results.Problem($"Upload endpoint disabled: {LegacyCompat.UploadTokenVariable} is not set.", statusCode: StatusCodes.Status503ServiceUnavailable);
-    if (!UploadAuth.IsAuthorized(request.Headers.Authorization.ToString(), expectedToken))
-        return Results.Unauthorized();
+    var denied = UploadAuthorizer.ToFailure(await authorizer.AuthorizeAsync(request.Headers.Authorization.ToString(), sourceName, ct));
+    if (denied != null) return denied;
 
     Directory.CreateDirectory(stagingDir);
     var tempPath = Path.Combine(stagingDir, $"{sourceName}-{Guid.NewGuid():N}.portfolio");

@@ -1,0 +1,24 @@
+@inject IStringLocalizer<LoginModel> L
+<!DOCTYPE html>
+<html lang="@System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <base href="~/" />
+    <title>@(ViewData["Title"] ?? "OpenBudget")</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+    <meta name="theme-color" content="#0d6efd" />
+    <script src="js/theme.js" asp-append-version="true"></script>
+    <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
+    <link rel="stylesheet" href="css/bootstrap-icons/bootstrap-icons.min.css" />
+    <link href="css/site.css" rel="stylesheet" asp-append-version="true" />
+</head>
+<body>
+    <main class="container py-4" style="max-width: 32rem;">
+        <h1 class="h3 mb-4">OpenBudget</h1>
+        @RenderBody()
+    </main>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
