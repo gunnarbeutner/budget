@@ -118,7 +118,9 @@ public class ProjectService
         var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == projectId);
         if (project != null)
         {
-            // The app's SQLite connections don't enforce foreign keys, so don't rely on ON DELETE CASCADE.
+            // Bulk deletes bypass the context's write guard, so check ownership first. The app's SQLite
+            // connections don't enforce foreign keys, so don't rely on ON DELETE CASCADE either.
+            db.Scope?.RequireRole(projectId, ProjectRole.Owner);
             await db.ProjectShares.Where(s => s.ProjectId == projectId).ExecuteDeleteAsync();
             db.Projects.Remove(project);
             await db.SaveChangesAsync();

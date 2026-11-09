@@ -176,6 +176,12 @@ public class BudgetEntryService
         var budget = await db.Budgets.FirstOrDefaultAsync(b => b.Id == budgetId);
         if (budget != null)
         {
+            // Remove the dependents explicitly rather than relying on ON DELETE CASCADE (SQLite only
+            // enforces foreign keys when the connection enables them). Bulk deletes bypass the context's
+            // write guard, so check the role first.
+            db.Scope?.RequireRole(budget.ProjectId, ProjectRole.Editor);
+            await db.MonthlyBudgetEntries.Where(e => e.BudgetId == budgetId).ExecuteDeleteAsync();
+            await db.BudgetContributionSplits.Where(s => s.BudgetId == budgetId).ExecuteDeleteAsync();
             db.Budgets.Remove(budget);
             await db.SaveChangesAsync();
             Notify(new DataChange(DataArea.Budgets, ProjectId: budget.ProjectId));
