@@ -8,7 +8,6 @@ internal static class ScalableQueries
 {
     // ---- cockpit/graphql ----
 
-    public const string PersonOverview = "query personOverview { personOverview { id } }";
 
     public const string FetchCashAccountDetails =
         "query fetchCashAccountDetails($userId: ID!) { account(id: $userId) { id brokerPortfolios { id custodianBank cashAccount { iban bic } } } }";

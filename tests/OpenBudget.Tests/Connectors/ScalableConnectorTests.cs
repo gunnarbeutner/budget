@@ -263,4 +263,19 @@ public sealed class ScalableConnectorTests
         Assert.Equal(CredentialRequirement.None, registration.Credentials);
     }
 
+    [Fact]
+    public void The_user_id_is_read_from_the_cockpit_pages_next_data()
+    {
+        const string page = """
+            <html><head><script>window.x = 1;</script></head><body>
+            <script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"nonce":"n","middlewareProps":{"m0":{"flag":true},"m7":{"session":{"user":{"userId":"user-0001"}}}}}},"page":"/"}</script>
+            </body></html>
+            """;
+        Assert.Equal("user-0001", ScalableConnector.ExtractUserId(page));
+
+        // No signed-in user, no Next.js data, or broken JSON: no id (the caller treats that as an expired session).
+        Assert.Null(ScalableConnector.ExtractUserId("""<script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"middlewareProps":{"m1":{"session":null}}}}}</script>"""));
+        Assert.Null(ScalableConnector.ExtractUserId("<html><body>Sign in</body></html>"));
+        Assert.Null(ScalableConnector.ExtractUserId("""<script id="__NEXT_DATA__">{not json</script>"""));
+    }
 }

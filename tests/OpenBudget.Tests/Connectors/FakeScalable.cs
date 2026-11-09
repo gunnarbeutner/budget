@@ -169,9 +169,31 @@ internal sealed partial class FakeScalable : HttpMessageHandler
 
         return uri.AbsolutePath switch
         {
+            "/cockpit/" => Cockpit(session),
             "/cockpit/graphql" or "/broker/api/data" => Graphql(body, session),
             "/cockpit/api/download" => Download(uri, session),
             _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+        };
+    }
+
+    // ---- cockpit page (carries the user id in its Next.js data) ----
+
+    private HttpResponseMessage Cockpit(string? session)
+    {
+        Requests.Add("cockpit page");
+        if (session == null || !_signedIn.Contains(session))
+        {
+            var redirect = new HttpResponseMessage(HttpStatusCode.Found);
+            redirect.Headers.Location = new Uri("https://secure.scalable.capital/u/login");
+            return redirect;
+        }
+        var nextData = JsonSerializer.Serialize(new
+        {
+            props = new { pageProps = new { middlewareProps = new { m1 = new { session = new { user = new { userId = PersonId } } } } } },
+        });
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent($"<html><body><script id=\"__NEXT_DATA__\" type=\"application/json\">{nextData}</script></body></html>", Encoding.UTF8, "text/html"),
         };
     }
 

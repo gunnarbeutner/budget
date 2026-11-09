@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Globalization;
 using System.Text.Json.Nodes;
 
@@ -117,10 +118,42 @@ public sealed partial class ScalableConnector : IBankConnector
         return age.TotalHours >= 48 ? $"{age.TotalDays:0.0} days" : age.TotalMinutes >= 120 ? $"{age.TotalHours:0.0} hours" : $"{age.TotalMinutes:0} minutes";
     }
 
+    /// <summary>
+    /// Loads the cockpit page with the stored cookies and reads the user id from its server-rendered Next.js data
+    /// (<c>props.pageProps.middlewareProps.*.session.user.userId</c>); every GraphQL query needs it. A redirect away
+    /// from the cockpit, or a page without a signed-in user, means the session is gone.
+    /// </summary>
     private async Task<string> FetchPersonIdAsync(CancellationToken ct)
     {
-        var data = await _graphQl.ExecuteAsync(ScalableGraphQl.CockpitPath, "personOverview", ScalableQueries.PersonOverview, new JsonObject(), ct);
-        return data.Str("personOverview", "id") ?? throw new ConnectorException("Scalable's personOverview answer had no id.");
+        var url = new Uri(_options.BaseUri, "cockpit/");
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        using var response = await _context.Http.SendAsync(request, ct);
+        var final = response.RequestMessage?.RequestUri ?? url;
+        if ((int)response.StatusCode is >= 300 and < 400 || response.StatusCode == System.Net.HttpStatusCode.Unauthorized
+            || !IsAppHost(final) || !final.AbsolutePath.StartsWith("/cockpit", StringComparison.Ordinal))
+            throw new ScalableSessionExpiredException("The cockpit redirected to the sign-in.");
+        if (!response.IsSuccessStatusCode)
+            throw new ConnectorException($"Scalable's cockpit answered HTTP {(int)response.StatusCode}.");
+        var html = await response.Content.ReadAsStringAsync(ct);
+        return ExtractUserId(html) ?? throw new ScalableSessionExpiredException("The cockpit page carries no signed-in user.");
+    }
+
+    /// <summary>The signed-in user's id from the cockpit page's <c>__NEXT_DATA__</c>, or null.</summary>
+    internal static string? ExtractUserId(string html)
+    {
+        var m = Regex.Match(html, "<script[^>]*id=\"__NEXT_DATA__\"[^>]*>(?<json>.*?)</script>",
+            RegexOptions.Singleline, TimeSpan.FromSeconds(2));
+        if (!m.Success) return null;
+        JsonNode? root;
+        try { root = JsonNode.Parse(m.Groups["json"].Value); }
+        catch (System.Text.Json.JsonException) { return null; }
+        if (root?["props"]?["pageProps"]?["middlewareProps"] is not JsonObject middleware) return null;
+        foreach (var (_, part) in middleware)
+        {
+            if (part?["session"]?["user"]?["userId"] is JsonValue v && v.TryGetValue<string>(out var id) && !string.IsNullOrEmpty(id))
+                return id;
+        }
+        return null;
     }
 
     private bool IsAppHost(Uri uri) => string.Equals(uri.Host, _options.BaseUri.Host, StringComparison.OrdinalIgnoreCase);
