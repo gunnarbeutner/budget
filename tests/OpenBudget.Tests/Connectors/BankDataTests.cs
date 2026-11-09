@@ -54,6 +54,27 @@ public sealed class BankDataTests
     }
 
     [Fact]
+    public async Task Depots_only_link_to_depots_and_cash_accounts_only_to_non_depots()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        var snapshot = w.BuildSnapshot([("MM Giro", "DE00 0000 0000 0000 0000 01"), ("MM Depot", null)], [], depots: ["MM Depot"]);
+        await w.ImportMoneyMoneyAsync(snapshot);
+        long mmGiro = SourceScope.Namespace(BankWorld.SourceAlice, 1), mmDepot = SourceScope.Namespace(BankWorld.SourceAlice, 2);
+        var id = await w.AddLoginAsync(BankWorld.Alice);
+        await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false));
+        var svc = w.For(BankWorld.Alice);
+        var giro = await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId);
+        var depot = await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.DepotId);
+
+        Assert.Equal(mmGiro, Assert.Single(await svc.GetLinkCandidatesAsync(giro.Id)).AccountId);
+        Assert.Equal(mmDepot, Assert.Single(await svc.GetLinkCandidatesAsync(depot.Id)).AccountId);
+
+        // The server refuses a mismatch even when asked directly.
+        await Assert.ThrowsAsync<InvalidOperationException>(() => svc.LinkAsync(depot.Id, mmGiro));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => svc.LinkAsync(giro.Id, mmDepot));
+    }
+
+    [Fact]
     public async Task Linking_switches_the_provider_and_unlinking_restores_moneymoney()
     {
         await using var w = await BankWorld.CreateAsync();

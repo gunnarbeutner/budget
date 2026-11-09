@@ -157,7 +157,7 @@ internal sealed class BankWorld : IAsyncDisposable
 
     public sealed record MmTx(int Account, double Amount, DateTime Date, string Name, string Purpose, int Booked = 1);
 
-    public string BuildSnapshot(IEnumerable<(string Name, string? Iban)> accounts, IEnumerable<MmTx> txs)
+    public string BuildSnapshot(IEnumerable<(string Name, string? Iban)> accounts, IEnumerable<MmTx> txs, IReadOnlyCollection<string>? depots = null)
     {
         var path = Path.Combine(Path.GetTempPath(), $"ob-mm-{Guid.NewGuid():N}.sqlite");
         _files.Add(path);
@@ -178,7 +178,10 @@ internal sealed class BankWorld : IAsyncDisposable
         foreach (var (name, iban) in accounts)
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "INSERT INTO accounts (name, iban, currency, type, balances, refresh_tsp) VALUES ($n, $i, 'EUR', 1, '11:10.000000,3:EUR,', 1700000000)";
+            cmd.CommandText = "INSERT INTO accounts (name, iban, currency, type, portfolio, balances, refresh_tsp) VALUES ($n, $i, 'EUR', $t, $p, '11:10.000000,3:EUR,', 1700000000)";
+            bool depot = depots?.Contains(name, StringComparer.Ordinal) == true;
+            cmd.Parameters.AddWithValue("$t", depot ? 7 : 1);
+            cmd.Parameters.AddWithValue("$p", depot ? 1 : 0);
             cmd.Parameters.AddWithValue("$n", name);
             cmd.Parameters.AddWithValue("$i", (object?)iban ?? DBNull.Value);
             cmd.ExecuteNonQuery();

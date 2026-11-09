@@ -221,11 +221,16 @@ public class BankLoginService
             .Where(a => owned.Contains(a.SourceId) && (a.Provider == AccountProviders.MoneyMoney || a.Provider == AccountProviders.Manual) && a.Type != 8)
             .OrderBy(a => a.Name).ToListAsync(ct);
         var wanted = NormalizeIban(remote.Iban);
-        return accounts.Where(a => !taken.Contains(a.Id))
+        // A depot only links to a depot, and a cash account only to a non-depot account: positions and
+        // transactions are stored differently, so mixing them would show nonsense on both sides.
+        bool remoteIsDepot = remote.Type == RemoteAccountType.Depot;
+        return accounts.Where(a => !taken.Contains(a.Id) && IsDepot(a) == remoteIsDepot)
             .Select(a => new LinkCandidate(a.Id, a.Name ?? "?", a.Iban, sourceNames.GetValueOrDefault(a.SourceId, "?"), a.Provider,
                 wanted.Length > 0 && NormalizeIban(a.Iban) == wanted))
             .ToList();
     }
+
+    private static bool IsDepot(Account a) => a.Portfolio == 1 || a.Type == 7;
 
     public static string NormalizeIban(string? iban) => (iban ?? string.Empty).Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
 
