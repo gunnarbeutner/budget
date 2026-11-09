@@ -312,7 +312,7 @@ else
 
     protected override bool IsRelevantChange(DataChange change) => change.Area switch
     {
-        DataArea.MoneyMoneyData or DataArea.Sources => project != null && change.SourceId == project.SourceId,
+        DataArea.ImportedData or DataArea.Sources => project != null && change.SourceId == project.SourceId,
         _ => change.ProjectId is null || change.ProjectId == ProjectId,
     };
     protected override async Task ReloadAfterChangeAsync()

@@ -20,7 +20,7 @@ public class MonthlyBudgetEntry
     public long CategoryId { get; set; }
 
     /// <summary>
-    /// Whether CategoryId refers to a CategoryGroup or a leaf Category. The two MoneyMoney
+    /// Whether CategoryId refers to a CategoryGroup or a leaf Category. The two source-app
     /// tables share a numeric ID space, so this discriminator is required to identify the row.
     /// </summary>
     public CategoryItemType ItemType { get; set; } = CategoryItemType.Group;

@@ -4,11 +4,11 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// MoneyMoney category imported into our DB. <see cref="Id"/> is namespaced via
+/// imported category imported into our DB. <see cref="Id"/> is namespaced via
 /// <c>SourceScope.Namespace(SourceId, rowid)</c>; <see cref="GroupId"/> uses the same
 /// namespacing so it resolves into <see cref="CategoryGroup"/> within the same source.
 /// </summary>
-[Table("mm_categories")]
+[Table("categories")]
 public class Category
 {
     [Key]
@@ -32,7 +32,7 @@ public class Category
     public long? GroupId { get; set; }
 
     /// <summary>
-    /// MoneyMoney's display order within the parent group. Null values sort last.
+    /// the source's display order within the parent group. Null values sort last.
     /// </summary>
     [Column("sort")]
     public long? Sort { get; set; }

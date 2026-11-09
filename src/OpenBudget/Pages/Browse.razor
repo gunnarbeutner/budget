@@ -561,7 +561,7 @@
 
     protected override bool IsRelevantChange(DataChange change) => change.Area switch
     {
-        DataArea.MoneyMoneyData or DataArea.Sources => project != null && change.SourceId == project.SourceId,
+        DataArea.ImportedData or DataArea.Sources => project != null && change.SourceId == project.SourceId,
         _ => change.ProjectId is null || change.ProjectId == ProjectId,
     };
     protected override async Task ReloadAfterChangeAsync()
@@ -1003,7 +1003,7 @@
             holdingsTaxonomy = taxos[0].TaxonomyName;
 
         // The transaction list is intentionally unfiltered by the period anchor — matches
-        // MoneyMoney's "Period: Show All" default. The anchor only drives chart-highlight
+        // the source's "Period: Show All" default. The anchor only drives chart-highlight
         // and the header period sum. Other filters (search/amount/account) still apply.
         // Totals (count + sum) feed the footer; row data streams through <Virtualize> via
         // LoadTxRowsAsync below.
@@ -1102,7 +1102,7 @@
                 return FindCategoryNode(tree.Categories, gid, CategoryItemType.Group)?.Spent ?? 0m;
             if (selectionKind == "account" && selectionId is { } aid)
             {
-                // Accounts use MoneyMoney's natural signing: inflow positive, outflow negative.
+                // Accounts use the source's natural signing: inflow positive, outflow negative.
                 // Flip so "Spent" reads positive in the header for negative-net periods.
                 var acct = tree.Accounts.FirstOrDefault(a => a.Id == aid);
                 return acct == null ? 0m : -acct.PeriodSum;
@@ -1236,7 +1236,7 @@
     private async Task ComputeChartAsync()
     {
         // History series for the selected node, bucketed by chartGranularity. We support
-        // category / group selections (chart of period spend signed by MoneyMoney's
+        // category / group selections (chart of period spend signed by the source's
         // natural convention — expenses negative, refunds offsetting) and account
         // selections (signed net flow). "All" has no single meaningful chart yet.
         if (project == null || tree == null) { chartBars = null; return; }

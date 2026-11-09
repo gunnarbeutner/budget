@@ -65,7 +65,7 @@
     <value>Konto hinzufügen</value>
   </data>
   <data name="Accounts_Description_Before" xml:space="preserve">
-    <value>MoneyMoney-Konten verknüpfen, die dieses Projekt finanzieren. </value>
+    <value>Konten verknüpfen, die dieses Projekt finanzieren. </value>
   </data>
   <data name="Accounts_Description_Shared" xml:space="preserve">
     <value>Gemeinsam</value>

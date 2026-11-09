@@ -5,7 +5,7 @@ namespace OpenBudget.Services;
 
 /// <summary>
 /// Reads and writes the mapping between ISIN-less PortfolioPerformance instruments (crypto, real
-/// estate) and MoneyMoney holdings (<see cref="PpSecurityLink"/>) — the manual join that lets their
+/// estate) and imported holdings (<see cref="PpSecurityLink"/>) — the manual join that lets their
 /// reconstructed FIFO lots attach to a held position. ISIN-bearing securities join automatically and
 /// aren't listed here. Source-level configuration.
 /// </summary>
@@ -51,7 +51,7 @@ public class InstrumentMappingService
             .OrderBy(r => r.PpName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // ISIN-less MoneyMoney holdings, deduplicated by identity key (same crypto across depots).
+        // ISIN-less imported holdings, deduplicated by identity key (same crypto across depots).
         var holdings = await db.Holdings.AsNoTracking()
             .Where(h => h.SourceId == sourceId && (h.Isin == null || h.Isin == ""))
             .ToListAsync(ct);
@@ -64,7 +64,7 @@ public class InstrumentMappingService
         return new InstrumentMapping { Instruments = instruments, Holdings = options };
     }
 
-    /// <summary>Maps a PP instrument to a MoneyMoney holding, or clears it when
+    /// <summary>Maps a PP instrument to a imported holding, or clears it when
     /// <paramref name="holdingKey"/> is null/empty.</summary>
     public async Task SaveLinkAsync(int sourceId, string ppUuid, string? holdingKey, CancellationToken ct = default)
     {

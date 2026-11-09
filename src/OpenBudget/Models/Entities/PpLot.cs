@@ -22,7 +22,7 @@ public class PpLot
     public string PortfolioUuid { get; set; } = "";
 
     /// <summary>PortfolioPerformance security UUID — identity for every instrument, including the
-    /// ISIN-less ones mapped to MoneyMoney holdings by hand.</summary>
+    /// ISIN-less ones mapped to imported holdings by hand.</summary>
     public string SecurityUuid { get; set; } = "";
 
     /// <summary>ISIN of the security, or empty for ISIN-less instruments. The join key to holdings

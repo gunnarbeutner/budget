@@ -1,7 +1,7 @@
 namespace OpenBudget.Models;
 
 /// <summary>Everything the depot-mapping screen needs: the PortfolioPerformance depots to map and
-/// the MoneyMoney depot accounts they can map to, for one source.</summary>
+/// the imported depot accounts they can map to, for one source.</summary>
 public class DepotMapping
 {
     public List<DepotMappingRow> Depots { get; init; } = new();
@@ -9,7 +9,7 @@ public class DepotMapping
 }
 
 /// <summary>One PortfolioPerformance depot on the mapping screen, with its reconstructed-lot summary
-/// and the MoneyMoney account it currently maps to (if any).</summary>
+/// and the imported account it currently maps to (if any).</summary>
 public class DepotMappingRow
 {
     public string PpUuid { get; init; } = "";
@@ -19,7 +19,7 @@ public class DepotMappingRow
     public long? LinkedAccountId { get; init; }
 }
 
-/// <summary>A MoneyMoney depot account offered as a mapping target.</summary>
+/// <summary>A imported depot account offered as a mapping target.</summary>
 public class DepotAccountOption
 {
     public long Id { get; init; }

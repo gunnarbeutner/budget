@@ -13,10 +13,10 @@ namespace OpenBudget.Tests;
 public class BrowseServiceTests
 {
     [Fact]
-    public async Task Tree_uses_moneymoney_sort_order_with_name_tiebreak()
+    public async Task Tree_uses_source_sort_order_with_name_tiebreak()
     {
-        // MoneyMoney stores a per-row sort column; the tree should respect it so the view
-        // matches what the user sees inside MoneyMoney. Null sort values come last.
+        // The source app stores a per-row sort column; the tree should respect it so the view
+        // matches what the user sees inside the source app. Null sort values come last.
         await using var t = new TestDb();
         var lebensmittel = t.AddGroup(100, name: "Lebensmittel");
         lebensmittel.Sort = 10;
@@ -43,7 +43,7 @@ public class BrowseServiceTests
     }
 
     [Fact]
-    public async Task Children_under_a_group_use_moneymoney_sort_order()
+    public async Task Children_under_a_group_use_source_sort_order()
     {
         await using var t = new TestDb();
         t.AddGroup(100, name: "Group");
@@ -174,7 +174,7 @@ public class BrowseServiceTests
             ItemType = CategoryItemType.Category,
             IsIncome = true,
         });
-        // Income in MoneyMoney is stored as positive cents.
+        // Income in the source app is stored as positive cents.
         t.AddTransaction(id: 1, categoryId: 101, amountCents: 250000, date: new DateTime(2026, 5, 1));
         await t.Db.SaveChangesAsync();
 
@@ -216,7 +216,7 @@ public class BrowseServiceTests
         t.AddProject(1);
         var giro = t.AddAccount(500, "Giro");
         t.AddAccount(501, "Savings");
-        // Manual balance string: MoneyMoney's packed format.
+        // Manual balance string: the source's packed format.
         giro.Balances = "11:1234.56,3:EUR,";
         t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment
         {

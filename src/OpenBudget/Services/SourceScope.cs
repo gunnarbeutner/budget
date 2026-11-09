@@ -1,7 +1,7 @@
 namespace OpenBudget.Services;
 
 /// <summary>
-/// ID-namespacing helpers for multi-source MoneyMoney data. Every imported MoneyMoney row's
+/// ID-namespacing helpers for multi-source imported data. Every imported row's
 /// primary key is rewritten with <see cref="Namespace"/> so multiple installations can share
 /// a single SQLite store without rowid collisions.
 ///
@@ -28,7 +28,7 @@ public static class SourceScope
     }
 
     /// <summary>
-    /// Sentinel namespaced IDs (rowids 0 and 1) used by MoneyMoney for "no category" / hidden
+    /// Sentinel namespaced IDs (rowids 0 and 1) used by the source app for "no category" / hidden
     /// root group. These need to be hidden per source — the legacy bare-literal checks against
     /// 0/1 would let one source's sentinel leak into another's.
     /// </summary>

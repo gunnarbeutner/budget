@@ -381,7 +381,7 @@ else
     private const string UnclassifiedLabel = "Unclassified";
 
     protected override bool IsRelevantChange(DataChange change) =>
-        change.Area == DataArea.MoneyMoneyData && (change.SourceId == null || change.SourceId == sourceId);
+        change.Area == DataArea.ImportedData && (change.SourceId == null || change.SourceId == sourceId);
 
     protected override async Task ReloadAfterChangeAsync() => await LoadAsync();
 

@@ -11,7 +11,7 @@ namespace OpenBudget.Services;
 /// Navigation is bounded by an inclusive [min, max] month window derived from the data
 /// (earliest..latest transaction), NOT by "now": the past bound stops you scrolling into
 /// empty months before the first transaction, and the future bound lets you reach
-/// future-dated rows (e.g. MoneyMoney's pending transactions) that sit beyond today.
+/// future-dated rows (e.g. the source's pending transactions) that sit beyond today.
 /// </summary>
 public static class Anchoring
 {

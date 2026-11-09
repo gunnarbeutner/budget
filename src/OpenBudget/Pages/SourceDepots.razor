@@ -69,7 +69,7 @@ else
     private int _loadedSourceId = -1;
 
     protected override bool IsRelevantChange(DataChange change) =>
-        change.Area is DataArea.MoneyMoneyData or DataArea.Sources && (change.SourceId == null || change.SourceId == SourceId);
+        change.Area is DataArea.ImportedData or DataArea.Sources && (change.SourceId == null || change.SourceId == SourceId);
     protected override Task ReloadAfterChangeAsync() => LoadAsync();
 
     protected override async Task OnParametersSetAsync()

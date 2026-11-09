@@ -21,7 +21,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-# /app/data holds the SQLite files (moneymoney.db, budgets.db). Mount as a volume. Make it
+# /app/data holds the SQLite files (budgets.db). Mount as a volume. Make it
 # writable by the non-root app user (APP_UID is defined by the .NET base image).
 RUN mkdir -p /app/data && chown -R $APP_UID /app/data
 VOLUME ["/app/data"]

@@ -4,10 +4,10 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// MoneyMoney category group imported into our DB. <see cref="Id"/> and
+/// imported category group imported into our DB. <see cref="Id"/> and
 /// <see cref="ParentGroupId"/> are namespaced via <c>SourceScope.Namespace</c>.
 /// </summary>
-[Table("mm_category_groups")]
+[Table("category_groups")]
 public class CategoryGroup
 {
     [Key]

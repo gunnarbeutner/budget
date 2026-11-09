@@ -16,7 +16,7 @@ public class InstrumentMappingServiceTests
         t.Db.PpLots.AddRange(
             new PpLot { SourceId = 1, PortfolioUuid = "vault", SecurityUuid = "gold", Isin = "", Acquired = new DateOnly(2021, 1, 1), Shares = 2m, Cost = 60000m },
             new PpLot { SourceId = 1, PortfolioUuid = "ing", SecurityUuid = "etf", Isin = "IE00X", Acquired = new DateOnly(2021, 1, 1), Shares = 5m, Cost = 500m });
-        // MoneyMoney holdings: a gold (no ISIN) and an ISIN ETF (must not be offered).
+        // imported holdings: a gold (no ISIN) and an ISIN ETF (must not be offered).
         t.AddAccount(10, "Depot");
         t.Db.Holdings.AddRange(
             new Holding { Id = 1, SourceId = 1, AccountId = 10, Symbol = "XAU", Name = "Gold", Quantity = 2 },

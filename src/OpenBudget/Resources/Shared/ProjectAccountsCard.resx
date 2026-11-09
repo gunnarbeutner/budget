@@ -65,7 +65,7 @@
     <value>Add Account</value>
   </data>
   <data name="Accounts_Description_Before" xml:space="preserve">
-    <value>Link MoneyMoney accounts that fund this project. </value>
+    <value>Link accounts that fund this project. </value>
   </data>
   <data name="Accounts_Description_Shared" xml:space="preserve">
     <value>Shared</value>

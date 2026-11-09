@@ -8,10 +8,12 @@
 #   1. Create a GitHub PAT with `read:packages` scope.
 #   2. echo "$PAT" | docker login ghcr.io -u <github-user> --password-stdin
 #      (this stores creds at ~/.docker/config.json, which Watchtower reads via the mount below)
-#   3. echo "MONEYMONEY_DB_UPLOAD_TOKEN=$(openssl rand -hex 32)" > .env
+#   3. echo "OPENBUDGET_UPLOAD_TOKEN=$(openssl rand -hex 32)" > .env
+#      (an existing .env with the old MONEYMONEY_DB_UPLOAD_TOKEN keeps working; rename it when
+#      convenient — the server logs a deprecation warning while only the old name is set)
 #
-# Bootstrap data: copy a MoneyMoney SQLite snapshot into ./data/ before first start, or POST
-# it to /api/moneymoney-db/{name} after start.
+# Bootstrap data: copy budgets.db into ./data/ before first start, or POST an importer snapshot
+# (see README, "Importers") after start.
 #
 # TLS: terminate at a reverse proxy in front of this container. The app speaks plain HTTP on
 # port 8080; put nginx / Caddy / Traefik in front for HTTPS.
@@ -26,7 +28,10 @@ services:
     volumes:
       - ./data:/app/data
     environment:
-      MONEYMONEY_DB_UPLOAD_TOKEN: ${MONEYMONEY_DB_UPLOAD_TOKEN:?set MONEYMONEY_DB_UPLOAD_TOKEN in .env}
+      # Either variable works; the second is the deprecated pre-rename name, still honoured so an
+      # existing .env keeps working. The app returns 503 on uploads when neither is set.
+      OPENBUDGET_UPLOAD_TOKEN: ${OPENBUDGET_UPLOAD_TOKEN:-}
+      MONEYMONEY_DB_UPLOAD_TOKEN: ${MONEYMONEY_DB_UPLOAD_TOKEN:-}
     labels:
       # Opt this container into Watchtower's poll (paired with WATCHTOWER_LABEL_ENABLE=true).
       com.centurylinklabs.watchtower.enable: "true"

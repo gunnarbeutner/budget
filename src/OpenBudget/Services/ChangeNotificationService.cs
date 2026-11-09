@@ -15,10 +15,10 @@ public enum DataArea
     Budgets,
     /// <summary>Project tracking-item rows specifically (a finer signal than Projects).</summary>
     TrackingItems,
-    /// <summary>MoneyMoney source registrations (add / delete).</summary>
+    /// <summary>import source registrations (add / delete).</summary>
     Sources,
-    /// <summary>Imported MoneyMoney transactions/categories/accounts for a source.</summary>
-    MoneyMoneyData
+    /// <summary>Imported imported transactions/categories/accounts for a source.</summary>
+    ImportedData
 }
 
 /// <summary>

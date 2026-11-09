@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
+using OpenBudget.Compat;
+using OpenBudget.Importers;
 using OpenBudget.Services;
 using System.Globalization;
 
@@ -26,7 +28,7 @@ builder.Services.AddScoped<ProjectTimeState>();
 // Per-circuit holder for the browser's timezone (seeded from the tz cookie by App.razor) so all
 // pages render dates/times and "current period" decisions in the user's zone, not the server's.
 builder.Services.AddScoped<ClockService>();
-builder.Services.AddSingleton<MoneyMoneyImportService>();
+builder.Services.AddImporters();
 builder.Services.AddSingleton<PortfolioPerformanceImportService>();
 builder.Services.AddSingleton<ChangeNotificationService>();
 // Per-circuit origin id, stamped onto changes this circuit publishes so its own components can
@@ -59,7 +61,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownProxies.Clear();
 });
 
-// Configure database paths. Everything lives in budgets.db now — the MoneyMoney data is
+// Configure database paths. Everything lives in budgets.db now — the imported data is
 // imported into the same store under namespaced IDs (see SourceScope) via the upload
 // endpoint below.
 var dataDir = Path.Combine(builder.Environment.ContentRootPath, "data");
@@ -122,25 +124,12 @@ app.MapFallbackToPage("/_Host");
 // database — it answers "is the process up and serving HTTP", which is what a restart fixes.
 app.MapGet("/healthz", () => Results.Ok("healthy"));
 
-// POST /api/moneymoney-db/{name} — uploads a fresh MoneyMoney SQLite file and imports it into
-// the named source. First upload to a new name auto-registers the source.
-// Auth: requires "Authorization: Bearer <MONEYMONEY_DB_UPLOAD_TOKEN env var>".
-app.MapPost("/api/moneymoney-db/{name}", async (
-    string name,
-    HttpRequest request,
-    MoneyMoneyImportService importer,
-    ILogger<Program> logger,
-    CancellationToken ct) =>
-{
-    if (!MoneyMoneyImportService.IsValidSlug(name))
-        return Results.BadRequest($"Invalid source name '{name}'. Use lowercase letters, digits, and hyphens; start with letter/digit.");
-
-    return await HandleUploadAsync(name, request, importer, logger, uploadStagingDir, ct);
-});
+// The source app (and any future) importer upload endpoints live in the Importers module.
+app.MapImporterEndpoints(uploadStagingDir);
 
 // POST /api/portfolioperformance/{name} — uploads a PortfolioPerformance ".portfolio" file and
 // imports its security taxonomy (region/asset-class look-through) for an existing source.
-// Auth: same "Authorization: Bearer <MONEYMONEY_DB_UPLOAD_TOKEN>" as the MoneyMoney upload.
+// Auth: same "Authorization: Bearer <OPENBUDGET_UPLOAD_TOKEN>" as the importer uploads.
 app.MapPost("/api/portfolioperformance/{name}", async (
     string name,
     HttpRequest request,
@@ -148,15 +137,16 @@ app.MapPost("/api/portfolioperformance/{name}", async (
     ILogger<Program> logger,
     CancellationToken ct) =>
 {
-    if (!MoneyMoneyImportService.IsValidSlug(name))
+    if (!SourceData.IsValidSlug(name))
         return Results.BadRequest($"Invalid source name '{name}'. Use lowercase letters, digits, and hyphens; start with letter/digit.");
 
     return await HandlePortfolioPerformanceUploadAsync(name, request, importer, logger, uploadStagingDir, ct);
 });
 
-// DELETE /api/moneymoney-sources/{name} — removes a source. Refused with 409 when any project
-// references it, with the offending project list in the response.
-app.MapDelete("/api/moneymoney-sources/{name}", async (
+// DELETE /api/sources/{name} — removes a source. Refused with 409 when any project
+// references it, with the offending project list in the response. The old route is kept as an
+// alias for the already-installed exporter (see LegacyCompat).
+Delegate deleteSourceHandler = async (
     string name,
     IDbContextFactory<BudgetDbContext> dbFactory,
     ChangeNotificationService notifier,
@@ -164,9 +154,9 @@ app.MapDelete("/api/moneymoney-sources/{name}", async (
     HttpRequest request,
     CancellationToken ct) =>
 {
-    var expectedToken = Environment.GetEnvironmentVariable("MONEYMONEY_DB_UPLOAD_TOKEN");
+    var expectedToken = LegacyCompat.ResolveUploadToken(logger);
     if (string.IsNullOrEmpty(expectedToken))
-        return Results.Problem("Source deletion disabled: MONEYMONEY_DB_UPLOAD_TOKEN is not set.", statusCode: StatusCodes.Status503ServiceUnavailable);
+        return Results.Problem($"Source deletion disabled: {LegacyCompat.UploadTokenVariable} is not set.", statusCode: StatusCodes.Status503ServiceUnavailable);
     if (!UploadAuth.IsAuthorized(request.Headers.Authorization.ToString(), expectedToken))
         return Results.Unauthorized();
 
@@ -187,92 +177,20 @@ app.MapDelete("/api/moneymoney-sources/{name}", async (
         });
     }
 
-    await MoneyMoneyImportService.DeleteSourceDataAsync(db, source.Id, ct);
+    await SourceData.DeleteSourceDataAsync(db, source.Id, ct);
     db.ImportSources.Remove(source);
     await db.SaveChangesAsync(ct);
 
     notifier.Publish(new DataChange(DataArea.Sources, SourceId: source.Id));
-    notifier.Publish(new DataChange(DataArea.MoneyMoneyData, SourceId: source.Id));
+    notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: source.Id));
 
-    logger.LogInformation("Deleted MoneyMoney source '{Name}' (id={Id}).", name, source.Id);
+    logger.LogInformation("Deleted source '{Name}' (id={Id}).", name, source.Id);
     return Results.Ok(new { status = "deleted", name });
-});
+};
+app.MapDelete("/api/sources/{name}", deleteSourceHandler);
+app.MapDelete(LegacyCompat.LegacyDeleteSourceRoute, deleteSourceHandler);
 
 await app.RunAsync();
-
-static async Task<IResult> HandleUploadAsync(
-    string sourceName,
-    HttpRequest request,
-    MoneyMoneyImportService importer,
-    ILogger<Program> logger,
-    string stagingDir,
-    CancellationToken ct)
-{
-    // SQLite files can run to hundreds of MB, so lift Kestrel's ~30 MB default for this endpoint.
-    // Raise it to a generous-but-finite ceiling rather than clearing it (null = unbounded): the
-    // body is streamed to disk on the same volume as budgets.db before validation, so an
-    // unbounded cap is a trivial disk-fill DoS for anyone holding the upload token.
-    const long maxUploadBytes = 2L * 1024 * 1024 * 1024; // 2 GiB
-    var sizeFeature = request.HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
-    if (sizeFeature != null && !sizeFeature.IsReadOnly)
-        sizeFeature.MaxRequestBodySize = maxUploadBytes;
-
-    var expectedToken = Environment.GetEnvironmentVariable("MONEYMONEY_DB_UPLOAD_TOKEN");
-    if (string.IsNullOrEmpty(expectedToken))
-        return Results.Problem("Upload endpoint disabled: MONEYMONEY_DB_UPLOAD_TOKEN is not set.", statusCode: StatusCodes.Status503ServiceUnavailable);
-    if (!UploadAuth.IsAuthorized(request.Headers.Authorization.ToString(), expectedToken))
-        return Results.Unauthorized();
-
-    Directory.CreateDirectory(stagingDir);
-    var tempPath = Path.Combine(stagingDir, $"{sourceName}-{Guid.NewGuid():N}.sqlite");
-    try
-    {
-        await using (var tempStream = File.Create(tempPath))
-        {
-            await request.Body.CopyToAsync(tempStream, ct);
-        }
-
-        // SQLite file header is "SQLite format 3\0" (16 bytes).
-        await using (var checkStream = File.OpenRead(tempPath))
-        {
-            var magic = new byte[16];
-            var read = await checkStream.ReadAsync(magic.AsMemory(0, 16), ct);
-            var header = System.Text.Encoding.ASCII.GetString(magic, 0, read);
-            if (read < 16 || header != "SQLite format 3\0")
-            {
-                return Results.BadRequest("Uploaded payload is not a SQLite database.");
-            }
-        }
-
-        var result = await importer.ImportFromFileAsync(sourceName, tempPath, ct);
-        return Results.Ok(new
-        {
-            status = "ok",
-            result.SourceId,
-            result.SourceName,
-            result.AccountsImported,
-            result.AccountGroupsImported,
-            result.CategoryGroupsImported,
-            result.CategoriesImported,
-            result.TransactionsImported,
-            result.FileSizeBytes
-        });
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "MoneyMoney DB upload failed for source '{Source}'.", sourceName);
-        // Don't echo ex.Message to the caller — it can carry file paths / SQLite internals. The
-        // detail is in the server log above; the client just needs to know it failed.
-        return Results.Problem("Upload failed. See server logs for details.", statusCode: StatusCodes.Status500InternalServerError);
-    }
-    finally
-    {
-        if (File.Exists(tempPath))
-        {
-            try { File.Delete(tempPath); } catch { /* best-effort cleanup */ }
-        }
-    }
-}
 
 static async Task<IResult> HandlePortfolioPerformanceUploadAsync(
     string sourceName,
@@ -289,9 +207,9 @@ static async Task<IResult> HandlePortfolioPerformanceUploadAsync(
     if (sizeFeature != null && !sizeFeature.IsReadOnly)
         sizeFeature.MaxRequestBodySize = maxUploadBytes;
 
-    var expectedToken = Environment.GetEnvironmentVariable("MONEYMONEY_DB_UPLOAD_TOKEN");
+    var expectedToken = LegacyCompat.ResolveUploadToken(logger);
     if (string.IsNullOrEmpty(expectedToken))
-        return Results.Problem("Upload endpoint disabled: MONEYMONEY_DB_UPLOAD_TOKEN is not set.", statusCode: StatusCodes.Status503ServiceUnavailable);
+        return Results.Problem($"Upload endpoint disabled: {LegacyCompat.UploadTokenVariable} is not set.", statusCode: StatusCodes.Status503ServiceUnavailable);
     if (!UploadAuth.IsAuthorized(request.Headers.Authorization.ToString(), expectedToken))
         return Results.Unauthorized();
 
@@ -326,7 +244,7 @@ static async Task<IResult> HandlePortfolioPerformanceUploadAsync(
     }
     catch (KeyNotFoundException ex)
     {
-        // Unknown source — the MoneyMoney data must be imported first.
+        // Unknown source — the source's data must be imported first.
         return Results.NotFound(new { error = ex.Message });
     }
     catch (InvalidDataException ex)

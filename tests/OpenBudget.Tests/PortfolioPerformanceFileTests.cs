@@ -83,7 +83,7 @@ public class PortfolioPerformanceFileTests
         Assert.Equal(7, etf.SourceId);
         Assert.Equal("IE000WORLD0", etf.Isin);
         Assert.Equal("World ETF", etf.Name);
-        // The ISIN-less gold is catalogued too, with an empty ISIN — it maps to MoneyMoney by hand.
+        // The ISIN-less gold is catalogued too, with an empty ISIN — it maps to the source app by hand.
         var gold = securities.Single(s => s.Uuid == "sec-gold");
         Assert.Equal("", gold.Isin);
         Assert.Equal("Gold", gold.Name);

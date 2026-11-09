@@ -4,7 +4,7 @@ using OpenBudget.Models;
 namespace OpenBudget.Services;
 
 /// <summary>
-/// Reads and writes the mapping between PortfolioPerformance depots and MoneyMoney depot accounts
+/// Reads and writes the mapping between PortfolioPerformance depots and imported depot accounts
 /// (<see cref="PpPortfolioLink"/>) — the link that lets per-depot FIFO lots attach to held positions.
 /// Source-level configuration, independent of any project.
 /// </summary>
@@ -24,7 +24,7 @@ public class DepotMappingService
             .Where(l => l.SourceId == sourceId).ToListAsync(ct);
         var links = await db.PpPortfolioLinks.AsNoTracking()
             .Where(l => l.SourceId == sourceId).ToListAsync(ct);
-        // MoneyMoney depot accounts: portfolio flag set, or the depot account type (7).
+        // imported depot accounts: portfolio flag set, or the depot account type (7).
         var accounts = await db.Accounts.AsNoTracking()
             .Where(a => a.SourceId == sourceId && (a.Portfolio == 1 || a.Type == 7))
             .OrderBy(a => a.Name).ToListAsync(ct);
@@ -55,7 +55,7 @@ public class DepotMappingService
         };
     }
 
-    /// <summary>Maps a PP depot to a MoneyMoney account, or clears the mapping when
+    /// <summary>Maps a PP depot to a imported account, or clears the mapping when
     /// <paramref name="accountId"/> is null.</summary>
     public async Task SaveLinkAsync(int sourceId, string ppUuid, long? accountId, CancellationToken ct = default)
     {

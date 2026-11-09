@@ -4,7 +4,7 @@ using System.Text;
 namespace OpenBudget.Services;
 
 /// <summary>
-/// Bearer-token check for the MoneyMoney DB upload/delete endpoints. The comparison is
+/// Bearer-token check for the upload/delete endpoints. The comparison is
 /// constant-time: a plain <c>string.Equals</c> short-circuits on the first differing byte, which
 /// leaks how much of the token a guess got right through response timing.
 /// </summary>

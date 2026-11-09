@@ -28,7 +28,7 @@ public class BrowseAccountNode
     /// <summary>Signed net flow over the current period (incoming − outgoing).</summary>
     public decimal PeriodSum { get; init; }
     /// <summary>
-    /// True for a securities depot (MoneyMoney type 7 / portfolio flag). For these,
+    /// True for a securities depot (imported type 7 / portfolio flag). For these,
     /// <see cref="Balance"/> reflects the holdings' market value rather than the packed cash
     /// balance blob, and selecting the account in Browse surfaces its holdings.
     /// </summary>
@@ -54,7 +54,7 @@ public class BrowseCategoryNode
     public bool IsIncome { get; init; }
     /// <summary>
     /// Period sum for this subtree, in the item's natural direction: positive for income items,
-    /// expense items report their amount as positive (matching MoneyMoney's display convention
+    /// expense items report their amount as positive (matching the source's display convention
     /// where −€947,72 of groceries reads as €947 spent).
     /// </summary>
     public decimal Spent { get; init; }

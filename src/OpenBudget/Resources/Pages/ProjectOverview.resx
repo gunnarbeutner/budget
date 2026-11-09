@@ -125,7 +125,7 @@
     <value>No tracked spending categories for this period.</value>
   </data>
   <data name="Freshness_Uploaded" xml:space="preserve">
-    <value>MoneyMoney data uploaded</value>
+    <value>Data uploaded</value>
   </data>
   <data name="Freshness_Unknown" xml:space="preserve">
     <value>unknown</value>

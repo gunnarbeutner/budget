@@ -59,6 +59,8 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
 <dict>
     <key>CFBundleIdentifier</key>
     <string>de.beutner.OpenBudgetImporter</string>
+    <key>CFBundleDisplayName</key>
+    <string>OpenBudget Importer</string>
     <key>CFBundleName</key>
     <string>OpenBudgetImporter</string>
     <key>CFBundleExecutable</key>

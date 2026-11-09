@@ -137,7 +137,7 @@
             {
                 label += L["Form_SubCategories", item.DirectChildCount].Value;
             }
-            // MoneyMoney doesn't visually distinguish category groups from leaf categories,
+            // The source app doesn't visually distinguish category groups from leaf categories,
             // so we use the same icon for both — only the indent signals depth.
             nodes.Add(new TreePickerNode<long>(item.Id, level, Selectable: true, label, Icon: "bi-tag-fill"));
 

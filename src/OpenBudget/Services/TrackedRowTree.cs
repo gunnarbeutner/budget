@@ -62,7 +62,7 @@ public static class TrackedRowTree
                 list.Add(item);
             }
         }
-        // Sort siblings by MoneyMoney's `sort` field (the user-facing order in MoneyMoney —
+        // Sort siblings by the source's `sort` field (the user-facing order in the source app —
         // e.g. "Sonstiges" sits at the bottom of each group there). Tiebreak by display name
         // (when provided) so unsorted-vs-unsorted rows still have a stable order.
         long? SortKey((long Id, CategoryItemType ItemType) key)

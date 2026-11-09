@@ -175,7 +175,7 @@ public class BudgetPredictionService
     }
 
     /// <summary>
-    /// Predict monthly spending for a leaf (MoneyMoney Category) using seasonal adjustment —
+    /// Predict monthly spending for a leaf (Category) using seasonal adjustment —
     /// same algorithm as <see cref="PredictMonthlySpendingForCategoryAsync"/> but driven by
     /// per-leaf history instead of summing a group's descendants.
     /// </summary>

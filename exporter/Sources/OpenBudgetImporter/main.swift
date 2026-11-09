@@ -56,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false)
-        window.title = "OpenBudget Export"
+        window.title = "OpenBudget Importer"
         let hosting = NSHostingView(rootView: content)
         window.contentView = hosting
         // Size the window to the view's natural height instead of the fixed contentRect.
@@ -246,7 +246,7 @@ struct ConfigView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("OpenBudget Export").font(.title2).bold()
+            Text("OpenBudget Importer").font(.title2).bold()
             Text("Periodically exports your MoneyMoney database to a budget server.")
                 .foregroundColor(.secondary).font(.callout)
 
@@ -268,7 +268,7 @@ struct ConfigView: View {
                     )
                 SecureField("API token", text: $vm.token)
                     .textFieldStyle(.roundedBorder)
-                    .help("Matches the server's MONEYMONEY_DB_UPLOAD_TOKEN env var. Stored in macOS Keychain.")
+                    .help("Matches the server's OPENBUDGET_UPLOAD_TOKEN env var. Stored in macOS Keychain.")
                 SecureField("MoneyMoney password", text: $vm.dbPassword)
                     .textFieldStyle(.roundedBorder)
                     .help("Leave empty if MoneyMoney has no database password set. Stored in macOS Keychain.")
@@ -631,10 +631,10 @@ enum Exporter {
         // throw a combined error at the end so the launchd-driven run still surfaces them.
         var failures: [(String, Error)] = []
         for baseURL in baseURLs {
-            logger("Exported \(size) bytes → uploading to \(baseURL)/api/moneymoney-db/\(sourceName)")
+            logger("Exported \(size) bytes → uploading to \(baseURL)/api/import/moneymoney/\(sourceName)")
             do {
                 try await upload(
-                    file: outFile, baseURL: baseURL, apiPath: "api/moneymoney-db/\(sourceName)",
+                    file: outFile, baseURL: baseURL, apiPath: "api/import/moneymoney/\(sourceName)",
                     token: token, logger: logger)
             } catch {
                 logger("✗ Upload to \(baseURL) failed: \(error.localizedDescription)")
@@ -800,7 +800,7 @@ final class TempDirectory {
 
     init() throws {
         let parent = URL(fileURLWithPath: NSTemporaryDirectory())
-        let candidate = parent.appendingPathComponent("moneymoney-export-\(UUID().uuidString)")
+        let candidate = parent.appendingPathComponent("openbudget-importer-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: candidate, withIntermediateDirectories: true)
         self.url = candidate
     }

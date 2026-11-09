@@ -350,7 +350,7 @@
     protected override bool AutoReloadOnChange => false;
     protected override bool IsRelevantChange(DataChange change) => change.Area switch
     {
-        DataArea.MoneyMoneyData or DataArea.Sources => change.SourceId == projectSourceId,
+        DataArea.ImportedData or DataArea.Sources => change.SourceId == projectSourceId,
         _ => change.ProjectId is null || change.ProjectId == ProjectId,
     };
     protected override Task ReloadAfterChangeAsync()

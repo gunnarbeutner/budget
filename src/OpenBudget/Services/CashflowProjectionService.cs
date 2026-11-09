@@ -87,7 +87,7 @@ public class CashflowProjectionService
 
         // Anchor the line on Jan 1 by reversing all booked transactions through "now" out of the
         // live balance. Both this sum and the per-day delta walk below MUST use the same upper
-        // bound — MoneyMoney stores future-dated entries (scheduled payments) in the same table,
+        // bound — the source app stores future-dated entries (scheduled payments) in the same table,
         // and including them in one but not the other lets currentBalance fall out of sync with
         // sum(DailyDelta), making balanceAtProjStart drift away from the real account balance.
         var clampedEnd = Math.Max(yearRange.StartTs, Math.Min(nowTs, yearRange.EndTsExclusive));

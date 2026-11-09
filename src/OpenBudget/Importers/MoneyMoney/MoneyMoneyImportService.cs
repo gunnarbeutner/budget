@@ -1,12 +1,12 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
-using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using OpenBudget.Models;
+using OpenBudget.Services;
 
-namespace OpenBudget.Services;
+namespace OpenBudget.Importers.MoneyMoney;
 
 /// <summary>
 /// Imports an uploaded MoneyMoney SQLite file into our store under a named source. Reads the
@@ -20,9 +20,6 @@ namespace OpenBudget.Services;
 /// </summary>
 public class MoneyMoneyImportService
 {
-    // URL-safe slug; same shape we accept in the upload route.
-    public static readonly Regex SlugRegex = new("^[a-z0-9][a-z0-9-]{0,99}$", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
-
     private static readonly string[] ExpectedAccountColumns =
     {
         "name", "iban", "currency", "type", "portfolio", "balances", "sort", "refresh_tsp", "error", "group_key"
@@ -100,11 +97,9 @@ public class MoneyMoneyImportService
         _logger = logger;
     }
 
-    public static bool IsValidSlug(string name) => !string.IsNullOrEmpty(name) && SlugRegex.IsMatch(name);
-
     public async Task<ImportResult> ImportFromFileAsync(string sourceName, string sqliteFilePath, CancellationToken ct)
     {
-        if (!IsValidSlug(sourceName))
+        if (!SourceData.IsValidSlug(sourceName))
             throw new ArgumentException($"Source name '{sourceName}' is not a valid slug.", nameof(sourceName));
 
         var sem = _perSourceLocks.GetOrAdd(sourceName, _ => new SemaphoreSlim(1, 1));
@@ -150,7 +145,7 @@ public class MoneyMoneyImportService
         WarnOnSchemaDrift(src, sourceName);
 
         // MoneyMoney's source DB has dangling rowid refs (e.g. category_groups with group_key=0).
-        // Our mm_* tables declare FKs that EF generated from the model, so we silence enforcement
+        // Our imported tables declare FKs that EF generated from the model, so we silence enforcement
         // on this connection for the duration of the import. PRAGMA must be set outside any
         // transaction or it's silently ignored.
         var destConn = (SqliteConnection)db.Database.GetDbConnection();
@@ -168,13 +163,13 @@ public class MoneyMoneyImportService
             // Wipe previous rows for this source. Order matters: transactions and securities
             // reference accounts/categories via FKs (Restrict), so they go first. Accounts
             // reference account_groups, so accounts go before account_groups.
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_transactions WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_portfolio_chart WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_securities WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_categories WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_category_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_accounts WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_account_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM transactions WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM portfolio_chart WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM holdings WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM categories WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM category_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM accounts WHERE SourceId = {0}", new object[] { sourceId }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM account_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
 
             int accountGroupCount = await CopyAccountGroupsAsync(src, db, sourceId, ct);
             int accountCount = await CopyAccountsAsync(src, db, sourceId, ct);
@@ -201,7 +196,7 @@ public class MoneyMoneyImportService
 
             // Tell every open browser session their imported data changed so pages reload —
             // a fresh upload moves balances and spending on every project bound to this source.
-            _notifier.Publish(new DataChange(DataArea.MoneyMoneyData, SourceId: sourceId));
+            _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: sourceId));
             _notifier.Publish(new DataChange(DataArea.Sources, SourceId: sourceId));
 
             return new ImportResult
@@ -227,51 +222,6 @@ public class MoneyMoneyImportService
         {
             // Re-enable FK enforcement so EF's subsequent SaveChanges operations behave normally.
             await using var pragmaOn = destConn.CreateCommand();
-            pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
-            await pragmaOn.ExecuteNonQueryAsync(ct);
-        }
-    }
-
-    /// <summary>
-    /// Deletes every imported row for a source — transactions, categories, category groups,
-    /// accounts, account groups — in one transaction. FK enforcement is disabled on the connection
-    /// first because mm_account_groups and mm_category_groups carry self-referential group_key FKs
-    /// (ON DELETE RESTRICT): a bulk delete would otherwise fail with "FOREIGN KEY constraint failed"
-    /// the moment a parent group is removed while a child still points at it. The PRAGMA must be
-    /// toggled outside any transaction or SQLite silently ignores it, and it's restored in the
-    /// finally so EF's later SaveChanges behave normally. Does not remove the money_money_sources
-    /// row itself — the caller owns that.
-    /// </summary>
-    public static async Task DeleteSourceDataAsync(BudgetDbContext db, int sourceId, CancellationToken ct = default)
-    {
-        var conn = (SqliteConnection)db.Database.GetDbConnection();
-        if (conn.State != System.Data.ConnectionState.Open)
-            await conn.OpenAsync(ct);
-        await using (var pragmaOff = conn.CreateCommand())
-        {
-            pragmaOff.CommandText = "PRAGMA foreign_keys = OFF";
-            await pragmaOff.ExecuteNonQueryAsync(ct);
-        }
-        try
-        {
-            await using var tx = await db.Database.BeginTransactionAsync(ct);
-            // Order mirrors FK direction for clarity even with enforcement off: transactions and
-            // securities reference accounts/categories; accounts reference account_groups.
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_transactions WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_portfolio_chart WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_securities WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_categories WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_category_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_accounts WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM mm_account_groups WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            // App-native PortfolioPerformance taxonomy is scoped to the same source; drop it too so
-            // removing a source leaves nothing behind.
-            await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_security_taxonomy WHERE SourceId = {0}", new object[] { sourceId }, ct);
-            await tx.CommitAsync(ct);
-        }
-        finally
-        {
-            await using var pragmaOn = conn.CreateCommand();
             pragmaOn.CommandText = "PRAGMA foreign_keys = ON";
             await pragmaOn.ExecuteNonQueryAsync(ct);
         }
@@ -393,7 +343,7 @@ public class MoneyMoneyImportService
             FROM accounts
             """;
         const string insert = """
-            INSERT INTO mm_accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key)
+            INSERT INTO accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key)
             VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key)
             """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
@@ -423,7 +373,7 @@ public class MoneyMoneyImportService
         if (!TableExists(src, "account_groups")) return 0;
         const string select = "SELECT rowid, name, group_key, sort FROM account_groups";
         const string insert = """
-            INSERT INTO mm_account_groups (Id, SourceId, name, group_key, sort)
+            INSERT INTO account_groups (Id, SourceId, name, group_key, sort)
             VALUES ($id, $sid, $name, $group_key, $sort)
             """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
@@ -443,7 +393,7 @@ public class MoneyMoneyImportService
     {
         const string select = "SELECT rowid, name, group_key, sort, color FROM category_groups";
         const string insert = """
-            INSERT INTO mm_category_groups (Id, SourceId, name, group_key, sort, color)
+            INSERT INTO category_groups (Id, SourceId, name, group_key, sort, color)
             VALUES ($id, $sid, $name, $group_key, $sort, $color)
             """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
@@ -464,7 +414,7 @@ public class MoneyMoneyImportService
     {
         const string select = "SELECT rowid, name, type, color, rules, group_key, sort FROM categories";
         const string insert = """
-            INSERT INTO mm_categories (Id, SourceId, name, type, color, rules, group_key, sort)
+            INSERT INTO categories (Id, SourceId, name, type, color, rules, group_key, sort)
             VALUES ($id, $sid, $name, $type, $color, $rules, $group_key, $sort)
             """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
@@ -496,7 +446,7 @@ public class MoneyMoneyImportService
             FROM transactions
             """;
         const string insert = """
-            INSERT INTO mm_transactions (Id, SourceId, local_account_key, amount, currency, timestamp, name, comment, purpose, category_key, checkmark, splitted)
+            INSERT INTO transactions (Id, SourceId, local_account_key, amount, currency, timestamp, name, comment, purpose, category_key, checkmark, splitted)
             VALUES ($id, $sid, $local_account_key, $amount, $currency, $timestamp, $name, $comment, $purpose, $category_key, $checkmark, $splitted)
             """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
@@ -537,7 +487,7 @@ public class MoneyMoneyImportService
             WHERE COALESCE(deleted, 0) = 0
             """;
         const string insert = """
-            INSERT INTO mm_securities (Id, SourceId, account_key, name, isin, wkn, symbol, quantity, amount, amount_cur, price, price_cur, purchase, asset_class)
+            INSERT INTO holdings (Id, SourceId, account_key, name, isin, wkn, symbol, quantity, amount, amount_cur, price, price_cur, purchase, asset_class)
             VALUES ($id, $sid, $account_key, $name, $isin, $wkn, $symbol, $quantity, $amount, $amount_cur, $price, $price_cur, $purchase, $asset_class)
             """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
@@ -570,7 +520,7 @@ public class MoneyMoneyImportService
         if (!TableExists(src, "portfolio_chart")) return 0;
         const string select = "SELECT rowid, account_key, currency, timestamp, balance, securities_key FROM portfolio_chart";
         const string insert = """
-            INSERT INTO mm_portfolio_chart (Id, SourceId, account_key, currency, timestamp, balance, securities_key)
+            INSERT INTO portfolio_chart (Id, SourceId, account_key, currency, timestamp, balance, securities_key)
             VALUES ($id, $sid, $account_key, $currency, $timestamp, $balance, $securities_key)
             """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>

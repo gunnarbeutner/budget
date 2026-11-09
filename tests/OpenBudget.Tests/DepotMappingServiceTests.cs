@@ -10,7 +10,7 @@ public class DepotMappingServiceTests
     {
         await using var t = new TestDb();
         var depot = t.AddAccount(100, "Example Depot");
-        depot.Portfolio = 1;                       // a MoneyMoney depot account
+        depot.Portfolio = 1;                       // a imported depot account
         t.AddAccount(200, "Checking").Type = 1;    // a non-depot account — must not be offered
         t.Db.PpPortfolios.Add(new PpPortfolio { SourceId = 1, Uuid = "pp-1", Name = "Example-Depot" });
         t.Db.PpLots.AddRange(

@@ -243,7 +243,7 @@ public class BudgetService
     /// categories, unions them (so a tracked group + tracked sub-cat under it don't double-count),
     /// and classifies each leaf as income or expense. Classification is project-aware when
     /// <paramref name="projectId"/> is given (type assignments + ancestor inheritance), else it
-    /// falls back to MoneyMoney's native Type==2 marker. Reads on <paramref name="db"/> so the
+    /// falls back to the source's native Type==2 marker. Reads on <paramref name="db"/> so the
     /// caller's single short-lived context is reused.
     /// </summary>
     private async Task<(Dictionary<(long, CategoryItemType), HashSet<long>> ItemToLeafIds,
@@ -575,7 +575,7 @@ public class BudgetService
             {
                 if (!perCategorySum.TryGetValue(leafId, out var s)) continue;
                 if (!leafIsIncome.GetValueOrDefault(leafId, false)) continue;
-                sum += s; // income txns have positive amounts in MoneyMoney
+                sum += s; // income txns have positive amounts in the source app
             }
             result[item] = sum;
         }
@@ -682,7 +682,7 @@ public class BudgetService
     #region Project Account Assignments
 
     /// <summary>
-    /// Returns all MoneyMoney accounts for a source ordered by MoneyMoney sort field, then name.
+    /// Returns all imported accounts for a source ordered by imported sort field, then name.
     /// Used by the project Accounts card and the assignment picker.
     /// </summary>
     public async Task<List<Account>> GetAllAccountsAsync(int sourceId)
@@ -697,7 +697,7 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Returns the MoneyMoney account groups for a source, ordered by sort then name. The
+    /// Returns the imported account groups for a source, ordered by sort then name. The
     /// Add-Account picker turns this list (plus the accounts) into a tree.
     /// </summary>
     public async Task<List<AccountGroup>> GetAllAccountGroupsAsync(int sourceId)

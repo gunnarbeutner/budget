@@ -4,11 +4,11 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// MoneyMoney transaction imported into our DB. <see cref="Id"/> encodes the source via
+/// imported transaction imported into our DB. <see cref="Id"/> encodes the source via
 /// <c>SourceScope.Namespace(SourceId, rowid)</c>; <see cref="SourceId"/> is duplicated as a
 /// real column for indexed filtering.
 /// </summary>
-[Table("mm_transactions")]
+[Table("transactions")]
 public class Transaction
 {
     [Key]
@@ -55,7 +55,7 @@ public class Transaction
     public long? Checkmark { get; set; }
 
     /// <summary>
-    /// MoneyMoney split marker. 0 = normal row, 1 = split parent (a placeholder; its real
+    /// imported split marker. 0 = normal row, 1 = split parent (a placeholder; its real
     /// category lives on the children), 2 = split child. Parents must be excluded from any
     /// rollup or "uncategorized" count or they double-count against their children.
     /// </summary>

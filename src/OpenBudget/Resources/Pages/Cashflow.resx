@@ -89,7 +89,7 @@
     <value>Alert if balance dips below</value>
   </data>
   <data name="Balance_NoAccountsAssigned_After" xml:space="preserve">
-    <value> and link the MoneyMoney accounts that fund this project to see a real balance line.</value>
+    <value> and link the accounts that fund this project to see a real balance line.</value>
   </data>
   <data name="Balance_NoAccountsAssigned_Before" xml:space="preserve">
     <value>No accounts assigned to this project. Open </value>

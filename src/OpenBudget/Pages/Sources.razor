@@ -15,7 +15,7 @@
 <PageHeader Title="@L["Heading"]" />
 
 <p class="text-body-secondary">
-    @L["Intro_Before"]<code>POST /api/moneymoney-db/{name}</code>@L["Intro_After"]
+    @L["Intro_Before"]<code>POST /api/import/moneymoney/{name}</code>@L["Intro_After"]
 </p>
 
 @if (sources == null)
@@ -112,7 +112,7 @@ else
 
     // Source registrations, imports, and project counts all show on this page.
     protected override bool IsRelevantChange(DataChange change) =>
-        change.Area is DataArea.Sources or DataArea.MoneyMoneyData or DataArea.Projects;
+        change.Area is DataArea.Sources or DataArea.ImportedData or DataArea.Projects;
     protected override Task ReloadAfterChangeAsync() => LoadAsync();
 
     private async Task LoadAsync()
@@ -152,13 +152,13 @@ else
         // Wipe all imported data for the source, then remove the source row. The data wipe runs
         // in its own FK-disabled transaction (see DeleteSourceDataAsync) because the account/
         // category group tables have self-referential RESTRICT FKs that a plain bulk delete trips.
-        await MoneyMoneyImportService.DeleteSourceDataAsync(db, sourceId);
+        await SourceData.DeleteSourceDataAsync(db, sourceId);
         db.ImportSources.Remove(pendingDelete);
         await db.SaveChangesAsync();
         var deletedId = sourceId;
         pendingDelete = null;
         Notifier.Publish(new DataChange(DataArea.Sources, SourceId: deletedId));
-        Notifier.Publish(new DataChange(DataArea.MoneyMoneyData, SourceId: deletedId));
+        Notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: deletedId));
         await LoadAsync();
     }
 }

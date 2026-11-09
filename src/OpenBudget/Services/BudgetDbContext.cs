@@ -5,7 +5,7 @@ namespace OpenBudget.Services;
 
 /// <summary>
 /// Single DbContext for everything: app-native rows (projects, budgets, assignments) and the
-/// imported MoneyMoney data (mm_* tables). IDs from MoneyMoney are namespaced at import time
+/// imported data. IDs from the source app are namespaced at import time
 /// via <see cref="SourceScope.Namespace"/> so multiple sources coexist without collision.
 /// </summary>
 public class BudgetDbContext : DbContext
@@ -137,8 +137,8 @@ public class BudgetDbContext : DbContext
             CreatedAt = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc)
         });
 
-        // MM-side mappings: the column names match the MoneyMoney native schema for the columns
-        // we copy verbatim during import (so the entity classes can stay close to MoneyMoney's
+        // Imported-data mappings: the column names match the source app native schema for the columns
+        // we copy verbatim during import (so the entity classes can stay close to the source's
         // shape), but the table names are ours.
         modelBuilder.Entity<Transaction>()
             .HasOne(t => t.Category)

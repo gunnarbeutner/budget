@@ -5,7 +5,7 @@ using OpenBudget.Models;
 namespace OpenBudget.Services;
 
 /// <summary>
-/// Read-only view of the MoneyMoney category hierarchy + leaf-id resolution helpers used
+/// Read-only view of the imported category hierarchy + leaf-id resolution helpers used
 /// across every spending / projection query. Split out of BudgetService because the
 /// hierarchy fetch is one of the hottest read paths (5+ calls per dashboard render before
 /// caching) and unrelated to the project/budget/cashflow concerns it used to share a class
@@ -30,13 +30,13 @@ public sealed class CategoryHierarchyService : IDisposable
         _notifier.Changed += OnDataChanged;
     }
 
-    // A MoneyMoney import or source deletion in any session changes the category hierarchy, so
+    // A imported import or source deletion in any session changes the category hierarchy, so
     // drop the cache; the next read for that circuit refetches the current structure.
     // origin is unused: a cache invalidation should happen regardless of which circuit triggered
-    // the change (and MoneyMoney/Sources changes originate from the API import, with no circuit).
+    // the change (and Imported-data/Sources changes originate from the API import, with no circuit).
     private void OnDataChanged(DataChange change, Guid? origin)
     {
-        if (change.Area is DataArea.MoneyMoneyData or DataArea.Sources)
+        if (change.Area is DataArea.ImportedData or DataArea.Sources)
             _hierarchyBySourceId.Clear();
     }
 
@@ -46,7 +46,7 @@ public sealed class CategoryHierarchyService : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    /// <summary>All MoneyMoney leaf categories (mm_categories) for a source, name-ordered.</summary>
+    /// <summary>All leaf categories (categories) for a source, name-ordered.</summary>
     public async Task<List<Category>> GetAllCategoriesAsync(int sourceId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();

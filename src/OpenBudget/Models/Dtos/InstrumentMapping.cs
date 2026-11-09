@@ -1,7 +1,7 @@
 namespace OpenBudget.Models;
 
 /// <summary>Everything the instrument-mapping screen needs: the ISIN-less PortfolioPerformance
-/// instruments to map and the ISIN-less MoneyMoney holdings they can map to, for one source.</summary>
+/// instruments to map and the ISIN-less imported holdings they can map to, for one source.</summary>
 public class InstrumentMapping
 {
     public List<InstrumentMappingRow> Instruments { get; init; } = new();
@@ -17,7 +17,7 @@ public class InstrumentMappingRow
     public string? LinkedHoldingKey { get; init; }
 }
 
-/// <summary>A MoneyMoney holding offered as a mapping target, by its identity key.</summary>
+/// <summary>A imported holding offered as a mapping target, by its identity key.</summary>
 public class HoldingOption
 {
     public string Key { get; init; } = "";

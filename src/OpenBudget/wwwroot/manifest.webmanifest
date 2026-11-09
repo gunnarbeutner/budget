@@ -1,6 +1,6 @@
 {
-  "name": "MoneyMoney Budget",
-  "short_name": "Budget",
+  "name": "OpenBudget",
+  "short_name": "OpenBudget",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

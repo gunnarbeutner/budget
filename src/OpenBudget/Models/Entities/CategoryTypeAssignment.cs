@@ -6,7 +6,7 @@ namespace OpenBudget.Models;
 
 /// <summary>
 /// Assigns income/expense type to a category for a specific project
-/// Stored in our DB to persist across MoneyMoney DB reimports
+/// Stored in our DB to persist across imported data reimports
 /// </summary>
 [Table("category_type_assignments")]
 public class CategoryTypeAssignment
@@ -31,7 +31,7 @@ public class CategoryTypeAssignment
     // Navigation properties
     public Project Project { get; set; } = null!;
 
-    // Note: Category is in a different database (MoneyMoney),
+    // Note: Category is in a different database (the source app),
     // so we can't have a navigation property here.
-    // Use CategoryId to look up the category from MoneyMoneyDbContext.
+    // Use CategoryId to look up the category from BudgetDbContext.
 }

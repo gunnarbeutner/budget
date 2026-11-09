@@ -6,10 +6,10 @@ using System.Text.RegularExpressions;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// MoneyMoney account imported into our DB. <see cref="Id"/> is namespaced via
+/// imported account imported into our DB. <see cref="Id"/> is namespaced via
 /// <c>SourceScope.Namespace(SourceId, rowid)</c> to avoid collisions across sources.
 /// </summary>
-[Table("mm_accounts")]
+[Table("accounts")]
 public class Account
 {
     [Key]
@@ -27,7 +27,7 @@ public class Account
     public string? Currency { get; set; }
 
     /// <summary>
-    /// MoneyMoney account type code (1=giro, 2=savings, 4=credit, 6=cash/other, 7=depot, ...).
+    /// imported account type code (1=giro, 2=savings, 4=credit, 6=cash/other, 7=depot, ...).
     /// </summary>
     [Column("type")]
     public long? Type { get; set; }
@@ -48,22 +48,22 @@ public class Account
     public long? Sort { get; set; }
 
     /// <summary>
-    /// MoneyMoney <c>accounts.group_key</c>, mapped to <see cref="AccountGroup.Id"/> via
-    /// the same namespacing scheme. Null for orphans; MoneyMoney itself anchors every
+    /// Source <c>accounts.group_key</c>, mapped to <see cref="AccountGroup.Id"/> via
+    /// the same namespacing scheme. Null for orphans; the source app itself anchors every
     /// account under a group in practice.
     /// </summary>
     [Column("group_key")]
     public long? GroupId { get; set; }
 
     /// <summary>
-    /// Unix-seconds timestamp of MoneyMoney's last successful refresh of this account. Null for
+    /// Unix-seconds timestamp of the source's last successful refresh of this account. Null for
     /// manually-maintained accounts (cash, real estate) that never auto-refresh.
     /// </summary>
     [Column("refresh_tsp")]
     public long? RefreshTimestamp { get; set; }
 
     /// <summary>
-    /// Last refresh error message from MoneyMoney (e.g. login failure, MFA timeout). Null when
+    /// Last refresh error message from the source app (e.g. login failure, MFA timeout). Null when
     /// the most recent refresh succeeded.
     /// </summary>
     [Column("error")]
@@ -85,7 +85,7 @@ public class Account
         Holdings.Count == 0 ? null : (decimal)Holdings.Sum(s => s.Amount ?? 0);
 
     /// <summary>
-    /// Parses the first numeric amount out of MoneyMoney's "balances" string ("11:5203.710000,3:EUR,").
+    /// Parses the first numeric amount out of the source's "balances" string ("11:5203.710000,3:EUR,").
     /// Returns null when the column is empty or unparseable.
     /// </summary>
     [NotMapped]
@@ -133,7 +133,7 @@ public class Account
 
     /// <summary>
     /// Bootstrap-Icons class name for the account type. Picked to roughly match how
-    /// MoneyMoney itself signals account kinds in its sidebar.
+    /// The source app itself signals account kinds in its sidebar.
     /// </summary>
     [NotMapped]
     public string KindIcon => Type switch

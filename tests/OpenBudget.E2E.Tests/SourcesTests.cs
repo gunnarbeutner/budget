@@ -4,7 +4,7 @@ using NUnit.Framework;
 namespace OpenBudget.E2E.Tests;
 
 /// <summary>
-/// Covers the /sources page: it lists the imported MoneyMoney sources and only lets you delete one
+/// Covers the /sources page: it lists the registered sources and only lets you delete one
 /// that no project depends on. The baseline world seeds a referenced "legacy" source (delete must
 /// be refused) and an unreferenced "spare" source (delete allowed).
 /// </summary>
@@ -19,7 +19,7 @@ public sealed class SourcesTests : EndToEndTestBase
     {
         await GoToAsync("/sources");
 
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "MoneyMoney sources" }))
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Sources" }))
             .ToBeVisibleAsync();
         await Expect(Row("legacy")).ToBeVisibleAsync();
         await Expect(Row(E2ESeed.SpareSourceName)).ToBeVisibleAsync();

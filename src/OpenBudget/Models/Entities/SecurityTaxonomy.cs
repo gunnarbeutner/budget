@@ -5,11 +5,11 @@ namespace OpenBudget.Models;
 
 /// <summary>
 /// One security → taxonomy-classification weighting imported from PortfolioPerformance, keyed by
-/// ISIN so it joins to <see cref="Holding"/> (which MoneyMoney provides with ISINs). A security
+/// ISIN so it joins to <see cref="Holding"/> (which the source app provides with ISINs). A security
 /// can appear in several classifications of the same taxonomy (e.g. a World ETF split across
 /// regions), so this is one row per (security, classification) assignment.
 ///
-/// App-native derived data — not namespaced like the mm_* tables. Scoped by <see cref="SourceId"/>
+/// App-native derived data — not namespaced like the imported tables. Scoped by <see cref="SourceId"/>
 /// and replaced wholesale on each PortfolioPerformance upload for that source.
 /// </summary>
 [Table("pp_security_taxonomy")]

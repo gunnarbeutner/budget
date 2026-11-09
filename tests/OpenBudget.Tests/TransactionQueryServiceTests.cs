@@ -18,7 +18,7 @@ public class TransactionQueryServiceTests
         await using var t = new TestDb();
         t.AddGroup(100);
         t.AddLeaf(101, parent: 100);
-        t.Db.Categories.Add(new Category { Id = 1, SourceId = 1, Name = "" }); // MoneyMoney's sentinel
+        t.Db.Categories.Add(new Category { Id = 1, SourceId = 1, Name = "" }); // the source's sentinel
         t.AddTransaction(id: 1, categoryId: 101, amountCents: -1000, date: new DateTime(2026, 5, 1));
         t.AddTransaction(id: 2, categoryId: 1, amountCents: -2000, date: new DateTime(2026, 5, 2));
         t.AddTransaction(id: 3, categoryId: 1, amountCents: -4000, date: new DateTime(2026, 5, 3), splitted: 1);

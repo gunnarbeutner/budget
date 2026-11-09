@@ -4,7 +4,7 @@ public class DataFreshness
 {
     public int SourceId { get; set; }
     public string SourceName { get; set; } = string.Empty;
-    /// <summary>When this source was last uploaded via the /api/moneymoney-db/{name} endpoint. Null when nothing has been imported yet.</summary>
+    /// <summary>When this source was last uploaded via the upload endpoint. Null when nothing has been imported yet.</summary>
     public DateTime? DbUploadedUtc { get; set; }
     public List<AccountFreshness> Accounts { get; set; } = new();
 

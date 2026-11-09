@@ -15,7 +15,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20260531020132_AddLatestPriceToCatalog";
+        public override string LatestMigrationId => "20261109160051_RenameToOpenBudgetNames";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -77,7 +77,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("SourceId");
 
-                    b.ToTable("mm_accounts");
+                    b.ToTable("accounts");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.AccountGroup", b =>
@@ -107,7 +107,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("SourceId");
 
-                    b.ToTable("mm_account_groups");
+                    b.ToTable("account_groups");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Budget", b =>
@@ -215,7 +215,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("SourceId", "GroupId");
 
-                    b.ToTable("mm_categories");
+                    b.ToTable("categories");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.CategoryGroup", b =>
@@ -249,7 +249,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("SourceId");
 
-                    b.ToTable("mm_category_groups");
+                    b.ToTable("category_groups");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.CategoryTypeAssignment", b =>
@@ -341,7 +341,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("SourceId", "AccountId");
 
-                    b.ToTable("mm_securities");
+                    b.ToTable("holdings");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.ImportSource", b =>
@@ -369,7 +369,7 @@ namespace OpenBudget.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("money_money_sources");
+                    b.ToTable("import_sources");
 
                     b.HasData(
                         new
@@ -473,7 +473,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("SourceId", "AccountId", "Timestamp");
 
-                    b.ToTable("mm_portfolio_chart");
+                    b.ToTable("portfolio_chart");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.PpLot", b =>
@@ -871,7 +871,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("SourceId", "CategoryId", "Timestamp");
 
-                    b.ToTable("mm_transactions");
+                    b.ToTable("transactions");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Account", b =>

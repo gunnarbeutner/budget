@@ -19,7 +19,7 @@ public enum AccountScope
 }
 
 /// <summary>
-/// Links a MoneyMoney account to a project so cashflow / balance views can be scoped
+/// Links a imported account to a project so cashflow / balance views can be scoped
 /// to the accounts that actually fund the project.
 /// </summary>
 [Table("project_account_assignments")]
@@ -31,8 +31,8 @@ public class ProjectAccountAssignment
     public int ProjectId { get; set; }
 
     /// <summary>
-    /// rowid from MoneyMoney's accounts table. No FK — Account lives in the read-only
-    /// MoneyMoney DB; we resolve it in code via MoneyMoneyDbContext.
+    /// rowid from the source's accounts table. No FK — Account lives in the read-only
+    /// imported data; we resolve it in code via BudgetDbContext.
     /// </summary>
     public long AccountId { get; set; }
 

@@ -5,7 +5,7 @@ namespace OpenBudget.Services;
 
 /// <summary>
 /// Reads imported portfolio holdings for a depot account and shapes them for the Browse holdings
-/// card. Only live positions are stored (the import drops MoneyMoney's deleted=1 rows), so this is
+/// card. Only live positions are stored (the import drops the source's deleted=1 rows), so this is
 /// a straight read-and-decorate: sort by value, compute each position's share, and roll up an
 /// asset-class allocation.
 /// </summary>
@@ -172,7 +172,7 @@ public class PortfolioService
             .Select(a => a.Id).ToListAsync(ct);
         if (depotIds.Count == 0) return empty;
 
-        // The PP depots linked to those MoneyMoney depots.
+        // The PP depots linked to those imported depots.
         var ppUuids = await db.PpPortfolioLinks
             .Where(l => l.SourceId == project.SourceId && depotIds.Contains(l.AccountId))
             .Select(l => l.PpPortfolioUuid).ToListAsync(ct);

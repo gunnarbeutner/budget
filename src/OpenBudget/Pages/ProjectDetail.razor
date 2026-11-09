@@ -112,7 +112,7 @@ else
     private List<Account>? allAccounts;
     private List<AccountGroup>? allAccountGroups;
 
-    // Parent project picker. eligibleParents = top-level projects in the same MoneyMoney
+    // Parent project picker. eligibleParents = top-level projects in the same source
     // source (cycle-prevention; only single-level hierarchies). hasOwnChildren disables the
     // picker — projects that already act as parents can't themselves become children yet.
     private List<Project>? eligibleParents;
@@ -148,7 +148,7 @@ else
     protected override bool AutoReloadOnChange => false;
     protected override bool IsRelevantChange(DataChange change) => change.Area switch
     {
-        DataArea.MoneyMoneyData or DataArea.Sources => budget != null && change.SourceId == budget.SourceId,
+        DataArea.ImportedData or DataArea.Sources => budget != null && change.SourceId == budget.SourceId,
         _ => change.ProjectId is null || change.ProjectId == ProjectId,
     };
     protected override Task ReloadAfterChangeAsync()

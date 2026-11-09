@@ -7,7 +7,7 @@ namespace OpenBudget.Tests;
 
 /// <summary>
 /// Characterization tests for the Budgets trend/variance assembly extracted from Budgets.razor:
-/// budgeted-descendant resolution, MoneyMoney sort keying, and variance-row building.
+/// budgeted-descendant resolution, imported sort keying, and variance-row building.
 /// </summary>
 public class BudgetTrendMathTests
 {

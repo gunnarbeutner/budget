@@ -4,11 +4,11 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// Named MoneyMoney data source. Each source carries its own set of mm_* rows; the
-/// source's <see cref="Id"/> namespaces every imported rowid so multiple MoneyMoney
+/// Named imported data source. Each source carries its own set of imported rows; the
+/// source's <see cref="Id"/> namespaces every imported rowid so multiple source-app
 /// installations can coexist in one budgets.db without ID collisions.
 /// </summary>
-[Table("money_money_sources")]
+[Table("import_sources")]
 public class ImportSource
 {
     [Key]

@@ -126,7 +126,7 @@ public class ProjectService
 
     /// <summary>
     /// Set or clear a project's parent. Rejected when: parent is the project itself,
-    /// parent belongs to a different MoneyMoney source, parent is one of this project's
+    /// parent belongs to a different import source, parent is one of this project's
     /// own descendants (cycle), or parent already has its own parent (we only support
     /// single-level hierarchies for now). Returns the resolved Project on success.
     /// </summary>
@@ -152,7 +152,7 @@ public class ProjectService
 
         if (parent.SourceId != project.SourceId)
             throw new InvalidOperationException(
-                "Parent and child must share the same MoneyMoney source.");
+                "Parent and child must share the same import source.");
         if (parent.ParentProjectId != null)
             throw new InvalidOperationException(
                 "Only single-level hierarchies are supported; the chosen parent is itself a child.");
@@ -209,7 +209,7 @@ public class ProjectService
             .FirstOrDefaultAsync();
     }
 
-    /// <summary>All registered MoneyMoney sources, ordered by name.</summary>
+    /// <summary>All registered import sources, ordered by name.</summary>
     public async Task<List<ImportSource>> GetAllSourcesAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();

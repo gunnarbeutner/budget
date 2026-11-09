@@ -101,7 +101,7 @@ public static class BrowseChart
 
     /// <summary>
     /// Build the chart series from already-fetched raw (date, amount) rows. Sums signed amounts
-    /// per bucket (MoneyMoney convention: outflows negative), flags buckets inside the anchor
+    /// per bucket (the source app convention: outflows negative), flags buckets inside the anchor
     /// period [<paramref name="fromMonth"/>, <paramref name="toMonth"/>] of
     /// <paramref name="anchorYear"/>, and — for the account daily view — replaces flows with a
     /// back-walked running closing balance from <paramref name="currentBalanceForDaily"/>.
@@ -169,7 +169,7 @@ public static class BrowseChart
                 if (isAccountDaily && date >= windowEndExclusive) sumAfterWindow += amount;
                 continue;
             }
-            // Sum raw signed amounts — MoneyMoney's convention is negative for outflows and
+            // Sum raw signed amounts — the source's convention is negative for outflows and
             // positive for inflows. Refunds against an expense bring the bar closer to zero.
             bars[b] = (bars[b].Label, bars[b].Value + amount, bars[b].IsAnchor);
         }

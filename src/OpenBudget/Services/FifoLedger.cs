@@ -27,7 +27,7 @@ public static class FifoLedger
     public static List<OpenLot> BuildOpenLots(PClient client)
     {
         // Every security has a uuid; the ISIN may be empty (crypto, real estate). Key by uuid so
-        // ISIN-less instruments are reconstructed too — they join to MoneyMoney by a manual mapping.
+        // ISIN-less instruments are reconstructed too — they join to the source app by a manual mapping.
         var uuidToIsin = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var s in client.Securities)
             if (!string.IsNullOrEmpty(s.Uuid) && !string.IsNullOrEmpty(s.Isin))

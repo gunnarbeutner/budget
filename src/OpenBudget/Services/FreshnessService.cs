@@ -4,7 +4,7 @@ using OpenBudget.Models;
 namespace OpenBudget.Services;
 
 /// <summary>
-/// Read-only reporting on how stale the imported MoneyMoney data is — surfaced at the top of
+/// Read-only reporting on how stale the imported imported data is — surfaced at the top of
 /// the dashboard so projections built on stale numbers don't silently mislead. Split out from
 /// BudgetService since it shares nothing with budgets / projects / cashflow beyond the
 /// DbContext and a sourceId.
@@ -19,7 +19,7 @@ public class FreshnessService
     }
 
     /// <summary>
-    /// Returns when each registered MoneyMoney source was last imported (LastUploadAt) plus the
+    /// Returns when each registered import source was last imported (LastUploadAt) plus the
     /// account-refresh snapshot for each source. The dashboard uses this to flag stale data;
     /// projection numbers built on stale data silently lie, so a visible indicator matters.
     /// </summary>
@@ -53,16 +53,16 @@ public class FreshnessService
     }
 
     /// <summary>
-    /// Counts MoneyMoney transactions that aren't assigned to a real category and returns the
+    /// Counts imported transactions that aren't assigned to a real category and returns the
     /// summed absolute amount. Surfaced on the dashboard so users see when budget rollups are
-    /// silently undercounting because transactions slipped past categorization in MoneyMoney —
+    /// silently undercounting because transactions slipped past categorization in the source app —
     /// the absolute sum is the decision signal (€5,000 missing rent vs €50 of coffee).
     ///
-    /// MoneyMoney represents "no category" by pinning the transaction to a sentinel category
+    /// The source app represents "no category" by pinning the transaction to a sentinel category
     /// with an empty name (typically rowid=1) rather than leaving category_key NULL, so both
     /// shapes count. Split-parent rows (Splitted=1) carry that same sentinel as a placeholder
     /// — their real categories live on the child rows — so they're excluded to match
-    /// MoneyMoney's own "Uncategorized" view.
+    /// the source's own "Uncategorized" view.
     /// </summary>
     public async Task<Dictionary<int, UncategorizedSummary>> GetUncategorizedTransactionSummaryAsync()
     {

@@ -9,7 +9,7 @@ namespace OpenBudget.Tests;
 /// </summary>
 public class InformationalScopeTests
 {
-    // MoneyMoney's packed balance blob: first "<tag>:<number>" pair is the amount.
+    // the source's packed balance blob: first "<tag>:<number>" pair is the amount.
     private static string Balance(decimal euros) => $"11:{euros:0.000000},3:EUR,";
 
     private static ProjectAccountAssignment Assign(long accountId, AccountScope scope) => new()

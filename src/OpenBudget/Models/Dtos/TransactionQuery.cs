@@ -4,7 +4,7 @@ namespace OpenBudget.Models;
 
 /// <summary>
 /// Filter for the per-project transaction browser. SourceId is required (every project is
-/// bound to exactly one MoneyMoney source); CategoryLeafIds / AccountIds compose with AND
+/// bound to exactly one import source); CategoryLeafIds / AccountIds compose with AND
 /// when both are set, so a "category X on account Y" filter works. Period bounds the window;
 /// null means unrestricted. AmountMin/Max compare against the absolute value of the
 /// transaction amount in euros — a single number on the UI side means "transactions of at
@@ -16,7 +16,7 @@ public class TransactionQuery
     public IReadOnlyCollection<long>? CategoryLeafIds { get; init; }
     public IReadOnlyCollection<long>? AccountIds { get; init; }
     /// <summary>
-    /// Only uncategorized transactions (no category, or MoneyMoney's empty-named sentinel).
+    /// Only uncategorized transactions (no category, or the source's empty-named sentinel).
     /// Takes precedence over <see cref="CategoryLeafIds"/>.
     /// </summary>
     public bool UncategorizedOnly { get; init; }

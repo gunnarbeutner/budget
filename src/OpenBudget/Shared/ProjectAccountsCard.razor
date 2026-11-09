@@ -3,7 +3,7 @@
 @inject IStringLocalizer<ProjectAccountsCard> L
 @inject ClockService Clock
 
-@* Project-settings panel: MoneyMoney accounts funding this project, their scope (Shared vs
+@* Project-settings panel: imported accounts funding this project, their scope (Shared vs
    Exclusive), refresh freshness, and an Add dialog backed by a grouped TreePicker.
    Presentational — the page owns the data (Assignments/AllAccounts/AllAccountGroups) and the
    service calls; this raises OnAdd / OnRemove / OnScopeChange. *@
@@ -193,10 +193,10 @@
     }
 
     /// <summary>
-    /// Walk MoneyMoney's account_groups hierarchy and produce a flat, depth-first list of
+    /// Walk the source's account_groups hierarchy and produce a flat, depth-first list of
     /// rows for the Add-Account picker: each visited group emits a disabled header followed
     /// by its sub-groups (recursively) and then its leaf accounts. Sorting at every level
-    /// matches MoneyMoney's <c>sort</c> field. Sub-trees that contain no <paramref name="unassigned"/>
+    /// matches the source's <c>sort</c> field. Sub-trees that contain no <paramref name="unassigned"/>
     /// account are pruned so the picker doesn't show dead branches. Accounts whose
     /// <c>group_key</c> doesn't resolve to a known group are bucketed under "Other" at the bottom.
     /// </summary>

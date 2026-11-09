@@ -89,7 +89,7 @@
     <value>Warnung, wenn Saldo unter</value>
   </data>
   <data name="Balance_NoAccountsAssigned_After" xml:space="preserve">
-    <value> und verknüpfen Sie die MoneyMoney-Konten, die dieses Projekt finanzieren, um eine echte Saldolinie anzuzeigen.</value>
+    <value> und verknüpfen Sie die Konten, die dieses Projekt finanzieren, um eine echte Saldolinie anzuzeigen.</value>
   </data>
   <data name="Balance_NoAccountsAssigned_Before" xml:space="preserve">
     <value>Diesem Projekt sind keine Konten zugeordnet. Öffnen Sie die </value>

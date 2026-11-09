@@ -52,7 +52,7 @@
             @if (AvailableCategories != null && ActualCategories != null)
             {
                 // Treat any group whose parent is outside the filtered subset as a render
-                // root, since IsRootCategory only matches MoneyMoney's top-level groups and
+                // root, since IsRootCategory only matches the source's top-level groups and
                 // the project might be scoped to a sub-tree.
                 var filteredGroupIds = AvailableCategories
                     .Where(c => c.ItemType == CategoryItemType.Group)

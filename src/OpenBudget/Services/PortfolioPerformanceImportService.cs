@@ -8,9 +8,9 @@ namespace OpenBudget.Services;
 /// Imports security taxonomy data from an uploaded PortfolioPerformance ".portfolio" file into
 /// <c>pp_security_taxonomy</c> for an existing source. Parsing lives in
 /// <see cref="PortfolioPerformanceFile"/>; this owns the replace-for-source transaction and the
-/// per-source serialization (singleton, like <see cref="MoneyMoneyImportService"/>).
+/// per-source serialization (singleton, like the other importers).
 ///
-/// The taxonomy supplements MoneyMoney holdings (joined by ISIN), so the source must already exist
+/// The taxonomy supplements imported holdings (joined by ISIN), so the source must already exist
 /// — a PortfolioPerformance upload for an unknown source throws <see cref="KeyNotFoundException"/>.
 /// </summary>
 public class PortfolioPerformanceImportService
@@ -32,7 +32,7 @@ public class PortfolioPerformanceImportService
 
     public async Task<PpImportResult> ImportFromFileAsync(string sourceName, string portfolioFilePath, CancellationToken ct)
     {
-        if (!MoneyMoneyImportService.IsValidSlug(sourceName))
+        if (!SourceData.IsValidSlug(sourceName))
             throw new ArgumentException($"Source name '{sourceName}' is not a valid slug.", nameof(sourceName));
 
         var sem = _perSourceLocks.GetOrAdd(sourceName, _ => new SemaphoreSlim(1, 1));
@@ -52,7 +52,7 @@ public class PortfolioPerformanceImportService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
 
         var source = await db.ImportSources.FirstOrDefaultAsync(s => s.Name == sourceName, ct)
-            ?? throw new KeyNotFoundException($"Unknown source '{sourceName}'. Import its MoneyMoney data before uploading PortfolioPerformance taxonomy.");
+            ?? throw new KeyNotFoundException($"Unknown source '{sourceName}'. Import its imported data before uploading PortfolioPerformance taxonomy.");
         int sourceId = source.Id;
 
         // Parse outside the transaction — it's CPU/IO over the file, no DB work. InvalidDataException
@@ -99,8 +99,8 @@ public class PortfolioPerformanceImportService
             "Imported PortfolioPerformance data for source '{Source}' (id={SourceId}): {Rows} taxonomy rows, {Isins} classified securities, {Taxonomies} taxonomies, {Portfolios} depots, {Lots} open lots",
             sourceName, sourceId, rows.Count, distinctIsins, distinctTaxonomies, portfolios.Count, lots.Count);
 
-        // The Browse holdings view reads taxonomy alongside MoneyMoney data, so signal the same area.
-        _notifier.Publish(new DataChange(DataArea.MoneyMoneyData, SourceId: sourceId));
+        // The Browse holdings view reads taxonomy alongside imported data, so signal the same area.
+        _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: sourceId));
 
         return new PpImportResult
         {

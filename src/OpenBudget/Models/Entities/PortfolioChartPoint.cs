@@ -4,15 +4,15 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// One point in MoneyMoney's <c>portfolio_chart</c>: the value of a single security within a
+/// One point in the source's <c>portfolio_chart</c>: the value of a single security within a
 /// depot at a point in time. <see cref="Id"/> is namespaced via <c>SourceScope.Namespace</c>
 /// from the source rowid.
 ///
 /// <see cref="SecurityId"/> intentionally has no FK to <see cref="Holding"/>: the chart spans
-/// historical positions (including ones MoneyMoney has since marked deleted) that the import does
+/// historical positions (including ones the source app has since marked deleted) that the import does
 /// not carry over, so a hard constraint would dangle. It's stored as a plain namespaced id.
 /// </summary>
-[Table("mm_portfolio_chart")]
+[Table("portfolio_chart")]
 public class PortfolioChartPoint
 {
     [Key]
@@ -20,7 +20,7 @@ public class PortfolioChartPoint
 
     public int SourceId { get; set; }
 
-    /// <summary>MoneyMoney <c>portfolio_chart.account_key</c>, namespaced to <see cref="Account.Id"/>.</summary>
+    /// <summary>Source <c>portfolio_chart.account_key</c>, namespaced to <see cref="Account.Id"/>.</summary>
     [Column("account_key")]
     public long AccountId { get; set; }
 
@@ -35,7 +35,7 @@ public class PortfolioChartPoint
     [Column("balance")]
     public double? Balance { get; set; }
 
-    /// <summary>Namespaced MoneyMoney <c>securities_key</c> (no FK — see type remarks).</summary>
+    /// <summary>Namespaced <c>securities_key</c> (no FK — see type remarks).</summary>
     [Column("securities_key")]
     public long? SecurityId { get; set; }
 

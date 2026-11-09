@@ -5,11 +5,11 @@ namespace OpenBudget.Models;
 
 /// <summary>
 /// A security catalogued from a PortfolioPerformance ".portfolio" file — its name and identifiers,
-/// keyed by ISIN. MoneyMoney only knows the securities you currently hold, so this catalogue is
+/// keyed by ISIN. The source app only knows the securities you currently hold, so this catalogue is
 /// what lets the Rebalance page offer a security you don't yet own (its taxonomy weights live in
 /// <see cref="SecurityTaxonomy"/>, joined by the same ISIN).
 ///
-/// App-native derived data — not namespaced like the mm_* tables. Scoped by <see cref="SourceId"/>
+/// App-native derived data — not namespaced like the imported tables. Scoped by <see cref="SourceId"/>
 /// and replaced wholesale on each PortfolioPerformance upload for that source. Only ISIN-bearing
 /// securities are stored (the ISIN is the join key to holdings and taxonomy).
 /// </summary>
@@ -22,7 +22,7 @@ public class PpSecurity
     public int SourceId { get; set; }
 
     /// <summary>PortfolioPerformance security UUID — stable identity for every instrument, including
-    /// the ISIN-less ones (crypto, real estate) that join to MoneyMoney via a manual mapping.</summary>
+    /// the ISIN-less ones (crypto, real estate) that join to the source app via a manual mapping.</summary>
     public string Uuid { get; set; } = "";
 
     /// <summary>ISIN of the security, or empty for ISIN-less instruments (crypto, real estate). The

@@ -292,7 +292,7 @@ else if (step == 3)
     // The wizard holds unsaved selections/predictions, so banner rather than auto-reload.
     protected override bool AutoReloadOnChange => false;
     protected override bool IsRelevantChange(DataChange change) =>
-        change.Area is DataArea.MoneyMoneyData or DataArea.Sources
+        change.Area is DataArea.ImportedData or DataArea.Sources
         || change.ProjectId is null || change.ProjectId == ProjectId;
     protected override Task ReloadAfterChangeAsync()
     {

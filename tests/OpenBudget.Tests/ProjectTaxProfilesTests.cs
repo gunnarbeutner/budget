@@ -13,9 +13,9 @@ public class ProjectTaxProfilesTests
         t.AddProject(7);
         var depot = t.AddAccount(100, "Depot"); depot.Portfolio = 1;
         t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 7, AccountId = 100 });
-        // Depot link: PP depot "pp-d" → MoneyMoney depot 100.
+        // Depot link: PP depot "pp-d" → imported depot 100.
         t.Db.PpPortfolioLinks.Add(new PpPortfolioLink { SourceId = 1, PpPortfolioUuid = "pp-d", AccountId = 100 });
-        // Instrument link: ISIN-less gold uuid → the MoneyMoney holding key.
+        // Instrument link: ISIN-less gold uuid → the imported holding key.
         t.Db.PpSecurityLinks.Add(new PpSecurityLink { SourceId = 1, PpSecurityUuid = "gold", MmHoldingKey = "sym:XAU" });
         // Reclassify the gold explicitly (default would also be gold §23).
         t.Db.SecurityTaxSettings.Add(new SecurityTaxSetting { SourceId = 1, SecurityUuid = "gold", Kind = (int)InstrumentTaxKind.MovableSection23, TeilfreistellungBp = 0 });

@@ -52,7 +52,7 @@ internal static class E2ESeed
         db.ImportSources.Add(new ImportSource { Id = SourceId, Name = "legacy", CreatedAt = Fixed });
         db.ImportSources.Add(new ImportSource { Id = SpareSourceId, Name = SpareSourceName, CreatedAt = Fixed });
 
-        // Category.Type is MoneyMoney's raw type code; the app classifies income/expense per-project
+        // Category.Type is the source's raw type code; the app classifies income/expense per-project
         // via CategoryTypeAssignment (below), not via this column.
         db.CategoryGroups.Add(new CategoryGroup { Id = GroupId, SourceId = SourceId, Name = "Living" });
         db.Categories.Add(new Category { Id = ExpenseCategoryId, SourceId = SourceId, Name = "Groceries", GroupId = GroupId, Type = 1 });
@@ -100,7 +100,7 @@ internal static class E2ESeed
         AddEntry(db, budget.Id, IncomeCategoryId, 500m);
 
         // A couple of actuals so spending figures aren't all zero. Amounts in cents;
-        // negative = expense, positive = income (MoneyMoney convention).
+        // negative = expense, positive = income (the source app convention).
         AddTransaction(db, id: 1, categoryId: ExpenseCategoryId, amountCents: -42_00, month: 1);
         AddTransaction(db, id: 2, categoryId: IncomeCategoryId, amountCents: 500_00, month: 1);
 

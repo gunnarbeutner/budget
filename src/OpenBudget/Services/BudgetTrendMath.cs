@@ -4,7 +4,7 @@ namespace OpenBudget.Services;
 
 /// <summary>
 /// Pure assembly helpers for the Budgets page's trend/variance view, lifted out of
-/// Budgets.razor's LoadCategoryTrends so the budgeted-descendant resolution, MoneyMoney sort
+/// Budgets.razor's LoadCategoryTrends so the budgeted-descendant resolution, imported sort
 /// keying, and variance-row building can be unit-tested. The DB loads and the
 /// <see cref="BudgetEntryService.ComputeEffectiveAmounts"/> call stay in the page.
 /// </summary>
@@ -38,9 +38,9 @@ public static class BudgetTrendMath
     }
 
     /// <summary>
-    /// Build a sort key reflecting an item's position in MoneyMoney's tree (ancestor sort values,
+    /// Build a sort key reflecting an item's position in the source's tree (ancestor sort values,
     /// then own sort, then id for stability). Lexicographic compare on the resulting string yields
-    /// the same order MoneyMoney itself displays.
+    /// the same order the source app itself displays.
     /// </summary>
     public static string ComputeSortKey(
         (long Id, CategoryItemType ItemType) key,

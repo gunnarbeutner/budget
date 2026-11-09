@@ -89,7 +89,7 @@ public static class PortfolioPerformanceFile
 
     /// <summary>
     /// Every catalogued security as a <see cref="PpSecurity"/> row for the given source, keyed by
-    /// uuid — including the ISIN-less instruments (crypto, real estate) that join to MoneyMoney by a
+    /// uuid — including the ISIN-less instruments (crypto, real estate) that join to the source app by a
     /// manual mapping rather than by ISIN. A security with neither uuid nor a usable name is skipped.
     /// </summary>
     public static List<PpSecurity> ExtractSecurities(PClient client, int sourceId)
@@ -117,7 +117,7 @@ public static class PortfolioPerformanceFile
 
     /// <summary>
     /// The depots (portfolios) catalogued in the file, as <see cref="PpPortfolio"/> rows for the
-    /// given source — the candidates a user maps to their MoneyMoney depot accounts.
+    /// given source — the candidates a user maps to their imported depot accounts.
     /// </summary>
     public static List<PpPortfolio> ExtractPortfolios(PClient client, int sourceId) =>
         client.Portfolios

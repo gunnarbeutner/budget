@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// Maps a PortfolioPerformance depot (<see cref="PpPortfolio.Uuid"/>) to a MoneyMoney depot account
+/// Maps a PortfolioPerformance depot (<see cref="PpPortfolio.Uuid"/>) to a imported depot account
 /// (<see cref="Account.Id"/>), so the FIFO lots reconstructed from PP attach to the right held
 /// positions for per-depot tax math. Unlike the rebuilt-on-upload PP tables, this is <b>user
 /// configuration</b> — it's keyed by the stable PP uuid and survives re-uploads, so it is not
@@ -21,6 +21,6 @@ public class PpPortfolioLink
     /// <summary>The PortfolioPerformance depot being mapped (<see cref="PpPortfolio.Uuid"/>).</summary>
     public string PpPortfolioUuid { get; set; } = "";
 
-    /// <summary>The MoneyMoney depot account it maps to (namespaced <see cref="Account.Id"/>).</summary>
+    /// <summary>The imported depot account it maps to (namespaced <see cref="Account.Id"/>).</summary>
     public long AccountId { get; set; }
 }

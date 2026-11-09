@@ -62,10 +62,10 @@
   <data name="PageTitle_WithSource" xml:space="preserve"><value>Instrument mapping — {0}</value></data>
   <data name="Heading" xml:space="preserve"><value>Instrument mapping</value></data>
   <data name="Back" xml:space="preserve"><value>Back to sources</value></data>
-  <data name="Intro" xml:space="preserve"><value>Map each ISIN-less PortfolioPerformance instrument (crypto, real estate) to the MoneyMoney holding it represents, so its reconstructed lots attach to the right position. ISIN-bearing securities are matched automatically and aren't shown here.</value></data>
+  <data name="Intro" xml:space="preserve"><value>Map each ISIN-less PortfolioPerformance instrument (crypto, real estate) to the holding it represents, so its reconstructed lots attach to the right position. ISIN-bearing securities are matched automatically and aren't shown here.</value></data>
   <data name="Col_Instrument" xml:space="preserve"><value>PortfolioPerformance instrument</value></data>
   <data name="Col_Lots" xml:space="preserve"><value>Open lots</value></data>
-  <data name="Col_Holding" xml:space="preserve"><value>MoneyMoney holding</value></data>
+  <data name="Col_Holding" xml:space="preserve"><value>Holding</value></data>
   <data name="NotLinked" xml:space="preserve"><value>— not linked —</value></data>
   <data name="Lots_Summary" xml:space="preserve"><value>{0} lots</value></data>
   <data name="Empty" xml:space="preserve"><value>No ISIN-less instruments with reconstructed lots for this source. Upload a PortfolioPerformance file with crypto or real-estate transactions first.</value></data>

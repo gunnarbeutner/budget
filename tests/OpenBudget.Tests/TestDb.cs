@@ -175,7 +175,7 @@ internal sealed class TestDb : IAsyncDisposable
 
     /// <summary>
     /// Add a transaction. Amount is in cents (matches the on-disk column type post-migration).
-    /// Negative cents = expense, positive cents = income — same convention as MoneyMoney.
+    /// Negative cents = expense, positive cents = income — same convention as the source app.
     /// </summary>
     public void AddTransaction(
         long id, long categoryId, long amountCents, DateTime date, int sourceId = 1,
@@ -195,7 +195,7 @@ internal sealed class TestDb : IAsyncDisposable
         });
     }
 
-    /// <summary>Add a MoneyMoney account with a known Id + name.</summary>
+    /// <summary>Add a imported account with a known Id + name.</summary>
     public Account AddAccount(long id, string name = "Acct", int sourceId = 1)
     {
         var a = new Account { Id = id, SourceId = sourceId, Name = name };

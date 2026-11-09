@@ -59,13 +59,13 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="PageTitle" xml:space="preserve">
-    <value>MoneyMoney-Quellen</value>
+    <value>Quellen</value>
   </data>
   <data name="Heading" xml:space="preserve">
-    <value>MoneyMoney-Quellen</value>
+    <value>Quellen</value>
   </data>
   <data name="Intro_Before" xml:space="preserve">
-    <value>Jede benannte Quelle enthält die Daten einer MoneyMoney-Installation. Eine neue DB hochladen mit </value>
+    <value>Jede benannte Quelle enthält die Daten einer importierten Installation (z. B. MoneyMoney). Eine neue DB hochladen mit </value>
   </data>
   <data name="Intro_After" xml:space="preserve">
     <value> — der erste Upload unter einem neuen Namen registriert die Quelle.</value>

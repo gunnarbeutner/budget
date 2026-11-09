@@ -180,7 +180,7 @@ public class BrowseService
                 if (perLeafSumCents.TryGetValue(leafId, out var s)) sumCents += s;
             }
             // Income items: keep the natural positive sign of incoming money. Expense items:
-            // MoneyMoney stores expenses as negative cents, so we flip so "spent" is positive.
+            // The source app stores expenses as negative cents, so we flip so "spent" is positive.
             return isIncome ? sumCents / 100m : -sumCents / 100m;
         }
 
@@ -195,9 +195,9 @@ public class BrowseService
         bool IsIncomeFor((long Id, CategoryItemType ItemType) key) => incomeItems.Contains(key);
 
         // Build child-by-parent index over only the nodes in the tree. Sort order matches
-        // MoneyMoney's native ordering: the per-row "sort" column (nulls last), then name.
+        // the source's native ordering: the per-row "sort" column (nulls last), then name.
         // Mixed groups + leaves at the same parent level interleave by that single key, the
-        // same way they appear inside MoneyMoney.
+        // same way they appear inside the source app.
         static long SortKey(CategoryGroupWithChildCount h)
         {
             long? raw = h.ItemType == CategoryItemType.Category ? h.Category?.Sort : h.CategoryGroup.Sort;

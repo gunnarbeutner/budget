@@ -4,11 +4,11 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// MoneyMoney account group imported into our DB. Mirrors how <see cref="CategoryGroup"/>
+/// imported account group imported into our DB. Mirrors how <see cref="CategoryGroup"/>
 /// stores its tree: <see cref="Id"/> and <see cref="ParentGroupId"/> are namespaced via
 /// <c>SourceScope.Namespace</c> so multiple sources can coexist.
 /// </summary>
-[Table("mm_account_groups")]
+[Table("account_groups")]
 public class AccountGroup
 {
     [Key]

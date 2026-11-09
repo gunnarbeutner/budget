@@ -123,7 +123,7 @@ public class FifoLedgerTests
 
         var lot = Assert.Single(FifoLedger.BuildOpenLots(c));
         Assert.Equal("gold", lot.SecurityUuid);
-        Assert.Equal("", lot.Isin);                 // ISIN-less, joined to MoneyMoney by mapping later
+        Assert.Equal("", lot.Isin);                 // ISIN-less, joined to the source app by mapping later
         Assert.Equal(2m, lot.Shares);
         Assert.Equal(60000m, lot.Cost);
     }
