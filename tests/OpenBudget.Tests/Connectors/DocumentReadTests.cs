@@ -97,6 +97,38 @@ public sealed class DocumentReadTests
     }
 
     [Fact]
+    public async Task Marking_unread_brings_documents_back_even_old_ones_and_only_for_that_user()
+    {
+        var (w, _, _) = await SetupAsync();
+        await using var _w = w;
+        var alice = Docs(w, BankWorld.Alice);
+        var bob = Docs(w, BankWorld.Bob);
+        var all = (await alice.GetDocumentsAsync(1)).Select(d => d.Id).ToList();
+        await alice.MarkReadAsync(all);
+        Assert.Equal(0, await alice.GetUnreadCountAsync(1));
+
+        var two = all.Take(2).ToList();
+        await alice.MarkUnreadAsync(two);
+        Assert.Equal(2, await alice.GetUnreadCountAsync(1));
+        Assert.Equal(two.ToHashSet(), (await alice.GetDocumentsAsync(1)).Where(d => d.Unread).Select(d => d.Id).ToHashSet());
+        Assert.Equal(10, await bob.GetUnreadCountAsync(1));
+
+        await alice.MarkReadAsync([two[0]]);
+        Assert.Equal(1, await alice.GetUnreadCountAsync(1));
+
+        // A document older than the user counts as read, but an explicit "mark as unread" still applies.
+        var bobUser = await w.T.Db.Users.SingleAsync(u => u.Id == BankWorld.Bob);
+        bobUser.CreatedAt = DateTime.UtcNow.AddMinutes(1);
+        await w.T.Db.SaveChangesAsync();
+        Assert.Equal(0, await bob.GetUnreadCountAsync(1));
+        var bobs = (await bob.GetDocumentsAsync(1)).Select(d => d.Id).ToList();
+        await bob.MarkUnreadAsync([bobs[0], all.Single(id => !bobs.Contains(id))]); // the second is not his to see
+        Assert.Equal(1, await bob.GetUnreadCountAsync(1));
+        Assert.True((await bob.GetDocumentsAsync(1)).Single(d => d.Id == bobs[0]).Unread);
+        Assert.Single(await w.T.Db.StatementReads.Where(r => r.UserId == BankWorld.Bob).ToListAsync());
+    }
+
+    [Fact]
     public async Task Settings_list_every_account_and_only_the_owner_may_change_them()
     {
         var (w, _, giro) = await SetupAsync();

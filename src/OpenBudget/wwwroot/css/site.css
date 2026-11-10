@@ -1564,6 +1564,30 @@ a.budget-cat:focus-visible { outline: 2px solid var(--ob-accent); outline-offset
 .doc-account { min-width: 0; }
 .doc-unread { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--ob-unread); }
 .doc-date { font-size: 12px; color: var(--ob-muted); font-variant-numeric: tabular-nums; }
+/* Multi-select: a checkbox on each card (on hover/focus, always once something is selected or on touch). */
+.doc-grid > li { position: relative; }
+.doc-check {
+    position: absolute; top: 12px; left: 12px; z-index: 1;
+    width: 22px; height: 22px; padding: 0; border-radius: 5px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1.5px solid var(--ob-muted); background: var(--bs-body-bg); color: transparent;
+    box-shadow: 0 1px 3px var(--ob-thumb-shadow); opacity: 0; transition: opacity .1s;
+}
+.doc-check i { font-size: 15px; line-height: 1; }
+.doc-grid > li:hover .doc-check, .doc-grid > li:focus-within .doc-check, .doc-grid.selecting .doc-check { opacity: 1; }
+.doc-check:focus-visible { outline: 2px solid var(--ob-accent); outline-offset: 2px; }
+.doc-grid > li.selected .doc-check { background: var(--ob-accent); border-color: var(--ob-accent); color: #fff; }
+.doc-grid > li.selected .doc-card { background: var(--ob-row-hover-bg); }
+.doc-grid > li.selected .doc-thumb { outline: 2px solid var(--ob-accent); outline-offset: 1px; }
+@media (hover: none) { .doc-check { opacity: 1; } }
+.docs-selbar {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    padding: 8px 10px; margin-bottom: 12px; border-radius: 8px;
+    background: var(--bs-tertiary-bg); border: 1px solid var(--ob-line);
+}
+.docs-selbar-count { font-weight: 600; font-size: 14px; margin-right: 6px; white-space: nowrap; }
+.docs-selbar .ob-btn { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .doc-viewer-dialog { max-width: min(1100px, calc(100vw - 2rem)); }
 .doc-viewer .modal-content { height: calc(100vh - 3.5rem); }
 .doc-viewer-body { background: var(--ob-thumb-bg); }
@@ -1587,6 +1611,11 @@ a.budget-cat:focus-visible { outline: 2px solid var(--ob-accent); outline-offset
     .doc-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px 10px; }
     .docs-filters { width: 100%; }
     .docs-select { flex: 1 1 8rem; max-width: none; }
+    .docs-selbar { gap: 4px; padding: 6px 8px; }
+    .docs-selbar-count { flex: 1 0 100%; margin: 0 0 2px; }
+    .docs-selbar > .flex-grow-1 { display: none; }
+    .docs-selbar .ob-btn { flex: 1 1 auto; justify-content: center; padding-left: 6px; padding-right: 6px; }
+    .docs-selbar-label { font-size: 12px; }
     .doc-viewer .modal-dialog { margin: 0; max-width: 100%; }
     .doc-viewer .modal-content { height: 100vh; border-radius: 0; }
 }

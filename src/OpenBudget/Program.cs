@@ -213,6 +213,29 @@ app.MapGet("/statements/{id:long}", async (
         : Results.File(file.Value.Path, "application/pdf");
 });
 
+// POST /statements/zip (form field "ids", repeated or comma-separated) — several statements as one ZIP,
+// streamed. Same access rule as the single download: ids the user cannot see are skipped; none visible → 404.
+app.MapPost("/statements/zip", async (
+    HttpContext http,
+    SystemDbContextFactory system,
+    BankStatementStore store,
+    CancellationToken ct) =>
+{
+    var scope = await AccessScopeProvider.ComputeAsync(system, http.User.FindFirstValue(ClaimTypes.NameIdentifier), ct);
+    if (!scope.IsAuthenticated) return Results.NotFound();
+    if (!http.Request.HasFormContentType) return Results.BadRequest();
+    var form = await http.Request.ReadFormAsync(ct);
+    var ids = form["ids"].SelectMany(v => (v ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        .Select(v => long.TryParse(v, NumberStyles.None, CultureInfo.InvariantCulture, out var id) ? id : 0)
+        .Where(id => id > 0).Distinct().Take(5000).ToList();
+    await using var db = await system.CreateDbContextAsync(ct);
+    db.Scope = scope;
+    var entries = await StatementArchive.ResolveAsync(db, store, ids, ct);
+    if (entries.Count == 0) return Results.NotFound();
+    var name = $"Statements {DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}.zip";
+    return Results.Stream(body => StatementArchive.WriteAsync(body, entries, ct), "application/zip", name);
+});
+
 // DELETE /api/sources/{name} — removes a source. Refused with 409 when any project
 // references it, with the offending project list in the response. The old route is kept as an
 // alias for the already-installed exporter (see LegacyCompat).

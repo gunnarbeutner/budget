@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
@@ -303,5 +304,109 @@ public sealed class DocumentsTests : EndToEndTestBase
         await bar.GetByTestId("bottom-documents").ClickAsync();
         await Expect(Page).ToHaveURLAsync(new Regex($@"/projects/{Pid}/documents$"));
         await Expect(Cards).ToHaveCountAsync(4);
+    }
+
+    private ILocator Checks => Page.GetByTestId("doc-check");
+
+    [Test]
+    public async Task Checkboxes_select_cards_and_shift_click_selects_a_range()
+    {
+        await SeedDocumentsAsync();
+        await GoToAsync($"/projects/{Pid}/documents");
+        await Expect(Cards).ToHaveCountAsync(4);
+        await Expect(Page.GetByTestId("docs-selbar")).ToHaveCountAsync(0);
+
+        await Cards.First.HoverAsync();
+        await Checks.First.ClickAsync();
+        await Expect(Page.GetByTestId("docs-sel-count")).ToHaveTextAsync("1 selected");
+        await Expect(Page.GetByTestId("documents-toolbar")).ToBeHiddenAsync();
+        await Expect(Checks.First).ToHaveAttributeAsync("aria-checked", "true");
+        await Expect(Page.GetByTestId("doc-viewer")).ToHaveCountAsync(0);   // the checkbox does not open the viewer
+
+        await Checks.Nth(2).ClickAsync(new() { Modifiers = [KeyboardModifier.Shift] });
+        await Expect(Page.GetByTestId("docs-sel-count")).ToHaveTextAsync("3 selected");
+        await Expect(Cards.Nth(1)).ToHaveAttributeAsync("data-selected", "true");
+        await Expect(Cards.Nth(3)).ToHaveAttributeAsync("data-selected", "false");
+
+        // Toggle one off, then select all and clear with Escape; Ctrl+A selects all visible cards.
+        await Checks.Nth(1).ClickAsync();
+        await Expect(Page.GetByTestId("docs-sel-count")).ToHaveTextAsync("2 selected");
+        await Page.GetByTestId("docs-sel-all").ClickAsync();
+        await Expect(Page.GetByTestId("docs-sel-count")).ToHaveTextAsync("4 selected");
+        await Page.Keyboard.PressAsync("Escape");
+        await Expect(Page.GetByTestId("docs-selbar")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("documents-toolbar")).ToBeVisibleAsync();
+        await Page.Locator("body").ClickAsync(new() { Position = new() { X = 5, Y = 5 } });
+        await Page.Keyboard.PressAsync("Control+a");
+        await Expect(Page.GetByTestId("docs-sel-count")).ToHaveTextAsync("4 selected");
+
+        // Clicking a card body still opens the viewer.
+        await Page.GetByTestId("docs-sel-clear").ClickAsync();
+        await Cards.First.ClickAsync();
+        await Expect(Page.GetByTestId("doc-viewer")).ToBeVisibleAsync();
+    }
+
+    [Test]
+    public async Task Several_selected_documents_download_as_one_zip_without_marking_them_read()
+    {
+        await SeedDocumentsAsync();
+        await GoToAsync($"/projects/{Pid}/documents?account={EditingSeed.BankAccountId}");
+        await Expect(Cards).ToHaveCountAsync(3);
+        await Cards.First.HoverAsync();
+        await Checks.First.ClickAsync();
+        await Checks.Nth(1).ClickAsync();
+
+        var download = await Page.RunAndWaitForDownloadAsync(() => Page.GetByTestId("docs-sel-download").ClickAsync());
+        Assert.That(download.SuggestedFilename, Does.EndWith(".zip"));
+        var path = await download.PathAsync();
+        await using (var zip = await ZipFile.OpenReadAsync(path))
+        {
+            Assert.That(zip.Entries.Select(e => e.FullName), Is.EqualTo(new[]
+            {
+                $"2026-03-28 {EditingSeed.BankAccountName} Statement 2026-03.pdf",
+                $"2026-02-28 {EditingSeed.BankAccountName} Statement 2026-02.pdf",
+            }));
+        }
+        await Expect(Page.GetByTestId("docs-sel-count")).ToHaveTextAsync("2 selected");   // the page stays
+        await Expect(Page.GetByTestId("doc-unread")).ToHaveCountAsync(3);
+    }
+
+    [Test]
+    public async Task Selected_documents_are_marked_read_and_unread()
+    {
+        await SeedDocumentsAsync();
+        await GoToAsync($"/projects/{Pid}/documents");
+        await Expect(SidebarCount).ToHaveTextAsync("4");
+        await Page.GetByTestId("docs-mark-all").ClickAsync();
+        await Expect(Page.GetByTestId("doc-unread")).ToHaveCountAsync(0);
+
+        await Cards.First.HoverAsync();
+        await Checks.First.ClickAsync();
+        await Checks.Nth(1).ClickAsync(new() { Modifiers = [KeyboardModifier.Shift] });
+        await Page.GetByTestId("docs-sel-unread").ClickAsync();
+        await Expect(Page.GetByTestId("doc-unread")).ToHaveCountAsync(2);
+        await Expect(SidebarCount).ToHaveTextAsync("2");
+
+        await Checks.First.ClickAsync();
+        await Page.GetByTestId("docs-sel-read").ClickAsync();
+        await Expect(Page.GetByTestId("doc-unread")).ToHaveCountAsync(1);
+
+        await GoToAsync($"/projects/{Pid}/documents");
+        await Expect(Page.GetByTestId("doc-unread")).ToHaveCountAsync(1);
+        await Expect(Cards.First).ToHaveAttributeAsync("data-unread", "true");   // the second was marked read again
+    }
+
+    [Test]
+    public async Task The_selection_bar_fits_a_phone()
+    {
+        await SeedDocumentsAsync();
+        await Page.SetViewportSizeAsync(390, 844);
+        await GoToAsync($"/projects/{Pid}/documents");
+        await Checks.First.ClickAsync();
+        var bar = Page.GetByTestId("docs-selbar");
+        await Expect(bar).ToBeVisibleAsync();
+        await Expect(bar.GetByTestId("docs-sel-unread")).ToBeInViewportAsync();
+        var overflow = await Page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth > window.innerWidth");
+        Assert.That(overflow, Is.False);
     }
 }

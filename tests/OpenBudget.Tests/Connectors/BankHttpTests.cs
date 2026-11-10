@@ -24,14 +24,14 @@ public sealed class BankHttpTests : IDisposable
         try { Directory.Delete(_statements, recursive: true); } catch { /* best-effort */ }
     }
 
-    private async Task<long> AddStatementAsync(long? accountId, int? sourceId, string owner, string name)
+    private async Task<long> AddStatementAsync(long? accountId, int? sourceId, string owner, string name, DateTime? date = null, string? content = null)
     {
         var relative = Path.Combine("x", $"{Guid.NewGuid():N}.pdf");
         var full = Path.Combine(_statements, relative);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-        await File.WriteAllBytesAsync(full, Encoding.ASCII.GetBytes("%PDF-1.4\n%%EOF\n"));
+        await File.WriteAllBytesAsync(full, Encoding.ASCII.GetBytes(content ?? "%PDF-1.4\n%%EOF\n"));
         await using var db = await _host.System.CreateDbContextAsync();
-        var row = new BankStatement { BankLoginId = 1, OwnerUserId = owner, AccountId = accountId, SourceId = sourceId, Identifier = name, Name = name, FilePath = relative.Replace('\\', '/'), Date = DateTime.UtcNow };
+        var row = new BankStatement { BankLoginId = 1, OwnerUserId = owner, AccountId = accountId, SourceId = sourceId, Identifier = $"{name}-{Guid.NewGuid():N}", Name = name, FilePath = relative.Replace('\\', '/'), Date = date ?? DateTime.UtcNow };
         db.BankStatements.Add(row);
         await db.SaveChangesAsync();
         return row.Id;
@@ -98,6 +98,76 @@ public sealed class BankHttpTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, bobStatus);
         Assert.DoesNotContain("AliceOnlyLogin", bobBody, StringComparison.Ordinal);
         Assert.Contains("No bank logins yet.", bobBody, StringComparison.Ordinal);
+    }
+
+    private static async Task<HttpResponseMessage> PostZipAsync(HttpClient client, params long[] ids)
+    {
+        using var form = new FormUrlEncodedContent([new KeyValuePair<string, string>("ids", string.Join(',', ids))]);
+        return await client.PostAsync(new Uri("/statements/zip", UriKind.Relative), form);
+    }
+
+    private static async Task<Dictionary<string, string>> EntriesAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/zip", response.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("attachment", response.Content.Headers.ContentDisposition?.DispositionType, StringComparison.Ordinal);
+        await using var stream = new MemoryStream(await response.Content.ReadAsByteArrayAsync());
+        using var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Read);
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var e in zip.Entries)
+        {
+            using var reader = new StreamReader(await e.OpenAsync());
+            result[e.FullName] = await reader.ReadToEndAsync();
+        }
+        return result;
+    }
+
+    [Fact]
+    public async Task Several_statements_download_as_a_zip_with_dated_unique_names()
+    {
+        await _host.SeedWorldAsync(ProjectRole.Viewer);
+        var alice = await DbUserIdAsync("alice");
+        var jan = new DateTime(2026, 1, 31, 0, 0, 0, DateTimeKind.Utc);
+        var a = await AddStatementAsync(AccessWorld.AccountWp, AccessWorld.SourceAlice, alice, "Statement 01/2026", jan, "%PDF-A");
+        var b = await AddStatementAsync(AccessWorld.AccountWp, AccessWorld.SourceAlice, alice, "Statement 01/2026", jan, "%PDF-B");
+        var c = await AddStatementAsync(AccessWorld.AccountPrivate, AccessWorld.SourceAlice, alice, "Cost: info?", new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc), "%PDF-C");
+
+        using var client = await _host.LoggedInClientAsync("alice");
+        using var response = await PostZipAsync(client, a, b, c);
+        var entries = await EntriesAsync(response);
+        Assert.Equal(
+            ["2026-01-31 Giro Shared Statement 01 2026.pdf", "2026-01-31 Giro Shared Statement 01 2026 (2).pdf", "2026-02-01 Giro Private Cost info.pdf"],
+            entries.Keys.ToArray());
+        Assert.Equal("%PDF-A", entries["2026-01-31 Giro Shared Statement 01 2026.pdf"]);
+        Assert.Equal("%PDF-B", entries["2026-01-31 Giro Shared Statement 01 2026 (2).pdf"]);
+    }
+
+    [Fact]
+    public async Task The_zip_contains_only_statements_the_user_can_see()
+    {
+        await _host.SeedWorldAsync(ProjectRole.Viewer);
+        var alice = await DbUserIdAsync("alice");
+        var shared = await AddStatementAsync(AccessWorld.AccountWp, AccessWorld.SourceAlice, alice, "shared-account");
+        var priv = await AddStatementAsync(AccessWorld.AccountPrivate, AccessWorld.SourceAlice, alice, "private-account");
+        var loose = await AddStatementAsync(null, null, alice, "tax-certificate");
+
+        using var bob = await _host.LoggedInClientAsync("bob");
+        using (var response = await PostZipAsync(bob, shared, priv, loose, 99999))
+        {
+            var entries = await EntriesAsync(response);
+            var only = Assert.Single(entries.Keys);
+            Assert.Contains("shared-account", only, StringComparison.Ordinal);
+        }
+        using (var none = await PostZipAsync(bob, priv, loose))
+            Assert.Equal(HttpStatusCode.NotFound, none.StatusCode);
+
+        using var anonymous = _host.CreateClient();
+        using var denied = await PostZipAsync(anonymous, shared);
+        Assert.NotEqual(HttpStatusCode.OK, denied.StatusCode);
+
+        // Downloading does not mark anything read.
+        await using var db = await _host.System.CreateDbContextAsync();
+        Assert.Empty(db.StatementReads.ToList());
     }
 }
 

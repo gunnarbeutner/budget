@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261110144905_AddTransfers";
+        public override string LatestMigrationId => "20261110152057_AddStatementReadUnread";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -1316,6 +1316,9 @@ namespace OpenBudget.Migrations
 
                     b.Property<DateTime>("ReadAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("Unread")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("UserId", "StatementId");
 

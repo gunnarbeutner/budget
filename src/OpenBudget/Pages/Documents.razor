@@ -28,7 +28,30 @@
 <ProjectPageHeader ProjectId="ProjectId" ProjectName="@(project?.Name ?? "")" />
 
 <ProjectShell ProjectId="ProjectId" Active="ProjectTab.Documents" MainClass="shell-page">
-    <div class="page-toolbar docs-toolbar" data-testid="documents-toolbar">
+    @if (SelectedVisible() is { Count: > 0 } sel)
+    {
+        var allSelected = sel.Count == Visible().Count;
+        <div class="docs-selbar" role="toolbar" aria-label="@L["Sel_Bar"]" data-testid="docs-selbar">
+            <span class="docs-selbar-count" role="status" data-testid="docs-sel-count">@L["Sel_Count", sel.Count]</span>
+            <button type="button" class="ob-btn" data-testid="docs-sel-all" disabled="@allSelected" @onclick="SelectAll">
+                <i class="bi bi-check2-square" aria-hidden="true"></i><span class="docs-selbar-label">@L["Sel_SelectAll"]</span>
+            </button>
+            <button type="button" class="ob-btn" data-testid="docs-sel-clear" @onclick="ClearSelection">
+                <i class="bi bi-x-lg" aria-hidden="true"></i><span class="docs-selbar-label">@L["Sel_Clear"]</span>
+            </button>
+            <div class="flex-grow-1"></div>
+            <button type="button" class="ob-btn" data-testid="docs-sel-download" title="@L["Sel_Download"]" @onclick="DownloadSelectedAsync">
+                <i class="bi bi-download" aria-hidden="true"></i><span class="docs-selbar-label">@L["Sel_Download"]</span>
+            </button>
+            <button type="button" class="ob-btn" data-testid="docs-sel-read" title="@L["Sel_MarkRead"]" @onclick="() => MarkSelectedAsync(false)">
+                <i class="bi bi-envelope-open" aria-hidden="true"></i><span class="docs-selbar-label">@L["Sel_MarkRead"]</span>
+            </button>
+            <button type="button" class="ob-btn" data-testid="docs-sel-unread" title="@L["Sel_MarkUnread"]" @onclick="() => MarkSelectedAsync(true)">
+                <i class="bi bi-envelope" aria-hidden="true"></i><span class="docs-selbar-label">@L["Sel_MarkUnread"]</span>
+            </button>
+        </div>
+    }
+    <div class="page-toolbar docs-toolbar @(selected.Count > 0 && SelectedVisible().Count > 0 ? "d-none" : "")" data-testid="documents-toolbar">
         <h1 class="view-title">@L["View_Title"]</h1>
         @if (items != null)
         {
@@ -95,13 +118,17 @@
     }
     else
     {
-        <ul class="doc-grid" @ref="gridRef" data-testid="documents-grid" aria-label="@L["View_Title"]">
+        <ul class="doc-grid @(SelectedVisible().Count > 0 ? "selecting" : "")" @ref="gridRef" data-testid="documents-grid" aria-label="@L["View_Title"]">
             @foreach (var d in Visible())
             {
                 var alt = L["Thumb_Alt", d.AccountName, Date(d)].Value;
-                <li @key="d.Id">
+                var isSelected = selected.Contains(d.Id);
+                <li @key="d.Id" class="@(isSelected ? "selected" : "")">
+                    <button type="button" class="doc-check" role="checkbox" aria-checked="@(isSelected ? "true" : "false")"
+                            aria-label="@L["Sel_Toggle", d.AccountName, Date(d)]" data-testid="doc-check"
+                            @onclick="e => Toggle(d.Id, e.ShiftKey)"><i class="bi bi-check-lg" aria-hidden="true"></i></button>
                     <a class="doc-card" href="@($"/statements/{d.Id}")" data-doc-card="@d.Id" data-testid="doc-card"
-                       data-unread="@(d.Unread ? "true" : "false")"
+                       data-unread="@(d.Unread ? "true" : "false")" data-selected="@(isSelected ? "true" : "false")"
                        @onclick="() => OpenAsync(d.Id)" @onclick:preventDefault="true">
                         <div class="doc-thumb">
                             <img data-statement="@d.Id" data-src="@($"statements/{d.Id}")" alt="@alt" loading="lazy" />
@@ -249,6 +276,11 @@
     private long? messageAccountId;
     private bool busy;
 
+    private readonly HashSet<long> selected = [];
+    private long? selectionAnchor;
+    private DotNetObjectReference<Documents>? selfRef;
+    private bool keysBound;
+
     private string Date(DocumentItem d) => d.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
 
     private IEnumerable<int> Years => (items ?? []).Select(i => i.Date.Year).Distinct().OrderByDescending(y => y);
@@ -330,6 +362,12 @@
         {
             module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/documents.js");
             await module.InvokeVoidAsync("thumbs", gridRef);
+            if (!keysBound)
+            {
+                keysBound = true;
+                selfRef ??= DotNetObjectReference.Create(this);
+                await module.InvokeVoidAsync("bindSelectionKeys", selfRef);
+            }
             if (renderViewer && viewing != null)
             {
                 renderViewer = false;
@@ -439,6 +477,82 @@
         items = items!.Select(d => set.Contains(d.Id) ? d with { Unread = false } : d).ToList();
     }
 
+    /// <summary>The selected documents among those the filters show (what the selection bar acts on).</summary>
+    private List<DocumentItem> SelectedVisible() => selected.Count == 0 ? [] : Visible().Where(d => selected.Contains(d.Id)).ToList();
+
+    /// <summary>Checkbox click: toggles one card; with Shift, sets the range from the last clicked card to this one.</summary>
+    private void Toggle(long id, bool shift)
+    {
+        var list = Visible();
+        var to = list.FindIndex(d => d.Id == id);
+        var from = shift && selectionAnchor is { } a ? list.FindIndex(d => d.Id == a) : -1;
+        var select = !selected.Contains(id);
+        if (from >= 0 && to >= 0)
+        {
+            select = selected.Contains(list[from].Id) || select;
+            for (var i = Math.Min(from, to); i <= Math.Max(from, to); i++)
+            {
+                if (select) selected.Add(list[i].Id);
+                else selected.Remove(list[i].Id);
+            }
+        }
+        else if (select) selected.Add(id);
+        else selected.Remove(id);
+        selectionAnchor = id;
+    }
+
+    private void SelectAll()
+    {
+        foreach (var d in Visible()) selected.Add(d.Id);
+    }
+
+    private void ClearSelection()
+    {
+        selected.Clear();
+        selectionAnchor = null;
+    }
+
+    /// <summary>Cmd/Ctrl+A on the page (not in a field or dialog).</summary>
+    [JSInvokable]
+    public void SelectAllFromKeys()
+    {
+        if (viewing != null || showSettings || items == null) return;
+        SelectAll();
+        StateHasChanged();
+    }
+
+    /// <summary>Escape on the page: clears the selection.</summary>
+    [JSInvokable]
+    public bool ClearFromKeys()
+    {
+        if (viewing != null || showSettings || selected.Count == 0) return false;
+        ClearSelection();
+        StateHasChanged();
+        return true;
+    }
+
+    private async Task DownloadSelectedAsync()
+    {
+        var ids = SelectedVisible().Select(d => d.Id).ToArray();
+        if (ids.Length == 0 || module == null) return;
+        try { await module.InvokeVoidAsync("download", ids); }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+    }
+
+    private async Task MarkSelectedAsync(bool unread)
+    {
+        var ids = SelectedVisible().Select(d => d.Id).ToList();
+        if (ids.Count == 0) return;
+        if (unread) await Docs.MarkUnreadAsync(ids);
+        else
+        {
+            await Docs.MarkReadAsync(ids);
+            foreach (var id in ids) readThisVisit.Add(id); // stay in the unread filter until it changes
+        }
+        var set = ids.ToHashSet();
+        items = items!.Select(d => set.Contains(d.Id) ? d with { Unread = unread } : d).ToList();
+    }
+
     private async Task OpenSettingsAsync()
     {
         showSettings = true;
@@ -492,12 +606,17 @@
     {
         if (disposing) Navigation.LocationChanged -= OnLocationChanged;
         if (disposing && module != null) _ = DisposeModuleAsync(module);
+        if (disposing) selfRef?.Dispose();
         base.Dispose(disposing);
     }
 
     private static async Task DisposeModuleAsync(IJSObjectReference m)
     {
-        try { await m.DisposeAsync(); }
+        try
+        {
+            await m.InvokeVoidAsync("unbindSelectionKeys");
+            await m.DisposeAsync();
+        }
         catch (JSDisconnectedException) { /* circuit gone */ }
     }
 }

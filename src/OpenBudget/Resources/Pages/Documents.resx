@@ -196,4 +196,28 @@
   <data name="Download_StartedShort" xml:space="preserve">
     <value>Download started. New statements appear here when they arrive.</value>
   </data>
+  <data name="Sel_Count" xml:space="preserve">
+    <value>{0} selected</value>
+  </data>
+  <data name="Sel_SelectAll" xml:space="preserve">
+    <value>Select all</value>
+  </data>
+  <data name="Sel_Clear" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="Sel_Download" xml:space="preserve">
+    <value>Download</value>
+  </data>
+  <data name="Sel_MarkRead" xml:space="preserve">
+    <value>Mark as read</value>
+  </data>
+  <data name="Sel_MarkUnread" xml:space="preserve">
+    <value>Mark as unread</value>
+  </data>
+  <data name="Sel_Toggle" xml:space="preserve">
+    <value>Select {0} {1}</value>
+  </data>
+  <data name="Sel_Bar" xml:space="preserve">
+    <value>Selection</value>
+  </data>
 </root>

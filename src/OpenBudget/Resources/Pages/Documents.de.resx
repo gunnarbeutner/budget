@@ -196,4 +196,28 @@
   <data name="Download_StartedShort" xml:space="preserve">
     <value>Abruf gestartet. Neue Auszüge erscheinen hier, sobald sie da sind.</value>
   </data>
+  <data name="Sel_Count" xml:space="preserve">
+    <value>{0} ausgewählt</value>
+  </data>
+  <data name="Sel_SelectAll" xml:space="preserve">
+    <value>Alle auswählen</value>
+  </data>
+  <data name="Sel_Clear" xml:space="preserve">
+    <value>Auswahl aufheben</value>
+  </data>
+  <data name="Sel_Download" xml:space="preserve">
+    <value>Herunterladen</value>
+  </data>
+  <data name="Sel_MarkRead" xml:space="preserve">
+    <value>Als gelesen markieren</value>
+  </data>
+  <data name="Sel_MarkUnread" xml:space="preserve">
+    <value>Als ungelesen markieren</value>
+  </data>
+  <data name="Sel_Toggle" xml:space="preserve">
+    <value>{0} {1} auswählen</value>
+  </data>
+  <data name="Sel_Bar" xml:space="preserve">
+    <value>Auswahl</value>
+  </data>
 </root>

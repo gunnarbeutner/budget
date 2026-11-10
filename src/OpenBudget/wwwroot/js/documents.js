@@ -152,3 +152,57 @@ export async function view(container, url) {
 export function focusCard(id) {
     document.querySelector(`[data-doc-card="${id}"]`)?.focus();
 }
+
+/**
+ * Downloads the selected statements: one as the PDF itself, several as a ZIP streamed by POST statements/zip
+ * (a plain form post, so the browser streams it to disk and the page stays).
+ */
+export function download(ids) {
+    if (!ids || ids.length === 0) return;
+    if (ids.length === 1) {
+        const a = document.createElement("a");
+        a.href = new URL(`statements/${ids[0]}?download=true`, document.baseURI).href;
+        a.download = "";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        return;
+    }
+    const form = document.createElement("form");
+    form.method = "post";
+    form.action = new URL("statements/zip", document.baseURI).href;
+    form.style.display = "none";
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "ids";
+    input.value = ids.join(",");
+    form.appendChild(input);
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+}
+
+let keyHandler = null;
+
+/** Cmd/Ctrl+A selects all visible cards, Escape clears — unless focus is in a field or a dialog is open. */
+export function bindSelectionKeys(dotnet) {
+    unbindSelectionKeys();
+    keyHandler = e => {
+        const t = e.target;
+        if (t instanceof Element && t.closest("input, textarea, select, [contenteditable], .modal")) return;
+        if (document.querySelector(".modal.show")) return;
+        if (!document.querySelector(".doc-grid")) return;
+        if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "a") {
+            e.preventDefault();
+            dotnet.invokeMethodAsync("SelectAllFromKeys").catch(() => { });
+        } else if (e.key === "Escape" && document.querySelector(".doc-grid.selecting")) {
+            dotnet.invokeMethodAsync("ClearFromKeys").catch(() => { });
+        }
+    };
+    document.addEventListener("keydown", keyHandler);
+}
+
+export function unbindSelectionKeys() {
+    if (keyHandler) document.removeEventListener("keydown", keyHandler);
+    keyHandler = null;
+}

@@ -63,7 +63,7 @@ public class DocumentService
         var query = DocumentsQuery(db, projectId);
         var rows = await query
             .OrderByDescending(s => s.Date).ThenByDescending(s => s.Id)
-            .Select(s => new { s.Id, s.AccountId, s.BankLoginId, s.Date, s.Name, s.CreatedAt, Read = db.StatementReads.Any(r => r.StatementId == s.Id) })
+            .Select(s => new { s.Id, s.AccountId, s.BankLoginId, s.Date, s.Name, s.CreatedAt, Read = db.StatementReads.Any(r => r.StatementId == s.Id && !r.Unread), MarkedUnread = db.StatementReads.Any(r => r.StatementId == s.Id && r.Unread) })
             .ToListAsync(ct);
         var since = await UserCreatedAtAsync(db, userId, ct);
         var accountIds = rows.Where(r => r.AccountId != null).Select(r => r.AccountId!.Value).Distinct().ToList();
@@ -76,7 +76,7 @@ public class DocumentService
             r.AccountId is { } a ? accountNames.GetValueOrDefault(a, "?") : loginNames.GetValueOrDefault(r.BankLoginId, "?"),
             r.Date,
             r.Name,
-            !r.Read && r.CreatedAt > since)).ToList();
+            r.MarkedUnread || (!r.Read && r.CreatedAt > since))).ToList();
     }
 
     /// <summary>How many of the project's documents the current user has not read yet.</summary>
@@ -87,21 +87,36 @@ public class DocumentService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var since = await UserCreatedAtAsync(db, userId, ct);
         return await DocumentsQuery(db, projectId)
-            .CountAsync(s => s.CreatedAt > since && !db.StatementReads.Any(r => r.StatementId == s.Id), ct);
+            .CountAsync(s => db.StatementReads.Any(r => r.StatementId == s.Id && r.Unread)
+                || (s.CreatedAt > since && !db.StatementReads.Any(r => r.StatementId == s.Id)), ct);
     }
 
     /// <summary>Marks documents read for the current user (ones they cannot see are ignored).</summary>
-    public async Task MarkReadAsync(IReadOnlyCollection<long> statementIds, CancellationToken ct = default)
+    public Task MarkReadAsync(IReadOnlyCollection<long> statementIds, CancellationToken ct = default) => SetUnreadAsync(statementIds, false, ct);
+
+    /// <summary>Marks documents unread again for the current user (ones they cannot see are ignored).</summary>
+    public Task MarkUnreadAsync(IReadOnlyCollection<long> statementIds, CancellationToken ct = default) => SetUnreadAsync(statementIds, true, ct);
+
+    private async Task SetUnreadAsync(IReadOnlyCollection<long> statementIds, bool unread, CancellationToken ct)
     {
         var userId = (await _access.GetAsync()).UserId;
         if (userId == null || statementIds.Count == 0) return;
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var ids = statementIds.Distinct().ToList();
         var visible = await db.BankStatements.AsNoTracking().Where(s => ids.Contains(s.Id)).Select(s => s.Id).ToListAsync(ct);
-        var already = await db.StatementReads.AsNoTracking().Where(r => visible.Contains(r.StatementId)).Select(r => r.StatementId).ToListAsync(ct);
+        var existing = await db.StatementReads.Where(r => visible.Contains(r.StatementId)).ToDictionaryAsync(r => r.StatementId, ct);
         var now = DateTime.UtcNow;
-        foreach (var id in visible.Except(already))
-            db.StatementReads.Add(new StatementRead { UserId = userId, StatementId = id, ReadAt = now });
+        foreach (var id in visible)
+        {
+            if (existing.TryGetValue(id, out var row))
+            {
+                if (row.Unread == unread) continue;
+                row.Unread = unread;
+                row.ReadAt = now;
+            }
+            else
+                db.StatementReads.Add(new StatementRead { UserId = userId, StatementId = id, ReadAt = now, Unread = unread });
+        }
         if (db.ChangeTracker.HasChanges())
         {
             await db.SaveChangesAsync(ct);
