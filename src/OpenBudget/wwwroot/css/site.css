@@ -1087,11 +1087,11 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
     align-items: start;
     padding: 9px 20px;
     cursor: pointer;
-    user-select: none;
-    -webkit-user-select: none;
     -webkit-touch-callout: none;
     scroll-margin-top: 0.5rem;
 }
+/* Text stays selectable with a mouse; on touch a long press opens the row's menu instead. */
+@media (hover: none) { .tx-row { user-select: none; -webkit-user-select: none; } }
 .tx-row:hover { background: var(--ob-row-hover-bg); }
 .tx-item.selected { background: var(--ob-row-selected-bg); }
 .tx-item.selected .tx-row:hover { background: transparent; }

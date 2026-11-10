@@ -293,3 +293,14 @@ window.obFocusAnchor = function () {
         if (Date.now() < suppressUntil && e.target.closest && e.target.closest("[data-ob-longpress]")) { e.stopPropagation(); e.preventDefault(); }
     }, true);
 })();
+
+// Selecting text in a transaction row must not also toggle the row: swallow the click that ends a drag-selection.
+window.addEventListener("click", function (e) {
+    var row = e.target instanceof Element ? e.target.closest(".tx-row") : null;
+    if (!row) return;
+    var sel = window.getSelection();
+    if (sel && !sel.isCollapsed && sel.toString().trim().length > 0 && row.contains(sel.anchorNode)) {
+        e.stopPropagation();
+        e.preventDefault();
+    }
+}, true);

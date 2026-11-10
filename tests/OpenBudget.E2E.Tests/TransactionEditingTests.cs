@@ -45,6 +45,22 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task Row_text_can_be_selected_without_expanding_the_row()
+    {
+        await GoToAsync(UncategorizedUrl);
+        var payee = Row("\u221225,00").GetByText("Example Grocer").First;
+        var box = (await payee.BoundingBoxAsync())!;
+        await Page.Mouse.MoveAsync(box.X + 1, box.Y + box.Height / 2);
+        await Page.Mouse.DownAsync();
+        await Page.Mouse.MoveAsync(box.X + box.Width - 1, box.Y + box.Height / 2, new() { Steps = 5 });
+        await Page.Mouse.UpAsync();
+
+        var selected = await Page.EvaluateAsync<string>("() => window.getSelection().toString()");
+        Assert.That(selected, Does.Contain("Example"));
+        await Expect(Page.GetByTestId("tx-details")).ToHaveCountAsync(0);
+    }
+
+    [Test]
     public async Task Clicking_a_row_selects_it_and_expands_the_bank_details_in_place()
     {
         await GoToAsync(UncategorizedUrl);
