@@ -201,6 +201,8 @@ public sealed class DocumentsTests : EndToEndTestBase
         await Expect(giro.GetByTestId("setting-interval")).ToBeVisibleAsync();
         await Expect(giro.GetByTestId("setting-download")).ToBeVisibleAsync();
         await giro.GetByTestId("setting-interval").SelectOptionAsync("Weekly");
+        await giro.GetByTestId("setting-download").ClickAsync();
+        await Expect(giro.GetByTestId("settings-message")).ToBeVisibleAsync();
 
         await using var db = await Db.CreateDbContextAsync();
         var link = await db.BankLoginAccounts.SingleAsync(a => a.LinkedAccountId == EditingSeed.BankAccountId);

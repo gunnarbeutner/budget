@@ -190,6 +190,10 @@
                         {
                             <div class="small text-body-secondary" data-testid="setting-readonly">@L["Settings_OwnerOnly"]</div>
                         }
+                        else if (settingsMessage != null && messageAccountId == s.AccountId)
+                        {
+                            <div class="small text-body-emphasis" role="status" data-testid="settings-message">@settingsMessage</div>
+                        }
                         else if (s.LastStatementAt is { } last)
                         {
                             <div class="small text-body-secondary">@L["Settings_LastStatement", Clock.ToLocal(last).ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)]</div>
@@ -212,10 +216,7 @@
                 </li>
             }
         </ul>
-        @if (settingsMessage != null)
-        {
-            <div class="small mt-2" role="status" data-testid="settings-message">@settingsMessage</div>
-        }
+
     }
 </Modal>
 
@@ -245,6 +246,7 @@
     private List<StatementSetting>? settings;
     private string settingsSearch = string.Empty;
     private string? settingsMessage;
+    private long? messageAccountId;
     private bool busy;
 
     private string Date(DocumentItem d) => d.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
@@ -465,6 +467,7 @@
         catch (Exception ex) when (ex is InvalidOperationException or AccessDeniedException)
         {
             settingsMessage = L["Settings_Failed"];
+            messageAccountId = s.AccountId;
         }
         settings = await Docs.GetSettingsAsync(ProjectId);
         busy = false;
@@ -475,9 +478,10 @@
         if (s.LoginId is not { } login || s.LoginAccountId is not { } id) return;
         busy = true;
         var result = await Bank.DownloadStatementsAsync(login, id);
+        messageAccountId = s.AccountId;
         settingsMessage = result switch
         {
-            StartResult.Started => L["Download_Started", s.Name],
+            StartResult.Started => L["Download_StartedShort"],
             StartResult.AlreadyRunning => L["Download_Running"],
             _ => L["Download_NotStarted"],
         };

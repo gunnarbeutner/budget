@@ -187,13 +187,13 @@
   <data name="Interval_ManualOnly" xml:space="preserve">
     <value>Only manually</value>
   </data>
-  <data name="Download_Started" xml:space="preserve">
-    <value>Download started for {0}.</value>
-  </data>
   <data name="Download_Running" xml:space="preserve">
     <value>A sync of this bank login is already running.</value>
   </data>
   <data name="Download_NotStarted" xml:space="preserve">
     <value>Nothing was started.</value>
+  </data>
+  <data name="Download_StartedShort" xml:space="preserve">
+    <value>Download started. New statements appear here when they arrive.</value>
   </data>
 </root>

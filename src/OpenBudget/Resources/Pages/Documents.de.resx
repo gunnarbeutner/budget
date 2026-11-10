@@ -187,13 +187,13 @@
   <data name="Interval_ManualOnly" xml:space="preserve">
     <value>Nur manuell</value>
   </data>
-  <data name="Download_Started" xml:space="preserve">
-    <value>Download für {0} gestartet.</value>
-  </data>
   <data name="Download_Running" xml:space="preserve">
     <value>Für diesen Bankzugang läuft schon eine Synchronisierung.</value>
   </data>
   <data name="Download_NotStarted" xml:space="preserve">
     <value>Es wurde nichts gestartet.</value>
+  </data>
+  <data name="Download_StartedShort" xml:space="preserve">
+    <value>Abruf gestartet. Neue Auszüge erscheinen hier, sobald sie da sind.</value>
   </data>
 </root>
