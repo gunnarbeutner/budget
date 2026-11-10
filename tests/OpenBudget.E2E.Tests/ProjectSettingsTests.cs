@@ -158,12 +158,14 @@ public sealed class ProjectSettingsTests : EndToEndTestBase
         await Page.GetByRole(AriaRole.Button, new() { Name = "Delete Project" }).ClickAsync();
 
         var modal = Page.GetByTestId("modal-dialog");
-        await Expect(modal.GetByText(E2ESeed.ProjectName)).ToBeVisibleAsync();
-        await modal.GetByRole(AriaRole.Button, new() { Name = "Delete", Exact = true }).ClickAsync();
+        await Expect(modal.GetByText(E2ESeed.ProjectName).First).ToBeVisibleAsync();
+        await Expect(modal.GetByTestId("delete-project-confirm")).ToBeDisabledAsync();
+        await modal.GetByTestId("delete-project-name").FillAsync(E2ESeed.ProjectName);
+        await modal.GetByTestId("delete-project-confirm").ClickAsync();
 
-        // Lands back on "/", which with no project left is the first-run welcome (its "New Project" link is
+        // Lands back on "/", which with no project left is the first-run welcome (its "New Project" button is
         // the marker), and the deleted project is gone.
-        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "New Project" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "New Project" })).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = E2ESeed.ProjectName })).Not.ToBeVisibleAsync();
     }
 }

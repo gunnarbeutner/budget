@@ -17,7 +17,8 @@ document.addEventListener("click", function (e) {
 // Escape closes an open top-bar menu and puts focus back on its button; arrow keys move between its entries.
 document.addEventListener("keydown", function (e) {
     var menu = e.target.closest && e.target.closest("details.project-selector[open], details.app-menu[open]");
-    if (!menu) return;
+    // A row's context menu inside the menu (the project switcher's) handles its own keys: Escape closes only it.
+    if (!menu || e.target.closest(".ctx-menu")) return;
     if (e.key === "Escape") {
         menu.open = false;
         var summary = menu.querySelector("summary");

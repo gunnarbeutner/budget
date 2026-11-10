@@ -117,7 +117,7 @@ public sealed class NavigationTests : EndToEndTestBase
         await Expect(first.GetByTestId("switcher-balance")).ToContainTextAsync("2 accounts");
         await Expect(first.GetByTestId("switcher-budget")).ToContainTextAsync("%");
         await Expect(Page.GetByTestId("switcher-new-project")).ToBeVisibleAsync();
-        await Expect(Page.GetByTestId("switcher-manage")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("switcher-manage")).ToHaveCountAsync(0);
 
         await rows.Filter(new() { HasText = SecondProjectName }).ClickAsync();
 
@@ -127,17 +127,14 @@ public sealed class NavigationTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task Switcher_manage_link_opens_the_project_list_with_reordering()
+    public async Task The_old_project_list_url_redirects_to_the_last_project()
     {
-        await AddSecondProjectAsync();
-        await GoToAsync($"/projects/{Pid}/browse");
+        var second = await AddSecondProjectAsync();
+        await GoToAsync($"/projects/{second}/budgets");
 
-        await Page.Locator("[data-testid=project-selector] > summary").ClickAsync();
-        await Page.GetByTestId("switcher-manage").ClickAsync();
+        await GoToAsync("/projects/manage");
 
-        await Expect(Page).ToHaveURLAsync(new Regex(".*/projects/manage$"));
-        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Move down" }).First).ToBeEnabledAsync();
-        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = SecondProjectName })).ToBeVisibleAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{second}/browse$"));
     }
 
     [Test]
