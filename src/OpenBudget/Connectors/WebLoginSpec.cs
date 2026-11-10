@@ -31,6 +31,12 @@ public sealed class WebLoginSpec
     public WebLoginAutofill? Autofill { get; init; }
 
     /// <summary>
+    /// Interstitials to click away before filling in the form (e.g. a "browser not supported" notice), as selectors;
+    /// Puppeteer's text selectors such as <c>button::-p-text(…)</c> work too. Clicked only when visible.
+    /// </summary>
+    public IReadOnlyList<string> Dismiss { get; init; } = [];
+
+    /// <summary>
     /// The bank's "wrong username or password" message on the sign-in page: a CSS selector and, optionally, text the element
     /// must contain. When it shows up after the app submitted the form, the web login ends at once with
     /// <see cref="RejectedMessage"/> and the credentials count as rejected (instead of waiting for an approval that never comes).

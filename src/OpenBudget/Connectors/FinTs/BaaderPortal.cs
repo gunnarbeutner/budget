@@ -72,6 +72,8 @@ internal sealed partial class BaaderPortal
     internal WebLoginSpec WebLogin(ConnectorCredentials? credentials) => new(
         new Uri(_base, "login"), [_base.Host], successUrlPrefix: new Uri(_base, "dashboard"))
     {
+        // The portal calls the sign-in browser "not supported" and wants this click before showing the login form.
+        Dismiss = ["button::-p-text(Risiken bewusst)", "a::-p-text(Risiken bewusst)", "input[value*=\"Risiken bewusst\"]"],
         Autofill = credentials == null ? null
             : new WebLoginAutofill(credentials.Username, credentials.Secret, UsernameSelector, PasswordSelector, SubmitSelector),
     };

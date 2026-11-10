@@ -198,6 +198,13 @@ public sealed class WebLoginSession : IAsyncDisposable
     /// </summary>
     private async Task AutofillAsync(WebLoginAutofill fill, CancellationToken ct)
     {
+        foreach (var selector in _spec.Dismiss)
+        {
+            if (!await WaitVisibleAsync(selector, TimeSpan.FromSeconds(3), ct)) continue;
+            _logger.LogInformation("Web login: dismissing an interstitial ({Selector}).", selector);
+            await _browser.ClickAsync(selector);
+            await Task.Delay(_options.SettleDelay, ct);
+        }
         for (var i = 0; i < fill.Steps.Count; i++)
         {
             var step = fill.Steps[i];

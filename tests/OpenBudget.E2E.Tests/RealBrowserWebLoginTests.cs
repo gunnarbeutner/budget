@@ -61,6 +61,13 @@ public sealed class RealBrowserWebLoginTests
             {
                 html = TwoStepPage;
             }
+            else if (path == "/alert")
+            {
+                // A "browser not supported" notice in front of a plain login form (like a bank's portal).
+                html = "<html><body><div id=a><p>Ihr Browser wird nicht unterstützt</p><button onclick=\"document.getElementById('a').remove();document.getElementById('f').style.display='block'\">Ich bin mir der möglichen Risiken bewusst</button></div>"
+                    + "<form id=f style=display:none onsubmit=\"event.preventDefault();if(document.getElementById('u').value==='alice'&&document.getElementById('p').value==='pw'){document.cookie='sid=abc; path=/; max-age=3600';location.href='/home';}\">"
+                    + "<input id=u><input id=p type=password><button id=go type=submit>Login</button></form></body></html>";
+            }
             else if (path == "/masked")
             {
                 html = MaskedCodePage;
@@ -165,6 +172,22 @@ public sealed class RealBrowserWebLoginTests
         ]),
         CredentialsError = new WebLoginError("[role=alert]", ["Zugangscode korrekt"], "Openbank rejected the e-mail address or access code."),
     };
+
+    [Test]
+    public async Task A_browser_notice_in_front_of_the_form_is_clicked_away_before_filling_it_in()
+    {
+        await using var browser = NewBrowser();
+        var service = new WebLoginService(browser, new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },
+            TimeProvider.System, NullLoggerFactory.Instance);
+        var spec = new WebLoginSpec(new Uri(_baseUrl + "alert"), ["127.0.0.1"], new Uri(_baseUrl + "home"))
+        {
+            Dismiss = ["button::-p-text(Risiken bewusst)"],
+            Autofill = new WebLoginAutofill("alice", "pw", [new WebLoginStep([new WebLoginField("#u", WebLoginCredential.Username), new WebLoginField("#p", WebLoginCredential.Secret)], "#go")]),
+        };
+        await using var session = await service.StartAsync("user-1", spec, [], CancellationToken.None);
+        var result = await session.Completion.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.That(result.Success, Is.True, result.Error);
+    }
 
     [Test]
     public async Task Masked_auto_advancing_code_boxes_get_each_digit_exactly_once()
