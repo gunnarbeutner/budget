@@ -398,4 +398,5 @@
   <data name="Header_GroupAccounts_Other" xml:space="preserve">
     <value>{0} accounts</value>
   </data>
+  <data name="RulePick_Hint" xml:space="preserve"><value>Pick the category the new rule should set.</value></data>
 </root>

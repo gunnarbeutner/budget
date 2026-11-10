@@ -91,7 +91,7 @@ public static class CategoryRuleEngine
 }
 
 /// <summary>
-/// Manages a project's categorisation rules (Gear › Rules). Everything runs through the user-scoped context: reads see
+/// Manages a project's categorisation rules (the rules bar of a category in Transactions). Everything runs through the user-scoped context: reads see
 /// only visible projects, and the SaveChanges guard requires Editor for rule changes and the transaction edit rights
 /// for applying them to existing rows.
 /// </summary>
@@ -224,6 +224,45 @@ public sealed class CategoryRuleService
         Publish(projectId);
     }
 
+    /// <summary>The rules that set <paramref name="categoryId"/>, in order (the category's rules bar).</summary>
+    public async Task<List<CategoryRuleView>> GetCategoryRulesAsync(int projectId, long categoryId, CancellationToken ct = default) =>
+        (await GetRulesAsync(projectId, ct)).Where(v => v.Rule.CategoryId == categoryId).ToList();
+
+    /// <summary>
+    /// Moves a rule one place up (-1) or down (+1) among the rules of the same category: it swaps places in the
+    /// project's order with the neighbouring rule of that category. Rules of other categories keep their positions.
+    /// </summary>
+    public async Task MoveWithinCategoryAsync(int projectId, int ruleId, int delta, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var rules = await db.CategoryRules.Where(r => r.ProjectId == projectId).OrderBy(r => r.SortOrder).ThenBy(r => r.Id).ToListAsync(ct);
+        var rule = rules.FirstOrDefault(r => r.Id == ruleId);
+        if (rule == null || delta == 0) return;
+        var siblings = rules.Where(r => r.CategoryId == rule.CategoryId).ToList();
+        var target = siblings.IndexOf(rule) + Math.Sign(delta);
+        if (target < 0 || target >= siblings.Count) return;
+        var i = rules.IndexOf(rule);
+        var j = rules.IndexOf(siblings[target]);
+        (rules[i], rules[j]) = (rules[j], rules[i]);
+        for (var k = 0; k < rules.Count; k++)
+            if (rules[k].SortOrder != k) rules[k].SortOrder = k;
+        await db.SaveChangesAsync(ct);
+        Publish(projectId);
+    }
+
+    /// <summary>
+    /// Live preview of a draft rule: the ids of the project's transactions (any category) it would match. The draft
+    /// need not be valid or saved; a draft without a condition matches nothing.
+    /// </summary>
+    public async Task<List<long>> PreviewMatchIdsAsync(int projectId, CategoryRule draft, CancellationToken ct = default)
+    {
+        if (!CategoryRuleMatcher.HasCondition(draft)) return [];
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var accounts = await ProjectAccountsAsync(db, projectId, ct);
+        var subjects = await SubjectsAsync(db, accounts.Select(a => a.Id).ToList(), onlyCandidates: false, ct);
+        return subjects.Where(s => CategoryRuleMatcher.Matches(draft, RuleSubject.Of(s))).Select(s => s.Id).ToList();
+    }
+
     /// <summary>Moves a rule one place up (<paramref name="delta"/> = -1) or down (+1); renumbers the list densely.</summary>
     public async Task MoveAsync(int projectId, int ruleId, int delta, CancellationToken ct = default)
     {
@@ -240,18 +279,19 @@ public sealed class CategoryRuleService
     }
 
     /// <summary>How many uncategorised transactions of the project "Apply to existing" would categorise.</summary>
-    public async Task<int> PreviewApplyExistingAsync(int projectId, CancellationToken ct = default)
+    /// <remarks>With <paramref name="categoryId"/>, only the rows whose winning rule sets that category.</remarks>
+    public async Task<int> PreviewApplyExistingAsync(int projectId, long? categoryId = null, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var plan = await PlanAsync(db, projectId, ct);
+        var plan = await PlanAsync(db, projectId, categoryId, ct);
         return plan.Count;
     }
 
     /// <summary>Categorises the project's existing uncategorised (and never hand-categorised) transactions. Returns how many.</summary>
-    public async Task<int> ApplyExistingAsync(int projectId, CancellationToken ct = default)
+    public async Task<int> ApplyExistingAsync(int projectId, long? categoryId = null, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var plan = await PlanAsync(db, projectId, ct);
+        var plan = await PlanAsync(db, projectId, categoryId, ct);
         if (plan.Count == 0) return 0;
         var sources = new HashSet<int>();
         foreach (var chunk in plan.Chunk(Chunk))
@@ -272,7 +312,7 @@ public sealed class CategoryRuleService
     }
 
     /// <summary>(transaction, rule) pairs for every candidate the user may edit that one of the project's rules matches.</summary>
-    private static async Task<List<(long TransactionId, CategoryRule Rule)>> PlanAsync(BudgetDbContext db, int projectId, CancellationToken ct)
+    private static async Task<List<(long TransactionId, CategoryRule Rule)>> PlanAsync(BudgetDbContext db, int projectId, long? categoryId, CancellationToken ct)
     {
         var sourceId = await db.Projects.AsNoTracking().Where(p => p.Id == projectId).Select(p => (int?)p.SourceId).FirstOrDefaultAsync(ct);
         if (sourceId == null) return [];
@@ -288,7 +328,7 @@ public sealed class CategoryRuleService
         var subjects = await SubjectsAsync(db, accounts, onlyCandidates: true, ct);
         var plan = new List<(long, CategoryRule)>();
         foreach (var t in subjects)
-            if (CategoryRuleMatcher.FirstMatch(rules, RuleSubject.Of(t)) is { } rule) plan.Add((t.Id, rule));
+            if (CategoryRuleMatcher.FirstMatch(rules, RuleSubject.Of(t)) is { } rule && (categoryId == null || rule.CategoryId == categoryId)) plan.Add((t.Id, rule));
         return plan;
     }
 

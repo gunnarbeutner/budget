@@ -1,0 +1,385 @@
+@using System.Globalization
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject CategoryRuleService RuleService
+@inject IStringLocalizer<RulesBar> L
+
+@* The rules bar of a category (Transactions › right-click a category › Rules…): the categorisation rules that set
+   this category, edited in place. Every row is its own little form: typing changes a draft (Enter saves, Esc
+   reverts) and, while a row has unsaved changes, the transaction list below shows the bookings of the whole project
+   the draft would match (OnPreview; null = back to the normal list). Order within the category is changed with the
+   arrows; across categories the stored order decides (new rules go to the end). *@
+
+<section class="rules-bar" data-testid="rules-bar" aria-label="@L["Aria_Bar", CategoryName]">
+    <div class="rules-bar-head">
+        <span class="fw-semibold"><i class="bi bi-magic me-1" aria-hidden="true"></i>@L["Heading", CategoryName]</span>
+        @if (previewCount is { } count)
+        {
+            <span class="rules-bar-preview" role="status" data-testid="rules-preview-count">@L[count == 1 ? "Preview_One" : "Preview_Many", count]</span>
+        }
+        <span class="flex-grow-1"></span>
+        @if (applyCount > 0)
+        {
+            <button type="button" class="ob-btn ob-btn-sm" data-testid="rules-apply" @onclick="ApplyAsync">
+                <i class="bi bi-check2-all" aria-hidden="true"></i> @L["Apply", applyCount]
+            </button>
+        }
+        <button type="button" class="ob-btn ob-btn-sm ob-btn-primary" data-testid="rules-add" @onclick="AddDraft">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i> @L["Add"]
+        </button>
+        <button type="button" class="btn-close" aria-label="@L["Close"]" title="@L["Close"]" data-testid="rules-close" @onclick="CloseAsync"></button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(status))
+    {
+        <div class="small text-success px-1" role="status" data-testid="rules-status">@status</div>
+    }
+
+    @if (rows == null)
+    {
+        <div class="skeleton skeleton-line" aria-busy="true"></div>
+    }
+    else if (rows.Count == 0)
+    {
+        <div class="small text-body-secondary px-1" data-testid="rules-empty">@L["Empty"]</div>
+    }
+    else
+    {
+        @for (var i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var index = i;
+            var savedCount = rows.Count(r => r.Id > 0);
+            <div class="rules-row @(row.Dirty ? "dirty" : "") @(row.Draft.Enabled ? "" : "disabled")" data-testid="rule-row" @key="row.Key"
+                 @onkeydown="e => OnKeyAsync(row, e)">
+                <input class="form-control form-control-sm rules-text" data-testid="rule-payee" maxlength="500"
+                       placeholder="@L["Field_Payee"]" aria-label="@L["Field_Payee"]"
+                       value="@row.Draft.PayeeText" @oninput="e => Edit(row, d => d.PayeeText = e.Value?.ToString())" />
+                <input class="form-control form-control-sm rules-text" data-testid="rule-purpose" maxlength="500"
+                       placeholder="@L["Field_Purpose"]" aria-label="@L["Field_Purpose"]"
+                       value="@row.Draft.PurposeText" @oninput="e => Edit(row, d => d.PurposeText = e.Value?.ToString())" />
+                <label class="rules-check" title="@L["Field_RegexTitle"]">
+                    <input type="checkbox" class="form-check-input" data-testid="rule-regex" checked="@row.Draft.UseRegex"
+                           @onchange="e => Edit(row, d => d.UseRegex = e.Value is true)" /> @L["Field_Regex"]
+                </label>
+                <button type="button" class="ob-btn ob-btn-sm @(row.More ? "active" : "")" data-testid="rule-more"
+                        aria-expanded="@row.More.ToString().ToLowerInvariant()" title="@L["More"]" @onclick="() => row.More = !row.More">
+                    <i class="bi bi-sliders" aria-hidden="true"></i>@if (row.HasMoreConditions) { <span class="ob-badge">•</span> }
+                </button>
+                <div class="form-check form-switch m-0 rules-switch" title="@L["Enabled"]">
+                    <input class="form-check-input" type="checkbox" role="switch" data-testid="rule-enabled" aria-label="@L["Enabled"]"
+                           checked="@row.Draft.Enabled" @onchange="() => ToggleAsync(row)" />
+                </div>
+                <div class="rules-actions">
+                    @if (row.Dirty)
+                    {
+                        <button type="button" class="ob-btn ob-btn-sm ob-btn-primary" data-testid="rule-save" @onclick="() => SaveAsync(row)">@L["Save"]</button>
+                        <button type="button" class="ob-btn ob-btn-sm" data-testid="rule-cancel" @onclick="() => CancelAsync(row)">@L["Cancel"]</button>
+                    }
+                    else
+                    {
+                        <span class="rules-matches small text-body-secondary" data-testid="rule-matches" title="@L["MatchesTitle"]">@row.MatchCount</span>
+                        <button type="button" class="ob-btn ob-btn-sm" title="@L["MoveUp"]" aria-label="@L["MoveUp"]" data-testid="rule-up"
+                                disabled="@(index == 0 || row.Id == 0)" @onclick="() => MoveAsync(row, -1)"><i class="bi bi-arrow-up" aria-hidden="true"></i></button>
+                        <button type="button" class="ob-btn ob-btn-sm" title="@L["MoveDown"]" aria-label="@L["MoveDown"]" data-testid="rule-down"
+                                disabled="@(index >= savedCount - 1 || row.Id == 0)" @onclick="() => MoveAsync(row, 1)"><i class="bi bi-arrow-down" aria-hidden="true"></i></button>
+                        @if (row.ConfirmDelete)
+                        {
+                            <button type="button" class="ob-btn ob-btn-sm ob-btn-danger" data-testid="rule-delete-confirm" @onclick="() => DeleteAsync(row)">@L["DeleteConfirm"]</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="ob-btn ob-btn-sm" title="@L["Delete"]" aria-label="@L["Delete"]" data-testid="rule-delete"
+                                    @onclick="() => row.ConfirmDelete = true"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                        }
+                    }
+                </div>
+                @if (row.More)
+                {
+                    <div class="rules-more" data-testid="rule-more-panel">
+                        <select class="form-select form-select-sm" data-testid="rule-account" aria-label="@L["Field_Account"]"
+                                value="@(row.Draft.AccountId?.ToString(CultureInfo.InvariantCulture) ?? "")"
+                                @onchange="e => Edit(row, d => d.AccountId = long.TryParse(e.Value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var acc) ? acc : null)">
+                            <option value="">@L["Field_AnyAccount"]</option>
+                            @foreach (var a in accounts)
+                            {
+                                <option value="@a.Id.ToString(CultureInfo.InvariantCulture)">@a.Name</option>
+                            }
+                        </select>
+                        <select class="form-select form-select-sm" data-testid="rule-sign" aria-label="@L["Field_Sign"]"
+                                value="@row.Draft.AmountSign.ToString()"
+                                @onchange="e => Edit(row, d => d.AmountSign = Enum.TryParse<RuleAmountSign>(e.Value?.ToString(), out var s) ? s : RuleAmountSign.Any)">
+                            <option value="@RuleAmountSign.Any">@L["Sign_Any"]</option>
+                            <option value="@RuleAmountSign.Expense">@L["Sign_Expense"]</option>
+                            <option value="@RuleAmountSign.Income">@L["Sign_Income"]</option>
+                        </select>
+                        <input class="form-control form-control-sm rules-amount" inputmode="decimal" data-testid="rule-min"
+                               placeholder="@L["Field_Min"]" aria-label="@L["Field_Min"]" value="@row.MinText"
+                               @oninput="e => EditAmount(row, e.Value?.ToString(), true)" />
+                        <input class="form-control form-control-sm rules-amount" inputmode="decimal" data-testid="rule-max"
+                               placeholder="@L["Field_Max"]" aria-label="@L["Field_Max"]" value="@row.MaxText"
+                               @oninput="e => EditAmount(row, e.Value?.ToString(), false)" />
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(row.Error))
+                {
+                    <div class="rules-error small text-danger" role="alert" data-testid="rule-error">@row.Error</div>
+                }
+            </div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public int ProjectId { get; set; }
+    [Parameter, EditorRequired] public long CategoryId { get; set; }
+    [Parameter] public string CategoryName { get; set; } = "";
+    /// <summary>A payee to start a new draft row with ("Create rule from this…"); a new draft is added each time <see cref="PrefillToken"/> changes.</summary>
+    [Parameter] public string? PrefillPayee { get; set; }
+    [Parameter] public int PrefillToken { get; set; }
+    /// <summary>The ids the draft being edited matches (live preview), or null for the normal list.</summary>
+    [Parameter] public EventCallback<IReadOnlyCollection<long>?> OnPreview { get; set; }
+    /// <summary>Rules were applied to existing transactions: the page reloads its list.</summary>
+    [Parameter] public EventCallback OnApplied { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private sealed class RowState
+    {
+        public Guid Key { get; } = Guid.NewGuid();
+        public int Id => Draft.Id;
+        public required CategoryRule Draft { get; set; }
+        public CategoryRule? Saved { get; set; }
+        public string? MinText { get; set; }
+        public string? MaxText { get; set; }
+        public bool Dirty { get; set; }
+        public bool More { get; set; }
+        public bool ConfirmDelete { get; set; }
+        public string? Error { get; set; }
+        public int MatchCount { get; set; }
+        public bool HasMoreConditions => Draft.AccountId != null || Draft.AmountSign != RuleAmountSign.Any || !string.IsNullOrWhiteSpace(MinText) || !string.IsNullOrWhiteSpace(MaxText);
+    }
+
+    private List<RowState>? rows;
+    private List<RuleOption<long>> accounts = [];
+    private int applyCount;
+    private int? previewCount;
+    private string? status;
+    private long previewToken;
+    private (int, long) loadedKey;
+    private int handledPrefill;
+    private RowState? previewRow;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedKey != (ProjectId, CategoryId))
+        {
+            loadedKey = (ProjectId, CategoryId);
+            rows = null;
+            status = null;
+            accounts = await RuleService.GetAccountsAsync(ProjectId);
+            await LoadAsync();
+        }
+        if (PrefillToken != handledPrefill)
+        {
+            handledPrefill = PrefillToken;
+            if (!string.IsNullOrWhiteSpace(PrefillPayee))
+            {
+                var row = NewDraft();
+                row.Draft.PayeeText = PrefillPayee.Trim();
+                row.Dirty = true;
+                await SchedulePreviewAsync(row, immediate: true);
+            }
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        var views = await RuleService.GetCategoryRulesAsync(ProjectId, CategoryId);
+        var drafts = rows?.Where(r => r.Id == 0).ToList() ?? [];
+        rows = views.Select(v => FromRule(v.Rule, v.MatchCount)).Concat(drafts).ToList();
+        applyCount = await RuleService.PreviewApplyExistingAsync(ProjectId, CategoryId);
+    }
+
+    private static CategoryRule Copy(CategoryRule r) => new()
+    {
+        Id = r.Id, ProjectId = r.ProjectId, Name = r.Name, Enabled = r.Enabled, PayeeText = r.PayeeText, PurposeText = r.PurposeText,
+        UseRegex = r.UseRegex, AccountId = r.AccountId, AmountSign = r.AmountSign, MinAmountCents = r.MinAmountCents,
+        MaxAmountCents = r.MaxAmountCents, CategoryId = r.CategoryId, SortOrder = r.SortOrder,
+    };
+
+    private static string? CentsText(long? cents) => cents is { } c ? (c / 100m).ToString("0.00", CultureInfo.CurrentCulture) : null;
+
+    private static RowState FromRule(CategoryRule rule, int matches) => new()
+    {
+        Draft = Copy(rule),
+        Saved = rule,
+        MinText = CentsText(rule.MinAmountCents),
+        MaxText = CentsText(rule.MaxAmountCents),
+        MatchCount = matches,
+        More = rule.AccountId != null || rule.AmountSign != RuleAmountSign.Any || rule.MinAmountCents != null || rule.MaxAmountCents != null,
+    };
+
+    private RowState NewDraft()
+    {
+        status = null;
+        var row = new RowState { Draft = new CategoryRule { ProjectId = ProjectId, CategoryId = CategoryId, Enabled = true } };
+        rows ??= [];
+        rows.Add(row);
+        return row;
+    }
+
+    private void AddDraft() => NewDraft();
+
+    private Task Edit(RowState row, Action<CategoryRule> change)
+    {
+        change(row.Draft);
+        row.Dirty = true;
+        row.Error = null;
+        row.ConfirmDelete = false;
+        return SchedulePreviewAsync(row);
+    }
+
+    private Task EditAmount(RowState row, string? text, bool min)
+    {
+        if (min) row.MinText = text; else row.MaxText = text;
+        return Edit(row, d =>
+        {
+            if (TryCents(text, out var cents))
+            {
+                if (min) d.MinAmountCents = cents; else d.MaxAmountCents = cents;
+            }
+        });
+    }
+
+    // Debounced: the handler returns at once; the preview runs after a short pause in typing (token, no timer).
+    private async Task SchedulePreviewAsync(RowState row, bool immediate = false)
+    {
+        var token = ++previewToken;
+        previewRow = row;
+        if (!immediate)
+        {
+            try { await Task.Delay(300); }
+            catch (ObjectDisposedException) { return; }
+            if (token != previewToken) return;
+        }
+        var ids = await RuleService.PreviewMatchIdsAsync(ProjectId, row.Draft);
+        if (token != previewToken || previewRow != row || !row.Dirty) return;
+        previewCount = ids.Count;
+        await OnPreview.InvokeAsync(ids);
+    }
+
+    private async Task EndPreviewAsync()
+    {
+        previewToken++;
+        previewRow = null;
+        if (previewCount == null) return;
+        previewCount = null;
+        await OnPreview.InvokeAsync(null);
+    }
+
+    private async Task OnKeyAsync(RowState row, KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && row.Dirty) await SaveAsync(row);
+        else if (e.Key == "Escape") await CancelAsync(row);
+    }
+
+    private static bool TryCents(string? text, out long? cents)
+    {
+        cents = null;
+        if (string.IsNullOrWhiteSpace(text)) return true;
+        if (!decimal.TryParse(text.Trim(), NumberStyles.Number, CultureInfo.CurrentCulture, out var value)
+            && !decimal.TryParse(text.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out value)) return false;
+        cents = (long)Math.Round(Math.Abs(value) * 100m, MidpointRounding.AwayFromZero);
+        return true;
+    }
+
+    private async Task SaveAsync(RowState row)
+    {
+        if (!TryCents(row.MinText, out var min) || !TryCents(row.MaxText, out var max))
+        {
+            row.Error = L["Error_InvalidAmountRange"];
+            return;
+        }
+        row.Draft.MinAmountCents = min;
+        row.Draft.MaxAmountCents = max;
+        row.Draft.CategoryId = CategoryId;
+        try
+        {
+            var id = await RuleService.SaveAsync(row.Draft);
+            row.Draft.Id = id;
+            row.Dirty = false;
+            row.Error = null;
+            await EndPreviewAsync();
+            rows!.Remove(row);
+            await LoadAsync();
+        }
+        catch (RuleValidationException ex)
+        {
+            row.Error = L["Error_" + ex.Reason];
+        }
+        catch (AccessDeniedException)
+        {
+            row.Error = L["Error_NoPermission"];
+        }
+    }
+
+    private async Task CancelAsync(RowState row)
+    {
+        row.Error = null;
+        row.ConfirmDelete = false;
+        if (row.Id == 0) rows!.Remove(row);
+        else if (row.Saved != null)
+        {
+            row.Draft = Copy(row.Saved);
+            row.MinText = CentsText(row.Saved.MinAmountCents);
+            row.MaxText = CentsText(row.Saved.MaxAmountCents);
+            row.Dirty = false;
+        }
+        if (previewRow == row || rows!.All(r => !r.Dirty)) await EndPreviewAsync();
+    }
+
+    private async Task ToggleAsync(RowState row)
+    {
+        if (row.Id == 0 || row.Dirty)
+        {
+            await Edit(row, d => d.Enabled = !d.Enabled);
+            return;
+        }
+        try
+        {
+            await RuleService.SetEnabledAsync(ProjectId, row.Id, !row.Draft.Enabled);
+            await LoadAsync();
+        }
+        catch (AccessDeniedException)
+        {
+            row.Error = L["Error_NoPermission"];
+        }
+    }
+
+    private async Task MoveAsync(RowState row, int delta)
+    {
+        await RuleService.MoveWithinCategoryAsync(ProjectId, row.Id, delta);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(RowState row)
+    {
+        await RuleService.DeleteAsync(ProjectId, row.Id);
+        rows!.Remove(row);
+        await LoadAsync();
+    }
+
+    private async Task ApplyAsync()
+    {
+        var count = await RuleService.ApplyExistingAsync(ProjectId, CategoryId);
+        status = L["Apply_Done", count];
+        await LoadAsync();
+        await OnApplied.InvokeAsync();
+    }
+
+    private async Task CloseAsync()
+    {
+        await EndPreviewAsync();
+        await OnClose.InvokeAsync();
+    }
+}

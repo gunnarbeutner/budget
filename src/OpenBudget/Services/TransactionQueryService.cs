@@ -157,6 +157,12 @@ public class TransactionQueryService
             .Where(t => t.SourceId == query.SourceId)
             .Where(t => t.Splitted != 1);
 
+        if (query.OnlyIds is { } onlyIds)
+        {
+            var idList = onlyIds.ToList();
+            baseQuery = baseQuery.Where(t => idList.Contains(t.Id));
+        }
+
         if (query.Period is { } period)
         {
             var range = TimeRange.Between(

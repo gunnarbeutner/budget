@@ -97,13 +97,81 @@ public partial class Browse
         await FilterChangedAsync();
     }
 
-    /// <summary>"Create rule from this…": Gear › Rules with the editor prefilled from the payee and the row's category.</summary>
-    private void CreateRuleFrom(TransactionRow row)
+    // ---- rules bar (right-click a category › Rules…) ----
+
+    private bool _canEditRules;
+    private bool _rulesOpen;
+    private string? _rulesPrefill;
+    private int _rulesPrefillToken;
+    /// <summary>While a rule draft is edited: the bookings it matches, shown instead of the normal list.</summary>
+    private IReadOnlyCollection<long>? _previewIds;
+    /// <summary>"Create rule from this…" on a booking without a category: the payee, while the picker asks for the category.</summary>
+    private string? _rulePickPayee;
+
+    private long? RulesCategoryId => _rulesOpen && _canEditRules && selectionKind == "category" ? selectionId : null;
+
+    private IReadOnlyList<ContextMenuItem> NodeMenu(SidebarNode node) => SidebarMenus.For(node, _canEditRules, RailL);
+
+    private async Task OnNodeMenuPickAsync((SidebarNode Node, string Key) pick)
     {
-        if (string.IsNullOrWhiteSpace(row.Name)) return;
-        var url = $"/projects/{ProjectId}/rules?payee={Uri.EscapeDataString(row.Name)}";
-        if (row.CategoryId is { } category) url += $"&category={category.ToString(CultureInfo.InvariantCulture)}";
-        Navigation.NavigateTo(url);
+        if (pick.Key == SidebarMenus.Rules && pick.Node.Kind == SidebarNodeKind.Category)
+            await OpenRulesAsync(pick.Node.Id, null);
+    }
+
+    /// <summary>Shows the category's transactions with its rules bar on top (and, with a payee, a new prefilled draft row).</summary>
+    private async Task OpenRulesAsync(long categoryId, string? prefillPayee)
+    {
+        var reload = selectionKind != "category" || selectionId != categoryId || _previewIds != null;
+        selectionKind = "category";
+        selectionId = categoryId;
+        ResetTransientFilters();
+        CoerceChartGranularityForSelection();
+        railOpen = false;
+        _rulesOpen = true;
+        if (prefillPayee != null)
+        {
+            _rulesPrefill = prefillPayee;
+            _rulesPrefillToken++;
+        }
+        UpdateUrl();
+        if (reload) await ReloadTransactionsAsync();
+    }
+
+    private async Task CloseRulesAsync()
+    {
+        _rulesOpen = false;
+        UpdateUrl();
+        if (_previewIds != null)
+        {
+            _previewIds = null;
+            await ReloadTransactionsAsync();
+        }
+    }
+
+    private async Task OnRulePreviewAsync(IReadOnlyCollection<long>? ids)
+    {
+        if (ids == null && _previewIds == null) return;
+        _previewIds = ids;
+        await ReloadTransactionsAsync();
+    }
+
+    /// <summary>"Create rule from this…": the rules bar of the booking's category with a new draft for its payee. Without a
+    /// category the picker asks which category the rule should set first.</summary>
+    private async Task CreateRuleFromAsync(TransactionRow row, MouseEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(row.Name) || project == null) return;
+        if (row.CategoryId is { } category)
+        {
+            await OpenRulesAsync(category, row.Name.Trim());
+            return;
+        }
+        pickerData ??= await Categorization.GetPickerDataAsync(project.SourceId);
+        _rulePickPayee = row.Name.Trim();
+        popupTargets = [];
+        popupCurrentCategory = null;
+        popupSuggestions = await Categorization.GetSuggestionsAsync(project.SourceId, row.Name, pickerData);
+        (popupX, popupY) = (e.ClientX, e.ClientY);
+        popup = PopupKind.Picker;
     }
 
     private (string Keys, string Text)[] ShortcutRows =>
@@ -133,6 +201,7 @@ public partial class Browse
         selectionSum = 0;
         popup = PopupKind.None;
         popupTargets = [];
+        _rulePickPayee = null;
     }
 
     private void ClearFilterState()
@@ -151,6 +220,8 @@ public partial class Browse
     {
         if (!pinFilters) ClearFilterState();
         payeeEquals = null;
+        _rulesOpen = false;
+        _previewIds = null;
     }
 
     private async Task<RunningBalance?> EnsureRunningBalanceAsync(CancellationToken ct)
@@ -414,7 +485,11 @@ public partial class Browse
 
     // ---- popups ----
 
-    private void ClosePopup() => popup = PopupKind.None;
+    private void ClosePopup()
+    {
+        popup = PopupKind.None;
+        _rulePickPayee = null;
+    }
 
     private async Task OpenPickerFromRow(TransactionRow row, MouseEventArgs e)
     {
@@ -584,6 +659,12 @@ public partial class Browse
     private async Task PickCategoryAsync(long? categoryId)
     {
         popup = PopupKind.None;
+        if (_rulePickPayee is { } payee)
+        {
+            _rulePickPayee = null;
+            if (categoryId is { } ruleCategory) await OpenRulesAsync(ruleCategory, payee);
+            return;
+        }
         await CategorizeAsync(popupTargets, categoryId);
     }
 

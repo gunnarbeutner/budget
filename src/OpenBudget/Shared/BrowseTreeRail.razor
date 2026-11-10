@@ -84,6 +84,11 @@
     }
 </div>
 
+@if (menuNode != null)
+{
+    <ContextMenu Items="menuItems" X="menuX" Y="menuY" OnPick="PickMenuAsync" OnClose="CloseMenu" />
+}
+
 @code {
     [Parameter, EditorRequired] public BrowseTree Tree { get; set; } = default!;
     [Parameter, EditorRequired] public string SelectionKind { get; set; } = "all";
@@ -101,6 +106,57 @@
     [Parameter] public EventCallback OnSelectPortfolio { get; set; }
     [Parameter] public EventCallback OnSelectUncategorized { get; set; }
     [Parameter] public EventCallback<BrowseCategoryNode> OnSelectCategory { get; set; }
+    /// <summary>The context-menu items of a row (see <see cref="SidebarNode"/>); null or empty = no menu.</summary>
+    [Parameter] public Func<SidebarNode, IReadOnlyList<ContextMenuItem>>? NodeMenu { get; set; }
+    /// <summary>A context-menu item was picked: the row and the item's key.</summary>
+    [Parameter] public EventCallback<(SidebarNode Node, string Key)> OnNodeMenuPick { get; set; }
+
+    private SidebarNode? menuNode;
+    private IReadOnlyList<ContextMenuItem> menuItems = [];
+    private double menuX;
+    private double menuY;
+
+    private static SidebarNode SidebarNodeOf(BrowseCategoryNode n) =>
+        new(n.ItemType == CategoryItemType.Category ? SidebarNodeKind.Category : SidebarNodeKind.CategoryGroup, n.Id, n.Name);
+
+    private IReadOnlyList<ContextMenuItem> ItemsFor(SidebarNode? node) =>
+        node != null && NodeMenu != null ? NodeMenu(node) ?? [] : [];
+
+    private bool HasMenu(SidebarNode? node) => ItemsFor(node).Count > 0;
+
+    private string? LongPress(SidebarNode? node) => HasMenu(node) ? "" : null;
+
+    private void OpenMenu(SidebarNode? node, MouseEventArgs e) => OpenMenuAt(node, e.ClientX, e.ClientY);
+
+    private void OpenMenuAt(SidebarNode? node, double x, double y)
+    {
+        var items = ItemsFor(node);
+        if (items.Count == 0) return;
+        (menuNode, menuItems, menuX, menuY) = (node, items, x, y);
+    }
+
+    // Shift+F10 or the context-menu key on a focused row opens its menu below the row.
+    private async Task<bool> MenuKeyAsync(SidebarNode? node, KeyboardEventArgs e)
+    {
+        if (!(e.Key == "ContextMenu" || (e.Key == "F10" && e.ShiftKey)) || !HasMenu(node)) return false;
+        double x = 200, y = 200;
+        try
+        {
+            if (await JS.InvokeAsync<double[]?>("obFocusAnchor") is { Length: 2 } xy) (x, y) = (xy[0], xy[1]);
+        }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+        OpenMenuAt(node, x, y);
+        return true;
+    }
+
+    private void CloseMenu() => menuNode = null;
+
+    private async Task PickMenuAsync(string key)
+    {
+        var node = menuNode;
+        menuNode = null;
+        if (node != null) await OnNodeMenuPick.InvokeAsync((node, key));
+    }
 
     // Collapsed account groups, persisted in localStorage via expandState (as the keys of the
     // collapsed groups: new groups default to expanded, like MoneyMoney's sidebar).
@@ -138,8 +194,9 @@
         groupId is { } id ? OnSelectAccountGroup.InvokeAsync(id) : ToggleGroupAsync(key);
 
     // Enter / Space select the group, ArrowRight / ArrowLeft unfold / fold it.
-    private async Task OnGroupKeydown(KeyboardEventArgs e, long? groupId, string key)
+    private async Task OnGroupKeydown(KeyboardEventArgs e, long? groupId, string key, SidebarNode? node)
     {
+        if (await MenuKeyAsync(node, e)) return;
         var open = !collapsed.Contains(key);
         switch (e.Key)
         {
@@ -158,11 +215,14 @@
         if (n.Account is { } a)
         {
             var accountId = a.Id;
+            var accountNode = new SidebarNode(SidebarNodeKind.Account, a.Id, a.Name ?? "");
             bool isSel = SelectionKind == "account" && SelectionId == accountId;
             <div class="browse-tree-row @(isSel ? "selected" : "") @(!a.IsAssigned ? "related" : "") @(a.Closed ? "closed" : "")" style="@pad"
                  role="treeitem" tabindex="0" aria-selected="@isSel.ToString().ToLower()" data-testid="tree-account"
+                 data-ob-longpress="@LongPress(accountNode)"
                  @onclick="() => OnSelectAccount.InvokeAsync(accountId)"
-                 @onkeydown="e => OnAccountKeydown(e, accountId)">
+                 @oncontextmenu="e => OpenMenu(accountNode, e)" @oncontextmenu:preventDefault="@HasMenu(accountNode)"
+                 @onkeydown="e => OnAccountKeydown(e, accountNode)">
                 <span class="browse-tree-name"><i class="bi @(a.IsPortfolio ? "bi-graph-up-arrow" : Account.IconForType(a.Type)) me-1" aria-hidden="true"></i><span class="browse-tree-label" title="@a.Name">@a.Name</span></span>
                 @if (a.Balance.HasValue)
                 {
@@ -178,12 +238,15 @@
             bool open = !collapsed.Contains(key);
             long? groupId = key.StartsWith("g:", StringComparison.Ordinal) && long.TryParse(key[2..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var gid) ? gid : null;
             bool isSel = groupId != null && SelectionKind == "accountgroup" && SelectionId == groupId;
+            SidebarNode? groupNode = groupId is { } realGroup ? new SidebarNode(SidebarNodeKind.AccountGroup, realGroup, n.Name) : null;
             @* The name selects the group (all its accounts' bookings); the chevron only folds it. "Other accounts"
                is no real group, so there the whole row folds. *@
             <div class="browse-tree-row browse-tree-group @(isSel ? "selected" : "")" style="@pad"
                  role="treeitem" tabindex="0" aria-expanded="@open.ToString().ToLower()" aria-selected="@isSel.ToString().ToLower()" data-testid="tree-group"
+                 data-ob-longpress="@LongPress(groupNode)"
                  @onclick="() => OnGroupClickAsync(groupId, key)"
-                 @onkeydown="e => OnGroupKeydown(e, groupId, key)">
+                 @oncontextmenu="e => OpenMenu(groupNode, e)" @oncontextmenu:preventDefault="@HasMenu(groupNode)"
+                 @onkeydown="e => OnGroupKeydown(e, groupId, key, groupNode)">
                 <span class="browse-tree-name fw-semibold">
                     <button type="button" class="browse-tree-chevron" tabindex="-1" data-testid="tree-group-toggle"
                             aria-label="@(open ? L["Tree_Collapse"] : L["Tree_Expand"])"
@@ -208,9 +271,10 @@
         if (e.Key == "Enter" || e.Key == " ") await OnSelectAll.InvokeAsync();
     }
 
-    private async Task OnAccountKeydown(KeyboardEventArgs e, long id)
+    private async Task OnAccountKeydown(KeyboardEventArgs e, SidebarNode node)
     {
-        if (e.Key == "Enter" || e.Key == " ") await OnSelectAccount.InvokeAsync(id);
+        if (await MenuKeyAsync(node, e)) return;
+        if (e.Key == "Enter" || e.Key == " ") await OnSelectAccount.InvokeAsync(node.Id);
     }
 
     private async Task OnUncategorizedKeydown(KeyboardEventArgs e)
@@ -225,6 +289,7 @@
 
     private async Task OnCategoryKeydown(KeyboardEventArgs e, BrowseCategoryNode node)
     {
+        if (await MenuKeyAsync(SidebarNodeOf(node), e)) return;
         if (e.Key == "Enter" || e.Key == " ") await OnSelectCategory.InvokeAsync(node);
     }
 
@@ -249,6 +314,18 @@
         builder.AddAttribute(5, "style", FormattableString.Invariant($"padding-left: {0.5 + level * 1.0:0.##}rem;"));
         builder.AddAttribute(6, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, () => OnSelectCategory.InvokeAsync(node)));
         builder.AddAttribute(7, "onkeydown", EventCallback.Factory.Create<KeyboardEventArgs>(this, e => OnCategoryKeydown(e, node)));
+        var sidebarNode = SidebarNodeOf(node);
+        if (HasMenu(sidebarNode))
+        {
+            builder.AddAttribute(8, "data-ob-longpress", "");
+            builder.AddAttribute(9, "data-testid", "tree-category");
+            builder.AddAttribute(25, "oncontextmenu", EventCallback.Factory.Create<MouseEventArgs>(this, e => OpenMenu(sidebarNode, e)));
+            builder.AddEventPreventDefaultAttribute(26, "oncontextmenu", true);
+        }
+        else
+        {
+            builder.AddAttribute(27, "data-testid", "tree-category");
+        }
 
         builder.OpenElement(10, "span");
         builder.AddAttribute(11, "class", "browse-tree-name");

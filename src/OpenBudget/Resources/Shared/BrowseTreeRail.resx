@@ -72,4 +72,5 @@
   <data name="Tree_Expand" xml:space="preserve">
     <value>Expand</value>
   </data>
+  <data name="Ctx_Rules" xml:space="preserve"><value>Rules…</value></data>
 </root>

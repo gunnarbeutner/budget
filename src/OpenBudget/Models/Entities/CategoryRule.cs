@@ -12,7 +12,7 @@ public enum RuleAmountSign
 }
 
 /// <summary>
-/// A categorisation rule of a project ("Gear › Rules"). Rules are ordered per project (<see cref="SortOrder"/>); the
+/// A categorisation rule of a project (edited in a category's rules bar on Transactions). Rules are ordered per project (<see cref="SortOrder"/>); the
 /// first enabled rule whose conditions all hold sets the category of an uncategorised transaction. Rules never touch a
 /// category chosen by hand. Text conditions are case-insensitive "contains", or regular expressions when
 /// <see cref="UseRegex"/> is set. Amount bounds are absolute values in cents, so "10 to 50" works for expenses too.

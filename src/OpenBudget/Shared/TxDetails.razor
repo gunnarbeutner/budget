@@ -73,7 +73,7 @@
         @if (Row.CanEdit && OnCreateRule.HasDelegate)
         {
             <button type="button" class="ob-btn" data-testid="tx-details-create-rule" disabled="@string.IsNullOrWhiteSpace(Row.Name)"
-                    @onclick="() => OnCreateRule.InvokeAsync()">
+                    @onclick="e => OnCreateRule.InvokeAsync(e)">
                 <i class="bi bi-magic" aria-hidden="true"></i> @L["Action_Rule"]
             </button>
         }
@@ -98,8 +98,8 @@
     [Parameter] public EventCallback<string> OnNoteSave { get; set; }
     [Parameter] public EventCallback OnToggleChecked { get; set; }
     [Parameter] public EventCallback OnShowSimilar { get; set; }
-    /// <summary>"Create rule from this…": opens Gear › Rules with the payee and the current category prefilled.</summary>
-    [Parameter] public EventCallback OnCreateRule { get; set; }
+    /// <summary>"Create rule from this…": opens the rules bar of the category with a draft for the payee (the page asks for a category when there is none).</summary>
+    [Parameter] public EventCallback<MouseEventArgs> OnCreateRule { get; set; }
 
     private string SetByText => Row.CategoryId == null && Row.CategorySetBy == TransactionCategorySource.Import
         ? ""

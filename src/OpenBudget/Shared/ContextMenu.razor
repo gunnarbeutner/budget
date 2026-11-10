@@ -18,7 +18,7 @@
         {
             var i = index++;
             var key = item.Key;
-            <button type="button" role="menuitem" class="ctx-item @(i == active ? "ctx-active" : "")" disabled="@item.Disabled"
+            <button type="button" role="menuitem" class="ctx-item @(i == active ? "ctx-active" : "") @(item.Danger ? "ctx-danger" : "")" disabled="@item.Disabled"
                     title="@item.Tooltip" data-testid="@("ctx-" + item.Key)"
                     @onclick="() => Pick(key)">
                 <span class="ctx-icon">@if (item.Icon != null) { <i class="bi @item.Icon" aria-hidden="true"></i> }</span>

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Aria_Bar" xml:space="preserve"><value>Rules for {0}</value></data>
+  <data name="Heading" xml:space="preserve"><value>Rules for {0}</value></data>
+  <data name="Preview_One" xml:space="preserve"><value>1 booking matches</value></data>
+  <data name="Preview_Many" xml:space="preserve"><value>{0} bookings match</value></data>
+  <data name="Apply" xml:space="preserve"><value>Apply to {0} uncategorized</value></data>
+  <data name="Add" xml:space="preserve"><value>Rule</value></data>
+  <data name="Close" xml:space="preserve"><value>Close rules</value></data>
+  <data name="Empty" xml:space="preserve"><value>No rules for this category yet. Add one with “+ Rule” or from a booking (“Create rule from this…”).</value></data>
+  <data name="Field_Payee" xml:space="preserve"><value>Payee contains</value></data>
+  <data name="Field_Purpose" xml:space="preserve"><value>Purpose contains</value></data>
+  <data name="Field_Regex" xml:space="preserve"><value>Regex</value></data>
+  <data name="Field_RegexTitle" xml:space="preserve"><value>Texts are regular expressions</value></data>
+  <data name="More" xml:space="preserve"><value>More conditions (account, amount)</value></data>
+  <data name="Enabled" xml:space="preserve"><value>Enabled</value></data>
+  <data name="Save" xml:space="preserve"><value>Save</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="MatchesTitle" xml:space="preserve"><value>Bookings of this project the rule matches</value></data>
+  <data name="MoveUp" xml:space="preserve"><value>Move up</value></data>
+  <data name="MoveDown" xml:space="preserve"><value>Move down</value></data>
+  <data name="Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="DeleteConfirm" xml:space="preserve"><value>Delete?</value></data>
+  <data name="Field_Account" xml:space="preserve"><value>Account</value></data>
+  <data name="Field_AnyAccount" xml:space="preserve"><value>Any account</value></data>
+  <data name="Field_Sign" xml:space="preserve"><value>Amount</value></data>
+  <data name="Sign_Any" xml:space="preserve"><value>Income or expense</value></data>
+  <data name="Sign_Expense" xml:space="preserve"><value>Expenses only</value></data>
+  <data name="Sign_Income" xml:space="preserve"><value>Income only</value></data>
+  <data name="Field_Min" xml:space="preserve"><value>Amount from</value></data>
+  <data name="Field_Max" xml:space="preserve"><value>Amount up to</value></data>
+  <data name="Error_NoCondition" xml:space="preserve"><value>Give the rule at least one condition.</value></data>
+  <data name="Error_NoCategory" xml:space="preserve"><value>Choose the category to set.</value></data>
+  <data name="Error_InvalidRegex" xml:space="preserve"><value>That is not a valid regular expression.</value></data>
+  <data name="Error_InvalidAmountRange" xml:space="preserve"><value>Check the amounts: numbers only, “from” not above “up to”.</value></data>
+  <data name="Error_UnknownAccount" xml:space="preserve"><value>That account is not part of this project.</value></data>
+  <data name="Error_NoPermission" xml:space="preserve"><value>You may not change the rules of this project.</value></data>
+  <data name="Apply_Done" xml:space="preserve"><value>{0} booking(s) categorized.</value></data>
+</root>

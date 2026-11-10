@@ -20,6 +20,8 @@
 @inject TransactionEditService Edits
 @inject CategorizationService Categorization
 @inject CategoryColorService CategoryColorEdits
+@inject AccessScopeProvider AccessProvider
+@inject IStringLocalizer<BrowseTreeRail> RailL
 @inherits DataChangeAwareComponent
 
 <PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
@@ -61,7 +63,9 @@
                             OnSelectAccountGroup="SelectAccountGroup"
                             OnSelectPortfolio="SelectPortfolio"
                             OnSelectUncategorized="SelectUncategorized"
-                            OnSelectCategory="SelectCategoryNode" />
+                            OnSelectCategory="SelectCategoryNode"
+                            NodeMenu="NodeMenu"
+                            OnNodeMenuPick="OnNodeMenuPickAsync" />
         }
     </Rail>
     <ChildContent>
@@ -185,6 +189,13 @@
                 }
             </div>
         </div>
+
+        @if (RulesCategoryId is { } rulesCategory)
+        {
+            <RulesBar ProjectId="ProjectId" CategoryId="rulesCategory" CategoryName="@SelectionName"
+                      PrefillPayee="@_rulesPrefill" PrefillToken="_rulesPrefillToken"
+                      OnPreview="OnRulePreviewAsync" OnApplied="ReloadAsync" OnClose="CloseRulesAsync" />
+        }
 
         @if (ShowSummaryStrip && !summaryCollapsed)
         {
@@ -504,7 +515,7 @@
                                                OnNoteSave="note => SetNoteForAsync(row.Id, note)"
                                                OnToggleChecked="() => SetCheckedForAsync(row.Id, !row.IsChecked)"
                                                OnShowSimilar="() => ShowSimilarAsync(row)"
-                                               OnCreateRule="() => CreateRuleFrom(row)" />
+                                               OnCreateRule="e => CreateRuleFromAsync(row, e)" />
                                 }
                             </div>
                         </ItemContent>
@@ -534,7 +545,7 @@
 @if (popup == PopupKind.Picker && pickerData is { } pickerModel)
 {
     <CategoryPicker Data="pickerModel" Suggestions="popupSuggestions" CurrentCategoryId="popupCurrentCategory"
-                    AllowRemove="true" X="popupX" Y="popupY" OnPick="PickCategoryAsync" OnClose="ClosePopup" />
+                    AllowRemove="@(_rulePickPayee == null)" X="popupX" Y="popupY" OnPick="PickCategoryAsync" OnClose="ClosePopup" />
 }
 
 @if (popup == PopupKind.Context)
@@ -795,6 +806,7 @@
         ResetForProjectSwitch();
         project = await ProjectService.GetProjectAsync(ProjectId);
         if (project == null) { notFound = true; return; }
+        _canEditRules = (await AccessProvider.GetAsync()).CanEdit(ProjectId);
         (monthMin, monthMax) = await BudgetService.GetMonthBoundsForProjectAsync(ProjectId);
         ReadStateFromQuery();
         await ReloadAsync();
@@ -907,6 +919,7 @@
         if (query.TryGetValue("new", out var newRaw) && newRaw.ToString() == "1") newOnly = true;
         if (query.TryGetValue("cat", out var catRaw) && long.TryParse(catRaw, out var catFilterId)) categoryFilter = catFilterId;
         if (query.TryGetValue("payee", out var payeeRaw) && !string.IsNullOrWhiteSpace(payeeRaw)) payeeEquals = payeeRaw.ToString();
+        _rulesOpen = query.TryGetValue("rules", out var rulesRaw) && rulesRaw.ToString() == "1" && selectionKind == "category";
         if (query.TryGetValue("pin", out var pinRaw) && pinRaw.ToString() == "1") pinFilters = true;
         if (query.TryGetValue("g", out var g) && g.ToString() is var gv && (gv == "M" || gv == "Q" || gv == "Y" || gv == "D"))
         {
@@ -964,7 +977,8 @@
         ["new"] = newOnly ? "1" : null,
         ["cat"] = categoryFilter?.ToString(),
         ["pin"] = pinFilters ? "1" : null,
-        ["payee"] = string.IsNullOrEmpty(payeeEquals) ? null : payeeEquals
+        ["payee"] = string.IsNullOrEmpty(payeeEquals) ? null : payeeEquals,
+        ["rules"] = _rulesOpen && selectionKind == "category" ? "1" : null
     });
 
     private (int FromMonth, int ToMonth) PeriodRange => period switch
@@ -1141,7 +1155,13 @@
         catch (JSDisconnectedException) { /* navigation in flight */ }
     }
 
-    private async Task<TransactionQuery> BuildTransactionQueryAsync(int skip = 0, int take = 50, bool newOnlyOverride = false) => new()
+    private async Task<TransactionQuery> BuildTransactionQueryAsync(int skip = 0, int take = 50, bool newOnlyOverride = false) =>
+        _previewIds != null
+            // Live preview of a draft rule: exactly the bookings it matches, across the project.
+            ? new TransactionQuery { SourceId = project!.SourceId, OnlyIds = _previewIds, Skip = skip, Take = take }
+            : await BuildFilteredTransactionQueryAsync(skip, take, newOnlyOverride);
+
+    private async Task<TransactionQuery> BuildFilteredTransactionQueryAsync(int skip, int take, bool newOnlyOverride) => new()
     {
         SourceId = project!.SourceId,
         UncategorizedOnly = selectionKind == "uncategorized",
@@ -1539,7 +1559,7 @@
         }
     }
 
-    private bool showCategoryColumn => selectionKind != "category";
+    private bool showCategoryColumn => selectionKind != "category" || _previewIds != null;
     // The account per row only matters when the list spans more than one account.
     private bool showAccountColumn => selectionKind != "account" && accountFilter == null && (tree?.Accounts.Count ?? 0) > 1;
 

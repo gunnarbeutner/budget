@@ -1,10 +1,11 @@
 @page "/projects/{ProjectId:int}/overview"
 @page "/projects/{ProjectId:int}/rebalance"
+@page "/projects/{ProjectId:int}/rules"
 @inject NavigationManager Navigation
 
 @* Old project URLs. The Overview page is gone (its numbers live in the summary strip on Transactions), so its
    links — bookmarks, "?year=&month=&period=" deep links — land on Transactions with the same period. Rebalance
-   is a section of the Portfolio view now. *@
+   is a section of the Portfolio view now. The rules overview is gone (rules live in a category's rules bar on Transactions). *@
 
 @code {
     [Parameter] public int ProjectId { get; set; }

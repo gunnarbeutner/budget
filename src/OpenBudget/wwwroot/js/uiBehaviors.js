@@ -255,3 +255,41 @@ window.obFocus = function (el) {
         else if (e.key === "ArrowRight") { set(current() + step, true); e.preventDefault(); }
     });
 })();
+
+// Long-press on touch opens the context menu of an element marked [data-ob-longpress] (the sidebar's accounts and
+// categories, see BrowseTreeRail's node menu): a held finger dispatches "contextmenu" like a right-click; the click
+// that follows the release is swallowed so the row is not also selected.
+// Where a keyboard-opened context menu goes: below the focused element.
+window.obFocusAnchor = function () {
+    var el = document.activeElement;
+    if (!el || el === document.body) return null;
+    var r = el.getBoundingClientRect();
+    return [r.left + 24, r.bottom];
+};
+
+(function () {
+    var start = null, timer = null, suppressUntil = 0;
+    function end() { if (timer) { clearTimeout(timer); timer = null; } }
+    document.addEventListener("touchstart", function (e) {
+        if (e.touches.length !== 1) return;
+        var el = e.target.closest && e.target.closest("[data-ob-longpress]");
+        if (!el) return;
+        var t = e.touches[0];
+        start = { x: t.clientX, y: t.clientY };
+        timer = setTimeout(function () {
+            timer = null;
+            suppressUntil = Date.now() + 800;
+            el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: start.x, clientY: start.y }));
+        }, 550);
+    }, { passive: true });
+    document.addEventListener("touchmove", function (e) {
+        if (!timer || !start) return;
+        var t = e.touches[0];
+        if (Math.abs(t.clientX - start.x) > 10 || Math.abs(t.clientY - start.y) > 10) end();
+    }, { passive: true });
+    document.addEventListener("touchend", end, { passive: true });
+    document.addEventListener("touchcancel", end, { passive: true });
+    document.addEventListener("click", function (e) {
+        if (Date.now() < suppressUntil && e.target.closest && e.target.closest("[data-ob-longpress]")) { e.stopPropagation(); e.preventDefault(); }
+    }, true);
+})();

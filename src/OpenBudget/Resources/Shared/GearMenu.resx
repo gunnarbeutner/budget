@@ -91,7 +91,4 @@
   <data name="Item_StatementDownload" xml:space="preserve">
     <value>Statement download</value>
   </data>
-  <data name="Item_Rules" xml:space="preserve">
-    <value>Rules</value>
-  </data>
 </root>

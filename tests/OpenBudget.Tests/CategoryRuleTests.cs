@@ -9,7 +9,7 @@ using Xunit;
 namespace OpenBudget.Tests;
 
 /// <summary>
-/// Categorisation rules (Gear › Rules): matching, ordering (first match wins), never overwriting a manual category,
+/// Categorisation rules (the category rules bar): matching, ordering (first match wins), never overwriting a manual category,
 /// "apply to existing" with its preview, the bank-sync hook, and who may see and change rules.
 /// </summary>
 public sealed class CategoryRuleTests
@@ -153,6 +153,38 @@ public sealed class CategoryRuleTests
         Assert.Equal([c, a, b], (await s.GetRulesAsync(AccessWorld.Shared)).Select(v => v.Rule.Id));
         await s.DeleteAsync(AccessWorld.Shared, a);
         Assert.Equal([c, b], (await s.GetRulesAsync(AccessWorld.Shared)).Select(v => v.Rule.Id));
+    }
+
+    [Fact]
+    public async Task Moving_within_a_category_skips_the_rules_of_other_categories()
+    {
+        await using var t = await WorldAsync();
+        var s = ServiceFor(t, AccessWorld.Alice);
+        var a = await AddRuleAsync(s, AccessWorld.Shared, "Example", Groceries);
+        var b = await AddRuleAsync(s, AccessWorld.Shared, "Sample", Dining);
+        var c = await AddRuleAsync(s, AccessWorld.Shared, "Market", Groceries);
+
+        await s.MoveWithinCategoryAsync(AccessWorld.Shared, c, -1);
+        Assert.Equal([c, b, a], (await s.GetRulesAsync(AccessWorld.Shared)).Select(v => v.Rule.Id));
+        Assert.Equal([c, a], (await s.GetCategoryRulesAsync(AccessWorld.Shared, Groceries)).Select(v => v.Rule.Id));
+        await s.MoveWithinCategoryAsync(AccessWorld.Shared, b, 1); // only Dining rule: no-op
+        Assert.Equal([c, b, a], (await s.GetRulesAsync(AccessWorld.Shared)).Select(v => v.Rule.Id));
+    }
+
+    [Fact]
+    public async Task Draft_preview_lists_matching_rows_and_apply_can_be_limited_to_a_category()
+    {
+        await using var t = await WorldAsync();
+        var s = ServiceFor(t, AccessWorld.Alice);
+        var draft = new CategoryRule { ProjectId = AccessWorld.Shared, PayeeText = "example market" };
+        Assert.Equal(4, (await s.PreviewMatchIdsAsync(AccessWorld.Shared, draft)).Count);
+        Assert.Empty(await s.PreviewMatchIdsAsync(AccessWorld.Shared, new CategoryRule { ProjectId = AccessWorld.Shared }));
+
+        await AddRuleAsync(s, AccessWorld.Shared, "Example Market", Groceries);
+        Assert.Equal(0, await s.PreviewApplyExistingAsync(AccessWorld.Shared, Dining));
+        Assert.Equal(2, await s.PreviewApplyExistingAsync(AccessWorld.Shared, Groceries));
+        Assert.Equal(0, await s.ApplyExistingAsync(AccessWorld.Shared, Dining));
+        Assert.Equal(2, await s.ApplyExistingAsync(AccessWorld.Shared, Groceries));
     }
 
     [Fact]

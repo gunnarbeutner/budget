@@ -44,6 +44,9 @@ public class TransactionQuery
     /// <summary>Only rows whose payee equals this name (case-insensitive, trimmed): "show similar transactions".</summary>
     public string? PayeeEquals { get; init; }
 
+    /// <summary>Only these rows (the live preview of a draft categorisation rule); null = no restriction.</summary>
+    public IReadOnlyCollection<long>? OnlyIds { get; init; }
+
     public int Skip { get; init; }
     public int Take { get; init; } = 50;
 }
