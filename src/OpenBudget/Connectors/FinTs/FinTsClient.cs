@@ -24,6 +24,7 @@ internal sealed partial class FinTsClient
     private const int MaxPages = 50;
     private static readonly int[] BalanceVersions = [5, 6, 7];
     private static readonly int[] Mt940Versions = [5, 6, 7];
+    private static readonly int[] Mt940NationalVersions = [5, 6];
     private static readonly int[] CamtVersions = [1];
     private static readonly int[] DepotVersions = [5, 6];
     private static readonly int[] StatementVersions = [3, 4, 5];
@@ -375,7 +376,7 @@ internal sealed partial class FinTsClient
 
         var transactions = await FetchTransactionsAsync(info, since, ask, ct);
         decimal? balance = null;
-        if (info.Allows("HKSAL") && _data.BestVersion("HKSAL", BalanceVersions) is { } version)
+        if (info.Allows("HKSAL") && _data.BestVersion("HKSAL", string.IsNullOrEmpty(info.Iban) ? BalanceVersions.Where(v => v < 7).ToArray() : BalanceVersions) is { } version)
         {
             var pages = await ExecuteAsync("HKSAL", _ =>
             {
@@ -392,7 +393,10 @@ internal sealed partial class FinTsClient
     private async Task<List<RemoteTransaction>> FetchTransactionsAsync(FinTsAccountInfo info, DateOnly? since, IChallengeAsker ask, CancellationToken ct)
     {
         var start = since is { } s ? FinTsFormats.FormatDate(s) : null;
-        if (info.Allows("HKCAZ") && _data.BestVersion("HKCAZ", CamtVersions) is { } camtVersion && CamtFormat(camtVersion) is { } format)
+        // camt and the version 7 jobs address the account by IBAN, a mandatory field there; accounts the bank lists
+        // without one (savings books, cooperative shares) can only be read with the national account number.
+        var hasIban = !string.IsNullOrEmpty(info.Iban);
+        if (hasIban && info.Allows("HKCAZ") && _data.BestVersion("HKCAZ", CamtVersions) is { } camtVersion && CamtFormat(camtVersion) is { } format)
         {
             var pages = await ExecuteAsync("HKCAZ", touchdown =>
             {
@@ -401,7 +405,7 @@ internal sealed partial class FinTsClient
             }, ask, ct);
             return ReadCamt(pages);
         }
-        if (info.Allows("HKKAZ") && _data.BestVersion("HKKAZ", Mt940Versions) is { } mtVersion)
+        if (info.Allows("HKKAZ") && _data.BestVersion("HKKAZ", hasIban ? Mt940Versions : Mt940NationalVersions) is { } mtVersion)
         {
             var pages = await ExecuteAsync("HKKAZ", touchdown =>
             {
