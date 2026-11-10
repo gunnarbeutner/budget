@@ -252,6 +252,7 @@ internal sealed class IngWebClient
                 latest = page.Html;
             }
             var listings = new List<(Uri Url, IReadOnlyList<IngPostboxRow> Rows)>();
+            if (label == labels[0]) ListingTruncated = false;
             if (full && await ListByDateAsync(page, listings, ct) is { } last && listings.Sum(l => l.Rows.Count) > 0)
             {
                 page = last;
@@ -272,7 +273,10 @@ internal sealed class IngWebClient
                 }
                 var rows = IngHtml.PostboxRows(listing);
                 if (rows.Count >= PostboxListingCap)
+                {
+                    ListingTruncated = true;
                     _log.LogWarning("ING Postbox: a listing returned {Count} documents, ING's limit; older ones may be missing.", rows.Count);
+                }
                 listings.Add((page.Url, rows));
             }
             // A day never spans two listings, so the per-day counter keeps identifiers stable however the range is cut.
@@ -292,6 +296,9 @@ internal sealed class IngWebClient
             entries.Count, labels.Count, full ? "over all years" : "for the last year");
         return entries;
     }
+
+    /// <summary>Whether the last Postbox listing hit ING's limit, so a full pass must not count as complete.</summary>
+    public bool ListingTruncated { get; private set; }
 
     /// <summary>ING's listing shows at most this many documents (the newest of the range).</summary>
     internal const int PostboxListingCap = 500;

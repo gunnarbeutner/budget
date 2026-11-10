@@ -208,7 +208,7 @@ public sealed class IngConnector : IBankConnector, IBatchedStatements
     /// </summary>
     internal const string PostboxCompleteKey = "ing.postbox.complete";
 
-    private const string PostboxCompleteVersion = "v2";
+    private const string PostboxCompleteVersion = "v3"; // v2 could be set by a listing ING had cut at 500
 
     /// <summary>The listing of the pass in progress (reused by its later batches) and the documents that failed in it.</summary>
     private IReadOnlyList<IngWebClient.PostboxEntry>? _listing;
@@ -273,7 +273,7 @@ public sealed class IngConnector : IBankConnector, IBatchedStatements
         if (!MoreStatements)
         {
             _listing = null;
-            if (full) _session.Values[PostboxCompleteKey] = string.Join('\n', wanted.Keys.Order(StringComparer.Ordinal).Prepend(PostboxCompleteVersion));
+            if (full && !_web.ListingTruncated) _session.Values[PostboxCompleteKey] = string.Join('\n', wanted.Keys.Order(StringComparer.Ordinal).Prepend(PostboxCompleteVersion));
         }
         Log.LogInformation(
             "ING Postbox: {Listed} listed; {Known} already known, {Off} for accounts with statements off, {NotPdf} not a PDF; {Downloaded} downloaded, {Remaining} to follow.",
