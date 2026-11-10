@@ -165,6 +165,18 @@ internal sealed class BankWorld : IAsyncDisposable
     public async Task<BankLoginAccountView> RemoteAsync(string user, int loginId, string remoteId) =>
         (await For(user).GetAccountsAsync(loginId)).Single(a => a.RemoteId == remoteId);
 
+    /// <summary>Changes the stored connector session values of <paramref name="loginId"/> (simulates a session saved by an older version).</summary>
+    public async Task EditSessionAsync(int loginId, Action<Dictionary<string, string>> edit)
+    {
+        await using var db = await T.System.CreateDbContextAsync();
+        var login = await db.BankLogins.FirstAsync(l => l.Id == loginId);
+        Assert.True(Secrets.TryDecrypt(login.EncryptedSession, BankSyncRunner.SessionPurpose, out var json));
+        var session = System.Text.Json.JsonSerializer.Deserialize<ConnectorSession>(json)!;
+        edit(session.Values);
+        login.EncryptedSession = Secrets.Encrypt(System.Text.Json.JsonSerializer.Serialize(session), BankSyncRunner.SessionPurpose);
+        await db.SaveChangesAsync();
+    }
+
     public async Task<List<Transaction>> TransactionsAsync(long accountId)
     {
         await using var db = await T.System.CreateDbContextAsync();

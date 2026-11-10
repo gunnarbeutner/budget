@@ -13,7 +13,8 @@ internal sealed record IngPage(Uri Url, string Html);
 /// <summary>
 /// ING's web banking (banking.ing.de, an Apache Wicket application) over plain HTTP: the sign-in with access number
 /// and PIN on access.ing.de, confirmed in the "Banking to go" app, the account overview, the Postbox and the
-/// transaction export. Only what FinTS does not offer is done here (Postbox documents, VL savings contracts).
+/// transaction export. Only what FinTS does not offer is done here (Postbox documents, web-only accounts such as
+/// VL savings contracts and the Rahmenkredit).
 /// Credentials go into the sign-in form and nowhere else; nothing of them, nor any URL token, is logged.
 /// </summary>
 internal sealed class IngWebClient

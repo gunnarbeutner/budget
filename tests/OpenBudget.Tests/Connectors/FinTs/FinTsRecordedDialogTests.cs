@@ -31,6 +31,7 @@ public sealed class FinTsRecordedDialogTests
         var credentials = new ConnectorCredentials("testuser2", "12345");
         var seed = fixture.SeedSession();
         seed.Values[IngConnector.WebAccountsKey] = "[]"; // the FinTS dialog only: web discovery already happened
+        seed.Values[IngConnector.WebProductsKey] = IngConnector.WebProductsVersion;
 
         await DoneAsync(a => connector.LoginAsync(credentials, seed, a, default));
         var accounts = await connector.ListAccountsAsync(default);

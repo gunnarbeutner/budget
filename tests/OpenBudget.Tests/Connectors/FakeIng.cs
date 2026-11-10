@@ -16,6 +16,7 @@ internal sealed class FakeIng : HttpMessageHandler
 {
     public const string Alias = "testuser";
     public const string VlIban = "DE00000000000000000077";
+    public const string CreditIban = "DE00000000000000000099";
     public const string GiroIban = "DE00000000000000000011"; // = SyntheticBank.Iban (the FinTS side)
     public const string SessionCookie = "ing_session";
     private const string Banking = "https://banking.ing.de";
@@ -78,6 +79,16 @@ internal sealed class FakeIng : HttpMessageHandler
         + "Buchung;Wertstellungsdatum;Auftraggeber/Empfänger;Buchungstext;Verwendungszweck;Referenz;Saldo;Währung;Betrag;Währung\n"
         + "02.11.2026;02.11.2026;Example Employer GmbH;Gutschrift;VL Rate November;REF-2;1.040,00;EUR;40,00;EUR\n"
         + "01.10.2026;01.10.2026;Example Employer GmbH;Gutschrift;\"VL Rate; Oktober\";;1.000,00;EUR;1.000,00;EUR\n";
+
+    /// <summary>The Rahmenkredit's export: ING shows the owed amount without a sign; drawings are negative, repayments positive.</summary>
+    public string CreditCsv { get; set; } =
+        "Umsatzanzeige;Datei erstellt am: 09.11.2026 12:00\n\nIBAN;DE00 0000 0000 0000 0000 99\nKontoname;Rahmenkredit\nBank;ING\nKunde;Alex Example\n"
+        + "Zeitraum;01.10.2025 - 09.11.2026\nSaldo;1.500,00;EUR\n\nSortierung;Datum absteigend\n\n"
+        + "Buchung;Wertstellungsdatum;Auftraggeber/Empfänger;Buchungstext;Verwendungszweck;Referenz;Saldo;Währung;Betrag;Währung\n"
+        + "05.11.2026;05.11.2026;Alex Example;Rückzahlung;Tilgung;CR-2;-1.500,00;EUR;500,00;EUR\n"
+        + "15.10.2026;15.10.2026;Alex Example;Auszahlung;Abruf Rahmenkredit;CR-1;-2.000,00;EUR;-2.000,00;EUR\n";
+
+    private string _opened = "vl";
 
     public int Count(string needle) => Requests.Count(r => r.Contains(needle, StringComparison.Ordinal));
 
@@ -208,7 +219,7 @@ internal sealed class FakeIng : HttpMessageHandler
         "<a class=\"quicklinks__postbox\" id=\"id233\" href=\"./postbox?x=pb\"> Postbox </a>"
         + Row("./umsatzanzeige?x=giro", "Alltag", "Girokonto", "DE00 0000 0000 0000 0000 11", "955,11")
         + Row("./umsatzanzeige?x=vl", "VL-Sparen", null, "DE00 0000 0000 0000 0000 77", "1.040,00")
-        + Row("./umsatzanzeige?x=credit", "Rahmenkredit", null, "DE00 0000 0000 0000 0000 99", "0,00"),
+        + Row("./umsatzanzeige?x=credit", "Rahmenkredit", null, "DE00 0000 0000 0000 0000 99", "1.500,00"),
         "window.addEventListener('ingde-sn:logout-clicked', function() { window.location.replace('https://banking.ing.de/app/logout'); });");
 
     // ---- transactions (CSV export) ----
@@ -217,7 +228,8 @@ internal sealed class FakeIng : HttpMessageHandler
     {
         switch (x)
         {
-            case "vl" or "vl2" when method == HttpMethod.Get:
+            case "vl" or "vl2" or "credit" or "credit2" when method == HttpMethod.Get:
+                _opened = x.TrimEnd('2');
                 return Html(Page(
                     "<form class=\"u-print-hidden\" id=\"idf\" method=\"post\" action=\"./umsatzanzeige?x=filter\"><input type=\"search\" value=\"\" name=\"suchbegriff\"/>"
                     + "<input class=\"input-field picker\" type=\"text\" value=\"09.10.2026\" name=\"filterAnzeige:datum:von:input\" id=\"idvon\" data-date-start-date=\"15.10.2025\" data-date-end-date=\"09.11.2026\"/>"
@@ -227,7 +239,7 @@ internal sealed class FakeIng : HttpMessageHandler
                     "Wicket.Ajax.ajax({\"u\":\"./umsatzanzeige?x=export\",\"c\":\"idexp\",\"e\":\"click\",\"pd\":true});"));
             case "filter" when method == HttpMethod.Post:
                 Filters.Add((form["filterAnzeige:datum:von:input"] ?? "", form["filterAnzeige:datum:bis:input"] ?? ""));
-                return Redirect(Banking + "/app/obligo/umsatzanzeige?x=vl2");
+                return Redirect(Banking + "/app/obligo/umsatzanzeige?x=" + _opened + "2");
             case "export" when ajax:
                 return Xml("<?xml version=\"1.0\" encoding=\"UTF-8\"?><ajax-response><component id=\"idm\"><![CDATA[<div class=\"panel-wrap\"> <form class=\"panel panel--modal\" id=\"idform\" method=\"post\" action=\"./umsatzanzeige?x=modal\"><div id=\"idform_hf_0\" hidden=\"\" class=\"hidden-fields\"></div>"
                     + "<label class=\"label--radio\"> <input type=\"radio\" class=\"input-field__radio\" id=\"r7\" name=\"content-container:content:exportTypes\" value=\"radio7\" checked=\"checked\"> <span class=\"input-field__radio--label\">PDF</span> </label>"
@@ -239,7 +251,7 @@ internal sealed class FakeIng : HttpMessageHandler
                 if (form["content-container:content:exportTypes"] != "radio8" || form["buttons:export"] != "1") return new HttpResponseMessage(HttpStatusCode.BadRequest);
                 return Xml("<ajax-response><evaluate><![CDATA[<script>(function(){Wicket.AjaxDownload.initiate({\"attributes\":{\"u\":\"./umsatzanzeige?x=s1\"},\"name\":\"dl\",\"downloadUrl\":\"./umsatzanzeige?x=csv\",\"method\":\"blob\"});})();</script>]]></evaluate></ajax-response>");
             case "csv":
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Encoding.Latin1.GetBytes(Csv)) };
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Encoding.Latin1.GetBytes(_opened == "credit" ? CreditCsv : Csv)) };
             default:
                 return new HttpResponseMessage(HttpStatusCode.BadRequest);
         }

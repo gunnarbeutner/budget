@@ -302,6 +302,7 @@ public class BankLoginService
                 RemoteAccountType.Savings => 2,
                 RemoteAccountType.CreditCard => 3,
                 RemoteAccountType.Depot => 7,
+                RemoteAccountType.Loan => 4,
                 RemoteAccountType.Other => 0,
                 _ => 0,
             },

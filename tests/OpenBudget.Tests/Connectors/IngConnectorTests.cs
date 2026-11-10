@@ -78,7 +78,13 @@ public sealed class IngConnectorTests
         var vl = Assert.Single(accounts, a => a.RemoteId == FakeIng.VlIban);
         Assert.Equal(RemoteAccountType.Savings, vl.Type);
         Assert.Equal("VL-Sparen ...0077", vl.Name);
-        Assert.DoesNotContain(accounts, a => a.Iban == "DE00000000000000000099"); // the credit line is not a VL contract
+        var credit = Assert.Single(accounts, a => a.RemoteId == FakeIng.CreditIban);
+        Assert.Equal(RemoteAccountType.Loan, credit.Type);
+        Assert.Equal("Rahmenkredit ...0099", credit.Name);
+        // The Girokonto is on the overview too, but it comes from FinTS: listed once.
+        Assert.Single(accounts, a => a.Iban == FakeIng.GiroIban);
+        Assert.Equal(accounts.Count, accounts.Select(a => a.RemoteId).Distinct(StringComparer.Ordinal).Count());
+        Assert.DoesNotContain(FakeIng.CreditIban, rig.Logs.All, StringComparison.Ordinal);
 
         // Discovery is remembered: the next transactions-only sync of the FinTS accounts does not touch the web banking.
         rig.Web.ExpireSessions();
@@ -145,6 +151,50 @@ public sealed class IngConnectorTests
     {
         Assert.Equal(TimeSpan.FromMilliseconds(1000), IngHtml.RequestBlock("$(document).submit(function(event) { return RequestBlocker.checkEvent(event, 1000); });"));
         Assert.Equal(TimeSpan.FromMilliseconds(1000), IngHtml.RequestBlock("<p>no blocker</p>"));
+    }
+
+    [Fact]
+    public async Task Rahmenkredit_transactions_come_from_the_CSV_export_and_its_balance_is_negative()
+    {
+        await using var rig = await CreateAsync();
+        Assert.True((await rig.SyncAsync(true, false, "0")).Succeeded);
+        await rig.World.LinkAllAsync(BankWorld.Alice, rig.LoginId);
+        var status = await rig.SyncAsync(true, false);
+        Assert.True(status.Succeeded, status.Error);
+
+        var credit = await rig.World.RemoteAsync(BankWorld.Alice, rig.LoginId, FakeIng.CreditIban);
+        var txs = await rig.World.TransactionsAsync(credit.LinkedAccountId!.Value);
+        Assert.Equal(2, txs.Count);
+        Assert.Single(txs, t => t.Amount == -200000 && t.ExternalId == "id:CR-1");
+        Assert.Single(txs, t => t.Amount == 50000 && t.ExternalId == "id:CR-2");
+        var account = await rig.World.AccountAsync(credit.LinkedAccountId.Value);
+        Assert.Contains("-1500", account.Balances, StringComparison.Ordinal);
+
+        // The next sync asks only for what is new since the last one.
+        var filters = rig.Web.Filters.Count;
+        Assert.True((await rig.SyncAsync(true, false)).Succeeded);
+        Assert.True(rig.Web.Filters.Count > filters);
+        Assert.NotEqual("15.10.2025", rig.Web.Filters[^1].From);
+    }
+
+    [Fact]
+    public async Task Accounts_discovered_before_the_Rahmenkredit_was_supported_are_discovered_again_once()
+    {
+        await using var rig = await CreateAsync();
+        Assert.True((await rig.SyncAsync(true, false, "0")).Succeeded);
+        Assert.Equal(1, rig.Web.Count("x=submit"));
+        // Simulate a session stored by the older version: VL only, no products version.
+        await rig.World.EditSessionAsync(rig.LoginId, values =>
+        {
+            values[IngConnector.WebAccountsKey] = "[{\"Iban\":\"" + FakeIng.VlIban + "\",\"Name\":\"VL-Sparen ...0077\"}]";
+            values.Remove(IngConnector.WebProductsKey);
+        });
+        rig.Web.ExpireSessions();
+        Assert.True((await rig.SyncAsync(true, false, "0")).Succeeded);
+        Assert.Equal(2, rig.Web.Count("x=submit"));
+        var accounts = await rig.Service.GetAccountsAsync(rig.LoginId);
+        Assert.Equal(RemoteAccountType.Savings, Assert.Single(accounts, a => a.RemoteId == FakeIng.VlIban).Type);
+        Assert.Single(accounts, a => a.RemoteId == FakeIng.CreditIban);
     }
 
     [Fact]

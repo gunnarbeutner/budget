@@ -8,6 +8,8 @@ public enum RemoteAccountType
     CreditCard,
     Depot,
     Other,
+    /// <summary>A loan or credit line; its balance is negative while money is owed.</summary>
+    Loan,
 }
 
 /// <summary>An account as the bank describes it. <see cref="RemoteId"/> is stable across logins.</summary>

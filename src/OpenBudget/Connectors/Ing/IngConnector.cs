@@ -7,9 +7,10 @@ namespace OpenBudget.Connectors.Ing;
 
 /// <summary>
 /// ING (Germany): Girokonto and Extra-Konto over FinTS, plus a web banking part (<see cref="IngWebClient"/>) for what
-/// FinTS does not offer: the Postbox (statements, securities and tax documents) and VL savings contracts. The web part
+/// FinTS does not offer: the Postbox (statements, securities and tax documents) and web-only products (VL savings
+/// contracts, the Rahmenkredit credit line; see <see cref="WebProducts"/>). The web part
 /// signs in with the same access number and PIN and needs a confirmation in the Banking to go app, so it only runs
-/// when it is needed: once to discover web-only accounts, when a VL account is refreshed, and when statements are
+/// when it is needed: once to discover web-only accounts, when a web-only account is refreshed, and when statements are
 /// fetched. A failed discovery never fails the FinTS part.
 /// </summary>
 public sealed class IngConnector : IBankConnector
@@ -18,11 +19,14 @@ public sealed class IngConnector : IBankConnector
     internal const string WebAccountsKey = "ing.web.accounts";
     internal const string WebAttemptKey = "ing.web.discoveryAttemptAt";
     internal const string DeviceKey = "ing.web.device";
+    /// <summary>Which <see cref="WebProducts"/> list the remembered accounts were discovered with; a newer list discovers again once.</summary>
+    internal const string WebProductsKey = "ing.web.products";
+    internal const string WebProductsVersion = "2";
 
     public static FinTsBankConfig Config { get; } = new(
         TypeName,
         "ING",
-        "ING Germany: Girokonto and Extra-Konto over FinTS, VL-Sparen and the Postbox (statements, securities and tax documents) "
+        "ING Germany: Girokonto and Extra-Konto over FinTS, VL-Sparen, Rahmenkredit and the Postbox (statements, securities and tax documents) "
         + "over the web banking. Username is the ING username, PIN the ING PIN; web banking sign-ins are confirmed in the Banking to go app.",
         "50010517",
         new Uri("https://fints.ing.de/fints/"),
@@ -56,7 +60,27 @@ public sealed class IngConnector : IBankConnector
 
     private ILogger Log => _context.Logger;
 
-    private sealed record WebAccount(string Iban, string Name);
+    /// <summary>
+    /// A product only the web banking offers, recognised on the overview by its product name or headline. A debt product
+    /// (a credit line) is booked with a negative balance while money is owed, whatever sign the bank shows.
+    /// </summary>
+    private sealed record WebProduct(string Match, RemoteAccountType Type, bool Debt = false);
+
+    private static readonly WebProduct[] WebProducts =
+    [
+        new("VL", RemoteAccountType.Savings),
+        new("Rahmenkredit", RemoteAccountType.Loan, Debt: true),
+    ];
+
+    private static WebProduct? ProductOf(IngOverviewAccount a) =>
+        WebProducts.FirstOrDefault(p => a.Product.Contains(p.Match, StringComparison.OrdinalIgnoreCase)
+            || a.Headline.Contains(p.Match, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>A remembered web-only account; <see cref="Type"/> is missing in sessions stored before it existed (then VL savings).</summary>
+    private sealed record WebAccount(string Iban, string Name, RemoteAccountType? Type = null, bool Debt = false)
+    {
+        public RemoteAccountType Kind => Type ?? RemoteAccountType.Savings;
+    }
 
     public async Task<ConnectorStep<ConnectorSession?>> LoginAsync(
         ConnectorCredentials credentials, ConnectorSession? storedSession, ChallengeAnswer? answer, CancellationToken ct)
@@ -89,10 +113,12 @@ public sealed class IngConnector : IBankConnector
         return ConnectorStep.Done<ConnectorSession?>(_session);
     }
 
-    /// <summary>Discovery runs until it once succeeded; after a failure it waits a day before asking again.</summary>
+    /// <summary>Discovery runs until it once succeeded (and again once when <see cref="WebProducts"/> grew); after a failure it waits a day before asking again.</summary>
     private bool DiscoveryDue()
     {
-        if (_session.Values.ContainsKey(WebAccountsKey)) return false;
+        if (_session.Values.ContainsKey(WebAccountsKey)
+            && string.Equals(_session.Values.GetValueOrDefault(WebProductsKey), WebProductsVersion, StringComparison.Ordinal))
+            return false;
         if (_session.Values.TryGetValue(WebAttemptKey, out var text)
             && DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var at)
             && _context.Clock.GetUtcNow().UtcDateTime - at.ToUniversalTime() < TimeSpan.FromDays(1))
@@ -107,13 +133,17 @@ public sealed class IngConnector : IBankConnector
         await _web.LoginAsync(_credentials ?? throw new ConnectorException("Not logged in."), ask, ct);
         if (_web.PreferredDevice != null) _session.Values[DeviceKey] = _web.PreferredDevice;
         var fintsIbans = _fintsAccounts.Select(a => a.Iban).Where(i => i != null).ToHashSet(StringComparer.Ordinal);
-        var vl = _web.Accounts
-            .Where(a => a.Iban != null && !fintsIbans.Contains(a.Iban) && a.Product.Contains("VL", StringComparison.OrdinalIgnoreCase))
-            .Select(a => new WebAccount(a.Iban!, $"{a.Product} ...{a.Iban![^4..]}"))
+        var found = _web.Accounts
+            .Where(a => a.Iban != null && !fintsIbans.Contains(a.Iban))
+            .Select(a => (Row: a, Product: ProductOf(a)))
+            .Where(x => x.Product != null)
+            .Select(x => new WebAccount(x.Row.Iban!, $"{x.Row.Product} ...{x.Row.Iban![^4..]}", x.Product!.Type, x.Product.Debt))
             .ToList();
-        _session.Values[WebAccountsKey] = JsonSerializer.Serialize(vl);
+        _session.Values[WebAccountsKey] = JsonSerializer.Serialize(found);
+        _session.Values[WebProductsKey] = WebProductsVersion;
         _session.Values.Remove(WebAttemptKey);
-        Log.LogInformation("ING web banking: {Count} VL savings account(s) found.", vl.Count);
+        Log.LogInformation("ING web banking: {Count} web-only account(s) found ({Kinds}).", found.Count,
+            string.Join(", ", found.GroupBy(f => f.Kind).Select(g => $"{g.Count()} {g.Key}")));
     }
 
     private List<WebAccount> WebAccounts()
@@ -129,21 +159,22 @@ public sealed class IngConnector : IBankConnector
         _fintsAccounts = fints;
         var ibans = fints.Select(a => a.Iban).ToHashSet(StringComparer.Ordinal);
         return fints.Concat(WebAccounts().Where(w => !ibans.Contains(w.Iban))
-                .Select(w => new RemoteAccount(w.Iban, w.Name, RemoteAccountType.Savings, w.Iban, "EUR")))
+                .Select(w => new RemoteAccount(w.Iban, w.Name, w.Kind, w.Iban, "EUR")))
             .ToList();
     }
 
     public Task<ConnectorStep<AccountRefresh>> RefreshAsync(RemoteAccount account, DateOnly? since, ChallengeAnswer? answer, CancellationToken ct)
     {
-        if (!WebAccounts().Any(w => string.Equals(w.Iban, account.RemoteId, StringComparison.Ordinal)))
-            return _fints.RefreshAsync(account, since, answer, ct);
+        var web = WebAccounts().FirstOrDefault(w => string.Equals(w.Iban, account.RemoteId, StringComparison.Ordinal));
+        if (web == null) return _fints.RefreshAsync(account, since, answer, ct);
         if (answer == null || _refresh == null || !string.Equals(_refreshKey, account.RemoteId, StringComparison.Ordinal))
         {
             _refreshKey = account.RemoteId;
             _refresh = new ChallengeCoroutine<AccountRefresh>(async (ask, token) =>
             {
                 await EnsureWebAsync(ask, token);
-                return await _web.TransactionsAsync(account.RemoteId, since, token);
+                var refresh = await _web.TransactionsAsync(account.RemoteId, since, token);
+                return web.Debt && refresh.Balance is { } b ? refresh with { Balance = -Math.Abs(b) } : refresh;
             });
         }
         return _refresh.ResumeAsync(answer, ct);
@@ -196,7 +227,7 @@ public sealed class IngConnector : IBankConnector
     public async Task<ConnectorSession?> LogoutAsync(CancellationToken ct)
     {
         var session = await _fints.LogoutAsync(ct) ?? _session;
-        foreach (var key in new[] { WebAccountsKey, WebAttemptKey, DeviceKey })
+        foreach (var key in new[] { WebAccountsKey, WebProductsKey, WebAttemptKey, DeviceKey })
         {
             if (_session.Values.TryGetValue(key, out var v)) session.Values[key] = v;
             else session.Values.Remove(key);
