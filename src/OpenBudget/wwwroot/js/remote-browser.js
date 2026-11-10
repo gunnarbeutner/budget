@@ -187,7 +187,10 @@ export function attach(canvas, dotnet, sessionId) {
             const [w, h, dpr] = size();
             if (w > 0) send({ t: 'v', w, h, dpr });
         };
-        ws.onmessage = (e) => { if (typeof e.data !== 'string') onFrame(e.data); };
+        ws.onmessage = (e) => {
+            if (typeof e.data !== 'string') { onFrame(e.data); return; }
+            try { const m = JSON.parse(e.data); if (m.t === 'url' && typeof m.url === 'string') dotnet.invokeMethodAsync('OnUrl', m.url).catch(() => {}); } catch { /* ignore */ }
+        };
         ws.onclose = ws.onerror = () => {
             const was = wsOpen;
             wsOpen = false;
@@ -197,6 +200,7 @@ export function attach(canvas, dotnet, sessionId) {
 
     return {
         focus() { canvas.focus({ preventScroll: true }); },
+        nav(k) { send({ t: 'nav', k }); canvas.focus({ preventScroll: true }); },
         dispose() {
             disposed = true;
             clearTimeout(resizeTimer); tick.port1.close(); ro?.disconnect();

@@ -33,6 +33,10 @@ internal sealed class FakeBrowserSession : IBrowserSession
 
     public Uri Url { get; set; } = new("about:blank");
 
+    public Task GoBackAsync() => Task.CompletedTask;
+
+    public Task ReloadAsync() => Task.CompletedTask;
+
     /// <summary>The cookies the framework put into the context before navigating.</summary>
     public List<CookieState> Seeded { get; } = [];
 

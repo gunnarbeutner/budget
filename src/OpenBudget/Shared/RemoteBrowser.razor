@@ -5,6 +5,11 @@
    WebSocket into the canvas, and this component forwards mouse, keyboard and paste input. The WebSocket only accepts the
    signed-in owner of the session (see WebLoginEndpoints). Nothing typed or shown here is stored. *@
 <div class="rb-screen position-relative border rounded bg-body-tertiary" data-testid="remote-browser">
+    <div class="d-flex align-items-center gap-1 p-1 border-bottom">
+        <button type="button" class="btn btn-sm btn-outline-secondary" title="@L["Back"]" aria-label="@L["Back"]" data-testid="rb-back" @onclick='() => NavAsync("back")'><i class="bi bi-arrow-left"></i></button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" title="@L["Reload"]" aria-label="@L["Reload"]" data-testid="rb-reload" @onclick='() => NavAsync("reload")'><i class="bi bi-arrow-clockwise"></i></button>
+        <input type="text" readonly class="form-control form-control-sm font-monospace" value="@_url" aria-label="@L["Address"]" data-testid="rb-url" />
+    </div>
     <canvas @ref="_canvas" class="rb-canvas w-100 d-block" tabindex="0" width="1280" height="800" aria-label="@L["Label"]"
             style="@(_hasFrame ? "" : "display:none"); outline: none; cursor: default;"></canvas>
     @if (!_hasFrame)
@@ -52,6 +57,22 @@
             await _view.InvokeVoidAsync("focus");
         }
         catch (JSDisconnectedException) { /* circuit gone */ }
+    }
+
+    private string _url = "";
+
+    private async Task NavAsync(string kind)
+    {
+        if (_view == null) return;
+        try { await _view.InvokeVoidAsync("nav", kind); }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+    }
+
+    [JSInvokable]
+    public void OnUrl(string url)
+    {
+        _url = url.Length > 500 ? url[..500] : url;
+        StateHasChanged();
     }
 
     [JSInvokable]

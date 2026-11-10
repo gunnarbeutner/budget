@@ -67,4 +67,13 @@
   <data name="Label" xml:space="preserve">
     <value>Anmeldeseite der Bank</value>
   </data>
+  <data name="Back" xml:space="preserve">
+    <value>Zurück</value>
+  </data>
+  <data name="Reload" xml:space="preserve">
+    <value>Neu laden</value>
+  </data>
+  <data name="Address" xml:space="preserve">
+    <value>Adresse</value>
+  </data>
 </root>

@@ -43,4 +43,9 @@ public interface IBrowserSession : IAsyncDisposable
     Task DispatchKeyAsync(string type, string key, string? code, string? text, int modifiers, string[]? commands);
 
     Task InsertTextAsync(string text);
+
+    /// <summary>One step back in the page's history; nothing happens when there is none.</summary>
+    Task GoBackAsync();
+
+    Task ReloadAsync();
 }

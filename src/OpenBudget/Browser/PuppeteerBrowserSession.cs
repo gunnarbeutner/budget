@@ -66,6 +66,12 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
         }
     }
 
+    public Task GoBackAsync() =>
+        TryAsync(() => _page.GoBackAsync(new NavigationOptions { Timeout = _options.NavigationTimeoutMs, WaitUntil = [WaitUntilNavigation.DOMContentLoaded] }));
+
+    public Task ReloadAsync() =>
+        TryAsync(() => _page.ReloadAsync(_options.NavigationTimeoutMs, [WaitUntilNavigation.DOMContentLoaded]));
+
     // ---- cookies ----
 
     public async Task SetCookiesAsync(IReadOnlyList<CookieState> cookies)

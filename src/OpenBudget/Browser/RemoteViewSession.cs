@@ -72,6 +72,8 @@ public sealed class RemoteInput
             case "text" when !string.IsNullOrEmpty(Text):
                 if (Text.Length > 2000) Text = Text[..2000];
                 return this;
+            case "nav" when K is "back" or "reload":
+                return this;
             case "v":
                 W = Finite(W, 0, 10000);
                 Dpr = Finite(Dpr, 1, 3);
@@ -150,6 +152,8 @@ public sealed class RemoteViewSession : IAsyncDisposable
     private readonly BrowserOptions _options;
     private readonly ILogger _logger;
     private readonly Func<byte[], Task> _sendBinary;
+    private readonly Func<string, Task>? _sendText;
+    private string? _sentUrl;
     private readonly Channel<RemoteInput> _in = Channel.CreateBounded<RemoteInput>(
         new BoundedChannelOptions(InputQueueLimit) { SingleReader = true, FullMode = BoundedChannelFullMode.DropWrite });
     private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -157,12 +161,16 @@ public sealed class RemoteViewSession : IAsyncDisposable
     private readonly Timer _stillTimer;
     private Task? _loop;
     private long _frameSeq;
+    private long _lastInputTicks = Environment.TickCount64;
+    private int _lastWasStill;
+    private int _stillArmed;
     private double _displayW;
     private double _dpr = 1;
     private int _disposed;
 
-    public RemoteViewSession(IBrowserSession page, BrowserOptions options, ILogger logger, Func<byte[], Task> sendBinary)
+    public RemoteViewSession(IBrowserSession page, BrowserOptions options, ILogger logger, Func<byte[], Task> sendBinary, Func<string, Task>? sendText = null)
     {
+        _sendText = sendText;
         _page = page;
         _options = options;
         _logger = logger;
@@ -181,14 +189,33 @@ public sealed class RemoteViewSession : IAsyncDisposable
         _loop = Task.Run(LoopAsync);
     }
 
+    /// <summary>Tells the view the page's address when it changed (shown read-only above the canvas). Call under the send lock.</summary>
+    private async Task SendUrlIfChangedAsync()
+    {
+        if (_sendText == null) return;
+        var url = _page.Url.ToString();
+        if (url == _sentUrl) return;
+        _sentUrl = url;
+        await _sendText(JsonSerializer.Serialize(new { t = "url", url }));
+    }
+
     private async Task OnFrameAsync(ScreencastFrame f)
     {
+        // Without recent input, a changing page (a blinking caret, a spinner) would alternate between the blurry moving
+        // frames and the sharp still, which flickers. Then only stills are sent, at most one per still delay.
+        if (Volatile.Read(ref _lastWasStill) != 0 && Environment.TickCount64 - Interlocked.Read(ref _lastInputTicks) > ScreencastPolicy.IdleAfter.TotalMilliseconds)
+        {
+            if (Interlocked.Exchange(ref _stillArmed, 1) == 0) ArmStill();
+            return;
+        }
         var packet = RemoteFramePacket.Build(f);
         await _sendLock.WaitAsync();
         try
         {
             Interlocked.Increment(ref _frameSeq);
+            Volatile.Write(ref _lastWasStill, 0);
             await _sendBinary(packet);
+            await SendUrlIfChangedAsync();
         }
         finally { _sendLock.Release(); }
         ArmStill();
@@ -204,6 +231,7 @@ public sealed class RemoteViewSession : IAsyncDisposable
     private async Task SendStillAsync()
     {
         if (_disposed != 0) return;
+        Volatile.Write(ref _stillArmed, 0);
         try
         {
             var seq = Interlocked.Read(ref _frameSeq);
@@ -215,6 +243,8 @@ public sealed class RemoteViewSession : IAsyncDisposable
             {
                 if (Interlocked.Read(ref _frameSeq) != seq || Volatile.Read(ref _disposed) != 0) return; // the page moved on: a stale still would undo it
                 await _sendBinary(packet);
+                await SendUrlIfChangedAsync();
+                Volatile.Write(ref _lastWasStill, 1);
             }
             finally { _sendLock.Release(); }
         }
@@ -257,6 +287,8 @@ public sealed class RemoteViewSession : IAsyncDisposable
 
     private async Task HandleAsync(RemoteInput m)
     {
+        if (m.T != "v" && !(m.T == "m" && m.K == "move" && m.Buttons == 0))
+            Interlocked.Exchange(ref _lastInputTicks, Environment.TickCount64);
         switch (m.T)
         {
             case "m":
@@ -270,6 +302,10 @@ public sealed class RemoteViewSession : IAsyncDisposable
                 break;
             case "text":
                 await _page.InsertTextAsync(m.Text!);
+                ArmStill();
+                break;
+            case "nav":
+                if (m.K == "back") await _page.GoBackAsync(); else await _page.ReloadAsync();
                 ArmStill();
                 break;
             case "v":
@@ -315,7 +351,8 @@ public sealed class RemoteViewSession : IAsyncDisposable
     public static async Task ServeAsync(IBrowserSession page, BrowserOptions options, ILogger logger, WebSocket ws, CancellationToken ct)
     {
         await using var view = new RemoteViewSession(page, options, logger,
-            b => ws.State == WebSocketState.Open ? ws.SendAsync(b, WebSocketMessageType.Binary, true, ct) : Task.CompletedTask);
+            b => ws.State == WebSocketState.Open ? ws.SendAsync(b, WebSocketMessageType.Binary, true, ct) : Task.CompletedTask,
+            t => ws.State == WebSocketState.Open ? ws.SendAsync(System.Text.Encoding.UTF8.GetBytes(t), WebSocketMessageType.Text, true, ct) : Task.CompletedTask);
         try
         {
             await view.StartAsync(0, 1);

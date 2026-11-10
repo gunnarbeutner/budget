@@ -10,6 +10,8 @@ public static class ScreencastPolicy
     public const int StillQuality = 90;
     public const int MinWidth = 320;
     public static readonly TimeSpan StillDelay = TimeSpan.FromMilliseconds(300);
+    /// <summary>Without input for this long, a changing page is shown as sharp stills only (no flicker).</summary>
+    public static readonly TimeSpan IdleAfter = TimeSpan.FromSeconds(1);
 
     /// <summary>
     /// Screencast frame size for a canvas shown at <paramref name="displayCssWidth"/> CSS px: never larger than the viewport
