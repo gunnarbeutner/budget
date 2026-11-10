@@ -163,6 +163,16 @@ internal static partial class IngHtml
     public static WicketAjaxCall? AjaxFor(string html, string componentId) =>
         AjaxCalls(html).FirstOrDefault(c => string.Equals(c.ComponentId, componentId, StringComparison.Ordinal));
 
+    /// <summary>
+    /// How long after loading the page ignores submits and clicks (<c>RequestBlocker.checkEvent(event, ms)</c>);
+    /// the default when the page does not say.
+    /// </summary>
+    public static TimeSpan RequestBlock(string html)
+    {
+        var ms = RequestBlockRegex().Matches(html).Select(m => int.Parse(m.Groups["ms"].Value, CultureInfo.InvariantCulture)).DefaultIfEmpty(1000).Max();
+        return TimeSpan.FromMilliseconds(ms);
+    }
+
     /// <summary>The URL a <c>Wicket.Timer</c> polls (the login's "has the app confirmed yet?" status call), or null.</summary>
     public static string? TimerUrl(string html)
     {
@@ -433,6 +443,9 @@ internal static partial class IngHtml
 
     [GeneratedRegex(@"Wicket\.Timer\.set\('[^']*',\s*function\(\)\s*\{\s*Wicket\.Ajax\.ajax\(\{""u"":""(?<u>[^""]+)""", RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
     private static partial Regex TimerRegex();
+
+    [GeneratedRegex(@"RequestBlocker\.checkEvent\(\s*event\s*,\s*(?<ms>\d{1,6})\s*\)", RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex RequestBlockRegex();
 
     [GeneratedRegex(@"<redirect>\s*<!\[CDATA\[(?<u>.*?)\]\]>\s*</redirect>", RegexOptions.Singleline | RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
     private static partial Regex AjaxRedirectRegex();

@@ -70,6 +70,8 @@ public sealed class IngConnectorTests
         Assert.Equal("tablet / Example Tablet", rig.Web.ChosenDevice);
         Assert.Equal(1, rig.Web.Count("POST access.ing.de/delogin/w/login?x=submit"));
         Assert.Equal(3, rig.Web.Count("x=status")); // two "still waiting" polls, then the redirect
+        Assert.Equal(1, rig.Web.Pushes); // the device choice pushed the confirmation once, the polls did not
+        Assert.Equal(0, rig.Web.SilentApprovals);
         Assert.Equal(0, rig.Web.Count("/app/logout"));
 
         var accounts = await rig.Service.GetAccountsAsync(rig.LoginId);
@@ -108,6 +110,41 @@ public sealed class IngConnectorTests
         // The date filter never asks for more than the page allows.
         Assert.All(rig.Web.Filters, f => Assert.Equal("09.11.2026", f.To));
         Assert.Equal("15.10.2025", rig.Web.Filters[0].From);
+    }
+
+    [Fact]
+    public async Task Every_sign_in_pushes_the_confirmation_once_also_with_the_remembered_device()
+    {
+        await using var rig = await CreateAsync(w => { w.RequestBlockMs = 300; w.PendingPolls = 4; });
+        Assert.True((await rig.SyncAsync(true, false, "0")).Succeeded);
+        Assert.Equal(1, rig.Web.Pushes);
+        await rig.World.LinkAllAsync(BankWorld.Alice, rig.LoginId);
+
+        // Next sync: a fresh sign-in where the remembered device is submitted without a question. Sent the moment the
+        // page arrived, ING would create the confirmation without pushing it; it waits like a person instead.
+        rig.Web.ExpireSessions();
+        Assert.True((await rig.SyncAsync(true, false)).Succeeded);
+        Assert.Equal(2, rig.Web.Count("x=submit"));
+        Assert.Equal(2, rig.Web.Count("x=device"));
+        Assert.Equal(2, rig.Web.Pushes);
+        Assert.Equal(0, rig.Web.SilentApprovals);
+        Assert.Equal(10, rig.Web.Count("x=status")); // polling never re-submits the device choice
+    }
+
+    [Fact]
+    public async Task A_single_device_is_pushed_by_the_paced_sign_in_itself()
+    {
+        await using var rig = await CreateAsync(w => { w.Devices = ["phone / Example Phone"]; w.RequestBlockMs = 300; });
+        Assert.True((await rig.SyncAsync(true, false)).Succeeded);
+        Assert.Equal(0, rig.Web.Count("x=device"));
+        Assert.Equal((1, 0), (rig.Web.Pushes, rig.Web.SilentApprovals));
+    }
+
+    [Fact]
+    public void The_submit_block_is_read_from_the_page()
+    {
+        Assert.Equal(TimeSpan.FromMilliseconds(1000), IngHtml.RequestBlock("$(document).submit(function(event) { return RequestBlocker.checkEvent(event, 1000); });"));
+        Assert.Equal(TimeSpan.FromMilliseconds(1000), IngHtml.RequestBlock("<p>no blocker</p>"));
     }
 
     [Fact]

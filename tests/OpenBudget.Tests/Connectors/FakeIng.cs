@@ -35,6 +35,21 @@ internal sealed class FakeIng : HttpMessageHandler
 
     public string? ChosenDevice { get; private set; }
 
+    /// <summary>How long the sign-in pages ignore submits after loading (ING's RequestBlocker; 1000 ms there).</summary>
+    public int RequestBlockMs { get; set; } = 100;
+
+    /// <summary>
+    /// Push notifications sent to the app. Like ING, the confirmation is created by the submit that names the device
+    /// (the device choice, or the sign-in itself with a single device), but pushed only when that submit did not come
+    /// faster than the page lets a person click; status polls never push.
+    /// </summary>
+    public int Pushes { get; private set; }
+
+    /// <summary>Confirmations created without a push (visible only when the app is opened).</summary>
+    public int SilentApprovals { get; private set; }
+
+    private DateTime _pageShownAt;
+
     public List<string> Requests { get; } = [];
 
     public List<string> Bodies { get; } = [];
@@ -120,17 +135,21 @@ internal sealed class FakeIng : HttpMessageHandler
 
     private HttpResponseMessage Access(HttpMethod method, string x, System.Collections.Specialized.NameValueCollection form, bool ajax)
     {
-        if (method == HttpMethod.Get && x.Length == 0) return Html(LoginPage());
+        if (method == HttpMethod.Get && x.Length == 0) return Shown(LoginPage());
         if (method == HttpMethod.Post && x == "submit")
         {
             if (form["view:alias:alias"] != Alias || form["view:secret:secret"] != Pin || form["view:p"] != "p") return Html(LoginPage());
             _polls = 0;
-            return Html(Devices.Count > 1 ? DevicePage() : ApprovalPage());
+            if (Devices.Count > 1) return Shown(DevicePage());
+            CreateApproval();
+            return Html(ApprovalPage());
         }
         if (method == HttpMethod.Post && x == "device")
         {
             var index = int.Parse(form["view:auth:deviceSelection:device:device"] ?? "-1", System.Globalization.CultureInfo.InvariantCulture);
             ChosenDevice = Devices[index];
+            if (form["buttons:next"] == null) return new HttpResponseMessage(HttpStatusCode.BadRequest);
+            CreateApproval();
             return Html(ApprovalPage());
         }
         if (x == "status" && ajax)
@@ -142,20 +161,35 @@ internal sealed class FakeIng : HttpMessageHandler
         return new HttpResponseMessage(HttpStatusCode.BadRequest);
     }
 
+    private HttpResponseMessage Shown(string html)
+    {
+        _pageShownAt = DateTime.UtcNow;
+        return Html(html);
+    }
+
+    private void CreateApproval()
+    {
+        if (DateTime.UtcNow - _pageShownAt >= TimeSpan.FromMilliseconds(RequestBlockMs)) Pushes++;
+        else SilentApprovals++;
+    }
+
+    private string Blocker() =>
+        $"$(document).ready(function() {{ $(document).submit(function(event) {{ return RequestBlocker.checkEvent(event, {RequestBlockMs}); }}); }});";
+
     private static string Timer() =>
         "<script type=\"text/javascript\"> /*<![CDATA[*/ (function(){Wicket.Timer.set('id1e.0', function(){Wicket.Ajax.ajax({\"u\":\"./login?x=status&t=T1\",\"c\":\"id1e\"});}, 3000);})(); /*]]]]><![CDATA[>*/ </script>";
 
-    private static string LoginPage() => Page(
+    private string LoginPage() => Page(
         "<form id=\"id9\" method=\"post\" action=\"./login?x=submit&amp;t=T1\" novalidate=\"novalidate\"><input type=\"hidden\" value=\"p\" name=\"view:p\"/>"
         + "<input class=\"input-field form-group--error-field\" type=\"text\" value=\"\" name=\"view:alias:alias\" id=\"id5\" autocomplete=\"username\"/>"
         + "<input class=\"input-field form-group--error-field\" type=\"password\" value=\"\" name=\"view:secret:secret\" id=\"id6\"/>"
-        + "<button class=\"button orange\" role=\"button\" name=\"view:next-inline\" id=\"id8\">Weiter</button></form>");
+        + "<button class=\"button orange\" role=\"button\" name=\"view:next-inline\" id=\"id8\">Weiter</button></form>", Blocker());
 
     private string DevicePage()
     {
         var radios = string.Concat(Devices.Select((d, i) =>
             $"<label class=\"form-group__controls-radio\"> <input class=\"input-field__radio\" type=\"radio\" id=\"idr{i}\" name=\"view:auth:deviceSelection:device:device\" value=\"{i}\"{(i == 0 ? " checked=\"checked\"" : "")}/> <span class=\"input-field__radio--button\"> <span class=\"input-field__radio--checked\"></span> </span> <span class=\"input-field__radio--label\">{d}</span> </label>"));
-        return Page($"<form id=\"id9\" method=\"post\" action=\"./login?x=device&amp;t=T1\">{radios}<button class=\"button orange\" type=\"submit\" name=\"buttons:next\" id=\"id17\">Weiter</button><button type=\"submit\" name=\"buttons:cancel\" id=\"id1c\">Abbrechen</button></form>");
+        return Page($"<form id=\"id9\" method=\"post\" action=\"./login?x=device&amp;t=T1\">{radios}<button class=\"button orange\" type=\"submit\" name=\"buttons:next\" id=\"id17\">Weiter</button><button type=\"submit\" name=\"buttons:cancel\" id=\"id1c\">Abbrechen</button></form>", Blocker());
     }
 
     private static string ApprovalPage() => Page(

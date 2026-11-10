@@ -71,6 +71,7 @@ internal sealed class IngWebClient
             return _overview = page;
         }
 
+        var shown = _clock.GetTimestamp();
         var form = IngHtml.FormWith(page.Html, SecretField)
             ?? throw new ConnectorException("ING's sign-in page looks different than expected; the web banking part cannot sign in.");
         _log.LogInformation("ING web banking: submitting the sign-in form.");
@@ -78,13 +79,15 @@ internal sealed class IngWebClient
         fields.Add(new HtmlField(AliasField, credentials.Username));
         fields.Add(new HtmlField(SecretField, credentials.Secret));
         fields.Add(new HtmlField(LoginButton, ""));
-        page = await PostAsync(Resolve(page.Url, form.Action), fields, ct);
+        await PaceAsync(page, shown, ct);
+        page = await PostAsync(Resolve(page.Url, form.Action), fields, ct, referrer: page.Url);
+        shown = _clock.GetTimestamp();
 
         if (IngHtml.FormWith(page.Html, SecretField) != null)
             throw new FinTsException("ING's web banking did not accept the access number or PIN.", credentialsRejected: true);
 
         if (IngHtml.FormWith(page.Html, DeviceField) is { } deviceForm)
-            page = await ChooseDeviceAsync(page, deviceForm, ask, ct);
+            page = await ChooseDeviceAsync(page, shown, deviceForm, ask, ct);
 
         var statusUrl = IngHtml.TimerUrl(page.Html)
             ?? throw new ConnectorException("ING asked for a sign-in step the connector does not know (only the confirmation in the Banking to go app is supported).");
@@ -111,7 +114,13 @@ internal sealed class IngWebClient
         return _overview = page;
     }
 
-    private async Task<IngPage> ChooseDeviceAsync(IngPage page, HtmlForm form, IChallengeAsker ask, CancellationToken ct)
+    /// <summary>Asks for (or reuses) the device and submits the choice.</summary>
+    /// <remarks>
+    /// Submitting the device choice is what makes ING create the confirmation and push it to that device. The page
+    /// ignores submits for a moment after loading (RequestBlocker); a submit sent right away (as the remembered device
+    /// used to be) still creates the confirmation, but ING sends no push for it, so it is paced like a person's click.
+    /// </remarks>
+    private async Task<IngPage> ChooseDeviceAsync(IngPage page, long shown, HtmlForm form, IChallengeAsker ask, CancellationToken ct)
     {
         var devices = IngHtml.Radios(form.Inner, DeviceField);
         if (devices.Count == 0) throw new ConnectorException("ING asks to pick a device for the confirmation but lists none.");
@@ -130,7 +139,8 @@ internal sealed class IngWebClient
         var fields = Without(form.Fields, DeviceField);
         fields.Add(new HtmlField(DeviceField, chosen));
         fields.Add(new HtmlField(DeviceButton, ""));
-        return await PostAsync(Resolve(page.Url, form.Action), fields, ct);
+        await PaceAsync(page, shown, ct);
+        return await PostAsync(Resolve(page.Url, form.Action), fields, ct, referrer: page.Url);
     }
 
     // ---------------------------------------------------------------- overview
@@ -320,14 +330,24 @@ internal sealed class IngWebClient
     private async Task<IngPage> GetAsync(Uri url, CancellationToken ct) =>
         await ReadAsync(await SendAsync(new HttpRequestMessage(HttpMethod.Get, url), ct), url, ct);
 
-    private async Task<IngPage> PostAsync(Uri url, IEnumerable<HtmlField> fields, CancellationToken ct)
+    /// <summary>
+    /// Waits until a person could have submitted <paramref name="page"/> (shown at <paramref name="shown"/>): half again
+    /// as long as the page blocks submits after loading.
+    /// </summary>
+    private async Task PaceAsync(IngPage page, long shown, CancellationToken ct)
+    {
+        var wait = IngHtml.RequestBlock(page.Html) * 1.5 - _clock.GetElapsedTime(shown);
+        if (wait > TimeSpan.Zero) await Task.Delay(wait, _clock, ct);
+    }
+
+    private async Task<IngPage> PostAsync(Uri url, IEnumerable<HtmlField> fields, CancellationToken ct, Uri? referrer = null)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
             Content = new FormUrlEncodedContent(fields.Select(f => new KeyValuePair<string, string>(f.Name, f.Value))),
         };
         request.Headers.TryAddWithoutValidation("Origin", url.GetLeftPart(UriPartial.Authority));
-        request.Headers.Referrer = url;
+        request.Headers.Referrer = referrer ?? url;
         return await ReadAsync(await SendAsync(request, ct), url, ct);
     }
 
