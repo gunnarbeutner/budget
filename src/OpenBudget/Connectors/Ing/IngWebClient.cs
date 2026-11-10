@@ -252,13 +252,15 @@ internal sealed class IngWebClient
                 latest = page.Html;
             }
             var listings = new List<(Uri Url, IReadOnlyList<IngPostboxRow> Rows)>();
-            if (full && await ListByDateAsync(page, listings, ct) is { } last)
+            if (full && await ListByDateAsync(page, listings, ct) is { } last && listings.Sum(l => l.Rows.Count) > 0)
             {
                 page = last;
                 latest = last.Html;
             }
             else
             {
+                // the year-by-year listing found nothing (or isn't offered): read the plain range instead
+                if (full && listings.Count > 0) { _log.LogWarning("ING Postbox: the listing by date found nothing; using the 10-year listing."); listings.Clear(); }
                 var listing = page.Html;
                 var range = full ? "MONATE120" : "MONATE12";
                 if (IngHtml.Select(page.Html, RangeField) is { Id: { } selectId, Options: var options }
