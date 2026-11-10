@@ -313,7 +313,7 @@
                  data-ob-longpress="@LongPress(accountNode)"
                  draggable="@(Draggable(accountNode) ? "true" : null)" data-ob-drag="@(Draggable(accountNode) ? "" : null)"
                  @ondragstart="() => DragStart(accountNode)" @ondragenter="() => DragEnter(accountNode)" @ondragend="DragEnd"
-                 @ondragover:preventDefault="@(dragNode != null)" @ondrop="() => DropOn(accountNode)" @ondrop:preventDefault="true"
+                 @ondragover:preventDefault="@(CanDrag != null)" @ondrop="() => DropOn(accountNode)" @ondrop:preventDefault="true"
                  @onclick="() => OnSelectAccount.InvokeAsync(accountId)"
                  @oncontextmenu="e => OpenMenu(accountNode, e)" @oncontextmenu:preventDefault="@HasMenu(accountNode)"
                  @onkeydown="e => OnAccountKeydown(e, accountNode)">
@@ -340,7 +340,7 @@
                  data-ob-longpress="@LongPress(groupNode)"
                  draggable="@(Draggable(groupNode) ? "true" : null)" data-ob-drag="@(Draggable(groupNode) ? "" : null)"
                  @ondragstart="() => { if (groupNode != null) DragStart(groupNode); }" @ondragenter="() => DragEnter(groupNode)" @ondragend="DragEnd"
-                 @ondragover:preventDefault="@(dragNode != null)" @ondrop="() => DropOn(groupNode)" @ondrop:preventDefault="true"
+                 @ondragover:preventDefault="@(CanDrag != null)" @ondrop="() => DropOn(groupNode)" @ondrop:preventDefault="true"
                  @onclick="() => OnGroupClickAsync(groupId, key)"
                  @oncontextmenu="e => OpenMenu(groupNode, e)" @oncontextmenu:preventDefault="@HasMenu(groupNode)"
                  @onkeydown="e => OnGroupKeydown(e, groupId, key, groupNode)">
@@ -420,7 +420,7 @@
             builder.AddAttribute(73, "ondragenter", EventCallback.Factory.Create<DragEventArgs>(this, () => DragEnter(sidebarNode)));
             builder.AddAttribute(74, "ondragend", EventCallback.Factory.Create<DragEventArgs>(this, DragEnd));
         }
-        if (dragNode != null)
+        if (CanDrag != null)
         {
             builder.AddEventPreventDefaultAttribute(75, "ondragover", true);
             builder.AddAttribute(76, "ondrop", EventCallback.Factory.Create<DragEventArgs>(this, () => DropOn(sidebarNode)));
