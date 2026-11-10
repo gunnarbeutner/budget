@@ -195,6 +195,15 @@ public class MoneyMoneyImportService
             // still owns - balances of its accounts and all of its transactions - is refreshed.
             bool takenOver = source.StructureTakenOverAt != null;
 
+            // Accounts and categories the owner deleted after the takeover stay deleted: the upload skips them (an
+            // account together with its bookings and positions, exactly like a connector-owned one).
+            var removed = takenOver
+                ? await db.RemovedImportItems.IgnoreQueryFilters().Where(r => r.SourceId == sourceId).ToListAsync(ct)
+                : [];
+            var removedAccountIds = removed.Where(r => r.Kind == RemovedImportItem.AccountKind).Select(r => r.ItemId).ToHashSet();
+            var removedCategoryIds = removed.Where(r => r.Kind == RemovedImportItem.CategoryKind).Select(r => r.ItemId).ToHashSet();
+            foreignAccountIds.UnionWith(removedAccountIds);
+
             // Balance / refresh state of accounts handed to a connector belongs to that connector.
             var foreignState = takenOver || foreignAccountIds.Count == 0
                 ? new Dictionary<long, ForeignAccountState>()
@@ -255,12 +264,22 @@ public class MoneyMoneyImportService
             }
 
             int accountGroupCount = takenOver ? 0 : await CopyAccountGroupsAsync(src, db, sourceId, ct);
-            int accountCount = await CopyAccountsAsync(src, db, sourceId, providers, foreignState, takenOver, ct);
+            int accountCount = await CopyAccountsAsync(src, db, sourceId, providers, foreignState, takenOver, removedAccountIds, ct);
             int groupCount = takenOver ? 0 : await CopyCategoryGroupsAsync(src, db, sourceId, ct);
             int categoryCount = takenOver
-                ? await CopyNewCategoriesAsync(src, db, sourceId, ct)
+                ? await CopyNewCategoriesAsync(src, db, sourceId, removedCategoryIds, ct)
                 : await CopyCategoriesAsync(src, db, sourceId, ct);
             int txCount = await CopyTransactionsAsync(src, db, sourceId, foreignAccountIds, ct);
+            if (removedCategoryIds.Count > 0)
+            {
+                // MoneyMoney still files bookings under a category deleted here: they arrive uncategorized.
+                await db.Database.ExecuteSqlRawAsync(
+                    """
+                    UPDATE transactions SET category_key = NULL
+                    WHERE SourceId = {0} AND category_key IN (SELECT ItemId FROM removed_import_items WHERE SourceId = {0} AND Kind = {1})
+                    """,
+                    new object[] { sourceId, RemovedImportItem.CategoryKind }, ct);
+            }
             int securityCount = await CopySecuritiesAsync(src, db, sourceId, foreignAccountIds, ct);
             int portfolioChartCount = await CopyPortfolioChartAsync(src, db, sourceId, foreignAccountIds, ct);
 
@@ -431,7 +450,7 @@ public class MoneyMoneyImportService
 
     private static async Task<int> CopyAccountsAsync(
         SqliteConnection src, BudgetDbContext db, int sourceId, IReadOnlyDictionary<long, string> providers,
-        Dictionary<long, ForeignAccountState> foreignState, bool keepStructure, CancellationToken ct)
+        Dictionary<long, ForeignAccountState> foreignState, bool keepStructure, HashSet<long> removedAccountIds, CancellationToken ct)
     {
         // group_key is the FK into account_groups; older exporters (pre-account-groups) won't
         // have account_groups but the column itself has always been on accounts. Probe anyway
@@ -487,7 +506,7 @@ public class MoneyMoneyImportService
                 cmd.Parameters["$refresh_tsp"].Value = (object?)kept.RefreshTimestamp ?? DBNull.Value;
                 cmd.Parameters["$error"].Value = (object?)kept.Error ?? DBNull.Value;
             }
-        }, AccountInsertParameters, ct);
+        }, AccountInsertParameters, ct, skipRow: r => removedAccountIds.Contains(SourceScope.Namespace(sourceId, r.GetInt64(0))));
     }
 
     private static async Task<int> CopyAccountGroupsAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
@@ -586,9 +605,10 @@ public class MoneyMoneyImportService
     /// Structure-taken-over mode: categories the upload reports that OpenBudget does not know yet are added to the
     /// "New categories" group (created on demand); known ones are left exactly as they are.
     /// </summary>
-    private static async Task<int> CopyNewCategoriesAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
+    private static async Task<int> CopyNewCategoriesAsync(SqliteConnection src, BudgetDbContext db, int sourceId, HashSet<long> removedCategoryIds, CancellationToken ct)
     {
         var known = (await db.Categories.Where(c => c.SourceId == sourceId).Select(c => c.Id).ToListAsync(ct)).ToHashSet();
+        known.UnionWith(removedCategoryIds);
         var fresh = (await ReadRowidsAsync(src, "categories", ct)).Where(r => !known.Contains(SourceScope.Namespace(sourceId, r))).ToHashSet();
         if (fresh.Count == 0) return 0;
 

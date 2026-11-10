@@ -66,6 +66,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<BankStatement> BankStatements => Set<BankStatement>();
     public DbSet<StatementRead> StatementReads => Set<StatementRead>();
     public DbSet<CategoryRule> CategoryRules => Set<CategoryRule>();
+    public DbSet<RemovedImportItem> RemovedImportItems => Set<RemovedImportItem>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

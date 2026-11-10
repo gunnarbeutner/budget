@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261110152057_AddStatementReadUnread";
+        public override string LatestMigrationId => "20261110155619_AddRemovedImportItems";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -1228,6 +1228,34 @@ namespace OpenBudget.Migrations
                     b.HasIndex("ProjectId");
 
                     b.ToTable("project_tracking_items");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.RemovedImportItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ItemId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RemovedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceId", "Kind", "ItemId")
+                        .IsUnique();
+
+                    b.ToTable("removed_import_items");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.SecurityTaxSetting", b =>

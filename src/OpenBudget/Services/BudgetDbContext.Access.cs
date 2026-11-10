@@ -42,6 +42,8 @@ public partial class BudgetDbContext
         modelBuilder.Entity<Category>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
         modelBuilder.Entity<CategoryGroup>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
         modelBuilder.Entity<AccountGroup>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
+        modelBuilder.Entity<RemovedImportItem>().HasQueryFilter(e => ScopeUnrestricted || ScopeOwnedSourceIds.Contains(e.SourceId));
+        modelBuilder.Entity<RemovedImportItem>().HasIndex(e => new { e.SourceId, e.Kind, e.ItemId }).IsUnique();
 
         // Accounts and what hangs off them: all of an owned source, otherwise ONLY the accounts
         // assigned to a project shared with the user.

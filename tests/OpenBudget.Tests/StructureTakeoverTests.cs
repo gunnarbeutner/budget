@@ -154,6 +154,28 @@ public sealed class StructureTakeoverTests : IDisposable
     }
 
     [Fact]
+    public async Task Accounts_and_categories_deleted_after_the_takeover_stay_deleted_on_later_uploads()
+    {
+        await using var t = await WorldAsync();
+        Tx[] bookings = [new Tx(1, 2, -5), new Tx(2, 3, -6)];
+        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, bookings));
+        await TakeoverFor(t, AccessWorld.Alice).TakeOverAsync(AccessWorld.SourceAlice);
+        var structure = new StructureService(t.ForUser(AccessWorld.Alice).Factory, t.System, t.Notifier, new ChangeOrigin());
+
+        await structure.DeleteAccountAsync(Id(2), "Savings");
+        await structure.DeleteCategoryAsync(Id(2));   // Groceries
+        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, bookings));
+
+        await using var db = await t.Factory.CreateDbContextAsync();
+        Assert.Equal(["Giro"], await db.Accounts.Select(a => a.Name).ToListAsync());
+        Assert.False(await db.Categories.AnyAsync(c => c.Id == Id(2)));
+        // Only Giro's booking came in, and MoneyMoney's (deleted) category no longer sticks to it.
+        var tx = await db.Transactions.SingleAsync();
+        Assert.Equal(Id(1), tx.AccountId);
+        Assert.Null(tx.CategoryId);
+    }
+
+    [Fact]
     public async Task A_second_takeover_is_a_no_op()
     {
         await using var t = await WorldAsync();

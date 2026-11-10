@@ -49,6 +49,7 @@ builder.Services.AddScoped<SharingService>();
 builder.Services.AddScoped<SourceService>();
 builder.Services.AddScoped<StructureTakeoverService>();
 builder.Services.AddScoped<CategoryColorService>();
+builder.Services.AddScoped<StructureService>();
 builder.Services.AddScoped<TransactionEditService>();
 builder.Services.AddScoped<SplitTransferService>();
 builder.Services.AddScoped<CategoryRuleService>();
