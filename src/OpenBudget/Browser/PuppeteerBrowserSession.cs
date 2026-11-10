@@ -72,6 +72,61 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
     public Task ReloadAsync() =>
         TryAsync(() => _page.ReloadAsync(_options.NavigationTimeoutMs, [WaitUntilNavigation.DOMContentLoaded]));
 
+    // ---- form filling (autofill of the sign-in form) ----
+
+    public async Task<bool> FillAsync(string selector, string value, TimeSpan timeout)
+    {
+        try
+        {
+            var el = await _page.WaitForSelectorAsync(selector, new WaitForSelectorOptions { Visible = true, Timeout = (int)timeout.TotalMilliseconds });
+            if (el == null) return false;
+            await using (el)
+            {
+                // focus and select what is there, then type like a user so the page's own input handlers see it
+                await el.EvaluateFunctionAsync("e => { e.focus(); if (e.select) e.select(); }");
+                await el.TypeAsync(value, new PuppeteerSharp.Input.TypeOptions { Delay = 25 });
+            }
+            return true;
+        }
+        catch (Exception ex) when (ex is WaitTaskTimeoutException or PuppeteerException)
+        {
+            return false;
+        }
+    }
+
+    public async Task<bool> ClickAsync(string selector)
+    {
+        try
+        {
+            var el = await _page.QuerySelectorAsync(selector);
+            if (el == null) return false;
+            await using (el)
+            {
+                if (await el.BoundingBoxAsync() == null) return false;
+                await el.ClickAsync();
+            }
+            return true;
+        }
+        catch (PuppeteerException)
+        {
+            return false;
+        }
+    }
+
+    public async Task<bool> IsVisibleAsync(string selector)
+    {
+        try
+        {
+            var el = await _page.QuerySelectorAsync(selector);
+            if (el == null) return false;
+            await using (el) return await el.BoundingBoxAsync() != null;
+        }
+        catch (PuppeteerException)
+        {
+            return false;
+        }
+    }
+
     // ---- cookies ----
 
     public async Task SetCookiesAsync(IReadOnlyList<CookieState> cookies)

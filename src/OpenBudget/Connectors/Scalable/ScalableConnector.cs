@@ -37,10 +37,10 @@ public sealed partial class ScalableConnector : IBankConnector
         TypeName,
         "Scalable Capital",
         "Scalable Capital broker portfolios and their cash account: positions, bookings and mailbox documents. "
-        + "No credentials are stored: you sign in on Scalable's own page (shown in a browser window inside OpenBudget, 2FA included) "
-        + "whenever the session has expired. Needs the server's browser (Chromium).",
+        + "Username is your email address. OpenBudget signs in on Scalable's own page in the server's browser (Chromium) "
+        + "and you approve the sign-in in the Scalable app; the page is only shown when something needs your attention.",
         ctx => new ScalableConnector(ctx, options),
-        CredentialRequirement.None);
+        CredentialRequirement.UsernameAndSecret);
 
     public string ConnectorType => TypeName;
 
@@ -51,10 +51,19 @@ public sealed partial class ScalableConnector : IBankConnector
     // ---- login ----
 
     /// <summary>The page the user signs in on and what counts as signed in: Scalable's login redirects into the cockpit when done.</summary>
-    private WebLoginSpec WebLogin => new(
+    private WebLoginSpec WebLogin(ConnectorCredentials credentials) => new(
         new Uri(_options.BaseUri, "auth/login"),
         [_options.BaseUri.Host, "secure.scalable.capital"],
-        successUrlPrefix: new Uri(_options.BaseUri, "cockpit/"));
+        successUrlPrefix: new Uri(_options.BaseUri, "cockpit/"))
+    {
+        Autofill = new WebLoginAutofill(credentials.Username, credentials.Secret,
+            UsernameSelector, PasswordSelector, "button[type=submit]"),
+        WaitingMessage = "Bitte bestätigen Sie die Anmeldung in der Scalable-App. / Please approve the sign-in in the Scalable app.",
+    };
+
+    // Scalable's sign-in form (auth0): an e-mail field and a password field on one page.
+    internal const string UsernameSelector = "input#username, input[name=username], input[type=email]";
+    internal const string PasswordSelector = "input#password, input[name=password], input[type=password]";
 
     public async Task<ConnectorStep<ConnectorSession?>> LoginAsync(
         ConnectorCredentials credentials, ConnectorSession? storedSession, ChallengeAnswer? answer, CancellationToken ct)
@@ -72,7 +81,7 @@ public sealed partial class ScalableConnector : IBankConnector
                 var appHost = _options.BaseUri.Host;
                 _context.Http.RemoveCookies(c => c.Domain.TrimStart('.').Equals(appHost, StringComparison.OrdinalIgnoreCase));
                 return ConnectorStep.Ask<ConnectorSession?>(ConnectorChallenge.WebLogin(
-                    "Bitte melden Sie sich auf der Scalable-Seite an. / Please sign in on the Scalable page.", WebLogin, WebLoginReference));
+                    "Bitte melden Sie sich auf der Scalable-Seite an. / Please sign in on the Scalable page.", WebLogin(credentials), WebLoginReference));
             }
 
             // Back from the web login: the browser's cookies are in the jar now.

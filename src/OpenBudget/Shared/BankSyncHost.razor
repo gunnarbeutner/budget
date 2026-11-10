@@ -45,8 +45,21 @@
                         </div>
                         break;
                     case ChallengeKind.WebLogin:
-                        <p class="small text-body-secondary">@L["WebLoginHint"]</p>
-                        <RemoteBrowser SessionId="@(challenge.WebLoginSessionId ?? "")" />
+                        @if (challenge.WebLoginMode == OpenBudget.Browser.WebLoginMode.Interactive || showBrowser)
+                        {
+                            <p class="small text-body-secondary">@L["WebLoginHint"]</p>
+                            <RemoteBrowser SessionId="@(challenge.WebLoginSessionId ?? "")" />
+                        }
+                        else
+                        {
+                            <div class="d-flex align-items-center gap-2 text-body-secondary mb-3" data-testid="web-login-status" data-mode="@challenge.WebLoginMode">
+                                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                @(challenge.WebLoginMode == OpenBudget.Browser.WebLoginMode.Waiting
+                                    ? (c.WebLoginSpec?.WaitingMessage ?? L["WaitingApproval"].Value)
+                                    : L["SigningIn"].Value)
+                            </div>
+                            <button type="button" class="btn btn-link btn-sm p-0" data-testid="web-login-show" @onclick="() => showBrowser = true">@L["ShowBrowser"]</button>
+                        }
                         break;
                     case ChallengeKind.Approval:
                         <div class="d-flex align-items-center gap-2 text-body-secondary">
@@ -90,6 +103,7 @@
     private Dictionary<int, string> names = new();
     private BankSyncStatus? challenge;
     private Guid shownChallengeId;
+    private bool showBrowser;
     private string answerText = "";
     private string? selectedOption;
     private string? error;
@@ -142,6 +156,7 @@
         if (open?.ChallengeId != shownChallengeId)
         {
             shownChallengeId = open?.ChallengeId ?? Guid.Empty;
+            showBrowser = false;
             answerText = "";
             selectedOption = open?.Challenge?.Options.FirstOrDefault()?.Id;
             error = null;

@@ -48,4 +48,12 @@ public interface IBrowserSession : IAsyncDisposable
     Task GoBackAsync();
 
     Task ReloadAsync();
+
+    /// <summary>Waits up to <paramref name="timeout"/> for a visible element, then replaces its text by typing <paramref name="value"/>. False when none appeared.</summary>
+    Task<bool> FillAsync(string selector, string value, TimeSpan timeout);
+
+    /// <summary>Clicks the first visible element; false when there is none.</summary>
+    Task<bool> ClickAsync(string selector);
+
+    Task<bool> IsVisibleAsync(string selector);
 }

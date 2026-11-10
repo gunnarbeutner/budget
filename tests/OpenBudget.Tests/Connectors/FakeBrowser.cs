@@ -37,6 +37,52 @@ internal sealed class FakeBrowserSession : IBrowserSession
 
     public Task ReloadAsync() => Task.CompletedTask;
 
+    /// <summary>Selectors the fake page shows (a sign-in form, say); empty: no form.</summary>
+    public HashSet<string> Visible { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>What was typed into which field.</summary>
+    public Dictionary<string, string> Filled { get; } = new(StringComparer.Ordinal);
+
+    public List<string> Clicked { get; } = [];
+
+    /// <summary>Runs when something is clicked (the fake bank reacts to the submit button).</summary>
+    public Func<FakeBrowserSession, string, Task>? OnClick { get; set; }
+
+    public async Task<bool> FillAsync(string selector, string value, TimeSpan timeout)
+    {
+        // like the real browser: wait for the field (the page's script may still be loading), at most a moment in tests
+        var until = DateTime.UtcNow + (timeout < TimeSpan.FromSeconds(2) ? timeout : TimeSpan.FromSeconds(2));
+        while (true)
+        {
+            lock (Visible)
+            {
+                if (Visible.Contains(selector))
+                {
+                    Filled[selector] = value;
+                    return true;
+                }
+            }
+            if (DateTime.UtcNow >= until) return false;
+            await Task.Delay(20);
+        }
+    }
+
+    public async Task<bool> ClickAsync(string selector)
+    {
+        lock (Visible)
+        {
+            if (!Visible.Contains(selector)) return false;
+            Clicked.Add(selector);
+        }
+        if (OnClick != null) await OnClick(this, selector);
+        return true;
+    }
+
+    public Task<bool> IsVisibleAsync(string selector)
+    {
+        lock (Visible) return Task.FromResult(Visible.Contains(selector));
+    }
+
     /// <summary>The cookies the framework put into the context before navigating.</summary>
     public List<CookieState> Seeded { get; } = [];
 

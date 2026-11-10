@@ -12,6 +12,25 @@ public sealed class WebLoginOptions
 
     /// <summary>Wait after the success condition was met, so cookies set by the landing page's scripts are included.</summary>
     public TimeSpan SettleDelay { get; set; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>How long autofill waits for the sign-in form to appear.</summary>
+    public TimeSpan FormTimeout { get; set; } = TimeSpan.FromSeconds(20);
+
+    /// <summary>When the sign-in form is still (or again) there this long after submitting, the user is shown the page (wrong password, CAPTCHA, ...).</summary>
+    public TimeSpan StuckAfter { get; set; } = TimeSpan.FromSeconds(8);
+}
+
+/// <summary>What the owner sees of a web login.</summary>
+public enum WebLoginMode
+{
+    /// <summary>The app is signing in by itself (page loading, form being filled): a status line, no page.</summary>
+    Starting,
+
+    /// <summary>The form was submitted and the bank waits (an app approval, say): the connector's waiting message, no page.</summary>
+    Waiting,
+
+    /// <summary>The user acts on the page: the remote browser is shown.</summary>
+    Interactive,
 }
 
 /// <summary>Outcome of a web login. On success <see cref="Cookies"/> holds every cookie of the connector's domains.</summary>
@@ -114,6 +133,21 @@ public sealed class WebLoginSession : IAsyncDisposable
 
     public DateTime ExpiresAt { get; }
 
+    /// <summary>What the owner should see now; <see cref="ModeChanged"/> reports changes.</summary>
+    public WebLoginMode Mode { get; private set; }
+
+    public event Action<WebLoginMode>? ModeChanged;
+
+    private void SetMode(WebLoginMode mode)
+    {
+        if (Mode == mode) return;
+        Mode = mode;
+        try { ModeChanged?.Invoke(mode); }
+        catch (Exception ex) { _logger.LogDebug(ex, "A web login mode listener failed."); }
+    }
+
+    private DateTime? _submittedAt;
+
     /// <summary>Completes (never throws) when the login succeeded, failed, timed out or was cancelled; the browser is gone by then.</summary>
     public Task<WebLoginResult> Completion => _result.Task;
 
@@ -129,6 +163,8 @@ public sealed class WebLoginSession : IAsyncDisposable
             await _browser.SetCookiesAsync(seed);
             _ready.TrySetResult(); // a viewer may attach now and watch the page load
             await _browser.NavigateAsync(_spec.StartUrl, ct);
+            if (_spec.Autofill is { Username.Length: > 0, Password.Length: > 0 } fill) await AutofillAsync(fill, ct);
+            else SetMode(WebLoginMode.Interactive);
             result = await WatchAsync(ct);
         }
         catch (OperationCanceledException)
@@ -150,12 +186,43 @@ public sealed class WebLoginSession : IAsyncDisposable
 
     private bool _userCancelled;
 
+    /// <summary>
+    /// Types the stored credentials into the bank's form and submits it. Anything unexpected (no form, no submit button)
+    /// shows the page to the user instead; a page that is already signed in (the stored session still works) needs nothing.
+    /// </summary>
+    private async Task AutofillAsync(WebLoginAutofill fill, CancellationToken ct)
+    {
+        if (!await _browser.FillAsync(fill.UsernameSelector, fill.Username, _options.FormTimeout))
+        {
+            if (_spec.UrlMatches(_browser.Url)) return; // signed in already: WatchAsync finishes
+            _logger.LogInformation("Web login: the sign-in form did not appear; showing the page.");
+            SetMode(WebLoginMode.Interactive);
+            return;
+        }
+        ct.ThrowIfCancellationRequested();
+        if (!await _browser.FillAsync(fill.PasswordSelector, fill.Password, TimeSpan.FromSeconds(5)) || !await _browser.ClickAsync(fill.SubmitSelector))
+        {
+            _logger.LogInformation("Web login: the sign-in form could not be completed; showing the page.");
+            SetMode(WebLoginMode.Interactive);
+            return;
+        }
+        _submittedAt = DateTime.UtcNow;
+        _logger.LogInformation("Web login: submitted the sign-in form; waiting for the bank.");
+        SetMode(WebLoginMode.Waiting);
+    }
+
     private async Task<WebLoginResult> WatchAsync(CancellationToken ct)
     {
         using var timer = new PeriodicTimer(_options.PollInterval);
         while (await timer.WaitForNextTickAsync(ct))
         {
             var url = _browser.Url;
+            if (Mode == WebLoginMode.Waiting && _submittedAt is { } at && DateTime.UtcNow - at > _options.StuckAfter
+                && _spec.Autofill is { } fill && !_spec.UrlMatches(url) && await _browser.IsVisibleAsync(fill.PasswordSelector))
+            {
+                _logger.LogInformation("Web login: the sign-in form is still shown after submitting; showing the page.");
+                SetMode(WebLoginMode.Interactive);
+            }
             if (!_spec.UrlMatches(url)) continue;
             IReadOnlyList<CookieState> cookies = _spec.SuccessWhen != null ? await _browser.GetCookiesAsync() : [];
             if (!_spec.IsSuccess(url, cookies)) continue;

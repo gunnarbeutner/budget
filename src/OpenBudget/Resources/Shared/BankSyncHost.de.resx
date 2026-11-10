@@ -88,4 +88,10 @@
   <data name="WebLoginHint" xml:space="preserve">
     <value>Melde dich unten auf der Seite der Bank an, einschließlich einer eventuell verlangten Bestätigung. Die Synchronisierung läuft von selbst weiter, sobald du angemeldet bist.</value>
   </data>
+  <data name="SigningIn" xml:space="preserve">
+    <value>Anmeldung läuft…</value>
+  </data>
+  <data name="ShowBrowser" xml:space="preserve">
+    <value>Seite der Bank anzeigen</value>
+  </data>
 </root>

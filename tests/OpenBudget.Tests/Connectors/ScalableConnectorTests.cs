@@ -33,15 +33,33 @@ public sealed class ScalableConnectorTests
         public BankLoginService Service => World.For(BankWorld.Alice);
     }
 
-    private static async Task<Rig> CreateAsync()
+    private static async Task<Rig> CreateAsync(bool form = false)
     {
         var bank = new FakeScalable();
         var logs = new CapturingLoggerFactory();
-        // The "user" signs in on Scalable's page: a session starts at Scalable and its cookie lands in the browser.
+        // Without a form the "user" signs in on Scalable's page by hand; with one, the page shows the sign-in form and
+        // submitting it (after the approval in the app) starts the session.
         var browser = new FakeBrowserHost
         {
             User = session =>
             {
+                if (form)
+                {
+                    lock (session.Visible)
+                    {
+                        session.Visible.Add(ScalableConnector.UsernameSelector);
+                        session.Visible.Add(ScalableConnector.PasswordSelector);
+                        session.Visible.Add("button[type=submit]");
+                    }
+                    session.OnClick = (s, _) =>
+                    {
+                        lock (s.Visible) s.Visible.Clear();
+                        s.SetCookie(bank.SignIn());
+                        s.Url = new Uri("https://de.scalable.capital/cockpit/");
+                        return Task.CompletedTask;
+                    };
+                    return Task.CompletedTask;
+                }
                 session.SetCookie(bank.SignIn());
                 session.Url = new Uri("https://de.scalable.capital/cockpit/");
                 return Task.CompletedTask;
@@ -54,7 +72,7 @@ public sealed class ScalableConnectorTests
             Loggers = logs,
             BrowserHost = browser,
         });
-        var view = await world.For(BankWorld.Alice).CreateLoginAsync(ScalableConnector.TypeName, "Scalable", "", "");
+        var view = await world.For(BankWorld.Alice).CreateLoginAsync(ScalableConnector.TypeName, "Scalable", "alice@example.org", "example-password");
         return new Rig { World = world, Bank = bank, Logs = logs, Browser = browser, LoginId = view.Id };
     }
 
@@ -173,6 +191,19 @@ public sealed class ScalableConnectorTests
     }
 
     [Fact]
+    public async Task The_sign_in_form_is_filled_and_submitted_without_the_user()
+    {
+        await using var rig = await CreateAsync(form: true);
+        var status = await SyncAsync(rig, new SyncRequest(rig.LoginId, false, false));
+        Assert.True(status.Succeeded, status.Error);
+        var session = Assert.Single(rig.Browser.Sessions);
+        Assert.Equal("alice@example.org", session.Filled[ScalableConnector.UsernameSelector]);
+        Assert.Equal("example-password", session.Filled[ScalableConnector.PasswordSelector]);
+        Assert.Equal(["button[type=submit]"], session.Clicked);
+        Assert.DoesNotContain("example-password", rig.Logs.All, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Nothing_secret_is_logged()
     {
         await using var rig = await CreateAsync();
@@ -273,7 +304,7 @@ public sealed class ScalableConnectorTests
         var registration = ScalableConnector.CreateRegistration(new ScalableOptions());
         Assert.Equal("scalable", registration.ConnectorType);
         Assert.Equal("Scalable Capital", registration.DisplayName);
-        Assert.Equal(CredentialRequirement.None, registration.Credentials);
+        Assert.Equal(CredentialRequirement.UsernameAndSecret, registration.Credentials);
     }
 
     [Fact]

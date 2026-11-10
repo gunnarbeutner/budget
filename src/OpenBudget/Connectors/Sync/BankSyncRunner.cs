@@ -18,7 +18,7 @@ public interface ISyncSink
     Task<ChallengeAnswer?> AskAsync(ConnectorChallenge challenge, CancellationToken ct);
 
     /// <summary>A web login is open: show the remote browser of <paramref name="sessionId"/> to the owner until <see cref="HideWebLogin"/>.</summary>
-    void ShowWebLogin(ConnectorChallenge challenge, string sessionId, DateTime expiresAt)
+    void ShowWebLogin(ConnectorChallenge challenge, string sessionId, DateTime expiresAt, WebLoginMode mode = WebLoginMode.Interactive)
     {
     }
 
@@ -236,7 +236,9 @@ public sealed class BankSyncRunner
         }
         await using (session)
         {
-            sink.ShowWebLogin(challenge, session.Id, session.ExpiresAt);
+            void OnMode(WebLoginMode mode) => sink.ShowWebLogin(challenge, session.Id, session.ExpiresAt, mode);
+            session.ModeChanged += OnMode;
+            sink.ShowWebLogin(challenge, session.Id, session.ExpiresAt, session.Mode);
             try
             {
                 var result = await session.Completion.WaitAsync(ct);
@@ -245,6 +247,7 @@ public sealed class BankSyncRunner
             }
             finally
             {
+                session.ModeChanged -= OnMode;
                 sink.HideWebLogin();
             }
         }

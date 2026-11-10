@@ -1,3 +1,4 @@
+using OpenBudget.Browser;
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Models;
 using OpenBudget.Services;
@@ -34,7 +35,8 @@ public sealed record BankSyncStatus(
     ConnectorChallenge? Challenge,
     Guid ChallengeId,
     DateTime? ChallengeExpiresAt,
-    string? WebLoginSessionId = null);
+    string? WebLoginSessionId = null,
+    WebLoginMode WebLoginMode = WebLoginMode.Interactive);
 
 public enum StartResult
 {
@@ -260,12 +262,14 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
 
         public void Report(string message) => Update(s => s with { Message = message });
 
-        public void ShowWebLogin(ConnectorChallenge challenge, string sessionId, DateTime expiresAt) =>
+        public void ShowWebLogin(ConnectorChallenge challenge, string sessionId, DateTime expiresAt, WebLoginMode mode = WebLoginMode.Interactive) =>
             Update(s => s with
             {
                 Phase = SyncPhase.WaitingForInput,
                 Challenge = challenge,
-                ChallengeId = Guid.NewGuid(),
+                // the same login changing its mode keeps its id (the dialog keeps its state)
+                ChallengeId = s.WebLoginSessionId == sessionId ? s.ChallengeId : Guid.NewGuid(),
+                WebLoginMode = mode,
                 ChallengeExpiresAt = expiresAt,
                 WebLoginSessionId = sessionId,
             });
