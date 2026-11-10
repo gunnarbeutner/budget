@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using OpenBudget.Connectors.Scalable;
@@ -10,10 +9,13 @@ namespace OpenBudget.Connectors.Openbank;
 /// Openbank (Santander) Germany, i.e. the credit cards managed on kunden.openbankpay.com (for instance the
 /// Amazon Visa), over the JSON API its web client uses.
 ///
-/// Sign-in: username and password, then the second factor Openbank asks for (an SMS code, or an approval in
-/// the app). That yields an access token and a refresh token; the refresh token is kept (encrypted) with the
-/// login so later syncs trade it for a new access token instead of signing in again, until Openbank ends
-/// the session. Nothing runs between syncs.
+/// Sign-in: Openbank's own sign-in page (its identity provider on login.openbankpay.com) in the app's remote
+/// browser, a web login. The app fills in the stored username and password; the second factor (SMS code or the
+/// approval in the Openbank app) happens on that page, which the user is shown when it needs them. Once the
+/// customer site is reached, its web client keeps the tokens in cookies (accessToken, refreshToken,
+/// sessionExpiresAt) that this connector reads. The refresh token is kept (encrypted) with the login so later
+/// syncs trade it for a new access token instead of signing in again, until Openbank ends the session. Nothing
+/// runs between syncs.
 ///
 /// Every card in the global position is a credit-card account (id = Openbank's card id). Pending
 /// (AUTHORIZED) card payments are reported unbooked; everything else (LIQUIDATED) is booked.
@@ -21,15 +23,20 @@ namespace OpenBudget.Connectors.Openbank;
 public sealed class OpenbankConnector : IBankConnector
 {
     public const string TypeName = "openbank";
-    internal const string CodeReference = "openbank-otp";
-    internal const string ApprovalReference = "openbank-approval";
+    internal const string WebLoginReference = "openbank-web-login";
 
-    internal const string LoginPath = "cb-api-auth/authentication/login";
-    internal const string OtpPath = "cb-api-auth/authentication/otp";
-    internal const string ChallengePath = "cb-api-auth/authentication/challenges/";
     internal const string RefreshPath = "cb-api-auth/authentication/refresh-token";
     internal const string GlobalPositionPath = "cb-api-global-position/v3/global-position";
     internal const string CardsPath = "cb-api-cards/v3/cards/";
+
+    // The sign-in form of Openbank's identity provider (Keycloak's default ids first, then generic fallbacks).
+    internal const string UsernameSelector = "input#username, input[name=username], input[type=email], input[name*=user i], input[autocomplete=username]";
+    internal const string PasswordSelector = "input#password, input[name=password], input[type=password]";
+    internal const string SubmitSelector = "#kc-login, button[type=submit], input[type=submit]";
+
+    internal const string AccessTokenCookie = "accessToken";
+    internal const string RefreshTokenCookie = "refreshToken";
+    internal const string SessionExpiresCookie = "sessionExpiresAt";
 
     private const string RefreshTokenKey = "refreshToken";
     private const string SessionExpiresKey = "sessionExpiresAt";
@@ -40,7 +47,6 @@ public sealed class OpenbankConnector : IBankConnector
     private readonly OpenbankApi _api;
     private readonly Dictionary<string, JsonElement> _cardDetails = new(StringComparer.Ordinal);
     private ConnectorSession _session = new();
-    private string? _challengeId;
 
     public OpenbankConnector(ConnectorContext context, OpenbankOptions options)
     {
@@ -52,7 +58,7 @@ public sealed class OpenbankConnector : IBankConnector
     public static ConnectorRegistration CreateRegistration(OpenbankOptions options) => new(
         TypeName,
         "Openbank",
-        "Openbank credit cards (kunden.openbankpay.com, e.g. Amazon Visa): balance, booked and pending card transactions. Sign in with your Openbank username and password; confirm with the SMS code or in the app.",
+        "Openbank credit cards (kunden.openbankpay.com, e.g. Amazon Visa): balance, booked and pending card transactions. Sign in with your Openbank username and password: the app fills them in on Openbank's own sign-in page, where you confirm with the SMS code or in the Openbank app.",
         ctx => new OpenbankConnector(ctx, options),
         CredentialRequirement.UsernameAndSecret,
         Statements: false);
@@ -62,6 +68,29 @@ public sealed class OpenbankConnector : IBankConnector
     private ILogger Log => _context.Logger;
 
     // ---- login ----
+
+    /// <summary>The card programme's area of the customer site (e.g. https://kunden.openbankpay.com/amazon/).</summary>
+    private Uri PortalBase => new(_options.SiteBase, _options.Portal.Trim('/') + "/");
+
+    private Uri LoginPage => new(PortalBase, "login");
+
+    /// <summary>
+    /// Starts at the portal's login page (which hands over to Openbank's identity provider) and counts as done once the
+    /// browser is back on a portal page other than the login and the web client has stored its access token.
+    /// </summary>
+    internal WebLoginSpec WebLogin(ConnectorCredentials credentials) => new(
+        LoginPage,
+        [_options.SiteBase.Host, _options.LoginHost],
+        successUrlPrefix: PortalBase,
+        successWhen: (url, cookies) =>
+            !url.AbsolutePath.StartsWith(LoginPage.AbsolutePath, StringComparison.OrdinalIgnoreCase)
+            && cookies.Any(c => c.Name == AccessTokenCookie && c.Value.Length > 0 && IsSiteCookie(c)))
+    {
+        Autofill = new WebLoginAutofill(credentials.Username, credentials.Secret, UsernameSelector, PasswordSelector, SubmitSelector),
+    };
+
+    private bool IsSiteCookie(CookieState c) =>
+        string.Equals(c.Domain.TrimStart('.'), _options.SiteBase.Host, StringComparison.OrdinalIgnoreCase);
 
     public async Task<ConnectorStep<ConnectorSession?>> LoginAsync(
         ConnectorCredentials credentials, ConnectorSession? storedSession, ChallengeAnswer? answer, CancellationToken ct)
@@ -74,13 +103,29 @@ public sealed class OpenbankConnector : IBankConnector
                 Log.LogInformation("Reusing the stored Openbank session.");
                 return ConnectorStep.Done<ConnectorSession?>(_session);
             }
-            return await StartLoginAsync(credentials, ct);
+            // Stale token cookies of the customer site would let the web login count as done before the user signs in.
+            _context.Http.RemoveCookies(IsSiteCookie);
+            return ConnectorStep.Ask<ConnectorSession?>(ConnectorChallenge.WebLogin(
+                "Sign in on the Openbank page.", WebLogin(credentials), WebLoginReference));
         }
 
-        if (_challengeId == null) return ConnectorStep.Fail<ConnectorSession?>("The Openbank sign-in was interrupted; please sync again.");
-        return answer.Challenge.Reference == ApprovalReference
-            ? await PollApprovalAsync(ct)
-            : await SubmitCodeAsync(answer.Value ?? "", ct);
+        if (answer.Challenge.Reference != WebLoginReference)
+            return ConnectorStep.Fail<ConnectorSession?>("The Openbank sign-in was interrupted; please sync again.");
+
+        // Back from the web login: the browser's cookies are in the jar now. This is not a check of the credentials,
+        // so a failure here is never reported as a rejected username or password.
+        var cookies = _context.Http.ExportCookies().Where(IsSiteCookie).ToList();
+        if (!TakeTokens(Cookie(cookies, AccessTokenCookie), Cookie(cookies, RefreshTokenCookie), Cookie(cookies, SessionExpiresCookie)))
+            return ConnectorStep.Fail<ConnectorSession?>("The Openbank sign-in did not complete: the customer site holds no access token.");
+        Log.LogInformation("Signed in to Openbank through the web login.");
+        return ConnectorStep.Done<ConnectorSession?>(_session);
+    }
+
+    /// <summary>A cookie's value as the web client meant it (it URL-encodes values), or null.</summary>
+    private static string? Cookie(List<CookieState> cookies, string name)
+    {
+        var value = cookies.LastOrDefault(c => c.Name == name)?.Value;
+        return string.IsNullOrEmpty(value) ? null : Uri.UnescapeDataString(value);
     }
 
     /// <summary>Trades the stored refresh token for a new access token; false when there is none or Openbank refuses it.</summary>
@@ -88,7 +133,7 @@ public sealed class OpenbankConnector : IBankConnector
     {
         if (!_session.Values.TryGetValue(RefreshTokenKey, out var refreshToken) || string.IsNullOrEmpty(refreshToken)) return false;
         var response = await _api.SendAsync(HttpMethod.Post, RefreshPath, new JsonObject { ["refreshToken"] = refreshToken }, ct, authorized: false);
-        if (response.Ok && TakeTokens(response.Body))
+        if (response.Ok && TakeTokens(response.Body.Str("accessToken"), response.Body.Str("refreshToken"), response.Body.Str("sessionExpiresAt")))
             return true;
         Log.LogInformation("The stored Openbank session is no longer accepted (HTTP {Status}); signing in again.", (int)response.Status);
         _session.Values.Remove(RefreshTokenKey);
@@ -97,75 +142,13 @@ public sealed class OpenbankConnector : IBankConnector
         return false;
     }
 
-    private async Task<ConnectorStep<ConnectorSession?>> StartLoginAsync(ConnectorCredentials credentials, CancellationToken ct)
+    /// <summary>Takes the tokens; false without an access token. Tokens are never logged.</summary>
+    private bool TakeTokens(string? access, string? refresh, string? expires)
     {
-        var response = await _api.SendAsync(HttpMethod.Post, LoginPath,
-            new JsonObject { ["username"] = credentials.Username, ["password"] = credentials.Secret }, ct, authorized: false);
-        if (response.Status is HttpStatusCode.Unauthorized or HttpStatusCode.BadRequest or HttpStatusCode.Forbidden)
-            return ConnectorStep.Fail<ConnectorSession?>("Openbank rejected the username or password.", credentialsRejected: true);
-        if (response.Status == HttpStatusCode.Locked)
-            return ConnectorStep.Fail<ConnectorSession?>("Openbank has locked the access; unlock it in the Openbank app or website first.", credentialsRejected: true);
-        if (!response.Ok)
-            return ConnectorStep.Fail<ConnectorSession?>($"Openbank's sign-in answered HTTP {(int)response.Status}.");
-        if (TakeTokens(response.Body)) return SignedIn();
-        return AskSecondFactor(response.Body);
-    }
-
-    /// <summary>The second factor Openbank asks for: a code (SMS) or an approval in the app.</summary>
-    private ConnectorStep<ConnectorSession?> AskSecondFactor(JsonElement? body)
-    {
-        _challengeId = body.Str("challengeId");
-        if (string.IsNullOrEmpty(_challengeId))
-            return ConnectorStep.Fail<ConnectorSession?>("Openbank's sign-in answered without a session or a confirmation step.");
-        var method = body.Str("method")?.ToUpperInvariant();
-        if (method is "PUSH" or "APP")
-            return ConnectorStep.Ask<ConnectorSession?>(ConnectorChallenge.Approval(
-                "Confirm the sign-in in the Openbank app.", _options.ApprovalPollInterval, ApprovalReference));
-        var length = body.Dec("otpLength") is { } l ? (int)l : (int?)null;
-        return ConnectorStep.Ask<ConnectorSession?>(ConnectorChallenge.Code(
-            "Enter the code Openbank sent you by SMS.", length, numeric: true, reference: CodeReference));
-    }
-
-    private async Task<ConnectorStep<ConnectorSession?>> SubmitCodeAsync(string code, CancellationToken ct)
-    {
-        var response = await _api.SendAsync(HttpMethod.Post, OtpPath,
-            new JsonObject { ["challengeId"] = _challengeId, ["otp"] = code.Trim() }, ct, authorized: false);
-        if (response.Ok && TakeTokens(response.Body)) return SignedIn();
-        if (response.Status is HttpStatusCode.Unauthorized or HttpStatusCode.BadRequest or HttpStatusCode.Forbidden)
-            return ConnectorStep.Fail<ConnectorSession?>("Openbank did not accept the code.");
-        return ConnectorStep.Fail<ConnectorSession?>($"Openbank's code check answered HTTP {(int)response.Status}.");
-    }
-
-    private async Task<ConnectorStep<ConnectorSession?>> PollApprovalAsync(CancellationToken ct)
-    {
-        var response = await _api.SendAsync(HttpMethod.Get, ChallengePath + Uri.EscapeDataString(_challengeId!), null, ct, authorized: false);
-        if (!response.Ok)
-            return ConnectorStep.Fail<ConnectorSession?>($"Openbank's confirmation check answered HTTP {(int)response.Status}.");
-        if (TakeTokens(response.Body)) return SignedIn();
-        return response.Body.Str("status")?.ToUpperInvariant() switch
-        {
-            "REJECTED" or "DENIED" or "CANCELLED" => ConnectorStep.Fail<ConnectorSession?>("The sign-in was rejected in the Openbank app."),
-            "EXPIRED" => ConnectorStep.Fail<ConnectorSession?>("The confirmation in the Openbank app expired."),
-            _ => ConnectorStep.Ask<ConnectorSession?>(ConnectorChallenge.Approval(
-                "Confirm the sign-in in the Openbank app.", _options.ApprovalPollInterval, ApprovalReference)),
-        };
-    }
-
-    private ConnectorStep<ConnectorSession?> SignedIn()
-    {
-        _challengeId = null;
-        Log.LogInformation("Signed in to Openbank.");
-        return ConnectorStep.Done<ConnectorSession?>(_session);
-    }
-
-    /// <summary>Takes accessToken/refreshToken from a token response; false when it carries none. Tokens are never logged.</summary>
-    private bool TakeTokens(JsonElement? body)
-    {
-        var access = body.Str("accessToken");
         if (string.IsNullOrEmpty(access)) return false;
         _api.AccessToken = access;
-        if (body.Str("refreshToken") is { Length: > 0 } refresh) _session.Values[RefreshTokenKey] = refresh;
-        if (body.Str("sessionExpiresAt") is { Length: > 0 } expires)
+        if (!string.IsNullOrEmpty(refresh)) _session.Values[RefreshTokenKey] = refresh;
+        if (!string.IsNullOrEmpty(expires))
         {
             _session.Values[SessionExpiresKey] = expires;
             Log.LogInformation("Openbank session valid until {ExpiresAt}.", expires);

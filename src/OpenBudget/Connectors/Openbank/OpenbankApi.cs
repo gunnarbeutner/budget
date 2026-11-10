@@ -18,8 +18,11 @@ public sealed class OpenbankOptions
     /// <summary>Page size of the card transactions request (the web client asks for 99).</summary>
     public int PageSize { get; init; } = 99;
 
-    /// <summary>How often the app asks again while the user confirms the sign-in in the Openbank app.</summary>
-    public TimeSpan ApprovalPollInterval { get; init; } = TimeSpan.FromSeconds(3);
+    /// <summary>The card programme's area on the customer site; its sign-in page is &lt;SiteBase&gt;/&lt;Portal&gt;/login.</summary>
+    public string Portal { get; init; } = "amazon";
+
+    /// <summary>Openbank's identity provider, which the sign-in page hands over to (its cookies travel with the web login).</summary>
+    public string LoginHost { get; init; } = "login.openbankpay.com";
 }
 
 /// <summary>The access token is no longer accepted (HTTP 401/403).</summary>

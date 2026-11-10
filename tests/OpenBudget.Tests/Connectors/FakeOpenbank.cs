@@ -9,14 +9,13 @@ namespace OpenBudget.Tests.Connectors;
 
 /// <summary>
 /// A made-up Openbank API (api.kunden.openbankpay.com): the data shapes seen in the web client's responses, with
-/// invented data (alice, Example Card, DE00... virtual IBAN). Sign-in: username/password, then an SMS code
-/// (123456) or an app approval that completes after <see cref="ApprovalPolls"/> polls.
+/// invented data (alice, Example Card, DE00... virtual IBAN). Sign-in happens in a browser (see <see cref="SignIn"/>):
+/// the customer site's web client then holds the tokens in cookies; the API trades refresh tokens for new tokens.
 /// </summary>
 internal sealed class FakeOpenbank : HttpMessageHandler
 {
     public const string Username = "alice";
     public const string Password = "example-password";
-    public const string Otp = "123456";
     public const string CardId = "000000000EXAMPLE0001_A";
     public const string AddonCardId = "000000000EXAMPLE0002_A";
     public const string Iban = "DE00000000000000000042";
@@ -25,17 +24,9 @@ internal sealed class FakeOpenbank : HttpMessageHandler
     private readonly Lock _lock = new();
     private readonly HashSet<string> _accessTokens = [];
     private readonly HashSet<string> _refreshTokens = [];
-    private readonly Dictionary<string, int> _challenges = new(StringComparer.Ordinal);
     private int _counter;
 
-    /// <summary>"SMS", "PUSH" or null (no second factor).</summary>
-    public string? SecondFactor { get; set; } = "SMS";
-
-    public int ApprovalPolls { get; set; } = 2;
-
-    public bool RejectApproval { get; set; }
-
-    public bool LockedAccount { get; set; }
+    public const string SiteHost = "kunden.openbankpay.com";
 
     /// <summary>When set, the global position answers with this status.</summary>
     public HttpStatusCode? GlobalPositionFailure { get; set; }
@@ -86,9 +77,6 @@ internal sealed class FakeOpenbank : HttpMessageHandler
         var input = body.Length > 0 ? JsonNode.Parse(body) as JsonObject : null;
         var path = uri.AbsolutePath;
 
-        if (path == "/cb-api-auth/authentication/login") return Login(input);
-        if (path == "/cb-api-auth/authentication/otp") return CheckOtp(input);
-        if (path.StartsWith("/cb-api-auth/authentication/challenges/", StringComparison.Ordinal)) return PollChallenge(path.Split('/')[^1]);
         if (path == "/cb-api-auth/authentication/refresh-token") return Refresh(input);
 
         var auth = request.Headers.Authorization;
@@ -107,37 +95,32 @@ internal sealed class FakeOpenbank : HttpMessageHandler
 
     // ---- auth ----
 
-    private HttpResponseMessage Login(JsonObject? input)
+    /// <summary>
+    /// What a completed sign-in in the browser leaves behind on the customer site: the web client's token cookies
+    /// (URL-encoded, as it writes them). <paramref name="withTokens"/> false: a site that never stored a token.
+    /// </summary>
+    public IReadOnlyList<CookieState> SignIn(bool withTokens = true)
     {
-        if (LockedAccount) return new HttpResponseMessage(HttpStatusCode.Locked);
-        if ((string?)input?["username"] != Username || (string?)input?["password"] != Password)
-            return Json(HttpStatusCode.Unauthorized, new JsonObject { ["error"] = "invalid_credentials" });
-        if (SecondFactor == null) return Json(HttpStatusCode.OK, NewTokens());
-        var id = $"ch-{++_counter}";
-        _challenges[id] = 0;
-        return Json(HttpStatusCode.OK, new JsonObject { ["challengeId"] = id, ["method"] = SecondFactor, ["otpLength"] = 6 });
+        lock (_lock)
+        {
+            var tokens = NewTokens();
+            var cookies = new List<CookieState>
+            {
+                Site("username", Username),
+                Site("isCustomer", "true"),
+            };
+            if (withTokens)
+            {
+                cookies.Add(Site("accessToken", Uri.EscapeDataString((string)tokens["accessToken"]!)));
+                cookies.Add(Site("refreshToken", Uri.EscapeDataString((string)tokens["refreshToken"]!)));
+                cookies.Add(Site("sessionExpiresAt", Uri.EscapeDataString((string)tokens["sessionExpiresAt"]!)));
+            }
+            return cookies;
+        }
     }
 
-    private HttpResponseMessage CheckOtp(JsonObject? input)
-    {
-        var id = (string?)input?["challengeId"];
-        if (id == null || !_challenges.ContainsKey(id) || (string?)input?["otp"] != Otp)
-            return Json(HttpStatusCode.Unauthorized, new JsonObject { ["error"] = "invalid_otp" });
-        _challenges.Remove(id);
-        return Json(HttpStatusCode.OK, NewTokens());
-    }
-
-    private HttpResponseMessage PollChallenge(string id)
-    {
-        if (!_challenges.TryGetValue(id, out var polls)) return new HttpResponseMessage(HttpStatusCode.NotFound);
-        if (RejectApproval) return Json(HttpStatusCode.OK, new JsonObject { ["status"] = "REJECTED" });
-        _challenges[id] = ++polls;
-        if (polls < ApprovalPolls) return Json(HttpStatusCode.OK, new JsonObject { ["status"] = "PENDING" });
-        _challenges.Remove(id);
-        var tokens = NewTokens();
-        tokens["status"] = "CONFIRMED";
-        return Json(HttpStatusCode.OK, tokens);
-    }
+    private static CookieState Site(string name, string value) =>
+        new(name, value, SiteHost, "/", DateTime.UtcNow.AddDays(1), true, false, "Lax");
 
     private HttpResponseMessage Refresh(JsonObject? input)
     {
@@ -149,8 +132,9 @@ internal sealed class FakeOpenbank : HttpMessageHandler
     private JsonObject NewTokens()
     {
         var n = ++_counter;
-        var access = $"{TokenMarker}-a{n}";
-        var refresh = $"{TokenMarker}-r{n}";
+        // Real tokens are base64-like and end in '=' (which the cookies carry URL-encoded).
+        var access = $"{TokenMarker}-a{n}$x=";
+        var refresh = $"{TokenMarker}-r{n}=";
         _accessTokens.Add(access);
         _refreshTokens.Add(refresh);
         return new JsonObject
