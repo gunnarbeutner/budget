@@ -160,6 +160,18 @@ public sealed class ScalableConnectorTests
     }
 
     [Fact]
+    public async Task A_session_whose_api_token_expired_opens_a_web_login_even_though_the_cockpit_page_still_renders()
+    {
+        await using var rig = await CreateAsync();
+        Assert.True((await SyncAsync(rig, new SyncRequest(rig.LoginId, false, false))).Succeeded);
+
+        rig.Bank.ExpireApiTokens();
+        var second = await SyncAsync(rig, new SyncRequest(rig.LoginId, false, false));
+        Assert.True(second.Succeeded, second.Error);
+        Assert.Equal(2, rig.Browser.Sessions.Count);
+    }
+
+    [Fact]
     public async Task Nothing_secret_is_logged()
     {
         await using var rig = await CreateAsync();

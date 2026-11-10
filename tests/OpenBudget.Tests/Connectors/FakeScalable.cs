@@ -107,6 +107,7 @@ internal sealed partial class FakeScalable : HttpMessageHandler
 
     private readonly Lock _lock = new();
     private readonly HashSet<string> _signedIn = [];
+    private readonly HashSet<string> _apiExpired = [];
     private int _sessionCounter;
 
     public List<string> Requests { get; } = [];
@@ -132,6 +133,15 @@ internal sealed partial class FakeScalable : HttpMessageHandler
         lock (_lock)
         {
             _signedIn.Clear();
+        }
+    }
+
+    /// <summary>Ends the API side of every session while the cockpit page still renders the user, as Scalable does.</summary>
+    public void ExpireApiTokens()
+    {
+        lock (_lock)
+        {
+            _apiExpired.UnionWith(_signedIn);
         }
     }
 
@@ -207,7 +217,7 @@ internal sealed partial class FakeScalable : HttpMessageHandler
         var vars = json["variables"]!.AsObject();
         Requests.Add($"graphql {op}");
 
-        if (session == null || !_signedIn.Contains(session))
+        if (session == null || !_signedIn.Contains(session) || _apiExpired.Contains(session))
             return Gql(new { errors = new[] { new { message = "Not authenticated", extensions = new { code = "UNAUTHENTICATED" } } }, data = (object?)null });
 
         return DataOperation(op, query, vars);
@@ -370,7 +380,7 @@ internal sealed partial class FakeScalable : HttpMessageHandler
 
     private HttpResponseMessage Download(Uri uri, string? session)
     {
-        if (session == null || !_signedIn.Contains(session)) return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+        if (session == null || !_signedIn.Contains(session) || _apiExpired.Contains(session)) return new HttpResponseMessage(HttpStatusCode.Unauthorized);
         var id = uri.Query.Split("id=")[1];
         Downloads[id] = Downloads.GetValueOrDefault(id) + 1;
         var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Encoding.ASCII.GetBytes($"%PDF-1.4\n%document {id}\n%%EOF\n")) };

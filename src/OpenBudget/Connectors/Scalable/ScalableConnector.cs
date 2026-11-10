@@ -92,6 +92,9 @@ public sealed partial class ScalableConnector : IBankConnector
         try
         {
             _personId = await FetchPersonIdAsync(ct);
+            // The cockpit page can still render the user after the API token has expired; ask the API itself.
+            await _graphQl.ExecuteAsync(ScalableGraphQl.CockpitPath, "fetchCashAccountDetails", ScalableQueries.FetchCashAccountDetails,
+                new System.Text.Json.Nodes.JsonObject { ["userId"] = _personId }, ct);
         }
         catch (ScalableSessionExpiredException)
         {
