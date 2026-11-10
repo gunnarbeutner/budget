@@ -4,6 +4,22 @@ A self-hosted budgeting and cashflow app. Feed it your accounts and
 transactions and you get per-project budgets, year-to-date variance reports,
 and forward-looking balance projections.
 
+<p>
+  <img src="docs/screenshots/transactions.png" alt="Transactions with a split booking expanded" width="100%">
+</p>
+<p>
+  <img src="docs/screenshots/budget.png" alt="Monthly budget with categories over plan" width="74%">
+  <img src="docs/screenshots/transactions-phone.png" alt="Transactions on a phone" width="24%">
+</p>
+
+More: [portfolio](docs/screenshots/portfolio.png), [documents](docs/screenshots/documents.png), and dark-mode
+variants in [`docs/screenshots/`](docs/screenshots/). All data shown is a fictional demo household. To regenerate
+the screenshots (seed: `tests/OpenBudget.E2E.Tests/Screenshots/DemoSeed.cs`; `oxipng` on `PATH` shrinks them):
+
+```sh
+dotnet test tests/OpenBudget.E2E.Tests --filter Category=Screenshots
+```
+
 ## Concepts
 
 - **User** — a login. Users are created only from the command line (see
