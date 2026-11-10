@@ -43,7 +43,19 @@ public sealed class FinTsResponse
     public IEnumerable<FinTsSegment> Of(string name) => Segments.Where(s => string.Equals(s.Name, name, StringComparison.Ordinal));
 
     /// <summary>First error text (codes and texts only, no customer data).</summary>
-    public string? FirstError() => Returns.FirstOrDefault(r => r.IsError) is { } e ? $"{e.Text} ({e.Code})" : null;
+    /// <remarks>
+    /// Banks often answer with a generic "message/dialog aborted" (9050, 9800) next to the code that names the cause, so
+    /// every distinct error is listed, the specific ones first.
+    /// </remarks>
+    public string? FirstError()
+    {
+        var errors = Returns.Where(r => r.IsError)
+            .DistinctBy(r => (r.Code, r.Text))
+            .OrderBy(r => r.Code is 9050 or 9800 ? 1 : 0)
+            .Select(r => $"{r.Text} ({r.Code})")
+            .ToList();
+        return errors.Count == 0 ? null : string.Join("; ", errors);
+    }
 
     public static FinTsResponse Parse(string message)
     {
