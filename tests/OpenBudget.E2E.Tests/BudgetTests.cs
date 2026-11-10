@@ -66,7 +66,8 @@ public sealed class BudgetTests : EndToEndTestBase
         await Page.GetByRole(AriaRole.Button, new() { Name = "Save", Exact = true }).ClickAsync();
 
         await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{E2ESeed.ProjectId}/budgets$"));
-        await Expect(Page.GetByText(new Regex(@"2026 \(edited\)"))).ToHaveCountAsync(1);
+        // The saved name may briefly appear twice (list entry plus the save notice); one must be visible.
+        await Expect(Page.GetByText(new Regex(@"2026 \(edited\)")).First).ToBeVisibleAsync();
     }
 
     [Test]
