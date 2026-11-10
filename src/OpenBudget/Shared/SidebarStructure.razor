@@ -1,0 +1,466 @@
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject StructureService Structure
+@inject CategoryColorService CategoryColorEdits
+@inject DocumentService Documents
+@inject ProjectService Projects
+@inject BankLoginService BankLogins
+@inject AccessScopeProvider AccessProvider
+@inject IStringLocalizer<SidebarStructure> L
+@inject IStringLocalizer<BrowseTreeRail> RailL
+@inject ILogger<SidebarStructure> Logger
+
+@* Structure editing from the sidebar's context menus (accounts, categories and their groups): the menu entries
+   (SidebarMenus), inline rename and drag and drop in the rail, and the dialogs behind the entries - colour palette,
+   Move to group…, account settings and the delete confirmations (an account only after typing its name). The page
+   wires the rail's NodeMenu / OnNodeMenuPick / RenamingNode / OnRename / CanDrag / OnDrop to this component and
+   refreshes its tree on OnChanged. *@
+
+@if (_color is { } colorNode)
+{
+    <div class="ctx-backdrop" data-ob-overlay @onclick="() => _color = null"></div>
+    <div class="dropdown-menu show color-popover" data-ob-overlay data-testid="color-popover" style="@PopoverStyle">
+        <div class="color-swatches">
+            @foreach (var (key, bg) in CategoryColors.Palette)
+            {
+                var current = string.Equals(CategoryColors.ToCss(_colorCurrent), key, StringComparison.OrdinalIgnoreCase);
+                <button type="button" class="color-swatch @(current ? "current" : "")" style="background:@bg;color:@key"
+                        title="@key" aria-label="@key" data-testid="color-swatch" @onclick="() => SetColorAsync(colorNode, key)">A</button>
+            }
+        </div>
+        <button type="button" class="dropdown-item small" @onclick="() => SetColorAsync(colorNode, null)">@L["Color_Reset"]</button>
+    </div>
+}
+
+<Modal Show="_moveNode != null" Title="@L["Move_Title", _moveNode?.Name ?? ""]" OnClose="() => _moveNode = null" SizeClass="modal-sm">
+    @if (_moveGroups == null)
+    {
+        <div class="text-body-secondary small">@L["Loading"]</div>
+    }
+    else
+    {
+        <div class="list-group list-group-flush move-group-list" data-testid="move-groups">
+            @if (_moveNode is { Kind: SidebarNodeKind.Account or SidebarNodeKind.AccountGroup })
+            {
+                <button type="button" class="list-group-item list-group-item-action" data-testid="move-group" @onclick="() => MoveToGroupAsync(null)">
+                    <i class="bi bi-list me-1" aria-hidden="true"></i>@L["Move_TopLevel"]
+                </button>
+            }
+            @foreach (var g in _moveGroups)
+            {
+                var id = g.Id;
+                var self = _moveNode is { Kind: SidebarNodeKind.CategoryGroup or SidebarNodeKind.AccountGroup } m && m.Id == id;
+                <button type="button" class="list-group-item list-group-item-action" disabled="@self" data-testid="move-group"
+                        style="@FormattableString.Invariant($"padding-left: {0.75 + g.Depth * 1.0:0.##}rem;")" @onclick="() => MoveToGroupAsync(id)">
+                    <i class="bi bi-folder me-1" aria-hidden="true"></i>@g.Name
+                </button>
+            }
+        </div>
+    }
+</Modal>
+
+<Modal Show="_deleteNode != null" Title="@DeleteTitle" OnClose="CloseDelete" SizeClass="@DeleteSize">
+    <ChildContent>
+    <div data-testid="structure-delete">
+        @switch (_deleteNode?.Kind)
+        {
+            case SidebarNodeKind.Category:
+                <p>@L["Delete_Category_Body"]</p>
+                break;
+            case SidebarNodeKind.CategoryGroup:
+                <p>@L["Delete_Group_Body"]</p>
+                break;
+            case SidebarNodeKind.AccountGroup:
+                <p>@L["Delete_AccountGroup_Body"]</p>
+                break;
+            case SidebarNodeKind.Account:
+                if (_deleteInfo == null)
+                {
+                    <div class="text-body-secondary small">@L["Loading"]</div>
+                }
+                else
+                {
+                    <p data-testid="delete-account-counts">@L["Delete_Account_Body", _deleteInfo.Bookings, _deleteInfo.Statements]</p>
+                    <label class="form-label" for="delete-account-name">@L["Delete_Account_Type", _deleteInfo.Name]</label>
+                    <input id="delete-account-name" class="form-control" autocomplete="off" data-testid="delete-account-name"
+                           value="@_typedName" @oninput="OnTypedName" />
+                }
+                break;
+        }
+        @if (_error != null)
+        {
+            <div class="alert alert-danger small mt-2 mb-0" role="alert">@_error</div>
+        }
+    </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="CloseDelete">@L["Cancel"]</button>
+        <button type="button" class="btn btn-danger" data-testid="structure-delete-confirm" disabled="@(!CanConfirmDelete)" @onclick="ConfirmDeleteAsync">@L["Delete"]</button>
+    </Footer>
+</Modal>
+
+<Modal Show="_settings != null" Title="@L["Settings_Title"]" OnClose="() => _settings = null" CloseOnBackdropClick="false">
+    <ChildContent>
+    @if (_settings is { } s)
+    {
+        <div data-testid="account-settings">
+            <div class="mb-3">
+                <label class="form-label" for="account-settings-name">@L["Settings_Name"]</label>
+                <input id="account-settings-name" class="form-control" data-testid="account-settings-name" value="@_settingsName"
+                       disabled="@(s.NameBlocked != null)" title="@s.NameBlocked" @oninput="OnSettingsName" />
+                @if (s.NameBlocked != null)
+                {
+                    <div class="form-text">@s.NameBlocked</div>
+                }
+            </div>
+            <div class="mb-3">
+                <div class="form-label mb-1">@L["Settings_Bank"]</div>
+                @if (s.Account.Institution is { } inst)
+                {
+                    <div data-testid="account-settings-bank"><i class="bi bi-bank me-1" aria-hidden="true"></i>@inst</div>
+                }
+                else
+                {
+                    <div class="text-body-secondary small" data-testid="account-settings-bank">@(s.Account.IsMoneyMoney ? L["Settings_Bank_MoneyMoney"] : L["Settings_Bank_None"])</div>
+                }
+                @if (!string.IsNullOrEmpty(s.Account.Iban))
+                {
+                    <div class="small text-body-secondary font-monospace">@s.Account.Iban</div>
+                }
+                <div class="small mt-1"><a href="/banklogins">@L["Settings_Bank_Manage"]</a></div>
+            </div>
+            <div>
+                <div class="form-label mb-1">@L["Settings_Statements"]</div>
+                @if (s.Statement is { Block: null, LoginAccountId: { } } st)
+                {
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="account-settings-statements" data-testid="account-settings-statements"
+                               checked="@_statementsOn" disabled="@(!st.CanChange)" @onchange="e => _statementsOn = e.Value is true" />
+                        <label class="form-check-label" for="account-settings-statements">@L["Settings_Statements_Download"]</label>
+                    </div>
+                    <select class="form-select form-select-sm mt-2" style="max-width: 14rem;" aria-label="@L["Settings_Statements_Interval"]"
+                            disabled="@(!st.CanChange || !_statementsOn)" value="@_interval" @onchange="OnInterval">
+                        @foreach (var i in Enum.GetValues<StatementsInterval>())
+                        {
+                            <option value="@i">@L["Interval_" + i]</option>
+                        }
+                    </select>
+                    @if (!st.CanChange)
+                    {
+                        <div class="form-text">@L["Settings_Statements_NotYours"]</div>
+                    }
+                }
+                else
+                {
+                    <div class="text-body-secondary small">@L["Settings_Statements_Unavailable"]</div>
+                }
+            </div>
+            @if (_error != null)
+            {
+                <div class="alert alert-danger small mt-2 mb-0" role="alert">@_error</div>
+            }
+        </div>
+    }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="() => _settings = null">@L["Cancel"]</button>
+        <button type="button" class="btn btn-primary" data-testid="account-settings-save" @onclick="SaveSettingsAsync">@L["Save"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public int ProjectId { get; set; }
+    // The project's source (its category tree), looked up once per project.
+    private int SourceId;
+    private int _sourceFor;
+    [Parameter] public BrowseTree? Tree { get; set; }
+    /// <summary>Where the rail's last context menu opened (for the colour popover).</summary>
+    [Parameter] public Func<(double X, double Y)>? MenuPosition { get; set; }
+    /// <summary>The structure changed: the page reloads its tree. The argument is a deleted row (to drop a selection of it) or null.</summary>
+    [Parameter] public EventCallback<SidebarNode?> OnChanged { get; set; }
+    /// <summary>Show a message (e.g. the reason an edit was refused).</summary>
+    [Parameter] public EventCallback<string> OnMessage { get; set; }
+
+    private BrowseTree? _loadedTree;
+    private StructureEditInfo? _info;
+    private bool _canEditProject;
+
+    /// <summary>The row being renamed inline.</summary>
+    public SidebarNode? RenamingNode { get; private set; }
+
+    private SidebarNode? _color;
+    private string? _colorCurrent;
+    private (double X, double Y) _colorAt;
+    private SidebarNode? _moveNode;
+    private List<StructureGroupOption>? _moveGroups;
+    private SidebarNode? _deleteNode;
+    private AccountDeleteInfo? _deleteInfo;
+    private string _typedName = "";
+    private string? _error;
+    private bool _busy;
+
+    private sealed record SettingsState(BrowseAccountNode Account, string? NameBlocked, StatementSetting? Statement);
+    private SettingsState? _settings;
+    private string _settingsName = "";
+    private bool _statementsOn;
+    private StatementsInterval _interval;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReferenceEquals(Tree, _loadedTree) || Tree == null) return;
+        _loadedTree = Tree;
+        try
+        {
+            _canEditProject = (await AccessProvider.GetAsync()).CanEdit(ProjectId);
+            if (_canEditProject && _sourceFor != ProjectId)
+            {
+                SourceId = (await Projects.GetProjectAsync(ProjectId))?.SourceId ?? 0;
+                _sourceFor = ProjectId;
+            }
+            _info = _canEditProject ? await Structure.GetEditInfoAsync(SourceId, Tree.Accounts.Select(a => a.Id).ToList()) : null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or AccessDeniedException)
+        {
+            Logger.LogWarning(ex, "Could not load the structure permissions of project {ProjectId}", ProjectId);
+            _info = null;
+        }
+    }
+
+    private StructureBlock? BlockOf(SidebarNode node)
+    {
+        if (_info == null) return StructureBlock.NotOwner;
+        return node.Kind is SidebarNodeKind.Category or SidebarNodeKind.CategoryGroup ? _info.CategoryBlock : _info.AccountBlock(node.Id);
+    }
+
+    /// <summary>The context-menu entries of a sidebar row (Rules… plus the structure entries).</summary>
+    public IReadOnlyList<ContextMenuItem> Menu(SidebarNode node) =>
+        SidebarMenus.For(node, new SidebarMenuContext(_canEditProject, BlockOf), RailL);
+
+    /// <summary>Whether the row may be dragged (editable structure).</summary>
+    public bool CanDrag(SidebarNode node) => _canEditProject && BlockOf(node) == null;
+
+    private static StructureItemKind KindOf(SidebarNode node) => node.Kind switch
+    {
+        SidebarNodeKind.Category => StructureItemKind.Category,
+        SidebarNodeKind.CategoryGroup => StructureItemKind.CategoryGroup,
+        SidebarNodeKind.Account => StructureItemKind.Account,
+        SidebarNodeKind.AccountGroup => StructureItemKind.AccountGroup,
+        _ => throw new ArgumentOutOfRangeException(nameof(node)),
+    };
+
+    /// <summary>Handles a structure entry of the menu; false for keys it does not know (e.g. Rules…).</summary>
+    public async Task<bool> PickAsync(SidebarNode node, string key)
+    {
+        _error = null;
+        switch (key)
+        {
+            case SidebarMenus.Rename:
+                RenamingNode = node;
+                await OnChanged.InvokeAsync(null);   // the page re-renders the rail with the field
+                return true;
+            case SidebarMenus.Color:
+                _colorAt = MenuPosition?.Invoke() ?? (200, 200);
+                _colorCurrent = FindCategory(Tree?.Categories, node.Id)?.Color;
+                _color = node;
+                return true;
+            case SidebarMenus.NewCategory:
+                await RunAsync(async () =>
+                {
+                    var name = L["New_Category"].Value;
+                    var id = node.Kind == SidebarNodeKind.Category
+                        ? await Structure.CreateCategoryAfterAsync(node.Id, name)
+                        : await Structure.CreateCategoryAsync(node.Id, name);
+                    RenamingNode = new SidebarNode(SidebarNodeKind.Category, id, name);
+                });
+                return true;
+            case SidebarMenus.NewGroup:
+                await RunAsync(async () =>
+                {
+                    var name = L["New_Group"].Value;
+                    if (node.Kind == SidebarNodeKind.CategoryGroup)
+                        RenamingNode = new SidebarNode(SidebarNodeKind.CategoryGroup, await Structure.CreateCategoryGroupAsync(node.Id, name), name);
+                    else
+                        RenamingNode = new SidebarNode(SidebarNodeKind.AccountGroup, await Structure.CreateAccountGroupAsync(node.Id, name), name);
+                });
+                return true;
+            case SidebarMenus.MoveTo:
+                _moveNode = node;
+                _moveGroups = null;
+                StateHasChanged();
+                var sourceId = node.Kind is SidebarNodeKind.Category or SidebarNodeKind.CategoryGroup ? SourceId : _info?.SourceOfAccount(node.Id) ?? SourceId;
+                _moveGroups = await Structure.ListGroupsAsync(node.Kind is SidebarNodeKind.Category or SidebarNodeKind.CategoryGroup, sourceId);
+                return true;
+            case SidebarMenus.MoveUp:
+            case SidebarMenus.MoveDown:
+                await RunAsync(() => Structure.MoveStepAsync(KindOf(node), node.Id, key == SidebarMenus.MoveUp ? -1 : 1));
+                return true;
+            case SidebarMenus.Settings:
+                await OpenSettingsAsync(node);
+                return true;
+            case SidebarMenus.Delete:
+                _deleteNode = node;
+                _deleteInfo = null;
+                _typedName = "";
+                if (node.Kind == SidebarNodeKind.Account)
+                {
+                    StateHasChanged();
+                    _deleteInfo = await Structure.GetAccountDeleteInfoAsync(node.Id);
+                }
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static BrowseCategoryNode? FindCategory(IEnumerable<BrowseCategoryNode>? nodes, long id)
+    {
+        foreach (var n in nodes ?? [])
+        {
+            if (n.ItemType == CategoryItemType.Category && n.Id == id) return n;
+            if (FindCategory(n.Children, id) is { } found) return found;
+        }
+        return null;
+    }
+
+    private string PopoverStyle =>
+        FormattableString.Invariant($"left: max(0.5rem, min({_colorAt.X:0}px, calc(100vw - 12rem))); top: max(0.5rem, min({_colorAt.Y:0}px, calc(100vh - 12rem)));");
+
+    /// <summary>Runs an edit, reports a refusal as a message and lets the page reload.</summary>
+    private async Task RunAsync(Func<Task> edit, SidebarNode? deleted = null)
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            await edit();
+            await OnChanged.InvokeAsync(deleted);
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException or ArgumentException or KeyNotFoundException)
+        {
+            Logger.LogInformation(ex, "Structure edit refused");
+            await OnMessage.InvokeAsync(L["Error_Refused"]);
+            await OnChanged.InvokeAsync(null);
+        }
+        finally { _busy = false; }
+    }
+
+    /// <summary>Inline rename finished (null = cancelled).</summary>
+    public async Task RenameAsync(string? name)
+    {
+        var node = RenamingNode;
+        RenamingNode = null;
+        if (node == null) return;
+        if (name == null || string.IsNullOrWhiteSpace(name) || name.Trim() == node.Name)
+        {
+            await OnChanged.InvokeAsync(null);
+            return;
+        }
+        await RunAsync(() => Structure.RenameAsync(KindOf(node), node.Id, name));
+    }
+
+    /// <summary>A row was dropped on another in the rail.</summary>
+    public Task DropAsync((SidebarNode Dragged, SidebarNode Target, bool Into) drop) =>
+        RunAsync(() => Structure.MoveToAsync(KindOf(drop.Dragged), drop.Dragged.Id, KindOf(drop.Target), drop.Target.Id, drop.Into));
+
+    private async Task SetColorAsync(SidebarNode node, string? color)
+    {
+        _color = null;
+        await RunAsync(async () =>
+        {
+            if (!await CategoryColorEdits.SetColorAsync(node.Id, color)) throw new InvalidOperationException("Color not editable.");
+        });
+    }
+
+    private async Task MoveToGroupAsync(long? groupId)
+    {
+        var node = _moveNode;
+        _moveNode = null;
+        if (node == null) return;
+        await RunAsync(() => Structure.MoveAsync(KindOf(node), node.Id, groupId, int.MaxValue));
+    }
+
+    private void OnTypedName(ChangeEventArgs e) => _typedName = e.Value?.ToString() ?? "";
+
+    private void OnSettingsName(ChangeEventArgs e) => _settingsName = e.Value?.ToString() ?? "";
+
+    private void OnInterval(ChangeEventArgs e) =>
+        _interval = Enum.TryParse<StatementsInterval>(e.Value?.ToString(), out var i) ? i : StatementsInterval.Monthly;
+
+    private string DeleteSize => _deleteNode?.Kind == SidebarNodeKind.Account ? "" : "modal-sm";
+
+    private string DeleteTitle => _deleteNode?.Kind switch
+    {
+        SidebarNodeKind.Account => L["Delete_Account_Title", _deleteNode.Name],
+        SidebarNodeKind.Category => L["Delete_Category_Title", _deleteNode.Name],
+        null => "",
+        _ => L["Delete_Group_Title", _deleteNode.Name],
+    };
+
+    private bool CanConfirmDelete => !_busy && _deleteNode != null
+        && (_deleteNode.Kind != SidebarNodeKind.Account || (_deleteInfo != null && string.Equals(_typedName, _deleteInfo.Name, StringComparison.Ordinal)));
+
+    private void CloseDelete()
+    {
+        _deleteNode = null;
+        _deleteInfo = null;
+        _typedName = "";
+        _error = null;
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        var node = _deleteNode;
+        if (node == null || !CanConfirmDelete) return;
+        var typed = _typedName;
+        CloseDelete();
+        await RunAsync(() => node.Kind switch
+        {
+            SidebarNodeKind.Category => Structure.DeleteCategoryAsync(node.Id),
+            SidebarNodeKind.CategoryGroup => Structure.DeleteCategoryGroupAsync(node.Id),
+            SidebarNodeKind.AccountGroup => Structure.DeleteAccountGroupAsync(node.Id),
+            SidebarNodeKind.Account => Structure.DeleteAccountAsync(node.Id, typed),
+            _ => Task.CompletedTask,
+        }, node);
+    }
+
+    private async Task OpenSettingsAsync(SidebarNode node)
+    {
+        var account = Tree?.Accounts.FirstOrDefault(a => a.Id == node.Id);
+        if (account == null) return;
+        StatementSetting? statement = null;
+        try { statement = (await Documents.GetSettingsAsync(ProjectId)).FirstOrDefault(s => s.AccountId == node.Id); }
+        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException) { statement = null; }
+        var block = BlockOf(node);
+        string? nameBlocked = block switch
+        {
+            StructureBlock.MoneyMoney => RailL["Ctx_Block_MoneyMoney"].Value,
+            StructureBlock.NotOwner => RailL["Ctx_Block_NotOwner"].Value,
+            _ => null,
+        };
+        _settingsName = account.Name;
+        _statementsOn = statement?.Enabled ?? false;
+        _interval = statement?.Interval ?? StatementsInterval.Monthly;
+        _error = null;
+        _settings = new SettingsState(account, nameBlocked, statement);
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        if (_settings is not { } s) return;
+        try
+        {
+            if (s.NameBlocked == null && !string.IsNullOrWhiteSpace(_settingsName) && _settingsName.Trim() != s.Account.Name)
+                await Structure.RenameAsync(StructureItemKind.Account, s.Account.Id, _settingsName);
+            if (s.Statement is { Block: null, LoginAccountId: { } loginAccount, CanChange: true } st
+                && (st.Enabled != _statementsOn || st.Interval != _interval))
+                await BankLogins.SetStatementsAsync(loginAccount, _statementsOn, _interval);
+            _settings = null;
+            await OnChanged.InvokeAsync(null);
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException or ArgumentException)
+        {
+            Logger.LogInformation(ex, "Account settings refused");
+            _error = L["Error_Refused"];
+        }
+    }
+}

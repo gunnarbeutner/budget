@@ -208,6 +208,22 @@ window.obFocus = function (el) {
     if (el && el.focus) el.focus();
 };
 
+// Focus a text field and select its content (inline rename in the sidebar).
+window.obFocusSelect = function (el) {
+    if (!el || !el.focus) return;
+    el.focus();
+    if (el.select) el.select();
+};
+
+// Sidebar drag and drop (rows marked [data-ob-drag]): Blazor tracks what is dragged where; Firefox only starts a
+// drag when the data transfer carries something.
+document.addEventListener("dragstart", function (e) {
+    var el = e.target && e.target.closest && e.target.closest("[data-ob-drag]");
+    if (!el || !e.dataTransfer) return;
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", el.getAttribute("title") || ""); } catch (err) { /* older browsers */ }
+});
+
 // Resizable Browse sidebar: drag the handle on its right edge (or focus it and use the arrow keys); double-click
 // resets. The width is a CSS variable on <html>, so Blazor re-renders never undo it, and is remembered per browser.
 (function () {

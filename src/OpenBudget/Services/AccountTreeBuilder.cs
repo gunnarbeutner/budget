@@ -3,7 +3,8 @@ using OpenBudget.Models;
 namespace OpenBudget.Services;
 
 /// <summary>An account group as the rail needs it (imported from MoneyMoney's account groups).</summary>
-public sealed record AccountGroupInfo(long Id, long? ParentId, string Name, long? Sort);
+/// <param name="KeepEmpty">Show the group even without visible accounts (it is empty in its source: just created, waiting to be filled).</param>
+public sealed record AccountGroupInfo(long Id, long? ParentId, string Name, long? Sort, bool KeepEmpty = false);
 
 /// <summary>A sum in one currency.</summary>
 public sealed record CurrencyAmount(string Currency, decimal Amount);
@@ -120,7 +121,7 @@ public static class AccountTreeBuilder
                 {
                     foreach (var a in own) { items.Add((a.Sort, a.Name, Leaf(a))); below.Add(a); }
                 }
-                if (items.Count == 0) return null;
+                if (items.Count == 0 && !g.KeepEmpty) return null;
                 var node = new AccountTreeNode { Key = GroupKey(g.Id), Name = g.Name, Sums = SumOf(below) };
                 node.Children.AddRange(Order(items));
                 return node;

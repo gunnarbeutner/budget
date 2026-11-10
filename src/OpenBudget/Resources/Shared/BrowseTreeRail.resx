@@ -73,4 +73,19 @@
     <value>Expand</value>
   </data>
   <data name="Ctx_Rules" xml:space="preserve"><value>Rules…</value></data>
+  <data name="Ctx_Rename" xml:space="preserve"><value>Rename</value></data>
+  <data name="Ctx_Color" xml:space="preserve"><value>Colour…</value></data>
+  <data name="Ctx_NewSubcategory" xml:space="preserve"><value>New category below</value></data>
+  <data name="Ctx_NewCategory" xml:space="preserve"><value>New category</value></data>
+  <data name="Ctx_NewGroup" xml:space="preserve"><value>New group</value></data>
+  <data name="Ctx_AccountSettings" xml:space="preserve"><value>Settings…</value></data>
+  <data name="Ctx_MoveTo" xml:space="preserve"><value>Move to group…</value></data>
+  <data name="Ctx_MoveUp" xml:space="preserve"><value>Move up</value></data>
+  <data name="Ctx_MoveDown" xml:space="preserve"><value>Move down</value></data>
+  <data name="Ctx_Delete" xml:space="preserve"><value>Delete…</value></data>
+  <data name="Ctx_DeleteAccount" xml:space="preserve"><value>Delete account…</value></data>
+  <data name="Ctx_Block_MoneyMoney" xml:space="preserve"><value>Comes from MoneyMoney – take over the structure under Sources to edit it here</value></data>
+  <data name="Ctx_Block_NotOwner" xml:space="preserve"><value>Only the owner of this data can change accounts and categories</value></data>
+  <data name="Ctx_Block_NotEmpty" xml:space="preserve"><value>Only empty groups can be deleted – move or delete what is inside first</value></data>
+  <data name="Tree_RenameLabel" xml:space="preserve"><value>New name</value></data>
 </root>

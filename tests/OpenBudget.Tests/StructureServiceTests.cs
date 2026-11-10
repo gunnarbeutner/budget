@@ -14,12 +14,11 @@ public sealed class StructureServiceTests
     private static async Task<TestDb> WorldAsync(bool takenOver = true)
     {
         var t = await AccessWorld.BuildAsync();
-        if (takenOver)
-        {
-            var source = await t.Db.ImportSources.SingleAsync(s => s.Id == AccessWorld.SourceAlice);
-            source.StructureTakenOverAt = DateTime.UtcNow;
-            await t.Db.SaveChangesAsync();
-        }
+        // MoneyMoney uploaded to the source; until the takeover it owns the structure.
+        var source = await t.Db.ImportSources.SingleAsync(s => s.Id == AccessWorld.SourceAlice);
+        source.LastUploadAt = DateTime.UtcNow;
+        if (takenOver) source.StructureTakenOverAt = DateTime.UtcNow;
+        await t.Db.SaveChangesAsync();
         return t;
     }
 
@@ -195,6 +194,37 @@ public sealed class StructureServiceTests
         await using var check = await t.System.CreateDbContextAsync();
         Assert.False(await check.CategoryGroups.AnyAsync(g => g.Id == sub));
         Assert.Equal(0L, (await check.Categories.SingleAsync(c => c.Id == market)).Sort);
+    }
+
+    [Fact]
+    public async Task A_source_moneymoney_never_uploaded_to_is_editable_right_away()
+    {
+        await using var t = await AccessWorld.BuildAsync();
+        Assert.Null(await For(t, AccessWorld.Alice).GetBlockAsync(AccessWorld.SourceAlice));
+        var info = await For(t, AccessWorld.Bob).GetEditInfoAsync(AccessWorld.SourceAlice, [AccessWorld.AccountWp, AccessWorld.AccountBob]);
+        Assert.Equal(StructureBlock.NotOwner, info.CategoryBlock);
+        Assert.Equal(StructureBlock.NotOwner, info.AccountBlock(AccessWorld.AccountWp));
+        Assert.Null(info.AccountBlock(AccessWorld.AccountBob));
+    }
+
+    [Fact]
+    public async Task Drag_and_drop_moves_before_a_row_or_into_a_group()
+    {
+        await using var t = await WorldAsync();
+        await AccountGroupsAsync(t);
+        var alice = For(t, AccessWorld.Alice);
+
+        // Property Account dropped on Giro Shared: right before it.
+        await alice.MoveToAsync(StructureItemKind.Account, AccessWorld.AccountProperty, StructureItemKind.Account, AccessWorld.AccountWp, into: false);
+        Assert.Equal((0, 3), await alice.PositionAsync(StructureItemKind.Account, AccessWorld.AccountProperty));
+        // ... and onto the Savings box group: to its end.
+        await alice.MoveToAsync(StructureItemKind.Account, AccessWorld.AccountProperty, StructureItemKind.AccountGroup, Id(11), into: true);
+        var accounts = await AccountsAsync(t);
+        Assert.Equal((Id(11), 1L), accounts.Where(a => a.Id == AccessWorld.AccountProperty).Select(a => (a.Group!.Value, a.Sort!.Value)).Single());
+        Assert.Equal(["Savings box", "Banks"], (await alice.ListGroupsAsync(false, AccessWorld.SourceAlice)).Select(g => g.Name).Reverse());
+
+        // A category dropped on an account is ignored.
+        await alice.MoveToAsync(StructureItemKind.Category, AccessWorld.SharedLeaf, StructureItemKind.Account, AccessWorld.AccountWp, into: false);
     }
 
     [Fact]

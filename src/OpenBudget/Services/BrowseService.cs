@@ -373,10 +373,18 @@ public class BrowseService
         var groupSources = accountNodes.Count == 0
             ? []
             : await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id)).Select(a => a.SourceId).Distinct().ToListAsync(ct);
-        var accountGroups = groupSources.Count == 0
-            ? []
-            : (await db.AccountGroups.AsNoTracking().Where(g => groupSources.Contains(g.SourceId)).ToListAsync(ct))
-                .Select(g => new AccountGroupInfo(g.Id, g.ParentGroupId, g.Name ?? "", g.Sort)).ToList();
+        var accountGroups = new List<AccountGroupInfo>();
+        if (groupSources.Count > 0)
+        {
+            var rows = await db.AccountGroups.AsNoTracking().Where(g => groupSources.Contains(g.SourceId)).ToListAsync(ct);
+            // Groups that are empty in their source (e.g. just created in the sidebar) still show, so they can be filled.
+            var filled = (await db.Accounts.AsNoTracking().Where(a => groupSources.Contains(a.SourceId) && a.GroupId != null).Select(a => a.GroupId!.Value).Distinct().ToListAsync(ct))
+                .Concat(rows.Where(g => g.ParentGroupId != null).Select(g => g.ParentGroupId!.Value)).ToHashSet();
+            // Only the owner sees every account of a source, so only for them "no accounts visible" means empty.
+            var scope = _access == null ? null : await _access.GetAsync();
+            accountGroups.AddRange(rows.Select(g => new AccountGroupInfo(g.Id, g.ParentGroupId, g.Name ?? "", g.Sort,
+                !filled.Contains(g.Id) && (scope == null || scope.OwnsSource(g.SourceId)))));
+        }
 
         var uncategorizedCount = await db.Transactions
             .Where(t => t.SourceId == project.SourceId)

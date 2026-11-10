@@ -1199,6 +1199,15 @@ button.cat-pill:hover { filter: brightness(0.96); }
     font-size: 11px; font-weight: 700;
 }
 .color-swatch.current { box-shadow: 0 0 0 2px var(--ob-accent); }
+.color-popover { position: fixed; z-index: 1060; padding: 0.3rem; }
+
+/* Sidebar structure editing: inline rename and drop targets of drag and drop. */
+.browse-tree-rename { height: 1.6rem; padding: 0 0.35rem; font-size: 0.88rem; min-width: 0; flex: 1 1 auto; }
+.browse-tree-row.drop-before { box-shadow: inset 0 2px 0 var(--ob-accent); }
+.browse-tree-row.drop-into { background: rgba(var(--bs-primary-rgb), 0.15); outline: 1px dashed var(--ob-accent); outline-offset: -1px; }
+.browse-tree-row[draggable="true"] { cursor: grab; }
+.move-group-list { max-height: 22rem; overflow-y: auto; }
+.move-group-list .list-group-item { border-radius: 0.3rem; }
 
 /* ---- Phones / tablets ---- */
 @media (max-width: 767.98px) {

@@ -16,6 +16,20 @@ public enum StructureBlock
 /// <summary>What deleting an account takes with it, for the confirmation dialog.</summary>
 public sealed record AccountDeleteInfo(long AccountId, string Name, int Bookings, int Statements);
 
+/// <summary>A group in "Move to group…" (indented by <paramref name="Depth"/>).</summary>
+public sealed record StructureGroupOption(long Id, string Name, int Depth);
+
+/// <summary>Edit permissions for a project's sidebar: the category tree's source and each account's source.</summary>
+public sealed record StructureEditInfo(int ProjectSourceId, IReadOnlyDictionary<long, int> AccountSources, IReadOnlyDictionary<int, StructureBlock?> Blocks)
+{
+    public StructureBlock? CategoryBlock => Blocks.GetValueOrDefault(ProjectSourceId, StructureBlock.NotOwner);
+
+    public int? SourceOfAccount(long accountId) => AccountSources.TryGetValue(accountId, out var s) ? s : null;
+
+    public StructureBlock? AccountBlock(long accountId) =>
+        SourceOfAccount(accountId) is { } s ? Blocks.GetValueOrDefault(s, StructureBlock.NotOwner) : StructureBlock.NotOwner;
+}
+
 /// <summary>The kinds of rows in the two sidebar trees that can be moved.</summary>
 public enum StructureItemKind
 {
@@ -68,11 +82,48 @@ public sealed class StructureService
         return await BlockAsync(db, sourceId, ct);
     }
 
+    // A source MoneyMoney never uploaded to (e.g. a bank connector's) has an OpenBudget-owned structure from the start.
     private static async Task<StructureBlock?> BlockAsync(BudgetDbContext db, int sourceId, CancellationToken ct)
     {
         if (db.Scope is { } scope && !scope.OwnsSource(sourceId)) return StructureBlock.NotOwner;
-        var takenOver = await db.ImportSources.AnyAsync(s => s.Id == sourceId && s.StructureTakenOverAt != null, ct);
-        return takenOver ? null : StructureBlock.MoneyMoney;
+        var ours = await db.ImportSources.AnyAsync(s => s.Id == sourceId && (s.StructureTakenOverAt != null || s.LastUploadAt == null), ct);
+        return ours ? null : StructureBlock.MoneyMoney;
+    }
+
+    /// <summary>
+    /// What the sidebar of a project needs to build its menus: the block of the project's source (the category tree) and,
+    /// per account, its source and that source's block (accounts of a project may live in several sources).
+    /// </summary>
+    public async Task<StructureEditInfo> GetEditInfoAsync(int projectSourceId, IReadOnlyCollection<long> accountIds, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var sources = await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.SourceId, ct);
+        // Account groups too (ids are namespaced by source, so a group and an account sharing an id share the source).
+        var groupSources = sources.Values.Distinct().ToList();
+        foreach (var g in await db.AccountGroups.AsNoTracking().Where(g => groupSources.Contains(g.SourceId)).Select(g => new { g.Id, g.SourceId }).ToListAsync(ct))
+            sources.TryAdd(g.Id, g.SourceId);
+        var blocks = new Dictionary<int, StructureBlock?> { [projectSourceId] = await BlockAsync(db, projectSourceId, ct) };
+        foreach (var s in sources.Values.Distinct().Where(s => !blocks.ContainsKey(s)))
+            blocks[s] = await BlockAsync(db, s, ct);
+        return new StructureEditInfo(projectSourceId, sources, blocks);
+    }
+
+    /// <summary>The groups of a tree in a source, depth first in display order, for "Move to group…".</summary>
+    public async Task<List<StructureGroupOption>> ListGroupsAsync(bool categories, int sourceId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var result = new List<StructureGroupOption>();
+        async Task WalkAsync(long? parent, int depth)
+        {
+            var siblings = categories ? await CategorySiblingsAsync(db, sourceId, parent, ct) : await AccountSiblingsAsync(db, sourceId, parent, ct);
+            foreach (var g in siblings.Where(s => s.Kind is StructureItemKind.CategoryGroup or StructureItemKind.AccountGroup))
+            {
+                result.Add(new StructureGroupOption(g.Id, g.Name, depth));
+                await WalkAsync(g.Id, depth + 1);
+            }
+        }
+        await WalkAsync(categories ? await CategoryRootAsync(db, sourceId, ct) : null, 0);
+        return result;
     }
 
     private static async Task RequireEditableAsync(BudgetDbContext db, int sourceId, CancellationToken ct)
@@ -140,6 +191,15 @@ public sealed class StructureService
         return id;
     }
 
+    /// <summary>A new category in the same group as <paramref name="siblingId"/>, right below it.</summary>
+    public async Task<long> CreateCategoryAfterAsync(long siblingId, string name, CancellationToken ct = default)
+    {
+        long? group;
+        await using (var db = await _dbFactory.CreateDbContextAsync(ct))
+            group = await db.Categories.Where(c => c.Id == siblingId).Select(c => c.GroupId).FirstOrDefaultAsync(ct);
+        return group is { } g ? await CreateCategoryAsync(g, name, siblingId, ct) : throw NotFound();
+    }
+
     /// <summary>A new category group under <paramref name="parentGroupId"/> (a group of the same source), at the end.</summary>
     public async Task<long> CreateCategoryGroupAsync(long parentGroupId, string name, CancellationToken ct = default)
     {
@@ -203,6 +263,31 @@ public sealed class StructureService
         Changed(sourceId);
     }
 
+    /// <summary>
+    /// Drag and drop: moves an item right before <paramref name="targetId"/> (an item of the same tree, under the target's
+    /// parent), or with <paramref name="into"/> to the end of the target group.
+    /// </summary>
+    public async Task MoveToAsync(StructureItemKind kind, long id, StructureItemKind targetKind, long targetId, bool into, CancellationToken ct = default)
+    {
+        if (IsCategoryTree(kind) != IsCategoryTree(targetKind) || (kind == targetKind && id == targetId)) return;
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        int sourceId;
+        if (into)
+        {
+            sourceId = await MoveCoreAsync(db, kind, id, targetId, int.MaxValue, ct);
+        }
+        else
+        {
+            var (targetSource, parent) = await LocateAsync(db, targetKind, targetId, ct);
+            var siblings = await SiblingsAsync(db, targetKind, targetSource, parent, ct);
+            siblings.RemoveAll(s => s.Kind == kind && s.Id == id);
+            var index = siblings.FindIndex(s => s.Kind == targetKind && s.Id == targetId);
+            sourceId = await MoveCoreAsync(db, kind, id, parent, index, ct);
+        }
+        await db.SaveChangesAsync(ct);
+        Changed(sourceId);
+    }
+
     /// <summary>Moves an item one place up (<paramref name="delta"/> = -1) or down (+1) among its siblings; false at the edge.</summary>
     public async Task<bool> MoveStepAsync(StructureItemKind kind, long id, int delta, CancellationToken ct = default)
     {
@@ -238,10 +323,13 @@ public sealed class StructureService
         if (IsCategoryTree(kind))
         {
             parentGroupId ??= await CategoryRootAsync(db, sourceId, ct);
-            var target = await db.CategoryGroups.FirstOrDefaultAsync(g => g.Id == parentGroupId, ct);
-            if (target == null || target.SourceId != sourceId) throw new ArgumentException("Unknown group.", nameof(parentGroupId));
-            if (kind == StructureItemKind.CategoryGroup && await IsSelfOrBelowAsync(db.CategoryGroups.Where(g => g.SourceId == sourceId).Select(g => new { g.Id, g.ParentGroupId }).ToDictionaryAsync(g => g.Id, g => g.ParentGroupId, ct), id, target.Id))
-                throw new ArgumentException("A group cannot move into itself.", nameof(parentGroupId));
+            if (parentGroupId is { } cp)
+            {
+                var target = await db.CategoryGroups.FirstOrDefaultAsync(g => g.Id == cp, ct);
+                if (target == null || target.SourceId != sourceId) throw new ArgumentException("Unknown group.", nameof(parentGroupId));
+                if (kind == StructureItemKind.CategoryGroup && await IsSelfOrBelowAsync(db.CategoryGroups.Where(g => g.SourceId == sourceId).Select(g => new { g.Id, g.ParentGroupId }).ToDictionaryAsync(g => g.Id, g => g.ParentGroupId, ct), id, cp))
+                    throw new ArgumentException("A group cannot move into itself.", nameof(parentGroupId));
+            }
         }
         else if (parentGroupId is { } pg)
         {

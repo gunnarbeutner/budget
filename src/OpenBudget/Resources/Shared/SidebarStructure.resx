@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+    <data name="Color_Reset" xml:space="preserve"><value>Automatic colour</value></data>
+  <data name="Move_Title" xml:space="preserve"><value>Move “{0}”</value></data>
+  <data name="Move_TopLevel" xml:space="preserve"><value>Top level</value></data>
+  <data name="Loading" xml:space="preserve"><value>Loading…</value></data>
+  <data name="Delete_Category_Title" xml:space="preserve"><value>Delete category “{0}”?</value></data>
+  <data name="Delete_Group_Title" xml:space="preserve"><value>Delete group “{0}”?</value></data>
+  <data name="Delete_Account_Title" xml:space="preserve"><value>Delete account “{0}”?</value></data>
+  <data name="Delete_Category_Body" xml:space="preserve"><value>Its bookings become uncategorized. Rules that assign this category, and its budget amounts, are deleted.</value></data>
+  <data name="Delete_Group_Body" xml:space="preserve"><value>The group is empty and will be removed.</value></data>
+  <data name="Delete_AccountGroup_Body" xml:space="preserve"><value>Its accounts and sub-groups move up one level, to where the group was.</value></data>
+  <data name="Delete_Account_Body" xml:space="preserve"><value>This permanently deletes the account with its {0} bookings and {1} statements. This cannot be undone.</value></data>
+  <data name="Delete_Account_Type" xml:space="preserve"><value>Type “{0}” to confirm</value></data>
+  <data name="Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Save" xml:space="preserve"><value>Save</value></data>
+  <data name="Settings_Title" xml:space="preserve"><value>Account settings</value></data>
+  <data name="Settings_Name" xml:space="preserve"><value>Name</value></data>
+  <data name="Settings_Bank" xml:space="preserve"><value>Bank login</value></data>
+  <data name="Settings_Bank_MoneyMoney" xml:space="preserve"><value>Refreshed by MoneyMoney</value></data>
+  <data name="Settings_Bank_None" xml:space="preserve"><value>Not linked to a bank login</value></data>
+  <data name="Settings_Bank_Manage" xml:space="preserve"><value>Manage bank logins</value></data>
+  <data name="Settings_Statements" xml:space="preserve"><value>Statements</value></data>
+  <data name="Settings_Statements_Download" xml:space="preserve"><value>Download statements</value></data>
+  <data name="Settings_Statements_Interval" xml:space="preserve"><value>How often</value></data>
+  <data name="Settings_Statements_NotYours" xml:space="preserve"><value>Only the bank login's owner can change this.</value></data>
+  <data name="Settings_Statements_Unavailable" xml:space="preserve"><value>Statement download needs a bank login that offers statements.</value></data>
+  <data name="Interval_Monthly" xml:space="preserve"><value>Monthly</value></data>
+  <data name="Interval_Weekly" xml:space="preserve"><value>Weekly</value></data>
+  <data name="Interval_Daily" xml:space="preserve"><value>Daily</value></data>
+  <data name="Interval_ManualOnly" xml:space="preserve"><value>Only manually</value></data>
+  <data name="New_Category" xml:space="preserve"><value>New category</value></data>
+  <data name="New_Group" xml:space="preserve"><value>New group</value></data>
+  <data name="Error_Refused" xml:space="preserve"><value>That change is not possible.</value></data>
+</root>

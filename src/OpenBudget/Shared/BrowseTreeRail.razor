@@ -110,6 +110,85 @@
     [Parameter] public Func<SidebarNode, IReadOnlyList<ContextMenuItem>>? NodeMenu { get; set; }
     /// <summary>A context-menu item was picked: the row and the item's key.</summary>
     [Parameter] public EventCallback<(SidebarNode Node, string Key)> OnNodeMenuPick { get; set; }
+    /// <summary>The row being renamed inline (an input replaces its label), or null.</summary>
+    [Parameter] public SidebarNode? RenamingNode { get; set; }
+    /// <summary>Inline rename finished: the new name (Enter / leaving the field) or null (Esc).</summary>
+    [Parameter] public EventCallback<string?> OnRename { get; set; }
+    /// <summary>Whether a row can be dragged onto another (structure editing); null = no drag and drop.</summary>
+    [Parameter] public Func<SidebarNode, bool>? CanDrag { get; set; }
+    /// <summary>A row was dropped on another: before the target row, or (<c>Into</c>) into the target group.</summary>
+    [Parameter] public EventCallback<(SidebarNode Dragged, SidebarNode Target, bool Into)> OnDrop { get; set; }
+
+    /// <summary>Where the last context menu opened (viewport px), so a follow-up popover can appear there.</summary>
+    public (double X, double Y) MenuPosition => (menuX, menuY);
+
+    private SidebarNode? dragNode;
+    private SidebarNode? dropTarget;
+    private ElementReference renameInput;
+    private SidebarNode? focusedRename;
+    private string? renameValue;
+
+    private bool Draggable(SidebarNode? node) => node != null && CanDrag != null && RenamingNode == null && CanDrag(node);
+
+    private static bool IsGroup(SidebarNode n) => n.Kind is SidebarNodeKind.CategoryGroup or SidebarNodeKind.AccountGroup;
+
+    private static bool SameTree(SidebarNode a, SidebarNode b) =>
+        (a.Kind is SidebarNodeKind.Category or SidebarNodeKind.CategoryGroup) == (b.Kind is SidebarNodeKind.Category or SidebarNodeKind.CategoryGroup);
+
+    private void DragStart(SidebarNode node) => (dragNode, dropTarget) = (node, null);
+
+    private void DragEnter(SidebarNode? target)
+    {
+        if (dragNode != null && target != null && SameTree(dragNode, target) && dragNode != target) dropTarget = target;
+    }
+
+    private void DragEnd() => (dragNode, dropTarget) = (null, null);
+
+    // Dropped on a group: into it (at the end); on any other row: right before it.
+    private async Task DropOn(SidebarNode? target)
+    {
+        var dragged = dragNode;
+        DragEnd();
+        if (dragged == null || target == null || dragged == target || !SameTree(dragged, target)) return;
+        await OnDrop.InvokeAsync((dragged, target, IsGroup(target)));
+    }
+
+    private string DropClass(SidebarNode? node) =>
+        node != null && dropTarget == node ? (IsGroup(node) ? " drop-into" : " drop-before") : "";
+
+    private bool IsRenaming(SidebarNode? node) =>
+        node != null && RenamingNode != null && RenamingNode.Kind == node.Kind && RenamingNode.Id == node.Id;
+
+    private async Task RenameCommitAsync()
+    {
+        if (RenamingNode == null) return;
+        await OnRename.InvokeAsync(renameValue ?? RenamingNode.Name);
+    }
+
+    private async Task OnRenameKeyAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await RenameCommitAsync();
+        else if (e.Key == "Escape") await OnRename.InvokeAsync(null);
+    }
+
+    private RenderFragment RenameField(SidebarNode node) => __builder =>
+    {
+        <input class="form-control form-control-sm browse-tree-rename" value="@node.Name" data-testid="tree-rename"
+               aria-label="@L["Tree_RenameLabel"]" @ref="renameInput"
+               @oninput="e => renameValue = e.Value?.ToString()"
+               @onkeydown="OnRenameKeyAsync" @onkeydown:stopPropagation="true"
+               @onclick:stopPropagation="true" @onblur="RenameCommitAsync" />
+    };
+
+    // Alt+Arrow Up / Down move the focused row (the keyboard alternative to drag and drop).
+    private async Task<bool> MoveKeyAsync(SidebarNode? node, KeyboardEventArgs e)
+    {
+        if (node == null || !e.AltKey || e.Key is not ("ArrowUp" or "ArrowDown")) return false;
+        var key = e.Key == "ArrowUp" ? SidebarMenus.MoveUp : SidebarMenus.MoveDown;
+        if (!ItemsFor(node).Any(i => i.Key == key && !i.Disabled)) return false;
+        await OnNodeMenuPick.InvokeAsync((node, key));
+        return true;
+    }
 
     private SidebarNode? menuNode;
     private IReadOnlyList<ContextMenuItem> menuItems = [];
@@ -117,7 +196,7 @@
     private double menuY;
 
     private static SidebarNode SidebarNodeOf(BrowseCategoryNode n) =>
-        new(n.ItemType == CategoryItemType.Category ? SidebarNodeKind.Category : SidebarNodeKind.CategoryGroup, n.Id, n.Name);
+        new(n.ItemType == CategoryItemType.Category ? SidebarNodeKind.Category : SidebarNodeKind.CategoryGroup, n.Id, n.Name, n.Children.Count > 0);
 
     private IReadOnlyList<ContextMenuItem> ItemsFor(SidebarNode? node) =>
         node != null && NodeMenu != null ? NodeMenu(node) ?? [] : [];
@@ -165,6 +244,18 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (RenamingNode == null)
+        {
+            focusedRename = null;
+        }
+        else if (focusedRename != RenamingNode)
+        {
+            focusedRename = RenamingNode;
+            renameValue = null;
+            try { await JS.InvokeVoidAsync("obFocusSelect", renameInput); }
+            catch (JSDisconnectedException) { /* circuit gone */ }
+            catch (InvalidOperationException) { /* JS unreachable (prerender) */ }
+        }
         if (!firstRender) return;
         try
         {
@@ -196,7 +287,7 @@
     // Enter / Space select the group, ArrowRight / ArrowLeft unfold / fold it.
     private async Task OnGroupKeydown(KeyboardEventArgs e, long? groupId, string key, SidebarNode? node)
     {
-        if (await MenuKeyAsync(node, e)) return;
+        if (await MenuKeyAsync(node, e) || await MoveKeyAsync(node, e)) return;
         var open = !collapsed.Contains(key);
         switch (e.Key)
         {
@@ -217,13 +308,16 @@
             var accountId = a.Id;
             var accountNode = new SidebarNode(SidebarNodeKind.Account, a.Id, a.Name ?? "");
             bool isSel = SelectionKind == "account" && SelectionId == accountId;
-            <div class="browse-tree-row @(isSel ? "selected" : "") @(!a.IsAssigned ? "related" : "") @(a.Closed ? "closed" : "")" style="@pad"
+            <div class="browse-tree-row @(isSel ? "selected" : "") @(!a.IsAssigned ? "related" : "") @(a.Closed ? "closed" : "") @(DropClass(accountNode))" style="@pad"
                  role="treeitem" tabindex="0" aria-selected="@isSel.ToString().ToLower()" data-testid="tree-account"
                  data-ob-longpress="@LongPress(accountNode)"
+                 draggable="@(Draggable(accountNode) ? "true" : null)" data-ob-drag="@(Draggable(accountNode) ? "" : null)"
+                 @ondragstart="() => DragStart(accountNode)" @ondragenter="() => DragEnter(accountNode)" @ondragend="DragEnd"
+                 @ondragover:preventDefault="@(dragNode != null)" @ondrop="() => DropOn(accountNode)" @ondrop:preventDefault="true"
                  @onclick="() => OnSelectAccount.InvokeAsync(accountId)"
                  @oncontextmenu="e => OpenMenu(accountNode, e)" @oncontextmenu:preventDefault="@HasMenu(accountNode)"
                  @onkeydown="e => OnAccountKeydown(e, accountNode)">
-                <span class="browse-tree-name"><i class="bi @(a.IsPortfolio ? "bi-graph-up-arrow" : Account.IconForType(a.Type)) me-1" aria-hidden="true"></i><span class="browse-tree-label" title="@a.Name">@a.Name</span></span>
+                <span class="browse-tree-name"><i class="bi @(a.IsPortfolio ? "bi-graph-up-arrow" : Account.IconForType(a.Type)) me-1" aria-hidden="true"></i>@if (IsRenaming(accountNode)) { @RenameField(accountNode) } else { <span class="browse-tree-label" title="@a.Name">@a.Name</span> }</span>
                 @if (a.Balance.HasValue)
                 {
                     <span class="browse-tree-amount @(a.Balance < 0 ? "text-danger" : "text-body-secondary")">
@@ -241,9 +335,12 @@
             SidebarNode? groupNode = groupId is { } realGroup ? new SidebarNode(SidebarNodeKind.AccountGroup, realGroup, n.Name) : null;
             @* The name selects the group (all its accounts' bookings); the chevron only folds it. "Other accounts"
                is no real group, so there the whole row folds. *@
-            <div class="browse-tree-row browse-tree-group @(isSel ? "selected" : "")" style="@pad"
+            <div class="browse-tree-row browse-tree-group @(isSel ? "selected" : "") @(DropClass(groupNode))" style="@pad"
                  role="treeitem" tabindex="0" aria-expanded="@open.ToString().ToLower()" aria-selected="@isSel.ToString().ToLower()" data-testid="tree-group"
                  data-ob-longpress="@LongPress(groupNode)"
+                 draggable="@(Draggable(groupNode) ? "true" : null)" data-ob-drag="@(Draggable(groupNode) ? "" : null)"
+                 @ondragstart="() => { if (groupNode != null) DragStart(groupNode); }" @ondragenter="() => DragEnter(groupNode)" @ondragend="DragEnd"
+                 @ondragover:preventDefault="@(dragNode != null)" @ondrop="() => DropOn(groupNode)" @ondrop:preventDefault="true"
                  @onclick="() => OnGroupClickAsync(groupId, key)"
                  @oncontextmenu="e => OpenMenu(groupNode, e)" @oncontextmenu:preventDefault="@HasMenu(groupNode)"
                  @onkeydown="e => OnGroupKeydown(e, groupId, key, groupNode)">
@@ -252,7 +349,7 @@
                             aria-label="@(open ? L["Tree_Collapse"] : L["Tree_Expand"])"
                             @onclick="() => ToggleGroupAsync(key)" @onclick:stopPropagation="true">
                         <i class="bi @(open ? "bi-chevron-down" : "bi-chevron-right")" aria-hidden="true"></i>
-                    </button><span class="browse-tree-label" title="@n.Name">@n.Name</span>
+                    </button>@if (groupNode != null && IsRenaming(groupNode)) { @RenameField(groupNode) } else { <span class="browse-tree-label" title="@n.Name">@n.Name</span> }
                 </span>
                 <span class="browse-tree-amount fw-bold" data-testid="tree-group-sum">@SumsText(n)</span>
             </div>
@@ -273,7 +370,7 @@
 
     private async Task OnAccountKeydown(KeyboardEventArgs e, SidebarNode node)
     {
-        if (await MenuKeyAsync(node, e)) return;
+        if (await MenuKeyAsync(node, e) || await MoveKeyAsync(node, e)) return;
         if (e.Key == "Enter" || e.Key == " ") await OnSelectAccount.InvokeAsync(node.Id);
     }
 
@@ -289,7 +386,7 @@
 
     private async Task OnCategoryKeydown(KeyboardEventArgs e, BrowseCategoryNode node)
     {
-        if (await MenuKeyAsync(SidebarNodeOf(node), e)) return;
+        if (await MenuKeyAsync(SidebarNodeOf(node), e) || await MoveKeyAsync(SidebarNodeOf(node), e)) return;
         if (e.Key == "Enter" || e.Key == " ") await OnSelectCategory.InvokeAsync(node);
     }
 
@@ -304,7 +401,8 @@
                           && SelectionId == node.Id;
 
         builder.OpenElement(0, "div");
-        builder.AddAttribute(1, "class", "browse-tree-row" + (isSelected ? " selected" : "") + (node.IsTracked ? " tracked" : ""));
+        var sidebarNode = SidebarNodeOf(node);
+        builder.AddAttribute(1, "class", "browse-tree-row" + (isSelected ? " selected" : "") + (node.IsTracked ? " tracked" : "") + DropClass(sidebarNode));
         builder.AddAttribute(2, "role", "treeitem");
         builder.AddAttribute(3, "tabindex", "0");
         builder.AddAttribute(4, "aria-selected", isSelected ? "true" : "false");
@@ -314,7 +412,20 @@
         builder.AddAttribute(5, "style", FormattableString.Invariant($"padding-left: {0.5 + level * 1.0:0.##}rem;"));
         builder.AddAttribute(6, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, () => OnSelectCategory.InvokeAsync(node)));
         builder.AddAttribute(7, "onkeydown", EventCallback.Factory.Create<KeyboardEventArgs>(this, e => OnCategoryKeydown(e, node)));
-        var sidebarNode = SidebarNodeOf(node);
+        if (Draggable(sidebarNode))
+        {
+            builder.AddAttribute(70, "draggable", "true");
+            builder.AddAttribute(71, "data-ob-drag", "");
+            builder.AddAttribute(72, "ondragstart", EventCallback.Factory.Create<DragEventArgs>(this, () => DragStart(sidebarNode)));
+            builder.AddAttribute(73, "ondragenter", EventCallback.Factory.Create<DragEventArgs>(this, () => DragEnter(sidebarNode)));
+            builder.AddAttribute(74, "ondragend", EventCallback.Factory.Create<DragEventArgs>(this, DragEnd));
+        }
+        if (dragNode != null)
+        {
+            builder.AddEventPreventDefaultAttribute(75, "ondragover", true);
+            builder.AddAttribute(76, "ondrop", EventCallback.Factory.Create<DragEventArgs>(this, () => DropOn(sidebarNode)));
+            builder.AddEventPreventDefaultAttribute(77, "ondrop", true);
+        }
         if (HasMenu(sidebarNode))
         {
             builder.AddAttribute(8, "data-ob-longpress", "");
@@ -342,11 +453,18 @@
             builder.AddAttribute(16, "class", node.ItemType == CategoryItemType.Group ? "bi bi-folder me-1" : "bi bi-tag me-1");
             builder.CloseElement();
         }
-        builder.OpenElement(20, "span");
-        builder.AddAttribute(21, "class", "browse-tree-label");
-        builder.AddAttribute(22, "title", node.Name);
-        builder.AddContent(23, node.Name);
-        builder.CloseElement();
+        if (IsRenaming(sidebarNode))
+        {
+            builder.AddContent(19, RenameField(sidebarNode));
+        }
+        else
+        {
+            builder.OpenElement(20, "span");
+            builder.AddAttribute(21, "class", "browse-tree-label");
+            builder.AddAttribute(22, "title", node.Name);
+            builder.AddContent(23, node.Name);
+            builder.CloseElement();
+        }
         builder.CloseElement(); // span.browse-tree-name
 
         builder.OpenElement(30, "span");

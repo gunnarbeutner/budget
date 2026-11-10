@@ -65,7 +65,12 @@
                             OnSelectUncategorized="SelectUncategorized"
                             OnSelectCategory="SelectCategoryNode"
                             NodeMenu="NodeMenu"
-                            OnNodeMenuPick="OnNodeMenuPickAsync" />
+                            OnNodeMenuPick="OnNodeMenuPickAsync"
+                            RenamingNode="_structure?.RenamingNode"
+                            OnRename="OnRenameNodeAsync"
+                            CanDrag="CanDragNode"
+                            OnDrop="OnDropNodeAsync"
+                            @ref="_rail" />
         }
     </Rail>
     <ChildContent>
@@ -567,6 +572,13 @@
 }
 
 <UndoToasts Toasts="toasts" OnAction="OnToastAction" OnDismiss="DismissToast" />
+
+@if (project != null)
+{
+    <SidebarStructure @ref="_structure" ProjectId="ProjectId" Tree="tree"
+                      MenuPosition="() => _rail?.MenuPosition ?? (200, 200)"
+                      OnChanged="OnStructureChangedAsync" OnMessage="OnStructureMessage" />
+}
 
 <Modal Show="@showShortcuts" Title="@L["Shortcuts_Title"]" OnClose="@(() => showShortcuts = false)">
     <ChildContent>

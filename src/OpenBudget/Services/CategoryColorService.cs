@@ -24,7 +24,7 @@ public sealed class CategoryColorService
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         if (db.Scope is { } scope && !scope.OwnsSource(sourceId)) return false;
-        return await db.ImportSources.AnyAsync(s => s.Id == sourceId && s.StructureTakenOverAt != null, ct);
+        return await db.ImportSources.AnyAsync(s => s.Id == sourceId && (s.StructureTakenOverAt != null || s.LastUploadAt == null), ct);
     }
 
     /// <summary>Sets (or with null clears) the color; returns false when the category is unknown or not editable.</summary>
@@ -35,7 +35,7 @@ public sealed class CategoryColorService
         var category = await db.Categories.FirstOrDefaultAsync(c => c.Id == categoryId, ct);
         if (category == null) return false;
         db.Scope?.RequireSourceOwner(category.SourceId);
-        if (!await db.ImportSources.AnyAsync(s => s.Id == category.SourceId && s.StructureTakenOverAt != null, ct)) return false;
+        if (!await db.ImportSources.AnyAsync(s => s.Id == category.SourceId && (s.StructureTakenOverAt != null || s.LastUploadAt == null), ct)) return false;
         category.Color = color == null ? null : CategoryColors.ToCss(color);
         await db.SaveChangesAsync(ct);
         _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: category.SourceId), _origin.Id);

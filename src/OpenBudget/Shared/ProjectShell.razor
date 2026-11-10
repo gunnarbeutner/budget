@@ -68,7 +68,14 @@
                             OnSelectUncategorized="@(() => OpenTransactions("uncategorized"))"
                             OnSelectCategory="@(n => OpenTransactions((n.ItemType == CategoryItemType.Category ? "cat-" : "grp-") + n.Id))"
                             NodeMenu="NodeMenu"
-                            OnNodeMenuPick="OnNodeMenuPick" />
+                            OnNodeMenuPick="OnNodeMenuPick"
+                            RenamingNode="structure?.RenamingNode"
+                            OnRename="@(n => structure?.RenameAsync(n) ?? Task.CompletedTask)"
+                            CanDrag="@(n => structure?.CanDrag(n) ?? false)"
+                            OnDrop="@(d => structure?.DropAsync(d) ?? Task.CompletedTask)"
+                            @ref="rail" />
+            <SidebarStructure @ref="structure" ProjectId="ProjectId" Tree="ownTree"
+                              MenuPosition="() => rail?.MenuPosition ?? (200, 200)" OnChanged="ReloadOwnTreeAsync" />
         }
         <div class="browse-tree-section">@L["Section_Documents"]</div>
         <nav class="shell-views shell-docs" aria-label="@L["Section_Documents"]">
@@ -194,12 +201,25 @@
 
     /// <summary>The sidebar's context menu on the views that do not own the tree: the same entries as on Transactions.</summary>
     private IReadOnlyList<ContextMenuItem> NodeMenu(SidebarNode node) =>
-        SidebarMenus.For(node, canEditRules, RailL);
+        structure?.Menu(node) ?? SidebarMenus.For(node, new SidebarMenuContext(canEditRules, _ => StructureBlock.NotOwner), RailL);
 
-    private void OnNodeMenuPick((SidebarNode Node, string Key) pick)
+    private BrowseTreeRail? rail;
+    private SidebarStructure? structure;
+
+    private async Task OnNodeMenuPick((SidebarNode Node, string Key) pick)
     {
         if (pick.Key == SidebarMenus.Rules && pick.Node.Kind == SidebarNodeKind.Category)
             Navigation.NavigateTo($"{TransactionsUrl}?sel=cat-{pick.Node.Id}&rules=1");
+        else if (structure != null)
+            await structure.PickAsync(pick.Node, pick.Key);
+    }
+
+    // Structure edits from this sidebar: reload the tree for the remembered month in place.
+    private async Task ReloadOwnTreeAsync(SidebarNode? deleted)
+    {
+        var now = Clock.NowLocal;
+        var (year, month) = (TimeState.Year ?? now.Year, TimeState.Month ?? now.Month);
+        ownTree = await BrowseService.GetTreeAsync(ProjectId, year, month, month) ?? ownTree;
     }
 
     private void OpenTransactions(string? sel) =>

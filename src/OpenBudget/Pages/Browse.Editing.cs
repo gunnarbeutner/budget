@@ -110,13 +110,51 @@ public partial class Browse
 
     private long? RulesCategoryId => _rulesOpen && _canEditRules && selectionKind == "category" ? selectionId : null;
 
-    private IReadOnlyList<ContextMenuItem> NodeMenu(SidebarNode node) => SidebarMenus.For(node, _canEditRules, RailL);
+    // ---- sidebar context menu: Rules… and structure editing (SidebarStructure) ----
+
+    private BrowseTreeRail? _rail;
+    private SidebarStructure? _structure;
+
+    private IReadOnlyList<ContextMenuItem> NodeMenu(SidebarNode node) =>
+        _structure?.Menu(node) ?? SidebarMenus.For(node, new SidebarMenuContext(_canEditRules, _ => StructureBlock.NotOwner), RailL);
+
+    private bool CanDragNode(SidebarNode node) => _structure?.CanDrag(node) ?? false;
+
+    private Task OnRenameNodeAsync(string? name) => _structure?.RenameAsync(name) ?? Task.CompletedTask;
+
+    private Task OnDropNodeAsync((SidebarNode Dragged, SidebarNode Target, bool Into) drop) => _structure?.DropAsync(drop) ?? Task.CompletedTask;
 
     private async Task OnNodeMenuPickAsync((SidebarNode Node, string Key) pick)
     {
         if (pick.Key == SidebarMenus.Rules && pick.Node.Kind == SidebarNodeKind.Category)
+        {
             await OpenRulesAsync(pick.Node.Id, null);
+            return;
+        }
+        if (_structure != null) await _structure.PickAsync(pick.Node, pick.Key);
     }
+
+    /// <summary>The structure changed (or a rename started): refresh the tree in place; a deleted selection falls back to all.</summary>
+    private async Task OnStructureChangedAsync(SidebarNode? deleted)
+    {
+        if (project == null) return;
+        if (deleted != null && selectionId == deleted.Id && selectionKind == SelectionKindOf(deleted.Kind)) await SelectAll();
+        pickerData = null;
+        _leafCacheKey = null;
+        _leafCache = null;
+        await RefreshAfterEditAsync();
+    }
+
+    private static string SelectionKindOf(SidebarNodeKind kind) => kind switch
+    {
+        SidebarNodeKind.Category => "category",
+        SidebarNodeKind.CategoryGroup => "group",
+        SidebarNodeKind.Account => "account",
+        SidebarNodeKind.AccountGroup => "accountgroup",
+        _ => "",
+    };
+
+    private void OnStructureMessage(string message) => AddToast(new ToastItem { Message = message, IsError = true });
 
     /// <summary>Shows the category's transactions with its rules bar on top (and, with a payee, a new prefilled draft row).</summary>
     private async Task OpenRulesAsync(long categoryId, string? prefillPayee)

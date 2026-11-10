@@ -73,4 +73,19 @@
     <value>Aufklappen</value>
   </data>
   <data name="Ctx_Rules" xml:space="preserve"><value>Regeln…</value></data>
+  <data name="Ctx_Rename" xml:space="preserve"><value>Umbenennen</value></data>
+  <data name="Ctx_Color" xml:space="preserve"><value>Farbe…</value></data>
+  <data name="Ctx_NewSubcategory" xml:space="preserve"><value>Neue Kategorie darunter</value></data>
+  <data name="Ctx_NewCategory" xml:space="preserve"><value>Neue Kategorie</value></data>
+  <data name="Ctx_NewGroup" xml:space="preserve"><value>Neue Gruppe</value></data>
+  <data name="Ctx_AccountSettings" xml:space="preserve"><value>Einstellungen…</value></data>
+  <data name="Ctx_MoveTo" xml:space="preserve"><value>In Gruppe verschieben…</value></data>
+  <data name="Ctx_MoveUp" xml:space="preserve"><value>Nach oben</value></data>
+  <data name="Ctx_MoveDown" xml:space="preserve"><value>Nach unten</value></data>
+  <data name="Ctx_Delete" xml:space="preserve"><value>Löschen…</value></data>
+  <data name="Ctx_DeleteAccount" xml:space="preserve"><value>Konto löschen…</value></data>
+  <data name="Ctx_Block_MoneyMoney" xml:space="preserve"><value>Kommt aus MoneyMoney – übernimm die Struktur unter Quellen, um sie hier zu bearbeiten</value></data>
+  <data name="Ctx_Block_NotOwner" xml:space="preserve"><value>Nur der Eigentümer dieser Daten kann Konten und Kategorien ändern</value></data>
+  <data name="Ctx_Block_NotEmpty" xml:space="preserve"><value>Nur leere Gruppen können gelöscht werden – verschiebe oder lösche zuerst den Inhalt</value></data>
+  <data name="Tree_RenameLabel" xml:space="preserve"><value>Neuer Name</value></data>
 </root>
