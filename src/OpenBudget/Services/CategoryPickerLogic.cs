@@ -23,7 +23,7 @@ public sealed class CategoryPickerData
 /// Builds the picker data (pure, no DB) and searches it. Search is token based over name AND path, ignoring case and
 /// diacritics, so "lebens" finds "Haushalt › Lebensmittel" and "haus leb" finds it too.
 /// </summary>
-public static class CategoryPicker
+public static class CategoryPickerLogic
 {
     public const string PathSeparator = " › ";
 

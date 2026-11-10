@@ -1,0 +1,171 @@
+@using OpenBudget.Services
+@inject IStringLocalizer<CategoryPicker> L
+@inject IJSRuntime JS
+
+@* Floating category picker, used inline on a row's category cell, from the action bar and from the context menu.
+   Search over name and path; with an empty search the suggestions (same payee, recently used) come first and the
+   tree below. Enter picks the highlighted entry (the first hit), arrows move, Esc closes. *@
+
+<div class="cp-backdrop" data-ob-overlay @onclick="Close" @oncontextmenu="Close" @oncontextmenu:preventDefault></div>
+<div class="cp-panel" style="@PositionStyle" role="dialog" aria-label="@L["Title"]" data-ob-overlay data-testid="category-picker"
+     @onkeydown="OnKeyDown">
+    <input @ref="input" type="search" class="form-control form-control-sm cp-search" autocomplete="off"
+           placeholder="@L["Search_Placeholder"]" aria-label="@L["Search_Placeholder"]" data-testid="category-picker-search"
+           value="@query" @oninput="OnInput" />
+    <div class="cp-list" @ref="list">
+        @{
+            var index = 0;
+        }
+        @if (string.IsNullOrWhiteSpace(query))
+        {
+            @if (AllowRemove)
+            {
+                var i = index++;
+                <button type="button" class="cp-row cp-remove @Active(i)" data-testid="category-picker-remove" @onclick="() => Pick(null)">
+                    <i class="bi bi-x-circle me-1" aria-hidden="true"></i>@L["Remove"]
+                </button>
+                entries.Add(null);
+            }
+            @if (Suggestions.Count > 0)
+            {
+                <div class="cp-section">@L["Suggestions"]</div>
+                @foreach (var s in Suggestions)
+                {
+                    var i = index++;
+                    var id = s.CategoryId;
+                    <button type="button" class="cp-row @Active(i)" data-testid="category-picker-suggestion" @onclick="() => Pick(id)">
+                        <span class="cp-name">@s.Path</span>
+                        <span class="cp-reason">@Reason(s)</span>
+                    </button>
+                    entries.Add(id);
+                }
+            }
+            <div class="cp-section">@L["AllCategories"]</div>
+            @foreach (var row in Data.Tree)
+            {
+                if (row.IsGroup)
+                {
+                    <div class="cp-group" style="@Indent(row.Depth)">@row.Name</div>
+                }
+                else
+                {
+                    var i = index++;
+                    var id = row.Id;
+                    <button type="button" class="cp-row @Active(i) @(id == CurrentCategoryId ? "cp-current" : "")" style="@Indent(row.Depth)"
+                            data-testid="category-picker-option" @onclick="() => Pick(id)">
+                        <span class="cp-name">@row.Name</span>
+                        @if (id == CurrentCategoryId)
+                        {
+                            <i class="bi bi-check2 ms-1" aria-hidden="true"></i>
+                        }
+                    </button>
+                    entries.Add(id);
+                }
+            }
+        }
+        else
+        {
+            @foreach (var option in hits)
+            {
+                var i = index++;
+                var id = option.Id;
+                <button type="button" class="cp-row @Active(i)" data-testid="category-picker-option" @onclick="() => Pick(id)">
+                    <span class="cp-name">@option.Path</span>
+                </button>
+                entries.Add(id);
+            }
+            @if (hits.Count == 0)
+            {
+                <div class="cp-empty text-body-secondary small">@L["NoMatch"]</div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public CategoryPickerData Data { get; set; } = new();
+    [Parameter] public IReadOnlyList<CategorySuggestion> Suggestions { get; set; } = [];
+    [Parameter] public long? CurrentCategoryId { get; set; }
+    [Parameter] public bool AllowRemove { get; set; } = true;
+    [Parameter] public double X { get; set; }
+    [Parameter] public double Y { get; set; }
+
+    /// <summary>The picked category id, or null for "remove category".</summary>
+    [Parameter] public EventCallback<long?> OnPick { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private ElementReference input;
+    private ElementReference list;
+    private string query = "";
+    private IReadOnlyList<CategoryOption> hits = [];
+    private int active;
+    private bool scrollPending;
+
+    // Rebuilt on every render, in render order: the pickable entries (null = remove), so Enter and the arrows address them by index.
+    private readonly List<long?> entries = [];
+
+    private string PositionStyle =>
+        FormattableString.Invariant($"left: max(0.5rem, min({X:0}px, calc(100vw - 23rem))); top: max(0.5rem, min({Y:0}px, calc(100vh - 28rem)));");
+
+    private static string Indent(int depth) =>
+        FormattableString.Invariant($"padding-left: {0.6 + depth * 1.0:0.##}rem;");
+
+    private string Active(int i) => i == active ? "cp-active" : "";
+
+    private string Reason(CategorySuggestion s) => s.Reason == SuggestionReason.SamePayee
+        ? L["Reason_SamePayee", s.Count].Value
+        : L["Reason_Recent"].Value;
+
+    protected override void OnInitialized() => hits = Data.Options;
+
+    protected override void OnParametersSet() => entries.Clear();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await JS.InvokeVoidAsync("obFocus", input);
+        if (scrollPending)
+        {
+            scrollPending = false;
+            await JS.InvokeVoidAsync("obScrollActive", list);
+        }
+    }
+
+    protected override bool ShouldRender()
+    {
+        entries.Clear();
+        return true;
+    }
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        query = e.Value?.ToString() ?? "";
+        hits = CategoryPickerLogic.Search(Data.Options, query);
+        active = 0;
+        scrollPending = true;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                active = Math.Min(active + 1, Math.Max(0, entries.Count - 1));
+                scrollPending = true;
+                break;
+            case "ArrowUp":
+                active = Math.Max(active - 1, 0);
+                scrollPending = true;
+                break;
+            case "Enter":
+                if (active < entries.Count) await Pick(entries[active]);
+                break;
+            case "Escape":
+                await Close();
+                break;
+        }
+    }
+
+    private Task Pick(long? id) => OnPick.InvokeAsync(id);
+
+    private Task Close() => OnClose.InvokeAsync();
+}

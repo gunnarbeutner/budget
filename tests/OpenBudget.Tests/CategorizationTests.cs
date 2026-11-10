@@ -47,7 +47,7 @@ public sealed class CategorizationTests
     public void The_picker_lists_assignable_categories_with_their_path_in_tree_order()
     {
         var (groups, cats) = Tree();
-        var data = CategoryPicker.Build(groups, cats, Source);
+        var data = CategoryPickerLogic.Build(groups, cats, Source);
 
         Assert.Equal(
             ["Haushalt › Lebensmittel", "Haushalt › Strom", "Freizeit › Café & Bäckerei", "Freizeit › Reisen", "Loose"],
@@ -60,7 +60,7 @@ public sealed class CategorizationTests
     public void The_picker_tree_has_group_headers_indentation_and_no_empty_groups()
     {
         var (groups, cats) = Tree();
-        var tree = CategoryPicker.Build(groups, cats, Source).Tree;
+        var tree = CategoryPickerLogic.Build(groups, cats, Source).Tree;
 
         Assert.DoesNotContain(tree, r => r.Name is "Leer" or "Nested empty");
         Assert.DoesNotContain(tree, r => r.Name.Length == 0);
@@ -82,7 +82,7 @@ public sealed class CategorizationTests
     public void Search_matches_name_and_path_ignoring_case_and_diacritics(string query, string expectedFirst)
     {
         var (groups, cats) = Tree();
-        var hits = CategoryPicker.Search(CategoryPicker.Build(groups, cats, Source).Options, query);
+        var hits = CategoryPickerLogic.Search(CategoryPickerLogic.Build(groups, cats, Source).Options, query);
         Assert.Contains(hits, h => h.Path == expectedFirst);
     }
 
@@ -91,21 +91,21 @@ public sealed class CategorizationTests
     {
         var (groups, cats) = Tree();
         cats.Add(new Category { Id = Id(106), SourceId = Source, Name = "Haushaltsgeld", GroupId = Id(11) });
-        var options = CategoryPicker.Build(groups, cats, Source).Options;
+        var options = CategoryPickerLogic.Build(groups, cats, Source).Options;
 
-        var hits = CategoryPicker.Search(options, "haushalt");
+        var hits = CategoryPickerLogic.Search(options, "haushalt");
         Assert.Equal("Haushaltsgeld", hits[0].Name);                                     // name starts with it
         Assert.Contains(hits, h => h.Name == "Strom");                                  // path only, later
-        Assert.Equal(options.Count, CategoryPicker.Search(options, "  ").Count);
-        Assert.Empty(CategoryPicker.Search(options, "zzz"));
-        Assert.Empty(CategoryPicker.Search(options, "haushalt reisen"));                // all tokens must match
+        Assert.Equal(options.Count, CategoryPickerLogic.Search(options, "  ").Count);
+        Assert.Empty(CategoryPickerLogic.Search(options, "zzz"));
+        Assert.Empty(CategoryPickerLogic.Search(options, "haushalt reisen"));                // all tokens must match
     }
 
     [Fact]
     public void Search_folds_the_german_sharp_s()
     {
         var options = new[] { new CategoryOption(1, "Straßenbahn", "Verkehr › Straßenbahn", null) };
-        Assert.Single(CategoryPicker.Search(options, "strassenbahn"));
+        Assert.Single(CategoryPickerLogic.Search(options, "strassenbahn"));
     }
 
     // ---- suggestions ----

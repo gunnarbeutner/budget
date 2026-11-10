@@ -31,6 +31,8 @@ and forward-looking balance projections.
   income / expense classification.
 - **Sources (`/sources`)** — your own sources, their upload freshness and
   upload tokens.
+- **Browse (`/projects/{id}/browse`)** — the transaction list, also where you
+  [edit transactions](#editing-transactions).
 - **Account (`/Account`)** — change your password, register passkeys, sign out.
 
 ## Running it
@@ -237,6 +239,23 @@ global `OPENBUDGET_UPLOAD_TOKEN`:
 - `POST /api/portfolioperformance/{source}` — PortfolioPerformance file
 - `DELETE /api/sources/{source}` — remove a source
 
+#### Taking over the structure from MoneyMoney
+
+By default every upload replaces the source's account groups, accounts' names,
+grouping and order, and the whole category tree with MoneyMoney's. Once you want to
+organize these in OpenBudget instead, use **Take over structure from MoneyMoney**
+on the Sources page (owner only, per source, one-time, not undoable). It gives every
+sibling an explicit sort position and marks the source; ids stay as they are, so
+projects, budgets and tracked categories keep working.
+
+Afterwards an upload still replaces the transactions and refreshes the balances of
+MoneyMoney-owned accounts (comment and check mark are mirrored into OpenBudget's
+note and check mark), but it no longer touches names, groups, order, categories or
+MoneyMoney's rule text. Accounts that MoneyMoney newly reports land in "Other
+accounts" (and in your default project), new categories in a group called "New
+categories"; accounts or categories MoneyMoney stops delivering stay. Accounts
+handed to a bank connector were never overwritten and still are not.
+
 ### Legacy names (compatibility)
 
 Deployments and the previously installed `MoneyMoneyExport` tool predate the
@@ -245,6 +264,38 @@ rename. Until that tool is retired the server still accepts
 /api/moneymoney-db/{source}` and `DELETE /api/moneymoney-sources/{source}`.
 These shims live in `src/OpenBudget/Compat/` and the importer's
 `MoneyMoneyEndpoints.cs`.
+
+## Editing transactions
+
+Transactions of accounts that a bank connector (or you, for manual accounts) owns are
+edited in OpenBudget; transactions of accounts still owned by MoneyMoney are read-only
+(marked with a lock) because the next upload overwrites them. Only the category, a note
+and the check mark can be changed - the bank's own fields (amount, date, payee, purpose,
+IBAN, ...) never. A category you choose is stamped "set by hand" and is never overwritten
+by rules. Every edit shows a toast with **Undo**; a bulk edit is one undo step.
+
+- **Select**: click a row (it expands in place with all bank fields, how the category came
+  about, note, check mark and a linked statement PDF); Shift-click for a range, Cmd/Ctrl-click
+  to toggle, Cmd/Ctrl-A for every row of the filter. The action bar shows count and sum with
+  Category, Note, Check mark and More.
+- **Context menu** (right click, long press on touch): set / remove category, edit note, toggle
+  check mark, and for one row also search for the payee, show similar transactions, go to the
+  account or category, open the statement. Create rule, Split and Mark as transfer are
+  placeholders for later.
+- **Category picker**: search over name and path ("lebens" finds "Haushalt › Lebensmittel"),
+  suggestions on top (same payee, recently used), Enter picks the first hit. After categorizing
+  one transaction, a toast offers "Also categorize N similar" (same payee, uncategorized).
+- **Keyboard**: arrows move, Shift+arrows extend, Space toggles, C category, N note, X check
+  mark, / search, Esc clears, ? lists the shortcuts. Typing in inputs is never intercepted.
+- **Filters**: search, amount range, period (30/90 days, 12 months, recent months, quarters and
+  years, custom), checked / not checked, incoming / outgoing, category (in account views) or
+  account, new only. Choosing another account or category starts a fresh view unless the pin
+  is on. "Mark all as checked" checks everything the filter shows. Rows a bank connector
+  inserted carry a dot until you look at them or mark them; single-account views show day
+  separators with the running balance.
+- **Who may edit**: the source's owner, and editors of a project the account is assigned to
+  (category, note and check mark only); viewers read only. This is enforced on the server
+  (service and write guard), not just in the UI.
 
 ## Localization
 

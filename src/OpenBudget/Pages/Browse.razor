@@ -16,6 +16,8 @@
 @inject IStringLocalizer<Browse> L
 @inject ClockService Clock
 @inject BankLoginService BankLogins
+@inject TransactionEditService Edits
+@inject CategorizationService Categorization
 @inherits DataChangeAwareComponent
 
 <PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
@@ -383,10 +385,10 @@
                 </div>
             }
 
-            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2 tx-filterbar" data-testid="filter-bar">
                 <div class="input-group input-group-sm filter-input-lg">
                     <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input type="search" class="form-control" placeholder="@L["Filter_SearchPlaceholder"]"
+                    <input type="search" class="form-control" placeholder="@L["Filter_SearchPlaceholder"]" data-testid="tx-search"
                            value="@searchInput" @oninput="OnSearchInput" />
                 </div>
                 <div class="input-group input-group-sm filter-input-sm">
@@ -399,6 +401,32 @@
                     <input type="number" class="form-control" step="1" min="0"
                            value="@amountMaxInput" @onchange="OnAmountMaxChanged" />
                 </div>
+                <select class="form-select form-select-sm filter-input-md" aria-label="@L["Filter_Period"]" data-testid="filter-period"
+                        value="@periodFilter" @onchange="OnPeriodFilterChanged">
+                    @foreach (var choice in PeriodChoices)
+                    {
+                        <option @key="choice.Key" value="@choice.Key">@PeriodLabel(choice)</option>
+                    }
+                </select>
+                @if (periodFilter == PeriodFilter.Custom)
+                {
+                    <input type="date" class="form-control form-control-sm filter-input-date" aria-label="@L["Filter_From"]" data-testid="filter-from"
+                           value="@customFrom?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="e => OnCustomDateChanged(e, true)" />
+                    <input type="date" class="form-control form-control-sm filter-input-date" aria-label="@L["Filter_To"]" data-testid="filter-to"
+                           value="@customTo?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="e => OnCustomDateChanged(e, false)" />
+                }
+                <select class="form-select form-select-sm filter-input-sm" aria-label="@L["Filter_Checked"]" data-testid="filter-checked"
+                        value="@checkedFilter" @onchange="OnCheckedFilterChanged">
+                    <option value="any">@L["Filter_CheckedAny"]</option>
+                    <option value="yes">@L["Filter_CheckedYes"]</option>
+                    <option value="no">@L["Filter_CheckedNo"]</option>
+                </select>
+                <select class="form-select form-select-sm filter-input-sm" aria-label="@L["Filter_Direction"]" data-testid="filter-direction"
+                        value="@directionFilter" @onchange="OnDirectionFilterChanged">
+                    <option value="any">@L["Filter_DirectionAny"]</option>
+                    <option value="in">@L["Filter_Incoming"]</option>
+                    <option value="out">@L["Filter_Outgoing"]</option>
+                </select>
                 @if (selectionKind != "account" && tree.Accounts.Count > 1)
                 {
                     <select class="form-select form-select-sm filter-input-md"
@@ -411,11 +439,62 @@
                         }
                     </select>
                 }
+                else if (selectionKind == "account" && pickerData is { } categoriesForFilter)
+                {
+                    <select class="form-select form-select-sm filter-input-md" aria-label="@L["Filter_Category"]" data-testid="filter-category"
+                            value="@(categoryFilter?.ToString() ?? "")" @onchange="OnCategoryFilterChanged">
+                        <option value="">@L["Filter_AnyCategory"]</option>
+                        @foreach (var o in categoriesForFilter.Options)
+                        {
+                            <option @key="o.Id" value="@o.Id">@o.Path</option>
+                        }
+                    </select>
+                }
+                <button type="button" class="btn btn-sm @(newOnly ? "btn-primary" : "btn-outline-secondary")" data-testid="filter-new"
+                        aria-pressed="@newOnly.ToString().ToLowerInvariant()" @onclick="ToggleNewOnly" title="@L["Filter_NewOnlyTitle"]">
+                    <i class="bi bi-circle-fill tx-new-dot-inline" aria-hidden="true"></i> @L["Filter_NewOnly"]
+                </button>
+                <button type="button" class="btn btn-sm @(pinFilters ? "btn-primary" : "btn-outline-secondary")" data-testid="filter-pin"
+                        aria-pressed="@pinFilters.ToString().ToLowerInvariant()" @onclick="TogglePin"
+                        title="@(pinFilters ? L["Filter_PinOn"] : L["Filter_PinOff"])" aria-label="@L["Filter_Pin"]">
+                    <i class="bi @(pinFilters ? "bi-pin-angle-fill" : "bi-pin-angle")" aria-hidden="true"></i>
+                </button>
+                @if (!string.IsNullOrEmpty(payeeEquals))
+                {
+                    <span class="badge text-bg-secondary" data-testid="filter-payee">@L["Filter_Payee", payeeEquals]</span>
+                }
                 @if (HasActiveFilter)
                 {
                     <button type="button" class="btn btn-sm btn-link" @onclick="ClearFilters">@L["Filter_Clear"]</button>
                 }
+                @if (txTotals is { Count: > 0 })
+                {
+                    <button type="button" class="btn btn-sm btn-outline-success ms-auto" data-testid="mark-all-checked" @onclick="MarkAllCheckedAsync"
+                            title="@L["MarkAll_Title"]">
+                        <i class="bi bi-check2-all" aria-hidden="true"></i> @L["MarkAll"]
+                    </button>
+                }
             </div>
+
+            @if (selected.Count > 0)
+            {
+                <div class="tx-actionbar" data-testid="action-bar" role="toolbar" aria-label="@L["Bar_Aria"]">
+                    <span class="tx-actionbar-count" data-testid="action-bar-count">@L["Bar_Selected", selected.Count] · @Formatting.FormatMoney(selectionSum)</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="action-category" @onclick="e => OpenPickerFromBar(e)">
+                        <i class="bi bi-tag" aria-hidden="true"></i> @L["Bar_Category"]
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="action-note" @onclick="e => OpenNote(e.ClientX, e.ClientY)">
+                        <i class="bi bi-sticky" aria-hidden="true"></i> @L["Bar_Note"]
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="action-check" @onclick="ToggleCheckSelectionAsync">
+                        <i class="bi bi-check2-square" aria-hidden="true"></i> @L["Bar_Check"]
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="action-more" @onclick="e => OpenContextMenu(e.ClientX, e.ClientY)">
+                        <i class="bi bi-three-dots" aria-hidden="true"></i> @L["Bar_More"]
+                    </button>
+                    <button type="button" class="btn btn-sm btn-link ms-auto" data-testid="action-clear" @onclick="ClearSelection">@L["Bar_Clear"]</button>
+                </div>
+            }
 
             <div class="tx-scroll">
             @if (txTotals == null)
@@ -436,59 +515,116 @@
             }
             else
             {
-                <div class="tx-list">
-                    <Virtualize @ref="txVirtualize" ItemsProvider="LoadTxRowsAsync" Context="row" ItemSize="@itemSize">
+                <div class="tx-list" style="@ListGridStyle" data-testid="tx-list">
+                    <Virtualize @ref="txVirtualize" ItemsProvider="LoadTxRowsAsync" Context="item" ItemSize="@itemSize">
                         <ItemContent>
-                            @{ var inPeriod = IsInAnchorPeriod(row.Date); }
-                            <div class="tx-row @(inPeriod ? "in-period" : "")">
-                                <div class="tx-date-col">
-                                    <div class="tx-date">@Clock.ToLocal(row.Date).ToString("dd.MM.yyyy")</div>
-                                    @if (showCategoryColumn && !string.IsNullOrEmpty(row.CategoryName))
+                            @{
+                                var row = item.Row;
+                                var inPeriod = IsInAnchorPeriod(row.Date);
+                                var isSelected = selected.Contains(row.Id);
+                                var isExpanded = expandedId == row.Id;
+                                var showNew = row.IsNew && !viewedIds.Contains(row.Id);
+                            }
+                            <div class="tx-item @(isSelected ? "selected" : "") @(isExpanded ? "expanded" : "")" data-tx-id="@row.Id" data-testid="tx-item" @key="row.Id">
+                                @if (item.ShowDay)
+                                {
+                                    <div class="tx-day" data-testid="tx-day">
+                                        <span>@Clock.ToLocal(row.Date).ToString("dddd, dd.MM.yyyy")</span>
+                                        @if (item.DayBalance is { } dayBalance)
+                                        {
+                                            <span class="tx-day-balance" data-testid="tx-day-balance">@Formatting.FormatMoney(dayBalance, row.Currency ?? "EUR")</span>
+                                        }
+                                    </div>
+                                }
+                                <div class="tx-row @(inPeriod ? "in-period" : "") @(cursorId == row.Id ? "tx-cursor" : "")" data-testid="tx-row"
+                                     aria-selected="@isSelected.ToString().ToLowerInvariant()"
+                                     @onclick="e => OnRowClickAsync(item, e)"
+                                     @oncontextmenu="e => OnRowContextAsync(item, e)" @oncontextmenu:preventDefault="true">
+                                    <div class="tx-mark">
+                                        @if (row.EditBlock == EditBlock.MoneyMoney)
+                                        {
+                                            <i class="bi bi-lock-fill tx-lock" data-testid="tx-lock" title="@L["Lock_MoneyMoney"]" aria-label="@L["Lock_MoneyMoney"]"></i>
+                                        }
+                                        else if (showNew)
+                                        {
+                                            <span class="tx-new-dot" data-testid="tx-new-dot" title="@L["Tx_NewTitle"]" aria-label="@L["Tx_NewTitle"]"></span>
+                                        }
+                                    </div>
+                                    <div class="tx-date-col">
+                                        <div class="tx-date">@Clock.ToLocal(row.Date).ToString("dd.MM.yyyy")</div>
+                                    </div>
+                                    <div class="tx-payee">
+                                        <span class="tx-name">@(row.Name ?? "")</span>
+                                        @if (!string.IsNullOrEmpty(row.Note))
+                                        {
+                                            <span class="tx-comment text-body-secondary" data-testid="tx-note"><i class="bi bi-sticky" aria-hidden="true"></i> @row.Note</span>
+                                        }
+                                        @if (!string.IsNullOrEmpty(row.Purpose))
+                                        {
+                                            <span class="tx-purpose text-body-secondary">@row.Purpose</span>
+                                        }
+                                    </div>
+                                    @if (showCategoryColumn)
                                     {
-                                        <div class="tx-badges">
-                                            <span class="badge text-bg-primary tx-badge">@row.CategoryName</span>
+                                        <div class="tx-cat">
+                                            @if (row.CanEdit)
+                                            {
+                                                <button type="button" class="tx-cat-btn @(string.IsNullOrEmpty(row.CategoryName) ? "empty" : "")" data-testid="tx-category"
+                                                        title="@L["Tx_CategoryTitle"]" @onclick="e => OpenPickerFromRow(row, e)" @onclick:stopPropagation="true">
+                                                    @(string.IsNullOrEmpty(row.CategoryName) ? L["Tx_NoCategory"] : row.CategoryName)
+                                                </button>
+                                            }
+                                            else if (!string.IsNullOrEmpty(row.CategoryName))
+                                            {
+                                                <span class="badge text-bg-primary tx-badge" data-testid="tx-category">@row.CategoryName</span>
+                                            }
                                         </div>
                                     }
+                                    @if (showAccountColumn)
+                                    {
+                                        <div class="tx-account">
+                                            @if (!string.IsNullOrEmpty(row.AccountName))
+                                            {
+                                                <span class="badge text-bg-light border tx-badge">@row.AccountName</span>
+                                            }
+                                        </div>
+                                    }
+                                    <div class="tx-amount @(row.Amount < 0 ? "text-danger" : "text-success")">
+                                        @if (row.IsChecked)
+                                        {
+                                            <i class="bi bi-check-circle-fill text-success tx-checked me-1" data-testid="tx-checked" title="@L["Tx_Checked"]" aria-label="@L["Tx_Checked"]"></i>
+                                        }
+                                        @if (row.IsPending)
+                                        {
+                                            <span class="badge text-bg-secondary me-1 tx-pending" title="@L["Tx_PendingTitle"]">@L["Tx_Pending"]</span>
+                                        }
+                                        @if (row.IsSplitRemainder)
+                                        {
+                                            <span class="badge text-bg-warning me-1" title="@L["Tx_SplitRemainderTitle"]">@L["Tx_SplitRemainder"]</span>
+                                        }
+                                        @if (row.IsSplitChild)
+                                        {
+                                            <span class="badge text-bg-warning me-1" title="@L["Tx_SplitChildTitle"]">@L["Tx_SplitChild"]</span>
+                                        }
+                                        @Formatting.FormatMoney(row.Amount, row.Currency ?? "EUR")
+                                    </div>
                                 </div>
-                                <div class="tx-payee">
-                                    <span class="tx-name">@(row.Name ?? "")</span>
-                                    @if (!string.IsNullOrEmpty(row.Comment))
-                                    {
-                                        <span class="tx-comment text-body-secondary">@row.Comment</span>
-                                    }
-                                    @if (!string.IsNullOrEmpty(row.Purpose))
-                                    {
-                                        <span class="tx-purpose text-body-secondary">@row.Purpose</span>
-                                    }
-                                </div>
-                                <div class="tx-account">
-                                    @if (showAccountColumn && !string.IsNullOrEmpty(row.AccountName))
-                                    {
-                                        <span class="badge text-bg-light border tx-badge">@row.AccountName</span>
-                                    }
-                                </div>
-                                <div class="tx-amount @(row.Amount < 0 ? "text-danger" : "text-success")">
-                                    @if (row.IsPending)
-                                    {
-                                        <span class="badge text-bg-secondary me-1 tx-pending" title="@L["Tx_PendingTitle"]">@L["Tx_Pending"]</span>
-                                    }
-                                    @if (row.IsSplitRemainder)
-                                    {
-                                        <span class="badge text-bg-warning me-1" title="@L["Tx_SplitRemainderTitle"]">@L["Tx_SplitRemainder"]</span>
-                                    }
-                                    @if (row.IsSplitChild)
-                                    {
-                                        <span class="badge text-bg-warning me-1" title="@L["Tx_SplitChildTitle"]">@L["Tx_SplitChild"]</span>
-                                    }
-                                    @Formatting.FormatMoney(row.Amount, row.Currency ?? "EUR")
-                                </div>
+                                @if (isExpanded)
+                                {
+                                    <TxDetails Row="row" Statement="expandedStatement"
+                                               OnPickCategory="e => OpenPickerFromRow(row, e)"
+                                               OnNoteSave="note => SetNoteForAsync(row.Id, note)"
+                                               OnToggleChecked="() => SetCheckedForAsync(row.Id, !row.IsChecked)" />
+                                }
                             </div>
                         </ItemContent>
                         <Placeholder>
                             <div class="tx-row">
+                                <div class="tx-mark"></div>
                                 <div class="tx-date-col"><div class="skeleton skeleton-line"></div></div>
                                 <div class="tx-payee"><div class="skeleton skeleton-line"></div></div>
-                                <div class="tx-account"></div>
+                                @if (showCategoryColumn) { <div class="tx-cat"></div> }
+                                @if (showAccountColumn) { <div class="tx-account"></div> }
                                 <div class="tx-amount"></div>
                             </div>
                         </Placeholder>
@@ -497,6 +633,9 @@
 
                 <div class="d-flex justify-content-end mt-3 small text-body-secondary">
                     @L["Footer_Total", txTotals.Value.Count] · @L["Footer_Sum"] @Formatting.FormatMoney(txTotals.Value.Sum)
+                    <button type="button" class="btn btn-link btn-sm p-0 ms-3" data-testid="shortcuts-open" @onclick="() => showShortcuts = true">
+                        <i class="bi bi-keyboard" aria-hidden="true"></i> @L["Shortcuts_Link"]
+                    </button>
                 </div>
             }
             </div>
@@ -504,8 +643,83 @@
     </section>
 </div>
 
+@if (popup == PopupKind.Picker && pickerData is { } pickerModel)
+{
+    <CategoryPicker Data="pickerModel" Suggestions="popupSuggestions" CurrentCategoryId="popupCurrentCategory"
+                    AllowRemove="true" X="popupX" Y="popupY" OnPick="PickCategoryAsync" OnClose="ClosePopup" />
+}
+
+@if (popup == PopupKind.Context)
+{
+    <ContextMenu Items="contextItems" X="popupX" Y="popupY" OnPick="OnContextPickAsync" OnClose="ClosePopup" />
+}
+
+@if (popup == PopupKind.Note)
+{
+    <NotePanel Initial="PopupNoteInitial" Count="popupTargets.Count" X="popupX" Y="popupY" OnSave="SaveNotePanelAsync" OnClose="ClosePopup" />
+}
+
+<UndoToasts Toasts="toasts" OnAction="OnToastAction" OnDismiss="DismissToast" />
+
+<Modal Show="@showShortcuts" Title="@L["Shortcuts_Title"]" OnClose="@(() => showShortcuts = false)">
+    <ChildContent>
+        <dl class="shortcut-list" data-testid="shortcuts-list">
+            @foreach (var (keys, text) in ShortcutRows)
+            {
+                <dt><kbd>@keys</kbd></dt>
+                <dd>@text</dd>
+            }
+        </dl>
+    </ChildContent>
+</Modal>
+
 @code {
     [Parameter] public int ProjectId { get; set; }
+
+    // ---- selection ----
+
+    private readonly HashSet<long> selected = [];
+    private readonly HashSet<long> viewedIds = [];
+    private readonly Dictionary<long, int> rowIndex = [];
+    private readonly Dictionary<long, TransactionRow> rowCache = [];
+    private long? cursorId;
+    private long? anchorId;
+    private long? expandedId;
+    private (long Id, string Name)? expandedStatement;
+    private decimal selectionSum;
+    private RunningBalance? runningBalance;
+
+    // ---- popups ----
+
+    private PopupKind popup;
+    private double popupX;
+    private double popupY;
+    private List<long> popupTargets = [];
+    private IReadOnlyList<CategorySuggestion> popupSuggestions = [];
+    private long? popupCurrentCategory;
+    private IReadOnlyList<ContextMenuItem> contextItems = [];
+    private (long Id, string Name)? contextStatement;
+    private CategoryPickerData? pickerData;
+    private bool showShortcuts;
+
+    // ---- toasts ----
+
+    private readonly List<ToastItem> toasts = [];
+    private readonly Dictionary<Guid, CancellationTokenSource> toastTimers = [];
+    private static readonly TimeSpan ToastLifetime = TimeSpan.FromSeconds(12);
+
+    // ---- review filters ----
+
+    private string periodFilter = PeriodFilter.All;
+    private DateOnly? customFrom;
+    private DateOnly? customTo;
+    private string checkedFilter = "any";
+    private string directionFilter = "any";
+    private bool newOnly;
+    private long? categoryFilter;
+    private bool pinFilters;
+    private string? payeeEquals;
+
 
     private Project? project;
     private bool notFound;
@@ -519,7 +733,7 @@
     private AccountHoldings? holdings;
     // Which PortfolioPerformance taxonomy the holdings card's look-through is showing.
     private string? holdingsTaxonomy;
-    private Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize<TransactionRow>? txVirtualize;
+    private Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize<TxListItem>? txVirtualize;
     // Approximate row height in CSS pixels — drives Virtualize's spacer math and the bar-click
     // scroll-jump (offset = newerCount * itemSize). Real rows vary a few px either way; the
     // post-load scrollIntoView fine-tunes the final position.
@@ -595,7 +809,9 @@
             // id is reused. Fire-and-forget because Dispose is synchronous; swallow the cases where
             // JS is unreachable (circuit already gone, or server-side prerender disposal).
             _ = DestroyChartAsync();
+            _ = DetachShortcutsAsync();
             selfRef?.Dispose();
+            foreach (var cts in toastTimers.Values) cts.Cancel();
         }
         base.Dispose(disposing);
     }
@@ -662,6 +878,9 @@
         amountMin = null; amountMax = null; amountMinInput = ""; amountMaxInput = "";
         chartGranularity = "M";
         showRelatedAccounts = false; railOpen = false; chartCollapsed = false;
+        periodFilter = PeriodFilter.All; customFrom = null; customTo = null;
+        checkedFilter = "any"; directionFilter = "any"; newOnly = false; categoryFilter = null; pinFilters = false;
+        ResetSelectionState();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -674,6 +893,7 @@
             chartDirty = false;
             await RenderChartAsync();
         }
+        if (firstRender) await AttachShortcutsAsync();
     }
 
     private void ReadStateFromQuery()
@@ -728,6 +948,15 @@
         { amountMin = minVal; amountMinInput = minRaw.ToString(); }
         if (query.TryGetValue("amax", out var maxRaw) && decimal.TryParse(maxRaw, NumberStyles.Number, CultureInfo.InvariantCulture, out var maxVal))
         { amountMax = maxVal; amountMaxInput = maxRaw.ToString(); }
+        if (query.TryGetValue("per", out var perRaw) && IsKnownPeriodKey(perRaw.ToString())) periodFilter = perRaw.ToString();
+        if (query.TryGetValue("from", out var fromRaw) && DateOnly.TryParseExact(fromRaw, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var fromDate)) customFrom = fromDate;
+        if (query.TryGetValue("to", out var toRaw) && DateOnly.TryParseExact(toRaw, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var toDate)) customTo = toDate;
+        if (query.TryGetValue("chk", out var chkRaw) && chkRaw.ToString() is "yes" or "no") checkedFilter = chkRaw.ToString();
+        if (query.TryGetValue("dir", out var dirRaw) && dirRaw.ToString() is "in" or "out") directionFilter = dirRaw.ToString();
+        if (query.TryGetValue("new", out var newRaw) && newRaw.ToString() == "1") newOnly = true;
+        if (query.TryGetValue("cat", out var catRaw) && long.TryParse(catRaw, out var catFilterId)) categoryFilter = catFilterId;
+        if (query.TryGetValue("payee", out var payeeRaw) && !string.IsNullOrWhiteSpace(payeeRaw)) payeeEquals = payeeRaw.ToString();
+        if (query.TryGetValue("pin", out var pinRaw) && pinRaw.ToString() == "1") pinFilters = true;
         if (query.TryGetValue("g", out var g) && g.ToString() is var gv && (gv == "M" || gv == "Q" || gv == "Y" || gv == "D"))
             chartGranularity = gv;
         CoerceChartGranularityForSelection();
@@ -769,7 +998,16 @@
         ["q"] = string.IsNullOrWhiteSpace(searchEffective) ? null : searchEffective,
         ["amin"] = amountMin?.ToString(CultureInfo.InvariantCulture),
         ["amax"] = amountMax?.ToString(CultureInfo.InvariantCulture),
-        ["g"] = chartGranularity == "M" ? null : chartGranularity
+        ["g"] = chartGranularity == "M" ? null : chartGranularity,
+        ["per"] = periodFilter == PeriodFilter.All ? null : periodFilter,
+        ["from"] = periodFilter == PeriodFilter.Custom ? customFrom?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : null,
+        ["to"] = periodFilter == PeriodFilter.Custom ? customTo?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : null,
+        ["chk"] = checkedFilter == "any" ? null : checkedFilter,
+        ["dir"] = directionFilter == "any" ? null : directionFilter,
+        ["new"] = newOnly ? "1" : null,
+        ["cat"] = categoryFilter?.ToString(),
+        ["pin"] = pinFilters ? "1" : null,
+        ["payee"] = string.IsNullOrEmpty(payeeEquals) ? null : payeeEquals
     });
 
     private (int FromMonth, int ToMonth) PeriodRange => period switch
@@ -830,6 +1068,7 @@
     private async Task SelectAll()
     {
         selectionKind = "all"; selectionId = null;
+        ResetTransientFilters();
         CoerceChartGranularityForSelection();
         railOpen = false;
         UpdateUrl();
@@ -839,6 +1078,7 @@
     private async Task SelectAccount(long id)
     {
         selectionKind = "account"; selectionId = id;
+        ResetTransientFilters();
         CoerceChartGranularityForSelection();
         railOpen = false;
         UpdateUrl();
@@ -852,6 +1092,7 @@
     private async Task SelectPortfolio()
     {
         selectionKind = "portfolio"; selectionId = null;
+        ResetTransientFilters();
         CoerceChartGranularityForSelection();
         railOpen = false;
         UpdateUrl();
@@ -861,6 +1102,7 @@
     private async Task SelectUncategorized()
     {
         selectionKind = "uncategorized"; selectionId = null;
+        ResetTransientFilters();
         CoerceChartGranularityForSelection();
         railOpen = false;
         UpdateUrl();
@@ -871,6 +1113,7 @@
     {
         selectionKind = n.ItemType == CategoryItemType.Category ? "category" : "group";
         selectionId = n.Id;
+        ResetTransientFilters();
         CoerceChartGranularityForSelection();
         railOpen = false;
         UpdateUrl();
@@ -943,36 +1186,71 @@
     {
         SourceId = project!.SourceId,
         UncategorizedOnly = selectionKind == "uncategorized",
-        CategoryLeafIds = await ResolveSelectionLeavesAsync(),
+        CategoryLeafIds = categoryFilter is { } cf && selectionKind == "account" ? new[] { cf } : await ResolveSelectionLeavesAsync(),
         AccountIds = ResolveSelectionAccounts(),
         SearchText = string.IsNullOrWhiteSpace(searchEffective) ? null : searchEffective,
         MinAbsAmount = amountMin,
         MaxAbsAmount = amountMax,
+        Checked = checkedFilter switch { "yes" => true, "no" => false, _ => null },
+        Direction = directionFilter switch { "in" => AmountDirection.Incoming, "out" => AmountDirection.Outgoing, _ => AmountDirection.Any },
+        NewOnly = newOnly,
+        FromUtc = PeriodBoundsUtc.From,
+        ToUtcExclusive = PeriodBoundsUtc.ToExclusive,
+        PayeeEquals = payeeEquals,
         Skip = skip,
         Take = take
     };
 
-    private async ValueTask<Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderResult<TransactionRow>> LoadTxRowsAsync(
+    private async ValueTask<Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderResult<TxListItem>> LoadTxRowsAsync(
         Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderRequest request)
     {
         if (project == null || tree == null)
-            return new(Array.Empty<TransactionRow>(), 0);
-        var q = await BuildTransactionQueryAsync(request.StartIndex, request.Count);
+            return new(Array.Empty<TxListItem>(), 0);
+        // One row before the window (when there is one) tells whether the first row starts a new day.
+        var lead = request.StartIndex > 0 ? 1 : 0;
+        var q = await BuildTransactionQueryAsync(request.StartIndex - lead, request.Count + lead);
         var result = await TransactionQueries.QueryAsync(q, request.CancellationToken);
-        return new(result.Rows, result.TotalCount);
+
+        var running = selectionKind == "account" ? await EnsureRunningBalanceAsync(request.CancellationToken) : null;
+        var items = new List<TxListItem>(result.Rows.Count);
+        DateOnly? previousDay = lead == 1 && result.Rows.Count > 0 ? ToLocalDay(result.Rows[0].Date) : null;
+        for (var i = lead; i < result.Rows.Count; i++)
+        {
+            var row = result.Rows[i];
+            var index = request.StartIndex - lead + i;
+            var day = ToLocalDay(row.Date);
+            var showDay = running != null && previousDay != day;
+            decimal? dayBalance = showDay ? running!.AtEndOf(day) : null;
+            previousDay = day;
+            rowIndex[row.Id] = index;
+            rowCache[row.Id] = row;
+            items.Add(new TxListItem(row, index, showDay, day, dayBalance));
+        }
+        return new(items, result.TotalCount);
     }
 
-    private async Task OnSearchInput(ChangeEventArgs e)
+    // The handler returns at once (so the render that follows always carries the text the user has typed so far and
+    // never overwrites keystrokes that are still in flight); the reload itself waits for a pause in typing.
+    private void OnSearchInput(ChangeEventArgs e)
     {
         searchInput = e.Value?.ToString() ?? "";
-        var token = ++searchToken;
-        // Tiny debounce: wait, then check we're still the latest typed value.
-        await Task.Delay(250);
-        if (token != searchToken) return;
-        if (searchEffective == searchInput) return;
-        searchEffective = searchInput;
-        UpdateUrl();
-        await ReloadTransactionsAsync();
+        _ = DebounceSearchAsync(++searchToken);
+    }
+
+    private async Task DebounceSearchAsync(long token)
+    {
+        try
+        {
+            await Task.Delay(250);
+            await InvokeAsync(async () =>
+            {
+                if (token != searchToken || searchEffective == searchInput) return;
+                searchEffective = searchInput;
+                UpdateUrl();
+                await ReloadTransactionsAsync();
+            });
+        }
+        catch (ObjectDisposedException) { /* page left while waiting */ }
     }
 
     private async Task OnAccountFilterChanged(ChangeEventArgs e)
@@ -1001,16 +1279,15 @@
 
     private async Task ClearFilters()
     {
-        accountFilter = null;
-        searchInput = ""; searchEffective = "";
-        amountMin = null; amountMax = null;
-        amountMinInput = ""; amountMaxInput = "";
+        ClearFilterState();
         UpdateUrl();
         await ReloadTransactionsAsync();
     }
 
     private bool HasActiveFilter =>
-        accountFilter.HasValue || !string.IsNullOrWhiteSpace(searchEffective) || amountMin.HasValue || amountMax.HasValue;
+        accountFilter.HasValue || !string.IsNullOrWhiteSpace(searchEffective) || amountMin.HasValue || amountMax.HasValue
+        || periodFilter != PeriodFilter.All || checkedFilter != "any" || directionFilter != "any" || newOnly || categoryFilter.HasValue
+        || !string.IsNullOrEmpty(payeeEquals);
 
     private async Task ReloadAsync()
     {
@@ -1032,9 +1309,12 @@
         await ReloadTransactionsAsync();
     }
 
-    private async Task ReloadTransactionsAsync()
+    private async Task ReloadTransactionsAsync(bool keepSelection = false)
     {
         if (project == null || tree == null) return;
+        pickerData ??= await Categorization.GetPickerDataAsync(project.SourceId);
+        runningBalance = null;
+        if (!keepSelection) ResetSelectionState();
 
         // Holdings are independent of the tx filters/period; load them only while a depot account
         // is selected and clear them otherwise so the card doesn't linger on the next selection.
@@ -1056,6 +1336,7 @@
         // Totals (count + sum) feed the footer; row data streams through <Virtualize> via
         // LoadTxRowsAsync below.
         txTotals = await TransactionQueries.QueryTotalsAsync(await BuildTransactionQueryAsync(0, 1));
+        if (keepSelection) await PruneSelectionAsync();
         if (txVirtualize is not null) await txVirtualize.RefreshDataAsync();
         await ComputeChartAsync();
         chartDirty = true;

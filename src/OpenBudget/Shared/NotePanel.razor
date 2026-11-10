@@ -1,0 +1,48 @@
+@inject IStringLocalizer<NotePanel> L
+@inject IJSRuntime JS
+
+@* Small floating editor for the note of one or more transactions. Enter saves, Shift+Enter adds a line, Esc cancels. *@
+
+<div class="cp-backdrop" data-ob-overlay @onclick="Close" @oncontextmenu="Close" @oncontextmenu:preventDefault></div>
+<div class="note-panel" style="@PositionStyle" role="dialog" aria-label="@L["Title"]" data-ob-overlay data-testid="note-panel"
+     @onkeydown="OnKeyDown">
+    <label class="form-label small mb-1" for="note-panel-text">@(Count > 1 ? L["Title_Many", Count] : L["Title"])</label>
+    <textarea id="note-panel-text" @ref="text" class="form-control form-control-sm" rows="3" data-testid="note-panel-text"
+              value="@value" @oninput="e => value = e.Value?.ToString() ?? string.Empty"></textarea>
+    <div class="d-flex justify-content-end gap-2 mt-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Close">@L["Cancel"]</button>
+        <button type="button" class="btn btn-sm btn-primary" data-testid="note-panel-save" @onclick="Save">@L["Save"]</button>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Initial { get; set; }
+    [Parameter] public int Count { get; set; } = 1;
+    [Parameter] public double X { get; set; }
+    [Parameter] public double Y { get; set; }
+    [Parameter] public EventCallback<string?> OnSave { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private ElementReference text;
+    private string value = "";
+
+    private string PositionStyle =>
+        FormattableString.Invariant($"left: max(0.5rem, min({X:0}px, calc(100vw - 21rem))); top: max(0.5rem, min({Y:0}px, calc(100vh - 12rem)));");
+
+    protected override void OnInitialized() => value = Initial ?? "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await JS.InvokeVoidAsync("obFocus", text);
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await Close();
+        else if (e.Key == "Enter" && !e.ShiftKey) await Save();
+    }
+
+    private Task Save() => OnSave.InvokeAsync(value);
+
+    private Task Close() => OnClose.InvokeAsync();
+}

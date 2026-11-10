@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Payee" xml:space="preserve">
+    <value>Empfänger</value>
+  </data>
+  <data name="Iban" xml:space="preserve">
+    <value>IBAN / BIC</value>
+  </data>
+  <data name="Purpose" xml:space="preserve">
+    <value>Verwendungszweck</value>
+  </data>
+  <data name="BookingDate" xml:space="preserve">
+    <value>Buchungsdatum</value>
+  </data>
+  <data name="Pending" xml:space="preserve">
+    <value>vorgemerkt</value>
+  </data>
+  <data name="ValueDate" xml:space="preserve">
+    <value>Wertstellung</value>
+  </data>
+  <data name="BookingText" xml:space="preserve">
+    <value>Buchungstext</value>
+  </data>
+  <data name="BankReference" xml:space="preserve">
+    <value>Bankreferenz</value>
+  </data>
+  <data name="Account" xml:space="preserve">
+    <value>Konto</value>
+  </data>
+  <data name="Category" xml:space="preserve">
+    <value>Kategorie</value>
+  </data>
+  <data name="NoCategory" xml:space="preserve">
+    <value>Keine Kategorie</value>
+  </data>
+  <data name="Note" xml:space="preserve">
+    <value>Notiz</value>
+  </data>
+  <data name="Note_Placeholder" xml:space="preserve">
+    <value>Notiz hinzufügen …</value>
+  </data>
+  <data name="Checked" xml:space="preserve">
+    <value>Haken</value>
+  </data>
+  <data name="Checked_Yes" xml:space="preserve">
+    <value>Abgehakt</value>
+  </data>
+  <data name="Checked_No" xml:space="preserve">
+    <value>Nicht abgehakt</value>
+  </data>
+  <data name="Statement" xml:space="preserve">
+    <value>Kontoauszug</value>
+  </data>
+  <data name="SetBy_Manual" xml:space="preserve">
+    <value>von Hand gesetzt</value>
+  </data>
+  <data name="SetBy_Rule" xml:space="preserve">
+    <value>durch Regel {0} gesetzt</value>
+  </data>
+  <data name="SetBy_RuleUnknown" xml:space="preserve">
+    <value>durch eine Regel gesetzt</value>
+  </data>
+  <data name="SetBy_Import" xml:space="preserve">
+    <value>aus MoneyMoney importiert</value>
+  </data>
+  <data name="Lock_MoneyMoney" xml:space="preserve">
+    <value>Wird in MoneyMoney kategorisiert, bis dieses Konto auf einen Bankanschluss umgestellt wird</value>
+  </data>
+  <data name="Lock_NoPermission" xml:space="preserve">
+    <value>Sie können diese Umsätze nur ansehen</value>
+  </data>
+</root>

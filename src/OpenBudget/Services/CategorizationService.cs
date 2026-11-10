@@ -26,7 +26,7 @@ public sealed class CategorizationService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var groups = await db.CategoryGroups.AsNoTracking().Where(g => g.SourceId == sourceId).ToListAsync(ct);
         var categories = await db.Categories.AsNoTracking().Where(c => c.SourceId == sourceId).ToListAsync(ct);
-        return CategoryPicker.Build(groups, categories, sourceId);
+        return CategoryPickerLogic.Build(groups, categories, sourceId);
     }
 
     /// <summary>

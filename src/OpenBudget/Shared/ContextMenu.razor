@@ -1,0 +1,84 @@
+@inject IJSRuntime JS
+
+@* Right-click / long-press menu at a screen position. Presentational: the page decides the entries and what a key does. *@
+
+<div class="ctx-backdrop" data-ob-overlay @onclick="Close" @oncontextmenu="Close" @oncontextmenu:preventDefault></div>
+<div class="ctx-menu" style="@PositionStyle" role="menu" tabindex="-1" data-ob-overlay data-testid="context-menu"
+     @ref="menu" @onkeydown="OnKeyDown" @onkeydown:stopPropagation="true">
+    @{
+        var index = 0;
+    }
+    @foreach (var item in Items)
+    {
+        if (item.Separator)
+        {
+            <div class="ctx-sep" role="separator"></div>
+        }
+        else
+        {
+            var i = index++;
+            var key = item.Key;
+            <button type="button" role="menuitem" class="ctx-item @(i == active ? "ctx-active" : "")" disabled="@item.Disabled"
+                    title="@item.Tooltip" data-testid="@("ctx-" + item.Key)"
+                    @onclick="() => Pick(key)">
+                <span class="ctx-icon">@if (item.Icon != null) { <i class="bi @item.Icon" aria-hidden="true"></i> }</span>
+                <span>@item.Label</span>
+            </button>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<ContextMenuItem> Items { get; set; } = [];
+    [Parameter] public double X { get; set; }
+    [Parameter] public double Y { get; set; }
+    [Parameter] public EventCallback<string> OnPick { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private ElementReference menu;
+    private int active;
+
+    private string PositionStyle =>
+        FormattableString.Invariant($"left: max(0.5rem, min({X:0}px, calc(100vw - 16rem))); top: max(0.5rem, min({Y:0}px, calc(100vh - 22rem)));");
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await JS.InvokeVoidAsync("obFocus", menu);
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        var selectable = Items.Where(i => !i.Separator).ToList();
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                active = NextEnabled(selectable, active, 1);
+                break;
+            case "ArrowUp":
+                active = NextEnabled(selectable, active, -1);
+                break;
+            case "Enter":
+            case " ":
+                if (active >= 0 && active < selectable.Count && !selectable[active].Disabled) await Pick(selectable[active].Key);
+                break;
+            case "Escape":
+                await Close();
+                break;
+        }
+    }
+
+    private static int NextEnabled(List<ContextMenuItem> items, int from, int step)
+    {
+        var i = from;
+        for (var n = 0; n < items.Count; n++)
+        {
+            i = (i + step + items.Count) % items.Count;
+            if (!items[i].Disabled) return i;
+        }
+        return from;
+    }
+
+    private Task Pick(string key) => OnPick.InvokeAsync(key);
+
+    private Task Close() => OnClose.InvokeAsync();
+}

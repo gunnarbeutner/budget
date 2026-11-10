@@ -1,0 +1,28 @@
+@inject IStringLocalizer<UndoToasts> L
+
+@* Bottom-left stack of toasts. Presentational: the page owns the list, the timers and what the actions do. *@
+
+@if (Toasts.Count > 0)
+{
+    <div class="ob-toasts" role="status" aria-live="polite" data-testid="toasts">
+        @foreach (var toast in Toasts)
+        {
+            <div class="ob-toast @(toast.IsError ? "ob-toast-error" : "")" @key="toast.Id" data-testid="toast">
+                <span class="ob-toast-msg">@toast.Message</span>
+                @foreach (var action in toast.Actions)
+                {
+                    <button type="button" class="btn btn-sm btn-link ob-toast-action" data-testid="@action.TestId"
+                            @onclick="() => OnAction.InvokeAsync((toast, action))">@action.Label</button>
+                }
+                <button type="button" class="btn-close btn-close-white ob-toast-close" aria-label="@L["Close"]"
+                        @onclick="() => OnDismiss.InvokeAsync(toast)"></button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<ToastItem> Toasts { get; set; } = [];
+    [Parameter] public EventCallback<(ToastItem Toast, ToastAction Action)> OnAction { get; set; }
+    [Parameter] public EventCallback<ToastItem> OnDismiss { get; set; }
+}

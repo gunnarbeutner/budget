@@ -112,4 +112,256 @@
   <data name="Header_Today" xml:space="preserve"><value>Heute</value></data>
   <data name="Header_Yesterday" xml:space="preserve"><value>Gestern</value></data>
   <data name="Header_SyncNow" xml:space="preserve"><value>Jetzt synchronisieren</value></data>
+  <data name="Filter_Period" xml:space="preserve">
+    <value>Zeitraum</value>
+  </data>
+  <data name="Filter_From" xml:space="preserve">
+    <value>Von</value>
+  </data>
+  <data name="Filter_To" xml:space="preserve">
+    <value>Bis</value>
+  </data>
+  <data name="Filter_Checked" xml:space="preserve">
+    <value>Haken</value>
+  </data>
+  <data name="Filter_CheckedAny" xml:space="preserve">
+    <value>Mit/ohne Haken</value>
+  </data>
+  <data name="Filter_CheckedYes" xml:space="preserve">
+    <value>Mit Haken</value>
+  </data>
+  <data name="Filter_CheckedNo" xml:space="preserve">
+    <value>Ohne Haken</value>
+  </data>
+  <data name="Filter_Direction" xml:space="preserve">
+    <value>Richtung</value>
+  </data>
+  <data name="Filter_DirectionAny" xml:space="preserve">
+    <value>Ein- und Ausgänge</value>
+  </data>
+  <data name="Filter_Incoming" xml:space="preserve">
+    <value>Eingänge</value>
+  </data>
+  <data name="Filter_Outgoing" xml:space="preserve">
+    <value>Ausgänge</value>
+  </data>
+  <data name="Filter_Category" xml:space="preserve">
+    <value>Kategorie</value>
+  </data>
+  <data name="Filter_AnyCategory" xml:space="preserve">
+    <value>Jede Kategorie</value>
+  </data>
+  <data name="Filter_NewOnly" xml:space="preserve">
+    <value>Neu</value>
+  </data>
+  <data name="Filter_NewOnlyTitle" xml:space="preserve">
+    <value>Nur Umsätze, die Sie noch nicht angesehen haben</value>
+  </data>
+  <data name="Filter_Pin" xml:space="preserve">
+    <value>Filter behalten</value>
+  </data>
+  <data name="Filter_PinOn" xml:space="preserve">
+    <value>Filter bleiben erhalten, wenn Sie ein anderes Konto oder eine andere Kategorie wählen</value>
+  </data>
+  <data name="Filter_PinOff" xml:space="preserve">
+    <value>Diese Filter beim Wechsel zu einem anderen Konto oder einer anderen Kategorie behalten</value>
+  </data>
+  <data name="Filter_Payee" xml:space="preserve">
+    <value>Empfänger: {0}</value>
+  </data>
+  <data name="MarkAll" xml:space="preserve">
+    <value>Alle abhaken</value>
+  </data>
+  <data name="MarkAll_Title" xml:space="preserve">
+    <value>Alle Umsätze abhaken, die zum aktuellen Filter passen</value>
+  </data>
+  <data name="Bar_Aria" xml:space="preserve">
+    <value>Aktionen für die ausgewählten Umsätze</value>
+  </data>
+  <data name="Bar_Selected" xml:space="preserve">
+    <value>{0} ausgewählt</value>
+  </data>
+  <data name="Bar_Category" xml:space="preserve">
+    <value>Kategorie</value>
+  </data>
+  <data name="Bar_Note" xml:space="preserve">
+    <value>Notiz</value>
+  </data>
+  <data name="Bar_Check" xml:space="preserve">
+    <value>Haken</value>
+  </data>
+  <data name="Bar_More" xml:space="preserve">
+    <value>Mehr</value>
+  </data>
+  <data name="Bar_Clear" xml:space="preserve">
+    <value>Auswahl aufheben</value>
+  </data>
+  <data name="Lock_MoneyMoney" xml:space="preserve">
+    <value>Wird in MoneyMoney kategorisiert, bis dieses Konto auf einen Bankanschluss umgestellt wird</value>
+  </data>
+  <data name="Lock_NoPermission" xml:space="preserve">
+    <value>Sie können diese Umsätze nur ansehen</value>
+  </data>
+  <data name="Tx_NewTitle" xml:space="preserve">
+    <value>Neu - noch nicht angesehen</value>
+  </data>
+  <data name="Tx_CategoryTitle" xml:space="preserve">
+    <value>Kategorie ändern</value>
+  </data>
+  <data name="Tx_NoCategory" xml:space="preserve">
+    <value>Kategorisieren</value>
+  </data>
+  <data name="Tx_Checked" xml:space="preserve">
+    <value>Abgehakt</value>
+  </data>
+  <data name="Shortcuts_Link" xml:space="preserve">
+    <value>Tastenkürzel</value>
+  </data>
+  <data name="Shortcuts_Title" xml:space="preserve">
+    <value>Tastenkürzel</value>
+  </data>
+  <data name="Key_Move" xml:space="preserve">
+    <value>Zum vorherigen / nächsten Umsatz</value>
+  </data>
+  <data name="Key_Extend" xml:space="preserve">
+    <value>Auswahl erweitern</value>
+  </data>
+  <data name="Key_Toggle" xml:space="preserve">
+    <value>Aktuellen Umsatz zur Auswahl hinzufügen oder entfernen</value>
+  </data>
+  <data name="Key_SelectAll" xml:space="preserve">
+    <value>Alle Umsätze des aktuellen Filters auswählen</value>
+  </data>
+  <data name="Key_Category" xml:space="preserve">
+    <value>Kategorie setzen</value>
+  </data>
+  <data name="Key_Note" xml:space="preserve">
+    <value>Notiz bearbeiten</value>
+  </data>
+  <data name="Key_Check" xml:space="preserve">
+    <value>Haken umschalten</value>
+  </data>
+  <data name="Key_Search" xml:space="preserve">
+    <value>Zum Suchfeld springen</value>
+  </data>
+  <data name="Key_Clear" xml:space="preserve">
+    <value>Auswahl aufheben</value>
+  </data>
+  <data name="Key_Help" xml:space="preserve">
+    <value>Diese Liste anzeigen</value>
+  </data>
+  <data name="Period_All" xml:space="preserve">
+    <value>Gesamter Zeitraum</value>
+  </data>
+  <data name="Period_Days" xml:space="preserve">
+    <value>Letzte {0} Tage</value>
+  </data>
+  <data name="Period_Months" xml:space="preserve">
+    <value>Letzte {0} Monate</value>
+  </data>
+  <data name="Period_Quarter" xml:space="preserve">
+    <value>Q{0} {1}</value>
+  </data>
+  <data name="Period_Custom" xml:space="preserve">
+    <value>Eigener Zeitraum …</value>
+  </data>
+  <data name="Ctx_SetCategory" xml:space="preserve">
+    <value>Kategorie setzen …</value>
+  </data>
+  <data name="Ctx_RemoveCategory" xml:space="preserve">
+    <value>Kategorie entfernen</value>
+  </data>
+  <data name="Ctx_EditNote" xml:space="preserve">
+    <value>Notiz bearbeiten …</value>
+  </data>
+  <data name="Ctx_ToggleCheck" xml:space="preserve">
+    <value>Haken umschalten</value>
+  </data>
+  <data name="Ctx_SearchPayee" xml:space="preserve">
+    <value>Nach diesem Empfänger suchen</value>
+  </data>
+  <data name="Ctx_Similar" xml:space="preserve">
+    <value>Ähnliche Umsätze anzeigen</value>
+  </data>
+  <data name="Ctx_GoAccount" xml:space="preserve">
+    <value>Zum Konto</value>
+  </data>
+  <data name="Ctx_GoCategory" xml:space="preserve">
+    <value>Zur Kategorie</value>
+  </data>
+  <data name="Ctx_Statement" xml:space="preserve">
+    <value>Kontoauszug (PDF) öffnen</value>
+  </data>
+  <data name="Ctx_ComingSoon" xml:space="preserve">
+    <value>Kommt bald</value>
+  </data>
+  <data name="Ctx_CreateRule" xml:space="preserve">
+    <value>Regel erstellen …</value>
+  </data>
+  <data name="Ctx_Split" xml:space="preserve">
+    <value>Aufteilen …</value>
+  </data>
+  <data name="Ctx_Transfer" xml:space="preserve">
+    <value>Als Umbuchung markieren …</value>
+  </data>
+  <data name="Toast_NoChange" xml:space="preserve">
+    <value>Nichts zu ändern.</value>
+  </data>
+  <data name="Toast_Skipped" xml:space="preserve">
+    <value>{0} übersprungen (schreibgeschützt).</value>
+  </data>
+  <data name="Toast_Undo" xml:space="preserve">
+    <value>Rückgängig</value>
+  </data>
+  <data name="Toast_Undone" xml:space="preserve">
+    <value>Rückgängig gemacht ({0}).</value>
+  </data>
+  <data name="Toast_Denied" xml:space="preserve">
+    <value>Sie dürfen diese Umsätze nicht ändern.</value>
+  </data>
+  <data name="Toast_AlsoSimilar" xml:space="preserve">
+    <value>Auch {0} ähnliche kategorisieren</value>
+  </data>
+  <data name="Toast_CategorySet_One" xml:space="preserve">
+    <value>Kategorie bei 1 Umsatz gesetzt.</value>
+  </data>
+  <data name="Toast_CategorySet_Many" xml:space="preserve">
+    <value>Kategorie bei {0} Umsätzen gesetzt.</value>
+  </data>
+  <data name="Toast_CategoryRemoved_One" xml:space="preserve">
+    <value>Kategorie bei 1 Umsatz entfernt.</value>
+  </data>
+  <data name="Toast_CategoryRemoved_Many" xml:space="preserve">
+    <value>Kategorie bei {0} Umsätzen entfernt.</value>
+  </data>
+  <data name="Toast_NoteSet_One" xml:space="preserve">
+    <value>Notiz bei 1 Umsatz geändert.</value>
+  </data>
+  <data name="Toast_NoteSet_Many" xml:space="preserve">
+    <value>Notiz bei {0} Umsätzen geändert.</value>
+  </data>
+  <data name="Toast_Checked_One" xml:space="preserve">
+    <value>1 Umsatz abgehakt.</value>
+  </data>
+  <data name="Toast_Checked_Many" xml:space="preserve">
+    <value>{0} Umsätze abgehakt.</value>
+  </data>
+  <data name="Toast_Unchecked_One" xml:space="preserve">
+    <value>Haken bei 1 Umsatz entfernt.</value>
+  </data>
+  <data name="Toast_Unchecked_Many" xml:space="preserve">
+    <value>Haken bei {0} Umsätzen entfernt.</value>
+  </data>
+  <data name="Toast_CheckToggled_One" xml:space="preserve">
+    <value>Haken bei 1 Umsatz geändert.</value>
+  </data>
+  <data name="Toast_CheckToggled_Many" xml:space="preserve">
+    <value>Haken bei {0} Umsätzen geändert.</value>
+  </data>
+  <data name="Toast_MarkedAll_One" xml:space="preserve">
+    <value>1 Umsatz als abgehakt markiert.</value>
+  </data>
+  <data name="Toast_MarkedAll_Many" xml:space="preserve">
+    <value>{0} Umsätze als abgehakt markiert.</value>
+  </data>
 </root>

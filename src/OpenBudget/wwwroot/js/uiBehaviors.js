@@ -60,3 +60,122 @@ window.modalA11y = (function () {
         }
     };
 })();
+
+// Transaction list shortcuts and touch support (Browse page). The page attaches one handler with a
+// DotNetObjectReference; keys are decided here (so preventDefault can be conditional) and forwarded
+// to OnShortcut(key, shift, ctrlOrMeta). Typing in inputs, open dialogs and open popups
+// ([data-ob-overlay]) are never hijacked.
+window.obTx = (function () {
+    let ref = null;
+    let keyHandler = null;
+    let touchStart = null, touchTimer = null, suppressClickUntil = 0;
+
+    function typingTarget(el) {
+        if (!el || !el.tagName) return false;
+        var tag = el.tagName.toLowerCase();
+        return tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable === true;
+    }
+
+    function overlayOpen() {
+        return document.querySelector("[data-ob-overlay], .modal.show") !== null;
+    }
+
+    var plain = new Set(["ArrowUp", "ArrowDown", " ", "c", "C", "n", "N", "x", "X", "/", "?", "Escape"]);
+
+    function onKey(e) {
+        if (!ref || e.defaultPrevented || e.altKey) return;
+        if (typingTarget(e.target) || overlayOpen()) return;
+        var mod = e.ctrlKey || e.metaKey;
+        var handled = false;
+        if (mod) {
+            handled = (e.key === "a" || e.key === "A") && !e.shiftKey;
+        } else {
+            handled = plain.has(e.key);
+            // Space must keep activating a focused button/link/tree row.
+            if (e.key === " ") {
+                var t = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : "";
+                if (t === "button" || t === "a" || (e.target && e.target.getAttribute && e.target.getAttribute("role") === "treeitem")) handled = false;
+            }
+        }
+        if (!handled) return;
+        e.preventDefault();
+        ref.invokeMethodAsync("OnShortcut", e.key, e.shiftKey, mod);
+    }
+
+    function startPress(e) {
+        if (e.touches.length !== 1) return;
+        var row = e.target.closest && e.target.closest(".tx-row");
+        if (!row) return;
+        var t = e.touches[0];
+        touchStart = { x: t.clientX, y: t.clientY };
+        touchTimer = setTimeout(function () {
+            touchTimer = null;
+            suppressClickUntil = Date.now() + 800;
+            row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: touchStart.x, clientY: touchStart.y }));
+        }, 550);
+    }
+
+    function movePress(e) {
+        if (!touchTimer || !touchStart) return;
+        var t = e.touches[0];
+        if (Math.abs(t.clientX - touchStart.x) > 10 || Math.abs(t.clientY - touchStart.y) > 10) endPress();
+    }
+
+    function endPress() {
+        if (touchTimer) { clearTimeout(touchTimer); touchTimer = null; }
+    }
+
+    function swallowClick(e) {
+        if (Date.now() < suppressClickUntil) { e.stopPropagation(); e.preventDefault(); }
+    }
+
+    return {
+        attach: function (dotnetRef) {
+            this.detach();
+            ref = dotnetRef;
+            keyHandler = onKey;
+            document.addEventListener("keydown", keyHandler);
+            document.addEventListener("touchstart", startPress, { passive: true });
+            document.addEventListener("touchmove", movePress, { passive: true });
+            document.addEventListener("touchend", endPress, { passive: true });
+            document.addEventListener("touchcancel", endPress, { passive: true });
+            document.addEventListener("click", swallowClick, true);
+        },
+        detach: function () {
+            if (keyHandler) document.removeEventListener("keydown", keyHandler);
+            document.removeEventListener("touchstart", startPress);
+            document.removeEventListener("touchmove", movePress);
+            document.removeEventListener("touchend", endPress);
+            document.removeEventListener("touchcancel", endPress);
+            document.removeEventListener("click", swallowClick, true);
+            keyHandler = null; ref = null; endPress();
+        },
+        // Scroll a transaction row into view if it is rendered (Virtualize may not have it).
+        reveal: function (id) {
+            var el = document.querySelector('[data-tx-id="' + id + '"]');
+            if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+        },
+        // Where a popup for a row should open (viewport coordinates), or null when the row is not rendered.
+        rowAnchor: function (id) {
+            var el = document.querySelector('[data-tx-id="' + id + '"] .tx-row');
+            if (!el) return null;
+            var r = el.getBoundingClientRect();
+            return [r.left + Math.min(r.width / 2, 320), r.bottom];
+        },
+        focusSearch: function () {
+            var el = document.querySelector('[data-testid="tx-search"]');
+            if (el) { el.focus(); el.select && el.select(); }
+        }
+    };
+})();
+
+// Keeps the highlighted entry of a popup list (category picker, context menu) in view.
+window.obScrollActive = function (container) {
+    if (!container) return;
+    var el = container.querySelector(".cp-active, .ctx-active");
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+};
+
+window.obFocus = function (el) {
+    if (el && el.focus) el.focus();
+};

@@ -240,6 +240,20 @@ public class TransactionQueryService
             .ToListAsync(ct);
     }
 
+    /// <summary>The subset of <paramref name="ids"/> that still matches the filter (to prune a selection after an edit).</summary>
+    public async Task<HashSet<long>> FilterIdsAsync(TransactionQuery query, IReadOnlyCollection<long> ids, CancellationToken ct = default)
+    {
+        var result = new HashSet<long>();
+        if (ids.Count == 0) return result;
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        foreach (var chunk in ids.Chunk(500))
+        {
+            var part = chunk;
+            result.UnionWith(await BuildFilteredQuery(db, query).Where(t => part.Contains(t.Id)).Select(t => t.Id).ToListAsync(ct));
+        }
+        return result;
+    }
+
     /// <summary>Sum (cents) of the given transactions the user can see, for the action bar's "N selected, sum".</summary>
     public async Task<(int Count, decimal Sum)> GetSelectionTotalsAsync(IReadOnlyCollection<long> ids, CancellationToken ct = default)
     {

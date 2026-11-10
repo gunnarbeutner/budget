@@ -144,3 +144,64 @@ internal static class E2ESeed
         });
     }
 }
+
+/// <summary>
+/// The extra world the transaction-editing tests need on top of the baseline: one bank-connector account (editable)
+/// with uncategorized rows, one MoneyMoney-owned account (read-only), both assigned to the demo project.
+/// </summary>
+internal static class EditingSeed
+{
+    public const string BankAccountName = "Example Giro";
+    public const string MoneyMoneyAccountName = "Example MoneyMoney Account";
+    public const string EnergyCategory = "Energy";
+
+    public static readonly long BankAccountId = SourceScope.Namespace(E2ESeed.SourceId, 1);
+    public static readonly long MoneyMoneyAccountId = SourceScope.Namespace(E2ESeed.SourceId, 2);
+
+    public static async Task SeedAsync(IDbContextFactory<BudgetDbContext> factory)
+    {
+        await using var db = await factory.CreateDbContextAsync();
+        db.Categories.Add(new Category { Id = 202, SourceId = E2ESeed.SourceId, Name = EnergyCategory, GroupId = 100, Type = 1 });
+        db.Accounts.Add(new Account
+        {
+            Id = BankAccountId,
+            SourceId = E2ESeed.SourceId,
+            Name = BankAccountName,
+            Provider = "fake",
+            Type = 1,
+            Currency = "EUR",
+            Balances = "11:1000.000000,3:EUR,",
+        });
+        db.Accounts.Add(new Account { Id = MoneyMoneyAccountId, SourceId = E2ESeed.SourceId, Name = MoneyMoneyAccountName, Type = 1, Currency = "EUR", Balances = "11:50.000000,3:EUR," });
+        await db.SaveChangesAsync();
+        db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = BankAccountId });
+        db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = MoneyMoneyAccountId });
+
+        Add(db, 101, BankAccountId, -25_00, "Example Grocer", new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc), purpose: "Card payment 1234");
+        Add(db, 102, BankAccountId, -30_00, "Example Grocer", new DateTime(2026, 3, 12, 0, 0, 0, DateTimeKind.Utc), isNew: true);
+        Add(db, 103, BankAccountId, -12_50, "Example Grocer", new DateTime(2026, 3, 14, 0, 0, 0, DateTimeKind.Utc));
+        Add(db, 104, BankAccountId, 2000_00, "Example Employer", new DateTime(2026, 3, 14, 0, 0, 0, DateTimeKind.Utc), category: 201);
+        Add(db, 110, MoneyMoneyAccountId, -4_50, "Example Bakery", new DateTime(2026, 3, 11, 0, 0, 0, DateTimeKind.Utc));
+        await db.SaveChangesAsync();
+    }
+
+    private static void Add(BudgetDbContext db, long id, long account, long cents, string payee, DateTime date, string? purpose = null, bool isNew = false, long? category = null) =>
+        db.Transactions.Add(new Transaction
+        {
+            Id = id,
+            SourceId = E2ESeed.SourceId,
+            AccountId = account,
+            Amount = cents,
+            Currency = "EUR",
+            Name = payee,
+            Purpose = purpose,
+            CategoryId = category,
+            Timestamp = ((DateTimeOffset)date).ToUnixTimeSeconds(),
+            ValueTimestamp = ((DateTimeOffset)date.AddDays(1)).ToUnixTimeSeconds(),
+            CounterpartyIban = "DE89370400440532013000",
+            CounterpartyBic = "COBADEFFXXX",
+            BookingText = "Lastschrift",
+            BankReference = $"REF-{id}",
+            IsNew = isNew,
+        });
+}
