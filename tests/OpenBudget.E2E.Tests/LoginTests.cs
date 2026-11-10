@@ -51,7 +51,7 @@ public sealed class LoginTests : EndToEndTestBase
     {
         await LoginAsync(E2ESeed.UserName);
         await GoToAsync("/");
-        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = E2ESeed.ProjectName })).ToBeVisibleAsync();
+        await Expect(Page.Locator("[data-testid=project-selector] .project-selector-name")).ToHaveTextAsync(E2ESeed.ProjectName);
 
         await LogoutAsync();
 

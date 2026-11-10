@@ -11,9 +11,10 @@
 @inject ILogger<ProjectSwitcher> Logger
 @inject IStringLocalizer<ProjectSwitcher> L
 
-@* The project switcher in the top bar. Lists every project the user can see with
+@* The project switcher in the top bar — it replaced the start page. Lists every project the user can see with
    the numbers the start page used to show: balance and number of accounts, this month's spending against the
-   budget (bar + percentage), the default-for-new-accounts badge and who shared it. The numbers load when the menu opens, so it costs nothing
+   budget (bar + percentage), the default-for-new-accounts badge and who shared it. Then "New project" and
+   "Reorder and manage projects…" (ManageProjects). The numbers load when the menu opens, so it costs nothing
    until used. *@
 
 <details class="project-selector app-menu" data-testid="project-selector" @key="Current.ProjectId">
@@ -83,6 +84,14 @@
                 }
             </ul>
         }
+        <div class="project-switcher-foot">
+            <a class="dropdown-item" href="/projects/manage?new=1" data-testid="switcher-new-project">
+                <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>@L["Item_NewProject"]
+            </a>
+            <a class="dropdown-item" href="/projects/manage" data-testid="switcher-manage">
+                <i class="bi bi-arrow-down-up me-2" aria-hidden="true"></i>@L["Item_Manage"]
+            </a>
+        </div>
     </div>
 </details>
 

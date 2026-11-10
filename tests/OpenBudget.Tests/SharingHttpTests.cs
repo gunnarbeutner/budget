@@ -93,7 +93,7 @@ public sealed class SharingHttpTests : IDisposable
         await _host.SeedWorldAsync(ProjectRole.Editor);
 
         using var bob = await _host.LoggedInClientAsync("bob");
-        var (_, bobHome) = await GetAsync(bob, "/");
+        var (_, bobHome) = await GetAsync(bob, "/projects/manage");
         Assert.Contains("Shared", bobHome, StringComparison.Ordinal);
         Assert.Contains("Property", bobHome, StringComparison.Ordinal);       // inherited
         Assert.Contains("Bob Private", bobHome, StringComparison.Ordinal);
@@ -101,7 +101,7 @@ public sealed class SharingHttpTests : IDisposable
         Assert.Contains("Shared by alice", bobHome, StringComparison.Ordinal);
 
         using var alice = await _host.LoggedInClientAsync("alice");
-        var (_, aliceHome) = await GetAsync(alice, "/");
+        var (_, aliceHome) = await GetAsync(alice, "/projects/manage");
         Assert.Contains("Alice Private", aliceHome, StringComparison.Ordinal);
         Assert.DoesNotContain("Bob Private", aliceHome, StringComparison.Ordinal);
     }
@@ -166,7 +166,7 @@ public sealed class SharingHttpTests : IDisposable
         using var bob = await _host.LoggedInClientAsync("bob");
 
         await AssertNotFoundAsync(bob, "/projects/1/overview", "/projects/1/browse", "/projects/3/overview", "/projects/2/settings");
-        var (_, home) = await GetAsync(bob, "/");
+        var (_, home) = await GetAsync(bob, "/projects/manage");
         Assert.DoesNotContain(">Shared<", home, StringComparison.Ordinal);
         Assert.Contains("Bob Private", home, StringComparison.Ordinal);
     }
@@ -195,7 +195,7 @@ public sealed class SharingHttpTests : IDisposable
         using var alice = await _host.LoggedInClientAsync("alice");
 
         await AssertNotFoundAsync(alice, "/projects/7/overview", "/sources/7/depots");
-        var (_, home) = await GetAsync(alice, "/");
+        var (_, home) = await GetAsync(alice, "/projects/manage");
         Assert.DoesNotContain("Orphan Project", home, StringComparison.Ordinal);
     }
 }

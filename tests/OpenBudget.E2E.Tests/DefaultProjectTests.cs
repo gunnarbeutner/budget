@@ -46,13 +46,13 @@ public sealed class DefaultProjectTests : EndToEndTestBase
         await Toggle.CheckAsync();
         await Expect(Toggle).ToBeCheckedAsync();
 
-        await GoToAsync("/");
+        await GoToAsync("/projects/manage");
         await Expect(Page.GetByTestId("default-project-badge")).ToBeVisibleAsync();
 
         await GoToAsync(SettingsUrl);
         await Toggle.UncheckAsync();
         await Expect(Toggle).Not.ToBeCheckedAsync();
-        await GoToAsync("/");
+        await GoToAsync("/projects/manage");
         await Expect(Page.GetByTestId("default-project-badge")).ToHaveCountAsync(0);
     }
 
