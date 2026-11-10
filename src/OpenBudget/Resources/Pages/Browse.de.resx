@@ -351,7 +351,7 @@
     <value>{0} Umsätze als abgehakt markiert.</value>
   </data>
   <data name="ReadOnly_MoneyMoney" xml:space="preserve">
-    <value>Nur lesen: wird in MoneyMoney kategorisiert</value>
+    <value>Wird in MoneyMoney kategorisiert, bis dieses Konto auf einen Bankzugang umgestellt wird</value>
   </data>
   <data name="Color_Title" xml:space="preserve">
     <value>Kategoriefarbe</value>

@@ -129,7 +129,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
 
         // The account itself carries one read-only notice in the toolbar instead of a lock per row.
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.MoneyMoneyAccountId}");
-        await Expect(Page.GetByTestId("browse-readonly")).ToContainTextAsync("Read-only: categorized in MoneyMoney");
+        await Expect(Page.GetByTestId("browse-readonly")).ToHaveAttributeAsync("title", "Categorized in MoneyMoney until this account switches to a bank connector");
         await Expect(Page.GetByTestId("tx-check")).ToBeDisabledAsync();
     }
 
@@ -324,7 +324,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
 
         // The account itself carries one read-only notice in the toolbar instead of a lock per row.
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.MoneyMoneyAccountId}");
-        await Expect(Page.GetByTestId("browse-readonly")).ToContainTextAsync("Read-only: categorized in MoneyMoney");
+        await Expect(Page.GetByTestId("browse-readonly")).ToHaveAttributeAsync("title", "Categorized in MoneyMoney until this account switches to a bank connector");
         await Expect(Page.GetByTestId("tx-check")).ToBeDisabledAsync();
     }
 

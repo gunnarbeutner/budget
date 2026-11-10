@@ -98,7 +98,7 @@
                         }
                         @if (info.LastUpdatedUtc != null || info.Error != null)
                         {
-                            @if (parts++ > 0) { <span> · </span> }
+                            @if (parts > 0) { <span> · </span> }
                             <span data-testid="account-last-updated">
                                 @if (info.Error is { } err)
                                 {
@@ -120,8 +120,8 @@
                         }
                         @if (info.IsMoneyMoney)
                         {
-                            @if (parts > 0) { <span> · </span> }
-                            <span data-testid="browse-readonly"><i class="bi bi-lock me-1" aria-hidden="true"></i>@L["ReadOnly_MoneyMoney"]</span>
+                            <span class="browse-readonly ms-1" data-testid="browse-readonly" role="img" tabindex="0"
+                                  title="@L["ReadOnly_MoneyMoney"]" aria-label="@L["ReadOnly_MoneyMoney"]"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
                         }
                     }
                     else if (selectionKind == "accountgroup" && GroupAccounts() is { } members)
@@ -165,8 +165,7 @@
                     </div>
                 </details>
             }
-            <div class="flex-grow-1"></div>
-            <div class="browse-tools d-flex flex-wrap align-items-center gap-2">
+            <div class="browse-tools d-flex flex-wrap align-items-center gap-2" data-testid="browse-tools">
                 <PeriodNav Inline="true" Anchor="anchor" Period="@period" ShowMonthPicker="true"
                            MinMonth="monthMin" MaxMonth="monthMax" OnChanged="OnPeriodChanged" />
                 <label class="browse-search mb-0">
