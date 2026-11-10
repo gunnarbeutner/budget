@@ -328,9 +328,19 @@ internal sealed class IngWebClient
             fields.Add(new HtmlField(RangeField, DateRange));
             fields.Add(new HtmlField(PostboxFromField, from.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)));
             fields.Add(new HtmlField(PostboxToField, to.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)));
-            fields.Add(new HtmlField(PostboxFilterButton, ""));
-            page = await FollowAsync(await PostAsync(Resolve(page.Url, form.Action), fields, ct), ct);
-            var rows = IngHtml.PostboxRows(page.Html);
+            fields.Add(new HtmlField(PostboxFilterButton, "1"));
+            // "Filter anwenden" is a Wicket Ajax button: it posts the whole form to its behaviour and the answer replaces
+            // the list in place (a plain form submit gives back the unfiltered page).
+            var id = ButtonId(page.Html, PostboxFilterButton);
+            string listing;
+            if (id.Length > 0 && IngHtml.AjaxFor(page.Html, id) is { } filter)
+                listing = await AjaxAsync(page.Url, filter.Url, fields, ct);
+            else
+            {
+                page = await FollowAsync(await PostAsync(Resolve(page.Url, form.Action), fields, ct), ct);
+                listing = page.Html;
+            }
+            var rows = IngHtml.PostboxRows(listing);
             if (rows.Count >= PostboxListingCap && from < to)
             {
                 // Full: ING may have cut it short. Read both halves on their own.
@@ -362,6 +372,24 @@ internal sealed class IngWebClient
         try { now = TimeZoneInfo.ConvertTime(now, TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin")); }
         catch (TimeZoneNotFoundException) { /* UTC is close enough */ }
         return DateOnly.FromDateTime(now.DateTime);
+    }
+
+    /// <summary>The id attribute of the button named <paramref name="name"/>, or "" (plain string search, no regex).</summary>
+    private static string ButtonId(string html, string name)
+    {
+        var at = html.IndexOf("name=\"" + name + "\"", StringComparison.Ordinal);
+        if (at < 0) return "";
+        var start = html.LastIndexOf("<button", at, StringComparison.Ordinal);
+        var rel = html.AsSpan(at).IndexOf('>');
+        var end = rel < 0 ? -1 : at + rel;
+        if (start < 0 || end < 0) return "";
+        var tag = html[start..end];
+        var idAt = tag.IndexOf(" id=\"", StringComparison.Ordinal);
+        if (idAt < 0) return "";
+        var from = idAt + 5;
+        var relClose = tag.AsSpan(from).IndexOf('"');
+        var close = relClose < 0 ? -1 : from + relClose;
+        return close < 0 ? "" : tag[from..close];
     }
 
     private static List<HtmlField> Without(IEnumerable<HtmlField> fields, params string[] names) =>

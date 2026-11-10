@@ -284,13 +284,19 @@ internal sealed class FakeIng : HttpMessageHandler
         }
         if (x.StartsWith("search", StringComparison.Ordinal) && method == HttpMethod.Post)
         {
-            var box = x == "search1" ? 1 : 2;
+            // Like ING: a plain submit of the filter form is ignored; the page comes back unfiltered.
+            var plain = x == "search1" ? 1 : 2;
+            return Html(Page(Chips(plain) + Filter(plain, false) + Table(plain, 12), RangeScript(plain)));
+        }
+        if (x.StartsWith("filter-box", StringComparison.Ordinal) && ajax && method == HttpMethod.Post)
+        {
+            var box = x == "filter-box1" ? 1 : 2;
             if (form["erweiterterFilter:filtern"] == null || form["erweiterterFilter:zeitraum:zeitraum"] != "DATUM" || !_dateMode.GetValueOrDefault(box))
                 return new HttpResponseMessage(HttpStatusCode.BadRequest); // Wicket ignores the date fields while they are disabled
             var from = DateOnly.ParseExact(form["erweiterterFilter:zeitraum:dateFields:von:datePanel:dateInput"] ?? "", "dd.MM.yyyy", System.Globalization.CultureInfo.InvariantCulture);
             var to = DateOnly.ParseExact(form["erweiterterFilter:zeitraum:dateFields:bis:datePanel:dateInput"] ?? "", "dd.MM.yyyy", System.Globalization.CultureInfo.InvariantCulture);
             Ranges.Add($"{from:yyyy-MM-dd}..{to:yyyy-MM-dd}");
-            return Html(Page(Chips(box) + Filter(box, true) + Table(box, from, to), RangeScript(box)));
+            return Xml($"<?xml version=\"1.0\" encoding=\"UTF-8\"?><ajax-response><component id=\"idt\"><![CDATA[{Table(box, from, to)}]]></component></ajax-response>");
         }
         return new HttpResponseMessage(HttpStatusCode.BadRequest);
     }
@@ -313,13 +319,14 @@ internal sealed class FakeIng : HttpMessageHandler
                 ? $"<input class=\"input-field\" type=\"text\" value=\"09.11.2025\" name=\"erweiterterFilter:zeitraum:dateFields:von:datePanel:dateInput\"{disabled} data-date-start-date=\"09.11.2016\" data-date-end-date=\"09.11.2026\"/>"
                   + $"<input class=\"input-field\" type=\"text\" value=\"09.11.2026\" name=\"erweiterterFilter:zeitraum:dateFields:bis:datePanel:dateInput\"{disabled} data-date-start-date=\"09.11.2016\" data-date-end-date=\"09.11.2026\"/>"
                   + "<select name=\"erweiterterFilter:kontenFilter\"><option selected=\"selected\" value=\"0\">Alle</option></select>"
-                  + "<button type=\"submit\" class=\"button indigo\" name=\"erweiterterFilter:filtern\">Filter anwenden</button>"
+                  + $"<button type=\"submit\" class=\"button indigo\" name=\"erweiterterFilter:filtern\" id=\"idfb{box}\">Filter anwenden</button>"
                 : "")
             + "</form>";
     }
 
     private static string RangeScript(int box) =>
-        $"Wicket.Ajax.ajax({{\"u\":\"./postbox?x=range-box{box}\",\"m\":\"POST\",\"c\":\"idsel{box}\",\"e\":\"change\"}});";
+        $"Wicket.Ajax.ajax({{\"u\":\"./postbox?x=range-box{box}\",\"m\":\"POST\",\"c\":\"idsel{box}\",\"e\":\"change\"}});"
+        + $"Wicket.Ajax.ajax({{\"u\":\"./postbox?x=filter-box{box}\",\"m\":\"POST\",\"c\":\"idfb{box}\",\"e\":\"click\",\"f\":\"idpf\",\"sc\":\"erweiterterFilter:filtern\"}});";
 
     private static string Chips(int box) =>
         "<div class=\"chips-nav\">"
