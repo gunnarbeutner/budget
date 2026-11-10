@@ -58,18 +58,43 @@ public partial class Browse
         _ => L["Period_Custom"],
     };
 
-    private string ListGridStyle
+    // ---- toolbar: filter panel, documents, category color ----
+
+    private bool _filterOpen;
+    private int _statementCount;
+    private bool _canEditColors;
+    private int _colorMenuVersion;
+
+    /// <summary>How many of the panel's filters are set (search has its own field and is not counted).</summary>
+    private int ActiveFilterCount =>
+        (accountFilter.HasValue ? 1 : 0) + (amountMin.HasValue ? 1 : 0) + (amountMax.HasValue ? 1 : 0)
+        + (periodFilter != PeriodFilter.All ? 1 : 0) + (checkedFilter != "any" ? 1 : 0) + (directionFilter != "any" ? 1 : 0)
+        + (newOnly ? 1 : 0) + (categoryFilter.HasValue ? 1 : 0);
+
+    private async Task LoadToolbarExtrasAsync()
     {
-        get
+        _statementCount = 0;
+        if (SelectedAccountNode is { } account)
         {
-            var cols = new List<string> { "1.4rem", "5.6rem", "minmax(0, 1fr)" };
-            var areas = new List<string> { "mark", "date", "payee" };
-            if (showCategoryColumn) { cols.Add("10rem"); areas.Add("cat"); }
-            if (showAccountColumn) { cols.Add("7rem"); areas.Add("account"); }
-            cols.Add("8rem");
-            areas.Add("amount");
-            return $"--tx-cols: {string.Join(' ', cols)}; --tx-areas: \"{string.Join(' ', areas)}\";";
+            try { _statementCount = (await BankLogins.GetAccountStatementsAsync(account.Id)).Count; }
+            catch (AccessDeniedException) { _statementCount = 0; }
+            catch (InvalidOperationException) { _statementCount = 0; }
         }
+        _canEditColors = project != null && selectionKind == "category" && await CategoryColorEdits.CanEditAsync(project.SourceId);
+    }
+
+    private async Task SetCategoryColorAsync(long categoryId, string? color)
+    {
+        if (!await CategoryColorEdits.SetColorAsync(categoryId, color)) return;
+        _colorMenuVersion++;   // re-creates the <details>, which closes it
+        await ReloadAsync();
+    }
+
+    private async Task ShowSimilarAsync(TransactionRow row)
+    {
+        if (string.IsNullOrWhiteSpace(row.Name)) return;
+        payeeEquals = row.Name;
+        await FilterChangedAsync();
     }
 
     private (string Keys, string Text)[] ShortcutRows =>

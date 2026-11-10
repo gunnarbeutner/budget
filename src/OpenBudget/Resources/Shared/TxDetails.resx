@@ -62,7 +62,7 @@
     <value>Payee</value>
   </data>
   <data name="Iban" xml:space="preserve">
-    <value>IBAN / BIC</value>
+    <value>Counter account</value>
   </data>
   <data name="Purpose" xml:space="preserve">
     <value>Purpose</value>
@@ -126,5 +126,23 @@
   </data>
   <data name="Lock_NoPermission" xml:space="preserve">
     <value>You can only view these transactions</value>
+  </data>
+  <data name="Bic" xml:space="preserve">
+    <value>BIC</value>
+  </data>
+  <data name="Action_Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Action_Split" xml:space="preserve">
+    <value>Split</value>
+  </data>
+  <data name="Action_Rule" xml:space="preserve">
+    <value>Create rule</value>
+  </data>
+  <data name="Action_Similar" xml:space="preserve">
+    <value>Show similar</value>
+  </data>
+  <data name="ComingSoon" xml:space="preserve">
+    <value>Coming soon</value>
   </data>
 </root>

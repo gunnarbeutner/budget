@@ -1,12 +1,23 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@inject IStringLocalizer<MainLayout> L
 
 <PageTitle>OpenBudget</PageTitle>
+
+@* App chrome: one 44px top bar for every page. Project-scoped pages put their project switcher + tabs into the
+   "app-nav" section and the settings cog into "app-actions" (see ProjectPageHeader); every page gets the wordmark,
+   the bank-sync status and the account menu. Page-specific toolbars (period navigation, filters) follow in the body. *@
+<header class="app-topbar d-print-none" data-testid="app-topbar">
+    <a href="/" class="app-wordmark" title="@L["Home"]">OpenBudget</a>
+    <SectionOutlet SectionName="app-nav" />
+    <div class="flex-grow-1"></div>
+    <BankSyncHost />
+    <SectionOutlet SectionName="app-actions" />
+    <UserMenu />
+</header>
 
 <div class="page-horizontal">
     <main class="main-content">
         <article class="content px-3">
-            <UserMenu />
-            <BankSyncHost />
             @Body
         </article>
     </main>

@@ -5,7 +5,7 @@
 // <details> only toggles on summary clicks; users expect dropdowns to close when
 // they click elsewhere on the page.
 document.addEventListener("click", function (e) {
-    document.querySelectorAll("details.project-selector[open]").forEach(function (d) {
+    document.querySelectorAll("details.project-selector[open], details.app-menu[open]").forEach(function (d) {
         if (!d.contains(e.target)) {
             d.open = false;
         }

@@ -43,7 +43,7 @@ public sealed class LoginTests : EndToEndTestBase
         await Page.GetByRole(AriaRole.Button, new() { Name = "Sign in", Exact = true }).ClickAsync();
 
         await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{E2ESeed.ProjectId}/overview.*"));
-        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = E2ESeed.UserName })).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("user-menu").Locator("summary")).ToHaveAttributeAsync("title", E2ESeed.UserName);   // the avatar in the top bar
     }
 
     [Test]
@@ -99,7 +99,7 @@ public sealed class LoginTests : EndToEndTestBase
         await Page.GetByLabel("Username").FillAsync(E2ESeed.UserName);
         await Page.GetByLabel("Password").FillAsync(E2ESeed.Password);
         await Page.GetByRole(AriaRole.Button, new() { Name = "Sign in", Exact = true }).ClickAsync();
-        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = E2ESeed.UserName, Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("user-menu").Locator("summary")).ToHaveAttributeAsync("title", E2ESeed.UserName);   // the avatar in the top bar
         await Page.GotoAsync(origin + "/Account");
         await Page.GetByRole(AriaRole.Button, new() { Name = "Add passkey" }).ClickAsync();
         await Expect(Page.GetByText("could not be registered")).Not.ToBeVisibleAsync();
@@ -109,6 +109,6 @@ public sealed class LoginTests : EndToEndTestBase
         await Page.Context.ClearCookiesAsync();
         await Page.GotoAsync(origin + "/Account/Login");
         await Page.GetByRole(AriaRole.Button, new() { Name = "Sign in with a passkey" }).ClickAsync();
-        await Expect(Page.GetByRole(AriaRole.Link, new() { Name = E2ESeed.UserName, Exact = true })).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("user-menu").Locator("summary")).ToHaveAttributeAsync("title", E2ESeed.UserName);   // the avatar in the top bar
     }
 }

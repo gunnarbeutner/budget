@@ -132,7 +132,7 @@
     }
 
     private string SumsText(AccountTreeNode n) =>
-        string.Join(" · ", n.Sums.Select(s => Formatting.FormatMoney(s.Amount, s.Currency)));
+        string.Join(" · ", n.Sums.Select(s => Formatting.FormatMoneyDe(s.Amount, s.Currency)));
 
     private RenderFragment RenderAccountNode(AccountTreeNode n, int level) => __builder =>
     {
@@ -149,7 +149,7 @@
                 @if (a.Balance.HasValue)
                 {
                     <span class="browse-tree-amount @(a.Balance < 0 ? "text-danger" : "text-body-secondary")">
-                        @Formatting.FormatMoney(a.Balance.Value, a.Currency ?? "EUR")
+                        @Formatting.FormatMoneyDe(a.Balance.Value, a.Currency ?? "EUR")
                     </span>
                 }
             </div>
@@ -224,11 +224,11 @@
 
         builder.OpenElement(10, "span");
         builder.AddAttribute(11, "class", "browse-tree-name");
-        if (!string.IsNullOrEmpty(node.Color))
+        if (CategoryColors.ToCss(node.Color) is { } dotColor)
         {
             builder.OpenElement(12, "span");
             builder.AddAttribute(13, "class", "browse-color-dot");
-            builder.AddAttribute(14, "style", $"background:{node.Color};");
+            builder.AddAttribute(14, "style", $"background:{dotColor};");
             builder.CloseElement();
         }
         else
@@ -242,23 +242,25 @@
 
         builder.OpenElement(30, "span");
         builder.AddAttribute(31, "class", "browse-tree-amount");
+        if (node.Remaining is { } remTitle)
+            builder.AddAttribute(32, "title", Formatting.FormatMoneyDe(node.IsIncome ? node.Spent : -node.Spent) + " | " + Formatting.FormatMoneyDe(remTitle));
         // Show the spent side whenever the node has any context to anchor it: either an
         // actual non-zero spent value, OR a budget pair on its right ("€0,00 | €120,00" reads
         // cleanly; a bare " | €120,00" reads as a missing value).
         bool hasBudgetContext = node.Remaining.HasValue;
         if (node.Spent != 0m || hasBudgetContext)
         {
-            builder.OpenElement(32, "span");
-            builder.AddAttribute(33, "class", node.IsIncome ? "text-success" : "text-danger");
-            builder.AddContent(34, Formatting.FormatMoney(node.IsIncome ? node.Spent : -node.Spent));
+            builder.OpenElement(42, "span");
+            builder.AddAttribute(43, "class", node.IsIncome ? "text-success" : "text-danger");
+            builder.AddContent(44, Formatting.FormatMoneyDe(node.IsIncome ? node.Spent : -node.Spent));
             builder.CloseElement();
         }
         if (node.Remaining is { } rem)
         {
-            builder.AddContent(35, " | ");
-            builder.OpenElement(36, "span");
-            builder.AddAttribute(37, "class", rem < 0 ? "text-danger" : "text-success");
-            builder.AddContent(38, Formatting.FormatMoney(rem));
+            builder.AddContent(45, " | ");
+            builder.OpenElement(46, "span");
+            builder.AddAttribute(47, "class", rem < 0 ? "text-danger" : "text-success");
+            builder.AddContent(48, Formatting.FormatMoneyDe(rem));
             builder.CloseElement();
         }
         builder.CloseElement(); // span.browse-tree-amount

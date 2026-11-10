@@ -62,7 +62,7 @@
     <value>Empfänger</value>
   </data>
   <data name="Iban" xml:space="preserve">
-    <value>IBAN / BIC</value>
+    <value>Gegenkonto</value>
   </data>
   <data name="Purpose" xml:space="preserve">
     <value>Verwendungszweck</value>
@@ -126,5 +126,23 @@
   </data>
   <data name="Lock_NoPermission" xml:space="preserve">
     <value>Sie können diese Umsätze nur ansehen</value>
+  </data>
+  <data name="Bic" xml:space="preserve">
+    <value>BIC</value>
+  </data>
+  <data name="Action_Category" xml:space="preserve">
+    <value>Kategorie</value>
+  </data>
+  <data name="Action_Split" xml:space="preserve">
+    <value>Aufteilen</value>
+  </data>
+  <data name="Action_Rule" xml:space="preserve">
+    <value>Regel erstellen</value>
+  </data>
+  <data name="Action_Similar" xml:space="preserve">
+    <value>Ähnliche zeigen</value>
+  </data>
+  <data name="ComingSoon" xml:space="preserve">
+    <value>Demnächst</value>
   </data>
 </root>

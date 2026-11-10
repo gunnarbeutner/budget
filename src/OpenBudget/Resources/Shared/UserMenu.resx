@@ -67,4 +67,7 @@
   <data name="BankLogins" xml:space="preserve">
     <value>Bank logins</value>
   </data>
+  <data name="Menu" xml:space="preserve">
+    <value>Account menu: profile, bank logins, sign out</value>
+  </data>
 </root>

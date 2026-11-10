@@ -74,9 +74,9 @@ public sealed class AccountTreeTests : EndToEndTestBase
         var groups = Page.GetByTestId("tree-group");
         await Expect(groups).ToHaveCountAsync(2);
         await Expect(groups.Nth(0)).ToContainTextAsync("Banks");
-        await Expect(groups.Nth(0).GetByTestId("tree-group-sum")).ToHaveTextAsync("€1,300.00");
+        await Expect(groups.Nth(0).GetByTestId("tree-group-sum")).ToHaveTextAsync("1.300,00\u00A0€");
         await Expect(groups.Nth(1)).ToContainTextAsync("Example Bank");
-        await Expect(groups.Nth(1).GetByTestId("tree-group-sum")).ToHaveTextAsync("€1,250.50");
+        await Expect(groups.Nth(1).GetByTestId("tree-group-sum")).ToHaveTextAsync("1.250,50\u00A0€");
         await Expect(Page.GetByTestId("tree-account")).ToHaveCountAsync(3);
 
         await groups.Nth(1).ClickAsync();

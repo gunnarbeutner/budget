@@ -94,4 +94,10 @@
   <data name="ShowBrowser" xml:space="preserve">
     <value>Show the bank's page</value>
   </data>
+  <data name="SyncedAt" xml:space="preserve">
+    <value>Synced {0}</value>
+  </data>
+  <data name="SyncAllTitle" xml:space="preserve">
+    <value>Last bank sync — click to sync all bank logins now</value>
+  </data>
 </root>

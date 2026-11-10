@@ -94,4 +94,10 @@
   <data name="ShowBrowser" xml:space="preserve">
     <value>Seite der Bank anzeigen</value>
   </data>
+  <data name="SyncedAt" xml:space="preserve">
+    <value>Synchronisiert {0}</value>
+  </data>
+  <data name="SyncAllTitle" xml:space="preserve">
+    <value>Letzte Banksynchronisation – klicken, um alle Bankzugänge jetzt zu synchronisieren</value>
+  </data>
 </root>

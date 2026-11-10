@@ -30,71 +30,27 @@
                   Years="availableYears" OnChanged="OnYearChanged" />
 *@
 
-<div class="period-nav d-flex flex-wrap mb-2 align-items-center gap-2 sticky-top bg-body py-1 bleed-sticky"
-     style="z-index: 1020;">
-    @if (Leading != null)
-    {
-        @Leading
-    }
-
-    <button type="button" class="btn btn-sm btn-outline-secondary"
-            @onclick="() => Step(-1)" aria-label="@L["Aria_Previous"]"
-            disabled="@PrevDisabled">
-        <i class="bi bi-chevron-left" aria-hidden="true"></i>
-    </button>
-
-    @if (YearOnly)
-    {
-        @* Same wording as full mode's "year" period (Heading_Year) so the year label reads
-           identically across all views. *@
-        <h5 class="period-nav-heading mb-0">@L["Heading_Year", Anchor.Year]</h5>
-    }
-    else if (ShowMonthPicker)
-    {
-        <h5 class="period-nav-heading mb-0 d-inline-flex align-items-center gap-2 position-relative"
-            role="button" tabindex="0" style="cursor: pointer;"
-            title="@L["Title_PickMonth"]"
-            @onclick="OpenMonthPicker" @onkeydown="OnHeadingKey">
-            <span>@HeadingText</span>
-            <input @ref="monthInputRef" type="month"
-                   style="position: absolute; left: 50%; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0;"
-                   min="@MinMonthValue" max="@MaxMonthValue"
-                   value="@MonthValue" @onchange="OnMonthInput"
-                   tabindex="-1" aria-hidden="true" />
-        </h5>
-    }
-    else
-    {
-        <span class="text-body-secondary small browse-anchor-label">@HeadingText</span>
-    }
-
-    <button type="button" class="btn btn-sm btn-outline-secondary"
-            @onclick="() => Step(1)" aria-label="@L["Aria_Next"]"
-            disabled="@NextDisabled">
-        <i class="bi bi-chevron-right" aria-hidden="true"></i>
-    </button>
-    <button type="button" class="btn btn-sm btn-outline-secondary"
-            @onclick="TodayClicked" disabled="@TodayDisabled">@L["Button_Today"]</button>
-
-    @if (!YearOnly)
-    {
-        <div class="segmented" role="group" aria-label="@L["Aria_Period"]">
-            <button type="button" class="btn @(Period == "month" ? "active" : "")"
-                    @onclick='() => SetPeriod("month")'>@L["Button_Month"]</button>
-            <button type="button" class="btn @(Period == "ytd" ? "active" : "")"
-                    @onclick='() => SetPeriod("ytd")'>@L["Button_YTD"]</button>
-            <button type="button" class="btn @(Period == "year" ? "active" : "")"
-                    @onclick='() => SetPeriod("year")'>@L["Button_Year"]</button>
-        </div>
-    }
-
-    @if (Trailing != null)
-    {
-        <div class="ms-auto d-flex align-items-center gap-2">
-            @Trailing
-        </div>
-    }
-</div>
+@if (Inline)
+{
+    @Controls
+}
+else
+{
+    <div class="page-toolbar period-nav">
+        @if (Leading != null)
+        {
+            @Leading
+        }
+        <div class="flex-grow-1"></div>
+        @Controls
+        @if (Trailing != null)
+        {
+            <div class="d-flex align-items-center gap-2">
+                @Trailing
+            </div>
+        }
+    </div>
+}
 
 @code {
     [Parameter, EditorRequired] public (int Year, int Month) Anchor { get; set; }
@@ -124,9 +80,60 @@
     [Parameter] public (int Year, int Month)? MaxMonth { get; set; }
 
     [Parameter] public RenderFragment? Leading { get; set; }
+
+    /// <summary>Render only the controls (no toolbar of its own), for pages that place them in their own toolbar.</summary>
+    [Parameter] public bool Inline { get; set; }
     [Parameter] public RenderFragment? Trailing { get; set; }
 
     private ElementReference monthInputRef;
+
+    private RenderFragment Controls => __builder =>
+    {
+        <div class="period-controls">
+            <div class="period-stepper">
+                <button type="button" class="period-step" @onclick="() => Step(-1)" aria-label="@L["Aria_Previous"]" disabled="@PrevDisabled">
+                    <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                </button>
+                @if (YearOnly)
+                {
+                    <span class="period-nav-heading">@L["Heading_Year", Anchor.Year]</span>
+                }
+                else if (ShowMonthPicker)
+                {
+                    <span class="period-nav-heading position-relative" role="button" tabindex="0"
+                          title="@L["Title_PickMonth"]" @onclick="OpenMonthPicker" @onkeydown="OnHeadingKey">
+                        @HeadingText
+                        <input @ref="monthInputRef" type="month" class="period-month-input"
+                               min="@MinMonthValue" max="@MaxMonthValue"
+                               value="@MonthValue" @onchange="OnMonthInput"
+                               tabindex="-1" aria-hidden="true" />
+                    </span>
+                }
+                else
+                {
+                    <span class="period-nav-heading browse-anchor-label">@HeadingText</span>
+                }
+                <button type="button" class="period-step" @onclick="() => Step(1)" aria-label="@L["Aria_Next"]" disabled="@NextDisabled">
+                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                </button>
+            </div>
+            @if (!TodayDisabled)
+            {
+                <button type="button" class="btn btn-sm btn-link period-today" @onclick="TodayClicked">@L["Button_Today"]</button>
+            }
+            @if (!YearOnly)
+            {
+                <div class="segmented" role="group" aria-label="@L["Aria_Period"]">
+                    <button type="button" class="btn @(Period == "month" ? "active" : "")"
+                            @onclick='() => SetPeriod("month")'>@L["Button_Month"]</button>
+                    <button type="button" class="btn @(Period == "ytd" ? "active" : "")"
+                            @onclick='() => SetPeriod("ytd")'>@L["Button_YTD"]</button>
+                    <button type="button" class="btn @(Period == "year" ? "active" : "")"
+                            @onclick='() => SetPeriod("year")'>@L["Button_Year"]</button>
+                </div>
+            }
+        </div>
+    };
 
     private List<int> GetSortedYears() => Years?.OrderBy(y => y).ToList() ?? new List<int>();
 

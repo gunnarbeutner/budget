@@ -3,107 +3,82 @@
 @inject IStringLocalizer<TxDetails> L
 @inject ClockService Clock
 
-@* The in-place expansion of a selected transaction: every field the bank delivered, how the category came about, the
-   note and the check mark. Bank fields are plain text (never editable); category, note and check mark are edited here
-   when the row is editable. *@
+@* The in-place expansion of a selected transaction: the bank's details as a flowing "Label value" list (empty ones
+   skipped), the full purpose, then the note and the actions. Bank fields are plain text (never editable); category,
+   note and check mark are edited here when the row is editable. *@
 
 <div class="tx-details" data-testid="tx-details" @onclick:stopPropagation="true">
-    <dl class="tx-details-grid">
-        <dt>@L["Payee"]</dt>
-        <dd>@Dash(Row.Name)</dd>
-
-        @if (!string.IsNullOrEmpty(Row.CounterpartyIban) || !string.IsNullOrEmpty(Row.CounterpartyBic))
-        {
-            <dt>@L["Iban"]</dt>
-            <dd class="font-monospace">@AccountDisplay.FormatIban(Row.CounterpartyIban)@(string.IsNullOrEmpty(Row.CounterpartyBic) ? "" : " · " + Row.CounterpartyBic)</dd>
-        }
-
-        <dt>@L["Purpose"]</dt>
-        <dd class="tx-details-purpose">@Dash(Row.Purpose)</dd>
-
-        <dt>@L["BookingDate"]</dt>
-        <dd>@Clock.ToLocal(Row.Date).ToString("dd.MM.yyyy")@(Row.IsPending ? " · " + L["Pending"] : "")</dd>
-
-        @if (Row.ValueDate is { } valueDate)
-        {
-            <dt>@L["ValueDate"]</dt>
-            <dd>@valueDate.ToString("dd.MM.yyyy")</dd>
-        }
-
+    <div class="tx-details-facts">
         @if (!string.IsNullOrEmpty(Row.BookingText))
         {
-            <dt>@L["BookingText"]</dt>
-            <dd>@Row.BookingText</dd>
+            <span><b>@L["BookingText"]</b>@Row.BookingText</span>
         }
-
+        <span><b>@L["BookingDate"]</b>@Clock.ToLocal(Row.Date).ToString("dd.MM.yyyy")@(Row.IsPending ? " · " + L["Pending"] : "")</span>
+        @if (Row.ValueDate is { } valueDate)
+        {
+            <span><b>@L["ValueDate"]</b>@valueDate.ToString("dd.MM.yyyy")</span>
+        }
+        @if (!string.IsNullOrEmpty(Row.CounterpartyIban))
+        {
+            <span><b>@L["Iban"]</b>@AccountDisplay.FormatIban(Row.CounterpartyIban)</span>
+        }
+        @if (!string.IsNullOrEmpty(Row.CounterpartyBic))
+        {
+            <span><b>@L["Bic"]</b>@Row.CounterpartyBic</span>
+        }
         @if (!string.IsNullOrEmpty(Row.BankReference))
         {
-            <dt>@L["BankReference"]</dt>
-            <dd class="font-monospace">@Row.BankReference</dd>
+            <span><b>@L["BankReference"]</b>@Row.BankReference</span>
         }
-
-        @if (!string.IsNullOrEmpty(Row.AccountName))
+        @if (ShowAccount && !string.IsNullOrEmpty(Row.AccountName))
         {
-            <dt>@L["Account"]</dt>
-            <dd>@Row.AccountName</dd>
+            <span><b>@L["Account"]</b>@Row.AccountName</span>
         }
-
-        <dt>@L["Category"]</dt>
-        <dd data-testid="tx-details-category">
-            @if (Row.CanEdit)
+        <span data-testid="tx-details-category">
+            <b>@L["Category"]</b>@(string.IsNullOrEmpty(Row.CategoryName) ? L["NoCategory"] : Row.CategoryName)
+            @if (!string.IsNullOrEmpty(SetByText))
             {
-                <button type="button" class="btn btn-sm btn-outline-secondary py-0" data-testid="tx-details-category-button" @onclick="OnPickCategory">
-                    @(string.IsNullOrEmpty(Row.CategoryName) ? L["NoCategory"] : Row.CategoryName)
-                    <i class="bi bi-chevron-down ms-1" aria-hidden="true"></i>
-                </button>
+                <span class="ms-1" data-testid="tx-details-category-source">(@SetByText)</span>
             }
-            else
-            {
-                <span>@(string.IsNullOrEmpty(Row.CategoryName) ? L["NoCategory"] : Row.CategoryName)</span>
-            }
-            <span class="text-body-secondary small ms-2" data-testid="tx-details-category-source">@SetByText</span>
-        </dd>
-
-        <dt>@L["Note"]</dt>
-        <dd>
-            @if (Row.CanEdit)
-            {
-                <input type="text" class="form-control form-control-sm" data-testid="tx-details-note" maxlength="500"
-                       placeholder="@L["Note_Placeholder"]" value="@Row.Note" @onchange="OnNoteChanged" />
-            }
-            else
-            {
-                <span>@Dash(Row.Note)</span>
-            }
-        </dd>
-
-        <dt>@L["Checked"]</dt>
-        <dd>
-            @if (Row.CanEdit)
-            {
-                <div class="form-check form-switch m-0">
-                    <input class="form-check-input" type="checkbox" role="switch" id="@("chk-" + Row.Id)" data-testid="tx-details-checked"
-                           checked="@Row.IsChecked" @onchange="() => OnToggleChecked.InvokeAsync()" />
-                    <label class="form-check-label" for="@("chk-" + Row.Id)">@(Row.IsChecked ? L["Checked_Yes"] : L["Checked_No"])</label>
-                </div>
-            }
-            else
-            {
-                <span>@(Row.IsChecked ? L["Checked_Yes"] : L["Checked_No"])</span>
-            }
-        </dd>
-
+        </span>
+        @if (!Row.CanEdit && !string.IsNullOrEmpty(Row.Note))
+        {
+            <span><b>@L["Note"]</b>@Row.Note</span>
+        }
         @if (Statement is { } statement)
         {
-            <dt>@L["Statement"]</dt>
-            <dd><a href="@($"/statements/{statement.Id}")" target="_blank" rel="noopener" data-testid="tx-details-statement"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> @statement.Name</a></dd>
+            <span><b>@L["Statement"]</b><a href="@($"/statements/{statement.Id}")" target="_blank" rel="noopener" data-testid="tx-details-statement"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> @statement.Name</a></span>
         }
-    </dl>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Row.Purpose))
+    {
+        <div class="tx-details-purpose"><b class="text-body">@L["Purpose"]</b> @Row.Purpose</div>
+    }
+
+    <div class="tx-details-actions">
+        @if (Row.CanEdit)
+        {
+            <input type="text" class="form-control form-control-sm" data-testid="tx-details-note" maxlength="500" aria-label="@L["Note"]"
+                   placeholder="@L["Note_Placeholder"]" value="@Row.Note" @onchange="OnNoteChanged" />
+            <button type="button" class="ob-btn" data-testid="tx-details-category-button" @onclick="OnPickCategory">
+                <i class="bi bi-tag" aria-hidden="true"></i> @L["Action_Category"]
+            </button>
+            <button type="button" class="ob-btn @(Row.IsChecked ? "active" : "")" data-testid="tx-details-checked"
+                    aria-pressed="@Row.IsChecked.ToString().ToLowerInvariant()" @onclick="() => OnToggleChecked.InvokeAsync()">
+                <i class="bi @(Row.IsChecked ? "bi-check-square-fill" : "bi-square")" aria-hidden="true"></i> @(Row.IsChecked ? L["Checked_Yes"] : L["Checked_No"])
+            </button>
+        }
+        <button type="button" class="ob-btn" disabled title="@L["ComingSoon"]">@L["Action_Split"]</button>
+        <button type="button" class="ob-btn" disabled title="@L["ComingSoon"]">@L["Action_Rule"]</button>
+        <button type="button" class="ob-btn" data-testid="tx-details-similar" disabled="@string.IsNullOrWhiteSpace(Row.Name)"
+                @onclick="() => OnShowSimilar.InvokeAsync()">@L["Action_Similar"]</button>
+    </div>
 
     @if (!Row.CanEdit)
     {
-        <div class="small text-body-secondary" data-testid="tx-details-readonly">
-            <i class="bi bi-lock-fill" aria-hidden="true"></i> @LockText
+        <div class="tx-details-readonly" data-testid="tx-details-readonly">
+            <i class="bi bi-lock" aria-hidden="true"></i> @LockText
         </div>
     }
 </div>
@@ -111,9 +86,12 @@
 @code {
     [Parameter, EditorRequired] public TransactionRow Row { get; set; } = null!;
     [Parameter] public (long Id, string Name)? Statement { get; set; }
+    /// <summary>Whether to list the account (the list spans several accounts).</summary>
+    [Parameter] public bool ShowAccount { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnPickCategory { get; set; }
     [Parameter] public EventCallback<string> OnNoteSave { get; set; }
     [Parameter] public EventCallback OnToggleChecked { get; set; }
+    [Parameter] public EventCallback OnShowSimilar { get; set; }
 
     private string SetByText => Row.CategoryId == null && Row.CategorySetBy == TransactionCategorySource.Import
         ? ""
@@ -125,8 +103,6 @@
         };
 
     private string LockText => Row.EditBlock == EditBlock.MoneyMoney ? L["Lock_MoneyMoney"] : L["Lock_NoPermission"];
-
-    private static string Dash(string? text) => string.IsNullOrWhiteSpace(text) ? "—" : text;
 
     private Task OnNoteChanged(ChangeEventArgs e) => OnNoteSave.InvokeAsync(e.Value?.ToString() ?? "");
 }

@@ -11,14 +11,22 @@
    image, app approval) in a dialog the moment a sync asks for one. All state comes from the owner-scoped
    BankLoginService, so nothing here ever shows another user's logins. *@
 
+@* Top-bar sync status: a spinner while syncs run, otherwise the time of the last successful sync ("Synced 07:58");
+   clicking it syncs all of the user's bank logins. Nothing when bank logins are disabled or there are none. *@
 @if (statuses.Any(s => s.Phase != SyncPhase.Finished))
 {
-    <div class="d-print-none d-flex justify-content-end small mb-2" data-testid="bank-sync-chip">
-        <span class="badge text-bg-secondary">
-            <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
-            @L["Syncing", statuses.Count(s => s.Phase != SyncPhase.Finished)]
-        </span>
-    </div>
+    <span class="app-sync d-print-none" data-testid="bank-sync-chip">
+        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        <span class="app-sync-label">@L["Syncing", statuses.Count(s => s.Phase != SyncPhase.Finished)]</span>
+    </span>
+}
+else if (lastSync is { } last)
+{
+    <button type="button" class="app-sync d-print-none" data-testid="bank-sync-status" title="@L["SyncAllTitle"]"
+            disabled="@syncAllStarting" @onclick="SyncAllAsync">
+        <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+        <span class="app-sync-label">@L["SyncedAt", FormatLastSync(last)]</span>
+    </button>
 }
 
 <Modal Show="@(challenge != null)"
@@ -110,7 +118,26 @@
     private bool subscribed;
     private bool enabled;
 
+    private DateTime? lastSync;
+    private bool syncAllStarting;
+
     private string FormatTime(DateTime utc) => ClockSvc.ToLocal(utc).ToString("HH:mm");
+
+    // Today: just the time; otherwise the date as well.
+    private string FormatLastSync(DateTime utc)
+    {
+        var local = ClockSvc.ToLocal(utc);
+        return local.Date == ClockSvc.NowLocal.Date ? local.ToString("HH:mm") : local.ToString("dd.MM. HH:mm");
+    }
+
+    private async Task SyncAllAsync()
+    {
+        syncAllStarting = true;
+        try { await Bank.SyncAllAsync(); }
+        catch (Exception ex) when (ex is InvalidOperationException or AccessDeniedException) { /* not signed in / disabled */ }
+        finally { syncAllStarting = false; }
+        await RefreshAsync();
+    }
 
     private string LoginName(int id) => names.GetValueOrDefault(id, "");
 
@@ -149,8 +176,9 @@
     {
         if (!enabled) return;
         statuses = await Bank.GetStatusesAsync();
-        if (names.Count != statuses.Count || statuses.Any(s => !names.ContainsKey(s.LoginId)))
-            names = (await Bank.GetLoginsAsync()).ToDictionary(l => l.Id, l => l.DisplayName);
+        var logins = await Bank.GetLoginsAsync();
+        names = logins.ToDictionary(l => l.Id, l => l.DisplayName);
+        lastSync = logins.Where(l => l.LastSyncAt != null).Select(l => l.LastSyncAt).Max();
 
         var open = statuses.FirstOrDefault(s => s.Challenge != null && s.Phase is SyncPhase.WaitingForInput or SyncPhase.WaitingForApproval);
         if (open?.ChallengeId != shownChallengeId)

@@ -28,17 +28,14 @@
        <ProjectPageHeader ProjectId="@projectId" ProjectName="@name" />   // settings page
 *@
 
-<div class="project-page-header d-flex flex-wrap align-items-center gap-2 mb-2">
-    @if (ShowHomeLink)
-    {
-        <HomeLink />
-    }
-    @* @key on ProjectId so a client-side project switch recreates the element fresh (closed),
-       replacing the full-reload that previously collapsed the dropdown for us. *@
-    <details class="project-selector" @key="ProjectId">
+@* Rendered into the app top bar (MainLayout's "app-nav" / "app-actions" sections): the project switcher as a compact
+   button and the tabs; the settings cog sits next to the account menu. Below md the tabs become a bottom bar. *@
+<SectionContent SectionName="app-nav">
+    @* @key on ProjectId so a client-side project switch recreates the element fresh (closed). *@
+    <details class="project-selector" @key="ProjectId" data-testid="project-selector">
         <summary class="project-selector-toggle">
             <span class="project-selector-name">@(ProjectName ?? "")</span>
-            <i class="bi bi-caret-down-fill ms-1 project-selector-caret d-print-none" aria-hidden="true"></i>
+            <i class="bi bi-chevron-down ms-1 project-selector-caret d-print-none" aria-hidden="true"></i>
         </summary>
         <ul class="project-selector-menu dropdown-menu show">
             @if (otherProjects == null)
@@ -53,11 +50,7 @@
             {
                 @foreach (var p in otherProjects)
                 {
-                    @* Client-side nav: the destination is usually the same page component for a
-                       different {ProjectId}. Each project-scoped page reloads its data when
-                       ProjectId changes via a guarded OnParametersSetAsync, so a full reload (and
-                       the circuit teardown + prerender re-run it triggers) isn't needed. The
-                       <details> dropdown collapses on its own via @key on ProjectId. *@
+                    @* Client-side nav: each project-scoped page reloads its data when ProjectId changes. *@
                     <li>
                         <button type="button" class="dropdown-item"
                                 @onclick="@(() => SwitchTo(p.Id))">@p.Name</button>
@@ -66,61 +59,51 @@
             }
         </ul>
     </details>
-    @if (TitleSuffix != null)
-    {
-        <span class="project-page-header-suffix text-body-secondary">@TitleSuffix</span>
-    }
 
-    @* Flex spacer: when everything fits on one row this expands and pushes the tabs
-       right. When the tabs wrap to a new line the spacer stays on row 1 (filling
-       leftover space there), and the tabs sit flush left on row 2. ms-auto would
-       have pushed them right even when wrapped, which felt off. *@
-    <div class="flex-grow-1"></div>
-
-    <nav class="nav nav-underline project-page-tabs" aria-label="@L["Aria_Sections"]">
-        @* On narrow screens hide the tab labels — icons + aria-label keep them
-           accessible and let the whole bar fit on a single row. *@
-        <a class="nav-link @(Active == ProjectTab.Overview ? "active" : "")"
-           href="@($"/projects/{ProjectId}/overview{MonthQuery}")" aria-label="@L["Tab_Overview"]">
-            <i class="bi bi-grid-1x2" aria-hidden="true"></i>
-            <span class="d-none d-md-inline ms-1">@L["Tab_Overview"]</span>
+    <nav class="app-tabs project-page-tabs" aria-label="@L["Aria_Sections"]">
+        <a class="app-tab @(Active == ProjectTab.Overview ? "active" : "")" aria-current="@(Active == ProjectTab.Overview ? "page" : null)"
+           href="@($"/projects/{ProjectId}/overview{MonthQuery}")">
+            <i class="bi bi-grid-1x2" aria-hidden="true"></i><span>@L["Tab_Overview"]</span>
         </a>
-        <a class="nav-link @(Active == ProjectTab.Browse ? "active" : "")"
-           href="@($"/projects/{ProjectId}/browse{MonthQuery}")" aria-label="@L["Tab_Browse"]">
-            <i class="bi bi-list-ul" aria-hidden="true"></i>
-            <span class="d-none d-md-inline ms-1">@L["Tab_Browse"]</span>
+        <a class="app-tab @(Active == ProjectTab.Browse ? "active" : "")" aria-current="@(Active == ProjectTab.Browse ? "page" : null)"
+           href="@($"/projects/{ProjectId}/browse{MonthQuery}")">
+            <i class="bi bi-list-ul" aria-hidden="true"></i><span>@L["Tab_Browse"]</span>
         </a>
-        <a class="nav-link @(Active == ProjectTab.Budgets ? "active" : "")"
-           href="@($"/projects/{ProjectId}/budgets")" aria-label="@L["Tab_Budgets"]">
-            <i class="bi bi-calendar3" aria-hidden="true"></i>
-            <span class="d-none d-md-inline ms-1">@L["Tab_Budgets"]</span>
+        <a class="app-tab @(Active == ProjectTab.Budgets ? "active" : "")" aria-current="@(Active == ProjectTab.Budgets ? "page" : null)"
+           href="@($"/projects/{ProjectId}/budgets")">
+            <i class="bi bi-calendar3" aria-hidden="true"></i><span>@L["Tab_Budgets"]</span>
         </a>
-        <a class="nav-link @(Active == ProjectTab.Cashflow ? "active" : "")"
-           href="@($"/projects/{ProjectId}/cashflow")" aria-label="@L["Tab_Cashflow"]">
-            <i class="bi bi-graph-up" aria-hidden="true"></i>
-            <span class="d-none d-md-inline ms-1">@L["Tab_Cashflow"]</span>
+        <a class="app-tab @(Active == ProjectTab.Cashflow ? "active" : "")" aria-current="@(Active == ProjectTab.Cashflow ? "page" : null)"
+           href="@($"/projects/{ProjectId}/cashflow")">
+            <i class="bi bi-graph-up" aria-hidden="true"></i><span>@L["Tab_Cashflow"]</span>
         </a>
-        <a class="nav-link @(Active == ProjectTab.Rebalance ? "active" : "")"
-           href="@($"/projects/{ProjectId}/rebalance")" aria-label="@L["Tab_Rebalance"]">
-            <i class="bi bi-sliders" aria-hidden="true"></i>
-            <span class="d-none d-md-inline ms-1">@L["Tab_Rebalance"]</span>
+        <a class="app-tab @(Active == ProjectTab.Rebalance ? "active" : "")" aria-current="@(Active == ProjectTab.Rebalance ? "page" : null)"
+           href="@($"/projects/{ProjectId}/rebalance")">
+            <i class="bi bi-sliders" aria-hidden="true"></i><span>@L["Tab_Rebalance"]</span>
         </a>
-        @* The settings cog reads as a secondary affordance on the data tabs, but on the
-           settings page itself (Active == null) it's the active tab — underlined like the rest. *@
-        @if (canEditProject)
-        {
-            <a class="nav-link project-page-tabs-settings @(Active == null ? "active" : "")"
-               href="@($"/projects/{ProjectId}/settings")"
-               title="@L["Tab_Settings_Tooltip"]" aria-label="@L["Tab_Settings_Tooltip"]">
-                <i class="bi bi-gear" aria-hidden="true"></i>
-            </a>
-        }
     </nav>
-</div>
+</SectionContent>
 
-@if (!string.IsNullOrEmpty(Subtitle))
+@if (canEditProject)
 {
-    <div class="project-page-header-subtitle text-body-secondary small mb-2">@Subtitle</div>
+    <SectionContent SectionName="app-actions">
+        <a class="app-icon-btn project-page-tabs-settings @(Active == null ? "active" : "")"
+           href="@($"/projects/{ProjectId}/settings")"
+           title="@L["Tab_Settings_Tooltip"]" aria-label="@L["Tab_Settings_Tooltip"]">
+            <i class="bi bi-gear" aria-hidden="true"></i>
+        </a>
+    </SectionContent>
+}
+
+@if (TitleSuffix != null || !string.IsNullOrEmpty(Subtitle))
+{
+    <div class="project-page-header-subtitle text-body-secondary small my-2">
+        @TitleSuffix
+        @if (!string.IsNullOrEmpty(Subtitle))
+        {
+            <span>@Subtitle</span>
+        }
+    </div>
 }
 
 @code {
@@ -139,8 +122,6 @@
     [Parameter] public RenderFragment? TitleSuffix { get; set; }
     /// <summary>Secondary line below the header (e.g. "Last modified ...", wizard mode label).</summary>
     [Parameter] public string? Subtitle { get; set; }
-    /// <summary>Set to false on pages where HomeLink doesn't apply.</summary>
-    [Parameter] public bool ShowHomeLink { get; set; } = true;
 
     private List<Project>? otherProjects;
     private int? _loadedForProjectId;

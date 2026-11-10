@@ -50,11 +50,11 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         await GoToAsync(UncategorizedUrl);
         await Expect(Page.GetByText(new Regex("4 transactions"))).ToBeVisibleAsync();
 
-        await Row("-€25.00").ClickAsync();
+        await Row("\u221225,00").ClickAsync();
 
         var details = Page.GetByTestId("tx-details");
         await Expect(details).ToBeVisibleAsync();
-        await Expect(details).ToContainTextAsync("Example Grocer");
+        await Expect(Row("\u221225,00")).ToContainTextAsync("Example Grocer");                    // payee stays in the row above the details
         await Expect(details).ToContainTextAsync("DE89 3704 0044 0532 0130 00");
         await Expect(details).ToContainTextAsync("COBADEFFXXX");
         await Expect(details).ToContainTextAsync("Card payment 1234");
@@ -64,10 +64,10 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         await Expect(Page.GetByTestId("action-bar-count")).ToContainTextAsync("1 selected");
 
         // Selecting another row moves the expansion; clicking the expanded row again folds it.
-        await Row("-€30.00").ClickAsync();
+        await Row("\u221230,00").ClickAsync();
         await Expect(details).ToHaveCountAsync(1);
         await Expect(details).ToContainTextAsync("REF-102");
-        await Row("-€30.00").ClickAsync();
+        await Row("\u221230,00").ClickAsync();
         await Expect(details).ToHaveCountAsync(0);
     }
 
@@ -75,7 +75,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     public async Task Categorizing_with_the_keyboard_marks_it_manual_offers_similar_rows_and_undoes()
     {
         await GoToAsync(UncategorizedUrl);
-        await Row("-€25.00").ClickAsync();
+        await Row("\u221225,00").ClickAsync();
 
         await Page.Keyboard.PressAsync("c");
         await Expect(Page.GetByTestId("category-picker")).ToBeVisibleAsync();
@@ -101,7 +101,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     public async Task Also_categorize_similar_offers_the_same_payees_other_rows()
     {
         await GoToAsync(UncategorizedUrl);
-        await Row("-€25.00").ClickAsync();
+        await Row("\u221225,00").ClickAsync();
         await Page.Keyboard.PressAsync("c");
         await PickInOpenPickerAsync("gro");
 
@@ -110,24 +110,29 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         await Expect(Page.GetByText(new Regex("1 transactions"))).ToBeVisibleAsync();   // only the MoneyMoney bakery row is left
         foreach (var id in new long[] { 101, 102, 103 }) Assert.That((await LoadAsync(id)).CategoryId, Is.EqualTo(200));
         Assert.That((await LoadAsync(110)).CategoryId, Is.Null);
+
+        // The account itself carries one read-only notice in the toolbar instead of a lock per row.
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.MoneyMoneyAccountId}");
+        await Expect(Page.GetByTestId("browse-readonly")).ToContainTextAsync("Read-only: categorized in MoneyMoney");
+        await Expect(Page.GetByTestId("tx-check")).ToBeDisabledAsync();
     }
 
     [Test]
     public async Task Bulk_categorizing_through_the_context_menu_is_one_undo_step()
     {
         await GoToAsync(UncategorizedUrl);
-        await Row("-€25.00").ClickAsync();
-        await Row("-€12.50").ClickAsync(new() { Modifiers = [KeyboardModifier.Shift] });
+        await Row("\u221225,00").ClickAsync();
+        await Row("\u221212,50").ClickAsync(new() { Modifiers = [KeyboardModifier.Shift] });
         // Newest first: 12.50, 30.00, bakery 4.50, 25.00 - the range covers all four.
         await Expect(Page.GetByTestId("action-bar-count")).ToContainTextAsync("4 selected");
-        await Expect(Page.GetByTestId("action-bar-count")).ToContainTextAsync("-€72.00");
+        await Expect(Page.GetByTestId("action-bar-count")).ToContainTextAsync("\u221272,00\u00A0€");
 
         // Ctrl-click removes rows from the selection again.
-        await Row("-€30.00").ClickAsync(new() { Modifiers = [CommandKey] });
-        await Row("-€4.50").ClickAsync(new() { Modifiers = [CommandKey] });
+        await Row("\u221230,00").ClickAsync(new() { Modifiers = [CommandKey] });
+        await Row("\u22124,50").ClickAsync(new() { Modifiers = [CommandKey] });
         await Expect(Page.GetByTestId("action-bar-count")).ToContainTextAsync("2 selected");
 
-        await Row("-€25.00").ClickAsync(new() { Button = MouseButton.Right });
+        await Row("\u221225,00").ClickAsync(new() { Button = MouseButton.Right });
         var menu = Page.GetByTestId("context-menu");
         await Expect(menu).ToBeVisibleAsync();
         await Expect(menu.GetByTestId("ctx-search-payee")).ToHaveCountAsync(0);       // multi-selection: bulk-safe entries only
@@ -149,7 +154,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     public async Task The_single_row_context_menu_has_the_full_set_and_search_for_this_payee_prefills_the_search()
     {
         await GoToAsync(UncategorizedUrl);
-        await Row("-€25.00").ClickAsync(new() { Button = MouseButton.Right });
+        await Row("\u221225,00").ClickAsync(new() { Button = MouseButton.Right });
 
         var menu = Page.GetByTestId("context-menu");
         foreach (var key in new[] { "category", "remove-category", "note", "check", "search-payee", "similar", "go-account", "rule", "split", "transfer" })
@@ -166,18 +171,18 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     public async Task Notes_and_check_marks_are_edited_in_place_and_by_key()
     {
         await GoToAsync(UncategorizedUrl);
-        await Row("-€25.00").ClickAsync();
+        await Row("\u221225,00").ClickAsync();
 
         var note = Page.GetByTestId("tx-details-note");
         await note.FillAsync("for the tax return");
         await note.PressAsync("Tab");
         await Expect(Page.GetByTestId("toast").First).ToContainTextAsync("Note changed on 1 transaction");
-        await Expect(Row("-€25.00").GetByTestId("tx-note")).ToContainTextAsync("for the tax return");
+        await Expect(Row("\u221225,00").GetByTestId("tx-note")).ToContainTextAsync("for the tax return");
         Assert.That((await LoadAsync(101)).Note, Is.EqualTo("for the tax return"));
 
         await Page.Locator("body").ClickAsync(new() { Position = new() { X = 5, Y = 5 } });   // focus off the input, rows keep their selection
         await Page.Keyboard.PressAsync("x");
-        await Expect(Row("-€25.00").GetByTestId("tx-checked")).ToBeVisibleAsync();
+        await Expect(Row("\u221225,00").GetByTestId("tx-check")).ToBeCheckedAsync();
         Assert.That((await LoadAsync(101)).Checked, Is.True);
     }
 
@@ -185,7 +190,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     public async Task Typing_in_inputs_is_not_hijacked_by_the_shortcuts_and_the_overlay_lists_them()
     {
         await GoToAsync(UncategorizedUrl);
-        await Row("-€25.00").ClickAsync();
+        await Row("\u221225,00").ClickAsync();
         var search = Page.GetByTestId("tx-search");
         await search.ClickAsync();
         await search.PressSequentiallyAsync("cnx?/", new() { Delay = 150 });
@@ -205,7 +210,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     public async Task Arrow_keys_move_the_selection_and_ctrl_a_selects_everything_in_the_filter()
     {
         await GoToAsync(UncategorizedUrl);
-        await Row("-€30.00").ClickAsync();
+        await Row("\u221230,00").ClickAsync();
         await Page.Locator("body").ClickAsync(new() { Position = new() { X = 5, Y = 5 } });
 
         await Page.Keyboard.PressAsync("ArrowDown");
@@ -222,23 +227,27 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3");
         // "All transactions" shows the categorized rows of tracked categories: the baseline pair plus the salary.
         await Expect(Page.GetByText(new Regex("3 transactions"))).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("filter-bar")).ToHaveCountAsync(0);                             // the panel opens from the toolbar
+        await Page.GetByTestId("filter-toggle").ClickAsync();
         await Page.GetByTestId("filter-direction").SelectOptionAsync("in");
         await Expect(Page.GetByText(new Regex("2 transactions"))).ToBeVisibleAsync();                // baseline salary + employer
+        await Expect(Page.GetByTestId("filter-count")).ToHaveTextAsync("1");
         await Page.GetByTestId("filter-direction").SelectOptionAsync("any");
 
         await Page.GotoAsync(UncategorizedUrl);
         await Expect(Page.GetByText(new Regex("4 transactions"))).ToBeVisibleAsync();
-        await Expect(Row("-€30.00").GetByTestId("tx-new-dot")).ToBeVisibleAsync();
+        await Page.GetByTestId("filter-toggle").ClickAsync();
+        await Expect(Row("\u221230,00").GetByTestId("tx-new-dot")).ToBeVisibleAsync();
 
         await Page.GetByTestId("filter-new").ClickAsync();
         await Expect(Page.GetByText(new Regex("1 transactions"))).ToBeVisibleAsync();
-        await Expect(Row("-€30.00")).ToBeVisibleAsync();
+        await Expect(Row("\u221230,00")).ToBeVisibleAsync();
         await Page.GetByTestId("filter-new").ClickAsync();
 
-        await Row("-€25.00").ClickAsync();
+        await Row("\u221225,00").ClickAsync();
         await Page.Locator("body").ClickAsync(new() { Position = new() { X = 5, Y = 5 } });
         await Page.Keyboard.PressAsync("x");
-        await Expect(Row("-€25.00").GetByTestId("tx-checked")).ToBeVisibleAsync();
+        await Expect(Row("\u221225,00").GetByTestId("tx-check")).ToBeCheckedAsync();
         await Page.GetByTestId("filter-checked").SelectOptionAsync("yes");
         await Expect(Page.GetByText(new Regex("1 transactions"))).ToBeVisibleAsync();
         await Page.GetByTestId("filter-checked").SelectOptionAsync("no");
@@ -260,7 +269,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         Assert.That((await LoadAsync(101)).Checked, Is.True);
         Assert.That((await LoadAsync(110)).Checked, Is.False);                  // MoneyMoney row: read-only, skipped
         await Page.GetByTestId("toast-undo").First.ClickAsync();
-        await Expect(Row("-€25.00").GetByTestId("tx-checked")).ToHaveCountAsync(0);
+        await Expect(Row("\u221225,00").GetByTestId("tx-check")).Not.ToBeCheckedAsync();
         Assert.That((await LoadAsync(101)).Checked, Is.False);
     }
 
@@ -268,9 +277,9 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     public async Task Viewing_a_row_clears_its_new_dot()
     {
         await GoToAsync(UncategorizedUrl);
-        await Expect(Row("-€30.00").GetByTestId("tx-new-dot")).ToBeVisibleAsync();
-        await Row("-€30.00").ClickAsync();
-        await Expect(Row("-€30.00").GetByTestId("tx-new-dot")).ToHaveCountAsync(0);
+        await Expect(Row("\u221230,00").GetByTestId("tx-new-dot")).ToBeVisibleAsync();
+        await Row("\u221230,00").ClickAsync();
+        await Expect(Row("\u221230,00").GetByTestId("tx-new-dot")).ToHaveCountAsync(0);
         for (var i = 0; i < 40 && (await LoadAsync(102)).IsNew; i++) await Task.Delay(100);
         Assert.That((await LoadAsync(102)).IsNew, Is.False);
     }
@@ -279,10 +288,10 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     public async Task A_moneymoney_row_is_locked_read_only()
     {
         await GoToAsync(UncategorizedUrl);
-        var bakery = Row("-€4.50");
-        var lockIcon = bakery.GetByTestId("tx-lock");
-        await Expect(lockIcon).ToBeVisibleAsync();
-        await Expect(lockIcon).ToHaveAttributeAsync("title", "Categorized in MoneyMoney until this account switches to a bank connector");
+        var bakery = Row("\u22124,50");
+        var check = bakery.GetByTestId("tx-check");
+        await Expect(check).ToBeDisabledAsync();
+        await Expect(check).ToHaveAttributeAsync("title", "Categorized in MoneyMoney until this account switches to a bank connector");
         await Expect(bakery.GetByTestId("tx-category")).ToHaveCountAsync(0);          // no inline picker button
 
         await bakery.ClickAsync();
@@ -296,6 +305,11 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         await bakery.ClickAsync(new() { Button = MouseButton.Right });
         await Expect(Page.GetByTestId("ctx-category")).ToBeDisabledAsync();
         Assert.That((await LoadAsync(110)).CategoryId, Is.Null);
+
+        // The account itself carries one read-only notice in the toolbar instead of a lock per row.
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.MoneyMoneyAccountId}");
+        await Expect(Page.GetByTestId("browse-readonly")).ToContainTextAsync("Read-only: categorized in MoneyMoney");
+        await Expect(Page.GetByTestId("tx-check")).ToBeDisabledAsync();
     }
 
     [Test]
@@ -305,9 +319,9 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         var days = Page.GetByTestId("tx-day");
         await Expect(days).ToHaveCountAsync(3);                                                   // 14th, 12th, 10th
         // The newest day ends with the current balance (1000.00); earlier days are derived backwards.
-        await Expect(Page.GetByTestId("tx-day-balance").First).ToHaveTextAsync("€1,000.00");
-        await Expect(Page.GetByTestId("tx-day-balance").Nth(1)).ToHaveTextAsync("-€987.50");     // 1000 - (2000.00 - 12.50)
-        await Expect(Page.GetByTestId("tx-day-balance").Nth(2)).ToHaveTextAsync("-€957.50");     // ... - (-30.00)
+        await Expect(Page.GetByTestId("tx-day-balance").First).ToHaveTextAsync("1.000,00\u00A0€");
+        await Expect(Page.GetByTestId("tx-day-balance").Nth(1)).ToHaveTextAsync("\u2212987,50\u00A0€");     // 1000 - (2000.00 - 12.50)
+        await Expect(Page.GetByTestId("tx-day-balance").Nth(2)).ToHaveTextAsync("\u2212957,50\u00A0€");     // ... - (-30.00)
     }
 
     [Test]
@@ -324,9 +338,9 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         await LoginAsync(E2ESeed.SecondUserName);
 
         await GoToAsync(UncategorizedUrl);
-        await Expect(Row("-€25.00")).ToBeVisibleAsync();
+        await Expect(Row("\u221225,00")).ToBeVisibleAsync();
         await Expect(Page.GetByTestId("tx-category")).ToHaveCountAsync(0);
-        await Row("-€25.00").ClickAsync();
+        await Row("\u221225,00").ClickAsync();
         await Expect(Page.GetByTestId("tx-details-readonly")).ToBeVisibleAsync();
         await Page.Keyboard.PressAsync("c");
         await Expect(Page.GetByTestId("category-picker")).ToHaveCountAsync(0);

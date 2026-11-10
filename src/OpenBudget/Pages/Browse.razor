@@ -18,6 +18,7 @@
 @inject BankLoginService BankLogins
 @inject TransactionEditService Edits
 @inject CategorizationService Categorization
+@inject CategoryColorService CategoryColorEdits
 @inherits DataChangeAwareComponent
 
 <PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
@@ -35,32 +36,21 @@
                    Active="ProjectTab.Browse"
                    Year="anchor.Year" Month="anchor.Month" Period="@period" />
 
-@* Shared period nav, sticky so the user can re-anchor while scrolling a long tx list.
-   The mobile-only left-rail toggle rides in the Leading slot (on lg+ the rail is part of
-   the grid; below lg it slides in as a drawer, opened via this button). *@
-<PeriodNav Anchor="anchor" Period="@period" ShowMonthPicker="true"
-           MinMonth="monthMin" MaxMonth="monthMax" OnChanged="OnPeriodChanged">
-    <Leading>
-        <button type="button" class="btn btn-sm btn-outline-secondary d-lg-none"
-                @onclick="ToggleRail" aria-label="@L["Aria_ToggleTree"]" aria-expanded="@railOpen.ToString().ToLower()">
-            <i class="bi bi-list" aria-hidden="true"></i>
-        </button>
-    </Leading>
-</PeriodNav>
-
-<div class="browse-layout">
+@* Browse: fixed account sidebar on the left, the main column with its 48px toolbar (what is selected + balance,
+   period, search, filter) and the ledger list. Below md the sidebar is an off-canvas sheet opened from the title. *@
+<div class="browse-shell">
     @if (railOpen)
     {
-        <div class="browse-backdrop d-lg-none" @onclick="CloseRail" aria-hidden="true"></div>
+        <div class="browse-backdrop d-md-none" @onclick="CloseRail" aria-hidden="true"></div>
     }
     <aside class="browse-rail @(railOpen ? "open" : "")" aria-label="@L["Aria_Tree"]">
-        <div class="browse-rail-header d-lg-none">
+        <div class="browse-rail-header">
             <span class="fw-semibold">@L["Tree_Heading"]</span>
             <button type="button" class="btn-close" @onclick="CloseRail" aria-label="@L["Aria_Close"]"></button>
         </div>
         @if (tree == null)
         {
-            <div aria-busy="true">
+            <div aria-busy="true" class="px-3">
                 @for (int i = 0; i < 6; i++)
                 {
                     <div class="skeleton skeleton-line" style="margin-left: @(i % 3 * 12)px;"></div>
@@ -82,175 +72,284 @@
     </aside>
 
     <section class="browse-main">
-        @if (tree == null)
-        {
-            <div class="card mb-3" aria-busy="true">
-                <div class="card-body">
-                    <div class="skeleton skeleton-line-lg" style="width: 40%;"></div>
-                    <div class="skeleton skeleton-block mt-3"></div>
-                </div>
-            </div>
-        }
-        else
-        {
-            <div class="card mb-4 browse-header-card">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
-                        <div>
-                            <h5 class="mb-1">@SelectionName</h5>
-                            @if (selectionKind == "account" && SelectedAccountNode is { } info)
-                            {
-                                @if (AccountDisplay.FormatIban(info.Iban) is { } ibanText)
-                                {
-                                    <div class="text-body-secondary small" data-testid="account-iban">@ibanText</div>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(info.Institution))
-                                {
-                                    <div class="text-body-secondary small" data-testid="account-institution">@info.Institution</div>
-                                }
-                            }
-                            @if (selectionKind != "account" && SelectionBudget is { } budget)
-                            {
-                                var avail = budget - SelectionSpent;
-                                @* Direction-specific framing: income that hasn't been received
-                                   yet ("Expected") is a neutral forecast, not a deficit, so it
-                                   reads in the muted parent color rather than red. Exceeding an
-                                   income target still pops as green. Expense keeps the under/
-                                   over budget green/red mapping. *@
-                                string availClass = SelectionIsIncome
-                                    ? (avail < 0 ? "text-success fw-semibold" : "fw-semibold")
-                                    : (avail < 0 ? "text-danger fw-semibold" : "text-success fw-semibold");
-                                <div class="text-body-secondary small">
-                                    @(SelectionIsIncome ? L["Header_Expected"] : L["Header_Available"])
-                                    <span class="@availClass">
-                                        @Formatting.FormatMoney(avail)
-                                    </span>
-                                </div>
-                            }
-                        </div>
-                        <div class="d-flex align-items-start gap-2">
-                            <div class="text-end">
-                                @if (selectionKind == "account" && SelectedAccountNode is { } acct)
-                                {
-                                    var balance = acct.Balance ?? 0m;
-                                    // Account header reads its current balance — independent of the
-                                    // anchor period. The period net flow (incoming − outgoing) reads
-                                    // as a smaller secondary line below.
-                                    <div class="h4 mb-0 @(balance < 0 ? "text-danger" : "")">
-                                        @Formatting.FormatMoney(balance, SelectionAccountCurrency ?? "EUR")
-                                    </div>
-                                    <div class="text-body-secondary small">@L["Header_CurrentBalance"]</div>
-                                    <div class="text-body-secondary small">
-                                        @AnchorHeading: <span class="@(SelectionAccountPeriodSum < 0 ? "text-danger" : "text-success")">
-                                            @Formatting.FormatMoney(SelectionAccountPeriodSum, SelectionAccountCurrency ?? "EUR")
-                                        </span>
-                                    </div>
-                                    @if (acct.PendingBalance is { } pending)
-                                    {
-                                        <div class="text-body-secondary small" data-testid="account-pending">
-                                            @L["Header_Pending"] @Formatting.FormatMoney(pending, acct.Currency ?? "EUR")
-                                        </div>
-                                    }
-                                    @if (acct.LastUpdatedUtc != null || acct.Error != null)
-                                    {
-                                        <div class="text-body-secondary small d-flex justify-content-end align-items-center gap-1" data-testid="account-last-updated">
-                                            @if (acct.Error is { } err)
-                                            {
-                                                <i class="bi bi-exclamation-triangle-fill text-warning" title="@err" aria-label="@err" data-testid="account-error"></i>
-                                            }
-                                            @if (acct.LastUpdatedUtc is { } at)
-                                            {
-                                                <span>@L["Header_LastUpdated"] @AccountDisplay.FormatLastUpdated(at, Clock.Zone, Clock.UtcNow, System.Globalization.CultureInfo.CurrentUICulture, L["Header_Today"], L["Header_Yesterday"])</span>
-                                            }
-                                            @if (acct.SyncLoginId is { } loginId)
-                                            {
-                                                <button type="button" class="btn btn-sm btn-link p-0 ms-1" data-testid="account-sync" disabled="@syncStarting"
-                                                        title="@L["Header_SyncNow"]" aria-label="@L["Header_SyncNow"]"
-                                                        @onclick="() => SyncAccountAsync(loginId)">
-                                                    <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
-                                                </button>
-                                            }
-                                        </div>
-                                    }
-                                }
-                                else if (selectionKind == "uncategorized")
-                                {
-                                    @* No budget or period semantics here: just the net sum of the
-                                       uncategorized rows the list below shows. *@
-                                    var uncatSum = txTotals?.Sum ?? 0m;
-                                    <div class="h4 mb-0 @(uncatSum < 0 ? "text-danger" : "text-success")">
-                                        @Formatting.FormatMoney(uncatSum)
-                                    </div>
-                                }
-                                else if (selectionKind == "portfolio" && holdings is { } ph)
-                                {
-                                    <div class="h4 mb-0">@Formatting.FormatMoney(ph.TotalValue, ph.Currency)</div>
-                                    <div class="text-body-secondary small">@L["Header_TotalValue"]</div>
-                                }
-                                else
-                                {
-                                    @* Income shows the received amount as a positive number;
-                                       expense shows it as negative ("money gone"). Color follows
-                                       the natural-direction sign of SelectionSpent so a refund
-                                       on an expense reads green and a reversal on income reads red. *@
-                                    <div class="h4 mb-0 @((SelectionSpent > 0) == SelectionIsIncome ? "text-success" : "text-danger")">
-                                        @Formatting.FormatMoney(SelectionIsIncome ? SelectionSpent : -SelectionSpent)
-                                    </div>
-                                    @if (SelectionBudget is { } b2)
-                                    {
-                                        <div class="text-body-secondary small">@L["Header_Budget"] @Formatting.FormatMoney(b2)</div>
-                                    }
-                                }
-                            </div>
-                            @if (chartBars != null && chartBars.Length > 0)
-                            {
-                                <button type="button" class="btn btn-sm btn-link text-body-secondary p-0"
-                                        @onclick="ToggleChartCollapsed"
-                                        aria-expanded="@((!chartCollapsed).ToString().ToLower())"
-                                        aria-controls="browseChartScroll"
-                                        title="@(chartCollapsed ? L["Chart_Expand"] : L["Chart_Collapse"])"
-                                        aria-label="@(chartCollapsed ? L["Chart_Expand"] : L["Chart_Collapse"])">
-                                    <i class="bi @(chartCollapsed ? "bi-chevron-down" : "bi-chevron-up")" aria-hidden="true"></i>
-                                </button>
-                            }
-                        </div>
-                    </div>
-
-                    @if (chartBars != null && chartBars.Length > 0 && !chartCollapsed)
+        <div class="page-toolbar browse-toolbar" data-testid="browse-toolbar">
+            <div class="browse-ident">
+                <h1 class="browse-title">
+                    <button type="button" class="browse-title-btn" @onclick="ToggleRail" title="@L["Aria_ToggleTree"]"
+                            aria-expanded="@railOpen.ToString().ToLowerInvariant()">
+                        <span>@SelectionName</span><i class="bi bi-chevron-down d-md-none ms-1" aria-hidden="true"></i>
+                    </button>
+                </h1>
+                <div class="browse-sub">
+                    @if (selectionKind == "account" && SelectedAccountNode is { } info)
                     {
-                        <div class="d-flex gap-2 mt-3 align-items-start">
-                            <div id="browseChartScroll" class="browse-chart-scroll flex-grow-1">
-                                <div class="browse-chart" style="width: @(ChartCanvasWidthPx)px;">
-                                    <canvas id="browseChart" style="height: 140px;"></canvas>
-                                </div>
-                            </div>
-                            <div class="segmented segmented-vertical" role="group" aria-label="@L["Chart_AriaGranularity"]">
-                                @if (selectionKind == "account")
+                        var parts = 0;
+                        @if (!string.IsNullOrWhiteSpace(info.Institution))
+                        {
+                            parts++;
+                            <span data-testid="account-institution">@info.Institution</span>
+                        }
+                        @if (AccountDisplay.FormatIban(info.Iban) is { } ibanText)
+                        {
+                            @if (parts++ > 0) { <span> · </span> }
+                            <span data-testid="account-iban">@ibanText</span>
+                        }
+                        @if (info.LastUpdatedUtc != null || info.Error != null)
+                        {
+                            @if (parts++ > 0) { <span> · </span> }
+                            <span data-testid="account-last-updated">
+                                @if (info.Error is { } err)
                                 {
-                                    <button type="button" class="btn @(chartGranularity == "D" ? "active" : "")"
-                                            @onclick='() => SetChartGranularity("D")'>@L["Chart_D"]</button>
-                                    <button type="button" class="btn @(chartGranularity == "M" ? "active" : "")"
-                                            @onclick='() => SetChartGranularity("M")'>@L["Chart_M"]</button>
+                                    <i class="bi bi-exclamation-triangle-fill text-warning me-1" title="@err" aria-label="@err" data-testid="account-error"></i>
                                 }
-                                else
+                                @if (info.LastUpdatedUtc is { } at)
                                 {
-                                    <button type="button" class="btn @(chartGranularity == "M" ? "active" : "")"
-                                            @onclick='() => SetChartGranularity("M")'>@L["Chart_M"]</button>
-                                    <button type="button" class="btn @(chartGranularity == "Q" ? "active" : "")"
-                                            @onclick='() => SetChartGranularity("Q")'>@L["Chart_Q"]</button>
-                                    <button type="button" class="btn @(chartGranularity == "Y" ? "active" : "")"
-                                            @onclick='() => SetChartGranularity("Y")'>@L["Chart_Y"]</button>
+                                    <span>@L["Header_LastUpdated"] @AccountDisplay.FormatLastUpdated(at, Clock.Zone, Clock.UtcNow, CultureInfo.CurrentUICulture, L["Header_Today"], L["Header_Yesterday"])</span>
                                 }
-                            </div>
-                        </div>
+                                @if (info.SyncLoginId is { } loginId)
+                                {
+                                    <button type="button" class="btn btn-link p-0 ms-1 browse-sub-btn" data-testid="account-sync" disabled="@syncStarting"
+                                            title="@L["Header_SyncNow"]" aria-label="@L["Header_SyncNow"]"
+                                            @onclick="() => SyncAccountAsync(loginId)">
+                                        <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+                                    </button>
+                                }
+                            </span>
+                        }
+                        @if (info.IsMoneyMoney)
+                        {
+                            @if (parts > 0) { <span> · </span> }
+                            <span data-testid="browse-readonly"><i class="bi bi-lock me-1" aria-hidden="true"></i>@L["ReadOnly_MoneyMoney"]</span>
+                        }
+                    }
+                    else if (selectionKind != "account" && SelectionBudget is { } budget)
+                    {
+                        var avail = budget - SelectionSpent;
+                        <span>@L["Header_Budget"] @Formatting.FormatMoneyDe(budget)</span>
+                        <span> · @(SelectionIsIncome ? L["Header_Expected"] : L["Header_Available"])
+                            <span class="@(avail < 0 && !SelectionIsIncome ? "money-neg" : "")">@Formatting.FormatMoneyDe(avail)</span>
+                        </span>
+                    }
+                    else if (selectionKind == "portfolio")
+                    {
+                        <span>@L["Header_TotalValue"]</span>
                     }
                 </div>
             </div>
+            @if (ToolbarAmount is { } amount)
+            {
+                <span class="browse-balance @(amount.Value < 0 ? "money-neg" : "")" data-testid="browse-balance">@Formatting.FormatMoneyDe(amount.Value, amount.Currency)</span>
+            }
+            @if (selectionKind == "category" && _canEditColors && SelectedCategoryNode is { } colorNode)
+            {
+                <details class="app-menu" data-testid="category-color" @key="_colorMenuVersion">
+                    <summary class="cat-pill" style="@CategoryColors.For(colorNode.Id, colorNode.Color).Style" title="@L["Color_Title"]">
+                        <i class="bi bi-palette me-1" aria-hidden="true"></i>@L["Color_Button"]
+                    </summary>
+                    <div class="dropdown-menu show app-menu-list" style="left: 0; right: auto;">
+                        <div class="color-swatches">
+                            @foreach (var (key, bg) in CategoryColors.Palette)
+                            {
+                                var current = string.Equals(CategoryColors.ToCss(colorNode.Color), key, StringComparison.OrdinalIgnoreCase);
+                                <button type="button" class="color-swatch @(current ? "current" : "")" style="background:@bg;color:@key"
+                                        title="@key" aria-label="@key" @onclick="() => SetCategoryColorAsync(colorNode.Id, key)">A</button>
+                            }
+                        </div>
+                        <button type="button" class="dropdown-item small" @onclick="() => SetCategoryColorAsync(colorNode.Id, null)">@L["Color_Reset"]</button>
+                    </div>
+                </details>
+            }
+            <div class="flex-grow-1"></div>
+            <div class="browse-tools d-flex flex-wrap align-items-center gap-2">
+                <PeriodNav Inline="true" Anchor="anchor" Period="@period" ShowMonthPicker="true"
+                           MinMonth="monthMin" MaxMonth="monthMax" OnChanged="OnPeriodChanged" />
+                <label class="browse-search mb-0">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    <input type="search" placeholder="@L["Filter_SearchPlaceholder"]" aria-label="@L["Filter_SearchPlaceholder"]" data-testid="tx-search"
+                           value="@searchInput" @oninput="OnSearchInput" />
+                </label>
+                <button type="button" class="ob-btn @(_filterOpen ? "active" : "")" data-testid="filter-toggle"
+                        aria-expanded="@_filterOpen.ToString().ToLowerInvariant()" aria-controls="browse-filter-panel" @onclick="() => _filterOpen = !_filterOpen">
+                    <i class="bi bi-funnel" aria-hidden="true"></i> @L["Filter_Button"]
+                    @if (ActiveFilterCount > 0)
+                    {
+                        <span class="ob-badge" data-testid="filter-count">@ActiveFilterCount</span>
+                    }
+                </button>
+                @if (selectionKind == "account" && SelectedAccountNode is { } docAccount && (_statementCount > 0 || docAccount.SyncLoginId != null))
+                {
+                    <a class="ob-btn" href="@($"/accounts/{docAccount.Id}/statements")" data-testid="account-documents">
+                        <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> @L["Documents"]
+                        @if (_statementCount > 0)
+                        {
+                            <span class="ob-badge">@_statementCount</span>
+                        }
+                    </a>
+                }
+            </div>
+        </div>
+
+        <div class="browse-scroll tx-scroll">
+            @if (_filterOpen && tree != null)
+            {
+                <div id="browse-filter-panel" class="browse-filter-panel d-flex flex-wrap align-items-center gap-2 tx-filterbar" data-testid="filter-bar">
+                    <div class="input-group input-group-sm filter-input-sm">
+                        <span class="input-group-text">€ ≥</span>
+                        <input type="number" class="form-control" step="1" min="0" aria-label="@L["Filter_AmountMin"]"
+                               value="@amountMinInput" @onchange="OnAmountMinChanged" />
+                    </div>
+                    <div class="input-group input-group-sm filter-input-sm">
+                        <span class="input-group-text">€ ≤</span>
+                        <input type="number" class="form-control" step="1" min="0" aria-label="@L["Filter_AmountMax"]"
+                               value="@amountMaxInput" @onchange="OnAmountMaxChanged" />
+                    </div>
+                    <select class="form-select form-select-sm filter-input-md" aria-label="@L["Filter_Period"]" data-testid="filter-period"
+                            value="@periodFilter" @onchange="OnPeriodFilterChanged">
+                        @foreach (var choice in PeriodChoices)
+                        {
+                            <option @key="choice.Key" value="@choice.Key">@PeriodLabel(choice)</option>
+                        }
+                    </select>
+                    @if (periodFilter == PeriodFilter.Custom)
+                    {
+                        <input type="date" class="form-control form-control-sm filter-input-date" aria-label="@L["Filter_From"]" data-testid="filter-from"
+                               value="@customFrom?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="e => OnCustomDateChanged(e, true)" />
+                        <input type="date" class="form-control form-control-sm filter-input-date" aria-label="@L["Filter_To"]" data-testid="filter-to"
+                               value="@customTo?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="e => OnCustomDateChanged(e, false)" />
+                    }
+                    <select class="form-select form-select-sm filter-input-sm" aria-label="@L["Filter_Checked"]" data-testid="filter-checked"
+                            value="@checkedFilter" @onchange="OnCheckedFilterChanged">
+                        <option value="any">@L["Filter_CheckedAny"]</option>
+                        <option value="yes">@L["Filter_CheckedYes"]</option>
+                        <option value="no">@L["Filter_CheckedNo"]</option>
+                    </select>
+                    <select class="form-select form-select-sm filter-input-sm" aria-label="@L["Filter_Direction"]" data-testid="filter-direction"
+                            value="@directionFilter" @onchange="OnDirectionFilterChanged">
+                        <option value="any">@L["Filter_DirectionAny"]</option>
+                        <option value="in">@L["Filter_Incoming"]</option>
+                        <option value="out">@L["Filter_Outgoing"]</option>
+                    </select>
+                    @if (selectionKind != "account" && tree.Accounts.Count > 1)
+                    {
+                        <select class="form-select form-select-sm filter-input-md" aria-label="@L["Filter_AnyAccount"]"
+                                value="@(accountFilter?.ToString() ?? "")"
+                                @onchange="OnAccountFilterChanged">
+                            <option value="">@L["Filter_AnyAccount"]</option>
+                            @foreach (var a in tree.Accounts)
+                            {
+                                <option @key="a.Id" value="@a.Id">@a.Name</option>
+                            }
+                        </select>
+                    }
+                    else if (selectionKind == "account" && pickerData is { } categoriesForFilter)
+                    {
+                        <select class="form-select form-select-sm filter-input-md" aria-label="@L["Filter_Category"]" data-testid="filter-category"
+                                value="@(categoryFilter?.ToString() ?? "")" @onchange="OnCategoryFilterChanged">
+                            <option value="">@L["Filter_AnyCategory"]</option>
+                            @foreach (var o in categoriesForFilter.Options)
+                            {
+                                <option @key="o.Id" value="@o.Id">@o.Path</option>
+                            }
+                        </select>
+                    }
+                    <button type="button" class="ob-btn @(newOnly ? "active" : "")" data-testid="filter-new"
+                            aria-pressed="@newOnly.ToString().ToLowerInvariant()" @onclick="ToggleNewOnly" title="@L["Filter_NewOnlyTitle"]">
+                        <span class="tx-new-dot" aria-hidden="true"></span> @L["Filter_NewOnly"]
+                    </button>
+                    <button type="button" class="ob-btn @(pinFilters ? "active" : "")" data-testid="filter-pin"
+                            aria-pressed="@pinFilters.ToString().ToLowerInvariant()" @onclick="TogglePin"
+                            title="@(pinFilters ? L["Filter_PinOn"] : L["Filter_PinOff"])" aria-label="@L["Filter_Pin"]">
+                        <i class="bi @(pinFilters ? "bi-pin-angle-fill" : "bi-pin-angle")" aria-hidden="true"></i>
+                    </button>
+                </div>
+            }
+
+            @if (tree != null)
+            {
+                <div class="browse-summary" data-testid="browse-summary">
+                    @if (selectionKind == "account" && SelectedAccountNode is { } acct)
+                    {
+                        <span>@AnchorHeading: <span class="@(SelectionAccountPeriodSum < 0 ? "money-neg" : "")">@Formatting.FormatMoneyDe(SelectionAccountPeriodSum, SelectionAccountCurrency)</span></span>
+                        @if (acct.PendingBalance is { } pending)
+                        {
+                            <span data-testid="account-pending">@L["Header_Pending"] @Formatting.FormatMoneyDe(pending, acct.Currency)</span>
+                        }
+                    }
+                    @if (!string.IsNullOrEmpty(payeeEquals))
+                    {
+                        <span class="badge text-bg-secondary" data-testid="filter-payee">@L["Filter_Payee", payeeEquals]</span>
+                    }
+                    @if (HasActiveFilter)
+                    {
+                        <button type="button" class="btn btn-sm btn-link p-0" @onclick="ClearFilters">@L["Filter_Clear"]</button>
+                    }
+                    <div class="flex-grow-1"></div>
+                    @if (txTotals is { Count: > 0 })
+                    {
+                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" data-testid="mark-all-checked" @onclick="MarkAllCheckedAsync"
+                                title="@L["MarkAll_Title"]">
+                            <i class="bi bi-check2-all" aria-hidden="true"></i> @L["MarkAll"]
+                        </button>
+                    }
+                    @if (chartBars != null && chartBars.Length > 0)
+                    {
+                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none"
+                                @onclick="ToggleChartCollapsed"
+                                aria-expanded="@((!chartCollapsed).ToString().ToLowerInvariant())"
+                                aria-controls="browseChartScroll"
+                                title="@(chartCollapsed ? L["Chart_Expand"] : L["Chart_Collapse"])">
+                            <i class="bi bi-bar-chart" aria-hidden="true"></i> @L["Chart_Button"]
+                            <i class="bi @(chartCollapsed ? "bi-chevron-down" : "bi-chevron-up")" aria-hidden="true"></i>
+                        </button>
+                    }
+                </div>
+            }
+
+            @if (tree == null)
+            {
+                <div class="browse-cards" aria-busy="true">
+                    <div class="skeleton skeleton-line-lg" style="width: 40%;"></div>
+                    <div class="skeleton skeleton-block mt-3"></div>
+                </div>
+            }
+            else
+            {
+            @if (chartBars != null && chartBars.Length > 0 && !chartCollapsed)
+            {
+                <div class="browse-cards">
+                    <div class="d-flex gap-2 align-items-start">
+                        <div id="browseChartScroll" class="browse-chart-scroll flex-grow-1">
+                            <div class="browse-chart" style="width: @(ChartCanvasWidthPx)px;">
+                                <canvas id="browseChart" style="height: 140px;"></canvas>
+                            </div>
+                        </div>
+                        <div class="segmented segmented-vertical" role="group" aria-label="@L["Chart_AriaGranularity"]">
+                            @if (selectionKind == "account")
+                            {
+                                <button type="button" class="btn @(chartGranularity == "D" ? "active" : "")"
+                                        @onclick='() => SetChartGranularity("D")'>@L["Chart_D"]</button>
+                                <button type="button" class="btn @(chartGranularity == "M" ? "active" : "")"
+                                        @onclick='() => SetChartGranularity("M")'>@L["Chart_M"]</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn @(chartGranularity == "M" ? "active" : "")"
+                                        @onclick='() => SetChartGranularity("M")'>@L["Chart_M"]</button>
+                                <button type="button" class="btn @(chartGranularity == "Q" ? "active" : "")"
+                                        @onclick='() => SetChartGranularity("Q")'>@L["Chart_Q"]</button>
+                                <button type="button" class="btn @(chartGranularity == "Y" ? "active" : "")"
+                                        @onclick='() => SetChartGranularity("Y")'>@L["Chart_Y"]</button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
 
             @if ((selectionKind == "account" || selectionKind == "portfolio") && holdings is { } h)
             {
                 var allocColors = ChartPalette.Templates(h.Allocation.Count);
-                <div class="card mb-4 holdings-card">
+                <div class="browse-cards">
+                <div class="card mb-2 holdings-card">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h6 class="mb-0">@L["Holdings_Title"]</h6>
@@ -383,103 +482,13 @@
                         </div>
                     </div>
                 </div>
+                </div>
             }
-
-            <div class="d-flex flex-wrap align-items-center gap-2 mb-2 tx-filterbar" data-testid="filter-bar">
-                <div class="input-group input-group-sm filter-input-lg">
-                    <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input type="search" class="form-control" placeholder="@L["Filter_SearchPlaceholder"]" data-testid="tx-search"
-                           value="@searchInput" @oninput="OnSearchInput" />
-                </div>
-                <div class="input-group input-group-sm filter-input-sm">
-                    <span class="input-group-text">€ ≥</span>
-                    <input type="number" class="form-control" step="1" min="0"
-                           value="@amountMinInput" @onchange="OnAmountMinChanged" />
-                </div>
-                <div class="input-group input-group-sm filter-input-sm">
-                    <span class="input-group-text">€ ≤</span>
-                    <input type="number" class="form-control" step="1" min="0"
-                           value="@amountMaxInput" @onchange="OnAmountMaxChanged" />
-                </div>
-                <select class="form-select form-select-sm filter-input-md" aria-label="@L["Filter_Period"]" data-testid="filter-period"
-                        value="@periodFilter" @onchange="OnPeriodFilterChanged">
-                    @foreach (var choice in PeriodChoices)
-                    {
-                        <option @key="choice.Key" value="@choice.Key">@PeriodLabel(choice)</option>
-                    }
-                </select>
-                @if (periodFilter == PeriodFilter.Custom)
-                {
-                    <input type="date" class="form-control form-control-sm filter-input-date" aria-label="@L["Filter_From"]" data-testid="filter-from"
-                           value="@customFrom?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="e => OnCustomDateChanged(e, true)" />
-                    <input type="date" class="form-control form-control-sm filter-input-date" aria-label="@L["Filter_To"]" data-testid="filter-to"
-                           value="@customTo?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="e => OnCustomDateChanged(e, false)" />
-                }
-                <select class="form-select form-select-sm filter-input-sm" aria-label="@L["Filter_Checked"]" data-testid="filter-checked"
-                        value="@checkedFilter" @onchange="OnCheckedFilterChanged">
-                    <option value="any">@L["Filter_CheckedAny"]</option>
-                    <option value="yes">@L["Filter_CheckedYes"]</option>
-                    <option value="no">@L["Filter_CheckedNo"]</option>
-                </select>
-                <select class="form-select form-select-sm filter-input-sm" aria-label="@L["Filter_Direction"]" data-testid="filter-direction"
-                        value="@directionFilter" @onchange="OnDirectionFilterChanged">
-                    <option value="any">@L["Filter_DirectionAny"]</option>
-                    <option value="in">@L["Filter_Incoming"]</option>
-                    <option value="out">@L["Filter_Outgoing"]</option>
-                </select>
-                @if (selectionKind != "account" && tree.Accounts.Count > 1)
-                {
-                    <select class="form-select form-select-sm filter-input-md"
-                            value="@(accountFilter?.ToString() ?? "")"
-                            @onchange="OnAccountFilterChanged">
-                        <option value="">@L["Filter_AnyAccount"]</option>
-                        @foreach (var a in tree.Accounts)
-                        {
-                            <option @key="a.Id" value="@a.Id">@a.Name</option>
-                        }
-                    </select>
-                }
-                else if (selectionKind == "account" && pickerData is { } categoriesForFilter)
-                {
-                    <select class="form-select form-select-sm filter-input-md" aria-label="@L["Filter_Category"]" data-testid="filter-category"
-                            value="@(categoryFilter?.ToString() ?? "")" @onchange="OnCategoryFilterChanged">
-                        <option value="">@L["Filter_AnyCategory"]</option>
-                        @foreach (var o in categoriesForFilter.Options)
-                        {
-                            <option @key="o.Id" value="@o.Id">@o.Path</option>
-                        }
-                    </select>
-                }
-                <button type="button" class="btn btn-sm @(newOnly ? "btn-primary" : "btn-outline-secondary")" data-testid="filter-new"
-                        aria-pressed="@newOnly.ToString().ToLowerInvariant()" @onclick="ToggleNewOnly" title="@L["Filter_NewOnlyTitle"]">
-                    <i class="bi bi-circle-fill tx-new-dot-inline" aria-hidden="true"></i> @L["Filter_NewOnly"]
-                </button>
-                <button type="button" class="btn btn-sm @(pinFilters ? "btn-primary" : "btn-outline-secondary")" data-testid="filter-pin"
-                        aria-pressed="@pinFilters.ToString().ToLowerInvariant()" @onclick="TogglePin"
-                        title="@(pinFilters ? L["Filter_PinOn"] : L["Filter_PinOff"])" aria-label="@L["Filter_Pin"]">
-                    <i class="bi @(pinFilters ? "bi-pin-angle-fill" : "bi-pin-angle")" aria-hidden="true"></i>
-                </button>
-                @if (!string.IsNullOrEmpty(payeeEquals))
-                {
-                    <span class="badge text-bg-secondary" data-testid="filter-payee">@L["Filter_Payee", payeeEquals]</span>
-                }
-                @if (HasActiveFilter)
-                {
-                    <button type="button" class="btn btn-sm btn-link" @onclick="ClearFilters">@L["Filter_Clear"]</button>
-                }
-                @if (txTotals is { Count: > 0 })
-                {
-                    <button type="button" class="btn btn-sm btn-outline-success ms-auto" data-testid="mark-all-checked" @onclick="MarkAllCheckedAsync"
-                            title="@L["MarkAll_Title"]">
-                        <i class="bi bi-check2-all" aria-hidden="true"></i> @L["MarkAll"]
-                    </button>
-                }
-            </div>
 
             @if (selected.Count > 0)
             {
                 <div class="tx-actionbar" data-testid="action-bar" role="toolbar" aria-label="@L["Bar_Aria"]">
-                    <span class="tx-actionbar-count" data-testid="action-bar-count">@L["Bar_Selected", selected.Count] · @Formatting.FormatMoney(selectionSum)</span>
+                    <span class="tx-actionbar-count" data-testid="action-bar-count">@L["Bar_Selected", selected.Count] · @Formatting.FormatMoneyDe(selectionSum)</span>
                     <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="action-category" @onclick="e => OpenPickerFromBar(e)">
                         <i class="bi bi-tag" aria-hidden="true"></i> @L["Bar_Category"]
                     </button>
@@ -496,10 +505,9 @@
                 </div>
             }
 
-            <div class="tx-scroll">
             @if (txTotals == null)
             {
-                <div aria-busy="true">
+                <div aria-busy="true" class="browse-cards">
                     @for (int i = 0; i < 6; i++)
                     {
                         <div class="skeleton skeleton-line"></div>
@@ -515,12 +523,11 @@
             }
             else
             {
-                <div class="tx-list" style="@ListGridStyle" data-testid="tx-list">
+                <div class="tx-list" data-testid="tx-list">
                     <Virtualize @ref="txVirtualize" ItemsProvider="LoadTxRowsAsync" Context="item" ItemSize="@itemSize">
                         <ItemContent>
                             @{
                                 var row = item.Row;
-                                var inPeriod = IsInAnchorPeriod(row.Date);
                                 var isSelected = selected.Contains(row.Id);
                                 var isExpanded = expandedId == row.Id;
                                 var showNew = row.IsNew && !viewedIds.Contains(row.Id);
@@ -532,114 +539,105 @@
                                         <span>@Clock.ToLocal(row.Date).ToString("dddd, dd.MM.yyyy")</span>
                                         @if (item.DayBalance is { } dayBalance)
                                         {
-                                            <span class="tx-day-balance" data-testid="tx-day-balance">@Formatting.FormatMoney(dayBalance, row.Currency ?? "EUR")</span>
+                                            <span class="tx-day-balance" data-testid="tx-day-balance">@Formatting.FormatMoneyDe(dayBalance, row.Currency)</span>
                                         }
                                     </div>
                                 }
-                                <div class="tx-row @(inPeriod ? "in-period" : "") @(cursorId == row.Id ? "tx-cursor" : "")" data-testid="tx-row"
+                                <div class="tx-row @(cursorId == row.Id ? "tx-cursor" : "")" data-testid="tx-row"
                                      aria-selected="@isSelected.ToString().ToLowerInvariant()"
                                      @onclick="e => OnRowClickAsync(item, e)"
                                      @oncontextmenu="e => OnRowContextAsync(item, e)" @oncontextmenu:preventDefault="true">
-                                    <div class="tx-mark">
-                                        @if (row.EditBlock == EditBlock.MoneyMoney)
-                                        {
-                                            <i class="bi bi-lock-fill tx-lock" data-testid="tx-lock" title="@L["Lock_MoneyMoney"]" aria-label="@L["Lock_MoneyMoney"]"></i>
-                                        }
-                                        else if (showNew)
-                                        {
-                                            <span class="tx-new-dot" data-testid="tx-new-dot" title="@L["Tx_NewTitle"]" aria-label="@L["Tx_NewTitle"]"></span>
-                                        }
-                                    </div>
                                     <div class="tx-date-col">
-                                        <div class="tx-date">@Clock.ToLocal(row.Date).ToString("dd.MM.yyyy")</div>
-                                    </div>
-                                    <div class="tx-payee">
-                                        <span class="tx-name">@(row.Name ?? "")</span>
-                                        @if (!string.IsNullOrEmpty(row.Note))
+                                        <span class="tx-date">@Clock.ToLocal(row.Date).ToString("dd.MM.yyyy")</span>
+                                        @if (showCategoryColumn)
                                         {
-                                            <span class="tx-comment text-body-secondary" data-testid="tx-note"><i class="bi bi-sticky" aria-hidden="true"></i> @row.Note</span>
-                                        }
-                                        @if (!string.IsNullOrEmpty(row.Purpose))
-                                        {
-                                            <span class="tx-purpose text-body-secondary">@row.Purpose</span>
-                                        }
-                                    </div>
-                                    @if (showCategoryColumn)
-                                    {
-                                        <div class="tx-cat">
+                                            var hasCategory = !string.IsNullOrEmpty(row.CategoryName);
+                                            var pillStyle = hasCategory ? CategoryColors.For(row.CategoryId ?? 0, row.CategoryColor).Style : null;
                                             @if (row.CanEdit)
                                             {
-                                                <button type="button" class="tx-cat-btn @(string.IsNullOrEmpty(row.CategoryName) ? "empty" : "")" data-testid="tx-category"
+                                                <button type="button" class="cat-pill @(hasCategory ? "" : "empty")" style="@pillStyle" data-testid="tx-category"
                                                         title="@L["Tx_CategoryTitle"]" @onclick="e => OpenPickerFromRow(row, e)" @onclick:stopPropagation="true">
-                                                    @(string.IsNullOrEmpty(row.CategoryName) ? L["Tx_NoCategory"] : row.CategoryName)
+                                                    @(hasCategory ? row.CategoryName : L["Tx_NoCategory"])
                                                 </button>
                                             }
-                                            else if (!string.IsNullOrEmpty(row.CategoryName))
+                                            else if (hasCategory)
                                             {
-                                                <span class="badge text-bg-primary tx-badge" data-testid="tx-category">@row.CategoryName</span>
+                                                <span class="cat-pill" style="@pillStyle" data-testid="tx-category-label" title="@row.CategoryName">@row.CategoryName</span>
                                             }
-                                        </div>
-                                    }
-                                    @if (showAccountColumn)
-                                    {
-                                        <div class="tx-account">
-                                            @if (!string.IsNullOrEmpty(row.AccountName))
-                                            {
-                                                <span class="badge text-bg-light border tx-badge">@row.AccountName</span>
-                                            }
-                                        </div>
-                                    }
-                                    <div class="tx-amount @(row.Amount < 0 ? "text-danger" : "text-success")">
-                                        @if (row.IsChecked)
-                                        {
-                                            <i class="bi bi-check-circle-fill text-success tx-checked me-1" data-testid="tx-checked" title="@L["Tx_Checked"]" aria-label="@L["Tx_Checked"]"></i>
                                         }
-                                        @if (row.IsPending)
-                                        {
-                                            <span class="badge text-bg-secondary me-1 tx-pending" title="@L["Tx_PendingTitle"]">@L["Tx_Pending"]</span>
-                                        }
-                                        @if (row.IsSplitRemainder)
-                                        {
-                                            <span class="badge text-bg-warning me-1" title="@L["Tx_SplitRemainderTitle"]">@L["Tx_SplitRemainder"]</span>
-                                        }
-                                        @if (row.IsSplitChild)
-                                        {
-                                            <span class="badge text-bg-warning me-1" title="@L["Tx_SplitChildTitle"]">@L["Tx_SplitChild"]</span>
-                                        }
-                                        @Formatting.FormatMoney(row.Amount, row.Currency ?? "EUR")
                                     </div>
+                                    <div class="tx-payee">
+                                        <div class="tx-line1">
+                                            @if (showNew)
+                                            {
+                                                <span class="tx-new-dot" data-testid="tx-new-dot" title="@L["Tx_NewTitle"]" aria-label="@L["Tx_NewTitle"]"></span>
+                                            }
+                                            <span class="tx-name">@(row.Name ?? "")</span>
+                                            @if (row.IsPending)
+                                            {
+                                                <span class="tx-flag tx-pending" title="@L["Tx_PendingTitle"]">@L["Tx_Pending"]</span>
+                                            }
+                                            @if (row.IsSplitRemainder)
+                                            {
+                                                <span class="tx-flag" title="@L["Tx_SplitRemainderTitle"]">@L["Tx_SplitRemainder"]</span>
+                                            }
+                                            @if (row.IsSplitChild)
+                                            {
+                                                <span class="tx-flag" title="@L["Tx_SplitChildTitle"]">@L["Tx_SplitChild"]</span>
+                                            }
+                                        </div>
+                                        @{ var purpose = PurposeText.Clean(row.Purpose); }
+                                        @if (!string.IsNullOrEmpty(purpose) || (showAccountColumn && !string.IsNullOrEmpty(row.AccountName)))
+                                        {
+                                            <div class="tx-purpose">
+                                                @if (showAccountColumn && !string.IsNullOrEmpty(row.AccountName))
+                                                {
+                                                    <span class="tx-acct" data-testid="tx-account">@row.AccountName@(string.IsNullOrEmpty(purpose) ? "" : " · ")</span>
+                                                }
+                                                @purpose
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(row.Note))
+                                        {
+                                            <div class="tx-comment" data-testid="tx-note"><i class="bi bi-sticky me-1" aria-hidden="true"></i>@row.Note</div>
+                                        }
+                                    </div>
+                                    <div class="tx-amount @(row.Amount < 0 ? "neg" : "")">@Formatting.FormatMoneyDe(row.Amount, row.Currency)</div>
+                                    <input type="checkbox" class="tx-check" data-testid="tx-check" aria-label="@L["Tx_Checked"]"
+                                           title="@(row.EditBlock == EditBlock.MoneyMoney ? L["Lock_MoneyMoney"].Value : null)"
+                                           checked="@row.IsChecked" disabled="@(!row.CanEdit)"
+                                           @onclick:stopPropagation="true" @onchange="() => SetCheckedForAsync(row.Id, !row.IsChecked)" />
                                 </div>
                                 @if (isExpanded)
                                 {
-                                    <TxDetails Row="row" Statement="expandedStatement"
+                                    <TxDetails Row="row" Statement="expandedStatement" ShowAccount="showAccountColumn"
                                                OnPickCategory="e => OpenPickerFromRow(row, e)"
                                                OnNoteSave="note => SetNoteForAsync(row.Id, note)"
-                                               OnToggleChecked="() => SetCheckedForAsync(row.Id, !row.IsChecked)" />
+                                               OnToggleChecked="() => SetCheckedForAsync(row.Id, !row.IsChecked)"
+                                               OnShowSimilar="() => ShowSimilarAsync(row)" />
                                 }
                             </div>
                         </ItemContent>
                         <Placeholder>
                             <div class="tx-row">
-                                <div class="tx-mark"></div>
-                                <div class="tx-date-col"><div class="skeleton skeleton-line"></div></div>
+                                <div class="tx-date-col"><div class="skeleton skeleton-line w-100"></div></div>
                                 <div class="tx-payee"><div class="skeleton skeleton-line"></div></div>
-                                @if (showCategoryColumn) { <div class="tx-cat"></div> }
-                                @if (showAccountColumn) { <div class="tx-account"></div> }
                                 <div class="tx-amount"></div>
+                                <div></div>
                             </div>
                         </Placeholder>
                     </Virtualize>
                 </div>
 
-                <div class="d-flex justify-content-end mt-3 small text-body-secondary">
-                    @L["Footer_Total", txTotals.Value.Count] · @L["Footer_Sum"] @Formatting.FormatMoney(txTotals.Value.Sum)
-                    <button type="button" class="btn btn-link btn-sm p-0 ms-3" data-testid="shortcuts-open" @onclick="() => showShortcuts = true">
+                <div class="tx-footer">
+                    <span>@L["Footer_Total", txTotals.Value.Count] · @L["Footer_Sum"] @Formatting.FormatMoneyDe(txTotals.Value.Sum)</span>
+                    <button type="button" class="btn btn-link btn-sm p-0" data-testid="shortcuts-open" @onclick="() => showShortcuts = true">
                         <i class="bi bi-keyboard" aria-hidden="true"></i> @L["Shortcuts_Link"]
                     </button>
                 </div>
             }
-            </div>
-        }
+            }
+        </div>
     </section>
 </div>
 
@@ -737,7 +735,7 @@
     // Approximate row height in CSS pixels — drives Virtualize's spacer math and the bar-click
     // scroll-jump (offset = newerCount * itemSize). Real rows vary a few px either way; the
     // post-load scrollIntoView fine-tunes the final position.
-    private const float itemSize = 56f;
+    private const float itemSize = 62f;
 
     // URL state.
     private (int Year, int Month) anchor;
@@ -783,7 +781,7 @@
     private bool chartSkipAnimation;
     // User-driven collapse of the chart row to reclaim vertical space. The chart canvas is
     // removed from the DOM when collapsed, so expanding re-renders via the chartDirty path.
-    private bool chartCollapsed;
+    private bool chartCollapsed = true;
 
     // Rail accounts section hides accounts that aren't explicitly assigned to the project
     // by default; the toggle below the list flips this when the user wants to see related
@@ -877,7 +875,7 @@
         searchInput = ""; searchEffective = "";
         amountMin = null; amountMax = null; amountMinInput = ""; amountMaxInput = "";
         chartGranularity = "M";
-        showRelatedAccounts = false; railOpen = false; chartCollapsed = false;
+        showRelatedAccounts = false; railOpen = false; chartCollapsed = true;
         periodFilter = PeriodFilter.All; customFrom = null; customTo = null;
         checkedFilter = "any"; directionFilter = "any"; newOnly = false; categoryFilter = null; pinFilters = false;
         ResetSelectionState();
@@ -1060,6 +1058,7 @@
         if (project == null) return;
         var (fm, tm) = PeriodRange;
         tree = await BrowseService.GetTreeAsync(ProjectId, anchor.Year, fm, tm);
+        if (ActiveFilterCount > 0) _filterOpen = true;
         await ComputeChartAsync();
         chartDirty = true;
         StateHasChanged();
@@ -1211,7 +1210,9 @@
         var q = await BuildTransactionQueryAsync(request.StartIndex - lead, request.Count + lead);
         var result = await TransactionQueries.QueryAsync(q, request.CancellationToken);
 
-        var running = selectionKind == "account" ? await EnsureRunningBalanceAsync(request.CancellationToken) : null;
+        var running = RunningBalance.Applies(selectionKind == "account", SelectedAccountNode?.Balance != null, HasActiveFilter)
+            ? await EnsureRunningBalanceAsync(request.CancellationToken)
+            : null;
         var items = new List<TxListItem>(result.Rows.Count);
         DateOnly? previousDay = lead == 1 && result.Rows.Count > 0 ? ToLocalDay(result.Rows[0].Date) : null;
         for (var i = lead; i < result.Rows.Count; i++)
@@ -1219,8 +1220,8 @@
             var row = result.Rows[i];
             var index = request.StartIndex - lead + i;
             var day = ToLocalDay(row.Date);
-            var showDay = running != null && previousDay != day;
-            decimal? dayBalance = showDay ? running!.AtEndOf(day) : null;
+            var showDay = previousDay != day;
+            decimal? dayBalance = showDay && running != null ? running.AtEndOf(day) : null;
             previousDay = day;
             rowIndex[row.Id] = index;
             rowCache[row.Id] = row;
@@ -1298,6 +1299,7 @@
         StateHasChanged();
         var (fm, tm) = PeriodRange;
         tree = await BrowseService.GetTreeAsync(ProjectId, anchor.Year, fm, tm);
+        if (ActiveFilterCount > 0) _filterOpen = true;
         if (tree == null) { notFound = true; return; }
         // If the URL selected a related (non-assigned) account, auto-expand the related
         // section so the selected row is visible instead of hidden behind the toggle.
@@ -1336,6 +1338,7 @@
         // Totals (count + sum) feed the footer; row data streams through <Virtualize> via
         // LoadTxRowsAsync below.
         txTotals = await TransactionQueries.QueryTotalsAsync(await BuildTransactionQueryAsync(0, 1));
+        await LoadToolbarExtrasAsync();
         if (keepSelection) await PruneSelectionAsync();
         if (txVirtualize is not null) await txVirtualize.RefreshDataAsync();
         await ComputeChartAsync();
@@ -1441,6 +1444,28 @@
         }
     }
 
+    /// <summary>The figure next to the title: an account's balance, a depot's value, a category's period amount, the
+    /// uncategorized sum. Null while loading.</summary>
+    private (decimal Value, string? Currency)? ToolbarAmount
+    {
+        get
+        {
+            if (tree == null) return null;
+            if (selectionKind == "account")
+                return SelectedAccountNode is { } a ? (a.Balance ?? 0m, a.Currency) : null;
+            if (selectionKind == "uncategorized")
+                return txTotals is { } t ? (t.Sum, null) : null;
+            if (selectionKind == "portfolio")
+                return holdings is { } ph ? (ph.TotalValue, ph.Currency) : null;
+            return (SelectionIsIncome ? SelectionSpent : -SelectionSpent, null);
+        }
+    }
+
+    private BrowseCategoryNode? SelectedCategoryNode =>
+        tree != null && selectionKind == "category" && selectionId is { } cid
+            ? FindCategoryNode(tree.Categories, cid, CategoryItemType.Category)
+            : null;
+
     private BrowseAccountNode? SelectedAccountNode =>
         tree != null && selectionKind == "account" && selectionId is { } aid
             ? tree.Accounts.FirstOrDefault(a => a.Id == aid)
@@ -1536,14 +1561,9 @@
         quantity.ToString("0.########", CultureInfo.CurrentCulture);
 
     private bool showCategoryColumn => selectionKind != "category";
-    private bool showAccountColumn => selectionKind != "account" && (tree?.Accounts.Count ?? 0) > 0;
+    // The account per row only matters when the list spans more than one account.
+    private bool showAccountColumn => selectionKind != "account" && accountFilter == null && (tree?.Accounts.Count ?? 0) > 1;
 
-    private bool IsInAnchorPeriod(DateTime date)
-    {
-        var (fm, tm) = PeriodRange;
-        if (date.Year != anchor.Year) return false;
-        return date.Month >= fm && date.Month <= tm;
-    }
 
     /// <summary>
     /// Canvas width in pixels — bar width × bucket count, floored at 320 so a near-empty
