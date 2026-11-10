@@ -447,7 +447,7 @@
                                         }
                                     </div>
                                 }
-                                <div class="tx-row @(cursorId == row.Id ? "tx-cursor" : "")" data-testid="tx-row"
+                                <div class="tx-row @(cursorId == row.Id ? "tx-cursor" : "") @(row.IsPending ? "tx-row-pending" : "")" data-testid="tx-row" title="@(row.IsPending ? L["Tx_PendingTitle"].Value : null)"
                                      aria-selected="@isSelected.ToString().ToLowerInvariant()"
                                      @onclick="e => OnRowClickAsync(item, e)"
                                      @oncontextmenu="e => OnRowContextAsync(item, e)" @oncontextmenu:preventDefault="true">
@@ -479,7 +479,7 @@
                                             <span class="tx-name">@(row.Name ?? "")</span>
                                             @if (row.IsPending)
                                             {
-                                                <span class="tx-flag tx-pending" title="@L["Tx_PendingTitle"]">@L["Tx_Pending"]</span>
+                                                <span class="visually-hidden tx-pending">@L["Tx_Pending"]</span>
                                             }
                                             @if (row.IsSplitRemainder)
                                             {
