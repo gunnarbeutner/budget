@@ -803,7 +803,7 @@ const zeroLinePlugin = {
 // Browse page bar chart: handles its own rendering since it needs (a) a Blazor click bridge
 // for navigating to a clicked bar's month, and (b) auto-scrolling the container to the
 // right-most (most recent) bar on each render so the user lands looking at the anchor.
-window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values, bg, invertY, dotnetRef, noAnimate) {
+window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values, bg, invertY, dotnetRef, noAnimate, asLine) {
     const ctx = document.getElementById(canvasId);
     if (!ctx) return false;
     if (window.chartInstances[canvasId]) {
@@ -815,16 +815,16 @@ window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values,
         return window.obMoney(v);
     };
     try {
+        // A balance (account / account group) is a line over time; period sums (categories) are bars.
+        const dataset = asLine
+            ? { label: 'Balance', data: values, borderColor: 'rgba(54, 162, 235, 0.9)', backgroundColor: 'rgba(54, 162, 235, 0.12)',
+                fill: true, borderWidth: 2, pointRadius: 0, pointHitRadius: 6, stepped: true }
+            : { label: 'Amount', data: values, backgroundColor: bg, borderWidth: 0 };
         window.chartInstances[canvasId] = new Chart(ctx, {
-            type: 'bar',
+            type: asLine ? 'line' : 'bar',
             data: {
                 labels: labels,
-                datasets: [{
-                    label: 'Amount',
-                    data: values,
-                    backgroundColor: bg,
-                    borderWidth: 0,
-                }]
+                datasets: [dataset]
             },
             options: {
                 // responsive:true tracks the canvas's CSS parent (.browse-chart, which we
@@ -836,6 +836,7 @@ window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values,
                 // Bar-click re-renders pass noAnimate=true so picking a month doesn't replay
                 // the grow-from-zero animation under the user's cursor.
                 animation: noAnimate ? false : undefined,
+                interaction: asLine ? { mode: 'index', intersect: false } : undefined,
                 plugins: {
                     legend: { display: false },
                     tooltip: {

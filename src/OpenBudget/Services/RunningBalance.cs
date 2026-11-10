@@ -25,10 +25,21 @@ public sealed class RunningBalance
     }
 
     /// <summary>
-    /// Whether end-of-day balances mean anything for the list: only for a single selected account whose list is not
-    /// narrowed by a filter or search (otherwise the bookings between two day rows are not all the account's bookings).
+    /// End-of-day balances of a set of accounts (an account group): the sum of their running balances, which is the
+    /// running balance of their summed current balances over all their flows.
     /// </summary>
-    public static bool Applies(bool singleAccount, bool hasBalance, bool filtered) => singleAccount && hasBalance && !filtered;
+    public static RunningBalance ForAccounts(
+        IEnumerable<(decimal CurrentBalance, IEnumerable<(DateTime Date, decimal Amount)> Flows)> accounts, Func<DateTime, DateOnly> toLocalDay)
+    {
+        var list = accounts.ToList();
+        return new RunningBalance(list.Sum(a => a.CurrentBalance), list.SelectMany(a => a.Flows), toLocalDay);
+    }
+
+    /// <summary>
+    /// Whether end-of-day balances mean anything for the list: only for a selected account or account group whose list
+    /// is not narrowed by a filter or search (otherwise the bookings between two day rows are not all its bookings).
+    /// </summary>
+    public static bool Applies(bool accountScope, bool hasBalance, bool filtered) => accountScope && hasBalance && !filtered;
 
     /// <summary>The balance after all bookings of <paramref name="day"/>: the current balance minus everything booked on later days.</summary>
     public decimal AtEndOf(DateOnly day)

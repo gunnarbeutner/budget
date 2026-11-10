@@ -1,3 +1,4 @@
+@using System.Globalization
 @using Microsoft.AspNetCore.Components.Web
 @using OpenBudget.Models
 @using OpenBudget.Services
@@ -95,6 +96,8 @@
     [Parameter] public EventCallback<bool> ShowRelatedAccountsChanged { get; set; }
     [Parameter] public EventCallback OnSelectAll { get; set; }
     [Parameter] public EventCallback<long> OnSelectAccount { get; set; }
+    /// <summary>Raised with the id of the account group whose name was picked.</summary>
+    [Parameter] public EventCallback<long> OnSelectAccountGroup { get; set; }
     [Parameter] public EventCallback OnSelectPortfolio { get; set; }
     [Parameter] public EventCallback OnSelectUncategorized { get; set; }
     [Parameter] public EventCallback<BrowseCategoryNode> OnSelectCategory { get; set; }
@@ -131,9 +134,19 @@
     private List<AccountTreeNode> AccountNodes(IEnumerable<BrowseAccountNode> visible) =>
         AccountTreeBuilder.Build(visible.ToList(), Tree.AccountGroups, L["Tree_OtherAccounts"]);
 
-    private async Task OnGroupKeydown(KeyboardEventArgs e, string key)
+    private Task OnGroupClickAsync(long? groupId, string key) =>
+        groupId is { } id ? OnSelectAccountGroup.InvokeAsync(id) : ToggleGroupAsync(key);
+
+    // Enter / Space select the group, ArrowRight / ArrowLeft unfold / fold it.
+    private async Task OnGroupKeydown(KeyboardEventArgs e, long? groupId, string key)
     {
-        if (e.Key == "Enter" || e.Key == " ") await ToggleGroupAsync(key);
+        var open = !collapsed.Contains(key);
+        switch (e.Key)
+        {
+            case "Enter" or " ": await OnGroupClickAsync(groupId, key); break;
+            case "ArrowRight" when !open: await ToggleGroupAsync(key); break;
+            case "ArrowLeft" when open: await ToggleGroupAsync(key); break;
+        }
     }
 
     private string SumsText(AccountTreeNode n) =>
@@ -163,11 +176,21 @@
         {
             var key = n.Key;
             bool open = !collapsed.Contains(key);
-            <div class="browse-tree-row browse-tree-group" style="@pad"
-                 role="treeitem" tabindex="0" aria-expanded="@open.ToString().ToLower()" data-testid="tree-group"
-                 @onclick="() => ToggleGroupAsync(key)"
-                 @onkeydown="e => OnGroupKeydown(e, key)">
-                <span class="browse-tree-name fw-semibold"><i class="bi @(open ? "bi-chevron-down" : "bi-chevron-right") me-1" aria-hidden="true"></i><span class="browse-tree-label" title="@n.Name">@n.Name</span></span>
+            long? groupId = key.StartsWith("g:", StringComparison.Ordinal) && long.TryParse(key[2..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var gid) ? gid : null;
+            bool isSel = groupId != null && SelectionKind == "accountgroup" && SelectionId == groupId;
+            @* The name selects the group (all its accounts' bookings); the chevron only folds it. "Other accounts"
+               is no real group, so there the whole row folds. *@
+            <div class="browse-tree-row browse-tree-group @(isSel ? "selected" : "")" style="@pad"
+                 role="treeitem" tabindex="0" aria-expanded="@open.ToString().ToLower()" aria-selected="@isSel.ToString().ToLower()" data-testid="tree-group"
+                 @onclick="() => OnGroupClickAsync(groupId, key)"
+                 @onkeydown="e => OnGroupKeydown(e, groupId, key)">
+                <span class="browse-tree-name fw-semibold">
+                    <button type="button" class="browse-tree-chevron" tabindex="-1" data-testid="tree-group-toggle"
+                            aria-label="@(open ? L["Tree_Collapse"] : L["Tree_Expand"])"
+                            @onclick="() => ToggleGroupAsync(key)" @onclick:stopPropagation="true">
+                        <i class="bi @(open ? "bi-chevron-down" : "bi-chevron-right")" aria-hidden="true"></i>
+                    </button><span class="browse-tree-label" title="@n.Name">@n.Name</span>
+                </span>
                 <span class="browse-tree-amount fw-bold" data-testid="tree-group-sum">@SumsText(n)</span>
             </div>
             @if (open)

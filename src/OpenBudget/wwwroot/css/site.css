@@ -1541,3 +1541,7 @@ a.budget-cat:focus-visible { outline: 2px solid var(--ob-accent); outline-offset
     .budget-name { padding-left: 8px; }
     .budget-select { max-width: 9rem; }
 }
+
+/* Account group rows: the chevron folds, the name selects. */
+.browse-tree-chevron { border: 0; background: transparent; color: inherit; padding: 0 4px 0 0; line-height: 1; }
+.browse-tree-chevron:hover { color: var(--ob-accent); }

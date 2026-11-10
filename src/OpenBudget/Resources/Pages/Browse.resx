@@ -403,4 +403,10 @@
   <data name="BudgetLine_ThisMonth" xml:space="preserve">
     <value>Budget this month:</value>
   </data>
+  <data name="Header_GroupAccounts_One" xml:space="preserve">
+    <value>{0} account</value>
+  </data>
+  <data name="Header_GroupAccounts_Other" xml:space="preserve">
+    <value>{0} accounts</value>
+  </data>
 </root>

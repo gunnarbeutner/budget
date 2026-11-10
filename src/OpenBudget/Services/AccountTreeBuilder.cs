@@ -39,6 +39,21 @@ public static class AccountTreeBuilder
 {
     public const string OtherKey = "other";
 
+    /// <summary>The node with <paramref name="key"/> anywhere in <paramref name="nodes"/>, or null.</summary>
+    public static AccountTreeNode? Find(IEnumerable<AccountTreeNode> nodes, string key)
+    {
+        foreach (var n in nodes)
+        {
+            if (n.Key == key) return n;
+            if (Find(n.Children, key) is { } found) return found;
+        }
+        return null;
+    }
+
+    /// <summary>The accounts below a node (its own account for a leaf), depth first.</summary>
+    public static IEnumerable<BrowseAccountNode> Leaves(AccountTreeNode node) =>
+        node.Account is { } a ? [a] : node.Children.SelectMany(Leaves);
+
     public static string GroupKey(long id) => "g:" + id.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     public static List<AccountTreeNode> Build(

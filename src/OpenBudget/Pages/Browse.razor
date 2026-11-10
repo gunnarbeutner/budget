@@ -52,12 +52,13 @@
         else
         {
             <BrowseTreeRail Tree="tree"
-                            SelectionKind="selectionKind"
+                            SelectionKind="@selectionKind"
                             SelectionId="selectionId"
                             ShowAllRow="false"
                             @bind-ShowRelatedAccounts="showRelatedAccounts"
                             OnSelectAll="SelectAll"
                             OnSelectAccount="SelectAccount"
+                            OnSelectAccountGroup="SelectAccountGroup"
                             OnSelectPortfolio="SelectPortfolio"
                             OnSelectUncategorized="SelectUncategorized"
                             OnSelectCategory="SelectCategoryNode" />
@@ -113,6 +114,10 @@
                             @if (parts > 0) { <span> · </span> }
                             <span data-testid="browse-readonly"><i class="bi bi-lock me-1" aria-hidden="true"></i>@L["ReadOnly_MoneyMoney"]</span>
                         }
+                    }
+                    else if (selectionKind == "accountgroup" && GroupAccounts() is { } members)
+                    {
+                        <span data-testid="group-account-count">@L[members.Count == 1 ? "Header_GroupAccounts_One" : "Header_GroupAccounts_Other", members.Count]</span>
                     }
                     else if (selectionKind != "account" && SelectionBudget is { } budget)
                     {
@@ -240,7 +245,7 @@
                         <option value="in">@L["Filter_Incoming"]</option>
                         <option value="out">@L["Filter_Outgoing"]</option>
                     </select>
-                    @if (selectionKind != "account" && tree.Accounts.Count > 1)
+                    @if (!IsAccountScope && tree.Accounts.Count > 1)
                     {
                         <select class="form-select form-select-sm filter-input-md" aria-label="@L["Filter_AnyAccount"]"
                                 value="@(accountFilter?.ToString() ?? "")"
@@ -252,7 +257,7 @@
                             }
                         </select>
                     }
-                    else if (selectionKind == "account" && pickerData is { } categoriesForFilter)
+                    else if (IsAccountScope && pickerData is { } categoriesForFilter)
                     {
                         <select class="form-select form-select-sm filter-input-md" aria-label="@L["Filter_Category"]" data-testid="filter-category"
                                 value="@(categoryFilter?.ToString() ?? "")" @onchange="OnCategoryFilterChanged">
@@ -343,7 +348,7 @@
                             </div>
                         </div>
                         <div class="segmented segmented-vertical" role="group" aria-label="@L["Chart_AriaGranularity"]">
-                            @if (selectionKind == "account")
+                            @if (IsAccountScope)
                             {
                                 <button type="button" class="btn @(chartGranularity == "D" ? "active" : "")"
                                         @onclick='() => SetChartGranularity("D")'>@L["Chart_D"]</button>
@@ -830,6 +835,9 @@
     // read "−300 €"). Income categories and accounts use the natural axis where positive
     // goes up and negative goes down.
     private bool chartInvertY;
+    // Accounts and account groups chart their balance over time as a line (like MoneyMoney's header chart);
+    // categories keep the bars of their period sums.
+    private bool chartIsBalance;
 
     // JS ↔ Blazor bridge for chart bar clicks. Allocated once per page lifetime; the chart
     // re-render hands the same reference each time so click events route back to us.
@@ -1005,6 +1013,10 @@
             {
                 selectionKind = "account"; selectionId = aid;
             }
+            else if (raw.StartsWith('g') && long.TryParse(raw[1..], out var agid))
+            {
+                selectionKind = "accountgroup"; selectionId = agid;
+            }
             else if (raw == "uncategorized")
             {
                 selectionKind = "uncategorized"; selectionId = null;
@@ -1043,7 +1055,7 @@
     /// </summary>
     private void CoerceChartGranularityForSelection()
     {
-        if (selectionKind == "account")
+        if (IsAccountScope)
         {
             if (chartGranularity != "D" && chartGranularity != "M") chartGranularity = "M";
         }
@@ -1063,6 +1075,7 @@
             "category" => $"cat-{selectionId}",
             "group" => $"grp-{selectionId}",
             "account" => $"acct-{selectionId}",
+            "accountgroup" => $"g{selectionId}",
             "portfolio" => "securities",
             "uncategorized" => "uncategorized",
             _ => null
@@ -1260,7 +1273,7 @@
     {
         SourceId = project!.SourceId,
         UncategorizedOnly = selectionKind == "uncategorized",
-        CategoryLeafIds = categoryFilter is { } cf && selectionKind == "account" ? new[] { cf } : await ResolveSelectionLeavesAsync(),
+        CategoryLeafIds = categoryFilter is { } cf && IsAccountScope ? new[] { cf } : await ResolveSelectionLeavesAsync(),
         AccountIds = ResolveSelectionAccounts(),
         SearchText = string.IsNullOrWhiteSpace(searchEffective) ? null : searchEffective,
         MinAbsAmount = amountMin,
@@ -1285,7 +1298,7 @@
         var q = await BuildTransactionQueryAsync(request.StartIndex - lead, request.Count + lead);
         var result = await TransactionQueries.QueryAsync(q, request.CancellationToken);
 
-        var running = RunningBalance.Applies(selectionKind == "account", SelectedAccountNode?.Balance != null, HasActiveFilter)
+        var running = RunningBalance.Applies(IsAccountScope, SelectionAccountBalance != null, HasActiveFilter)
             ? await EnsureRunningBalanceAsync(request.CancellationToken)
             : null;
         var items = new List<TxListItem>(result.Rows.Count);
@@ -1473,6 +1486,7 @@
     private IReadOnlyCollection<long>? ResolveSelectionAccounts()
     {
         if (selectionKind == "account" && selectionId is { } aid) return new[] { aid };
+        if (selectionKind == "accountgroup") return GroupAccounts()?.Select(a => a.Id).ToList() ?? [];
         // Combined securities view: the transaction list spans all the project's depot accounts.
         if (selectionKind == "portfolio")
         {
@@ -1491,6 +1505,8 @@
                 return tree.Accounts.FirstOrDefault(a => a.Id == aid)?.Name ?? "";
             if (selectionKind == "portfolio")
                 return L["Header_AllSecurities"];
+            if (selectionKind == "accountgroup")
+                return SelectedGroupNode?.Name ?? "";
             if (selectionKind == "uncategorized")
                 return L["Header_Uncategorized"];
             if ((selectionKind == "category" || selectionKind == "group") && selectionId is { } cid && tree != null)
@@ -1532,6 +1548,8 @@
             if (tree == null) return null;
             if (selectionKind == "account")
                 return SelectedAccountNode is { } a ? (a.Balance ?? 0m, a.Currency) : null;
+            if (selectionKind == "accountgroup")
+                return SelectedGroupNode?.Sums.FirstOrDefault() is { } gs ? (gs.Amount, gs.Currency) : null;
             if (selectionKind == "uncategorized")
                 return txTotals is { } t ? (t.Sum, null) : null;
             if (selectionKind == "portfolio")
@@ -1559,8 +1577,39 @@
         finally { syncStarting = false; }
     }
 
-    private decimal? SelectionAccountBalance => SelectedAccountNode?.Balance;
+    /// <summary>The balance the end-of-day figures and the balance chart walk back from: the account's, or the sum of
+    /// the group's accounts when they share one currency (the tree's group sum).</summary>
+    private decimal? SelectionAccountBalance => selectionKind == "accountgroup"
+        ? (SelectedGroupNode is { Sums.Count: 1 } g ? g.Sums[0].Amount : null)
+        : SelectedAccountNode?.Balance;
     private string? SelectionAccountCurrency => SelectedAccountNode?.Currency;
+
+    /// <summary>A single account or an account group: the selections whose list is a ledger with balances.</summary>
+    private bool IsAccountScope => selectionKind is "account" or "accountgroup";
+
+    /// <summary>The selected account group as the rail shows it (its sum covers the accounts the rail lists).</summary>
+    private AccountTreeNode? SelectedGroupNode
+    {
+        get
+        {
+            if (tree == null || selectionKind != "accountgroup" || selectionId is not { } gid) return null;
+            var visible = showRelatedAccounts ? tree.Accounts : tree.Accounts.Where(a => a.IsAssigned).ToList();
+            return AccountTreeBuilder.Find(AccountTreeBuilder.Build(visible, tree.AccountGroups, ""), AccountTreeBuilder.GroupKey(gid));
+        }
+    }
+
+    /// <summary>The accounts of the selected group and its subgroups.</summary>
+    private List<BrowseAccountNode>? GroupAccounts() => SelectedGroupNode is { } g ? AccountTreeBuilder.Leaves(g).ToList() : null;
+
+    private async Task SelectAccountGroup(long id)
+    {
+        selectionKind = "accountgroup"; selectionId = id;
+        ResetTransientFilters();
+        CoerceChartGranularityForSelection();
+        railOpen = false;
+        UpdateUrl();
+        await ReloadTransactionsAsync();
+    }
     private decimal SelectionAccountPeriodSum => SelectedAccountNode?.PeriodSum ?? 0m;
 
     private bool SelectionIsIncome
@@ -1695,9 +1744,9 @@
             // negative — the tick labels read "−300 €"). Income items keep the natural axis.
             invertY = !isIncome;
         }
-        else if (selectionKind == "account" && selectionId is { } aid)
+        else if (IsAccountScope && ResolveSelectionAccounts() is { Count: > 0 } ids)
         {
-            accounts = new[] { aid };
+            accounts = ids;
             // Accounts use the natural axis: net inflow up, net outflow down.
         }
         else
@@ -1727,7 +1776,9 @@
         // end of the window. Extend only the query window — bucketing still discards anything
         // past windowEndExclusive via the standard bounds check.
         var queryEndExclusive = windowEndExclusive;
-        var isAccountDaily = selectionKind == "account" && chartGranularity == "D";
+        // Accounts and account groups chart their balance over time (end of each day / month), walked back from
+        // today's balance; the query has to reach today for that.
+        var isAccountDaily = IsAccountScope && SelectionAccountBalance != null;
         if (isAccountDaily)
         {
             var tomorrow = Clock.Today.AddDays(1);
@@ -1747,6 +1798,7 @@
             raw, SelectionAccountBalance);
         chartBarMonths = chart.BarMonths;
         chartInvertY = chart.InvertY;
+        chartIsBalance = isAccountDaily;
         chartBars = chart.Bars;
     }
 
@@ -1765,7 +1817,7 @@
         try
         {
             await JS.InvokeVoidAsync("renderBrowseChart", "browseChart", "browseChartScroll",
-                labels, values, bg, chartInvertY, selfRef, noAnimate);
+                labels, values, bg, chartInvertY, selfRef, noAnimate, chartIsBalance);
         }
         catch (JSDisconnectedException) { /* page navigation in flight */ }
     }

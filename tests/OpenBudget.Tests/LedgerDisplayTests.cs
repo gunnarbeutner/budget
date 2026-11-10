@@ -61,10 +61,10 @@ public sealed class LedgerDisplayTests
 
     [Theory]
     [InlineData(true, true, false, true)]
-    [InlineData(false, true, false, false)]   // several accounts: no single running balance
+    [InlineData(false, true, false, false)]   // no account or account group selected: no running balance
     [InlineData(true, false, false, false)]   // account without a known balance
     [InlineData(true, true, true, false)]     // filter or search: the rows between two days are not all the bookings
-    public void End_of_day_balances_are_shown_only_for_an_unfiltered_single_account(bool oneAccount, bool hasBalance, bool filtered, bool expected) =>
+    public void End_of_day_balances_are_shown_only_for_an_unfiltered_account_or_account_group(bool oneAccount, bool hasBalance, bool filtered, bool expected) =>
         Assert.Equal(expected, RunningBalance.Applies(oneAccount, hasBalance, filtered));
 
     [Fact]
@@ -78,5 +78,23 @@ public sealed class LedgerDisplayTests
         Assert.Equal(2400.29m, balance.AtEndOf(new DateOnly(2026, 11, 5)));
         Assert.Equal(3301.09m, balance.AtEndOf(new DateOnly(2026, 11, 2)));
         Assert.Equal(199.53m, balance.AtEndOf(new DateOnly(2026, 11, 1)));
+    }
+
+    [Fact]
+    public void End_of_day_balances_of_an_account_group_are_the_sums_of_its_accounts()
+    {
+        static DateTime At(int day) => new(2026, 1, day, 9, 0, 0, DateTimeKind.Utc);
+        static DateOnly Day(int day) => new(2026, 1, day);
+        (DateTime, decimal)[] giro = [(At(10), -100m), (At(14), -25m)];
+        (DateTime, decimal)[] savings = [(At(12), 50m)];
+        var giroBalance = new RunningBalance(1000m, giro, d => DateOnly.FromDateTime(d));
+        var savingsBalance = new RunningBalance(250.50m, savings, d => DateOnly.FromDateTime(d));
+
+        var group = RunningBalance.ForAccounts([(1000m, giro), (250.50m, savings)], d => DateOnly.FromDateTime(d));
+
+        foreach (var d in new[] { 9, 10, 11, 12, 13, 14, 15 })
+            Assert.Equal(giroBalance.AtEndOf(Day(d)) + savingsBalance.AtEndOf(Day(d)), group.AtEndOf(Day(d)));
+        Assert.Equal(1250.50m, group.AtEndOf(Day(14)));
+        Assert.Equal(1325.50m, group.AtEndOf(Day(9)));
     }
 }

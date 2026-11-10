@@ -147,6 +147,15 @@ public partial class Browse
     private async Task<RunningBalance?> EnsureRunningBalanceAsync(CancellationToken ct)
     {
         if (runningBalance != null) return runningBalance;
+        if (selectionKind == "accountgroup")
+        {
+            if (SelectionAccountBalance == null || GroupAccounts() is not { } members) return null;
+            var parts = new List<(decimal, IEnumerable<(DateTime Date, decimal Amount)>)>();
+            foreach (var m in members.Where(m => m.Balance != null))
+                parts.Add((m.Balance!.Value, await TransactionQueries.GetBookedFlowsAsync(m.Id, ct)));
+            runningBalance = RunningBalance.ForAccounts(parts, ToLocalDay);
+            return runningBalance;
+        }
         if (SelectedAccountNode is not { Balance: { } balance } account) return null;
         var flows = await TransactionQueries.GetBookedFlowsAsync(account.Id, ct);
         runningBalance = new RunningBalance(balance, flows, ToLocalDay);

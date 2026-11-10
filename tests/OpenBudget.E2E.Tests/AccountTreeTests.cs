@@ -79,8 +79,70 @@ public sealed class AccountTreeTests : EndToEndTestBase
         await Expect(groups.Nth(1).GetByTestId("tree-group-sum")).ToHaveTextAsync("1.250,50\u00A0€");
         await Expect(Page.GetByTestId("tree-account")).ToHaveCountAsync(3);
 
-        await groups.Nth(1).ClickAsync();
+        // The chevron folds the group without selecting it.
+        await groups.Nth(1).GetByTestId("tree-group-toggle").ClickAsync();
         await Expect(Page.GetByTestId("tree-account")).ToHaveCountAsync(1);
+        await Expect(groups.Nth(1)).ToHaveAttributeAsync("aria-selected", "false");
+        await Expect(Page).Not.ToHaveURLAsync(new System.Text.RegularExpressions.Regex("sel="));
+        await groups.Nth(1).GetByTestId("tree-group-toggle").ClickAsync();
+        await Expect(Page.GetByTestId("tree-account")).ToHaveCountAsync(3);
+    }
+
+    private static async Task SeedGroupBookingsAsync()
+    {
+        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        await using var db = await factory.CreateDbContextAsync();
+        void Add(long id, long account, long cents, int day, string name) => db.Transactions.Add(new Transaction
+        {
+            Id = id,
+            SourceId = E2ESeed.SourceId,
+            AccountId = account,
+            Amount = cents,
+            Currency = "EUR",
+            Name = name,
+            Booked = true,
+            Timestamp = ((DateTimeOffset)new DateTime(E2ESeed.BudgetYear, 1, day, 9, 0, 0, DateTimeKind.Utc)).ToUnixTimeSeconds(),
+        });
+        Add(70, GiroId, -100_00, 10, "Example Giro Booking");
+        Add(71, SavingsId, 50_00, 12, "Example Savings Booking");
+        Add(72, CashId, -20_00, 11, "Example Cash Booking");
+        await db.SaveChangesAsync();
+    }
+
+    [Test]
+    public async Task Selecting_an_account_group_lists_its_accounts_bookings_with_the_group_balance()
+    {
+        await SeedAccountsAsync();
+        await SeedGroupBookingsAsync();
+        await GoToAsync(BrowseUrl);
+
+        var group = Page.GetByTestId("tree-group").Nth(1);
+        await group.Locator(".browse-tree-label").ClickAsync();
+
+        await Expect(Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex($"sel=g{ExampleBankGroup}"));
+        await Expect(group).ToHaveAttributeAsync("aria-selected", "true");
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Example Bank" })).ToBeVisibleAsync();
+
+        // Bookings of both member accounts (not the Cash account of the parent group), each with its account.
+        var rows = Page.GetByTestId("tx-row");
+        await Expect(rows).ToHaveCountAsync(2);
+        await Expect(rows.Nth(0)).ToContainTextAsync("Example Savings Booking");
+        await Expect(rows.Nth(0).GetByTestId("tx-account")).ToContainTextAsync("E2E Savings");
+        await Expect(rows.Nth(1)).ToContainTextAsync("Example Giro Booking");
+
+        // The toolbar total is the tree's group sum; the day rows carry the whole group's end-of-day balance.
+        await Expect(Page.GetByTestId("browse-balance")).ToHaveTextAsync("1.250,50\u00A0€");
+        await Expect(group.GetByTestId("tree-group-sum")).ToHaveTextAsync("1.250,50\u00A0€");
+        var balances = Page.GetByTestId("tx-day-balance");
+        await Expect(balances.Nth(0)).ToHaveTextAsync("1.250,50\u00A0€");
+        await Expect(balances.Nth(1)).ToHaveTextAsync("1.200,50\u00A0€");
+
+        // The keyboard: Enter selects, ArrowLeft folds.
+        await group.FocusAsync();
+        await Page.Keyboard.PressAsync("ArrowLeft");
+        await Expect(group).ToHaveAttributeAsync("aria-expanded", "false");
+        await Page.Keyboard.PressAsync("ArrowRight");
+        await Expect(group).ToHaveAttributeAsync("aria-expanded", "true");
     }
 
     [Test]
