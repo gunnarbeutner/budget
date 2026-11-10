@@ -18,7 +18,8 @@
             <span class="text-body-secondary small">@L["Holdings_PositionCount", h.Rows.Count]</span>
         </div>
 
-        @if (h.Allocation.Count > 0 && h.TotalValue > 0)
+        @* The plain allocation is only a fallback: with look-through data its first taxonomy shows the same split. *@
+        @if (h.Taxonomies.Count == 0 && h.Allocation.Count > 0 && h.TotalValue > 0)
         {
             <div class="holdings-alloc-bar" role="img" aria-label="@L["Holdings_Allocation"]"
                  style="display:flex;height:10px;border-radius:4px;overflow:hidden;">
