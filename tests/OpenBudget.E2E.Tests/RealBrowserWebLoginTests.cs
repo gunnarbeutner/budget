@@ -174,6 +174,31 @@ public sealed class RealBrowserWebLoginTests
     };
 
     [Test]
+    public async Task A_landing_page_that_still_needs_a_second_factor_is_shown_and_does_not_count_as_signed_in()
+    {
+        await using var browser = NewBrowser();
+        var service = new WebLoginService(browser, new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },
+            TimeProvider.System, NullLoggerFactory.Instance);
+        var pending = new WebLoginSpec(new Uri(_baseUrl + "login"), ["127.0.0.1"], new Uri(_baseUrl + "home"))
+        {
+            SuccessCheck = "() => ({ ok: localStorage.getItem('tan') === '1', reason: '' })",
+        };
+        await using (var session = await service.StartAsync("user-1", pending, [], CancellationToken.None))
+        {
+            await Task.Delay(3000);
+            Assert.That(session.Completion.IsCompleted, Is.False);
+            Assert.That(session.Mode, Is.EqualTo(WebLoginMode.Interactive));
+        }
+
+        var done = new WebLoginSpec(new Uri(_baseUrl + "login"), ["127.0.0.1"], new Uri(_baseUrl + "home"))
+        {
+            SuccessCheck = "() => ({ ok: true, reason: '' })",
+        };
+        await using var second = await service.StartAsync("user-1", done, [], CancellationToken.None);
+        Assert.That((await second.Completion.WaitAsync(TimeSpan.FromSeconds(30))).Success, Is.True);
+    }
+
+    [Test]
     public async Task A_browser_notice_in_front_of_the_form_is_clicked_away_before_filling_it_in()
     {
         await using var browser = NewBrowser();

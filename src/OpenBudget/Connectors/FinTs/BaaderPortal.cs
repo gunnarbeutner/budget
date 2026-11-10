@@ -73,6 +73,8 @@ internal sealed partial class BaaderPortal
         new Uri(_base, "login"), [_base.Host], successUrlPrefix: new Uri(_base, "dashboard"))
     {
         // The portal calls the sign-in browser "not supported" and wants this click before showing the login form.
+        // The dashboard opens before the SMS-TAN is entered; only a working status call means the session is signed in.
+        SuccessCheck = "async () => { try { const r = await fetch('/fstatus', { headers: { Accept: 'application/json' }, credentials: 'same-origin' }); const j = r.ok ? await r.json() : null; return { ok: Array.isArray(j) && j.length > 0, reason: '' }; } catch { return { ok: false, reason: '' }; } }",
         Dismiss = ["button::-p-text(Risiken bewusst)", "a::-p-text(Risiken bewusst)", "input[value*=\"Risiken bewusst\"]"],
         Autofill = credentials == null ? null
             : new WebLoginAutofill(credentials.Username, credentials.Secret, UsernameSelector, PasswordSelector, SubmitSelector),

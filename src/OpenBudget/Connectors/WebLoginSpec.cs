@@ -31,6 +31,13 @@ public sealed class WebLoginSpec
     public WebLoginAutofill? Autofill { get; init; }
 
     /// <summary>
+    /// An in-page check (a JavaScript function returning <c>{ ok, reason }</c>) that must also pass before the login counts
+    /// as done, for sites whose landing page appears before a second factor is entered. While it fails on the landing
+    /// page, the page is shown to the user.
+    /// </summary>
+    public string? SuccessCheck { get; init; }
+
+    /// <summary>
     /// Interstitials to click away before filling in the form (e.g. a "browser not supported" notice), as selectors;
     /// Puppeteer's text selectors such as <c>button::-p-text(…)</c> work too. Clicked only when visible.
     /// </summary>

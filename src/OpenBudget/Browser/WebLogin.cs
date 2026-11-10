@@ -362,6 +362,15 @@ public sealed class WebLoginSession : IAsyncDisposable
             if (!_spec.UrlMatches(url)) continue;
             IReadOnlyList<CookieState> cookies = _spec.SuccessWhen != null ? await _browser.GetCookiesAsync() : [];
             if (!_spec.IsSuccess(url, cookies)) continue;
+            if (_spec.SuccessCheck is { } check && !(await _browser.CheckAsync(check, "")).Ok)
+            {
+                if (Mode != WebLoginMode.Interactive)
+                {
+                    _logger.LogInformation("Web login: landed on {Path}, but the bank still wants something on the page; showing it.", SafePath(url));
+                    SetMode(WebLoginMode.Interactive);
+                }
+                continue;
+            }
             if (_options.SettleDelay > TimeSpan.Zero) await Task.Delay(_options.SettleDelay, ct);
             var all = await _browser.GetCookiesAsync();
             _logger.LogInformation("Web login succeeded; exporting {Count} cookies of {Domains}.", all.Count(_spec.Matches), string.Join(", ", _spec.CookieDomains));
