@@ -1,0 +1,330 @@
+@page "/projects/{ProjectId:int}/rules"
+@attribute [RequireProjectRole(OpenBudget.Models.ProjectRole.Editor)]
+@using System.Globalization
+@using OpenBudget.Services
+@using OpenBudget.Models
+@using OpenBudget.Shared
+@inject CategoryRuleService RuleService
+@inject ProjectService ProjectService
+@inject NavigationManager Navigation
+@inject IStringLocalizer<Rules> L
+
+@* Gear › Rules: the project's ordered categorisation rules. The first enabled rule that matches categorises a new
+   transaction without a category (bank sync); "Apply to existing" does the same for what is already there. Manual
+   categories are never overwritten. "Create rule from this…" in a transaction's details opens this page with
+   ?payee=…&category=… and the editor prefilled. *@
+
+<PageTitle>@L["PageTitle"]</PageTitle>
+
+<h1 class="view-title mt-3 mb-0">@L["Heading"]</h1>
+<ProjectPageHeader ProjectId="@ProjectId" ProjectName="@projectName" Subtitle="@L["Intro"]" />
+
+@if (rules == null)
+{
+    <div aria-busy="true" aria-label="@L["Loading"]"><div class="skeleton skeleton-block"></div></div>
+}
+else
+{
+    <div class="d-flex flex-wrap gap-2 my-3">
+        <button type="button" class="ob-btn ob-btn-primary" data-testid="rules-add" @onclick="() => OpenEditor(null)">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i> @L["Add"]
+        </button>
+        <button type="button" class="ob-btn" data-testid="rules-apply-existing" disabled="@(rules.Count == 0)" @onclick="PreviewApplyAsync">
+            <i class="bi bi-magic" aria-hidden="true"></i> @L["ApplyExisting"]
+        </button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(status))
+    {
+        <div class="alert alert-success py-2" role="status" data-testid="rules-status">@status</div>
+    }
+
+    @if (rules.Count == 0)
+    {
+        <p class="text-body-secondary" data-testid="rules-empty">@L["Empty"]</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle" data-testid="rules-table">
+                <thead>
+                    <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">@L["Col_Rule"]</th>
+                        <th scope="col">@L["Col_Category"]</th>
+                        <th scope="col" class="text-end">@L["Col_Matches"]</th>
+                        <th scope="col">@L["Col_Enabled"]</th>
+                        <th scope="col"><span class="visually-hidden">@L["Col_Actions"]</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var i = 0; i < rules.Count; i++)
+                    {
+                        var view = rules[i];
+                        var r = view.Rule;
+                        var index = i;
+                        <tr data-testid="rule-row" class="@(r.Enabled ? "" : "text-body-secondary")">
+                            <td>@(i + 1)</td>
+                            <td>
+                                <div class="fw-semibold" data-testid="rule-name">@(r.Name ?? Describe(view))</div>
+                                @if (r.Name != null)
+                                {
+                                    <div class="small text-body-secondary">@Describe(view)</div>
+                                }
+                            </td>
+                            <td data-testid="rule-category">@(view.CategoryName ?? L["UnknownCategory"])</td>
+                            <td class="text-end" data-testid="rule-matches">@view.MatchCount</td>
+                            <td>
+                                <div class="form-check form-switch m-0">
+                                    <input class="form-check-input" type="checkbox" role="switch" data-testid="rule-enabled"
+                                           aria-label="@L["Col_Enabled"]" checked="@r.Enabled" @onchange="() => ToggleAsync(r)" />
+                                </div>
+                            </td>
+                            <td class="text-end text-nowrap">
+                                <button type="button" class="ob-btn ob-btn-sm" title="@L["MoveUp"]" aria-label="@L["MoveUp"]" data-testid="rule-up"
+                                        disabled="@(index == 0)" @onclick="() => MoveAsync(r, -1)"><i class="bi bi-arrow-up" aria-hidden="true"></i></button>
+                                <button type="button" class="ob-btn ob-btn-sm" title="@L["MoveDown"]" aria-label="@L["MoveDown"]" data-testid="rule-down"
+                                        disabled="@(index == rules.Count - 1)" @onclick="() => MoveAsync(r, 1)"><i class="bi bi-arrow-down" aria-hidden="true"></i></button>
+                                <button type="button" class="ob-btn ob-btn-sm" title="@L["Edit"]" aria-label="@L["Edit"]" data-testid="rule-edit"
+                                        @onclick="() => OpenEditor(r)"><i class="bi bi-pencil" aria-hidden="true"></i></button>
+                                <button type="button" class="ob-btn ob-btn-sm" title="@L["Delete"]" aria-label="@L["Delete"]" data-testid="rule-delete"
+                                        @onclick="() => pendingDelete = r"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+<Modal Show="@(editing != null)" Title="@(editing?.Id > 0 ? L["Editor_TitleEdit"] : L["Editor_TitleNew"])" OnClose="@(() => editing = null)">
+    <ChildContent>
+    @if (editing != null)
+    {
+        <div class="mb-2">
+            <label class="form-label" for="rule-name">@L["Field_Name"]</label>
+            <input id="rule-name" class="form-control" data-testid="rule-field-name" maxlength="200" placeholder="@L["Field_NameHint"]" @bind="editing.Name" />
+        </div>
+        <div class="mb-2">
+            <label class="form-label" for="rule-payee">@L["Field_Payee"]</label>
+            <input id="rule-payee" class="form-control" data-testid="rule-field-payee" maxlength="500" @bind="editing.PayeeText" />
+        </div>
+        <div class="mb-2">
+            <label class="form-label" for="rule-purpose">@L["Field_Purpose"]</label>
+            <input id="rule-purpose" class="form-control" data-testid="rule-field-purpose" maxlength="500" @bind="editing.PurposeText" />
+        </div>
+        <div class="form-check mb-2">
+            <input id="rule-regex" class="form-check-input" type="checkbox" data-testid="rule-field-regex" @bind="editing.UseRegex" />
+            <label class="form-check-label" for="rule-regex">@L["Field_Regex"]</label>
+        </div>
+        <div class="row g-2 mb-2">
+            <div class="col-sm-6">
+                <label class="form-label" for="rule-account">@L["Field_Account"]</label>
+                <select id="rule-account" class="form-select" data-testid="rule-field-account" @bind="accountValue">
+                    <option value="">@L["Field_AnyAccount"]</option>
+                    @foreach (var a in accounts)
+                    {
+                        <option value="@a.Id">@a.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-sm-6">
+                <label class="form-label" for="rule-sign">@L["Field_Sign"]</label>
+                <select id="rule-sign" class="form-select" data-testid="rule-field-sign" @bind="editing.AmountSign">
+                    <option value="@RuleAmountSign.Any">@L["Sign_Any"]</option>
+                    <option value="@RuleAmountSign.Expense">@L["Sign_Expense"]</option>
+                    <option value="@RuleAmountSign.Income">@L["Sign_Income"]</option>
+                </select>
+            </div>
+            <div class="col-6">
+                <label class="form-label" for="rule-min">@L["Field_Min"]</label>
+                <input id="rule-min" class="form-control" inputmode="decimal" data-testid="rule-field-min" @bind="minText" />
+            </div>
+            <div class="col-6">
+                <label class="form-label" for="rule-max">@L["Field_Max"]</label>
+                <input id="rule-max" class="form-control" inputmode="decimal" data-testid="rule-field-max" @bind="maxText" />
+            </div>
+        </div>
+        <div class="mb-2">
+            <label class="form-label" for="rule-category">@L["Field_Category"]</label>
+            <select id="rule-category" class="form-select" data-testid="rule-field-category" @bind="editing.CategoryId">
+                <option value="0">@L["Field_ChooseCategory"]</option>
+                @foreach (var c in categories)
+                {
+                    <option value="@c.Id">@c.Name</option>
+                }
+            </select>
+        </div>
+        <div class="form-check form-switch mb-2">
+            <input id="rule-enabled" class="form-check-input" type="checkbox" role="switch" @bind="editing.Enabled" />
+            <label class="form-check-label" for="rule-enabled">@L["Col_Enabled"]</label>
+        </div>
+        @if (!string.IsNullOrEmpty(editorError))
+        {
+            <div class="alert alert-danger py-2 mb-0" role="alert" data-testid="rule-error">@editorError</div>
+        }
+    }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="ob-btn" @onclick="@(() => editing = null)">@L["Cancel"]</button>
+        <button type="button" class="ob-btn ob-btn-primary" data-testid="rule-save" @onclick="SaveAsync">@L["Save"]</button>
+    </Footer>
+</Modal>
+
+<Modal Show="@(pendingDelete != null)" Title="@L["Delete_Title"]" OnClose="@(() => pendingDelete = null)">
+    <ChildContent><p>@L["Delete_Body", pendingDelete?.Name ?? ""]</p></ChildContent>
+    <Footer>
+        <button type="button" class="ob-btn" @onclick="@(() => pendingDelete = null)">@L["Cancel"]</button>
+        <button type="button" class="ob-btn ob-btn-danger" data-testid="rule-delete-confirm" @onclick="DeleteAsync">@L["Delete"]</button>
+    </Footer>
+</Modal>
+
+<Modal Show="@(applyPreview != null)" Title="@L["Apply_Title"]" OnClose="@(() => applyPreview = null)">
+    <ChildContent><p data-testid="rules-apply-preview">@(applyPreview == 0 ? L["Apply_None"] : L["Apply_Body", applyPreview ?? 0])</p></ChildContent>
+    <Footer>
+        <button type="button" class="ob-btn" @onclick="@(() => applyPreview = null)">@L["Cancel"]</button>
+        <button type="button" class="ob-btn ob-btn-primary" data-testid="rules-apply-confirm" disabled="@(applyPreview == 0)" @onclick="ApplyAsync">@L["Apply_Confirm"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public int ProjectId { get; set; }
+    [SupplyParameterFromQuery(Name = "payee")] public string? PrefillPayee { get; set; }
+    [SupplyParameterFromQuery(Name = "category")] public long? PrefillCategory { get; set; }
+
+    private string? projectName;
+    private List<CategoryRuleView>? rules;
+    private List<RuleOption<long>> categories = [];
+    private List<RuleOption<long>> accounts = [];
+    private CategoryRule? editing;
+    private CategoryRule? pendingDelete;
+    private string? accountValue;
+    private string? minText;
+    private string? maxText;
+    private string? editorError;
+    private string? status;
+    private int? applyPreview;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        projectName = (await ProjectService.GetProjectAsync(ProjectId))?.Name;
+        categories = await RuleService.GetCategoriesAsync(ProjectId);
+        accounts = await RuleService.GetAccountsAsync(ProjectId);
+        await ReloadAsync();
+        if (!string.IsNullOrWhiteSpace(PrefillPayee) || PrefillCategory != null)
+        {
+            OpenEditor(null);
+            editing!.PayeeText = PrefillPayee?.Trim();
+            editing.Name = PrefillPayee?.Trim();
+            editing.CategoryId = PrefillCategory is { } c && categories.Any(x => x.Id == c) ? c : 0;
+            // Only once: drop the query so a reload does not reopen the editor.
+            Navigation.NavigateTo($"/projects/{ProjectId}/rules", replace: true);
+        }
+    }
+
+    private async Task ReloadAsync() => rules = await RuleService.GetRulesAsync(ProjectId);
+
+    private string Describe(CategoryRuleView view)
+    {
+        var r = view.Rule;
+        var parts = new List<string>();
+        var kind = r.UseRegex ? L["Desc_Regex"].Value : L["Desc_Contains"].Value;
+        if (!string.IsNullOrWhiteSpace(r.PayeeText)) parts.Add(L["Desc_Payee", kind, r.PayeeText]);
+        if (!string.IsNullOrWhiteSpace(r.PurposeText)) parts.Add(L["Desc_Purpose", kind, r.PurposeText]);
+        if (view.AccountName != null) parts.Add(L["Desc_Account", view.AccountName]);
+        if (r.AmountSign == RuleAmountSign.Expense) parts.Add(L["Sign_Expense"]);
+        if (r.AmountSign == RuleAmountSign.Income) parts.Add(L["Sign_Income"]);
+        if (r.MinAmountCents is { } min) parts.Add(L["Desc_Min", Formatting.FormatMoneyDe(min / 100m)]);
+        if (r.MaxAmountCents is { } max) parts.Add(L["Desc_Max", Formatting.FormatMoneyDe(max / 100m)]);
+        return string.Join(" · ", parts);
+    }
+
+    private void OpenEditor(CategoryRule? rule)
+    {
+        status = null;
+        editorError = null;
+        editing = rule == null
+            ? new CategoryRule { ProjectId = ProjectId, Enabled = true }
+            : new CategoryRule
+            {
+                Id = rule.Id, ProjectId = ProjectId, Name = rule.Name, Enabled = rule.Enabled, PayeeText = rule.PayeeText,
+                PurposeText = rule.PurposeText, UseRegex = rule.UseRegex, AccountId = rule.AccountId, AmountSign = rule.AmountSign,
+                MinAmountCents = rule.MinAmountCents, MaxAmountCents = rule.MaxAmountCents, CategoryId = rule.CategoryId,
+            };
+        accountValue = editing.AccountId?.ToString(CultureInfo.InvariantCulture);
+        minText = editing.MinAmountCents is { } min ? (min / 100m).ToString("0.00", CultureInfo.CurrentCulture) : null;
+        maxText = editing.MaxAmountCents is { } max ? (max / 100m).ToString("0.00", CultureInfo.CurrentCulture) : null;
+    }
+
+    private static bool TryCents(string? text, out long? cents)
+    {
+        cents = null;
+        if (string.IsNullOrWhiteSpace(text)) return true;
+        if (!decimal.TryParse(text.Trim(), NumberStyles.Number, CultureInfo.CurrentCulture, out var value)
+            && !decimal.TryParse(text.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out value)) return false;
+        cents = (long)Math.Round(Math.Abs(value) * 100m, MidpointRounding.AwayFromZero);
+        return true;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (editing == null) return;
+        editing.AccountId = long.TryParse(accountValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var a) ? a : null;
+        if (!TryCents(minText, out var min) || !TryCents(maxText, out var max))
+        {
+            editorError = L["Error_InvalidAmountRange"];
+            return;
+        }
+        editing.MinAmountCents = min;
+        editing.MaxAmountCents = max;
+        try
+        {
+            await RuleService.SaveAsync(editing);
+            editing = null;
+            await ReloadAsync();
+        }
+        catch (RuleValidationException ex)
+        {
+            editorError = L["Error_" + ex.Reason];
+        }
+        catch (AccessDeniedException)
+        {
+            editorError = L["Error_NoPermission"];
+        }
+    }
+
+    private async Task ToggleAsync(CategoryRule rule)
+    {
+        await RuleService.SetEnabledAsync(ProjectId, rule.Id, !rule.Enabled);
+        await ReloadAsync();
+    }
+
+    private async Task MoveAsync(CategoryRule rule, int delta)
+    {
+        await RuleService.MoveAsync(ProjectId, rule.Id, delta);
+        await ReloadAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (pendingDelete == null) return;
+        await RuleService.DeleteAsync(ProjectId, pendingDelete.Id);
+        pendingDelete = null;
+        await ReloadAsync();
+    }
+
+    private async Task PreviewApplyAsync()
+    {
+        status = null;
+        applyPreview = await RuleService.PreviewApplyExistingAsync(ProjectId);
+    }
+
+    private async Task ApplyAsync()
+    {
+        applyPreview = null;
+        var count = await RuleService.ApplyExistingAsync(ProjectId);
+        status = L["Apply_Done", count];
+        await ReloadAsync();
+    }
+}

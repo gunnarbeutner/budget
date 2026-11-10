@@ -91,4 +91,7 @@
   <data name="Item_StatementDownload" xml:space="preserve">
     <value>Kontoauszug-Download</value>
   </data>
+  <data name="Item_Rules" xml:space="preserve">
+    <value>Regeln</value>
+  </data>
 </root>

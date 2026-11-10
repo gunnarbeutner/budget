@@ -503,7 +503,8 @@
                                                OnPickCategory="e => OpenPickerFromRow(row, e)"
                                                OnNoteSave="note => SetNoteForAsync(row.Id, note)"
                                                OnToggleChecked="() => SetCheckedForAsync(row.Id, !row.IsChecked)"
-                                               OnShowSimilar="() => ShowSimilarAsync(row)" />
+                                               OnShowSimilar="() => ShowSimilarAsync(row)"
+                                               OnCreateRule="() => CreateRuleFrom(row)" />
                                 }
                             </div>
                         </ItemContent>

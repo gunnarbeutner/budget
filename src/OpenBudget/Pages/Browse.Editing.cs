@@ -97,6 +97,15 @@ public partial class Browse
         await FilterChangedAsync();
     }
 
+    /// <summary>"Create rule from this…": Gear › Rules with the editor prefilled from the payee and the row's category.</summary>
+    private void CreateRuleFrom(TransactionRow row)
+    {
+        if (string.IsNullOrWhiteSpace(row.Name)) return;
+        var url = $"/projects/{ProjectId}/rules?payee={Uri.EscapeDataString(row.Name)}";
+        if (row.CategoryId is { } category) url += $"&category={category.ToString(CultureInfo.InvariantCulture)}";
+        Navigation.NavigateTo(url);
+    }
+
     private (string Keys, string Text)[] ShortcutRows =>
     [
         ("↑ ↓", L["Key_Move"]),

@@ -131,7 +131,7 @@
     <value>Aufteilen</value>
   </data>
   <data name="Action_Rule" xml:space="preserve">
-    <value>Regel erstellen</value>
+    <value>Regel daraus erstellen…</value>
   </data>
   <data name="Action_Similar" xml:space="preserve">
     <value>Ähnliche zeigen</value>

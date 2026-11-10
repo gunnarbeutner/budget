@@ -46,6 +46,7 @@ internal static class E2ESeed
         db.Users.RemoveRange(db.Users.IgnoreQueryFilters());
         db.MonthlyBudgetEntries.RemoveRange(db.MonthlyBudgetEntries.IgnoreQueryFilters());
         db.Budgets.RemoveRange(db.Budgets.IgnoreQueryFilters());
+        db.CategoryRules.RemoveRange(db.CategoryRules.IgnoreQueryFilters());
         db.Transactions.RemoveRange(db.Transactions.IgnoreQueryFilters());
         db.ProjectTrackingItems.RemoveRange(db.ProjectTrackingItems.IgnoreQueryFilters());
         db.ProjectCategoryAssignments.RemoveRange(db.ProjectCategoryAssignments.IgnoreQueryFilters());

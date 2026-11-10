@@ -131,7 +131,7 @@
     <value>Split</value>
   </data>
   <data name="Action_Rule" xml:space="preserve">
-    <value>Create rule</value>
+    <value>Create rule from this…</value>
   </data>
   <data name="Action_Similar" xml:space="preserve">
     <value>Show similar</value>

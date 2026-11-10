@@ -70,7 +70,13 @@
             </button>
         }
         <button type="button" class="ob-btn" disabled title="@L["ComingSoon"]">@L["Action_Split"]</button>
-        <button type="button" class="ob-btn" disabled title="@L["ComingSoon"]">@L["Action_Rule"]</button>
+        @if (Row.CanEdit && OnCreateRule.HasDelegate)
+        {
+            <button type="button" class="ob-btn" data-testid="tx-details-create-rule" disabled="@string.IsNullOrWhiteSpace(Row.Name)"
+                    @onclick="() => OnCreateRule.InvokeAsync()">
+                <i class="bi bi-magic" aria-hidden="true"></i> @L["Action_Rule"]
+            </button>
+        }
         <button type="button" class="ob-btn" data-testid="tx-details-similar" disabled="@string.IsNullOrWhiteSpace(Row.Name)"
                 @onclick="() => OnShowSimilar.InvokeAsync()">@L["Action_Similar"]</button>
     </div>
@@ -92,6 +98,8 @@
     [Parameter] public EventCallback<string> OnNoteSave { get; set; }
     [Parameter] public EventCallback OnToggleChecked { get; set; }
     [Parameter] public EventCallback OnShowSimilar { get; set; }
+    /// <summary>"Create rule from this…": opens Gear › Rules with the payee and the current category prefilled.</summary>
+    [Parameter] public EventCallback OnCreateRule { get; set; }
 
     private string SetByText => Row.CategoryId == null && Row.CategorySetBy == TransactionCategorySource.Import
         ? ""
