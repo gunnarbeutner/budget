@@ -36,9 +36,7 @@ public sealed partial class ScalableConnector : IBankConnector
     public static ConnectorRegistration CreateRegistration(ScalableOptions options) => new(
         TypeName,
         "Scalable Capital",
-        "Scalable Capital broker portfolios and their cash account: positions, bookings and mailbox documents. "
-        + "Username is your email address. OpenBudget signs in on Scalable's own page in the server's browser (Chromium) "
-        + "and you approve the sign-in in the Scalable app; the page is only shown when something needs your attention.",
+        "Portfolio, cash account and documents. Sign in with your email address; you confirm each sign-in in the Scalable app.",
         ctx => new ScalableConnector(ctx, options),
         CredentialRequirement.UsernameAndSecret);
 
