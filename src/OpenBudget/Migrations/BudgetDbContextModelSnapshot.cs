@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261110135309_AddCategoryRules";
+        public override string LatestMigrationId => "20261110144905_AddTransfers";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -1403,6 +1403,12 @@ namespace OpenBudget.Migrations
                         .HasDefaultValue(false)
                         .HasColumnName("is_new");
 
+                    b.Property<bool>("IsTransfer")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_transfer");
+
                     b.Property<string>("Name")
                         .HasColumnType("TEXT")
                         .HasColumnName("name");
@@ -1437,6 +1443,10 @@ namespace OpenBudget.Migrations
                     b.Property<long>("Timestamp")
                         .HasColumnType("INTEGER")
                         .HasColumnName("timestamp");
+
+                    b.Property<long?>("TransferPeerId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("transfer_peer_id");
 
                     b.Property<long?>("ValueTimestamp")
                         .HasColumnType("INTEGER")

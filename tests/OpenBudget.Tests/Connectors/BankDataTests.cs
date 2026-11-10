@@ -346,6 +346,47 @@ public sealed class BankDataTests
     }
 
     [Fact]
+    public async Task Split_parts_are_never_adopted_as_bank_rows()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        var id = await w.AddLoginAsync(BankWorld.Alice);
+        await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false));
+        await w.LinkAllAsync(BankWorld.Alice, id);
+        var account = (await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).LinkedAccountId!.Value;
+        var store = new BankTransactionStore();
+        var day = new DateOnly(2026, 6, 1);
+        long partId;
+        await using (var db = await w.T.System.CreateDbContextAsync())
+        {
+            await store.ApplyAsync(db, account, new AccountRefresh(null, [new(-7m, "EUR", day, day, "Example Market", "Weekly shop", true)], []), day, DateTime.UtcNow, CancellationToken.None);
+            var parent = await db.Transactions.SingleAsync(t => t.AccountId == account);
+            parent.Splitted = SplitState.Parent;
+            partId = SourceScope.Namespace(parent.SourceId, BankTransactionStore.ConnectorRowBase + 1000);
+            db.Transactions.Add(new Transaction
+            {
+                Id = partId,
+                SourceId = parent.SourceId,
+                AccountId = account,
+                Amount = -350,
+                Timestamp = parent.Timestamp,
+                Splitted = SplitState.Child,
+                SplitParentId = parent.Id,
+                Name = parent.Name,
+            });
+            await db.SaveChangesAsync();
+        }
+        await using (var db = await w.T.System.CreateDbContextAsync())
+        {
+            // A new booking of the part's amount on the same day: inserted, the part stays a part.
+            await store.ApplyAsync(db, account, new AccountRefresh(null,
+                [new(-7m, "EUR", day, day, "Example Market", "Weekly shop", true), new(-3.5m, "EUR", day, day, "Cafe", "Coffee", true)], []),
+                day, DateTime.UtcNow, CancellationToken.None);
+            Assert.Null((await db.Transactions.SingleAsync(t => t.Id == partId)).ExternalId);
+            Assert.Equal(2, await db.Transactions.CountAsync(t => t.AccountId == account && t.ExternalId != null));
+        }
+    }
+
+    [Fact]
     public async Task Pending_rows_are_replaced_on_every_sync_and_booked_rows_are_kept()
     {
         await using var w = await BankWorld.CreateAsync();

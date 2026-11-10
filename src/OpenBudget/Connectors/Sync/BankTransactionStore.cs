@@ -27,7 +27,8 @@ public sealed class BankTransactionStore
     public const long ConnectorRowBase = 1L << 39;
 
     // One writer at a time: id allocation reads the current maximum.
-    private static readonly SemaphoreSlim Gate = new(1, 1);
+    // Also taken by SplitTransferService, which allocates split-part ids from the same range.
+    internal static readonly SemaphoreSlim Gate = new(1, 1);
 
     public async Task<ApplyResult> ApplyAsync(
         BudgetDbContext db, long accountId, AccountRefresh refresh, DateOnly? since, DateTime nowUtc, CancellationToken ct)
@@ -60,7 +61,8 @@ public sealed class BankTransactionStore
             .Where(t => t.AccountId == accountId && t.Booked && t.Timestamp >= lowerBound)
             .ToListAsync(ct);
         var knownIds = existing.Where(t => t.ExternalId != null).Select(t => t.ExternalId).ToHashSet(StringComparer.Ordinal);
-        var legacy = existing.Where(t => t.ExternalId == null).ToList();
+        // Split parts OpenBudget created have no external id either, but they are not bank rows: never adopt them.
+        var legacy = existing.Where(t => t.ExternalId == null && t.Splitted != SplitState.Child).ToList();
 
         var nextId = (await db.Transactions
             .Where(t => t.SourceId == sourceId && t.Id >= SourceScope.Namespace(sourceId, ConnectorRowBase))

@@ -194,6 +194,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         // Raw-SQL inserts (the MoneyMoney bulk import) rely on database-side defaults for these.
         modelBuilder.Entity<Transaction>().Property(t => t.Checked).HasDefaultValue(false);
         modelBuilder.Entity<Transaction>().Property(t => t.IsNew).HasDefaultValue(false);
+        modelBuilder.Entity<Transaction>().Property(t => t.IsTransfer).HasDefaultValue(false);
 
         // Same trick as Booked: the default (true) is the sentinel so an explicit false is inserted.
         modelBuilder.Entity<Category>()

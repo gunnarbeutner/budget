@@ -1,0 +1,164 @@
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject IStringLocalizer<TxSplitEditor> L
+@inject SplitTransferService Splits
+
+@* Splits one booking into parts (amount, category, optional note). Amounts are entered without sign; every part takes
+   the booking's sign. The parts must add up to the booking: the remaining amount is shown and "Assign rest" puts it on
+   a part. Saving replaces the parts of an existing split; "Remove split" makes the booking whole again. *@
+
+<div class="tx-split" data-testid="split-editor">
+    @if (info == null)
+    {
+        <div class="skeleton skeleton-line"></div>
+    }
+    else
+    {
+        <div class="tx-split-head">
+            <b>@L["Title"]</b>
+            <span>@L["Total"] @Formatting.FormatMoneyDe(info.TotalCents / 100m, info.Currency)</span>
+        </div>
+        @for (var i = 0; i < parts.Count; i++)
+        {
+            var part = parts[i];
+            var index = i;
+            <div class="tx-split-row" data-testid="split-part">
+                <input type="text" inputmode="decimal" class="form-control form-control-sm tx-split-amount" data-testid="split-amount"
+                       aria-label="@L["Amount"]" placeholder="0,00" @bind="part.Amount" @bind:event="oninput" />
+                <select class="form-select form-select-sm tx-split-category" data-testid="split-category" aria-label="@L["Category"]"
+                        @bind="part.CategoryId">
+                    <option value="">@L["NoCategory"]</option>
+                    @foreach (var o in PickerData.Options)
+                    {
+                        <option value="@o.Id">@o.Path</option>
+                    }
+                </select>
+                <input type="text" class="form-control form-control-sm tx-split-note" data-testid="split-note" maxlength="500" aria-label="@L["Note"]"
+                       placeholder="@L["Note"]" @bind="part.Note" />
+                <button type="button" class="ob-btn" data-testid="split-assign-rest" title="@L["AssignRest"]" disabled="@(Remaining == 0 || Remaining is null)"
+                        @onclick="() => AssignRest(index)">@L["AssignRest"]</button>
+                <button type="button" class="ob-btn" data-testid="split-remove-part" aria-label="@L["RemovePart"]" title="@L["RemovePart"]"
+                        disabled="@(parts.Count <= 2)" @onclick="() => parts.RemoveAt(index)">
+                    <i class="bi bi-x" aria-hidden="true"></i>
+                </button>
+            </div>
+        }
+        <div class="tx-split-foot">
+            <button type="button" class="ob-btn" data-testid="split-add" @onclick="AddPart"><i class="bi bi-plus" aria-hidden="true"></i> @L["AddPart"]</button>
+            <span data-testid="split-remaining" class="@(Remaining == 0 ? "text-body-secondary" : "text-danger fw-semibold")">
+                @(Remaining is { } r ? L["Remaining", Formatting.FormatMoneyDe(r / 100m, info.Currency)] : L["InvalidAmount"])
+            </span>
+            <span class="flex-grow-1"></span>
+            @if (info.Parts.Count > 0)
+            {
+                <button type="button" class="ob-btn" data-testid="split-remove" @onclick="RemoveAsync">@L["RemoveSplit"]</button>
+            }
+            <button type="button" class="ob-btn" data-testid="split-cancel" @onclick="() => OnDone.InvokeAsync(false)">@L["Cancel"]</button>
+            <button type="button" class="ob-btn ob-btn-primary" data-testid="split-save" disabled="@(!CanSave || busy)" @onclick="SaveAsync">@L["Save"]</button>
+        </div>
+        @if (error != null)
+        {
+            <div class="text-danger small mt-1" data-testid="split-error">@error</div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public TransactionRow Row { get; set; } = null!;
+    [Parameter, EditorRequired] public CategoryPickerData PickerData { get; set; } = null!;
+    /// <summary>Called with true after a save/remove (the page reloads), false on cancel.</summary>
+    [Parameter] public EventCallback<bool> OnDone { get; set; }
+
+    private sealed class PartModel
+    {
+        public string Amount { get; set; } = "";
+        public long? CategoryId { get; set; }
+        public string? Note { get; set; }
+    }
+
+    private SplitInfo? info;
+    private readonly List<PartModel> parts = [];
+    private string? error;
+    private bool busy;
+
+    private long Sign => info is { TotalCents: < 0 } ? -1 : 1;
+
+    /// <summary>Remaining cents (signed like the booking), or null while an amount does not parse.</summary>
+    private long? Remaining
+    {
+        get
+        {
+            if (info == null) return null;
+            long sum = 0;
+            foreach (var p in parts)
+            {
+                if (string.IsNullOrWhiteSpace(p.Amount)) continue;
+                if (SplitTransferService.ParseCents(p.Amount) is not { } c) return null;
+                sum += Math.Abs(c) * Sign;
+            }
+            return info.TotalCents - sum;
+        }
+    }
+
+    private bool CanSave => info != null && SplitTransferService.Validate(info.TotalCents, ToInputs()) == SplitError.None
+        && parts.All(p => SplitTransferService.ParseCents(p.Amount) is not null);
+
+    protected override async Task OnInitializedAsync()
+    {
+        info = await Splits.GetSplitAsync(Row.Id);
+        if (info == null) return;
+        if (info.Parts.Count > 0)
+        {
+            foreach (var p in info.Parts)
+                parts.Add(new PartModel { Amount = Format(Math.Abs(p.AmountCents)), CategoryId = p.CategoryId, Note = p.Note });
+        }
+        else
+        {
+            parts.Add(new PartModel { Amount = Format(Math.Abs(info.TotalCents)), CategoryId = Row.CategoryId });
+            parts.Add(new PartModel());
+        }
+    }
+
+    private static string Format(long cents) => (cents / 100m).ToString("0.00", System.Globalization.CultureInfo.GetCultureInfo("de-DE"));
+
+    private List<SplitPartInput> ToInputs() => parts
+        .Select(p => new SplitPartInput(Math.Abs(SplitTransferService.ParseCents(p.Amount) ?? 0) * Sign, p.CategoryId, p.Note))
+        .ToList();
+
+    private void AddPart() => parts.Add(new PartModel());
+
+    private void AssignRest(int index)
+    {
+        if (Remaining is not { } rest || rest == 0) return;
+        var current = Math.Abs(SplitTransferService.ParseCents(parts[index].Amount) ?? 0) * Sign;
+        var value = current + rest;
+        parts[index].Amount = Format(Math.Abs(value));
+    }
+
+    private async Task SaveAsync() => await RunAsync(() => Splits.SplitAsync(info!.ParentId, ToInputs()));
+
+    private async Task RemoveAsync() => await RunAsync(() => Splits.RemoveSplitAsync(info!.ParentId));
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            await action();
+            await OnDone.InvokeAsync(true);
+        }
+        catch (AccessDeniedException)
+        {
+            error = L["Error_Denied"];
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex is SplitTransferException { Problem: SplitTransferProblem.Pending } ? L["Error_Pending"] : L["Error_Invalid"];
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

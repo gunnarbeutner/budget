@@ -65,4 +65,11 @@ public static class TransactionQueryExtensions
         return q.Where(t => t.CategoryId == null
             || !db.Categories.Any(c => c.SourceId == sourceId && c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)));
     }
+
+    /// <summary>
+    /// Rows that count as income or spending: no split parents (their parts count instead) and no transfers between
+    /// the household's own accounts. Balance-type queries use <c>Splitted != 1</c> alone, since transfers do move money.
+    /// </summary>
+    public static IQueryable<Transaction> CountedAsFlow(this IQueryable<Transaction> q) =>
+        q.Where(t => t.Splitted != SplitState.Parent && !t.IsTransfer);
 }

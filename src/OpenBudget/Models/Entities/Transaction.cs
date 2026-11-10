@@ -143,6 +143,18 @@ public class Transaction
     [Column("bank_reference")]
     public string? BankReference { get; set; }
 
+    /// <summary>
+    /// True when the booking moves money between the household's own accounts: it then counts as neither income nor
+    /// spending (budget, cashflow, category sums) while the account balance still includes it. Set on both rows of a
+    /// linked pair, or on a single row whose counterpart account is not tracked ("one-sided" transfer).
+    /// </summary>
+    [Column("is_transfer")]
+    public bool IsTransfer { get; set; }
+
+    /// <summary>The other booking of a linked transfer (same source, other account). Null for one-sided transfers.</summary>
+    [Column("transfer_peer_id")]
+    public long? TransferPeerId { get; set; }
+
     [NotMapped]
     public DateTime Date => DateTimeOffset.FromUnixTimeSeconds(Timestamp).DateTime;
 

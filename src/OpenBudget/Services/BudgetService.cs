@@ -231,6 +231,7 @@ public class BudgetService
         var leafList = candidateLeaves.ToList();
         var hits = await db.Transactions
             .Where(t => t.SourceId == sourceId)
+            .CountedAsFlow()
             .Where(t => t.CategoryId.HasValue && leafList.Contains(t.CategoryId.Value))
             .WithinUtc(range)
             .Select(t => t.CategoryId!.Value)
@@ -313,6 +314,7 @@ public class BudgetService
 
         var raw = await db.Transactions
             .Where(t => t.SourceId == sourceId)
+            .CountedAsFlow()
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .WithinUtc(range)
             .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount })
@@ -498,6 +500,7 @@ public class BudgetService
 
         var raw = await db.Transactions
             .Where(t => t.SourceId == sourceId)
+            .CountedAsFlow()
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .WithinUtc(TimeRange.Year(year))
             .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount, t.Timestamp })
@@ -558,6 +561,7 @@ public class BudgetService
 
         var raw = await db.Transactions
             .Where(t => t.SourceId == sourceId)
+            .CountedAsFlow()
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .WithinUtc(TimeRange.Month(year, month))
             .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount })

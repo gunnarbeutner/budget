@@ -91,6 +91,15 @@ public class TransactionRow
     public string? Currency { get; init; }
     public bool IsSplitChild { get; init; }
 
+    /// <summary>For split parts: the booking they belong to.</summary>
+    public long? SplitParentId { get; init; }
+
+    /// <summary>Transfer between own accounts: counts as neither income nor spending.</summary>
+    public bool IsTransfer { get; init; }
+
+    /// <summary>The account of the linked counterpart booking; null for a one-sided transfer.</summary>
+    public string? TransferPeerAccountName { get; init; }
+
     /// <summary>Unallocated rest of a split booking whose parts don't add up to the total.</summary>
     public bool IsSplitRemainder { get; init; }
 

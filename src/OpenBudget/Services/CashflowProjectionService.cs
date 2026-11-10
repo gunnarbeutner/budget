@@ -98,6 +98,7 @@ public class CashflowProjectionService
         {
             ytdSumAllScopes = (await db.Transactions
                 .Where(t => t.SourceId == sourceId)
+                .Where(t => t.Splitted != SplitState.Parent)
                 .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
                 .WithinUtc(ytdRange)
                 .SumAsync(t => t.Amount)) / 100m;
@@ -108,6 +109,7 @@ public class CashflowProjectionService
 
         var yearTxns = await db.Transactions
             .Where(t => t.SourceId == sourceId)
+            .Where(t => t.Splitted != SplitState.Parent)
             .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
             .WithinUtc(ytdRange)
             .Select(t => new { AccountId = t.AccountId!.Value, t.CategoryId, t.Amount, t.Timestamp })
@@ -174,6 +176,7 @@ public class CashflowProjectionService
         await using var db = await _dbFactory.CreateDbContextAsync();
         var allTxns = await db.Transactions
             .Where(t => t.SourceId == sourceId)
+            .CountedAsFlow()
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount, t.Timestamp })
             .ToListAsync();

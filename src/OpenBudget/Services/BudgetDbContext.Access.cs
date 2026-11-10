@@ -251,7 +251,8 @@ public partial class BudgetDbContext
     /// <summary>
     /// Changing only user-owned fields (category, note, check mark, new marker) of an existing transaction is allowed to
     /// the source's owner and to editors of a project the account is assigned to (provider rule: see the caller);
-    /// everything else on a transaction is refused for a changed bank field, and creating or deleting is the source owner's alone.
+    /// everything else on a transaction is refused for a changed bank field, and creating or deleting is the source owner's alone
+    /// (except split parts, see <see cref="TransactionEditRules.IsOwnSplitPart"/>, which follow the edit rights).
     /// </summary>
     private static void EnforceTransactionWrite(
         AccessScope scope, Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, Transaction transaction,
@@ -259,6 +260,8 @@ public partial class BudgetDbContext
     {
         var onlyEditable = entry.State == EntityState.Modified
             && entry.Properties.Where(p => p.IsModified).All(p => TransactionEditRules.EditableProperties.Contains(p.Metadata.Name));
+        if (!onlyEditable && entry.State is EntityState.Added or EntityState.Deleted && TransactionEditRules.IsOwnSplitPart(transaction))
+            onlyEditable = true;
         if (!onlyEditable)
         {
             // Bank fields (amount, date, payee, purpose, ...) are never edited through a user's context; only the

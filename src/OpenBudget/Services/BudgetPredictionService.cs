@@ -58,6 +58,7 @@ public class BudgetPredictionService
         await using var db = await _dbFactory.CreateDbContextAsync();
         var query = db.Transactions
             .Where(t => t.SourceId == sourceId)
+            .CountedAsFlow()
             .Where(t => t.CategoryId.HasValue && leafIds.Contains(t.CategoryId.Value))
             .WithinUtc(TimeRange.Between(startDate, startDate.AddMonths(months)));
         var raw = await query.Select(t => new { t.Amount, t.Timestamp }).ToListAsync();
@@ -122,6 +123,7 @@ public class BudgetPredictionService
         await using var db = await _dbFactory.CreateDbContextAsync();
         var rawQuery = db.Transactions
             .Where(t => t.SourceId == sourceId)
+            .CountedAsFlow()
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .WithinUtc(TimeRange.Between(startDate, startDate.AddMonths(months)));
         var raw = await rawQuery

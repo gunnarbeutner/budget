@@ -139,4 +139,34 @@
   <data name="ComingSoon" xml:space="preserve">
     <value>Coming soon</value>
   </data>
+  <data name="SplitPart" xml:space="preserve">
+    <value>Split</value>
+  </data>
+  <data name="SplitPart_Text" xml:space="preserve">
+    <value>Part of a split booking</value>
+  </data>
+  <data name="Transfer" xml:space="preserve">
+    <value>Transfer</value>
+  </data>
+  <data name="Transfer_To" xml:space="preserve">
+    <value>to/from {0}</value>
+  </data>
+  <data name="Transfer_OneSided" xml:space="preserve">
+    <value>to/from an account not tracked here</value>
+  </data>
+  <data name="Action_EditSplit" xml:space="preserve">
+    <value>Edit split</value>
+  </data>
+  <data name="Action_Unlink" xml:space="preserve">
+    <value>Not a transfer</value>
+  </data>
+  <data name="Action_Transfer" xml:space="preserve">
+    <value>Mark as transfer</value>
+  </data>
+  <data name="Pending_NotYet" xml:space="preserve">
+    <value>Available once the booking is booked</value>
+  </data>
+  <data name="Error_Denied" xml:space="preserve">
+    <value>You may not change this booking.</value>
+  </data>
 </root>

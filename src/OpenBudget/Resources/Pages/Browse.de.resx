@@ -399,4 +399,13 @@
     <value>{0} Konten</value>
   </data>
   <data name="RulePick_Hint" xml:space="preserve"><value>Wähle die Kategorie, die die neue Regel setzen soll.</value></data>
+  <data name="Tx_Transfer" xml:space="preserve">
+    <value>Umbuchung</value>
+  </data>
+  <data name="Tx_TransferTo" xml:space="preserve">
+    <value>Umbuchung → {0}</value>
+  </data>
+  <data name="Tx_TransferTitle" xml:space="preserve">
+    <value>Umbuchung zwischen eigenen Konten: zählt weder als Einnahme noch als Ausgabe.</value>
+  </data>
 </root>

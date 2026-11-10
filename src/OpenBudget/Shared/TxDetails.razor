@@ -2,6 +2,7 @@
 @using OpenBudget.Services
 @inject IStringLocalizer<TxDetails> L
 @inject ClockService Clock
+@inject SplitTransferService SplitTransfers
 
 @* The in-place expansion of a selected transaction: the bank's details as a flowing "Label value" list (empty ones
    skipped), the full purpose, then the note and the actions. Bank fields are plain text (never editable); category,
@@ -45,6 +46,14 @@
         {
             <span><b>@L["Note"]</b>@Row.Note</span>
         }
+        @if (Row.IsSplitChild)
+        {
+            <span data-testid="tx-details-split-part"><b>@L["SplitPart"]</b>@L["SplitPart_Text"]</span>
+        }
+        @if (Row.IsTransfer)
+        {
+            <span data-testid="tx-details-transfer"><b>@L["Transfer"]</b>@(Row.TransferPeerAccountName is { } peer ? L["Transfer_To", peer] : L["Transfer_OneSided"])</span>
+        }
         @if (Statement is { } statement)
         {
             <span><b>@L["Statement"]</b><a href="@($"/statements/{statement.Id}")" target="_blank" rel="noopener" data-testid="tx-details-statement"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> @statement.Name</a></span>
@@ -69,7 +78,26 @@
                 <i class="bi @(Row.IsChecked ? "bi-check-square-fill" : "bi-square")" aria-hidden="true"></i> @(Row.IsChecked ? L["Checked_Yes"] : L["Checked_No"])
             </button>
         }
-        <button type="button" class="ob-btn" disabled title="@L["ComingSoon"]">@L["Action_Split"]</button>
+        @if (Row.CanEdit && PickerData != null && !Row.IsTransfer && !Row.IsSplitRemainder)
+        {
+            <button type="button" class="ob-btn @(panel == Panel.Split ? "active" : "")" data-testid="tx-details-split"
+                    disabled="@Row.IsPending" title="@(Row.IsPending ? L["Pending_NotYet"].Value : null)" @onclick="() => Toggle(Panel.Split)">
+                <i class="bi bi-scissors" aria-hidden="true"></i> @(Row.IsSplitChild ? L["Action_EditSplit"] : L["Action_Split"])
+            </button>
+        }
+        @if (Row.CanEdit && Row.IsTransfer)
+        {
+            <button type="button" class="ob-btn" data-testid="tx-details-unlink-transfer" @onclick="UnlinkAsync">
+                <i class="bi bi-link-45deg" aria-hidden="true"></i> @L["Action_Unlink"]
+            </button>
+        }
+        else if (Row.CanEdit && ProjectId > 0 && !Row.IsSplitChild && !Row.IsSplitRemainder)
+        {
+            <button type="button" class="ob-btn @(panel == Panel.Transfer ? "active" : "")" data-testid="tx-details-transfer-button"
+                    disabled="@Row.IsPending" title="@(Row.IsPending ? L["Pending_NotYet"].Value : null)" @onclick="() => Toggle(Panel.Transfer)">
+                <i class="bi bi-arrow-left-right" aria-hidden="true"></i> @L["Action_Transfer"]
+            </button>
+        }
         @if (Row.CanEdit && OnCreateRule.HasDelegate)
         {
             <button type="button" class="ob-btn" data-testid="tx-details-create-rule" disabled="@string.IsNullOrWhiteSpace(Row.Name)"
@@ -80,6 +108,19 @@
         <button type="button" class="ob-btn" data-testid="tx-details-similar" disabled="@string.IsNullOrWhiteSpace(Row.Name)"
                 @onclick="() => OnShowSimilar.InvokeAsync()">@L["Action_Similar"]</button>
     </div>
+
+    @if (panel == Panel.Split && PickerData != null)
+    {
+        <TxSplitEditor Row="Row" PickerData="PickerData" OnDone="OnPanelDone" />
+    }
+    else if (panel == Panel.Transfer)
+    {
+        <TxTransferPanel Row="Row" ProjectId="ProjectId" OnDone="OnPanelDone" />
+    }
+    @if (error != null)
+    {
+        <div class="text-danger small mt-1">@error</div>
+    }
 
     @if (!Row.CanEdit)
     {
@@ -100,6 +141,51 @@
     [Parameter] public EventCallback OnShowSimilar { get; set; }
     /// <summary>"Create rule from this…": opens the rules bar of the category with a draft for the payee (the page asks for a category when there is none).</summary>
     [Parameter] public EventCallback<MouseEventArgs> OnCreateRule { get; set; }
+
+    /// <summary>Categories for the split editor; without them splitting is not offered.</summary>
+    [Parameter] public CategoryPickerData? PickerData { get; set; }
+    /// <summary>The project whose other accounts are suggested as transfer counterparts (0 = no transfers).</summary>
+    [Parameter] public int ProjectId { get; set; }
+    /// <summary>A split or transfer changed: the page reloads its data.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private enum Panel { None, Split, Transfer }
+    private Panel panel;
+    private string? error;
+    private long shownRowId;
+
+    protected override void OnParametersSet()
+    {
+        // A different row (or the same row after a reload turned it into a part) starts without an open panel.
+        if (shownRowId != Row.Id) panel = Panel.None;
+        shownRowId = Row.Id;
+    }
+
+    private void Toggle(Panel p)
+    {
+        error = null;
+        panel = panel == p ? Panel.None : p;
+    }
+
+    private async Task OnPanelDone(bool changed)
+    {
+        panel = Panel.None;
+        if (changed) await OnChanged.InvokeAsync();
+    }
+
+    private async Task UnlinkAsync()
+    {
+        error = null;
+        try
+        {
+            await SplitTransfers.UnlinkTransferAsync(Row.Id);
+            await OnChanged.InvokeAsync();
+        }
+        catch (AccessDeniedException)
+        {
+            error = L["Error_Denied"];
+        }
+    }
 
     private string SetByText => Row.CategoryId == null && Row.CategorySetBy == TransactionCategorySource.Import
         ? ""

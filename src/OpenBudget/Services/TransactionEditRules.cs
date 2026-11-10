@@ -31,7 +31,19 @@ public static class TransactionEditRules
         nameof(Transaction.Note),
         nameof(Transaction.Checked),
         nameof(Transaction.IsNew),
+        // Splits and transfers (SplitTransferService keeps them consistent).
+        nameof(Transaction.Splitted),
+        nameof(Transaction.SplitOriginalAmount),
+        nameof(Transaction.IsTransfer),
+        nameof(Transaction.TransferPeerId),
     };
+
+    /// <summary>
+    /// A split part OpenBudget creates: a child row pointing at its parent, never a bank row. Editors may add and remove
+    /// these (splitting is categorisation); every other row is created and deleted only by the source owner or a connector.
+    /// </summary>
+    public static bool IsOwnSplitPart(Transaction t) =>
+        t.Splitted == SplitState.Child && t.SplitParentId != null && t.ExternalId == null;
 
     /// <summary>Null scope = trusted system context. <paramref name="accountProvider"/> is null for transactions without an account.</summary>
     public static EditBlock Check(AccessScope? scope, int sourceId, long? accountId, string? accountProvider)

@@ -485,6 +485,12 @@
                                             {
                                                 <span class="tx-flag" title="@L["Tx_SplitChildTitle"]">@L["Tx_SplitChild"]</span>
                                             }
+                                            @if (row.IsTransfer)
+                                            {
+                                                <span class="tx-flag tx-transfer-flag" data-testid="tx-transfer-flag" title="@L["Tx_TransferTitle"]">
+                                                    @(row.TransferPeerAccountName is { } peerName ? L["Tx_TransferTo", peerName] : L["Tx_Transfer"])
+                                                </span>
+                                            }
                                         </div>
                                         @{ var purpose = PurposeText.Clean(row.Purpose); }
                                         @if (!string.IsNullOrEmpty(purpose) || (showAccountColumn && !string.IsNullOrEmpty(row.AccountName)))
@@ -515,7 +521,9 @@
                                                OnNoteSave="note => SetNoteForAsync(row.Id, note)"
                                                OnToggleChecked="() => SetCheckedForAsync(row.Id, !row.IsChecked)"
                                                OnShowSimilar="() => ShowSimilarAsync(row)"
-                                               OnCreateRule="e => CreateRuleFromAsync(row, e)" />
+                                               OnCreateRule="e => CreateRuleFromAsync(row, e)"
+                                               PickerData="pickerData" ProjectId="ProjectId"
+                                               OnChanged="RefreshAfterEditAsync" />
                                 }
                             </div>
                         </ItemContent>

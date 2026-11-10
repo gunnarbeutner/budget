@@ -75,7 +75,7 @@ public class FreshnessService
         {
             var query = db.Transactions
                 .Where(t => t.SourceId == sourceId)
-                .Where(t => t.Splitted != 1)
+                .CountedAsFlow()
                 .WhereUncategorized(db, sourceId);
 
             var count = await query.CountAsync();

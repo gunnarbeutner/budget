@@ -162,7 +162,7 @@ public class BrowseService
         {
             var raw = await db.Transactions
                 .Where(t => t.SourceId == project.SourceId)
-                .Where(t => t.Splitted != 1)
+                .CountedAsFlow()
                 .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
                 .WithinUtc(range)
                 .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount })
@@ -380,7 +380,7 @@ public class BrowseService
 
         var uncategorizedCount = await db.Transactions
             .Where(t => t.SourceId == project.SourceId)
-            .Where(t => t.Splitted != 1)
+            .CountedAsFlow()
             .WhereUncategorized(db, project.SourceId)
             .CountAsync(ct);
 

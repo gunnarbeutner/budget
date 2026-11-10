@@ -399,4 +399,13 @@
     <value>{0} accounts</value>
   </data>
   <data name="RulePick_Hint" xml:space="preserve"><value>Pick the category the new rule should set.</value></data>
+  <data name="Tx_Transfer" xml:space="preserve">
+    <value>Transfer</value>
+  </data>
+  <data name="Tx_TransferTo" xml:space="preserve">
+    <value>Transfer → {0}</value>
+  </data>
+  <data name="Tx_TransferTitle" xml:space="preserve">
+    <value>Transfer between own accounts: counts as neither income nor spending.</value>
+  </data>
 </root>
