@@ -20,6 +20,11 @@ public class FinTsConnector : IBankConnector
     private string? _refreshKey;
     private ChallengeCoroutine<IReadOnlyList<RemoteStatement>>? _statements;
 
+    /// <summary>The credentials of the current login (for a bank's web part that signs in with the same ones).</summary>
+    protected ConnectorCredentials? Credentials { get; private set; }
+
+    protected ConnectorContext Context => _context;
+
     protected FinTsConnector(ConnectorContext context, FinTsBankConfig config, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null)
     {
         _context = context;
@@ -40,6 +45,7 @@ public class FinTsConnector : IBankConnector
     public Task<ConnectorStep<ConnectorSession?>> LoginAsync(
         ConnectorCredentials credentials, ConnectorSession? storedSession, ChallengeAnswer? answer, CancellationToken ct)
     {
+        Credentials = credentials;
         if (answer == null || _login == null)
         {
             if (!_options.IsConfigured)
@@ -69,7 +75,7 @@ public class FinTsConnector : IBankConnector
         return _refresh.ResumeAsync(answer, ct);
     }
 
-    public Task<ConnectorStep<IReadOnlyList<RemoteStatement>>> FetchStatementsAsync(
+    public virtual Task<ConnectorStep<IReadOnlyList<RemoteStatement>>> FetchStatementsAsync(
         IReadOnlyList<RemoteAccount> accounts, IReadOnlySet<string> knownIdentifiers, ChallengeAnswer? answer, CancellationToken ct)
     {
         var client = Client();
@@ -117,28 +123,44 @@ public sealed class IngConnector : FinTsConnector
         CreateRegistration(Config, ctx => new IngConnector(ctx, options, transportFactory));
 }
 
-/// <summary>Baader Bank, FinTS part: the cash account and the depot (positions via HKWPD).</summary>
+/// <summary>
+/// Baader Bank: the cash account and the depot (positions via HKWPD) over FinTS; documents (statements, trade
+/// confirmations, tax documents) from the bank's customer portal (<see cref="BaaderPortal"/>), which FinTS does not offer.
+/// </summary>
 public sealed class BaaderConnector : FinTsConnector
 {
     public const string TypeName = "baader";
 
-    // TODO: statements (Dokumentenarchiv) come later through the bank's web portal.
     public static FinTsBankConfig Config { get; } = new(
         TypeName,
         "Baader Bank",
-        "Baader Bank over FinTS: cash account (balance, transactions) and depot (positions). Statements are not supported yet.",
+        "Baader Bank over FinTS: cash account (balance, transactions) and depot (positions). Documents (statements, trade confirmations, "
+        + "tax documents) come from the Baader customer portal (konto.baaderbank.de), signed in with the same credentials in the app's browser.",
         "70033100",
         new Uri("https://fints.baaderbank.de"),
-        FallbackBic: "BDWBDEMMXXX",
-        Statements: false);
+        FallbackBic: "BDWBDEMMXXX");
 
-    public BaaderConnector(ConnectorContext context, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null)
+    private readonly Uri? _portalUri;
+
+    private BaaderPortal? _portal;
+
+    public BaaderConnector(
+        ConnectorContext context, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null, Uri? portalUri = null)
         : base(context, Config, options, transportFactory)
     {
+        _portalUri = portalUri;
     }
 
     public static ConnectorRegistration Registration(FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null) =>
         CreateRegistration(Config, ctx => new BaaderConnector(ctx, options, transportFactory));
+
+    /// <summary>Documents come from the portal, not FinTS (Baader offers no HKEKA).</summary>
+    public override Task<ConnectorStep<IReadOnlyList<RemoteStatement>>> FetchStatementsAsync(
+        IReadOnlyList<RemoteAccount> accounts, IReadOnlySet<string> knownIdentifiers, ChallengeAnswer? answer, CancellationToken ct)
+    {
+        _portal ??= new BaaderPortal(Context.Http, Context.Clock, Context.Logger, _portalUri);
+        return _portal.FetchAsync(accounts, knownIdentifiers, Credentials, answer, ct);
+    }
 }
 
 /// <summary>PSD Bank Nürnberg (Atruvia), FinTS including the electronic statements (HKEKA).</summary>
