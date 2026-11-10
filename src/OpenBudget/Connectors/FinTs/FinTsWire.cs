@@ -197,6 +197,9 @@ public sealed class FinTsSegmentBuilder
 
     public int Version { get; }
 
+    /// <summary>How many data elements were added (for structure-only diagnostics).</summary>
+    public int ElementCount => _elements.Count;
+
     /// <summary>Adds one data element or group; trailing empty components are dropped.</summary>
     public FinTsSegmentBuilder Add(params string?[] components)
     {

@@ -57,6 +57,9 @@ internal sealed class SyntheticBank
 
     public Dictionary<string, Action<FinTsSegment, ReplyBuilder, MockRequest>> Handlers { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>ING's rule: a message signed with the one-step placeholder 999 is refused outright (9010, no 3920).</summary>
+    public bool RejectOneStep { get; set; }
+
     public int SyncCount { get; private set; }
 
     public int InitCount { get; private set; }
@@ -90,6 +93,9 @@ internal sealed class SyntheticBank
         var rb = new ReplyBuilder();
         if (!string.Equals(request.UserId, UserId, StringComparison.Ordinal) || !string.Equals(request.Pin, Pin, StringComparison.Ordinal))
             return rb.Global("9931::Anmeldename oder PIN falsch.").Wrap("0", request.MessageNumber);
+
+        if (RejectOneStep && request.SecurityFunction == "999")
+            return rb.Global("9010::Ungültiger Signaturaufbau: Fehler im Segmentaufbau.", "9800::Der Dialog wurde abgebrochen.").Wrap("0", request.MessageNumber);
 
         var init = request.Segments.FirstOrDefault(s => s.Name == "HKIDN");
         Dialog dialog;

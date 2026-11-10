@@ -20,7 +20,7 @@ public sealed class FinTsScenarioTests
         private readonly TimeProvider _clock;
         private readonly CapturingLogger _logger = new();
 
-        public Rig(Action<SyntheticBank>? setup = null, FinTsOptions? options = null, bool updInventory = false, TimeProvider? clock = null)
+        public Rig(Action<SyntheticBank>? setup = null, FinTsOptions? options = null, bool updInventory = false, TimeProvider? clock = null, string? probe = null)
         {
             Bank = new SyntheticBank { Pin = Pin };
             setup?.Invoke(Bank);
@@ -28,6 +28,7 @@ public sealed class FinTsScenarioTests
             _options = options ?? FinTsHarness.Options;
             _config = new FinTsBankConfig("test", "Test Bank", "test", SyntheticBank.Blz, new Uri("https://bank.invalid/fints"));
             if (updInventory) _config = _config with { UpdInventory = true };
+            if (probe != null) _config = _config with { ProbeSecurityFunction = probe };
             _clock = clock ?? TimeProvider.System;
         }
 
@@ -109,6 +110,48 @@ public sealed class FinTsScenarioTests
         Assert.Equal("5", first.Segments[1].Element(1)); // UPD version
         Assert.Equal(1, rig.Bank.SyncCount);
         await again.LogoutAsync(default);
+    }
+
+    /// <summary>An ING-like bank: only HITANS version 1 (method 900, PIN only) and 999 refused with 9010.</summary>
+    private static void IngLike(SyntheticBank b)
+    {
+        b.RejectOneStep = true;
+        b.AllowedMethods = ["900"];
+        b.BpdText = "HIBPA:3:3:4+9+280:12345678+Test Bank+0+1+220:300+200'"
+            + "HIPINS:4:1:4+1+1+0+5:64:6:Alias::HKCAZ:N:HKSAL:N:HKTAN:N'"
+            + "HITANS:5:1:4+1+1+0+J:N:0:0:900:2:iTAN:iTAN:6:1:Index:3:1:N:N'"
+            + "HISALS:7:5:4+1+1+0'"
+            + "HICAZS:9:1:4+1+1+0+390:N:N:urn?:iso?:std?:iso?:20022?:tech?:xsd?:camt.052.001.02'";
+    }
+
+    [Fact]
+    public async Task Ing_like_bank_is_never_sent_the_one_step_placeholder_nor_HKTAN()
+    {
+        using var rig = new Rig(IngLike, probe: "900");
+        var (connector, step, challenges) = await rig.LoginAsync(null);
+
+        Assert.Empty(challenges);
+        Assert.Equal(StepStatus.Done, step.Status);
+        Assert.All(rig.Server.Requests, r => Assert.Equal("900", r.SecurityFunction));
+        Assert.DoesNotContain(rig.Server.Requests, r => r.Segments.Any(s => s.Name == "HKTAN"));
+        Assert.Equal(1, rig.Bank.SyncCount);
+        var session = (await connector.LogoutAsync(default))!;
+        Assert.Equal("900", session.Values[FinTsClient.TanMethodKey]);
+    }
+
+    [Fact]
+    public async Task One_step_probe_refused_by_the_bank_logs_the_outgoing_structure_without_secrets()
+    {
+        using var rig = new Rig(IngLike);
+        var (_, step, _) = await rig.LoginAsync(null);
+
+        Assert.NotEqual(StepStatus.Done, step.Status);
+        var line = Assert.Single(rig.Logs, l => l.StartsWith("FinTS dialog init refused", StringComparison.Ordinal));
+        Assert.Contains("9010", line, StringComparison.Ordinal);
+        Assert.Contains("sf=999", line, StringComparison.Ordinal);
+        Assert.Contains("HKIDNv2[4] HKVVBv3[5]", line, StringComparison.Ordinal);
+        Assert.DoesNotContain(Pin, line, StringComparison.Ordinal);
+        Assert.DoesNotContain("testuser", line, StringComparison.Ordinal);
     }
 
     [Fact]

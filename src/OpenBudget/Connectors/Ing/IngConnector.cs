@@ -23,11 +23,12 @@ public sealed class IngConnector : IBankConnector
         TypeName,
         "ING",
         "ING Germany: Girokonto and Extra-Konto over FinTS, VL-Sparen and the Postbox (statements, securities and tax documents) "
-        + "over the web banking. Username is the ING access number (or alias), PIN the ING PIN; web banking sign-ins are confirmed in the Banking to go app.",
+        + "over the web banking. Username is the ING username, PIN the ING PIN; web banking sign-ins are confirmed in the Banking to go app.",
         "50010517",
         new Uri("https://fints.ing.de/fints/"),
         FallbackBic: "INGDDEFFXXX",
-        Statements: true);
+        Statements: true,
+        ProbeSecurityFunction: "900");
 
     private readonly ConnectorContext _context;
     private readonly FinTsConnector _fints;

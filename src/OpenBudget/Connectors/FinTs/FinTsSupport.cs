@@ -35,7 +35,10 @@ public sealed record FinTsBankConfig(
     Uri Url,
     string? FallbackBic = null,
     bool UpdInventory = false,
-    bool Statements = true);
+    bool Statements = true,
+    string? ProbeSecurityFunction = null);
+// ProbeSecurityFunction: the security function signed with before the bank has named the user's methods (3920).
+// Null means the one-step placeholder 999; ING refuses 999 with "Ungültiger Signaturaufbau" (9010) and no 3920, so it gets 900.
 // Statements: false for banks whose documents are not reachable over FinTS (the connector then offers none).
 // UpdInventory: the UPD is requested at every login (version 0) because the bank reports a per-account inventory
 // marker in it (Atruvia banks); an unchanged marker lets a refresh skip fetching transactions.

@@ -99,7 +99,18 @@ internal sealed partial class FinTsClient
 
     // ---------------------------------------------------------------- messages
 
-    private string SecurityFunction => _tanId ?? OneStep;
+    private string _lastSent = string.Empty;
+
+    /// <summary>
+    /// The outgoing message's shape for diagnosis: security function, whether a system id is set, and each segment's name,
+    /// version and element count. Never values (PIN, user id, system id, TAN).
+    /// </summary>
+    private string Describe(List<FinTsSegmentBuilder> segments) =>
+        $"HNHBKv3 HNVSKv3 HNVSDv1 HNSHKv4(sf={SecurityFunction}, sysid={(string.Equals(_systemId, "0", StringComparison.Ordinal) ? "unset" : "set")}) "
+        + string.Join(' ', segments.Select(s => $"{s.Name}v{s.Version.ToString(CultureInfo.InvariantCulture)}[{s.ElementCount.ToString(CultureInfo.InvariantCulture)}]"))
+        + " HNSHAv2 HNHBSv1";
+
+    private string SecurityFunction => _tanId ?? _config.ProbeSecurityFunction ?? OneStep;
 
     private FinTsTanMethod? Method => _tanId == null ? null : _data.Methods.FirstOrDefault(m => string.Equals(m.Id, _tanId, StringComparison.Ordinal));
 
@@ -107,6 +118,7 @@ internal sealed partial class FinTsClient
     {
         _messageNumber++;
         var identity = new FinTsIdentity(_config.Blz, _credentials.Username, _credentials.Secret, _systemId);
+        _lastSent = Describe(segments);
         var message = FinTsMessageBuilder.Build(
             identity, _dialogId, _messageNumber, SecurityFunction, RandomNumberGenerator.GetInt32(1_000_000, 10_000_000),
             _clock.GetUtcNow().UtcDateTime, segments, tan);
@@ -189,7 +201,10 @@ internal sealed partial class FinTsClient
             var allowed = AllowedMethods(response);
             var wrongMethod = allowed != null && !allowed.Contains(SecurityFunction);
             if (response.HasError && !wrongMethod)
+            {
+                _logger.LogInformation("FinTS dialog init refused ({Error}); sent {Structure}", response.FirstError(), _lastSent);
                 throw new FinTsException($"The bank refused the login: {response.FirstError()}");
+            }
             if (wrongMethod)
             {
                 await EndAsync(ct);
