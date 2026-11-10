@@ -238,14 +238,29 @@ internal sealed partial class BaaderPortal
         request.Headers.TryAddWithoutValidation("Accept", "application/json");
         using var response = await _http.SendAsync(request, ct);
         var final = response.RequestMessage?.RequestUri;
-        if ((int)response.StatusCode is >= 300 and < 400 or 401 or 403 || (final != null && IsLoginPage(final))) return null;
+        if ((int)response.StatusCode is >= 300 and < 400 or 401 or 403 || (final != null && IsLoginPage(final)))
+        {
+            _log.LogInformation("Baader portal status: HTTP {Status} on {Path}; no session.", (int)response.StatusCode, final?.AbsolutePath);
+            return null;
+        }
         if (!response.IsSuccessStatusCode)
             throw new ConnectorException($"The Baader portal answered HTTP {(int)response.StatusCode}.");
         var text = await response.Content.ReadAsStringAsync(ct);
         JsonElement json;
         try { json = JsonElement.Parse(text); }
-        catch (JsonException) { return null; } // an HTML page: the sign-in
-        if (json.ValueKind != JsonValueKind.Array) return null;
+        catch (JsonException ex)
+        {
+            _log.LogInformation(ex, "Baader portal status: {Path} answered {Type} ({Length} characters), not JSON.",
+                final?.AbsolutePath, response.Content.Headers.ContentType?.MediaType, text.Length);
+            return null; // an HTML page: the sign-in
+        }
+        if (json.ValueKind != JsonValueKind.Array)
+        {
+            // Shape only, never values: which fields the portal's answer has.
+            var keys = json.ValueKind == JsonValueKind.Object ? string.Join(", ", json.EnumerateObject().Select(p => $"{p.Name}:{p.Value.ValueKind}")) : json.ValueKind.ToString();
+            _log.LogInformation("Baader portal status: unexpected answer shape ({Keys}).", keys);
+            return null;
+        }
         var ids = new List<string>();
         foreach (var c in json.EnumerateArray())
         {
@@ -253,6 +268,9 @@ internal sealed partial class BaaderPortal
             var value = id.ValueKind == JsonValueKind.Number ? id.GetRawText() : id.GetString();
             if (!string.IsNullOrEmpty(value) && CustomerId().IsMatch(value)) ids.Add(value);
         }
+        if (ids.Count == 0)
+            _log.LogInformation("Baader portal status: {Count} entries, none with a customer id (fields: {Keys}).", json.GetArrayLength(),
+                json.GetArrayLength() > 0 && json[0].ValueKind == JsonValueKind.Object ? string.Join(", ", json[0].EnumerateObject().Select(p => $"{p.Name}:{p.Value.ValueKind}")) : "-");
         return ids.Count == 0 ? null : ids;
     }
 
