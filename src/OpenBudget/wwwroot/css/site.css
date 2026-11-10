@@ -738,6 +738,9 @@ a, .btn-link {
     --ob-strip-bg: #fcfcfd;
     --ob-group-bg: #f7f8fa;
     --ob-link: #2f5fb3;
+    --ob-unread: #2f6fde;
+    --ob-thumb-bg: #f4f6f8;
+    --ob-thumb-shadow: rgba(16, 24, 40, .08);
 }
 
 [data-bs-theme="dark"] {
@@ -765,6 +768,9 @@ a, .btn-link {
     --ob-strip-bg: #1d2024;
     --ob-group-bg: #1d2024;
     --ob-link: #8ab4f8;
+    --ob-unread: #6ea0f5;
+    --ob-thumb-bg: #2a2f34;
+    --ob-thumb-shadow: rgba(0, 0, 0, .35);
 }
 
 /* ---- Top bar ---- */
@@ -1545,3 +1551,73 @@ a.budget-cat:focus-visible { outline: 2px solid var(--ob-accent); outline-offset
 /* Account group rows: the chevron folds, the name selects. */
 .browse-tree-chevron { border: 0; background: transparent; color: inherit; padding: 0 4px 0 0; line-height: 1; }
 .browse-tree-chevron:hover { color: var(--ob-accent); }
+
+/* ---- Documents (statements grid, viewer, download settings) ---- */
+.docs-select { width: auto; max-width: 11rem; font-size: 13px; }
+.docs-select-wide { max-width: 14rem; }
+.doc-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 20px 16px;
+}
+.doc-grid > li { min-width: 0; }
+.doc-skeleton { aspect-ratio: 210 / 297; border-radius: 6px; }
+.doc-card {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+    border-radius: 8px;
+    padding: 6px;
+}
+.doc-card:hover { background: var(--ob-row-hover-bg); color: inherit; }
+.doc-card:focus-visible { outline: 2px solid var(--ob-accent); outline-offset: 2px; }
+.doc-thumb {
+    position: relative;
+    aspect-ratio: 210 / 297;
+    border: 1px solid var(--ob-line);
+    border-radius: 4px;
+    background: var(--ob-thumb-bg);
+    box-shadow: 0 1px 3px var(--ob-thumb-shadow);
+    overflow: hidden;
+}
+.doc-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top; opacity: 0; transition: opacity .15s; }
+.doc-thumb img:not([src]) { visibility: hidden; }
+.doc-thumb.loaded img { opacity: 1; }
+.doc-thumb-fallback {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 2rem; color: var(--ob-muted);
+}
+.doc-thumb.loaded .doc-thumb-fallback { display: none; }
+.doc-meta { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; font-weight: 500; min-width: 0; }
+.doc-account { min-width: 0; }
+.doc-unread { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--ob-unread); }
+.doc-date { font-size: 12px; color: var(--ob-muted); font-variant-numeric: tabular-nums; }
+.doc-viewer-dialog { max-width: min(1100px, calc(100vw - 2rem)); }
+.doc-viewer .modal-content { height: calc(100vh - 3.5rem); }
+.doc-viewer-body { background: var(--ob-thumb-bg); }
+.doc-pages { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.doc-page { max-width: 100%; height: auto; background: #fff; box-shadow: 0 1px 4px var(--ob-thumb-shadow); }
+.docs-setting { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--ob-hairline); }
+.docs-setting:last-child { border-bottom: 0; }
+.min-w-0 { min-width: 0; }
+.shell-docs .shell-view-badge {
+    min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--ob-unread); color: #fff;
+    font-size: 11px; font-weight: 600; text-align: center; line-height: 18px;
+}
+[data-bs-theme="dark"] .shell-docs .shell-view-badge { color: #10213d; }
+.app-bottom-icon { position: relative; display: inline-flex; }
+.app-bottom-badge {
+    position: absolute; top: -4px; left: 12px; min-width: 16px; padding: 0 4px; border-radius: 8px;
+    background: var(--ob-unread); color: #fff; font-size: 10px; font-weight: 600; line-height: 16px; text-align: center;
+}
+[data-bs-theme="dark"] .app-bottom-badge { color: #10213d; }
+@media (max-width: 767.98px) {
+    .doc-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px 10px; }
+    .docs-filters { width: 100%; }
+    .docs-select { flex: 1 1 8rem; max-width: none; }
+    .doc-viewer .modal-dialog { margin: 0; max-width: 100%; }
+    .doc-viewer .modal-content { height: 100vh; border-radius: 0; }
+}

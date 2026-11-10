@@ -31,7 +31,7 @@ public class FinTsConnector : IBankConnector
     public string ConnectorType => _config.ConnectorType;
 
     protected static ConnectorRegistration CreateRegistration(FinTsBankConfig config, Func<ConnectorContext, IBankConnector> create) =>
-        new(config.ConnectorType, config.DisplayName, config.Description, create);
+        new(config.ConnectorType, config.DisplayName, config.Description, create, Statements: config.Statements);
 
     /// <summary>A registration for any configured bank (the thin bank classes use their own).</summary>
     public static ConnectorRegistration Registration(FinTsBankConfig config, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null) =>
@@ -105,7 +105,8 @@ public sealed class IngConnector : FinTsConnector
         + "VL-Spar and the Postbox are not supported yet.",
         "50010517",
         new Uri("https://fints.ing.de/fints/"),
-        FallbackBic: "INGDDEFFXXX");
+        FallbackBic: "INGDDEFFXXX",
+        Statements: false);
 
     public IngConnector(ConnectorContext context, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null)
         : base(context, Config, options, transportFactory)
@@ -128,7 +129,8 @@ public sealed class BaaderConnector : FinTsConnector
         "Baader Bank over FinTS: cash account (balance, transactions) and depot (positions). Statements are not supported yet.",
         "70033100",
         new Uri("https://fints.baaderbank.de"),
-        FallbackBic: "BDWBDEMMXXX");
+        FallbackBic: "BDWBDEMMXXX",
+        Statements: false);
 
     public BaaderConnector(ConnectorContext context, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null)
         : base(context, Config, options, transportFactory)

@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261109235433_AddTransactionEditingAndStructureTakeover";
+        public override string LatestMigrationId => "20261110093233_AddStatementReads";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -1250,6 +1250,25 @@ namespace OpenBudget.Migrations
                     b.ToTable("pp_security_taxonomy");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.StatementRead", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("StatementId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("ReadAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("UserId", "StatementId");
+
+                    b.HasIndex("StatementId");
+
+                    b.ToTable("statement_reads");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.Transaction", b =>
                 {
                     b.Property<long>("Id")
@@ -1604,6 +1623,21 @@ namespace OpenBudget.Migrations
                         .IsRequired();
 
                     b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.StatementRead", b =>
+                {
+                    b.HasOne("OpenBudget.Models.BankStatement", null)
+                        .WithMany()
+                        .HasForeignKey("StatementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OpenBudget.Models.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Transaction", b =>

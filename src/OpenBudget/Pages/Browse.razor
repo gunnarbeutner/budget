@@ -175,7 +175,7 @@
                 </button>
                 @if (selectionKind == "account" && SelectedAccountNode is { } docAccount && (_statementCount > 0 || docAccount.SyncLoginId != null))
                 {
-                    <a class="ob-btn" href="@($"/accounts/{docAccount.Id}/statements")" data-testid="account-documents">
+                    <a class="ob-btn" href="@($"/projects/{ProjectId}/documents?account={docAccount.Id}")" data-testid="account-documents">
                         <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> @L["Documents"]
                         @if (_statementCount > 0)
                         {

@@ -5,9 +5,11 @@
 @inject ProjectTimeState TimeState
 @inject ClockService Clock
 @inject NavigationManager Navigation
+@inject DocumentService DocumentService
 @inject IStringLocalizer<ProjectShell> L
+@implements IDisposable
 
-@* The frame of every project view (Transactions, Budget, Cashflow, Portfolio): the left
+@* The frame of every project view (Transactions, Budget, Cashflow, Portfolio, Documents): the left
    sidebar — the project's views on top, then the Accounts and Categories trees — and the main column, which
    the page fills with its 48px toolbar and its content. The sidebar is the only project navigation: its width
    is the shared --ob-sidebar-w (drag handle .browse-resizer, see uiBehaviors.js); below md it becomes an
@@ -64,7 +66,10 @@
                             OnSelectUncategorized="@(() => OpenTransactions("uncategorized"))"
                             OnSelectCategory="@(n => OpenTransactions((n.ItemType == CategoryItemType.Category ? "cat-" : "grp-") + n.Id))" />
         }
-        @* Documents will join here as a third section. *@
+        <div class="browse-tree-section">@L["Section_Documents"]</div>
+        <nav class="shell-views shell-docs" aria-label="@L["Section_Documents"]">
+            @ViewLink(ProjectTab.Documents, DocumentsUrl, "bi-file-earmark-text", L["View_Statements"], unreadDocs > 0 ? unreadDocs.ToString(CultureInfo.CurrentCulture) : null, "view-documents")
+        </nav>
     </aside>
 
     <div class="browse-resizer" role="separator" aria-orientation="vertical" tabindex="0"
@@ -83,7 +88,7 @@
     </button>
     @BottomLink(ProjectTab.Browse, TransactionsUrl, "bi-list-ul", L["View_Transactions"])
     @BottomLink(ProjectTab.Budgets, $"/projects/{ProjectId}/budgets", "bi-calendar3", L["View_Budget"])
-    @BottomLink(ProjectTab.Cashflow, $"/projects/{ProjectId}/cashflow", "bi-graph-up", L["View_Cashflow"])
+    @BottomLink(ProjectTab.Documents, DocumentsUrl, "bi-file-earmark-text", L["View_Documents"], unreadDocs)
     <GearMenu BottomBar="true" />
 </nav>
 
@@ -113,6 +118,24 @@
     private bool HasPortfolio => EffectiveTree?.Accounts.Any(a => a.IsPortfolio && a.IsAssigned) == true || Active == ProjectTab.Portfolio;
     private string? BudgetBadge => budgetBadge;
     private string TransactionsUrl => $"/projects/{ProjectId}/browse";
+    private string DocumentsUrl => $"/projects/{ProjectId}/documents";
+    private int unreadDocs;
+
+    protected override void OnInitialized() => DocumentService.ReadsChanged += OnReadsChanged;
+
+    private void OnReadsChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadUnreadAsync();
+        StateHasChanged();
+    });
+
+    private async Task LoadUnreadAsync()
+    {
+        try { unreadDocs = await DocumentService.GetUnreadCountAsync(ProjectId); }
+        catch (InvalidOperationException) { unreadDocs = 0; }
+    }
+
+    public void Dispose() => DocumentService.ReadsChanged -= OnReadsChanged;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -121,6 +144,7 @@
         _loadedProjectId = ProjectId;
         ownTree = null;
         budgetBadge = null;
+        await LoadUnreadAsync();
         var now = Clock.NowLocal;
         if (Rail == null)
         {
@@ -174,11 +198,18 @@
         </a>
     };
 
-    private RenderFragment BottomLink(ProjectTab tab, string href, string icon, string label) => __builder =>
+    private RenderFragment BottomLink(ProjectTab tab, string href, string icon, string label, int badge = 0) => __builder =>
     {
         var active = Active == tab;
-        <a class="app-bottom-item @(active ? "active" : "")" href="@href" aria-current="@(active ? "page" : null)">
-            <i class="bi @icon" aria-hidden="true"></i><span>@label</span>
+        <a class="app-bottom-item @(active ? "active" : "")" href="@href" aria-current="@(active ? "page" : null)" data-testid="@($"bottom-{tab.ToString().ToLowerInvariant()}")">
+            <span class="app-bottom-icon">
+                <i class="bi @icon" aria-hidden="true"></i>
+                @if (badge > 0)
+                {
+                    <span class="app-bottom-badge" data-testid="bottom-badge">@badge.ToString(CultureInfo.CurrentCulture)</span>
+                }
+            </span>
+            <span>@label</span>
         </a>
     };
 }

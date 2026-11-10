@@ -182,7 +182,6 @@ else
                                 <tr>
                                     <th>@L["Table_Account"]</th>
                                     <th>@L["Table_Link"]</th>
-                                    <th>@L["Table_Statements"]</th>
                                     <th>@L["Table_Status"]</th>
                                 </tr>
                             </thead>
@@ -220,47 +219,10 @@ else
                                                 </div>
                                             }
                                         </td>
-                                        <td>
-                                            @if (a.LinkedAccountId != null && !a.Closed)
-                                            {
-                                                <div class="d-flex flex-wrap align-items-center gap-2">
-                                                    <div class="form-check form-switch mb-0">
-                                                        <input class="form-check-input" type="checkbox" role="switch" id="@($"stmt-{a.Id}")" data-action="statements-toggle"
-                                                               checked="@a.StatementsEnabled" @onchange="e => SetStatementsAsync(a, (bool)(e.Value ?? false), a.StatementsInterval)" />
-                                                        <label class="form-check-label small" for="@($"stmt-{a.Id}")">@L["Statements_On"]</label>
-                                                    </div>
-                                                    @if (a.StatementsEnabled)
-                                                    {
-                                                        <select class="form-select form-select-sm w-auto" aria-label="@L["Statements_Interval"]"
-                                                                @onchange="e => SetStatementsAsync(a, true, ParseStatementsInterval(e.Value))">
-                                                            @foreach (var s in Enum.GetValues<StatementsInterval>())
-                                                            {
-                                                                <option value="@s" selected="@(s == a.StatementsInterval)">@StatementsLabel(s)</option>
-                                                            }
-                                                        </select>
-                                                        <button class="btn btn-sm btn-outline-secondary" data-action="download-statements" disabled="@running"
-                                                                @onclick="() => DownloadStatementsAsync(login.Id, a.Id)">@L["Button_DownloadNow"]</button>
-                                                    }
-                                                </div>
-                                            }
-                                            else
-                                            {
-                                                <span class="small text-body-secondary">@L["Statements_NeedsLink"]</span>
-                                            }
-                                        </td>
                                         <td class="small">
                                             @if (a.LastSuccessAt is { } ok)
                                             {
                                                 <div class="text-body-secondary">@L["Label_LastSync"]: @Clock.ToLocal(ok).ToString("yyyy-MM-dd HH:mm")</div>
-                                            }
-                                            @if (a.LastStatementAt is { } st)
-                                            {
-                                                <div class="text-body-secondary">@L["Label_LastStatement"]: @Clock.ToLocal(st).ToString("yyyy-MM-dd")
-                                                    @if (a.LinkedAccountId is { } linked)
-                                                    {
-                                                        <text> · </text><a href="@($"/accounts/{linked}/statements")">@L["Link_Documents"]</a>
-                                                    }
-                                                </div>
                                             }
                                             @if (!string.IsNullOrEmpty(a.LastError))
                                             {
@@ -391,11 +353,7 @@ else
 
     private void SetChoice(int loginAccountId, object? value) => linkChoice[loginAccountId] = value?.ToString() ?? "";
 
-    private static StatementsInterval ParseStatementsInterval(object? value) =>
-        Enum.TryParse<StatementsInterval>(value?.ToString(), out var i) ? i : StatementsInterval.Monthly;
-
     private string IntervalLabel(RefreshInterval i) => L[$"Interval_{i}"].Value;
-    private string StatementsLabel(StatementsInterval i) => L[$"StatementsInterval_{i}"].Value;
     private string TypeLabel(RemoteAccountType t) => L[$"Type_{t}"].Value;
 
     private async Task<bool> RunAsync(Func<Task> action)
@@ -495,10 +453,4 @@ else
     private Task CreateAccountAsync(int loginAccountId) => RunAsync(() => Bank.CreateAccountAsync(loginAccountId));
 
     private Task UnlinkAsync(int loginAccountId) => RunAsync(() => Bank.UnlinkAsync(loginAccountId));
-
-    private Task SetStatementsAsync(BankLoginAccountView a, bool enabled, StatementsInterval interval) =>
-        RunAsync(() => Bank.SetStatementsAsync(a.Id, enabled, interval));
-
-    private Task DownloadStatementsAsync(int loginId, int loginAccountId) =>
-        RunAsync(async () => await Bank.DownloadStatementsAsync(loginId, loginAccountId));
 }

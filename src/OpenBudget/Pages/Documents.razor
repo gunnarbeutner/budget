@@ -1,0 +1,499 @@
+@page "/projects/{ProjectId:int}/documents"
+@inherits DataChangeAwareComponent
+@using OpenBudget.Models
+@using OpenBudget.Services
+@using OpenBudget.Connectors.Sync
+@using Microsoft.AspNetCore.WebUtilities
+@inject ProjectService ProjectService
+@inject DocumentService Docs
+@inject BankLoginService Bank
+@inject ClockService Clock
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject IStringLocalizer<Documents> L
+
+@* The Documents view of a project: the statements of its accounts as a grid of cards (first page as thumbnail,
+   rendered in the browser with pdf.js), with per-user unread dots, filters in the URL (?period=, ?status=,
+   ?account=), a viewer for one document (all pages, previous/next, download) and the "Statement download"
+   settings of the project's accounts (?settings=1). *@
+
+<PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
+
+@if (notFound)
+{
+    <NotFoundMessage />
+    return;
+}
+
+<ProjectPageHeader ProjectId="ProjectId" ProjectName="@(project?.Name ?? "")" />
+
+<ProjectShell ProjectId="ProjectId" Active="ProjectTab.Documents" MainClass="shell-page">
+    <div class="page-toolbar docs-toolbar" data-testid="documents-toolbar">
+        <h1 class="view-title">@L["View_Title"]</h1>
+        @if (items != null)
+        {
+            <span class="view-sub d-none d-md-inline" data-testid="documents-count">@L["Count", Visible().Count]</span>
+        }
+        <div class="flex-grow-1"></div>
+        <div class="docs-filters d-flex flex-wrap align-items-center gap-2">
+            <select class="form-select form-select-sm docs-select" aria-label="@L["Filter_Period"]" data-testid="docs-period"
+                    @onchange="e => SetFilter(period: e.Value?.ToString())">
+                <option value="all" selected="@(period == "all")">@L["Period_All"]</option>
+                <option value="this-year" selected="@(period == "this-year")">@L["Period_ThisYear"]</option>
+                <option value="12m" selected="@(period == "12m")">@L["Period_Last12"]</option>
+                @foreach (var y in Years)
+                {
+                    <option value="@($"y{y}")" selected="@(period == $"y{y}")">@y</option>
+                }
+            </select>
+            <select class="form-select form-select-sm docs-select" aria-label="@L["Filter_Status"]" data-testid="docs-status"
+                    @onchange="e => SetFilter(status: e.Value?.ToString())">
+                <option value="all" selected="@(status == "all")">@L["Status_All"]</option>
+                <option value="unread" selected="@(status == "unread")">@L["Status_Unread"]</option>
+            </select>
+            <select class="form-select form-select-sm docs-select docs-select-wide" aria-label="@L["Filter_Account"]" data-testid="docs-account"
+                    @onchange="e => SetFilter(account: e.Value?.ToString())">
+                <option value="all" selected="@(account == "all")">@L["Account_All"]</option>
+                @foreach (var (id, name) in AccountOptions)
+                {
+                    <option value="@id" selected="@(account == id.ToString(CultureInfo.InvariantCulture))">@name</option>
+                }
+                @if (items?.Any(i => i.AccountId == null) == true)
+                {
+                    <option value="none" selected="@(account == "none")">@L["Account_None"]</option>
+                }
+            </select>
+            <label class="browse-search mb-0">
+                <i class="bi bi-search" aria-hidden="true"></i>
+                <input type="search" placeholder="@L["Search_Placeholder"]" aria-label="@L["Search_Placeholder"]" data-testid="docs-search"
+                       value="@search" @oninput="e => search = e.Value?.ToString() ?? string.Empty" />
+            </label>
+            <button type="button" class="ob-btn" data-testid="docs-mark-all" disabled="@(!Visible().Any(d => d.Unread))" @onclick="MarkAllReadAsync">
+                <i class="bi bi-check2-all" aria-hidden="true"></i> @L["MarkAllRead"]
+            </button>
+            <button type="button" class="ob-btn" data-testid="docs-settings" @onclick="OpenSettingsAsync">
+                <i class="bi bi-gear" aria-hidden="true"></i> @L["Settings"]
+            </button>
+        </div>
+    </div>
+
+    @if (items == null)
+    {
+        <div class="doc-grid" aria-busy="true">
+            @for (int i = 0; i < 8; i++)
+            {
+                <div class="skeleton doc-skeleton"></div>
+            }
+        </div>
+    }
+    else if (Visible().Count == 0)
+    {
+        <div class="text-body-secondary py-5 text-center" data-testid="documents-empty">
+            <i class="bi bi-file-earmark-pdf" style="font-size: 1.8rem;" aria-hidden="true"></i>
+            <div class="mt-2">@(items.Count == 0 ? L["Empty"] : L["Empty_Filtered"])</div>
+        </div>
+    }
+    else
+    {
+        <ul class="doc-grid" @ref="gridRef" data-testid="documents-grid" aria-label="@L["View_Title"]">
+            @foreach (var d in Visible())
+            {
+                var alt = L["Thumb_Alt", d.AccountName, Date(d)].Value;
+                <li @key="d.Id">
+                    <a class="doc-card" href="@($"/statements/{d.Id}")" data-doc-card="@d.Id" data-testid="doc-card"
+                       data-unread="@(d.Unread ? "true" : "false")"
+                       @onclick="() => OpenAsync(d.Id)" @onclick:preventDefault="true">
+                        <div class="doc-thumb">
+                            <img data-statement="@d.Id" data-src="@($"statements/{d.Id}")" alt="@alt" loading="lazy" />
+                            <i class="bi bi-file-earmark-pdf doc-thumb-fallback" aria-hidden="true"></i>
+                        </div>
+                        <div class="doc-meta">
+                            @if (d.Unread)
+                            {
+                                <span class="doc-unread" data-testid="doc-unread" role="img" aria-label="@L["Unread"]"></span>
+                            }
+                            <span class="doc-account text-truncate" title="@d.Name">@d.AccountName</span>
+                        </div>
+                        <div class="doc-date">@Date(d)</div>
+                    </a>
+                </li>
+            }
+        </ul>
+    }
+</ProjectShell>
+
+@if (viewing is { } current)
+{
+    var index = Visible().FindIndex(d => d.Id == current.Id);
+    <div class="modal show d-block doc-viewer" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="doc-viewer-title"
+         data-testid="doc-viewer" @ref="viewerRef" @onkeydown="OnViewerKeyAsync">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable doc-viewer-dialog">
+            <div class="modal-content">
+                <div class="modal-header gap-2">
+                    <h2 class="modal-title h6 text-truncate me-auto" id="doc-viewer-title">
+                        @current.AccountName · @Date(current) <span class="text-body-secondary fw-normal d-none d-sm-inline">· @current.Name</span>
+                    </h2>
+                    <button type="button" class="ob-btn" aria-label="@L["Viewer_Previous"]" title="@L["Viewer_Previous"]" data-testid="doc-prev"
+                            disabled="@(index <= 0)" @onclick="() => StepAsync(-1)"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
+                    <button type="button" class="ob-btn" aria-label="@L["Viewer_Next"]" title="@L["Viewer_Next"]" data-testid="doc-next"
+                            disabled="@(index < 0 || index >= Visible().Count - 1)" @onclick="() => StepAsync(1)"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+                    <a class="ob-btn" href="@($"/statements/{current.Id}?download=true")" data-testid="doc-download">
+                        <i class="bi bi-download" aria-hidden="true"></i><span class="d-none d-sm-inline">@L["Viewer_Download"]</span>
+                    </a>
+                    <button type="button" class="btn-close ms-1" aria-label="@L["Viewer_Close"]" data-testid="doc-close" @onclick="CloseViewerAsync"></button>
+                </div>
+                <div class="modal-body doc-viewer-body">
+                    <div class="doc-pages" @ref="pagesRef" data-testid="doc-pages" data-page-label="@L["Viewer_PageLabel"]"></div>
+                    @if (viewFailed)
+                    {
+                        <div class="text-center text-body-secondary py-5" data-testid="doc-view-failed">
+                            <i class="bi bi-file-earmark-pdf" style="font-size: 2rem;" aria-hidden="true"></i>
+                            <div class="mt-2">@L["Viewer_Failed"]</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+}
+
+<Modal Show="showSettings" Title="@L["Settings_Title"]" SizeClass="modal-lg modal-dialog-scrollable" OnClose="CloseSettings">
+    <p class="small text-body-secondary mb-2" data-testid="settings-note">@L["Settings_Retry"]</p>
+    @if (settings == null)
+    {
+        <div class="skeleton skeleton-line" aria-busy="true"></div>
+    }
+    else
+    {
+        @if (settings.Count > 8)
+        {
+            <input type="search" class="form-control form-control-sm mb-2" placeholder="@L["Settings_Search"]" aria-label="@L["Settings_Search"]"
+                   data-testid="settings-search" value="@settingsSearch" @oninput="e => settingsSearch = e.Value?.ToString() ?? string.Empty" />
+        }
+        <ul class="list-unstyled mb-0 docs-settings" data-testid="settings-list">
+            @foreach (var s in settings.Where(s => settingsSearch.Length == 0 || s.Name.Contains(settingsSearch, StringComparison.CurrentCultureIgnoreCase)))
+            {
+                var switchId = $"stmt-{s.AccountId}";
+                var readOnly = s.Block != null || !s.CanChange || busy;
+                <li class="docs-setting" @key="s.AccountId" data-testid="setting-row" data-account="@s.AccountId">
+                    <div class="form-check form-switch mb-0 flex-grow-1 min-w-0">
+                        <input class="form-check-input" type="checkbox" role="switch" id="@switchId" data-testid="setting-switch"
+                               checked="@s.Enabled" disabled="@readOnly"
+                               @onchange="e => SetAsync(s, (bool)(e.Value ?? false), s.Interval)" />
+                        <label class="form-check-label text-truncate d-block" for="@switchId">@s.Name</label>
+                        @if (s.Block is { } block)
+                        {
+                            <div class="small text-body-secondary" data-testid="setting-reason">@L[$"Block_{block}"]</div>
+                        }
+                        else if (!s.CanChange)
+                        {
+                            <div class="small text-body-secondary" data-testid="setting-readonly">@L["Settings_OwnerOnly"]</div>
+                        }
+                        else if (s.LastStatementAt is { } last)
+                        {
+                            <div class="small text-body-secondary">@L["Settings_LastStatement", Clock.ToLocal(last).ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)]</div>
+                        }
+                    </div>
+                    @if (s.Enabled && s.Block == null)
+                    {
+                        <select class="form-select form-select-sm w-auto" aria-label="@L["Settings_Interval", s.Name]" disabled="@readOnly" data-testid="setting-interval"
+                                @onchange="e => SetAsync(s, true, Enum.TryParse<StatementsInterval>(e.Value?.ToString(), out var i) ? i : StatementsInterval.Monthly)">
+                            @foreach (var i in Enum.GetValues<StatementsInterval>())
+                            {
+                                <option value="@i" selected="@(i == s.Interval)">@L[$"Interval_{i}"]</option>
+                            }
+                        </select>
+                        @if (s.CanChange)
+                        {
+                            <button type="button" class="ob-btn" data-testid="setting-download" disabled="@busy" @onclick="() => DownloadAsync(s)">@L["Settings_DownloadNow"]</button>
+                        }
+                    }
+                </li>
+            }
+        </ul>
+        @if (settingsMessage != null)
+        {
+            <div class="small mt-2" role="status" data-testid="settings-message">@settingsMessage</div>
+        }
+    }
+</Modal>
+
+@code {
+    [Parameter] public int ProjectId { get; set; }
+
+    private Project? project;
+    private bool notFound;
+    private List<DocumentItem>? items;
+    private int _loadedProjectId;
+
+    private string period = "all";
+    private string status = "all";
+    private string account = "all";
+    private string search = string.Empty;
+
+    private DocumentItem? viewing;
+    private readonly HashSet<long> readThisVisit = [];
+    private bool viewFailed;
+    private bool renderViewer;
+    private ElementReference gridRef;
+    private ElementReference viewerRef;
+    private ElementReference pagesRef;
+    private IJSObjectReference? module;
+
+    private bool showSettings;
+    private List<StatementSetting>? settings;
+    private string settingsSearch = string.Empty;
+    private string? settingsMessage;
+    private bool busy;
+
+    private string Date(DocumentItem d) => d.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+
+    private IEnumerable<int> Years => (items ?? []).Select(i => i.Date.Year).Distinct().OrderByDescending(y => y);
+
+    private IEnumerable<(long Id, string Name)> AccountOptions => (items ?? [])
+        .Where(i => i.AccountId != null)
+        .GroupBy(i => i.AccountId!.Value)
+        .Select(g => (g.Key, g.First().AccountName))
+        .OrderBy(a => a.Item2, StringComparer.CurrentCultureIgnoreCase);
+
+    private List<DocumentItem> Visible()
+    {
+        IEnumerable<DocumentItem> q = items ?? [];
+        var today = Clock.Today;
+        q = period switch
+        {
+            "this-year" => q.Where(d => d.Date.Year == today.Year),
+            "12m" => q.Where(d => d.Date.Date > today.AddMonths(-12)),
+            { Length: 5 } p when p[0] == 'y' && int.TryParse(p.AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out var y) => q.Where(d => d.Date.Year == y),
+            _ => q,
+        };
+        if (status == "unread") q = q.Where(d => d.Unread || readThisVisit.Contains(d.Id)); // what was just opened stays until the filter changes
+        if (account == "none") q = q.Where(d => d.AccountId == null);
+        else if (long.TryParse(account, NumberStyles.None, CultureInfo.InvariantCulture, out var a)) q = q.Where(d => d.AccountId == a);
+        var s = search.Trim();
+        if (s.Length > 0)
+            q = q.Where(d => d.Name.Contains(s, StringComparison.CurrentCultureIgnoreCase) || d.AccountName.Contains(s, StringComparison.CurrentCultureIgnoreCase));
+        return q.ToList();
+    }
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    // A filter change only changes the query string, which does not set parameters again.
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => _ = InvokeAsync(async () =>
+    {
+        await OnParametersSetAsync();
+        StateHasChanged();
+    });
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
+        period = query.TryGetValue("period", out var p) && p.ToString() is { Length: > 0 } pv ? pv : "all";
+        status = query.TryGetValue("status", out var st) && st.ToString() == "unread" ? "unread" : "all";
+        account = query.TryGetValue("account", out var ac) && ac.ToString() is { Length: > 0 } av ? av : "all";
+        var wantSettings = query.TryGetValue("settings", out var se) && se.ToString() == "1";
+        if (_loadedProjectId != ProjectId)
+        {
+            _loadedProjectId = ProjectId;
+            await LoadAsync();
+        }
+        if (wantSettings && !showSettings && !notFound) await OpenSettingsAsync();
+    }
+
+    protected override bool IsRelevantChange(DataChange change) => change.Area is DataArea.BankSync or DataArea.ImportedData or DataArea.Projects;
+
+    protected override async Task ReloadAfterChangeAsync()
+    {
+        await LoadAsync();
+        if (showSettings) settings = await Docs.GetSettingsAsync(ProjectId);
+    }
+
+    private async Task LoadAsync()
+    {
+        notFound = false;
+        project = await ProjectService.GetProjectAsync(ProjectId);
+        if (project == null) { notFound = true; return; }
+        items = await Docs.GetDocumentsAsync(ProjectId);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (notFound || items == null) return;
+        try
+        {
+            module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/documents.js");
+            await module.InvokeVoidAsync("thumbs", gridRef);
+            if (renderViewer && viewing != null)
+            {
+                renderViewer = false;
+                await JS.InvokeVoidAsync("modalA11y.activate", viewerRef);
+                var pages = await module.InvokeAsync<int>("view", pagesRef, $"statements/{viewing.Id}");
+                if (pages == 0 && viewing != null)
+                {
+                    viewFailed = true;
+                    StateHasChanged();
+                }
+            }
+        }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+        catch (InvalidOperationException) { /* prerendering */ }
+    }
+
+    private void SetFilter(string? period = null, string? status = null, string? account = null)
+    {
+        readThisVisit.Clear();
+        var values = new Dictionary<string, object?>
+        {
+            ["period"] = Clean(period ?? this.period),
+            ["status"] = Clean(status ?? this.status),
+            ["account"] = Clean(account ?? this.account),
+        };
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters(values), replace: true);
+
+        static string? Clean(string v) => v == "all" ? null : v;
+    }
+
+    private async Task OpenAsync(long id)
+    {
+        var item = items?.FirstOrDefault(d => d.Id == id);
+        if (item == null) return;
+        var opening = viewing == null;
+        viewing = item;
+        viewFailed = false;
+        renderViewer = true;
+        if (!opening)
+        {
+            // Keep the dialog's focus trap; only the pages change.
+            renderViewer = false;
+            StateHasChanged();
+            await RenderPagesAsync();
+        }
+        if (item.Unread)
+        {
+            readThisVisit.Add(id);
+            await Docs.MarkReadAsync([id]);
+            var updated = item with { Unread = false };
+            items = items!.Select(d => d.Id == id ? updated : d).ToList();
+            if (viewing?.Id == id) viewing = updated;
+        }
+    }
+
+    private async Task RenderPagesAsync()
+    {
+        if (module == null || viewing == null) return;
+        try
+        {
+            var pages = await module.InvokeAsync<int>("view", pagesRef, $"statements/{viewing.Id}");
+            viewFailed = pages == 0;
+        }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+    }
+
+    private async Task StepAsync(int delta)
+    {
+        if (viewing == null) return;
+        var list = Visible();
+        var index = list.FindIndex(d => d.Id == viewing.Id);
+        var next = index + delta;
+        if (index < 0 || next < 0 || next >= list.Count) return;
+        await OpenAsync(list[next].Id);
+    }
+
+    private async Task OnViewerKeyAsync(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape": await CloseViewerAsync(); break;
+            case "ArrowLeft": await StepAsync(-1); break;
+            case "ArrowRight": await StepAsync(1); break;
+        }
+    }
+
+    private async Task CloseViewerAsync()
+    {
+        if (viewing == null) return;
+        var id = viewing.Id;
+        viewing = null;
+        StateHasChanged();
+        try
+        {
+            await JS.InvokeVoidAsync("modalA11y.deactivate");
+            if (module != null) await module.InvokeVoidAsync("focusCard", id);
+        }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+    }
+
+    private async Task MarkAllReadAsync()
+    {
+        var ids = Visible().Where(d => d.Unread).Select(d => d.Id).ToList();
+        if (ids.Count == 0) return;
+        await Docs.MarkReadAsync(ids);
+        var set = ids.ToHashSet();
+        items = items!.Select(d => set.Contains(d.Id) ? d with { Unread = false } : d).ToList();
+    }
+
+    private async Task OpenSettingsAsync()
+    {
+        showSettings = true;
+        settingsMessage = null;
+        settingsSearch = string.Empty;
+        settings = await Docs.GetSettingsAsync(ProjectId);
+    }
+
+    private void CloseSettings()
+    {
+        showSettings = false;
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).ContainsKey("settings"))
+            Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("settings", (string?)null), replace: true);
+    }
+
+    private async Task SetAsync(StatementSetting s, bool enabled, StatementsInterval interval)
+    {
+        if (s.LoginAccountId is not { } id) return;
+        busy = true;
+        settingsMessage = null;
+        try
+        {
+            await Bank.SetStatementsAsync(id, enabled, interval);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or AccessDeniedException)
+        {
+            settingsMessage = L["Settings_Failed"];
+        }
+        settings = await Docs.GetSettingsAsync(ProjectId);
+        busy = false;
+    }
+
+    private async Task DownloadAsync(StatementSetting s)
+    {
+        if (s.LoginId is not { } login || s.LoginAccountId is not { } id) return;
+        busy = true;
+        var result = await Bank.DownloadStatementsAsync(login, id);
+        settingsMessage = result switch
+        {
+            StartResult.Started => L["Download_Started", s.Name],
+            StartResult.AlreadyRunning => L["Download_Running"],
+            _ => L["Download_NotStarted"],
+        };
+        busy = false;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) Navigation.LocationChanged -= OnLocationChanged;
+        if (disposing && module != null) _ = DisposeModuleAsync(module);
+        base.Dispose(disposing);
+    }
+
+    private static async Task DisposeModuleAsync(IJSObjectReference m)
+    {
+        try { await m.DisposeAsync(); }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+    }
+}

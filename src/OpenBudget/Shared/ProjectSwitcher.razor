@@ -104,11 +104,11 @@
     private string TargetUrl(Row r)
     {
         var path = Navigation.ToAbsoluteUri(Navigation.Uri).AbsolutePath;
-        var view = System.Text.RegularExpressions.Regex.Match(path, @"^/projects/\d+/(budgets|cashflow|portfolio)(/|$)") is { Success: true } m
+        var view = System.Text.RegularExpressions.Regex.Match(path, @"^/projects/\d+/(budgets|cashflow|portfolio|documents)(/|$)") is { Success: true } m
             ? m.Groups[1].Value : null;
         return view switch
         {
-            "budgets" or "cashflow" => $"/projects/{r.Id}/{view}",
+            "budgets" or "cashflow" or "documents" => $"/projects/{r.Id}/{view}",
             "portfolio" when r.HasPortfolio => $"/projects/{r.Id}/portfolio",
             _ => $"/projects/{r.Id}/browse",
         };

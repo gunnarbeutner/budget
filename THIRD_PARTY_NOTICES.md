@@ -11,6 +11,7 @@ loads the third-party components below, each under its own license.
 | [Bootstrap Icons](https://icons.getbootstrap.com/) (`wwwroot/css/bootstrap-icons`) | 1.11.3 | [MIT](https://github.com/twbs/icons/blob/main/LICENSE) | Copyright (c) 2019-2024 The Bootstrap Authors |
 | [Chart.js](https://www.chartjs.org/) (loaded from jsDelivr) | 4.5.1 | [MIT](https://github.com/chartjs/Chart.js/blob/master/LICENSE.md) | Copyright (c) 2014-2024 Chart.js Contributors |
 | [Google.Protobuf](https://github.com/protocolbuffers/protobuf) | 3.28.3 | [BSD-3-Clause](https://github.com/protocolbuffers/protobuf/blob/main/LICENSE) | Copyright 2008 Google Inc. |
+| [PDF.js](https://mozilla.github.io/pdf.js/) (`wwwroot/lib/pdfjs`, pdfjs-dist legacy build; renders statement thumbnails and the viewer) | 4.10.38 | [Apache-2.0](https://github.com/mozilla/pdf.js/blob/master/LICENSE) (copy in `wwwroot/lib/pdfjs/LICENSE`) | Copyright Mozilla Foundation and contributors |
 | [PuppeteerSharp](https://github.com/hardkoded/puppeteer-sharp) (drives the browser for web logins) | 25.12.0 | [MIT](https://github.com/hardkoded/puppeteer-sharp/blob/master/LICENSE) | Copyright (c) Darío Kondratiuk and contributors |
 | [.NET / ASP.NET Core / Entity Framework Core](https://github.com/dotnet) | 11.0 preview | [MIT](https://github.com/dotnet/runtime/blob/main/LICENSE.TXT) | Copyright (c) .NET Foundation and Contributors |
 

@@ -10,4 +10,5 @@ public enum ProjectTab
     Budgets,
     Cashflow,
     Portfolio,
+    Documents,
 }

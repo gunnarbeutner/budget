@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Dokumente - OpenBudget</value>
+  </data>
+  <data name="PageTitle_WithProject" xml:space="preserve">
+    <value>Dokumente - {0} - OpenBudget</value>
+  </data>
+  <data name="View_Title" xml:space="preserve">
+    <value>Kontoauszüge</value>
+  </data>
+  <data name="Count" xml:space="preserve">
+    <value>{0} Dokumente</value>
+  </data>
+  <data name="Filter_Period" xml:space="preserve">
+    <value>Zeitraum</value>
+  </data>
+  <data name="Period_All" xml:space="preserve">
+    <value>Gesamter Zeitraum</value>
+  </data>
+  <data name="Period_ThisYear" xml:space="preserve">
+    <value>Dieses Jahr</value>
+  </data>
+  <data name="Period_Last12" xml:space="preserve">
+    <value>Letzte 12 Monate</value>
+  </data>
+  <data name="Filter_Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Status_All" xml:space="preserve">
+    <value>Alle</value>
+  </data>
+  <data name="Status_Unread" xml:space="preserve">
+    <value>Ungelesen</value>
+  </data>
+  <data name="Filter_Account" xml:space="preserve">
+    <value>Konto</value>
+  </data>
+  <data name="Account_All" xml:space="preserve">
+    <value>Alle Konten</value>
+  </data>
+  <data name="Account_None" xml:space="preserve">
+    <value>Ohne Konto</value>
+  </data>
+  <data name="Search_Placeholder" xml:space="preserve">
+    <value>Dokumente durchsuchen</value>
+  </data>
+  <data name="MarkAllRead" xml:space="preserve">
+    <value>Alle als gelesen markieren</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>Einstellungen</value>
+  </data>
+  <data name="Empty" xml:space="preserve">
+    <value>Noch keine Dokumente. Schalte den Kontoauszug-Download unter Einstellungen ein.</value>
+  </data>
+  <data name="Empty_Filtered" xml:space="preserve">
+    <value>Keine Dokumente passen zu den Filtern.</value>
+  </data>
+  <data name="Thumb_Alt" xml:space="preserve">
+    <value>Kontoauszug {0} {1}</value>
+  </data>
+  <data name="Unread" xml:space="preserve">
+    <value>Ungelesen</value>
+  </data>
+  <data name="Viewer_Previous" xml:space="preserve">
+    <value>Vorheriges Dokument</value>
+  </data>
+  <data name="Viewer_Next" xml:space="preserve">
+    <value>Nächstes Dokument</value>
+  </data>
+  <data name="Viewer_Download" xml:space="preserve">
+    <value>Herunterladen</value>
+  </data>
+  <data name="Viewer_Close" xml:space="preserve">
+    <value>Schließen</value>
+  </data>
+  <data name="Viewer_PageLabel" xml:space="preserve">
+    <value>Seite {0} von {1}</value>
+  </data>
+  <data name="Viewer_Failed" xml:space="preserve">
+    <value>Dieses Dokument kann hier nicht angezeigt werden. Öffne es über Herunterladen.</value>
+  </data>
+  <data name="Settings_Title" xml:space="preserve">
+    <value>Kontoauszug-Download</value>
+  </data>
+  <data name="Settings_Retry" xml:space="preserve">
+    <value>Ist noch kein neuer Auszug da, wird es täglich erneut versucht.</value>
+  </data>
+  <data name="Settings_Search" xml:space="preserve">
+    <value>Konten durchsuchen</value>
+  </data>
+  <data name="Settings_OwnerOnly" xml:space="preserve">
+    <value>Nur der Inhaber des Bankzugangs kann das ändern.</value>
+  </data>
+  <data name="Settings_LastStatement" xml:space="preserve">
+    <value>Letzter Auszug {0}</value>
+  </data>
+  <data name="Settings_Interval" xml:space="preserve">
+    <value>Intervall für {0}</value>
+  </data>
+  <data name="Settings_DownloadNow" xml:space="preserve">
+    <value>Jetzt herunterladen</value>
+  </data>
+  <data name="Settings_Failed" xml:space="preserve">
+    <value>Die Einstellung konnte nicht geändert werden.</value>
+  </data>
+  <data name="Block_Manual" xml:space="preserve">
+    <value>Manuelles Konto</value>
+  </data>
+  <data name="Block_MoneyMoney" xml:space="preserve">
+    <value>Kommt aus MoneyMoney</value>
+  </data>
+  <data name="Block_Closed" xml:space="preserve">
+    <value>Konto geschlossen</value>
+  </data>
+  <data name="Block_NotOffered" xml:space="preserve">
+    <value>Die Bank bietet keine Kontoauszüge an</value>
+  </data>
+  <data name="Interval_Monthly" xml:space="preserve">
+    <value>Jeden Monat</value>
+  </data>
+  <data name="Interval_Weekly" xml:space="preserve">
+    <value>Jede Woche</value>
+  </data>
+  <data name="Interval_Daily" xml:space="preserve">
+    <value>Jeden Tag</value>
+  </data>
+  <data name="Interval_ManualOnly" xml:space="preserve">
+    <value>Nur manuell</value>
+  </data>
+  <data name="Download_Started" xml:space="preserve">
+    <value>Download für {0} gestartet.</value>
+  </data>
+  <data name="Download_Running" xml:space="preserve">
+    <value>Für diesen Bankzugang läuft schon eine Synchronisierung.</value>
+  </data>
+  <data name="Download_NotStarted" xml:space="preserve">
+    <value>Es wurde nichts gestartet.</value>
+  </data>
+</root>

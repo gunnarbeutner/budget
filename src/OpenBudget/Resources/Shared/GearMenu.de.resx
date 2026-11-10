@@ -88,4 +88,7 @@
   <data name="Item_MoneyMoney" xml:space="preserve">
     <value>MoneyMoney-Import</value>
   </data>
+  <data name="Item_StatementDownload" xml:space="preserve">
+    <value>Kontoauszug-Download</value>
+  </data>
 </root>

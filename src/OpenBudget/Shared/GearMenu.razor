@@ -62,6 +62,14 @@
                 }
             </a>
         </li>
+        @if (Current.ProjectId is { } docsProjectId)
+        {
+            <li>
+                <a class="dropdown-item" href="@($"/projects/{docsProjectId}/documents?settings=1")" data-testid="gear-statement-download">
+                    <i class="bi bi-file-earmark-arrow-down me-2" aria-hidden="true"></i>@L["Item_StatementDownload"]
+                </a>
+            </li>
+        }
         <li>
             <a class="dropdown-item" href="/sources" data-testid="gear-moneymoney">
                 <i class="bi bi-database me-2" aria-hidden="true"></i>@L["Item_MoneyMoney"]

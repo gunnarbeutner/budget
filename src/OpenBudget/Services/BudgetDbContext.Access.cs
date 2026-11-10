@@ -62,6 +62,8 @@ public partial class BudgetDbContext
         modelBuilder.Entity<BankStatement>().HasQueryFilter(s =>
             ScopeUnrestricted || s.OwnerUserId == ScopeUserId
             || (s.AccountId.HasValue && (ScopeSharedAccountIds.Contains(s.AccountId.Value) || (s.SourceId.HasValue && ScopeOwnedSourceIds.Contains(s.SourceId.Value)))));
+        // Read marks are personal.
+        modelBuilder.Entity<StatementRead>().HasQueryFilter(r => ScopeUnrestricted || r.UserId == ScopeUserId);
 
         // PortfolioPerformance data feeds the project-scoped rebalance view, so it follows the
         // source's visibility; the owner-only mapping/tax pages are guarded separately.
@@ -104,6 +106,7 @@ public partial class BudgetDbContext
     {
         var budgetEntries = new List<int>();
         var loginAccountLogins = new List<int>();
+        var readStatements = new List<long>();
         var editedTransactions = new List<(int SourceId, long? AccountId)>();
 
         foreach (var entry in ChangeTracker.Entries().ToList())
@@ -159,6 +162,11 @@ public partial class BudgetDbContext
                     if (!scope.IsAuthenticated || statement.OwnerUserId != scope.UserId)
                         throw new AccessDeniedException("Statements can only be changed by the login's owner.");
                     break;
+                case StatementRead read:
+                    if (!scope.IsAuthenticated || read.UserId != scope.UserId)
+                        throw new AccessDeniedException("Read marks belong to their user.");
+                    readStatements.Add(read.StatementId);
+                    break;
                 case BankLoginAccount remote:
                     loginAccountLogins.Add(remote.BankLoginId);
                     break;
@@ -188,6 +196,14 @@ public partial class BudgetDbContext
                 if (block == EditBlock.NoPermission)
                     throw new AccessDeniedException("Not allowed to edit these transactions.");
             }
+        }
+
+        // A read mark needs a statement the user can see (looked up through the filtered set).
+        if (readStatements.Count > 0)
+        {
+            var ids = readStatements.Distinct().ToList();
+            var visible = await Set<BankStatement>().AsNoTracking().CountAsync(s => ids.Contains(s.Id), ct);
+            if (visible != ids.Count) throw new AccessDeniedException("Statement not found.");
         }
 
         // Remote accounts belong to a login; only that login's owner may touch them. The login is

@@ -139,9 +139,6 @@
   <data name="Label_LastSync" xml:space="preserve">
     <value>Letzter Abgleich</value>
   </data>
-  <data name="Label_LastStatement" xml:space="preserve">
-    <value>Letzter Kontoauszug</value>
-  </data>
   <data name="Never" xml:space="preserve">
     <value>nie</value>
   </data>
@@ -166,9 +163,6 @@
   <data name="Table_Link" xml:space="preserve">
     <value>Verknüpft mit</value>
   </data>
-  <data name="Table_Statements" xml:space="preserve">
-    <value>Kontoauszüge</value>
-  </data>
   <data name="Table_Status" xml:space="preserve">
     <value>Status</value>
   </data>
@@ -186,18 +180,6 @@
   </data>
   <data name="Button_CreateAccount" xml:space="preserve">
     <value>Neues Konto anlegen</value>
-  </data>
-  <data name="Statements_On" xml:space="preserve">
-    <value>Herunterladen</value>
-  </data>
-  <data name="Statements_Interval" xml:space="preserve">
-    <value>Kontoauszug-Intervall</value>
-  </data>
-  <data name="Statements_NeedsLink" xml:space="preserve">
-    <value>Erst das Konto verknüpfen.</value>
-  </data>
-  <data name="Button_DownloadNow" xml:space="preserve">
-    <value>Jetzt herunterladen</value>
   </data>
   <data name="Link_View" xml:space="preserve">
     <value>Ansehen</value>
@@ -238,18 +220,6 @@
   <data name="Interval_Never" xml:space="preserve">
     <value>Nie (auch nicht bei "Alle abgleichen")</value>
   </data>
-  <data name="StatementsInterval_Monthly" xml:space="preserve">
-    <value>Jeden Monat</value>
-  </data>
-  <data name="StatementsInterval_Weekly" xml:space="preserve">
-    <value>Jede Woche</value>
-  </data>
-  <data name="StatementsInterval_Daily" xml:space="preserve">
-    <value>Jeden Tag</value>
-  </data>
-  <data name="StatementsInterval_ManualOnly" xml:space="preserve">
-    <value>Nur manuell</value>
-  </data>
   <data name="Type_Giro" xml:space="preserve">
     <value>Girokonto</value>
   </data>
@@ -264,8 +234,5 @@
   </data>
   <data name="Type_Other" xml:space="preserve">
     <value>Sonstiges</value>
-  </data>
-  <data name="Link_Documents" xml:space="preserve">
-    <value>Dokumente</value>
   </data>
 </root>

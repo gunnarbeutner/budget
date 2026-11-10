@@ -4,11 +4,15 @@
 @inject BankLoginService Bank
 @inject IDbContextFactory<BudgetDbContext> DbFactory
 @inject IStringLocalizer<AccountStatements> L
+@inject NavigationManager Navigation
+@inject CurrentProjectState Current
 @using Microsoft.EntityFrameworkCore
 
 <PageTitle>@L["PageTitle"]</PageTitle>
 
-@* Statements of one account. Whoever can see the account (its owner, or a viewer of a project it is assigned to)
+@* The old per-account list. It forwards to the Documents view of a project that contains the account (the current
+   project when it does); only when no visible project has the account does it list the documents itself.
+   Statements of one account. Whoever can see the account (its owner, or a viewer of a project it is assigned to)
    sees its documents; the lookups run through the user's scoped context, so anything else is "not found". *@
 
 @if (loaded && accountName == null)
@@ -75,6 +79,18 @@ else
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         accountName = await db.Accounts.AsNoTracking().Where(a => a.Id == AccountId).Select(a => a.Name ?? "?").FirstOrDefaultAsync();
+        if (accountName != null)
+        {
+            var projects = await db.ProjectAccountAssignments.AsNoTracking()
+                .Where(p => p.AccountId == AccountId && db.Projects.Any(x => x.Id == p.ProjectId))
+                .Select(p => p.ProjectId).OrderBy(p => p).ToListAsync();
+            if (projects.Count > 0)
+            {
+                var target = Current.ProjectId is { } current && projects.Contains(current) ? current : projects[0];
+                Navigation.NavigateTo($"/projects/{target}/documents?account={AccountId}", replace: true);
+                return;
+            }
+        }
         statements = accountName == null ? [] : await Bank.GetAccountStatementsAsync(AccountId);
         loginDocuments = accountName == null ? [] : await Bank.GetAccountLoginDocumentsAsync(AccountId);
         loaded = true;

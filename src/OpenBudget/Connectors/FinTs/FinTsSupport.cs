@@ -34,7 +34,9 @@ public sealed record FinTsBankConfig(
     string Blz,
     Uri Url,
     string? FallbackBic = null,
-    bool UpdInventory = false);
+    bool UpdInventory = false,
+    bool Statements = true);
+// Statements: false for banks whose documents are not reachable over FinTS (the connector then offers none).
 // UpdInventory: the UPD is requested at every login (version 0) because the bank reports a per-account inventory
 // marker in it (Atruvia banks); an unchanged marker lets a refresh skip fetching transactions.
 

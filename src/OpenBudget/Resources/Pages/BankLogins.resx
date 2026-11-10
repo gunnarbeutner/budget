@@ -139,9 +139,6 @@
   <data name="Label_LastSync" xml:space="preserve">
     <value>Last sync</value>
   </data>
-  <data name="Label_LastStatement" xml:space="preserve">
-    <value>Last statement</value>
-  </data>
   <data name="Never" xml:space="preserve">
     <value>never</value>
   </data>
@@ -166,9 +163,6 @@
   <data name="Table_Link" xml:space="preserve">
     <value>Linked to</value>
   </data>
-  <data name="Table_Statements" xml:space="preserve">
-    <value>Statements</value>
-  </data>
   <data name="Table_Status" xml:space="preserve">
     <value>Status</value>
   </data>
@@ -186,18 +180,6 @@
   </data>
   <data name="Button_CreateAccount" xml:space="preserve">
     <value>Create new account</value>
-  </data>
-  <data name="Statements_On" xml:space="preserve">
-    <value>Download</value>
-  </data>
-  <data name="Statements_Interval" xml:space="preserve">
-    <value>Statement interval</value>
-  </data>
-  <data name="Statements_NeedsLink" xml:space="preserve">
-    <value>Link the account first.</value>
-  </data>
-  <data name="Button_DownloadNow" xml:space="preserve">
-    <value>Download now</value>
   </data>
   <data name="Link_View" xml:space="preserve">
     <value>View</value>
@@ -238,18 +220,6 @@
   <data name="Interval_Never" xml:space="preserve">
     <value>Never (not even in Sync all)</value>
   </data>
-  <data name="StatementsInterval_Monthly" xml:space="preserve">
-    <value>Every month</value>
-  </data>
-  <data name="StatementsInterval_Weekly" xml:space="preserve">
-    <value>Every week</value>
-  </data>
-  <data name="StatementsInterval_Daily" xml:space="preserve">
-    <value>Every day</value>
-  </data>
-  <data name="StatementsInterval_ManualOnly" xml:space="preserve">
-    <value>Only manually</value>
-  </data>
   <data name="Type_Giro" xml:space="preserve">
     <value>Current account</value>
   </data>
@@ -264,8 +234,5 @@
   </data>
   <data name="Type_Other" xml:space="preserve">
     <value>Other</value>
-  </data>
-  <data name="Link_Documents" xml:space="preserve">
-    <value>Documents</value>
   </data>
 </root>

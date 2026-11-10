@@ -64,6 +64,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<BankLogin> BankLogins => Set<BankLogin>();
     public DbSet<BankLoginAccount> BankLoginAccounts => Set<BankLoginAccount>();
     public DbSet<BankStatement> BankStatements => Set<BankStatement>();
+    public DbSet<StatementRead> StatementReads => Set<StatementRead>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -223,6 +224,10 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         // their account (viewers of a shared account may read them) while the login stays private.
         modelBuilder.Entity<BankStatement>().HasIndex(s => new { s.BankLoginId, s.Identifier }).IsUnique();
         modelBuilder.Entity<BankStatement>().HasIndex(s => s.AccountId);
+        modelBuilder.Entity<StatementRead>().HasKey(r => new { r.UserId, r.StatementId });
+        modelBuilder.Entity<StatementRead>().HasIndex(r => r.StatementId);
+        modelBuilder.Entity<StatementRead>().HasOne<BankStatement>().WithMany().HasForeignKey(r => r.StatementId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<StatementRead>().HasOne<AppUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<CategoryGroup>()
             .HasOne(cg => cg.ParentGroup)

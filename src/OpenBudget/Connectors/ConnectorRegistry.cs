@@ -16,7 +16,9 @@ public sealed record ConnectorRegistration(
     string DisplayName,
     string Description,
     Func<ConnectorContext, IBankConnector> Create,
-    CredentialRequirement Credentials = CredentialRequirement.UsernameAndSecret);
+    CredentialRequirement Credentials = CredentialRequirement.UsernameAndSecret,
+    bool Statements = true);
+// Statements: whether the connector can fetch documents (statements) at all; false greys the switch out.
 
 /// <summary>The connectors available in this installation, by type string.</summary>
 public sealed class ConnectorRegistry
