@@ -38,25 +38,36 @@ public sealed class OpenbankConnectorTests
     private static OpenbankOptions Options(int pageSize = 3) => new() { PageSize = pageSize };
 
     /// <summary>
-    /// The sign-in page: Keycloak-style form; submitting the right username and password redirects to the dashboard
-    /// with the token cookies (<paramref name="withTokens"/> false: without them). A wrong password keeps the form.
+    /// The sign-in page: Openbank's two-step React form. The e-mail page's "Weiter" only becomes clickable once the
+    /// address was entered; it leads to the password page, whose submit redirects to the dashboard with the token
+    /// cookies (<paramref name="withTokens"/> false: without them). A wrong password keeps the form.
     /// </summary>
     private static FakeBrowserHost SignInPage(FakeOpenbank bank, bool withTokens = true) => new()
     {
         User = session =>
         {
-            session.Url = new Uri("https://login.openbankpay.com/realms/example/protocol/openid-connect/auth");
-            lock (session.Visible)
+            session.Url = new Uri("https://kunden.openbankpay.com/amazon/login");
+            session.OnFill = (s, selector) =>
             {
-                session.Visible.Add(OpenbankConnector.UsernameSelector);
-                session.Visible.Add(OpenbankConnector.PasswordSelector);
-                session.Visible.Add(OpenbankConnector.SubmitSelector);
-            }
-            session.OnClick = (s, _) =>
+                if (selector == OpenbankConnector.UsernameSelector) s.Visible.Add(OpenbankConnector.ContinueSelector);
+                if (Enumerable.Range(0, OpenbankConnector.AccessCodeLength).All(i => s.Filled.ContainsKey(OpenbankConnector.AccessCodeBox(i))))
+                    s.Visible.Add(OpenbankConnector.SubmitSelector);
+            };
+            lock (session.Visible) session.Visible.Add(OpenbankConnector.UsernameSelector);
+            session.OnClick = (s, selector) =>
             {
-                if (s.Filled.GetValueOrDefault(OpenbankConnector.UsernameSelector) != FakeOpenbank.Username
-                    || s.Filled.GetValueOrDefault(OpenbankConnector.PasswordSelector) != FakeOpenbank.Password)
+                if (selector == OpenbankConnector.ContinueSelector)
+                {
+                    if (s.Filled.GetValueOrDefault(OpenbankConnector.UsernameSelector) != FakeOpenbank.Username) return Task.CompletedTask;
+                    lock (s.Visible)
+                    {
+                        s.Visible.Clear();
+                        for (var i = 0; i < OpenbankConnector.AccessCodeLength; i++) s.Visible.Add(OpenbankConnector.AccessCodeBox(i));
+                    }
                     return Task.CompletedTask;
+                }
+                if (string.Concat(Enumerable.Range(0, OpenbankConnector.AccessCodeLength).Select(i => s.Filled.GetValueOrDefault(OpenbankConnector.AccessCodeBox(i))))
+                    != FakeOpenbank.Password) return Task.CompletedTask;
                 lock (s.Visible) s.Visible.Clear();
                 foreach (var c in bank.SignIn(withTokens)) s.SetCookie(c);
                 s.Url = new Uri(Dashboard);
@@ -105,8 +116,9 @@ public sealed class OpenbankConnectorTests
         var session = Assert.Single(rig.Browser.Sessions);
         Assert.Equal(new Uri("https://kunden.openbankpay.com/amazon/login"), session.StartedAt);
         Assert.Equal(FakeOpenbank.Username, session.Filled[OpenbankConnector.UsernameSelector]);
-        Assert.Equal(FakeOpenbank.Password, session.Filled[OpenbankConnector.PasswordSelector]);
-        Assert.Equal([OpenbankConnector.SubmitSelector], session.Clicked);
+        for (var i = 0; i < 4; i++) Assert.Equal(FakeOpenbank.Password[i].ToString(), session.Filled[OpenbankConnector.AccessCodeBox(i)]); // one digit per box
+        Assert.Equal([OpenbankConnector.ContinueSelector, OpenbankConnector.SubmitSelector], session.Clicked);
+        Assert.DoesNotContain(session.Clicked, c => c.Contains("checkbox", StringComparison.Ordinal)); // "Merken" stays unticked
 
         var accounts = await rig.Service.GetAccountsAsync(rig.LoginId);
         Assert.Equal(2, accounts.Count);
@@ -140,6 +152,20 @@ public sealed class OpenbankConnectorTests
         Assert.False(status.Succeeded);
         Assert.DoesNotContain("username or password", status.Error, StringComparison.Ordinal);
         Assert.Equal(0, rig.Bank.Count("/cb-api-global-position"));
+    }
+
+    [Fact]
+    public async Task An_access_code_of_the_wrong_length_is_not_entered_and_the_page_is_shown()
+    {
+        await using var rig = await CreateAsync(password: "12345",
+            webLogin: new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(10), SettleDelay = TimeSpan.Zero, Timeout = TimeSpan.FromSeconds(3) });
+        var status = await SyncAsync(rig, false);
+        Assert.False(status.Succeeded);
+        var session = Assert.Single(rig.Browser.Sessions);
+        Assert.Equal([OpenbankConnector.ContinueSelector], session.Clicked); // the code was never submitted
+        Assert.DoesNotContain(session.Filled.Keys, k => k.Contains("gap", StringComparison.Ordinal));
+        Assert.Contains("access code length doesn't match the form", rig.Logs.All, StringComparison.Ordinal);
+        Assert.DoesNotContain("12345", rig.Logs.All, StringComparison.Ordinal);
     }
 
     [Fact]

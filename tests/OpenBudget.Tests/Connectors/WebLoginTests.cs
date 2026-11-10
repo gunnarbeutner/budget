@@ -277,6 +277,136 @@ public sealed class WebLoginTests
         Assert.True(browser.Disposed);
     }
 
+    private static WebLoginService Service(FakeBrowserHost host, Microsoft.Extensions.Logging.ILoggerFactory? logs = null) => new(host,
+        new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(10), SettleDelay = TimeSpan.Zero, FormTimeout = TimeSpan.FromMilliseconds(300) },
+        TimeProvider.System, logs ?? Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
+
+    private static async Task WaitForAsync(Func<bool> condition)
+    {
+        for (var i = 0; i < 500 && !condition(); i++) await Task.Delay(10);
+        Assert.True(condition());
+    }
+
+    [Fact]
+    public async Task A_two_step_form_is_filled_page_by_page_and_waits_for_the_enabled_button()
+    {
+        const string email = "[data-testid=email]", next = "[data-testid=next]:not([disabled])", password = "input[type=password]", submit = "button[type=submit]";
+        var host = new FakeBrowserHost
+        {
+            User = s =>
+            {
+                s.OnFill = (p, selector) =>
+                {
+                    if (selector == email) p.Visible.Add(next); // the button is enabled by the page's input handler
+                };
+                s.OnClick = (p, selector) =>
+                {
+                    lock (p.Visible)
+                    {
+                        p.Visible.Clear();
+                        if (selector == next) { p.Visible.Add(password); p.Visible.Add(submit); }
+                    }
+                    if (selector == submit && p.Filled.GetValueOrDefault(password) == "pw") return SignedIn(p);
+                    return Task.CompletedTask;
+                };
+                lock (s.Visible) s.Visible.Add(email);
+                return Task.CompletedTask;
+            },
+        };
+        var spec = new WebLoginSpec(Start, [Domain], new Uri("https://bank.example/home"))
+        {
+            Autofill = new WebLoginAutofill("alice@example.com", "pw",
+            [
+                new WebLoginStep(email, WebLoginCredential.Username, next),
+                new WebLoginStep(password, WebLoginCredential.Secret, submit),
+            ]),
+        };
+        await using var session = await Service(host).StartAsync(BankWorld.Alice, spec, [], CancellationToken.None);
+        var result = await session.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.True(result.Success, result.Error);
+        var browser = host.Sessions.Single();
+        Assert.Equal("alice@example.com", browser.Filled[email]);
+        Assert.Equal("pw", browser.Filled[password]);
+        Assert.Equal([next, submit], browser.Clicked);
+        Assert.DoesNotContain("pw", spec.Autofill.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_single_step_form_still_fills_both_fields_and_submits_once()
+    {
+        var host = new FakeBrowserHost
+        {
+            User = s =>
+            {
+                lock (s.Visible) { s.Visible.Add("#user"); s.Visible.Add("#pass"); s.Visible.Add("#go"); }
+                s.OnClick = (p, _) => p.Filled.GetValueOrDefault("#pass") == "pw" ? SignedIn(p) : Task.CompletedTask;
+                return Task.CompletedTask;
+            },
+        };
+        var spec = new WebLoginSpec(Start, [Domain], new Uri("https://bank.example/home"))
+        {
+            Autofill = new WebLoginAutofill("alice", "pw", "#user", "#pass", "#go"),
+        };
+        await using var session = await Service(host).StartAsync(BankWorld.Alice, spec, [], CancellationToken.None);
+        Assert.True((await session.Completion.WaitAsync(TimeSpan.FromSeconds(10))).Success);
+        var browser = host.Sessions.Single();
+        Assert.Equal("alice", browser.Filled["#user"]);
+        Assert.Equal(["#go"], browser.Clicked);
+    }
+
+    [Fact]
+    public async Task A_form_that_never_matches_shows_the_page_after_the_timeout_even_when_the_login_page_is_under_the_success_prefix()
+    {
+        // Like Openbank: the login page (/portal/login) starts with the success prefix (/portal/), success also needs a cookie.
+        var start = new Uri("https://bank.example/portal/login?token=secret-query");
+        var host = new FakeBrowserHost { User = _ => Task.CompletedTask }; // a page with no matching field
+        var logs = new CapturingLoggerFactory();
+        var spec = new WebLoginSpec(start, [Domain], new Uri("https://bank.example/portal/"), (_, cookies) => cookies.Any(c => c.Name == "auth"))
+        {
+            Autofill = new WebLoginAutofill("alice@example.com", "Example-Password1!",
+            [
+                new WebLoginStep("#email", WebLoginCredential.Username, "#next"),
+                new WebLoginStep("#password", WebLoginCredential.Secret, "#submit"),
+            ]),
+        };
+        await using var session = await Service(host, logs).StartAsync(BankWorld.Alice, spec, [], CancellationToken.None);
+        Assert.Equal(WebLoginMode.Starting, session.Mode);
+        await WaitForAsync(() => session.Mode == WebLoginMode.Interactive);
+        Assert.False(session.Completion.IsCompleted);
+
+        var text = logs.All;
+        Assert.Contains("Information: Web login:", text, StringComparison.Ordinal);
+        Assert.Contains("#email", text, StringComparison.Ordinal);
+        Assert.Contains("step 1 of 2", text, StringComparison.Ordinal);
+        Assert.Contains("https://bank.example/portal/login", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret-query", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("alice@example.com", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Example-Password1!", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_second_step_that_never_appears_shows_the_page()
+    {
+        var host = new FakeBrowserHost
+        {
+            User = s =>
+            {
+                lock (s.Visible) { s.Visible.Add("#email"); s.Visible.Add("#next"); }
+                s.OnClick = (p, _) => { lock (p.Visible) p.Visible.Clear(); return Task.CompletedTask; };
+                return Task.CompletedTask;
+            },
+        };
+        var spec = new WebLoginSpec(Start, [Domain], new Uri("https://bank.example/home"))
+        {
+            Autofill = new WebLoginAutofill("a", "b",
+                [new WebLoginStep("#email", WebLoginCredential.Username, "#next"), new WebLoginStep("#password", WebLoginCredential.Secret, "#submit")]),
+        };
+        await using var session = await Service(host).StartAsync(BankWorld.Alice, spec, [], CancellationToken.None);
+        await WaitForAsync(() => session.Mode == WebLoginMode.Interactive);
+        Assert.Equal(["#next"], host.Sessions.Single().Clicked);
+    }
+
     [Fact]
     public void A_spec_needs_https_a_domain_and_a_success_condition()
     {

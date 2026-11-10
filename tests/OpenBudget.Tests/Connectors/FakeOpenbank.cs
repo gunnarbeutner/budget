@@ -15,7 +15,7 @@ namespace OpenBudget.Tests.Connectors;
 internal sealed class FakeOpenbank : HttpMessageHandler
 {
     public const string Username = "alice";
-    public const string Password = "example-password";
+    public const string Password = "8264"; // the 4-digit Zugangscode
     public const string CardId = "000000000EXAMPLE0001_A";
     public const string AddonCardId = "000000000EXAMPLE0002_A";
     public const string Iban = "DE00000000000000000042";

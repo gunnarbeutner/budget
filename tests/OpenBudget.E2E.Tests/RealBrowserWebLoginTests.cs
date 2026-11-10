@@ -56,6 +56,10 @@ public sealed class RealBrowserWebLoginTests
                 // The "user" signs in after a moment: a persistent cookie, then the landing page.
                 html = "<html><body><h1>Sign in</h1><script>setTimeout(function(){document.cookie='sid=abc; path=/; max-age=3600';location.href='/home';},400);</script></body></html>";
             }
+            else if (path == "/twostep")
+            {
+                html = TwoStepPage;
+            }
             else
             {
                 html = "<html><body><h1>Home</h1></body></html>";
@@ -65,6 +69,71 @@ public sealed class RealBrowserWebLoginTests
             await ctx.Response.OutputStream.WriteAsync(bytes);
             ctx.Response.Close();
         }
+    }
+
+    /// <summary>
+    /// Like Openbank's React sign-in: an e-mail field without type/name/id whose value only "counts" through React's
+    /// value tracker (a setter that remembers the last value; the input handler ignores events whose value did not
+    /// change through the native setter), a "Weiter" button that stays disabled until then, then the access code, one digit per box.
+    /// The form appears after a delay (the SPA is loading).
+    /// </summary>
+    private const string TwoStepPage = """
+        <html><body><div id="root"></div><script>
+        function trackedInput(attrs, onValue) {
+          const el = document.createElement('input');
+          for (const k in attrs) el.setAttribute(k, attrs[k]);
+          const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+          let tracked = '';
+          Object.defineProperty(el, 'value', { configurable: true, get() { return desc.get.call(this); }, set(v) { tracked = String(v); desc.set.call(this, v); } });
+          el.addEventListener('input', () => { const v = desc.get.call(el); if (v !== tracked) { tracked = v; onValue(v); } });
+          return el;
+        }
+        setTimeout(() => {
+          const root = document.getElementById('root');
+          const next = document.createElement('button');
+          next.setAttribute('type', 'primary'); next.setAttribute('data-testid', 'login-email-links'); next.disabled = true; next.textContent = 'Weiter';
+          let email = '';
+          const input = trackedInput({ placeholder: 'E-Mail-Adresse eingeben', 'data-testid': 'login-email-email' }, v => { email = v; next.disabled = !v.includes('@'); });
+          next.onclick = () => {
+            if (email !== 'alice@example.com') return;
+            root.innerHTML = '';
+            const submit = document.createElement('button');
+            submit.setAttribute('type', 'primary'); submit.setAttribute('data-testid', 'login-gaps-button'); submit.disabled = true; submit.textContent = 'Anmelden';
+            const digits = ['', '', '', ''];
+            const boxes = digits.map((_, i) => trackedInput({ type: 'tel', maxlength: '1', 'data-testid': 'password-module-inputs-gap-' + i }, v => {
+              digits[i] = v; submit.disabled = digits.some(d => d.length !== 1);
+              if (v && i < 3) boxes[i + 1].focus(); // auto-advance like the real page
+            }));
+            submit.onclick = () => { if (digits.join('') === '8264') { document.cookie = 'sid=abc; path=/; max-age=3600'; location.href = '/home'; } };
+            root.append(...boxes, submit);
+          };
+          root.append(input, next);
+        }, 300);
+        </script></body></html>
+        """;
+
+    [Test]
+    public async Task A_two_step_react_form_is_filled_and_submitted_page_by_page()
+    {
+        await using var browser = NewBrowser();
+        var service = new WebLoginService(browser, new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },
+            TimeProvider.System, NullLoggerFactory.Instance);
+        var spec = new WebLoginSpec(new Uri(_baseUrl + "twostep"), ["127.0.0.1"], new Uri(_baseUrl + "home"))
+        {
+            Autofill = new WebLoginAutofill("alice@example.com", "8264",
+            [
+                new WebLoginStep("[data-testid=login-email-email], input[type=email], input[placeholder*=Mail i]", WebLoginCredential.Username,
+                    "[data-testid=login-email-links]:not([disabled])"),
+                new WebLoginStep([new WebLoginField("[data-testid=password-module-inputs-gap-{0}]", WebLoginCredential.Secret, 4)],
+                    "[data-testid=login-gaps-button]:not([disabled])"),
+            ]),
+        };
+
+        await using var session = await service.StartAsync("user-1", spec, [], CancellationToken.None);
+        var result = await session.Completion.WaitAsync(TimeSpan.FromSeconds(60));
+
+        Assert.That(result.Success, Is.True, result.Error);
+        Assert.That(result.Cookies.Select(c => c.Name), Has.Member("sid"));
     }
 
     private BrowserService NewBrowser() => new(NullLogger<BrowserService>.Instance, new BrowserOptions { ExecutablePath = _chrome, IdleShutdown = TimeSpan.FromSeconds(1) });

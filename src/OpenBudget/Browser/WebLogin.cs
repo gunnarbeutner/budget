@@ -187,28 +187,100 @@ public sealed class WebLoginSession : IAsyncDisposable
     private bool _userCancelled;
 
     /// <summary>
-    /// Types the stored credentials into the bank's form and submits it. Anything unexpected (no form, no submit button)
-    /// shows the page to the user instead; a page that is already signed in (the stored session still works) needs nothing.
+    /// Types the stored credentials into the bank's form, step by step, and submits it. Anything unexpected (no form,
+    /// no submit button) shows the page to the user instead; a page that is already signed in (the stored session
+    /// still works) needs nothing. Selectors and the page path are logged, never the values.
     /// </summary>
     private async Task AutofillAsync(WebLoginAutofill fill, CancellationToken ct)
     {
-        if (!await _browser.FillAsync(fill.UsernameSelector, fill.Username, _options.FormTimeout))
+        for (var i = 0; i < fill.Steps.Count; i++)
         {
-            if (_spec.UrlMatches(_browser.Url)) return; // signed in already: WatchAsync finishes
-            _logger.LogInformation("Web login: the sign-in form did not appear; showing the page.");
-            SetMode(WebLoginMode.Interactive);
-            return;
-        }
-        ct.ThrowIfCancellationRequested();
-        if (!await _browser.FillAsync(fill.PasswordSelector, fill.Password, TimeSpan.FromSeconds(5)) || !await _browser.ClickAsync(fill.SubmitSelector))
-        {
-            _logger.LogInformation("Web login: the sign-in form could not be completed; showing the page.");
-            SetMode(WebLoginMode.Interactive);
-            return;
+            var step = fill.Steps[i];
+            var label = $"step {i + 1} of {fill.Steps.Count}";
+            if (step.WaitFor != null && !await WaitVisibleAsync(step.WaitFor, _options.FormTimeout, ct))
+            {
+                if (i == 0 && await SignedInAsync()) return;
+                ShowPage($"{label}: {step.WaitFor} did not appear");
+                return;
+            }
+            for (var f = 0; f < step.Fields.Count; f++)
+            {
+                var field = step.Fields[f];
+                // the first field of a step waits for the page (or the next page) to load; later ones are already there
+                var value = fill.ValueOf(field.Credential);
+                if (field.CharacterBoxes > 0 && value.Length != field.CharacterBoxes)
+                {
+                    ShowPage($"{label}: access code length doesn't match the form ({field.CharacterBoxes} boxes)");
+                    return;
+                }
+                var boxes = field.BoxSelectors();
+                for (var b = 0; b < boxes.Count; b++)
+                {
+                    var timeout = f == 0 && b == 0 ? _options.FormTimeout : TimeSpan.FromSeconds(5);
+                    var part = field.CharacterBoxes > 0 ? value[b].ToString() : value;
+                    if (!await _browser.FillAsync(boxes[b], part, timeout))
+                    {
+                        if (i == 0 && f == 0 && b == 0 && await SignedInAsync()) return; // signed in already: WatchAsync finishes
+                        ShowPage($"{label}: no field matched {boxes[b]}");
+                        return;
+                    }
+                    ct.ThrowIfCancellationRequested();
+                }
+            }
+            if (!await ClickWhenReadyAsync(step.SubmitSelector, ct))
+            {
+                ShowPage($"{label}: no enabled button matched {step.SubmitSelector}");
+                return;
+            }
+            _logger.LogInformation("Web login: submitted {Step} of the sign-in form.", label);
         }
         _submittedAt = DateTime.UtcNow;
         _logger.LogInformation("Web login: submitted the sign-in form; waiting for the bank.");
         SetMode(WebLoginMode.Waiting);
+    }
+
+    private void ShowPage(string reason)
+    {
+        _logger.LogInformation("Web login: {Reason} on {Path}; showing the page.", reason, SafePath(_browser.Url));
+        SetMode(WebLoginMode.Interactive);
+    }
+
+    /// <summary>Host and path of the page, without query or fragment (they may carry tokens).</summary>
+    private static string SafePath(Uri url) => url.IsAbsoluteUri ? url.GetLeftPart(UriPartial.Path) : "?";
+
+    /// <summary>
+    /// True when the page already satisfies the full success condition (URL and cookies). The URL prefix alone is not
+    /// enough: a bank's login page may itself live under the success prefix (Openbank's /amazon/login under /amazon/).
+    /// </summary>
+    private async Task<bool> SignedInAsync()
+    {
+        var url = _browser.Url;
+        if (!_spec.UrlMatches(url)) return false;
+        IReadOnlyList<CookieState> cookies = _spec.SuccessWhen != null ? await _browser.GetCookiesAsync() : [];
+        return _spec.IsSuccess(url, cookies);
+    }
+
+    private async Task<bool> WaitVisibleAsync(string selector, TimeSpan timeout, CancellationToken ct)
+    {
+        var until = DateTime.UtcNow + timeout;
+        while (true)
+        {
+            if (await _browser.IsVisibleAsync(selector)) return true;
+            if (DateTime.UtcNow >= until) return false;
+            await Task.Delay(TimeSpan.FromMilliseconds(100), ct);
+        }
+    }
+
+    /// <summary>Clicks the submit button, retrying a few seconds while the page's script has not enabled it yet.</summary>
+    private async Task<bool> ClickWhenReadyAsync(string selector, CancellationToken ct)
+    {
+        var until = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (true)
+        {
+            if (await _browser.ClickAsync(selector)) return true;
+            if (DateTime.UtcNow >= until) return false;
+            await Task.Delay(TimeSpan.FromMilliseconds(100), ct);
+        }
     }
 
     private async Task<WebLoginResult> WatchAsync(CancellationToken ct)

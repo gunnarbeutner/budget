@@ -29,10 +29,16 @@ public sealed class OpenbankConnector : IBankConnector
     internal const string GlobalPositionPath = "cb-api-global-position/v3/global-position";
     internal const string CardsPath = "cb-api-cards/v3/cards/";
 
-    // The sign-in form of Openbank's identity provider (Keycloak's default ids first, then generic fallbacks).
-    internal const string UsernameSelector = "input#username, input[name=username], input[type=email], input[name*=user i], input[autocomplete=username]";
-    internal const string PasswordSelector = "input#password, input[name=password], input[type=password]";
-    internal const string SubmitSelector = "#kc-login, button[type=submit], input[type=submit]";
+    // Openbank's sign-in page is a two-step React form: the e-mail address and "Weiter", then the 4-digit Zugangscode,
+    // one digit per box. The "Merken" checkbox is left alone. Buttons stay disabled until the page has seen the input,
+    // hence :not([disabled]).
+    internal const string UsernameSelector = "[data-testid=login-email-email], input[type=email], input[placeholder*=Mail i]";
+    internal const string ContinueSelector = "[data-testid=login-email-links]:not([disabled])";
+    internal const string AccessCodeBoxFormat = "[data-testid=password-module-inputs-gap-{0}]";
+    internal const int AccessCodeLength = 4;
+    internal const string SubmitSelector = "[data-testid=login-gaps-button]:not([disabled])";
+
+    internal static string AccessCodeBox(int i) => AccessCodeBoxFormat.Replace("{0}", i.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
 
     internal const string AccessTokenCookie = "accessToken";
     internal const string RefreshTokenCookie = "refreshToken";
@@ -58,7 +64,7 @@ public sealed class OpenbankConnector : IBankConnector
     public static ConnectorRegistration CreateRegistration(OpenbankOptions options) => new(
         TypeName,
         "Openbank",
-        "Openbank credit cards (kunden.openbankpay.com, e.g. Amazon Visa): balance, booked and pending card transactions. Sign in with your Openbank username and password: the app fills them in on Openbank's own sign-in page, where you confirm with the SMS code or in the Openbank app.",
+        "Openbank credit cards (kunden.openbankpay.com, e.g. Amazon Visa): balance, booked and pending card transactions. Sign in with your e-mail address and your 4-digit Openbank access code (Zugangscode): the app fills them in on Openbank's own sign-in page, where you confirm with the SMS code or in the Openbank app.",
         ctx => new OpenbankConnector(ctx, options),
         CredentialRequirement.UsernameAndSecret,
         Statements: false);
@@ -86,7 +92,11 @@ public sealed class OpenbankConnector : IBankConnector
             !url.AbsolutePath.StartsWith(LoginPage.AbsolutePath, StringComparison.OrdinalIgnoreCase)
             && cookies.Any(c => c.Name == AccessTokenCookie && c.Value.Length > 0 && IsSiteCookie(c)))
     {
-        Autofill = new WebLoginAutofill(credentials.Username, credentials.Secret, UsernameSelector, PasswordSelector, SubmitSelector),
+        Autofill = new WebLoginAutofill(credentials.Username, credentials.Secret,
+        [
+            new WebLoginStep(UsernameSelector, WebLoginCredential.Username, ContinueSelector),
+            new WebLoginStep([new WebLoginField(AccessCodeBoxFormat, WebLoginCredential.Secret, AccessCodeLength)], SubmitSelector),
+        ]),
     };
 
     private bool IsSiteCookie(CookieState c) =>

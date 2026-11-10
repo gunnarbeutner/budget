@@ -45,6 +45,9 @@ internal sealed class FakeBrowserSession : IBrowserSession
 
     public List<string> Clicked { get; } = [];
 
+    /// <summary>Runs (under the page lock) after a field was filled: a React-like page enables its button only now.</summary>
+    public Action<FakeBrowserSession, string>? OnFill { get; set; }
+
     /// <summary>Runs when something is clicked (the fake bank reacts to the submit button).</summary>
     public Func<FakeBrowserSession, string, Task>? OnClick { get; set; }
 
@@ -59,6 +62,7 @@ internal sealed class FakeBrowserSession : IBrowserSession
                 if (Visible.Contains(selector))
                 {
                     Filled[selector] = value;
+                    OnFill?.Invoke(this, selector);
                     return true;
                 }
             }

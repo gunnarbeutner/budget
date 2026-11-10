@@ -85,6 +85,17 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
                 // focus and select what is there, then type like a user so the page's own input handlers see it
                 await el.EvaluateFunctionAsync("e => { e.focus(); if (e.select) e.select(); }");
                 await el.TypeAsync(value, new PuppeteerSharp.Input.TypeOptions { Delay = 25 });
+                // Controlled inputs (React) may drop or rewrite keystrokes: when the value did not stick, set it through the
+                // native setter (bypassing React's value tracker) and fire a bubbling input event so onChange runs.
+                await el.EvaluateFunctionAsync(
+                    @"(e, v) => {
+                        if (e.value !== v) {
+                            const proto = e instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                            Object.getOwnPropertyDescriptor(proto, 'value').set.call(e, v);
+                            e.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        e.dispatchEvent(new Event('change', { bubbles: true }));
+                    }", value);
             }
             return true;
         }

@@ -60,21 +60,80 @@ public sealed class WebLoginSpec
     }
 }
 
-/// <summary>
-/// The bank's sign-in form: CSS selectors of its fields and the values to type. The values are never logged or shown
-/// (<see cref="ToString"/> leaves them out).
-/// </summary>
-public sealed class WebLoginAutofill(string username, string password, string usernameSelector, string passwordSelector, string submitSelector)
+/// <summary>Which stored credential a sign-in field receives.</summary>
+public enum WebLoginCredential
 {
-    public string Username { get; } = username;
+    Username,
+    Secret,
+}
 
-    public string Password { get; } = password;
+/// <summary>
+/// One field of a sign-in step: a CSS selector and the credential typed into it. With <paramref name="CharacterBoxes"/>
+/// &gt; 0 the credential goes one character per box (an access code split over single-digit inputs):
+/// <paramref name="Selector"/> is then a format string whose {0} is the box index (0-based), and a credential of any other
+/// length is not entered at all.
+/// </summary>
+public sealed record WebLoginField(string Selector, WebLoginCredential Credential, int CharacterBoxes = 0)
+{
+    /// <summary>The selector of each box (or just <see cref="Selector"/> for a plain field).</summary>
+    public IReadOnlyList<string> BoxSelectors() =>
+        CharacterBoxes > 0
+            ? Enumerable.Range(0, CharacterBoxes).Select(i => Selector.Replace("{0}", i.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)).ToList()
+            : [Selector];
+}
 
-    public string UsernameSelector { get; } = usernameSelector;
+/// <summary>
+/// One page of a sign-in form: the fields to fill, the button that submits them and, optionally, an element to wait for
+/// before filling (the step's first field is always waited for).
+/// </summary>
+public sealed record WebLoginStep(IReadOnlyList<WebLoginField> Fields, string SubmitSelector, string? WaitFor = null)
+{
+    public WebLoginStep(string fieldSelector, WebLoginCredential credential, string submitSelector, string? waitFor = null)
+        : this([new WebLoginField(fieldSelector, credential)], submitSelector, waitFor)
+    {
+    }
+}
 
-    public string PasswordSelector { get; } = passwordSelector;
+/// <summary>
+/// The bank's sign-in form: an ordered list of steps (one page with username and password, or e.g. an e-mail page
+/// followed by a password page) and the values to type. The values are never logged or shown (<see cref="ToString"/>
+/// leaves them out).
+/// </summary>
+public sealed class WebLoginAutofill
+{
+    /// <summary>A single page with a username field, a password field and a submit button.</summary>
+    public WebLoginAutofill(string username, string password, string usernameSelector, string passwordSelector, string submitSelector)
+        : this(username, password, [new WebLoginStep(
+            [new WebLoginField(usernameSelector, WebLoginCredential.Username), new WebLoginField(passwordSelector, WebLoginCredential.Secret)],
+            submitSelector)])
+    {
+    }
 
-    public string SubmitSelector { get; } = submitSelector;
+    public WebLoginAutofill(string username, string password, IReadOnlyList<WebLoginStep> steps)
+    {
+        if (steps.Count == 0 || steps.Any(s => s.Fields.Count == 0))
+            throw new ArgumentException("At least one step with at least one field is required.", nameof(steps));
+        Username = username;
+        Password = password;
+        Steps = steps;
+    }
 
-    public override string ToString() => $"Autofill({UsernameSelector}, {PasswordSelector}, {SubmitSelector})";
+    public string Username { get; }
+
+    public string Password { get; }
+
+    public IReadOnlyList<WebLoginStep> Steps { get; }
+
+    /// <summary>The field that receives the username.</summary>
+    public string UsernameSelector => Steps.SelectMany(s => s.Fields).First(f => f.Credential == WebLoginCredential.Username).Selector;
+
+    /// <summary>The field that receives the password (still visible after submitting means the sign-in got stuck).</summary>
+    public string PasswordSelector => Steps.SelectMany(s => s.Fields).Last(f => f.Credential == WebLoginCredential.Secret).BoxSelectors()[0];
+
+    public string SubmitSelector => Steps[^1].SubmitSelector;
+
+    public string ValueOf(WebLoginCredential credential) => credential == WebLoginCredential.Username ? Username : Password;
+
+    public override string ToString() =>
+        "Autofill(" + string.Join(" | ", Steps.Select(s => string.Join(", ", s.Fields.Select(f => f.Selector)) + " -> " + s.SubmitSelector)) + ")";
 }
