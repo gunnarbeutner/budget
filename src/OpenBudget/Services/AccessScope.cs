@@ -51,7 +51,8 @@ public sealed class AccessScope
         IReadOnlyDictionary<int, ProjectRole> projectRoles,
         int[] ownedSourceIds,
         int[] visibleSourceIds,
-        long[] sharedAccountIds)
+        long[] sharedAccountIds,
+        long[]? editableSharedAccountIds = null)
     {
         UserId = userId;
         IsAdmin = isAdmin;
@@ -59,6 +60,7 @@ public sealed class AccessScope
         OwnedSourceIds = ownedSourceIds;
         VisibleSourceIds = visibleSourceIds;
         SharedAccountIds = sharedAccountIds;
+        EditableSharedAccountIds = editableSharedAccountIds ?? [];
         VisibleProjectIds = projectRoles.Keys.ToArray();
         OwnedProjectIds = projectRoles.Where(kv => kv.Value == ProjectRole.Owner).Select(kv => kv.Key).ToArray();
     }
@@ -75,6 +77,9 @@ public sealed class AccessScope
 
     /// <summary>Accounts assigned to projects that are shared with (not owned by) the user.</summary>
     public long[] SharedAccountIds { get; }
+
+    /// <summary>The part of <see cref="SharedAccountIds"/> that belongs to projects shared with the user as editor.</summary>
+    public long[] EditableSharedAccountIds { get; }
 
     public int[] VisibleProjectIds { get; }
     public int[] OwnedProjectIds { get; }
@@ -100,6 +105,14 @@ public sealed class AccessScope
         if (change.SourceId is { } sourceId && !CanSeeSource(sourceId)) return false;
         return true;
     }
+
+    /// <summary>
+    /// Whether the user may categorize / annotate / check the transactions of an account: the owner of its
+    /// source, or an editor of a project the account is assigned to. Viewers never. (Whether the account's
+    /// provider allows editing at all is a separate rule, see <see cref="TransactionEditRules"/>.)
+    /// </summary>
+    public bool CanEditTransactionsOf(int sourceId, long? accountId) =>
+        IsAuthenticated && (OwnsSource(sourceId) || (accountId is { } a && Array.IndexOf(EditableSharedAccountIds, a) >= 0));
 
     public void RequireRole(int projectId, ProjectRole required)
     {

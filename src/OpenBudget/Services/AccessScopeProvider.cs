@@ -157,6 +157,7 @@ public sealed class AccessScopeProvider : IDisposable
 
         var sharedProjectIds = roles.Where(kv => kv.Value is ProjectRole.Viewer or ProjectRole.Editor)
             .Select(kv => kv.Key).ToArray();
+        var editorProjectIds = roles.Where(kv => kv.Value == ProjectRole.Editor).Select(kv => kv.Key).ToArray();
         var sharedAccounts = sharedProjectIds.Length == 0
             ? []
             : await db.ProjectAccountAssignments.AsNoTracking()
@@ -164,7 +165,14 @@ public sealed class AccessScopeProvider : IDisposable
                 .Select(a => a.AccountId)
                 .Distinct()
                 .ToArrayAsync(ct);
+        var editableAccounts = editorProjectIds.Length == 0
+            ? []
+            : await db.ProjectAccountAssignments.AsNoTracking()
+                .Where(a => editorProjectIds.Contains(a.ProjectId))
+                .Select(a => a.AccountId)
+                .Distinct()
+                .ToArrayAsync(ct);
 
-        return new AccessScope(userId, user.IsAdmin, roles, ownedSources, visibleSources, sharedAccounts);
+        return new AccessScope(userId, user.IsAdmin, roles, ownedSources, visibleSources, sharedAccounts, editableAccounts);
     }
 }

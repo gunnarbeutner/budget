@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using OpenBudget.Services;
 
 namespace OpenBudget.Models;
 
@@ -24,8 +25,34 @@ public class TransactionQuery
     public string? SearchText { get; init; }
     public decimal? MinAbsAmount { get; init; }
     public decimal? MaxAbsAmount { get; init; }
+
+    /// <summary>Only rows with (true) / without (false) the check mark; null = both.</summary>
+    public bool? Checked { get; init; }
+
+    /// <summary>Only incoming (positive) or outgoing (negative) amounts.</summary>
+    public AmountDirection Direction { get; init; }
+
+    /// <summary>Only rows still carrying the "new" marker.</summary>
+    public bool NewOnly { get; init; }
+
+    /// <summary>Booking dates from here (inclusive), UTC; null = unbounded.</summary>
+    public DateTime? FromUtc { get; init; }
+
+    /// <summary>Booking dates before this instant, UTC; null = unbounded.</summary>
+    public DateTime? ToUtcExclusive { get; init; }
+
+    /// <summary>Only rows whose payee equals this name (case-insensitive, trimmed): "show similar transactions".</summary>
+    public string? PayeeEquals { get; init; }
+
     public int Skip { get; init; }
     public int Take { get; init; } = 50;
+}
+
+public enum AmountDirection
+{
+    Any,
+    Incoming,
+    Outgoing,
 }
 
 [StructLayout(LayoutKind.Auto)]
@@ -63,4 +90,32 @@ public class TransactionRow
 
     /// <summary>True while the booking is only reserved ("vorgemerkt") and not yet booked.</summary>
     public bool IsPending { get; init; }
+
+    public int SourceId { get; init; }
+
+    /// <summary>OpenBudget's own note (MoneyMoney's comment for MoneyMoney-owned rows).</summary>
+    public string? Note { get; init; }
+
+    public bool IsChecked { get; init; }
+
+    /// <summary>The "unread" dot.</summary>
+    public bool IsNew { get; init; }
+
+    /// <summary>"import", "manual" or "rule"; see <see cref="TransactionCategorySource"/>.</summary>
+    public string CategorySetBy { get; init; } = TransactionCategorySource.Import;
+
+    public int? RuleId { get; init; }
+
+    public string? AccountProvider { get; init; }
+
+    /// <summary>Whether the current user may change category, note and check mark of this row, and if not why.</summary>
+    public EditBlock EditBlock { get; init; } = EditBlock.MoneyMoney;
+
+    public bool CanEdit => EditBlock == EditBlock.None;
+
+    public DateTime? ValueDate { get; init; }
+    public string? CounterpartyIban { get; init; }
+    public string? CounterpartyBic { get; init; }
+    public string? BookingText { get; init; }
+    public string? BankReference { get; init; }
 }

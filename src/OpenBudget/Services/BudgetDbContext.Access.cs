@@ -95,6 +95,8 @@ public partial class BudgetDbContext
     /// types, project name/description: Editor or Owner of the project;</item>
     /// <item>account assignments, shares, parent, sort order, delete, creating projects: project Owner
     /// (and the source must be owned);</item>
+    /// <item>a transaction's category, note, check mark and new marker (and nothing else of it): the source Owner or an
+    /// Editor of a project the account is in - and only while the account is not owned by MoneyMoney;</item>
     /// <item>sources and everything imported or configured per source: source Owner.</item>
     /// </list>
     /// </summary>
@@ -102,6 +104,7 @@ public partial class BudgetDbContext
     {
         var budgetEntries = new List<int>();
         var loginAccountLogins = new List<int>();
+        var editedTransactions = new List<(int SourceId, long? AccountId)>();
 
         foreach (var entry in ChangeTracker.Entries().ToList())
         {
@@ -145,6 +148,10 @@ public partial class BudgetDbContext
                     EnforceSourceWrite(scope, entry, source);
                     break;
 
+                case Transaction transaction:
+                    EnforceTransactionWrite(scope, entry, transaction, editedTransactions);
+                    break;
+
                 case BankLogin login:
                     EnforceLoginWrite(scope, entry, login);
                     break;
@@ -163,6 +170,23 @@ public partial class BudgetDbContext
                     else if (entry.Entity is AppUser)
                         throw new AccessDeniedException("Users are managed through the CLI only.");
                     break;
+            }
+        }
+
+        // Edits of user-owned transaction fields additionally require an account that is not MoneyMoney's any more.
+        // The account is looked up through the (filtered) set; an account the user cannot see counts as read-only.
+        if (editedTransactions.Count > 0)
+        {
+            var accountIds = editedTransactions.Where(e => e.AccountId.HasValue).Select(e => e.AccountId!.Value).Distinct().ToList();
+            var providers = await Set<Account>().AsNoTracking().Where(a => accountIds.Contains(a.Id)).Select(a => new { a.Id, a.Provider }).ToDictionaryAsync(a => a.Id, a => a.Provider, ct);
+            foreach (var (sourceId, accountId) in editedTransactions)
+            {
+                string? provider = accountId is { } id && providers.TryGetValue(id, out var p) ? p : null;
+                var block = TransactionEditRules.Check(scope, sourceId, accountId, provider);
+                if (block == EditBlock.MoneyMoney)
+                    throw new AccessDeniedException("Transactions of accounts still owned by MoneyMoney are read-only.");
+                if (block == EditBlock.NoPermission)
+                    throw new AccessDeniedException("Not allowed to edit these transactions.");
             }
         }
 
@@ -201,6 +225,31 @@ public partial class BudgetDbContext
                 scope.RequireRole(projectId, ProjectRole.Editor);
             }
         }
+    }
+
+    /// <summary>
+    /// Changing only user-owned fields (category, note, check mark, new marker) of an existing transaction is allowed to
+    /// the source's owner and to editors of a project the account is assigned to (provider rule: see the caller);
+    /// everything else on a transaction is refused for a changed bank field, and creating or deleting is the source owner's alone.
+    /// </summary>
+    private static void EnforceTransactionWrite(
+        AccessScope scope, Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, Transaction transaction,
+        List<(int SourceId, long? AccountId)> edited)
+    {
+        var onlyEditable = entry.State == EntityState.Modified
+            && entry.Properties.Where(p => p.IsModified).All(p => TransactionEditRules.EditableProperties.Contains(p.Metadata.Name));
+        if (!onlyEditable)
+        {
+            // Bank fields (amount, date, payee, purpose, ...) are never edited through a user's context; only the
+            // import and the connectors (system contexts) write them. Creating/deleting rows stays the source owner's.
+            if (entry.State == EntityState.Modified)
+                throw new AccessDeniedException("The bank's fields of a transaction cannot be changed.");
+            scope.RequireSourceOwner(transaction.SourceId);
+            return;
+        }
+        if (!scope.CanEditTransactionsOf(transaction.SourceId, transaction.AccountId))
+            throw new AccessDeniedException("Not allowed to edit these transactions.");
+        edited.Add((transaction.SourceId, transaction.AccountId));
     }
 
     private static void EnforceProjectWrite(AccessScope scope, Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, Project project)

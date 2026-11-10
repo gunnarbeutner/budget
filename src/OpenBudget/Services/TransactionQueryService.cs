@@ -44,6 +44,7 @@ public class TransactionQueryService
             .Select(t => new
             {
                 t.Id,
+                t.SourceId,
                 t.Timestamp,
                 t.Name,
                 t.Comment,
@@ -53,7 +54,17 @@ public class TransactionQueryService
                 t.Amount,
                 t.Currency,
                 t.Splitted,
-                t.Booked
+                t.Booked,
+                t.Note,
+                t.Checked,
+                t.IsNew,
+                t.CategorySetBy,
+                t.RuleId,
+                t.ValueTimestamp,
+                t.CounterpartyIban,
+                t.CounterpartyBic,
+                t.BookingText,
+                t.BankReference
             })
             .ToListAsync(ct);
 
@@ -63,9 +74,10 @@ public class TransactionQueryService
         var catNames = catIds.Count == 0
             ? new Dictionary<long, string>()
             : await db.Categories.Where(c => catIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name ?? "", ct);
-        var acctNames = acctIds.Count == 0
-            ? new Dictionary<long, string>()
-            : await db.Accounts.Where(a => acctIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.Name ?? "", ct);
+        var accts = acctIds.Count == 0
+            ? new Dictionary<long, (string Name, string Provider)>()
+            : (await db.Accounts.Where(a => acctIds.Contains(a.Id)).Select(a => new { a.Id, a.Name, a.Provider }).ToListAsync(ct))
+                .ToDictionary(a => a.Id, a => (Name: a.Name ?? "", a.Provider));
 
         var rows = rowsRaw.Select(r => new TransactionRow
         {
@@ -77,7 +89,21 @@ public class TransactionQueryService
             CategoryId = r.CategoryId,
             CategoryName = r.CategoryId.HasValue ? catNames.GetValueOrDefault(r.CategoryId.Value) : null,
             AccountId = r.AccountId,
-            AccountName = r.AccountId.HasValue ? acctNames.GetValueOrDefault(r.AccountId.Value) : null,
+            AccountName = r.AccountId.HasValue && accts.TryGetValue(r.AccountId.Value, out var acct) ? acct.Name : null,
+            AccountProvider = r.AccountId.HasValue && accts.TryGetValue(r.AccountId.Value, out var prov) ? prov.Provider : null,
+            EditBlock = TransactionEditRules.Check(db.Scope, r.SourceId, r.AccountId,
+                r.AccountId.HasValue && accts.TryGetValue(r.AccountId.Value, out var p2) ? p2.Provider : null),
+            SourceId = r.SourceId,
+            Note = r.Note,
+            IsChecked = r.Checked,
+            IsNew = r.IsNew,
+            CategorySetBy = r.CategorySetBy,
+            RuleId = r.RuleId,
+            ValueDate = r.ValueTimestamp is { } vt ? DateTimeOffset.FromUnixTimeSeconds(vt).UtcDateTime : null,
+            CounterpartyIban = r.CounterpartyIban,
+            CounterpartyBic = r.CounterpartyBic,
+            BookingText = r.BookingText,
+            BankReference = r.BankReference,
             Amount = r.Amount / 100m,
             Currency = r.Currency,
             IsSplitChild = r.Splitted == SplitState.Child,
@@ -123,7 +149,7 @@ public class TransactionQueryService
             .CountAsync(ct);
     }
 
-    private static IQueryable<Transaction> BuildFilteredQuery(BudgetDbContext db, TransactionQuery query)
+    internal static IQueryable<Transaction> BuildFilteredQuery(BudgetDbContext db, TransactionQuery query)
     {
         var baseQuery = db.Transactions
             .Where(t => t.SourceId == query.SourceId)
@@ -159,6 +185,7 @@ public class TransactionQueryService
             baseQuery = baseQuery.Where(t =>
                 (t.Name != null && EF.Functions.Like(t.Name, $"%{needle}%"))
                 || (t.Comment != null && EF.Functions.Like(t.Comment, $"%{needle}%"))
+                || (t.Note != null && EF.Functions.Like(t.Note, $"%{needle}%"))
                 || (t.Purpose != null && EF.Functions.Like(t.Purpose, $"%{needle}%")));
         }
 
@@ -173,7 +200,89 @@ public class TransactionQueryService
             baseQuery = baseQuery.Where(t => (t.Amount >= 0 ? t.Amount : -t.Amount) <= maxCents);
         }
 
+        if (query.Checked is { } wantChecked) baseQuery = baseQuery.Where(t => t.Checked == wantChecked);
+        if (query.NewOnly) baseQuery = baseQuery.Where(t => t.IsNew);
+        if (query.Direction == AmountDirection.Incoming) baseQuery = baseQuery.Where(t => t.Amount > 0);
+        else if (query.Direction == AmountDirection.Outgoing) baseQuery = baseQuery.Where(t => t.Amount < 0);
+        if (query.FromUtc is { } from)
+        {
+            var fromTs = new DateTimeOffset(DateTime.SpecifyKind(from, DateTimeKind.Utc)).ToUnixTimeSeconds();
+            baseQuery = baseQuery.Where(t => t.Timestamp >= fromTs);
+        }
+        if (query.ToUtcExclusive is { } to)
+        {
+            var toTs = new DateTimeOffset(DateTime.SpecifyKind(to, DateTimeKind.Utc)).ToUnixTimeSeconds();
+            baseQuery = baseQuery.Where(t => t.Timestamp < toTs);
+        }
+        if (!string.IsNullOrWhiteSpace(query.PayeeEquals))
+        {
+            var payee = query.PayeeEquals.Trim();
+            baseQuery = baseQuery.Where(t => t.Name != null && EF.Functions.Collate(t.Name, "NOCASE") == payee);
+        }
+
         return baseQuery;
+    }
+
+    /// <summary>
+    /// The ids matching a filter in list order (newest first), for select-all and shift-click ranges. Capped so a select-all
+    /// on a huge filter stays bounded.
+    /// </summary>
+    public async Task<List<long>> QueryIdsAsync(TransactionQuery query, int skip = 0, int take = 50_000, CancellationToken ct = default)
+    {
+        if (query.SourceId <= 0) throw new ArgumentException("SourceId is required.", nameof(query));
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await BuildFilteredQuery(db, query)
+            .OrderByDescending(t => t.Timestamp)
+            .ThenByDescending(t => t.Id)
+            .Skip(skip)
+            .Take(take)
+            .Select(t => t.Id)
+            .ToListAsync(ct);
+    }
+
+    /// <summary>Sum (cents) of the given transactions the user can see, for the action bar's "N selected, sum".</summary>
+    public async Task<(int Count, decimal Sum)> GetSelectionTotalsAsync(IReadOnlyCollection<long> ids, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var count = 0;
+        var sum = 0L;
+        foreach (var chunk in ids.Chunk(500))
+        {
+            var part = chunk;
+            var rows = await db.Transactions.Where(t => part.Contains(t.Id)).Select(t => t.Amount).ToListAsync(ct);
+            count += rows.Count;
+            sum += rows.Sum();
+        }
+        return (count, sum / 100m);
+    }
+
+    /// <summary>Booked flows (UTC time, amount in euros) of an account, newest first, for the running balance.</summary>
+    public async Task<List<(DateTime Date, decimal Amount)>> GetBookedFlowsAsync(long accountId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var raw = await db.Transactions
+            .Where(t => t.AccountId == accountId && t.Booked && t.Splitted != 1)
+            .OrderByDescending(t => t.Timestamp)
+            .Select(t => new { t.Timestamp, t.Amount })
+            .ToListAsync(ct);
+        return raw.Select(r => (DateTimeOffset.FromUnixTimeSeconds(r.Timestamp).UtcDateTime, r.Amount / 100m)).ToList();
+    }
+
+    /// <summary>
+    /// The statement document (PDF) a bank published for an account that covers a booking: the first one dated on or after
+    /// the booking within 62 days. Null when there is none (or the user may not see it).
+    /// </summary>
+    public async Task<(long Id, string Name)?> FindStatementAsync(long accountId, DateTime bookingUtc, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var from = DateTime.SpecifyKind(bookingUtc.Date, DateTimeKind.Utc);
+        var to = from.AddDays(62);
+        var s = await db.BankStatements.AsNoTracking()
+            .Where(x => x.AccountId == accountId && x.Date >= from && x.Date <= to)
+            .OrderBy(x => x.Date)
+            .Select(x => new { x.Id, x.Name })
+            .FirstOrDefaultAsync(ct);
+        return s == null ? null : (s.Id, s.Name);
     }
 
     /// <summary>
