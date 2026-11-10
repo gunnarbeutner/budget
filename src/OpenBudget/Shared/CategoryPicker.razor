@@ -12,73 +12,53 @@
     <input @ref="input" type="search" class="form-control form-control-sm cp-search" autocomplete="off"
            placeholder="@L["Search_Placeholder"]" aria-label="@L["Search_Placeholder"]" data-testid="category-picker-search"
            value="@query" @oninput="OnInput" />
-    <div class="cp-list" @ref="list">
-        @{
-            var index = 0;
-        }
-        @if (string.IsNullOrWhiteSpace(query))
-        {
-            @if (AllowRemove)
+    <div class="cp-scroll">
+        <div class="cp-list" @ref="list" role="listbox" aria-label="@L["Title"]">
+            @foreach (var item in items)
             {
-                var i = index++;
-                <button type="button" class="cp-row cp-remove @Active(i)" data-testid="category-picker-remove" @onclick="() => Pick(null)">
-                    <i class="bi bi-x-circle me-1" aria-hidden="true"></i>@L["Remove"]
-                </button>
-                entries.Add(null);
-            }
-            @if (Suggestions.Count > 0)
-            {
-                <div class="cp-section">@L["Suggestions"]</div>
-                @foreach (var s in Suggestions)
+                switch (item.Kind)
                 {
-                    var i = index++;
-                    var id = s.CategoryId;
-                    <button type="button" class="cp-row @Active(i)" data-testid="category-picker-suggestion" @onclick="() => Pick(id)">
-                        <span class="cp-name">@s.Path</span>
-                        <span class="cp-reason">@Reason(s)</span>
-                    </button>
-                    entries.Add(id);
+                    case ItemKind.Section:
+                        <div class="cp-section">@item.Name</div>
+                        break;
+                    case ItemKind.Group:
+                        <div class="cp-group" style="@Indent(item.Depth)" data-testid="category-picker-group">
+                            <svg class="cp-ribbon" viewBox="0 0 12 16" aria-hidden="true"><path d="M1 1h10v14l-5-3.6L1 15z" /></svg>
+                            <span class="cp-name">@item.Name</span>
+                        </div>
+                        break;
+                    case ItemKind.Empty:
+                        <div class="cp-empty text-body-secondary small">@L["NoMatch"]</div>
+                        break;
+                    case ItemKind.Remove:
+                        <button type="button" class="cp-row cp-remove @Active(item)" role="option" aria-selected="@(item.Index == active)"
+                                data-testid="category-picker-remove" @onclick="() => Pick(null)">
+                            <i class="bi bi-x-circle cp-icon" aria-hidden="true"></i><span class="cp-name">@L["Remove"]</span>
+                        </button>
+                        break;
+                    default:
+                        var id = item.Id;
+                        var current = id == CurrentCategoryId;
+                        <button type="button" class="cp-row @Active(item) @(current ? "cp-current" : "")" style="@(Indent(item.Depth) + item.ColorStyle)"
+                                role="option" aria-selected="@(item.Index == active)" aria-current="@(current ? "true" : null)"
+                                data-testid="@(item.Kind == ItemKind.Suggestion ? "category-picker-suggestion" : "category-picker-option")"
+                                @onclick="() => Pick(id)">
+                            <svg class="cp-ribbon" viewBox="0 0 12 16" aria-hidden="true"><path d="M1 1h10v14l-5-3.6L1 15z" /></svg>
+                            <span class="cp-name">@item.Name</span>
+                            @if (item.Reason is { } reason)
+                            {
+                                <span class="cp-reason">@reason</span>
+                            }
+                            @if (current)
+                            {
+                                <i class="bi bi-check2 cp-check" aria-hidden="true"></i>
+                            }
+                        </button>
+                        break;
                 }
             }
-            <div class="cp-section">@L["AllCategories"]</div>
-            @foreach (var row in Data.Tree)
-            {
-                if (row.IsGroup)
-                {
-                    <div class="cp-group" style="@Indent(row.Depth)">@row.Name</div>
-                }
-                else
-                {
-                    var i = index++;
-                    var id = row.Id;
-                    <button type="button" class="cp-row @Active(i) @(id == CurrentCategoryId ? "cp-current" : "")" style="@Indent(row.Depth)"
-                            data-testid="category-picker-option" @onclick="() => Pick(id)">
-                        <span class="cp-name">@row.Name</span>
-                        @if (id == CurrentCategoryId)
-                        {
-                            <i class="bi bi-check2 ms-1" aria-hidden="true"></i>
-                        }
-                    </button>
-                    entries.Add(id);
-                }
-            }
-        }
-        else
-        {
-            @foreach (var option in hits)
-            {
-                var i = index++;
-                var id = option.Id;
-                <button type="button" class="cp-row @Active(i)" data-testid="category-picker-option" @onclick="() => Pick(id)">
-                    <span class="cp-name">@option.Path</span>
-                </button>
-                entries.Add(id);
-            }
-            @if (hits.Count == 0)
-            {
-                <div class="cp-empty text-body-secondary small">@L["NoMatch"]</div>
-            }
-        }
+        </div>
+        <div class="cp-more" aria-hidden="true"><i class="bi bi-chevron-down"></i></div>
     </div>
 </div>
 
@@ -94,31 +74,32 @@
     [Parameter] public EventCallback<long?> OnPick { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
+    private enum ItemKind { Section, Group, Empty, Remove, Suggestion, Leaf }
+
+    // One rendered line. Index is the position among the pickable lines (-1 for headers), which Enter and the arrows address.
+    private sealed record Item(ItemKind Kind, int Index, int Depth, long? Id, string Name, string? Reason = null, string ColorStyle = "");
+
     private ElementReference input;
     private ElementReference list;
     private string query = "";
-    private IReadOnlyList<CategoryOption> hits = [];
+    private List<Item> items = [];
+    private List<long?> entries = [];
     private int active;
     private bool scrollPending;
 
-    // Rebuilt on every render, in render order: the pickable entries (null = remove), so Enter and the arrows address them by index.
-    private readonly List<long?> entries = [];
-
     private string PositionStyle =>
-        FormattableString.Invariant($"left: max(0.5rem, min({X:0}px, calc(100vw - 23rem))); top: max(0.5rem, min({Y:0}px, calc(100vh - 28rem)));");
+        FormattableString.Invariant($"left: max(0.5rem, min({X:0}px, calc(100vw - 25.5rem))); top: max(0.5rem, min({Y:0}px, calc(100vh - 31rem)));");
 
     private static string Indent(int depth) =>
-        FormattableString.Invariant($"padding-left: {0.6 + depth * 1.0:0.##}rem;");
+        FormattableString.Invariant($"padding-left: {0.5 + depth * 1.5:0.##}rem;");
 
-    private string Active(int i) => i == active ? "cp-active" : "";
+    private string Active(Item item) => item.Index == active ? "cp-active" : "";
 
     private string Reason(CategorySuggestion s) => s.Reason == SuggestionReason.SamePayee
         ? L["Reason_SamePayee", s.Count].Value
         : L["Reason_Recent"].Value;
 
-    protected override void OnInitialized() => hits = Data.Options;
-
-    protected override void OnParametersSet() => entries.Clear();
+    protected override void OnParametersSet() => Rebuild();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -128,19 +109,68 @@
             scrollPending = false;
             await JS.InvokeVoidAsync("obScrollActive", list);
         }
+        await JS.InvokeVoidAsync("obPickerMoreHint", list);
     }
 
-    protected override bool ShouldRender()
+    private void Rebuild()
     {
-        entries.Clear();
-        return true;
+        items = [];
+        entries = [];
+        void AddPick(ItemKind kind, int depth, long? id, string name, string? reason = null, string? color = null)
+        {
+            var style = kind == ItemKind.Remove || id is not { } cid ? "" : CategoryColors.For(cid, color).Style;
+            items.Add(new Item(kind, entries.Count, depth, id, name, reason, style));
+            entries.Add(id);
+        }
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            if (AllowRemove) AddPick(ItemKind.Remove, 0, null, L["Remove"]);
+            if (Suggestions.Count > 0)
+            {
+                items.Add(new Item(ItemKind.Section, -1, 0, null, L["Suggestions"]));
+                foreach (var s in Suggestions) AddPick(ItemKind.Suggestion, 0, s.CategoryId, s.Path, Reason(s), Data.Find(s.CategoryId)?.Color);
+            }
+            items.Add(new Item(ItemKind.Section, -1, 0, null, L["AllCategories"]));
+            foreach (var row in Data.Tree)
+            {
+                if (row.IsGroup) items.Add(new Item(ItemKind.Group, -1, row.Depth, row.Id, row.Name));
+                else AddPick(ItemKind.Leaf, row.Depth, row.Id, row.Name, color: row.Color);
+            }
+            active = Math.Min(active, Math.Max(0, entries.Count - 1));
+            return;
+        }
+
+        // Search: the matching categories in tree order, each under the group headers above it for context.
+        var hits = CategoryPickerLogic.Search(Data.Options, query);
+        var rank = new Dictionary<long, int>();
+        for (var i = 0; i < hits.Count; i++) rank.TryAdd(hits[i].Id, i);
+        var stack = new List<CategoryPickerRow>();
+        var emitted = new HashSet<CategoryPickerRow>();
+        var best = (Rank: int.MaxValue, Index: 0);
+        foreach (var row in Data.Tree)
+        {
+            while (stack.Count > 0 && stack[^1].Depth >= row.Depth) stack.RemoveAt(stack.Count - 1);
+            if (row.IsGroup)
+            {
+                stack.Add(row);
+                continue;
+            }
+            if (!rank.TryGetValue(row.Id, out var r)) continue;
+            foreach (var g in stack.Where(emitted.Add)) items.Add(new Item(ItemKind.Group, -1, g.Depth, g.Id, g.Name));
+            if (r < best.Rank) best = (r, entries.Count);
+            AddPick(ItemKind.Leaf, row.Depth, row.Id, row.Name, color: row.Color);
+        }
+        if (entries.Count == 0) items.Add(new Item(ItemKind.Empty, -1, 0, null, ""));
+        // Enter keeps picking the best hit, wherever it sits in the tree.
+        active = best.Index;
     }
 
     private void OnInput(ChangeEventArgs e)
     {
         query = e.Value?.ToString() ?? "";
-        hits = CategoryPickerLogic.Search(Data.Options, query);
         active = 0;
+        Rebuild();
         scrollPending = true;
     }
 

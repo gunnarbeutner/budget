@@ -8,7 +8,8 @@ namespace OpenBudget.Services;
 public sealed record CategoryOption(long Id, string Name, string Path, string? Color);
 
 /// <summary>One row of the picker's tree: a group header (not assignable) or a category.</summary>
-public sealed record CategoryPickerRow(bool IsGroup, int Depth, long Id, string Name, string Path);
+/// <see cref="Color"/> is the category's own color (leaves only; null = palette by id).
+public sealed record CategoryPickerRow(bool IsGroup, int Depth, long Id, string Name, string Path, string? Color = null);
 
 /// <summary>The categories of one source ready for the picker: a flat list (for search and lookup) and the tree rows.</summary>
 public sealed class CategoryPickerData
@@ -55,7 +56,7 @@ public static class CategoryPickerLogic
                 {
                     var path = prefix + leaf.Name;
                     options.Add(new CategoryOption(leaf.Id, leaf.Name!, path, leaf.Color));
-                    rows.Add(new CategoryPickerRow(false, depth, leaf.Id, leaf.Name!, path));
+                    rows.Add(new CategoryPickerRow(false, depth, leaf.Id, leaf.Name!, path, leaf.Color));
                 }
                 else if (item.Group is { } g && onPath.Add(g.Id))
                 {

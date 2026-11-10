@@ -347,3 +347,17 @@ document.addEventListener("mousedown", function (e) {
     var el = e.target instanceof Element ? e.target.closest("[data-ob-longpress]") : null;
     if (el) e.preventDefault();
 }, true);
+
+// Category picker: toggles .cp-has-more on the list's wrapper while content remains below the visible part (fade + ▾ hint).
+window.obPickerMoreHint = function (list) {
+    if (!list || !list.parentElement) return;
+    var update = function () {
+        var more = list.scrollHeight - list.scrollTop - list.clientHeight > 4;
+        list.parentElement.classList.toggle("cp-has-more", more);
+    };
+    if (!list.__obMoreHint) {
+        list.__obMoreHint = true;
+        list.addEventListener("scroll", update, { passive: true });
+    }
+    update();
+};
