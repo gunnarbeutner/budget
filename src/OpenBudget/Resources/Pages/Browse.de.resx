@@ -388,4 +388,19 @@
   <data name="Chart_Button" xml:space="preserve">
     <value>Diagramm</value>
   </data>
+  <data name="Summary_Button" xml:space="preserve">
+    <value>Übersicht</value>
+  </data>
+  <data name="BudgetLine" xml:space="preserve">
+    <value>Budget {0}:</value>
+  </data>
+  <data name="BudgetLine_Of" xml:space="preserve">
+    <value>von {0}</value>
+  </data>
+  <data name="BudgetLine_Link" xml:space="preserve">
+    <value>Budget</value>
+  </data>
+  <data name="BudgetLine_ThisMonth" xml:space="preserve">
+    <value>Budget diesen Monat:</value>
+  </data>
 </root>

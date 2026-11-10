@@ -5,7 +5,7 @@ using NUnit.Framework;
 namespace OpenBudget.E2E.Tests;
 
 /// <summary>
-/// Covers the remaining read/interaction surfaces of a project: the Overview landing tab, the
+/// Covers the remaining read/interaction surfaces of a project: the
 /// Cashflow projection page (controls, what-if scenarios, contribution splits), and the Budgets
 /// trends/variance page. All anchored on the seeded baseline world.
 /// </summary>
@@ -13,34 +13,6 @@ namespace OpenBudget.E2E.Tests;
 public sealed class ProjectViewsTests : EndToEndTestBase
 {
     private int Pid => E2ESeed.ProjectId;
-
-    // ---- Overview -------------------------------------------------------------------------
-
-    [Test]
-    public async Task Overview_shows_budget_summary_and_category_breakdown()
-    {
-        // Anchor on January, where the seeded actuals live, so the figures are deterministic.
-        await GoToAsync($"/projects/{Pid}/overview?year={E2ESeed.BudgetYear}&month=1");
-
-        var main = Page.Locator(".browse-main");   // the sidebar has a "Budget" view link too
-        await Expect(main.GetByText("Budget", new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Spent", new() { Exact = true })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Remaining", new() { Exact = true })).ToBeVisibleAsync();
-
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Categories" })).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Link).Filter(new() { HasText = "Groceries" })).ToBeVisibleAsync();
-    }
-
-    [Test]
-    public async Task Overview_category_link_drills_into_browse()
-    {
-        await GoToAsync($"/projects/{Pid}/overview?year={E2ESeed.BudgetYear}&month=1");
-
-        await Page.GetByRole(AriaRole.Link).Filter(new() { HasText = "Groceries" }).ClickAsync();
-
-        await Expect(Page).ToHaveURLAsync(new Regex(@".*/browse.*sel=cat-"));
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Groceries" })).ToBeVisibleAsync();
-    }
 
     // ---- Cashflow -------------------------------------------------------------------------
 

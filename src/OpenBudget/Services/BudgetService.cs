@@ -631,7 +631,7 @@ public class BudgetService
 
     /// <summary>
     /// The earliest and latest transaction months as (year, month) tuples, restricted to the
-    /// leaves of a project's tracking items — so the month navigator on a project page (Overview /
+    /// leaves of a project's tracking items — so the month navigator on a project page (Budget /
     /// Browse) is bounded by the project's own data, not the whole source. The max may be in the
     /// future (pending, future-dated rows), which is intentional: it lets navigation reach those
     /// months. Both null when the project tracks nothing or its categories have no transactions, in

@@ -7,7 +7,7 @@
 @inject NavigationManager Navigation
 @inject IStringLocalizer<ProjectShell> L
 
-@* The frame of every project view (Transactions, Budget, Cashflow, Portfolio; Overview for now): the left
+@* The frame of every project view (Transactions, Budget, Cashflow, Portfolio): the left
    sidebar — the project's views on top, then the Accounts and Categories trees — and the main column, which
    the page fills with its 48px toolbar and its content. The sidebar is the only project navigation: its width
    is the shared --ob-sidebar-w (drag handle .browse-resizer, see uiBehaviors.js); below md it becomes an
@@ -34,7 +34,7 @@
             @ViewLink(ProjectTab.Cashflow, $"/projects/{ProjectId}/cashflow", "bi-graph-up", L["View_Cashflow"], null, "view-cashflow")
             @if (HasPortfolio)
             {
-                @ViewLink(ProjectTab.Rebalance, $"/projects/{ProjectId}/rebalance", "bi-pie-chart", L["View_Portfolio"], null, "view-portfolio")
+                @ViewLink(ProjectTab.Portfolio, $"/projects/{ProjectId}/portfolio", "bi-pie-chart", L["View_Portfolio"], null, "view-portfolio")
             }
         </nav>
 
@@ -88,7 +88,7 @@
 
 @code {
     [Parameter, EditorRequired] public int ProjectId { get; set; }
-    /// <summary>The highlighted view; null (Overview) highlights none.</summary>
+    /// <summary>The highlighted view.</summary>
     [Parameter] public ProjectTab? Active { get; set; }
     /// <summary>Transactions' own tree rail; other views leave it null and get the tree loaded here.</summary>
     [Parameter] public RenderFragment? Rail { get; set; }
@@ -109,7 +109,7 @@
     private int _loadedProjectId;
 
     private BrowseTree? EffectiveTree => Tree ?? ownTree;
-    private bool HasPortfolio => EffectiveTree?.Accounts.Any(a => a.IsPortfolio && a.IsAssigned) == true || Active == ProjectTab.Rebalance;
+    private bool HasPortfolio => EffectiveTree?.Accounts.Any(a => a.IsPortfolio && a.IsAssigned) == true || Active == ProjectTab.Portfolio;
     private string? BudgetBadge => budgetBadge;
     private string TransactionsUrl => $"/projects/{ProjectId}/browse";
 

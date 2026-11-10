@@ -181,6 +181,25 @@
             </div>
         </div>
 
+        @if (ShowSummaryStrip && !summaryCollapsed)
+        {
+            var (stripFrom, stripTo) = PeriodRange;
+            <ProjectSummaryStrip ProjectId="ProjectId" Year="anchor.Year" FromMonth="stripFrom" ToMonth="stripTo"
+                                 PeriodLabel="@AnchorHeading" NewCount="newCount" UncategorizedCount="tree!.UncategorizedCount"
+                                 Version="summaryVersion" OnPick="OnSummaryPickAsync" />
+        }
+        else if (selectionKind == "category" && SelectionBudget is { } lineBudget && tree != null)
+        {
+            var lineSpent = SelectionSpent;
+            var lineStatus = SelectionIsIncome ? "success" : ProjectStatus.BarClass(lineSpent, lineBudget);
+            <div class="category-budget-line" data-testid="category-budget-line">
+                <span>@BudgetLineLabel <strong class="@(lineStatus == "danger" ? "money-neg" : "")">@Formatting.FormatMoneyDe(lineSpent)</strong>
+                    @L["BudgetLine_Of", Formatting.FormatMoneyDe(lineBudget)]</span>
+                <span class="ob-bar ob-bar-mini" aria-hidden="true"><span class="status-bg-@lineStatus" style="width: @ProjectStatus.BarWidth(lineSpent, lineBudget)"></span></span>
+                <a href="@($"/projects/{ProjectId}/budgets")" data-testid="category-budget-link">@L["BudgetLine_Link"]</a>
+            </div>
+        }
+
         <div class="browse-scroll tx-scroll">
             @if (_filterOpen && tree != null)
             {
@@ -276,6 +295,14 @@
                         <button type="button" class="btn btn-sm btn-link p-0" @onclick="ClearFilters">@L["Filter_Clear"]</button>
                     }
                     <div class="flex-grow-1"></div>
+                    @if (ShowSummaryStrip)
+                    {
+                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" data-testid="summary-toggle"
+                                @onclick="ToggleSummaryAsync" aria-expanded="@((!summaryCollapsed).ToString().ToLowerInvariant())">
+                            <i class="bi bi-layout-three-columns" aria-hidden="true"></i> @L["Summary_Button"]
+                            <i class="bi @(summaryCollapsed ? "bi-chevron-down" : "bi-chevron-up")" aria-hidden="true"></i>
+                        </button>
+                    }
                     @if (txTotals is { Count: > 0 })
                     {
                         <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" data-testid="mark-all-checked" @onclick="MarkAllCheckedAsync"
@@ -714,6 +741,50 @@
     private Project? project;
     private bool notFound;
 
+    // ---- summary strip (whole project, no filter) ----
+
+    private int newCount;
+    private int summaryVersion;
+    private bool summaryCollapsed;
+    private const string SummaryPrefScope = "browse-summary";
+
+    private string BudgetLineLabel =>
+        period == "month" && anchor == (Clock.NowLocal.Year, Clock.NowLocal.Month)
+            ? L["BudgetLine_ThisMonth"] : L["BudgetLine", AnchorHeading];
+
+    private bool ShowSummaryStrip => tree != null && selectionKind == "all" && !HasActiveFilter;
+
+    private async Task ToggleSummaryAsync()
+    {
+        summaryCollapsed = !summaryCollapsed;
+        try { await JS.InvokeVoidAsync("expandState.set", SummaryPrefScope, summaryCollapsed ? new[] { "collapsed" } : Array.Empty<string>()); }
+        catch (JSDisconnectedException) { /* page left */ }
+    }
+
+    /// <summary>A summary tile was clicked: show the matching part of the list.</summary>
+    private async Task OnSummaryPickAsync(string key)
+    {
+        switch (key)
+        {
+            case "new":
+                newOnly = true;
+                await FilterChangedAsync();
+                return;
+            case "income":
+                directionFilter = "in";
+                await FilterChangedAsync();
+                return;
+            case "uncategorized":
+                await SelectUncategorized();
+                return;
+        }
+        if (tree != null && key.Length > 4 && long.TryParse(key[4..], out var id))
+        {
+            var type = key.StartsWith("grp-", StringComparison.Ordinal) ? CategoryItemType.Group : CategoryItemType.Category;
+            if (FindCategoryNode(tree.Categories, id, type) is { } node) await SelectCategoryNode(node);
+        }
+    }
+
     // Tree + tx totals (count + sum across the active filter, refreshed on filter change).
     // The list rows themselves are streamed by <Virtualize> via LoadTxRowsAsync.
     private BrowseTree? tree;
@@ -819,6 +890,7 @@
     };
     protected override async Task ReloadAfterChangeAsync()
     {
+        summaryVersion++;
         if (project != null)
             (monthMin, monthMax) = await BudgetService.GetMonthBoundsForProjectAsync(ProjectId);
         await ReloadAsync();
@@ -882,7 +954,19 @@
             chartDirty = false;
             await RenderChartAsync();
         }
-        if (firstRender) await AttachShortcutsAsync();
+        if (firstRender)
+        {
+            await AttachShortcutsAsync();
+            try
+            {
+                if ((await JS.InvokeAsync<string[]>("expandState.get", SummaryPrefScope)).Contains("collapsed"))
+                {
+                    summaryCollapsed = true;
+                    StateHasChanged();
+                }
+            }
+            catch (JSDisconnectedException) { /* page left */ }
+        }
     }
 
     private void ReadStateFromQuery()
@@ -1172,7 +1256,7 @@
         catch (JSDisconnectedException) { /* navigation in flight */ }
     }
 
-    private async Task<TransactionQuery> BuildTransactionQueryAsync(int skip = 0, int take = 50) => new()
+    private async Task<TransactionQuery> BuildTransactionQueryAsync(int skip = 0, int take = 50, bool newOnlyOverride = false) => new()
     {
         SourceId = project!.SourceId,
         UncategorizedOnly = selectionKind == "uncategorized",
@@ -1183,7 +1267,7 @@
         MaxAbsAmount = amountMax,
         Checked = checkedFilter switch { "yes" => true, "no" => false, _ => null },
         Direction = directionFilter switch { "in" => AmountDirection.Incoming, "out" => AmountDirection.Outgoing, _ => AmountDirection.Any },
-        NewOnly = newOnly,
+        NewOnly = newOnly || newOnlyOverride,
         FromUtc = PeriodBoundsUtc.From,
         ToUtcExclusive = PeriodBoundsUtc.ToExclusive,
         PayeeEquals = payeeEquals,
@@ -1329,6 +1413,10 @@
         // Totals (count + sum) feed the footer; row data streams through <Virtualize> via
         // LoadTxRowsAsync below.
         txTotals = await TransactionQueries.QueryTotalsAsync(await BuildTransactionQueryAsync(0, 1));
+        if (ShowSummaryStrip)
+        {
+            newCount = (await TransactionQueries.QueryTotalsAsync(await BuildTransactionQueryAsync(0, 1, newOnlyOverride: true))).Count;
+        }
         await LoadToolbarExtrasAsync();
         if (keepSelection) await PruneSelectionAsync();
         if (txVirtualize is not null) await txVirtualize.RefreshDataAsync();

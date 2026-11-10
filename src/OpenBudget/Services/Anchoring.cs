@@ -2,7 +2,7 @@ namespace OpenBudget.Services;
 
 /// <summary>
 /// Pure helpers for the month / YTD / year "anchor + period" time model shared by the
-/// dashboard, project Overview, and Browse. Centralises the range math, bound-clamping,
+/// project views. Centralises the range math, bound-clamping,
 /// and the today-marker position that used to be copy-pasted between those pages.
 ///
 /// An anchor is a (year, month) reference point. The period reinterprets it:
@@ -53,20 +53,4 @@ public static class Anchoring
         => period == "year"
             ? anchor.Year <= min.Year
             : Ordinal(anchor) <= Ordinal(min);
-
-    /// <summary>
-    /// Position of "today" within the selected period as a percentage [0..100], or null when today
-    /// falls outside the period or the period is a single month (where the marker isn't informative).
-    /// </summary>
-    public static double? TodayMarkerPercent((int Year, int Month) anchor, string period, DateTime today)
-    {
-        if (period == "month") return null;
-        var (fromMonth, toMonth) = Range(anchor.Month, period);
-        var start = new DateTime(anchor.Year, fromMonth, 1);
-        var endExclusive = new DateTime(anchor.Year, toMonth, 1).AddMonths(1);
-        if (today < start || today >= endExclusive) return null;
-        var totalDays = (endExclusive - start).TotalDays;
-        var elapsedDays = (today - start).TotalDays;
-        return elapsedDays / totalDays * 100.0;
-    }
 }

@@ -2,10 +2,10 @@ namespace OpenBudget.Services;
 
 /// <summary>
 /// Per-circuit memory of the month-model time selection — the (year, month) anchor and the
-/// month / YTD / year display mode — shared by a project's Overview and Browse tabs.
+/// month / YTD / year display mode — shared by a project's Transactions and Budget views.
 ///
-/// Budgets and Cashflow are year-only and don't carry this selection, so detouring through
-/// them used to reset the display mode on the way back. Overview/Browse seed their state from
+/// Cashflow is year-only and doesn't carry this selection, so detouring through it used to
+/// reset the display mode on the way back. Transactions and Budget seed their state from
 /// here when the URL doesn't specify one, and write back on every change, so the mode survives
 /// the round trip. The URL still wins when it carries an explicit selection (shareable links,
 /// dashboard links that target a specific month), keeping links authoritative.

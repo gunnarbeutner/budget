@@ -13,7 +13,7 @@ public sealed class LoginTests : EndToEndTestBase
     [Test]
     public async Task Logged_out_visitors_are_sent_to_the_login_page()
     {
-        await Page.GotoAsync("/projects/1/overview");
+        await Page.GotoAsync("/projects/1/browse");
 
         await Expect(Page).ToHaveURLAsync(new Regex(".*/Account/Login.*"));
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Sign in" })).ToBeVisibleAsync();
@@ -35,14 +35,14 @@ public sealed class LoginTests : EndToEndTestBase
     [Test]
     public async Task Signing_in_returns_to_the_requested_page_and_shows_the_user()
     {
-        await Page.GotoAsync($"/projects/{E2ESeed.ProjectId}/overview");
+        await Page.GotoAsync($"/projects/{E2ESeed.ProjectId}/browse");
         await Expect(Page).ToHaveURLAsync(new Regex(".*/Account/Login.*"));
 
         await Page.GetByLabel("Username").FillAsync(E2ESeed.UserName);
         await Page.GetByLabel("Password").FillAsync(E2ESeed.Password);
         await Page.GetByRole(AriaRole.Button, new() { Name = "Sign in", Exact = true }).ClickAsync();
 
-        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{E2ESeed.ProjectId}/overview.*"));
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{E2ESeed.ProjectId}/browse.*"));
         await Expect(Page.GetByTestId("user-menu").Locator("summary")).ToHaveAttributeAsync("title", E2ESeed.UserName);   // the avatar in the top bar
     }
 

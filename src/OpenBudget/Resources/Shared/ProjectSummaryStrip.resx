@@ -58,109 +58,82 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="PageTitle" xml:space="preserve">
-    <value>Übersicht</value>
+  <data name="Spent_Label" xml:space="preserve">
+    <value>Spent of budget, {0}</value>
   </data>
-  <data name="PageTitle_WithProject" xml:space="preserve">
-    <value>Übersicht — {0}</value>
+  <data name="Spent_Percent" xml:space="preserve">
+    <value>{0} % of the budget spent</value>
   </data>
-  <data name="NotFound_Heading" xml:space="preserve">
-    <value>Projekt nicht gefunden</value>
+  <data name="Of" xml:space="preserve">
+    <value>of {0}</value>
   </data>
-  <data name="NotFound_Body_Before" xml:space="preserve">
-    <value>Zurück zum </value>
+  <data name="Expenses_Label" xml:space="preserve">
+    <value>Expenses, {0}</value>
   </data>
-  <data name="NotFound_Body_LinkText" xml:space="preserve">
-    <value>Dashboard</value>
+  <data name="NoBudget" xml:space="preserve">
+    <value>No budget for this period</value>
   </data>
-  <data name="NotFound_Body_After" xml:space="preserve">
-    <value>.</value>
+  <data name="Income_Label" xml:space="preserve">
+    <value>Income</value>
   </data>
-  <data name="Status_Loading" xml:space="preserve">
-    <value>Projektdaten werden geladen...</value>
+  <data name="Net" xml:space="preserve">
+    <value>Net {0}</value>
   </data>
-  <data name="Alert_WarningsHeading" xml:space="preserve">
-    <value>Warnungen</value>
+  <data name="Over_Label" xml:space="preserve">
+    <value>Over budget</value>
   </data>
-  <data name="Label_CurrentBalance" xml:space="preserve">
-    <value>Aktueller Kontostand</value>
+  <data name="Over_Count" xml:space="preserve">
+    <value>{0} of {1} categories</value>
   </data>
-  <data name="Label_Account_One" xml:space="preserve">
-    <value>{0} Konto</value>
+  <data name="Over_None" xml:space="preserve">
+    <value>All on track</value>
   </data>
-  <data name="Label_Account_Other" xml:space="preserve">
-    <value>{0} Konten</value>
+  <data name="Over_Budgeted" xml:space="preserve">
+    <value>{0} budgeted categories</value>
   </data>
-  <data name="Label_Budget" xml:space="preserve">
-    <value>Budget</value>
+  <data name="Review_Label" xml:space="preserve">
+    <value>To review</value>
   </data>
-  <data name="Label_Spent" xml:space="preserve">
-    <value>Ausgegeben</value>
+  <data name="Review_None" xml:space="preserve">
+    <value>Nothing to review</value>
   </data>
-  <data name="Label_Remaining" xml:space="preserve">
-    <value>Verbleibend</value>
+  <data name="Review_New" xml:space="preserve">
+    <value>{0} new</value>
   </data>
-  <data name="Label_Income" xml:space="preserve">
-    <value>Einnahmen</value>
+  <data name="Review_Uncategorized" xml:space="preserve">
+    <value>{0} uncategorized</value>
   </data>
-  <data name="Label_Expenses" xml:space="preserve">
-    <value>Ausgaben</value>
-  </data>
-  <data name="Label_Net" xml:space="preserve">
-    <value>Saldo</value>
-  </data>
-  <data name="NoBudget_ThisMonth" xml:space="preserve">
-    <value>Kein Budget für {0} — zeige Ist-Werte dieses Monats.</value>
-  </data>
-  <data name="NoBudget_YearToDate" xml:space="preserve">
-    <value>Kein Budget für {0} — zeige Ist-Werte seit Jahresbeginn.</value>
-  </data>
-  <data name="Title_TodayMarker" xml:space="preserve">
-    <value>Heute ({0}% des Zeitraums verstrichen)</value>
-  </data>
-  <data name="Card_Categories" xml:space="preserve">
-    <value>Kategorien</value>
-  </data>
-  <data name="Empty_NoCategories" xml:space="preserve">
-    <value>Keine erfassten Ausgabenkategorien für diesen Zeitraum.</value>
+  <data name="Review_DataFresh" xml:space="preserve">
+    <value>Data is up to date</value>
   </data>
   <data name="Freshness_Uploaded" xml:space="preserve">
-    <value>Daten hochgeladen</value>
+    <value>Data uploaded</value>
   </data>
   <data name="Freshness_Unknown" xml:space="preserve">
-    <value>unbekannt</value>
+    <value>unknown</value>
   </data>
   <data name="Freshness_RefreshErrors_One" xml:space="preserve">
-    <value>{0} Konto mit Aktualisierungsfehlern:</value>
+    <value>{0} account with refresh errors:</value>
   </data>
   <data name="Freshness_RefreshErrors_Other" xml:space="preserve">
-    <value>{0} Konten mit Aktualisierungsfehlern:</value>
-  </data>
-  <data name="Uncategorized_One" xml:space="preserve">
-    <value>{0} Transaktion ({1}) ohne Kategorie — Budgetsummen sind möglicherweise unvollständig.</value>
-  </data>
-  <data name="Uncategorized_Other" xml:space="preserve">
-    <value>{0} Transaktionen ({1}) ohne Kategorie — Budgetsummen sind möglicherweise unvollständig.</value>
+    <value>{0} accounts with refresh errors:</value>
   </data>
   <data name="RelativeAge_Future" xml:space="preserve">
-    <value>in der Zukunft</value>
+    <value>in the future</value>
   </data>
   <data name="RelativeAge_JustNow" xml:space="preserve">
-    <value>gerade eben</value>
+    <value>just now</value>
   </data>
   <data name="RelativeAge_MinutesAgo" xml:space="preserve">
-    <value>vor {0} Min.</value>
+    <value>{0}m ago</value>
   </data>
   <data name="RelativeAge_HoursAgo" xml:space="preserve">
-    <value>vor {0} Std.</value>
+    <value>{0}h ago</value>
   </data>
   <data name="RelativeAge_DaysAgo" xml:space="preserve">
-    <value>vor {0} T.</value>
+    <value>{0}d ago</value>
   </data>
   <data name="RelativeAge_MonthsAgo" xml:space="preserve">
-    <value>vor {0} Mon.</value>
-  </data>
-  <data name="Label_TotalAllAccounts" xml:space="preserve">
-    <value>Alle Konten: {0}</value>
+    <value>{0}mo ago</value>
   </data>
 </root>

@@ -68,7 +68,7 @@ public sealed class SharingTests : EndToEndTestBase
         await Expect(Page.GetByText(NotFound)).ToBeVisibleAsync();
 
         // The owner's other project is not found either.
-        await GoToAsync("/projects/50/overview");
+        await GoToAsync("/projects/50/browse");
         await Expect(Page.GetByText(NotFound)).ToBeVisibleAsync();
 
         // The budgets page works read-only: no "New Budget".
@@ -102,7 +102,7 @@ public sealed class SharingTests : EndToEndTestBase
         await ShareDirectlyAsync(ProjectRole.Viewer);
         await LogoutAsync();
         await LoginAsync(E2ESeed.SecondUserName);
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/overview");
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
         await Expect(Page.GetByRole(AriaRole.Navigation, new() { Name = "Project views" })).ToBeVisibleAsync();
 
         var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
@@ -113,7 +113,7 @@ public sealed class SharingTests : EndToEndTestBase
         }
 
         // A fresh page load starts a new circuit, which computes its access scope from scratch.
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/overview");
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
         await Expect(Page.GetByText(NotFound)).ToBeVisibleAsync();
     }
 

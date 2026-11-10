@@ -4,8 +4,8 @@ using OpenBudget.Models;
 namespace OpenBudget.Services;
 
 /// <summary>
-/// Shared "how is this project doing?" derivations used by both the dashboard portfolio
-/// list and the project Overview tab, so the two can never drift on thresholds or wording.
+/// Shared "how is this project doing?" derivations used by the project switcher, the project list,
+/// the sidebar's budget badge and the Transactions summary strip, so they can never drift on thresholds or wording.
 ///
 /// The alert builder follows the same convention as <see cref="Formatting.FormatRelativeAge"/>:
 /// the caller passes its own <see cref="IStringLocalizer"/>, and the freshness / uncategorized
@@ -30,6 +30,24 @@ public static class ProjectStatus
             return pct > 100 ? "danger" : pct > 80 ? "warning" : "success";
         }
         return s.MonthNet >= 0 ? "success" : "danger";
+    }
+
+    /// <summary>
+    /// Colour of a spent-of-budget bar: red once over the budget, amber from 85 % on, green below. Nothing budgeted
+    /// counts as on track unless something was spent against it.
+    /// </summary>
+    public static string BarClass(decimal spent, decimal budget)
+    {
+        if (budget <= 0) return spent > 0 ? "danger" : "success";
+        if (spent > budget) return "danger";
+        return spent / budget * 100 >= 85 ? "warning" : "success";
+    }
+
+    /// <summary>Width of a spent-of-budget bar in percent (0–100), formatted for CSS.</summary>
+    public static string BarWidth(decimal spent, decimal budget)
+    {
+        var pct = budget > 0 ? Math.Clamp(spent / budget * 100, 0, 100) : (spent > 0 ? 100 : 0);
+        return pct.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "%";
     }
 
     /// <summary>

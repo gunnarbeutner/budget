@@ -47,7 +47,7 @@ public class BudgetPredictionService
     /// month — replaces the former query-per-month loop. All transactions in the window net
     /// together (expense mode negates, so a refund booked to an expense category reduces that
     /// month's actual); this matches <see cref="BudgetService.GetSpendingSummaryAsync"/>, the
-    /// canonical "actual" the Project Overview shows.
+    /// canonical "actual" the Budget view shows.
     /// </summary>
     private async Task<List<MonthlySpending>> ComputeMonthlyHistoryAsync(
         int sourceId, IReadOnlyList<long> leafIds, int months, bool isIncome)

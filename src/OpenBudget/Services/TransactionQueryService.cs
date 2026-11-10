@@ -340,7 +340,7 @@ public class TransactionQueryService
     /// <summary>
     /// The earliest and latest transaction months as (year, month) tuples, for bounding the month
     /// navigator (<see cref="Anchoring"/> / PeriodNav). Pass a <paramref name="sourceId"/> to scope
-    /// to one source (Overview, Browse); pass null for the whole DB (the dashboard, which spans every
+    /// to one source (Browse); pass null for the whole DB (the dashboard, which spans every
     /// source). Both values are null when no transactions match — the caller then falls back to the
     /// current month. The max may be in the future (e.g. the source's pending, future-dated rows),
     /// which is intentional: it lets navigation reach those months. Split parents are excluded.

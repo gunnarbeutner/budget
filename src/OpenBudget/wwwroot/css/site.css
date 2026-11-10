@@ -25,7 +25,6 @@
     --bs-card-cap-bg: transparent;
 
     /* Vertical "today" marker overlaid on dashboard progress bars. */
-    --today-marker-color: rgba(0, 0, 0, 0.7);
 
     /* The single page-identity title size/weight. Both page headers — the plain PageHeader
        (Sources, not-found) and the project name in ProjectPageHeader — read from this so the
@@ -38,7 +37,6 @@
 
 [data-bs-theme="dark"] {
     --bs-card-border-color: rgba(255, 255, 255, 0.08);
-    --today-marker-color: rgba(255, 255, 255, 0.55);
 }
 
 /* emerald-500 (#10b981) is vivid enough for fills (bg-success badges/buttons) but reads
@@ -737,6 +735,9 @@ a, .btn-link {
     --ob-current-bg: #eef4fd;
     --ob-danger-bg: #fde7e4;
     --ob-danger-fg: #a3332a;
+    --ob-strip-bg: #fcfcfd;
+    --ob-group-bg: #f7f8fa;
+    --ob-link: #2f5fb3;
 }
 
 [data-bs-theme="dark"] {
@@ -761,6 +762,9 @@ a, .btn-link {
     --ob-current-bg: #18263b;
     --ob-danger-bg: #4a2320;
     --ob-danger-fg: #f2a69f;
+    --ob-strip-bg: #1d2024;
+    --ob-group-bg: #1d2024;
+    --ob-link: #8ab4f8;
 }
 
 /* ---- Top bar ---- */
@@ -1451,4 +1455,48 @@ button.cat-pill:hover { filter: brightness(0.96); }
     body:has(.app-bottombar) .main-content { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
     .shell-page { overflow: visible; padding: 0 12px 16px; }
     .shell-page .page-toolbar { top: var(--ob-topbar-h); margin: 0 -12px 1rem; padding: 6px 12px; }
+}
+
+/* ---- Summary strip (Transactions, whole project) and the per-category budget line ---- */
+.ob-bar { display: block; height: 6px; border-radius: 3px; background: var(--ob-track); overflow: hidden; }
+.ob-bar > span { display: block; height: 100%; border-radius: 3px; }
+.ob-bar-mini { width: 120px; flex: 0 0 auto; }
+.summary-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px 20px;
+    padding: 12px 20px;
+    min-height: 76px;
+    border-bottom: 1px solid var(--ob-line);
+    background: var(--ob-strip-bg);
+    flex-shrink: 0;
+}
+.summary-strip.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.summary-tile { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.summary-label { font-size: 12px; color: var(--ob-muted); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+a.summary-label:hover { color: var(--bs-body-color); text-decoration: underline; }
+.summary-value { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.summary-of { color: var(--ob-muted); font-weight: 400; }
+.summary-note { font-size: 12px; color: var(--ob-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.summary-link { color: var(--ob-link); text-decoration: none; }
+.summary-link:hover { text-decoration: underline; }
+.summary-warning { color: var(--ob-warn); text-decoration: none; display: block; }
+.summary-warning:hover { text-decoration: underline; color: var(--ob-warn); }
+.category-budget-line {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 20px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--ob-line);
+    background: var(--ob-strip-bg);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+.category-budget-line a { color: var(--ob-link); text-decoration: none; margin-left: auto; }
+@media (max-width: 991.98px) {
+    .summary-strip, .summary-strip.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px 12px; }
+}
+@media (max-width: 767.98px) {
+    .category-budget-line { padding: 6px 12px; flex-wrap: wrap; }
 }

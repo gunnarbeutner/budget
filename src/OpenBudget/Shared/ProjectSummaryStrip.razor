@@ -1,0 +1,156 @@
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject BudgetService BudgetService
+@inject FreshnessService FreshnessService
+@inject ClockService Clock
+@inject IStringLocalizer<ProjectSummaryStrip> L
+
+@* The four tiles above Transactions when it shows the whole project: spent of budget, income, the worst category
+   over budget, and what needs a look (new and uncategorized bookings, stale data / refresh errors — the warnings
+   the old Overview page showed). Numbers come from BudgetService.GetSpendingSummaryAsync for the page's period,
+   exactly as the Budget view and the switcher get them. Every tile is a link; the ones that filter the list call
+   OnPick (with a key the page understands) instead of navigating, the others go to their view. *@
+
+<div class="summary-strip" data-testid="summary-strip" aria-busy="@((summary == null).ToString().ToLowerInvariant())">
+    @if (summary == null)
+    {
+        @for (var i = 0; i < 4; i++)
+        {
+            <div class="summary-tile"><div class="skeleton skeleton-line" style="width: 60%;"></div><div class="skeleton skeleton-line"></div></div>
+        }
+    }
+    else
+    {
+        var budgetUrl = $"/projects/{ProjectId}/budgets";
+        <div class="summary-tile" data-testid="tile-spent">
+            @if (summary.HasBudget)
+            {
+                var status = ProjectStatus.BarClass(summary.TotalSpent, summary.TotalBudget);
+                <a class="summary-label" href="@budgetUrl">@L["Spent_Label", PeriodLabel]</a>
+                <span class="summary-value">@Formatting.FormatMoneyDe(summary.TotalSpent) <span class="summary-of">@L["Of", Formatting.FormatMoneyDe(summary.TotalBudget)]</span></span>
+                <span class="ob-bar" role="img" aria-label="@L["Spent_Percent", ProjectStatus.OverallPercent(summary).ToString("F0", CultureInfo.CurrentCulture)]">
+                    <span class="status-bg-@status" style="width: @ProjectStatus.BarWidth(summary.TotalSpent, summary.TotalBudget)"></span>
+                </span>
+            }
+            else
+            {
+                <a class="summary-label" href="@budgetUrl">@L["Expenses_Label", PeriodLabel]</a>
+                <span class="summary-value">@Formatting.FormatMoneyDe(summary.MonthExpenses)</span>
+                <span class="summary-note">@L["NoBudget"]</span>
+            }
+        </div>
+        <div class="summary-tile" data-testid="tile-income">
+            @PickLink("income", "?dir=in", L["Income_Label"], "summary-label")
+            <span class="summary-value">@Formatting.FormatMoneyDe(summary.MonthIncome)</span>
+            <span class="summary-note">@L["Net", Formatting.FormatMoneyDe(summary.MonthNet)]</span>
+        </div>
+        <div class="summary-tile" data-testid="tile-over">
+            @{
+                var budgeted = summary.CategorySpending.Where(c => !c.IsIncome && c.Budget > 0).ToList();
+                var over = budgeted.Where(c => c.Spent > c.Budget).OrderByDescending(c => c.Spent - c.Budget).ToList();
+            }
+            @if (over.Count > 0)
+            {
+                var worst = over[0];
+                var sel = (worst.ItemType == CategoryItemType.Group ? "grp-" : "cat-") + worst.CategoryId;
+                <span class="summary-label">@L["Over_Label"]</span>
+                <span class="summary-value text-truncate">
+                    @PickLink(sel, "?sel=" + sel, worst.CategoryName, "summary-link")
+                    <span class="money-neg">+@Formatting.FormatMoneyDe(worst.Spent - worst.Budget)</span>
+                </span>
+                <span class="summary-note">@L["Over_Count", over.Count, budgeted.Count]</span>
+            }
+            else
+            {
+                <a class="summary-label" href="@budgetUrl">@L["Over_Label"]</a>
+                <span class="summary-value status-success">@L["Over_None"]</span>
+                <span class="summary-note">@(budgeted.Count > 0 ? L["Over_Budgeted", budgeted.Count] : L["NoBudget"])</span>
+            }
+        </div>
+        <div class="summary-tile" data-testid="tile-review">
+            <span class="summary-label">@L["Review_Label"]</span>
+            <span class="summary-value">
+                @if (NewCount == 0 && UncategorizedCount == 0)
+                {
+                    <span class="status-success">@L["Review_None"]</span>
+                }
+                @if (NewCount > 0)
+                {
+                    @PickLink("new", "?new=1", L["Review_New", NewCount], "summary-link")
+                }
+                @if (NewCount > 0 && UncategorizedCount > 0)
+                {
+                    <span> · </span>
+                }
+                @if (UncategorizedCount > 0)
+                {
+                    @PickLink("uncategorized", "?sel=uncategorized", L["Review_Uncategorized", UncategorizedCount], "summary-link")
+                }
+            </span>
+            @if (warnings.Count > 0)
+            {
+                @foreach (var w in warnings)
+                {
+                    <a class="summary-note summary-warning text-truncate" href="@w.Href" title="@w.Text" data-testid="summary-warning">
+                        <i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i>@w.Text
+                    </a>
+                }
+            }
+            else
+            {
+                <span class="summary-note">@L["Review_DataFresh"]</span>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public int ProjectId { get; set; }
+    [Parameter, EditorRequired] public int Year { get; set; }
+    [Parameter, EditorRequired] public int FromMonth { get; set; }
+    [Parameter, EditorRequired] public int ToMonth { get; set; }
+    /// <summary>"November 2026", "2026" … — names the period in the first tile.</summary>
+    [Parameter] public string PeriodLabel { get; set; } = "";
+    [Parameter] public int NewCount { get; set; }
+    [Parameter] public int UncategorizedCount { get; set; }
+    /// <summary>Bumped by the page after a data change so the numbers reload.</summary>
+    [Parameter] public int Version { get; set; }
+    /// <summary>Filters the list in place: "new", "uncategorized", "income", "cat-{id}", "grp-{id}".</summary>
+    [Parameter] public EventCallback<string> OnPick { get; set; }
+
+    private sealed record Warning(string Text, string Href);
+
+    private ProjectSpendingSummary? summary;
+    private List<Warning> warnings = [];
+    private (int, int, int, int, int)? loadedKey;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = (ProjectId, Year, FromMonth, ToMonth, Version);
+        if (loadedKey == key) return;
+        loadedKey = key;
+        summary = null;
+        var s = await BudgetService.GetSpendingSummaryAsync(ProjectId, Year, FromMonth, ToMonth);
+        // The Overview page's warnings, minus the uncategorized line (the tile counts those itself). A refresh
+        // error is fixed under Bank logins, a stale upload on Sources.
+        var freshness = (await FreshnessService.GetDataFreshnessAsync()).ToDictionary(f => f.SourceId);
+        var list = new List<Warning>();
+        if (ProjectStatus.BuildAlert(s, freshness, null, L, Clock.UtcNow, Clock.Zone) is { } alert)
+        {
+            var hasErrors = freshness.TryGetValue(s.SourceId, out var f) && f.AccountsWithErrors.Any();
+            for (var i = 0; i < alert.Lines.Count; i++)
+            {
+                var isError = hasErrors && i == alert.Lines.Count - 1;
+                list.Add(new Warning(alert.Lines[i], isError ? "/banklogins" : "/sources"));
+            }
+        }
+        warnings = list;
+        summary = s;
+    }
+
+    private RenderFragment PickLink(string key, string query, string text, string css) => __builder =>
+    {
+        <a class="@css" href="@($"/projects/{ProjectId}/browse{query}")" data-testid="@($"summary-{(key.Contains('-') ? "category" : key)}")"
+           @onclick="() => OnPick.InvokeAsync(key)" @onclick:preventDefault="OnPick.HasDelegate">@text</a>
+    };
+}
