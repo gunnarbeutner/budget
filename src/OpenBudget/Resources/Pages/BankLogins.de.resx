@@ -181,12 +181,6 @@
   <data name="Button_CreateAccount" xml:space="preserve">
     <value>Neues Konto anlegen</value>
   </data>
-  <data name="Link_View" xml:space="preserve">
-    <value>Ansehen</value>
-  </data>
-  <data name="Link_Download" xml:space="preserve">
-    <value>Herunterladen</value>
-  </data>
   <data name="Edit_Title" xml:space="preserve">
     <value>Bank-Zugang bearbeiten</value>
   </data>

@@ -341,13 +341,13 @@
             @if (chartBars != null && chartBars.Length > 0 && !chartCollapsed)
             {
                 <div class="browse-cards">
-                    <div class="d-flex gap-2 align-items-start">
-                        <div id="browseChartScroll" class="browse-chart-scroll flex-grow-1">
-                            <div class="browse-chart" style="width: @(ChartCanvasWidthPx)px;">
-                                <canvas id="browseChart" style="height: 140px;"></canvas>
+                    <div class="browse-chart-frame">
+                        <div id="browseChartScroll" class="browse-chart-scroll">
+                            <div class="browse-chart" style="width: @(chartFullWidth ? "100%" : $"{ChartCanvasWidthPx}px");">
+                                <canvas id="browseChart" style="height: @(chartFullWidth ? 180 : 140)px;" data-testid="browse-chart"></canvas>
                             </div>
                         </div>
-                        <div class="segmented segmented-vertical" role="group" aria-label="@L["Chart_AriaGranularity"]">
+                        <div class="segmented segmented-sm browse-chart-gran" role="group" aria-label="@L["Chart_AriaGranularity"]" data-testid="chart-granularity">
                             @if (IsAccountScope)
                             {
                                 <button type="button" class="btn @(chartGranularity == "D" ? "active" : "")"
@@ -693,6 +693,8 @@
     // translate the bar index back into an anchor date.
     private (int Year, int Month)[]? chartBarMonths;
     private string chartGranularity = "M";
+    /// <summary>The user chose the monthly history for an account balance (the default there is daily over the shown period).</summary>
+    private bool chartMonthlyPicked;
     // Y-axis inversion: true for expense categories/groups so the bars still "grow upwards"
     // visually even though their underlying values are negative (the tick labels honestly
     // read "−300 €"). Income categories and accounts use the natural axis where positive
@@ -808,7 +810,7 @@
         accountFilter = null;
         searchInput = ""; searchEffective = "";
         amountMin = null; amountMax = null; amountMinInput = ""; amountMaxInput = "";
-        chartGranularity = "M";
+        chartGranularity = "M"; chartMonthlyPicked = false;
         showRelatedAccounts = false; railOpen = false; chartCollapsed = true;
         periodFilter = PeriodFilter.All; customFrom = null; customTo = null;
         checkedFilter = "any"; directionFilter = "any"; newOnly = false; categoryFilter = null; pinFilters = false;
@@ -906,7 +908,10 @@
         if (query.TryGetValue("payee", out var payeeRaw) && !string.IsNullOrWhiteSpace(payeeRaw)) payeeEquals = payeeRaw.ToString();
         if (query.TryGetValue("pin", out var pinRaw) && pinRaw.ToString() == "1") pinFilters = true;
         if (query.TryGetValue("g", out var g) && g.ToString() is var gv && (gv == "M" || gv == "Q" || gv == "Y" || gv == "D"))
+        {
             chartGranularity = gv;
+            chartMonthlyPicked = gv == "M";
+        }
         CoerceChartGranularityForSelection();
     }
 
@@ -920,7 +925,9 @@
     {
         if (IsAccountScope)
         {
-            if (chartGranularity != "D" && chartGranularity != "M") chartGranularity = "M";
+            // Balances default to daily points over the shown period; monthly history only when picked.
+            if (chartGranularity != "D" && chartGranularity != "M") chartGranularity = "D";
+            else if (chartGranularity == "M" && !chartMonthlyPicked) chartGranularity = "D";
         }
         else
         {
@@ -947,7 +954,7 @@
         ["q"] = string.IsNullOrWhiteSpace(searchEffective) ? null : searchEffective,
         ["amin"] = amountMin?.ToString(CultureInfo.InvariantCulture),
         ["amax"] = amountMax?.ToString(CultureInfo.InvariantCulture),
-        ["g"] = chartGranularity == "M" ? null : chartGranularity,
+        ["g"] = chartGranularity == (IsAccountScope ? "D" : "M") ? null : chartGranularity,
         ["per"] = periodFilter == PeriodFilter.All ? null : periodFilter,
         ["from"] = periodFilter == PeriodFilter.Custom ? customFrom?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : null,
         ["to"] = periodFilter == PeriodFilter.Custom ? customTo?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : null,
@@ -1074,6 +1081,7 @@
     {
         if (chartGranularity == g) return;
         chartGranularity = g;
+        chartMonthlyPicked = g == "M";
         UpdateUrl();
         await ComputeChartAsync();
         chartDirty = true;
@@ -1540,11 +1548,14 @@
     /// source doesn't collapse the chart to nothing. Lives here rather than inline in markup
     /// because Razor doesn't allow @{} statement blocks inside an @if body.
     /// </summary>
+    /// <summary>The balance over the shown period: the chart fills the main column instead of growing per bucket.</summary>
+    private bool chartFullWidth;
+
     private int ChartCanvasWidthPx
     {
         get
         {
-            if (chartBars == null) return 320;
+            if (chartBars == null || chartFullWidth) return 320;
             int barPx = chartGranularity switch { "Y" => 64, "Q" => 52, "D" => 10, _ => 36 };
             return Math.Max(chartBars.Length * barPx, 320);
         }
@@ -1602,15 +1613,28 @@
         // transaction through max(anchor, its latest). A category that started in 2026 won't
         // drag the chart back to 2020 just because the source has older rows in other
         // categories. Anchoring on an earlier month still doesn't shrink the right edge.
-        var (scopeEarliest, scopeLatest) = await TransactionQueries.GetScopeDateRangeAsync(
-            project.SourceId, leaves, accounts);
-        if (scopeEarliest == null) { chartBars = null; return; }
+        var (fm, tm) = PeriodRange;
+        // A balance in daily mode spans exactly the shown period (month, YTD or year), one point per day,
+        // so even a single booking draws a line across the whole period.
+        var balancePeriod = IsAccountScope && SelectionAccountBalance != null && chartGranularity == "D";
+        DateTime earliest, rightEdge;
+        if (balancePeriod)
+        {
+            earliest = new DateTime(anchor.Year, fm, 1, 0, 0, 0, DateTimeKind.Utc);
+            rightEdge = new DateTime(anchor.Year, tm, 1, 0, 0, 0, DateTimeKind.Utc);
+        }
+        else
+        {
+            var (scopeEarliest, scopeLatest) = await TransactionQueries.GetScopeDateRangeAsync(
+                project.SourceId, leaves, accounts);
+            if (scopeEarliest == null) { chartBars = null; return; }
 
-        var anchorDate = new DateTime(anchor.Year, anchor.Month, 1);
-        var earliest = scopeEarliest.Value;
-        var rightEdge = scopeLatest is { } lt && lt > anchorDate
-            ? new DateTime(lt.Year, lt.Month, 1)
-            : anchorDate;
+            var anchorDate = new DateTime(anchor.Year, anchor.Month, 1);
+            earliest = scopeEarliest.Value;
+            rightEdge = scopeLatest is { } lt && lt > anchorDate
+                ? new DateTime(lt.Year, lt.Month, 1)
+                : anchorDate;
+        }
         var (windowStart, windowEndExclusive, _, _, _) = BrowseChart.ResolveChartWindow(earliest, rightEdge, chartGranularity);
 
         // For the account-D running-balance pass below we need every transaction between the
@@ -1632,7 +1656,6 @@
         // Bucketing, anchor-period highlighting, and the account-daily running-balance back-walk
         // all live in BrowseChart.BuildChartSeries (pure + unit-tested); the page just feeds it
         // the resolved window inputs and the fetched rows.
-        var (fm, tm) = PeriodRange;
         var chart = BrowseChart.BuildChartSeries(
             earliest, rightEdge, chartGranularity,
             anchor.Year, fm, tm,
@@ -1641,6 +1664,7 @@
         chartBarMonths = chart.BarMonths;
         chartInvertY = chart.InvertY;
         chartIsBalance = isAccountDaily;
+        chartFullWidth = balancePeriod;
         chartBars = chart.Bars;
     }
 

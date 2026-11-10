@@ -136,6 +136,34 @@ else
             <span role="cell" class="num @(table.TotalLeft < 0 ? "money-neg" : "")">@Money(table.TotalLeft)</span>
             <span role="cell">@Bar(table.TotalSpent, table.TotalBudget)</span>
         </div>
+        @if (table.Income.Count > 0)
+        {
+            <div class="budget-row budget-head budget-income-head" role="row" data-testid="budget-income">
+                <span role="columnheader">@L["Income_Heading"]</span>
+                <span role="columnheader" class="num">@L["Income_Expected"]</span>
+                <span role="columnheader" class="num">@L["Income_Received"]</span>
+                <span role="columnheader" class="num">@L["Income_Outstanding"]</span>
+                <span role="columnheader"><span class="visually-hidden">@L["Table_HeaderBar"]</span></span>
+            </div>
+            @foreach (var row in table.Income)
+            {
+                var outstanding = Math.Max(0, row.Budget - row.Spent);
+                <a class="budget-row budget-cat" role="row" href="@RowHref(row)" data-testid="budget-income-row" @key="row.Selection">
+                    <span role="rowheader" class="budget-name"><span class="budget-dot" style="@CategoryColors.For(row.Id, row.Color).Style" aria-hidden="true"></span><span class="text-truncate">@row.Name</span></span>
+                    <span role="cell" class="num muted">@Money(row.Budget)</span>
+                    <span role="cell" class="num">@Formatting.FormatMoneyDe(row.Spent)</span>
+                    <span role="cell" class="num fw-semibold">@Money(outstanding)</span>
+                    <span role="cell">@IncomeBar(row.Spent, row.Budget)</span>
+                </a>
+            }
+            <div class="budget-row budget-total" role="row" data-testid="budget-income-total">
+                <span role="rowheader">@L["Income_Total"]</span>
+                <span role="cell" class="num">@Money(table.IncomeExpected)</span>
+                <span role="cell" class="num">@Formatting.FormatMoneyDe(table.IncomeReceived)</span>
+                <span role="cell" class="num">@Money(Math.Max(0, table.IncomeExpected - table.IncomeReceived))</span>
+                <span role="cell">@IncomeBar(table.IncomeReceived, table.IncomeExpected)</span>
+            </div>
+        }
     </div>
     <p class="budget-hint text-body-secondary">@L["Table_Hint"]</p>
 }
@@ -498,6 +526,15 @@ else
         if (table is { HasBudget: true } && budget > 0)
         {
             <span class="ob-bar"><span class="status-bg-@ProjectStatus.BarClass(spent, budget)" style="width: @ProjectStatus.BarWidth(spent, budget)"></span></span>
+        }
+    };
+
+    /// <summary>Income: received against expected, always green (receiving more is fine).</summary>
+    private RenderFragment IncomeBar(decimal received, decimal expected) => __builder =>
+    {
+        if (table is { HasBudget: true } && expected > 0)
+        {
+            <span class="ob-bar"><span class="status-bg-success" style="width: @ProjectStatus.BarWidth(received, expected)"></span></span>
         }
     };
 

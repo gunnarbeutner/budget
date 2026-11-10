@@ -229,4 +229,19 @@
   <data name="Charts_Button" xml:space="preserve">
     <value>Charts</value>
   </data>
+  <data name="Income_Heading" xml:space="preserve">
+    <value>Income</value>
+  </data>
+  <data name="Income_Expected" xml:space="preserve">
+    <value>Expected</value>
+  </data>
+  <data name="Income_Received" xml:space="preserve">
+    <value>Received</value>
+  </data>
+  <data name="Income_Outstanding" xml:space="preserve">
+    <value>Outstanding</value>
+  </data>
+  <data name="Income_Total" xml:space="preserve">
+    <value>Total income</value>
+  </data>
 </root>

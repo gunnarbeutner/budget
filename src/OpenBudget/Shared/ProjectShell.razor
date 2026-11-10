@@ -140,29 +140,41 @@
     protected override async Task OnParametersSetAsync()
     {
         open = RailOpen;
-        if (_loadedProjectId == ProjectId) return;
-        _loadedProjectId = ProjectId;
-        ownTree = null;
-        budgetBadge = null;
-        await LoadUnreadAsync();
         var now = Clock.NowLocal;
-        if (Rail == null)
+        var (year, month) = (TimeState.Year ?? now.Year, TimeState.Month ?? now.Month);
+        var (fromMonth, toMonth) = TimeState.Period switch
         {
-            var (year, month) = (TimeState.Year ?? now.Year, TimeState.Month ?? now.Month);
-            ownTree = await BrowseService.GetTreeAsync(ProjectId, year, month, month);
+            "year" => (1, 12),
+            "ytd" => (1, month),
+            _ => (month, month),
+        };
+        var badgeKey = (ProjectId, year, fromMonth, toMonth);
+        if (_loadedProjectId != ProjectId)
+        {
+            _loadedProjectId = ProjectId;
+            ownTree = null;
+            budgetBadge = null;
+            await LoadUnreadAsync();
+            if (Rail == null) ownTree = await BrowseService.GetTreeAsync(ProjectId, year, month, month);
         }
-        // "57 %" next to Budget: this month's spending against the budget, the number the switcher shows too.
+        if (_badgeKey == badgeKey) return;
+        _badgeKey = badgeKey;
+        // "57 %" next to Budget: spending against the budget for the period the views currently show (the
+        // remembered month / YTD / year), the same number the Budget view's strip shows.
         try
         {
-            var summary = await BudgetService.GetSpendingSummaryAsync(ProjectId, now.Year, now.Month, now.Month);
-            if (summary.HasBudget && summary.TotalBudget > 0)
-                budgetBadge = L["Budget_Percent", ProjectStatus.OverallPercent(summary).ToString("F0", CultureInfo.CurrentCulture)];
+            var summary = await BudgetService.GetSpendingSummaryAsync(ProjectId, year, fromMonth, toMonth);
+            budgetBadge = summary.HasBudget && summary.TotalBudget > 0
+                ? L["Budget_Percent", ProjectStatus.OverallPercent(summary).ToString("F0", CultureInfo.CurrentCulture)].Value
+                : null;
         }
         catch (InvalidOperationException)
         {
             budgetBadge = null;   // no access / project gone: the page itself reports that
         }
     }
+
+    private (int, int, int, int)? _badgeKey;
 
     private async Task SetOpenAsync(bool value)
     {

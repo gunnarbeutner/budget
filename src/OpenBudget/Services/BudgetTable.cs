@@ -30,6 +30,15 @@ public sealed record BudgetTableModel(IReadOnlyList<BudgetTableSection> Sections
 {
     public decimal TotalLeft => TotalBudget - TotalSpent;
 
+    /// <summary>
+    /// The tracked income items, below the expense groups: <see cref="BudgetTableRow.Budget"/> is what is expected,
+    /// <see cref="BudgetTableRow.Spent"/> what was received. Kept apart from the spending totals.
+    /// </summary>
+    public IReadOnlyList<BudgetTableRow> Income { get; init; } = [];
+
+    public decimal IncomeExpected => Income.Sum(r => r.Budget);
+    public decimal IncomeReceived => Income.Sum(r => r.Spent);
+
     public static BudgetTableModel Build(ProjectSpendingSummary summary, IReadOnlyList<CategoryGroupWithChildCount> hierarchy, long? hiddenRootGroupId = null)
     {
         var byKey = new Dictionary<(long, CategoryItemType), CategoryGroupWithChildCount>();
@@ -56,6 +65,17 @@ public sealed record BudgetTableModel(IReadOnlyList<BudgetTableSection> Sections
             .ThenBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
 
-        return new BudgetTableModel(sections, summary.TotalBudget, summary.TotalSpent, summary.HasBudget);
+        var income = summary.CategorySpending
+            .Where(c => c.IsIncome)
+            .Select(c =>
+            {
+                byKey.TryGetValue((c.CategoryId, c.ItemType), out var entry);
+                var color = c.ItemType == CategoryItemType.Category ? entry?.Category?.Color : entry?.CategoryGroup?.Color;
+                return new BudgetTableRow(c.CategoryId, c.ItemType, c.CategoryName, color, c.Budget, c.Spent);
+            })
+            .OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        return new BudgetTableModel(sections, summary.TotalBudget, summary.TotalSpent, summary.HasBudget) { Income = income };
     }
 }

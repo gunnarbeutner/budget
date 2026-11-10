@@ -58,9 +58,6 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Payee" xml:space="preserve">
-    <value>Payee</value>
-  </data>
   <data name="Iban" xml:space="preserve">
     <value>Counter account</value>
   </data>
@@ -96,9 +93,6 @@
   </data>
   <data name="Note_Placeholder" xml:space="preserve">
     <value>Add a note…</value>
-  </data>
-  <data name="Checked" xml:space="preserve">
-    <value>Check mark</value>
   </data>
   <data name="Checked_Yes" xml:space="preserve">
     <value>Checked</value>

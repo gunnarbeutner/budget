@@ -65,14 +65,12 @@
   <data name="Intro" xml:space="preserve"><value>Classify each instrument's tax treatment — which sets the regime and §23 EStG holding period — and, for funds, its Teilfreistellung (the gain fraction exempt from tax). Only instruments with reconstructed lots are listed.</value></data>
   <data name="Col_Security" xml:space="preserve"><value>Instrument</value></data>
   <data name="Col_Kind" xml:space="preserve"><value>Tax treatment</value></data>
-  <data name="Col_Teilfreistellung" xml:space="preserve"><value>Teilfreistellung</value></data>
   <data name="Kind_0" xml:space="preserve"><value>Security (Abgeltungsteuer)</value></data>
   <data name="Kind_1" xml:space="preserve"><value>Crypto (§23 EStG, 1 yr)</value></data>
   <data name="Kind_2" xml:space="preserve"><value>Real estate (§23 EStG, 10 yr)</value></data>
   <data name="Col_Details" xml:space="preserve"><value>Details</value></data>
   <data name="Acquired_Hint" xml:space="preserve"><value>Original acquisition date — set for inherited or gifted assets (§23 EStG counts from the predecessor's purchase).</value></data>
   <data name="NoIsin" xml:space="preserve"><value>no ISIN</value></data>
-  <data name="Teilfreistellung_NA" xml:space="preserve"><value>—</value></data>
   <data name="Empty" xml:space="preserve"><value>No securities with reconstructed lots for this source yet. Upload a PortfolioPerformance file with transactions first.</value></data>
   <data name="NotFound" xml:space="preserve"><value>Source not found.</value></data>
   <data name="Type_0" xml:space="preserve"><value>direct shares / bond fund</value></data>

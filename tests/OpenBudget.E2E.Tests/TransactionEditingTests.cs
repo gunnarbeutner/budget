@@ -346,4 +346,25 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         await Expect(Page.GetByTestId("category-picker")).ToHaveCountAsync(0);
         await Expect(Page.GetByTestId("toast").First).ToContainTextAsync("only view");
     }
+
+    [Test]
+    public async Task An_account_balance_chart_shows_daily_points_across_the_month_at_full_width()
+    {
+        await Page.SetViewportSizeAsync(1440, 900);
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.BankAccountId}");
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Chart" }).ClickAsync();
+        var chart = Page.GetByTestId("browse-chart");
+        await Expect(chart).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("chart-granularity").GetByRole(AriaRole.Button, new() { Name = "D" })).ToHaveClassAsync(new Regex("active"));
+        var box = await chart.BoundingBoxAsync();
+        var main = await Page.Locator(".browse-main").BoundingBoxAsync();
+        Assert.That(box!.Width, Is.GreaterThan(main!.Width * 0.8));
+        Assert.That(box.Height, Is.GreaterThanOrEqualTo(170));
+        var points = await Page.EvaluateAsync<int>("() => Chart.getChart('browseChart').data.labels.length");
+        Assert.That(points, Is.EqualTo(31));
+
+        // Monthly history on request, remembered in the URL.
+        await Page.GetByTestId("chart-granularity").GetByRole(AriaRole.Button, new() { Name = "M" }).ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex("g=M"));
+    }
 }

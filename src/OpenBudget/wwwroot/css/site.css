@@ -206,10 +206,6 @@ a, .btn-link {
     flex: 1;
 }
 
-.segmented.segmented-vertical {
-    flex-direction: column;
-}
-
 .segmented .btn {
     border: 0 !important;
     background-color: transparent !important;
@@ -396,10 +392,6 @@ a, .btn-link {
     margin-right: 0.4rem;
 }
 
-.browse-header-card {
-    background: linear-gradient(180deg, var(--bs-tertiary-bg) 0%, var(--bs-body-bg) 100%);
-}
-
 .browse-chart {
     background: var(--bs-body-bg);
     border-radius: 0.5rem;
@@ -410,6 +402,12 @@ a, .btn-link {
        chart overflows so horizontal scrolling still works normally. */
     margin-inline: auto;
 }
+
+/* Chart with its granularity toggle in the top-right corner of the same frame. */
+.browse-chart-frame { position: relative; }
+.browse-chart-frame .browse-chart-scroll { padding-top: 26px; }
+.browse-chart-gran { position: absolute; top: 0; right: 0; z-index: 1; border-radius: 6px; padding: 2px; }
+.segmented.segmented-sm .btn { padding: 0.05rem 0.55rem !important; font-size: 12px; border-radius: 4px !important; }
 
 .browse-chart-scroll {
     overflow-x: auto;
@@ -451,17 +449,7 @@ a, .btn-link {
    search. */
 .filter-input-sm { max-width: 160px; }
 .filter-input-md { max-width: 220px; }
-.filter-input-lg { max-width: 280px; }
 
-/* Sticky page toolbars (Index dashboard, Browse) extend their background across the
-   page gutter via negative margins so the border-bottom feels page-wide once the bar
-   is stuck. The numbers match `.container`'s default horizontal padding (0.5rem). */
-.bleed-sticky {
-    margin-left: -0.5rem;
-    margin-right: -0.5rem;
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
-}
 
 /* Project selector: <details>/<summary> dressed up as a dropdown. No JS needed. */
 .project-selector {
@@ -498,21 +486,6 @@ a, .btn-link {
 .project-selector-toggle:hover {
     background: rgba(0, 0, 0, 0.04);
 }
-.project-selector-menu {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    margin-top: 0.25rem;
-    min-width: 14rem;
-    max-height: 60vh;
-    overflow-y: auto;
-    z-index: 1050;
-}
-
-.project-page-header-suffix {
-    font-size: 0.95rem;
-}
-
 /* ---- Vertical spacing rhythm ----
    We don't have a custom spacing utility — these are just the conventions used across
    pages so the eye reads consistent rhythm instead of "amateurish bumps." When adding
@@ -560,7 +533,6 @@ a, .btn-link {
 
     /* Navigation + one-off actions that mean nothing on paper. */
     .period-nav,
-    .project-page-tabs,
     .btn,
     .segmented {
         display: none !important;
@@ -1092,19 +1064,11 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
     border-bottom: 1px solid var(--ob-line);
 }
 .browse-summary .money-neg { color: var(--ob-negative); }
-.browse-notice {
-    padding: 6px 20px;
-    font-size: 12px;
-    color: var(--ob-muted);
-    background: var(--ob-sidebar-bg);
-    border-bottom: 1px solid var(--ob-line);
-}
 .browse-cards { padding: 12px 20px 0; }
 
 /* ---- Ledger list ---- */
 .tx-list { display: flex; flex-direction: column; }
 .tx-item { border-bottom: 1px solid var(--ob-hairline); }
-.tx-item.has-day { border-top: 0; }
 .tx-day {
     display: flex;
     justify-content: space-between;
@@ -1147,7 +1111,6 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
 .tx-comment { font-size: 13px; color: var(--ob-muted); }
 .tx-acct { color: var(--ob-muted); font-size: 12px; }
 .tx-new-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ob-accent); flex: 0 0 auto; }
-.tx-new-dot-inline { font-size: 0.5rem; vertical-align: middle; color: var(--ob-accent); }
 .tx-flag {
     font-size: 11px;
     font-weight: 600;
@@ -1286,7 +1249,7 @@ button.cat-pill:hover { filter: brightness(0.96); }
     .tx-check { grid-area: check; }
     .tx-details { padding: 0 12px 12px; }
     .tx-actionbar { margin: 8px 12px; }
-    .browse-summary, .browse-notice, .browse-filter-panel, .browse-cards { padding-left: 12px; padding-right: 12px; }
+    .browse-summary, .browse-filter-panel, .browse-cards { padding-left: 12px; padding-right: 12px; }
 }
 
 @media print {
@@ -1529,6 +1492,7 @@ a.summary-label:hover { color: var(--bs-body-color); text-decoration: underline;
 .budget-head { color: var(--ob-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; border-bottom-color: var(--ob-line); }
 .budget-group { background: var(--ob-group-bg); font-weight: 600; padding-top: 10px; padding-bottom: 10px; }
 .budget-total { font-weight: 600; border-top: 1px solid var(--ob-line); }
+.budget-income-head { margin-top: 18px; }
 a.budget-cat:hover { background: var(--ob-row-hover-bg); color: var(--bs-body-color); }
 a.budget-cat:focus-visible { outline: 2px solid var(--ob-accent); outline-offset: -2px; }
 .budget-name { display: flex; align-items: center; gap: 8px; padding-left: 18px; min-width: 0; }

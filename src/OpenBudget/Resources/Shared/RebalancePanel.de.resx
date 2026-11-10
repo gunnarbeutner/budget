@@ -67,7 +67,6 @@
   <data name="Mode_Ratio" xml:space="preserve"><value>Nach Verhältnis</value></data>
   <data name="Mode_Amount" xml:space="preserve"><value>Nach Betrag</value></data>
   <data name="Mode_Region" xml:space="preserve"><value>Nach Taxonomie</value></data>
-  <data name="Col_Solved" xml:space="preserve"><value>Ziel</value></data>
   <data name="Reset" xml:space="preserve"><value>Zurücksetzen</value></data>
   <data name="Col_Security" xml:space="preserve"><value>Wertpapier</value></data>
   <data name="Col_Current" xml:space="preserve"><value>Aktuell</value></data>
@@ -86,7 +85,6 @@
   <data name="Infeasible_Warning" xml:space="preserve"><value>Die Ziele übersteigen das verfügbare Vermögen. Reduziere ein Ziel, füge Bargeld hinzu oder verkaufe anderswo.</value></data>
   <data name="Disclaimer" xml:space="preserve"><value>Nur Vorschläge — keine Anlage- oder Steuerberatung. Verkäufe können steuerpflichtige Gewinne (und Vorabpauschale) auslösen.</value></data>
   <data name="Region_Taxonomy" xml:space="preserve"><value>Taxonomie</value></data>
-  <data name="Region_Class" xml:space="preserve"><value>Klasse</value></data>
   <data name="Region_Target" xml:space="preserve"><value>Ziel</value></data>
   <data name="Region_Achieved" xml:space="preserve"><value>Erreichbar</value></data>
   <data name="Region_Note" xml:space="preserve"><value>Die Orders unten aktualisieren sich live für die bestmögliche Mischung.</value></data>

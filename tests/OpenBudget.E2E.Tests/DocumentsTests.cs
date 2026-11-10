@@ -28,9 +28,9 @@ public sealed class DocumentsTests : EndToEndTestBase
     /// The editing world plus a fake-bank login of the owner linked to the giro account, with three statements of
     /// the giro (2026-01..03) and one document of the login without an account.
     /// </summary>
-    internal static async Task SeedDocumentsAsync()
+    internal static async Task SeedDocumentsAsync(bool editingWorld = true)
     {
-        await EditingSeed.SeedAsync(Db);
+        if (editingWorld) await EditingSeed.SeedAsync(Db);
         await using var db = await Db.CreateDbContextAsync();
         var owner = await db.Users.SingleAsync(u => u.UserName == E2ESeed.UserName);
         var login = new BankLogin

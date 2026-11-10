@@ -39,6 +39,32 @@ public sealed class BudgetViewTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task Income_has_its_own_section_with_expected_and_received()
+    {
+        await GoToAsync($"/projects/{Pid}/budgets?{January}");
+
+        var table = Page.GetByTestId("budget-table");
+        await Expect(table.GetByTestId("budget-income")).ToContainTextAsync("Expected");
+        var salary = table.GetByTestId("budget-income-row").Filter(new() { HasText = "Salary" });
+        await Expect(salary).ToContainTextAsync("500,00 €");
+        await Expect(table.GetByTestId("budget-income-total")).ToContainTextAsync("500,00 €");
+        // Spending rows and totals do not include income.
+        await Expect(table.GetByTestId("budget-row").Filter(new() { HasText = "Salary" })).ToHaveCountAsync(0);
+        await Expect(table.GetByTestId("budget-total")).ToContainTextAsync("100,00 €");
+    }
+
+    [Test]
+    public async Task The_sidebar_budget_badge_follows_the_shown_period()
+    {
+        var badge = Page.GetByTestId("view-budget").Locator(".shell-view-badge");
+        await GoToAsync($"/projects/{Pid}/budgets?{January}");
+        await Expect(badge).ToHaveTextAsync("42 %");
+
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Year", Exact = true }).ClickAsync();
+        await Expect(badge).ToHaveTextAsync("4 %");   // 42,00 € of 1.200,00 €
+    }
+
+    [Test]
     public async Task A_budget_row_opens_transactions_filtered_to_the_category_and_period()
     {
         await GoToAsync($"/projects/{Pid}/budgets?{January}");

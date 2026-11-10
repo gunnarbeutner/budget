@@ -65,14 +65,12 @@
   <data name="Intro" xml:space="preserve"><value>Lege je Instrument die steuerliche Behandlung fest — das bestimmt Regime und §23 EStG-Haltefrist — und für Fonds die Teilfreistellung (den steuerfreien Anteil des Gewinns). Es werden nur Instrumente mit rekonstruierten Lots angezeigt.</value></data>
   <data name="Col_Security" xml:space="preserve"><value>Instrument</value></data>
   <data name="Col_Kind" xml:space="preserve"><value>Steuerliche Behandlung</value></data>
-  <data name="Col_Teilfreistellung" xml:space="preserve"><value>Teilfreistellung</value></data>
   <data name="Kind_0" xml:space="preserve"><value>Wertpapier (Abgeltungsteuer)</value></data>
   <data name="Kind_1" xml:space="preserve"><value>Krypto (§23 EStG, 1 Jahr)</value></data>
   <data name="Kind_2" xml:space="preserve"><value>Immobilie (§23 EStG, 10 Jahre)</value></data>
   <data name="Col_Details" xml:space="preserve"><value>Details</value></data>
   <data name="Acquired_Hint" xml:space="preserve"><value>Ursprüngliches Anschaffungsdatum — bei geerbten oder geschenkten Vermögenswerten (§23 EStG zählt ab Anschaffung des Rechtsvorgängers).</value></data>
   <data name="NoIsin" xml:space="preserve"><value>keine ISIN</value></data>
-  <data name="Teilfreistellung_NA" xml:space="preserve"><value>—</value></data>
   <data name="Empty" xml:space="preserve"><value>Noch keine Wertpapiere mit rekonstruierten Lots für diese Quelle. Lade zuerst eine PortfolioPerformance-Datei mit Transaktionen hoch.</value></data>
   <data name="NotFound" xml:space="preserve"><value>Quelle nicht gefunden.</value></data>
   <data name="Type_0" xml:space="preserve"><value>Direktanlage / Rentenfonds</value></data>
