@@ -106,9 +106,6 @@
   <data name="SetBy_Manual" xml:space="preserve">
     <value>set by hand</value>
   </data>
-  <data name="SetBy_Rule" xml:space="preserve">
-    <value>set by rule {0}</value>
-  </data>
   <data name="SetBy_RuleUnknown" xml:space="preserve">
     <value>set by a rule</value>
   </data>

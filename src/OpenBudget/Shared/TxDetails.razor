@@ -192,7 +192,7 @@
         : Row.CategorySetBy switch
         {
             TransactionCategorySource.Manual => L["SetBy_Manual"],
-            TransactionCategorySource.Rule => Row.RuleId is { } rule ? L["SetBy_Rule", rule] : L["SetBy_RuleUnknown"],
+            TransactionCategorySource.Rule => L["SetBy_RuleUnknown"],
             _ => L["SetBy_Import"],
         };
 
