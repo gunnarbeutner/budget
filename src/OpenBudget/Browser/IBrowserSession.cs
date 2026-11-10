@@ -20,6 +20,9 @@ public interface IBrowserSession : IAsyncDisposable
     /// <summary>Address of the page.</summary>
     Uri Url { get; }
 
+    /// <summary>The User-Agent the page sees; requests that continue the session should send the same.</summary>
+    string UserAgent => "";
+
     Task NavigateAsync(Uri url, CancellationToken ct);
 
     /// <summary>Puts cookies into the context (before the first navigation).</summary>

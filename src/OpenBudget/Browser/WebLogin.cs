@@ -34,9 +34,9 @@ public enum WebLoginMode
 }
 
 /// <summary>Outcome of a web login. On success <see cref="Cookies"/> holds every cookie of the connector's domains.</summary>
-public sealed record WebLoginResult(bool Success, string? Error, IReadOnlyList<CookieState> Cookies, bool CredentialsRejected = false)
+public sealed record WebLoginResult(bool Success, string? Error, IReadOnlyList<CookieState> Cookies, bool CredentialsRejected = false, string? UserAgent = null)
 {
-    public static WebLoginResult Ok(IReadOnlyList<CookieState> cookies) => new(true, null, cookies);
+    public static WebLoginResult Ok(IReadOnlyList<CookieState> cookies, string? userAgent = null) => new(true, null, cookies, UserAgent: userAgent);
 
     public static WebLoginResult Fail(string error) => new(false, error, []);
 
@@ -365,7 +365,7 @@ public sealed class WebLoginSession : IAsyncDisposable
             if (_options.SettleDelay > TimeSpan.Zero) await Task.Delay(_options.SettleDelay, ct);
             var all = await _browser.GetCookiesAsync();
             _logger.LogInformation("Web login succeeded; exporting {Count} cookies of {Domains}.", all.Count(_spec.Matches), string.Join(", ", _spec.CookieDomains));
-            return WebLoginResult.Ok(all.Where(_spec.Matches).ToList());
+            return WebLoginResult.Ok(all.Where(_spec.Matches).ToList(), _browser.UserAgent is { Length: > 0 } ua ? ua : null);
         }
         ct.ThrowIfCancellationRequested();
         return WebLoginResult.Fail("The web login ended.");

@@ -18,6 +18,9 @@ public interface IBankHttpClient
 
     void ImportCookies(IEnumerable<CookieState> cookies);
 
+    /// <summary>Sends <paramref name="userAgent"/> from now on (sessions some sites bind to the browser that signed in).</summary>
+    void UseUserAgent(string userAgent);
+
     /// <summary>Drops every cookie matching <paramref name="match"/> from the jar.</summary>
     void RemoveCookies(Func<CookieState, bool> match);
 }
@@ -97,6 +100,12 @@ public sealed class BankHttpClient : IBankHttpClient, IDisposable
                     _sameSite.GetValueOrDefault(KeyOf(c.Name, c.Domain, c.Path))))
                 .ToList();
         }
+    }
+
+    public void UseUserAgent(string userAgent)
+    {
+        _http.DefaultRequestHeaders.Remove("User-Agent");
+        _http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", userAgent);
     }
 
     public void ImportCookies(IEnumerable<CookieState> cookies)

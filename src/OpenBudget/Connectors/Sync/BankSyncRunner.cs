@@ -267,6 +267,7 @@ public sealed class BankSyncRunner
                     throw new ConnectorException(result.Error ?? "The web login failed.");
                 }
                 context.Http.ReplaceCookies(spec, result.Cookies);
+                if (result.UserAgent is { Length: > 0 } userAgent) context.Http.UseUserAgent(userAgent);
             }
             finally
             {

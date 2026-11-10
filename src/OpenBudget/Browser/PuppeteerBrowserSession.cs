@@ -49,8 +49,10 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
             "() => { " + SameTabLinks + " window.open = (u) => { if (u) location.href = u; return null; };"
             + " Object.defineProperty(navigator, 'languages', { get: () => ['de-DE', 'de'] }); }");
         page.DefaultNavigationTimeout = options.NavigationTimeoutMs;
-        return new PuppeteerBrowserSession(context, page, cdp, options, onClosed);
+        return new PuppeteerBrowserSession(context, page, cdp, options, onClosed) { UserAgent = fingerprint.UserAgent };
     }
+
+    public string UserAgent { get; private init; } = "";
 
     public Uri Url => Uri.TryCreate(_page.Url, UriKind.Absolute, out var u) ? u : new Uri("about:blank");
 
