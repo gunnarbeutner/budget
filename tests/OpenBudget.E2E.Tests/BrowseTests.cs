@@ -28,6 +28,31 @@ public sealed class BrowseTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task The_sidebar_can_be_resized_and_keeps_its_width()
+    {
+        await Page.SetViewportSizeAsync(1440, 900);
+        await GoToAsync(BrowseUrl);
+        var rail = Page.Locator(".browse-rail");
+        var handle = Page.GetByTestId("sidebar-resizer");
+        var before = (await rail.BoundingBoxAsync())!.Width;
+
+        var box = (await handle.BoundingBoxAsync())!;
+        await Page.Mouse.MoveAsync(box.X + box.Width / 2, box.Y + 200);
+        await Page.Mouse.DownAsync();
+        await Page.Mouse.MoveAsync(box.X + 120, box.Y + 200, new() { Steps = 5 });
+        await Page.Mouse.UpAsync();
+        var after = (await rail.BoundingBoxAsync())!.Width;
+        Assert.That(after, Is.EqualTo(before + 120).Within(8));
+
+        await Page.ReloadAsync();
+        await Expect(Page.GetByText("txn-1")).ToBeVisibleAsync();
+        Assert.That((await rail.BoundingBoxAsync())!.Width, Is.EqualTo(after).Within(2));
+
+        await Page.GetByTestId("sidebar-resizer").DblClickAsync();
+        Assert.That((await rail.BoundingBoxAsync())!.Width, Is.EqualTo(before).Within(2));
+    }
+
+    [Test]
     public async Task Search_filter_narrows_the_list_and_clear_restores_it()
     {
         await GoToAsync(BrowseUrl);

@@ -30,8 +30,6 @@ public sealed class WebLoginSpec
     /// <summary>When set, the app fills in and submits the bank's sign-in form itself; the user only sees the page if it gets stuck.</summary>
     public WebLoginAutofill? Autofill { get; init; }
 
-    /// <summary>Shown (instead of the page) while the bank waits after the form was submitted, e.g. "Please approve in the app".</summary>
-    public string? WaitingMessage { get; init; }
 
     /// <summary>Cookies of these domains (and their sub-/parent domains' cookies that reach them) travel between the jar and the browser.</summary>
     public IReadOnlyList<string> CookieDomains { get; }

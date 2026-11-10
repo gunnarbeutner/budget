@@ -179,3 +179,51 @@ window.obScrollActive = function (container) {
 window.obFocus = function (el) {
     if (el && el.focus) el.focus();
 };
+
+// Resizable Browse sidebar: drag the handle on its right edge (or focus it and use the arrow keys); double-click
+// resets. The width is a CSS variable on <html>, so Blazor re-renders never undo it, and is remembered per browser.
+(function () {
+    var MIN = 180, MAX = 640, DEFAULT = 250, KEY = "ob.sidebarWidth";
+    function current() {
+        var v = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--ob-sidebar-w"), 10);
+        return isNaN(v) ? DEFAULT : v;
+    }
+    function set(w, save) {
+        w = Math.round(Math.min(MAX, Math.max(MIN, w)));
+        document.documentElement.style.setProperty("--ob-sidebar-w", w + "px");
+        if (save) { try { localStorage.setItem(KEY, String(w)); } catch (e) { /* storage blocked */ } }
+    }
+    document.addEventListener("pointerdown", function (e) {
+        var handle = e.target.closest && e.target.closest(".browse-resizer");
+        if (!handle || e.button !== 0) return;
+        e.preventDefault();
+        var shell = handle.parentElement, left = shell.getBoundingClientRect().left;
+        handle.setPointerCapture(e.pointerId);
+        handle.classList.add("dragging");
+        document.body.classList.add("resizing-sidebar");
+        function move(ev) { set(ev.clientX - left, false); }
+        function up() {
+            handle.removeEventListener("pointermove", move);
+            handle.removeEventListener("pointerup", up);
+            handle.removeEventListener("pointercancel", up);
+            handle.classList.remove("dragging");
+            document.body.classList.remove("resizing-sidebar");
+            set(current(), true);
+        }
+        handle.addEventListener("pointermove", move);
+        handle.addEventListener("pointerup", up);
+        handle.addEventListener("pointercancel", up);
+    });
+    document.addEventListener("dblclick", function (e) {
+        if (e.target.closest && e.target.closest(".browse-resizer")) {
+            set(DEFAULT, false);
+            try { localStorage.removeItem(KEY); } catch (err) { /* storage blocked */ }
+        }
+    });
+    document.addEventListener("keydown", function (e) {
+        if (!e.target.classList || !e.target.classList.contains("browse-resizer")) return;
+        var step = e.shiftKey ? 50 : 10;
+        if (e.key === "ArrowLeft") { set(current() - step, true); e.preventDefault(); }
+        else if (e.key === "ArrowRight") { set(current() + step, true); e.preventDefault(); }
+    });
+})();

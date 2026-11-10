@@ -37,7 +37,10 @@ else if (lastSync is { } last)
         @if (challenge?.Challenge is { } c)
         {
             <div data-testid="bank-challenge" data-kind="@c.Kind">
-                <p>@c.Message</p>
+                @if (c.Kind != ChallengeKind.WebLogin)
+                {
+                    <p>@c.Message</p>
+                }
                 @switch (c.Kind)
                 {
                     case ChallengeKind.Choice:
@@ -63,7 +66,7 @@ else if (lastSync is { } last)
                             <div class="d-flex align-items-center gap-2 text-body-secondary mb-3" data-testid="web-login-status" data-mode="@challenge.WebLoginMode">
                                 <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
                                 @(challenge.WebLoginMode == OpenBudget.Browser.WebLoginMode.Waiting
-                                    ? (c.WebLoginSpec?.WaitingMessage ?? L["WaitingApproval"].Value)
+                                    ? L["WaitingApprovalBank", LoginName(challenge.LoginId)].Value
                                     : L["SigningIn"].Value)
                             </div>
                             <button type="button" class="btn btn-link btn-sm p-0" data-testid="web-login-show" @onclick="() => showBrowser = true">@L["ShowBrowser"]</button>

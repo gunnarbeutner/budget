@@ -391,4 +391,7 @@
   <data name="Chart_Button" xml:space="preserve">
     <value>Diagramm</value>
   </data>
+  <data name="Aria_ResizeSidebar" xml:space="preserve">
+    <value>Seitenleiste verbreitern oder schmaler machen (ziehen oder Pfeiltasten; Doppelklick setzt zurück)</value>
+  </data>
 </root>

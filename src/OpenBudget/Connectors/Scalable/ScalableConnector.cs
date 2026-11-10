@@ -56,7 +56,6 @@ public sealed partial class ScalableConnector : IBankConnector
     {
         Autofill = new WebLoginAutofill(credentials.Username, credentials.Secret,
             UsernameSelector, PasswordSelector, "button[type=submit]"),
-        WaitingMessage = "Bitte bestätigen Sie die Anmeldung in der Scalable-App. / Please approve the sign-in in the Scalable app.",
     };
 
     // Scalable's sign-in form (auth0): an e-mail field and a password field on one page.
@@ -79,7 +78,7 @@ public sealed partial class ScalableConnector : IBankConnector
                 var appHost = _options.BaseUri.Host;
                 _context.Http.RemoveCookies(c => c.Domain.TrimStart('.').Equals(appHost, StringComparison.OrdinalIgnoreCase));
                 return ConnectorStep.Ask<ConnectorSession?>(ConnectorChallenge.WebLogin(
-                    "Bitte melden Sie sich auf der Scalable-Seite an. / Please sign in on the Scalable page.", WebLogin(credentials), WebLoginReference));
+                    "Sign in on the Scalable page.", WebLogin(credentials), WebLoginReference));
             }
 
             // Back from the web login: the browser's cookies are in the jar now.

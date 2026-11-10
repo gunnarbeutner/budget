@@ -145,7 +145,7 @@
                  role="treeitem" tabindex="0" aria-selected="@isSel.ToString().ToLower()" data-testid="tree-account"
                  @onclick="() => OnSelectAccount.InvokeAsync(accountId)"
                  @onkeydown="e => OnAccountKeydown(e, accountId)">
-                <span class="browse-tree-name"><i class="bi @(a.IsPortfolio ? "bi-graph-up-arrow" : Account.IconForType(a.Type)) me-1" aria-hidden="true"></i>@a.Name</span>
+                <span class="browse-tree-name"><i class="bi @(a.IsPortfolio ? "bi-graph-up-arrow" : Account.IconForType(a.Type)) me-1" aria-hidden="true"></i><span class="browse-tree-label" title="@a.Name">@a.Name</span></span>
                 @if (a.Balance.HasValue)
                 {
                     <span class="browse-tree-amount @(a.Balance < 0 ? "text-danger" : "text-body-secondary")">
@@ -162,7 +162,7 @@
                  role="treeitem" tabindex="0" aria-expanded="@open.ToString().ToLower()" data-testid="tree-group"
                  @onclick="() => ToggleGroupAsync(key)"
                  @onkeydown="e => OnGroupKeydown(e, key)">
-                <span class="browse-tree-name fw-semibold"><i class="bi @(open ? "bi-chevron-down" : "bi-chevron-right") me-1" aria-hidden="true"></i>@n.Name</span>
+                <span class="browse-tree-name fw-semibold"><i class="bi @(open ? "bi-chevron-down" : "bi-chevron-right") me-1" aria-hidden="true"></i><span class="browse-tree-label" title="@n.Name">@n.Name</span></span>
                 <span class="browse-tree-amount fw-bold" data-testid="tree-group-sum">@SumsText(n)</span>
             </div>
             @if (open)
@@ -237,7 +237,11 @@
             builder.AddAttribute(16, "class", node.ItemType == CategoryItemType.Group ? "bi bi-folder me-1" : "bi bi-tag me-1");
             builder.CloseElement();
         }
-        builder.AddContent(20, node.Name);
+        builder.OpenElement(20, "span");
+        builder.AddAttribute(21, "class", "browse-tree-label");
+        builder.AddAttribute(22, "title", node.Name);
+        builder.AddContent(23, node.Name);
+        builder.CloseElement();
         builder.CloseElement(); // span.browse-tree-name
 
         builder.OpenElement(30, "span");

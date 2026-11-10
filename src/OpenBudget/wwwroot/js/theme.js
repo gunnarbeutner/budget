@@ -20,3 +20,11 @@
     // returning users aren't pinned to an old preference.
     try { localStorage.removeItem("theme"); } catch (e) { /* private mode */ }
 })();
+
+// The Browse sidebar's width (set by dragging its edge; see uiBehaviors.js), restored before the first paint.
+(function () {
+    try {
+        var w = parseInt(localStorage.getItem("ob.sidebarWidth"), 10);
+        if (w >= 180 && w <= 640) document.documentElement.style.setProperty("--ob-sidebar-w", w + "px");
+    } catch (e) { /* storage blocked: default width */ }
+})();

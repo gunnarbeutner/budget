@@ -375,6 +375,13 @@ a, .btn-link {
     min-width: 0;
 }
 
+.browse-tree-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .browse-tree-amount {
     flex: 0 0 auto;
     font-size: 0.8rem;
@@ -916,6 +923,24 @@ button.app-sync:hover { color: var(--bs-body-color); background: var(--ob-chip-b
     height: calc(100vh - var(--ob-topbar-h));
     height: calc(100dvh - var(--ob-topbar-h));
 }
+.browse-shell { position: relative; }
+/* Drag handle on the sidebar's right edge (desktop only); the width lives in --ob-sidebar-w, remembered per browser. */
+.browse-resizer {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(var(--ob-sidebar-w) - 3px);
+    width: 7px;
+    cursor: col-resize;
+    z-index: 5;
+    touch-action: none;
+}
+.browse-resizer:hover, .browse-resizer:focus-visible, .browse-resizer.dragging {
+    background: linear-gradient(to right, transparent 2px, var(--bs-primary) 2px, var(--bs-primary) 4px, transparent 4px);
+    outline: none;
+}
+body.resizing-sidebar { cursor: col-resize; user-select: none; }
+@media (max-width: 767.98px) { .browse-resizer { display: none; } }
 .browse-rail {
     background: var(--ob-sidebar-bg);
     border-right: 1px solid var(--ob-line);

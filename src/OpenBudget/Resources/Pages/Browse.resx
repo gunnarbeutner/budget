@@ -391,4 +391,7 @@
   <data name="Chart_Button" xml:space="preserve">
     <value>Chart</value>
   </data>
+  <data name="Aria_ResizeSidebar" xml:space="preserve">
+    <value>Resize the sidebar (drag, or use the arrow keys; double-click resets)</value>
+  </data>
 </root>
