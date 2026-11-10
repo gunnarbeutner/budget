@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using NUnit.Framework;
+using OpenBudget.Models;
 using OpenBudget.Services;
 
 namespace OpenBudget.E2E.Tests;
@@ -47,6 +48,95 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
             await Expect(bar).ToBeVisibleAsync();
             await AssertNoOverlapAsync(bar, ":scope > *:not(.flex-grow-1)");
         }
+    }
+
+    /// <summary>
+    /// A busy account (IBAN info line, balance, a full month of rows) in a tall window: the browse column is a
+    /// height-bound flex column, and the long ledger used to squeeze the two-row toolbar down to its 48px
+    /// min-height so its second row (period, search, Filter) was drawn over the summary row.
+    /// </summary>
+    [TestCase(2000, 1100, 260)]
+    [TestCase(2560, 1300, 640)]
+    [TestCase(1280, 900, 180)]
+    [TestCase(1024, 768, 640)]
+    [TestCase(1600, 900, 520)]
+    [TestCase(390, 844, 260)]
+    public async Task Toolbar_and_summary_stack_for_a_busy_account(int width, int height, int sidebar)
+    {
+        var accountId = SourceScope.Namespace(E2ESeed.SourceId, 77);
+        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        await using (var db = await factory.CreateDbContextAsync())
+        {
+            db.Accounts.Add(new Account
+            {
+                Id = accountId,
+                SourceId = E2ESeed.SourceId,
+                Name = "Busy Giro",
+                Iban = "DE89370400440532013000",
+                Type = 1,
+                Currency = "EUR",
+                Balances = "11:-376.120000,3:EUR,",
+            });
+            await db.SaveChangesAsync();
+            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = accountId });
+            for (var i = 0; i < 120; i++)
+            {
+                var date = new DateTime(2026, 11, 1 + i % 28, 0, 0, 0, DateTimeKind.Utc);
+                db.Transactions.Add(new Transaction
+                {
+                    Id = 7000 + i,
+                    SourceId = E2ESeed.SourceId,
+                    AccountId = accountId,
+                    Amount = -(100 + i),
+                    CategoryId = 200,
+                    Currency = "EUR",
+                    Name = $"Payee {i}",
+                    Timestamp = ((DateTimeOffset)date).ToUnixTimeSeconds(),
+                    ValueTimestamp = ((DateTimeOffset)date).ToUnixTimeSeconds(),
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        await Page.SetViewportSizeAsync(width, height);
+        await Page.AddInitScriptAsync($"try {{ localStorage.setItem('ob.sidebarWidth', '{sidebar}'); }} catch (e) {{}}");
+        await Page.EmulateMediaAsync(new PageEmulateMediaOptions { ColorScheme = ColorScheme.Dark });
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=11&sel=acct-{accountId}");
+        var toolbar = Page.GetByTestId("browse-toolbar");
+        var summary = Page.GetByTestId("browse-summary");
+        await Expect(summary).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("filter-toggle")).ToBeVisibleAsync();
+
+        var tb = (await toolbar.BoundingBoxAsync())!;
+        var scrollHeight = await toolbar.EvaluateAsync<double>("e => e.scrollHeight");
+        Assert.That(scrollHeight, Is.LessThanOrEqualTo(tb.Height + 1), "the toolbar is as tall as its content");
+        await AssertNoOverlapAsync(toolbar,
+            ".browse-ident, .browse-balance, .period-stepper, .segmented, .browse-search, [data-testid=filter-toggle], [data-testid=account-documents]");
+        await AssertBelowAsync(toolbar, summary);
+        var docOverflow = await Page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth > window.innerWidth + 1");
+        Assert.That(docOverflow, Is.False, "no horizontal page scroll");
+
+        // The same rows under a category with its rules bar open: toolbar, rules bar and summary stack, and the
+        // whole "+ Rule" button takes clicks (it used to be partly covered when the squeezed rows overlapped).
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=11&sel=cat-200&rules=1");
+        var rulesBar = Page.GetByTestId("rules-bar");
+        var add = Page.GetByTestId("rules-add");
+        await Expect(add).ToBeVisibleAsync();
+        await Expect(summary).ToBeVisibleAsync();
+        await AssertBelowAsync(toolbar, rulesBar);
+        await AssertBelowAsync(rulesBar, summary);
+        var barBox = (await rulesBar.BoundingBoxAsync())!;
+        Assert.That(await rulesBar.EvaluateAsync<double>("e => e.scrollHeight"), Is.LessThanOrEqualTo(barBox.Height + 1),
+            "the rules bar is as tall as its content");
+        var misses = await add.EvaluateAsync<string[]>(@"b => {
+            const r = b.getBoundingClientRect(), out = [];
+            for (let fx = 0.05; fx < 1; fx += 0.15) for (let fy = 0.1; fy < 1; fy += 0.2) {
+                const hit = document.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy);
+                if (!hit || !b.contains(hit)) out.push(Math.round(fx * 100) + '%,' + Math.round(fy * 100) + '% -> ' + (hit ? hit.tagName + '.' + hit.className : 'none'));
+            }
+            return out;
+        }");
+        Assert.That(misses, Is.Empty, "every point of '+ Rule' hits the button");
     }
 
     /// <summary>Asserts the visible elements matching <paramref name="selector"/> inside the container are
