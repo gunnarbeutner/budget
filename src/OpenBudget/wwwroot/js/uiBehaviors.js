@@ -339,3 +339,11 @@ document.addEventListener("dragstart", function (e) {
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", row.getAttribute("data-project-id") || "");
 });
+
+// A right-click on a row with a context menu must not first select the word under the pointer (macOS does that on
+// mousedown): keep the secondary button's mousedown from starting a selection there.
+document.addEventListener("mousedown", function (e) {
+    if (e.button !== 2) return;
+    var el = e.target instanceof Element ? e.target.closest("[data-ob-longpress]") : null;
+    if (el) e.preventDefault();
+}, true);
