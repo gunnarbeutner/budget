@@ -71,7 +71,11 @@ async function fill(img) {
             await cachePut(key, blob);
         }
         const objectUrl = URL.createObjectURL(blob);
-        img.onload = () => URL.revokeObjectURL(objectUrl);
+        img.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            // Landscape pages would be cropped to their middle by the portrait card: show them whole.
+            card?.classList.toggle("wide", img.naturalWidth > img.naturalHeight);
+        };
         img.src = objectUrl;
         card?.classList.add("loaded");
     } catch (e) {

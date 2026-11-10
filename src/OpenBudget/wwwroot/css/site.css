@@ -1548,6 +1548,7 @@ a.budget-cat:focus-visible { outline: 2px solid var(--ob-accent); outline-offset
     overflow: hidden;
 }
 .doc-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top; opacity: 0; transition: opacity .15s; }
+.doc-thumb.wide img { object-fit: contain; object-position: center; background: #fff; }
 .doc-thumb img:not([src]) { visibility: hidden; }
 .doc-thumb.loaded img { opacity: 1; }
 .doc-thumb-fallback {

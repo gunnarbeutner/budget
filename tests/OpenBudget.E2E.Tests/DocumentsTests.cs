@@ -65,14 +65,14 @@ public sealed class DocumentsTests : EndToEndTestBase
     }
 
     /// <summary>A minimal valid one-page PDF with a line of text (pdf.js renders it).</summary>
-    private static byte[] Pdf(string text)
+    private static byte[] Pdf(string text, bool landscape = false)
     {
         var stream = $"BT /F1 24 Tf 72 720 Td ({text}) Tj ET";
         string[] objects =
         [
             "<< /Type /Catalog /Pages 2 0 R >>",
             "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+            $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {(landscape ? "842 595" : "595 842")}] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
             $"<< /Length {stream.Length.ToString(CultureInfo.InvariantCulture)} >>\nstream\n{stream}\nendstream",
             "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
         ];
@@ -206,6 +206,23 @@ public sealed class DocumentsTests : EndToEndTestBase
         var link = await db.BankLoginAccounts.SingleAsync(a => a.LinkedAccountId == EditingSeed.BankAccountId);
         Assert.That(link.StatementsEnabled, Is.True);
         Assert.That(link.StatementsInterval, Is.EqualTo(StatementsInterval.Weekly));
+    }
+
+    [Test]
+    public async Task A_landscape_statement_shows_its_whole_first_page_in_the_card()
+    {
+        await SeedDocumentsAsync();
+        await using (var db = await Db.CreateDbContextAsync())
+        {
+            var login = await db.BankLogins.SingleAsync();
+            var account = await db.Accounts.SingleAsync(a => a.Id == EditingSeed.BankAccountId);
+            var store = AppFixture.Factory.Services.GetRequiredService<BankStatementStore>();
+            await store.StoreAsync(db, login, account, new RemoteStatement("S-WIDE", "FAKE-GIRO", new DateOnly(2026, 10, 30), "Cost information", Pdf("Example cost information", landscape: true)), CancellationToken.None);
+        }
+        await GoToAsync($"/projects/{Pid}/documents");
+        await Expect(Cards.Filter(new() { HasText = "30.10.2026" }).Locator(".doc-thumb")).ToHaveClassAsync(new System.Text.RegularExpressions.Regex(@"\bwide\b"));
+        await Expect(Cards.Filter(new() { HasText = "01.02.2026" }).Locator(".doc-thumb")).ToHaveClassAsync(new System.Text.RegularExpressions.Regex(@"\bloaded\b"));
+        await Expect(Cards.Filter(new() { HasText = "01.02.2026" }).Locator(".doc-thumb")).Not.ToHaveClassAsync(new System.Text.RegularExpressions.Regex(@"\bwide\b"));
     }
 
     [Test]
