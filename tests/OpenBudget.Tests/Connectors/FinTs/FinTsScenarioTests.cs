@@ -293,7 +293,7 @@ public sealed class FinTsScenarioTests
         {
             var tan = p.Segments.Single(s => s.Name == "HKTAN");
             Assert.Equal(7, tan.Version);
-            Assert.Equal("ORDER1", tan.Element(2));
+            Assert.Equal("ORDER1", tan.Element(4));
             Assert.Equal(["HKTAN"], p.Segments.Select(s => s.Name));
         });
         Assert.NotEmpty(connector.ConnectorType);
@@ -357,7 +357,7 @@ public sealed class FinTsScenarioTests
         Assert.Equal(2, challenges.Count); // one TAN per job (HKCAZ, HKSAL)
         var code = challenges[0];
         Assert.Equal(ChallengeKind.Code, code.Kind);
-        Assert.Equal("Bitte die TAN eingeben\nDanke", code.Message);
+        Assert.Equal("Enter the TAN sent to you by SMS (smsTAN). Bitte die TAN eingeben\nDanke", code.Message);
         Assert.Equal(6, code.Length);
         Assert.True(code.Numeric);
 
@@ -365,7 +365,7 @@ public sealed class FinTsScenarioTests
         Assert.Equal(rig.Bank.TanCode, withTan.Tan);
         Assert.Equal(Pin, withTan.Pin);
         var hktan = Assert.Single(withTan.Segments);
-        Assert.Equal((6, "2", "ORDER1"), (hktan.Version, hktan.Element(0), hktan.Element(2)));
+        Assert.Equal((6, "2", "ORDER1"), (hktan.Version, hktan.Element(0), hktan.Element(4)));
         await connector.LogoutAsync(default);
     }
 
