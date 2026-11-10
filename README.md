@@ -177,7 +177,7 @@ should use their own token only.
 
 ## Bank connectors
 
-Besides MoneyMoney uploads, OpenBudget can talk to banks directly through **connectors** (one per bank, registered by a stable type string). The framework is bank independent; it is proven end to end with a fake bank; real banks are separate connectors (currently Scalable Capital).
+Besides MoneyMoney uploads, OpenBudget can talk to banks directly through **connectors** (one per bank, registered by a stable type string). The framework is bank independent; it is proven end to end with a fake bank; real banks are separate connectors (currently ING, Baader Bank, PSD Bank Nürnberg and Scalable Capital).
 
 ### Secrets key (required)
 
@@ -202,6 +202,13 @@ Set it where the container is configured (`docker-compose.yml` `environment:`, `
 ### Statements
 
 Statement PDFs are stored on the data volume (`data/statements/<owner>/<login>/`) and indexed in the database, so each document is downloaded once. Downloading is configured **per account** (off by default; only for linked accounts the bank still lists): every month (default: tried at the start of a month, then daily until one arrived for the current month), every week, every day or only manually, plus a "Download now" button. Documents without an account (for example tax certificates) are fetched whenever any account of that login fetches statements and are visible to the owner only; account statements are visible to everyone who can see the account (owner and viewers of a shared project that uses it).
+
+### ING (`ing`)
+
+Username is the ING access number (or alias), PIN the ING PIN. Girokonto and Extra-Konto (balance, transactions) come over **FinTS**. What FinTS does not offer comes from ING's **web banking** (banking.ing.de), signed in over plain HTTP with the same access number and PIN; ING then asks for a confirmation in the **Banking to go app**, shown as an approval dialog (with more than one app device you pick one first; the choice is remembered). The web sign-in only happens when it is needed:
+
+- **VL-Sparen**: once, at the first sync, to find VL savings contracts (remembered afterwards; after a failure it is retried a day later and never fails the FinTS sync). A linked VL account is refreshed through the transaction list's CSV export, so every refresh of it needs the app confirmation unless ING's web session is still alive.
+- **Postbox**: when statements are fetched, every postbox (own and joint customer relationships) is read, the first time over ING's whole ten years, afterwards the last year. Documents are identified by postbox, type, subject and date. Account statements whose subject names an account's IBAN go to that account (skipped when its statements are off); securities statements, tax documents and letters belong to the login as a whole. Downloading a document marks it as read at ING.
 
 ### Scalable Capital (`scalable`)
 

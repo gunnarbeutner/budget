@@ -3,6 +3,7 @@ using OpenBudget.Browser;
 using OpenBudget.Connectors.FakeBank;
 using OpenBudget.Connectors.FinTs;
 using OpenBudget.Connectors.Openbank;
+using OpenBudget.Connectors.Ing;
 using OpenBudget.Connectors.Scalable;
 using OpenBudget.Connectors.Sync;
 using OpenBudget.Services;

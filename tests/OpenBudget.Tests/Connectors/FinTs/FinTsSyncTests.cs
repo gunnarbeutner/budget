@@ -1,6 +1,7 @@
 #pragma warning disable CA2000 // test objects live for the test
 using OpenBudget.Connectors;
 using OpenBudget.Connectors.FinTs;
+using OpenBudget.Connectors.Ing;
 using OpenBudget.Connectors.Sync;
 using Xunit;
 

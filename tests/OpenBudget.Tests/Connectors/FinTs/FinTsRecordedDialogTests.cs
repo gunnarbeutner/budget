@@ -1,6 +1,7 @@
 #pragma warning disable CA2000 // test harness: lifetimes are owned by the test
 using OpenBudget.Connectors;
 using OpenBudget.Connectors.FinTs;
+using OpenBudget.Connectors.Ing;
 using Xunit;
 
 namespace OpenBudget.Tests.Connectors.FinTs;
@@ -28,8 +29,10 @@ public sealed class FinTsRecordedDialogTests
         using var server = new MockFinTsServer(replay.Respond);
         var connector = new IngConnector(FinTsHarness.Context(server), FinTsHarness.Options);
         var credentials = new ConnectorCredentials("testuser2", "12345");
+        var seed = fixture.SeedSession();
+        seed.Values[IngConnector.WebAccountsKey] = "[]"; // the FinTS dialog only: web discovery already happened
 
-        await DoneAsync(a => connector.LoginAsync(credentials, fixture.SeedSession(), a, default));
+        await DoneAsync(a => connector.LoginAsync(credentials, seed, a, default));
         var accounts = await connector.ListAccountsAsync(default);
         Assert.Equal(3, accounts.Count);
         Assert.Equal(RemoteAccountType.Giro, accounts[0].Type);

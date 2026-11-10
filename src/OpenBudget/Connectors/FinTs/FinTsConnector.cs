@@ -42,6 +42,10 @@ public class FinTsConnector : IBankConnector
     public static ConnectorRegistration Registration(FinTsBankConfig config, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null) =>
         CreateRegistration(config, ctx => new FinTsConnector(ctx, config, options, transportFactory));
 
+    /// <summary>A plain FinTS connector for <paramref name="config"/>, for connectors that combine FinTS with another channel.</summary>
+    internal static FinTsConnector Create(ConnectorContext context, FinTsBankConfig config, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null) =>
+        new(context, config, options, transportFactory);
+
     public Task<ConnectorStep<ConnectorSession?>> LoginAsync(
         ConnectorCredentials credentials, ConnectorSession? storedSession, ChallengeAnswer? answer, CancellationToken ct)
     {
@@ -95,32 +99,6 @@ public class FinTsConnector : IBankConnector
     }
 
     private FinTsClient Client() => _client ?? throw new ConnectorException("Not logged in.");
-}
-
-/// <summary>ING (Germany), FinTS part: Girokonto and Extra-Konto.</summary>
-public sealed class IngConnector : FinTsConnector
-{
-    public const string TypeName = "ing";
-
-    // TODO: ING's VL-Spar contracts and the Postbox (statements) are not reachable over FinTS; they need a separate
-    // web part. Until that exists this connector deliberately offers neither.
-    public static FinTsBankConfig Config { get; } = new(
-        TypeName,
-        "ING",
-        "ING Germany over FinTS: Girokonto and Extra-Konto (balance and transactions). Username is the ING access key (Zugangsnummer), PIN the ING PIN. "
-        + "VL-Spar and the Postbox are not supported yet.",
-        "50010517",
-        new Uri("https://fints.ing.de/fints/"),
-        FallbackBic: "INGDDEFFXXX",
-        Statements: false);
-
-    public IngConnector(ConnectorContext context, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null)
-        : base(context, Config, options, transportFactory)
-    {
-    }
-
-    public static ConnectorRegistration Registration(FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null) =>
-        CreateRegistration(Config, ctx => new IngConnector(ctx, options, transportFactory));
 }
 
 /// <summary>
