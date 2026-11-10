@@ -34,3 +34,15 @@ public interface IBankConnector
     /// <summary>Ends the session and returns the state to persist for next time (null: nothing to remember).</summary>
     Task<ConnectorSession?> LogoutAsync(CancellationToken ct);
 }
+
+/// <summary>
+/// A connector that hands over statements in batches (a large first download): after a fetch, <see cref="MoreStatements"/>
+/// says whether calling again gets the next batch, and <see cref="StatementsTotal"/> how many new documents there are in all.
+/// The sync stores each batch before asking for the next, so an interrupted sync keeps what it got.
+/// </summary>
+public interface IBatchedStatements
+{
+    bool MoreStatements { get; }
+
+    int? StatementsTotal { get; }
+}

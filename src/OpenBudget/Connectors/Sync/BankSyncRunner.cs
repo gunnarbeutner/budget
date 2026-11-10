@@ -389,24 +389,35 @@ public sealed class BankSyncRunner
         var remoteTargets = targets.Select(t => remote.First(r => string.Equals(r.RemoteId, t.RemoteId, StringComparison.Ordinal))).ToList();
         try
         {
-            var step = await DriveAsync(a => connector.FetchStatementsAsync(remoteTargets, known, a, ct), sink, context, ct);
-            if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Fetching statements failed.");
-
-            foreach (var statement in step.Value!)
+            var stored = 0;
+            for (var batch = 0; batch < 200; batch++)
             {
-                if (known.Contains(statement.Identifier)) continue;
-                Account? account = null;
-                if (statement.AccountRemoteId != null)
+                var step = await DriveAsync(a => connector.FetchStatementsAsync(remoteTargets, known, a, ct), sink, context, ct);
+                if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Fetching statements failed.");
+
+                foreach (var statement in step.Value!)
                 {
-                    var target = targets.FirstOrDefault(t => string.Equals(t.RemoteId, statement.AccountRemoteId, StringComparison.Ordinal));
-                    if (target == null) continue; // an account whose statements are off: not wanted
-                    account = await db.Accounts.FirstAsync(a => a.Id == target.LinkedAccountId, ct);
-                    if (!await db.ImportSources.AnyAsync(s => s.Id == account.SourceId && s.OwnerUserId == login.OwnerUserId, ct)) continue;
-                    target.LastStatementAt = now;
-                    affected.Add(account.SourceId);
+                    if (known.Contains(statement.Identifier)) continue;
+                    Account? account = null;
+                    if (statement.AccountRemoteId != null)
+                    {
+                        var target = targets.FirstOrDefault(t => string.Equals(t.RemoteId, statement.AccountRemoteId, StringComparison.Ordinal));
+                        if (target == null) continue; // an account whose statements are off: not wanted
+                        account = await db.Accounts.FirstAsync(a => a.Id == target.LinkedAccountId, ct);
+                        if (!await db.ImportSources.AnyAsync(s => s.Id == account.SourceId && s.OwnerUserId == login.OwnerUserId, ct)) continue;
+                        target.LastStatementAt = now;
+                        affected.Add(account.SourceId);
+                    }
+                    await _statements.StoreAsync(db, login, account, statement, ct);
+                    known.Add(statement.Identifier);
+                    stored++;
                 }
-                await _statements.StoreAsync(db, login, account, statement, ct);
-                known.Add(statement.Identifier);
+                // each batch is kept before the next one is asked for
+                await db.SaveChangesAsync(ct);
+                if (connector is not IBatchedStatements { MoreStatements: true } batched || step.Value!.Count == 0) break;
+                sink.Report(batched.StatementsTotal is { } total
+                    ? $"Fetching documents: {stored} of {stored + total - step.Value!.Count}"
+                    : $"Fetching documents: {stored}");
             }
         }
         catch (ConnectorException ex)

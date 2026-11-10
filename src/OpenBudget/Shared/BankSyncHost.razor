@@ -17,7 +17,7 @@
 {
     <span class="app-sync d-print-none" data-testid="bank-sync-chip">
         <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-        <span class="app-sync-label">@{ var syncing = statuses.Count(s => s.Phase != SyncPhase.Finished); }@L[syncing == 1 ? "Syncing_One" : "Syncing", syncing]</span>
+        <span class="app-sync-label">@{ var running = statuses.Where(s => s.Phase != SyncPhase.Finished).ToList(); var syncing = running.Count; }@L[syncing == 1 ? "Syncing_One" : "Syncing", syncing]@if (syncing == 1 && running[0].Message is { Length: > 0 } progress && progress.StartsWith("Fetching documents", StringComparison.Ordinal)) {<span class="text-body-secondary" data-testid="bank-sync-progress"> · @progress</span>}</span>
     </span>
 }
 else if (lastSync is { } last)

@@ -13,7 +13,7 @@ namespace OpenBudget.Connectors.Ing;
 /// when it is needed: once to discover web-only accounts, when a web-only account is refreshed, and when statements are
 /// fetched. A failed discovery never fails the FinTS part.
 /// </summary>
-public sealed class IngConnector : IBankConnector
+public sealed class IngConnector : IBankConnector, IBatchedStatements
 {
     public const string TypeName = "ing";
     internal const string WebAccountsKey = "ing.web.accounts";
@@ -193,18 +193,31 @@ public sealed class IngConnector : IBankConnector
     /// that account; one naming another account of this login is skipped (its statements are off); everything else
     /// (securities, tax, information letters, combined savings statements) belongs to the login as a whole.
     /// </summary>
+    /// <summary>Documents downloaded per sync at most; the rest follow with the next syncs.</summary>
+    internal const int PostboxBatch = 40;
+
+    public bool MoreStatements { get; private set; }
+
+    public int? StatementsTotal { get; private set; }
+    private const string PostboxCompleteKey = "ing.postbox.complete";
+
     private async Task<IReadOnlyList<RemoteStatement>> PostboxAsync(
         IReadOnlyList<RemoteAccount> accounts, IReadOnlySet<string> known, IChallengeAsker ask, CancellationToken ct)
     {
         await EnsureWebAsync(ask, ct);
-        var full = !known.Any(k => k.StartsWith(IngWebClient.PostboxIdPrefix, StringComparison.Ordinal));
-        var entries = await _web.ListPostboxAsync(full, ct);
+        // The first pass covers the whole Postbox (years of documents) and runs over several syncs, a batch at a time,
+        // so each sync stores what it got; only once a pass got through is the shorter recent listing enough.
+        var full = !_session.Values.ContainsKey(PostboxCompleteKey);
+        var entries = (await _web.ListPostboxAsync(full, ct)).OrderByDescending(e => e.Row.Date).ToList();
         var wanted = accounts.Where(a => a.Iban != null).ToDictionary(a => a.Iban!, a => a.RemoteId, StringComparer.Ordinal);
         var all = (await ListAccountsAsync(ct)).Select(a => a.Iban).Where(i => i != null).ToHashSet(StringComparer.Ordinal);
         var result = new List<RemoteStatement>();
+        var capped = false;
+        StatementsTotal = entries.Count(e => !known.Contains(e.Identifier));
         foreach (var entry in entries)
         {
             if (known.Contains(entry.Identifier)) continue;
+            if (result.Count >= PostboxBatch) { capped = true; break; }
             string? accountId = null;
             if (IngHtml.FindIban(entry.Row.Subject) is { } iban)
             {
@@ -220,7 +233,13 @@ public sealed class IngConnector : IBankConnector
             var name = entry.Row.Subject.Length > 0 ? $"{entry.Row.Type}: {entry.Row.Subject}" : entry.Row.Type;
             result.Add(new RemoteStatement(entry.Identifier, accountId, entry.Row.Date, name, bytes));
         }
-        Log.LogInformation("ING Postbox: {Count} new document(s) downloaded.", result.Count);
+        MoreStatements = capped;
+        if (capped) Log.LogInformation("ING Postbox: {Count} new document(s) downloaded; more follow.", result.Count);
+        else
+        {
+            _session.Values[PostboxCompleteKey] = "1";
+            Log.LogInformation("ING Postbox: {Count} new document(s) downloaded.", result.Count);
+        }
         return result;
     }
 

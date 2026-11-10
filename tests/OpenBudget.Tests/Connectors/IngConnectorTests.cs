@@ -231,6 +231,28 @@ public sealed class IngConnectorTests
     }
 
     [Fact]
+    public async Task A_large_Postbox_is_downloaded_in_batches_within_one_sync()
+    {
+        await using var rig = await CreateAsync();
+        Assert.True((await rig.SyncAsync(true, false, "0")).Succeeded);
+        await rig.World.LinkAllAsync(BankWorld.Alice, rig.LoginId);
+        var giro = await rig.World.RemoteAsync(BankWorld.Alice, rig.LoginId, SyntheticBank.Iban);
+        await rig.Service.SetStatementsAsync(giro.Id, true, StatementsInterval.ManualOnly);
+        var before = (await rig.Service.GetLoginStatementsAsync(rig.LoginId)).Count;
+        var extra = IngConnector.PostboxBatch * 2 + 5;
+        for (var i = 0; i < extra; i++)
+            rig.Web.Documents.Add(new FakeIng.Doc($"letter-{i}", 1, "Information", $"Example letter {i}", new DateOnly(2024, 1, 1).AddDays(i)));
+        rig.Web.ExpireSessions();
+
+        Assert.True((await rig.SyncAsync(false, true)).Succeeded);
+        // every document arrives in this one sync, a batch at a time, and the next sync only reads the recent listing
+        Assert.True((await rig.Service.GetLoginStatementsAsync(rig.LoginId)).Count >= before + extra);
+        Assert.Contains("more follow", rig.Logs.All, StringComparison.Ordinal);
+        Assert.True((await rig.SyncAsync(false, true)).Succeeded);
+        Assert.Equal("MONATE12", rig.Web.Ranges[^1]);
+    }
+
+    [Fact]
     public async Task A_rejected_confirmation_does_not_fail_the_FinTS_sync_and_is_not_retried_at_once()
     {
         await using var rig = await CreateAsync(w => w.Reject = true);
