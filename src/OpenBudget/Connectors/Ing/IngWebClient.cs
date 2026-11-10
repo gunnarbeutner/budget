@@ -122,8 +122,7 @@ internal sealed class IngWebClient
     /// <summary>Asks for (or reuses) the device and submits the choice.</summary>
     /// <remarks>
     /// Submitting the device choice is what makes ING create the confirmation and push it to that device. The page
-    /// ignores submits for a moment after loading (RequestBlocker); a submit sent right away (as the remembered device
-    /// used to be) still creates the confirmation, but ING sends no push for it, so it is paced like a person's click.
+    /// ignores submits for a moment after loading (RequestBlocker); a submit sent right away still creates the confirmation, but ING sends no push for it, so it is paced like a person's click.
     /// </remarks>
     private async Task<IngPage> ChooseDeviceAsync(IngPage page, long shown, HtmlForm form, IChallengeAsker ask, CancellationToken ct)
     {

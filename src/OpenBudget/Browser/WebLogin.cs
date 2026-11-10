@@ -109,6 +109,19 @@ public sealed class WebLoginSession : IAsyncDisposable
     private readonly TaskCompletionSource<WebLoginResult> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _cts = new();
+    private readonly CancellationTokenSource _autofill = new();
+
+    /// <summary>
+    /// The user wants to sign in on the page themselves: automatic filling stops where it is, the page stays as it is,
+    /// and the login keeps watching for the success condition.
+    /// </summary>
+    public void TakeOver()
+    {
+        if (_autofill.IsCancellationRequested) return;
+        _logger.LogInformation("Web login: the user took over the page.");
+        _autofill.Cancel();
+        SetMode(WebLoginMode.Interactive);
+    }
     private readonly Lock _viewerGate = new();
     private Action? _cancelViewer;
     private Task? _run;
@@ -168,7 +181,12 @@ public sealed class WebLoginSession : IAsyncDisposable
             await _browser.SetCookiesAsync(seed);
             _ready.TrySetResult(); // a viewer may attach now and watch the page load
             await _browser.NavigateAsync(_spec.StartUrl, ct);
-            if (_spec.Autofill is { Username.Length: > 0, Password.Length: > 0 } fill) await AutofillAsync(fill, ct);
+            if (_spec.Autofill is { Username.Length: > 0, Password.Length: > 0 } fill)
+            {
+                using var autofillCt = CancellationTokenSource.CreateLinkedTokenSource(ct, _autofill.Token);
+                try { await AutofillAsync(fill, autofillCt.Token); }
+                catch (OperationCanceledException) when (_autofill.IsCancellationRequested && !ct.IsCancellationRequested) { /* the user took over */ }
+            }
             else SetMode(WebLoginMode.Interactive);
             result = await WatchAsync(ct);
         }
@@ -388,6 +406,7 @@ public sealed class WebLoginSession : IAsyncDisposable
         if (_run != null) await _run;
         else await EndAsync(WebLoginResult.Fail("The web login was cancelled."));
         _cts.Dispose();
+        _autofill.Dispose();
     }
 
     /// <summary>Streams the page to a viewer until the socket closes or the login ends. A newer viewer replaces an older one.</summary>

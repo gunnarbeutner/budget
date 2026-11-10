@@ -442,10 +442,8 @@
         builder.AddAttribute(11, "class", "browse-tree-name");
         if (CategoryColors.ToCss(node.Color) is { } dotColor)
         {
-            builder.OpenElement(12, "span");
-            builder.AddAttribute(13, "class", "browse-color-dot");
-            builder.AddAttribute(14, "style", $"background:{dotColor};");
-            builder.CloseElement();
+            // the same ribbon as the category picker, in the category's colour (a parsed hex value, safe to inline)
+            builder.AddMarkupContent(12, $"<svg class=\"browse-color-dot browse-ribbon\" viewBox=\"0 0 12 16\" aria-hidden=\"true\" style=\"fill:{dotColor};\"><path d=\"M1 1h10v14l-5-3.6L1 15z\"/></svg>");
         }
         else
         {

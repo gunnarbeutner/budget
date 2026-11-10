@@ -84,8 +84,7 @@ builder.Services.Configure<RequestLocalizationOptions>(options =>
 
 // Behind a TLS-terminating reverse proxy: trust X-Forwarded-Proto / X-Forwarded-For so the
 // app knows requests are HTTPS even though Kestrel only ever sees plain HTTP on :8080. Without
-// this, UseHttpsRedirection (now removed) would 307-loop, and link / asset URLs would render
-// with the wrong scheme.
+// this, link / asset URLs would render with the wrong scheme.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     // XForwardedHost: the passkey relying-party id defaults to the request host, which must be the
@@ -96,7 +95,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownProxies.Clear();
 });
 
-// Configure database paths. Everything lives in budgets.db now — the imported data is
+// Configure database paths. Everything lives in budgets.db — the imported data is
 // imported into the same store under namespaced IDs (see SourceScope) via the upload
 // endpoint below.
 var dataDir = OpenBudgetPaths.DataDir(builder.Environment.ContentRootPath);
