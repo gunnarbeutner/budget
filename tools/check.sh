@@ -29,7 +29,7 @@ pids=()
 names=()
 run() { # name, args...
     local name=$1; shift
-    ( dotnet test "$@" --no-build -nologo > "$log_dir/$name.log" 2>&1 ) &
+    ( dotnet test --no-build -nologo -tl:off "$@" > "$log_dir/$name.log" 2>&1 ) &
     pids+=($!)
     names+=("$name")
 }
@@ -63,7 +63,7 @@ while (( remaining > 0 && status == 0 )); do
         remaining=$(( remaining - 1 ))
         set +e; wait "${pids[$i]}"; code=$?; set -e
         name=${names[$i]}
-        summary=$(grep -E "(Passed|Failed)!" "$log_dir/$name.log" | tail -n 1 || true)
+        summary=$(tr "\r" "\n" < "$log_dir/$name.log" | grep -oE "(Passed|Failed)! +- Failed: +[0-9]+, Passed: +[0-9]+" | tail -n 1 || true)
         if (( code == 0 )); then
             echo "$name ok ($(( $(date +%s) - start ))s) $summary"
         else

@@ -30,6 +30,9 @@ internal static class MigratedDatabase
         using (var db = new BudgetDbContext(new DbContextOptionsBuilder<BudgetDbContext>()
             .UseSqlite($"Data Source={path};Pooling=False")
             .UseApplicationServiceProvider(provider)
+            // Its own EF internals (model cache): the contexts other tests build in parallel without the app's
+            // services (TestDb) must not hand this one a model without the Identity v3 tables.
+            .EnableServiceProviderCaching(false)
             .Options))
         {
             db.Database.Migrate();
