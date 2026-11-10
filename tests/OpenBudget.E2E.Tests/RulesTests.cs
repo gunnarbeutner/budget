@@ -44,6 +44,25 @@ public sealed class RulesTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task The_add_rule_button_takes_clicks_across_its_whole_area()
+    {
+        await Page.SetViewportSizeAsync(2000, 900);
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=cat-200&rules=1");
+        var add = Page.GetByTestId("rules-add");
+        await Expect(add).ToBeVisibleAsync();
+        // Every point inside the button's box must hit the button itself (or its icon/text), not something on top of it.
+        var misses = await add.EvaluateAsync<string[]>(@"b => {
+            const r = b.getBoundingClientRect(), out = [];
+            for (let fx = 0.05; fx < 1; fx += 0.15) for (let fy = 0.1; fy < 1; fy += 0.2) {
+                const x = r.left + r.width * fx, y = r.top + r.height * fy, hit = document.elementFromPoint(x, y);
+                if (!hit || !b.contains(hit)) out.push(Math.round(fx * 100) + '%,' + Math.round(fy * 100) + '% -> ' + (hit ? hit.tagName + '.' + hit.className : 'none'));
+            }
+            return out;
+        }");
+        Assert.That(misses, Is.Empty);
+    }
+
+    [Test]
     public async Task The_keyboard_opens_the_category_menu_and_the_gear_has_no_rules_entry()
     {
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3");
