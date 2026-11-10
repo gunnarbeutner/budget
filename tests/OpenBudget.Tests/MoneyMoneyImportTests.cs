@@ -27,7 +27,7 @@ public sealed class MoneyMoneyImportTests : IDisposable
     }
 
     /// <summary>One synthetic transactions row; rowids are assigned in insertion order starting at 1.</summary>
-    private sealed record Row(long Account, double Amount, long Splitted = 0, long? SplitKey = null, int Booked = 1, long Ts = 1_780_000_000);
+    private sealed record Row(long Account, double Amount, long Splitted = 0, long? SplitKey = null, int Booked = 1, long Ts = 1_780_000_000, long? Category = null);
 
     private string BuildSnapshot(Row[] rows, bool withBooked = true, bool withSplitKey = true, int accounts = 2)
     {
@@ -69,7 +69,7 @@ public sealed class MoneyMoneyImportTests : IDisposable
             cmd.Parameters.AddWithValue("$amt", r.Amount);
             cmd.Parameters.AddWithValue("$ts", r.Ts);
             // Parents carry category 0 in MoneyMoney; everything else is "Food" (rowid 2).
-            cmd.Parameters.AddWithValue("$cat", r.Splitted == 1 ? 0 : 2);
+            cmd.Parameters.AddWithValue("$cat", r.Category ?? (r.Splitted == 1 ? 0 : 2));
             cmd.Parameters.AddWithValue("$sp", r.Splitted);
             if (withBooked) cmd.Parameters.AddWithValue("$b", r.Booked);
             if (withSplitKey) cmd.Parameters.Add(new SqliteParameter("$sk", r.SplitKey is { } sk ? sk : DBNull.Value));
@@ -162,6 +162,54 @@ public sealed class MoneyMoneyImportTests : IDisposable
 
         var uncategorized = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId, UncategorizedOnly = true });
         Assert.Equal(10m, uncategorized.TotalSum); // -100 - (-110)
+        var all = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId });
+        Assert.Equal(-100m, all.TotalSum);
+    }
+
+    [Fact]
+    public async Task Split_children_with_splitted_zero_are_linked_by_split_key_and_not_double_counted()
+    {
+        await using var t = new TestDb();
+        var result = await ImportAsync(t, BuildSnapshot(new[]
+        {
+            new Row(1, -715.00, Splitted: 1),
+            new Row(1, -500.00, Splitted: 0, SplitKey: 1),
+            new Row(1, -215.00, Splitted: 0, SplitKey: 1),
+            new Row(1, -20.00, Splitted: 0, SplitKey: 99), // dangling key: stays a normal row
+        }));
+
+        var rows = await TransactionsAsync(t);
+        Assert.Equal(SplitState.Parent, rows.Single(r => r.Id == SourceScope.Namespace(result.SourceId, 1)).Splitted);
+        var children = rows.Where(r => r.Splitted == SplitState.Child).ToList();
+        Assert.Equal(2, children.Count);
+        Assert.All(children, c => Assert.Equal(SourceScope.Namespace(result.SourceId, 1), c.SplitParentId));
+        var dangling = rows.Single(r => r.Id == SourceScope.Namespace(result.SourceId, 4));
+        Assert.Equal(SplitState.Normal, dangling.Splitted);
+        Assert.Null(dangling.SplitParentId);
+
+        var all = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId });
+        Assert.Equal(-735m, all.TotalSum);
+        var uncategorized = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId, UncategorizedOnly = true });
+        Assert.Equal(0, uncategorized.TotalCount);
+    }
+
+    [Theory]
+    [InlineData(-70.00, -30.00)]  // children under-cover the parent
+    [InlineData(-110.00, 10.00)]  // children over-cover the parent
+    public async Task Split_remainder_keeps_the_parents_category(double childSum, double expectedRemainder)
+    {
+        await using var t = new TestDb();
+        var result = await ImportAsync(t, BuildSnapshot(new[]
+        {
+            new Row(1, -100.00, Splitted: 1, Category: 2),
+            new Row(1, childSum, Splitted: 2, SplitKey: 1),
+        }));
+
+        var remainder = (await TransactionsAsync(t)).Single(r => r.Splitted == SplitState.Remainder);
+        Assert.Equal(MoneyMath.EurosToCents(expectedRemainder), remainder.Amount);
+        Assert.Equal(SourceScope.Namespace(result.SourceId, 2), remainder.CategoryId);
+        var uncategorized = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId, UncategorizedOnly = true });
+        Assert.Equal(0, uncategorized.TotalCount);
         var all = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId });
         Assert.Equal(-100m, all.TotalSum);
     }

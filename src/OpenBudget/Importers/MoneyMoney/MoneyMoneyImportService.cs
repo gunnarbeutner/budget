@@ -634,7 +634,9 @@ public class MoneyMoneyImportService
         // how much of a parent is allocated, so parents keep the legacy "excluded" behavior.
         bool hasSplitKey = await ColumnExistsAsync(src, "transactions", "split_key", ct);
         string splitKeyExpr = hasSplitKey ? "split_key" : "NULL AS split_key";
-        var childSumsCents = hasSplitKey ? await ReadSplitChildSumsAsync(src, ct) : new Dictionary<long, long>();
+        var (childSumsCents, childRowids) = hasSplitKey
+            ? await ReadSplitChildrenAsync(src, ct)
+            : (new Dictionary<long, long>(), new HashSet<long>());
 
         string select = $"""
             SELECT rowid, local_account_key, amount, currency, timestamp, name, comment, {purposeExpr}, category_key, checkmark, splitted, {bookedExpr}, {splitKeyExpr}
@@ -674,8 +676,12 @@ public class MoneyMoneyImportService
             cmd.Parameters["$split_parent_id"].Value = DBNull.Value;
             cmd.Parameters["$split_original_amount"].Value = DBNull.Value;
 
-            if (splitted == SplitState.Child && hasSplitKey && !r.IsDBNull(12) && r.GetInt64(12) != 0)
+            // Any row whose split_key points at an existing split parent is a child, whatever its
+            // own splitted value: MoneyMoney also stores children with splitted=0, and counting
+            // those as normal rows beside a full-amount remainder double counts the booking.
+            if (childRowids.Contains(rowid))
             {
+                cmd.Parameters["$splitted"].Value = SplitState.Child;
                 cmd.Parameters["$split_parent_id"].Value = SourceScope.Namespace(sourceId, r.GetInt64(12));
             }
             else if (splitted == SplitState.Parent && hasSplitKey)
@@ -685,30 +691,46 @@ public class MoneyMoneyImportService
                 long remainder = SplitMath.Remainder(original, childSumsCents.GetValueOrDefault(rowid));
                 if (remainder != 0)
                 {
-                    // Children don't cover the parent: turn it into an uncategorized normal row
-                    // for the unallocated part so every total picks it up without special cases.
+                    // Children don't cover the parent: turn it into a normal row for the
+                    // unallocated part so every total picks it up without special cases. It keeps
+                    // the parent's own MoneyMoney category (MoneyMoney shows it categorized);
+                    // only a parent without one leaves the remainder uncategorized.
                     cmd.Parameters["$splitted"].Value = SplitState.Remainder;
                     cmd.Parameters["$amount"].Value = remainder;
-                    cmd.Parameters["$category_key"].Value = DBNull.Value;
+                    cmd.Parameters["$category_key"].Value = r.IsDBNull(8) || r.GetInt64(8) == 0
+                        ? DBNull.Value
+                        : SourceScope.Namespace(sourceId, r.GetInt64(8));
                 }
             }
         }, TransactionInsertParameters, ct, skipRow: r =>
             !r.IsDBNull(1) && foreignAccountIds.Contains(SourceScope.Namespace(sourceId, r.GetInt64(1))));
     }
 
-    /// <summary>Sum of child amounts (cents) per split parent rowid.</summary>
-    private static async Task<Dictionary<long, long>> ReadSplitChildSumsAsync(SqliteConnection src, CancellationToken ct)
+    /// <summary>
+    /// Split children (rows whose split_key names an existing split parent, regardless of their
+    /// own splitted value) and the sum of their amounts (cents) per parent rowid.
+    /// </summary>
+    private static async Task<(Dictionary<long, long> Sums, HashSet<long> ChildRowids)> ReadSplitChildrenAsync(SqliteConnection src, CancellationToken ct)
     {
         var sums = new Dictionary<long, long>();
+        var children = new HashSet<long>();
         await using var cmd = src.CreateCommand();
-        cmd.CommandText = "SELECT split_key, amount FROM transactions WHERE splitted = 2 AND split_key IS NOT NULL AND split_key <> 0 AND amount IS NOT NULL";
+        cmd.CommandText = """
+            SELECT c.rowid, c.split_key, c.amount
+            FROM transactions c
+            JOIN transactions p ON p.rowid = c.split_key
+            WHERE c.split_key IS NOT NULL AND c.split_key <> 0 AND c.rowid <> c.split_key
+              AND p.splitted = 1
+            """;
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
-            long parent = reader.GetInt64(0);
-            sums[parent] = sums.GetValueOrDefault(parent) + MoneyMath.EurosToCents(reader.GetDouble(1));
+            children.Add(reader.GetInt64(0));
+            if (await reader.IsDBNullAsync(2, ct)) continue;
+            long parent = reader.GetInt64(1);
+            sums[parent] = sums.GetValueOrDefault(parent) + MoneyMath.EurosToCents(reader.GetDouble(2));
         }
-        return sums;
+        return (sums, children);
     }
 
     private static async Task<int> CopySecuritiesAsync(SqliteConnection src, BudgetDbContext db, int sourceId, HashSet<long> foreignAccountIds, CancellationToken ct)
