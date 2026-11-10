@@ -12,6 +12,7 @@ namespace OpenBudget.E2E.Tests;
 /// </summary>
 #pragma warning disable CA1001 // the listener is closed in TearDown
 [TestFixture]
+[NonParallelizable] // points the fake bank at its login page through process environment variables
 public sealed class WebLoginDialogTests : EndToEndTestBase
 {
     private HttpListener? _listener;

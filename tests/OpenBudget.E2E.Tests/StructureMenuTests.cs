@@ -21,9 +21,9 @@ public sealed class StructureMenuTests : EndToEndTestBase
 
     [SetUp]
     public async Task SeedEditingWorld() =>
-        await EditingSeed.SeedAsync(AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>());
+        await EditingSeed.SeedAsync(Factory.Services.GetRequiredService<SystemDbContextFactory>());
 
-    private static SystemDbContextFactory Db => AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+    private SystemDbContextFactory Db => Factory.Services.GetRequiredService<SystemDbContextFactory>();
 
     private ILocator Sidebar => Page.GetByTestId("project-sidebar");
     private ILocator Category(string name) => Sidebar.GetByTestId("tree-category").Filter(new() { HasText = name }).First;
@@ -35,7 +35,7 @@ public sealed class StructureMenuTests : EndToEndTestBase
         await Expect(Page.GetByTestId("context-menu")).ToBeVisibleAsync();
     }
 
-    private static async Task GroupGiroInBanksAsync()
+    private async Task GroupGiroInBanksAsync()
     {
         await using var db = await Db.CreateDbContextAsync();
         db.AccountGroups.Add(new AccountGroup { Id = BanksGroupId, SourceId = E2ESeed.SourceId, Name = "Banks", Sort = 0 });

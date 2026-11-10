@@ -20,16 +20,16 @@ public sealed class TransactionEditingTests : EndToEndTestBase
 
     [SetUp]
     public async Task SeedEditingWorld() =>
-        await EditingSeed.SeedAsync(AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>());
+        await EditingSeed.SeedAsync(Factory.Services.GetRequiredService<SystemDbContextFactory>());
 
     // Cmd on macOS (Ctrl-click is a right click there), Ctrl elsewhere; the page accepts either.
     private static KeyboardModifier CommandKey => OperatingSystem.IsMacOS() ? KeyboardModifier.Meta : KeyboardModifier.Control;
 
     private ILocator Row(string text) => Page.GetByTestId("tx-row").Filter(new() { HasText = text });
 
-    private static async Task<Transaction> LoadAsync(long id)
+    private async Task<Transaction> LoadAsync(long id)
     {
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         return await db.Transactions.AsNoTracking().SingleAsync(t => t.Id == id);
     }
@@ -56,13 +56,13 @@ public sealed class TransactionEditingTests : EndToEndTestBase
             .observe(document.body, { childList: true, subtree: true }); }");
 
         // the sync also removed a row (a pending booking that went away): the list shrinks under the open view
-        await using (var db = await AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
+        await using (var db = await Factory.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
         {
             var gone = await db.Transactions.Where(t => t.SourceId == E2ESeed.SourceId && t.CategoryId == null).OrderBy(t => t.Id).FirstAsync();
             db.Transactions.Remove(gone);
             await db.SaveChangesAsync();
         }
-        var notifications = AppFixture.Factory.BrowserHostServices.GetRequiredService<ChangeNotificationService>();
+        var notifications = Factory.BrowserHostServices.GetRequiredService<ChangeNotificationService>();
         for (var i = 0; i < 4; i++) notifications.Publish(new DataChange(DataArea.ImportedData, SourceId: E2ESeed.SourceId));
         await Page.WaitForTimeoutAsync(1500);
 
@@ -372,7 +372,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     [Test]
     public async Task A_project_viewer_cannot_edit()
     {
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using (var db = await factory.CreateDbContextAsync())
         {
             var guest = await db.Users.SingleAsync(u => u.UserName == E2ESeed.SecondUserName);

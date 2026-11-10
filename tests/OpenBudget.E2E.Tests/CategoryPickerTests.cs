@@ -19,7 +19,7 @@ public sealed class CategoryPickerTests : EndToEndTestBase
     [SetUp]
     public async Task SeedTree()
     {
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await EditingSeed.SeedAsync(factory);
         await using var db = await factory.CreateDbContextAsync();
         var source = E2ESeed.SourceId;
@@ -82,7 +82,7 @@ public sealed class CategoryPickerTests : EndToEndTestBase
 
         await Page.Keyboard.PressAsync("Enter");
         await Expect(Picker).ToHaveCountAsync(0);
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         Assert.That((await db.Transactions.AsNoTracking().SingleAsync(t => t.Id == 101)).CategoryId, Is.EqualTo(210));
     }
@@ -98,7 +98,7 @@ public sealed class CategoryPickerTests : EndToEndTestBase
 
         await Picker.GetByTestId("category-picker-option").Filter(new() { HasText = "Train" }).ClickAsync();
         await Expect(Picker).ToHaveCountAsync(0);
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         Assert.That((await db.Transactions.AsNoTracking().SingleAsync(t => t.Id == 104)).CategoryId, Is.EqualTo(211));
     }

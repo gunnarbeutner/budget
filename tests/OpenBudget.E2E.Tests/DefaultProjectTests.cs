@@ -35,18 +35,18 @@ public sealed class DefaultProjectTests : EndToEndTestBase
         await Expect(Page.GetByTestId("modal-dialog")).ToBeVisibleAsync();
     }
 
-    private static async Task SeedUnassignedAccountsAsync()
+    private async Task SeedUnassignedAccountsAsync()
     {
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         db.Accounts.Add(new Account { Id = SourceScope.Namespace(E2ESeed.SourceId, 1), SourceId = E2ESeed.SourceId, Name = "Example Giro" });
         db.Accounts.Add(new Account { Id = SourceScope.Namespace(E2ESeed.SourceId, 2), SourceId = E2ESeed.SourceId, Name = "Example Savings" });
         await db.SaveChangesAsync();
     }
 
-    private static async Task ShareDirectlyAsync()
+    private async Task ShareDirectlyAsync()
     {
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         var guest = await db.Users.SingleAsync(u => u.UserName == E2ESeed.SecondUserName);
         db.ProjectShares.Add(new ProjectShare { ProjectId = E2ESeed.ProjectId, UserId = guest.Id, Role = ProjectRole.Viewer });

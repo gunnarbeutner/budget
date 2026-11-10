@@ -15,9 +15,9 @@ public sealed class BankLoginTests : EndToEndTestBase
 {
     private const long GiroId = 1;
 
-    private static async Task SeedGiroAsync()
+    private async Task SeedGiroAsync()
     {
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         db.Accounts.Add(new Account
         {

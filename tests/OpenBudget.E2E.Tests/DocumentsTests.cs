@@ -23,13 +23,13 @@ public sealed class DocumentsTests : EndToEndTestBase
 {
     private static int Pid => E2ESeed.ProjectId;
 
-    private static SystemDbContextFactory Db => AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+    private SystemDbContextFactory Db => Factory.Services.GetRequiredService<SystemDbContextFactory>();
 
     /// <summary>
     /// The editing world plus a fake-bank login of the owner linked to the giro account, with three statements of
     /// the giro (2026-01..03) and one document of the login without an account.
     /// </summary>
-    internal static async Task SeedDocumentsAsync(bool editingWorld = true)
+    private async Task SeedDocumentsAsync(bool editingWorld = true)
     {
         if (editingWorld) await EditingSeed.SeedAsync(Db);
         await using var db = await Db.CreateDbContextAsync();
@@ -55,7 +55,7 @@ public sealed class DocumentsTests : EndToEndTestBase
         });
         await db.SaveChangesAsync();
 
-        var store = AppFixture.Factory.Services.GetRequiredService<BankStatementStore>();
+        var store = Factory.Services.GetRequiredService<BankStatementStore>();
         var account = await db.Accounts.SingleAsync(a => a.Id == EditingSeed.BankAccountId);
         for (var m = 1; m <= 3; m++)
         {
@@ -219,7 +219,7 @@ public sealed class DocumentsTests : EndToEndTestBase
         {
             var login = await db.BankLogins.SingleAsync();
             var account = await db.Accounts.SingleAsync(a => a.Id == EditingSeed.BankAccountId);
-            var store = AppFixture.Factory.Services.GetRequiredService<BankStatementStore>();
+            var store = Factory.Services.GetRequiredService<BankStatementStore>();
             await store.StoreAsync(db, login, account, new RemoteStatement("S-WIDE", "FAKE-GIRO", new DateOnly(2026, 10, 30), "Cost information", Pdf("Example cost information", landscape: true)), CancellationToken.None);
         }
         await GoToAsync($"/projects/{Pid}/documents");

@@ -20,6 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- the migrated template database the app hosts start from -->
+    <Compile Include="../OpenBudget.Tests/MigratedDatabase.cs" Link="MigratedDatabase.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../src/OpenBudget/OpenBudget.csproj" />
   </ItemGroup>
 

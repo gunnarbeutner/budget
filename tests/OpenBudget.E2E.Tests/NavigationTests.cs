@@ -20,10 +20,10 @@ public sealed class NavigationTests : EndToEndTestBase
 
     private static int Pid => E2ESeed.ProjectId;
 
-    private static SystemDbContextFactory Db => AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+    private SystemDbContextFactory Db => Factory.Services.GetRequiredService<SystemDbContextFactory>();
 
     /// <summary>A second project of the same owner, on the same source.</summary>
-    private static async Task<int> AddSecondProjectAsync()
+    private async Task<int> AddSecondProjectAsync()
     {
         await using var db = await Db.CreateDbContextAsync();
         var first = await db.Projects.SingleAsync(p => p.Id == E2ESeed.ProjectId);
@@ -52,7 +52,8 @@ public sealed class NavigationTests : EndToEndTestBase
         await Expect(View("transactions")).Not.ToHaveAttributeAsync("aria-current", "page");
 
         await View("cashflow").ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/cashflow$"));
+        // the cashflow view then adds its year/budget to the query (a race the old pattern lost on a busy machine)
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/cashflow(\\?.*)?$"));
         await Expect(View("cashflow")).ToHaveAttributeAsync("aria-current", "page");
 
         await View("transactions").ClickAsync();

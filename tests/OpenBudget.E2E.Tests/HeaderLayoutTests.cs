@@ -16,7 +16,7 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
 {
     [SetUp]
     public async Task SeedAccounts() =>
-        await EditingSeed.SeedAsync(AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>());
+        await EditingSeed.SeedAsync(Factory.Services.GetRequiredService<SystemDbContextFactory>());
 
     [TestCase(1280)]
     [TestCase(1600)]
@@ -64,7 +64,7 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
     public async Task Toolbar_and_summary_stack_for_a_busy_account(int width, int height, int sidebar)
     {
         var accountId = SourceScope.Namespace(E2ESeed.SourceId, 77);
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using (var db = await factory.CreateDbContextAsync())
         {
             db.Accounts.Add(new Account
@@ -141,7 +141,7 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
 
     /// <summary>Asserts the visible elements matching <paramref name="selector"/> inside the container are
     /// pairwise disjoint and lie within the container's box.</summary>
-    private static async Task AssertNoOverlapAsync(ILocator container, string selector)
+    private async Task AssertNoOverlapAsync(ILocator container, string selector)
     {
         var outer = (await container.BoundingBoxAsync())!;
         var boxes = new List<(string Name, LocatorBoundingBoxResult Box)>();
@@ -172,7 +172,7 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
             }
     }
 
-    private static async Task AssertBelowAsync(ILocator header, ILocator next)
+    private async Task AssertBelowAsync(ILocator header, ILocator next)
     {
         var h = (await header.BoundingBoxAsync())!;
         var n = (await next.BoundingBoxAsync())!;

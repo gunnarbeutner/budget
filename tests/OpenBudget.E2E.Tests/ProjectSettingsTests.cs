@@ -75,9 +75,9 @@ public sealed class ProjectSettingsTests : EndToEndTestBase
         await Expect(AssignmentRow("Living")).ToBeVisibleAsync();
     }
 
-    private static async Task SeedAccountsAsync()
+    private async Task SeedAccountsAsync()
     {
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         db.AccountGroups.Add(new AccountGroup { Id = 20, SourceId = E2ESeed.SourceId, Name = "Example Bank", Sort = 1 });
         db.AccountGroups.Add(new AccountGroup { Id = 21, SourceId = E2ESeed.SourceId, Name = "Another Bank", Sort = 2 });

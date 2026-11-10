@@ -21,7 +21,7 @@ public sealed class RulesTests : EndToEndTestBase
 
     [SetUp]
     public async Task SeedEditingWorld() =>
-        await EditingSeed.SeedAsync(AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>());
+        await EditingSeed.SeedAsync(Factory.Services.GetRequiredService<SystemDbContextFactory>());
 
     private ILocator Category(string name) =>
         Page.GetByTestId("project-sidebar").GetByTestId("tree-category").Filter(new() { HasText = name }).First;
@@ -69,7 +69,15 @@ public sealed class RulesTests : EndToEndTestBase
         await Category("Groceries").FocusAsync();
         await Page.Keyboard.PressAsync("Shift+F10");
         await Expect(Page.GetByTestId("ctx-rules")).ToBeVisibleAsync();
-        await Page.Keyboard.PressAsync("Escape");
+        // The menu's key handler is attached after its first render; an Escape pressed right as it appears could be
+        // lost on a busy machine (the backdrop then swallowed the gear click below). Press until the menu is closed.
+        for (var i = 0; i < 5 && await Page.GetByTestId("ctx-rules").CountAsync() > 0; i++)
+        {
+            await Page.Keyboard.PressAsync("Escape");
+            try { await Expect(Page.GetByTestId("ctx-rules")).ToHaveCountAsync(0, new() { Timeout = 1000 }); }
+            catch (PlaywrightException) { /* not closed yet: press again */ }
+        }
+        await Expect(Page.GetByTestId("ctx-rules")).ToHaveCountAsync(0);
 
         var gear = Page.GetByTestId("gear-menu");
         await gear.Locator("summary").ClickAsync();
@@ -134,7 +142,7 @@ public sealed class RulesTests : EndToEndTestBase
         await Expect(bar.GetByTestId("rules-status")).ToContainTextAsync("3 bookings categorized");
         await Expect(bar.GetByTestId("rules-apply")).ToHaveCountAsync(0);
 
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         var rows = await db.Transactions.AsNoTracking().Where(t => t.Name == "Example Grocer").ToListAsync();
         Assert.That(rows, Has.Count.EqualTo(3));

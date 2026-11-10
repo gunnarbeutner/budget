@@ -20,16 +20,16 @@ public sealed class SharingTests : EndToEndTestBase
 
     private async Task SeedHiddenProjectAsync()
     {
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         var owner = await db.Users.SingleAsync(u => u.UserName == E2ESeed.UserName);
         db.Projects.Add(new Project { Id = 50, Name = HiddenProject, SourceId = E2ESeed.SourceId, OwnerUserId = owner.Id, SortOrder = 5, CreatedAt = DateTime.UtcNow });
         await db.SaveChangesAsync();
     }
 
-    private static async Task ShareDirectlyAsync(ProjectRole role)
+    private async Task ShareDirectlyAsync(ProjectRole role)
     {
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         var guest = await db.Users.SingleAsync(u => u.UserName == E2ESeed.SecondUserName);
         db.ProjectShares.Add(new ProjectShare { ProjectId = E2ESeed.ProjectId, UserId = guest.Id, Role = role });
@@ -113,7 +113,7 @@ public sealed class SharingTests : EndToEndTestBase
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
         await Expect(Page.GetByRole(AriaRole.Navigation, new() { Name = "Project views" })).ToBeVisibleAsync();
 
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using (var db = await factory.CreateDbContextAsync())
         {
             db.ProjectShares.RemoveRange(db.ProjectShares);

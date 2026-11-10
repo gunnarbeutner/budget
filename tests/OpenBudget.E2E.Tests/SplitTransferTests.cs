@@ -22,7 +22,7 @@ public sealed class SplitTransferTests : EndToEndTestBase
     [SetUp]
     public async Task SeedWorld()
     {
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await EditingSeed.SeedAsync(factory);
         await using var db = await factory.CreateDbContextAsync();
         db.Accounts.Add(new Account { Id = SavingsAccountId, SourceId = E2ESeed.SourceId, Name = SavingsName, Provider = "fake", Type = 1, Currency = "EUR", Balances = "11:500.000000,3:EUR," });
@@ -43,9 +43,9 @@ public sealed class SplitTransferTests : EndToEndTestBase
 
     private ILocator Row(string text) => Page.GetByTestId("tx-row").Filter(new() { HasText = text });
 
-    private static async Task<List<Transaction>> RowsAsync()
+    private async Task<List<Transaction>> RowsAsync()
     {
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         return await db.Transactions.AsNoTracking().ToListAsync();
     }

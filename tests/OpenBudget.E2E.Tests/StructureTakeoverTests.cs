@@ -12,7 +12,7 @@ public sealed class StructureTakeoverTests : EndToEndTestBase
     [SetUp]
     public async Task MarkSourceUploaded()
     {
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         var source = await db.ImportSources.SingleAsync(s => s.Id == E2ESeed.SourceId);
         source.LastUploadAt = DateTime.UtcNow;
@@ -30,7 +30,7 @@ public sealed class StructureTakeoverTests : EndToEndTestBase
         await Expect(Page.GetByTestId("structure-owned")).ToBeVisibleAsync();
         await Expect(Page.GetByTestId("structure-takeover")).ToHaveCountAsync(0);
 
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         Assert.That((await db.ImportSources.SingleAsync(s => s.Id == E2ESeed.SourceId)).StructureTakenOverAt, Is.Not.Null);
     }

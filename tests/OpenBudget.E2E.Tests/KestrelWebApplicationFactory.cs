@@ -23,6 +23,9 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
 {
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"mmb-e2e-{Guid.NewGuid():N}.db");
 
+    /// <summary>Starts from a copy of a migrated database (the hosts of a parallel run don't each apply every migration).</summary>
+    public KestrelWebApplicationFactory() => OpenBudget.Tests.MigratedDatabase.CopyTo(_dbPath);
+
     /// <summary>The http://127.0.0.1:&lt;port&gt; address Playwright should navigate to.</summary>
     public string BaseUrl { get; private set; } = string.Empty;
 

@@ -18,12 +18,12 @@ public sealed class ProjectSummaryTests : EndToEndTestBase
     private static int Pid => E2ESeed.ProjectId;
     private static string January => $"year={E2ESeed.BudgetYear}&month=1";
 
-    private static SystemDbContextFactory Db => AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+    private SystemDbContextFactory Db => Factory.Services.GetRequiredService<SystemDbContextFactory>();
 
     private ILocator Strip => Page.GetByTestId("summary-strip");
 
     /// <summary>Pushes Groceries over its budget in January and adds a new, uncategorized booking.</summary>
-    private static async Task AddReviewWorkAsync()
+    private async Task AddReviewWorkAsync()
     {
         await using var db = await Db.CreateDbContextAsync();
         var date = ((DateTimeOffset)new DateTime(E2ESeed.BudgetYear, 1, 20, 0, 0, 0, DateTimeKind.Utc)).ToUnixTimeSeconds();

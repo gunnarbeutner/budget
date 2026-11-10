@@ -19,9 +19,9 @@ public sealed class ProjectSwitcherMenuTests : EndToEndTestBase
     private const string Second = "Example Market";
     private const string Third = "Example Holidays";
 
-    private static SystemDbContextFactory Db => AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+    private SystemDbContextFactory Db => Factory.Services.GetRequiredService<SystemDbContextFactory>();
 
-    private static async Task<(int Second, int Third)> AddProjectsAsync()
+    private async Task<(int Second, int Third)> AddProjectsAsync()
     {
         await using var db = await Db.CreateDbContextAsync();
         var first = await db.Projects.SingleAsync(p => p.Id == E2ESeed.ProjectId);
@@ -116,6 +116,8 @@ public sealed class ProjectSwitcherMenuTests : EndToEndTestBase
         // A second tab of the same user with its switcher open.
         var other = await Context.NewPageAsync();
         await other.GotoAsync($"/projects/{E2ESeed.ProjectId}/budgets");
+        // open the menu on the interactive render, not on the prerender it replaces (see GoToAsync)
+        await Expect(other.Locator("html[data-interactive]")).ToHaveCountAsync(1);
         await OpenSwitcherAsync(other);
 
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");

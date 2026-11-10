@@ -18,9 +18,9 @@ public sealed class PortfolioTests : EndToEndTestBase
     private static int Pid => E2ESeed.ProjectId;
     private static readonly long DepotId = SourceScope.Namespace(E2ESeed.SourceId, 7);
 
-    private static SystemDbContextFactory Db => AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+    private SystemDbContextFactory Db => Factory.Services.GetRequiredService<SystemDbContextFactory>();
 
-    private static async Task AddDepotAsync()
+    private async Task AddDepotAsync()
     {
         await using var db = await Db.CreateDbContextAsync();
         db.Accounts.Add(new Account { Id = DepotId, SourceId = E2ESeed.SourceId, Name = "Example Depot", Type = 7, Currency = "EUR" });
@@ -42,7 +42,7 @@ public sealed class PortfolioTests : EndToEndTestBase
         await db.SaveChangesAsync();
     }
 
-    private static async Task<int> AddSecondProjectAsync()
+    private async Task<int> AddSecondProjectAsync()
     {
         await using var db = await Db.CreateDbContextAsync();
         var first = await db.Projects.SingleAsync(p => p.Id == Pid);
@@ -118,7 +118,7 @@ public sealed class PortfolioTests : EndToEndTestBase
         await GoToAsync($"/projects/{Pid}/cashflow");
         await switcher.Locator("summary").ClickAsync();
         await secondRow.ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{second}/cashflow$"));
+        await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{second}/cashflow(\\?.*)?$"));
 
         // The second project has no depot: Portfolio falls back to Transactions.
         await GoToAsync($"/projects/{Pid}/portfolio");

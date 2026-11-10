@@ -1,8 +1,8 @@
 using NUnit.Framework;
 
-// The whole E2E suite shares ONE Kestrel host and ONE temp SQLite file (see AppFixture), with
-// per-test isolation provided by re-seeding in EndToEndTestBase.SetUp. That model only holds if
-// tests run one at a time — concurrent tests would reseed (delete-all + seed) the shared DB out
-// from under each other mid-interaction. Force the assembly fully sequential.
-[assembly: NonParallelizable]
-[assembly: LevelOfParallelism(1)]
+// Fixtures run in parallel, each on its own app host and SQLite file rented from AppFixture's pool; the tests of one
+// fixture run one after another against that host (each re-seeds it in EndToEndTestBase.SetUp). A fixture that
+// touches process-wide state (environment variables) is [NonParallelizable] and runs alone.
+// Override the worker count with `-- NUnit.NumberOfTestWorkers=<n>`.
+[assembly: Parallelizable(ParallelScope.Fixtures)]
+[assembly: LevelOfParallelism(6)]

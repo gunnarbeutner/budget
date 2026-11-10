@@ -76,7 +76,7 @@ public sealed class LoginTests : EndToEndTestBase
     public async Task A_passkey_can_be_registered_and_used_to_sign_in()
     {
         // WebAuthn refuses IP addresses as the relying party, so run this ceremony on localhost.
-        var origin = AppFixture.BaseUrl.Replace("127.0.0.1", "localhost", StringComparison.Ordinal);
+        var origin = Factory.BaseUrl.Replace("127.0.0.1", "localhost", StringComparison.Ordinal);
 
         // A virtual platform authenticator (like Touch ID) that approves every request.
         var cdp = await Page.Context.NewCDPSessionAsync(Page);

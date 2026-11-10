@@ -18,7 +18,7 @@ public sealed class AccountTreeTests : EndToEndTestBase
 
     private async Task SeedAccountsAsync()
     {
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         db.AccountGroups.Add(new AccountGroup { Id = BanksGroup, SourceId = E2ESeed.SourceId, Name = "Banks", Sort = 1 });
         db.AccountGroups.Add(new AccountGroup { Id = ExampleBankGroup, SourceId = E2ESeed.SourceId, Name = "Example Bank", ParentGroupId = BanksGroup, Sort = 1 });
@@ -88,9 +88,9 @@ public sealed class AccountTreeTests : EndToEndTestBase
         await Expect(Page.GetByTestId("tree-account")).ToHaveCountAsync(3);
     }
 
-    private static async Task SeedGroupBookingsAsync()
+    private async Task SeedGroupBookingsAsync()
     {
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         void Add(long id, long account, long cents, int day, string name) => db.Transactions.Add(new Transaction
         {

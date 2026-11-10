@@ -16,11 +16,13 @@ public sealed class ReadmeScreenshots
     private static readonly string OutDir = Path.Combine(RepoRoot(), "docs", "screenshots");
     private IPlaywright _pw = null!;
     private IBrowser _browser = null!;
+    private KestrelWebApplicationFactory _factory = null!;
 
     [OneTimeSetUp]
     public async Task Start()
     {
-        await DemoSeed.SeedAsync(AppFixture.Factory.Services);
+        _factory = AppFixture.Rent();
+        await DemoSeed.SeedAsync(_factory.Services);
         Directory.CreateDirectory(OutDir);
         _pw = await Playwright.CreateAsync();
         _browser = await _pw.Chromium.LaunchAsync();
@@ -75,7 +77,7 @@ public sealed class ReadmeScreenshots
     {
         var context = await _browser.NewContextAsync(new()
         {
-            BaseURL = AppFixture.BaseUrl,
+            BaseURL = _factory.BaseUrl,
             Locale = "en-US",
             TimezoneId = "Europe/Berlin",
             ViewportSize = new() { Width = width, Height = height },
