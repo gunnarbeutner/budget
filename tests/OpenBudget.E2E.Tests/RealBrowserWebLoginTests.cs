@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NUnit.Framework;
 using OpenBudget.Browser;
@@ -169,11 +170,13 @@ public sealed class RealBrowserWebLoginTests
     public async Task Masked_auto_advancing_code_boxes_get_each_digit_exactly_once()
     {
         await using var browser = NewBrowser();
+        using var logs = new OpenbankWebLoginTests.Logs();
+        using var factory = Microsoft.Extensions.Logging.LoggerFactory.Create(b => b.AddProvider(logs));
         var service = new WebLoginService(browser, new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },
-            TimeProvider.System, NullLoggerFactory.Instance);
+            TimeProvider.System, factory);
         await using var session = await service.StartAsync("user-1", MaskedSpec("8264"), [], CancellationToken.None);
-        var result = await session.Completion.WaitAsync(TimeSpan.FromSeconds(60));
-        Assert.That(result.Success, Is.True, result.Error);
+        var result = await session.Completion.WaitAsync(TimeSpan.FromSeconds(60)).ContinueWith(t => t.IsCompletedSuccessfully ? t.Result : WebLoginResult.Fail("timeout"), TaskScheduler.Default);
+        Assert.That(result.Success, Is.True, result.Error + "\n" + string.Join("\n", logs.Lines));
     }
 
     [Test]

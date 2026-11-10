@@ -59,4 +59,29 @@ public interface IBrowserSession : IAsyncDisposable
 
     /// <summary>True when a visible element matching <paramref name="selector"/> contains one of <paramref name="texts"/> (case-insensitive; empty: any).</summary>
     Task<bool> HasVisibleTextAsync(string selector, IReadOnlyList<string> texts);
+
+    /// <summary>
+    /// Enters one character into a single-character box (an access code digit): focuses it and inserts the character
+    /// without any key events, so a keyup can never land on the box the page auto-advanced to. False when the box did not
+    /// appear or does not hold the character afterwards.
+    /// </summary>
+    Task<bool> TypeCharacterAsync(string selector, string character, TimeSpan timeout) => FillAsync(selector, character, timeout);
+
+    /// <summary>
+    /// Runs <paramref name="function"/> (a JavaScript function taking one string argument) in the page and returns its
+    /// {ok, reason} result. The argument may be a secret; only the boolean and the reason (which the script must keep free
+    /// of secrets) come back. A script error counts as not ok.
+    /// </summary>
+    Task<WebLoginCheck> CheckAsync(string function, string argument) => Task.FromResult(new WebLoginCheck(true, ""));
+
+    /// <summary>Calls <paramref name="onResponse"/> with the status (and a short error code, if any) of each response whose URL contains one of <paramref name="urlParts"/>.</summary>
+    void ObserveResponses(IReadOnlyList<string> urlParts, Action<ObservedResponse> onResponse)
+    {
+    }
 }
+
+/// <summary>Result of an in-page check: never carries secrets.</summary>
+public sealed record WebLoginCheck(bool Ok, string Reason);
+
+/// <summary>A watched response: its path, HTTP status and, when the body had one, a short top-level error code (field name and value).</summary>
+public sealed record ObservedResponse(string Path, int Status, string? ErrorField, string? ErrorCode);

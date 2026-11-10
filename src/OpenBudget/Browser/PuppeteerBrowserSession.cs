@@ -131,17 +131,103 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
         try
         {
             return await _page.EvaluateFunctionAsync<bool>(
-                @"(sel, texts) => Array.from(document.querySelectorAll(sel)).some(e => {
-                    const r = e.getBoundingClientRect();
-                    if (r.width === 0 && r.height === 0) return false;
-                    const t = (e.innerText || e.textContent || '').toLowerCase();
-                    return texts.length === 0 || texts.some(x => t.includes(x.toLowerCase()));
-                })", selector, texts);
+                // An element counts as visible when it or anything inside has a box (a wrapper with display: contents
+                // has none itself). Text is compared with collapsed whitespace (no-break spaces) and without soft hyphens.
+                @"(sel, texts) => {
+                    const norm = s => (s || '').replace(/­/g, '').replace(/[\s  ]+/g, ' ').toLowerCase();
+                    const shown = e => { const r = e.getBoundingClientRect(); return r.width > 0 || r.height > 0; };
+                    const wanted = texts.map(norm);
+                    return Array.from(document.querySelectorAll(sel)).some(e => {
+                        if (!shown(e) && !Array.from(e.querySelectorAll('*')).some(shown)) return false;
+                        const t = norm(e.innerText || e.textContent);
+                        return wanted.length === 0 || wanted.some(x => t.includes(x));
+                    });
+                }", selector, texts);
         }
         catch (PuppeteerException)
         {
             return false;
         }
+    }
+
+    public async Task<bool> TypeCharacterAsync(string selector, string character, TimeSpan timeout)
+    {
+        try
+        {
+            var el = await _page.WaitForSelectorAsync(selector, new WaitForSelectorOptions { Visible = true, Timeout = (int)timeout.TotalMilliseconds });
+            if (el == null) return false;
+            await using (el)
+            {
+                // Focus the box and replace what it holds, then send the character as a single "char" key event (keypress,
+                // beforeinput, input): no keydown/keyup, so the page's keyup handler never runs on the box its own
+                // auto-advance focused next (that keyup would write the next, still empty, box into the page's state).
+                var focused = await el.EvaluateFunctionAsync<bool>("e => { e.focus(); if (e.select) e.select(); return document.activeElement === e; }");
+                if (!focused) return false;
+                await _cdp.SendAsync("Input.dispatchKeyEvent", new { type = "char", text = character, unmodifiedText = character, key = character });
+                // let the page's handlers and a render run, then confirm the box holds exactly the character
+                return await el.EvaluateFunctionAsync<bool>(
+                    @"(e, c) => new Promise(r => setTimeout(() => r(e.value === c || (e.value.length > 0 && !/[0-9A-Za-z]/.test(e.value))), 50))", character); // or masked ("•")
+            }
+        }
+        catch (Exception ex) when (ex is WaitTaskTimeoutException or PuppeteerException)
+        {
+            return false;
+        }
+    }
+
+    public async Task<WebLoginCheck> CheckAsync(string function, string argument)
+    {
+        try
+        {
+            var r = await _page.EvaluateFunctionAsync<JsonElement>(function, argument);
+            var ok = r.ValueKind == JsonValueKind.Object && r.TryGetProperty("ok", out var o) && o.ValueKind == JsonValueKind.True;
+            var reason = r.ValueKind == JsonValueKind.Object && r.TryGetProperty("reason", out var why) && why.ValueKind == JsonValueKind.String
+                ? why.GetString() ?? "" : "";
+            return new WebLoginCheck(ok, reason.Length > 200 ? reason[..200] : reason);
+        }
+        catch (Exception ex) when (ex is PuppeteerException or JsonException)
+        {
+            return new WebLoginCheck(false, "the check could not run in the page");
+        }
+    }
+
+    public void ObserveResponses(IReadOnlyList<string> urlParts, Action<ObservedResponse> onResponse)
+    {
+        _page.Response += async (_, e) =>
+        {
+            try
+            {
+                var url = e.Response.Url;
+                if (!urlParts.Any(p => url.Contains(p, StringComparison.OrdinalIgnoreCase))) return;
+                var path = Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.GetLeftPart(UriPartial.Path) : "?";
+                var status = (int)e.Response.Status;
+                string? field = null, code = null;
+                if (status >= 400 && e.Response.Request.Method != HttpMethod.Options)
+                {
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(await e.Response.TextAsync());
+                        (field, code) = ShortErrorCode(doc.RootElement);
+                    }
+                    catch (Exception ex) when (ex is PuppeteerException or JsonException) { /* no readable body */ }
+                }
+                onResponse(new ObservedResponse(path, status, field, code));
+            }
+            catch (Exception ex) when (ex is PuppeteerException or InvalidOperationException) { /* page gone */ }
+        };
+    }
+
+    /// <summary>A top-level error code field whose value looks like a code ("INVALID_CREDENTIALS", "401.3"), nothing longer.</summary>
+    internal static (string? Field, string? Code) ShortErrorCode(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object) return (null, null);
+        foreach (var name in new[] { "code", "errorCode", "error_code", "error", "status", "errorType", "type" })
+        {
+            if (!root.TryGetProperty(name, out var v)) continue;
+            var s = v.ValueKind == JsonValueKind.String ? v.GetString() : v.ValueKind == JsonValueKind.Number ? v.GetRawText() : null;
+            if (s is { Length: > 0 and <= 40 } && s.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '-')) return (name, s);
+        }
+        return (null, null);
     }
 
     public async Task<bool> IsVisibleAsync(string selector)

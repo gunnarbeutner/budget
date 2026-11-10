@@ -40,9 +40,76 @@ public sealed class OpenbankConnector : IBankConnector
 
     // The page's error box after a wrong e-mail address or access code ("Vergewissere dich, dass die E-Mail-Adresse und der
     // Zugangscode korrekt sind"). The texts make sure an unrelated alert (cookie banner, say) does not count.
-    internal const string CredentialsErrorSelector = "[role=alert], [data-testid*=error i], [class*=error i], [class*=alert i]";
+    // Its test ids are login-error-title / login-error-table-row-description / login-message...; the text match also runs
+    // over the whole login container, so a box without those ids (or a renamed one) still counts.
+    internal const string CredentialsErrorSelector =
+        "[data-testid=login-error-title], [data-testid=login-message], [data-testid^=login-error], [data-testid^=login-message], "
+        + "[role=alert], [data-testid*=error i], [class*=error i], [class*=alert i], form, main, #root";
     internal static readonly string[] CredentialsErrorTexts = ["Zugangscode korrekt", "E-Mail-Adresse und der Zugangscode"];
     internal const string CredentialsRejectedMessage = "Openbank rejected the e-mail address or access code.";
+
+    /// <summary>The page's own sign-in call; its status is logged after submitting.</summary>
+    internal const string LoginRequestPath = "cb-api-auth/authentication/login";
+
+    // The access code boxes are controlled React inputs. Each <input> belongs to a cell component (props: position,
+    // value, onChange, ...) and all cells to the code component (props: cellsAmount, positions, value, onChange): its
+    // `value` is what the page submits. The check finds it through the React fiber of the first box and compares it with
+    // the stored code in the page; only counts come back, never digits.
+    private const string AccessCodeFiberHelpers = """
+        const boxes = Array.from(document.querySelectorAll('[data-testid^="password-module-inputs-gap-"]'))
+          .sort((a, b) => +a.dataset.testid.split('-').pop() - +b.dataset.testid.split('-').pop());
+        const keyOf = (el, prefix) => Object.keys(el).find(k => k.startsWith(prefix));
+        const current = f => { let top = f; for (let i = 0; top.return && i < 500; i++) top = top.return;
+          return top.stateNode && top.stateNode.current && top.stateNode.current !== top && f.alternate ? f.alternate : f; };
+        const codeState = () => {
+          const k = boxes.length ? keyOf(boxes[0], '__reactFiber$') : null;
+          let f = k ? boxes[0][k] : null;
+          for (let i = 0; f && i < 15; i++, f = f.return) {
+            if (f.memoizedProps && typeof f.memoizedProps === 'object' && 'cellsAmount' in f.memoizedProps) return current(f).memoizedProps;
+          }
+          return null;
+        };
+        const asText = v => Array.isArray(v) ? v.map(x => x == null ? '' : String(x)).join('') : v == null ? '' : String(v);
+        const digits = s => (s.match(/[0-9]/g) || []).length;
+        const check = expected => {
+          if (boxes.length !== expected.length) return { ok: false, reason: `the form has ${boxes.length} access code boxes, expected ${expected.length}` };
+          const notDigit = boxes.filter(b => !/^[0-9]$/.test(b.value)).length;
+          const q = codeState();
+          if (!q) return { ok: false, reason: 'the access code state was not found' + (notDigit ? `, ${notDigit} boxes without a digit` : '') };
+          const s = asText(q.value);
+          if (s.length !== expected.length) return { ok: false, reason: `access code state has ${s.length} characters (${digits(s)} of ${expected.length} digits)` };
+          if (s !== expected) return { ok: false, reason: `access code state has ${digits(s)} of ${expected.length} digits but differs from the stored code` };
+          if (notDigit) return { ok: false, reason: `${notDigit} of ${expected.length} access code boxes hold no digit` };
+          const positions = Array.isArray(q.positions) ? q.positions.length : 0;
+          if (q.cellsAmount !== undefined && +q.cellsAmount !== expected.length) return { ok: false, reason: `the form asks for ${q.cellsAmount} digits (${positions} positions)` };
+          return { ok: true, reason: '' };
+        };
+        """;
+
+    /// <summary>In-page check before the access code is submitted (see <see cref="WebLoginVerify"/>).</summary>
+    internal const string AccessCodeCheck = "(expected) => {\n" + AccessCodeFiberHelpers + "\nreturn check(expected); }";
+
+    /// <summary>
+    /// Enters the code through the page's own handlers: each box's current React props (<c>__reactProps$</c>, which React
+    /// keeps up to date on the element) get <c>onChange({ target: { value: digit } })</c> as the browser event would, box by
+    /// box, waiting for a render in between so each call sees the state the previous digit produced.
+    /// </summary>
+    internal const string AccessCodeRepair = "async (expected) => {\n" + AccessCodeFiberHelpers + """
+
+        const tick = () => new Promise(r => setTimeout(r, 50));
+        if (boxes.length !== expected.length) return check(expected);
+        for (let i = 0; i < boxes.length; i++) {
+          const el = boxes[i];
+          const k = keyOf(el, '__reactProps$');
+          const props = k ? el[k] : null;
+          if (!props || typeof props.onChange !== 'function') return { ok: false, reason: `access code box ${i + 1} has no change handler` };
+          const target = { value: expected[i] };
+          props.onChange({ target, currentTarget: target, type: 'change', preventDefault() {}, stopPropagation() {}, persist() {} });
+          await tick();
+        }
+        return check(expected);
+        }
+        """;
 
     internal static string AccessCodeBox(int i) => AccessCodeBoxFormat.Replace("{0}", i.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
 
@@ -101,8 +168,12 @@ public sealed class OpenbankConnector : IBankConnector
         Autofill = new WebLoginAutofill(credentials.Username, credentials.Secret,
         [
             new WebLoginStep(UsernameSelector, WebLoginCredential.Username, ContinueSelector),
-            new WebLoginStep([new WebLoginField(AccessCodeBoxFormat, WebLoginCredential.Secret, AccessCodeLength)], SubmitSelector),
+            new WebLoginStep([new WebLoginField(AccessCodeBoxFormat, WebLoginCredential.Secret, AccessCodeLength)], SubmitSelector)
+            {
+                Verify = new WebLoginVerify(AccessCodeCheck, AccessCodeRepair),
+            },
         ]),
+        ObservedRequests = [LoginRequestPath],
         CredentialsError = new WebLoginError(CredentialsErrorSelector, CredentialsErrorTexts, CredentialsRejectedMessage),
     };
 

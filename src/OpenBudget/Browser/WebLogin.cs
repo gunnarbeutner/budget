@@ -150,6 +150,9 @@ public sealed class WebLoginSession : IAsyncDisposable
 
     private DateTime? _submittedAt;
 
+    // the page was shown only because the form stayed after submitting: the bank's error box (which may come late) still ends the login
+    private bool _shownBecauseStuck;
+
     /// <summary>Completes (never throws) when the login succeeded, failed, timed out or was cancelled; the browser is gone by then.</summary>
     public Task<WebLoginResult> Completion => _result.Task;
 
@@ -219,8 +222,10 @@ public sealed class WebLoginSession : IAsyncDisposable
                 for (var b = 0; b < boxes.Count; b++)
                 {
                     var timeout = f == 0 && b == 0 ? _options.FormTimeout : TimeSpan.FromSeconds(5);
-                    var part = field.CharacterBoxes > 0 ? value[b].ToString() : value;
-                    if (!await _browser.FillAsync(boxes[b], part, timeout))
+                    var filled = field.CharacterBoxes > 0
+                        ? await _browser.TypeCharacterAsync(boxes[b], value[b].ToString(), timeout)
+                        : await _browser.FillAsync(boxes[b], value, timeout);
+                    if (!filled)
                     {
                         if (i == 0 && f == 0 && b == 0 && await SignedInAsync()) return; // signed in already: WatchAsync finishes
                         ShowPage($"{label}: no field matched {boxes[b]}");
@@ -229,6 +234,12 @@ public sealed class WebLoginSession : IAsyncDisposable
                     ct.ThrowIfCancellationRequested();
                 }
             }
+            if (step.Verify is { } verify && !await VerifyAsync(verify, fill.ValueOf(verify.Credential), label))
+                return;
+            if (i == fill.Steps.Count - 1 && _spec.ObservedRequests.Count > 0)
+                _browser.ObserveResponses(_spec.ObservedRequests, r => _logger.LogInformation(
+                    "Web login: {Path} answered {Status}{Code}.", r.Path, r.Status,
+                    r.ErrorField != null ? $" ({r.ErrorField}={r.ErrorCode})" : ""));
             if (!await ClickWhenReadyAsync(step.SubmitSelector, ct))
             {
                 ShowPage($"{label}: no enabled button matched {step.SubmitSelector}");
@@ -273,16 +284,44 @@ public sealed class WebLoginSession : IAsyncDisposable
         }
     }
 
-    /// <summary>Clicks the submit button, retrying a few seconds while the page's script has not enabled it yet.</summary>
+    /// <summary>
+    /// Runs the step's pre-submit check; when it fails, lets the repair script try once and checks again. Only the
+    /// check's reason (counts, never values) is logged. False (and the page is shown) when the step must not be submitted.
+    /// </summary>
+    private async Task<bool> VerifyAsync(WebLoginVerify verify, string value, string label)
+    {
+        var check = await _browser.CheckAsync(verify.Check, value);
+        if (check.Ok) return true;
+        _logger.LogInformation("Web login: {Step} check failed before submitting: {Reason}.", label, check.Reason);
+        if (verify.Repair != null)
+        {
+            var repair = await _browser.CheckAsync(verify.Repair, value);
+            if (!repair.Ok) _logger.LogInformation("Web login: {Step} repair reported: {Reason}.", label, repair.Reason);
+            await Task.Delay(TimeSpan.FromMilliseconds(150)); // let the page re-render
+            check = await _browser.CheckAsync(verify.Check, value);
+            if (check.Ok)
+            {
+                _logger.LogInformation("Web login: {Step} repaired through the page's own handlers.", label);
+                return true;
+            }
+        }
+        ShowPage($"{label}: not submitted, {check.Reason}");
+        return false;
+    }
+
+    /// <summary>
+    /// Waits a few seconds for the page's script to enable the submit button, then clicks it exactly once: a click that
+    /// fails half-way is never repeated (the first one may already have submitted the credentials).
+    /// </summary>
     private async Task<bool> ClickWhenReadyAsync(string selector, CancellationToken ct)
     {
         var until = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-        while (true)
+        while (!await _browser.IsVisibleAsync(selector))
         {
-            if (await _browser.ClickAsync(selector)) return true;
             if (DateTime.UtcNow >= until) return false;
             await Task.Delay(TimeSpan.FromMilliseconds(100), ct);
         }
+        return await _browser.ClickAsync(selector);
     }
 
     private async Task<WebLoginResult> WatchAsync(CancellationToken ct)
@@ -293,7 +332,7 @@ public sealed class WebLoginSession : IAsyncDisposable
             var url = _browser.Url;
             // after the app submitted the stored credentials, the bank's own error message means they are wrong:
             // end now instead of waiting for an approval that will never come (the user did not type anything)
-            if (_submittedAt != null && Mode != WebLoginMode.Interactive && _spec.CredentialsError is { } error
+            if (_submittedAt != null && (Mode != WebLoginMode.Interactive || _shownBecauseStuck) && _spec.CredentialsError is { } error
                 && await _browser.HasVisibleTextAsync(error.Selector, error.Texts))
             {
                 _logger.LogWarning("Web login: the sign-in page reports wrong credentials ({Selector}) on {Path}.", error.Selector, SafePath(url));
@@ -303,6 +342,7 @@ public sealed class WebLoginSession : IAsyncDisposable
                 && _spec.Autofill is { } fill && !_spec.UrlMatches(url) && await _browser.IsVisibleAsync(fill.PasswordSelector))
             {
                 _logger.LogInformation("Web login: the sign-in form is still shown after submitting; showing the page.");
+                _shownBecauseStuck = true;
                 SetMode(WebLoginMode.Interactive);
             }
             if (!_spec.UrlMatches(url)) continue;

@@ -37,6 +37,12 @@ public sealed class WebLoginSpec
     /// </summary>
     public WebLoginError? CredentialsError { get; init; }
 
+    /// <summary>
+    /// URL fragments of the page's own sign-in requests (an API call): after submitting, their HTTP status (and a short
+    /// top-level error code) is logged; never bodies or tokens.
+    /// </summary>
+    public IReadOnlyList<string> ObservedRequests { get; init; } = [];
+
     /// <summary>Cookies of these domains (and their sub-/parent domains' cookies that reach them) travel between the jar and the browser.</summary>
     public IReadOnlyList<string> CookieDomains { get; }
 
@@ -72,6 +78,15 @@ public sealed class WebLoginSpec
 /// <param name="Message">What the user is told.</param>
 public sealed record WebLoginError(string Selector, IReadOnlyList<string> Texts, string Message);
 
+/// <summary>
+/// A check of a filled sign-in step before it is submitted. Both are JavaScript functions run in the page with the
+/// credential's value as their single argument and must return <c>{ ok: boolean, reason: string }</c>; the comparison
+/// happens in the page and the reason must never contain the value (only counts and lengths). When <see cref="Check"/>
+/// fails, <see cref="Repair"/> (if any) gets one chance to put the value into the page's state, then the check runs
+/// again; still failing, the step is not submitted and the user is shown the page.
+/// </summary>
+public sealed record WebLoginVerify(string Check, string? Repair = null, WebLoginCredential Credential = WebLoginCredential.Secret);
+
 /// <summary>Which stored credential a sign-in field receives.</summary>
 public enum WebLoginCredential
 {
@@ -100,6 +115,9 @@ public sealed record WebLoginField(string Selector, WebLoginCredential Credentia
 /// </summary>
 public sealed record WebLoginStep(IReadOnlyList<WebLoginField> Fields, string SubmitSelector, string? WaitFor = null)
 {
+    /// <summary>Checked after the fields were filled and before the submit button is clicked (see <see cref="WebLoginVerify"/>).</summary>
+    public WebLoginVerify? Verify { get; init; }
+
     public WebLoginStep(string fieldSelector, WebLoginCredential credential, string submitSelector, string? waitFor = null)
         : this([new WebLoginField(fieldSelector, credential)], submitSelector, waitFor)
     {
