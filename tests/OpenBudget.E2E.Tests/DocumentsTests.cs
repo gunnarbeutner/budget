@@ -209,6 +209,16 @@ public sealed class DocumentsTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task Settings_open_when_the_project_has_no_statements_yet()
+    {
+        await EditingSeed.SeedAsync(Db);
+        await GoToAsync($"/projects/{Pid}/documents?settings=1");
+        await Expect(Page.GetByTestId("modal-dialog")).ToContainTextAsync("Statement download");
+        await Expect(Page.Locator("#blazor-error-ui")).Not.ToBeVisibleAsync();
+        await Page.GetByTestId("modal-dialog").GetByTestId("setting-row").First.WaitForAsync();
+    }
+
+    [Test]
     public async Task The_gear_menu_opens_the_statement_download_settings()
     {
         await SeedDocumentsAsync();

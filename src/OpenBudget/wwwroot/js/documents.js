@@ -84,7 +84,7 @@ let observer = null;
 
 /** Starts (or refreshes) lazy thumbnail rendering for every not yet handled image in the container. */
 export function thumbs(container) {
-    if (!container) return;
+    if (!container || typeof container.querySelectorAll !== "function") return;
     if (!observer) {
         observer = "IntersectionObserver" in window
             ? new IntersectionObserver(entries => {
