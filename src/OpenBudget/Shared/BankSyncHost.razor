@@ -65,7 +65,7 @@ else if (lastSync is { } last)
                         {
                             <div class="d-flex align-items-center gap-2 text-body-secondary mb-3" data-testid="web-login-status" data-mode="@challenge.WebLoginMode">
                                 <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-                                @(challenge.WebLoginMode == OpenBudget.Browser.WebLoginMode.Waiting
+                                @(ShowApprovalHint(challenge)
                                     ? L["WaitingApprovalBank", LoginName(challenge.LoginId)].Value
                                     : L["SigningIn"].Value)
                             </div>
@@ -224,5 +224,21 @@ else if (lastSync is { } last)
     {
         if (disposing && subscribed) Navigation.LocationChanged -= OnLocationChanged;
         base.Dispose(disposing);
+    }
+
+    // Banks that need no app approval finish within a few seconds of the form being sent; only a longer wait means the
+    // bank is really waiting for the user, so the approval hint appears after that.
+    private static readonly TimeSpan ApprovalHintAfter = TimeSpan.FromSeconds(4);
+    private DateTime? waitingSince;
+
+    private bool ShowApprovalHint(BankSyncStatus status)
+    {
+        if (status.WebLoginMode != OpenBudget.Browser.WebLoginMode.Waiting) { waitingSince = null; return false; }
+        if (waitingSince == null)
+        {
+            waitingSince = DateTime.UtcNow;
+            _ = Task.Delay(ApprovalHintAfter).ContinueWith(_ => InvokeAsync(StateHasChanged));
+        }
+        return DateTime.UtcNow - waitingSince >= ApprovalHintAfter;
     }
 }

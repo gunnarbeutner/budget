@@ -67,9 +67,6 @@
   <data name="Link_Sources" xml:space="preserve">
     <value>Quellen</value>
   </data>
-  <data name="Button_SyncAll" xml:space="preserve">
-    <value>Alle abgleichen</value>
-  </data>
   <data name="Disabled_Title" xml:space="preserve">
     <value>Bank-Zugänge sind deaktiviert.</value>
   </data>
@@ -196,9 +193,6 @@
   <data name="Message_AlreadyRunning" xml:space="preserve">
     <value>Für diesen Zugang läuft bereits ein Abgleich.</value>
   </data>
-  <data name="Message_SyncAll" xml:space="preserve">
-    <value>{0} Abgleiche gestartet.</value>
-  </data>
   <data name="Interval_EveryTwoHours" xml:space="preserve">
     <value>Alle zwei Stunden</value>
   </data>
@@ -232,5 +226,4 @@
   <data name="Type_Other" xml:space="preserve">
     <value>Sonstiges</value>
   </data>
-  <data name="Message_SyncAll_One" xml:space="preserve"><value>1 Abgleich gestartet.</value></data>
 </root>
