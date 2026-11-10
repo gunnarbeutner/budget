@@ -36,8 +36,11 @@ public sealed class BankLoginTests : EndToEndTestBase
         var challenge = Page.GetByTestId("bank-challenge");
         await Expect(challenge).ToBeVisibleAsync();
         await Expect(challenge).ToContainTextAsync("123456");
-        await Page.Locator("#bank-challenge-input").FillAsync("123456");
-        await Page.Locator("#bank-challenge-submit").ClickAsync();
+        // The code field sits in a form (so Safari can offer codes from Messages) and Enter submits it.
+        var input = Page.Locator("form#bank-challenge-form #bank-challenge-input");
+        await Expect(input).ToHaveAttributeAsync("autocomplete", "one-time-code");
+        await input.FillAsync("123456");
+        await input.PressAsync("Enter");
         await Expect(Page.GetByTestId("bank-challenge")).ToHaveCountAsync(0);
     }
 

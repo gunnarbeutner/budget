@@ -84,8 +84,12 @@ else if (lastSync is { } last)
                                maxlength="@(c.Length ?? 64)" @bind="answerText" @bind:event="oninput" @onkeydown="OnKeyDown" />
                         break;
                     case ChallengeKind.Code:
-                        <input id="bank-challenge-input" class="form-control" autocomplete="one-time-code" inputmode="@(c.Numeric ? "numeric" : "text")"
-                               maxlength="@(c.Length ?? 64)" @bind="answerText" @bind:event="oninput" @onkeydown="OnKeyDown" />
+                        @* A form around the field (Enter submits it) is what lets Safari offer the code from Messages. *@
+                        <form id="bank-challenge-form" @onsubmit="SubmitAsync" @onsubmit:preventDefault>
+                            <input id="bank-challenge-input" name="one-time-code" type="text" class="form-control" autocomplete="one-time-code"
+                                   inputmode="@(c.Numeric ? "numeric" : "text")" maxlength="@(c.Length ?? 64)"
+                                   @bind="answerText" @bind:event="oninput" />
+                        </form>
                         break;
                     default:
                         break;

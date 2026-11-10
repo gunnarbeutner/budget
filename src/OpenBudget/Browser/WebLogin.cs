@@ -225,6 +225,12 @@ public sealed class WebLoginSession : IAsyncDisposable
                     var filled = field.CharacterBoxes > 0
                         ? await _browser.TypeCharacterAsync(boxes[b], value[b].ToString(), timeout)
                         : await _browser.FillAsync(boxes[b], value, timeout);
+                    if (!filled && field.CharacterBoxes > 0 && step.Verify != null)
+                    {
+                        // the step's verification checks what the page holds and can repair it, so carry on
+                        _logger.LogInformation("Web login: {Step}: box {Box} did not take its character; the check before submitting decides.", label, b + 1);
+                        filled = true;
+                    }
                     if (!filled)
                     {
                         if (i == 0 && f == 0 && b == 0 && await SignedInAsync()) return; // signed in already: WatchAsync finishes

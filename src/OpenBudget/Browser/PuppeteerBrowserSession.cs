@@ -163,10 +163,15 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
                 // auto-advance focused next (that keyup would write the next, still empty, box into the page's state).
                 var focused = await el.EvaluateFunctionAsync<bool>("e => { e.focus(); if (e.select) e.select(); return document.activeElement === e; }");
                 if (!focused) return false;
+                const string holds = @"(e, c) => new Promise(r => setTimeout(() => r(e.value === c || (e.value.length > 0 && !/[0-9A-Za-z]/.test(e.value))), 50))"; // or masked ("•")
                 await _cdp.SendAsync("Input.dispatchKeyEvent", new { type = "char", text = character, unmodifiedText = character, key = character });
                 // let the page's handlers and a render run, then confirm the box holds exactly the character
-                return await el.EvaluateFunctionAsync<bool>(
-                    @"(e, c) => new Promise(r => setTimeout(() => r(e.value === c || (e.value.length > 0 && !/[0-9A-Za-z]/.test(e.value))), 50))", character); // or masked ("•")
+                if (await el.EvaluateFunctionAsync<bool>(holds, character)) return true;
+                // Some pages (Openbank) ignore a bare "char" event; a full key press does go through. Its keyup may land on
+                // the next box after auto-advance, which the step's verification (and repair) catches before submitting.
+                await el.EvaluateFunctionAsync("e => { e.focus(); if (e.select) e.select(); }");
+                await _page.Keyboard.PressAsync(character);
+                return await el.EvaluateFunctionAsync<bool>(holds, character);
             }
         }
         catch (Exception ex) when (ex is WaitTaskTimeoutException or PuppeteerException)
