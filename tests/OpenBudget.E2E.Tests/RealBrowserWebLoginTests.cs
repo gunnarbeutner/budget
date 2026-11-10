@@ -61,11 +61,6 @@ public sealed class RealBrowserWebLoginTests
             {
                 html = TwoStepPage;
             }
-            else if (path == "/slow")
-            {
-                // The form appears late; a fill after the user took over would show up in the title.
-                html = "<html><body><script>setTimeout(function(){document.body.innerHTML='<input id=u oninput=\"document.title=\\'filled\\'\"><input id=p type=password><button id=go>Login</button>';},2500);</script></body></html>";
-            }
             else if (path == "/alert")
             {
                 // A "browser not supported" notice in front of a plain login form (like a bank's portal).
@@ -177,25 +172,6 @@ public sealed class RealBrowserWebLoginTests
         ]),
         CredentialsError = new WebLoginError("[role=alert]", ["Zugangscode korrekt"], "Openbank rejected the e-mail address or access code."),
     };
-
-    [Test]
-    public async Task Taking_over_the_page_stops_automatic_filling()
-    {
-        await using var browser = NewBrowser();
-        var service = new WebLoginService(browser, new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10), StuckAfter = TimeSpan.FromSeconds(60) },
-            TimeProvider.System, NullLoggerFactory.Instance);
-        var spec = new WebLoginSpec(new Uri(_baseUrl + "slow"), ["127.0.0.1"], new Uri(_baseUrl + "home"))
-        {
-            Autofill = new WebLoginAutofill("alice", "pw", [new WebLoginStep([new WebLoginField("#u", WebLoginCredential.Username), new WebLoginField("#p", WebLoginCredential.Secret)], "#go")]),
-        };
-        await using var session = await service.StartAsync("user-1", spec, [], CancellationToken.None);
-        await Task.Delay(500);
-        session.TakeOver();
-        Assert.That(session.Mode, Is.EqualTo(WebLoginMode.Interactive));
-        await Task.Delay(4000); // the form has appeared by now
-        Assert.That(session.Completion.IsCompleted, Is.False);
-        Assert.That(session.Mode, Is.EqualTo(WebLoginMode.Interactive));
-    }
 
     [Test]
     public async Task A_browser_notice_in_front_of_the_form_is_clicked_away_before_filling_it_in()

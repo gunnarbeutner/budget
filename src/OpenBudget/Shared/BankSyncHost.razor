@@ -3,7 +3,6 @@
 @using OpenBudget.Connectors.Sync
 @using OpenBudget.Services
 @inject BankLoginService Bank
-@inject OpenBudget.Browser.IWebLoginService WebLogins
 @inject NavigationManager Navigation
 @inject IStringLocalizer<BankSyncHost> L
 
@@ -70,7 +69,7 @@ else if (lastSync is { } last)
                                     ? L["WaitingApprovalBank", LoginName(challenge.LoginId)].Value
                                     : L["SigningIn"].Value)
                             </div>
-                            <button type="button" class="btn btn-link btn-sm p-0" data-testid="web-login-show" @onclick="ShowBankPage">@L["ShowBrowser"]</button>
+                            <button type="button" class="btn btn-link btn-sm p-0" data-testid="web-login-show" @onclick="() => showBrowser = true">@L["ShowBrowser"]</button>
                         }
                         break;
                     case ChallengeKind.Approval:
@@ -243,10 +242,4 @@ else if (lastSync is { } last)
         return DateTime.UtcNow - waitingSince >= ApprovalHintAfter;
     }
 
-    /// <summary>Shows the bank's page and stops automatic filling, so the user's own typing isn't overwritten.</summary>
-    private void ShowBankPage()
-    {
-        showBrowser = true;
-        if (challenge is { WebLoginSessionId: { } id } c) WebLogins.Find(id, c.OwnerUserId)?.TakeOver();
-    }
 }
