@@ -183,7 +183,7 @@ public sealed class RulesTests : EndToEndTestBase
         await bar.GetByTestId("rule-save").ClickAsync();
         await Expect(bar.GetByTestId("rule-matches")).ToHaveTextAsync("3");
 
-        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         Assert.That((await db.CategoryRules.SingleAsync()).Expression, Is.EqualTo("name:\"Example Grocer\" AND amount<0"));
     }
