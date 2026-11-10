@@ -926,6 +926,10 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
     min-width: 0;
     min-height: 0;
 }
+/* The scrolling panes are the containing block of their absolutely positioned content (Bootstrap's .visually-hidden,
+   menus): otherwise such an element positions against the page, escapes the pane's overflow clipping and makes
+   the document itself scrollable on desktop, leaving blank page below the viewport-high shell. */
+.browse-rail, .browse-scroll, .shell-page { position: relative; }
 .browse-main > .page-toolbar { position: static; margin: 0; padding: 0 20px; flex-wrap: nowrap; }
 .browse-scroll {
     flex: 1 1 auto;
