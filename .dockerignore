@@ -16,3 +16,7 @@ docker-compose*.yml
 # exporter is a separate macOS Swift project.
 tests/
 exporter/
+# Not needed to build the app (the Dockerfile copies src/ only; ignoring them also keeps the context small).
+docs/
+tools/
+*.md

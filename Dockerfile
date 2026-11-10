@@ -3,7 +3,7 @@
 # Layer order is chosen for build caching, slowest-changing first:
 #   1. runtime-base: Chromium + .NET runtime + user (depends on nothing from the app: cached across every code change)
 #   2. build: NuGet restore from the project files only (cached until a dependency changes)
-#   3. build: the sources, publish
+#   3. build: the sources (src/ only), publish
 #   4. final: runtime-base + the published app, copied last
 
 # ---- the .NET runtime, copied into the Debian image below ----
@@ -40,14 +40,20 @@ ENV HOME=/home/app \
 FROM mcr.microsoft.com/dotnet/sdk:11.0.100-preview.3 AS build
 WORKDIR /src
 # Restore layer: only what decides the package set (project file, repo-wide props with the analyzer packages, SDK pin),
-# so it is cached until a dependency changes.
+# so it is cached until a dependency changes. The NuGet folder is a BuildKit cache mount: when a dependency does change,
+# only the new packages are downloaded (the mount outlives the layer; publish below mounts it too).
 COPY global.json Directory.Build.props ./
 COPY src/OpenBudget/OpenBudget.csproj src/OpenBudget/
-RUN dotnet restore src/OpenBudget/OpenBudget.csproj
-COPY . .
+RUN --mount=type=cache,id=openbudget-nuget,target=/root/.nuget/packages \
+    dotnet restore src/OpenBudget/OpenBudget.csproj
+# Only the app's sources: docs, tools and the like (and the tests, see .dockerignore) don't invalidate the publish layer.
+COPY src/ src/
 # No --no-restore: the SDK adds the Blazor framework assets package once .razor files are present, which they are not
-# during the cached restore above (that second restore is quick: the packages are already in the layer).
-RUN dotnet publish src/OpenBudget/OpenBudget.csproj -c Release -o /app/publish /p:UseAppHost=false
+# during the cached restore above (that second restore is quick: the packages are already in the cache mount).
+# RunAnalyzers=false: the analyzers (AnalysisMode=All + Roslynator/Sonar/Meziantou) are most of the compile time and
+# are enforced by every local/CI build and test run already; compiler warnings still fail the build.
+RUN --mount=type=cache,id=openbudget-nuget,target=/root/.nuget/packages \
+    dotnet publish src/OpenBudget/OpenBudget.csproj -c Release -o /app/publish /p:UseAppHost=false /p:RunAnalyzers=false
 
 # ---- final ----
 FROM runtime-base AS final
