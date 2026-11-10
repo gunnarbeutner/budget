@@ -97,6 +97,64 @@ public class CombinedHoldingsTests
         Assert.Equal(700m, regions.Slices.Single(s => s.Label == "Unclassified").Value);
     }
 
+    private static SecurityTaxonomy Tax(string isin, string taxonomy, string cls, int bp) => new()
+    {
+        SourceId = 1,
+        Isin = isin,
+        TaxonomyId = taxonomy,
+        TaxonomyName = taxonomy,
+        ClassificationId = cls,
+        ClassificationName = cls,
+        ClassificationPath = cls,
+        WeightBp = bp
+    };
+
+    [Fact]
+    public async Task AssetClass_lookthrough_falls_back_to_moneymoney_type_for_positions_pp_does_not_know()
+    {
+        await using var t = new TestDb();
+        t.AddProject(1);
+        t.AddAccount(20, "Depot").Type = 7;
+        // PP-classified equity ETF, a position PP doesn't know (MoneyMoney type "Other (3)"),
+        // a commodity PP classifies, and an equity stock PP doesn't know (MoneyMoney "Equity").
+        AddHolding(t, 20, "IE000EQ0", "EQ", "Equity ETF", quantity: 4, amount: 400, purchasePerUnit: null);
+        AddHolding(t, 20, "DE000OTH0", "OTH", "Other Position", quantity: 1, amount: 300, purchasePerUnit: null);
+        AddHolding(t, 20, "DE000COM0", "COM", "Commodity ETC", quantity: 2, amount: 200, purchasePerUnit: null);
+        AddHolding(t, 20, "US000STK0", "STK", "Some Stock", quantity: 1, amount: 100, purchasePerUnit: null);
+        var list = t.Db.ChangeTracker.Entries<Holding>().Select(e => e.Entity).ToList();
+        list.Single(h => h.Isin == "IE000EQ0").AssetClass = 6;
+        list.Single(h => h.Isin == "DE000OTH0").AssetClass = 3;
+        list.Single(h => h.Isin == "DE000COM0").AssetClass = 3;
+        list.Single(h => h.Isin == "US000STK0").AssetClass = 6;
+        t.Db.SecurityTaxonomies.AddRange(
+            Tax("IE000EQ0", "Asset Classes", "equity", 10000),
+            Tax("DE000COM0", "Asset Classes", "Commodity", 10000),
+            Tax("IE000EQ0", "Regions", "America", 10000));
+        await t.Db.SaveChangesAsync();
+
+        var view = await t.Portfolio.GetAccountHoldingsAsync(1, 20);
+
+        var assets = view!.Taxonomies.Single(x => x.TaxonomyName == "Asset Classes");
+        Assert.Equal(1m, assets.Slices.Sum(s => s.Fraction));
+        Assert.DoesNotContain(assets.Slices, s => s.Label == "Unclassified");
+        Assert.Equal(500m, assets.Slices.Single(s => s.Label == "equity").Value);   // PP 400 + MoneyMoney "Equity" 100
+        Assert.Equal(200m, assets.Slices.Single(s => s.Label == "Commodity").Value);
+        Assert.Equal(300m, assets.Slices.Single(s => s.Label == "Other (3)").Value);
+
+        // Other taxonomies keep "Unclassified" for what PP doesn't know.
+        var regions = view.Taxonomies.Single(x => x.TaxonomyName == "Regions");
+        Assert.Equal(1m, regions.Slices.Sum(s => s.Fraction));
+        Assert.Equal(600m, regions.Slices.Single(s => s.Label == "Unclassified").Value);
+    }
+
+    [Theory]
+    [InlineData("Asset Classes", true)]
+    [InlineData("anlageklassen", true)]
+    [InlineData("Regions", false)]
+    [InlineData(null, false)]
+    public void IsAssetClassTaxonomy_matches_pp_default_names(string? name, bool expected) =>
+        Assert.Equal(expected, OpenBudget.Services.PortfolioService.IsAssetClassTaxonomy(name));
+
     [Fact]
     public async Task Combined_returns_null_when_no_holdings()
     {

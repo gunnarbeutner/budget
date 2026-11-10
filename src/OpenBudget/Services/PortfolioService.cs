@@ -430,7 +430,8 @@ public class PortfolioService
     /// <summary>
     /// Distributes each holding's value across a PortfolioPerformance taxonomy's top-level
     /// classifications by ISIN-matched weights. Holdings with no (or partial) coverage contribute
-    /// their remaining value to an "Unclassified" slice, so each taxonomy's slices sum to the
+    /// their remaining value to MoneyMoney's asset type (asset-class taxonomy, see
+    /// <see cref="IsAssetClassTaxonomy"/>) or to "Unclassified" (others), so each taxonomy's slices sum to the
     /// account total. Returns only taxonomies that classify at least some value.
     /// </summary>
     private static async Task<List<TaxonomyLookThrough>> BuildLookThroughAsync(
@@ -456,48 +457,69 @@ public class PortfolioService
         var result = new List<TaxonomyLookThrough>();
         foreach (var taxGroup in taxRows.GroupBy(t => t.TaxonomyName, StringComparer.Ordinal))
         {
-            var byTopLevel = new Dictionary<string, decimal>(StringComparer.Ordinal);
+            bool assetClasses = IsAssetClassTaxonomy(taxGroup.Key);
+            // Labels merge case-insensitively so MoneyMoney's "Equity" joins PP's "equity" slice;
+            // the first spelling seen (PP's, since those are added first) wins.
+            var byLabel = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+            void Add(string label, decimal value)
+            {
+                byLabel.TryGetValue(label, out var bucket);
+                byLabel[label] = bucket + value;
+            }
+
+            var assignedByIsin = new Dictionary<string, decimal>(StringComparer.Ordinal);
             foreach (var row in taxGroup)
             {
                 if (!valueByIsin.TryGetValue(row.Isin, out var isinValue)) continue;
                 decimal weight = row.WeightBp / 10000m;
-                string topLevel = TopLevel(row);
-                byTopLevel.TryGetValue(topLevel, out var bucket);
-                byTopLevel[topLevel] = bucket + isinValue * weight;
+                Add(TopLevel(row), isinValue * weight);
+                assignedByIsin.TryGetValue(row.Isin, out var a);
+                assignedByIsin[row.Isin] = a + weight;
             }
 
-            // Everything the taxonomy doesn't place is Unclassified: the unassigned slice of
-            // classified securities AND every holding with no matching row at all — most importantly
-            // ISIN-less crypto. Computing it as total minus the classified value keeps the slices
-            // summing to the account total, instead of silently dropping the unmatched value (which
-            // made a crypto-heavy combined view sum to far less than 100%).
-            decimal classified = byTopLevel.Values.Sum();
-            decimal unclassified = Math.Max(0m, total - classified);
+            // Whatever PP doesn't place — the unassigned part of classified securities and every
+            // holding PP doesn't know at all (including ISIN-less positions) — goes, for the
+            // asset-class taxonomy, to MoneyMoney's own type for that position, and for any other
+            // taxonomy to "Unclassified". Either way the slices sum to the account total.
+            foreach (var h in holdings)
+            {
+                decimal amount = (decimal)(h.Amount ?? 0);
+                decimal assigned = !string.IsNullOrEmpty(h.Isin) && assignedByIsin.TryGetValue(h.Isin, out var w)
+                    ? Math.Min(1m, w) : 0m;
+                decimal rest = amount * (1m - assigned);
+                if (rest == 0m) continue;
+                Add(assetClasses ? h.AssetClassLabel : UnclassifiedLabel, rest);
+            }
 
-            var slices = byTopLevel
+            var slices = byLabel
+                .Where(kv => Math.Abs(kv.Value) > 0.005m)
                 .Select(kv => new AssetClassSlice
                 {
                     Label = kv.Key,
                     Value = kv.Value,
                     Fraction = total != 0 ? kv.Value / total : 0m
                 })
-                .OrderByDescending(s => s.Value)
+                .OrderBy(s => string.Equals(s.Label, UnclassifiedLabel, StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(s => s.Value)
                 .ToList();
-            if (unclassified > 0.005m)
-            {
-                slices.Add(new AssetClassSlice
-                {
-                    Label = "Unclassified",
-                    Value = unclassified,
-                    Fraction = total != 0 ? unclassified / total : 0m
-                });
-            }
 
             result.Add(new TaxonomyLookThrough { TaxonomyName = taxGroup.Key, Slices = slices });
         }
 
         return result.OrderBy(t => t.TaxonomyName, StringComparer.Ordinal).ToList();
     }
+
+    public const string UnclassifiedLabel = "Unclassified";
+
+    /// <summary>
+    /// The PortfolioPerformance taxonomy that describes asset classes — PP's default taxonomy,
+    /// named "Asset Classes" (English) or "Anlageklassen" (German); matched by name, ignoring case
+    /// and surrounding whitespace. For it, positions PP doesn't classify fall back to MoneyMoney's
+    /// own asset type instead of "Unclassified".
+    /// </summary>
+    public static bool IsAssetClassTaxonomy(string? name) =>
+        name?.Trim().ToUpperInvariant() is "ASSET CLASSES" or "ASSET CLASS" or "ANLAGEKLASSEN" or "ANLAGEKLASSE"
+            or "ASSETKLASSEN" or "ASSET ALLOCATION";
 
     /// <summary>Top-level classification name: the first segment of the path, or the leaf name when flat.</summary>
     private static string TopLevel(SecurityTaxonomy row)

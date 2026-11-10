@@ -363,6 +363,7 @@ else
     // Region/taxonomy targeting: solved into per-security targets via RebalanceSolver.
     private List<string> taxonomyNames = new();
     private string? regionTaxonomy;
+    private bool regionIsAssetClasses;
     private List<string> regionList = new();
     private Dictionary<string, decimal> regionTargets = new(StringComparer.Ordinal);                  // class -> percent
     private readonly Dictionary<string, decimal> regionPins = new(StringComparer.Ordinal);            // key -> fixed € target (taxonomy mode)
@@ -620,7 +621,16 @@ else
         securityWeights = await Portfolio.GetSecurityTaxonomyWeightsAsync(ProjectId, regionTaxonomy, isins);
         var classes = securityWeights.Values.SelectMany(d => d.Keys).Distinct(StringComparer.Ordinal)
             .OrderBy(x => x, StringComparer.Ordinal).ToList();
-        classes.Add(UnclassifiedLabel);
+        // Asset-class taxonomy: what PP doesn't classify falls back to MoneyMoney's type for the
+        // position (merged with a PP class of the same name), matching the holdings look-through.
+        regionIsAssetClasses = PortfolioService.IsAssetClassTaxonomy(regionTaxonomy);
+        foreach (var s in securities)
+        {
+            if (WeightsFor(s).Values.Sum() >= 1m) continue;
+            var label = FallbackLabel(s, classes);
+            if (!classes.Contains(label, StringComparer.Ordinal)) classes.Add(label);
+        }
+        if (!regionIsAssetClasses && !classes.Contains(UnclassifiedLabel)) classes.Add(UnclassifiedLabel);
         regionList = classes;
         if (preserveTargets)
         {
@@ -641,8 +651,18 @@ else
         decimal assigned = 0m;
         foreach (var (cls, frac) in WeightsFor(s))
             if (idx.TryGetValue(cls, out var k)) { vec[k] += (double)frac; assigned += frac; }
-        vec[idx[UnclassifiedLabel]] += (double)Math.Max(0m, 1m - assigned);
+        decimal rest = Math.Max(0m, 1m - assigned);
+        if (rest > 0m && idx.TryGetValue(FallbackLabel(s, regionList), out var f)) vec[f] += (double)rest;
         return vec;
+    }
+
+    // Class that takes a security's value PP doesn't place: MoneyMoney's asset type (spelled like an
+    // existing class when one matches case-insensitively) for the asset-class taxonomy, else Unclassified.
+    private string FallbackLabel(HoldingRow s, List<string> classes)
+    {
+        if (!regionIsAssetClasses || string.IsNullOrEmpty(s.AssetClassLabel)) return UnclassifiedLabel;
+        return classes.FirstOrDefault(c => string.Equals(c, s.AssetClassLabel, StringComparison.OrdinalIgnoreCase))
+            ?? s.AssetClassLabel;
     }
 
     private (List<HoldingRow> Sel, double[] F, Dictionary<string, decimal> Achieved)? SolveRegions()
