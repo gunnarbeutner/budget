@@ -59,7 +59,7 @@ else
         <ProjectAccountsCard Assignments="accountAssignments"
                              AllAccounts="allAccounts"
                              AllAccountGroups="allAccountGroups"
-                             OnAdd="AddAccount"
+                             OnAdd="AddAccounts"
                              OnRemove="RemoveAccount"
                              OnScopeChange="OnScopeChange" />
     }
@@ -236,10 +236,10 @@ else
         }
     }
 
-    private async Task AddAccount((long AccountId, AccountScope Scope) req)
+    private async Task AddAccounts((IReadOnlyList<long> AccountIds, AccountScope Scope) req)
     {
-        if (req.AccountId == 0) return;
-        await BudgetService.AssignAccountToProjectAsync(ProjectId, req.AccountId, req.Scope);
+        if (req.AccountIds.Count == 0) return;
+        await BudgetService.AssignAccountsToProjectAsync(ProjectId, req.AccountIds, req.Scope);
         await LoadAccountAssignments();
     }
 

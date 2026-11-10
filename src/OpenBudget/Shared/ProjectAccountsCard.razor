@@ -122,19 +122,68 @@
         else
         {
             var assignedIds = Assignments.Select(a => a.AccountId).ToHashSet();
-            var unassigned = AllAccounts.Where(a => !assignedIds.Contains(a.Id)).ToList();
-            if (!unassigned.Any())
+            if (AllAccounts.All(a => assignedIds.Contains(a.Id)))
             {
                 <p class="text-body-secondary mb-0">@L["AddAccount_AllAssigned"]</p>
             }
             else
             {
+                var rows = BuildPickerRows(AllAccountGroups, AllAccounts, _filter);
                 <div class="mb-3">
-                    <label class="form-label">@L["Form_AccountLabel"]</label>
-                    <TreePicker TId="long"
-                                Nodes="@BuildAccountPickerNodes(AllAccountGroups, unassigned)"
-                                SelectedId="@_selectedId"
-                                SelectedIdChanged="@(id => _selectedId = id)" />
+                    <label class="form-label" for="addAccountFilter">@L["Form_AccountsLabel"]</label>
+                    <input type="search" id="addAccountFilter" class="form-control form-control-sm mb-2"
+                           data-testid="add-account-filter"
+                           placeholder="@L["AddAccount_FilterPlaceholder"]"
+                           value="@_filter"
+                           @oninput="@(e => _filter = e.Value?.ToString() ?? "")" />
+                    <div class="account-picker" data-testid="add-account-picker">
+                        @if (rows.Count == 0)
+                        {
+                            <p class="text-body-secondary small m-2">@L["AddAccount_NoMatches"]</p>
+                        }
+                        @foreach (var row in rows)
+                        {
+                            var depthRem = (0.75 + row.Level * 1.25).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+                            if (row.IsGroup)
+                            {
+                                var selectable = row.AccountIds.Where(id => !assignedIds.Contains(id)).ToList();
+                                var count = selectable.Count(_selected.Contains);
+                                var state = count == 0 ? "false" : count == selectable.Count ? "true" : "mixed";
+                                var icon = state == "true" ? "bi-check-square-fill" : state == "mixed" ? "bi-dash-square-fill" : "bi-square";
+                                <button type="button" class="account-picker-row group" role="checkbox" aria-checked="@state"
+                                        data-testid="add-account-group"
+                                        style="@($"padding-left: {depthRem}rem;")"
+                                        disabled="@(selectable.Count == 0)"
+                                        @onclick="@(() => ToggleGroup(selectable))">
+                                    <i class="bi @icon account-picker-check" aria-hidden="true"></i>
+                                    <i class="bi bi-folder account-picker-icon" aria-hidden="true"></i>
+                                    <span class="account-picker-label">@row.Label</span>
+                                </button>
+                            }
+                            else
+                            {
+                                var added = assignedIds.Contains(row.Id);
+                                var isChecked = added || _selected.Contains(row.Id);
+                                <button type="button" class="account-picker-row @(isChecked && !added ? "checked" : "")" role="checkbox"
+                                        aria-checked="@(isChecked ? "true" : "false")"
+                                        data-testid="add-account-option"
+                                        style="@($"padding-left: {depthRem}rem;")"
+                                        disabled="@added"
+                                        @onclick="@(() => ToggleAccount(row.Id))">
+                                    <i class="bi @(added ? "bi-check-square" : isChecked ? "bi-check-square-fill" : "bi-square") account-picker-check" aria-hidden="true"></i>
+                                    @if (!string.IsNullOrEmpty(row.Icon))
+                                    {
+                                        <i class="bi @row.Icon account-picker-icon" aria-hidden="true"></i>
+                                    }
+                                    <span class="account-picker-label">@row.Label</span>
+                                    @if (added)
+                                    {
+                                        <span class="badge text-bg-light ms-2">@L["AddAccount_AlreadyAdded"]</span>
+                                    }
+                                </button>
+                            }
+                        }
+                    </div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">@L["Form_ScopeLabel"]</label>
@@ -158,9 +207,9 @@
     </ChildContent>
     <Footer>
         <button type="button" class="btn btn-secondary" @onclick="CloseDialog">@L["Button_Cancel"]</button>
-        <button type="button" class="btn btn-primary"
+        <button type="button" class="btn btn-primary" data-testid="add-accounts-confirm"
                 @onclick="ConfirmAddAsync"
-                disabled="@(_selectedId == 0)">@L["Button_AddAccount"]</button>
+                disabled="@(_selected.Count == 0)">@AddButtonLabel</button>
     </Footer>
 </Modal>
 
@@ -171,43 +220,72 @@
     [Parameter] public List<Account>? AllAccounts { get; set; }
     /// <summary>Account-group hierarchy for the Add picker.</summary>
     [Parameter] public List<AccountGroup>? AllAccountGroups { get; set; }
-    /// <summary>Raised with the chosen account id + scope when the user confirms Add.</summary>
-    [Parameter] public EventCallback<(long AccountId, AccountScope Scope)> OnAdd { get; set; }
+    /// <summary>Raised with the chosen account ids + one scope for all of them when the user confirms Add.</summary>
+    [Parameter] public EventCallback<(IReadOnlyList<long> AccountIds, AccountScope Scope)> OnAdd { get; set; }
     /// <summary>Raised with the account id to unassign.</summary>
     [Parameter] public EventCallback<long> OnRemove { get; set; }
     /// <summary>Raised with the account id + new scope when a row's scope toggle is clicked.</summary>
     [Parameter] public EventCallback<(long AccountId, AccountScope Scope)> OnScopeChange { get; set; }
 
     private bool _showDialog;
-    private long _selectedId;
+    private readonly HashSet<long> _selected = new();
+    private string _filter = "";
     private AccountScope _selectedScope = AccountScope.Shared;
+
+    private string AddButtonLabel => _selected.Count switch
+    {
+        0 => L["Button_AddAccounts_None"],
+        1 => L["Button_AddAccounts_One"],
+        var n => L["Button_AddAccounts_Many", n],
+    };
 
     private void OpenDialog()
     {
-        _selectedId = 0;
+        _selected.Clear();
+        _filter = "";
         _selectedScope = AccountScope.Shared;
         _showDialog = true;
     }
 
     private void CloseDialog() => _showDialog = false;
 
-    private async Task ConfirmAddAsync()
+    private void ToggleAccount(long id)
     {
-        if (_selectedId == 0) return;
-        _showDialog = false;
-        await OnAdd.InvokeAsync((_selectedId, _selectedScope));
+        if (!_selected.Remove(id)) _selected.Add(id);
     }
 
-    /// <summary>
-    /// Walk the source's account_groups hierarchy and produce a flat, depth-first list of
-    /// rows for the Add-Account picker: each visited group emits a disabled header followed
-    /// by its sub-groups (recursively) and then its leaf accounts. Sorting at every level
-    /// matches the source's <c>sort</c> field. Sub-trees that contain no <paramref name="unassigned"/>
-    /// account are pruned so the picker doesn't show dead branches. Accounts whose
-    /// <c>group_key</c> doesn't resolve to a known group are bucketed under "Other" at the bottom.
-    /// </summary>
-    private List<TreePickerNode<long>> BuildAccountPickerNodes(List<AccountGroup> groups, List<Account> unassigned)
+    /// <summary>Group click: select every not-yet-added visible account below it, or clear them when all are selected.</summary>
+    private void ToggleGroup(List<long> selectable)
     {
+        if (selectable.All(_selected.Contains)) _selected.ExceptWith(selectable);
+        else _selected.UnionWith(selectable);
+    }
+
+    private async Task ConfirmAddAsync()
+    {
+        if (_selected.Count == 0) return;
+        var ids = _selected.ToList();
+        _showDialog = false;
+        _selected.Clear();
+        await OnAdd.InvokeAsync((ids, _selectedScope));
+    }
+
+    /// <summary>One picker row: a group header (carrying every visible account id in its subtree) or an account.</summary>
+    private sealed record PickerRow(bool IsGroup, long Id, int Level, string Label, string? Icon, List<long> AccountIds);
+
+    /// <summary>
+    /// Walk the source's account_groups hierarchy and produce a flat, depth-first list of rows:
+    /// each group emits a header followed by its sub-groups (recursively) and then its accounts.
+    /// Sorting at every level matches the source's <c>sort</c> field. Already-added accounts stay
+    /// in the list (the markup renders them disabled). The filter matches an account's label or
+    /// any ancestor group's name; groups with nothing visible below them are pruned. Accounts whose
+    /// group doesn't resolve are bucketed under "Other" at the bottom.
+    /// </summary>
+    private List<PickerRow> BuildPickerRows(List<AccountGroup> groups, List<Account> accounts, string filter)
+    {
+        filter = filter.Trim();
+        bool Matches(string? text) => filter.Length == 0 || (text?.Contains(filter, StringComparison.CurrentCultureIgnoreCase) ?? false);
+
         var groupById = groups.ToDictionary(g => g.Id);
         bool IsRoot(AccountGroup g) =>
             !g.ParentGroupId.HasValue || !groupById.ContainsKey(g.ParentGroupId.Value);
@@ -224,60 +302,56 @@
             .OrderBy(g => g.Sort ?? long.MaxValue)
             .ThenBy(g => g.Name)
             .ToList();
-        var accountsByGroup = unassigned
+        var accountsByGroup = accounts
             .Where(a => a.GroupId.HasValue && groupById.ContainsKey(a.GroupId.Value))
             .GroupBy(a => a.GroupId!.Value)
             .ToDictionary(g => g.Key, g => g
                 .OrderBy(a => a.Sort ?? long.MaxValue)
                 .ThenBy(a => a.Name)
                 .ToList());
-        var orphans = unassigned
+        var orphans = accounts
             .Where(a => !a.GroupId.HasValue || !groupById.ContainsKey(a.GroupId!.Value))
             .OrderBy(a => a.Sort ?? long.MaxValue)
             .ThenBy(a => a.Name)
             .ToList();
 
-        bool HasUnassignedInSubtree(AccountGroup group)
-        {
-            if (accountsByGroup.ContainsKey(group.Id)) return true;
-            if (!childGroupsByParent.TryGetValue(group.Id, out var subs)) return false;
-            foreach (var sub in subs)
-                if (HasUnassignedInSubtree(sub)) return true;
-            return false;
-        }
-
-        TreePickerNode<long> MakeAccountNode(Account account, int level)
+        string AccountLabel(Account account)
         {
             var balance = account.CurrentBalance;
-            var label = $"{account.Name} ({account.KindLabel})"
+            return $"{account.Name} ({account.KindLabel})"
                 + (balance.HasValue ? $" — {Formatting.FormatMoneyDe(balance.Value, account.Currency ?? "")}" : "");
-            return new TreePickerNode<long>(account.Id, level, Selectable: true, label, Icon: account.KindIcon);
         }
 
-        var nodes = new List<TreePickerNode<long>>();
+        var rows = new List<PickerRow>();
 
-        void Walk(AccountGroup group, int level)
+        // Emits the group's rows if anything below it is visible; returns the visible account ids.
+        List<long> Walk(long id, string label, List<AccountGroup> subGroups, List<Account> own, int level, bool ancestorMatched)
         {
-            if (!HasUnassignedInSubtree(group)) return;
-            nodes.Add(new TreePickerNode<long>(group.Id, level, Selectable: false, group.Name ?? "—", Icon: "bi-folder"));
-            if (childGroupsByParent.TryGetValue(group.Id, out var subs))
+            var matched = ancestorMatched || Matches(label);
+            var header = new PickerRow(true, id, level, label, null, new List<long>());
+            var at = rows.Count;
+            rows.Add(header);
+            foreach (var sub in subGroups)
+                header.AccountIds.AddRange(Walk(sub.Id, sub.Name ?? "—",
+                    childGroupsByParent.GetValueOrDefault(sub.Id) ?? new(),
+                    accountsByGroup.GetValueOrDefault(sub.Id) ?? new(), level + 1, matched));
+            foreach (var a in own)
             {
-                foreach (var sub in subs) Walk(sub, level + 1);
+                var text = AccountLabel(a);
+                if (!matched && !Matches(text)) continue;
+                rows.Add(new PickerRow(false, a.Id, level + 1, text, a.KindIcon, new List<long>()));
+                header.AccountIds.Add(a.Id);
             }
-            if (accountsByGroup.TryGetValue(group.Id, out var accounts))
-            {
-                foreach (var a in accounts) nodes.Add(MakeAccountNode(a, level + 1));
-            }
+            if (header.AccountIds.Count == 0) rows.RemoveRange(at, rows.Count - at);
+            return header.AccountIds;
         }
 
-        foreach (var root in rootGroups) Walk(root, 0);
-
+        foreach (var root in rootGroups)
+            Walk(root.Id, root.Name ?? "—", childGroupsByParent.GetValueOrDefault(root.Id) ?? new(),
+                accountsByGroup.GetValueOrDefault(root.Id) ?? new(), 0, false);
         if (orphans.Any())
-        {
-            nodes.Add(new TreePickerNode<long>(0, 0, Selectable: false, L["AddAccount_OtherGroup"], Icon: "bi-folder"));
-            foreach (var a in orphans) nodes.Add(MakeAccountNode(a, 1));
-        }
+            Walk(0, L["AddAccount_OtherGroup"], new(), orphans, 0, false);
 
-        return nodes;
+        return rows;
     }
 }

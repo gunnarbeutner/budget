@@ -1,5 +1,8 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using NUnit.Framework;
+using OpenBudget.Models;
+using OpenBudget.Services;
 
 namespace OpenBudget.E2E.Tests;
 
@@ -70,6 +73,81 @@ public sealed class ProjectSettingsTests : EndToEndTestBase
 
         await Expect(Page.GetByTestId("modal-dialog")).Not.ToBeVisibleAsync();
         await Expect(AssignmentRow("Living")).ToBeVisibleAsync();
+    }
+
+    private static async Task SeedAccountsAsync()
+    {
+        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        await using var db = await factory.CreateDbContextAsync();
+        db.AccountGroups.Add(new AccountGroup { Id = 20, SourceId = E2ESeed.SourceId, Name = "Example Bank", Sort = 1 });
+        db.AccountGroups.Add(new AccountGroup { Id = 21, SourceId = E2ESeed.SourceId, Name = "Another Bank", Sort = 2 });
+        void Add(long id, string name, long group, int sort) => db.Accounts.Add(new Account
+        {
+            Id = id,
+            SourceId = E2ESeed.SourceId,
+            Name = name,
+            Currency = "EUR",
+            Type = 1,
+            Balances = "11:100.000000,3:EUR,",
+            GroupId = group,
+            Sort = sort,
+        });
+        Add(31, "Example Bank Giro", 20, 1);
+        Add(32, "Example Bank Savings", 20, 2);
+        Add(33, "Example Bank Card", 20, 3);
+        Add(34, "Another Bank Giro", 21, 1);
+        db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = 31, Scope = AccountScope.Shared });
+        await db.SaveChangesAsync();
+    }
+
+    [Test]
+    public async Task Several_accounts_can_be_added_at_once()
+    {
+        await SeedAccountsAsync();
+        await GoToAsync(SettingsUrl);
+
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Add Account" }).ClickAsync();
+        var modal = Page.GetByTestId("modal-dialog");
+        await Expect(modal.GetByText("Add Account to Project")).ToBeVisibleAsync();
+
+        var confirm = modal.GetByTestId("add-accounts-confirm");
+        await Expect(confirm).ToHaveTextAsync("Add accounts");
+        await Expect(confirm).ToBeDisabledAsync();
+
+        // The already-assigned account is listed but checked off and disabled.
+        var giro = modal.GetByTestId("add-account-option").Filter(new() { HasText = "Example Bank Giro" });
+        await Expect(giro).ToBeDisabledAsync();
+        await Expect(giro).ToContainTextAsync("already added");
+
+        // The group row selects all its not-yet-added accounts; unticking one makes it mixed.
+        var group = modal.GetByTestId("add-account-group").Filter(new() { HasText = "Example Bank" });
+        await group.ClickAsync();
+        await Expect(group).ToHaveAttributeAsync("aria-checked", "true");
+        await Expect(confirm).ToHaveTextAsync("Add 2 accounts");
+        await modal.GetByTestId("add-account-option").Filter(new() { HasText = "Example Bank Card" }).ClickAsync();
+        await Expect(group).ToHaveAttributeAsync("aria-checked", "mixed");
+        await Expect(confirm).ToHaveTextAsync("Add 1 account");
+
+        // The filter narrows the list; selection survives filtering.
+        await modal.GetByTestId("add-account-filter").FillAsync("another");
+        await Expect(modal.GetByTestId("add-account-option")).ToHaveCountAsync(1);
+        await modal.GetByTestId("add-account-option").ClickAsync();
+        await Expect(confirm).ToHaveTextAsync("Add 2 accounts");
+        await modal.GetByTestId("add-account-filter").FillAsync("");
+        await Expect(modal.GetByTestId("add-account-option")).ToHaveCountAsync(4);
+
+        await modal.Locator("label[for=addAccountScopeExclusive]").ClickAsync();
+        await confirm.ClickAsync();
+        await Expect(Page.GetByTestId("modal-dialog")).Not.ToBeVisibleAsync();
+
+        foreach (var name in new[] { "Example Bank Savings", "Another Bank Giro" })
+        {
+            var row = Page.GetByRole(AriaRole.Row).Filter(new() { HasText = name });
+            await Expect(row.GetByRole(AriaRole.Button, new() { Name = "Exclusive" })).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("active"));
+        }
+        await Expect(Page.GetByRole(AriaRole.Row).Filter(new() { HasText = "Example Bank Card" })).ToHaveCountAsync(0);
+        await Expect(Page.GetByRole(AriaRole.Row).Filter(new() { HasText = "Example Bank Giro" })
+            .GetByRole(AriaRole.Button, new() { Name = "Shared" })).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("active"));
     }
 
     [Test]

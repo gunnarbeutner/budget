@@ -309,4 +309,44 @@ public sealed class DefaultProjectTests
         await Assert.ThrowsAsync<AccessDeniedException>(() => w.View(Bob).Projects.AssignUnassignedAccountsAsync(target));
         Assert.Empty(await AssignmentsAsync(w));
     }
+
+    // ---- adding several accounts at once ----
+
+    [Fact]
+    public async Task Several_accounts_are_added_at_once_skipping_already_assigned_ones_with_one_change()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        var alice = w.View(Alice);
+        await w.ImportMoneyMoneyAsync(Snapshot(w, 4));
+        var target = await NewProjectAsync(w, Alice, "Household");
+        await alice.Spending.AssignAccountToProjectAsync(target, Account(1), AccountScope.Shared);
+
+        var changes = 0;
+        w.T.Notifier.Changed += (c, _) => { if (c.Area == DataArea.Projects && c.ProjectId == target) changes++; };
+
+        var added = await alice.Spending.AssignAccountsToProjectAsync(
+            target, new[] { Account(1), Account(2), Account(3), Account(3) }, AccountScope.Exclusive);
+
+        Assert.Equal(2, added);
+        Assert.Equal(1, changes);
+        var rows = await alice.Spending.GetProjectAccountAssignmentsAsync(target);
+        Assert.Equal(new[] { Account(1), Account(2), Account(3) }, rows.Select(r => r.AccountId).OrderBy(i => i));
+        Assert.Equal(AccountScope.Shared, rows.Single(r => r.AccountId == Account(1)).Scope);   // existing one untouched
+        Assert.All(rows.Where(r => r.AccountId != Account(1)), r => Assert.Equal(AccountScope.Exclusive, r.Scope));
+
+        Assert.Equal(0, await alice.Spending.AssignAccountsToProjectAsync(target, new[] { Account(2) }, AccountScope.Shared));
+        Assert.Equal(1, changes);   // nothing new, no change raised
+    }
+
+    [Fact]
+    public async Task A_sharee_cannot_add_several_accounts()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        await w.ImportMoneyMoneyAsync(Snapshot(w, 2));
+        var target = await NewProjectAsync(w, Alice, "Household");
+        await w.View(Alice).Sharing.SetShareAsync(target, Bob, ProjectRole.Editor);
+        await Assert.ThrowsAsync<AccessDeniedException>(() =>
+            w.View(Bob).Spending.AssignAccountsToProjectAsync(target, new[] { Account(1), Account(2) }, AccountScope.Shared));
+        Assert.Empty(await AssignmentsAsync(w));
+    }
 }

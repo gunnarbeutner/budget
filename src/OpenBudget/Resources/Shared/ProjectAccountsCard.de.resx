@@ -172,4 +172,25 @@
   <data name="Statements_Link" xml:space="preserve">
     <value>Kontoauszüge</value>
   </data>
+  <data name="Form_AccountsLabel" xml:space="preserve">
+    <value>Konten</value>
+  </data>
+  <data name="AddAccount_FilterPlaceholder" xml:space="preserve">
+    <value>Konten filtern…</value>
+  </data>
+  <data name="AddAccount_NoMatches" xml:space="preserve">
+    <value>Keine Konten passen zum Filter.</value>
+  </data>
+  <data name="AddAccount_AlreadyAdded" xml:space="preserve">
+    <value>bereits hinzugefügt</value>
+  </data>
+  <data name="Button_AddAccounts_None" xml:space="preserve">
+    <value>Konten hinzufügen</value>
+  </data>
+  <data name="Button_AddAccounts_One" xml:space="preserve">
+    <value>1 Konto hinzufügen</value>
+  </data>
+  <data name="Button_AddAccounts_Many" xml:space="preserve">
+    <value>{0} Konten hinzufügen</value>
+  </data>
 </root>

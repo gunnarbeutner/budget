@@ -748,6 +748,32 @@ public class BudgetService
         Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
     }
 
+    /// <summary>
+    /// Assigns several accounts to a project in one save with the same scope. Accounts already
+    /// in the project are skipped (their scope is left alone). Raises a single DataChange.
+    /// Returns how many assignments were added.
+    /// </summary>
+    public async Task<int> AssignAccountsToProjectAsync(int projectId, IEnumerable<long> accountIds, AccountScope scope)
+    {
+        var ids = accountIds.Where(id => id != 0).Distinct().ToList();
+        if (ids.Count == 0) return 0;
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var existing = (await db.ProjectAccountAssignments
+            .Where(paa => paa.ProjectId == projectId && ids.Contains(paa.AccountId))
+            .Select(paa => paa.AccountId)
+            .ToListAsync()).ToHashSet();
+        var added = 0;
+        foreach (var id in ids.Where(id => !existing.Contains(id)))
+        {
+            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = projectId, AccountId = id, Scope = scope });
+            added++;
+        }
+        if (added == 0) return 0;
+        await db.SaveChangesAsync();
+        Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
+        return added;
+    }
+
     public async Task SetAccountScopeAsync(int projectId, long accountId, AccountScope scope)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();

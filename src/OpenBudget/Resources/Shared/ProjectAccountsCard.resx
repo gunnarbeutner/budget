@@ -172,4 +172,25 @@
   <data name="Statements_Link" xml:space="preserve">
     <value>Statements</value>
   </data>
+  <data name="Form_AccountsLabel" xml:space="preserve">
+    <value>Accounts</value>
+  </data>
+  <data name="AddAccount_FilterPlaceholder" xml:space="preserve">
+    <value>Filter accounts…</value>
+  </data>
+  <data name="AddAccount_NoMatches" xml:space="preserve">
+    <value>No accounts match the filter.</value>
+  </data>
+  <data name="AddAccount_AlreadyAdded" xml:space="preserve">
+    <value>already added</value>
+  </data>
+  <data name="Button_AddAccounts_None" xml:space="preserve">
+    <value>Add accounts</value>
+  </data>
+  <data name="Button_AddAccounts_One" xml:space="preserve">
+    <value>Add 1 account</value>
+  </data>
+  <data name="Button_AddAccounts_Many" xml:space="preserve">
+    <value>Add {0} accounts</value>
+  </data>
 </root>
