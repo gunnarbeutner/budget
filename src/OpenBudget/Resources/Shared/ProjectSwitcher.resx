@@ -100,7 +100,19 @@
   <data name="Item_NewProject" xml:space="preserve">
     <value>New project</value>
   </data>
-  <data name="Item_Manage" xml:space="preserve">
-    <value>Reorder and manage projects…</value>
+  <data name="Menu_Settings" xml:space="preserve">
+    <value>Settings…</value>
+  </data>
+  <data name="Menu_MoveUp" xml:space="preserve">
+    <value>Move up</value>
+  </data>
+  <data name="Menu_MoveDown" xml:space="preserve">
+    <value>Move down</value>
+  </data>
+  <data name="Menu_Delete" xml:space="preserve">
+    <value>Delete…</value>
+  </data>
+  <data name="Reason_OwnerOnly" xml:space="preserve">
+    <value>Only the project's owner can do this.</value>
   </data>
 </root>

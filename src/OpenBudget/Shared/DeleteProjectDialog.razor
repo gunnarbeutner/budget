@@ -1,0 +1,70 @@
+@using OpenBudget.Services
+@inject ProjectService ProjectService
+@inject IStringLocalizer<DeleteProjectDialog> L
+
+@* Delete a project (owner only; the service enforces it). The Delete button only enables once the exact project
+   name has been typed — deleting takes the project's budgets and settings with it. Used by the project switcher's
+   context menu and the settings page. *@
+
+<Modal Show="@(Project != null)" Title="@L["Title"]" OnClose="Close">
+    <ChildContent>
+        @if (Project is { } p)
+        {
+            <p>@L["Body_Before"]<strong>@p.Name</strong>@L["Body_After"]</p>
+            <p class="text-body-secondary small">@L["Warning"]</p>
+            <label class="form-label" for="delete-project-name">@L["Label_TypeName_Before"]<strong>@p.Name</strong>@L["Label_TypeName_After"]</label>
+            <input id="delete-project-name" class="form-control" autocomplete="off" data-testid="delete-project-name"
+                   value="@typed" @oninput="e => typed = e.Value?.ToString() ?? string.Empty" />
+            @if (error != null)
+            {
+                <div class="alert alert-danger py-2 mt-3 mb-0" role="alert">@error</div>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="Close">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-danger" data-testid="delete-project-confirm"
+                disabled="@(Project == null || !string.Equals(typed, Project.Name, StringComparison.Ordinal))"
+                @onclick="DeleteAsync">@L["Button_Delete"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    /// <summary>The project to delete (id + name); null hides the dialog.</summary>
+    [Parameter] public (int Id, string Name)? Target { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    /// <summary>Raised with the deleted project's id after it was deleted.</summary>
+    [Parameter] public EventCallback<int> OnDeleted { get; set; }
+
+    private sealed record Item(int Id, string Name);
+    private Item? Project;
+    private (int Id, string Name)? shownFor;
+    private string typed = string.Empty;
+    private string? error;
+
+    protected override void OnParametersSet()
+    {
+        if (Target == shownFor) return;
+        shownFor = Target;
+        Project = Target is { } t ? new Item(t.Id, t.Name) : null;
+        typed = string.Empty;
+        error = null;
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    private async Task DeleteAsync()
+    {
+        if (Project is not { } p || !string.Equals(typed, p.Name, StringComparison.Ordinal)) return;
+        try
+        {
+            await ProjectService.DeleteProjectAsync(p.Id);
+        }
+        catch (AccessDeniedException ex)
+        {
+            error = ex.Message;
+            return;
+        }
+        await OnDeleted.InvokeAsync(p.Id);
+    }
+}

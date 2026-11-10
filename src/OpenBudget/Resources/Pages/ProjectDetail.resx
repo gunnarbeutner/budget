@@ -58,26 +58,8 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Button_Cancel" xml:space="preserve">
-    <value>Cancel</value>
-  </data>
-  <data name="Button_Delete" xml:space="preserve">
-    <value>Delete</value>
-  </data>
   <data name="Button_DeleteProject" xml:space="preserve">
     <value>Delete Project</value>
-  </data>
-  <data name="Modal_DeleteProject_Body_After" xml:space="preserve">
-    <value>?</value>
-  </data>
-  <data name="Modal_DeleteProject_Body_Before" xml:space="preserve">
-    <value>Are you sure you want to delete </value>
-  </data>
-  <data name="Modal_DeleteProject_Title" xml:space="preserve">
-    <value>Delete Project</value>
-  </data>
-  <data name="Modal_DeleteProject_Warning" xml:space="preserve">
-    <value>This will also remove the project's tracking items, category type assignments, and any budgets attached to it. This cannot be undone.</value>
   </data>
   <data name="PageTitle_Default" xml:space="preserve">
     <value>Project Details</value>

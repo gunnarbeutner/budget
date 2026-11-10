@@ -1,0 +1,88 @@
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject ProjectService ProjectService
+@inject SourceService SourceService
+@inject NavigationManager Navigation
+@inject IStringLocalizer<NewProjectDialog> L
+
+@* "New project" (project switcher, first-run welcome): name, optional description and — with more than one — the
+   import source (only sources the user owns). Creating opens the new project's Transactions. *@
+
+<Modal Show="@Show" Title="@L["Title"]" OnClose="Close">
+    <ChildContent>
+        @if (sources == null)
+        {
+            <p class="text-body-secondary mb-0" aria-busy="true">@L["Loading"]</p>
+        }
+        else if (sources.Count == 0)
+        {
+            <p class="mb-0">@L["Hint_NoSources_Before"]<a href="/sources">@L["Hint_NoSources_Link"]</a>@L["Hint_NoSources_After"]</p>
+        }
+        else
+        {
+            <div class="mb-3">
+                <label for="new-project-name" class="form-label">@L["Label_Name"]</label>
+                <input type="text" class="form-control" id="new-project-name" autocomplete="off"
+                       value="@name" @oninput="e => name = e.Value?.ToString() ?? string.Empty" />
+            </div>
+            <div class="mb-3">
+                <label for="new-project-description" class="form-label">@L["Label_Description"]</label>
+                <textarea class="form-control" id="new-project-description" rows="3" @bind="description"></textarea>
+            </div>
+            @if (sources.Count > 1)
+            {
+                <div class="mb-3">
+                    <label for="new-project-source" class="form-label">@L["Label_Source"]</label>
+                    <select id="new-project-source" class="form-select" @bind="sourceId">
+                        @foreach (var s in sources)
+                        {
+                            <option value="@s.Id">@s.Name</option>
+                        }
+                    </select>
+                </div>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="Close">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-primary" data-testid="new-project-create" @onclick="CreateAsync"
+                disabled="@(sources is not { Count: > 0 } || string.IsNullOrWhiteSpace(name) || busy)">@L["Button_Create"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private List<ImportSource>? sources;
+    private string name = string.Empty;
+    private string? description;
+    private int sourceId;
+    private bool wasShown;
+    private bool busy;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Show == wasShown) return;
+        wasShown = Show;
+        if (!Show) return;
+        name = string.Empty;
+        description = null;
+        busy = false;
+        sources = null;
+        sources = await SourceService.GetOwnedSourcesAsync();
+        sourceId = sources.FirstOrDefault()?.Id ?? 0;
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    private async Task CreateAsync()
+    {
+        if (sources is not { Count: > 0 } || string.IsNullOrWhiteSpace(name)) return;
+        busy = true;
+        var source = sources.Any(s => s.Id == sourceId) ? sourceId : sources[0].Id;
+        var created = await ProjectService.CreateProjectAsync(name.Trim(), source, description);
+        await OnClose.InvokeAsync();
+        Navigation.NavigateTo($"/projects/{created.Id}/browse");
+    }
+}

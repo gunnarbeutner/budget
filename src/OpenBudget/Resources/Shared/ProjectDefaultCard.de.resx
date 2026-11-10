@@ -58,20 +58,8 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Default_Heading" xml:space="preserve">
-    <value>Standardprojekt für neue Konten</value>
-  </data>
   <data name="Status_Loading" xml:space="preserve">
     <value>Wird geladen ...</value>
-  </data>
-  <data name="Default_Toggle" xml:space="preserve">
-    <value>Als Standardprojekt für neue Konten verwenden</value>
-  </data>
-  <data name="Default_Description" xml:space="preserve">
-    <value>Konten, die neu in Ihren Quellen auftauchen (ein neues Konto in einem MoneyMoney-Upload oder ein von einem Bank-Connector angelegtes), werden automatisch diesem Projekt zugeordnet. Bestehende Zuordnungen werden nie verändert. Nur eines Ihrer Projekte kann das Standardprojekt sein.</value>
-  </data>
-  <data name="Default_SharedExplanation" xml:space="preserve">
-    <value>Dieses Projekt ist geteilt (selbst oder über sein übergeordnetes Projekt) und kann daher nicht das Standardprojekt sein: Ein neues Konto darf nie automatisch für die Personen sichtbar werden, mit denen das Projekt geteilt ist. Beenden Sie das Teilen, um es als Standardprojekt zu verwenden.</value>
   </data>
   <data name="Default_ClearedNotice" xml:space="preserve">
     <value>Dieses Projekt war das Standardprojekt für neue Konten, ist aber jetzt geteilt und daher nicht mehr Standard. Wählen Sie ein nicht geteiltes Projekt, wenn neue Konten automatisch zugeordnet werden sollen.</value>

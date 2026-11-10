@@ -1,0 +1,181 @@
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject ProjectService ProjectService
+@inject AccessScopeProvider AccessProvider
+@inject IStringLocalizer<ProjectSettingsDialog> L
+
+@* "Settings…" from the project switcher's context menu: the project's name and description (editors), its parent
+   project and whether it is the default for new accounts (owner). Save applies everything; the rest of the
+   project's settings (categories, accounts, tracking, sharing) stay on the settings page, linked at the bottom.
+   The service enforces every rule again, its refusals show in the dialog. *@
+
+<Modal Show="@(ProjectId != null)" Title="@L["Title"]" OnClose="Close">
+    <ChildContent>
+        @if (project == null)
+        {
+            <p class="text-body-secondary mb-0" aria-busy="true">@L["Loading"]</p>
+        }
+        else
+        {
+            @if (error != null)
+            {
+                <div class="alert alert-danger py-2" role="alert">@error</div>
+            }
+            <div class="mb-3">
+                <label for="project-settings-name" class="form-label">@L["Label_Name"]</label>
+                <input type="text" class="form-control" id="project-settings-name" autocomplete="off"
+                       value="@name" @oninput="e => name = e.Value?.ToString() ?? string.Empty" />
+            </div>
+            <div class="mb-3">
+                <label for="project-settings-description" class="form-label">@L["Label_Description"]</label>
+                <textarea class="form-control" id="project-settings-description" rows="2"
+                          value="@description" @oninput="e => description = e.Value?.ToString()"></textarea>
+            </div>
+            @if (isOwner)
+            {
+                <div class="mb-3">
+                    <label for="project-settings-parent" class="form-label">@L["Label_Parent"]</label>
+                    @if (childNames != null)
+                    {
+                        <p class="text-body-secondary small mb-0" id="project-settings-parent">@L["Parent_HasChildren", childNames]</p>
+                    }
+                    else
+                    {
+                        <select id="project-settings-parent" class="form-select" value="@(parentId?.ToString(CultureInfo.InvariantCulture) ?? "")"
+                                @onchange="e => parentId = int.TryParse(e.Value?.ToString(), out var v) ? v : null">
+                            <option value="">@L["Parent_None"]</option>
+                            @foreach (var p in eligibleParents)
+                            {
+                                <option value="@p.Id">@p.Name</option>
+                            }
+                        </select>
+                    }
+                </div>
+                @if (defaultState is { } d)
+                {
+                    @if (d.ClearedNotice)
+                    {
+                        <div class="alert alert-warning d-flex justify-content-between align-items-center py-2" role="alert" id="settings-default-cleared-notice">
+                            <span>@L["Default_ClearedNotice"]</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-3" @onclick="DismissNoticeAsync">@L["Button_Dismiss"]</button>
+                        </div>
+                    }
+                    <div class="form-check form-switch mb-1">
+                        <input class="form-check-input" type="checkbox" role="switch" id="default-project-toggle"
+                               checked="@isDefault" disabled="@(d.IsShared && !d.IsDefault)"
+                               @onchange="e => isDefault = e.Value is true" />
+                        <label class="form-check-label" for="default-project-toggle">@L["Default_Toggle"]</label>
+                    </div>
+                    <p class="text-body-secondary small mb-3" id="default-project-help">
+                        @(d.IsShared ? L["Default_SharedExplanation"] : L["Default_Description"])
+                    </p>
+                }
+            }
+            <a href="@($"/projects/{project.Id}/settings")" class="small" data-testid="project-settings-more" @onclick="Close">@L["Link_AllSettings"]</a>
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="Close">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-primary" data-testid="project-settings-save" @onclick="SaveAsync"
+                disabled="@(project == null || string.IsNullOrWhiteSpace(name) || busy)">@L["Button_Save"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    /// <summary>The project whose settings are shown; null hides the dialog.</summary>
+    [Parameter] public int? ProjectId { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    /// <summary>Raised after a save (with the saved project's id and name).</summary>
+    [Parameter] public EventCallback<(int Id, string Name)> OnSaved { get; set; }
+
+    private Project? project;
+    private int? shownFor;
+    private bool isOwner;
+    private string name = string.Empty;
+    private string? description;
+    private int? parentId;
+    private List<Project> eligibleParents = [];
+    private string? childNames;
+    private DefaultProjectState? defaultState;
+    private bool isDefault;
+    private string? error;
+    private bool busy;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ProjectId == shownFor) return;
+        shownFor = ProjectId;
+        project = null;
+        error = null;
+        busy = false;
+        if (ProjectId is not { } id) return;
+
+        var scope = await AccessProvider.GetAsync();
+        var p = await ProjectService.GetProjectAsync(id);
+        if (p == null || ProjectId != id) return;
+        isOwner = scope.IsOwner(id);
+        name = p.Name;
+        description = p.Description;
+        parentId = p.ParentProjectId;
+        childNames = null;
+        eligibleParents = [];
+        defaultState = null;
+        if (isOwner)
+        {
+            var children = await ProjectService.GetChildProjectsAsync(id);
+            if (children.Count > 0) childNames = string.Join(", ", children.Select(c => c.Name));
+            else
+            {
+                // A parent must be one of your own top-level projects on the same source (single-level hierarchy).
+                eligibleParents = (await ProjectService.GetProjectsAsync())
+                    .Where(x => x.Id != id && x.SourceId == p.SourceId && x.ParentProjectId == null && scope.IsOwner(x.Id))
+                    .OrderBy(x => x.Name)
+                    .ToList();
+            }
+            defaultState = await ProjectService.GetDefaultStateAsync(id);
+            isDefault = defaultState?.IsDefault ?? false;
+        }
+        project = p;
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    private async Task DismissNoticeAsync()
+    {
+        if (project == null) return;
+        await ProjectService.DismissDefaultClearedNoticeAsync(project.Id);
+        defaultState = await ProjectService.GetDefaultStateAsync(project.Id);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (project == null || string.IsNullOrWhiteSpace(name)) return;
+        busy = true;
+        error = null;
+        try
+        {
+            if (name.Trim() != project.Name || (description ?? "").Trim() != (project.Description ?? ""))
+                await ProjectService.UpdateProjectAsync(project.Id, name, description);
+            if (isOwner)
+            {
+                if (childNames == null && parentId != project.ParentProjectId)
+                    await ProjectService.SetProjectParentAsync(project.Id, parentId);
+                if (defaultState != null && isDefault != defaultState.IsDefault)
+                    await ProjectService.SetDefaultForNewAccountsAsync(project.Id, isDefault);
+            }
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException or ArgumentException)
+        {
+            error = ex.Message;
+            busy = false;
+            // Show what did get saved.
+            shownFor = null;
+            var keep = error;
+            await OnParametersSetAsync();
+            error = keep;
+            return;
+        }
+        busy = false;
+        await OnSaved.InvokeAsync((project.Id, name.Trim()));
+    }
+}

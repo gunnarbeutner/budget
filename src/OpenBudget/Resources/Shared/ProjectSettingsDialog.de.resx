@@ -58,79 +58,49 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="PageTitle" xml:space="preserve">
-    <value>Projekte</value>
-  </data>
-  <data name="Status_Loading" xml:space="preserve">
-    <value>Projektdaten werden geladen...</value>
-  </data>
-  <data name="Welcome_Heading" xml:space="preserve">
-    <value>Willkommen bei Budget!</value>
-  </data>
-  <data name="Welcome_Body" xml:space="preserve">
-    <value>Du hast noch keine Projekte. Klicke unten auf „Neues Projekt", um loszulegen.</value>
-  </data>
-  <data name="Aria_MoveUp" xml:space="preserve">
-    <value>Nach oben verschieben</value>
-  </data>
-  <data name="Aria_MoveDown" xml:space="preserve">
-    <value>Nach unten verschieben</value>
-  </data>
-  <data name="Aria_ProjectSettings" xml:space="preserve">
+  <data name="Title" xml:space="preserve">
     <value>Projekteinstellungen</value>
   </data>
-  <data name="Label_Account_One" xml:space="preserve">
-    <value>{0} Konto</value>
+  <data name="Loading" xml:space="preserve">
+    <value>Wird geladen…</value>
   </data>
-  <data name="Label_Account_Other" xml:space="preserve">
-    <value>{0} Konten</value>
-  </data>
-  <data name="Label_Net" xml:space="preserve">
-    <value>Saldo</value>
-  </data>
-  <data name="Button_NewProject" xml:space="preserve">
-    <value>Neues Projekt</value>
-  </data>
-  <data name="Modal_CreateNewProject" xml:space="preserve">
-    <value>Neues Projekt erstellen</value>
-  </data>
-  <data name="Form_NameLabel" xml:space="preserve">
+  <data name="Label_Name" xml:space="preserve">
     <value>Name</value>
   </data>
-  <data name="Form_DescriptionLabel" xml:space="preserve">
+  <data name="Label_Description" xml:space="preserve">
     <value>Beschreibung (optional)</value>
   </data>
-  <data name="Form_SourceLabel" xml:space="preserve">
-    <value>Importquelle</value>
+  <data name="Label_Parent" xml:space="preserve">
+    <value>Übergeordnetes Projekt</value>
+  </data>
+  <data name="Parent_None" xml:space="preserve">
+    <value>(keines — oberstes Projekt)</value>
+  </data>
+  <data name="Parent_HasChildren" xml:space="preserve">
+    <value>Dieses Projekt hat Unterprojekte ({0}) und kann deshalb selbst kein Unterprojekt werden.</value>
+  </data>
+  <data name="Default_Toggle" xml:space="preserve">
+    <value>Als Standardprojekt für neue Konten verwenden</value>
+  </data>
+  <data name="Default_Description" xml:space="preserve">
+    <value>Konten, die neu in Ihren Quellen auftauchen (ein neues Konto in einem MoneyMoney-Upload oder ein von einem Bank-Connector angelegtes), werden automatisch diesem Projekt zugeordnet. Bestehende Zuordnungen werden nie verändert. Nur eines Ihrer Projekte kann das Standardprojekt sein.</value>
+  </data>
+  <data name="Default_SharedExplanation" xml:space="preserve">
+    <value>Dieses Projekt ist geteilt (selbst oder über sein übergeordnetes Projekt) und kann daher nicht das Standardprojekt sein: Ein neues Konto darf nie automatisch für die Personen sichtbar werden, mit denen das Projekt geteilt ist. Beenden Sie das Teilen, um es als Standardprojekt zu verwenden.</value>
+  </data>
+  <data name="Default_ClearedNotice" xml:space="preserve">
+    <value>Dieses Projekt war das Standardprojekt für neue Konten, ist aber jetzt geteilt und daher nicht mehr Standard. Wählen Sie ein nicht geteiltes Projekt, wenn neue Konten automatisch zugeordnet werden sollen.</value>
+  </data>
+  <data name="Button_Dismiss" xml:space="preserve">
+    <value>Ausblenden</value>
+  </data>
+  <data name="Link_AllSettings" xml:space="preserve">
+    <value>Kategorien, Konten, Teilen und mehr…</value>
   </data>
   <data name="Button_Cancel" xml:space="preserve">
     <value>Abbrechen</value>
   </data>
-  <data name="Button_Create" xml:space="preserve">
-    <value>Erstellen</value>
-  </data>
-  <data name="Label_TotalAllAccounts" xml:space="preserve">
-    <value>Alle Konten: {0}</value>
-  </data>
-  <data name="Shared_Editor" xml:space="preserve">
-    <value>Geteilt von {0} · du kannst bearbeiten</value>
-  </data>
-  <data name="Shared_Viewer" xml:space="preserve">
-    <value>Geteilt von {0} · nur Ansicht</value>
-  </data>
-  <data name="Hint_NoSources_Before" xml:space="preserve">
-    <value>Um Projekte anzulegen, brauchst du zuerst eine Quelle: </value>
-  </data>
-  <data name="Hint_NoSources_Link" xml:space="preserve">
-    <value>richte eine unter MoneyMoney-Import ein</value>
-  </data>
-  <data name="Hint_NoSources_After" xml:space="preserve">
-    <value>.</value>
-  </data>
-  <data name="Badge_DefaultForNewAccounts" xml:space="preserve">
-    <value>Standard für neue Konten</value>
-  </data>
-  <data name="Heading_Manage" xml:space="preserve">
-    <value>Projekte</value>
+  <data name="Button_Save" xml:space="preserve">
+    <value>Speichern</value>
   </data>
 </root>

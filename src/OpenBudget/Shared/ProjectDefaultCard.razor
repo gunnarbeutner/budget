@@ -2,15 +2,15 @@
 @inject ProjectService ProjectService
 @inject IStringLocalizer<ProjectDefaultCard> L
 
-@* Project-settings panel (owner only): make this project the default for new accounts, and the one-time helper
-   that assigns all of the owner's accounts that are in no project yet. Everything is enforced server-side
-   (ProjectService); a shared project can't be the default, and sharing clears the default automatically. *@
+@* Project-settings panel (owner only): the one-time helper that assigns all of the owner's accounts that are in no
+   project yet, and the notice when sharing cleared the project's "default for new accounts" flag (the flag itself
+   is switched in the project switcher's Settings… dialog, ProjectSettingsDialog). Enforced server-side (ProjectService). *@
 
 <div class="row mb-4">
     <div class="col-12">
         <div class="card" id="default-project-card">
             <div class="card-header">
-                <h5 class="mb-0">@L["Default_Heading"]</h5>
+                <h5 class="mb-0">@L["Assign_Heading"]</h5>
             </div>
             <div class="card-body">
                 @if (state == null)
@@ -31,18 +31,6 @@
                         <div class="alert alert-danger py-2" role="alert">@error</div>
                     }
 
-                    <div class="form-check form-switch mb-1">
-                        <input class="form-check-input" type="checkbox" role="switch" id="default-project-toggle"
-                               checked="@state.IsDefault" disabled="@(state.IsShared && !state.IsDefault)"
-                               @onchange="Toggle" />
-                        <label class="form-check-label" for="default-project-toggle">@L["Default_Toggle"]</label>
-                    </div>
-                    <p class="text-body-secondary small mb-3" id="default-project-help">
-                        @(state.IsShared ? L["Default_SharedExplanation"] : L["Default_Description"])
-                    </p>
-
-                    <hr />
-                    <h6>@L["Assign_Heading"]</h6>
                     <p class="text-body-secondary small">@L["Assign_Description"]</p>
                     <button type="button" class="btn btn-outline-primary btn-sm" id="assign-unassigned"
                             @onclick="OnAssignClicked">@L["Assign_Button"]</button>
@@ -90,20 +78,6 @@
     }
 
     private async Task LoadAsync() => state = await ProjectService.GetDefaultStateAsync(ProjectId);
-
-    private async Task Toggle(ChangeEventArgs e)
-    {
-        error = null;
-        try
-        {
-            await ProjectService.SetDefaultForNewAccountsAsync(ProjectId, e.Value is true);
-        }
-        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException)
-        {
-            error = ex.Message;
-        }
-        await LoadAsync();
-    }
 
     private async Task DismissNotice()
     {

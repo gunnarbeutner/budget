@@ -1,22 +1,24 @@
 @using OpenBudget.Models
 @using OpenBudget.Services
-@implements IDisposable
+@inherits DataChangeAwareComponent
 @inject CurrentProjectState Current
 @inject ProjectService ProjectService
 @inject BudgetService BudgetService
 @inject PortfolioService PortfolioService
-@inject AccessScopeProvider AccessProvider
 @inject OpenBudget.Auth.UserDirectory Users
 @inject ClockService Clock
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @inject ILogger<ProjectSwitcher> Logger
 @inject IStringLocalizer<ProjectSwitcher> L
 
 @* The project switcher in the top bar — it replaced the start page. Lists every project the user can see with
    the numbers the start page used to show: balance and number of accounts, this month's spending against the
-   budget (bar + percentage), the default-for-new-accounts badge and who shared it. Then "New project" and
-   "Reorder and manage projects…" (ManageProjects). The numbers load when the menu opens, so it costs nothing
-   until used. *@
+   budget (bar + percentage), the default-for-new-accounts badge and who shared it. Then "New project". The
+   numbers load when the menu opens, so it costs nothing until used.
+   A row's context menu (right-click, touch long-press, Shift+F10 / the context-menu key) offers Settings…
+   (ProjectSettingsDialog), Move up / Move down and Delete (DeleteProjectDialog); owners also reorder by dragging
+   a row. Reordering and deleting are the owner's, viewers get no menu. Other sessions' changes reload the list. *@
 
 <details class="project-selector app-menu" data-testid="project-selector" @key="Current.ProjectId">
     <summary class="project-selector-toggle" @onclick="LoadAsync" aria-label="@L["Aria_Switcher"]">
@@ -39,9 +41,22 @@
                 @foreach (var r in rows)
                 {
                     var current = r.Id == Current.ProjectId;
+                    var row = r;
+                    var hasMenu = MenuFor(r).Count > 0;
                     <li>
-                        <a class="project-switcher-row @(current ? "current" : "")" href="@TargetUrl(r)"
-                           aria-current="@(current ? "true" : null)" data-testid="switcher-project">
+                        <a class="project-switcher-row @(current ? "current" : "") @(r.Id == dragOverId && dragId != null && dragId != r.Id ? "drag-over" : "") @(r.Id == dragId ? "dragging" : "")"
+                           href="@TargetUrl(r)" aria-current="@(current ? "true" : null)" data-testid="switcher-project"
+                           data-project-id="@r.Id"
+                           aria-haspopup="@(hasMenu ? "menu" : null)"
+                           data-ob-longpress="@(hasMenu ? "" : null)"
+                           @oncontextmenu="e => OpenMenu(row, e.ClientX, e.ClientY)" @oncontextmenu:preventDefault="@hasMenu"
+                           @onkeydown="e => MenuKeyAsync(row, e)"
+                           draggable="@(r.IsOwner ? "true" : "false")"
+                           @ondragstart="() => dragId = row.IsOwner ? row.Id : null"
+                           @ondragenter="() => dragOverId = row.Id"
+                           @ondragover:preventDefault="true"
+                           @ondrop="() => DropAsync(row)" @ondrop:preventDefault="true"
+                           @ondragend="() => dragId = dragOverId = null">
                             <span class="project-switcher-id">
                                 <span class="project-switcher-name">
                                     <span class="text-truncate">@r.Name</span>
@@ -86,18 +101,27 @@
             </ul>
         }
         <div class="project-switcher-foot">
-            <a class="dropdown-item" href="/projects/manage?new=1" data-testid="switcher-new-project">
+            <button type="button" class="dropdown-item" data-testid="switcher-new-project" @onclick="OpenNewProject">
                 <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>@L["Item_NewProject"]
-            </a>
-            <a class="dropdown-item" href="/projects/manage" data-testid="switcher-manage">
-                <i class="bi bi-arrow-down-up me-2" aria-hidden="true"></i>@L["Item_Manage"]
-            </a>
+            </button>
         </div>
+        @if (menuRow != null)
+        {
+            @* Inside the <details>, so picking an entry doesn't count as a click outside that closes the switcher. *@
+            <ContextMenu Items="menuItems" X="menuX" Y="menuY" OnPick="PickAsync" OnClose="() => menuRow = null" />
+        }
     </div>
 </details>
 
+<ProjectSettingsDialog ProjectId="settingsFor" OnClose="() => settingsFor = null" OnSaved="OnSettingsSavedAsync" />
+<DeleteProjectDialog Target="deleteTarget" OnClose="() => deleteTarget = null" OnDeleted="OnDeletedAsync" />
+<NewProjectDialog Show="showNewProject" OnClose="() => showNewProject = false" />
+
 @code {
-    private sealed record Row(int Id, string Name, bool IsDefault, string? SharedBy, ProjectBalanceSummary? Balance, ProjectSpendingSummary? Summary, bool HasPortfolio);
+    private sealed record Row(int Id, string Name, ProjectRole Role, bool IsDefault, string? SharedBy, ProjectBalanceSummary? Balance, ProjectSpendingSummary? Summary, bool HasPortfolio)
+    {
+        public bool IsOwner => Role == ProjectRole.Owner;
+    }
 
     /// <summary>Switching keeps the view: Budget → Budget, Cashflow → Cashflow, Portfolio → Portfolio when the
     /// target has depots, everything else → Transactions (without the selection).</summary>
@@ -116,16 +140,45 @@
 
     private List<Row>? rows;
 
+    // Context menu
+    private Row? menuRow;
+    private IReadOnlyList<ContextMenuItem> menuItems = [];
+    private double menuX;
+    private double menuY;
+
+    // Dialogs
+    private int? settingsFor;
+    private (int Id, string Name)? deleteTarget;
+    private bool showNewProject;
+
+    // Drag and drop (owners, among their own projects)
+    private int? dragId;
+    private int? dragOverId;
+
     private string MonthName => Clock.NowLocal.ToString("MMMM yyyy", CultureInfo.CurrentCulture);
 
-    protected override void OnInitialized() => Current.Changed += OnProjectChanged;
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Current.Changed += OnProjectChanged;
+    }
 
     private void OnProjectChanged() => _ = InvokeAsync(StateHasChanged);
+
+    // Another session added, renamed, reordered, shared or deleted a project: refresh the list if it was loaded and
+    // the name in the top bar.
+    protected override bool IsRelevantChange(DataChange change) => change.Area == DataArea.Projects;
+
+    protected override async Task ReloadAfterChangeAsync()
+    {
+        if (Current.ProjectId is { } id && (await ProjectService.GetProjectAsync(id)) is { } p) Current.Set(id, p.Name);
+        if (rows != null) await LoadAsync();
+    }
 
     /// <summary>Loads (or refreshes) the list when the menu is opened.</summary>
     private async Task LoadAsync()
     {
-        var scope = await AccessProvider.GetAsync();
+        var scope = await Access.GetAsync();
         var projects = await ProjectService.GetProjectsAsync();
         var balances = await ProjectService.GetAllProjectsBalancesAsync();
         var owners = await Users.GetNamesAsync(projects.Where(p => p.OwnerUserId != null).Select(p => p.OwnerUserId!));
@@ -142,18 +195,137 @@
             {
                 Logger.LogError(ex, "Error loading spending summary for project {ProjectId}.", p.Id);
             }
-            var isOwner = scope.IsOwner(p.Id);
+            var role = scope.RoleFor(p.Id);
             string? sharedBy = null;
-            if (!isOwner)
+            if (role != ProjectRole.Owner)
             {
                 var ownerName = p.OwnerUserId is { } oid ? owners.GetValueOrDefault(oid, "?") : "?";
-                sharedBy = L[scope.RoleFor(p.Id) == ProjectRole.Editor ? "Shared_Editor" : "Shared_Viewer", ownerName];
+                sharedBy = L[role == ProjectRole.Editor ? "Shared_Editor" : "Shared_Viewer", ownerName];
             }
             var hasPortfolio = (await PortfolioService.GetProjectDepotIdsAsync(p.Id)).Count > 0;
-            list.Add(new Row(p.Id, p.Name, isOwner && p.IsDefaultForNewAccounts, sharedBy, balances.GetValueOrDefault(p.Id), summary, hasPortfolio));
+            list.Add(new Row(p.Id, p.Name, role, role == ProjectRole.Owner && p.IsDefaultForNewAccounts, sharedBy, balances.GetValueOrDefault(p.Id), summary, hasPortfolio));
         }
         rows = list;
     }
 
-    public void Dispose() => Current.Changed -= OnProjectChanged;
+    // ---- Context menu ----
+
+    /// <summary>Entries of a row's menu. Viewers get none; editors get Settings… and the owner-only entries
+    /// disabled with the reason; owners get everything (Move up/down among their own projects).</summary>
+    private IReadOnlyList<ContextMenuItem> MenuFor(Row r)
+    {
+        if (r.Role < ProjectRole.Editor) return [];
+        var owned = rows?.Where(x => x.IsOwner).Select(x => x.Id).ToList() ?? [];
+        var at = owned.IndexOf(r.Id);
+        var ownerOnly = r.IsOwner ? null : L["Reason_OwnerOnly"].Value;
+        return
+        [
+            new("settings", L["Menu_Settings"], "bi-gear"),
+            ContextMenuItem.Divider(),
+            new("up", L["Menu_MoveUp"], "bi-arrow-up", Disabled: !r.IsOwner || at <= 0, Tooltip: ownerOnly),
+            new("down", L["Menu_MoveDown"], "bi-arrow-down", Disabled: !r.IsOwner || at < 0 || at >= owned.Count - 1, Tooltip: ownerOnly),
+            ContextMenuItem.Divider(),
+            new("delete", L["Menu_Delete"], "bi-trash", Disabled: !r.IsOwner, Tooltip: ownerOnly, Danger: true),
+        ];
+    }
+
+    private void OpenMenu(Row r, double x, double y)
+    {
+        var items = MenuFor(r);
+        if (items.Count == 0) return;
+        (menuRow, menuItems, menuX, menuY) = (r, items, x, y);
+    }
+
+    // Shift+F10 or the context-menu key on a focused row opens its menu below the row.
+    private async Task MenuKeyAsync(Row r, KeyboardEventArgs e)
+    {
+        if (!(e.Key == "ContextMenu" || (e.Key == "F10" && e.ShiftKey))) return;
+        double x = 200, y = 200;
+        try
+        {
+            if (await JS.InvokeAsync<double[]?>("obFocusAnchor") is { Length: 2 } xy) (x, y) = (xy[0], xy[1]);
+        }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+        OpenMenu(r, x, y);
+    }
+
+    private async Task PickAsync(string key)
+    {
+        var r = menuRow;
+        menuRow = null;
+        if (r == null) return;
+        switch (key)
+        {
+            case "settings":
+                await CloseSwitcherAsync();
+                settingsFor = r.Id;
+                break;
+            case "delete":
+                await CloseSwitcherAsync();
+                deleteTarget = (r.Id, r.Name);
+                break;
+            case "up":
+            case "down":
+                await RunAsync(() => ProjectService.MoveProjectAsync(r.Id, key == "up" ? -1 : 1));
+                break;
+        }
+    }
+
+    private async Task DropAsync(Row target)
+    {
+        var dragged = dragId;
+        dragId = dragOverId = null;
+        if (dragged is not { } id || id == target.Id || !target.IsOwner) return;
+        await RunAsync(() => ProjectService.MoveProjectToAsync(id, target.Id));
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch (AccessDeniedException ex)
+        {
+            Logger.LogWarning(ex, "Project reorder refused.");
+        }
+        await LoadAsync();
+    }
+
+    private async Task CloseSwitcherAsync()
+    {
+        try { await JS.InvokeVoidAsync("obCloseMenus"); }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+    }
+
+    private async Task OpenNewProject()
+    {
+        await CloseSwitcherAsync();
+        showNewProject = true;
+    }
+
+    private async Task OnSettingsSavedAsync((int Id, string Name) saved)
+    {
+        settingsFor = null;
+        if (saved.Id == Current.ProjectId) Current.Set(saved.Id, saved.Name);
+        if (rows != null) await LoadAsync();
+    }
+
+    private async Task OnDeletedAsync(int id)
+    {
+        deleteTarget = null;
+        if (id == Current.ProjectId)
+        {
+            // The open project is gone: "/" picks the next one (or shows the welcome).
+            Navigation.NavigateTo("/");
+            return;
+        }
+        if (rows != null) await LoadAsync();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) Current.Changed -= OnProjectChanged;
+        base.Dispose(disposing);
+    }
 }

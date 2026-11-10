@@ -91,16 +91,8 @@ else
     }
 }
 
-<Modal Show="@showDeleteDialog" Title="@L["Modal_DeleteProject_Title"]" OnClose="@HideDeleteDialog">
-    <ChildContent>
-        <p>@L["Modal_DeleteProject_Body_Before"]<strong>@budget?.Name</strong>@L["Modal_DeleteProject_Body_After"]</p>
-        <p class="text-body-secondary small mb-0">@L["Modal_DeleteProject_Warning"]</p>
-    </ChildContent>
-    <Footer>
-        <button type="button" class="btn btn-secondary" @onclick="HideDeleteDialog">@L["Button_Cancel"]</button>
-        <button type="button" class="btn btn-danger" @onclick="DeleteProject">@L["Button_Delete"]</button>
-    </Footer>
-</Modal>
+<DeleteProjectDialog Target="@(showDeleteDialog && budget != null ? (ProjectId, budget.Name) : null)"
+                     OnClose="HideDeleteDialog" OnDeleted="OnProjectDeleted" />
 
 
 
@@ -298,9 +290,8 @@ else
     private void ShowDeleteDialog() => showDeleteDialog = true;
     private void HideDeleteDialog() => showDeleteDialog = false;
 
-    private async Task DeleteProject()
+    private void OnProjectDeleted(int _)
     {
-        await ProjectService.DeleteProjectAsync(ProjectId);
         showDeleteDialog = false;
         Navigation.NavigateTo("/");
     }

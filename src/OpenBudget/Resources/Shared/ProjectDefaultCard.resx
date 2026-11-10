@@ -58,20 +58,8 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Default_Heading" xml:space="preserve">
-    <value>Default project for new accounts</value>
-  </data>
   <data name="Status_Loading" xml:space="preserve">
     <value>Loading...</value>
-  </data>
-  <data name="Default_Toggle" xml:space="preserve">
-    <value>Use as default project for new accounts</value>
-  </data>
-  <data name="Default_Description" xml:space="preserve">
-    <value>Accounts that newly appear in your sources (a new account in a MoneyMoney upload, or one created by a bank connector) are assigned to this project automatically. Existing assignments are never changed. Only one of your projects can be the default.</value>
-  </data>
-  <data name="Default_SharedExplanation" xml:space="preserve">
-    <value>This project is shared (itself or through its parent project), so it cannot be the default: a new account must never become visible to the people it is shared with automatically. Stop sharing it to use it as the default.</value>
   </data>
   <data name="Default_ClearedNotice" xml:space="preserve">
     <value>This project was the default for new accounts, but it is now shared, so it is no longer the default. Choose an unshared project instead if you want new accounts assigned automatically.</value>

@@ -88,22 +88,26 @@ public sealed class SharingHttpTests : IDisposable
     }
 
     [Fact]
-    public async Task Dashboard_lists_only_projects_in_scope()
+    public async Task The_old_project_list_redirects_into_a_project_in_scope()
     {
         await _host.SeedWorldAsync(ProjectRole.Editor);
 
+        // /projects/manage is gone (the switcher has its features); it lands in one of the user's projects like "/".
         using var bob = await _host.LoggedInClientAsync("bob");
-        var (_, bobHome) = await GetAsync(bob, "/projects/manage");
-        Assert.Contains("Shared", bobHome, StringComparison.Ordinal);
-        Assert.Contains("Property", bobHome, StringComparison.Ordinal);       // inherited
-        Assert.Contains("Bob Private", bobHome, StringComparison.Ordinal);
-        Assert.DoesNotContain("Alice Private", bobHome, StringComparison.Ordinal);
-        Assert.Contains("Shared by alice", bobHome, StringComparison.Ordinal);
+        var bobTarget = await RedirectTargetAsync(bob, "/projects/manage");
+        Assert.Contains(bobTarget, new[] { $"/projects/{AccessWorld.Shared}/browse", $"/projects/{AccessWorld.Property}/browse", $"/projects/{AccessWorld.BobProject}/browse" });
 
         using var alice = await _host.LoggedInClientAsync("alice");
-        var (_, aliceHome) = await GetAsync(alice, "/projects/manage");
-        Assert.Contains("Alice Private", aliceHome, StringComparison.Ordinal);
-        Assert.DoesNotContain("Bob Private", aliceHome, StringComparison.Ordinal);
+        var aliceTarget = await RedirectTargetAsync(alice, "/projects/manage?new=1");
+        Assert.Contains(aliceTarget, new[] { $"/projects/{AccessWorld.Shared}/browse", $"/projects/{AccessWorld.Private}/browse", $"/projects/{AccessWorld.Property}/browse" });
+    }
+
+    private async Task<string> RedirectTargetAsync(HttpClient client, string path)
+    {
+        using var response = await client.GetAsync(new Uri(path, UriKind.Relative));
+        Assert.True(response.StatusCode == HttpStatusCode.Found, $"{path} -> {(int)response.StatusCode}: {string.Join("\n", _host.LoggedProblems)}");
+        var location = response.Headers.Location!;
+        return location.IsAbsoluteUri ? location.PathAndQuery : location.OriginalString;
     }
 
     [Fact]
@@ -166,9 +170,10 @@ public sealed class SharingHttpTests : IDisposable
         using var bob = await _host.LoggedInClientAsync("bob");
 
         await AssertNotFoundAsync(bob, "/projects/1/overview", "/projects/1/browse", "/projects/3/overview", "/projects/2/settings");
-        var (_, home) = await GetAsync(bob, "/projects/manage");
-        Assert.DoesNotContain(">Shared<", home, StringComparison.Ordinal);
-        Assert.Contains("Bob Private", home, StringComparison.Ordinal);
+        Assert.Equal($"/projects/{AccessWorld.BobProject}/browse", await RedirectTargetAsync(bob, "/"));
+        var (_, own) = await GetAsync(bob, $"/projects/{AccessWorld.BobProject}/browse");
+        Assert.DoesNotContain(">Shared<", own, StringComparison.Ordinal);
+        Assert.Contains("Bob Private", own, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -195,7 +200,10 @@ public sealed class SharingHttpTests : IDisposable
         using var alice = await _host.LoggedInClientAsync("alice");
 
         await AssertNotFoundAsync(alice, "/projects/7/overview", "/sources/7/depots");
-        var (_, home) = await GetAsync(alice, "/projects/manage");
+        // Without a project of her own, "/" (and the old /projects/manage) show the first-run welcome.
+        var (status, home) = await GetAsync(alice, "/projects/manage");
+        Assert.Equal(HttpStatusCode.OK, status);
+        Assert.Contains("Welcome", home, StringComparison.Ordinal);
         Assert.DoesNotContain("Orphan Project", home, StringComparison.Ordinal);
     }
 }

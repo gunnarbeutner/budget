@@ -86,44 +86,85 @@ public class ProjectService
             throw new ArgumentException("direction must be -1 or 1", nameof(direction));
 
         await using var db = await _dbFactory.CreateDbContextAsync();
-        // Dashboard order is the owner's: only owned projects are reordered (shared ones keep their
-        // place), so a user can never rewrite another user's project rows.
-        var query = db.Projects.AsQueryable();
-        if (db.Scope is { } scope)
-        {
-            var owned = scope.OwnedProjectIds;
-            query = query.Where(p => owned.Contains(p.Id));
-        }
-        var ordered = await query
-            .OrderBy(p => p.SortOrder)
-            .ThenByDescending(p => p.CreatedAt)
-            .ToListAsync();
-
+        var ordered = await OwnedInOrderAsync(db, projectId);
         var index = ordered.FindIndex(p => p.Id == projectId);
         if (index < 0) return;
 
         var swapIndex = index + direction;
         if (swapIndex < 0 || swapIndex >= ordered.Count) return;
 
-        // Renumber so the swap is unambiguous even if any rows shared a SortOrder before.
+        (ordered[index], ordered[swapIndex]) = (ordered[swapIndex], ordered[index]);
+        await SaveOrderAsync(db, ordered);
+    }
+
+    /// <summary>
+    /// Drag and drop in the project switcher: move a project to the position of <paramref name="targetProjectId"/>
+    /// (dragging down lands after it, dragging up before it). Owner-only, among the owner's own projects.
+    /// </summary>
+    public async Task MoveProjectToAsync(int projectId, int targetProjectId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        db.Scope?.RequireRole(targetProjectId, ProjectRole.Owner);
+        var ordered = await OwnedInOrderAsync(db, projectId);
+        var from = ordered.FindIndex(p => p.Id == projectId);
+        var to = ordered.FindIndex(p => p.Id == targetProjectId);
+        if (from < 0 || to < 0 || from == to) return;
+
+        var moved = ordered[from];
+        ordered.RemoveAt(from);
+        ordered.Insert(to, moved);
+        await SaveOrderAsync(db, ordered);
+    }
+
+    // The order is the owner's: only owned projects are reordered (shared ones keep their place), so a user can
+    // never rewrite another user's project rows. Moving a project you don't own is refused.
+    private static async Task<List<Project>> OwnedInOrderAsync(BudgetDbContext db, int projectId)
+    {
+        var query = db.Projects.AsQueryable();
+        if (db.Scope is { } scope)
+        {
+            scope.RequireRole(projectId, ProjectRole.Owner);
+            var owned = scope.OwnedProjectIds;
+            query = query.Where(p => owned.Contains(p.Id));
+        }
+        return await query
+            .OrderBy(p => p.SortOrder)
+            .ThenByDescending(p => p.CreatedAt)
+            .ToListAsync();
+    }
+
+    // Renumber the whole list so the new order is unambiguous even if rows shared a SortOrder before.
+    private async Task SaveOrderAsync(BudgetDbContext db, List<Project> ordered)
+    {
         for (int i = 0; i < ordered.Count; i++)
             ordered[i].SortOrder = i;
-        (ordered[index].SortOrder, ordered[swapIndex].SortOrder) =
-            (ordered[swapIndex].SortOrder, ordered[index].SortOrder);
-
         await db.SaveChangesAsync();
         Notify(new DataChange(DataArea.Projects));
+    }
+
+    /// <summary>Rename / re-describe a project (editors may; the context's write guard enforces it).</summary>
+    public async Task UpdateProjectAsync(int projectId, string name, string? description)
+    {
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("The name must not be empty.", nameof(name));
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == projectId)
+            ?? throw new ArgumentException("Project not found", nameof(projectId));
+        project.Name = name.Trim();
+        project.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        await db.SaveChangesAsync();
+        Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
     }
 
     public async Task DeleteProjectAsync(int projectId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
+        // Bulk deletes bypass the context's write guard, so check ownership first (a project the caller can't
+        // see is refused just the same). The app's SQLite connections don't enforce foreign keys, so don't rely
+        // on ON DELETE CASCADE either.
+        db.Scope?.RequireRole(projectId, ProjectRole.Owner);
         var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == projectId);
         if (project != null)
         {
-            // Bulk deletes bypass the context's write guard, so check ownership first. The app's SQLite
-            // connections don't enforce foreign keys, so don't rely on ON DELETE CASCADE either.
-            db.Scope?.RequireRole(projectId, ProjectRole.Owner);
             await db.ProjectShares.Where(s => s.ProjectId == projectId).ExecuteDeleteAsync();
             db.Projects.Remove(project);
             await db.SaveChangesAsync();

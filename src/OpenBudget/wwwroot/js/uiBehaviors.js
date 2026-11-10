@@ -320,3 +320,17 @@ window.addEventListener("click", function (e) {
         e.preventDefault();
     }
 }, true);
+
+// Closes the open top-bar menus (the project switcher before it opens one of its dialogs).
+window.obCloseMenus = function () {
+    document.querySelectorAll("details.project-selector[open], details.app-menu[open]").forEach(function (d) { d.open = false; });
+};
+
+// Dragging a project switcher row to reorder: mark it as a move (Firefox only starts a drag with data set) so the
+// browser doesn't treat it as dragging the row's link somewhere else.
+document.addEventListener("dragstart", function (e) {
+    var row = e.target.closest && e.target.closest(".project-switcher-row[draggable=true]");
+    if (!row || !e.dataTransfer) return;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", row.getAttribute("data-project-id") || "");
+});
