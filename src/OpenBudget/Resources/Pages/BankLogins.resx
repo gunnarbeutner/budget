@@ -199,12 +199,6 @@
   <data name="Button_DownloadNow" xml:space="preserve">
     <value>Download now</value>
   </data>
-  <data name="Documents_Heading" xml:space="preserve">
-    <value>Documents ({0})</value>
-  </data>
-  <data name="Documents_NoAccount" xml:space="preserve">
-    <value>no account</value>
-  </data>
   <data name="Link_View" xml:space="preserve">
     <value>View</value>
   </data>
@@ -270,5 +264,8 @@
   </data>
   <data name="Type_Other" xml:space="preserve">
     <value>Other</value>
+  </data>
+  <data name="Link_Documents" xml:space="preserve">
+    <value>Documents</value>
   </data>
 </root>

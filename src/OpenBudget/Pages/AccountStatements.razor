@@ -22,35 +22,46 @@ else
     {
         <div aria-busy="true"><div class="skeleton skeleton-line" style="width: 50%;"></div></div>
     }
-    else if (statements.Count == 0)
+    else if (statements.Count == 0 && (loginDocuments?.Count ?? 0) == 0)
     {
         <div class="alert alert-secondary" id="no-statements">@L["Empty"]</div>
     }
     else
     {
-        <table class="table table-sm align-middle" id="statements-table">
-            <thead><tr><th>@L["Table_Date"]</th><th>@L["Table_Name"]</th><th></th></tr></thead>
-            <tbody>
-                @foreach (var s in statements)
-                {
-                    <tr @key="s.Id">
-                        <td>@s.Date.ToString("yyyy-MM-dd")</td>
-                        <td>@s.Name</td>
-                        <td class="text-end">
-                            <a href="@($"/statements/{s.Id}")" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">@L["Link_View"]</a>
-                            <a href="@($"/statements/{s.Id}?download=true")" class="btn btn-sm btn-outline-secondary">@L["Link_Download"]</a>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+        @if (statements.Count > 0)
+        {
+            @Table("statements-table", statements)
+        }
+        @if (loginDocuments is { Count: > 0 })
+        {
+            <h2 class="h6 mt-4">@L["OtherDocuments"]</h2>
+            @Table("login-documents-table", loginDocuments)
+        }
     }
 }
 
 @code {
+    private RenderFragment Table(string id, List<StatementView> items) => @<table class="table table-sm align-middle" id="@id">
+        <thead><tr><th>@L["Table_Date"]</th><th>@L["Table_Name"]</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var s in items)
+            {
+                <tr @key="s.Id">
+                    <td>@s.Date.ToString("yyyy-MM-dd")</td>
+                    <td>@s.Name</td>
+                    <td class="text-end">
+                        <a href="@($"/statements/{s.Id}")" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">@L["Link_View"]</a>
+                        <a href="@($"/statements/{s.Id}?download=true")" class="btn btn-sm btn-outline-secondary">@L["Link_Download"]</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>;
+
     [Parameter] public long AccountId { get; set; }
 
     private List<StatementView>? statements;
+    private List<StatementView>? loginDocuments;
     private string? accountName;
     private bool loaded;
 
@@ -65,6 +76,7 @@ else
         await using var db = await DbFactory.CreateDbContextAsync();
         accountName = await db.Accounts.AsNoTracking().Where(a => a.Id == AccountId).Select(a => a.Name ?? "?").FirstOrDefaultAsync();
         statements = accountName == null ? [] : await Bank.GetAccountStatementsAsync(AccountId);
+        loginDocuments = accountName == null ? [] : await Bank.GetAccountLoginDocumentsAsync(AccountId);
         loaded = true;
     }
 }

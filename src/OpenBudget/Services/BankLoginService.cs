@@ -391,6 +391,23 @@ public class BankLoginService
         return await ToViewsAsync(db, db.BankStatements.AsNoTracking().Where(s => s.AccountId == accountId), ct);
     }
 
+    /// <summary>
+    /// Documents of the bank logins this account is linked to that belong to no account (a tax certificate from a
+    /// broker's mailbox, say). Owner only: the logins are looked up through the user's scoped context.
+    /// </summary>
+    public async Task<List<StatementView>> GetAccountLoginDocumentsAsync(long accountId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var loginIds = await db.BankLoginAccounts.AsNoTracking()
+            .Where(a => a.LinkedAccountId == accountId)
+            .Select(a => a.BankLoginId)
+            .Where(id => db.BankLogins.Any(l => l.Id == id))
+            .Distinct()
+            .ToListAsync(ct);
+        if (loginIds.Count == 0) return [];
+        return await ToViewsAsync(db, db.BankStatements.AsNoTracking().Where(s => s.AccountId == null && loginIds.Contains(s.BankLoginId)), ct);
+    }
+
     private static async Task<List<StatementView>> ToViewsAsync(BudgetDbContext db, IQueryable<BankStatement> query, CancellationToken ct)
     {
         var rows = await query.OrderByDescending(s => s.Date).ThenBy(s => s.Name).ToListAsync(ct);

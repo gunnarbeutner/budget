@@ -106,7 +106,6 @@ else
         var status = statuses.GetValueOrDefault(login.Id);
         var running = status is { Phase: not SyncPhase.Finished };
         var accounts = accountsByLogin.GetValueOrDefault(login.Id) ?? [];
-        var docs = statementsByLogin.GetValueOrDefault(login.Id) ?? [];
         <div class="card mb-4" data-bank-login="@login.DisplayName" @key="login.Id">
             <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <div>
@@ -256,7 +255,12 @@ else
                                             }
                                             @if (a.LastStatementAt is { } st)
                                             {
-                                                <div class="text-body-secondary">@L["Label_LastStatement"]: @Clock.ToLocal(st).ToString("yyyy-MM-dd")</div>
+                                                <div class="text-body-secondary">@L["Label_LastStatement"]: @Clock.ToLocal(st).ToString("yyyy-MM-dd")
+                                                    @if (a.LinkedAccountId is { } linked)
+                                                    {
+                                                        <text> · </text><a href="@($"/accounts/{linked}/statements")">@L["Link_Documents"]</a>
+                                                    }
+                                                </div>
                                             }
                                             @if (!string.IsNullOrEmpty(a.LastError))
                                             {
@@ -270,21 +274,6 @@ else
                     </div>
                 }
 
-                @if (docs.Count > 0)
-                {
-                    <h6 class="mt-3">@L["Documents_Heading", docs.Count]</h6>
-                    <ul class="list-unstyled small mb-0" data-testid="documents">
-                        @foreach (var d in docs)
-                        {
-                            <li>
-                                @d.Date.ToString("yyyy-MM-dd") · @d.Name
-                                <span class="text-body-secondary">(@(d.AccountName ?? L["Documents_NoAccount"].Value))</span>
-                                · <a href="@($"/statements/{d.Id}")" target="_blank" rel="noopener">@L["Link_View"]</a>
-                                · <a href="@($"/statements/{d.Id}?download=true")">@L["Link_Download"]</a>
-                            </li>
-                        }
-                    </ul>
-                }
             </div>
         </div>
     }
@@ -343,7 +332,6 @@ else
     private IReadOnlyList<ConnectorRegistration> connectors = [];
     private readonly Dictionary<int, List<BankLoginAccountView>> accountsByLogin = new();
     private readonly Dictionary<int, List<LinkCandidate>> candidatesByAccount = new();
-    private readonly Dictionary<int, List<StatementView>> statementsByLogin = new();
     private readonly Dictionary<int, string> linkChoice = new();
     private Dictionary<int, BankSyncStatus> statuses = new();
 
@@ -386,14 +374,12 @@ else
         statuses = (await Bank.GetStatusesAsync()).ToDictionary(s => s.LoginId);
         accountsByLogin.Clear();
         candidatesByAccount.Clear();
-        statementsByLogin.Clear();
         foreach (var login in logins)
         {
             var accounts = await Bank.GetAccountsAsync(login.Id);
             accountsByLogin[login.Id] = accounts;
             foreach (var a in accounts.Where(a => a.LinkedAccountId == null && !a.Closed))
                 candidatesByAccount[a.Id] = await Bank.GetLinkCandidatesAsync(a.Id);
-            statementsByLogin[login.Id] = await Bank.GetLoginStatementsAsync(login.Id);
         }
     }
 

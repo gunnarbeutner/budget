@@ -536,6 +536,8 @@ public sealed class BankDataTests
         Assert.Null(await bob.OpenStatementAsync(accountLess.Id));
         Assert.Empty(await bob.GetAccountStatementsAsync(savings.LinkedAccountId!.Value)); // an account of the project he does not see
         Assert.Empty(await bob.GetLoginStatementsAsync(id)); // the login itself is private
+        Assert.Empty(await bob.GetAccountLoginDocumentsAsync(giroAccount.Id)); // so are its documents without an account
+        Assert.Equal([accountLess.Id], (await w.For(BankWorld.Alice).GetAccountLoginDocumentsAsync(giroAccount.Id)).Select(d => d.Id));
 
         // Carol has no share at all.
         var carol = w.For(BankWorld.Carol);

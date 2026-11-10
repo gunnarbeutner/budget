@@ -79,4 +79,7 @@
   <data name="Link_Download" xml:space="preserve">
     <value>Download</value>
   </data>
+  <data name="OtherDocuments" xml:space="preserve">
+    <value>Other documents from the bank</value>
+  </data>
 </root>
