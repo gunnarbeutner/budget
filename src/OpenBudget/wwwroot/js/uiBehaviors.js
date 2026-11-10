@@ -38,6 +38,10 @@ document.addEventListener("keydown", function (e) {
 window.obNav = {
     rememberProject: function (id) {
         document.cookie = "ob.lastProject=" + encodeURIComponent(id) + ";path=/;max-age=31536000;samesite=lax";
+    },
+    // Called by MainLayout after its first interactive render: the prerendered markup has been replaced.
+    markInteractive: function () {
+        document.documentElement.setAttribute("data-interactive", "");
     }
 };
 

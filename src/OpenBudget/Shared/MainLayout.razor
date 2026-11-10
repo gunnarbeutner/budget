@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @inject IStringLocalizer<MainLayout> L
+@inject IJSRuntime JS
 
 <PageTitle>OpenBudget</PageTitle>
 
@@ -22,3 +23,15 @@
         </article>
     </main>
 </div>
+
+@code {
+    // Marks the document once the circuit has rendered interactively (OnAfterRender never runs while
+    // prerendering). Until then the page is the static prerender, which the first interactive render replaces:
+    // input typed or a <details> opened before that is lost. The E2E tests wait for this mark after a page load.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try { await JS.InvokeVoidAsync("obNav.markInteractive"); }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+    }
+}

@@ -46,9 +46,18 @@ public abstract class EndToEndTestBase : PageTest
         await Page.WaitForURLAsync(url => url.Contains("/Account/Login", StringComparison.Ordinal));
     }
 
-    /// <summary>Navigate to a path on the app and wait for the Blazor circuit to render.</summary>
+    /// <summary>Navigate to a path on the app and wait until the Blazor circuit has rendered interactively.</summary>
+    /// <remarks>Network idle alone is not enough: the circuit's websocket does not count as network activity, so
+    /// a test could type into or open (a &lt;details&gt; menu) the static prerender, which the first interactive render
+    /// then replaces, losing the input or closing the menu. MainLayout sets <c>data-interactive</c> on the root
+    /// element after that render.</remarks>
     protected async Task GoToAsync(string path)
     {
         await Page.GotoAsync(path, new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
+        await WaitForInteractiveAsync();
     }
+
+    /// <summary>Waits for the current page's circuit to render interactively (see <see cref="GoToAsync"/>).</summary>
+    protected async Task WaitForInteractiveAsync() =>
+        await Expect(Page.Locator("html[data-interactive]")).ToHaveCountAsync(1);
 }

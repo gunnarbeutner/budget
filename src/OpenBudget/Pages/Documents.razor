@@ -569,37 +569,58 @@
             Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("settings", (string?)null), replace: true);
     }
 
+    // The settings' changes run one after another in the order they were made: a click that reaches the server
+    // before the "busy" render reached the browser (e.g. "Download now" right after picking an interval) waits for
+    // the save in progress instead of interleaving with it.
+    private readonly SemaphoreSlim settingsGate = new(1, 1);
+
     private async Task SetAsync(StatementSetting s, bool enabled, StatementsInterval interval)
     {
         if (s.LoginAccountId is not { } id) return;
-        busy = true;
-        settingsMessage = null;
+        await settingsGate.WaitAsync();
         try
         {
-            await Bank.SetStatementsAsync(id, enabled, interval);
+            busy = true;
+            settingsMessage = null;
+            try
+            {
+                await Bank.SetStatementsAsync(id, enabled, interval);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or AccessDeniedException)
+            {
+                settingsMessage = L["Settings_Failed"];
+                messageAccountId = s.AccountId;
+            }
+            settings = await Docs.GetSettingsAsync(ProjectId);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or AccessDeniedException)
+        finally
         {
-            settingsMessage = L["Settings_Failed"];
-            messageAccountId = s.AccountId;
+            busy = false;
+            settingsGate.Release();
         }
-        settings = await Docs.GetSettingsAsync(ProjectId);
-        busy = false;
     }
 
     private async Task DownloadAsync(StatementSetting s)
     {
         if (s.LoginId is not { } login || s.LoginAccountId is not { } id) return;
-        busy = true;
-        var result = await Bank.DownloadStatementsAsync(login, id);
-        messageAccountId = s.AccountId;
-        settingsMessage = result switch
+        await settingsGate.WaitAsync();
+        try
         {
-            StartResult.Started => L["Download_StartedShort"],
-            StartResult.AlreadyRunning => L["Download_Running"],
-            _ => L["Download_NotStarted"],
-        };
-        busy = false;
+            busy = true;
+            var result = await Bank.DownloadStatementsAsync(login, id);
+            messageAccountId = s.AccountId;
+            settingsMessage = result switch
+            {
+                StartResult.Started => L["Download_StartedShort"],
+                StartResult.AlreadyRunning => L["Download_Running"],
+                _ => L["Download_NotStarted"],
+            };
+        }
+        finally
+        {
+            busy = false;
+            settingsGate.Release();
+        }
     }
 
     protected override void Dispose(bool disposing)
@@ -607,6 +628,7 @@
         if (disposing) Navigation.LocationChanged -= OnLocationChanged;
         if (disposing && module != null) _ = DisposeModuleAsync(module);
         if (disposing) selfRef?.Dispose();
+        if (disposing) settingsGate.Dispose();
         base.Dispose(disposing);
     }
 
