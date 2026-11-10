@@ -151,6 +151,9 @@
   <data name="Error_ConnectorMissing" xml:space="preserve">
     <value>Der Konnektor "{0}" ist in dieser Installation nicht verfügbar.</value>
   </data>
+  <data name="ConnectorDescription_openbank" xml:space="preserve">
+    <value>Openbank-Kreditkarten (kunden.openbankpay.com, z. B. Amazon Visa): Saldo, gebuchte und vorgemerkte Kartenumsätze. Anmeldung mit Openbank-Benutzername und Passwort; Bestätigung per SMS-Code oder in der App.</value>
+  </data>
   <data name="Accounts_Heading" xml:space="preserve">
     <value>Konten</value>
   </data>

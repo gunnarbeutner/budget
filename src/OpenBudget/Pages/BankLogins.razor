@@ -80,7 +80,7 @@
                         disabled="@(NeedsCredentials(SelectedConnector) && (string.IsNullOrWhiteSpace(newUsername) || string.IsNullOrEmpty(newPin)))">@L["Button_Add"]</button>
                 @if (SelectedConnector is { } sel)
                 {
-                    <span class="small text-body-secondary">@sel.Description</span>
+                    <span class="small text-body-secondary">@ConnectorDescription(sel)</span>
                 }
             </div>
             @if (!string.IsNullOrEmpty(addError))
@@ -314,6 +314,10 @@ else
     private BankLoginView? pendingDelete;
 
     private static bool NeedsCredentials(ConnectorRegistration? c) => c == null || c.Credentials != CredentialRequirement.None;
+
+    /// <summary>The connector's description in the UI language when translated (ConnectorDescription_&lt;type&gt;), else its built-in English text.</summary>
+    private string ConnectorDescription(ConnectorRegistration c) =>
+        L["ConnectorDescription_" + c.ConnectorType] is { ResourceNotFound: false } s ? s.Value : c.Description;
 
     private ConnectorRegistration? SelectedConnector => connectors.FirstOrDefault(c => c.ConnectorType == newConnector);
 

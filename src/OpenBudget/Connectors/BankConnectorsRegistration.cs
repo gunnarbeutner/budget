@@ -2,6 +2,7 @@ using OpenBudget.Auth;
 using OpenBudget.Browser;
 using OpenBudget.Connectors.FakeBank;
 using OpenBudget.Connectors.FinTs;
+using OpenBudget.Connectors.Openbank;
 using OpenBudget.Connectors.Scalable;
 using OpenBudget.Connectors.Sync;
 using OpenBudget.Services;
@@ -29,6 +30,7 @@ public static class BankConnectorsRegistration
             List<ConnectorRegistration> registrations =
             [
                 ScalableConnector.CreateRegistration(new ScalableOptions()),
+                OpenbankConnector.CreateRegistration(new OpenbankOptions()),
                 IngConnector.Registration(fints),
                 BaaderConnector.Registration(fints),
                 PsdNuernbergConnector.Registration(fints),
