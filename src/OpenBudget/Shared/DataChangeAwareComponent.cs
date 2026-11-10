@@ -64,7 +64,7 @@ public abstract class DataChangeAwareComponent : ComponentBase, IDisposable
             _knownScope = current;
             if (!current.IsChangeVisible(change) && !previous.IsChangeVisible(change)) return;
             if (!IsRelevantChange(change)) return;
-            if (AutoReloadOnChange)
+            if (ShouldAutoReload(change))
             {
                 await ReloadAfterChangeAsync();
             }
@@ -86,6 +86,13 @@ public abstract class DataChangeAwareComponent : ComponentBase, IDisposable
 
     /// <summary>Read-only views leave this true (reload immediately); editors override to false.</summary>
     protected virtual bool AutoReloadOnChange => true;
+
+    /// <summary>
+    /// Whether this particular change is applied in place or raises the banner. Defaults to
+    /// <see cref="AutoReloadOnChange"/>; a page whose inputs are view options rather than edits of the
+    /// changed data (Budget, Cashflow: new bookings from a sync) can reload in place for those areas.
+    /// </summary>
+    protected virtual bool ShouldAutoReload(DataChange change) => AutoReloadOnChange;
 
     /// <summary>Does this change affect what the page is currently showing?</summary>
     protected abstract bool IsRelevantChange(DataChange change);
