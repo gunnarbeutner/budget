@@ -106,4 +106,5 @@
   <data name="Assign_Confirm_Button" xml:space="preserve">
     <value>Konten zuordnen</value>
   </data>
+  <data name="Assign_Confirm_Body_One" xml:space="preserve"><value>Dieses Projekt ist geteilt. Das nicht zugeordnete Konto wird für alle sichtbar, mit denen dieses Projekt geteilt ist. Fortfahren?</value></data>
 </root>

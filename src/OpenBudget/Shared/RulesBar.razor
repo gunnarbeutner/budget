@@ -372,7 +372,7 @@
     private async Task ApplyAsync()
     {
         var count = await RuleService.ApplyExistingAsync(ProjectId, CategoryId);
-        status = L["Apply_Done", count];
+        status = L[count == 1 ? "Apply_Done_One" : "Apply_Done", count];
         await LoadAsync();
         await OnApplied.InvokeAsync();
     }

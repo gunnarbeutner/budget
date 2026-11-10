@@ -313,7 +313,7 @@ else
                 </div>
                 <div class="col">
                     <div class="text-body-secondary small">
-                        @L["Tax_Caveat"]@(tax.Uncovered > 0 ? " · " + L["Tax_Excluded", tax.Uncovered] : "")
+                        @L["Tax_Caveat"]@(tax.Uncovered > 0 ? " · " + L[tax.Uncovered == 1 ? "Tax_Excluded_One" : "Tax_Excluded", tax.Uncovered] : "")
                     </div>
                 </div>
             </div>

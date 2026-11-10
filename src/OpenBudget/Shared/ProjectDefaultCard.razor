@@ -58,7 +58,7 @@
 
 <Modal Show="@confirmShared" Title="@L["Assign_Confirm_Title"]" OnClose="@(() => confirmShared = false)">
     <ChildContent>
-        <p>@L["Assign_Confirm_Body", state?.UnassignedAccounts ?? 0]</p>
+        <p>@L[(state?.UnassignedAccounts ?? 0) == 1 ? "Assign_Confirm_Body_One" : "Assign_Confirm_Body", state?.UnassignedAccounts ?? 0]</p>
     </ChildContent>
     <Footer>
         <button type="button" class="btn btn-secondary" @onclick="@(() => confirmShared = false)">@L["Button_Cancel"]</button>

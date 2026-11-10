@@ -58,7 +58,7 @@
                 <i class="bi bi-bank me-2" aria-hidden="true"></i>@L["Item_BankLogins"]
                 @if (bankErrors > 0)
                 {
-                    <span class="ob-badge ob-badge-danger ms-auto" data-testid="gear-bank-errors">@L["Badge_Errors", bankErrors]</span>
+                    <span class="ob-badge ob-badge-danger ms-auto" data-testid="gear-bank-errors">@L[bankErrors == 1 ? "Badge_Errors_One" : "Badge_Errors", bankErrors]</span>
                 }
             </a>
         </li>

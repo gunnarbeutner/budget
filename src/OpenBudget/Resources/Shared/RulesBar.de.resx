@@ -94,4 +94,5 @@
   <data name="Error_UnknownAccount" xml:space="preserve"><value>Dieses Konto gehört nicht zum Projekt.</value></data>
   <data name="Error_NoPermission" xml:space="preserve"><value>Du darfst die Regeln dieses Projekts nicht ändern.</value></data>
   <data name="Apply_Done" xml:space="preserve"><value>{0} Umsätze kategorisiert.</value></data>
+  <data name="Apply_Done_One" xml:space="preserve"><value>1 Umsatz kategorisiert.</value></data>
 </root>

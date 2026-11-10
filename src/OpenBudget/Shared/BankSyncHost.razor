@@ -17,7 +17,7 @@
 {
     <span class="app-sync d-print-none" data-testid="bank-sync-chip">
         <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-        <span class="app-sync-label">@L["Syncing", statuses.Count(s => s.Phase != SyncPhase.Finished)]</span>
+        <span class="app-sync-label">@{ var syncing = statuses.Count(s => s.Phase != SyncPhase.Finished); }@L[syncing == 1 ? "Syncing_One" : "Syncing", syncing]</span>
     </span>
 }
 else if (lastSync is { } last)

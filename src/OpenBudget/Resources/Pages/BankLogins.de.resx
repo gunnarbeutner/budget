@@ -197,7 +197,7 @@
     <value>Für diesen Zugang läuft bereits ein Abgleich.</value>
   </data>
   <data name="Message_SyncAll" xml:space="preserve">
-    <value>{0} Abgleich(e) gestartet.</value>
+    <value>{0} Abgleiche gestartet.</value>
   </data>
   <data name="Interval_EveryTwoHours" xml:space="preserve">
     <value>Alle zwei Stunden</value>
@@ -232,4 +232,5 @@
   <data name="Type_Other" xml:space="preserve">
     <value>Sonstiges</value>
   </data>
+  <data name="Message_SyncAll_One" xml:space="preserve"><value>1 Abgleich gestartet.</value></data>
 </root>

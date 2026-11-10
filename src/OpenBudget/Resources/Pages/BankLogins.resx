@@ -197,7 +197,7 @@
     <value>A sync is already running for this login.</value>
   </data>
   <data name="Message_SyncAll" xml:space="preserve">
-    <value>Started {0} sync(s).</value>
+    <value>Started {0} syncs.</value>
   </data>
   <data name="Interval_EveryTwoHours" xml:space="preserve">
     <value>Every two hours</value>
@@ -232,4 +232,5 @@
   <data name="Type_Other" xml:space="preserve">
     <value>Other</value>
   </data>
+  <data name="Message_SyncAll_One" xml:space="preserve"><value>Started 1 sync.</value></data>
 </root>

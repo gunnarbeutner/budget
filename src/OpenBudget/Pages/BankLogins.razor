@@ -408,7 +408,7 @@ else
     private async Task SyncAllAsync()
     {
         var started = await Bank.SyncAllAsync();
-        message = L["Message_SyncAll", started].Value;
+        message = L[started == 1 ? "Message_SyncAll_One" : "Message_SyncAll", started].Value;
         await LoadAsync();
     }
 

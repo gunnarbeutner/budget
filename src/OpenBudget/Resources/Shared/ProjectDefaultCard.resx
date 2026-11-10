@@ -101,9 +101,10 @@
     <value>Assign accounts to a shared project</value>
   </data>
   <data name="Assign_Confirm_Body" xml:space="preserve">
-    <value>This project is shared. The {0} unassigned account(s) will become visible to everyone this project is shared with. Continue?</value>
+    <value>This project is shared. The {0} unassigned accounts will become visible to everyone this project is shared with. Continue?</value>
   </data>
   <data name="Assign_Confirm_Button" xml:space="preserve">
     <value>Assign accounts</value>
   </data>
+  <data name="Assign_Confirm_Body_One" xml:space="preserve"><value>This project is shared. The unassigned account will become visible to everyone this project is shared with. Continue?</value></data>
 </root>

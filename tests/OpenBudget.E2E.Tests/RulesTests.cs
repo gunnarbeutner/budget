@@ -111,7 +111,7 @@ public sealed class RulesTests : EndToEndTestBase
         await Expect(bar.GetByTestId("rules-preview-count")).ToHaveCountAsync(0);
 
         await bar.GetByTestId("rules-apply").ClickAsync();
-        await Expect(bar.GetByTestId("rules-status")).ToContainTextAsync("3 booking(s) categorized");
+        await Expect(bar.GetByTestId("rules-status")).ToContainTextAsync("3 bookings categorized");
         await Expect(bar.GetByTestId("rules-apply")).ToHaveCountAsync(0);
 
         var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();

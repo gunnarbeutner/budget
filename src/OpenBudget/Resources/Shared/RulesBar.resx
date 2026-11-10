@@ -93,5 +93,6 @@
   <data name="Error_InvalidAmountRange" xml:space="preserve"><value>Check the amounts: numbers only, “from” not above “up to”.</value></data>
   <data name="Error_UnknownAccount" xml:space="preserve"><value>That account is not part of this project.</value></data>
   <data name="Error_NoPermission" xml:space="preserve"><value>You may not change the rules of this project.</value></data>
-  <data name="Apply_Done" xml:space="preserve"><value>{0} booking(s) categorized.</value></data>
+  <data name="Apply_Done" xml:space="preserve"><value>{0} bookings categorized.</value></data>
+  <data name="Apply_Done_One" xml:space="preserve"><value>1 booking categorized.</value></data>
 </root>
