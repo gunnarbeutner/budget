@@ -9,12 +9,16 @@
 @inject NavigationManager Navigation
 @inject IStringLocalizer<SourceDepots> L
 
+<SettingsShell Active="sources" Bare="@Embedded">
 @if (!Embedded)
 {
 <PageTitle>@(sourceName != null ? L["PageTitle_WithSource", sourceName] : L["PageTitle"])</PageTitle>
 
-<PageHeader Title="@L["Heading"]" />
-<p><a href="/sources"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a></p>
+<PageHeader Title="@L["Heading"]" Subtitle="@sourceName">
+    <Actions>
+        <a class="ob-btn" href="/sources"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a>
+    </Actions>
+</PageHeader>
 }
 
 @if (loading)
@@ -64,6 +68,8 @@ else
         </tbody>
     </table>
 }
+
+</SettingsShell>
 
 @code {
 

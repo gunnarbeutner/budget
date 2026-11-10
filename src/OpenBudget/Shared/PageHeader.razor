@@ -1,45 +1,31 @@
-@* Shared page-header bar used at the top of every routed page (except Index, whose
-   sticky period toolbar IS its header). Gives every page the same "what am I looking
-   at" affordance: HomeLink + title + optional subtitle on the left, optional
-   action buttons on the right.
-
-   Title and Subtitle are strings for the common case. Use TitleSuffix when you need
-   to append rendered markup to the title (e.g. a smaller secondary label after the
-   primary one). Actions is a RenderFragment for the right-aligned action area.
+@* The compact header of a settings page, the same 48px toolbar as the project views: title and an optional
+   context line on the left, optional actions on the right. Inside a .shell-page it sticks to the top.
 
    Usage:
 
-       <PageHeader Title="@budget.Name" Subtitle="@budget.Description">
+       <PageHeader Title="@L["Heading"]" Subtitle="@context">
            <Actions>
-               <a class="btn btn-outline-primary" href="...">Browse</a>
+               <button class="ob-btn" ...>Add</button>
            </Actions>
        </PageHeader>
+*@
 
-   The mb-4 bottom margin matches the documented page-rhythm rule (see site.css). *@
-
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <div class="d-flex align-items-center">
-        @if (ShowHomeLink)
+<div class="page-toolbar settings-toolbar" data-testid="page-header">
+    <h1 class="view-title text-truncate">
+        @Title
+        @if (TitleSuffix != null)
         {
-            <HomeLink />
+            <span class="view-sub">@TitleSuffix</span>
         }
-        <div>
-            <h5 class="page-header-title mb-0">
-                @Title
-                @if (TitleSuffix != null)
-                {
-                    @TitleSuffix
-                }
-            </h5>
-            @if (!string.IsNullOrEmpty(Subtitle))
-            {
-                <div class="text-body-secondary small mb-0">@Subtitle</div>
-            }
-        </div>
-    </div>
+    </h1>
+    @if (!string.IsNullOrEmpty(Subtitle))
+    {
+        <span class="view-sub text-truncate settings-toolbar-sub">@Subtitle</span>
+    }
+    <div class="flex-grow-1"></div>
     @if (Actions != null)
     {
-        <div class="d-flex gap-2">
+        <div class="d-flex flex-wrap gap-2">
             @Actions
         </div>
     }
@@ -47,10 +33,8 @@
 
 @code {
     [Parameter, EditorRequired] public string Title { get; set; } = "";
-    /// <summary>Rendered next to the title (e.g. a smaller secondary label).</summary>
+    /// <summary>Rendered next to the title in the muted style (e.g. the budget's name).</summary>
     [Parameter] public RenderFragment? TitleSuffix { get; set; }
     [Parameter] public string? Subtitle { get; set; }
     [Parameter] public RenderFragment? Actions { get; set; }
-    /// <summary>Set to false on pages where HomeLink doesn't apply (e.g. Index itself).</summary>
-    [Parameter] public bool ShowHomeLink { get; set; } = true;
 }

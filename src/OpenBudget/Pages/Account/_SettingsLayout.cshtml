@@ -1,0 +1,42 @@
+@using Microsoft.AspNetCore.Mvc.Rendering
+@* The account page's frame: the app's top bar (wordmark and avatar) and the settings list (SettingsNav,
+   rendered statically) beside the page, the same frame SettingsShell gives the Blazor settings pages. *@
+<!DOCTYPE html>
+<html lang="@System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <base href="~/" />
+    <title>@(ViewData["Title"] ?? "OpenBudget")</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+    <meta name="theme-color" content="#0d6efd" />
+    <script src="js/theme.js" asp-append-version="true"></script>
+    <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
+    <link rel="stylesheet" href="css/bootstrap-icons/bootstrap-icons.min.css" />
+    <link href="css/site.css" rel="stylesheet" asp-append-version="true" />
+</head>
+<body>
+    <header class="app-topbar d-print-none" data-testid="app-topbar">
+        <a href="/" class="app-wordmark">OpenBudget</a>
+        <div class="flex-grow-1"></div>
+        @if (User.Identity?.Name is { Length: > 0 } name)
+        {
+            <a href="Account" class="app-avatar text-decoration-none" title="@name">@char.ToUpperInvariant(name[0])</a>
+        }
+    </header>
+    <div class="page-horizontal">
+        <main class="main-content">
+            <article class="content px-3">
+                <div class="settings-shell" data-testid="settings-shell">
+                    @(await Html.RenderComponentAsync<OpenBudget.Shared.SettingsNav>(RenderMode.Static, new { Active = "account" }))
+                    <section class="settings-main shell-page settings-page">
+                        @RenderBody()
+                    </section>
+                </div>
+            </article>
+        </main>
+    </div>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

@@ -13,10 +13,11 @@
 
 <PageTitle>@(budget?.Name ?? L["PageTitle_Default"])</PageTitle>
 
+<ProjectShell ProjectId="ProjectId" MainClass="shell-page settings-page">
 @if (budget == null)
 {
     <div aria-busy="true" aria-label="@L["Status_Loading"]">
-        <div class="skeleton skeleton-line-lg mb-3" style="width: 35%;"></div>
+        <div class="skeleton skeleton-line-lg my-3" style="width: 35%;"></div>
         <div class="skeleton skeleton-line mb-4" style="width: 60%;"></div>
         <div class="card mb-3">
             <div class="card-body">
@@ -27,9 +28,8 @@
 }
 else
 {
-    <h1 class="view-title mt-3 mb-0">@L["Heading_Settings", budget.Name]</h1>
-    <ProjectPageHeader ProjectId="@ProjectId" ProjectName="@budget.Name"
-                       Subtitle="@budget.Description" />
+    <ProjectPageHeader ProjectId="@ProjectId" ProjectName="@budget.Name" />
+    <PageHeader Title="@L["Heading_Settings", budget.Name]" Subtitle="@budget.Description" />
 
     <DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
@@ -94,8 +94,7 @@ else
 <DeleteProjectDialog Target="@(showDeleteDialog && budget != null ? (ProjectId, budget.Name) : null)"
                      OnClose="HideDeleteDialog" OnDeleted="OnProjectDeleted" />
 
-
-
+</ProjectShell>
 
 @code {
     [Parameter]

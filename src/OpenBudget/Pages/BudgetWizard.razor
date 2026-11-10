@@ -23,11 +23,12 @@
     return;
 }
 
+<ProjectShell ProjectId="ProjectId" MainClass="shell-page settings-page">
 @{
     var wizardProjectName = projects?.FirstOrDefault(p => p.Id == selectedProjectId)?.Name;
 }
-<ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@wizardProjectName"
-                   Subtitle="@L["Header_Title"]" />
+<ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@wizardProjectName" />
+<PageHeader Title="@L["Header_Title"]" Subtitle="@wizardProjectName" />
 
 <DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
@@ -248,6 +249,8 @@ else if (step == 3)
         <a href="@($"/projects/{selectedProjectId}/budgets/new")" class="btn btn-secondary" @onclick="Reset">@L["Button_CreateAnother"]</a>
     </div>
 }
+
+</ProjectShell>
 
 @code {
     private List<Project>? projects;

@@ -1,0 +1,26 @@
+@* The frame of the app-level settings pages (bank logins, import and its source pages): the settings list on
+   the left and the page on the right, which starts with its PageHeader toolbar and scrolls as a whole. Below md
+   the list becomes a row of links above the page. A page that is also embedded in another one (the source
+   pages) passes Bare="true" there and renders only its content. *@
+
+@if (Bare)
+{
+    @ChildContent
+}
+else
+{
+    <div class="settings-shell" data-testid="settings-shell">
+        <SettingsNav Active="@Active" />
+        <section class="settings-main shell-page settings-page">
+            @ChildContent
+        </section>
+    </div>
+}
+
+@code {
+    /// <summary>The highlighted section of <see cref="SettingsNav"/>.</summary>
+    [Parameter] public string? Active { get; set; }
+    /// <summary>Render the content alone, without the frame.</summary>
+    [Parameter] public bool Bare { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

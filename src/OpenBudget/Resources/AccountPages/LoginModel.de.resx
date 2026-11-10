@@ -115,9 +115,6 @@
   <data name="Account_Title" xml:space="preserve">
     <value>Konto - OpenBudget</value>
   </data>
-  <data name="Account_Back" xml:space="preserve">
-    <value>Zurück zu OpenBudget</value>
-  </data>
   <data name="Account_Heading" xml:space="preserve">
     <value>Konto</value>
   </data>

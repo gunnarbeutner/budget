@@ -24,8 +24,6 @@
     return;
 }
 
-<DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
-
 @if (budget == null)
 {
     <div aria-busy="true" aria-label="@L["Status_Loading"]">
@@ -45,11 +43,15 @@
     return;
 }
 
+<ProjectShell ProjectId="budget.ProjectId" MainClass="shell-page settings-page">
 <ProjectPageHeader ProjectId="@budget.ProjectId"
-                   ProjectName="@(budget.Project?.Name ?? "")"
-                   Subtitle="@(budget.LastModifiedAt.HasValue ? L["Header_LastModified", Clock.ToLocal(budget.LastModifiedAt.Value).ToString("yyyy-MM-dd HH:mm")].Value : null)">
+                   ProjectName="@(budget.Project?.Name ?? "")" />
+<PageHeader Title="@L["PageTitle"]"
+            Subtitle="@(budget.LastModifiedAt.HasValue ? L["Header_LastModified", Clock.ToLocal(budget.LastModifiedAt.Value).ToString("yyyy-MM-dd HH:mm")].Value : null)">
     <TitleSuffix>· @budget.Name</TitleSuffix>
-</ProjectPageHeader>
+</PageHeader>
+
+<DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
 <div class="card mb-4">
     <div class="card-body">
@@ -285,6 +287,8 @@
         <button class="btn btn-primary" @onclick="AddSelected" disabled="@string.IsNullOrEmpty(addSelection)">@L["Button_Add"]</button>
     </Footer>
 </Modal>
+
+</ProjectShell>
 
 @code {
     [Parameter] public int BudgetId { get; set; }

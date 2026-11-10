@@ -3,33 +3,17 @@
 @inject IJSRuntime JS
 
 @* Placed on every project-scoped page: tells the app chrome which project the user is in (the switcher shows its
-   name, the gear its settings), remembers it as the project "/" opens next time, and renders the optional
-   secondary line (e.g. "· BudgetName" on BudgetEdit, the wizard's mode). The views themselves are in the
-   project sidebar (ProjectShell).
+   name, the gear its settings) and remembers it as the project "/" opens next time. It renders nothing; the page's
+   title is in its toolbar (PageHeader on the settings pages).
 
    Usage:
 
-       <ProjectPageHeader ProjectId="@projectId" ProjectName="@name" Subtitle="@lastModified" />
+       <ProjectPageHeader ProjectId="@projectId" ProjectName="@name" />
 *@
-
-@if (TitleSuffix != null || !string.IsNullOrEmpty(Subtitle))
-{
-    <div class="project-page-header-subtitle text-body-secondary small my-2">
-        @TitleSuffix
-        @if (!string.IsNullOrEmpty(Subtitle))
-        {
-            <span>@Subtitle</span>
-        }
-    </div>
-}
 
 @code {
     [Parameter, EditorRequired] public int ProjectId { get; set; }
     [Parameter, EditorRequired] public string? ProjectName { get; set; }
-    /// <summary>Small grey text shown on the secondary line (e.g. "· BudgetName" on BudgetEdit).</summary>
-    [Parameter] public RenderFragment? TitleSuffix { get; set; }
-    /// <summary>Secondary line (e.g. "Last modified ...", wizard mode label).</summary>
-    [Parameter] public string? Subtitle { get; set; }
 
     private int _rememberedProjectId;
 

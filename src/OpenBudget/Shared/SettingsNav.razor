@@ -1,0 +1,37 @@
+@using OpenBudget.Services
+@inject CurrentProjectState Current
+@inject IStringLocalizer<SettingsNav> L
+
+@* The left list of the app-level settings pages (bank logins, import, profile and passkeys), headed by the way
+   back to the project the user came from. Rendered by SettingsShell on the Blazor pages and statically by the
+   account page's layout, so it uses plain links only. Without a known project the back link opens "/", which
+   picks the last project. *@
+
+<nav class="settings-nav" aria-label="@L["Aria_Nav"]" data-testid="settings-nav">
+    <a class="settings-nav-back" href="@BackHref" data-testid="settings-back">
+        <i class="bi bi-arrow-left" aria-hidden="true"></i>
+        <span class="text-truncate">@BackLabel</span>
+    </a>
+    <div class="settings-nav-heading">@L["Heading"]</div>
+    @Item("banklogins", "/banklogins", "bi-bank", L["Item_BankLogins"])
+    @Item("sources", "/sources", "bi-database", L["Item_Sources"])
+    @Item("account", "/Account", "bi-person", L["Item_Account"], forceLoad: true)
+</nav>
+
+@code {
+    /// <summary>The highlighted section: "banklogins", "sources" or "account".</summary>
+    [Parameter] public string? Active { get; set; }
+
+    private string BackHref => Current.ProjectId is { } id ? $"/projects/{id}/browse" : "/";
+    private string BackLabel => Current.ProjectName is { Length: > 0 } name ? L["Back_Project", name] : L["Back_Projects"];
+
+    private RenderFragment Item(string key, string href, string icon, string label, bool forceLoad = false) => __builder =>
+    {
+        var active = Active == key;
+        <a class="shell-view @(active ? "active" : "")" href="@href" aria-current="@(active ? "page" : null)"
+           data-testid="@($"settings-nav-{key}")" target="@(forceLoad ? "_top" : null)">
+            <i class="bi @icon" aria-hidden="true"></i>
+            <span class="shell-view-label">@label</span>
+        </a>
+    };
+}

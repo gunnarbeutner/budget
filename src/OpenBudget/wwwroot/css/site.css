@@ -472,12 +472,6 @@ a, .btn-link {
     color: var(--bs-body-color, #212529);
 }
 
-/* PageHeader title: same page-identity type as the project selector name, sourced from the
-   shared token rather than relying on the bare <h5> default so the two stay in lockstep. */
-.page-header-title {
-    font-size: var(--page-title-size);
-    font-weight: var(--page-title-weight);
-}
 .project-selector-caret {
     font-size: 0.65rem;
     color: var(--bs-secondary, #6c757d);
@@ -524,8 +518,8 @@ a, .btn-link {
    The app is screen-first: nav tabs, the sticky period bar, buttons and raw
    input boxes are all noise on paper. Strip the interactive chrome, render
    inputs as plain values, flatten surfaces, and fix table pagination so a
-   printed page reads like a clean report. d-print-none on HomeLink / the
-   change banner handles the two elements without a stable class here. */
+   printed page reads like a clean report. d-print-none on the
+   change banner handles the element without a stable class here. */
 @media print {
     @page { margin: 1cm; }
 
@@ -1705,3 +1699,104 @@ a.budget-cat:focus-visible { outline: 2px solid var(--ob-accent); outline-offset
 
 /* Sidebar categories show a ribbon in the category colour. */
 .browse-color-dot.browse-ribbon { width: 0.7rem; height: 0.95rem; border-radius: 0; background: none; }
+
+/* ---- Settings pages ----
+   App-level settings (bank logins, import, account) sit in .settings-shell: the settings list on the left, the page
+   on the right. Project settings pages sit in the project shell. Both use .settings-page: the compact PageHeader
+   toolbar on top and flat sections below it — a Bootstrap .card there is a section separated by a hairline, its
+   header a small bold heading, the same weight as the Documents settings and the rules bar. */
+.settings-shell {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 1fr);
+    margin: 0 -1rem;
+    height: calc(100vh - var(--ob-topbar-h));
+    height: calc(100dvh - var(--ob-topbar-h));
+}
+.settings-nav {
+    background: var(--ob-sidebar-bg);
+    border-right: 1px solid var(--ob-line);
+    padding: 8px 0;
+    overflow-y: auto;
+    min-width: 0;
+}
+.settings-nav-back {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: var(--ob-muted) !important;
+    text-decoration: none;
+    min-width: 0;
+}
+.settings-nav-back:hover { background: var(--ob-row-hover-bg); color: var(--bs-body-color) !important; }
+.settings-nav-heading {
+    padding: 12px 12px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ob-muted);
+}
+.settings-main { min-width: 0; min-height: 0; }
+.settings-toolbar-sub { min-width: 0; }
+.settings-page > :not(.page-toolbar):not(.modal):not(.modal-backdrop) { max-width: 72rem; }
+.settings-page .scroll-anchor { scroll-margin-top: calc(var(--ob-toolbar-h) + 8px); }
+.settings-page .card {
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--ob-line);
+    border-radius: 0;
+    box-shadow: none;
+    margin: 0 !important;
+    padding: 4px 0 20px;
+}
+.settings-page .card + .card, .settings-page .scroll-anchor + .card { padding-top: 16px; }
+.settings-page .card-header {
+    background: transparent;
+    border: 0;
+    padding: 0 0 8px;
+}
+.settings-page .card-header h5, .settings-page .card-header .h5, .settings-page .card-title,
+.settings-page .card-body > h5, .settings-page .card-body > h6, .settings-page .card-body > .h6 {
+    font-size: 14px;
+    font-weight: 600;
+}
+.settings-page .card-body { padding: 0; }
+.settings-page .card-footer { background: transparent; border: 0; padding: 8px 0 0; }
+.settings-page { font-size: 14px; }
+.settings-page .form-control, .settings-page .form-select, .settings-page .input-group-text { font-size: 14px; }
+.settings-page .btn:not(.btn-sm):not(.btn-link) { font-size: 13px; padding: 4px 12px; }
+.settings-page .card-body > :last-child, .settings-page .card .table:last-child { margin-bottom: 0; }
+.settings-page .alert-secondary, .settings-page .alert-info:not([role]) {
+    background: transparent;
+    border: 1px dashed var(--ob-line);
+    color: var(--ob-muted);
+}
+.settings-page .table { font-size: 13px; }
+.settings-page .table > thead th {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ob-muted);
+    border-bottom-color: var(--ob-line);
+}
+.settings-page .table > :not(caption) > * > * { padding-left: 0.5rem; padding-right: 0.5rem; }
+.settings-page .table > :not(caption) > * > :first-child { padding-left: 0; }
+
+@media (max-width: 767.98px) {
+    .settings-shell { display: block; height: auto; }
+    .settings-nav {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 4px 8px;
+        overflow-x: auto;
+        white-space: nowrap;
+        border-right: 0;
+        border-bottom: 1px solid var(--ob-line);
+    }
+    .settings-nav-heading { display: none; }
+    .settings-nav .shell-view, .settings-nav-back { flex: 0 0 auto; border-radius: 6px; }
+    .settings-nav .shell-view.active { box-shadow: none; }
+    .settings-nav-back .text-truncate { max-width: 9rem; }
+}

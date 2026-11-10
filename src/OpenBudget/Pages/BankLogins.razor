@@ -10,6 +10,7 @@
 
 <PageTitle>@L["PageTitle"]</PageTitle>
 
+<SettingsShell Active="banklogins">
 <PageHeader Title="@L["Heading"]" />
 
 @if (!Bank.IsEnabled)
@@ -66,7 +67,7 @@
                 </select>
             </div>
             <div class="col-12 d-flex align-items-center gap-3">
-                <button type="submit" class="btn btn-primary" id="new-login-add"
+                <button type="submit" class="btn btn-primary text-nowrap" id="new-login-add"
                         disabled="@(NeedsCredentials(SelectedConnector) && (string.IsNullOrWhiteSpace(newUsername) || string.IsNullOrEmpty(newPin)))">@L["Button_Add"]</button>
                 @if (SelectedConnector is { } sel)
                 {
@@ -278,6 +279,8 @@ else
         <button type="button" class="btn btn-danger" id="delete-confirm" @onclick="DeleteConfirmedAsync">@L["Button_Delete"]</button>
     </Footer>
 </Modal>
+
+</SettingsShell>
 
 @code {
     private List<BankLoginView>? logins;

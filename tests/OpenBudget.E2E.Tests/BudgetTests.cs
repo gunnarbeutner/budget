@@ -58,7 +58,7 @@ public sealed class BudgetTests : EndToEndTestBase
 
         // The monthly-amounts table renders the seeded income/expense sections.
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Monthly amounts" })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Salary")).ToBeVisibleAsync();
+        await Expect(Page.Locator(".browse-main").GetByText("Salary")).ToBeVisibleAsync();
 
         // Rename and save: lands back on the Budgets page.
         await nameField.FillAsync("2026 (edited)");

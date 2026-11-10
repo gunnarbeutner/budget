@@ -139,11 +139,12 @@ public sealed class SharingHttpTests : IDisposable
 
         var (_, editorSettings) = await GetAsync(bob, "/projects/1/settings");
         Assert.DoesNotContain("sharing-card", editorSettings, StringComparison.Ordinal);
-        Assert.DoesNotContain("Giro Shared", editorSettings, StringComparison.Ordinal);   // no accounts card
+        Assert.DoesNotContain("accounts-card", editorSettings, StringComparison.Ordinal);
 
         using var alice = await _host.LoggedInClientAsync("alice");
         var (_, ownerSettings) = await GetAsync(alice, "/projects/1/settings");
         Assert.Contains("sharing-card", ownerSettings, StringComparison.Ordinal);
+        Assert.Contains("accounts-card", ownerSettings, StringComparison.Ordinal);
     }
 
     [Fact]
