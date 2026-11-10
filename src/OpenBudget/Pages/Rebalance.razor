@@ -17,7 +17,11 @@
     return;
 }
 
-<ProjectPageHeader ProjectId="ProjectId" ProjectName="@projectName" Active="ProjectTab.Rebalance" />
+<ProjectPageHeader ProjectId="ProjectId" ProjectName="@projectName" />
+
+<ProjectShell ProjectId="ProjectId" Active="ProjectTab.Rebalance" MainClass="shell-page">
+<div class="page-toolbar"><h1 class="view-title">@L["View_Title"]</h1></div>
+
 
 <DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
@@ -330,6 +334,8 @@ else
 
     <p class="text-body-secondary small mt-3"><i class="bi bi-info-circle me-1" aria-hidden="true"></i>@L["Disclaimer"]</p>
 }
+
+</ProjectShell>
 
 @code {
     [Parameter] public int ProjectId { get; set; }

@@ -3,15 +3,15 @@
 
 <PageTitle>OpenBudget</PageTitle>
 
-@* App chrome: one 44px top bar for every page. Project-scoped pages put their project switcher + tabs into the
-   "app-nav" section and the settings cog into "app-actions" (see ProjectPageHeader); every page gets the wordmark,
-   the bank-sync status and the account menu. Page-specific toolbars (period navigation, filters) follow in the body. *@
+@* App chrome: one 44px top bar for every page — wordmark, the project switcher (which replaced the start page),
+   the bank-sync status, the gear (project settings and data sources) and the account menu. There are no tabs:
+   a project's views live in its sidebar (ProjectShell). Page toolbars (period navigation, filters) follow in the body. *@
 <header class="app-topbar d-print-none" data-testid="app-topbar">
     <a href="/" class="app-wordmark" title="@L["Home"]">OpenBudget</a>
-    <SectionOutlet SectionName="app-nav" />
+    <ProjectSwitcher />
     <div class="flex-grow-1"></div>
     <BankSyncHost />
-    <SectionOutlet SectionName="app-actions" />
+    <GearMenu />
     <UserMenu />
 </header>
 

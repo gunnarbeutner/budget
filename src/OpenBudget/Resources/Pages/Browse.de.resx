@@ -58,9 +58,7 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Aria_Close" xml:space="preserve"><value>Schließen</value></data>
   <data name="Aria_ToggleTree" xml:space="preserve"><value>Navigationsbaum umschalten</value></data>
-  <data name="Aria_Tree" xml:space="preserve"><value>Navigationsbaum</value></data>
   <data name="Chart_AriaGranularity" xml:space="preserve"><value>Diagrammgranularität</value></data>
   <data name="Chart_Collapse" xml:space="preserve"><value>Diagramm einklappen</value></data>
   <data name="Chart_D" xml:space="preserve"><value>T</value></data>
@@ -88,7 +86,6 @@
   <data name="NotFound_Heading" xml:space="preserve"><value>Projekt nicht gefunden</value></data>
   <data name="PageTitle" xml:space="preserve"><value>Durchsuchen</value></data>
   <data name="PageTitle_WithProject" xml:space="preserve"><value>Durchsuchen — {0}</value></data>
-  <data name="Tree_Heading" xml:space="preserve"><value>Durchsuchen</value></data>
   <data name="Tx_SplitChild" xml:space="preserve"><value>Split</value></data>
   <data name="Tx_SplitChildTitle" xml:space="preserve"><value>Teil einer Splitbuchung.</value></data>
   <data name="Tx_Pending" xml:space="preserve"><value>vorgemerkt</value></data>
@@ -390,8 +387,5 @@
   </data>
   <data name="Chart_Button" xml:space="preserve">
     <value>Diagramm</value>
-  </data>
-  <data name="Aria_ResizeSidebar" xml:space="preserve">
-    <value>Seitenleiste verbreitern oder schmaler machen (ziehen oder Pfeiltasten; Doppelklick setzt zurück)</value>
   </data>
 </root>

@@ -52,13 +52,13 @@ public sealed class SharingTests : EndToEndTestBase
         // Guest: sees the shared project (and says whose it is), not the owner's other project.
         await LogoutAsync();
         await LoginAsync(E2ESeed.SecondUserName);
-        await GoToAsync("/");
+        await GoToAsync("/projects/manage");
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = E2ESeed.ProjectName })).ToBeVisibleAsync();
         await Expect(Page.GetByText($"Shared by {E2ESeed.UserName} · view only")).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = HiddenProject })).ToHaveCountAsync(0);
 
         await Page.GetByRole(AriaRole.Link, new() { Name = E2ESeed.ProjectName }).ClickAsync();
-        await Expect(Page.GetByRole(AriaRole.Navigation, new() { Name = "Project sections" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Navigation, new() { Name = "Project views" })).ToBeVisibleAsync();
 
         // A viewer has no settings cog, and the settings / budget-edit URLs are "not found".
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "Project settings" })).ToHaveCountAsync(0);
@@ -103,7 +103,7 @@ public sealed class SharingTests : EndToEndTestBase
         await LogoutAsync();
         await LoginAsync(E2ESeed.SecondUserName);
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/overview");
-        await Expect(Page.GetByRole(AriaRole.Navigation, new() { Name = "Project sections" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Navigation, new() { Name = "Project views" })).ToBeVisibleAsync();
 
         var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using (var db = await factory.CreateDbContextAsync())

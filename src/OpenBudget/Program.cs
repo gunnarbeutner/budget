@@ -43,6 +43,7 @@ builder.Services.AddScoped<DepotMappingService>();
 builder.Services.AddScoped<SecurityTaxService>();
 builder.Services.AddScoped<InstrumentMappingService>();
 builder.Services.AddScoped<ProjectTimeState>();
+builder.Services.AddScoped<CurrentProjectState>();
 builder.Services.AddScoped<SharingService>();
 builder.Services.AddScoped<SourceService>();
 builder.Services.AddScoped<StructureTakeoverService>();

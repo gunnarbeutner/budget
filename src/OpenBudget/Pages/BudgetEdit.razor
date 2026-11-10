@@ -47,7 +47,6 @@
 
 <ProjectPageHeader ProjectId="@budget.ProjectId"
                    ProjectName="@(budget.Project?.Name ?? "")"
-                   Active="ProjectTab.Budgets"
                    Subtitle="@(budget.LastModifiedAt.HasValue ? L["Header_LastModified", Clock.ToLocal(budget.LastModifiedAt.Value).ToString("yyyy-MM-dd HH:mm")].Value : null)">
     <TitleSuffix>· @budget.Name</TitleSuffix>
 </ProjectPageHeader>

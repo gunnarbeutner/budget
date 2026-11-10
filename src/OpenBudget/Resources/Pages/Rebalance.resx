@@ -108,4 +108,7 @@
   <data name="Fixed_Placeholder" xml:space="preserve"><value>auto</value></data>
   <data name="Exempt_Label" xml:space="preserve"><value>exempt</value></data>
   <data name="Exempt_Tooltip" xml:space="preserve"><value>Exclude this holding from the taxonomy balance — only the rest of the portfolio matches the target split.</value></data>
+  <data name="View_Title" xml:space="preserve">
+    <value>Portfolio</value>
+  </data>
 </root>

@@ -58,9 +58,7 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Aria_Close" xml:space="preserve"><value>Close</value></data>
   <data name="Aria_ToggleTree" xml:space="preserve"><value>Toggle browse tree</value></data>
-  <data name="Aria_Tree" xml:space="preserve"><value>Browse tree</value></data>
   <data name="Chart_AriaGranularity" xml:space="preserve"><value>Chart granularity</value></data>
   <data name="Chart_Collapse" xml:space="preserve"><value>Collapse chart</value></data>
   <data name="Chart_D" xml:space="preserve"><value>D</value></data>
@@ -88,7 +86,6 @@
   <data name="NotFound_Heading" xml:space="preserve"><value>Project not found</value></data>
   <data name="PageTitle" xml:space="preserve"><value>Browse</value></data>
   <data name="PageTitle_WithProject" xml:space="preserve"><value>Browse — {0}</value></data>
-  <data name="Tree_Heading" xml:space="preserve"><value>Browse</value></data>
   <data name="Tx_SplitChild" xml:space="preserve"><value>Split</value></data>
   <data name="Tx_SplitChildTitle" xml:space="preserve"><value>One leg of a split transaction.</value></data>
   <data name="Tx_Pending" xml:space="preserve"><value>Pending</value></data>
@@ -390,8 +387,5 @@
   </data>
   <data name="Chart_Button" xml:space="preserve">
     <value>Chart</value>
-  </data>
-  <data name="Aria_ResizeSidebar" xml:space="preserve">
-    <value>Resize the sidebar (drag, or use the arrow keys; double-click resets)</value>
   </data>
 </root>

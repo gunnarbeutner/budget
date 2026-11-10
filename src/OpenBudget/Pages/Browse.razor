@@ -1,4 +1,5 @@
 @page "/projects/{ProjectId:int}/browse"
+@page "/projects/{ProjectId:int}"
 @using System.Globalization
 @using OpenBudget.Services
 @using OpenBudget.Models
@@ -32,22 +33,13 @@
     return;
 }
 
-<ProjectPageHeader ProjectId="@ProjectId" ProjectName="@(project?.Name ?? "")"
-                   Active="ProjectTab.Browse"
-                   Year="anchor.Year" Month="anchor.Month" Period="@period" />
+<ProjectPageHeader ProjectId="@ProjectId" ProjectName="@(project?.Name ?? "")" />
 
-@* Browse: fixed account sidebar on the left, the main column with its 48px toolbar (what is selected + balance,
-   period, search, filter) and the ledger list. Below md the sidebar is an off-canvas sheet opened from the title. *@
-<div class="browse-shell">
-    @if (railOpen)
-    {
-        <div class="browse-backdrop d-md-none" @onclick="CloseRail" aria-hidden="true"></div>
-    }
-    <aside class="browse-rail @(railOpen ? "open" : "")" aria-label="@L["Aria_Tree"]">
-        <div class="browse-rail-header">
-            <span class="fw-semibold">@L["Tree_Heading"]</span>
-            <button type="button" class="btn-close" @onclick="CloseRail" aria-label="@L["Aria_Close"]"></button>
-        </div>
+@* Transactions (Browse): the project shell's sidebar holds this page's account/category tree; the main column
+   has the 48px toolbar (what is selected + balance, period, search, filter) and the ledger list. Below md the
+   sidebar is an off-canvas sheet, opened from the title or the bottom bar. *@
+<ProjectShell ProjectId="ProjectId" Active="ProjectTab.Browse" Tree="tree" @bind-RailOpen="railOpen" OnTransactions="SelectAll">
+    <Rail>
         @if (tree == null)
         {
             <div aria-busy="true" class="px-3">
@@ -62,6 +54,7 @@
             <BrowseTreeRail Tree="tree"
                             SelectionKind="selectionKind"
                             SelectionId="selectionId"
+                            ShowAllRow="false"
                             @bind-ShowRelatedAccounts="showRelatedAccounts"
                             OnSelectAll="SelectAll"
                             OnSelectAccount="SelectAccount"
@@ -69,12 +62,8 @@
                             OnSelectUncategorized="SelectUncategorized"
                             OnSelectCategory="SelectCategoryNode" />
         }
-    </aside>
-
-    <div class="browse-resizer" role="separator" aria-orientation="vertical" tabindex="0"
-         aria-label="@L["Aria_ResizeSidebar"]" data-testid="sidebar-resizer"></div>
-
-    <section class="browse-main">
+    </Rail>
+    <ChildContent>
         <div class="page-toolbar browse-toolbar" data-testid="browse-toolbar">
             <div class="browse-ident">
                 <h1 class="browse-title">
@@ -641,8 +630,8 @@
             }
             }
         </div>
-    </section>
-</div>
+    </ChildContent>
+</ProjectShell>
 
 @if (popup == PopupKind.Picker && pickerData is { } pickerModel)
 {
@@ -799,7 +788,6 @@
     private bool railOpen;
 
     private void ToggleRail() => railOpen = !railOpen;
-    private void CloseRail() => railOpen = false;
 
     protected override void Dispose(bool disposing)
     {

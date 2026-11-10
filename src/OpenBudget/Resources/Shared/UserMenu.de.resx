@@ -59,15 +59,12 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="Account" xml:space="preserve">
-    <value>Konto</value>
+    <value>Profil, Passwort und Passkeys</value>
   </data>
   <data name="LogOut" xml:space="preserve">
     <value>Abmelden</value>
   </data>
-  <data name="BankLogins" xml:space="preserve">
-    <value>Bank-Zugänge</value>
-  </data>
   <data name="Menu" xml:space="preserve">
-    <value>Kontomenü: Profil, Bankzugänge, Abmelden</value>
+    <value>Kontomenü: Profil, Passkeys, Abmelden</value>
   </data>
 </root>

@@ -4,13 +4,41 @@
 // Click-away to close any <details class="project-selector"> dropdown. The native
 // <details> only toggles on summary clicks; users expect dropdowns to close when
 // they click elsewhere on the page.
+// Following a link inside a menu closes it too (client-side navigation keeps the layout, and with it the open menu).
 document.addEventListener("click", function (e) {
+    var link = e.target.closest && e.target.closest("a[href]");
     document.querySelectorAll("details.project-selector[open], details.app-menu[open]").forEach(function (d) {
-        if (!d.contains(e.target)) {
+        if (!d.contains(e.target) || (link && d.contains(link))) {
             d.open = false;
         }
     });
 });
+
+// Escape closes an open top-bar menu and puts focus back on its button; arrow keys move between its entries.
+document.addEventListener("keydown", function (e) {
+    var menu = e.target.closest && e.target.closest("details.project-selector[open], details.app-menu[open]");
+    if (!menu) return;
+    if (e.key === "Escape") {
+        menu.open = false;
+        var summary = menu.querySelector("summary");
+        if (summary) summary.focus();
+        e.preventDefault();
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        var items = Array.prototype.slice.call(menu.querySelectorAll(":scope > :not(summary) a[href], :scope > :not(summary) button:not([disabled])"));
+        if (items.length === 0) return;
+        var i = items.indexOf(document.activeElement);
+        i = e.key === "ArrowDown" ? (i + 1) % items.length : (i <= 0 ? items.length - 1 : i - 1);
+        items[i].focus();
+        e.preventDefault();
+    }
+});
+
+// The last project the user opened, so "/" can take them back to it (read server-side by the start page).
+window.obNav = {
+    rememberProject: function (id) {
+        document.cookie = "ob.lastProject=" + encodeURIComponent(id) + ";path=/;max-age=31536000;samesite=lax";
+    }
+};
 
 // Modal accessibility: move focus into the dialog, trap Tab within it while open, and restore
 // focus to the triggering element on close. The Modal component calls activate() once the dialog

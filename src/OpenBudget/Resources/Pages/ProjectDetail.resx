@@ -88,4 +88,7 @@
   <data name="Unknown" xml:space="preserve">
     <value>Unknown</value>
   </data>
+  <data name="Heading_Settings" xml:space="preserve">
+    <value>Project settings · {0}</value>
+  </data>
 </root>

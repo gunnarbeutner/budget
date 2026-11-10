@@ -25,13 +25,17 @@
     return;
 }
 
-<ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@projectName"
-                   Active="ProjectTab.Cashflow" />
+<ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@projectName" />
+
+<ProjectShell ProjectId="ProjectId" Active="ProjectTab.Cashflow" MainClass="shell-page">
+
 
 <DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
 <PeriodNav Anchor="(selectedYear, 1)" Period="@("year")" YearOnly="true"
-           Years="availableYears" OnChanged="OnYearChanged" />
+           Years="availableYears" OnChanged="OnYearChanged">
+    <Leading><h1 class="view-title">@L["View_Title"]</h1></Leading>
+</PeriodNav>
 
 @* Grid widths are tuned for the income-projection segmented control's German labels
    ("Letzten Monat wiederholen" is ~25 chars wide). Budget needs room for the name; the
@@ -282,6 +286,8 @@ else
         @L["NoData_YearAndFilters"]
     </div>
 }
+
+</ProjectShell>
 
 @code {
     [Parameter] public int ProjectId { get; set; }

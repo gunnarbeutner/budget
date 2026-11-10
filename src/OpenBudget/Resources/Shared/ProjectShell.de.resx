@@ -58,31 +58,37 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Tab_Overview" xml:space="preserve">
-    <value>Übersicht</value>
+  <data name="Aria_Sidebar" xml:space="preserve">
+    <value>Projektnavigation: Ansichten, Konten und Kategorien</value>
   </data>
-  <data name="Tab_Browse" xml:space="preserve">
+  <data name="Aria_Views" xml:space="preserve">
+    <value>Projektansichten</value>
+  </data>
+  <data name="Aria_Close" xml:space="preserve">
+    <value>Schließen</value>
+  </data>
+  <data name="Aria_ResizeSidebar" xml:space="preserve">
+    <value>Seitenleiste in der Breite ändern</value>
+  </data>
+  <data name="Sheet_Heading" xml:space="preserve">
+    <value>Konten und Kategorien</value>
+  </data>
+  <data name="View_Transactions" xml:space="preserve">
     <value>Transaktionen</value>
   </data>
-  <data name="Tab_Budgets" xml:space="preserve">
-    <value>Budgets</value>
+  <data name="View_Budget" xml:space="preserve">
+    <value>Budget</value>
   </data>
-  <data name="Tab_Cashflow" xml:space="preserve">
+  <data name="View_Cashflow" xml:space="preserve">
     <value>Cashflow</value>
   </data>
-  <data name="Tab_Rebalance" xml:space="preserve">
-    <value>Umschichten</value>
+  <data name="View_Portfolio" xml:space="preserve">
+    <value>Portfolio</value>
   </data>
-  <data name="Tab_Settings_Tooltip" xml:space="preserve">
-    <value>Projekteinstellungen</value>
+  <data name="Bottom_Accounts" xml:space="preserve">
+    <value>Konten</value>
   </data>
-  <data name="Aria_Sections" xml:space="preserve">
-    <value>Projektbereiche</value>
-  </data>
-  <data name="Selector_Loading" xml:space="preserve">
-    <value>Lädt…</value>
-  </data>
-  <data name="Selector_NoOthers" xml:space="preserve">
-    <value>Keine weiteren Projekte</value>
+  <data name="Budget_Percent" xml:space="preserve">
+    <value>{0} %</value>
   </data>
 </root>

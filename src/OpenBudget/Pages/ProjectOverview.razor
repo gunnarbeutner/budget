@@ -28,9 +28,10 @@
 }
 
 <ProjectPageHeader ProjectId="@ProjectId" ProjectName="@(project?.Name ?? "")"
-                   Subtitle="@project?.Description"
-                   Active="ProjectTab.Overview"
-                   Year="anchor.Year" Month="anchor.Month" Period="@period" />
+                   Subtitle="@project?.Description" />
+
+<ProjectShell ProjectId="ProjectId" MainClass="shell-page">
+
 
 <PeriodNav Anchor="anchor" Period="@period" ShowMonthPicker="true"
            MinMonth="monthMin" MaxMonth="monthMax" OnChanged="OnPeriodChanged" />
@@ -207,6 +208,8 @@ else
         </div>
     </div>
 }
+
+</ProjectShell>
 
 @code {
     [Parameter] public int ProjectId { get; set; }

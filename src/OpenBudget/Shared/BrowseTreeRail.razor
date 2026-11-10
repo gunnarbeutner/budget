@@ -13,6 +13,8 @@
     @{
         bool allSelected = SelectionKind == "all";
     }
+    @if (ShowAllRow)
+    {
     <div class="browse-tree-row @(allSelected ? "selected" : "")"
          role="treeitem" tabindex="0" aria-selected="@allSelected.ToString().ToLower()"
          @onclick="() => OnSelectAll.InvokeAsync()"
@@ -21,6 +23,7 @@
             <i class="bi bi-list-ul me-1" aria-hidden="true"></i>@L["Tree_AllTransactions"]
         </span>
     </div>
+    }
 
     @if (Tree.UncategorizedCount > 0 || SelectionKind == "uncategorized")
     {
@@ -84,6 +87,8 @@
     [Parameter, EditorRequired] public BrowseTree Tree { get; set; } = default!;
     [Parameter, EditorRequired] public string SelectionKind { get; set; } = "all";
     [Parameter] public long? SelectionId { get; set; }
+    /// <summary>Show the "All transactions" row (Transactions does; the other views have the Transactions link above).</summary>
+    [Parameter] public bool ShowAllRow { get; set; } = true;
     /// <summary>Whether related (non-assigned) accounts are shown. Two-way: the page also sets it
     /// (auto-expand when a URL-selected related account needs revealing).</summary>
     [Parameter] public bool ShowRelatedAccounts { get; set; }

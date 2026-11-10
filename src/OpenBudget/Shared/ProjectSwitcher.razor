@@ -1,0 +1,133 @@
+@using OpenBudget.Models
+@using OpenBudget.Services
+@implements IDisposable
+@inject CurrentProjectState Current
+@inject ProjectService ProjectService
+@inject BudgetService BudgetService
+@inject AccessScopeProvider AccessProvider
+@inject OpenBudget.Auth.UserDirectory Users
+@inject ClockService Clock
+@inject NavigationManager Navigation
+@inject ILogger<ProjectSwitcher> Logger
+@inject IStringLocalizer<ProjectSwitcher> L
+
+@* The project switcher in the top bar. Lists every project the user can see with
+   the numbers the start page used to show: balance and number of accounts, this month's spending against the
+   budget (bar + percentage), the default-for-new-accounts badge and who shared it. The numbers load when the menu opens, so it costs nothing
+   until used. *@
+
+<details class="project-selector app-menu" data-testid="project-selector" @key="Current.ProjectId">
+    <summary class="project-selector-toggle" @onclick="LoadAsync" aria-label="@L["Aria_Switcher"]">
+        <span class="project-selector-name">@(Current.ProjectName ?? L["Label_Projects"])</span>
+        <i class="bi bi-chevron-down ms-1 project-selector-caret d-print-none" aria-hidden="true"></i>
+    </summary>
+    <div class="dropdown-menu show project-switcher-menu">
+        <div class="project-switcher-head">@L["Heading_Projects", MonthName]</div>
+        @if (rows == null)
+        {
+            <div class="px-3 py-2 small text-body-secondary" aria-busy="true">@L["Loading"]</div>
+        }
+        else if (rows.Count == 0)
+        {
+            <div class="px-3 py-2 small text-body-secondary">@L["Empty"]</div>
+        }
+        else
+        {
+            <ul class="project-switcher-list" data-testid="switcher-projects">
+                @foreach (var r in rows)
+                {
+                    var current = r.Id == Current.ProjectId;
+                    <li>
+                        <a class="project-switcher-row @(current ? "current" : "")" href="@($"/projects/{r.Id}/browse")"
+                           aria-current="@(current ? "true" : null)" data-testid="switcher-project">
+                            <span class="project-switcher-id">
+                                <span class="project-switcher-name">
+                                    <span class="text-truncate">@r.Name</span>
+                                    @if (r.IsDefault)
+                                    {
+                                        <span class="ob-chip" data-testid="switcher-default-badge" title="@L["Badge_Default_Title"]">@L["Badge_Default"]</span>
+                                    }
+                                    @if (r.SharedBy != null)
+                                    {
+                                        <span class="ob-chip" title="@r.SharedBy">@L["Badge_Shared"]</span>
+                                    }
+                                </span>
+                                <span class="project-switcher-sub" data-testid="switcher-balance">
+                                    @if (r.Balance is { } b)
+                                    {
+                                        <span class="@(b.Balance < 0 ? "money-neg" : "")">@Formatting.FormatMoneyDe(b.Balance)</span>
+                                        <span> · @L[b.AccountCount == 1 ? "Accounts_One" : "Accounts_Other", b.AccountCount]</span>
+                                    }
+                                </span>
+                            </span>
+                            @if (r.Summary is { HasBudget: true } s)
+                            {
+                                var pct = ProjectStatus.OverallPercent(s);
+                                var status = ProjectStatus.StatusClass(s);
+                                <span class="project-switcher-budget" data-testid="switcher-budget">
+                                    <span class="project-switcher-spent">
+                                        @Formatting.FormatMoneyDe(s.TotalSpent) / @Formatting.FormatMoneyDe(s.TotalBudget)
+                                        <span class="fw-semibold status-@status">@pct.ToString("F0", CultureInfo.CurrentCulture) %</span>
+                                    </span>
+                                    <span class="project-switcher-bar"><span class="status-bg-@status" style="width: @(Math.Min(pct, 100).ToString("F0", CultureInfo.InvariantCulture))%"></span></span>
+                                </span>
+                            }
+                            else if (r.Summary is { } n)
+                            {
+                                <span class="project-switcher-budget">
+                                    <span class="project-switcher-spent">@L["Label_Net"] <span class="fw-semibold @(n.MonthNet < 0 ? "money-neg" : "")">@Formatting.FormatMoneyDe(n.MonthNet)</span></span>
+                                </span>
+                            }
+                        </a>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+</details>
+
+@code {
+    private sealed record Row(int Id, string Name, bool IsDefault, string? SharedBy, ProjectBalanceSummary? Balance, ProjectSpendingSummary? Summary);
+
+    private List<Row>? rows;
+
+    private string MonthName => Clock.NowLocal.ToString("MMMM yyyy", CultureInfo.CurrentCulture);
+
+    protected override void OnInitialized() => Current.Changed += OnProjectChanged;
+
+    private void OnProjectChanged() => _ = InvokeAsync(StateHasChanged);
+
+    /// <summary>Loads (or refreshes) the list when the menu is opened.</summary>
+    private async Task LoadAsync()
+    {
+        var scope = await AccessProvider.GetAsync();
+        var projects = await ProjectService.GetProjectsAsync();
+        var balances = await ProjectService.GetAllProjectsBalancesAsync();
+        var owners = await Users.GetNamesAsync(projects.Where(p => p.OwnerUserId != null).Select(p => p.OwnerUserId!));
+        var now = Clock.NowLocal;
+        var list = new List<Row>();
+        foreach (var p in projects)
+        {
+            ProjectSpendingSummary? summary = null;
+            try
+            {
+                summary = await BudgetService.GetSpendingSummaryAsync(p.Id, now.Year, now.Month, now.Month);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+            {
+                Logger.LogError(ex, "Error loading spending summary for project {ProjectId}.", p.Id);
+            }
+            var isOwner = scope.IsOwner(p.Id);
+            string? sharedBy = null;
+            if (!isOwner)
+            {
+                var ownerName = p.OwnerUserId is { } oid ? owners.GetValueOrDefault(oid, "?") : "?";
+                sharedBy = L[scope.RoleFor(p.Id) == ProjectRole.Editor ? "Shared_Editor" : "Shared_Viewer", ownerName];
+            }
+            list.Add(new Row(p.Id, p.Name, isOwner && p.IsDefaultForNewAccounts, sharedBy, balances.GetValueOrDefault(p.Id), summary));
+        }
+        rows = list;
+    }
+
+    public void Dispose() => Current.Changed -= OnProjectChanged;
+}

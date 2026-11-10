@@ -211,4 +211,7 @@
   <data name="Table_MonthEndBalance" xml:space="preserve">
     <value>Month-end balance</value>
   </data>
+  <data name="View_Title" xml:space="preserve">
+    <value>Cashflow</value>
+  </data>
 </root>

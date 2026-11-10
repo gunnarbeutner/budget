@@ -2,8 +2,8 @@
 @inject NavigationManager Navigation
 @inject IStringLocalizer<UserMenu> L
 
-@* The avatar at the right end of the top bar: who is signed in, the account page (password, passkeys), bank logins
-   and sign-out in a small dropdown. The account and logout pages are plain server-rendered pages, not Blazor routes,
+@* The avatar at the right end of the top bar: only about you — who is signed in, the account page (password,
+   passkeys) and sign-out; setup pages live behind the gear (GearMenu) in a small dropdown. The account and logout pages are plain server-rendered pages, not Blazor routes,
    so those links force a full navigation instead of the router's client-side one. *@
 
 @if (userName != null)
@@ -19,11 +19,6 @@
                 </a>
             </li>
             <li><hr class="dropdown-divider" /></li>
-            <li>
-                <a href="/banklogins" class="dropdown-item" data-testid="bank-logins-link">
-                    <i class="bi bi-bank me-2" aria-hidden="true"></i>@L["BankLogins"]
-                </a>
-            </li>
             <li>
                 <a href="/Account/Logout" class="dropdown-item" data-testid="sign-out-link"
                    @onclick="@(() => Navigation.NavigateTo("/Account/Logout", forceLoad: true))" @onclick:preventDefault>

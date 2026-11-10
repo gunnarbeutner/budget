@@ -27,6 +27,7 @@
 }
 else
 {
+    <h1 class="view-title mt-3 mb-0">@L["Heading_Settings", budget.Name]</h1>
     <ProjectPageHeader ProjectId="@ProjectId" ProjectName="@budget.Name"
                        Subtitle="@budget.Description" />
 
@@ -43,6 +44,7 @@ else
                            OnParentChanged="OnParentChanged" />
     }
 
+    <div id="accounts-categories" class="scroll-anchor"></div>
     <ProjectCategoryAssignmentsCard Assignments="budget.CategoryAssignments.ToList()"
                                     CategoryNames="categoryNames"
                                     AvailableCategories="availableCategoriesWithCounts"
@@ -80,6 +82,7 @@ else
        by accident. *@
     @if (isOwner)
     {
+        <div id="sharing" class="scroll-anchor"></div>
         <ProjectSharingCard ProjectId="ProjectId" OnSharesChanged="@(() => sharingVersion++)" />
 
         <div class="border-top pt-3 mt-4">

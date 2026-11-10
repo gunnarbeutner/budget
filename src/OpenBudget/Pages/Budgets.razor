@@ -25,13 +25,17 @@
     return;
 }
 
-<ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@projectName"
-                   Active="ProjectTab.Budgets" />
+<ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@projectName" />
+
+<ProjectShell ProjectId="ProjectId" Active="ProjectTab.Budgets" MainClass="shell-page">
+
 
 <DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
 <PeriodNav Anchor="(selectedYear, 1)" Period="@("year")" YearOnly="true"
-           Years="availableYears" OnChanged="OnYearChanged" />
+           Years="availableYears" OnChanged="OnYearChanged">
+    <Leading><h1 class="view-title">@L["View_Title"]</h1></Leading>
+</PeriodNav>
 
 <BudgetSelectorCard AvailableBudgets="availableBudgets"
                     SelectedBudgetId="selectedCompareBudgetId"
@@ -264,6 +268,8 @@
         <button class="btn btn-danger" @onclick="ConfirmDeleteBudget">@L["Button_Delete"]</button>
     </Footer>
 </Modal>
+
+</ProjectShell>
 
 @code {
     private List<CategoryGroupWithChildCount>? allCategories;

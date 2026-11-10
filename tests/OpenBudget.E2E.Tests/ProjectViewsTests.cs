@@ -22,7 +22,8 @@ public sealed class ProjectViewsTests : EndToEndTestBase
         // Anchor on January, where the seeded actuals live, so the figures are deterministic.
         await GoToAsync($"/projects/{Pid}/overview?year={E2ESeed.BudgetYear}&month=1");
 
-        await Expect(Page.GetByText("Budget", new() { Exact = true })).ToBeVisibleAsync();
+        var main = Page.Locator(".browse-main");   // the sidebar has a "Budget" view link too
+        await Expect(main.GetByText("Budget", new() { Exact = true })).ToBeVisibleAsync();
         await Expect(Page.GetByText("Spent", new() { Exact = true })).ToBeVisibleAsync();
         await Expect(Page.GetByText("Remaining", new() { Exact = true })).ToBeVisibleAsync();
 

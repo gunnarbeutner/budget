@@ -1,0 +1,108 @@
+@using OpenBudget.Services
+@implements IDisposable
+@inject CurrentProjectState Current
+@inject AccessScopeProvider AccessProvider
+@inject BankLoginService Bank
+@inject IStringLocalizer<GearMenu> L
+
+@* The gear in the top bar: everything that is set up once. First the current project (settings, sharing,
+   accounts and categories — all sections of the project settings page), then the data sources (bank logins,
+   MoneyMoney import). The same list is the "More" entry of the phone bottom bar (BottomBar="true").
+   A <details> dropdown like the project switcher: uiBehaviors.js closes it on click-away, on Escape and
+   when one of its links is followed. *@
+
+<details class="app-menu gear-menu @(BottomBar ? "gear-menu-bottom" : "")" data-testid="@(BottomBar ? "bottom-more" : "gear-menu")" @key="Current.ProjectId">
+    @if (BottomBar)
+    {
+        <summary class="app-bottom-item" aria-label="@L["Aria_Menu"]" @onclick="LoadAsync">
+            <i class="bi bi-three-dots" aria-hidden="true"></i><span>@L["Bottom_More"]</span>
+        </summary>
+    }
+    else
+    {
+        <summary class="app-icon-btn" aria-label="@L["Aria_Menu"]" title="@L["Aria_Menu"]" @onclick="LoadAsync">
+            <i class="bi bi-gear" aria-hidden="true"></i>
+            @if (bankErrors > 0)
+            {
+                <span class="gear-dot" aria-hidden="true"></span>
+            }
+        </summary>
+    }
+    <ul class="dropdown-menu dropdown-menu-end show app-menu-list gear-menu-list">
+        @if (Current.ProjectId is { } projectId && canEditProject)
+        {
+            <li><h6 class="dropdown-header text-truncate">@(Current.ProjectName ?? L["Section_Project"])</h6></li>
+            <li>
+                <a class="dropdown-item" href="@($"/projects/{projectId}/settings")" data-testid="gear-project-settings">
+                    <i class="bi bi-sliders2 me-2" aria-hidden="true"></i>@L["Item_ProjectSettings"]
+                </a>
+            </li>
+            <li>
+                <a class="dropdown-item" href="@($"/projects/{projectId}/settings#accounts-categories")" data-testid="gear-accounts-categories">
+                    <i class="bi bi-diagram-3 me-2" aria-hidden="true"></i>@L["Item_AccountsCategories"]
+                </a>
+            </li>
+            @if (isOwner)
+            {
+                <li>
+                    <a class="dropdown-item" href="@($"/projects/{projectId}/settings#sharing")" data-testid="gear-sharing">
+                        <i class="bi bi-people me-2" aria-hidden="true"></i>@L["Item_Sharing"]
+                    </a>
+                </li>
+            }
+            <li><hr class="dropdown-divider" /></li>
+        }
+        <li><h6 class="dropdown-header">@L["Section_Data"]</h6></li>
+        <li>
+            <a class="dropdown-item d-flex align-items-center" href="/banklogins" data-testid="gear-bank-logins">
+                <i class="bi bi-bank me-2" aria-hidden="true"></i>@L["Item_BankLogins"]
+                @if (bankErrors > 0)
+                {
+                    <span class="ob-badge ob-badge-danger ms-auto" data-testid="gear-bank-errors">@L["Badge_Errors", bankErrors]</span>
+                }
+            </a>
+        </li>
+        <li>
+            <a class="dropdown-item" href="/sources" data-testid="gear-moneymoney">
+                <i class="bi bi-database me-2" aria-hidden="true"></i>@L["Item_MoneyMoney"]
+            </a>
+        </li>
+    </ul>
+</details>
+
+@code {
+    /// <summary>Render as the phone bottom bar's "More" item instead of the top-bar gear.</summary>
+    [Parameter] public bool BottomBar { get; set; }
+
+    private bool canEditProject;
+    private bool isOwner;
+    private int bankErrors;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Current.Changed += OnProjectChanged;
+        await LoadAsync();
+    }
+
+    /// <summary>Refreshes the access flags and the bank-login error count — on load and each time the menu opens.</summary>
+    private async Task LoadAsync()
+    {
+        var scope = await AccessProvider.GetAsync();
+        canEditProject = Current.ProjectId is { } id && scope.CanEdit(id);
+        isOwner = Current.ProjectId is { } oid && scope.IsOwner(oid);
+        bankErrors = 0;
+        if (Bank.IsEnabled && scope.IsAuthenticated)
+        {
+            var logins = await Bank.GetLoginsAsync();
+            bankErrors = logins.Count(l => l.CredentialsInvalid || !string.IsNullOrEmpty(l.LastError));
+        }
+    }
+
+    private void OnProjectChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    public void Dispose() => Current.Changed -= OnProjectChanged;
+}

@@ -27,7 +27,6 @@
     var wizardProjectName = projects?.FirstOrDefault(p => p.Id == selectedProjectId)?.Name;
 }
 <ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@wizardProjectName"
-                   Active="ProjectTab.Budgets"
                    Subtitle="@L["Header_Title"]" />
 
 <DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
