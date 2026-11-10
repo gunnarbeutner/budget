@@ -65,6 +65,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<BankLoginAccount> BankLoginAccounts => Set<BankLoginAccount>();
     public DbSet<BankStatement> BankStatements => Set<BankStatement>();
     public DbSet<StatementRead> StatementReads => Set<StatementRead>();
+    public DbSet<CategoryRule> CategoryRules => Set<CategoryRule>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -228,6 +229,9 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<StatementRead>().HasIndex(r => r.StatementId);
         modelBuilder.Entity<StatementRead>().HasOne<BankStatement>().WithMany().HasForeignKey(r => r.StatementId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<StatementRead>().HasOne<AppUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<CategoryRule>().HasOne(r => r.Project).WithMany().HasForeignKey(r => r.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<CategoryRule>().HasIndex(r => new { r.ProjectId, r.SortOrder });
+        modelBuilder.Entity<CategoryRule>().Property(r => r.AmountSign).HasConversion<int>();
 
         modelBuilder.Entity<CategoryGroup>()
             .HasOne(cg => cg.ParentGroup)

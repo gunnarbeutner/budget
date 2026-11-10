@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261110093233_AddStatementReads";
+        public override string LatestMigrationId => "20261110135309_AddCategoryRules";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -632,6 +632,61 @@ namespace OpenBudget.Migrations
                     b.HasIndex("SourceId");
 
                     b.ToTable("category_groups");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.CategoryRule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("AccountId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AmountSign")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("MaxAmountCents")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("MinAmountCents")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PayeeText")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProjectId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PurposeText")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("UseRegex")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId", "SortOrder");
+
+                    b.ToTable("category_rules");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.CategoryTypeAssignment", b =>
@@ -1509,6 +1564,17 @@ namespace OpenBudget.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ParentGroup");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.CategoryRule", b =>
+                {
+                    b.HasOne("OpenBudget.Models.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.CategoryTypeAssignment", b =>

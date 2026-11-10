@@ -33,6 +33,7 @@ public partial class BudgetDbContext
         modelBuilder.Entity<CategoryTypeAssignment>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleProjectIds.Contains(e.ProjectId));
         modelBuilder.Entity<ProjectAccountAssignment>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleProjectIds.Contains(e.ProjectId));
         modelBuilder.Entity<Budget>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleProjectIds.Contains(e.ProjectId));
+        modelBuilder.Entity<CategoryRule>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleProjectIds.Contains(e.ProjectId));
         modelBuilder.Entity<MonthlyBudgetEntry>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleProjectIds.Contains(e.Budget.ProjectId));
         modelBuilder.Entity<BudgetContributionSplit>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleProjectIds.Contains(e.Budget.ProjectId));
 
@@ -138,6 +139,10 @@ public partial class BudgetDbContext
                     break;
                 case Budget b:
                     scope.RequireRole(b.ProjectId, ProjectRole.Editor);
+                    break;
+                case CategoryRule r:
+                    // Categorisation rules: editors of the project (like its budgets).
+                    scope.RequireRole(r.ProjectId, ProjectRole.Editor);
                     break;
 
                 case MonthlyBudgetEntry e:

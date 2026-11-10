@@ -67,6 +67,7 @@ public sealed class BankTransactionStore
             .MaxAsync(t => (long?)t.Id, ct)) ?? SourceScope.Namespace(sourceId, ConnectorRowBase);
 
         int inserted = 0, adopted = 0, pending = 0, known = 0;
+        var added = new List<Transaction>();
         var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
 
         foreach (var r in remote)
@@ -76,7 +77,9 @@ public sealed class BankTransactionStore
 
             if (!r.Booked)
             {
-                db.Transactions.Add(NewRow(++nextId, sourceId, accountId, r, cents, ts, externalId: null));
+                var pendingRow = NewRow(++nextId, sourceId, accountId, r, cents, ts, externalId: null);
+                db.Transactions.Add(pendingRow);
+                added.Add(pendingRow);
                 pending++;
                 continue;
             }
@@ -104,10 +107,16 @@ public sealed class BankTransactionStore
                 continue;
             }
 
-            db.Transactions.Add(NewRow(++nextId, sourceId, accountId, r, cents, ts, externalId));
+            var row = NewRow(++nextId, sourceId, accountId, r, cents, ts, externalId);
+            db.Transactions.Add(row);
+            added.Add(row);
             knownIds.Add(externalId);
             inserted++;
         }
+
+        // Categorisation rules of the account's projects categorise what arrived (new rows have no category yet;
+        // adopted rows keep theirs).
+        await CategoryRuleEngine.ApplyToNewAsync(db, accountId, added, ct);
 
         if (refresh.Positions.Count > 0 || account.Type == 7)
             await ReplaceHoldingsAsync(db, account, refresh.Positions, ct);
