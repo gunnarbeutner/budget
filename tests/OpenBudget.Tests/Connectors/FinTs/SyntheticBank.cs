@@ -160,6 +160,8 @@ internal sealed class SyntheticBank
     {
         PollCount++;
         if (dialog.Pending == null) return rb.Global("9050::Kein Auftrag.").Wrap(dialog.Id, request.MessageNumber);
+        if (tan.Element(2).Length > 0 || tan.Element(4).Length == 0)
+            return rb.Global("9050::Teilweise liegen Fehler vor.").Codes(tan.Number, "9210::Datenelement ist inhaltlich ungültig!").Wrap(dialog.Id, request.MessageNumber);
         if (NeverApprove || ++dialog.Polls <= PendingPolls)
         {
             rb.Global("0010::Nachricht entgegengenommen.").Codes(tan.Number, "3956::Starke Kundenauthentifizierung noch ausstehend.").Segment("HITAN", 7, tan.Number, "S++ORDER1");
@@ -173,6 +175,9 @@ internal sealed class SyntheticBank
 
     private string EnterTan(MockRequest request, ReplyBuilder rb, Dialog dialog, FinTsSegment tan)
     {
+        // Like real banks: the order reference is element 5 of HKTAN (process 2), anything else in the account slot is invalid.
+        if (tan.Element(2).Length > 0 || tan.Element(4).Length == 0)
+            return rb.Global("9050::Teilweise liegen Fehler vor.").Codes(tan.Number, "9210::Datenelement ist inhaltlich ungültig!").Wrap(dialog.Id, request.MessageNumber);
         if (dialog.Pending == null || request.Tan != TanCode)
             return rb.Global("9941::TAN ungültig.").Wrap(dialog.Id, request.MessageNumber);
         dialog.Pending(rb);

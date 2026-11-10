@@ -150,7 +150,9 @@ internal sealed partial class FinTsClient
         process switch
         {
             "4" => new FinTsSegmentBuilder("HKTAN", version).Add("4").Add(jobName),
-            _ => new FinTsSegmentBuilder("HKTAN", version).Add(process).Add(string.Empty).Add(reference).Add("N"),
+            // process 2 (TAN for an earlier order): segment id, account and order hash stay empty; the order reference
+            // is element 5 and "further TAN follows" element 6 in HKTAN versions 6 and 7.
+            _ => new FinTsSegmentBuilder("HKTAN", version).Add(process).Add(string.Empty).Add(string.Empty).Add(string.Empty).Add(reference).Add("N"),
         };
 
     // ---------------------------------------------------------------- dialogs
@@ -311,7 +313,11 @@ internal sealed partial class FinTsClient
 
     private async Task<FinTsResponse> EnterTanAsync(int version, string reference, string bankText, FinTsTanMethod? method, IChallengeAsker ask, CancellationToken ct)
     {
-        var message = string.IsNullOrWhiteSpace(bankText) ? "Enter the TAN your bank sent you." : bankText;
+        // The bank's text often only names the order ("Bitte bestätigen Sie …"), so say which TAN is expected.
+        var how = method?.Name is { Length: > 0 } name
+            ? name.Contains("sms", StringComparison.OrdinalIgnoreCase) ? $"Enter the TAN sent to you by SMS ({name})." : $"Enter the TAN from {name}."
+            : "Enter the TAN your bank sent you.";
+        var message = string.IsNullOrWhiteSpace(bankText) ? how : $"{how} {bankText.Trim()}";
         var answer = await ask.AskAsync(ConnectorChallenge.Code(message, method?.MaxInputLength, method?.Numeric ?? false, reference));
         if (string.IsNullOrWhiteSpace(answer.Value)) throw new FinTsException("No TAN was entered.");
         return await SendAsync([Tan(version, "2", reference)], answer.Value.Trim(), ct);
