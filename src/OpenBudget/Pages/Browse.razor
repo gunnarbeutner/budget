@@ -797,7 +797,26 @@
         summaryVersion++;
         if (project != null)
             (monthMin, monthMax) = await BudgetService.GetMonthBoundsForProjectAsync(ProjectId);
-        await ReloadAsync();
+        await QuietReloadAsync();
+    }
+
+    // A sync reports each account it changed, so changes arrive in bursts: reload once at a time and once more if
+    // something arrived meanwhile, keeping the current content (and selection) on screen instead of the skeleton.
+    private bool _quietReloading, _quietReloadAgain;
+
+    private async Task QuietReloadAsync()
+    {
+        if (_quietReloading) { _quietReloadAgain = true; return; }
+        _quietReloading = true;
+        try
+        {
+            do
+            {
+                _quietReloadAgain = false;
+                await ReloadAsync(quiet: true);
+            } while (_quietReloadAgain);
+        }
+        finally { _quietReloading = false; }
     }
 
     // Debounce search keystrokes — we throttle by token instead of timer/JS interop.
@@ -1289,15 +1308,22 @@
         || periodFilter != PeriodFilter.All || checkedFilter != "any" || directionFilter != "any" || newOnly || categoryFilter.HasValue
         || !string.IsNullOrEmpty(payeeEquals);
 
-    private async Task ReloadAsync()
+    private Task ReloadAsync() => ReloadAsync(quiet: false);
+
+    private async Task ReloadAsync(bool quiet)
     {
-        tree = null; txTotals = null;
+        if (!quiet)
+        {
+            tree = null; txTotals = null;
+            StateHasChanged();
+        }
         // The hierarchy may have changed (external data change) — drop the leaf-id cache so the
         // current selection re-resolves against fresh data.
         _leafCacheKey = null; _leafCache = null;
-        StateHasChanged();
         var (fm, tm) = PeriodRange;
-        tree = await BrowseService.GetTreeAsync(ProjectId, anchor.Year, fm, tm);
+        var fresh = await BrowseService.GetTreeAsync(ProjectId, anchor.Year, fm, tm);
+        if (quiet && fresh != null) txTotals = null;
+        tree = fresh;
         if (ActiveFilterCount > 0) _filterOpen = true;
         if (tree == null) { notFound = true; return; }
         // If the URL selected a related (non-assigned) account, auto-expand the related
@@ -1307,7 +1333,7 @@
         {
             showRelatedAccounts = true;
         }
-        await ReloadTransactionsAsync();
+        await ReloadTransactionsAsync(keepSelection: quiet);
     }
 
     private async Task ReloadTransactionsAsync(bool keepSelection = false)

@@ -45,6 +45,24 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task A_burst_of_sync_changes_updates_the_list_in_place_without_the_loading_skeleton()
+    {
+        await GoToAsync(UncategorizedUrl);
+        await Expect(Page.GetByText(new Regex("4 transactions"))).ToBeVisibleAsync();
+        // remember whether a skeleton ever shows up from now on
+        await Page.EvaluateAsync(@"() => { window.__sk = false; new MutationObserver(() => { if (document.querySelector('.skeleton')) window.__sk = true; })
+            .observe(document.body, { childList: true, subtree: true }); }");
+
+        var notifications = AppFixture.Factory.BrowserHostServices.GetRequiredService<ChangeNotificationService>();
+        for (var i = 0; i < 4; i++) notifications.Publish(new DataChange(DataArea.ImportedData, SourceId: E2ESeed.SourceId));
+        await Page.WaitForTimeoutAsync(1500);
+
+        Assert.That(await Page.EvaluateAsync<bool>("() => window.__sk"), Is.False, "the list was replaced by the loading skeleton");
+        await Expect(Page.GetByText(new Regex("4 transactions"))).ToBeVisibleAsync();
+        await Expect(Page.GetByText("changed in another session")).ToHaveCountAsync(0);
+    }
+
+    [Test]
     public async Task Row_text_can_be_selected_without_expanding_the_row()
     {
         await GoToAsync(UncategorizedUrl);
