@@ -24,6 +24,12 @@ public sealed class RunningBalance
         }
     }
 
+    /// <summary>
+    /// Whether end-of-day balances mean anything for the list: only for a single selected account whose list is not
+    /// narrowed by a filter or search (otherwise the bookings between two day rows are not all the account's bookings).
+    /// </summary>
+    public static bool Applies(bool singleAccount, bool hasBalance, bool filtered) => singleAccount && hasBalance && !filtered;
+
     /// <summary>The balance after all bookings of <paramref name="day"/>: the current balance minus everything booked on later days.</summary>
     public decimal AtEndOf(DateOnly day)
     {

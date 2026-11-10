@@ -20,6 +20,19 @@ public static class Formatting
             : $"{symbol}{value:N2}";
     }
 
+    private static readonly CultureInfo German = CultureInfo.GetCultureInfo("de-DE");
+
+    /// <summary>
+    /// German money format used by the transaction list and the Browse toolbar: "−1.234,56 €" with a real minus
+    /// sign (U+2212) and a no-break space before the symbol, independent of the request culture.
+    /// </summary>
+    public static string FormatMoneyDe(decimal value, string? currency = "EUR")
+    {
+        var symbol = currency is null or "EUR" ? "€" : currency;
+        var number = Math.Abs(value).ToString("N2", German);
+        return (value < 0 ? "\u2212" : "") + number + "\u00A0" + symbol;
+    }
+
     /// <summary>
     /// Human-readable relative age — "just now", "5 minutes ago", "3 days ago", "2 months ago".
     /// Caller passes its IStringLocalizer; the keys (RelativeAge_Future, _JustNow,

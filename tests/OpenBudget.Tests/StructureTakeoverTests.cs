@@ -126,6 +126,34 @@ public sealed class StructureTakeoverTests : IDisposable
     }
 
     [Fact]
+    public async Task Category_colors_are_editable_by_the_owner_only_after_the_takeover()
+    {
+        await using var t = await WorldAsync();
+        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
+        var rent = Id(3);   // sentinel = rowid 1, Groceries = 2, Rent = 3
+        var colors = new CategoryColorService(t.ForUser(AccessWorld.Alice).Factory, t.Notifier, new ChangeOrigin());
+
+        Assert.False(await colors.CanEditAsync(AccessWorld.SourceAlice));
+        Assert.False(await colors.SetColorAsync(rent, "#2b5797"));   // MoneyMoney still owns the structure
+
+        await TakeoverFor(t, AccessWorld.Alice).TakeOverAsync(AccessWorld.SourceAlice);
+        Assert.True(await colors.CanEditAsync(AccessWorld.SourceAlice));
+        Assert.True(await colors.SetColorAsync(rent, "#2B5797"));
+        await Assert.ThrowsAsync<ArgumentException>(() => colors.SetColorAsync(rent, "blue"));
+
+        var bob = new CategoryColorService(t.ForUser(AccessWorld.Bob).Factory, t.Notifier, new ChangeOrigin());
+        Assert.False(await bob.CanEditAsync(AccessWorld.SourceAlice));
+
+        await using (var db = await t.Factory.CreateDbContextAsync())
+            Assert.Equal("#2b5797", (await db.Categories.SingleAsync(c => c.Id == rent)).Color);
+
+        // A later upload keeps the color OpenBudget owns now.
+        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
+        await using var after = await t.Factory.CreateDbContextAsync();
+        Assert.Equal("#2b5797", (await after.Categories.SingleAsync(c => c.Id == rent)).Color);
+    }
+
+    [Fact]
     public async Task A_second_takeover_is_a_no_op()
     {
         await using var t = await WorldAsync();

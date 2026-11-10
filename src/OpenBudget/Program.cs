@@ -46,6 +46,7 @@ builder.Services.AddScoped<ProjectTimeState>();
 builder.Services.AddScoped<SharingService>();
 builder.Services.AddScoped<SourceService>();
 builder.Services.AddScoped<StructureTakeoverService>();
+builder.Services.AddScoped<CategoryColorService>();
 builder.Services.AddScoped<TransactionEditService>();
 builder.Services.AddScoped<CategorizationService>();
 // Per-circuit holder for the browser's timezone (seeded from the tz cookie by App.razor) so all

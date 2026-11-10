@@ -358,6 +358,7 @@ public class BrowseService
                     PendingBalance = pendingCents.TryGetValue(a.Id, out var pc) && pc != 0 ? pc / 100m : null,
                     SyncLoginId = link != null && viewerId != null && link.BankLogin.OwnerUserId == viewerId ? link.BankLoginId : null,
                     Closed = link?.Closed ?? false,
+                    IsMoneyMoney = string.Equals(a.Provider, AccountProviders.MoneyMoney, StringComparison.Ordinal),
                     Id = a.Id,
                     Name = a.Name ?? "",
                     Balance = balance,

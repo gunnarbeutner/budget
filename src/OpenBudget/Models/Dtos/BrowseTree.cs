@@ -58,6 +58,9 @@ public class BrowseAccountNode
     public int? SyncLoginId { get; init; }
     /// <summary>The bank no longer lists this account (closed).</summary>
     public bool Closed { get; init; }
+
+    /// <summary>MoneyMoney owns the account's transactions (they are read-only in OpenBudget).</summary>
+    public bool IsMoneyMoney { get; init; }
 }
 
 public class BrowseCategoryNode

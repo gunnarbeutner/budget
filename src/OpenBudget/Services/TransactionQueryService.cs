@@ -71,9 +71,10 @@ public class TransactionQueryService
         // Resolve category + account names in two batched queries rather than per-row .Include.
         var catIds = rowsRaw.Where(r => r.CategoryId.HasValue).Select(r => r.CategoryId!.Value).Distinct().ToList();
         var acctIds = rowsRaw.Where(r => r.AccountId.HasValue).Select(r => r.AccountId!.Value).Distinct().ToList();
-        var catNames = catIds.Count == 0
-            ? new Dictionary<long, string>()
-            : await db.Categories.Where(c => catIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name ?? "", ct);
+        var cats = catIds.Count == 0
+            ? new Dictionary<long, (string Name, string? Color)>()
+            : (await db.Categories.Where(c => catIds.Contains(c.Id)).Select(c => new { c.Id, c.Name, c.Color }).ToListAsync(ct))
+                .ToDictionary(c => c.Id, c => (Name: c.Name ?? "", c.Color));
         var accts = acctIds.Count == 0
             ? new Dictionary<long, (string Name, string Provider)>()
             : (await db.Accounts.Where(a => acctIds.Contains(a.Id)).Select(a => new { a.Id, a.Name, a.Provider }).ToListAsync(ct))
@@ -87,7 +88,8 @@ public class TransactionQueryService
             Comment = r.Comment,
             Purpose = r.Purpose,
             CategoryId = r.CategoryId,
-            CategoryName = r.CategoryId.HasValue ? catNames.GetValueOrDefault(r.CategoryId.Value) : null,
+            CategoryName = r.CategoryId.HasValue && cats.TryGetValue(r.CategoryId.Value, out var cat) ? cat.Name : null,
+            CategoryColor = r.CategoryId.HasValue && cats.TryGetValue(r.CategoryId.Value, out var catColor) ? catColor.Color : null,
             AccountId = r.AccountId,
             AccountName = r.AccountId.HasValue && accts.TryGetValue(r.AccountId.Value, out var acct) ? acct.Name : null,
             AccountProvider = r.AccountId.HasValue && accts.TryGetValue(r.AccountId.Value, out var prov) ? prov.Provider : null,

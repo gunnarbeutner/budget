@@ -79,6 +79,9 @@ public class TransactionRow
     public string? Purpose { get; init; }
     public long? CategoryId { get; init; }
     public string? CategoryName { get; init; }
+
+    /// <summary>The category's own color (hex) or null; see <see cref="CategoryColors"/>.</summary>
+    public string? CategoryColor { get; init; }
     public long? AccountId { get; init; }
     public string? AccountName { get; init; }
     public decimal Amount { get; init; }
