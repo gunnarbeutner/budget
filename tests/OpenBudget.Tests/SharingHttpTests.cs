@@ -9,7 +9,6 @@ namespace OpenBudget.Tests;
 /// Sharing end to end: real login, real pages. A project outside the user's scope behaves exactly
 /// like a URL that doesn't exist; only what a share grants is rendered.
 /// </summary>
-[Collection("ProcessEnvironment")]
 public sealed class SharingHttpTests : IDisposable
 {
     private const string NotFoundText = "nothing at this address";

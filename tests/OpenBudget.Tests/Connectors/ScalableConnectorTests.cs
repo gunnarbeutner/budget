@@ -41,6 +41,7 @@ public sealed class ScalableConnectorTests
         // submitting it (after the approval in the app) starts the session.
         var browser = new FakeBrowserHost
         {
+            FieldWait = form ? TimeSpan.FromSeconds(2) : TimeSpan.Zero,
             User = session =>
             {
                 if (form)

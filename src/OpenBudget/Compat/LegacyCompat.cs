@@ -38,7 +38,4 @@ internal static class LegacyCompat
         }
         return legacy;
     }
-
-    public static string? ResolveUploadToken(Microsoft.Extensions.Logging.ILogger? logger) =>
-        ResolveUploadToken(Environment.GetEnvironmentVariable, logger);
 }

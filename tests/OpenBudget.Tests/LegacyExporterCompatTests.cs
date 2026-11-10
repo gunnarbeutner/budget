@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenBudget.Compat;
 using OpenBudget.Services;
@@ -18,7 +19,6 @@ namespace OpenBudget.Tests;
 /// "Authorization: Bearer" carrying the token the server knows as MONEYMONEY_DB_UPLOAD_TOKEN.
 /// These shims exist purely for that tool and can go once it is retired.
 /// </summary>
-[Collection("ProcessEnvironment")]
 public sealed class LegacyExporterCompatTests : IDisposable
 {
     private const string Token = "legacy-token";
@@ -28,14 +28,19 @@ public sealed class LegacyExporterCompatTests : IDisposable
 
     public LegacyExporterCompatTests()
     {
-        Environment.SetEnvironmentVariable(LegacyCompat.UploadTokenVariable, null);
-        Environment.SetEnvironmentVariable(LegacyCompat.LegacyUploadTokenVariable, Token);
         BuildSnapshot(_snapshotPath);
+        MigratedDatabase.CopyTo(_dbPath);
 
 #pragma warning disable CA2000 // the derived factory (_factory) is disposed in Dispose and owns the root factory
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Test");
+            // Host settings rather than process environment variables, so this class runs in parallel with others.
+            b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(new Dictionary<string, string?>(StringComparer.Ordinal)
+            {
+                [LegacyCompat.UploadTokenVariable] = "",
+                [LegacyCompat.LegacyUploadTokenVariable] = Token,
+            }));
             b.ConfigureServices(services =>
             {
                 var toRemove = services
@@ -54,7 +59,6 @@ public sealed class LegacyExporterCompatTests : IDisposable
     {
         _factory.Dispose();
         SqliteConnection.ClearAllPools();
-        Environment.SetEnvironmentVariable(LegacyCompat.LegacyUploadTokenVariable, null);
         foreach (var f in new[] { _dbPath, _snapshotPath })
         {
             try { File.Delete(f); } catch { /* best-effort */ }

@@ -13,7 +13,6 @@ namespace OpenBudget.Tests;
 /// <summary>
 /// The login requirement and setup state, end to end over HTTP against the real middleware pipeline.
 /// </summary>
-[Collection("ProcessEnvironment")]
 public sealed class AuthHttpTests : IDisposable
 {
     private readonly AppTestHost _host = new();

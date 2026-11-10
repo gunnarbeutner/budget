@@ -19,8 +19,8 @@ namespace OpenBudget.Tests;
 /// <summary>
 /// The real app (same DI + middleware as production, "Test" environment) over a throwaway SQLite
 /// file, driven through HTTP with a cookie-keeping client: log in through the real login form, then
-/// request real pages. Tests using this must join the "ProcessEnvironment" collection because the
-/// legacy upload token is read from a process-wide environment variable.
+/// request real pages. The upload tokens are host settings (not process environment variables), so
+/// hosts run in parallel.
 /// </summary>
 internal sealed partial class AppTestHost : IDisposable
 {
@@ -32,15 +32,20 @@ internal sealed partial class AppTestHost : IDisposable
 
     public AppTestHost(params (string Key, string Value)[] settings)
     {
-        Environment.SetEnvironmentVariable(LegacyCompat.UploadTokenVariable, null);
-        Environment.SetEnvironmentVariable(LegacyCompat.LegacyUploadTokenVariable, LegacyToken);
+        MigratedDatabase.CopyTo(_dbPath);
+        _tokens.Set(LegacyCompat.UploadTokenVariable, "");
+        _tokens.Set(LegacyCompat.LegacyUploadTokenVariable, LegacyToken);
 
 #pragma warning disable CA2000 // the derived factory is disposed in Dispose and owns the root factory
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Test");
             b.ConfigureLogging(l => l.AddProvider(new ProblemLogger(LoggedProblems)));
-            if (settings.Length > 0) b.ConfigureAppConfiguration((_, c) => c.AddInMemoryCollection(settings.Select(x => KeyValuePair.Create(x.Key, (string?)x.Value))));
+            b.ConfigureAppConfiguration((_, c) =>
+            {
+                if (settings.Length > 0) c.AddInMemoryCollection(settings.Select(x => KeyValuePair.Create(x.Key, (string?)x.Value)));
+                c.Add(_tokens); // last: overrides any token in the developer's environment
+            });
             b.ConfigureServices(services =>
             {
                 var toRemove = services
@@ -54,6 +59,11 @@ internal sealed partial class AppTestHost : IDisposable
         });
 #pragma warning restore CA2000
     }
+
+    private readonly MutableSettings _tokens = new();
+
+    /// <summary>Configures (or with null, removes) the legacy global upload token while the host runs.</summary>
+    public void SetLegacyToken(string? token) => _tokens.Set(LegacyCompat.LegacyUploadTokenVariable, token ?? "");
 
     /// <summary>Warnings/errors the app logged; handy context when an HTTP assertion fails.</summary>
     public List<string> LoggedProblems { get; } = new();
@@ -239,8 +249,13 @@ internal sealed partial class AppTestHost : IDisposable
     {
         _factory.Dispose();
         SqliteConnection.ClearAllPools();
-        Environment.SetEnvironmentVariable(LegacyCompat.LegacyUploadTokenVariable, null);
         try { File.Delete(_dbPath); } catch { /* best-effort */ }
+    }
+
+    /// <summary>Settings that can change while the host runs (read live through IConfiguration).</summary>
+    internal sealed class MutableSettings : ConfigurationProvider, IConfigurationSource
+    {
+        public IConfigurationProvider Build(IConfigurationBuilder builder) => this;
     }
 
     private sealed class ProblemLogger(List<string> sink) : ILoggerProvider

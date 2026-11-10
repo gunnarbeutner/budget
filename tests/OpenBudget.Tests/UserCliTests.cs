@@ -12,7 +12,6 @@ namespace OpenBudget.Tests;
 /// The operator CLI (`OpenBudget users ...`), driven through its testable core against the real
 /// app services and a throwaway database — including the first-deploy ownership assignment.
 /// </summary>
-[Collection("ProcessEnvironment")]
 public sealed class UserCliTests : IDisposable
 {
     private readonly AppTestHost _host = new();

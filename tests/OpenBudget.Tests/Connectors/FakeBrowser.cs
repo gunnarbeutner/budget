@@ -16,9 +16,12 @@ internal sealed class FakeBrowserHost : IBrowserHost
     /// <summary>What the user does on the page once it has loaded (null: nothing, the login stays open).</summary>
     public Func<FakeBrowserSession, Task>? User { get; set; }
 
+    /// <summary>How long a fill waits for its field to appear (see <see cref="FakeBrowserSession.FieldWait"/>).</summary>
+    public TimeSpan FieldWait { get; set; } = TimeSpan.FromSeconds(2);
+
     public Task<IBrowserSession> OpenSessionAsync(CancellationToken ct)
     {
-        var session = new FakeBrowserSession(User);
+        var session = new FakeBrowserSession(User) { FieldWait = FieldWait };
         lock (Sessions) Sessions.Add(session);
         return Task.FromResult<IBrowserSession>(session);
     }
@@ -51,10 +54,14 @@ internal sealed class FakeBrowserSession : IBrowserSession
     /// <summary>Runs when something is clicked (the fake bank reacts to the submit button).</summary>
     public Func<FakeBrowserSession, string, Task>? OnClick { get; set; }
 
+    /// <summary>The most a fill waits for its field (the real browser waits for the page's script). A rig whose page never
+    /// shows a form (the user signs in by hand) sets it to zero: waiting could only ever end in "no field".</summary>
+    public TimeSpan FieldWait { get; init; } = TimeSpan.FromSeconds(2);
+
     public async Task<bool> FillAsync(string selector, string value, TimeSpan timeout)
     {
         // like the real browser: wait for the field (the page's script may still be loading), at most a moment in tests
-        var until = DateTime.UtcNow + (timeout < TimeSpan.FromSeconds(2) ? timeout : TimeSpan.FromSeconds(2));
+        var until = DateTime.UtcNow + (timeout < FieldWait ? timeout : FieldWait);
         while (true)
         {
             lock (Visible)

@@ -7,7 +7,6 @@ using Xunit;
 namespace OpenBudget.Tests.Connectors;
 
 /// <summary>The real app over HTTP: the bank-login page and the statement download URL.</summary>
-[Collection("ProcessEnvironment")]
 public sealed class BankHttpTests : IDisposable
 {
     private readonly string _statements = Path.Combine(Path.GetTempPath(), $"ob-http-stmts-{Guid.NewGuid():N}");
@@ -172,7 +171,6 @@ public sealed class BankHttpTests : IDisposable
 }
 
 /// <summary>Without a secrets key the app runs and the page explains why bank logins are off.</summary>
-[Collection("ProcessEnvironment")]
 public sealed class BankHttpWithoutKeyTests : IDisposable
 {
     private readonly AppTestHost _host = new((SecretsProtector.KeyVariable, ""));

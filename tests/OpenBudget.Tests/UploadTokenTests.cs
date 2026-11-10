@@ -1,6 +1,5 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
-using OpenBudget.Compat;
 using OpenBudget.Models;
 using Xunit;
 
@@ -11,7 +10,6 @@ namespace OpenBudget.Tests;
 /// (each upload lands in the source named in its URL, as before), and each source's own token works
 /// for that source only. None of it needs — or grants — a login.
 /// </summary>
-[Collection("ProcessEnvironment")]
 public sealed class UploadTokenTests : IDisposable
 {
     private readonly AppTestHost _host = new();
@@ -92,7 +90,7 @@ public sealed class UploadTokenTests : IDisposable
     public async Task Source_tokens_keep_working_when_the_legacy_token_is_not_configured()
     {
         await _host.SeedWorldAsync();
-        Environment.SetEnvironmentVariable(LegacyCompat.LegacyUploadTokenVariable, null);
+        _host.SetLegacyToken(null);
 
         Assert.Equal(HttpStatusCode.OK, await PostAsync("/api/moneymoney-db/bob", "tok-bob"));
         Assert.Equal(HttpStatusCode.Unauthorized, await PostAsync("/api/moneymoney-db/bob", AppTestHost.LegacyToken));
@@ -103,7 +101,7 @@ public sealed class UploadTokenTests : IDisposable
     public async Task Without_any_token_configured_the_endpoint_stays_disabled_as_before()
     {
         await _host.StartAsync();
-        Environment.SetEnvironmentVariable(LegacyCompat.LegacyUploadTokenVariable, null);
+        _host.SetLegacyToken(null);
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, await PostAsync("/api/moneymoney-db/whatever", "anything"));
     }

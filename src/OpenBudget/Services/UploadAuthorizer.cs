@@ -21,16 +21,22 @@ public sealed class UploadAuthorizer
 {
     private readonly SystemDbContextFactory _system;
     private readonly ILogger<UploadAuthorizer> _logger;
+    private readonly IConfiguration _configuration;
 
-    public UploadAuthorizer(SystemDbContextFactory system, ILogger<UploadAuthorizer> logger)
+    /// <summary>Creates the authorizer.</summary>
+    /// <remarks>The tokens are read through <see cref="IConfiguration"/>, which carries the process environment in
+    /// production (WebApplication.CreateBuilder adds all environment variables), so hosts in one process (tests) can
+    /// each have their own token instead of sharing the process-wide environment.</remarks>
+    public UploadAuthorizer(SystemDbContextFactory system, ILogger<UploadAuthorizer> logger, IConfiguration configuration)
     {
         _system = system;
         _logger = logger;
+        _configuration = configuration;
     }
 
     public async Task<UploadAuthResult> AuthorizeAsync(string? authorizationHeader, string sourceName, CancellationToken ct = default)
     {
-        var legacy = LegacyCompat.ResolveUploadToken(_logger);
+        var legacy = LegacyCompat.ResolveUploadToken(key => _configuration[key], _logger);
         if (UploadAuth.IsAuthorized(authorizationHeader, legacy)) return UploadAuthResult.Authorized;
 
         string? sourceToken;
