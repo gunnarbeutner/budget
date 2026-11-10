@@ -6,10 +6,12 @@ namespace OpenBudget.Services;
 public readonly record struct RuleSubject(
     long? AccountId, long Amount, string? Name, string? Purpose, string? BookingText,
     string? Comment = null, string? Note = null, string? CounterpartyIban = null, string? LocalAccount = null,
-    string? Currency = null, string? BankReference = null)
+    string? Currency = null, string? BankReference = null,
+    string? EndToEndReference = null, string? MandateReference = null, string? CreditorId = null)
 {
     public static RuleSubject Of(Transaction t, string? localAccount = null) =>
-        new(t.AccountId, t.Amount, t.Name, t.Purpose, t.BookingText, t.Comment, t.Note, t.CounterpartyIban, localAccount, t.Currency, t.BankReference);
+        new(t.AccountId, t.Amount, t.Name, t.Purpose, t.BookingText, t.Comment, t.Note, t.CounterpartyIban, localAccount, t.Currency, t.BankReference,
+            t.EndToEndReference, t.MandateReference, t.CreditorId);
 }
 
 /// <summary>

@@ -49,6 +49,44 @@ public sealed class FinTsParserTests
     }
 
     [Fact]
+    public void Mt940_reads_sepa_tags_counterparty_and_bank_codes()
+    {
+        const string mt940 = ":20:STARTUMS\r\n:25:12345678/1234567\r\n:28C:0/1\r\n:60F:C261031EUR1000,00\r\n"
+            + ":61:2611031103D12,30NMSCREF123//BANKREF9\r\n:86:105?00SEPA-Lastschrift?109310?20EREF+E2E-77?21MREF+M-0001?22CRED+DE00ZZZ0000001?23SVWZ+Monthly fee?30EXAMPLEXXXX?31DE00123456780000000001?32Example Utility?34MD06\r\n"
+            + ":62F:C261103EUR987,70\r\n-";
+        var t = Assert.Single(Mt940Parser.Parse(mt940, "EUR", booked: true));
+        Assert.Equal("Monthly fee", t.Purpose);
+        Assert.Equal("SEPA-Lastschrift", t.BookingText);
+        Assert.Equal("DE00123456780000000001", t.CounterpartyIban);
+        Assert.Equal("EXAMPLEXXXX", t.CounterpartyBic);
+        Assert.NotNull(t.Sepa);
+        Assert.Equal("E2E-77", t.Sepa!.EndToEndReference);
+        Assert.Equal("M-0001", t.Sepa.MandateReference);
+        Assert.Equal("DE00ZZZ0000001", t.Sepa.CreditorId);
+        Assert.Equal("105", t.Sepa.TransactionCode);
+        Assert.Equal("9310", t.Sepa.Primanota);
+        Assert.Equal("MD06", t.Sepa.ReturnReason);
+    }
+
+    [Fact]
+    public void Camt_reads_sepa_references_and_counterparty_account()
+    {
+        const string xml = "<Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:camt.052.001.08\"><BkToCstmrAcctRpt><Rpt><Ntry><Amt Ccy=\"EUR\">9.99</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-02-03</Dt></BookgDt>"
+            + "<NtryDtls><TxDtls><Refs><EndToEndId>E2E-5</EndToEndId><MndtId>M-0002</MndtId></Refs><BkTxCd><Prtry><Cd>NDDT+105+9310</Cd></Prtry></BkTxCd>"
+            + "<RltdPties><Cdtr><Pty><Nm>Example Streaming</Nm></Pty></Cdtr><CdtrAcct><Id><IBAN>DE00123456780000000002</IBAN></Id></CdtrAcct><CdtrSchmeId><Id><PrvtId><Othr><Id>DE00ZZZ0000003</Id></Othr></PrvtId></Id></CdtrSchmeId></RltdPties>"
+            + "<RltdAgts><CdtrAgt><FinInstnId><BICFI>EXAMPLEXXXX</BICFI></FinInstnId></CdtrAgt></RltdAgts><RmtInf><Ustrd>Subscription</Ustrd></RmtInf><AddtlTxInf>SEPA-Lastschrift</AddtlTxInf></TxDtls></NtryDtls></Ntry></Rpt></BkToCstmrAcctRpt></Document>";
+        var t = Assert.Single(CamtParser.Parse(xml, bookedDocument: true));
+        Assert.Equal("Example Streaming", t.Name);
+        Assert.Equal("DE00123456780000000002", t.CounterpartyIban);
+        Assert.Equal("EXAMPLEXXXX", t.CounterpartyBic);
+        Assert.Equal("SEPA-Lastschrift", t.BookingText);
+        Assert.Equal("E2E-5", t.Sepa!.EndToEndReference);
+        Assert.Equal("M-0002", t.Sepa.MandateReference);
+        Assert.Equal("DE00ZZZ0000003", t.Sepa.CreditorId);
+        Assert.Equal("NDDT+105+9310", t.Sepa.TransactionCode);
+    }
+
+    [Fact]
     public void Camt_with_a_doctype_is_refused()
     {
         Assert.Throws<FinTsProtocolException>(() => CamtParser.Parse("<!DOCTYPE x [<!ENTITY a \"b\">]><Document/>", true));

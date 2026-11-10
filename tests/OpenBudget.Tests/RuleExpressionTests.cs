@@ -192,4 +192,27 @@ public sealed class RuleExpressionTests
     [Fact]
     public void Empty_expression_decomposes_to_empty_inputs() =>
         Assert.Equal(new RuleParts(), RuleExpressionBuilder.TryDecompose("", Accounts));
+
+    [Theory]
+    [InlineData("mandate:M-0009", true)]
+    [InlineData("mandate:M-0001", false)]          // the stored field wins over the purpose's MREF
+    [InlineData("creditor_id=\"DE99ZZZ0000009\"", true)]
+    [InlineData("creditor_id:DE00ZZZ0000001", false)]
+    [InlineData("end_to_end:E2E-9", true)]
+    [InlineData("reference:E2E-9", true)]
+    [InlineData("reference:REF-77", true)]
+    [InlineData("reference:\"Card payment\"", false)] // with stored references the purpose is not searched
+    public void Sepa_fields_use_the_stored_values(string expression, bool expected)
+    {
+        var subject = Market with { EndToEndReference = "E2E-9", MandateReference = "M-0009", CreditorId = "DE99ZZZ0000009" };
+        Assert.Equal(expected, M(expression, subject));
+    }
+
+    [Theory]
+    [InlineData("end_to_end:123", true)]           // no stored value: the purpose is searched
+    [InlineData("reference:EREF", true)]
+    public void Sepa_fields_fall_back_to_the_purpose(string expression, bool expected)
+    {
+        Assert.Equal(expected, M(expression, Market with { BankReference = null }));
+    }
 }

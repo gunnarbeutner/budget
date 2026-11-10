@@ -30,7 +30,17 @@ public sealed record RemoteTransaction(
     string? BankTransactionId = null,
     string? CounterpartyIban = null,
     string? CounterpartyBic = null,
-    string? BookingText = null);
+    string? BookingText = null,
+    SepaDetails? Sepa = null);
+
+/// <summary>SEPA / bank detail fields of a booking, when the source reports them.</summary>
+public sealed record SepaDetails(
+    string? EndToEndReference = null,
+    string? MandateReference = null,
+    string? CreditorId = null,
+    string? TransactionCode = null,
+    string? Primanota = null,
+    string? ReturnReason = null);
 
 /// <summary>A depot position with its current price.</summary>
 public sealed record RemotePosition(

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -73,7 +74,30 @@ public class MoneyMoneyImportService
     };
     private static readonly string[] TransactionInsertParameters =
     {
-        "$id", "$sid", "$local_account_key", "$amount", "$currency", "$timestamp", "$name", "$comment", "$purpose", "$category_key", "$checkmark", "$splitted", "$booked", "$split_parent_id", "$split_original_amount", "$note", "$checked"
+        "$id", "$sid", "$local_account_key", "$amount", "$currency", "$timestamp", "$name", "$comment", "$purpose", "$category_key", "$checkmark", "$splitted", "$booked", "$split_parent_id", "$split_original_amount", "$note", "$checked",
+        "$value_timestamp", "$counterparty_iban", "$counterparty_bic", "$booking_text", "$bank_reference", "$end_to_end_reference", "$mandate_reference", "$creditor_id", "$transaction_code", "$primanota", "$return_reason"
+    };
+
+    /// <summary>
+    /// MoneyMoney's detail fields of a booking, by our column, with the MoneyMoney column names that may hold it (first
+    /// one present wins). MoneyMoney's database schema is not documented: the names follow its AppleScript / export
+    /// field names (accountNumber, bankCode, valueDate, bookingText, endToEndReference, mandateReference, creditorId,
+    /// transactionCode, primaNota, returnReason) in the snake_case its known columns use; the import probes them at
+    /// runtime and copies whatever exists, so an unknown name just stays empty.
+    /// </summary>
+    internal static readonly (string Column, bool IsDate, string[] Candidates)[] TransactionDetailColumns =
+    {
+        ("value_timestamp", true, new[] { "value_date", "value_timestamp", "valuedate", "value_day" }),
+        ("counterparty_iban", false, new[] { "account_number", "remote_account_number", "remote_account", "counterparty_account_number", "iban" }),
+        ("counterparty_bic", false, new[] { "bank_code", "remote_bank_code", "counterparty_bank_code", "bic" }),
+        ("booking_text", false, new[] { "booking_text", "bookingtext", "transaction_type" }),
+        ("bank_reference", false, new[] { "bank_reference", "transaction_reference", "reference" }),
+        ("end_to_end_reference", false, new[] { "end_to_end_reference", "endtoend_reference", "end_to_end_id", "eref" }),
+        ("mandate_reference", false, new[] { "mandate_reference", "mandate_id", "mref" }),
+        ("creditor_id", false, new[] { "creditor_id", "creditor_identifier", "cred" }),
+        ("transaction_code", false, new[] { "transaction_code", "business_transaction_code", "gvc" }),
+        ("primanota", false, new[] { "primanota", "prima_nota" }),
+        ("return_reason", false, new[] { "return_reason" }),
     };
     private static readonly string[] SecurityInsertParameters =
     {
@@ -436,19 +460,23 @@ public class MoneyMoneyImportService
     /// optional columns (e.g. SEPA <c>purpose</c>) backward-compatible with older MoneyMoney
     /// snapshots that may not carry them.
     /// </summary>
+    private static async Task<bool> ColumnExistsAsync(SqliteConnection src, string table, string column, CancellationToken ct) =>
+        (await ColumnsAsync(src, table, ct)).Contains(column);
+
+    /// <summary>The column names of <paramref name="table"/> (case-insensitive set).</summary>
     [SuppressMessage("Security", "CA2100:Review SQL queries for security vulnerabilities",
         Justification = "Table name is a compile-time-constant identifier from our own import code, never user input; PRAGMA cannot be parameterized.")]
-    private static async Task<bool> ColumnExistsAsync(SqliteConnection src, string table, string column, CancellationToken ct)
+    private static async Task<HashSet<string>> ColumnsAsync(SqliteConnection src, string table, CancellationToken ct)
     {
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         await using var cmd = src.CreateCommand();
         cmd.CommandText = $"PRAGMA table_info({table})";
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
-            var name = reader.GetString(reader.GetOrdinal("name"));
-            if (string.Equals(name, column, StringComparison.OrdinalIgnoreCase)) return true;
+            columns.Add(reader.GetString(reader.GetOrdinal("name")));
         }
-        return false;
+        return columns;
     }
 
     private static async Task<int> CopyAccountsAsync(
@@ -648,8 +676,13 @@ public class MoneyMoneyImportService
         // a live MoneyMoney 2.5-era SQLCipher db: rows there carry the BILLCOLL/EREF/MREF/CRED
         // raw text users see in the transaction detail pane). Older / forked schemas may not
         // have it — probe at runtime and substitute NULL so the import still succeeds.
-        bool hasPurpose = await ColumnExistsAsync(src, "transactions", "unformatted_purpose", ct);
-        string purposeExpr = hasPurpose ? "unformatted_purpose" : "NULL AS unformatted_purpose";
+        var columns = await ColumnsAsync(src, "transactions", ct);
+        // Without the unformatted text the formatted purpose is the next best thing.
+        string purposeExpr = columns.Contains("unformatted_purpose") ? "unformatted_purpose"
+            : columns.Contains("purpose") ? "purpose AS unformatted_purpose" : "NULL AS unformatted_purpose";
+        var detailExprs = TransactionDetailColumns
+            .Select(d => d.Candidates.FirstOrDefault(columns.Contains) is { } c ? "\"" + c + "\"" : "NULL")
+            .ToList();
         // booked: 0 = pending ("vorgemerkt"). Missing column => everything counts as booked.
         bool hasBooked = await ColumnExistsAsync(src, "transactions", "booked", ct);
         string bookedExpr = hasBooked ? "booked" : "1 AS booked";
@@ -662,12 +695,14 @@ public class MoneyMoneyImportService
             : (new Dictionary<long, long>(), new HashSet<long>());
 
         string select = $"""
-            SELECT rowid, local_account_key, amount, currency, timestamp, name, comment, {purposeExpr}, category_key, checkmark, splitted, {bookedExpr}, {splitKeyExpr}
+            SELECT rowid, local_account_key, amount, currency, timestamp, name, comment, {purposeExpr}, category_key, checkmark, splitted, {bookedExpr}, {splitKeyExpr}, {string.Join(", ", detailExprs)}
             FROM transactions
             """;
         const string insert = """
-            INSERT INTO transactions (Id, SourceId, local_account_key, amount, currency, timestamp, name, comment, purpose, category_key, checkmark, splitted, booked, split_parent_id, split_original_amount, note, "checked")
-            VALUES ($id, $sid, $local_account_key, $amount, $currency, $timestamp, $name, $comment, $purpose, $category_key, $checkmark, $splitted, $booked, $split_parent_id, $split_original_amount, $note, $checked)
+            INSERT INTO transactions (Id, SourceId, local_account_key, amount, currency, timestamp, name, comment, purpose, category_key, checkmark, splitted, booked, split_parent_id, split_original_amount, note, "checked",
+                value_timestamp, counterparty_iban, counterparty_bic, booking_text, bank_reference, end_to_end_reference, mandate_reference, creditor_id, transaction_code, primanota, return_reason)
+            VALUES ($id, $sid, $local_account_key, $amount, $currency, $timestamp, $name, $comment, $purpose, $category_key, $checkmark, $splitted, $booked, $split_parent_id, $split_original_amount, $note, $checked,
+                $value_timestamp, $counterparty_iban, $counterparty_bic, $booking_text, $bank_reference, $end_to_end_reference, $mandate_reference, $creditor_id, $transaction_code, $primanota, $return_reason)
             """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {
@@ -698,6 +733,7 @@ public class MoneyMoneyImportService
             cmd.Parameters["$booked"].Value = r.IsDBNull(11) || r.GetInt64(11) != 0 ? 1 : 0;
             cmd.Parameters["$split_parent_id"].Value = DBNull.Value;
             cmd.Parameters["$split_original_amount"].Value = DBNull.Value;
+            SetDetails(cmd, r, 13, r.IsDBNull(7) ? null : r.GetString(7));
 
             // Any row whose split_key points at an existing split parent is a child, whatever its
             // own splitted value: MoneyMoney also stores children with splitted=0, and counting
@@ -728,6 +764,39 @@ public class MoneyMoneyImportService
         }, TransactionInsertParameters, ct, skipRow: r =>
             !r.IsDBNull(1) && foreignAccountIds.Contains(SourceScope.Namespace(sourceId, r.GetInt64(1))));
     }
+
+    /// <summary>
+    /// Fills the detail parameters from the probed columns starting at <paramref name="first"/>. SEPA references
+    /// MoneyMoney has no column for are taken from the purpose's EREF+ / MREF+ / CRED+ tags.
+    /// </summary>
+    private static void SetDetails(SqliteCommand cmd, SqliteDataReader r, int first, string? purpose)
+    {
+        Dictionary<string, string>? tags = null;
+        for (int i = 0; i < TransactionDetailColumns.Length; i++)
+        {
+            var (column, isDate, _) = TransactionDetailColumns[i];
+            object? value = r.IsDBNull(first + i) ? null : isDate ? ToUnixSeconds(r.GetValue(first + i)) : Text(r.GetValue(first + i));
+            if (value == null && column is "end_to_end_reference" or "mandate_reference" or "creditor_id")
+            {
+                tags ??= SepaPurpose.Parse(purpose);
+                value = tags.GetValueOrDefault(column switch { "end_to_end_reference" => "EREF", "mandate_reference" => "MREF", _ => "CRED" });
+            }
+            cmd.Parameters["$" + column].Value = value ?? DBNull.Value;
+        }
+    }
+
+    private static string? Text(object value) => Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim() is { Length: > 0 } s ? s : null;
+
+    /// <summary>A date column as unix seconds: MoneyMoney stores dates as unix seconds like <c>timestamp</c>; ISO text is accepted too.</summary>
+    private static long? ToUnixSeconds(object value) => value switch
+    {
+        long l => l > 0 ? l : null,
+        double d => d > 0 ? (long)d : null,
+        string s when long.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l) => l > 0 ? l : null,
+        string s when DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dt)
+            => new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc)).ToUnixTimeSeconds(),
+        _ => null,
+    };
 
     /// <summary>
     /// Split children (rows whose split_key names an existing split parent, regardless of their

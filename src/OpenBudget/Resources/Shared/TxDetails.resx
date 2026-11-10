@@ -166,4 +166,22 @@
   <data name="Error_Denied" xml:space="preserve">
     <value>You may not change this booking.</value>
   </data>
+  <data name="EndToEndReference" xml:space="preserve">
+    <value>End-to-end reference</value>
+  </data>
+  <data name="MandateReference" xml:space="preserve">
+    <value>Mandate reference</value>
+  </data>
+  <data name="CreditorId" xml:space="preserve">
+    <value>Creditor ID</value>
+  </data>
+  <data name="TransactionCode" xml:space="preserve">
+    <value>Transaction code</value>
+  </data>
+  <data name="Primanota" xml:space="preserve">
+    <value>Primanota</value>
+  </data>
+  <data name="ReturnReason" xml:space="preserve">
+    <value>Return reason</value>
+  </data>
 </root>

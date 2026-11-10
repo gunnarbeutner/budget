@@ -143,6 +143,30 @@ public class Transaction
     [Column("bank_reference")]
     public string? BankReference { get; set; }
 
+    /// <summary>SEPA end-to-end reference (EREF / camt EndToEndId).</summary>
+    [Column("end_to_end_reference")]
+    public string? EndToEndReference { get; set; }
+
+    /// <summary>SEPA direct-debit mandate reference (MREF / camt MndtId).</summary>
+    [Column("mandate_reference")]
+    public string? MandateReference { get; set; }
+
+    /// <summary>SEPA creditor identifier (CRED / camt CdtrSchmeId).</summary>
+    [Column("creditor_id")]
+    public string? CreditorId { get; set; }
+
+    /// <summary>The bank's business transaction code (German GVC, e.g. "105", or a camt BkTxCd).</summary>
+    [Column("transaction_code")]
+    public string? TransactionCode { get; set; }
+
+    /// <summary>The bank's "Primanota" (journal number).</summary>
+    [Column("primanota")]
+    public string? Primanota { get; set; }
+
+    /// <summary>Return reason of a returned / reversed booking (SEPA reason code or text).</summary>
+    [Column("return_reason")]
+    public string? ReturnReason { get; set; }
+
     /// <summary>
     /// True when the booking moves money between the household's own accounts: it then counts as neither income nor
     /// spending (budget, cashflow, category sums) while the account balance still includes it. Set on both rows of a

@@ -388,4 +388,89 @@ public sealed class MoneyMoneyImportTests : IDisposable
         Assert.True(only.Dismissed);
         Assert.Equal("bakery", only.Expression);
     }
+
+    // ---- detail fields ----
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA2100", Justification = "Test-only constant SQL.")]
+    private static void Exec(string path, string sql)
+    {
+        using var conn = new SqliteConnection($"Data Source={path}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.ExecuteNonQuery();
+    }
+
+    [Fact]
+    public async Task Detail_columns_of_an_extended_schema_are_copied()
+    {
+        await using var t = new TestDb();
+        var path = BuildSnapshot(new[] { new Row(1, -10), new Row(1, -20) });
+        Exec(path, """
+            ALTER TABLE transactions ADD COLUMN value_date INTEGER;
+            ALTER TABLE transactions ADD COLUMN account_number TEXT;
+            ALTER TABLE transactions ADD COLUMN bank_code TEXT;
+            ALTER TABLE transactions ADD COLUMN booking_text TEXT;
+            ALTER TABLE transactions ADD COLUMN end_to_end_reference TEXT;
+            ALTER TABLE transactions ADD COLUMN mandate_reference TEXT;
+            ALTER TABLE transactions ADD COLUMN creditor_id TEXT;
+            ALTER TABLE transactions ADD COLUMN transaction_code INTEGER;
+            ALTER TABLE transactions ADD COLUMN primanota TEXT;
+            ALTER TABLE transactions ADD COLUMN return_reason TEXT;
+            ALTER TABLE transactions ADD COLUMN some_future_column TEXT;
+            UPDATE transactions SET value_date = 1780086400, account_number = 'DE00123456780000000001', bank_code = 'EXAMPLEXXXX',
+                booking_text = 'Lastschrift', end_to_end_reference = 'E2E-1', mandate_reference = 'M-42', creditor_id = 'DE00ZZZ0000001',
+                transaction_code = 105, primanota = '9310', return_reason = 'MD06', some_future_column = 'ignored'
+            WHERE rowid = 1;
+            UPDATE transactions SET unformatted_purpose = 'EREF+FROMPURPOSE MREF+M-7 CRED+DE11ZZZ0000002 SVWZ+Example' WHERE rowid = 2;
+            """);
+        await ImportAsync(t, path);
+        var rows = await TransactionsAsync(t);
+
+        var full = rows[0];
+        Assert.Equal(1780086400, full.ValueTimestamp);
+        Assert.Equal("DE00123456780000000001", full.CounterpartyIban);
+        Assert.Equal("EXAMPLEXXXX", full.CounterpartyBic);
+        Assert.Equal("Lastschrift", full.BookingText);
+        Assert.Equal("E2E-1", full.EndToEndReference);
+        Assert.Equal("M-42", full.MandateReference);
+        Assert.Equal("DE00ZZZ0000001", full.CreditorId);
+        Assert.Equal("105", full.TransactionCode);
+        Assert.Equal("9310", full.Primanota);
+        Assert.Equal("MD06", full.ReturnReason);
+
+        // Empty columns: the SEPA references come from the purpose's tags.
+        var tagged = rows[1];
+        Assert.Equal("FROMPURPOSE", tagged.EndToEndReference);
+        Assert.Equal("M-7", tagged.MandateReference);
+        Assert.Equal("DE11ZZZ0000002", tagged.CreditorId);
+        Assert.Null(tagged.ValueTimestamp);
+        Assert.Null(tagged.CounterpartyIban);
+
+        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = rows[0].SourceId });
+        Assert.Contains(page.Rows, r => r.MandateReference == "M-42" && r.TransactionCode == "105" && r.ReturnReason == "MD06");
+    }
+
+    [Fact]
+    public async Task A_minimal_old_schema_still_imports_without_detail_fields()
+    {
+        await using var t = new TestDb();
+        var path = Path.Combine(Path.GetTempPath(), $"ob-mm-{Guid.NewGuid():N}.sqlite");
+        _files.Add(path);
+        Exec(path, """
+            CREATE TABLE accounts (name TEXT, iban TEXT, currency TEXT, type INTEGER, portfolio INTEGER, balances TEXT, sort INTEGER, refresh_tsp INTEGER, error TEXT, group_key INTEGER);
+            CREATE TABLE category_groups (name TEXT, group_key INTEGER, sort INTEGER, color TEXT);
+            CREATE TABLE categories (name TEXT, type INTEGER, color TEXT, rules TEXT, group_key INTEGER, sort INTEGER);
+            CREATE TABLE transactions (local_account_key INTEGER, amount REAL, currency TEXT, timestamp INTEGER, name TEXT, comment TEXT, category_key INTEGER, checkmark INTEGER, splitted INTEGER);
+            INSERT INTO accounts (name, currency, type, balances) VALUES ('Acct1', 'EUR', 1, '');
+            INSERT INTO transactions (local_account_key, amount, currency, timestamp, name, checkmark, splitted) VALUES (1, -5, 'EUR', 1780000000, 'Example Shop', 0, 0);
+            """);
+        var result = await ImportAsync(t, path);
+        Assert.Equal(1, result.TransactionsImported);
+        var row = Assert.Single(await TransactionsAsync(t));
+        Assert.Equal(-500, row.Amount);
+        Assert.Null(row.Purpose);
+        Assert.Null(row.MandateReference);
+        Assert.Null(row.ValueTimestamp);
+    }
 }

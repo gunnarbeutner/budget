@@ -133,4 +133,10 @@ public class TransactionRow
     public string? CounterpartyBic { get; init; }
     public string? BookingText { get; init; }
     public string? BankReference { get; init; }
+    public string? EndToEndReference { get; init; }
+    public string? MandateReference { get; init; }
+    public string? CreditorId { get; init; }
+    public string? TransactionCode { get; init; }
+    public string? Primanota { get; init; }
+    public string? ReturnReason { get; init; }
 }

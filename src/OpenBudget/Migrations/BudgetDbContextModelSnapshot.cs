@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261110221954_RuleExpressions";
+        public override string LatestMigrationId => "20261110225854_TransactionSepaDetails";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -1413,9 +1413,17 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("counterparty_iban");
 
+                    b.Property<string>("CreditorId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("creditor_id");
+
                     b.Property<string>("Currency")
                         .HasColumnType("TEXT")
                         .HasColumnName("currency");
+
+                    b.Property<string>("EndToEndReference")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("end_to_end_reference");
 
                     b.Property<string>("ExternalId")
                         .HasColumnType("TEXT")
@@ -1433,6 +1441,10 @@ namespace OpenBudget.Migrations
                         .HasDefaultValue(false)
                         .HasColumnName("is_transfer");
 
+                    b.Property<string>("MandateReference")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("mandate_reference");
+
                     b.Property<string>("Name")
                         .HasColumnType("TEXT")
                         .HasColumnName("name");
@@ -1441,9 +1453,17 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("note");
 
+                    b.Property<string>("Primanota")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("primanota");
+
                     b.Property<string>("Purpose")
                         .HasColumnType("TEXT")
                         .HasColumnName("purpose");
+
+                    b.Property<string>("ReturnReason")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("return_reason");
 
                     b.Property<int?>("RuleId")
                         .HasColumnType("INTEGER")
@@ -1467,6 +1487,10 @@ namespace OpenBudget.Migrations
                     b.Property<long>("Timestamp")
                         .HasColumnType("INTEGER")
                         .HasColumnName("timestamp");
+
+                    b.Property<string>("TransactionCode")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("transaction_code");
 
                     b.Property<long?>("TransferPeerId")
                         .HasColumnType("INTEGER")

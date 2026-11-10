@@ -377,6 +377,9 @@ public sealed class CategoryRuleService
                 CounterpartyIban = t.CounterpartyIban,
                 Currency = t.Currency,
                 BankReference = t.BankReference,
+                EndToEndReference = t.EndToEndReference,
+                MandateReference = t.MandateReference,
+                CreditorId = t.CreditorId,
                 CategoryId = t.CategoryId,
                 CategorySetBy = t.CategorySetBy,
             }).ToListAsync(ct)).Select(t => (t, RuleSubject.Of(t, ibans.GetValueOrDefault(t.AccountId!.Value)))));

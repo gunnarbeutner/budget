@@ -95,6 +95,8 @@ public sealed class BankTransactionStore
 
             if (knownIds.Contains(externalId))
             {
+                // Rows stored before a detail field was read keep their data; only empty detail fields are filled in.
+                if (existing.Find(t => t.ExternalId == externalId) is { } stored) FillMissingDetails(stored, r);
                 known++;
                 continue;
             }
@@ -150,6 +152,20 @@ public sealed class BankTransactionStore
         return legacy.Find(t => t.Amount == cents && Math.Abs(t.Timestamp - ts) < 86400);
     }
 
+    private static void FillMissingDetails(Transaction t, RemoteTransaction r)
+    {
+        t.CounterpartyIban ??= r.CounterpartyIban;
+        t.CounterpartyBic ??= r.CounterpartyBic;
+        t.BookingText ??= r.BookingText;
+        if (r.Sepa is not { } sepa) return;
+        t.EndToEndReference ??= sepa.EndToEndReference;
+        t.MandateReference ??= sepa.MandateReference;
+        t.CreditorId ??= sepa.CreditorId;
+        t.TransactionCode ??= sepa.TransactionCode;
+        t.Primanota ??= sepa.Primanota;
+        t.ReturnReason ??= sepa.ReturnReason;
+    }
+
     private static Transaction NewRow(long id, int sourceId, long accountId, RemoteTransaction r, long cents, long ts, string? externalId) => new()
     {
         Id = id,
@@ -172,6 +188,12 @@ public sealed class BankTransactionStore
         CounterpartyBic = r.CounterpartyBic,
         BookingText = r.BookingText,
         BankReference = r.BankTransactionId,
+        EndToEndReference = r.Sepa?.EndToEndReference,
+        MandateReference = r.Sepa?.MandateReference,
+        CreditorId = r.Sepa?.CreditorId,
+        TransactionCode = r.Sepa?.TransactionCode,
+        Primanota = r.Sepa?.Primanota,
+        ReturnReason = r.Sepa?.ReturnReason,
     };
 
     private static async Task ReplaceHoldingsAsync(BudgetDbContext db, Account account, IReadOnlyList<RemotePosition> positions, CancellationToken ct)

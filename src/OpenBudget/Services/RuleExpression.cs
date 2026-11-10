@@ -84,19 +84,20 @@ public sealed class ParseException : Exception
 /// <item>Operators (upper case): <c>NOT</c> binds tighter than <c>AND</c>, which binds tighter than <c>OR</c>; terms
 /// next to each other are AND-ed; parentheses group.</item>
 /// <item>Fields: <c>field:value</c>, <c>field="value"</c>, <c>field!=value</c> (does not contain). Text fields:
-/// name, purpose, comment, booking_text, currency, reference, mandate, creditor_id, local_account (our account's
-/// IBAN), remote_account (the counterparty's IBAN); account fields ignore spaces. <c>account_id=N</c>: our account.</item>
+/// name, purpose, comment, booking_text, currency, reference, end_to_end, mandate, creditor_id, local_account (our
+/// account's IBAN), remote_account (the counterparty's IBAN); account fields ignore spaces. <c>account_id=N</c>: our account.</item>
 /// <item><c>amount</c> with <c>= == != &lt; &gt; &lt;= &gt;=</c> (or <c>:</c> for =), signed, decimal comma or point.</item>
 /// <item>Without a field a term is looked for in name, purpose, comment, note and booking text.</item>
 /// </list>
-/// Mandate reference and creditor id are not stored separately: <c>mandate</c> and <c>creditor_id</c> look into the
-/// purpose (where SEPA puts MREF / CRED), <c>reference</c> into the bank reference and the purpose. A field that is
-/// not known (e.g. <c>category</c>) never matches and is logged once.
+/// <c>end_to_end</c>, <c>mandate</c> and <c>creditor_id</c> look at the stored SEPA end-to-end reference, mandate
+/// reference and creditor id; for a booking without the field they fall back to the purpose (where SEPA puts EREF /
+/// MREF / CRED). <c>reference</c> looks at the bank reference and the end-to-end reference (the purpose when both are
+/// empty). A field that is not known (e.g. <c>category</c>) never matches and is logged once.
 /// </summary>
 public static class RuleExpression
 {
     public static readonly IReadOnlyList<string> TextFields =
-        ["name", "purpose", "comment", "booking_text", "currency", "reference", "mandate", "creditor_id", "local_account", "remote_account"];
+        ["name", "purpose", "comment", "booking_text", "currency", "reference", "end_to_end", "mandate", "creditor_id", "local_account", "remote_account"];
 
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly ConcurrentDictionary<string, IRuleNode?> Cache = new(StringComparer.Ordinal);
@@ -377,8 +378,11 @@ public static class RuleExpression
             "comment" => [t.Comment, t.Note],
             "booking_text" => [t.BookingText],
             "currency" => [t.Currency],
-            "reference" => [t.BankReference, t.Purpose],
-            "mandate" or "creditor_id" => [t.Purpose],
+            "reference" => string.IsNullOrEmpty(t.BankReference) && string.IsNullOrEmpty(t.EndToEndReference)
+                ? [t.Purpose] : [t.BankReference, t.EndToEndReference],
+            "end_to_end" => [OrPurpose(t.EndToEndReference, t)],
+            "mandate" => [OrPurpose(t.MandateReference, t)],
+            "creditor_id" => [OrPurpose(t.CreditorId, t)],
             "local_account" => [t.LocalAccount],
             "remote_account" => [t.CounterpartyIban],
             _ => [],
@@ -386,6 +390,8 @@ public static class RuleExpression
         var found = haystacks.Any(h => TextMatches(x, h, account));
         return x.Op == "!=" ? !found : found;
     }
+
+    private static string? OrPurpose(string? field, RuleSubject t) => string.IsNullOrEmpty(field) ? t.Purpose : field;
 
     private static bool TextMatches(TextTerm x, string? haystack, bool account)
     {

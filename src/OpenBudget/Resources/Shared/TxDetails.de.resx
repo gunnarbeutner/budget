@@ -166,4 +166,22 @@
   <data name="Error_Denied" xml:space="preserve">
     <value>Du darfst diese Buchung nicht ändern.</value>
   </data>
+  <data name="EndToEndReference" xml:space="preserve">
+    <value>Ende-zu-Ende-Referenz</value>
+  </data>
+  <data name="MandateReference" xml:space="preserve">
+    <value>Mandatsreferenz</value>
+  </data>
+  <data name="CreditorId" xml:space="preserve">
+    <value>Gläubiger-ID</value>
+  </data>
+  <data name="TransactionCode" xml:space="preserve">
+    <value>Geschäftsvorfallcode</value>
+  </data>
+  <data name="Primanota" xml:space="preserve">
+    <value>Primanota</value>
+  </data>
+  <data name="ReturnReason" xml:space="preserve">
+    <value>Rückgabegrund</value>
+  </data>
 </root>

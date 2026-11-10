@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
+using OpenBudget.Services;
 
 namespace OpenBudget.Connectors.FinTs;
 
@@ -74,9 +75,39 @@ internal static class CamtParser
                 string.IsNullOrWhiteSpace(counterparty) ? null : counterparty.Trim(),
                 string.IsNullOrWhiteSpace(purpose) ? null : purpose,
                 booked,
-                reference));
+                reference,
+                details == null ? null : Deep(details, credit ? "DbtrAcct" : "CdtrAcct", "IBAN"),
+                details == null ? null : Deep(details, credit ? "DbtrAgt" : "CdtrAgt", "BIC") ?? Deep(details, credit ? "DbtrAgt" : "CdtrAgt", "BICFI"),
+                details == null ? null : Deep(details, "AddtlTxInf"),
+                Sepa(entry, details)));
         }
         return result;
+    }
+
+    private static SepaDetails? Sepa(XElement entry, XElement? details)
+    {
+        static string? Real(string? v) => v == null || v.Equals("NOTPROVIDED", StringComparison.OrdinalIgnoreCase) ? null : v;
+        var code = Deep(details ?? entry, "BkTxCd", "Prtry", "Cd") ?? Deep(entry, "BkTxCd", "Prtry", "Cd");
+        var sepa = details == null
+            ? new SepaDetails(TransactionCode: code)
+            : new SepaDetails(
+                Real(Deep(details, "Refs", "EndToEndId")),
+                Real(Deep(details, "Refs", "MndtId") ?? Deep(details, "MndtRltdInf", "MndtId")),
+                Real(Deep(details, "CdtrSchmeId", "Othr", "Id") ?? Deep(details, "CdtrSchmeId", "Id")),
+                code,
+                null,
+                Deep(details, "RtrInf", "Rsn", "Cd") ?? Deep(details, "RtrInf", "AddtlInf"));
+        return sepa == new SepaDetails() ? null : sepa;
+    }
+
+    /// <summary>Text of the first element reached by following <paramref name="path"/> through descendants; null when missing or empty.</summary>
+    private static string? Deep(XElement parent, params string[] path)
+    {
+        IEnumerable<XElement> current = [parent];
+        foreach (var name in path)
+            current = current.SelectMany(c => c.Descendants().Where(e => e.Name.LocalName == name)).Take(1).ToList();
+        var value = current.FirstOrDefault()?.Value.Trim();
+        return string.IsNullOrEmpty(value) ? null : value;
     }
 
     private static XElement? Child(XElement parent, string name) => parent.Elements().FirstOrDefault(e => e.Name.LocalName == name);
@@ -206,14 +237,22 @@ internal static partial class Mt940Parser
         var bankReference = slashes >= 0 ? rest[(slashes + 2)..].Trim() : null;
         if (string.IsNullOrEmpty(bankReference) || bankReference.Equals("NONREF", StringComparison.OrdinalIgnoreCase)) bankReference = null;
 
-        var (name, purpose) = ParseInfo(info);
-        return new RemoteTransaction(signed, currency, bookingDate, valueDate, name, purpose, booked, bankReference);
+        var i = ParseInfo(info);
+        var sepa = new SepaDetails(i.Tags.GetValueOrDefault("EREF"), i.Tags.GetValueOrDefault("MREF"), i.Tags.GetValueOrDefault("CRED"),
+            i.Gvc, i.Primanota, i.ReturnReason);
+        return new RemoteTransaction(signed, currency, bookingDate, valueDate, i.Name, i.Purpose, booked, bankReference,
+            i.Iban ?? i.Tags.GetValueOrDefault("IBAN"), i.Bic ?? i.Tags.GetValueOrDefault("BIC"), i.BookingText,
+            sepa == new SepaDetails() ? null : sepa);
     }
 
-    private static (string? Name, string? Purpose) ParseInfo(string info)
+    /// <summary>The parts of a :86: field: ?00 booking text, ?10 primanota, ?20-29/?60-63 purpose, ?30 BIC/BLZ, ?31 IBAN/account, ?32-33 name, ?34 return reason; the GVC precedes the first '?'.</summary>
+    private sealed record Info86(string? Name, string? Purpose, Dictionary<string, string> Tags, string? Gvc = null, string? BookingText = null,
+        string? Primanota = null, string? Bic = null, string? Iban = null, string? ReturnReason = null);
+
+    private static Info86 ParseInfo(string info)
     {
-        if (info.Length == 0) return (null, null);
-        if (!info.Contains('?', StringComparison.Ordinal)) return (null, info.Trim());
+        if (info.Length == 0) return new(null, null, []);
+        if (!info.Contains('?', StringComparison.Ordinal)) return new(null, info.Trim(), SepaPurpose.Parse(info));
         var fields = new SortedDictionary<int, string>();
         foreach (var part in info.Split('?').Skip(1))
         {
@@ -222,7 +261,10 @@ internal static partial class Mt940Parser
         }
         var purposeText = string.Concat(fields.Where(f => f.Key is (>= 20 and <= 29) or (>= 60 and <= 63)).Select(f => f.Value));
         var name = string.Join(' ', new[] { fields.GetValueOrDefault(32), fields.GetValueOrDefault(33) }.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!.Trim()));
-        return (name.Length == 0 ? null : name, ExtractPurpose(purposeText));
+        var gvc = info[..info.IndexOf('?', StringComparison.Ordinal)].Trim();
+        string? F(int n) => fields.GetValueOrDefault(n)?.Trim() is { Length: > 0 } v ? v : null;
+        return new(name.Length == 0 ? null : name, ExtractPurpose(purposeText), SepaPurpose.Parse(purposeText),
+            gvc.Length == 0 ? null : gvc, F(0), F(10), F(30), F(31), F(34));
     }
 
     private static string? ExtractPurpose(string text)
