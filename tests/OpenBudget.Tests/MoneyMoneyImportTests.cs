@@ -29,7 +29,7 @@ public sealed class MoneyMoneyImportTests : IDisposable
     /// <summary>One synthetic transactions row; rowids are assigned in insertion order starting at 1.</summary>
     private sealed record Row(long Account, double Amount, long Splitted = 0, long? SplitKey = null, int Booked = 1, long Ts = 1_780_000_000, long? Category = null);
 
-    private string BuildSnapshot(Row[] rows, bool withBooked = true, bool withSplitKey = true, int accounts = 2)
+    private string BuildSnapshot(Row[] rows, bool withBooked = true, bool withSplitKey = true, int accounts = 2, string? foodRules = null)
     {
         var path = Path.Combine(Path.GetTempPath(), $"ob-mm-{Guid.NewGuid():N}.sqlite");
         _files.Add(path);
@@ -49,6 +49,13 @@ public sealed class MoneyMoneyImportTests : IDisposable
                 INSERT INTO categories (name, type) VALUES ('', 1);
                 INSERT INTO categories (name, type) VALUES ('Food', 1);
                 """;
+            cmd.ExecuteNonQuery();
+        }
+        if (foodRules != null)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE categories SET rules = $r WHERE name = 'Food'";
+            cmd.Parameters.AddWithValue("$r", foodRules);
             cmd.ExecuteNonQuery();
         }
         for (int a = 1; a <= accounts; a++)
@@ -308,5 +315,77 @@ public sealed class MoneyMoneyImportTests : IDisposable
         Assert.Equal(2, (await TransactionsAsync(t)).Count);
         await using var db = await t.Factory.CreateDbContextAsync();
         Assert.All(await db.Accounts.ToListAsync(), a => Assert.Equal(AccountProviders.MoneyMoney, a.Provider));
+    }
+
+    // ---- category rules ----
+
+    private static async Task<List<CategoryRule>> RulesAsync(TestDb t)
+    {
+        await using var db = await t.Factory.CreateDbContextAsync();
+        return await db.CategoryRules.AsNoTracking().OrderBy(r => r.Id).ToListAsync();
+    }
+
+    [Fact]
+    public async Task Category_rules_become_project_rules_idempotently_and_respect_user_edits()
+    {
+        await using var t = new TestDb();
+        const string first = "name:\"Example Market\" OR bakery";
+        var result = await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: first));
+        Assert.Empty(await RulesAsync(t)); // no project yet
+        await using (var db = await t.Factory.CreateDbContextAsync())
+        {
+            db.Projects.Add(new Project { Name = "Household", SourceId = result.SourceId });
+            await db.SaveChangesAsync();
+        }
+
+        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: first));
+        var rule = Assert.Single(await RulesAsync(t));
+        Assert.Equal(first, rule.Expression);
+        Assert.Equal(MoneyMoneyRuleImport.Origin, rule.ImportOrigin);
+        Assert.Equal(SourceScope.Namespace(result.SourceId, 2), rule.CategoryId);
+
+        // Same again: no duplicate. Changed upstream: updated in place.
+        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: first));
+        Assert.Single(await RulesAsync(t));
+        const string second = "name:\"Example Market\"";
+        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: second));
+        Assert.Equal(second, Assert.Single(await RulesAsync(t)).Expression);
+
+        // Edited here: later uploads leave it alone.
+        await using (var db = await t.Factory.CreateDbContextAsync())
+        {
+            (await db.CategoryRules.SingleAsync()).Expression = "sample";
+            await db.SaveChangesAsync();
+        }
+        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: first));
+        Assert.Equal("sample", Assert.Single(await RulesAsync(t)).Expression);
+    }
+
+    [Fact]
+    public async Task A_dismissed_imported_rule_is_not_recreated_and_an_untouched_one_follows_an_emptied_rule()
+    {
+        await using var t = new TestDb();
+        var result = await ImportAsync(t, BuildSnapshot([new Row(1, -1)]));
+        await using (var db = await t.Factory.CreateDbContextAsync())
+        {
+            db.Projects.Add(new Project { Name = "Household", SourceId = result.SourceId });
+            await db.SaveChangesAsync();
+        }
+        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: "bakery"));
+        Assert.Single(await RulesAsync(t));
+        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: ""));
+        Assert.Empty(await RulesAsync(t));
+
+        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: "bakery"));
+        await using (var db = await t.Factory.CreateDbContextAsync())
+        {
+            var r = await db.CategoryRules.SingleAsync();
+            r.Dismissed = true;
+            await db.SaveChangesAsync();
+        }
+        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: "bakery OR market"));
+        var only = Assert.Single(await RulesAsync(t));
+        Assert.True(only.Dismissed);
+        Assert.Equal("bakery", only.Expression);
     }
 }

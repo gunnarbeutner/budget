@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace OpenBudget.Models;
 
-/// <summary>Which sign of amount a <see cref="CategoryRule"/> matches.</summary>
+/// <summary>Which sign of amount the rule editor's convenience inputs restrict to (composed into the expression).</summary>
 public enum RuleAmountSign
 {
     Any = 0,
@@ -13,9 +13,8 @@ public enum RuleAmountSign
 
 /// <summary>
 /// A categorisation rule of a project (edited in a category's rules bar on Transactions). Rules are ordered per project (<see cref="SortOrder"/>); the
-/// first enabled rule whose conditions all hold sets the category of an uncategorised transaction. Rules never touch a
-/// category chosen by hand. Text conditions are case-insensitive "contains", or regular expressions when
-/// <see cref="UseRegex"/> is set. Amount bounds are absolute values in cents, so "10 to 50" works for expenses too.
+/// first enabled rule whose <see cref="Expression"/> matches sets the category of an uncategorised transaction. Rules
+/// never touch a category chosen by hand.
 /// </summary>
 [Table("category_rules")]
 public class CategoryRule
@@ -32,26 +31,25 @@ public class CategoryRule
 
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Matched against the payee / counterparty name.</summary>
-    [MaxLength(500)]
-    public string? PayeeText { get; set; }
+    /// <summary>The condition, a search expression (see <see cref="Services.RuleExpression"/>).</summary>
+    [MaxLength(4000)]
+    public string Expression { get; set; } = "";
 
-    /// <summary>Matched against the purpose and the bank's booking text.</summary>
-    [MaxLength(500)]
-    public string? PurposeText { get; set; }
+    /// <summary>Where the rule came from: null = made here, otherwise the name of the importer that created it.</summary>
+    [MaxLength(32)]
+    public string? ImportOrigin { get; set; }
 
-    public bool UseRegex { get; set; }
+    /// <summary>
+    /// For imported rules: the expression as last imported. While <see cref="Expression"/> still equals it the rule is
+    /// untouched and a re-import may update it; once the user edited it, re-imports leave it alone.
+    /// </summary>
+    [MaxLength(4000)]
+    public string? ImportedExpression { get; set; }
 
-    /// <summary>Restricts the rule to one account; null = every account of the project.</summary>
-    public long? AccountId { get; set; }
-
-    public RuleAmountSign AmountSign { get; set; }
-
-    /// <summary>Lower bound of the absolute amount in cents (inclusive), if any.</summary>
-    public long? MinAmountCents { get; set; }
-
-    /// <summary>Upper bound of the absolute amount in cents (inclusive), if any.</summary>
-    public long? MaxAmountCents { get; set; }
+    /// <summary>
+    /// An imported rule the user deleted: kept (hidden, never applied) so that re-imports do not bring it back.
+    /// </summary>
+    public bool Dismissed { get; set; }
 
     /// <summary>The category to set (a category of the project's source).</summary>
     public long CategoryId { get; set; }

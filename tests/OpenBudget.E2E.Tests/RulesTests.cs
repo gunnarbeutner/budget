@@ -122,6 +122,7 @@ public sealed class RulesTests : EndToEndTestBase
         await Expect(bar).ToContainTextAsync("Groceries");
         var payee = bar.GetByTestId("rule-payee");
         await Expect(payee).ToHaveValueAsync("Example Grocer");
+        await Expect(bar.GetByTestId("rule-expression")).ToHaveValueAsync("name:\"Example Grocer\"");
         await Expect(bar.GetByTestId("rules-preview-count")).ToHaveTextAsync("3 bookings match");
 
         await payee.PressAsync("Enter");
@@ -142,6 +143,41 @@ public sealed class RulesTests : EndToEndTestBase
 
         // The category's list now shows them.
         await Expect(Page.GetByTestId("tx-row").Filter(new() { HasText = "Example Grocer" })).ToHaveCountAsync(3);
+    }
+
+    [Test]
+    public async Task The_expression_is_edited_as_text_and_the_inputs_follow_it()
+    {
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=cat-200&rules=1");
+        var bar = Page.GetByTestId("rules-bar");
+        await bar.GetByTestId("rules-add").ClickAsync();
+        var expression = bar.GetByTestId("rule-expression");
+
+        // The inputs compose the expression ...
+        await bar.GetByTestId("rule-payee").FillAsync("example grocer");
+        await Expect(expression).ToHaveValueAsync("name:\"example grocer\"");
+
+        // ... a richer expression is text-only, with the live preview ...
+        await expression.FillAsync("grocer AND (amount<-26 OR amount>0)");
+        await Expect(bar.GetByTestId("rule-text-only")).ToBeVisibleAsync();
+        await Expect(bar.GetByTestId("rule-payee")).ToHaveCountAsync(0);
+        await Expect(bar.GetByTestId("rules-preview-count")).ToHaveTextAsync("1 booking matches");
+
+        // ... an invalid one says so and cannot be saved ...
+        await expression.FillAsync("grocer AND (");
+        await Expect(bar.GetByTestId("rule-syntax-error")).ToBeVisibleAsync();
+        await bar.GetByTestId("rule-save").ClickAsync();
+        await Expect(bar.GetByTestId("rule-error")).ToBeVisibleAsync();
+
+        // ... and a simple one brings the inputs back.
+        await expression.FillAsync("name:\"Example Grocer\" AND amount<0");
+        await Expect(bar.GetByTestId("rule-payee")).ToHaveValueAsync("Example Grocer");
+        await bar.GetByTestId("rule-save").ClickAsync();
+        await Expect(bar.GetByTestId("rule-matches")).ToHaveTextAsync("3");
+
+        var factory = AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        await using var db = await factory.CreateDbContextAsync();
+        Assert.That((await db.CategoryRules.SingleAsync()).Expression, Is.EqualTo("name:\"Example Grocer\" AND amount<0"));
     }
 
     [Test]

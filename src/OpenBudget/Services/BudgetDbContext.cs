@@ -233,7 +233,6 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<StatementRead>().HasOne<AppUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<CategoryRule>().HasOne(r => r.Project).WithMany().HasForeignKey(r => r.ProjectId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<CategoryRule>().HasIndex(r => new { r.ProjectId, r.SortOrder });
-        modelBuilder.Entity<CategoryRule>().Property(r => r.AmountSign).HasConversion<int>();
 
         modelBuilder.Entity<CategoryGroup>()
             .HasOne(cg => cg.ParentGroup)

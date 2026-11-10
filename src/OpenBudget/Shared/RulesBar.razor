@@ -5,7 +5,8 @@
 @inject IStringLocalizer<RulesBar> L
 
 @* The rules bar of a category (Transactions › right-click a category › Rules…): the categorisation rules that set
-   this category, edited in place. Every row is its own little form: typing changes a draft (Enter saves, Esc
+   this category, edited in place. A rule is a search expression (RuleExpression); the text field edits it directly,
+   and while it has the simple shape the builder composes, the payee / purpose / account / amount inputs edit it too. Every row is its own little form: typing changes a draft (Enter saves, Esc
    reverts) and, while a row has unsaved changes, the transaction list below shows the bookings of the whole project
    the draft would match (OnPreview; null = back to the normal list). Order within the category is changed with the
    arrows; across categories the stored order decides (new rules go to the end). *@
@@ -52,17 +53,27 @@
             var savedCount = rows.Count(r => r.Id > 0);
             <div class="rules-row @(row.Dirty ? "dirty" : "") @(row.Draft.Enabled ? "" : "disabled")" data-testid="rule-row" @key="row.Key"
                  @onkeydown="e => OnKeyAsync(row, e)">
-                <input class="form-control form-control-sm rules-text" data-testid="rule-payee" maxlength="500"
-                       placeholder="@L["Field_Payee"]" aria-label="@L["Field_Payee"]"
-                       value="@row.Draft.PayeeText" @oninput="e => Edit(row, d => d.PayeeText = e.Value?.ToString())" />
-                <input class="form-control form-control-sm rules-text" data-testid="rule-purpose" maxlength="500"
-                       placeholder="@L["Field_Purpose"]" aria-label="@L["Field_Purpose"]"
-                       value="@row.Draft.PurposeText" @oninput="e => Edit(row, d => d.PurposeText = e.Value?.ToString())" />
-                <label class="rules-check" title="@L["Field_RegexTitle"]">
-                    <input type="checkbox" class="form-check-input" data-testid="rule-regex" checked="@row.Draft.UseRegex"
-                           @onchange="e => Edit(row, d => d.UseRegex = e.Value is true)" /> @L["Field_Regex"]
-                </label>
-                <button type="button" class="ob-btn ob-btn-sm @(row.More ? "active" : "")" data-testid="rule-more"
+                <input class="form-control form-control-sm font-monospace rules-expr @(row.SyntaxError != null ? "is-invalid" : "")" data-testid="rule-expression" maxlength="4000"
+                       placeholder="@L["Field_Expression"]" aria-label="@L["Field_Expression"]" title="@L["Field_ExpressionTitle"]" spellcheck="false"
+                       value="@row.Draft.Expression" @oninput="e => EditExpression(row, e.Value?.ToString())" />
+                @if (row.Parts is { } parts)
+                {
+                    <input class="form-control form-control-sm rules-text" data-testid="rule-payee" maxlength="500"
+                           placeholder="@L["Field_Payee"]" aria-label="@L["Field_Payee"]"
+                           value="@parts.Payee" @oninput="e => EditParts(row, p => p with { Payee = e.Value?.ToString() })" />
+                    <input class="form-control form-control-sm rules-text" data-testid="rule-purpose" maxlength="500"
+                           placeholder="@L["Field_Purpose"]" aria-label="@L["Field_Purpose"]"
+                           value="@parts.Purpose" @oninput="e => EditParts(row, p => p with { Purpose = e.Value?.ToString() })" />
+                    <label class="rules-check" title="@L["Field_RegexTitle"]">
+                        <input type="checkbox" class="form-check-input" data-testid="rule-regex" checked="@parts.Regex"
+                               @onchange="e => EditParts(row, p => p with { Regex = e.Value is true })" /> @L["Field_Regex"]
+                    </label>
+                }
+                else
+                {
+                    <span class="rules-textonly small text-body-secondary" data-testid="rule-text-only">@L["TextOnly"]</span>
+                }
+                <button type="button" class="ob-btn ob-btn-sm @(row.More ? "active" : "")" data-testid="rule-more" disabled="@(row.Parts == null)"
                         aria-expanded="@row.More.ToString().ToLowerInvariant()" title="@L["More"]" @onclick="() => row.More = !row.More">
                     <i class="bi bi-sliders" aria-hidden="true"></i>@if (row.HasMoreConditions) { <span class="ob-badge">•</span> }
                 </button>
@@ -94,12 +105,12 @@
                         }
                     }
                 </div>
-                @if (row.More)
+                @if (row.More && row.Parts is { } more)
                 {
                     <div class="rules-more" data-testid="rule-more-panel">
                         <select class="form-select form-select-sm" data-testid="rule-account" aria-label="@L["Field_Account"]"
-                                value="@(row.Draft.AccountId?.ToString(CultureInfo.InvariantCulture) ?? "")"
-                                @onchange="e => Edit(row, d => d.AccountId = long.TryParse(e.Value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var acc) ? acc : null)">
+                                value="@(more.AccountId?.ToString(CultureInfo.InvariantCulture) ?? "")"
+                                @onchange="e => EditParts(row, p => p with { AccountId = long.TryParse(e.Value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var acc) ? acc : null })">
                             <option value="">@L["Field_AnyAccount"]</option>
                             @foreach (var a in accounts)
                             {
@@ -107,8 +118,8 @@
                             }
                         </select>
                         <select class="form-select form-select-sm" data-testid="rule-sign" aria-label="@L["Field_Sign"]"
-                                value="@row.Draft.AmountSign.ToString()"
-                                @onchange="e => Edit(row, d => d.AmountSign = Enum.TryParse<RuleAmountSign>(e.Value?.ToString(), out var s) ? s : RuleAmountSign.Any)">
+                                value="@more.Sign.ToString()"
+                                @onchange="e => EditParts(row, p => p with { Sign = Enum.TryParse<RuleAmountSign>(e.Value?.ToString(), out var s) ? s : RuleAmountSign.Any })">
                             <option value="@RuleAmountSign.Any">@L["Sign_Any"]</option>
                             <option value="@RuleAmountSign.Expense">@L["Sign_Expense"]</option>
                             <option value="@RuleAmountSign.Income">@L["Sign_Income"]</option>
@@ -120,6 +131,10 @@
                                placeholder="@L["Field_Max"]" aria-label="@L["Field_Max"]" value="@row.MaxText"
                                @oninput="e => EditAmount(row, e.Value?.ToString(), false)" />
                     </div>
+                }
+                @if (row.SyntaxError != null && string.IsNullOrEmpty(row.Error))
+                {
+                    <div class="rules-error small text-danger" data-testid="rule-syntax-error">@L["Error_Syntax", row.SyntaxError]</div>
                 }
                 @if (!string.IsNullOrEmpty(row.Error))
                 {
@@ -156,11 +171,15 @@
         public bool ConfirmDelete { get; set; }
         public string? Error { get; set; }
         public int MatchCount { get; set; }
-        public bool HasMoreConditions => Draft.AccountId != null || Draft.AmountSign != RuleAmountSign.Any || !string.IsNullOrWhiteSpace(MinText) || !string.IsNullOrWhiteSpace(MaxText);
+        /// <summary>The builder inputs, or null when the expression has a shape only the text field can edit.</summary>
+        public RuleParts? Parts { get; set; }
+        public string? SyntaxError { get; set; }
+        public bool HasMoreConditions => Parts is { } p && (p.AccountId != null || p.Sign != RuleAmountSign.Any || p.Min != null || p.Max != null);
     }
 
     private List<RowState>? rows;
-    private List<RuleOption<long>> accounts = [];
+    private List<RuleAccountOption> accounts = [];
+    private List<RuleAccount> ruleAccounts = [];
     private int applyCount;
     private int? previewCount;
     private string? status;
@@ -177,6 +196,7 @@
             rows = null;
             status = null;
             accounts = await RuleService.GetAccountsAsync(ProjectId);
+            ruleAccounts = accounts.Select(a => new RuleAccount(a.Id, a.Iban)).ToList();
             await LoadAsync();
         }
         if (PrefillToken != handledPrefill)
@@ -185,7 +205,7 @@
             if (!string.IsNullOrWhiteSpace(PrefillPayee))
             {
                 var row = NewDraft();
-                row.Draft.PayeeText = PrefillPayee.Trim();
+                SetParts(row, new RuleParts { Payee = PrefillPayee.Trim() });
                 row.Dirty = true;
                 await SchedulePreviewAsync(row, immediate: true);
             }
@@ -202,31 +222,55 @@
 
     private static CategoryRule Copy(CategoryRule r) => new()
     {
-        Id = r.Id, ProjectId = r.ProjectId, Name = r.Name, Enabled = r.Enabled, PayeeText = r.PayeeText, PurposeText = r.PurposeText,
-        UseRegex = r.UseRegex, AccountId = r.AccountId, AmountSign = r.AmountSign, MinAmountCents = r.MinAmountCents,
-        MaxAmountCents = r.MaxAmountCents, CategoryId = r.CategoryId, SortOrder = r.SortOrder,
+        Id = r.Id, ProjectId = r.ProjectId, Name = r.Name, Enabled = r.Enabled, Expression = r.Expression,
+        CategoryId = r.CategoryId, SortOrder = r.SortOrder,
     };
 
-    private static string? CentsText(long? cents) => cents is { } c ? (c / 100m).ToString("0.00", CultureInfo.CurrentCulture) : null;
+    private static string? AmountText(decimal? value) => value?.ToString("0.00", CultureInfo.CurrentCulture);
 
-    private static RowState FromRule(CategoryRule rule, int matches) => new()
+    private RowState FromRule(CategoryRule rule, int matches)
     {
-        Draft = Copy(rule),
-        Saved = rule,
-        MinText = CentsText(rule.MinAmountCents),
-        MaxText = CentsText(rule.MaxAmountCents),
-        MatchCount = matches,
-        More = rule.AccountId != null || rule.AmountSign != RuleAmountSign.Any || rule.MinAmountCents != null || rule.MaxAmountCents != null,
-    };
+        var row = new RowState { Draft = Copy(rule), Saved = rule, MatchCount = matches };
+        Reparse(row);
+        row.More = row.HasMoreConditions;
+        return row;
+    }
+
+    /// <summary>Re-derives the builder inputs and the syntax message from the draft's expression.</summary>
+    private void Reparse(RowState row)
+    {
+        var text = row.Draft.Expression;
+        row.SyntaxError = !string.IsNullOrWhiteSpace(text) && RuleExpression.TryParse(text, out var error) == null ? error : null;
+        row.Parts = row.SyntaxError == null ? RuleExpressionBuilder.TryDecompose(text, ruleAccounts) : null;
+        row.MinText = AmountText(row.Parts?.Min);
+        row.MaxText = AmountText(row.Parts?.Max);
+        if (row.Parts == null) row.More = false;
+    }
+
+    private void SetParts(RowState row, RuleParts parts)
+    {
+        row.Parts = parts;
+        row.Draft.Expression = RuleExpressionBuilder.Compose(parts, ruleAccounts);
+        row.SyntaxError = null;
+    }
 
     private RowState NewDraft()
     {
         status = null;
-        var row = new RowState { Draft = new CategoryRule { ProjectId = ProjectId, CategoryId = CategoryId, Enabled = true } };
+        var row = new RowState { Draft = new CategoryRule { ProjectId = ProjectId, CategoryId = CategoryId, Enabled = true }, Parts = new RuleParts() };
         rows ??= [];
         rows.Add(row);
         return row;
     }
+
+    private Task EditExpression(RowState row, string? text) => Edit(row, d =>
+    {
+        d.Expression = text ?? "";
+        Reparse(row);
+    });
+
+    private Task EditParts(RowState row, Func<RuleParts, RuleParts> change) =>
+        row.Parts is { } parts ? Edit(row, _ => SetParts(row, change(parts))) : Task.CompletedTask;
 
     private void AddDraft() => NewDraft();
 
@@ -242,13 +286,8 @@
     private Task EditAmount(RowState row, string? text, bool min)
     {
         if (min) row.MinText = text; else row.MaxText = text;
-        return Edit(row, d =>
-        {
-            if (TryCents(text, out var cents))
-            {
-                if (min) d.MinAmountCents = cents; else d.MaxAmountCents = cents;
-            }
-        });
+        if (!TryAmount(text, out var value)) return Task.CompletedTask;
+        return EditParts(row, p => min ? p with { Min = value } : p with { Max = value });
     }
 
     // Debounced: the handler returns at once; the preview runs after a short pause in typing (token, no timer).
@@ -283,25 +322,23 @@
         else if (e.Key == "Escape") await CancelAsync(row);
     }
 
-    private static bool TryCents(string? text, out long? cents)
+    private static bool TryAmount(string? text, out decimal? amount)
     {
-        cents = null;
+        amount = null;
         if (string.IsNullOrWhiteSpace(text)) return true;
         if (!decimal.TryParse(text.Trim(), NumberStyles.Number, CultureInfo.CurrentCulture, out var value)
             && !decimal.TryParse(text.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out value)) return false;
-        cents = (long)Math.Round(Math.Abs(value) * 100m, MidpointRounding.AwayFromZero);
+        amount = Math.Round(Math.Abs(value), 2, MidpointRounding.AwayFromZero);
         return true;
     }
 
     private async Task SaveAsync(RowState row)
     {
-        if (!TryCents(row.MinText, out var min) || !TryCents(row.MaxText, out var max))
+        if (row.Parts != null && (!TryAmount(row.MinText, out var min) || !TryAmount(row.MaxText, out var max) || (min != null && max != null && min > max)))
         {
             row.Error = L["Error_InvalidAmountRange"];
             return;
         }
-        row.Draft.MinAmountCents = min;
-        row.Draft.MaxAmountCents = max;
         row.Draft.CategoryId = CategoryId;
         try
         {
@@ -331,8 +368,7 @@
         else if (row.Saved != null)
         {
             row.Draft = Copy(row.Saved);
-            row.MinText = CentsText(row.Saved.MinAmountCents);
-            row.MaxText = CentsText(row.Saved.MaxAmountCents);
+            Reparse(row);
             row.Dirty = false;
         }
         if (previewRow == row || rows!.All(r => !r.Dirty)) await EndPreviewAsync();

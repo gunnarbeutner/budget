@@ -89,7 +89,11 @@
   <data name="Field_Max" xml:space="preserve"><value>Betrag bis</value></data>
   <data name="Error_NoCondition" xml:space="preserve"><value>Die Regel braucht mindestens eine Bedingung.</value></data>
   <data name="Error_NoCategory" xml:space="preserve"><value>Wähle die Kategorie, die gesetzt werden soll.</value></data>
-  <data name="Error_InvalidRegex" xml:space="preserve"><value>Das ist kein gültiger regulärer Ausdruck.</value></data>
+  <data name="Error_InvalidExpression" xml:space="preserve"><value>Der Suchausdruck ist ungültig.</value></data>
+  <data name="Error_Syntax" xml:space="preserve"><value>Kein gültiger Suchausdruck: {0}</value></data>
+  <data name="Field_Expression" xml:space="preserve"><value>Suchausdruck, z. B. name:"Example Market" AND amount&lt;0</value></data>
+  <data name="Field_ExpressionTitle" xml:space="preserve"><value>Wörter und "Phrasen" (AND, OR, NOT, Klammern), Felder wie name:, purpose:, comment:, remote_account:, amount&lt;0, /reguläre Ausdrücke/</value></data>
+  <data name="TextOnly" xml:space="preserve"><value>Diese Regel lässt sich nur als Text bearbeiten.</value></data>
   <data name="Error_InvalidAmountRange" xml:space="preserve"><value>Prüfe die Beträge: nur Zahlen, „ab“ nicht größer als „bis“.</value></data>
   <data name="Error_UnknownAccount" xml:space="preserve"><value>Dieses Konto gehört nicht zum Projekt.</value></data>
   <data name="Error_NoPermission" xml:space="preserve"><value>Du darfst die Regeln dieses Projekts nicht ändern.</value></data>

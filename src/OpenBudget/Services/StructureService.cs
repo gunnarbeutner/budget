@@ -583,7 +583,10 @@ public sealed class StructureService
             await sys.PortfolioChartPoints.Where(p => p.AccountId == id).ExecuteDeleteAsync(ct);
             await sys.PpPortfolioLinks.Where(p => p.AccountId == id).ExecuteDeleteAsync(ct);
             await sys.ProjectAccountAssignments.Where(p => p.AccountId == id).ExecuteDeleteAsync(ct);
-            await sys.CategoryRules.Where(r => r.AccountId == id).ExecuteDeleteAsync(ct);
+            // Rules restricted to this account (account_id=N) would never match again.
+            var accountRules = (await sys.CategoryRules.Where(r => r.Expression.Contains("account_id")).Select(r => new { r.Id, r.Expression }).ToListAsync(ct))
+                .Where(r => RuleExpression.ReferencesAccount(r.Expression, id)).Select(r => r.Id).ToList();
+            if (accountRules.Count > 0) await sys.CategoryRules.Where(r => accountRules.Contains(r.Id)).ExecuteDeleteAsync(ct);
             await sys.BankLoginAccounts.Where(l => l.LinkedAccountId == id)
                 .ExecuteUpdateAsync(s => s.SetProperty(l => l.LinkedAccountId, (long?)null).SetProperty(l => l.StatementsEnabled, false), ct);
             var statements = sys.BankStatements.Where(s => s.AccountId == id);

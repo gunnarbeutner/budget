@@ -4,7 +4,10 @@ using OpenBudget.Models;
 namespace OpenBudget.Services;
 
 /// <summary>A rule as the Rules page lists it.</summary>
-public sealed record CategoryRuleView(CategoryRule Rule, string? CategoryName, string? AccountName, int MatchCount);
+public sealed record CategoryRuleView(CategoryRule Rule, string? CategoryName, int MatchCount);
+
+/// <summary>An account offered in the rule editor (the IBAN composes <c>local_account="…"</c>).</summary>
+public sealed record RuleAccountOption(long Id, string Name, string? Iban);
 
 /// <summary>A category or account offered in the rule editor.</summary>
 public sealed record RuleOption<TId>(TId Id, string Name);
@@ -15,7 +18,7 @@ public enum RuleValidation
     Ok,
     NoCondition,
     NoCategory,
-    InvalidRegex,
+    InvalidExpression,
     InvalidAmountRange,
     UnknownAccount,
 }
@@ -61,11 +64,11 @@ public static class CategoryRuleEngine
     public static async Task<int> ApplyToNewAsync(BudgetDbContext db, long accountId, IReadOnlyCollection<Transaction> added, CancellationToken ct)
     {
         if (added.Count == 0) return 0;
-        var account = await db.Accounts.AsNoTracking().Where(a => a.Id == accountId).Select(a => new { a.SourceId, a.Provider }).FirstOrDefaultAsync(ct);
+        var account = await db.Accounts.AsNoTracking().Where(a => a.Id == accountId).Select(a => new { a.SourceId, a.Provider, a.Iban }).FirstOrDefaultAsync(ct);
         if (account == null || account.Provider == AccountProviders.MoneyMoney) return 0;
 
         var rules = await db.CategoryRules.AsNoTracking()
-            .Where(r => r.Enabled && db.ProjectAccountAssignments.Any(a => a.AccountId == accountId && a.ProjectId == r.ProjectId))
+            .Where(r => r.Enabled && !r.Dismissed && db.ProjectAccountAssignments.Any(a => a.AccountId == accountId && a.ProjectId == r.ProjectId))
             .Where(r => db.Categories.Any(c => c.Id == r.CategoryId && c.SourceId == account.SourceId))
             .OrderBy(r => r.Project.SortOrder).ThenBy(r => r.ProjectId).ThenBy(r => r.SortOrder).ThenBy(r => r.Id)
             .ToListAsync(ct);
@@ -75,7 +78,7 @@ public static class CategoryRuleEngine
         foreach (var t in added)
         {
             if (!IsCandidate(t)) continue;
-            if (CategoryRuleMatcher.FirstMatch(rules, RuleSubject.Of(t)) is not { } rule) continue;
+            if (CategoryRuleMatcher.FirstMatch(rules, RuleSubject.Of(t, account.Iban)) is not { } rule) continue;
             Apply(t, rule);
             applied++;
         }
@@ -123,8 +126,7 @@ public sealed class CategoryRuleService
         return rules.Select(r => new CategoryRuleView(
             r,
             categories.GetValueOrDefault(r.CategoryId),
-            r.AccountId is { } a ? accounts.FirstOrDefault(x => x.Id == a)?.Name : null,
-            subjects.Count(s => CategoryRuleMatcher.Matches(r, RuleSubject.Of(s))))).ToList();
+            subjects.Count(s => CategoryRuleMatcher.Matches(r, s.Subject)))).ToList();
     }
 
     /// <summary>Assignable categories of the project's source, by name.</summary>
@@ -140,10 +142,10 @@ public sealed class CategoryRuleService
     }
 
     /// <summary>The project's accounts (for the optional account condition).</summary>
-    public async Task<List<RuleOption<long>>> GetAccountsAsync(int projectId, CancellationToken ct = default)
+    public async Task<List<RuleAccountOption>> GetAccountsAsync(int projectId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        return (await ProjectAccountsAsync(db, projectId, ct)).Select(a => new RuleOption<long>(a.Id, a.Name)).ToList();
+        return (await ProjectAccountsAsync(db, projectId, ct)).Select(a => new RuleAccountOption(a.Id, a.Name, a.Iban)).ToList();
     }
 
     /// <summary>Creates (Id 0, appended at the end) or updates a rule. Returns its id.</summary>
@@ -156,9 +158,11 @@ public sealed class CategoryRuleService
         if (problem == RuleValidation.Ok
             && !await db.Categories.AnyAsync(c => c.Id == input.CategoryId && c.SourceId == sourceId && c.Name != null && c.Name != "", ct))
             problem = RuleValidation.NoCategory;
-        if (problem == RuleValidation.Ok && input.AccountId is { } accountId
-            && !(await ProjectAccountsAsync(db, input.ProjectId, ct)).Any(a => a.Id == accountId))
-            problem = RuleValidation.UnknownAccount;
+        if (problem == RuleValidation.Ok && input.Expression.Contains("account_id", StringComparison.Ordinal))
+        {
+            var own = await ProjectAccountsAsync(db, input.ProjectId, ct);
+            if (!own.Any(a => RuleExpression.ReferencesAccount(input.Expression, a.Id))) problem = RuleValidation.UnknownAccount;
+        }
         if (problem != RuleValidation.Ok) throw new RuleValidationException(problem);
 
         CategoryRule rule;
@@ -175,13 +179,7 @@ public sealed class CategoryRuleService
         }
         rule.Name = string.IsNullOrWhiteSpace(input.Name) ? null : input.Name.Trim();
         rule.Enabled = input.Enabled;
-        rule.PayeeText = string.IsNullOrWhiteSpace(input.PayeeText) ? null : input.PayeeText.Trim();
-        rule.PurposeText = string.IsNullOrWhiteSpace(input.PurposeText) ? null : input.PurposeText.Trim();
-        rule.UseRegex = input.UseRegex;
-        rule.AccountId = input.AccountId;
-        rule.AmountSign = input.AmountSign;
-        rule.MinAmountCents = input.MinAmountCents;
-        rule.MaxAmountCents = input.MaxAmountCents;
+        rule.Expression = input.Expression.Trim();
         rule.CategoryId = input.CategoryId;
         await db.SaveChangesAsync(ct);
         Publish(input.ProjectId);
@@ -193,22 +191,25 @@ public sealed class CategoryRuleService
     {
         if (!CategoryRuleMatcher.HasCondition(rule)) return RuleValidation.NoCondition;
         if (rule.CategoryId == 0) return RuleValidation.NoCategory;
-        if (rule.UseRegex)
-        {
-            foreach (var text in new[] { rule.PayeeText, rule.PurposeText })
-                if (!string.IsNullOrWhiteSpace(text) && !CategoryRuleMatcher.IsValidRegex(text.Trim())) return RuleValidation.InvalidRegex;
-        }
-        if (rule.MinAmountCents < 0 || rule.MaxAmountCents < 0 || (rule.MinAmountCents is { } min && rule.MaxAmountCents is { } max && min > max))
-            return RuleValidation.InvalidAmountRange;
+        if (!RuleExpression.IsValid(rule.Expression)) return RuleValidation.InvalidExpression;
         return RuleValidation.Ok;
     }
 
     public async Task DeleteAsync(int projectId, int ruleId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var rule = await db.CategoryRules.FirstOrDefaultAsync(r => r.Id == ruleId && r.ProjectId == projectId, ct);
+        var rule = await db.CategoryRules.FirstOrDefaultAsync(r => r.Id == ruleId && r.ProjectId == projectId && !r.Dismissed, ct);
         if (rule == null) return;
-        db.CategoryRules.Remove(rule);
+        // An imported rule stays as a hidden marker so a re-import does not recreate it.
+        if (rule.ImportOrigin != null)
+        {
+            rule.Dismissed = true;
+            rule.Enabled = false;
+        }
+        else
+        {
+            db.CategoryRules.Remove(rule);
+        }
         await db.SaveChangesAsync(ct);
         Publish(projectId);
     }
@@ -235,7 +236,7 @@ public sealed class CategoryRuleService
     public async Task MoveWithinCategoryAsync(int projectId, int ruleId, int delta, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var rules = await db.CategoryRules.Where(r => r.ProjectId == projectId).OrderBy(r => r.SortOrder).ThenBy(r => r.Id).ToListAsync(ct);
+        var rules = await db.CategoryRules.Where(r => r.ProjectId == projectId && !r.Dismissed).OrderBy(r => r.SortOrder).ThenBy(r => r.Id).ToListAsync(ct);
         var rule = rules.FirstOrDefault(r => r.Id == ruleId);
         if (rule == null || delta == 0) return;
         var siblings = rules.Where(r => r.CategoryId == rule.CategoryId).ToList();
@@ -260,14 +261,14 @@ public sealed class CategoryRuleService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var accounts = await ProjectAccountsAsync(db, projectId, ct);
         var subjects = await SubjectsAsync(db, accounts.Select(a => a.Id).ToList(), onlyCandidates: false, ct);
-        return subjects.Where(s => CategoryRuleMatcher.Matches(draft, RuleSubject.Of(s))).Select(s => s.Id).ToList();
+        return subjects.Where(s => CategoryRuleMatcher.Matches(draft, s.Subject)).Select(s => s.Row.Id).ToList();
     }
 
     /// <summary>Moves a rule one place up (<paramref name="delta"/> = -1) or down (+1); renumbers the list densely.</summary>
     public async Task MoveAsync(int projectId, int ruleId, int delta, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var rules = await db.CategoryRules.Where(r => r.ProjectId == projectId).OrderBy(r => r.SortOrder).ThenBy(r => r.Id).ToListAsync(ct);
+        var rules = await db.CategoryRules.Where(r => r.ProjectId == projectId && !r.Dismissed).OrderBy(r => r.SortOrder).ThenBy(r => r.Id).ToListAsync(ct);
         var index = rules.FindIndex(r => r.Id == ruleId);
         var target = index + Math.Sign(delta);
         if (index < 0 || target < 0 || target >= rules.Count) return;
@@ -327,35 +328,42 @@ public sealed class CategoryRuleService
             .Select(a => a.Id).ToList();
         var subjects = await SubjectsAsync(db, accounts, onlyCandidates: true, ct);
         var plan = new List<(long, CategoryRule)>();
-        foreach (var t in subjects)
-            if (CategoryRuleMatcher.FirstMatch(rules, RuleSubject.Of(t)) is { } rule && (categoryId == null || rule.CategoryId == categoryId)) plan.Add((t.Id, rule));
+        foreach (var (t, subject) in subjects)
+            if (CategoryRuleMatcher.FirstMatch(rules, subject) is { } rule && (categoryId == null || rule.CategoryId == categoryId)) plan.Add((t.Id, rule));
         return plan;
     }
 
     private static Task<List<CategoryRule>> OrderedRulesAsync(BudgetDbContext db, int projectId, CancellationToken ct) =>
-        db.CategoryRules.AsNoTracking().Where(r => r.ProjectId == projectId).OrderBy(r => r.SortOrder).ThenBy(r => r.Id).ToListAsync(ct);
+        db.CategoryRules.AsNoTracking().Where(r => r.ProjectId == projectId && !r.Dismissed).OrderBy(r => r.SortOrder).ThenBy(r => r.Id).ToListAsync(ct);
 
-    private sealed record ProjectAccount(long Id, string Name, int SourceId, string Provider);
+    private sealed record ProjectAccount(long Id, string Name, int SourceId, string Provider, string? Iban);
 
     private static async Task<List<ProjectAccount>> ProjectAccountsAsync(BudgetDbContext db, int projectId, CancellationToken ct)
     {
         var rows = await db.Accounts.AsNoTracking()
             .Where(a => db.ProjectAccountAssignments.Any(p => p.ProjectId == projectId && p.AccountId == a.Id))
-            .Select(a => new { a.Id, a.Name, a.SourceId, a.Provider })
+            .Select(a => new { a.Id, a.Name, a.SourceId, a.Provider, a.Iban })
             .ToListAsync(ct);
         return rows.OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
-            .Select(a => new ProjectAccount(a.Id, a.Name ?? "", a.SourceId, a.Provider)).ToList();
+            .Select(a => new ProjectAccount(a.Id, a.Name ?? "", a.SourceId, a.Provider, a.Iban)).ToList();
     }
 
-    private static async Task<List<Transaction>> SubjectsAsync(BudgetDbContext db, List<long> accountIds, bool onlyCandidates, CancellationToken ct)
+    private static async Task<List<(Transaction Row, RuleSubject Subject)>> SubjectsAsync(BudgetDbContext db, List<long> accountIds, bool onlyCandidates, CancellationToken ct)
     {
-        var result = new List<Transaction>();
+        var ibans = new Dictionary<long, string?>();
+        foreach (var chunk in accountIds.Chunk(Chunk))
+        {
+            var part = chunk;
+            foreach (var a in await db.Accounts.AsNoTracking().Where(a => part.Contains(a.Id)).Select(a => new { a.Id, a.Iban }).ToListAsync(ct))
+                ibans[a.Id] = a.Iban;
+        }
+        var result = new List<(Transaction, RuleSubject)>();
         foreach (var chunk in accountIds.Chunk(Chunk))
         {
             var part = chunk;
             var q = db.Transactions.AsNoTracking().Where(t => t.AccountId.HasValue && part.Contains(t.AccountId.Value) && (t.Splitted ?? 0) != SplitState.Parent);
             if (onlyCandidates) q = q.Where(t => t.CategoryId == null && t.CategorySetBy != TransactionCategorySource.Manual);
-            result.AddRange(await q.Select(t => new Transaction
+            result.AddRange((await q.Select(t => new Transaction
             {
                 Id = t.Id,
                 SourceId = t.SourceId,
@@ -364,9 +372,14 @@ public sealed class CategoryRuleService
                 Name = t.Name,
                 Purpose = t.Purpose,
                 BookingText = t.BookingText,
+                Comment = t.Comment,
+                Note = t.Note,
+                CounterpartyIban = t.CounterpartyIban,
+                Currency = t.Currency,
+                BankReference = t.BankReference,
                 CategoryId = t.CategoryId,
                 CategorySetBy = t.CategorySetBy,
-            }).ToListAsync(ct));
+            }).ToListAsync(ct)).Select(t => (t, RuleSubject.Of(t, ibans.GetValueOrDefault(t.AccountId!.Value)))));
         }
         return result;
     }

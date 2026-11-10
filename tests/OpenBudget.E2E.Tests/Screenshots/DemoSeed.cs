@@ -131,9 +131,9 @@ internal static class DemoSeed
         await BudgetAsync(db, RentalFlatId, new() { [RentalIncome] = 780, [Maintenance] = 80, [PropertyMgmt] = 42, [PropertyTax] = 25 });
 
         // ---- rules ----
-        var marketRule = new CategoryRule { ProjectId = HouseholdId, SortOrder = 0, Name = "Example Market", PayeeText = "Example Market", AmountSign = RuleAmountSign.Expense, CategoryId = Groceries, CreatedAt = Created };
-        var energyRule = new CategoryRule { ProjectId = HouseholdId, SortOrder = 1, Name = "Sample Energy", PayeeText = "Sample Energy", AmountSign = RuleAmountSign.Expense, CategoryId = Energy, CreatedAt = Created };
-        var transitRule = new CategoryRule { ProjectId = HouseholdId, SortOrder = 2, Name = "Transit pass", PurposeText = "monthly pass", CategoryId = Transit, CreatedAt = Created };
+        var marketRule = new CategoryRule { ProjectId = HouseholdId, SortOrder = 0, Name = "Example Market", Expression = "name:\"Example Market\" AND amount<0", CategoryId = Groceries, CreatedAt = Created };
+        var energyRule = new CategoryRule { ProjectId = HouseholdId, SortOrder = 1, Name = "Sample Energy", Expression = "name:\"Sample Energy\" AND amount<0", CategoryId = Energy, CreatedAt = Created };
+        var transitRule = new CategoryRule { ProjectId = HouseholdId, SortOrder = 2, Name = "Transit pass", Expression = "purpose:\"monthly pass\" OR booking_text:\"monthly pass\"", CategoryId = Transit, CreatedAt = Created };
         db.CategoryRules.AddRange(marketRule, energyRule, transitRule);
         await db.SaveChangesAsync();
 

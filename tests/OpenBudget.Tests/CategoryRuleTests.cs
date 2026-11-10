@@ -19,8 +19,7 @@ public sealed class CategoryRuleTests
 
     // ---- matching ----
 
-    private static CategoryRule Rule(string? payee = null, string? purpose = null, bool regex = false) =>
-        new() { PayeeText = payee, PurposeText = purpose, UseRegex = regex, CategoryId = 1, Enabled = true };
+    private static CategoryRule Rule(string expression) => new() { Expression = expression, CategoryId = 1, Enabled = true };
 
     private static RuleSubject Subject(string? name, long amount = -1000, string? purpose = null, string? bookingText = null, long? account = 1) =>
         new(account, amount, name, purpose, bookingText);
@@ -28,51 +27,18 @@ public sealed class CategoryRuleTests
     [Fact]
     public void Payee_text_is_a_case_insensitive_contains()
     {
-        Assert.True(CategoryRuleMatcher.Matches(Rule("example market"), Subject("EXAMPLE MARKET Berlin")));
-        Assert.False(CategoryRuleMatcher.Matches(Rule("example market"), Subject("Sample Bakery")));
-        Assert.False(CategoryRuleMatcher.Matches(Rule("example market"), Subject(null)));
+        Assert.True(CategoryRuleMatcher.Matches(Rule("name:\"example market\""), Subject("EXAMPLE MARKET Berlin")));
+        Assert.False(CategoryRuleMatcher.Matches(Rule("name:\"example market\""), Subject("Sample Bakery")));
+        Assert.False(CategoryRuleMatcher.Matches(Rule("name:\"example market\""), Subject(null)));
     }
 
     [Fact]
-    public void Purpose_text_matches_purpose_or_booking_text()
+    public void Invalid_or_empty_expressions_never_match()
     {
-        var rule = Rule(purpose: "monthly fee");
-        Assert.True(CategoryRuleMatcher.Matches(rule, Subject("Any", purpose: "Monthly Fee 03/2026")));
-        Assert.True(CategoryRuleMatcher.Matches(rule, Subject("Any", bookingText: "monthly fee")));
-        Assert.False(CategoryRuleMatcher.Matches(rule, Subject("Any", purpose: "Rent")));
-    }
-
-    [Fact]
-    public void Regex_matches_case_insensitively_and_an_invalid_pattern_never_matches()
-    {
-        Assert.True(CategoryRuleMatcher.Matches(Rule("^example (market|store)$", regex: true), Subject("Example Store")));
-        Assert.False(CategoryRuleMatcher.Matches(Rule("^example (market|store)$", regex: true), Subject("Example Store 2")));
-        Assert.False(CategoryRuleMatcher.Matches(Rule("([", regex: true), Subject("([")));
-        Assert.False(CategoryRuleMatcher.IsValidRegex("(["));
-    }
-
-    [Fact]
-    public void All_conditions_must_hold_account_sign_and_range()
-    {
-        var rule = Rule("Example Market");
-        rule.AccountId = 1;
-        rule.AmountSign = RuleAmountSign.Expense;
-        rule.MinAmountCents = 500;
-        rule.MaxAmountCents = 5000;
-        Assert.True(CategoryRuleMatcher.Matches(rule, Subject("Example Market", -1000)));
-        Assert.False(CategoryRuleMatcher.Matches(rule, Subject("Example Market", -1000, account: 2)));
-        Assert.False(CategoryRuleMatcher.Matches(rule, Subject("Example Market", 1000)));
-        Assert.False(CategoryRuleMatcher.Matches(rule, Subject("Example Market", -100)));
-        Assert.False(CategoryRuleMatcher.Matches(rule, Subject("Example Market", -9000)));
-        rule.AmountSign = RuleAmountSign.Income;
-        Assert.True(CategoryRuleMatcher.Matches(rule, Subject("Example Market", 1000)));
-    }
-
-    [Fact]
-    public void A_rule_without_conditions_matches_nothing()
-    {
-        Assert.False(CategoryRuleMatcher.Matches(Rule(), Subject("Example Market")));
+        Assert.False(CategoryRuleMatcher.Matches(Rule(""), Subject("Example Market")));
+        Assert.False(CategoryRuleMatcher.Matches(Rule("name:/([/"), Subject("([")));
         Assert.Equal(RuleValidation.NoCondition, CategoryRuleService.Validate(new CategoryRule { CategoryId = 1 }));
+        Assert.Equal(RuleValidation.InvalidExpression, CategoryRuleService.Validate(Rule("(\"unclosed")));
     }
 
     [Fact]
@@ -80,7 +46,7 @@ public sealed class CategoryRuleTests
     {
         var disabled = Rule("example"); disabled.Enabled = false; disabled.CategoryId = 1;
         var broad = Rule("example"); broad.CategoryId = 2;
-        var narrow = Rule("example market"); narrow.CategoryId = 3;
+        var narrow = Rule("\"example market\""); narrow.CategoryId = 3;
         Assert.Equal(2, CategoryRuleMatcher.FirstMatch([disabled, broad, narrow], Subject("Example Market"))!.CategoryId);
         Assert.Equal(3, CategoryRuleMatcher.FirstMatch([disabled, narrow, broad], Subject("Example Market"))!.CategoryId);
         Assert.Null(CategoryRuleMatcher.FirstMatch([disabled], Subject("Example Market")));
@@ -128,7 +94,7 @@ public sealed class CategoryRuleTests
     private static CategoryRuleService ServiceFor(TestDb t, string? user) => new(t.ForUser(user).Factory, t.Notifier, new ChangeOrigin());
 
     private static Task<int> AddRuleAsync(CategoryRuleService s, int project, string payee, long category, string? name = null) =>
-        s.SaveAsync(new CategoryRule { ProjectId = project, PayeeText = payee, CategoryId = category, Enabled = true, Name = name });
+        s.SaveAsync(new CategoryRule { ProjectId = project, Expression = "name:\"" + payee + "\"", CategoryId = category, Enabled = true, Name = name });
 
     private static async Task<Transaction> LoadAsync(TestDb t, long id)
     {
@@ -176,7 +142,7 @@ public sealed class CategoryRuleTests
     {
         await using var t = await WorldAsync();
         var s = ServiceFor(t, AccessWorld.Alice);
-        var draft = new CategoryRule { ProjectId = AccessWorld.Shared, PayeeText = "example market" };
+        var draft = new CategoryRule { ProjectId = AccessWorld.Shared, Expression = "name:\"example market\"" };
         Assert.Equal(4, (await s.PreviewMatchIdsAsync(AccessWorld.Shared, draft)).Count);
         Assert.Empty(await s.PreviewMatchIdsAsync(AccessWorld.Shared, new CategoryRule { ProjectId = AccessWorld.Shared }));
 
@@ -225,6 +191,22 @@ public sealed class CategoryRuleTests
     }
 
     [Fact]
+    public async Task Expression_rules_apply_with_fields_and_operators()
+    {
+        await using var t = await WorldAsync();
+        var s = ServiceFor(t, AccessWorld.Alice);
+        await s.SaveAsync(new CategoryRule
+        {
+            ProjectId = AccessWorld.Shared,
+            CategoryId = Groceries,
+            Enabled = true,
+            Expression = "(name:\"example market\" OR \"sample bakery\") AND amount<0 AND NOT comment:\"refund\"",
+        });
+        Assert.Equal(3, await s.ApplyExistingAsync(AccessWorld.Shared));
+        Assert.Equal(Groceries, (await LoadAsync(t, 20)).CategoryId);
+    }
+
+    [Fact]
     public async Task Disabled_rules_do_not_apply()
     {
         await using var t = await WorldAsync();
@@ -253,13 +235,13 @@ public sealed class CategoryRuleTests
             s.SaveAsync(new CategoryRule { ProjectId = AccessWorld.Shared, CategoryId = Groceries }));
         Assert.Equal(RuleValidation.NoCondition, noCondition.Reason);
         var badRegex = await Assert.ThrowsAsync<RuleValidationException>(() =>
-            s.SaveAsync(new CategoryRule { ProjectId = AccessWorld.Shared, CategoryId = Groceries, PayeeText = "([", UseRegex = true }));
-        Assert.Equal(RuleValidation.InvalidRegex, badRegex.Reason);
+            s.SaveAsync(new CategoryRule { ProjectId = AccessWorld.Shared, CategoryId = Groceries, Expression = "name:/([/" }));
+        Assert.Equal(RuleValidation.InvalidExpression, badRegex.Reason);
         var otherSource = await Assert.ThrowsAsync<RuleValidationException>(() =>
             AddRuleAsync(s, AccessWorld.Shared, "x", AccessWorld.Id(AccessWorld.SourceBob, 200)));
         Assert.Equal(RuleValidation.NoCategory, otherSource.Reason);
         var foreignAccount = await Assert.ThrowsAsync<RuleValidationException>(() =>
-            s.SaveAsync(new CategoryRule { ProjectId = AccessWorld.Shared, CategoryId = Groceries, PayeeText = "x", AccountId = AccessWorld.AccountPrivate }));
+            s.SaveAsync(new CategoryRule { ProjectId = AccessWorld.Shared, CategoryId = Groceries, Expression = "x AND account_id=" + AccessWorld.AccountPrivate }));
         Assert.Equal(RuleValidation.UnknownAccount, foreignAccount.Reason);
     }
 
@@ -309,6 +291,7 @@ public sealed class CategoryRuleTests
         var s = ServiceFor(t, AccessWorld.Alice);
         var rule = await AddRuleAsync(s, AccessWorld.Shared, "example market", Groceries);
         await AddRuleAsync(s, AccessWorld.Private, "example market", Dining); // another project's account: not used
+        await s.SaveAsync(new CategoryRule { ProjectId = AccessWorld.Shared, CategoryId = Dining, Enabled = true, Expression = "bakery AND amount>=-5,00 AND amount<0" });
 
         var day = new DateOnly(2026, 4, 2);
         var refresh = new AccountRefresh(null,
@@ -327,7 +310,7 @@ public sealed class CategoryRuleTests
         Assert.Equal(TransactionCategorySource.Rule, market.CategorySetBy);
         Assert.Equal(rule, market.RuleId);
         Assert.True(market.IsNew);
-        Assert.Null(rows.Single(r => r.ExternalId == "id:b2").CategoryId);
+        Assert.Equal(Dining, rows.Single(r => r.ExternalId == "id:b2").CategoryId);
         Assert.Equal(Groceries, rows.Single(r => !r.Booked).CategoryId);
     }
 }

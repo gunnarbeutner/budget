@@ -125,6 +125,10 @@ var app = builder.Build();
 await using (var budgetDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
 {
     await budgetDb.Database.MigrateAsync();
+    // Category rules of sources uploaded before rules were imported (idempotent).
+    await OpenBudget.Importers.MoneyMoney.MoneyMoneyRuleImport.BackfillAsync(budgetDb, CancellationToken.None);
+    var ruleLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("OpenBudget.Rules");
+    OpenBudget.Services.RuleExpression.UnknownFieldLog = field => ruleLog.LogWarning("Rule expression uses unknown field '{Field}'; such terms never match", field);
 }
 
 // ForwardedHeaders must be the first middleware so downstream components see the right scheme.

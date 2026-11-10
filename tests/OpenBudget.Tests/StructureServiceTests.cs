@@ -55,10 +55,10 @@ public sealed class StructureServiceTests
     {
         await using var t = await WorldAsync();
         t.TrackCategory(AccessWorld.Shared, AccessWorld.SharedLeaf);
-        t.Db.CategoryRules.Add(new CategoryRule { ProjectId = AccessWorld.Shared, CategoryId = AccessWorld.SharedLeaf, PayeeText = "Example Market" });
+        t.Db.CategoryRules.Add(new CategoryRule { ProjectId = AccessWorld.Shared, CategoryId = AccessWorld.SharedLeaf, Expression = "name:\"Example Market\"" });
         var other = Id(201);
         t.AddLeaf(other, AccessWorld.SharedGroup, "Other", sourceId: AccessWorld.SourceAlice);
-        t.Db.CategoryRules.Add(new CategoryRule { ProjectId = AccessWorld.Shared, CategoryId = other, PayeeText = "Example Shop" });
+        t.Db.CategoryRules.Add(new CategoryRule { ProjectId = AccessWorld.Shared, CategoryId = other, Expression = "Example Shop" });
         t.AddBudget(AccessWorld.Private, 2026, (AccessWorld.SharedLeaf, CategoryItemType.Category, 10m));
         await t.Db.SaveChangesAsync();
 
@@ -67,7 +67,7 @@ public sealed class StructureServiceTests
         await using var db = await t.System.CreateDbContextAsync();
         Assert.False(await db.Categories.AnyAsync(c => c.Id == AccessWorld.SharedLeaf));
         Assert.Equal(3, await db.Transactions.CountAsync(x => x.SourceId == AccessWorld.SourceAlice && x.CategoryId == null));
-        Assert.Equal(["Example Shop"], await db.CategoryRules.Select(r => r.PayeeText).ToListAsync());
+        Assert.Equal(["Example Shop"], await db.CategoryRules.Select(r => r.Expression).ToListAsync());
         Assert.False(await db.ProjectTrackingItems.AnyAsync(i => i.CategoryId == AccessWorld.SharedLeaf));
         Assert.False(await db.MonthlyBudgetEntries.AnyAsync(e => e.CategoryId == AccessWorld.SharedLeaf && e.ItemType == CategoryItemType.Category));
         Assert.True(await db.RemovedImportItems.AnyAsync(r => r.ItemId == AccessWorld.SharedLeaf && r.Kind == RemovedImportItem.CategoryKind));
@@ -84,7 +84,7 @@ public sealed class StructureServiceTests
         await t.Db.SaveChangesAsync();
         t.Db.BankLoginAccounts.Add(new BankLoginAccount { BankLoginId = login.Id, RemoteId = "R1", Name = "Giro", LinkedAccountId = AccessWorld.AccountWp, StatementsEnabled = true });
         t.Db.BankStatements.Add(new BankStatement { BankLoginId = login.Id, OwnerUserId = AccessWorld.Alice, AccountId = AccessWorld.AccountWp, SourceId = AccessWorld.SourceAlice, Identifier = "s1", Name = "Statement 1", FilePath = "x/s1.pdf" });
-        t.Db.CategoryRules.Add(new CategoryRule { ProjectId = AccessWorld.Shared, CategoryId = AccessWorld.SharedLeaf, AccountId = AccessWorld.AccountWp, PayeeText = "Example Market" });
+        t.Db.CategoryRules.Add(new CategoryRule { ProjectId = AccessWorld.Shared, CategoryId = AccessWorld.SharedLeaf, Expression = "market AND account_id=" + AccessWorld.AccountWp });
         await t.Db.SaveChangesAsync();
         var alice = For(t, AccessWorld.Alice);
 

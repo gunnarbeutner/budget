@@ -297,6 +297,9 @@ public class MoneyMoneyImportService
             newAccountIds.RemoveAll(providers.ContainsKey);
             int autoAssigned = await DefaultProjectAssigner.AssignNewAccountsAsync(db, source.OwnerUserId, newAccountIds, ct);
 
+            // MoneyMoney's category rules become (or update) the projects' categorisation rules.
+            int rulesChanged = await MoneyMoneyRuleImport.SyncAsync(db, sourceId, ct);
+
             // FKs were enforced-off for the copy; validate the final state before committing so a
             // dangling reference (i.e. an import bug) is surfaced rather than silently persisted.
             await LogForeignKeyViolationsAsync(destConn, db.Database.CurrentTransaction?.GetDbTransaction() as SqliteTransaction, sourceName, ct);
@@ -311,7 +314,7 @@ public class MoneyMoneyImportService
             // a fresh upload moves balances and spending on every project bound to this source.
             _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: sourceId));
             _notifier.Publish(new DataChange(DataArea.Sources, SourceId: sourceId));
-            if (autoAssigned > 0) _notifier.Publish(new DataChange(DataArea.Projects));
+            if (autoAssigned > 0 || rulesChanged > 0) _notifier.Publish(new DataChange(DataArea.Projects));
 
             return new ImportResult
             {

@@ -89,7 +89,11 @@
   <data name="Field_Max" xml:space="preserve"><value>Amount up to</value></data>
   <data name="Error_NoCondition" xml:space="preserve"><value>Give the rule at least one condition.</value></data>
   <data name="Error_NoCategory" xml:space="preserve"><value>Choose the category to set.</value></data>
-  <data name="Error_InvalidRegex" xml:space="preserve"><value>That is not a valid regular expression.</value></data>
+  <data name="Error_InvalidExpression" xml:space="preserve"><value>The search expression is not valid.</value></data>
+  <data name="Error_Syntax" xml:space="preserve"><value>Not a valid search expression: {0}</value></data>
+  <data name="Field_Expression" xml:space="preserve"><value>Search expression, e.g. name:"Example Market" AND amount&lt;0</value></data>
+  <data name="Field_ExpressionTitle" xml:space="preserve"><value>Words and "phrases" (AND, OR, NOT, parentheses), fields like name:, purpose:, comment:, remote_account:, amount&lt;0, /regular expressions/</value></data>
+  <data name="TextOnly" xml:space="preserve"><value>This rule can only be edited as text.</value></data>
   <data name="Error_InvalidAmountRange" xml:space="preserve"><value>Check the amounts: numbers only, “from” not above “up to”.</value></data>
   <data name="Error_UnknownAccount" xml:space="preserve"><value>That account is not part of this project.</value></data>
   <data name="Error_NoPermission" xml:space="preserve"><value>You may not change the rules of this project.</value></data>
