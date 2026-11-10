@@ -60,6 +60,12 @@ internal sealed class SyntheticBank
     /// <summary>ING's rule: a message signed with the one-step placeholder 999 is refused outright (9010, no 3920).</summary>
     public bool RejectOneStep { get; set; }
 
+    /// <summary>Baader's rule: HKCAZ/HKKAZ need a "from" date within this many days back (9210 otherwise).</summary>
+    public int? StatementWindowDays { get; set; }
+
+    /// <summary>Atruvia's (PSD) rule: the BIC is a mandatory field of the international account group (9160 otherwise).</summary>
+    public bool RequireBic { get; set; }
+
     public int SyncCount { get; private set; }
 
     public int InitCount { get; private set; }
@@ -196,6 +202,12 @@ internal sealed class SyntheticBank
                 rb.Segment("HISYN", 4, s.Number, AssignedSystemId);
                 rb.Codes(s.Number, "0020::Synchronisierung erfolgreich");
                 break;
+            case "HKCAZ" or "HKKAZ" when RequireBic && s.Name == "HKCAZ" && s.Component(0, 1).Length == 0:
+                rb.Codes(s.Number, "9160::*Nachrichtenaufbau fehlerhaft (Mussfeld). Nachricht nicht verarbeitbar.");
+                break;
+            case "HKCAZ" or "HKKAZ" when StatementWindowDays is { } days && !StartWithin(s, days):
+                rb.Codes(s.Number, "9210::Datenelement ist inhaltlich ungültig!");
+                break;
             default:
                 if (Unsupported.Contains(s.Name)) rb.Codes(s.Number, $"9120::Auftrag {s.Name} nicht unterstützt.");
                 else if (Handlers.TryGetValue(s.Name, out var handler)) handler(s, rb, request);
@@ -228,6 +240,14 @@ internal sealed class SyntheticBank
             sb.Append(CultureInfo.InvariantCulture, $"<NtryDtls><TxDtls><RltdPties><{party}><Nm>{e.Name}</Nm></{party}></RltdPties><RmtInf><Ustrd>{e.Purpose}</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>");
         }
         return sb.Append("</Rpt></BkToCstmrAcctRpt></Document>").ToString();
+    }
+
+    private static bool StartWithin(FinTsSegment s, int days)
+    {
+        var from = s.Element(s.Name == "HKCAZ" ? 3 : 2);
+        if (!DateOnly.TryParseExact(from, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)) return false;
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        return date >= today.AddDays(-days) && date <= today;
     }
 
     public static string Bin(string data) => FinTsWire.Binary(data);

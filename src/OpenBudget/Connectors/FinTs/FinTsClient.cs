@@ -343,7 +343,11 @@ internal sealed partial class FinTsClient
 
             var response = await SendAsync(segments, null, ct);
             response = await ResolveTanAsync(response, ask, ct);
-            if (response.HasError) throw new FinTsException($"The bank rejected {job}: {response.FirstError()}");
+            if (response.HasError)
+            {
+                _logger.LogInformation("FinTS {Job} refused ({Error}); sent {Structure}", job, response.FirstError(), _lastSent);
+                throw new FinTsException($"The bank rejected {job}: {response.FirstError()}");
+            }
             pages.Add(response);
 
             var more = response.Returns.FirstOrDefault(r => r.Code == 3040 && (r.ForSegment == null || r.ForSegment == FinTsMessageBuilder.FirstBusinessSegment));
@@ -407,12 +411,12 @@ internal sealed partial class FinTsClient
 
     private async Task<List<RemoteTransaction>> FetchTransactionsAsync(FinTsAccountInfo info, DateOnly? since, IChallengeAsker ask, CancellationToken ct)
     {
-        var start = since is { } s ? FinTsFormats.FormatDate(s) : null;
         // camt and the version 7 jobs address the account by IBAN, a mandatory field there; accounts the bank lists
         // without one (savings books, cooperative shares) can only be read with the national account number.
         var hasIban = !string.IsNullOrEmpty(info.Iban);
         if (hasIban && info.Allows("HKCAZ") && _data.BestVersion("HKCAZ", CamtVersions) is { } camtVersion && CamtFormat(camtVersion) is { } format)
         {
+            var start = StartDate("HKCAZ", camtVersion, since);
             var pages = await ExecuteAsync("HKCAZ", touchdown =>
             {
                 var seg = new FinTsSegmentBuilder("HKCAZ", camtVersion).Add(AccountDeg(info, true)).Add(format).Add("N").Add(start);
@@ -422,6 +426,7 @@ internal sealed partial class FinTsClient
         }
         if (info.Allows("HKKAZ") && _data.BestVersion("HKKAZ", hasIban ? Mt940Versions : Mt940NationalVersions) is { } mtVersion)
         {
+            var start = StartDate("HKKAZ", mtVersion, since);
             var pages = await ExecuteAsync("HKKAZ", touchdown =>
             {
                 var seg = new FinTsSegmentBuilder("HKKAZ", mtVersion).Add(AccountDeg(info, mtVersion >= 7)).Add("N").Add(start);
@@ -431,6 +436,24 @@ internal sealed partial class FinTsClient
         }
         throw new ConnectorException("The bank offers no way to read transactions of this account.");
     }
+
+    /// <summary>
+    /// The "from" date, always given (as MoneyMoney does) and kept inside the bank's storage window (the first parameter,
+    /// in days, of HICAZS/HIKAZS): Baader refuses a missing or too old date with 9210, ING keeps 390 days.
+    /// </summary>
+    private string StartDate(string job, int version, DateOnly? since)
+    {
+        var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
+        var parameters = _data.ParameterSegment(job, version) is { Elements.Count: > 0 } p ? p.Elements[^1] : [];
+        var days = parameters.Count > 0 && int.TryParse(parameters[0], NumberStyles.None, CultureInfo.InvariantCulture, out var d) && d > 0 ? d : DefaultWindowDays;
+        var earliest = today.AddDays(-(days - 1));
+        var start = since ?? earliest;
+        if (start < earliest) start = earliest;
+        if (start > today) start = today;
+        return FinTsFormats.FormatDate(start);
+    }
+
+    private const int DefaultWindowDays = 90;
 
     private string? CamtFormat(int version)
     {

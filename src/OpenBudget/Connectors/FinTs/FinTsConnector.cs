@@ -152,6 +152,7 @@ public sealed class PsdNuernbergConnector : FinTsConnector
         "PSD Bank Nürnberg over FinTS: accounts (balance, transactions) and electronic account statements as PDF.",
         "76090900",
         new Uri("https://fints2.atruvia.de/cgi-bin/hbciservlet"),
+        FallbackBic: "GENODEF1P17",
         UpdInventory: true);
 
     public PsdNuernbergConnector(ConnectorContext context, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null)

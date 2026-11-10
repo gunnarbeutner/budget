@@ -20,7 +20,7 @@ public sealed class FinTsScenarioTests
         private readonly TimeProvider _clock;
         private readonly CapturingLogger _logger = new();
 
-        public Rig(Action<SyntheticBank>? setup = null, FinTsOptions? options = null, bool updInventory = false, TimeProvider? clock = null, string? probe = null)
+        public Rig(Action<SyntheticBank>? setup = null, FinTsOptions? options = null, bool updInventory = false, TimeProvider? clock = null, string? probe = null, string? fallbackBic = null)
         {
             Bank = new SyntheticBank { Pin = Pin };
             setup?.Invoke(Bank);
@@ -29,6 +29,7 @@ public sealed class FinTsScenarioTests
             _config = new FinTsBankConfig("test", "Test Bank", "test", SyntheticBank.Blz, new Uri("https://bank.invalid/fints"));
             if (updInventory) _config = _config with { UpdInventory = true };
             if (probe != null) _config = _config with { ProbeSecurityFunction = probe };
+            if (fallbackBic != null) _config = _config with { FallbackBic = fallbackBic };
             _clock = clock ?? TimeProvider.System;
         }
 
@@ -152,6 +153,35 @@ public sealed class FinTsScenarioTests
         Assert.Contains("HKIDNv2[4] HKVVBv3[5]", line, StringComparison.Ordinal);
         Assert.DoesNotContain(Pin, line, StringComparison.Ordinal);
         Assert.DoesNotContain("testuser", line, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(5000)]
+    public async Task Transactions_are_asked_from_a_date_inside_the_banks_window(int? daysBack)
+    {
+        // Baader: no date, or one older than HICAZS's storage period, is refused with 9210.
+        using var rig = new Rig(b => { b.StatementWindowDays = 390; b.UseCamt(); b.UseBalance(); }, fallbackBic: "TESTDEFFXXX");
+        var (connector, _, _) = await rig.LoginAsync(rig.Seed("940"));
+        var account = (await connector.ListAccountsAsync(default)).Single(a => a.Type == RemoteAccountType.Giro);
+        DateOnly? since = daysBack is { } d ? DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-d) : null;
+        var (step, _) = await FinTsHarness.DriveAsync(a => connector.RefreshAsync(account, since, a, default), _ => null);
+        Assert.Equal(StepStatus.Done, step.Status);
+        Assert.NotEmpty(step.Value!.Transactions);
+        await connector.LogoutAsync(default);
+    }
+
+    [Fact]
+    public async Task Camt_names_the_fallback_bic_when_the_upd_has_none()
+    {
+        // PSD (Atruvia): savings and shares accounts come without a BIC; an empty one is a missing mandatory field (9160).
+        using var rig = new Rig(b => { b.RequireBic = true; b.UseCamt(); b.UseBalance(); }, fallbackBic: "TESTDEFFXXX");
+        var (connector, _, _) = await rig.LoginAsync(rig.Seed("940"));
+        var account = (await connector.ListAccountsAsync(default)).Single(a => a.Type == RemoteAccountType.Giro);
+        var (step, _) = await FinTsHarness.DriveAsync(a => connector.RefreshAsync(account, null, a, default), _ => null);
+        Assert.Equal(StepStatus.Done, step.Status);
+        await connector.LogoutAsync(default);
+        Assert.NotNull(PsdNuernbergConnector.Config.FallbackBic);
     }
 
     [Fact]
