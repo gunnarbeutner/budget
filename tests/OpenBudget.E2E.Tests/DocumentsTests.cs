@@ -103,7 +103,7 @@ public sealed class DocumentsTests : EndToEndTestBase
         await Expect(Page.GetByTestId("view-documents")).ToHaveAttributeAsync("aria-current", "page");
         await Expect(Cards).ToHaveCountAsync(4);
         await Expect(Page.GetByTestId("doc-unread")).ToHaveCountAsync(4);
-        await Expect(SidebarCount).ToHaveTextAsync("4");
+        await Expect(SidebarCount).ToHaveTextAsync("4 new");
         await Expect(Cards.First).ToContainTextAsync(EditingSeed.BankAccountName);
         await Expect(Cards.First).ToContainTextAsync("28.03.2026");
         await Expect(Cards.Nth(2)).ToContainTextAsync("Example Bank");   // the login's own document, by its login name
@@ -117,7 +117,7 @@ public sealed class DocumentsTests : EndToEndTestBase
     {
         await SeedDocumentsAsync();
         await GoToAsync($"/projects/{Pid}/documents");
-        await Expect(SidebarCount).ToHaveTextAsync("4");
+        await Expect(SidebarCount).ToHaveTextAsync("4 new");
 
         await Cards.First.ClickAsync();
         var viewer = Page.GetByTestId("doc-viewer");
@@ -125,12 +125,12 @@ public sealed class DocumentsTests : EndToEndTestBase
         await Expect(viewer).ToContainTextAsync("28.03.2026");
         await Expect(viewer.Locator("canvas.doc-page")).ToHaveCountAsync(1, new() { Timeout = 15000 });
         await Expect(viewer.GetByTestId("doc-download")).ToHaveAttributeAsync("href", new Regex(@"/statements/\d+\?download=true$"));
-        await Expect(SidebarCount).ToHaveTextAsync("3");
+        await Expect(SidebarCount).ToHaveTextAsync("3 new");
 
         // Arrow right moves to the next (older) document, which is then read too.
         await Page.Keyboard.PressAsync("ArrowRight");
         await Expect(viewer).ToContainTextAsync("28.02.2026");
-        await Expect(SidebarCount).ToHaveTextAsync("2");
+        await Expect(SidebarCount).ToHaveTextAsync("2 new");
 
         // Escape closes and focus returns to that card.
         await Page.Keyboard.PressAsync("Escape");
@@ -149,7 +149,7 @@ public sealed class DocumentsTests : EndToEndTestBase
         await SeedDocumentsAsync();
         await GoToAsync($"/projects/{Pid}/documents");
         await Cards.First.ClickAsync();
-        await Expect(SidebarCount).ToHaveTextAsync("3");
+        await Expect(SidebarCount).ToHaveTextAsync("3 new");
         await Page.GetByTestId("doc-close").ClickAsync();
 
         await Page.GetByTestId("docs-status").SelectOptionAsync("unread");
@@ -177,7 +177,7 @@ public sealed class DocumentsTests : EndToEndTestBase
 
         await Page.GetByTestId("docs-mark-all").ClickAsync();
         await Expect(Page.GetByTestId("doc-unread")).ToHaveCountAsync(0);
-        await Expect(SidebarCount).ToHaveTextAsync("1");   // the login's document outside the filter stays unread
+        await Expect(SidebarCount).ToHaveTextAsync("1 new");   // the login's document outside the filter stays unread
         await Expect(Page.GetByTestId("docs-mark-all")).ToBeDisabledAsync();
     }
 
@@ -376,7 +376,7 @@ public sealed class DocumentsTests : EndToEndTestBase
     {
         await SeedDocumentsAsync();
         await GoToAsync($"/projects/{Pid}/documents");
-        await Expect(SidebarCount).ToHaveTextAsync("4");
+        await Expect(SidebarCount).ToHaveTextAsync("4 new");
         await Page.GetByTestId("docs-mark-all").ClickAsync();
         await Expect(Page.GetByTestId("doc-unread")).ToHaveCountAsync(0);
 
@@ -385,7 +385,7 @@ public sealed class DocumentsTests : EndToEndTestBase
         await Checks.Nth(1).ClickAsync(new() { Modifiers = [KeyboardModifier.Shift] });
         await Page.GetByTestId("docs-sel-unread").ClickAsync();
         await Expect(Page.GetByTestId("doc-unread")).ToHaveCountAsync(2);
-        await Expect(SidebarCount).ToHaveTextAsync("2");
+        await Expect(SidebarCount).ToHaveTextAsync("2 new");
 
         await Checks.First.ClickAsync();
         await Page.GetByTestId("docs-sel-read").ClickAsync();

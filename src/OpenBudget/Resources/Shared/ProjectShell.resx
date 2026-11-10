@@ -91,13 +91,10 @@
   <data name="Budget_Percent" xml:space="preserve">
     <value>{0} %</value>
   </data>
-  <data name="Section_Documents" xml:space="preserve">
-    <value>Documents</value>
-  </data>
-  <data name="View_Statements" xml:space="preserve">
-    <value>Statements</value>
-  </data>
   <data name="View_Documents" xml:space="preserve">
     <value>Documents</value>
+  </data>
+  <data name="Documents_New" xml:space="preserve">
+    <value>{0} new</value>
   </data>
 </root>

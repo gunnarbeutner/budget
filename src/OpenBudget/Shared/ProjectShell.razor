@@ -40,6 +40,7 @@
             {
                 @ViewLink(ProjectTab.Portfolio, $"/projects/{ProjectId}/portfolio", "bi-pie-chart", L["View_Portfolio"], null, "view-portfolio")
             }
+            @ViewLink(ProjectTab.Documents, DocumentsUrl, "bi-file-earmark-text", L["View_Documents"], unreadDocs > 0 ? L["Documents_New", unreadDocs].Value : null, "view-documents")
         </nav>
 
         @if (Rail != null)
@@ -77,10 +78,6 @@
             <SidebarStructure @ref="structure" ProjectId="ProjectId" Tree="ownTree"
                               MenuPosition="() => rail?.MenuPosition ?? (200, 200)" OnChanged="ReloadOwnTreeAsync" />
         }
-        <div class="browse-tree-section">@L["Section_Documents"]</div>
-        <nav class="shell-views shell-docs" aria-label="@L["Section_Documents"]">
-            @ViewLink(ProjectTab.Documents, DocumentsUrl, "bi-file-earmark-text", L["View_Statements"], unreadDocs > 0 ? unreadDocs.ToString(CultureInfo.CurrentCulture) : null, "view-documents")
-        </nav>
     </aside>
 
     <div class="browse-resizer" role="separator" aria-orientation="vertical" tabindex="0"

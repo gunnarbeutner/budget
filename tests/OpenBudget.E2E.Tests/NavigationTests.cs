@@ -41,6 +41,10 @@ public sealed class NavigationTests : EndToEndTestBase
         await GoToAsync($"/projects/{Pid}/browse");
         await Expect(View("transactions")).ToHaveAttributeAsync("aria-current", "page");
         await Expect(View("portfolio")).ToHaveCountAsync(0);   // no depot in this project
+        // Documents is one of the views, below the others, with no separate documents section in the sidebar.
+        await Expect(Page.GetByTestId("project-views").Locator(".shell-view-label"))
+            .ToHaveTextAsync(new[] { "Transactions", "Budget", "Cashflow", "Documents" });
+        await Expect(Page.GetByTestId("project-sidebar").GetByText("Statements")).ToHaveCountAsync(0);
 
         await View("budget").ClickAsync();
         await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/budgets$"));
@@ -54,6 +58,10 @@ public sealed class NavigationTests : EndToEndTestBase
         await View("transactions").ClickAsync();
         await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/browse"));
         await Expect(Page.GetByTestId("browse-toolbar")).ToBeVisibleAsync();
+
+        await View("documents").ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/documents$"));
+        await Expect(View("documents")).ToHaveAttributeAsync("aria-current", "page");
     }
 
     [Test]
