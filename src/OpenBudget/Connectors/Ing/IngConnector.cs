@@ -199,47 +199,85 @@ public sealed class IngConnector : IBankConnector, IBatchedStatements
     public bool MoreStatements { get; private set; }
 
     public int? StatementsTotal { get; private set; }
-    private const string PostboxCompleteKey = "ing.postbox.complete";
+
+    /// <summary>
+    /// Set once a pass over the whole Postbox got through: the IBANs whose statements were on then, newline-separated
+    /// after a "v2" line (the bare "1" of older versions, whose listing ING had cut at 500 documents, counts as no
+    /// pass). An account not in it gets a full pass again, so switching its statements on later brings its older
+    /// documents too.
+    /// </summary>
+    internal const string PostboxCompleteKey = "ing.postbox.complete";
+
+    private const string PostboxCompleteVersion = "v2";
+
+    /// <summary>The listing of the pass in progress (reused by its later batches) and the documents that failed in it.</summary>
+    private IReadOnlyList<IngWebClient.PostboxEntry>? _listing;
+
+    private readonly HashSet<string> _failed = new(StringComparer.Ordinal);
 
     private async Task<IReadOnlyList<RemoteStatement>> PostboxAsync(
         IReadOnlyList<RemoteAccount> accounts, IReadOnlySet<string> known, IChallengeAsker ask, CancellationToken ct)
     {
         await EnsureWebAsync(ask, ct);
-        // The first pass covers the whole Postbox (years of documents) and runs over several syncs, a batch at a time,
-        // so each sync stores what it got; only once a pass got through is the shorter recent listing enough.
-        var full = !_session.Values.ContainsKey(PostboxCompleteKey);
-        var entries = (await _web.ListPostboxAsync(full, ct)).OrderByDescending(e => e.Row.Date).ToList();
         var wanted = accounts.Where(a => a.Iban != null).ToDictionary(a => a.Iban!, a => a.RemoteId, StringComparer.Ordinal);
+        var covered = _session.Values.TryGetValue(PostboxCompleteKey, out var c) && c.StartsWith(PostboxCompleteVersion, StringComparison.Ordinal)
+            ? c.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(1).ToHashSet(StringComparer.Ordinal)
+            : null;
+        // The first pass covers the whole Postbox (years of documents) and runs over several fetches, a batch at a time,
+        // reusing one listing; only once a pass got through for every account with statements on is the recent
+        // listing enough.
+        var full = covered == null || wanted.Keys.Any(i => !covered.Contains(i));
+        if (!MoreStatements || _listing == null)
+        {
+            _listing = (await _web.ListPostboxAsync(full, ct)).OrderByDescending(e => e.Row.Date).ToList();
+            _failed.Clear();
+        }
+        var entries = _listing;
         var all = (await ListAccountsAsync(ct)).Select(a => a.Iban).Where(i => i != null).ToHashSet(StringComparer.Ordinal);
-        var result = new List<RemoteStatement>();
-        var capped = false;
-        StatementsTotal = entries.Count(e => !known.Contains(e.Identifier));
+
+        int alreadyKnown = 0, statementsOff = 0, notPdf = 0;
+        var candidates = new List<(IngWebClient.PostboxEntry Entry, string? AccountId)>();
         foreach (var entry in entries)
         {
-            if (known.Contains(entry.Identifier)) continue;
-            if (result.Count >= PostboxBatch) { capped = true; break; }
+            if (known.Contains(entry.Identifier)) { alreadyKnown++; continue; }
+            if (_failed.Contains(entry.Identifier)) { notPdf++; continue; } // tried in an earlier batch of this pass
             string? accountId = null;
             if (IngHtml.FindIban(entry.Row.Subject) is { } iban)
             {
                 if (wanted.TryGetValue(iban, out var id)) accountId = id;
-                else if (all.Contains(iban)) continue;
+                else if (all.Contains(iban)) { statementsOff++; continue; }
             }
+            candidates.Add((entry, accountId));
+        }
+        StatementsTotal = candidates.Count;
+
+        var result = new List<RemoteStatement>();
+        var tried = 0;
+        foreach (var (entry, accountId) in candidates)
+        {
+            if (result.Count >= PostboxBatch) break;
+            tried++;
             var bytes = await _web.DownloadAsync(entry.Download, ct);
             if (bytes == null)
             {
+                notPdf++;
+                _failed.Add(entry.Identifier);
                 Log.LogWarning("ING Postbox: a {Type} document of {Date} did not download as a PDF; skipped.", entry.Row.Type, entry.Row.Date);
                 continue;
             }
             var name = entry.Row.Subject.Length > 0 ? $"{entry.Row.Type}: {entry.Row.Subject}" : entry.Row.Type;
             result.Add(new RemoteStatement(entry.Identifier, accountId, entry.Row.Date, name, bytes));
         }
-        MoreStatements = capped;
-        if (capped) Log.LogInformation("ING Postbox: {Count} new document(s) downloaded; more follow.", result.Count);
-        else
+        var remaining = candidates.Count - tried;
+        MoreStatements = remaining > 0;
+        if (!MoreStatements)
         {
-            _session.Values[PostboxCompleteKey] = "1";
-            Log.LogInformation("ING Postbox: {Count} new document(s) downloaded.", result.Count);
+            _listing = null;
+            if (full) _session.Values[PostboxCompleteKey] = string.Join('\n', wanted.Keys.Order(StringComparer.Ordinal).Prepend(PostboxCompleteVersion));
         }
+        Log.LogInformation(
+            "ING Postbox: {Listed} listed; {Known} already known, {Off} for accounts with statements off, {NotPdf} not a PDF; {Downloaded} downloaded, {Remaining} to follow.",
+            entries.Count, alreadyKnown, statementsOff, notPdf, result.Count, remaining);
         return result;
     }
 

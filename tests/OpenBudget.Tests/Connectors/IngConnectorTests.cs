@@ -209,7 +209,12 @@ public sealed class IngConnectorTests
 
         var status = await rig.SyncAsync(false, true);
         Assert.True(status.Succeeded, status.Error);
-        Assert.Equal(["MONATE120", "MONATE120"], rig.Web.Ranges); // the first fetch reads the whole ten years, both postboxes
+        // the first fetch reads the whole ten years a year at a time ("Freier Zeitraum"), both postboxes
+        Assert.Equal(2, rig.Web.Ranges.Count(r => r == "DATUM"));
+        Assert.DoesNotContain(rig.Web.Ranges, r => r.StartsWith("MONATE", StringComparison.Ordinal));
+        Assert.Contains("2026-11-09", rig.Web.Ranges[1], StringComparison.Ordinal);
+        Assert.Contains("2016-11-09..", rig.Web.Ranges[rig.Web.Ranges.IndexOf("DATUM", 1) - 1], StringComparison.Ordinal);
+        var firstPass = rig.Web.Ranges.Count;
 
         var list = await rig.Service.GetLoginStatementsAsync(rig.LoginId);
         Assert.Equal(4, list.Count);
@@ -223,7 +228,7 @@ public sealed class IngConnectorTests
         // Again, with a new document: only the new one (and the broken one, retried) is downloaded; the last year is enough now.
         rig.Web.Documents.Add(new FakeIng.Doc("giro-dec", 1, "Kontoauszug", "Girokonto 1234567 / DE00 0000 0000 0000 0000 11", new DateOnly(2026, 11, 8)));
         Assert.True((await rig.SyncAsync(false, true)).Succeeded);
-        Assert.Equal(["MONATE120", "MONATE120", "MONATE12", "MONATE12"], rig.Web.Ranges);
+        Assert.Equal(["MONATE12", "MONATE12"], rig.Web.Ranges.Skip(firstPass));
         Assert.Equal(1, rig.Web.Downloads["giro-nov"]);
         Assert.Equal(1, rig.Web.Downloads["giro-dec"]);
         Assert.Equal(5, (await rig.Service.GetLoginStatementsAsync(rig.LoginId)).Count);
@@ -247,7 +252,71 @@ public sealed class IngConnectorTests
         Assert.True((await rig.SyncAsync(false, true)).Succeeded);
         // every document arrives in this one sync, a batch at a time, and the next sync only reads the recent listing
         Assert.True((await rig.Service.GetLoginStatementsAsync(rig.LoginId)).Count >= before + extra);
-        Assert.Contains("more follow", rig.Logs.All, StringComparison.Ordinal);
+        Assert.Contains("to follow", rig.Logs.All, StringComparison.Ordinal);
+        Assert.Equal(2, rig.Web.Ranges.Count(r => r == "DATUM")); // one listing for all batches
+        Assert.True((await rig.SyncAsync(false, true)).Succeeded);
+        Assert.Equal("MONATE12", rig.Web.Ranges[^1]);
+    }
+
+    [Fact]
+    public async Task A_Postbox_beyond_ING_listing_cap_is_read_in_smaller_windows()
+    {
+        await using var rig = await CreateAsync();
+        Assert.True((await rig.SyncAsync(true, false, "0")).Succeeded);
+        await rig.World.LinkAllAsync(BankWorld.Alice, rig.LoginId);
+        var giro = await rig.World.RemoteAsync(BankWorld.Alice, rig.LoginId, SyntheticBank.Iban);
+        await rig.Service.SetStatementsAsync(giro.Id, true, StatementsInterval.ManualOnly);
+        var before = (await rig.Service.GetLoginStatementsAsync(rig.LoginId)).Count;
+        // 520 letters within one year (more than ING lists at once), 20 more spread over older years; two a day
+        for (var i = 0; i < 520; i++)
+            rig.Web.Documents.Add(new FakeIng.Doc($"recent-{i}", 1, "Information", $"Recent letter {i % 2}", new DateOnly(2025, 1, 1).AddDays(i / 2)));
+        for (var i = 0; i < 20; i++)
+            rig.Web.Documents.Add(new FakeIng.Doc($"older-{i}", 2, "Information", "Older letter", new DateOnly(2017, 1, 1).AddDays(i * 100)));
+        rig.Web.ExpireSessions();
+
+        Assert.True((await rig.SyncAsync(false, true)).Succeeded);
+        var list = await rig.Service.GetLoginStatementsAsync(rig.LoginId);
+        Assert.Equal(before + 540 + 4, list.Count); // plus the fixture's four (giro, tax, depot, joint letter)
+        Assert.All(rig.Web.Documents.Where(d => d.Id.StartsWith("recent-", StringComparison.Ordinal) || d.Id.StartsWith("older-", StringComparison.Ordinal)),
+            d => Assert.Equal(1, rig.Web.Downloads[d.Id]));
+        Assert.Contains("listed in 2 postbox(es) over all years", rig.Logs.All, StringComparison.Ordinal);
+
+        // Nothing is downloaded twice by the next syncs.
+        Assert.True((await rig.SyncAsync(false, true)).Succeeded);
+        Assert.Equal(before + 544, (await rig.Service.GetLoginStatementsAsync(rig.LoginId)).Count);
+    }
+
+    [Fact]
+    public async Task Switching_statements_on_later_fetches_the_older_documents_of_that_account()
+    {
+        await using var rig = await CreateAsync();
+        Assert.True((await rig.SyncAsync(true, false, "0")).Succeeded);
+        await rig.World.LinkAllAsync(BankWorld.Alice, rig.LoginId);
+        var giro = await rig.World.RemoteAsync(BankWorld.Alice, rig.LoginId, SyntheticBank.Iban);
+        await rig.Service.SetStatementsAsync(giro.Id, true, StatementsInterval.ManualOnly);
+        rig.Web.Documents.Add(new FakeIng.Doc("vl-2019", 1, "Kontoauszug", "VL-Sparen 7777777 / DE00 0000 0000 0000 0000 77", new DateOnly(2019, 12, 31)));
+        rig.Web.ExpireSessions();
+        Assert.True((await rig.SyncAsync(false, true)).Succeeded);
+        Assert.DoesNotContain("vl-oct", rig.Web.Downloads.Keys, StringComparer.Ordinal);
+        Assert.Contains("2 for accounts with statements off", rig.Logs.All, StringComparison.Ordinal);
+
+        // The pass is complete: the next sync only reads the last year.
+        Assert.True((await rig.SyncAsync(false, true)).Succeeded);
+        Assert.Equal("MONATE12", rig.Web.Ranges[^1]);
+
+        // Switching the VL account's statements on brings a full pass again, with its document from years ago.
+        var vl = await rig.World.RemoteAsync(BankWorld.Alice, rig.LoginId, FakeIng.VlIban);
+        await rig.Service.SetStatementsAsync(vl.Id, true, StatementsInterval.ManualOnly);
+        var ranges = rig.Web.Ranges.Count;
+        Assert.True((await rig.SyncAsync(false, true)).Succeeded);
+        Assert.Contains("DATUM", rig.Web.Ranges.Skip(ranges));
+        Assert.Equal(1, rig.Web.Downloads["vl-oct"]);
+        Assert.Equal(1, rig.Web.Downloads["vl-2019"]);
+        var list = await rig.Service.GetLoginStatementsAsync(rig.LoginId);
+        Assert.Equal(2, list.Count(s => s.AccountId == vl.LinkedAccountId));
+        Assert.Equal(1, rig.Web.Downloads["giro-nov"]);
+
+        // And then the recent listing is enough again.
         Assert.True((await rig.SyncAsync(false, true)).Succeeded);
         Assert.Equal("MONATE12", rig.Web.Ranges[^1]);
     }

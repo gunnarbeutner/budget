@@ -30,6 +30,10 @@ internal sealed class IngWebClient
     private const string DeviceField = "view:auth:deviceSelection:device:device";
     private const string DeviceButton = "buttons:next";
     private const string RangeField = "erweiterterFilter:zeitraum:zeitraum";
+    private const string DateRange = "DATUM";
+    private const string PostboxFromField = "erweiterterFilter:zeitraum:dateFields:von:datePanel:dateInput";
+    private const string PostboxToField = "erweiterterFilter:zeitraum:dateFields:bis:datePanel:dateInput";
+    private const string PostboxFilterButton = "erweiterterFilter:filtern";
     private const string FromField = "filterAnzeige:datum:von:input";
     private const string ToField = "filterAnzeige:datum:bis:input";
     private const string FilterButton = "filterAnzeige:ergebnisseAnzeigenButton";
@@ -206,11 +210,11 @@ internal sealed class IngWebClient
         return new AccountRefresh(parsed.Balance ?? row.Balance, parsed.Transactions, []);
     }
 
-    private static DateOnly? EarliestDate(string formInner)
+    private static DateOnly? EarliestDate(string formInner, string field = FromField)
     {
         foreach (var tag in formInner.Split('<').Where(t => t.StartsWith("input", StringComparison.OrdinalIgnoreCase)))
         {
-            if (!tag.Contains(FromField, StringComparison.Ordinal)) continue;
+            if (!tag.Contains(field, StringComparison.Ordinal)) continue;
             var text = IngHtml.Attr(" " + tag, "data-date-start-date");
             if (DateOnly.TryParseExact(text, "dd.MM.yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) return d;
         }
@@ -223,9 +227,11 @@ internal sealed class IngWebClient
     public sealed record PostboxEntry(string Identifier, IngPostboxRow Row, Uri Download);
 
     /// <summary>
-    /// Every document of every postbox tab (own and joint customer relationships) in the time range: the whole ten
-    /// years ING keeps when <paramref name="full"/>, otherwise the last year. The listing is not paged; the range
-    /// select re-renders the table through Wicket Ajax.
+    /// Every document of every postbox tab (own and joint customer relationships). ING lists at most
+    /// <see cref="PostboxListingCap"/> documents per listing (the newest of the range) and offers no paging, so the whole
+    /// ten years (<paramref name="full"/>) are read a year at a time through the "Freier Zeitraum" filter, a window that
+    /// still comes back full being split further; otherwise the last year (the "1 Jahr" range, re-rendered through
+    /// Wicket Ajax).
     /// </summary>
     public async Task<IReadOnlyList<PostboxEntry>> ListPostboxAsync(bool full, CancellationToken ct)
     {
@@ -245,27 +251,96 @@ internal sealed class IngWebClient
                 page = await FollowAsync(await GetAsync(Resolve(page.Url, tab.Href), ct), ct);
                 latest = page.Html;
             }
-            var listing = page.Html;
-            var range = full ? "MONATE120" : "MONATE12";
-            if (IngHtml.Select(page.Html, RangeField) is { Id: { } selectId, Options: var options }
-                && options.Any(o => string.Equals(o.Value, range, StringComparison.Ordinal))
-                && IngHtml.AjaxFor(page.Html, selectId) is { } change)
+            var listings = new List<(Uri Url, IReadOnlyList<IngPostboxRow> Rows)>();
+            if (full && await ListByDateAsync(page, listings, ct) is { } last)
             {
-                listing = await AjaxAsync(page.Url, change.Url, [new HtmlField(RangeField, range)], ct);
-                latest = listing;
+                page = last;
+                latest = last.Html;
             }
-            var rows = IngHtml.PostboxRows(listing);
-            var seen = new Dictionary<string, int>(StringComparer.Ordinal);
-            foreach (var row in rows)
+            else
             {
-                var key = string.Join('\n', label ?? "", row.Type, row.Subject, row.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-                var n = seen[key] = seen.GetValueOrDefault(key) + 1;
-                var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key + "\n" + n.ToString(CultureInfo.InvariantCulture))))[..32];
-                entries.Add(new PostboxEntry(PostboxIdPrefix + hash, row, Resolve(page.Url, row.DownloadHref)));
+                var listing = page.Html;
+                var range = full ? "MONATE120" : "MONATE12";
+                if (IngHtml.Select(page.Html, RangeField) is { Id: { } selectId, Options: var options }
+                    && options.Any(o => string.Equals(o.Value, range, StringComparison.Ordinal))
+                    && IngHtml.AjaxFor(page.Html, selectId) is { } change)
+                {
+                    listing = await AjaxAsync(page.Url, change.Url, [new HtmlField(RangeField, range)], ct);
+                    latest = listing;
+                }
+                var rows = IngHtml.PostboxRows(listing);
+                if (rows.Count >= PostboxListingCap)
+                    _log.LogWarning("ING Postbox: a listing returned {Count} documents, ING's limit; older ones may be missing.", rows.Count);
+                listings.Add((page.Url, rows));
+            }
+            // A day never spans two listings, so the per-day counter keeps identifiers stable however the range is cut.
+            var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var (url, rows) in listings)
+            {
+                foreach (var row in rows)
+                {
+                    var key = string.Join('\n', label ?? "", row.Type, row.Subject, row.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                    var n = seen[key] = seen.GetValueOrDefault(key) + 1;
+                    var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key + "\n" + n.ToString(CultureInfo.InvariantCulture))))[..32];
+                    entries.Add(new PostboxEntry(PostboxIdPrefix + hash, row, Resolve(url, row.DownloadHref)));
+                }
             }
         }
-        _log.LogInformation("ING Postbox: {Count} document(s) listed in {Tabs} postbox(es).", entries.Count, labels.Count);
+        _log.LogInformation("ING Postbox: {Count} document(s) listed in {Tabs} postbox(es) {Range}.",
+            entries.Count, labels.Count, full ? "over all years" : "for the last year");
         return entries;
+    }
+
+    /// <summary>ING's listing shows at most this many documents (the newest of the range).</summary>
+    internal const int PostboxListingCap = 500;
+
+    /// <summary>
+    /// The postbox read window by window with the "Freier Zeitraum" filter, newest first; null (nothing read) when the
+    /// page has no such filter. Returns the last page shown.
+    /// </summary>
+    private async Task<IngPage?> ListByDateAsync(IngPage page, List<(Uri Url, IReadOnlyList<IngPostboxRow> Rows)> listings, CancellationToken ct)
+    {
+        if (IngHtml.Select(page.Html, RangeField) is not { Id: { } selectId, Options: var options }
+            || !options.Any(o => string.Equals(o.Value, DateRange, StringComparison.Ordinal))
+            || IngHtml.AjaxFor(page.Html, selectId) is not { } change
+            || IngHtml.FormWith(page.Html, PostboxFilterButton) is not { } first)
+            return null;
+        // Choosing "Freier Zeitraum" enables the date fields on the server; the form is then submitted per window.
+        await AjaxAsync(page.Url, change.Url, [new HtmlField(RangeField, DateRange)], ct);
+        var today = Today();
+        var earliest = EarliestDate(first.Inner, PostboxFromField) ?? today.AddYears(-10);
+        var found = new List<(DateOnly From, Uri Url, IReadOnlyList<IngPostboxRow> Rows)>();
+        for (var to = today; to >= earliest; to = to.AddYears(-1))
+        {
+            var from = to.AddYears(-1).AddDays(1);
+            await ReadWindowAsync(from < earliest ? earliest : from, to);
+        }
+        listings.AddRange(found.OrderByDescending(f => f.From).Select(f => (f.Url, f.Rows)));
+        return page;
+
+        async Task ReadWindowAsync(DateOnly from, DateOnly to)
+        {
+            var form = IngHtml.FormWith(page.Html, PostboxFilterButton)
+                ?? throw new ConnectorException("ING's Postbox filter disappeared while reading it.");
+            var fields = Without(form.Fields, RangeField, PostboxFromField, PostboxToField, PostboxFilterButton);
+            fields.Add(new HtmlField(RangeField, DateRange));
+            fields.Add(new HtmlField(PostboxFromField, from.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)));
+            fields.Add(new HtmlField(PostboxToField, to.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)));
+            fields.Add(new HtmlField(PostboxFilterButton, ""));
+            page = await FollowAsync(await PostAsync(Resolve(page.Url, form.Action), fields, ct), ct);
+            var rows = IngHtml.PostboxRows(page.Html);
+            if (rows.Count >= PostboxListingCap && from < to)
+            {
+                // Full: ING may have cut it short. Read both halves on their own.
+                var mid = from.AddDays((to.DayNumber - from.DayNumber) / 2);
+                await ReadWindowAsync(mid.AddDays(1), to);
+                await ReadWindowAsync(from, mid);
+                return;
+            }
+            if (rows.Count >= PostboxListingCap)
+                _log.LogWarning("ING Postbox: {Count} documents on one day, ING's limit; some may be missing.", rows.Count);
+            found.Add((from, page.Url, rows.Where(r => r.Date >= from && r.Date <= to).ToList()));
+        }
     }
 
     /// <summary>The document's bytes, or null when ING answered with something that is not a PDF.</summary>

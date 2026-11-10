@@ -278,32 +278,70 @@ internal sealed class FakeIng : HttpMessageHandler
             Ranges.Add(range);
             var months = range == "MONATE120" ? 120 : 12;
             var box = x == "range-box1" ? 1 : 2;
+            _dateMode[box] = range == "DATUM";
+            if (range == "DATUM") return Xml($"<?xml version=\"1.0\" encoding=\"UTF-8\"?><ajax-response><component id=\"idpf\"><![CDATA[{Filter(box, true)}]]></component></ajax-response>");
             return Xml($"<?xml version=\"1.0\" encoding=\"UTF-8\"?><ajax-response><component id=\"idt\"><![CDATA[{Chips(box)}{Table(box, months)}]]></component></ajax-response>");
+        }
+        if (x.StartsWith("search", StringComparison.Ordinal) && method == HttpMethod.Post)
+        {
+            var box = x == "search1" ? 1 : 2;
+            if (form["erweiterterFilter:filtern"] == null || form["erweiterterFilter:zeitraum:zeitraum"] != "DATUM" || !_dateMode.GetValueOrDefault(box))
+                return new HttpResponseMessage(HttpStatusCode.BadRequest); // Wicket ignores the date fields while they are disabled
+            var from = DateOnly.ParseExact(form["erweiterterFilter:zeitraum:dateFields:von:datePanel:dateInput"] ?? "", "dd.MM.yyyy", System.Globalization.CultureInfo.InvariantCulture);
+            var to = DateOnly.ParseExact(form["erweiterterFilter:zeitraum:dateFields:bis:datePanel:dateInput"] ?? "", "dd.MM.yyyy", System.Globalization.CultureInfo.InvariantCulture);
+            Ranges.Add($"{from:yyyy-MM-dd}..{to:yyyy-MM-dd}");
+            return Html(Page(Chips(box) + Filter(box, true) + Table(box, from, to), RangeScript(box)));
         }
         return new HttpResponseMessage(HttpStatusCode.BadRequest);
     }
+
+    /// <summary>Like ING, a listing shows at most this many documents, the newest of the range, and has no paging.</summary>
+    public int ListingCap { get; set; } = 500;
+
+    /// <summary>Whether a postbox tab offers the "Freier Zeitraum" filter (older page versions did not).</summary>
+    public bool DateFilter { get; set; } = true;
+
+    private readonly Dictionary<int, bool> _dateMode = [];
+
+    private string Filter(int box, bool dates)
+    {
+        var disabled = dates ? "" : " disabled=\"disabled\"";
+        return $"<form id=\"idpf\" method=\"post\" action=\"./postbox?x=search{box}\"><select name=\"erweiterterFilter:zeitraum:zeitraum\" class=\"select\" id=\"idsel{box}\">"
+            + $"<option value=\"MONATE3\">3 Monate</option><option{(dates ? "" : " selected=\"selected\"")} value=\"MONATE12\">1 Jahr</option><option value=\"MONATE120\">max. Zeitraum (10 Jahre)</option>"
+            + (DateFilter ? $"<option{(dates ? " selected=\"selected\"" : "")} value=\"DATUM\">Freier Zeitraum</option>" : "") + "</select>"
+            + (DateFilter
+                ? $"<input class=\"input-field\" type=\"text\" value=\"09.11.2025\" name=\"erweiterterFilter:zeitraum:dateFields:von:datePanel:dateInput\"{disabled} data-date-start-date=\"09.11.2016\" data-date-end-date=\"09.11.2026\"/>"
+                  + $"<input class=\"input-field\" type=\"text\" value=\"09.11.2026\" name=\"erweiterterFilter:zeitraum:dateFields:bis:datePanel:dateInput\"{disabled} data-date-start-date=\"09.11.2016\" data-date-end-date=\"09.11.2026\"/>"
+                  + "<select name=\"erweiterterFilter:kontenFilter\"><option selected=\"selected\" value=\"0\">Alle</option></select>"
+                  + "<button type=\"submit\" class=\"button indigo\" name=\"erweiterterFilter:filtern\">Filter anwenden</button>"
+                : "")
+            + "</form>";
+    }
+
+    private static string RangeScript(int box) =>
+        $"Wicket.Ajax.ajax({{\"u\":\"./postbox?x=range-box{box}\",\"m\":\"POST\",\"c\":\"idsel{box}\",\"e\":\"change\"}});";
 
     private static string Chips(int box) =>
         "<div class=\"chips-nav\">"
         + $" <a class=\"button outline chip font14{(box == 1 ? " selected" : "")}\" href=\"./postbox?x=box1\"> Alex Example </a>"
         + $" <a class=\"button outline chip font14{(box == 2 ? " selected" : "")}\" href=\"./postbox?x=box2\"> Alex Example &amp; Sam Example </a> </div>";
 
-    private string Table(int box, int months)
+    private string Table(int box, int months) => Table(box, new DateOnly(2026, 11, 9).AddMonths(-months), DateOnly.MaxValue);
+
+    private string Table(int box, DateOnly from, DateOnly to)
     {
-        var from = new DateOnly(2026, 11, 9).AddMonths(-months);
-        var rows = Documents.Where(d => d.Box == box && d.Date >= from).OrderByDescending(d => d.Date).Select(d =>
+        var rows = Documents.Where(d => d.Box == box && d.Date >= from && d.Date <= to).OrderByDescending(d => d.Date).Take(ListingCap).Select(d =>
             $"<div class=\"ibbr-table-row gs-span-20 postbox-message\" role=\"row\" id=\"idrow{d.Id}\"> <span role=\"cell\" class=\"ibbr-table-cell postbox-grid-left gs-span-6\"> <span class=\"postbox-indicator\" aria-label=\"Gelesen\"></span> <span>{d.Type}</span> </span>"
             + $" <span role=\"cell\" class=\"ibbr-table-cell postbox-grid-description gs-span-10\"> {d.Subject} </span> <span role=\"cell\" class=\"ibbr-table-cell postbox-grid-right gs-span-3\">{d.Date:dd.MM.yyyy}</span>"
             + $" <div class=\"action-bar--buttons\"> <span role=\"list\"> <a type=\"listitem\" id=\"iddl{d.Id}\" href=\"./postbox?x=dl-{d.Id}\" class=\"button outline indigo font14\" role=\"button\" data-no-busy-indicator>Download</a> <a type=\"listitem\" href=\"#\" class=\"button\">Archivieren</a> </span> </div> </div>");
         return "<div class=\"ibbr-table\" role=\"table\"><div class=\"ibbr-table-body\">" + string.Concat(rows) + "</div></div>";
     }
 
-    private string PostboxPage(int box) => Page(
-        Chips(box)
-        + $"<form id=\"idpf\" method=\"post\" action=\"./postbox?x=search{box}\"><select name=\"erweiterterFilter:zeitraum:zeitraum\" class=\"select\" id=\"idsel{box}\">"
-        + "<option value=\"MONATE3\">3 Monate</option><option selected=\"selected\" value=\"MONATE12\">1 Jahr</option><option value=\"MONATE120\">max. Zeitraum (10 Jahre)</option></select></form>"
-        + Table(box, 12),
-        $"Wicket.Ajax.ajax({{\"u\":\"./postbox?x=range-box{box}\",\"m\":\"POST\",\"c\":\"idsel{box}\",\"e\":\"change\"}});");
+    private string PostboxPage(int box)
+    {
+        _dateMode[box] = false;
+        return Page(Chips(box) + Filter(box, false) + Table(box, 12), RangeScript(box));
+    }
 
     // ---- plumbing ----
 
