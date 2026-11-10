@@ -64,9 +64,6 @@
   <data name="Heading" xml:space="preserve">
     <value>Bank logins</value>
   </data>
-  <data name="Link_Sources" xml:space="preserve">
-    <value>Sources</value>
-  </data>
   <data name="Disabled_Title" xml:space="preserve">
     <value>Bank logins are disabled.</value>
   </data>
@@ -209,7 +206,7 @@
     <value>Only manually (included in Sync all)</value>
   </data>
   <data name="Interval_Never" xml:space="preserve">
-    <value>Never (not even in Sync all)</value>
+    <value>Never (only when started here)</value>
   </data>
   <data name="Type_Giro" xml:space="preserve">
     <value>Current account</value>

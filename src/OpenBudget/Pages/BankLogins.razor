@@ -10,11 +10,7 @@
 
 <PageTitle>@L["PageTitle"]</PageTitle>
 
-<PageHeader Title="@L["Heading"]">
-    <Actions>
-        <a class="btn btn-outline-secondary" href="/sources">@L["Link_Sources"]</a>
-    </Actions>
-</PageHeader>
+<PageHeader Title="@L["Heading"]" />
 
 @if (!Bank.IsEnabled)
 {
@@ -171,7 +167,7 @@ else
                 else
                 {
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle">
+                        <table class="table table-sm align-middle bank-accounts-table">
                             <thead>
                                 <tr>
                                     <th>@L["Table_Account"]</th>

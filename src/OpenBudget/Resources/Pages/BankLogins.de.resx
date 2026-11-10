@@ -64,9 +64,6 @@
   <data name="Heading" xml:space="preserve">
     <value>Bank-Zugänge</value>
   </data>
-  <data name="Link_Sources" xml:space="preserve">
-    <value>Quellen</value>
-  </data>
   <data name="Disabled_Title" xml:space="preserve">
     <value>Bank-Zugänge sind deaktiviert.</value>
   </data>
@@ -209,7 +206,7 @@
     <value>Nur manuell (bei "Alle abgleichen" dabei)</value>
   </data>
   <data name="Interval_Never" xml:space="preserve">
-    <value>Nie (auch nicht bei "Alle abgleichen")</value>
+    <value>Nie (nur von Hand hier)</value>
   </data>
   <data name="Type_Giro" xml:space="preserve">
     <value>Girokonto</value>

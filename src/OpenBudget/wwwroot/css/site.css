@@ -1669,3 +1669,11 @@ a.budget-cat:focus-visible { outline: 2px solid var(--ob-accent); outline-offset
 .tx-split-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .tx-transfer-row { font-size: 13px; }
 .tx-transfer-flag { color: var(--ob-accent); }
+
+/* Bank logins: every login's account table uses the same column widths, so the columns line up from card to card. */
+.bank-accounts-table { table-layout: fixed; width: 100%; }
+.bank-accounts-table th:nth-child(1) { width: 40%; }
+.bank-accounts-table th:nth-child(2) { width: 38%; }
+.bank-accounts-table th:nth-child(3) { width: 22%; }
+.bank-accounts-table td { overflow-wrap: anywhere; }
+@media (max-width: 767.98px) { .bank-accounts-table { table-layout: auto; } }
