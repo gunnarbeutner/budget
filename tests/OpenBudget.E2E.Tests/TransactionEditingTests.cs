@@ -47,18 +47,29 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     [Test]
     public async Task A_burst_of_sync_changes_updates_the_list_in_place_without_the_loading_skeleton()
     {
+        var console = new List<string>();
+        Page.Console += (_, m) => { if (m.Type == "error") console.Add(m.Text); };
         await GoToAsync(UncategorizedUrl);
         await Expect(Page.GetByText(new Regex("4 transactions"))).ToBeVisibleAsync();
         // remember whether a skeleton ever shows up from now on
         await Page.EvaluateAsync(@"() => { window.__sk = false; new MutationObserver(() => { if (document.querySelector('.skeleton')) window.__sk = true; })
             .observe(document.body, { childList: true, subtree: true }); }");
 
+        // the sync also removed a row (a pending booking that went away): the list shrinks under the open view
+        await using (var db = await AppFixture.Factory.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
+        {
+            var gone = await db.Transactions.Where(t => t.SourceId == E2ESeed.SourceId && t.CategoryId == null).OrderBy(t => t.Id).FirstAsync();
+            db.Transactions.Remove(gone);
+            await db.SaveChangesAsync();
+        }
         var notifications = AppFixture.Factory.BrowserHostServices.GetRequiredService<ChangeNotificationService>();
         for (var i = 0; i < 4; i++) notifications.Publish(new DataChange(DataArea.ImportedData, SourceId: E2ESeed.SourceId));
         await Page.WaitForTimeoutAsync(1500);
 
         Assert.That(await Page.EvaluateAsync<bool>("() => window.__sk"), Is.False, "the list was replaced by the loading skeleton");
-        await Expect(Page.GetByText(new Regex("4 transactions"))).ToBeVisibleAsync();
+        Assert.That(console, Is.Empty, string.Join("\n", console));
+        await Expect(Page.Locator("#blazor-error-ui")).Not.ToBeVisibleAsync();
+        await Expect(Page.GetByText(new Regex("3 transactions"))).ToBeVisibleAsync();
         await Expect(Page.GetByText("changed in another session")).ToHaveCountAsync(0);
     }
 

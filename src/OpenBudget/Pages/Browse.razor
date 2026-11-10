@@ -428,7 +428,7 @@
             else
             {
                 <div class="tx-list" data-testid="tx-list">
-                    <Virtualize @ref="txVirtualize" ItemsProvider="LoadTxRowsAsync" Context="item" ItemSize="@itemSize">
+                    <Virtualize @key="txListVersion" @ref="txVirtualize" ItemsProvider="LoadTxRowsAsync" Context="item" ItemSize="@itemSize">
                         <ItemContent>
                             @{
                                 var row = item.Row;
@@ -694,6 +694,9 @@
     // portfolio account (or it holds nothing). Drives the holdings card above the tx list.
     private AccountHoldings? holdings;
     private Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize<TxListItem>? txVirtualize;
+    // Virtualize keeps its loaded window across RefreshDataAsync and throws when the list shrank under it (a sync
+    // removed pending rows): a reload after an outside change gives it a fresh instance instead.
+    private int txListVersion, _renderedListVersion;
     // Approximate row height in CSS pixels — drives Virtualize's spacer math and the bar-click
     // scroll-jump (offset = newerCount * itemSize). Real rows vary a few px either way; the
     // post-load scrollIntoView fine-tunes the final position.
@@ -813,6 +816,7 @@
             do
             {
                 _quietReloadAgain = false;
+                txListVersion++;
                 await ReloadAsync(quiet: true);
             } while (_quietReloadAgain);
         }
@@ -870,6 +874,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        _renderedListVersion = txListVersion;
         // The initial pipeline (OnInitializedAsync → ReloadAsync) computes chart data but
         // can't push it to JS during prerender. Flush any pending chart here, then on every
         // subsequent state change that flips chartDirty.
@@ -1365,7 +1370,9 @@
         }
         await LoadToolbarExtrasAsync();
         if (keepSelection) await PruneSelectionAsync();
-        if (txVirtualize is not null) await txVirtualize.RefreshDataAsync();
+        // After an outside change the list gets a new instance (txListVersion) that loads by itself; refreshing the
+        // old one would render it once more against the new row count.
+        if (txVirtualize is not null && _renderedListVersion == txListVersion) await txVirtualize.RefreshDataAsync();
         await ComputeChartAsync();
         chartDirty = true;
         StateHasChanged();
