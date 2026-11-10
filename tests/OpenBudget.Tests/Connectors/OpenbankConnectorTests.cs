@@ -42,7 +42,9 @@ public sealed class OpenbankConnectorTests
     /// address was entered; it leads to the password page, whose submit redirects to the dashboard with the token
     /// cookies (<paramref name="withTokens"/> false: without them). A wrong password keeps the form.
     /// </summary>
-    private static FakeBrowserHost SignInPage(FakeOpenbank bank, bool withTokens = true) => new()
+    private const string ErrorBoxText = "Vergewissere dich, dass die E-Mail-Adresse und der Zugangscode korrekt sind. Andernfalls kannst du dein Passwort zurücksetzen.";
+
+    private static FakeBrowserHost SignInPage(FakeOpenbank bank, bool withTokens = true, bool showsError = true) => new()
     {
         User = session =>
         {
@@ -67,7 +69,12 @@ public sealed class OpenbankConnectorTests
                     return Task.CompletedTask;
                 }
                 if (string.Concat(Enumerable.Range(0, OpenbankConnector.AccessCodeLength).Select(i => s.Filled.GetValueOrDefault(OpenbankConnector.AccessCodeBox(i))))
-                    != FakeOpenbank.Password) return Task.CompletedTask;
+                    != FakeOpenbank.Password)
+                {
+                    // Openbank's error box under the form; the form stays
+                    if (showsError) lock (s.Visible) s.Texts[OpenbankConnector.CredentialsErrorSelector] = ErrorBoxText;
+                    return Task.CompletedTask;
+                }
                 lock (s.Visible) s.Visible.Clear();
                 foreach (var c in bank.SignIn(withTokens)) s.SetCookie(c);
                 s.Url = new Uri(Dashboard);
@@ -78,12 +85,12 @@ public sealed class OpenbankConnectorTests
     };
 
     private static async Task<Rig> CreateAsync(Action<FakeOpenbank>? setup = null, string password = FakeOpenbank.Password, int pageSize = 3,
-        bool withTokens = true, WebLoginOptions? webLogin = null)
+        bool withTokens = true, WebLoginOptions? webLogin = null, bool showsError = true)
     {
         var bank = new FakeOpenbank();
         setup?.Invoke(bank);
         var logs = new CapturingLoggerFactory();
-        var browser = SignInPage(bank, withTokens);
+        var browser = SignInPage(bank, withTokens, showsError);
         var world = await BankWorld.CreateAsync(extras: new BankWorldExtras
         {
             Registrations = [OpenbankConnector.CreateRegistration(Options(pageSize))],
@@ -146,12 +153,68 @@ public sealed class OpenbankConnectorTests
     [Fact]
     public async Task A_sign_in_that_does_not_complete_is_not_reported_as_a_wrong_password()
     {
-        await using var rig = await CreateAsync(password: "wrong",
+        await using var rig = await CreateAsync(password: "0000", showsError: false,
             webLogin: new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(10), SettleDelay = TimeSpan.Zero, Timeout = TimeSpan.FromMilliseconds(500) });
         var status = await SyncAsync(rig, false);
         Assert.False(status.Succeeded);
         Assert.DoesNotContain("username or password", status.Error, StringComparison.Ordinal);
         Assert.Equal(0, rig.Bank.Count("/cb-api-global-position"));
+    }
+
+    [Fact]
+    public async Task Openbank_s_error_box_ends_the_sign_in_as_rejected_credentials()
+    {
+        await using var rig = await CreateAsync(password: "0000",
+            webLogin: new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(10), SettleDelay = TimeSpan.Zero, Timeout = TimeSpan.FromSeconds(20) });
+        var started = DateTime.UtcNow;
+        var status = await SyncAsync(rig, false);
+        Assert.False(status.Succeeded);
+        Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(10), "ends at once instead of waiting for the timeout");
+        Assert.Contains("Openbank rejected the e-mail address or access code", status.Error, StringComparison.Ordinal);
+        var login = await rig.Service.GetLoginAsync(rig.LoginId);
+        Assert.True(login!.CredentialsInvalid);
+        Assert.Contains("Openbank rejected", login.LastError, StringComparison.Ordinal);
+        Assert.DoesNotContain("0000", rig.Logs.All, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_global_position_without_cards_fails_loudly_instead_of_closing_the_linked_card()
+    {
+        await using var rig = await CreateAsync();
+        await LinkCardAsync(rig);
+        rig.Bank.HiddenCards.Add(FakeOpenbank.CardId);
+        rig.Bank.HiddenCards.Add(FakeOpenbank.AddonCardId);
+        var status = await SyncAsync(rig);
+        Assert.False(status.Succeeded);
+        Assert.Contains("listed no cards", status.Error, StringComparison.Ordinal);
+        Assert.Contains("listed no cards", (await rig.Service.GetLoginAsync(rig.LoginId))!.LastError, StringComparison.Ordinal);
+        Assert.False((await rig.World.RemoteAsync(BankWorld.Alice, rig.LoginId, FakeOpenbank.CardId)).Closed);
+        Assert.Contains("lists 0 cards", rig.Logs.All, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_linked_card_the_bank_no_longer_lists_is_reported()
+    {
+        await using var rig = await CreateAsync();
+        await LinkCardAsync(rig);
+        rig.Bank.HiddenCards.Add(FakeOpenbank.CardId);
+        var status = await SyncAsync(rig);
+        Assert.False(status.Succeeded);
+        Assert.Contains("no longer lists this account", status.Error, StringComparison.Ordinal);
+        Assert.Contains("no longer lists", (await rig.World.RemoteAsync(BankWorld.Alice, rig.LoginId, FakeOpenbank.CardId)).LastError, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_data_phase_is_logged_with_counts()
+    {
+        await using var rig = await CreateAsync();
+        await LinkCardAsync(rig);
+        Assert.True((await SyncAsync(rig)).Succeeded);
+        var logs = rig.Logs.All;
+        Assert.Contains("lists 2 accounts", logs, StringComparison.Ordinal);
+        Assert.Contains("refreshing 2 linked accounts", logs, StringComparison.Ordinal);
+        Assert.Contains("transactions fetched", logs, StringComparison.Ordinal);
+        Assert.Contains("finished.", logs, StringComparison.Ordinal);
     }
 
     [Fact]

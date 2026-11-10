@@ -34,11 +34,13 @@ public enum WebLoginMode
 }
 
 /// <summary>Outcome of a web login. On success <see cref="Cookies"/> holds every cookie of the connector's domains.</summary>
-public sealed record WebLoginResult(bool Success, string? Error, IReadOnlyList<CookieState> Cookies)
+public sealed record WebLoginResult(bool Success, string? Error, IReadOnlyList<CookieState> Cookies, bool CredentialsRejected = false)
 {
     public static WebLoginResult Ok(IReadOnlyList<CookieState> cookies) => new(true, null, cookies);
 
     public static WebLoginResult Fail(string error) => new(false, error, []);
+
+    public static WebLoginResult Rejected(string error) => new(false, error, [], CredentialsRejected: true);
 }
 
 /// <summary>Starts web logins and lets only their owner attach a viewer.</summary>
@@ -289,6 +291,14 @@ public sealed class WebLoginSession : IAsyncDisposable
         while (await timer.WaitForNextTickAsync(ct))
         {
             var url = _browser.Url;
+            // after the app submitted the stored credentials, the bank's own error message means they are wrong:
+            // end now instead of waiting for an approval that will never come (the user did not type anything)
+            if (_submittedAt != null && Mode != WebLoginMode.Interactive && _spec.CredentialsError is { } error
+                && await _browser.HasVisibleTextAsync(error.Selector, error.Texts))
+            {
+                _logger.LogWarning("Web login: the sign-in page reports wrong credentials ({Selector}) on {Path}.", error.Selector, SafePath(url));
+                return WebLoginResult.Rejected(error.Message);
+            }
             if (Mode == WebLoginMode.Waiting && _submittedAt is { } at && DateTime.UtcNow - at > _options.StuckAfter
                 && _spec.Autofill is { } fill && !_spec.UrlMatches(url) && await _browser.IsVisibleAsync(fill.PasswordSelector))
             {

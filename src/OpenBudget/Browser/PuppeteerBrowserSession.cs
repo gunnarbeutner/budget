@@ -85,11 +85,13 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
                 // focus and select what is there, then type like a user so the page's own input handlers see it
                 await el.EvaluateFunctionAsync("e => { e.focus(); if (e.select) e.select(); }");
                 await el.TypeAsync(value, new PuppeteerSharp.Input.TypeOptions { Delay = 25 });
-                // Controlled inputs (React) may drop or rewrite keystrokes: when the value did not stick, set it through the
-                // native setter (bypassing React's value tracker) and fire a bubbling input event so onChange runs.
+                // Controlled inputs (React) may drop keystrokes: when nothing (or only the start of the value) stuck, set it
+                // through the native setter (bypassing React's value tracker) and fire a bubbling input event so onChange runs.
+                // Any other value means the page took the keystrokes and rewrote them (a masked "•" in an access code box):
+                // setting the value again would enter the character a second time, so it is left alone.
                 await el.EvaluateFunctionAsync(
                     @"(e, v) => {
-                        if (e.value !== v) {
+                        if (e.value !== v && v.startsWith(e.value)) {
                             const proto = e instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
                             Object.getOwnPropertyDescriptor(proto, 'value').set.call(e, v);
                             e.dispatchEvent(new Event('input', { bubbles: true }));
@@ -117,6 +119,24 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
                 await el.ClickAsync();
             }
             return true;
+        }
+        catch (PuppeteerException)
+        {
+            return false;
+        }
+    }
+
+    public async Task<bool> HasVisibleTextAsync(string selector, IReadOnlyList<string> texts)
+    {
+        try
+        {
+            return await _page.EvaluateFunctionAsync<bool>(
+                @"(sel, texts) => Array.from(document.querySelectorAll(sel)).some(e => {
+                    const r = e.getBoundingClientRect();
+                    if (r.width === 0 && r.height === 0) return false;
+                    const t = (e.innerText || e.textContent || '').toLowerCase();
+                    return texts.length === 0 || texts.some(x => t.includes(x.toLowerCase()));
+                })", selector, texts);
         }
         catch (PuppeteerException)
         {

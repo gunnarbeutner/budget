@@ -38,6 +38,12 @@ public sealed class OpenbankConnector : IBankConnector
     internal const int AccessCodeLength = 4;
     internal const string SubmitSelector = "[data-testid=login-gaps-button]:not([disabled])";
 
+    // The page's error box after a wrong e-mail address or access code ("Vergewissere dich, dass die E-Mail-Adresse und der
+    // Zugangscode korrekt sind"). The texts make sure an unrelated alert (cookie banner, say) does not count.
+    internal const string CredentialsErrorSelector = "[role=alert], [data-testid*=error i], [class*=error i], [class*=alert i]";
+    internal static readonly string[] CredentialsErrorTexts = ["Zugangscode korrekt", "E-Mail-Adresse und der Zugangscode"];
+    internal const string CredentialsRejectedMessage = "Openbank rejected the e-mail address or access code.";
+
     internal static string AccessCodeBox(int i) => AccessCodeBoxFormat.Replace("{0}", i.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
 
     internal const string AccessTokenCookie = "accessToken";
@@ -97,6 +103,7 @@ public sealed class OpenbankConnector : IBankConnector
             new WebLoginStep(UsernameSelector, WebLoginCredential.Username, ContinueSelector),
             new WebLoginStep([new WebLoginField(AccessCodeBoxFormat, WebLoginCredential.Secret, AccessCodeLength)], SubmitSelector),
         ]),
+        CredentialsError = new WebLoginError(CredentialsErrorSelector, CredentialsErrorTexts, CredentialsRejectedMessage),
     };
 
     private bool IsSiteCookie(CookieState c) =>
@@ -197,9 +204,23 @@ public sealed class OpenbankConnector : IBankConnector
     {
         var position = await GetAsync(GlobalPositionPath, ct);
         var accounts = new List<RemoteAccount>();
-        foreach (var card in position.Path("resource", "cardsInfo", "cards").Items())
+        var cards = position.Path("resource", "cardsInfo", "cards").Items().ToList();
+        Log.LogInformation("Openbank global position lists {Count} cards.", cards.Count);
+        if (cards.Count == 0)
         {
-            if (card.Str("id") is not { Length: > 0 } id) continue;
+            // Never an empty success: that would silently close every linked account. Only the field names are logged.
+            var resource = position.Path("resource") ?? position;
+            var keys = resource.ValueKind == JsonValueKind.Object ? string.Join(", ", resource.EnumerateObject().Select(p => p.Name)) : resource.ValueKind.ToString();
+            Log.LogWarning("Openbank global position has no cards under resource.cardsInfo.cards (resource fields: {Fields}).", keys);
+            throw new ConnectorException("Openbank listed no cards for this login.");
+        }
+        foreach (var card in cards)
+        {
+            if (card.Str("id") is not { Length: > 0 } id)
+            {
+                Log.LogWarning("Skipping an Openbank card without an id.");
+                continue;
+            }
             var detail = await CardDetailAsync(id, ct);
             var last4 = detail.Str("last4DigitsPan") ?? card.Str("last4DigitsPan");
             var alias = card.Str("alias") ?? detail.Str("alias");
@@ -228,6 +249,7 @@ public sealed class OpenbankConnector : IBankConnector
         // The amount owed on the card (Openbank reports it positive) is a negative balance.
         var balance = detail.ValueKind == JsonValueKind.Object ? -detail.Dec("creditDetails", "currentBalance") : null;
         var transactions = await FetchTransactionsAsync(account, since, ct);
+        Log.LogInformation("Openbank card {Card}: {Count} transactions fetched (since {Since}).", account.Name, transactions.Count, since?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "the start");
         return ConnectorStep.Done(new AccountRefresh(balance, transactions, []));
     }
 

@@ -30,6 +30,12 @@ public sealed class WebLoginSpec
     /// <summary>When set, the app fills in and submits the bank's sign-in form itself; the user only sees the page if it gets stuck.</summary>
     public WebLoginAutofill? Autofill { get; init; }
 
+    /// <summary>
+    /// The bank's "wrong username or password" message on the sign-in page: a CSS selector and, optionally, text the element
+    /// must contain. When it shows up after the app submitted the form, the web login ends at once with
+    /// <see cref="RejectedMessage"/> and the credentials count as rejected (instead of waiting for an approval that never comes).
+    /// </summary>
+    public WebLoginError? CredentialsError { get; init; }
 
     /// <summary>Cookies of these domains (and their sub-/parent domains' cookies that reach them) travel between the jar and the browser.</summary>
     public IReadOnlyList<string> CookieDomains { get; }
@@ -59,6 +65,12 @@ public sealed class WebLoginSpec
         return SuccessWhen(url, cookies);
     }
 }
+
+/// <summary>How a sign-in page shows that it rejected the credentials (see <see cref="WebLoginSpec.CredentialsError"/>).</summary>
+/// <param name="Selector">Candidate elements (e.g. "[role=alert]").</param>
+/// <param name="Texts">The element must contain one of these (case-insensitive); empty: any visible match counts.</param>
+/// <param name="Message">What the user is told.</param>
+public sealed record WebLoginError(string Selector, IReadOnlyList<string> Texts, string Message);
 
 /// <summary>Which stored credential a sign-in field receives.</summary>
 public enum WebLoginCredential

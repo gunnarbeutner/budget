@@ -56,4 +56,7 @@ public interface IBrowserSession : IAsyncDisposable
     Task<bool> ClickAsync(string selector);
 
     Task<bool> IsVisibleAsync(string selector);
+
+    /// <summary>True when a visible element matching <paramref name="selector"/> contains one of <paramref name="texts"/> (case-insensitive; empty: any).</summary>
+    Task<bool> HasVisibleTextAsync(string selector, IReadOnlyList<string> texts);
 }

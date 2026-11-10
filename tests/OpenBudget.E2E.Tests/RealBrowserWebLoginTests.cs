@@ -60,6 +60,10 @@ public sealed class RealBrowserWebLoginTests
             {
                 html = TwoStepPage;
             }
+            else if (path == "/masked")
+            {
+                html = MaskedCodePage;
+            }
             else
             {
                 html = "<html><body><h1>Home</h1></body></html>";
@@ -111,6 +115,79 @@ public sealed class RealBrowserWebLoginTests
         }, 300);
         </script></body></html>
         """;
+
+    /// <summary>
+    /// An access code form whose boxes take each digit into the page's state, then mask it ("•") and move the focus on.
+    /// Every input event whose value differs from what the page last wrote counts as a typed digit, as in a React
+    /// component: a digit set a second time after the masking would enter it twice. A wrong code shows Openbank's error box.
+    /// </summary>
+    private const string MaskedCodePage = """
+        <html><body><div id="root"></div><script>
+        const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+        let code = '';
+        const submit = document.createElement('button');
+        submit.setAttribute('data-testid', 'login-gaps-button'); submit.disabled = true; submit.textContent = 'Anmelden';
+        const boxes = [0, 1, 2, 3].map(i => {
+          const el = document.createElement('input');
+          el.setAttribute('type', 'tel'); el.setAttribute('maxlength', '1'); el.setAttribute('data-testid', 'password-module-inputs-gap-' + i);
+          let tracked = '';
+          Object.defineProperty(el, 'value', { configurable: true, get() { return desc.get.call(this); }, set(v) { tracked = String(v); desc.set.call(this, v); } });
+          el.addEventListener('input', () => {
+            const v = desc.get.call(el);
+            if (v === tracked) return;
+            const digit = v.replace('•', '');
+            if (!digit) return;
+            code += digit;
+            el.value = '•';
+            submit.disabled = code.length < 4;
+            if (i < 3) boxes[i + 1].focus();
+          });
+          return el;
+        });
+        submit.onclick = () => {
+          if (code === '8264') { document.cookie = 'sid=abc; path=/; max-age=3600'; location.href = '/home'; return; }
+          const err = document.createElement('div');
+          err.setAttribute('role', 'alert');
+          err.textContent = 'Vergewissere dich, dass die E-Mail-Adresse und der Zugangscode korrekt sind.';
+          document.getElementById('root').append(err);
+        };
+        document.getElementById('root').append(...boxes, submit);
+        </script></body></html>
+        """;
+
+    private WebLoginSpec MaskedSpec(string code) => new(new Uri(_baseUrl + "masked"), ["127.0.0.1"], new Uri(_baseUrl + "home"))
+    {
+        Autofill = new WebLoginAutofill("alice@example.com", code,
+        [
+            new WebLoginStep([new WebLoginField("[data-testid=password-module-inputs-gap-{0}]", WebLoginCredential.Secret, 4)],
+                "[data-testid=login-gaps-button]:not([disabled])"),
+        ]),
+        CredentialsError = new WebLoginError("[role=alert]", ["Zugangscode korrekt"], "Openbank rejected the e-mail address or access code."),
+    };
+
+    [Test]
+    public async Task Masked_auto_advancing_code_boxes_get_each_digit_exactly_once()
+    {
+        await using var browser = NewBrowser();
+        var service = new WebLoginService(browser, new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },
+            TimeProvider.System, NullLoggerFactory.Instance);
+        await using var session = await service.StartAsync("user-1", MaskedSpec("8264"), [], CancellationToken.None);
+        var result = await session.Completion.WaitAsync(TimeSpan.FromSeconds(60));
+        Assert.That(result.Success, Is.True, result.Error);
+    }
+
+    [Test]
+    public async Task The_bank_s_error_box_ends_the_login_as_rejected_credentials()
+    {
+        await using var browser = NewBrowser();
+        var service = new WebLoginService(browser, new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10), StuckAfter = TimeSpan.FromSeconds(30) },
+            TimeProvider.System, NullLoggerFactory.Instance);
+        await using var session = await service.StartAsync("user-1", MaskedSpec("1111"), [], CancellationToken.None);
+        var result = await session.Completion.WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.That(result.Success, Is.False);
+        Assert.That(result.CredentialsRejected, Is.True);
+        Assert.That(result.Error, Does.Contain("rejected"));
+    }
 
     [Test]
     public async Task A_two_step_react_form_is_filled_and_submitted_page_by_page()

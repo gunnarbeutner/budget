@@ -87,6 +87,18 @@ internal sealed class FakeBrowserSession : IBrowserSession
         lock (Visible) return Task.FromResult(Visible.Contains(selector));
     }
 
+    /// <summary>Visible text per selector (the bank's error box, say).</summary>
+    public Dictionary<string, string> Texts { get; } = new(StringComparer.Ordinal);
+
+    public Task<bool> HasVisibleTextAsync(string selector, IReadOnlyList<string> texts)
+    {
+        lock (Visible)
+        {
+            return Task.FromResult(Texts.TryGetValue(selector, out var t)
+                && (texts.Count == 0 || texts.Any(x => t.Contains(x, StringComparison.OrdinalIgnoreCase))));
+        }
+    }
+
     /// <summary>The cookies the framework put into the context before navigating.</summary>
     public List<CookieState> Seeded { get; } = [];
 

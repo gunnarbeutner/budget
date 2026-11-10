@@ -36,6 +36,9 @@ internal sealed class FakeOpenbank : HttpMessageHandler
 
     public int PageLimit { get; set; } = 3;
 
+    /// <summary>Cards the global position leaves out (a card that was cancelled, or a response of another shape).</summary>
+    public HashSet<string> HiddenCards { get; } = new(StringComparer.Ordinal);
+
     public List<string> Requests { get; } = [];
 
     public List<JsonObject> Transactions { get; set; } = DefaultTransactions();
@@ -141,25 +144,22 @@ internal sealed class FakeOpenbank : HttpMessageHandler
         {
             ["accessToken"] = access,
             ["refreshToken"] = refresh,
-            ["sessionExpiresAt"] = "2030-01-01T00:00:00Z",
+            ["sessionExpiresAt"] = "Tue Nov 10 2026 17:51:51 GMT+0000 (Koordinierte Weltzeit)", // a JS Date string, as the web client writes it
             ["expiresIn"] = 300,
         };
     }
 
     // ---- data ----
 
-    private static JsonObject GlobalPosition() => new()
+    private JsonObject GlobalPosition() => new()
     {
         ["resource"] = new JsonObject
         {
             ["customerInfo"] = new JsonObject { ["userDetails"] = new JsonObject { ["userName"] = "Alice Example" } },
             ["cardsInfo"] = new JsonObject
             {
-                ["cards"] = new JsonArray
-                {
-                    CardSummary(CardId, ""),
-                    CardSummary(AddonCardId, "Alice's second card"),
-                },
+                ["cards"] = new JsonArray(new[] { CardSummary(CardId, ""), CardSummary(AddonCardId, "Alice's second card") }
+                    .Where(c => !HiddenCards.Contains((string)c["id"]!)).ToArray<JsonNode?>()),
             },
         },
     };

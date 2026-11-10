@@ -139,7 +139,14 @@ public sealed class BankSyncRunner
 
             sink.Report("Listing accounts");
             var remoteAccounts = await connector.ListAccountsAsync(ct);
-            UpsertAccounts(login, remoteAccounts);
+            _logger.LogInformation("Bank login {LoginId}: the bank lists {Count} accounts.", login.Id, remoteAccounts.Count);
+            var vanished = UpsertAccounts(login, remoteAccounts);
+            foreach (var link in vanished)
+            {
+                // a linked account the bank stopped listing: say so instead of silently skipping it
+                _logger.LogWarning("Bank login {LoginId}: the linked account {LinkId} is no longer listed by the bank.", login.Id, link.Id);
+                await RecordAccountErrorAsync(db, link, "The bank no longer lists this account.", errors, ct);
+            }
             await db.SaveChangesAsync(ct);
 
             if (request.Transactions)
@@ -149,10 +156,12 @@ public sealed class BankSyncRunner
         }
         catch (ConnectorException ex)
         {
+            _logger.LogWarning(ex, "Sync of bank login {LoginId} failed: {Error}", login.Id, ex.Message);
             errors.Add(ex.Message);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (ct.IsCancellationRequested)
         {
+            _logger.LogInformation(ex, "Sync of bank login {LoginId} was cancelled.", login.Id);
             errors.Add("The sync was cancelled.");
         }
         catch (Exception ex)
@@ -172,6 +181,8 @@ public sealed class BankSyncRunner
             await FinishAsync(db, login, request, finalSession, http, errors, credentialsInvalid, attempted);
         }
 
+        if (errors.Count == 0) _logger.LogInformation("Sync of bank login {LoginId} finished.", login.Id);
+        else _logger.LogWarning("Sync of bank login {LoginId} finished with errors: {Errors}", login.Id, string.Join(" ", errors));
         return new SyncOutcome(errors.Count == 0, errors.Count == 0 ? null : string.Join(" ", errors), affected);
     }
 
@@ -208,9 +219,16 @@ public sealed class BankSyncRunner
         {
             var step = await call(answer);
             if (step.Status != StepStatus.Challenge) return step;
-            answer = step.Challenge!.Kind == ChallengeKind.WebLogin
-                ? await RunWebLoginAsync(step.Challenge, sink, context, ct)
-                : await sink.AskAsync(step.Challenge, ct);
+            if (step.Challenge!.Kind == ChallengeKind.WebLogin)
+            {
+                var (webAnswer, rejected) = await RunWebLoginAsync(step.Challenge, sink, context, ct);
+                if (rejected != null) return ConnectorStep.Fail<T>(rejected, credentialsRejected: true);
+                answer = webAnswer;
+            }
+            else
+            {
+                answer = await sink.AskAsync(step.Challenge, ct);
+            }
             if (answer == null) return ConnectorStep.Fail<T>("No answer was given in time; the request expired.");
         }
     }
@@ -220,7 +238,8 @@ public sealed class BankSyncRunner
     /// (so "remember this device" cookies can spare the 2FA) and hands every cookie of the connector's domains back
     /// into the login's jar. The browser is destroyed afterwards; the jar (stored encrypted) is the only copy.
     /// </summary>
-    private async Task<ChallengeAnswer> RunWebLoginAsync(ConnectorChallenge challenge, ISyncSink sink, SyncContext context, CancellationToken ct)
+    /// <returns>The answer, or (null, message) when the bank's page rejected the stored credentials.</returns>
+    private async Task<(ChallengeAnswer? Answer, string? Rejected)> RunWebLoginAsync(ConnectorChallenge challenge, ISyncSink sink, SyncContext context, CancellationToken ct)
     {
         var spec = challenge.WebLoginSpec!;
         if (_webLogins is not { IsAvailable: true })
@@ -242,7 +261,11 @@ public sealed class BankSyncRunner
             try
             {
                 var result = await session.Completion.WaitAsync(ct);
-                if (!result.Success) throw new ConnectorException(result.Error ?? "The web login failed.");
+                if (!result.Success)
+                {
+                    if (result.CredentialsRejected) return (null, result.Error ?? "The bank rejected the credentials.");
+                    throw new ConnectorException(result.Error ?? "The web login failed.");
+                }
                 context.Http.ReplaceCookies(spec, result.Cookies);
             }
             finally
@@ -251,11 +274,13 @@ public sealed class BankSyncRunner
                 sink.HideWebLogin();
             }
         }
-        return new ChallengeAnswer(challenge, null);
+        return (new ChallengeAnswer(challenge, null), null);
     }
 
-    private static void UpsertAccounts(BankLogin login, IReadOnlyList<RemoteAccount> remote)
+    /// <summary>Updates the login's accounts; returns the linked, previously open ones the bank no longer lists.</summary>
+    private static List<BankLoginAccount> UpsertAccounts(BankLogin login, IReadOnlyList<RemoteAccount> remote)
     {
+        var vanished = new List<BankLoginAccount>();
         foreach (var r in remote)
         {
             var row = login.Accounts.FirstOrDefault(a => string.Equals(a.RemoteId, r.RemoteId, StringComparison.Ordinal));
@@ -272,16 +297,20 @@ public sealed class BankSyncRunner
         }
         foreach (var gone in login.Accounts.Where(a => remote.All(r => !string.Equals(r.RemoteId, a.RemoteId, StringComparison.Ordinal))))
         {
+            if (gone.LinkedAccountId != null && !gone.Closed) vanished.Add(gone);
             gone.Closed = true;
             gone.StatementsEnabled = false;
         }
+        return vanished;
     }
 
     private async Task RefreshAccountsAsync(
         BudgetDbContext db, BankLogin login, IBankConnector connector, IReadOnlyList<RemoteAccount> remote,
         ISyncSink sink, SyncContext context, List<string> errors, HashSet<int> affected, CancellationToken ct)
     {
-        foreach (var link in login.Accounts.Where(a => a.LinkedAccountId != null && !a.Closed).ToList())
+        var links = login.Accounts.Where(a => a.LinkedAccountId != null && !a.Closed).ToList();
+        _logger.LogInformation("Bank login {LoginId}: refreshing {Count} linked accounts.", login.Id, links.Count);
+        foreach (var link in links)
         {
             var remoteAccount = remote.First(r => string.Equals(r.RemoteId, link.RemoteId, StringComparison.Ordinal));
             sink.Report($"Refreshing {link.Name}");
@@ -299,6 +328,7 @@ public sealed class BankSyncRunner
                 var now = _clock.GetUtcNow().UtcDateTime;
                 if (link.SyncFloorUtc == null && link.LastSuccessAt == null)
                     link.SyncFloorUtc = since is { } s ? s.ToDateTime(TimeOnly.MinValue) : null;
+                _logger.LogInformation("Bank login {LoginId}: account link {LinkId} returned {Count} transactions.", login.Id, link.Id, step.Value!.Transactions.Count);
                 await _transactions.ApplyAsync(db, account.Id, step.Value!, since, now, ct);
                 link.LastSuccessAt = now;
                 link.LastError = null;
@@ -306,11 +336,12 @@ public sealed class BankSyncRunner
             }
             catch (ConnectorException ex)
             {
+                _logger.LogWarning(ex, "Refreshing account link {LinkId} of bank login {LoginId} failed: {Error}", link.Id, login.Id, ex.Message);
                 await RecordAccountErrorAsync(db, link, ex.Message, errors, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogError(ex, "Refreshing account {Remote} of bank login {LoginId} failed.", link.RemoteId, login.Id);
+                _logger.LogError(ex, "Refreshing account link {LinkId} of bank login {LoginId} failed.", link.Id, login.Id);
                 await RecordAccountErrorAsync(db, link, "Unexpected error; see the server log.", errors, ct);
             }
             await db.SaveChangesAsync(ct);
