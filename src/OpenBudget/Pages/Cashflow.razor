@@ -429,11 +429,28 @@ else
         DataArea.ImportedData or DataArea.Sources => change.SourceId == projectSourceId,
         _ => change.ProjectId is null || change.ProjectId == ProjectId,
     };
-    protected override Task ReloadAfterChangeAsync()
+    // New bookings from an import or a bank sync only change the numbers: recompute in place, keeping the year,
+    // budget and projection options. Budget/project edits — and unsaved contribution splits — keep the banner.
+    protected override bool ShouldAutoReload(DataChange change)
     {
-        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
-        return Task.CompletedTask;
+        var inPlace = change.Area is DataArea.ImportedData or DataArea.BankSync && !splitsDirty;
+        if (!inPlace) structuralChangePending = true;
+        return inPlace;
     }
+
+    protected override async Task ReloadAfterChangeAsync()
+    {
+        if (structuralChangePending)
+        {
+            Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+            return;
+        }
+        await LoadCashflowData();
+        StateHasChanged();
+    }
+
+    // Set when a banner-worthy change arrives, so its Reload button still does the full reload.
+    private bool structuralChangePending;
 
     protected override void Dispose(bool disposing)
     {
@@ -1509,7 +1526,7 @@ else
     /// </summary>
     private string[] GenerateColors(int count) => ChartPalette.Templates(count);
 
-    private string FormatEuro(decimal value) => Formatting.FormatMoney(value);
+    private string FormatEuro(decimal value) => Formatting.FormatMoneyDe(value);
 
     /// <summary>
     /// Renders a month + day using the current culture's MonthDayPattern so the order matches

@@ -166,16 +166,16 @@ else if (step == 2)
                                                        @bind="amounts[idx]" />
                                             </td>
                                         }
-                                        <td class="text-end"><strong>€@amounts.Sum().ToString("N2")</strong></td>
+                                        <td class="text-end"><strong>@Formatting.FormatMoneyDe(amounts.Sum())</strong></td>
                                     </tr>
                                 }
                                 <tr class="table-primary">
                                     <th>@L["Subtotal_Income"]</th>
                                     @for (int m = 0; m < 12; m++)
                                     {
-                                        <th class="text-end">€@wizIncomeMonth(m).ToString("N2")</th>
+                                        <th class="text-end">@Formatting.FormatMoneyDe(wizIncomeMonth(m))</th>
                                     }
-                                    <th class="text-end">€@wizIncomeYear.ToString("N2")</th>
+                                    <th class="text-end">@Formatting.FormatMoneyDe(wizIncomeYear)</th>
                                 </tr>
                             </tbody>
                         }
@@ -198,16 +198,16 @@ else if (step == 2)
                                                        @bind="amounts[idx]" />
                                             </td>
                                         }
-                                        <td class="text-end"><strong>€@amounts.Sum().ToString("N2")</strong></td>
+                                        <td class="text-end"><strong>@Formatting.FormatMoneyDe(amounts.Sum())</strong></td>
                                     </tr>
                                 }
                                 <tr class="table-primary">
                                     <th>@L["Subtotal_Expenses"]</th>
                                     @for (int m = 0; m < 12; m++)
                                     {
-                                        <th class="text-end">€@wizExpenseMonth(m).ToString("N2")</th>
+                                        <th class="text-end">@Formatting.FormatMoneyDe(wizExpenseMonth(m))</th>
                                     }
-                                    <th class="text-end">€@wizExpenseYear.ToString("N2")</th>
+                                    <th class="text-end">@Formatting.FormatMoneyDe(wizExpenseYear)</th>
                                 </tr>
                             </tbody>
                         }
@@ -222,9 +222,9 @@ else if (step == 2)
                                     {
                                         var net = wizIncomeMonth(m) - wizExpenseMonth(m);
                                         var cls = net >= 0 ? "text-success" : "text-danger";
-                                        <th class="text-end @cls">€@net.ToString("N2")</th>
+                                        <th class="text-end @cls">@Formatting.FormatMoneyDe(net)</th>
                                     }
-                                    <th class="text-end @netClass">€@netYear.ToString("N2")</th>
+                                    <th class="text-end @netClass">@Formatting.FormatMoneyDe(netYear)</th>
                                 </tr>
                             </tfoot>
                         }

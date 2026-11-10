@@ -15,6 +15,7 @@
 @inject ILogger<Budgets> Logger
 @inject ClockService Clock
 @inject AccessScopeProvider AccessProvider
+@inject ProjectTimeState TimeState
 
 <PageTitle>@L["PageTitle"]@(projectName != null ? $" — {projectName}" : "")</PageTitle>
 
@@ -27,25 +28,129 @@
 
 <ProjectPageHeader ProjectId="@selectedProjectId" ProjectName="@projectName" />
 
-<ProjectShell ProjectId="ProjectId" Active="ProjectTab.Budgets" MainClass="shell-page">
+<ProjectShell ProjectId="ProjectId" Active="ProjectTab.Budgets" MainClass="shell-page budget-view">
 
+<div class="page-toolbar" data-testid="budget-toolbar">
+    <h1 class="view-title">@L["View_Title"]</h1>
+    @if (SelectedBudget is { } sb)
+    {
+        <span class="view-sub d-none d-md-inline">@sb.Name</span>
+    }
+    <div class="flex-grow-1"></div>
+    <PeriodNav Inline="true" Anchor="anchor" Period="@period" ShowMonthPicker="true"
+               MinMonth="monthMin" MaxMonth="monthMax" OnChanged="OnPeriodChanged" />
+    <BudgetMenu AvailableBudgets="availableBudgets"
+                SelectedBudgetId="selectedCompareBudgetId"
+                SelectedYear="selectedYear"
+                ProjectId="selectedProjectId"
+                CanEdit="AccessProvider.Last.CanEdit(selectedProjectId)"
+                OnSelectedBudgetChanged="OnCompareBudgetChanged"
+                OnMakeActive="SetBudgetActive"
+                OnDelete="ShowDeleteBudgetDialog" />
+</div>
 
 <DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
-<PeriodNav Anchor="(selectedYear, 1)" Period="@("year")" YearOnly="true"
-           Years="availableYears" OnChanged="OnYearChanged">
-    <Leading><h1 class="view-title">@L["View_Title"]</h1></Leading>
-</PeriodNav>
+@if (table == null)
+{
+    <div class="summary-strip cols-3" aria-busy="true">
+        @for (var i = 0; i < 3; i++)
+        {
+            <div class="summary-tile"><div class="skeleton skeleton-line" style="width: 60%;"></div><div class="skeleton skeleton-line"></div></div>
+        }
+    </div>
+}
+else
+{
+    var overRows = table.Sections.SelectMany(s => s.Rows).Where(r => r.Budget > 0 && r.Spent > r.Budget).OrderByDescending(r => r.Spent - r.Budget).ToList();
+    <div class="summary-strip cols-3" data-testid="budget-strip">
+        <div class="summary-tile" data-testid="budget-spent">
+            <span class="summary-label">@L["Strip_Spent"]</span>
+            <span class="summary-value">@Formatting.FormatMoneyDe(table.TotalSpent)
+                @if (table.HasBudget)
+                {
+                    <span class="summary-of">&nbsp;@L["Strip_Of", Formatting.FormatMoneyDe(table.TotalBudget)]</span>
+                }
+            </span>
+            @if (table.HasBudget)
+            {
+                <span class="ob-bar" aria-hidden="true"><span class="status-bg-@ProjectStatus.BarClass(table.TotalSpent, table.TotalBudget)" style="width: @ProjectStatus.BarWidth(table.TotalSpent, table.TotalBudget)"></span></span>
+            }
+        </div>
+        <div class="summary-tile" data-testid="budget-left">
+            <span class="summary-label">@LeftLabel</span>
+            <span class="summary-value @(table.TotalLeft < 0 ? "money-neg" : "")">@(table.HasBudget ? Formatting.FormatMoneyDe(table.TotalLeft) : "—")</span>
+            <span class="summary-note">@LeftNote</span>
+        </div>
+        <div class="summary-tile" data-testid="budget-over">
+            <span class="summary-label">@L["Strip_Over"]</span>
+            @if (overRows.Count > 0)
+            {
+                <span class="summary-value">@L[overRows.Count == 1 ? "Strip_OverOne" : "Strip_OverOther", overRows.Count]
+                    <span class="money-neg">+@Formatting.FormatMoneyDe(overRows.Sum(r => r.Spent - r.Budget))</span></span>
+                <span class="summary-note">@string.Join(", ", overRows.Select(r => r.Name))</span>
+            }
+            else
+            {
+                <span class="summary-value status-success">@L["Strip_OverNone"]</span>
+            }
+        </div>
+    </div>
 
-<BudgetSelectorCard AvailableBudgets="availableBudgets"
-                    SelectedBudgetId="selectedCompareBudgetId"
-                    SelectedYear="selectedYear"
-                    ProjectId="selectedProjectId"
-                    CanEdit="AccessProvider.Last.CanEdit(selectedProjectId)"
-                    OnSelectedBudgetChanged="OnCompareBudgetChanged"
-                    OnMakeActive="SetBudgetActive"
-                    OnDelete="ShowDeleteBudgetDialog" />
+    <div class="budget-table" role="table" aria-label="@L["Table_Aria"]" data-testid="budget-table">
+        <div class="budget-row budget-head" role="row">
+            <span role="columnheader">@L["Table_HeaderCategory"]</span>
+            <span role="columnheader" class="num">@L["Table_HeaderBudget"]</span>
+            <span role="columnheader" class="num">@L["Table_HeaderSpent"]</span>
+            <span role="columnheader" class="num">@L["Table_HeaderLeft"]</span>
+            <span role="columnheader"><span class="visually-hidden">@L["Table_HeaderBar"]</span></span>
+        </div>
+        @if (table.Sections.Count == 0)
+        {
+            <div class="budget-empty text-body-secondary">@L["Table_Empty"]</div>
+        }
+        @foreach (var section in table.Sections)
+        {
+            <div class="budget-row budget-group" role="row" @key="section.GroupId">
+                <span role="rowheader">@(section.Name ?? L["Table_OtherGroup"])</span>
+                <span role="cell" class="num muted">@Money(section.Budget)</span>
+                <span role="cell" class="num">@Formatting.FormatMoneyDe(section.Spent)</span>
+                <span role="cell" class="num @(section.Left < 0 ? "money-neg" : "")">@Money(section.Left)</span>
+                <span role="cell">@Bar(section.Spent, section.Budget)</span>
+            </div>
+            @foreach (var row in section.Rows)
+            {
+                <a class="budget-row budget-cat" role="row" href="@RowHref(row)" data-testid="budget-row" @key="row.Selection">
+                    <span role="rowheader" class="budget-name"><span class="budget-dot" style="@CategoryColors.For(row.Id, row.Color).Style" aria-hidden="true"></span><span class="text-truncate">@row.Name</span></span>
+                    <span role="cell" class="num muted">@Money(row.Budget)</span>
+                    <span role="cell" class="num">@Formatting.FormatMoneyDe(row.Spent)</span>
+                    <span role="cell" class="num fw-semibold @(row.Left < 0 ? "money-neg" : "")">@Money(row.Left)</span>
+                    <span role="cell">@Bar(row.Spent, row.Budget)</span>
+                </a>
+            }
+        }
+        <div class="budget-row budget-total" role="row" data-testid="budget-total">
+            <span role="rowheader">@L["Table_HeaderTotal"]</span>
+            <span role="cell" class="num">@Money(table.TotalBudget)</span>
+            <span role="cell" class="num">@Formatting.FormatMoneyDe(table.TotalSpent)</span>
+            <span role="cell" class="num @(table.TotalLeft < 0 ? "money-neg" : "")">@Money(table.TotalLeft)</span>
+            <span role="cell">@Bar(table.TotalSpent, table.TotalBudget)</span>
+        </div>
+    </div>
+    <p class="budget-hint text-body-secondary">@L["Table_Hint"]</p>
+}
 
+<div class="budget-charts-toggle">
+    <button type="button" class="ob-btn" data-testid="budget-charts-toggle" aria-expanded="@chartsOpen.ToString().ToLowerInvariant()"
+            aria-controls="budget-charts" @onclick="ToggleChartsAsync">
+        <i class="bi bi-bar-chart" aria-hidden="true"></i> @L["Charts_Button"]
+        <i class="bi @(chartsOpen ? "bi-chevron-up" : "bi-chevron-down")" aria-hidden="true"></i>
+    </button>
+</div>
+
+@if (chartsOpen)
+{
+<div id="budget-charts">
 <div class="row">
     <div class="col-12">
         <div class="card">
@@ -126,9 +231,9 @@
                                                     }
                                                     @bareName
                                                 </td>
-                                                <td class="text-end">@(item.HasBudget ? $"{sumPrefix}€{item.BudgetAmount:N2}" : "—")</td>
-                                                <td class="text-end">€@item.ActualAmount.ToString("N2")</td>
-                                                <td class="text-end">@(item.HasBudget ? $"{sumPrefix}€{item.Variance:N2}" : "—")</td>
+                                                <td class="text-end">@(item.HasBudget ? sumPrefix + Formatting.FormatMoneyDe(item.BudgetAmount) : "—")</td>
+                                                <td class="text-end">@Formatting.FormatMoneyDe(item.ActualAmount)</td>
+                                                <td class="text-end">@(item.HasBudget ? sumPrefix + Formatting.FormatMoneyDe(item.Variance) : "—")</td>
                                                 <td class="text-end">@(item.HasBudget ? $"{percentOfBudget:N1}%" : "—")</td>
                                             </tr>
                                         }
@@ -143,9 +248,9 @@
                                         }
                                         <tr class="table-primary">
                                             <th>@L["Table_HeaderTotal"]</th>
-                                            <th class="text-end">€@totalBudget.ToString("N2")</th>
-                                            <th class="text-end">€@totalActual.ToString("N2")</th>
-                                            <th class="text-end">€@totalVariance.ToString("N2")</th>
+                                            <th class="text-end">@Formatting.FormatMoneyDe(totalBudget)</th>
+                                            <th class="text-end">@Formatting.FormatMoneyDe(totalActual)</th>
+                                            <th class="text-end">@Formatting.FormatMoneyDe(totalVariance)</th>
                                             <th class="text-end">@totalPercent.ToString("N1")%</th>
                                         </tr>
                                     </tfoot>
@@ -175,8 +280,8 @@
                                             var avg = trend.Count > 0 ? total / trend.Count : 0m;
                                             <tr @key="name">
                                                 <td>@name</td>
-                                                <td class="text-end">€@total.ToString("N2")</td>
-                                                <td class="text-end">€@avg.ToString("N2")</td>
+                                                <td class="text-end">@Formatting.FormatMoneyDe(total)</td>
+                                                <td class="text-end">@Formatting.FormatMoneyDe(avg)</td>
                                             </tr>
                                         }
                                     </tbody>
@@ -192,8 +297,8 @@
                                         }
                                         <tr class="table-primary">
                                             <th>@L["Table_HeaderTotal"]</th>
-                                            <th class="text-end">€@grandTotal.ToString("N2")</th>
-                                            <th class="text-end">€@grandAvg.ToString("N2")</th>
+                                            <th class="text-end">@Formatting.FormatMoneyDe(grandTotal)</th>
+                                            <th class="text-end">@Formatting.FormatMoneyDe(grandAvg)</th>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -255,6 +360,9 @@
     </div>
 </div>
 
+</div>
+}
+
 <Modal Show="@(budgetPendingDelete != null)" Title="@L["Modal_DeleteBudget_Title"]" OnClose="@HideDeleteBudgetDialog">
     <ChildContent>
         @if (budgetPendingDelete != null)
@@ -303,7 +411,6 @@
     // Set from the browser's current year in ResetForProjectSwitch (which runs before the first
     // render), since a field initializer can't reach the injected ClockService.
     private int selectedYear;
-    private List<int>? availableYears;
     private bool categoriesExpanded = false;
     private string? projectName;
     private int projectSourceId = SourceScope.LegacySourceId;
@@ -333,6 +440,124 @@
 
     private void ToggleCategoriesPanel() => categoriesExpanded = !categoriesExpanded;
 
+    // ---- period, table, charts toggle ----
+
+    private (int Year, int Month) anchor;
+    private string period = "month";
+    private (int Year, int Month)? monthMin;
+    private (int Year, int Month)? monthMax;
+    private BudgetTableModel? table;
+    private bool chartsOpen;
+    private const string ChartsPrefScope = "budget-charts";
+
+    private Budget? SelectedBudget => availableBudgets?.FirstOrDefault(b => b.Id == selectedCompareBudgetId);
+
+    private (int FromMonth, int ToMonth) PeriodRange => Anchoring.Range(anchor.Month, period);
+
+    private string PeriodName
+    {
+        get
+        {
+            var d = new DateTime(anchor.Year, anchor.Month, 1);
+            return period switch
+            {
+                "year" => anchor.Year.ToString(CultureInfo.CurrentCulture),
+                "ytd" => L["Period_Ytd", d.ToString("MMMM yyyy", CultureInfo.CurrentCulture)].Value,
+                _ => d.ToString("MMMM yyyy", CultureInfo.CurrentCulture),
+            };
+        }
+    }
+
+    private string LeftLabel => period switch
+    {
+        "year" => L["Strip_LeftYear"],
+        "ytd" => L["Strip_LeftYtd"],
+        _ => L["Strip_LeftMonth"],
+    };
+
+    /// <summary>"24 days to go · on track" for the current month, else the period's name.</summary>
+    private string LeftNote
+    {
+        get
+        {
+            var today = Clock.Today;
+            if (table is { HasBudget: true } && period == "month" && anchor == (today.Year, today.Month))
+            {
+                var daysLeft = DateTime.DaysInMonth(today.Year, today.Month) - today.Day;
+                var status = ProjectStatus.BarClass(table.TotalSpent, table.TotalBudget);
+                return L["Strip_DaysLeft", daysLeft, L[$"Strip_Status_{status}"]];
+            }
+            return PeriodName;
+        }
+    }
+
+    private string Money(decimal value) => table is { HasBudget: true } ? Formatting.FormatMoneyDe(value) : "—";
+
+    private RenderFragment Bar(decimal spent, decimal budget) => __builder =>
+    {
+        if (table is { HasBudget: true } && budget > 0)
+        {
+            <span class="ob-bar"><span class="status-bg-@ProjectStatus.BarClass(spent, budget)" style="width: @ProjectStatus.BarWidth(spent, budget)"></span></span>
+        }
+    };
+
+    /// <summary>Transactions filtered to the row's category, on this view's period.</summary>
+    private string RowHref(BudgetTableRow row) =>
+        $"/projects/{ProjectId}/browse?year={anchor.Year}&month={anchor.Month}" + (period == "month" ? "" : $"&period={period}") + $"&sel={row.Selection}";
+
+    private async Task LoadTableAsync()
+    {
+        if (selectedProjectId <= 0 || allCategories == null) return;
+        var (from, to) = PeriodRange;
+        var summary = await BudgetService.GetSpendingSummaryAsync(selectedProjectId, anchor.Year, from, to, selectedCompareBudgetId);
+        table = BudgetTableModel.Build(summary, allCategories, SourceScope.SentinelRoot(projectSourceId));
+    }
+
+    private async Task OnPeriodChanged((int Year, int Month, string Period) next)
+    {
+        var yearChanged = next.Year != anchor.Year;
+        anchor = (next.Year, next.Month);
+        period = next.Period;
+        RememberTimeState();
+        PageState.ReplaceQuery(Navigation, new Dictionary<string, object?>
+        {
+            ["year"] = anchor.Year,
+            ["month"] = anchor.Month,
+            ["period"] = period == "month" ? null : period,
+        });
+        if (yearChanged) await OnYearChanged(anchor.Year);
+        else await LoadTableAsync();
+    }
+
+    private void RememberTimeState()
+    {
+        TimeState.Year = anchor.Year;
+        TimeState.Month = anchor.Month;
+        TimeState.Period = period;
+    }
+
+    private void ReadPeriodFromQuery()
+    {
+        var now = Clock.NowLocal;
+        anchor = (TimeState.Year ?? now.Year, TimeState.Month ?? now.Month);
+        period = TimeState.Period ?? "month";
+        if (PageState.ReadIntQuery(Navigation, "year") is { } y && PageState.ReadIntQuery(Navigation, "month") is { } m && m is >= 1 and <= 12)
+            anchor = (y, m);
+        var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
+        if (query.TryGetValue("period", out var p) && p.ToString() is "month" or "ytd" or "year")
+            period = p.ToString();
+        anchor = Anchoring.Clamp(anchor, monthMin ?? (1900, 1), monthMax ?? (now.Year, now.Month));
+        RememberTimeState();
+    }
+
+    private async Task ToggleChartsAsync()
+    {
+        chartsOpen = !chartsOpen;
+        if (chartsOpen) needsTrendChartRender = true;
+        try { await JS.InvokeVoidAsync("expandState.set", ChartsPrefScope, chartsOpen ? new[] { "open" } : Array.Empty<string>()); }
+        catch (JSDisconnectedException) { /* page left */ }
+    }
+
     private string? BareCategoryName((long Id, CategoryItemType ItemType) key)
     {
         if (key.ItemType == CategoryItemType.Category)
@@ -361,10 +586,31 @@
         DataArea.ImportedData or DataArea.Sources => change.SourceId == projectSourceId,
         _ => change.ProjectId is null || change.ProjectId == ProjectId,
     };
-    protected override Task ReloadAfterChangeAsync()
+    // New bookings from an import or a bank sync only change the numbers: reload them in place, keeping the
+    // selected budget, the period and the open sections. Budget and project edits still raise the banner.
+    protected override bool ShouldAutoReload(DataChange change)
     {
-        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
-        return Task.CompletedTask;
+        var inPlace = change.Area is DataArea.ImportedData or DataArea.BankSync;
+        if (!inPlace) structuralChangePending = true;
+        return inPlace;
+    }
+
+    private bool structuralChangePending;
+
+    protected override async Task ReloadAfterChangeAsync()
+    {
+        if (structuralChangePending)
+        {
+            Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+            return;
+        }
+        if (selectedProjectId <= 0) return;
+        (monthMin, monthMax) = await BudgetService.GetMonthBoundsForProjectAsync(selectedProjectId);
+        await RefreshBudgets();
+        if (selectedCompareBudgetId > 0 && availableBudgets?.All(b => b.Id != selectedCompareBudgetId) == true)
+            selectedCompareBudgetId = 0;
+        await LoadCategoryTrends();
+        StateHasChanged();
     }
 
     protected override void Dispose(bool disposing)
@@ -413,6 +659,7 @@
         selectedCompareBudgetId = 0;
         selectedYear = Clock.NowLocal.Year;
         categoriesExpanded = false;
+        table = null;
         expandedVarianceKeys = new();
         shadowSubcatsByGroup = new();
         budgetedDescendantsByGroup = new();
@@ -422,7 +669,6 @@
         allActualCategories = null;
         categoryTrends = null;
         availableBudgets = null;
-        availableYears = null;
         selectedActualCategoryIds = new();
         incomeItems = new();
     }
@@ -460,11 +706,9 @@
         // have transactions in. Default to the current year, or the closest available if the
         // current year isn't in the dataset. Falls back to a single-entry list with the
         // current year so the dropdown isn't empty when a project has no transactions yet.
-        availableYears = await BudgetService.GetYearsWithTransactionsForProjectAsync(selectedProjectId);
-        if (!availableYears.Any())
-            availableYears = new List<int> { Clock.NowLocal.Year };
-        if (!availableYears.Contains(selectedYear))
-            selectedYear = availableYears.First();
+        (monthMin, monthMax) = await BudgetService.GetMonthBoundsForProjectAsync(selectedProjectId);
+        ReadPeriodFromQuery();
+        selectedYear = anchor.Year;
 
         await LoadProjectContext();
         await LoadCategoryTrends();
@@ -650,17 +894,32 @@
             }
         }
 
-        if (needsTrendChartRender && categoryTrends != null && categoryTrends.Any())
+        if (firstRender)
+        {
+            try
+            {
+                if ((await JS.InvokeAsync<string[]>("expandState.get", ChartsPrefScope)).Contains("open"))
+                {
+                    chartsOpen = true;
+                    needsTrendChartRender = true;
+                    StateHasChanged();
+                    return;
+                }
+            }
+            catch (JSDisconnectedException) { /* page left */ }
+        }
+
+        if (chartsOpen && needsTrendChartRender && categoryTrends != null && categoryTrends.Any())
         {
             needsTrendChartRender = false;
             await RenderStackedBarChart();
         }
     }
 
-    private async Task OnYearChanged((int Year, int Month, string Period) sel)
+    private async Task OnYearChanged(int year)
     {
-        if (sel.Year == selectedYear) return;
-        selectedYear = sel.Year;
+        if (year == selectedYear) { await LoadTableAsync(); return; }
+        selectedYear = year;
         // Re-pick the active budget for the new year unless the user already picked one
         // that matches it.
         if (availableBudgets != null)
@@ -775,6 +1034,7 @@
 
     private async Task LoadCategoryTrends()
     {
+        await LoadTableAsync();
         categoryTrends = new Dictionary<string, List<MonthlySpending>>();
 
         // Build the map of groups whose descendants carry the budget. Auto-default expansion

@@ -163,4 +163,70 @@
   <data name="View_Title" xml:space="preserve">
     <value>Budget</value>
   </data>
+  <data name="Strip_Spent" xml:space="preserve">
+    <value>Spent of budget</value>
+  </data>
+  <data name="Strip_Of" xml:space="preserve">
+    <value>of {0}</value>
+  </data>
+  <data name="Strip_Over" xml:space="preserve">
+    <value>Over budget</value>
+  </data>
+  <data name="Strip_OverOne" xml:space="preserve">
+    <value>{0} category</value>
+  </data>
+  <data name="Strip_OverOther" xml:space="preserve">
+    <value>{0} categories</value>
+  </data>
+  <data name="Strip_OverNone" xml:space="preserve">
+    <value>All on track</value>
+  </data>
+  <data name="Strip_LeftMonth" xml:space="preserve">
+    <value>Left this month</value>
+  </data>
+  <data name="Strip_LeftYtd" xml:space="preserve">
+    <value>Left year to date</value>
+  </data>
+  <data name="Strip_LeftYear" xml:space="preserve">
+    <value>Left this year</value>
+  </data>
+  <data name="Strip_DaysLeft" xml:space="preserve">
+    <value>{0} days to go · {1}</value>
+  </data>
+  <data name="Strip_Status_success" xml:space="preserve">
+    <value>on track</value>
+  </data>
+  <data name="Strip_Status_warning" xml:space="preserve">
+    <value>almost used up</value>
+  </data>
+  <data name="Strip_Status_danger" xml:space="preserve">
+    <value>over budget</value>
+  </data>
+  <data name="Period_Ytd" xml:space="preserve">
+    <value>January – {0}</value>
+  </data>
+  <data name="Table_Aria" xml:space="preserve">
+    <value>Budget by category</value>
+  </data>
+  <data name="Table_HeaderSpent" xml:space="preserve">
+    <value>Spent</value>
+  </data>
+  <data name="Table_HeaderLeft" xml:space="preserve">
+    <value>Left</value>
+  </data>
+  <data name="Table_HeaderBar" xml:space="preserve">
+    <value>Progress</value>
+  </data>
+  <data name="Table_Empty" xml:space="preserve">
+    <value>No tracked spending categories.</value>
+  </data>
+  <data name="Table_OtherGroup" xml:space="preserve">
+    <value>Other</value>
+  </data>
+  <data name="Table_Hint" xml:space="preserve">
+    <value>Click a category to see its bookings for the period.</value>
+  </data>
+  <data name="Charts_Button" xml:space="preserve">
+    <value>Charts</value>
+  </data>
 </root>

@@ -73,6 +73,7 @@ public sealed class SharingTests : EndToEndTestBase
 
         // The budgets page works read-only: no "New Budget".
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/budgets");
+        await Expect(Page.GetByTestId("budget-menu")).ToHaveCountAsync(0);
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "New Budget" })).ToHaveCountAsync(0);
     }
 
@@ -84,6 +85,7 @@ public sealed class SharingTests : EndToEndTestBase
         await LoginAsync(E2ESeed.SecondUserName);
 
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/budgets");
+        await Page.GetByTestId("budget-menu").Locator("summary").ClickAsync();
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "New Budget" })).ToBeVisibleAsync();
 
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/settings");

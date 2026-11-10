@@ -99,7 +99,7 @@ public static class ProjectStatus
         if (uncategorized != null && uncategorized.TryGetValue(summary.SourceId, out var u) && u.Count > 0)
         {
             var key = u.Count == 1 ? "Uncategorized_One" : "Uncategorized_Other";
-            lines.Add(L[key, u.Count, $"€{u.AbsoluteAmount:N2}"].Value);
+            lines.Add(L[key, u.Count, Formatting.FormatMoneyDe(u.AbsoluteAmount)].Value);
             var uncatSev = u.Count switch
             {
                 >= 50 => "danger",

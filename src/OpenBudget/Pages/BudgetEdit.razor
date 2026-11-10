@@ -158,7 +158,7 @@
                             }
                         </td>
                     }
-                    <td class="text-end"><strong>€@monthsForDisplay.Sum().ToString("N2")</strong></td>
+                    <td class="text-end"><strong>@Formatting.FormatMoneyDe(monthsForDisplay.Sum())</strong></td>
                     <td>
                         @if (!isShadowRow && !isVirtualRow)
                         {
@@ -196,9 +196,9 @@
                                 <th>@L["Subtotal_Income"]</th>
                                 @for (int m = 0; m < 12; m++)
                                 {
-                                    <th class="text-end">€@SectionMonth(incomeTree, m).ToString("N2")</th>
+                                    <th class="text-end">@Formatting.FormatMoneyDe(SectionMonth(incomeTree, m))</th>
                                 }
-                                <th class="text-end">€@incomeYear.ToString("N2")</th>
+                                <th class="text-end">@Formatting.FormatMoneyDe(incomeYear)</th>
                                 <th></th>
                             </tr>
                         </tbody>
@@ -217,9 +217,9 @@
                                 <th>@L["Subtotal_Expenses"]</th>
                                 @for (int m = 0; m < 12; m++)
                                 {
-                                    <th class="text-end">€@SectionMonth(expenseTree, m).ToString("N2")</th>
+                                    <th class="text-end">@Formatting.FormatMoneyDe(SectionMonth(expenseTree, m))</th>
                                 }
-                                <th class="text-end">€@expenseYear.ToString("N2")</th>
+                                <th class="text-end">@Formatting.FormatMoneyDe(expenseYear)</th>
                                 <th></th>
                             </tr>
                         </tbody>
@@ -235,9 +235,9 @@
                                 {
                                     var net = SectionMonth(incomeTree, m) - SectionMonth(expenseTree, m);
                                     var cls = net >= 0 ? "text-success" : "text-danger";
-                                    <th class="text-end @cls">€@net.ToString("N2")</th>
+                                    <th class="text-end @cls">@Formatting.FormatMoneyDe(net)</th>
                                 }
-                                <th class="text-end @netClass">€@netYear.ToString("N2")</th>
+                                <th class="text-end @netClass">@Formatting.FormatMoneyDe(netYear)</th>
                                 <th></th>
                             </tr>
                         </tfoot>

@@ -14,15 +14,15 @@
                 <div class="row">
                     <div class="col-md-4">
                         <h6>@L["Summary_TotalIncome"]</h6>
-                        <h3 class="text-success">@Formatting.FormatMoney(TotalIncome)</h3>
+                        <h3 class="text-success">@Formatting.FormatMoneyDe(TotalIncome)</h3>
                     </div>
                     <div class="col-md-4">
                         <h6>@L["Summary_TotalExpenses"]</h6>
-                        <h3 class="text-danger">@Formatting.FormatMoney(TotalExpenses)</h3>
+                        <h3 class="text-danger">@Formatting.FormatMoneyDe(TotalExpenses)</h3>
                     </div>
                     <div class="col-md-4">
                         <h6>@L["Summary_NetCashflow"]</h6>
-                        <h3 class="@(NetCashflow >= 0 ? "text-success" : "text-danger")">@Formatting.FormatMoney(NetCashflow)</h3>
+                        <h3 class="@(NetCashflow >= 0 ? "text-success" : "text-danger")">@Formatting.FormatMoneyDe(NetCashflow)</h3>
                     </div>
                 </div>
             </div>

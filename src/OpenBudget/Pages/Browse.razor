@@ -463,17 +463,17 @@
                                             </td>
                                             <td class="text-end">@FormatQuantity(row.Quantity)</td>
                                             <td class="text-end">
-                                                @(row.Price is { } p ? Formatting.FormatMoney(p, row.PriceCurrency ?? h.Currency) : "—")
+                                                @(row.Price is { } p ? Formatting.FormatMoneyDe(p, row.PriceCurrency ?? h.Currency) : "—")
                                             </td>
                                             <td class="text-end">
-                                                <div>@Formatting.FormatMoney(row.Value, h.Currency)</div>
+                                                <div>@Formatting.FormatMoneyDe(row.Value, h.Currency)</div>
                                                 <div class="text-body-secondary small">@FormatPercent(row.ShareOfAccount)</div>
                                             </td>
                                             <td class="text-end">
                                                 @if (row.Gain is { } g)
                                                 {
                                                     <span class="@(g < 0 ? "text-danger" : "text-success")">
-                                                        @Formatting.FormatMoney(g, h.Currency)
+                                                        @Formatting.FormatMoneyDe(g, h.Currency)
                                                         @if (row.GainFraction is { } gf)
                                                         {
                                                             <span class="small">&nbsp;(@FormatPercent((decimal)gf))</span>
@@ -493,7 +493,7 @@
                                         <td>@L["Holdings_Total"]</td>
                                         <td></td>
                                         <td></td>
-                                        <td class="text-end">@Formatting.FormatMoney(h.TotalValue, h.Currency)</td>
+                                        <td class="text-end">@Formatting.FormatMoneyDe(h.TotalValue, h.Currency)</td>
                                         <td></td>
                                     </tr>
                                 </tfoot>

@@ -36,9 +36,10 @@ public class BudgetService
     /// Tracked items come from the project's live ProjectTrackingItems so changes show up
     /// without re-running the budget wizard. Budget amounts are read from the active Budget
     /// for the year if one exists; otherwise the per-row Budget is 0 and only Spent is
-    /// meaningful. Pass fromMonth == toMonth for a single month.
+    /// meaningful. Pass fromMonth == toMonth for a single month. <paramref name="budgetId"/> picks another of the
+    /// project's budgets instead of the active one (the Budget view's selector); 0 means "no budget".
     /// </summary>
-    public async Task<ProjectSpendingSummary> GetSpendingSummaryAsync(int projectId, int year, int fromMonth, int toMonth)
+    public async Task<ProjectSpendingSummary> GetSpendingSummaryAsync(int projectId, int year, int fromMonth, int toMonth, int? budgetId = null)
     {
         if (fromMonth < 1 || fromMonth > 12) throw new ArgumentOutOfRangeException(nameof(fromMonth));
         if (toMonth < 1 || toMonth > 12) throw new ArgumentOutOfRangeException(nameof(toMonth));
@@ -50,8 +51,9 @@ public class BudgetService
         var budgets = await _budgets.GetBudgetsForProjectAsync(projectId);
         // Prefer the budget the user explicitly marked active; fall back to the most recently
         // modified one for the year if nothing is active (legacy data, edge cases).
-        var activeBudget = budgets.FirstOrDefault(b => b.Year == year && b.IsActive)
-            ?? budgets.FirstOrDefault(b => b.Year == year);
+        var activeBudget = budgetId is { } chosen
+            ? budgets.FirstOrDefault(b => b.Id == chosen)
+            : budgets.FirstOrDefault(b => b.Year == year && b.IsActive) ?? budgets.FirstOrDefault(b => b.Year == year);
 
         // Resolve tracked items from the project's live tracking config.
         var trackedKeys = project.TrackingItems.ToTrackedKeys().ToList();

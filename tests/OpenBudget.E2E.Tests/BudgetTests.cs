@@ -88,7 +88,8 @@ public sealed class BudgetTests : EndToEndTestBase
     {
         await GoToAsync(BudgetsUrl);
 
-        // The active 2026 budget is auto-selected, exposing the Delete action.
+        // The active 2026 budget is auto-selected, exposing the Delete action in the "…" menu.
+        await Page.GetByTestId("budget-menu").Locator("summary").ClickAsync();
         var delete = Page.GetByRole(AriaRole.Button, new() { Name = "Delete", Exact = true });
         await Expect(delete).ToBeVisibleAsync();
         await delete.ClickAsync();

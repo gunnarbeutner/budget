@@ -61,7 +61,7 @@
                                             }
                                         </td>
                                         <td><span class="badge bg-secondary">@kind</span></td>
-                                        <td class="text-end">@(balance.HasValue ? Formatting.FormatMoney(balance.Value, currency) : L["Dash"].Value)</td>
+                                        <td class="text-end">@(balance.HasValue ? Formatting.FormatMoneyDe(balance.Value, currency) : L["Dash"].Value)</td>
                                         <td>
                                             @if (refreshAge.HasValue)
                                             {
@@ -250,7 +250,7 @@
         {
             var balance = account.CurrentBalance;
             var label = $"{account.Name} ({account.KindLabel})"
-                + (balance.HasValue ? $" — {Formatting.FormatMoney(balance.Value, account.Currency ?? "")}" : "");
+                + (balance.HasValue ? $" — {Formatting.FormatMoneyDe(balance.Value, account.Currency ?? "")}" : "");
             return new TreePickerNode<long>(account.Id, level, Selectable: true, label, Icon: account.KindIcon);
         }
 

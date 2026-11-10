@@ -26,6 +26,10 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
     /// <summary>The http://127.0.0.1:&lt;port&gt; address Playwright should navigate to.</summary>
     public string BaseUrl { get; private set; } = string.Empty;
 
+    /// <summary>The services of the Kestrel host the browser talks to — for in-process singletons such as the
+    /// change notifier, which <see cref="WebApplicationFactory{TEntryPoint}.Services"/> (the TestServer host) doesn't share.</summary>
+    public IServiceProvider BrowserHostServices { get; private set; } = null!;
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Test");
@@ -75,6 +79,7 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
         var addresses = kestrelHost.Services.GetRequiredService<IServer>()
             .Features.Get<IServerAddressesFeature>()!;
         BaseUrl = addresses.Addresses.First();
+        BrowserHostServices = kestrelHost.Services;
 
         testHost.Start();
         return new CompositeHost(testHost, kestrelHost);

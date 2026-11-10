@@ -57,7 +57,7 @@ else
                 <input id="cashInput" type="number" step="1000" min="0" class="form-control text-end"
                        value="@FormatNum(cash)" @onchange="OnCashChanged" />
             </div>
-            <div class="d-none d-print-block h6 mb-0">@Formatting.FormatMoney(cash)</div>
+            <div class="d-none d-print-block h6 mb-0">@Formatting.FormatMoneyDe(cash)</div>
         </div>
         <div class="d-print-none">
             <div class="form-label small mb-1">@L["Mode_Label"]</div>
@@ -203,7 +203,7 @@ else
                             <div class="text-body-secondary small">@s.Isin@(addedKeys.Contains(s.Key) ? " · " + L["Added_NotHeld"] : "")</div>
                         </td>
                         <td class="text-end">
-                            <div>@Formatting.FormatMoney(s.Value, s.PriceCurrency ?? "EUR")</div>
+                            <div>@Formatting.FormatMoneyDe(s.Value, s.PriceCurrency ?? "EUR")</div>
                             <div class="text-body-secondary small">@JoinDot(row is { } cr ? cr.CurrentFraction.ToString("P1", CultureInfo.CurrentCulture) : null, showUnits ? FormatShares(curShares, whole) + sh : null)</div>
                         </td>
                         @if (!RegionMode)
@@ -238,7 +238,7 @@ else
                             @if (included && row is { } tr2 && Math.Abs(tr2.Delta) >= 0.005m)
                             {
                                 <div class="@(tr2.Delta < 0 ? "text-danger" : "text-success")">
-                                    @(tr2.Delta < 0 ? L["Sell"] : L["Buy"]) @Formatting.FormatMoney(Math.Abs(tr2.Delta), s.PriceCurrency ?? "EUR")
+                                    @(tr2.Delta < 0 ? L["Sell"] : L["Buy"]) @Formatting.FormatMoneyDe(Math.Abs(tr2.Delta), s.PriceCurrency ?? "EUR")
                                 </div>
                                 <div class="text-body-secondary small">@(tradeShares is { } ts ? (ts < 0 ? "−" : "+") + FormatShares(Math.Abs(ts), whole) + sh : "")</div>
                             }
@@ -251,7 +251,7 @@ else
                         <td class="text-end">
                             @if (included && row is { } ar)
                             {
-                                <div>@Formatting.FormatMoney(ar.TargetValue, s.PriceCurrency ?? "EUR")</div>
+                                <div>@Formatting.FormatMoneyDe(ar.TargetValue, s.PriceCurrency ?? "EUR")</div>
                                 <div class="text-body-secondary small">@JoinDot(ar.TargetFraction.ToString("P1", CultureInfo.CurrentCulture), showUnits ? FormatShares(afterShares, whole) + sh : null)</div>
                             }
                             else
@@ -288,20 +288,20 @@ else
         <div class="row g-3">
             <div class="col-6 col-md-3">
                 <div class="text-body-secondary small">@L["Summary_Pool"]</div>
-                <div class="h5 mb-0">@Formatting.FormatMoney(plan.Pool)</div>
+                <div class="h5 mb-0">@Formatting.FormatMoneyDe(plan.Pool)</div>
             </div>
             <div class="col-6 col-md-3">
                 <div class="text-body-secondary small">@L["Summary_Buys"]</div>
-                <div class="h5 mb-0 text-success">@Formatting.FormatMoney(plan.TotalBuys)</div>
+                <div class="h5 mb-0 text-success">@Formatting.FormatMoneyDe(plan.TotalBuys)</div>
             </div>
             <div class="col-6 col-md-3">
                 <div class="text-body-secondary small">@L["Summary_Sells"]</div>
-                <div class="h5 mb-0 text-danger">@Formatting.FormatMoney(plan.TotalSells)</div>
+                <div class="h5 mb-0 text-danger">@Formatting.FormatMoneyDe(plan.TotalSells)</div>
             </div>
             <div class="col-6 col-md-3">
                 <div class="text-body-secondary small">@(plan.Feasible ? L["Summary_Leftover"] : L["Summary_Shortfall"])</div>
                 <div class="h5 mb-0 @(plan.Feasible ? "" : "text-danger")">
-                    @Formatting.FormatMoney(plan.Feasible ? plan.Leftover : plan.Pool - SumTargets())
+                    @Formatting.FormatMoneyDe(plan.Feasible ? plan.Leftover : plan.Pool - SumTargets())
                 </div>
             </div>
         </div>
@@ -317,11 +317,11 @@ else
             <div class="row g-3 align-items-center">
                 <div class="col-auto">
                     <div class="text-body-secondary small">@L["Tax_RealisedGain"]</div>
-                    <div class="h6 mb-0 @(tax.Gross < 0 ? "text-danger" : "")">@Formatting.FormatMoney(tax.Gross)</div>
+                    <div class="h6 mb-0 @(tax.Gross < 0 ? "text-danger" : "")">@Formatting.FormatMoneyDe(tax.Gross)</div>
                 </div>
                 <div class="col-auto">
                     <div class="text-body-secondary small">@L["Tax_Taxable"]</div>
-                    <div class="h6 mb-0">@Formatting.FormatMoney(tax.Taxable)</div>
+                    <div class="h6 mb-0">@Formatting.FormatMoneyDe(tax.Taxable)</div>
                 </div>
                 <div class="col">
                     <div class="text-body-secondary small">

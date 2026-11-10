@@ -68,6 +68,7 @@ public sealed class ProjectViewsTests : EndToEndTestBase
     public async Task Budgets_shows_variance_against_the_active_budget()
     {
         await GoToAsync($"/projects/{Pid}/budgets");
+        await Page.GetByTestId("budget-charts-toggle").ClickAsync();
 
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Category Trends" })).ToBeVisibleAsync();
         // The active 2026 budget is auto-selected as the comparison, so the variance table shows.
@@ -79,6 +80,7 @@ public sealed class ProjectViewsTests : EndToEndTestBase
     public async Task Budgets_categories_panel_expands_on_click()
     {
         await GoToAsync($"/projects/{Pid}/budgets");
+        await Page.GetByTestId("budget-charts-toggle").ClickAsync();
 
         // The Categories panel is collapsed until its header is clicked.
         await Expect(Page.GetByText("How to use:")).Not.ToBeVisibleAsync();

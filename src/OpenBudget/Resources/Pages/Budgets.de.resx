@@ -163,4 +163,70 @@
   <data name="View_Title" xml:space="preserve">
     <value>Budget</value>
   </data>
+  <data name="Strip_Spent" xml:space="preserve">
+    <value>Ausgegeben vom Budget</value>
+  </data>
+  <data name="Strip_Of" xml:space="preserve">
+    <value>von {0}</value>
+  </data>
+  <data name="Strip_Over" xml:space="preserve">
+    <value>Über Budget</value>
+  </data>
+  <data name="Strip_OverOne" xml:space="preserve">
+    <value>{0} Kategorie</value>
+  </data>
+  <data name="Strip_OverOther" xml:space="preserve">
+    <value>{0} Kategorien</value>
+  </data>
+  <data name="Strip_OverNone" xml:space="preserve">
+    <value>Alles im Rahmen</value>
+  </data>
+  <data name="Strip_LeftMonth" xml:space="preserve">
+    <value>Übrig diesen Monat</value>
+  </data>
+  <data name="Strip_LeftYtd" xml:space="preserve">
+    <value>Übrig bis heute</value>
+  </data>
+  <data name="Strip_LeftYear" xml:space="preserve">
+    <value>Übrig dieses Jahr</value>
+  </data>
+  <data name="Strip_DaysLeft" xml:space="preserve">
+    <value>noch {0} Tage · {1}</value>
+  </data>
+  <data name="Strip_Status_success" xml:space="preserve">
+    <value>im Rahmen</value>
+  </data>
+  <data name="Strip_Status_warning" xml:space="preserve">
+    <value>fast aufgebraucht</value>
+  </data>
+  <data name="Strip_Status_danger" xml:space="preserve">
+    <value>über Budget</value>
+  </data>
+  <data name="Period_Ytd" xml:space="preserve">
+    <value>Januar – {0}</value>
+  </data>
+  <data name="Table_Aria" xml:space="preserve">
+    <value>Budget nach Kategorie</value>
+  </data>
+  <data name="Table_HeaderSpent" xml:space="preserve">
+    <value>Ausgegeben</value>
+  </data>
+  <data name="Table_HeaderLeft" xml:space="preserve">
+    <value>Übrig</value>
+  </data>
+  <data name="Table_HeaderBar" xml:space="preserve">
+    <value>Fortschritt</value>
+  </data>
+  <data name="Table_Empty" xml:space="preserve">
+    <value>Keine erfassten Ausgabenkategorien.</value>
+  </data>
+  <data name="Table_OtherGroup" xml:space="preserve">
+    <value>Sonstige</value>
+  </data>
+  <data name="Table_Hint" xml:space="preserve">
+    <value>Klick auf eine Kategorie zeigt ihre Buchungen im Zeitraum.</value>
+  </data>
+  <data name="Charts_Button" xml:space="preserve">
+    <value>Diagramme</value>
+  </data>
 </root>

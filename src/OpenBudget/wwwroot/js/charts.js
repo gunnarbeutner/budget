@@ -18,15 +18,24 @@ window.destroyChart = function (elementId) {
 // { kind, ...params } and we look the builder up by name. No eval, and a stray/unknown kind
 // degrades to "no custom formatter" rather than executing arbitrary text. Add a new kind here
 // and reference it by name from C# rather than passing code.
+// German money format used app-wide ("−1.234,56 €": real minus sign, no-break space before the symbol), matching
+// Formatting.FormatMoneyDe on the server, independent of the browser language.
+window.obMoney = function (v, decimals) {
+    const d = typeof decimals === 'number' ? decimals : 2;
+    const n = Number(v);
+    const abs = Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+    return (n < 0 ? '\u2212' : '') + abs + '\u00A0€';
+};
+
 const chartCallbackFactories = {
-    // y-axis tick / value formatter: '€' + value with p.decimals places (default 0).
+    // y-axis tick / value formatter: German money with p.decimals places (default 0).
     euroTicks: function (p) {
         const d = (p && typeof p.decimals === 'number') ? p.decimals : 0;
-        return function (value) { return '€' + Number(value).toFixed(d); };
+        return function (value) { return window.obMoney(value, d); };
     },
-    // tooltip label: "<dataset label>: €<y, 2 decimals>".
+    // tooltip label: "<dataset label>: <money>".
     datasetEuroLabel: function () {
-        return function (context) { return context.dataset.label + ': €' + context.parsed.y.toFixed(2); };
+        return function (context) { return context.dataset.label + ': ' + window.obMoney(context.parsed.y); };
     },
     // balance-chart tooltip title: reconstruct the calendar date from the day-of-year index
     // (labels[] only carries month names on day 1). p.year is the chart's year.
@@ -39,11 +48,11 @@ const chartCallbackFactories = {
             return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         };
     },
-    // balance-chart tooltip label: "<p.label>: €<localized y, 2 decimals>".
+    // balance-chart tooltip label: "<p.label>: <money>".
     localizedEuroLabel: function (p) {
         const label = p.label;
         return function (context) {
-            return label + ': €' + context.parsed.y.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return label + ': ' + window.obMoney(context.parsed.y);
         };
     },
     // budget stacked-bar tooltip label: actual value, inlining the matching budget value.
@@ -52,11 +61,11 @@ const chartCallbackFactories = {
             const ds = context.dataset;
             const key = ds.highlightGroup || ds.label;
             const isBudget = ds.stack === 'budget';
-            if (isBudget) { return key + ': — / €' + context.parsed.y.toFixed(2); }
+            if (isBudget) { return key + ': — / ' + window.obMoney(context.parsed.y); }
             const budgetDs = context.chart.data.datasets.find(d => d.stack === 'budget' && d.highlightGroup === key);
             const budgetVal = budgetDs ? budgetDs.data[context.dataIndex] : null;
-            const actual = '€' + context.parsed.y.toFixed(2);
-            return key + ': ' + actual + (budgetVal != null ? ' / €' + Number(budgetVal).toFixed(2) : '');
+            const actual = window.obMoney(context.parsed.y);
+            return key + ': ' + actual + (budgetVal != null ? ' / ' + window.obMoney(budgetVal) : '');
         };
     },
     // budget stacked-bar tooltip filter: drop a standalone budget row when a matching actual row
@@ -379,16 +388,16 @@ window.renderLineChart = function(elementId, chartData) {
 };
 
 // Euro formatter for the above-bar labels. In 'abbrev' mode, values ≥ 1000 collapse to
-// "€1.2k" / "€12k" so labels stay readable on narrow (mobile) charts; otherwise rounds to
+// "1,2k €" / "12k €" so labels stay readable on narrow (mobile) charts; otherwise rounds to
 // a whole-euro figure.
 function fmtEuro(v, mode) {
     const abs = Math.abs(v);
     const sign = v < 0 ? '−' : '';
     if (mode === 'abbrev') {
-        if (abs >= 10000) return sign + '€' + Math.round(abs / 1000) + 'k';
-        if (abs >= 1000) return sign + '€' + (abs / 1000).toFixed(1) + 'k';
+        if (abs >= 10000) return sign + Math.round(abs / 1000) + 'k\u00A0€';
+        if (abs >= 1000) return sign + (abs / 1000).toFixed(1).replace('.', ',') + 'k\u00A0€';
     }
-    return sign + '€' + Math.round(abs);
+    return window.obMoney(v, 0);
 }
 
 // Pick a label rendering strategy given the available horizontal width per label.
@@ -803,9 +812,7 @@ window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values,
     // Format a euro value with the natural sign. Chart.js calls this for both tick labels
     // and tooltips, so a single helper keeps them consistent.
     const formatEuro = function(v) {
-        const n = Number(v);
-        const abs = Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        return (n < 0 ? '-€' : '€') + abs;
+        return window.obMoney(v);
     };
     try {
         window.chartInstances[canvasId] = new Chart(ctx, {

@@ -85,8 +85,8 @@
                                     <tr>
                                         <td>@income.CategoryName</td>
                                         @if (showOrigin) { <td><small class="text-body-secondary">@income.OriginProjectName</small></td> }
-                                        <td class="text-end">@Formatting.FormatMoney(sourceMonthAmount)</td>
-                                        <td class="text-end">@Formatting.FormatMoney(yearly)</td>
+                                        <td class="text-end">@Formatting.FormatMoneyDe(sourceMonthAmount)</td>
+                                        <td class="text-end">@Formatting.FormatMoneyDe(yearly)</td>
                                     </tr>
                                 }
                             </tbody>
@@ -94,11 +94,11 @@
                                 <tr class="table-primary">
                                     <th colspan="@(showOrigin ? 2 : 1)">@L["Table_TotalIncome"]</th>
                                     <th></th>
-                                    <th class="text-end">@Formatting.FormatMoney(yearlyIncome)</th>
+                                    <th class="text-end">@Formatting.FormatMoneyDe(yearlyIncome)</th>
                                 </tr>
                                 <tr>
-                                    <th colspan="@(showOrigin ? 3 : 2)" class="text-end">@L["Table_VsProjectedYearlyExpenses", Formatting.FormatMoney(TotalExpenses)]</th>
-                                    <th class="text-end @netClass">@Formatting.FormatMoney(netYearly)</th>
+                                    <th colspan="@(showOrigin ? 3 : 2)" class="text-end">@L["Table_VsProjectedYearlyExpenses", Formatting.FormatMoneyDe(TotalExpenses)]</th>
+                                    <th class="text-end @netClass">@Formatting.FormatMoneyDe(netYearly)</th>
                                 </tr>
                             </tfoot>
                         </table>
@@ -183,20 +183,20 @@
                                     <tr>
                                         <td>@income.CategoryName</td>
                                         @if (showOrigin) { <td><small class="text-body-secondary">@income.OriginProjectName</small></td> }
-                                        <td class="text-end">@Formatting.FormatMoney(totalIncome)</td>
+                                        <td class="text-end">@Formatting.FormatMoneyDe(totalIncome)</td>
                                         <td class="text-end">@split%</td>
-                                        <td class="text-end">@Formatting.FormatMoney(requiredContribution)</td>
-                                        <td class="text-end @remainingClass">@Formatting.FormatMoney(remaining)</td>
+                                        <td class="text-end">@Formatting.FormatMoneyDe(requiredContribution)</td>
+                                        <td class="text-end @remainingClass">@Formatting.FormatMoneyDe(remaining)</td>
                                     </tr>
                                 }
                             </tbody>
                             <tfoot>
                                 <tr class="table-primary">
                                     <th colspan="@(showOrigin ? 2 : 1)">@L["Table_Total"]</th>
-                                    <th class="text-end">@Formatting.FormatMoney(IncomeCategories.Where(c => c.IsAggregateRow).Sum(c => c.MonthlyAmounts.Sum()))</th>
+                                    <th class="text-end">@Formatting.FormatMoneyDe(IncomeCategories.Where(c => c.IsAggregateRow).Sum(c => c.MonthlyAmounts.Sum()))</th>
                                     <th class="text-end @(splitsValid ? "" : "text-danger")">@splitsTotal%</th>
-                                    <th class="text-end">@Formatting.FormatMoney(TotalExpenses)</th>
-                                    <th class="text-end">@Formatting.FormatMoney(IncomeCategories.Where(c => c.IsAggregateRow).Sum(c => c.MonthlyAmounts.Sum()) - TotalExpenses)</th>
+                                    <th class="text-end">@Formatting.FormatMoneyDe(TotalExpenses)</th>
+                                    <th class="text-end">@Formatting.FormatMoneyDe(IncomeCategories.Where(c => c.IsAggregateRow).Sum(c => c.MonthlyAmounts.Sum()) - TotalExpenses)</th>
                                 </tr>
                             </tfoot>
                         </table>

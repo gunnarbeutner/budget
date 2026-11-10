@@ -59,10 +59,10 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="Form_CompareWithBudgetLabel" xml:space="preserve">
-    <value>Mit Budget vergleichen</value>
+    <value>Budget zum Vergleich</value>
   </data>
   <data name="Form_NoBudgetComparisonOption" xml:space="preserve">
-    <value>-- Kein Budgetvergleich --</value>
+    <value>Kein Budget</value>
   </data>
   <data name="Form_ActiveSuffix" xml:space="preserve">
     <value> (aktiv)</value>
@@ -71,7 +71,7 @@
     <value>Neues Budget</value>
   </data>
   <data name="Button_Edit" xml:space="preserve">
-    <value>Bearbeiten</value>
+    <value>Budget bearbeiten</value>
   </data>
   <data name="Title_MakeActive" xml:space="preserve">
     <value>Dieses Budget für {0} im Dashboard verwenden</value>
@@ -84,5 +84,8 @@
   </data>
   <data name="Compare_YearMismatch" xml:space="preserve">
     <value>Dieses Budget gilt für {0}, nicht für {1}.</value>
+  </data>
+  <data name="Aria_More" xml:space="preserve">
+    <value>Weitere Budget-Aktionen</value>
   </data>
 </root>

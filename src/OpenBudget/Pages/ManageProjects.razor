@@ -93,14 +93,14 @@ else
                         @if (hasBalance)
                         {
                             <div class="portfolio-sub text-nowrap @(balanceInfo!.Balance < 0 ? "text-danger" : "")">
-                                @Formatting.FormatMoney(balanceInfo.Balance)
+                                @Formatting.FormatMoneyDe(balanceInfo.Balance)
                                 <span class="text-body-secondary">·
                                     @L[balanceInfo.AccountCount == 1 ? "Label_Account_One" : "Label_Account_Other", balanceInfo.AccountCount]</span>
                             </div>
                             @if (balanceInfo.HasInformational)
                             {
                                 <div class="portfolio-sub text-nowrap text-body-secondary small">
-                                    @L["Label_TotalAllAccounts", Formatting.FormatMoney(balanceInfo.TotalBalance)]
+                                    @L["Label_TotalAllAccounts", Formatting.FormatMoneyDe(balanceInfo.TotalBalance)]
                                 </div>
                             }
                         }
@@ -112,7 +112,7 @@ else
                     {
                         <div class="d-flex justify-content-end align-items-baseline gap-2">
                             <span class="small text-body-secondary text-nowrap">
-                                @Formatting.FormatMoney(summary.TotalSpent) / @Formatting.FormatMoney(summary.TotalBudget)
+                                @Formatting.FormatMoneyDe(summary.TotalSpent) / @Formatting.FormatMoneyDe(summary.TotalBudget)
                             </span>
                             <span class="small fw-semibold text-@statusClass">@overallPercent.ToString("F0")%</span>
                         </div>
@@ -126,7 +126,7 @@ else
                     else
                     {
                         <div class="small text-body-secondary">@L["Label_Net"]</div>
-                        <div class="fw-semibold text-nowrap text-@statusClass">@Formatting.FormatMoney(summary.MonthNet)</div>
+                        <div class="fw-semibold text-nowrap text-@statusClass">@Formatting.FormatMoneyDe(summary.MonthNet)</div>
                     }
                 </div>
 

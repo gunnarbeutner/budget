@@ -8,22 +8,10 @@ namespace OpenBudget.Services;
 /// </summary>
 public static class Formatting
 {
-    /// <summary>
-    /// Render a money amount with a currency symbol (€ for EUR, otherwise the code as a
-    /// prefix). Negative amounts get the minus sign in front of the symbol.
-    /// </summary>
-    public static string FormatMoney(decimal value, string currency = "EUR")
-    {
-        var symbol = currency == "EUR" ? "€" : (currency + " ");
-        return value < 0
-            ? $"-{symbol}{Math.Abs(value):N2}"
-            : $"{symbol}{value:N2}";
-    }
-
     private static readonly CultureInfo German = CultureInfo.GetCultureInfo("de-DE");
 
     /// <summary>
-    /// German money format used by the transaction list and the Browse toolbar: "−1.234,56 €" with a real minus
+    /// The money format of the whole app: "−1.234,56 €" with a real minus
     /// sign (U+2212) and a no-break space before the symbol, independent of the request culture.
     /// </summary>
     public static string FormatMoneyDe(decimal value, string? currency = "EUR")
