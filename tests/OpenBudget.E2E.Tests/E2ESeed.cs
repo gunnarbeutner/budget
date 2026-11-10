@@ -37,6 +37,7 @@ internal static class E2ESeed
     public static async Task ResetAsync(IDbContextFactory<BudgetDbContext> factory)
     {
         await using var db = await factory.CreateDbContextAsync();
+        db.Holdings.RemoveRange(db.Holdings.IgnoreQueryFilters());
         db.BankStatements.RemoveRange(db.BankStatements.IgnoreQueryFilters());
         db.BankLoginAccounts.RemoveRange(db.BankLoginAccounts.IgnoreQueryFilters());
         db.BankLogins.RemoveRange(db.BankLogins.IgnoreQueryFilters());

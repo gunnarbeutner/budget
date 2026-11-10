@@ -1,15 +1,20 @@
 @page "/projects/{ProjectId:int}/overview"
+@page "/projects/{ProjectId:int}/rebalance"
 @inject NavigationManager Navigation
 
 @* Old project URLs. The Overview page is gone (its numbers live in the summary strip on Transactions), so its
-   links — bookmarks, "?year=&month=&period=" deep links — land on Transactions with the same period. *@
+   links — bookmarks, "?year=&month=&period=" deep links — land on Transactions with the same period. Rebalance
+   is a section of the Portfolio view now. *@
 
 @code {
     [Parameter] public int ProjectId { get; set; }
 
     protected override void OnInitialized()
     {
-        var query = Navigation.ToAbsoluteUri(Navigation.Uri).Query;
-        Navigation.NavigateTo($"/projects/{ProjectId}/browse{query}", replace: true);
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var target = uri.AbsolutePath.EndsWith("/rebalance", StringComparison.OrdinalIgnoreCase)
+            ? $"/projects/{ProjectId}/portfolio?tab=rebalance"
+            : $"/projects/{ProjectId}/browse{uri.Query}";
+        Navigation.NavigateTo(target, replace: true);
     }
 }

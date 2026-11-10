@@ -58,12 +58,6 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="PageTitle" xml:space="preserve"><value>Umschichten</value></data>
-  <data name="PageTitle_WithProject" xml:space="preserve"><value>Umschichten — {0}</value></data>
-  <data name="NotFound_Heading" xml:space="preserve"><value>Projekt nicht gefunden</value></data>
-  <data name="NotFound_Body_Before" xml:space="preserve"><value>Zurück zum </value></data>
-  <data name="NotFound_Body_LinkText" xml:space="preserve"><value>Dashboard</value></data>
-  <data name="NotFound_Body_After" xml:space="preserve"><value>.</value></data>
   <data name="Empty_NoSecurities" xml:space="preserve"><value>Keine Wertpapiere in diesem Projekt. Weise ihm zuerst ein Depotkonto zu.</value></data>
   <data name="Intro_Ratio" xml:space="preserve"><value>Wähle die umzuschichtenden Wertpapiere, füge optional Bargeld hinzu und lege je Wertpapier ein Zielgewicht fest.</value></data>
   <data name="Intro_Amount" xml:space="preserve"><value>Wähle die umzuschichtenden Wertpapiere, füge optional Bargeld hinzu und lege je Wertpapier einen Zielbetrag fest.</value></data>
@@ -108,7 +102,4 @@
   <data name="Fixed_Placeholder" xml:space="preserve"><value>auto</value></data>
   <data name="Exempt_Label" xml:space="preserve"><value>ausgenommen</value></data>
   <data name="Exempt_Tooltip" xml:space="preserve"><value>Diese Position aus dem Taxonomie-Ausgleich ausnehmen — nur der Rest des Portfolios trifft die Zielaufteilung.</value></data>
-  <data name="View_Title" xml:space="preserve">
-    <value>Portfolio</value>
-  </data>
 </root>

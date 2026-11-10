@@ -5,12 +5,17 @@
 @using OpenBudget.Services
 @inject InstrumentMappingService Mapping
 @inject ProjectService ProjectService
+@inject PortfolioService PortfolioService
+@inject NavigationManager Navigation
 @inject IStringLocalizer<SourceInstruments> L
 
+@if (!Embedded)
+{
 <PageTitle>@(sourceName != null ? L["PageTitle_WithSource", sourceName] : L["PageTitle"])</PageTitle>
 
 <PageHeader Title="@L["Heading"]" />
 <p><a href="/sources"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a></p>
+}
 
 @if (loading)
 {
@@ -59,7 +64,19 @@ else
 }
 
 @code {
+
     [Parameter] public int SourceId { get; set; }
+    /// <summary>Shown inside the Portfolio view (no page title, header or back link, no redirect).</summary>
+    [Parameter] public bool Embedded { get; set; }
+
+    // The source-level page moved into the Portfolio view of a project that uses the source; it stays here only
+    // when no project on the source has a depot (reached from the Sources page).
+    private async Task<bool> RedirectToPortfolioAsync(string tab)
+    {
+        if (Embedded || await PortfolioService.FindPortfolioProjectAsync(SourceId) is not { } pid) return false;
+        Navigation.NavigateTo($"/projects/{pid}/portfolio?tab={tab}", replace: true);
+        return true;
+    }
 
     private InstrumentMapping mapping = new();
     private string? sourceName;
@@ -75,6 +92,7 @@ else
     {
         if (_loadedSourceId == SourceId) return;
         _loadedSourceId = SourceId;
+        if (await RedirectToPortfolioAsync("positions")) return;
         await LoadAsync();
     }
 

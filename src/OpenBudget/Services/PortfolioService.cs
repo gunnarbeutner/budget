@@ -62,6 +62,24 @@ public class PortfolioService
     }
 
     /// <summary>
+    /// The first project (in the user's order) on <paramref name="sourceId"/> that has a depot account assigned — the
+    /// Portfolio view the source's depot / instrument / tax pages send the user to. Null when there is none.
+    /// </summary>
+    public async Task<int?> FindPortfolioProjectAsync(int sourceId, CancellationToken ct = default)
+    {
+        var projects = (await _projects.GetProjectsAsync()).Where(p => p.SourceId == sourceId).ToList();
+        if (projects.Count == 0) return null;
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var ids = projects.Select(p => p.Id).ToList();
+        var withDepot = await db.ProjectAccountAssignments
+            .Where(a => ids.Contains(a.ProjectId))
+            .Join(db.Accounts.Where(a => a.Type == 7 || a.Portfolio == 1), pa => pa.AccountId, a => a.Id, (pa, _) => pa.ProjectId)
+            .Distinct()
+            .ToListAsync(ct);
+        return projects.FirstOrDefault(p => withDepot.Contains(p.Id))?.Id;
+    }
+
+    /// <summary>
     /// Combined holdings across every portfolio (depot) account assigned to a project — resolves
     /// the depots itself, so callers without the Browse tree can use it (e.g. the rebalance page).
     /// Null when the project has no assigned depots holding anything.
@@ -71,18 +89,10 @@ public class PortfolioService
         var project = await _projects.GetProjectAsync(projectId);
         if (project == null) return null;
 
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var assignedIds = await db.ProjectAccountAssignments
-            .Where(a => a.ProjectId == projectId)
-            .Select(a => a.AccountId)
-            .ToListAsync(ct);
-        if (assignedIds.Count == 0) return null;
-
-        var depotIds = await db.Accounts
-            .Where(a => assignedIds.Contains(a.Id) && (a.Type == 7 || a.Portfolio == 1))
-            .Select(a => a.Id)
-            .ToListAsync(ct);
+        var depotIds = await GetProjectDepotIdsAsync(projectId, ct);
         if (depotIds.Count == 0) return null;
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
 
         var holdings = await db.Holdings
             .AsNoTracking()
@@ -91,6 +101,21 @@ public class PortfolioService
         if (holdings.Count == 0) return null;
 
         return await BuildAsync(db, project.SourceId, holdings, accountId: 0, merge: true, ct);
+    }
+
+    /// <summary>The depot (portfolio) accounts assigned to a project.</summary>
+    public async Task<List<long>> GetProjectDepotIdsAsync(int projectId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var assignedIds = await db.ProjectAccountAssignments
+            .Where(a => a.ProjectId == projectId)
+            .Select(a => a.AccountId)
+            .ToListAsync(ct);
+        if (assignedIds.Count == 0) return [];
+        return await db.Accounts
+            .Where(a => assignedIds.Contains(a.Id) && (a.Type == 7 || a.Portfolio == 1))
+            .Select(a => a.Id)
+            .ToListAsync(ct);
     }
 
     /// <summary>

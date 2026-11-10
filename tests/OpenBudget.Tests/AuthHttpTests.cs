@@ -23,7 +23,7 @@ public sealed class AuthHttpTests : IDisposable
     private static readonly string[] AppPages =
     {
         "/", "/sources", "/projects/1/overview", "/projects/1/browse", "/projects/1/budgets",
-        "/projects/1/cashflow", "/projects/1/settings", "/projects/1/rebalance", "/budgets/1/edit",
+        "/projects/1/cashflow", "/projects/1/settings", "/projects/1/rebalance", "/projects/1/portfolio", "/budgets/1/edit",
         "/sources/1/depots", "/sources/1/tax", "/Account",
     };
 

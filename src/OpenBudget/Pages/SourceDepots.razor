@@ -5,12 +5,17 @@
 @using OpenBudget.Services
 @inject DepotMappingService DepotMapping
 @inject ProjectService ProjectService
+@inject PortfolioService PortfolioService
+@inject NavigationManager Navigation
 @inject IStringLocalizer<SourceDepots> L
 
+@if (!Embedded)
+{
 <PageTitle>@(sourceName != null ? L["PageTitle_WithSource", sourceName] : L["PageTitle"])</PageTitle>
 
 <PageHeader Title="@L["Heading"]" />
 <p><a href="/sources"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a></p>
+}
 
 @if (loading)
 {
@@ -20,7 +25,7 @@ else if (notFound)
 {
     <div class="alert alert-warning">@L["NotFound"]</div>
 }
-else if (mapping.Depots.Count == 0)
+else if (!VisibleDepots.Any())
 {
     <div class="alert alert-info">@L["Empty"]</div>
 }
@@ -36,7 +41,7 @@ else
             </tr>
         </thead>
         <tbody>
-            @foreach (var d in mapping.Depots)
+            @foreach (var d in VisibleDepots)
             {
                 <tr @key="d.PpUuid">
                     <td><strong>@d.PpName</strong></td>
@@ -48,7 +53,7 @@ else
                                 value="@(d.LinkedAccountId?.ToString() ?? "")"
                                 @onchange="e => OnLinkChanged(d.PpUuid, e.Value)">
                             <option value="">@L["NotLinked"]</option>
-                            @foreach (var a in mapping.Accounts)
+                            @foreach (var a in VisibleAccounts)
                             {
                                 <option value="@a.Id">@a.Name</option>
                             }
@@ -61,7 +66,27 @@ else
 }
 
 @code {
+
     [Parameter] public int SourceId { get; set; }
+    /// <summary>Shown inside the Portfolio view (no page title, header or back link, no redirect).</summary>
+    [Parameter] public bool Embedded { get; set; }
+    /// <summary>Inside a project's Portfolio view: only its depot accounts (and the not yet linked PortfolioPerformance depots).</summary>
+    [Parameter] public IReadOnlyCollection<long>? AccountIds { get; set; }
+
+    private IEnumerable<DepotMappingRow> VisibleDepots =>
+        AccountIds == null ? mapping.Depots : mapping.Depots.Where(d => d.LinkedAccountId is not { } id || AccountIds.Contains(id));
+
+    private IEnumerable<DepotAccountOption> VisibleAccounts =>
+        AccountIds == null ? mapping.Accounts : mapping.Accounts.Where(a => AccountIds.Contains(a.Id));
+
+    // The source-level page moved into the Portfolio view of a project that uses the source; it stays here only
+    // when no project on the source has a depot (reached from the Sources page).
+    private async Task<bool> RedirectToPortfolioAsync(string tab)
+    {
+        if (Embedded || await PortfolioService.FindPortfolioProjectAsync(SourceId) is not { } pid) return false;
+        Navigation.NavigateTo($"/projects/{pid}/portfolio?tab={tab}", replace: true);
+        return true;
+    }
 
     private DepotMapping mapping = new();
     private string? sourceName;
@@ -77,6 +102,7 @@ else
     {
         if (_loadedSourceId == SourceId) return;
         _loadedSourceId = SourceId;
+        if (await RedirectToPortfolioAsync("positions")) return;
         await LoadAsync();
     }
 

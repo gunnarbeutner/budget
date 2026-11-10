@@ -818,7 +818,7 @@ window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values,
         // A balance (account / account group) is a line over time; period sums (categories) are bars.
         const dataset = asLine
             ? { label: 'Balance', data: values, borderColor: 'rgba(54, 162, 235, 0.9)', backgroundColor: 'rgba(54, 162, 235, 0.12)',
-                fill: true, borderWidth: 2, pointRadius: 0, pointHitRadius: 6, stepped: true }
+                fill: true, borderWidth: 2, pointRadius: values.length < 40 ? 3 : 0, pointHitRadius: 6, stepped: true }
             : { label: 'Amount', data: values, backgroundColor: bg, borderWidth: 0 };
         window.chartInstances[canvasId] = new Chart(ctx, {
             type: asLine ? 'line' : 'bar',

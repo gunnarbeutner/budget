@@ -71,7 +71,7 @@ public sealed class NavigationTests : EndToEndTestBase
         await GoToAsync($"/projects/{Pid}/budgets");
         await View("portfolio").ClickAsync();
 
-        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/rebalance$"));
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/portfolio$"));
         await Expect(View("portfolio")).ToHaveAttributeAsync("aria-current", "page");
     }
 

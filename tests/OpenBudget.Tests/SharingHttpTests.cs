@@ -49,7 +49,7 @@ public sealed class SharingHttpTests : IDisposable
         using var bob = await _host.LoggedInClientAsync("bob");
         var privateBudget = await BudgetIdAsync(AccessWorld.Private);
 
-        foreach (var path in new[] { "/projects/1/overview", "/projects/1/browse", "/projects/1/budgets", "/projects/1/cashflow", "/projects/1/rebalance", "/projects/1/settings" })
+        foreach (var path in new[] { "/projects/1/overview", "/projects/1/browse", "/projects/1/budgets", "/projects/1/cashflow", "/projects/1/rebalance", "/projects/1/portfolio", "/projects/1/settings" })
         {
             var (status, body) = await GetAsync(bob, path);
             // Some pages canonicalise their URL (add ?year=) with a redirect; either way: not "not found".
@@ -60,7 +60,7 @@ public sealed class SharingHttpTests : IDisposable
 
         await AssertNotFoundAsync(bob,
             "/projects/2/overview", "/projects/2/browse", "/projects/2/budgets", "/projects/2/cashflow",
-            "/projects/2/rebalance", "/projects/2/settings", "/projects/2/budgets/new", $"/budgets/{privateBudget}/edit",
+            "/projects/2/rebalance", "/projects/2/portfolio", "/projects/2/settings", "/projects/2/budgets/new", $"/budgets/{privateBudget}/edit",
             "/projects/999/overview");
     }
 

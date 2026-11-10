@@ -1,0 +1,169 @@
+@page "/projects/{ProjectId:int}/portfolio"
+@inherits DataChangeAwareComponent
+@using OpenBudget.Models
+@using OpenBudget.Services
+@using Microsoft.AspNetCore.WebUtilities
+@inject ProjectService ProjectService
+@inject PortfolioService PortfolioService
+@inject AccessScopeProvider AccessProvider
+@inject NavigationManager Navigation
+@inject IStringLocalizer<Portfolio> L
+
+@* The Portfolio view of a project with depots: Positions (the holdings of the project's depot accounts, and for the
+   source's owner the links between PortfolioPerformance and MoneyMoney depots and instruments), Rebalance and Tax
+   (the source's tax settings per security). The sections are a segmented control in the toolbar and in the URL
+   (?tab=). *@
+
+<PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
+
+@if (notFound)
+{
+    <PageHeader Title="@L["NotFound_Heading"]" />
+    <p class="text-body-secondary">@L["NotFound_Body_Before"]<a href="/">@L["NotFound_Body_LinkText"]</a>@L["NotFound_Body_After"]</p>
+    return;
+}
+
+<ProjectPageHeader ProjectId="ProjectId" ProjectName="@(project?.Name ?? "")" />
+
+<ProjectShell ProjectId="ProjectId" Active="ProjectTab.Portfolio" MainClass="shell-page">
+    <div class="page-toolbar" data-testid="portfolio-toolbar">
+        <h1 class="view-title">@L["View_Title"]</h1>
+        @if (holdings != null && tab == "positions")
+        {
+            <span class="view-sub d-none d-md-inline" data-testid="portfolio-total">@Formatting.FormatMoneyDe(holdings.TotalValue, holdings.Currency)</span>
+        }
+        <div class="flex-grow-1"></div>
+        <div class="segmented" role="group" aria-label="@L["Aria_Sections"]" data-testid="portfolio-sections">
+            @foreach (var (key, label) in Sections)
+            {
+                <a class="btn @(tab == key ? "active" : "")" href="@($"/projects/{ProjectId}/portfolio?tab={key}")"
+                   aria-current="@(tab == key ? "page" : null)" data-testid="@($"portfolio-tab-{key}")">@label</a>
+            }
+        </div>
+    </div>
+
+    @if (project == null)
+    {
+        <div class="skeleton skeleton-block" aria-busy="true"></div>
+    }
+    else if (tab == "rebalance")
+    {
+        <RebalancePanel ProjectId="ProjectId" />
+    }
+    else if (tab == "tax")
+    {
+        <p class="text-body-secondary small" data-testid="portfolio-tax-note">@L["Tax_Scope", sourceName ?? ""]</p>
+        @if (ownsSource)
+        {
+            <SecurityTax SourceId="project.SourceId" Embedded="true" />
+        }
+        else
+        {
+            <div class="alert alert-info">@L["Tax_OwnerOnly"]</div>
+        }
+    }
+    else
+    {
+        @if (loading)
+        {
+            <div class="skeleton skeleton-block" aria-busy="true"></div>
+        }
+        else if (holdings == null)
+        {
+            <div class="text-body-secondary py-5 text-center" data-testid="portfolio-empty">
+                <i class="bi bi-pie-chart" style="font-size: 1.8rem;" aria-hidden="true"></i>
+                <div class="mt-2">@L["Positions_Empty"]</div>
+            </div>
+        }
+        else
+        {
+            <HoldingsCard Holdings="holdings" />
+        }
+        @if (ownsSource)
+        {
+            <details class="portfolio-links mt-4" data-testid="portfolio-links">
+                <summary class="fw-semibold">@L["Links_Heading"]</summary>
+                <p class="text-body-secondary small mt-2">@L["Links_Intro"]</p>
+                <h2 class="h6 mt-3">@L["Links_Depots"]</h2>
+                <SourceDepots SourceId="project.SourceId" Embedded="true" AccountIds="depotIds" />
+                <h2 class="h6 mt-3">@L["Links_Instruments"]</h2>
+                <SourceInstruments SourceId="project.SourceId" Embedded="true" />
+            </details>
+        }
+    }
+</ProjectShell>
+
+@code {
+    [Parameter] public int ProjectId { get; set; }
+
+    private Project? project;
+    private string? sourceName;
+    private bool notFound;
+    private bool loading = true;
+    private bool ownsSource;
+    private string tab = "positions";
+    private AccountHoldings? holdings;
+    private List<long> depotIds = [];
+    private int _loadedProjectId;
+
+    private IEnumerable<(string Key, string Label)> Sections =>
+    [
+        ("positions", L["Tab_Positions"]),
+        ("rebalance", L["Tab_Rebalance"]),
+        ("tax", L["Tab_Tax"]),
+    ];
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        var next = ReadTab();
+        if (next == tab) return;
+        tab = next;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private string ReadTab()
+    {
+        var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
+        return query.TryGetValue("tab", out var t) && t.ToString() is "rebalance" or "tax" ? t.ToString() : "positions";
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        tab = ReadTab();
+        if (_loadedProjectId == ProjectId) return;
+        _loadedProjectId = ProjectId;
+        await LoadAsync();
+    }
+
+    protected override bool IsRelevantChange(DataChange change) =>
+        change.Area is DataArea.ImportedData or DataArea.Sources or DataArea.Projects
+        && (change.SourceId == null || change.SourceId == project?.SourceId);
+
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        notFound = false;
+        project = await ProjectService.GetProjectAsync(ProjectId);
+        if (project == null) { notFound = true; return; }
+        var scope = await AccessProvider.GetAsync();
+        ownsSource = scope.OwnsSource(project.SourceId);
+        sourceName = (await ProjectService.GetAllSourcesAsync()).FirstOrDefault(s => s.Id == project.SourceId)?.Name;
+        holdings = await PortfolioService.GetProjectHoldingsAsync(ProjectId);
+        depotIds = await PortfolioService.GetProjectDepotIdsAsync(ProjectId);
+        loading = false;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) Navigation.LocationChanged -= OnLocationChanged;
+        base.Dispose(disposing);
+    }
+}

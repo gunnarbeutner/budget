@@ -1,0 +1,176 @@
+@using System.Globalization
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject IStringLocalizer<HoldingsCard> L
+
+@* Holdings of a depot, or of several merged (the Transactions view of a depot / "All securities", and the
+   Positions section of the Portfolio view): allocation bars, PortfolioPerformance look-through by taxonomy,
+   and the positions table. *@
+
+@{
+    var h = Holdings;
+    var allocColors = ChartPalette.Templates(h.Allocation.Count);
+}
+<div class="card mb-2 holdings-card">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0">@L["Holdings_Title"]</h6>
+            <span class="text-body-secondary small">@L["Holdings_PositionCount", h.Rows.Count]</span>
+        </div>
+
+        @if (h.Allocation.Count > 0 && h.TotalValue > 0)
+        {
+            <div class="holdings-alloc-bar" role="img" aria-label="@L["Holdings_Allocation"]"
+                 style="display:flex;height:10px;border-radius:4px;overflow:hidden;">
+                @for (int i = 0; i < h.Allocation.Count; i++)
+                {
+                    var slice = h.Allocation[i];
+                    <div style="width:@CssPercent(slice.Fraction);background:@ChartPalette.WithAlpha(allocColors[i], 0.85);"
+                         title="@slice.Label @FormatPercent(slice.Fraction)"></div>
+                }
+            </div>
+            <div class="d-flex flex-wrap gap-3 mt-2 mb-3 small">
+                @for (int i = 0; i < h.Allocation.Count; i++)
+                {
+                    var slice = h.Allocation[i];
+                    <span class="d-inline-flex align-items-center gap-1">
+                        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:@ChartPalette.WithAlpha(allocColors[i], 0.85);"></span>
+                        @slice.Label
+                        <span class="text-body-secondary">@FormatPercent(slice.Fraction)</span>
+                    </span>
+                }
+            </div>
+        }
+
+        @if (h.Taxonomies.Count > 0)
+        {
+            var selectedTax = h.Taxonomies.FirstOrDefault(t => t.TaxonomyName == holdingsTaxonomy) ?? h.Taxonomies[0];
+            var ltColors = ChartPalette.Templates(selectedTax.Slices.Count);
+            <div class="mb-3">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    <span class="text-body-secondary small">@L["Holdings_LookThrough"]</span>
+                    <div class="btn-group btn-group-sm" role="group" aria-label="@L["Holdings_LookThrough"]">
+                        @foreach (var t in h.Taxonomies)
+                        {
+                            <button type="button"
+                                    class="btn @(t.TaxonomyName == selectedTax.TaxonomyName ? "btn-primary" : "btn-outline-secondary")"
+                                    @onclick="() => SelectHoldingsTaxonomy(t.TaxonomyName)">@t.TaxonomyName</button>
+                        }
+                    </div>
+                </div>
+                <div class="holdings-alloc-bar" role="img" aria-label="@selectedTax.TaxonomyName"
+                     style="display:flex;height:10px;border-radius:4px;overflow:hidden;">
+                    @for (int i = 0; i < selectedTax.Slices.Count; i++)
+                    {
+                        var slice = selectedTax.Slices[i];
+                        <div style="width:@CssPercent(slice.Fraction);background:@ChartPalette.WithAlpha(ltColors[i], 0.85);"
+                             title="@slice.Label @FormatPercent(slice.Fraction)"></div>
+                    }
+                </div>
+                <div class="d-flex flex-wrap gap-3 mt-2 small">
+                    @for (int i = 0; i < selectedTax.Slices.Count; i++)
+                    {
+                        var slice = selectedTax.Slices[i];
+                        <span class="d-inline-flex align-items-center gap-1">
+                            <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:@ChartPalette.WithAlpha(ltColors[i], 0.85);"></span>
+                            @slice.Label
+                            <span class="text-body-secondary">@FormatPercent(slice.Fraction)</span>
+                        </span>
+                    }
+                </div>
+            </div>
+        }
+
+        <div class="table-responsive">
+            <table class="table table-sm align-middle holdings-table mb-0">
+                <thead>
+                    <tr>
+                        <th>@L["Holdings_ColName"]</th>
+                        <th class="text-end">@L["Holdings_ColQuantity"]</th>
+                        <th class="text-end">@L["Holdings_ColPrice"]</th>
+                        <th class="text-end">@L["Holdings_ColValue"]</th>
+                        <th class="text-end">@L["Holdings_ColGain"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (int ri = 0; ri < h.Rows.Count; ri++)
+                    {
+                        var row = h.Rows[ri];
+                        <tr @key="ri">
+                            <td>
+                                <div class="fw-semibold">@row.Name</div>
+                                <div class="text-body-secondary small">
+                                    <span class="badge text-bg-light border me-1">@row.AssetClassLabel</span>
+                                    @if (!string.IsNullOrEmpty(row.Isin)) { <span>@row.Isin</span> }
+                                </div>
+                            </td>
+                            <td class="text-end">@FormatQuantity(row.Quantity)</td>
+                            <td class="text-end">
+                                @(row.Price is { } p ? Formatting.FormatMoneyDe(p, row.PriceCurrency ?? h.Currency) : "—")
+                            </td>
+                            <td class="text-end">
+                                <div>@Formatting.FormatMoneyDe(row.Value, h.Currency)</div>
+                                <div class="text-body-secondary small">@FormatPercent(row.ShareOfAccount)</div>
+                            </td>
+                            <td class="text-end">
+                                @if (row.Gain is { } g)
+                                {
+                                    <span class="@(g < 0 ? "text-danger" : "text-success")">
+                                        @Formatting.FormatMoneyDe(g, h.Currency)
+                                        @if (row.GainFraction is { } gf)
+                                        {
+                                            <span class="small">&nbsp;(@FormatPercent((decimal)gf))</span>
+                                        }
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-body-secondary">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr class="fw-semibold border-top">
+                        <td>@L["Holdings_Total"]</td>
+                        <td></td>
+                        <td></td>
+                        <td class="text-end">@Formatting.FormatMoneyDe(h.TotalValue, h.Currency)</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public AccountHoldings Holdings { get; set; } = default!;
+
+    // Which PortfolioPerformance taxonomy the look-through is showing; kept valid for new holdings.
+    private string? holdingsTaxonomy;
+
+    protected override void OnParametersSet()
+    {
+        if (Holdings.Taxonomies is { Count: > 0 } taxos && (holdingsTaxonomy is null || taxos.All(t => t.TaxonomyName != holdingsTaxonomy)))
+            holdingsTaxonomy = taxos[0].TaxonomyName;
+    }
+
+    // Holdings card formatting. Percent for display follows the UI culture; the allocation-bar
+    // segment widths must use an invariant decimal point or a German "25,0%" silently voids the
+    // CSS width (same trap as the rail's padding-left — see BrowseTreeRail).
+    // Switches the holdings look-through taxonomy. Data is already loaded, so this is pure view
+    // state — Blazor re-renders after the synchronous handler returns.
+    private void SelectHoldingsTaxonomy(string taxonomyName) => holdingsTaxonomy = taxonomyName;
+
+    private static string FormatPercent(decimal fraction) => fraction.ToString("P1", CultureInfo.CurrentCulture);
+
+    private static string CssPercent(decimal fraction) =>
+        FormattableString.Invariant($"{fraction * 100m:0.##}%");
+
+    // Quantities range from thousands of ETF units to sub-microcoin crypto dust, so show up to
+    // eight decimals and trim trailing zeros rather than forcing a fixed scale.
+    private static string FormatQuantity(double quantity) =>
+        quantity.ToString("0.########", CultureInfo.CurrentCulture);
+}

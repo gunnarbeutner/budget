@@ -92,16 +92,6 @@
   <data name="Tx_PendingTitle" xml:space="preserve"><value>Die Buchung ist vorgemerkt und noch nicht von der Bank gebucht.</value></data>
   <data name="Tx_SplitRemainder" xml:space="preserve"><value>Split-Rest</value></data>
   <data name="Tx_SplitRemainderTitle" xml:space="preserve"><value>Teil einer Splitbuchung, der keinem Teilbetrag zugeordnet ist.</value></data>
-  <data name="Holdings_Title" xml:space="preserve"><value>Bestände</value></data>
-  <data name="Holdings_PositionCount" xml:space="preserve"><value>{0} Positionen</value></data>
-  <data name="Holdings_Allocation" xml:space="preserve"><value>Anlageklassen</value></data>
-  <data name="Holdings_ColName" xml:space="preserve"><value>Wertpapier</value></data>
-  <data name="Holdings_ColQuantity" xml:space="preserve"><value>Anzahl</value></data>
-  <data name="Holdings_ColPrice" xml:space="preserve"><value>Kurs</value></data>
-  <data name="Holdings_ColValue" xml:space="preserve"><value>Wert</value></data>
-  <data name="Holdings_ColGain" xml:space="preserve"><value>Gewinn</value></data>
-  <data name="Holdings_Total" xml:space="preserve"><value>Gesamt</value></data>
-  <data name="Holdings_LookThrough" xml:space="preserve"><value>Durchschau:</value></data>
   <data name="Header_AllSecurities" xml:space="preserve"><value>Alle Wertpapiere</value></data>
   <data name="Header_TotalValue" xml:space="preserve"><value>Gesamtwert</value></data>
   <data name="Header_Pending" xml:space="preserve"><value>Vorgemerkt:</value></data>

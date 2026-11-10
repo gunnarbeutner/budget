@@ -1,27 +1,15 @@
-@page "/projects/{ProjectId:int}/rebalance"
 @inherits DataChangeAwareComponent
 @using System.Globalization
 @using OpenBudget.Services
 @using OpenBudget.Models
 @inject PortfolioService Portfolio
 @inject ProjectService ProjectService
-@inject IStringLocalizer<Rebalance> L
+@inject IStringLocalizer<RebalancePanel> L
 @inject ClockService Clock
 
-<PageTitle>@(projectName != null ? L["PageTitle_WithProject", projectName] : L["PageTitle"])</PageTitle>
-
-@if (notFound)
-{
-    <PageHeader Title="@L["NotFound_Heading"]" />
-    <p class="text-body-secondary">@L["NotFound_Body_Before"]<a href="/">@L["NotFound_Body_LinkText"]</a>@L["NotFound_Body_After"]</p>
-    return;
-}
-
-<ProjectPageHeader ProjectId="ProjectId" ProjectName="@projectName" />
-
-<ProjectShell ProjectId="ProjectId" Active="ProjectTab.Portfolio" MainClass="shell-page">
-<div class="page-toolbar"><h1 class="view-title">@L["View_Title"]</h1></div>
-
+@* The Rebalance section of the Portfolio view (Portfolio.razor hosts it in the project shell): target weights per
+   security or per region of a PortfolioPerformance taxonomy, cash to add, and the resulting trades with their
+   estimated tax. *@
 
 <DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
@@ -335,7 +323,6 @@ else
     <p class="text-body-secondary small mt-3"><i class="bi bi-info-circle me-1" aria-hidden="true"></i>@L["Disclaimer"]</p>
 }
 
-</ProjectShell>
 
 @code {
     [Parameter] public int ProjectId { get; set; }
@@ -343,8 +330,6 @@ else
     // Holds an otherwise-empty second line at full text height so toggling a row doesn't reflow it.
     private readonly MarkupString Nbsp = (MarkupString)"&nbsp;";
 
-    private string? projectName;
-    private bool notFound;
     private bool loading = true;
     private int _loadedProjectId = -1;
     private int sourceId;
@@ -401,10 +386,8 @@ else
     private async Task LoadAsync()
     {
         loading = true;
-        notFound = false;
         var project = await ProjectService.GetProjectAsync(ProjectId);
-        if (project == null) { notFound = true; loading = false; return; }
-        projectName = project.Name;
+        if (project == null) { loading = false; return; }
         sourceId = project.SourceId;
 
         var holdings = await Portfolio.GetProjectHoldingsAsync(ProjectId);
