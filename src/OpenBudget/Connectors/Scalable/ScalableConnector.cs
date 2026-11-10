@@ -67,12 +67,17 @@ public sealed partial class ScalableConnector : IBankConnector
             {
                 if (storedSession is { Cookies.Count: > 0 } && await TryReuseSessionAsync(ct))
                     return ConnectorStep.Done<ConnectorSession?>(_session);
+                // The app's stale session cookies would send the browser straight to the cockpit, ending the web login
+                // before the user can sign in. The sign-in domain's cookies (device id, SSO) stay.
+                var appHost = _options.BaseUri.Host;
+                _context.Http.RemoveCookies(c => c.Domain.TrimStart('.').Equals(appHost, StringComparison.OrdinalIgnoreCase));
                 return ConnectorStep.Ask<ConnectorSession?>(ConnectorChallenge.WebLogin(
                     "Bitte melden Sie sich auf der Scalable-Seite an. / Please sign in on the Scalable page.", WebLogin, WebLoginReference));
             }
 
             // Back from the web login: the browser's cookies are in the jar now.
             _personId = await FetchPersonIdAsync(ct);
+            await ProbeApiAsync(ct);
         }
         catch (ScalableSessionExpiredException ex)
         {
@@ -92,9 +97,7 @@ public sealed partial class ScalableConnector : IBankConnector
         try
         {
             _personId = await FetchPersonIdAsync(ct);
-            // The cockpit page can still render the user after the API token has expired; ask the API itself.
-            await _graphQl.ExecuteAsync(ScalableGraphQl.CockpitPath, "fetchCashAccountDetails", ScalableQueries.FetchCashAccountDetails,
-                new System.Text.Json.Nodes.JsonObject { ["userId"] = _personId }, ct);
+            await ProbeApiAsync(ct);
         }
         catch (ScalableSessionExpiredException)
         {
@@ -105,6 +108,11 @@ public sealed partial class ScalableConnector : IBankConnector
         _loggedInAtAll = true;
         return true;
     }
+
+    /// <summary>The cockpit page can still render the user after the API token has expired; this asks the API itself.</summary>
+    private Task<System.Text.Json.JsonElement> ProbeApiAsync(CancellationToken ct) =>
+        _graphQl.ExecuteAsync(ScalableGraphQl.CockpitPath, "fetchCashAccountDetails", ScalableQueries.FetchCashAccountDetails,
+            new System.Text.Json.Nodes.JsonObject { ["userId"] = _personId }, ct);
 
     private void LogSessionLifetime()
     {

@@ -149,7 +149,8 @@ public sealed class ScalableConnectorTests
         var second = await SyncAsync(rig, new SyncRequest(rig.LoginId, false, false));
         Assert.True(second.Succeeded, second.Error);
         Assert.Equal(2, rig.Browser.Sessions.Count);
-        Assert.Contains(rig.Browser.Sessions[1].Seeded, c => c.Name == FakeScalable.SessionCookie); // the jar travels into the browser
+        // The stale app session must not travel into the browser, or the login page would jump straight to the cockpit.
+        Assert.DoesNotContain(rig.Browser.Sessions[1].Seeded, c => c.Name == FakeScalable.SessionCookie);
         var expired = Assert.Single(rig.Logs.Entries, e => e.Message.Contains("has expired", StringComparison.Ordinal));
         Assert.Equal(LogLevel.Information, expired.Level);
         Assert.Contains("30", expired.Message, StringComparison.Ordinal); // "created 30.0 hours ago"

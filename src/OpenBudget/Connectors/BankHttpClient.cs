@@ -17,6 +17,9 @@ public interface IBankHttpClient
     IReadOnlyList<CookieState> ExportCookies();
 
     void ImportCookies(IEnumerable<CookieState> cookies);
+
+    /// <summary>Drops every cookie matching <paramref name="match"/> from the jar.</summary>
+    void RemoveCookies(Func<CookieState, bool> match);
 }
 
 /// <summary><see cref="IBankHttpClient"/> over a private <see cref="HttpClient"/> with its own <see cref="CookieContainer"/>.</summary>
@@ -111,6 +114,19 @@ public sealed class BankHttpClient : IBankHttpClient, IDisposable
                 if (c.ExpiresUtc is { } e) cookie.Expires = e;
                 _jar.Add(cookie);
                 if (c.SameSite != null) _sameSite[KeyOf(c.Name, c.Domain, c.Path)] = c.SameSite;
+            }
+        }
+    }
+
+    public void RemoveCookies(Func<CookieState, bool> match)
+    {
+        lock (_sameSite)
+        {
+            foreach (var c in _jar.GetAllCookies().ToList())
+            {
+                if (!match(new CookieState(c.Name, c.Value, c.Domain, c.Path, null, c.Secure, c.HttpOnly))) continue;
+                c.Expired = true;
+                _sameSite.Remove(KeyOf(c.Name, c.Domain, c.Path));
             }
         }
     }
