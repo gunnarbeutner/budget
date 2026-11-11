@@ -873,8 +873,10 @@ enum Exporter {
         defer { try? handle.close() }
         var hasher = SHA256()
         while true {
-            guard let chunk = try? handle.read(upToCount: 1 << 20) else { return nil }
-            if chunk.isEmpty { break }
+            let chunk: Data?
+            do { chunk = try handle.read(upToCount: 1 << 20) } catch { return nil }
+            // read(upToCount:) answers nil (or empty data) at the end of the file
+            guard let chunk, !chunk.isEmpty else { break }
             hasher.update(data: chunk)
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()

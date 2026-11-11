@@ -88,16 +88,16 @@ public class MoneyMoneyImportService
     internal static readonly (string Column, bool IsDate, string[] Candidates)[] TransactionDetailColumns =
     {
         ("value_timestamp", true, new[] { "value_date", "value_timestamp", "valuedate", "value_day" }),
-        ("counterparty_iban", false, new[] { "account_number", "remote_account_number", "remote_account", "counterparty_account_number", "iban" }),
-        ("counterparty_bic", false, new[] { "bank_code", "remote_bank_code", "counterparty_bank_code", "bic" }),
-        ("booking_text", false, new[] { "booking_text", "bookingtext", "transaction_type" }),
-        ("bank_reference", false, new[] { "bank_reference", "transaction_reference", "reference" }),
+        ("counterparty_iban", false, new[] { "account_number", "remote_account_number", "remote_account", "counterparty_account_number", "iban", "account" }),
+        ("counterparty_bic", false, new[] { "bank_code", "remote_bank_code", "counterparty_bank_code", "bic", "bankcode" }),
+        ("booking_text", false, new[] { "booking_text", "bookingtext", "transaction_type", "unformatted_type" }),
+        ("bank_reference", false, new[] { "bank_reference", "transaction_reference", "reference", "kref" }),
         ("end_to_end_reference", false, new[] { "end_to_end_reference", "endtoend_reference", "end_to_end_id", "eref" }),
         ("mandate_reference", false, new[] { "mandate_reference", "mandate_id", "mref" }),
         ("creditor_id", false, new[] { "creditor_id", "creditor_identifier", "cred" }),
         ("transaction_code", false, new[] { "transaction_code", "business_transaction_code", "gvc" }),
-        ("primanota", false, new[] { "primanota", "prima_nota" }),
-        ("return_reason", false, new[] { "return_reason" }),
+        ("primanota", false, new[] { "primanota", "prima_nota", "pn" }),
+        ("return_reason", false, new[] { "return_reason", "rtrn", "rtcd" }),
     };
     private static readonly string[] SecurityInsertParameters =
     {
