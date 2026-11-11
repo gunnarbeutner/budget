@@ -59,6 +59,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<PpPortfolio> PpPortfolios => Set<PpPortfolio>();
     public DbSet<PpLot> PpLots => Set<PpLot>();
     public DbSet<PpPortfolioLink> PpPortfolioLinks => Set<PpPortfolioLink>();
+    public DbSet<PpPortfolioSetting> PpPortfolioSettings => Set<PpPortfolioSetting>();
     public DbSet<SecurityTaxSetting> SecurityTaxSettings => Set<SecurityTaxSetting>();
     public DbSet<PpSecurityLink> PpSecurityLinks => Set<PpSecurityLink>();
     public DbSet<BankLogin> BankLogins => Set<BankLogin>();
@@ -315,6 +316,11 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         // Depot mapping is user config (not rebuilt on upload); one link per PP depot per source.
         modelBuilder.Entity<PpPortfolioLink>()
             .HasIndex(l => new { l.SourceId, l.PpPortfolioUuid })
+            .IsUnique();
+
+        // How each PP portfolio shows as accounts (user config); one row per portfolio per source.
+        modelBuilder.Entity<PpPortfolioSetting>()
+            .HasIndex(s => new { s.SourceId, s.PpPortfolioUuid })
             .IsUnique();
 
         // Per-instrument tax overrides (user config); one row per instrument (uuid) per source.

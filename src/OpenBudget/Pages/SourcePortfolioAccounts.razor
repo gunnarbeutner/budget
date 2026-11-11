@@ -1,0 +1,178 @@
+@page "/sources/{SourceId:int}/portfolios"
+@attribute [RequireSourceOwner]
+@inherits DataChangeAwareComponent
+@using OpenBudget.Services
+@inject PortfolioAccountSettingsService Settings
+@inject IStringLocalizer<SourcePortfolioAccounts> L
+
+@* Which PortfolioPerformance portfolios of a source show as accounts (a depot with positions and value history plus a
+   ledger with the transactions), the project they belong to, and taking over accounts that already exist. *@
+
+<PageTitle>@(settings != null ? L["PageTitle_WithSource", settings.SourceName] : L["PageTitle"])</PageTitle>
+
+<SettingsShell Active="sources">
+<PageHeader Title="@L["Heading"]" Subtitle="@settings?.SourceName">
+    <Actions>
+        <a class="ob-btn" href="/sources"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a>
+    </Actions>
+</PageHeader>
+
+@if (loading)
+{
+    <div class="skeleton skeleton-block" aria-busy="true"></div>
+}
+else if (settings == null)
+{
+    <div class="alert alert-warning">@L["NotFound"]</div>
+}
+else if (settings.Portfolios.Count == 0)
+{
+    <div class="alert alert-info">@L["Empty"]</div>
+}
+else
+{
+    <p class="text-body-secondary">@L["Intro"]</p>
+    @if (!settings.HasFile)
+    {
+        <div class="alert alert-info py-2">@L["NoFile"]</div>
+    }
+    @if (error != null)
+    {
+        <div class="alert alert-danger py-2" role="alert">@error</div>
+    }
+    <div class="table-responsive">
+    <table class="table table-sm align-middle" data-testid="pp-portfolios">
+        <thead>
+            <tr>
+                <th>@L["Col_Portfolio"]</th>
+                <th>@L["Col_Show"]</th>
+                <th>@L["Col_Accounts"]</th>
+                <th style="min-width: 12rem;">@L["Col_Project"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var p in settings.Portfolios)
+            {
+                <tr @key="p.Uuid" data-testid="pp-portfolio-row">
+                    <td>
+                        <strong>@p.Name</strong>
+                        @if (p.Retired)
+                        {
+                            <span class="badge text-bg-light border ms-1">@L["Retired"]</span>
+                        }
+                        @if (p.LinkedBankDepot != null)
+                        {
+                            <div class="small text-body-secondary">@L["LinkedTo", p.LinkedBankDepot]</div>
+                        }
+                    </td>
+                    <td>
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" role="switch" id="@($"pp-show-{p.Uuid}")"
+                                   checked="@p.Show" disabled="@busy" data-testid="pp-show"
+                                   @onchange="e => SetShowAsync(p.Uuid, e.Value is true)" />
+                            <label class="form-check-label small" for="@($"pp-show-{p.Uuid}")">@L["Show"]</label>
+                        </div>
+                    </td>
+                    <td class="small">
+                        @if (p.Show && p.PendingTakeover is { } candidate)
+                        {
+                            <div class="mb-1">@L["Takeover_Found", string.Join(", ", new[] { candidate.DepotName, candidate.LedgerName }.Where(n => n != null))]</div>
+                            <button class="btn btn-sm btn-primary me-1" disabled="@busy" data-testid="pp-takeover"
+                                    @onclick="() => TakeOverAsync(p.Uuid)">@L["Takeover_Button"]</button>
+                            <button class="btn btn-sm btn-outline-secondary" disabled="@busy" data-testid="pp-create-new"
+                                    @onclick="() => DeclineAsync(p.Uuid)">@L["Takeover_Decline"]</button>
+                        }
+                        else if (p.DepotAccountName != null || p.LedgerAccountName != null)
+                        {
+                            <div>@string.Join(" · ", new[] { p.DepotAccountName, p.LedgerAccountName }.Where(n => n != null))</div>
+                            @if (p.TakenOver)
+                            {
+                                <span class="text-body-secondary">@L["TakenOver"]</span>
+                            }
+                            @if (!p.Show)
+                            {
+                                <span class="text-body-secondary">@L["Released"]</span>
+                            }
+                        }
+                        else if (p.Show)
+                        {
+                            <span class="text-body-secondary">@L["Pending"]</span>
+                        }
+                        else
+                        {
+                            <span class="text-body-secondary">—</span>
+                        }
+                    </td>
+                    <td>
+                        <select class="form-select form-select-sm" value="@(p.ProjectId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")"
+                                disabled="@busy" @onchange="e => SetProjectAsync(p.Uuid, e.Value)" aria-label="@L["Col_Project"]">
+                            <option value="">@L["Project_Default"]</option>
+                            @foreach (var project in settings.Projects)
+                            {
+                                <option value="@project.Id">@project.Name</option>
+                            }
+                        </select>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    </div>
+}
+</SettingsShell>
+
+@code {
+    [Parameter] public int SourceId { get; set; }
+
+    private PortfolioAccountSettings? settings;
+    private bool loading = true;
+    private bool busy;
+    private string? error;
+    private int _loadedSourceId = -1;
+
+    protected override bool IsRelevantChange(DataChange change) =>
+        change.Area is DataArea.ImportedData or DataArea.Sources or DataArea.Projects;
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedSourceId == SourceId) return;
+        _loadedSourceId = SourceId;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        settings = await Settings.GetAsync(SourceId);
+        loading = false;
+    }
+
+    private Task SetShowAsync(string uuid, bool show) => RunAsync(() => Settings.SetShowAsync(SourceId, uuid, show));
+
+    private Task SetProjectAsync(string uuid, object? value) =>
+        RunAsync(() => Settings.SetProjectAsync(SourceId, uuid,
+            int.TryParse(value?.ToString(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var id) ? id : null));
+
+    private Task TakeOverAsync(string uuid) => RunAsync(() => Settings.TakeOverAsync(SourceId, uuid));
+
+    private Task DeclineAsync(string uuid) => RunAsync(() => Settings.DeclineTakeoverAsync(SourceId, uuid));
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            await action();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException or AccessDeniedException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+        await LoadAsync();
+    }
+}

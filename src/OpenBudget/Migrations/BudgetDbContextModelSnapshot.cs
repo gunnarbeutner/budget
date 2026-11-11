@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261111084715_StatementInstitution";
+        public override string LatestMigrationId => "20261111092612_PortfolioPerformanceAccounts";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -972,6 +972,9 @@ namespace OpenBudget.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("IsRetired")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -1012,6 +1015,46 @@ namespace OpenBudget.Migrations
                         .IsUnique();
 
                     b.ToTable("pp_portfolio_link");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.PpPortfolioSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("DepotAccountId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("LedgerAccountId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PpPortfolioUuid")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ProjectId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool?>("ShowAsAccount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("TakenOver")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("TakeoverDeclined")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceId", "PpPortfolioUuid")
+                        .IsUnique();
+
+                    b.ToTable("pp_portfolio_settings");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.PpSecurity", b =>

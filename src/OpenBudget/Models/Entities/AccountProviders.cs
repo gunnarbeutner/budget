@@ -10,4 +10,7 @@ public static class AccountProviders
     /// removed). Its data stays; it can be linked to a connector again.
     /// </summary>
     public const string Manual = "manual";
+
+    /// <summary>Computed from the source's PortfolioPerformance file (a portfolio's depot or ledger account).</summary>
+    public const string PortfolioPerformance = "portfolioperformance";
 }

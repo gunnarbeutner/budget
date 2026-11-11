@@ -122,7 +122,7 @@ public static class PortfolioPerformanceFile
     public static List<PpPortfolio> ExtractPortfolios(PClient client, int sourceId) =>
         client.Portfolios
             .Where(p => !string.IsNullOrEmpty(p.Uuid))
-            .Select(p => new PpPortfolio { SourceId = sourceId, Uuid = p.Uuid, Name = string.IsNullOrEmpty(p.Name) ? p.Uuid : p.Name })
+            .Select(p => new PpPortfolio { SourceId = sourceId, Uuid = p.Uuid, Name = string.IsNullOrEmpty(p.Name) ? p.Uuid : p.Name, IsRetired = p.IsRetired })
             .ToList();
 
     /// <summary>

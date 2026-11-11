@@ -6,7 +6,8 @@ namespace OpenBudget.Services;
 
 /// <summary>
 /// Imports security taxonomy data from an uploaded PortfolioPerformance ".portfolio" file into
-/// <c>pp_security_taxonomy</c> for an existing source. Parsing lives in
+/// <c>pp_security_taxonomy</c> for an existing source, keeps the file as the source's current one and recomputes the
+/// source's portfolio accounts from it (<see cref="PortfolioAccountSync"/>). Parsing lives in
 /// <see cref="PortfolioPerformanceFile"/>; this owns the replace-for-source transaction and the
 /// per-source serialization (singleton, like the other importers).
 ///
@@ -18,16 +19,22 @@ public class PortfolioPerformanceImportService
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly ChangeNotificationService _notifier;
     private readonly ILogger<PortfolioPerformanceImportService> _logger;
+    private readonly UploadedPortfolioFileSource? _files;
+    private readonly PortfolioAccountSync? _accounts;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _perSourceLocks = new(StringComparer.Ordinal);
 
     public PortfolioPerformanceImportService(
         IDbContextFactory<BudgetDbContext> dbFactory,
         ChangeNotificationService notifier,
-        ILogger<PortfolioPerformanceImportService> logger)
+        ILogger<PortfolioPerformanceImportService> logger,
+        UploadedPortfolioFileSource? files = null,
+        PortfolioAccountSync? accounts = null)
     {
         _dbFactory = dbFactory;
         _notifier = notifier;
         _logger = logger;
+        _files = files;
+        _accounts = accounts;
     }
 
     public async Task<PpImportResult> ImportFromFileAsync(string sourceName, string portfolioFilePath, CancellationToken ct)
@@ -101,6 +108,20 @@ public class PortfolioPerformanceImportService
 
         // The Browse holdings view reads taxonomy alongside imported data, so signal the same area.
         _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: sourceId));
+
+        // The file becomes the source's current one; the portfolio accounts are recomputed from it.
+        if (_files != null) await _files.StoreAsync(sourceId, portfolioFilePath, ct);
+        if (_accounts != null)
+        {
+            try
+            {
+                await _accounts.SyncAsync(sourceId, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Recomputing the PortfolioPerformance accounts of source '{Source}' failed.", sourceName);
+            }
+        }
 
         return new PpImportResult
         {

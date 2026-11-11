@@ -73,6 +73,7 @@ public partial class BudgetDbContext
         modelBuilder.Entity<SecurityTaxonomy>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
         modelBuilder.Entity<PpSecurity>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
         modelBuilder.Entity<PpPortfolio>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
+        modelBuilder.Entity<PpPortfolioSetting>().HasQueryFilter(e => ScopeUnrestricted || ScopeOwnedSourceIds.Contains(e.SourceId));
         modelBuilder.Entity<PpLot>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
         modelBuilder.Entity<SecurityTaxSetting>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
         modelBuilder.Entity<PpSecurityLink>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));

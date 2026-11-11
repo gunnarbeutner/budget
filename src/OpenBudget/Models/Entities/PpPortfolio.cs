@@ -23,4 +23,7 @@ public class PpPortfolio
 
     /// <summary>Depot display name, e.g. "Scalable-Capital-Depot".</summary>
     public string Name { get; set; } = "";
+
+    /// <summary>Retired ("archived") in PortfolioPerformance.</summary>
+    public bool IsRetired { get; set; }
 }

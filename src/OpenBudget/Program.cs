@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenBudget.Auth;
 using OpenBudget.Browser;
 using OpenBudget.Cli;
@@ -117,6 +118,14 @@ Directory.CreateDirectory(uploadStagingDir);
 builder.Services.AddOpenBudgetDatabase(budgetDbPath);
 builder.Services.AddOpenBudgetAuth(builder.Environment, builder.Environment.ContentRootPath);
 builder.Services.AddBankConnectors(builder.Environment, builder.Environment.ContentRootPath);
+
+// PortfolioPerformance portfolios as accounts: recomputed from each source's current file, which is the uploaded one.
+var portfolioFiles = new UploadedPortfolioFileSource(Path.Combine(dataDir, "portfolioperformance"));
+builder.Services.AddSingleton(portfolioFiles);
+builder.Services.AddSingleton<IPortfolioFileSource>(portfolioFiles);
+builder.Services.TryAddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<PortfolioAccountSync>();
+builder.Services.AddScoped<PortfolioAccountSettingsService>();
 
 var app = builder.Build();
 
