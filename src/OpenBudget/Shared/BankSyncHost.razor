@@ -32,7 +32,7 @@ else if (lastSync is { } last)
 <Modal Show="@(challenge != null)"
        Title="@(challenge != null ? L[challenge.Challenge?.Kind == ChallengeKind.WebLogin ? "TitleSignIn" : "Title", LoginName(challenge.LoginId)].Value : "")"
        SizeClass="@(challenge?.Challenge?.Kind == ChallengeKind.WebLogin ? "modal-xl" : "")"
-       ShowCloseButton="false" CloseOnBackdropClick="false" OnClose="@(() => Task.CompletedTask)">
+       ShowCloseButton="false" CloseOnBackdropClick="false" OnTop="true" OnClose="@(() => Task.CompletedTask)">
     <ChildContent>
         @if (challenge?.Challenge is { } c)
         {

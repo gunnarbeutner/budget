@@ -127,6 +127,16 @@ public sealed class BaaderPortalTests
     }
 
     [Fact]
+    public async Task The_sms_is_requested_before_the_tan_is_asked_for()
+    {
+        var rig = new Rig();
+        Seed(rig.Portal);
+        var step = await rig.FetchAsync();
+        Assert.Equal(1, rig.Portal.SmsSent);
+        Assert.NotEmpty(step.Value!);
+    }
+
+    [Fact]
     public async Task Later_syncs_use_the_default_listing_without_a_tan()
     {
         var rig = new Rig();

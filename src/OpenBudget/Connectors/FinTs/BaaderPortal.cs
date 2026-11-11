@@ -136,6 +136,7 @@ internal sealed partial class BaaderPortal
         if (history && !_tanSubmitted && (_tanRequired || listing.Count == 0))
         {
             _log.LogInformation("Baader portal: the document history needs an SMS-TAN.");
+            await RequestTanAsync(browser, ct);
             return ConnectorStep.Ask<IReadOnlyList<RemoteStatement>>(ConnectorChallenge.Code(
                 "Enter the TAN Baader sent you by SMS (needed once to list the older documents).", numeric: true, reference: TanReference));
         }
@@ -274,6 +275,16 @@ internal sealed partial class BaaderPortal
     }
 
     /// <summary>Sends the SMS-TAN the way the mail page's TAN dialog does; only the status and the answer's shape are logged.</summary>
+    /// <summary>
+    /// Has the portal send the SMS-TAN: the page's TAN dialog opens with a <c>/mfa/check</c> call that carries no TAN,
+    /// which is what triggers the SMS.
+    /// </summary>
+    private async Task RequestTanAsync(IBrowserFetcher browser, CancellationToken ct)
+    {
+        var response = await browser.PostMultipartAsync(new Uri(_base, "mfa/check"), NoFields, JsonHeaders, ct);
+        _log.LogInformation("Baader portal: TAN requested (HTTP {Status}).", response.Status);
+    }
+
     private async Task SubmitTanAsync(IBrowserFetcher browser, string tan, CancellationToken ct)
     {
         var tanValue = tan.Trim();

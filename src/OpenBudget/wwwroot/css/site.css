@@ -1800,3 +1800,5 @@ a.budget-cat:focus-visible { outline: 2px solid var(--ob-accent); outline-offset
     .settings-nav .shell-view.active { box-shadow: none; }
     .settings-nav-back .text-truncate { max-width: 9rem; }
 }
+
+.modal.ob-modal-on-top { z-index: 1065; background: rgba(0, 0, 0, 0.35); }

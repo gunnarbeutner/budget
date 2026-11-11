@@ -22,6 +22,9 @@ internal sealed partial class FakeBaaderPortal : HttpMessageHandler
     public const string CustomerId = "4711";
     public const string SessionCookie = "PHPSESSID";
     public const string PageToken = "page-token-1";
+
+    /// <summary>How many SMS-TANs the portal sent.</summary>
+    public int SmsSent { get; private set; }
     public const string Tan = "246810";
     public const string Signature = "sig-secret-1";
 
@@ -37,6 +40,8 @@ internal sealed partial class FakeBaaderPortal : HttpMessageHandler
         public int? Period { get; set; }
 
         public bool TanPassed { get; set; }
+
+        public bool SmsSent { get; set; }
     }
 
     public sealed record Doc(DateOnly Date, string Title, string Id);
@@ -130,9 +135,17 @@ internal sealed partial class FakeBaaderPortal : HttpMessageHandler
         }
         if (path == "/mfa/check" && request.Method == HttpMethod.Post)
         {
+            // Like the live portal: a call without a TAN sends the SMS; a TAN only counts after an SMS was sent.
+            if (form.GetValueOrDefault("__multipart") == "1" && !form.ContainsKey("tan"))
+            {
+                SmsSent++;
+                session.SmsSent = true;
+                return Json(new { @do = "wait" });
+            }
             TanChecks.Add(form);
             if (form.GetValueOrDefault("__multipart") != "1" || form.GetValueOrDefault("token") != PageToken)
                 return new HttpResponseMessage(HttpStatusCode.Forbidden);
+            if (!session.SmsSent) return Json(new { @do = "error", title = "Keine TAN angefordert" });
             if (form.GetValueOrDefault("tan") != Tan) return Json(new { @do = "error", title = "TAN falsch" });
             session.TanPassed = true;
             return Json(new { @do = "success" });
