@@ -312,6 +312,7 @@ public class MoneyMoneyImportService
                 string.Join(", ", (await ColumnsAsync(src, "transactions", ct)).Order(StringComparer.OrdinalIgnoreCase)));
             _logger.LogInformation("MoneyMoney accounts columns: {Columns}",
                 string.Join(", ", (await ColumnsAsync(src, "accounts", ct)).Order(StringComparer.OrdinalIgnoreCase)));
+            await LogAccountFlagsAsync(src, ct);
             int txCount = await CopyTransactionsAsync(src, db, sourceId, foreignAccountIds, ct);
             if (removedCategoryIds.Count > 0)
             {
@@ -479,6 +480,20 @@ public class MoneyMoneyImportService
     /// optional columns (e.g. SEPA <c>purpose</c>) backward-compatible with older MoneyMoney
     /// snapshots that may not carry them.
     /// </summary>
+    /// <summary>Which accounts carry MoneyMoney's closing date and refresh switch (row ids and values only, no names).</summary>
+    private async Task LogAccountFlagsAsync(SqliteConnection src, CancellationToken ct)
+    {
+        var columns = await ColumnsAsync(src, "accounts", ct);
+        if (!columns.Contains("cancel_tsp") || !columns.Contains("refresh")) return;
+        await using var cmd = src.CreateCommand();
+        cmd.CommandText = "SELECT rowid, COALESCE(CAST(cancel_tsp AS TEXT), '-'), COALESCE(CAST(refresh AS TEXT), '-') FROM accounts ORDER BY rowid";
+        var rows = new List<string>();
+        await using var r = await cmd.ExecuteReaderAsync(ct);
+        while (await r.ReadAsync(ct))
+            rows.Add($"{r.GetInt64(0)}:{r.GetString(1)}/{r.GetString(2)}");
+        _logger.LogInformation("MoneyMoney accounts (rowid:cancel_tsp/refresh): {Rows}", string.Join(" ", rows));
+    }
+
     private static async Task<bool> ColumnExistsAsync(SqliteConnection src, string table, string column, CancellationToken ct) =>
         (await ColumnsAsync(src, table, ct)).Contains(column);
 
