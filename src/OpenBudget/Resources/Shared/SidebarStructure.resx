@@ -91,4 +91,28 @@
   <data name="New_Category" xml:space="preserve"><value>New category</value></data>
   <data name="New_Group" xml:space="preserve"><value>New group</value></data>
   <data name="Error_Refused" xml:space="preserve"><value>That change is not possible.</value></data>
+  <data name="Settings_UpdatedBy" xml:space="preserve">
+    <value>Updated by</value>
+  </data>
+  <data name="Settings_UpdatedBy_MoneyMoney" xml:space="preserve">
+    <value>MoneyMoney uploads (bookings are read-only here).</value>
+  </data>
+  <data name="Settings_UpdatedBy_Bank" xml:space="preserve">
+    <value>The bank connection in OpenBudget.</value>
+  </data>
+  <data name="Settings_UpdatedBy_Other" xml:space="preserve">
+    <value>OpenBudget (no MoneyMoney uploads).</value>
+  </data>
+  <data name="Settings_Switch_Linked" xml:space="preserve">
+    <value>Linked to the bank login "{0}"; switch it to let the bank connection update it.</value>
+  </data>
+  <data name="Settings_Switch_Button" xml:space="preserve">
+    <value>Switch to bank connection…</value>
+  </data>
+  <data name="Settings_Switch_LinkFirst" xml:space="preserve">
+    <value>Link it to a bank login to switch it to a bank connection.</value>
+  </data>
+  <data name="Settings_Switched_On" xml:space="preserve">
+    <value>Switched from MoneyMoney on {0}.</value>
+  </data>
 </root>

@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Title" xml:space="preserve">
+    <value>Auf Bankverbindung umstellen</value>
+  </data>
+  <data name="Intro" xml:space="preserve">
+    <value>Nach der Umstellung hält die Bankverbindung diese Konten in OpenBudget aktuell, und MoneyMoney-Uploads ändern sie nicht mehr: weder Buchungen noch Saldo, Name oder Gruppierung.</value>
+  </data>
+  <data name="Nothing" xml:space="preserve">
+    <value>Es gibt nichts umzustellen.</value>
+  </data>
+  <data name="Col_Account" xml:space="preserve">
+    <value>Konto</value>
+  </data>
+  <data name="Col_Cutover" xml:space="preserve">
+    <value>MoneyMoney bis</value>
+  </data>
+  <data name="Col_History" xml:space="preserve">
+    <value>Bleiben als Historie</value>
+  </data>
+  <data name="Col_History_Title" xml:space="preserve">
+    <value>MoneyMoney-Buchungen, die unverändert bleiben (nach der Umstellung bearbeitbar)</value>
+  </data>
+  <data name="Col_Matched" xml:space="preserve">
+    <value>Duplikate zusammengeführt</value>
+  </data>
+  <data name="Col_Matched_Title" xml:space="preserve">
+    <value>Bankbuchungen, die einer MoneyMoney-Buchung entsprechen: eine Zeile bleibt, mit den Texten der Bank und Kategorie, Notiz, Häkchen und Aufteilungen der MoneyMoney-Zeile</value>
+  </data>
+  <data name="Col_New" xml:space="preserve">
+    <value>Neu von der Bank</value>
+  </data>
+  <data name="Col_New_Title" xml:space="preserve">
+    <value>Bankbuchungen ohne Gegenstück in MoneyMoney; sie werden hinzugefügt</value>
+  </data>
+  <data name="Col_Unmatched" xml:space="preserve">
+    <value>Nur in MoneyMoney</value>
+  </data>
+  <data name="Col_Unmatched_Title" xml:space="preserve">
+    <value>MoneyMoney-Buchungen im verglichenen Zeitraum, die die Bank nicht meldet; sie bleiben erhalten</value>
+  </data>
+  <data name="Col_Pending" xml:space="preserve">
+    <value>Vorgemerkte ersetzt</value>
+  </data>
+  <data name="Col_Pending_Title" xml:space="preserve">
+    <value>Vorgemerkte Buchungen aus MoneyMoney, ersetzt durch die der Bank</value>
+  </data>
+  <data name="Already" xml:space="preserve">
+    <value>Bereits umgestellt</value>
+  </data>
+  <data name="Fetched" xml:space="preserve">
+    <value>Bankdaten vom {0}</value>
+  </data>
+  <data name="NotFetched" xml:space="preserve">
+    <value>Seit der Verknüpfung nicht synchronisiert: Die erste Synchronisierung nach der Umstellung gleicht die Bankbuchungen ab dem Umstellungstag ab. Für eine vollständige Vorschau zuerst den Bankzugang synchronisieren.</value>
+  </data>
+  <data name="Rule_History" xml:space="preserve">
+    <value>Die Buchungen aus MoneyMoney bleiben und werden bearbeitbar: Kategorien, Notizen, Häkchen und Aufteilungen.</value>
+  </data>
+  <data name="Rule_Matched" xml:space="preserve">
+    <value>Wo beide dieselbe Buchung haben, gewinnt die Zeile der Bank und behält, was an der MoneyMoney-Zeile gesetzt war.</value>
+  </data>
+  <data name="Rule_Uploads" xml:space="preserve">
+    <value>Der Saldo kommt von der Bank; Kategorisierungsregeln gelten für Buchungen, die ab jetzt eintreffen.</value>
+  </data>
+  <data name="Rule_New" xml:space="preserve">
+    <value>Durch die Umstellung hinzugefügte Buchungen werden nicht als neu markiert, nur die mit späteren Synchronisierungen eintreffenden.</value>
+  </data>
+  <data name="Takeover" xml:space="preserve">
+    <value>Auch die Struktur aus MoneyMoney übernehmen (Kontogruppen, Kontonamen, Kategorien)</value>
+  </data>
+  <data name="Takeover_Hint" xml:space="preserve">
+    <value>Erforderlich: Sonst würden MoneyMoney-Uploads die Konten weiterhin umbenennen und umgruppieren und die Kategorien ihrer Buchungen ersetzen.</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="Confirm" xml:space="preserve">
+    <value>{0} Konto/Konten umstellen</value>
+  </data>
+</root>

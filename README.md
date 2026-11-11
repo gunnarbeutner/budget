@@ -195,8 +195,10 @@ Set it where the container is configured (`docker-compose.yml` `environment:`, `
 - There is **no background fetching**. A sync runs only while its owner has OpenBudget open: automatically when a page loads and the login is due, on "Sync now" (per login) and on "Sync all". Syncs run server-side as one job per login, so navigating away does not stop them.
 - Refresh interval per login: every two hours (default), four times a day, once a day, once a week, only manually (never automatic, but included in "Sync all"), never (not even in "Sync all"; only its own "Sync now").
 - When the bank wants the user (choose a TAN method, enter a code, look at an image, approve in an app) the owner gets a dialog on whatever page is open. Approvals are polled every few seconds. An unanswered challenge expires after five minutes and the sync fails with a clear message. Credentials the bank rejects stop automatic syncs until they are re-entered.
-- Remote accounts are linked to an existing account (suggested by IBAN, typically a MoneyMoney account) or get a new account in a dedicated source `bank-<id>` (kept apart because a MoneyMoney upload replaces every account of the source it targets). Linking switches the account's `provider` to the connector; the MoneyMoney import then leaves its transactions, balance, holdings and refresh state alone. Unlinking switches a taken-over account back to MoneyMoney (the next upload refills it); a connector-created account becomes "manual" and keeps its data.
-- The first sync after linking starts at the day of the account's newest *booked* transaction; same-day rows are matched against existing ones by amount + purpose (+ name) instead of being duplicated, pending rows are ignored for that boundary. Later syncs reach back a week but never before that boundary. Rows are recognised by the bank's transaction id, or without one by date + amount + name + purpose with a counter, so identical same-day bookings stay separate. Pending rows are replaced on every sync; booked rows are kept.
+- Remote accounts are linked to an existing account (suggested by IBAN, typically a MoneyMoney account) or get a new account in a dedicated source `bank-<id>` (kept apart because a MoneyMoney upload replaces every account of the source it targets). A new (or detached "manual") account belongs to the connector right away. Unlinking switches a switched account back to MoneyMoney (the next upload refills it); a connector-created account becomes "manual" and keeps its data.
+- A linked MoneyMoney account stays MoneyMoney's until it is **switched** (see below); until then syncs only fetch the bank's bookings (from 30 days before MoneyMoney's newest booking) for the switch preview and write nothing.
+- The first sync of a switched account without fetched bookings starts at the day of the account's newest *booked* transaction. Later syncs reach back a week but never before that boundary. Bookings that predate the connector (MoneyMoney's) are matched instead of duplicated, in three passes: amount + purpose + name on the same day, amount + purpose, then amount alone; the bank's row wins (its texts and details replace MoneyMoney's) while the row keeps its id, category, note, check mark, splits and transfers. Rows are recognised by the bank's transaction id, or without one by date + amount + name + purpose with a counter, so identical same-day bookings stay separate. Pending rows are replaced on every sync; booked rows are kept.
+- The "new" marker is set only on bookings arriving with a later sync: an account's first sync and a switch bring history, not news.
 - Deleting a login removes its credentials, session and downloaded statements. Already imported accounts and transactions are kept (see unlinking above).
 
 ### Statements
@@ -278,6 +280,25 @@ MoneyMoney's rule text. Accounts that MoneyMoney newly reports land in "Other
 accounts" (and in your default project), new categories in a group called "New
 categories"; accounts or categories MoneyMoney stops delivering stay. Accounts
 handed to a bank connector were never overwritten and still are not.
+
+#### Switching accounts to bank connections
+
+To make OpenBudget the system of record, link each MoneyMoney account to its bank login (Bank logins), sync once,
+and **switch** it: per account on Bank logins or in the account's Settings… (sidebar context menu), or all linked
+accounts of a source at once on the Import page. The dialog previews per account the day MoneyMoney's history ends,
+how many MoneyMoney bookings stay as history, how many bank bookings are merged with a MoneyMoney duplicate, how many
+are new, which MoneyMoney bookings of the compared period the bank does not report (they are kept) and how many pending
+rows are replaced. Switching needs the source's structure taken over (the dialog offers it), so uploads no longer
+rename, regroup or recategorise the account. After the switch the connector is the account's provider: uploads leave
+its rows, balance and structure alone, MoneyMoney's bookings become editable history, the balance comes from the bank
+and categorisation rules apply to arriving bookings. Only the source owner can switch; others see who updates an account.
+
+**Switch back to MoneyMoney** (Bank logins) returns an account to the uploads: the next upload replaces its bookings
+and balance with MoneyMoney's, so bookings the bank delivered and categories, notes, check marks and splits set in
+OpenBudget since the switch are not kept; the structure takeover stays.
+
+Once every account is switched (or whenever you choose), **Finish MoneyMoney import** on the Import page makes further
+uploads to that source (databases and statements) fail with `409 Conflict` and an explanation; **Resume** undoes it.
 
 ### Legacy names (compatibility)
 

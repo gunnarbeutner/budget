@@ -190,4 +190,40 @@
   <data name="Takeover_Confirm" xml:space="preserve">
     <value>Übernehmen</value>
   </data>
+  <data name="Switch_Heading" xml:space="preserve">
+    <value>Bankverbindungen für {0}</value>
+  </data>
+  <data name="Switch_Progress" xml:space="preserve">
+    <value>{0} von {1} verknüpften Konten von MoneyMoney auf ihre Bankverbindung umgestellt.</value>
+  </data>
+  <data name="Switch_Unlinked" xml:space="preserve">
+    <value>{0} MoneyMoney-Konto/Konten ohne Bankverbindung.</value>
+  </data>
+  <data name="Switch_All" xml:space="preserve">
+    <value>Alle verknüpften Konten umstellen ({0}) …</value>
+  </data>
+  <data name="Finished_Button" xml:space="preserve">
+    <value>MoneyMoney-Import abschließen</value>
+  </data>
+  <data name="Finished_Badge" xml:space="preserve">
+    <value>MoneyMoney-Import am {0} abgeschlossen</value>
+  </data>
+  <data name="Finished_Hint" xml:space="preserve">
+    <value>Uploads werden abgelehnt.</value>
+  </data>
+  <data name="Finished_Resume" xml:space="preserve">
+    <value>MoneyMoney-Import fortsetzen</value>
+  </data>
+  <data name="Finished_Title" xml:space="preserve">
+    <value>MoneyMoney-Import von {0} abschließen?</value>
+  </data>
+  <data name="Finished_Body" xml:space="preserve">
+    <value>Ab jetzt werden Uploads aus MoneyMoney (Datenbanken und Kontoauszüge) mit einer Erklärung abgelehnt; der Import war damit einmalig. Alles bisher Importierte bleibt.</value>
+  </data>
+  <data name="Finished_Warning" xml:space="preserve">
+    <value>{0} verknüpfte(s) Konto/Konten sind noch nicht umgestellt und {1} Konto/Konten haben keine Bankverbindung: Sie werden nicht mehr aktualisiert.</value>
+  </data>
+  <data name="Finished_Reversible" xml:space="preserve">
+    <value>Der Import kann hier jederzeit fortgesetzt werden.</value>
+  </data>
 </root>

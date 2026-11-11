@@ -118,6 +118,19 @@ internal sealed class BankWorld : IAsyncDisposable
             Coordinator, Registry, Secrets, StatementStore, T.Notifier, origin);
     }
 
+    /// <summary>The account switch service as <paramref name="userId"/> sees it.</summary>
+    public AccountSwitchService Switcher(string? userId)
+    {
+        var access = new AccessScopeProvider(T.System, new FixedCurrentUser(userId), T.Notifier);
+        var factory = new ScopedDbContextFactory(T.System, access);
+        var origin = new ChangeOrigin();
+        return new AccountSwitchService(factory, T.System, access, new BankTransactionStore(),
+            new StructureTakeoverService(factory, T.Notifier, origin), T.Notifier, origin, Clock);
+    }
+
+    /// <summary>Switches a linked account (by its bank login account id) to the bank connection, taking the structure over if needed.</summary>
+    public Task<int> SwitchAsync(string user, int loginAccountId) => Switcher(user).SwitchAsync([loginAccountId], takeOverStructure: true);
+
     /// <summary>The app's service graph for a user (reads/writes through global filters and write guard).</summary>
     public UserView View(string? userId) => T.ForUser(userId);
 
@@ -156,8 +169,15 @@ internal sealed class BankWorld : IAsyncDisposable
         var accounts = await svc.GetAccountsAsync(loginId);
         foreach (var a in accounts)
         {
-            if (a.RemoteId == FakeBankConnector.GiroId && existingForGiro is { } id) await svc.LinkAsync(a.Id, id);
-            else await svc.CreateAccountAsync(a.Id);
+            if (a.RemoteId == FakeBankConnector.GiroId && existingForGiro is { } id)
+            {
+                await svc.LinkAsync(a.Id, id);
+                await SwitchAsync(user, a.Id);
+            }
+            else
+            {
+                await svc.CreateAccountAsync(a.Id);
+            }
         }
         return accounts.Count;
     }

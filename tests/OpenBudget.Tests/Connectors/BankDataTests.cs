@@ -32,6 +32,7 @@ public sealed class BankDataTests
         await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false)); // list accounts only
         var giro = await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId);
         await w.For(BankWorld.Alice).LinkAsync(giro.Id, accountId);
+        await w.SwitchAsync(BankWorld.Alice, giro.Id);
         return (id, accountId);
     }
 
@@ -75,10 +76,16 @@ public sealed class BankDataTests
     }
 
     [Fact]
-    public async Task Linking_switches_the_provider_and_unlinking_restores_moneymoney()
+    public async Task Linking_keeps_moneymoney_until_the_switch_and_unlinking_restores_moneymoney()
     {
         await using var w = await BankWorld.CreateAsync();
-        var (id, accountId) = await LinkedGiroAsync(w, "demo");
+        var accountId = await ImportGiroAsync(w);
+        var id = await w.AddLoginAsync(BankWorld.Alice, "demo");
+        await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false));
+        await w.For(BankWorld.Alice).LinkAsync((await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).Id, accountId);
+        Assert.Equal(AccountProviders.MoneyMoney, (await w.AccountAsync(accountId)).Provider);
+        Assert.True((await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).AwaitingSwitch);
+        await w.SwitchAsync(BankWorld.Alice, (await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).Id);
         Assert.Equal("fake", (await w.AccountAsync(accountId)).Provider);
 
         // A linked account is no longer offered, nor can it be linked twice.
@@ -118,6 +125,7 @@ public sealed class BankDataTests
         var id = await w.AddLoginAsync(BankWorld.Alice, "demo+statements");
         await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false));
         await w.For(BankWorld.Alice).LinkAsync((await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).Id, accountId);
+        await w.SwitchAsync(BankWorld.Alice, (await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).Id);
         Assert.True((await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, true, false))).Succeeded);
 
         var before = await w.TransactionsAsync(accountId);
@@ -226,7 +234,7 @@ public sealed class BankDataTests
         Assert.Equal(2, rows.Count);
         Assert.Contains(rows, t => t.Name == "Landlord" && t.ExternalId == null);
         var grocery = Assert.Single(rows, t => t.Amount == -5210);
-        Assert.Equal("GROCERY STORE GMBH", grocery.Name); // MoneyMoney's text is kept
+        Assert.Equal("Example Grocery Store", grocery.Name); // the bank's text wins
         Assert.Equal("id:G-2026-11-FOOD", grocery.ExternalId);
         Assert.DoesNotContain(rows, t => !t.Booked);
 
@@ -254,7 +262,7 @@ public sealed class BankDataTests
         // Both cutover-day bookings adopted (one each), none duplicated; the later grocery booking is new; rent untouched.
         var coffee = rows.Where(t => t.Amount == -350).ToList();
         Assert.Equal(2, coffee.Count);
-        Assert.All(coffee, t => Assert.Equal("KARTENZAHLUNG", t.Name));
+        Assert.All(coffee, t => Assert.Equal("Example Coffee Shop", t.Name));
         Assert.Equal(new[] { "id:G-2026-10-COFFEE-A", "id:G-2026-10-COFFEE-B" }, coffee.Select(t => t.ExternalId).Order(StringComparer.Ordinal));
         Assert.Single(rows, t => t.Amount == -5210);
         Assert.Single(rows, t => t.Amount == -80000 && t.ExternalId == null);

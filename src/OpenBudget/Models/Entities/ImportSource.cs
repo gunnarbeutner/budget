@@ -48,5 +48,11 @@ public class ImportSource
     /// </summary>
     public DateTime? StructureTakenOverAt { get; set; }
 
+    /// <summary>
+    /// When the owner declared the MoneyMoney import finished: from then on MoneyMoney uploads (databases and statements)
+    /// are refused with 409 Conflict, so the import was one-time. Null while uploads are accepted; the owner can resume them.
+    /// </summary>
+    public DateTime? MoneyMoneyImportFinishedAt { get; set; }
+
     public ICollection<Project> Projects { get; set; } = new List<Project>();
 }

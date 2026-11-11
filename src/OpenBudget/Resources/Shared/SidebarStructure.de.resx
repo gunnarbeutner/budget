@@ -91,4 +91,28 @@
   <data name="New_Category" xml:space="preserve"><value>Neue Kategorie</value></data>
   <data name="New_Group" xml:space="preserve"><value>Neue Gruppe</value></data>
   <data name="Error_Refused" xml:space="preserve"><value>Diese Änderung ist nicht möglich.</value></data>
+  <data name="Settings_UpdatedBy" xml:space="preserve">
+    <value>Aktualisiert durch</value>
+  </data>
+  <data name="Settings_UpdatedBy_MoneyMoney" xml:space="preserve">
+    <value>MoneyMoney-Uploads (Buchungen sind hier schreibgeschützt).</value>
+  </data>
+  <data name="Settings_UpdatedBy_Bank" xml:space="preserve">
+    <value>Die Bankverbindung in OpenBudget.</value>
+  </data>
+  <data name="Settings_UpdatedBy_Other" xml:space="preserve">
+    <value>OpenBudget (keine MoneyMoney-Uploads).</value>
+  </data>
+  <data name="Settings_Switch_Linked" xml:space="preserve">
+    <value>Mit dem Bankzugang „{0}“ verknüpft; umstellen, damit die Bankverbindung es aktualisiert.</value>
+  </data>
+  <data name="Settings_Switch_Button" xml:space="preserve">
+    <value>Auf Bankverbindung umstellen …</value>
+  </data>
+  <data name="Settings_Switch_LinkFirst" xml:space="preserve">
+    <value>Mit einem Bankzugang verknüpfen, um es auf eine Bankverbindung umzustellen.</value>
+  </data>
+  <data name="Settings_Switched_On" xml:space="preserve">
+    <value>Am {0} von MoneyMoney umgestellt.</value>
+  </data>
 </root>

@@ -3,8 +3,8 @@ using Microsoft.EntityFrameworkCore;
 namespace OpenBudget.Services;
 
 /// <summary>
-/// Small internal helpers around per-account provider ownership. There is deliberately no UI for
-/// switching providers yet; native bank connectors will use these.
+/// Small internal helpers around per-account provider ownership, used when bank logins link and unlink accounts
+/// (switching a MoneyMoney account to its bank connection is <see cref="AccountSwitchService"/>).
 /// </summary>
 public class AccountService
 {

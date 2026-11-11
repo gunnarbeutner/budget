@@ -34,7 +34,10 @@ public sealed record BankLoginAccountView(
     string? LastError,
     bool StatementsEnabled,
     StatementsInterval StatementsInterval,
-    DateTime? LastStatementAt);
+    DateTime? LastStatementAt,
+    bool AwaitingSwitch = false,
+    DateTime? PendingRefreshAt = null,
+    DateTime? SwitchedAt = null);
 
 /// <summary>An owned local account a remote account could be linked to.</summary>
 public sealed record LinkCandidate(long AccountId, string Name, string? Iban, string SourceName, string Provider, bool SuggestedFor);
@@ -209,11 +212,18 @@ public class BankLoginService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var rows = await db.BankLoginAccounts.AsNoTracking().Where(a => a.BankLoginId == loginId).OrderBy(a => a.Name).ToListAsync(ct);
         var linkedIds = rows.Where(r => r.LinkedAccountId != null).Select(r => r.LinkedAccountId!.Value).ToList();
-        var names = await db.Accounts.AsNoTracking().Where(a => linkedIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.Name, ct);
-        return rows.Select(r => new BankLoginAccountView(
-            r.Id, r.BankLoginId, r.RemoteId, r.Name, r.Type, r.Iban, r.Currency, r.Closed, r.LinkedAccountId,
-            r.LinkedAccountId is { } l ? names.GetValueOrDefault(l) : null, r.CreatedByConnector, r.LastSuccessAt, r.LastError,
-            r.StatementsEnabled, r.StatementsInterval, r.LastStatementAt)).ToList();
+        var linked = await db.Accounts.AsNoTracking().Where(a => linkedIds.Contains(a.Id))
+            .ToDictionaryAsync(a => a.Id, a => new { a.Name, a.Provider }, ct);
+        return rows.Select(r =>
+        {
+            var account = r.LinkedAccountId is { } l ? linked.GetValueOrDefault(l) : null;
+            return new BankLoginAccountView(
+                r.Id, r.BankLoginId, r.RemoteId, r.Name, r.Type, r.Iban, r.Currency, r.Closed, r.LinkedAccountId,
+                account?.Name, r.CreatedByConnector, r.LastSuccessAt, r.LastError,
+                r.StatementsEnabled, r.StatementsInterval, r.LastStatementAt,
+                AwaitingSwitch: account != null && account.Provider == AccountProviders.MoneyMoney,
+                r.PendingRefreshAt, r.SwitchedAt);
+        }).ToList();
     }
 
     /// <summary>Owned accounts of the user's own sources that a remote account may be linked to (MoneyMoney or detached ones not yet linked).</summary>
@@ -243,7 +253,11 @@ public class BankLoginService
 
     public static string NormalizeIban(string? iban) => (iban ?? string.Empty).Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
 
-    /// <summary>Links a remote account to an existing local account and switches the account's provider to the connector.</summary>
+    /// <summary>
+    /// Links a remote account to an existing local account. An account MoneyMoney owns stays MoneyMoney's until it is
+    /// switched (<see cref="AccountSwitchService"/>); syncs meanwhile only fetch the bank's rows for the switch preview.
+    /// A detached ("manual") account is the connector's right away.
+    /// </summary>
     public async Task LinkAsync(int loginAccountId, long accountId, CancellationToken ct = default)
     {
         var userId = await RequireUserAsync();
@@ -256,9 +270,14 @@ public class BankLoginService
         if (candidates.All(c => c.AccountId != accountId))
             throw new InvalidOperationException("That account cannot be linked (not yours, already linked, or owned by another provider).");
 
-        if (!await _accounts.SetProviderAsync(accountId, remote.BankLogin.ConnectorType, ct))
+        var candidate = candidates.First(c => c.AccountId == accountId);
+        if (candidate.Provider != AccountProviders.MoneyMoney && !await _accounts.SetProviderAsync(accountId, remote.BankLogin.ConnectorType, ct))
             throw new AccessDeniedException("Account not found.");
         remote.LinkedAccountId = accountId;
+        remote.SwitchedAt = null;
+        remote.PendingRefreshJson = null;
+        remote.PendingRefreshAt = null;
+        remote.PendingSinceUtc = null;
         remote.CreatedByConnector = false;
         remote.SyncFloorUtc = null;
         remote.LastSuccessAt = null;
@@ -355,6 +374,10 @@ public class BankLoginService
         remote.StatementsEnabled = false;
         remote.SyncFloorUtc = null;
         remote.LastSuccessAt = null;
+        remote.SwitchedAt = null;
+        remote.PendingRefreshJson = null;
+        remote.PendingRefreshAt = null;
+        remote.PendingSinceUtc = null;
         await db.SaveChangesAsync(ct);
         Changed(userId);
         await PublishAccountSourceAsync(accountId);

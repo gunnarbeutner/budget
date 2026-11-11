@@ -37,21 +37,26 @@ internal static class MoneyMoneyEndpoints
         // app-wide login requirement.
         app.MapPost(Route, handler).AllowAnonymous();
         app.MapPost(LegacyExporterRoute, handler).AllowAnonymous();
-        app.MapPost(StatementsCheckRoute, (string name, HttpRequest request, MoneyMoneyStatementImport statements, UploadAuthorizer authorizer, CancellationToken ct) =>
-            HandleStatementsCheckAsync(name, request, statements, authorizer, ct)).AllowAnonymous();
-        app.MapPost(StatementsRoute, (string name, HttpRequest request, MoneyMoneyStatementImport statements, UploadAuthorizer authorizer, CancellationToken ct) =>
-            HandleStatementUploadAsync(name, request, statements, authorizer, ct)).AllowAnonymous();
+        app.MapPost(StatementsCheckRoute, (string name, HttpRequest request, MoneyMoneyStatementImport statements, MoneyMoneyImportService importer, UploadAuthorizer authorizer, CancellationToken ct) =>
+            HandleStatementsCheckAsync(name, request, statements, importer, authorizer, ct)).AllowAnonymous();
+        app.MapPost(StatementsRoute, (string name, HttpRequest request, MoneyMoneyStatementImport statements, MoneyMoneyImportService importer, UploadAuthorizer authorizer, CancellationToken ct) =>
+            HandleStatementUploadAsync(name, request, statements, importer, authorizer, ct)).AllowAnonymous();
     }
 
     private sealed record StatementsCheckRequest(List<StatementsCheckItem>? Statements);
 
     private sealed record StatementsCheckItem(long AccountKey, string? Sha256);
 
-    internal static async Task<IResult> HandleStatementsCheckAsync(string sourceName, HttpRequest request, MoneyMoneyStatementImport statements, UploadAuthorizer authorizer, CancellationToken ct)
+    /// <summary>409 Conflict with an explanation once the source's MoneyMoney import is finished.</summary>
+    internal static IResult ImportFinished() =>
+        Results.Json(new { error = MoneyMoneyImportService.ImportFinishedMessage }, statusCode: StatusCodes.Status409Conflict);
+
+    internal static async Task<IResult> HandleStatementsCheckAsync(string sourceName, HttpRequest request, MoneyMoneyStatementImport statements, MoneyMoneyImportService importer, UploadAuthorizer authorizer, CancellationToken ct)
     {
         if (!SourceData.IsValidSlug(sourceName)) return Results.BadRequest("Invalid source name.");
         var denied = UploadAuthorizer.ToFailure(await authorizer.AuthorizeAsync(request.Headers.Authorization.ToString(), sourceName, ct));
         if (denied != null) return denied;
+        if (await importer.IsImportFinishedAsync(sourceName, ct)) return ImportFinished();
         StatementsCheckRequest? body;
         try { body = await request.ReadFromJsonAsync<StatementsCheckRequest>(ct); }
         catch (System.Text.Json.JsonException) { return Results.BadRequest("Invalid JSON."); }
@@ -62,11 +67,12 @@ internal static class MoneyMoneyEndpoints
         return Results.Ok(new { wanted = await statements.WantedAsync(sourceName, refs, ct) });
     }
 
-    internal static async Task<IResult> HandleStatementUploadAsync(string sourceName, HttpRequest request, MoneyMoneyStatementImport statements, UploadAuthorizer authorizer, CancellationToken ct)
+    internal static async Task<IResult> HandleStatementUploadAsync(string sourceName, HttpRequest request, MoneyMoneyStatementImport statements, MoneyMoneyImportService importer, UploadAuthorizer authorizer, CancellationToken ct)
     {
         if (!SourceData.IsValidSlug(sourceName)) return Results.BadRequest("Invalid source name.");
         var denied = UploadAuthorizer.ToFailure(await authorizer.AuthorizeAsync(request.Headers.Authorization.ToString(), sourceName, ct));
         if (denied != null) return denied;
+        if (await importer.IsImportFinishedAsync(sourceName, ct)) return ImportFinished();
         if (!long.TryParse(request.Query["accountKey"], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var accountKey)
             || !DateOnly.TryParseExact(request.Query["date"], "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var date))
             return Results.BadRequest("accountKey and date (yyyy-MM-dd) are required.");
@@ -107,6 +113,7 @@ internal static class MoneyMoneyEndpoints
         // Legacy global token (all sources) or this source's own token (this source only).
         var denied = UploadAuthorizer.ToFailure(await authorizer.AuthorizeAsync(request.Headers.Authorization.ToString(), sourceName, ct));
         if (denied != null) return denied;
+        if (await importer.IsImportFinishedAsync(sourceName, ct)) return ImportFinished();
 
         Directory.CreateDirectory(stagingDir);
         var tempPath = Path.Combine(stagingDir, $"{sourceName}-{Guid.NewGuid():N}.sqlite");
@@ -142,6 +149,10 @@ internal static class MoneyMoneyEndpoints
                 result.TransactionsImported,
                 result.FileSizeBytes
             });
+        }
+        catch (MoneyMoneyImportFinishedException)
+        {
+            return ImportFinished();
         }
         catch (Exception ex)
         {

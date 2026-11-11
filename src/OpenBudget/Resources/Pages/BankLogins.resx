@@ -223,4 +223,28 @@
   <data name="Type_Other" xml:space="preserve">
     <value>Other</value>
   </data>
+  <data name="Switch_Awaiting" xml:space="preserve">
+    <value>Still updated by MoneyMoney; syncs only prepare the switch.</value>
+  </data>
+  <data name="Button_Switch" xml:space="preserve">
+    <value>Switch to bank connection</value>
+  </data>
+  <data name="Switch_Done" xml:space="preserve">
+    <value>Switched from MoneyMoney on {0}.</value>
+  </data>
+  <data name="Switch_DoneUndated" xml:space="preserve">
+    <value>Switched from MoneyMoney.</value>
+  </data>
+  <data name="Button_SwitchBack" xml:space="preserve">
+    <value>Switch back to MoneyMoney</value>
+  </data>
+  <data name="SwitchBack_Title" xml:space="preserve">
+    <value>Switch back to MoneyMoney?</value>
+  </data>
+  <data name="SwitchBack_Body" xml:space="preserve">
+    <value>"{0}" will be updated by MoneyMoney uploads again; the bank connection only prepares a new switch.</value>
+  </data>
+  <data name="SwitchBack_Lost" xml:space="preserve">
+    <value>The next upload replaces the account's bookings and balance with MoneyMoney's: bookings the bank delivered and categories, notes, check marks and splits set in OpenBudget since the switch are not kept. The structure stays OpenBudget's.</value>
+  </data>
 </root>

@@ -341,7 +341,7 @@ public sealed class CategorizationTests
         await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, true, false));
         var all = await w.TransactionsAsync(account);
         var salary = all.First(t => t.Name == "Example Employer");
-        Assert.True(salary.IsNew);
+        Assert.False(salary.IsNew); // the account's first sync brings history, not news
         Assert.Equal("DE89370400440532013000", salary.CounterpartyIban);
         Assert.Equal("COBADEFFXXX", salary.CounterpartyBic);
         Assert.Equal("Gehalt/Rente", salary.BookingText);

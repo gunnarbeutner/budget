@@ -140,6 +140,18 @@ public class MoneyMoneyImportService
         }
     }
 
+    /// <summary>The explanation a refused upload gets once the owner declared the source's MoneyMoney import finished.</summary>
+    public const string ImportFinishedMessage =
+        "The MoneyMoney import of this source is finished: its accounts are kept up to date by bank connections in OpenBudget. "
+        + "The owner can resume the import on the Import page if MoneyMoney should deliver data again.";
+
+    /// <summary>True when the owner declared the MoneyMoney import of <paramref name="sourceName"/> finished (uploads are refused).</summary>
+    public async Task<bool> IsImportFinishedAsync(string sourceName, CancellationToken ct)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await db.ImportSources.AnyAsync(s => s.Name == sourceName && s.MoneyMoneyImportFinishedAt != null, ct);
+    }
+
     /// <summary>Runs <paramref name="action"/> while no upload for the source is being imported (and blocks uploads meanwhile).</summary>
     public async Task<T> WithSourceLockAsync<T>(string sourceName, Func<Task<T>> action, CancellationToken ct)
     {
@@ -173,6 +185,7 @@ public class MoneyMoneyImportService
             await db.SaveChangesAsync(ct);
         }
         int sourceId = source.Id;
+        if (source.MoneyMoneyImportFinishedAt != null) throw new MoneyMoneyImportFinishedException();
 
         var connStr = new SqliteConnectionStringBuilder
         {
@@ -980,6 +993,25 @@ public class MoneyMoneyImportService
 }
 
 /// <summary>Balance and refresh state of an account owned by a bank connector, preserved across MoneyMoney imports.</summary>
+/// <summary>An upload arrived for a source whose MoneyMoney import the owner declared finished.</summary>
+public sealed class MoneyMoneyImportFinishedException : InvalidOperationException
+{
+    public MoneyMoneyImportFinishedException()
+        : base(MoneyMoneyImportService.ImportFinishedMessage)
+    {
+    }
+
+    public MoneyMoneyImportFinishedException(string message)
+        : base(message)
+    {
+    }
+
+    public MoneyMoneyImportFinishedException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
+
 internal sealed record ForeignAccountState(string? Balances, long? RefreshTimestamp, string? Error);
 
 public class ImportResult

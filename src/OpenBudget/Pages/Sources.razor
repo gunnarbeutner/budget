@@ -5,6 +5,7 @@
 @inject BudgetService BudgetService
 @inject SourceService SourceService
 @inject StructureTakeoverService Takeover
+@inject AccountSwitchService Switcher
 @inject IDbContextFactory<BudgetDbContext> DbFactory
 @inject IStringLocalizer<Sources> L
 @inject ClockService Clock
@@ -137,6 +138,55 @@ else
     </div>
 }
 
+@foreach (var st in switchStates.Where(x => x.Links.Count > 0 || x.ImportFinishedAt != null || sources?.Any(s => s.Id == x.SourceId && s.LastUploadAt != null) == true))
+{
+    var pending = st.Links.Where(l => !l.Switched).ToList();
+    <div class="card mb-3" data-source-switch="@st.SourceName">
+        <div class="card-body">
+            <h2 class="h6 card-title">@L["Switch_Heading", st.SourceName]</h2>
+            <p class="small mb-2" data-testid="switch-progress">@L["Switch_Progress", st.Links.Count - pending.Count, st.Links.Count]
+                @if (st.MoneyMoneyAccountsWithoutLink > 0)
+                {
+                    <span class="text-body-secondary"> @L["Switch_Unlinked", st.MoneyMoneyAccountsWithoutLink]</span>
+                }
+            </p>
+            @if (pending.Count > 0)
+            {
+                <button class="btn btn-sm btn-primary me-2" data-testid="switch-all" @onclick="() => switchIds = pending.Select(l => l.LoginAccountId).ToList()">@L["Switch_All", pending.Count]</button>
+            }
+            @if (st.ImportFinishedAt is { } finishedAt)
+            {
+                <span class="badge text-bg-secondary me-2" data-testid="import-finished">@L["Finished_Badge", Clock.ToLocal(finishedAt).ToString("yyyy-MM-dd")]</span>
+                <span class="small text-body-secondary me-2">@L["Finished_Hint"]</span>
+                <button class="btn btn-sm btn-outline-secondary" data-testid="import-resume" @onclick="() => SetFinishedAsync(st.SourceId, false)">@L["Finished_Resume"]</button>
+            }
+            else
+            {
+                <button class="btn btn-sm btn-outline-secondary" data-testid="import-finish" @onclick="() => pendingFinish = st">@L["Finished_Button"]</button>
+            }
+        </div>
+    </div>
+}
+
+<AccountSwitchDialog LoginAccountIds="switchIds" OnClose="() => switchIds = null" OnSwitched="SwitchedAsync" />
+
+<Modal Show="@(pendingFinish != null)" Title="@(pendingFinish != null ? L["Finished_Title", pendingFinish.SourceName].Value : "")" OnClose="@(() => pendingFinish = null)">
+    <ChildContent>
+        <p>@L["Finished_Body"]</p>
+        @if (pendingFinish is { } pf && (pf.Links.Any(l => !l.Switched) || pf.MoneyMoneyAccountsWithoutLink > 0))
+        {
+            <div class="alert alert-warning small" data-testid="finish-warning">
+                @L["Finished_Warning", pf.Links.Count(l => !l.Switched), pf.MoneyMoneyAccountsWithoutLink]
+            </div>
+        }
+        <p class="small text-body-secondary mb-0">@L["Finished_Reversible"]</p>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="() => pendingFinish = null">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-primary" data-testid="import-finish-confirm" @onclick="FinishConfirmedAsync">@L["Finished_Button"]</button>
+    </Footer>
+</Modal>
+
 <OneDriveSettings />
 
 <Modal Show="@(pendingTakeover != null)"
@@ -188,6 +238,28 @@ else
     private ImportSource? pendingDelete;
     private ImportSource? pendingRotate;
     private ImportSource? pendingTakeover;
+    private List<SourceSwitchState> switchStates = new();
+    private IReadOnlyList<int>? switchIds;
+    private SourceSwitchState? pendingFinish;
+
+    private async Task SwitchedAsync(int count)
+    {
+        switchIds = null;
+        await LoadAsync();
+    }
+
+    private async Task FinishConfirmedAsync()
+    {
+        if (pendingFinish is not { } st) return;
+        pendingFinish = null;
+        await SetFinishedAsync(st.SourceId, true);
+    }
+
+    private async Task SetFinishedAsync(int sourceId, bool finished)
+    {
+        await Switcher.SetImportFinishedAsync(sourceId, finished);
+        await LoadAsync();
+    }
     private readonly HashSet<int> revealed = new();
     private string newSourceName = "";
     private string? createError;
@@ -239,12 +311,16 @@ else
 
     // Source registrations, imports, and project counts all show on this page.
     protected override bool IsRelevantChange(DataChange change) =>
-        change.Area is DataArea.Sources or DataArea.ImportedData or DataArea.Projects;
+        change.Area is DataArea.Sources or DataArea.ImportedData or DataArea.Projects or DataArea.BankSync;
     protected override Task ReloadAfterChangeAsync() => LoadAsync();
 
     private async Task LoadAsync()
     {
         sources = await SourceService.GetOwnedSourcesAsync(ensureTokens: true);
+        var states = new List<SourceSwitchState>();
+        foreach (var s in sources)
+            states.Add(await Switcher.GetSourceStateAsync(s.Id));
+        switchStates = states;
         await using var db = await DbFactory.CreateDbContextAsync();
         projectCounts = await db.Projects
             .GroupBy(p => p.SourceId)

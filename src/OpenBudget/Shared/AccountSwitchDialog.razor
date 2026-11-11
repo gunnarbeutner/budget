@@ -1,0 +1,171 @@
+@using OpenBudget.Services
+@inject AccountSwitchService Switcher
+@inject IStringLocalizer<AccountSwitchDialog> L
+@inject ClockService Clock
+@inject ILogger<AccountSwitchDialog> Logger
+
+@* Switching linked accounts from MoneyMoney to their bank connection, with a per-account preview of what happens to the
+   rows. Opened from Bank logins, an account's settings and the Import page (all linked accounts of a source). The
+   service enforces that only the source owner switches. *@
+
+<Modal Show="@(LoginAccountIds != null)" Title="@L["Title"]" OnClose="CloseAsync" SizeClass="modal-xl" CloseOnBackdropClick="false" OnTop="OnTop">
+    <ChildContent>
+        <div data-testid="switch-dialog">
+            <p>@L["Intro"]</p>
+            @if (_previews == null)
+            {
+                <div class="skeleton skeleton-line mb-2" style="width: 60%;" aria-busy="true"></div>
+            }
+            else if (_previews.Count == 0)
+            {
+                <div class="alert alert-info mb-0">@L["Nothing"]</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle" data-testid="switch-preview">
+                        <thead>
+                            <tr>
+                                <th>@L["Col_Account"]</th>
+                                <th>@L["Col_Cutover"]</th>
+                                <th class="text-end" title="@L["Col_History_Title"]">@L["Col_History"]</th>
+                                <th class="text-end" title="@L["Col_Matched_Title"]">@L["Col_Matched"]</th>
+                                <th class="text-end" title="@L["Col_New_Title"]">@L["Col_New"]</th>
+                                <th class="text-end" title="@L["Col_Unmatched_Title"]">@L["Col_Unmatched"]</th>
+                                <th class="text-end" title="@L["Col_Pending_Title"]">@L["Col_Pending"]</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var p in _previews)
+                            {
+                                <tr data-switch-account="@p.Link.AccountId">
+                                    <td>
+                                        <strong>@p.Link.AccountName</strong>
+                                        <div class="small text-body-secondary">@p.Link.LoginName · @p.Link.SourceName</div>
+                                        @if (p.Link.Switched)
+                                        {
+                                            <span class="badge text-bg-success">@L["Already"]</span>
+                                        }
+                                        else if (p.BankDataFetchedAt is { } fetched)
+                                        {
+                                            <div class="small text-body-secondary">@L["Fetched", Clock.ToLocal(fetched).ToString("yyyy-MM-dd HH:mm")]</div>
+                                        }
+                                        else
+                                        {
+                                            <div class="small text-warning-emphasis" data-testid="switch-not-fetched">@L["NotFetched"]</div>
+                                        }
+                                    </td>
+                                    <td>@(p.HistoryEnd?.ToString("yyyy-MM-dd") ?? "—")</td>
+                                    <td class="text-end" data-col="history">@p.HistoryRows.ToString("N0")</td>
+                                    @if (p.BankDataFetchedAt != null)
+                                    {
+                                        <td class="text-end" data-col="matched">@p.Matched.ToString("N0")</td>
+                                        <td class="text-end" data-col="new">@p.NewFromBank.ToString("N0")</td>
+                                        <td class="text-end" data-col="unmatched">@p.UnmatchedMoneyMoney.ToString("N0")</td>
+                                        <td class="text-end" data-col="pending">@p.PendingReplaced.ToString("N0")</td>
+                                    }
+                                    else
+                                    {
+                                        <td class="text-end">—</td>
+                                        <td class="text-end">—</td>
+                                        <td class="text-end">—</td>
+                                        <td class="text-end">—</td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <ul class="small text-body-secondary">
+                    <li>@L["Rule_History"]</li>
+                    <li>@L["Rule_Matched"]</li>
+                    <li>@L["Rule_Uploads"]</li>
+                    <li>@L["Rule_New"]</li>
+                </ul>
+                @if (NeedsTakeover)
+                {
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="switch-takeover" data-testid="switch-takeover"
+                               checked="@_takeOver" @onchange="e => _takeOver = e.Value is true" />
+                        <label class="form-check-label" for="switch-takeover">@L["Takeover"]</label>
+                        <div class="form-text">@L["Takeover_Hint"]</div>
+                    </div>
+                }
+            }
+            @if (_error != null)
+            {
+                <div class="alert alert-danger small mt-2 mb-0" role="alert">@_error</div>
+            }
+        </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="CloseAsync">@L["Cancel"]</button>
+        <button type="button" class="btn btn-primary" data-testid="switch-confirm" disabled="@(!CanSwitch)" @onclick="SwitchAsync">
+            @L["Confirm", Pending.Count()]
+        </button>
+    </Footer>
+</Modal>
+
+@code {
+    /// <summary>The bank login accounts to switch; null hides the dialog.</summary>
+    [Parameter] public IReadOnlyList<int>? LoginAccountIds { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>Raised after a switch, with the number of accounts switched.</summary>
+    [Parameter] public EventCallback<int> OnSwitched { get; set; }
+
+    [Parameter] public bool OnTop { get; set; }
+
+    private IReadOnlyList<int>? _loadedFor;
+    private List<AccountSwitchPreview>? _previews;
+    private bool _takeOver;
+    private bool _busy;
+    private string? _error;
+
+    private IEnumerable<AccountSwitchPreview> Pending => _previews?.Where(p => !p.Link.Switched) ?? [];
+    private bool NeedsTakeover => Pending.Any(p => !p.StructureTakenOver);
+    private bool CanSwitch => !_busy && Pending.Any() && (!NeedsTakeover || _takeOver);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReferenceEquals(LoginAccountIds, _loadedFor)) return;
+        _loadedFor = LoginAccountIds;
+        _previews = null;
+        _error = null;
+        _takeOver = false;
+        if (LoginAccountIds == null) return;
+        try
+        {
+            _previews = await Switcher.PreviewAsync(LoginAccountIds);
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException)
+        {
+            Logger.LogInformation(ex, "Switch preview refused");
+            _previews = [];
+            _error = ex.Message;
+        }
+    }
+
+    private Task CloseAsync() => OnClose.InvokeAsync();
+
+    private async Task SwitchAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var count = await Switcher.SwitchAsync(Pending.Select(p => p.Link.LoginAccountId).ToList(), _takeOver);
+            await OnSwitched.InvokeAsync(count);
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException)
+        {
+            Logger.LogInformation(ex, "Switch refused");
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

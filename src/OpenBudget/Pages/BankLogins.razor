@@ -5,6 +5,7 @@
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject BankLoginService Bank
+@inject AccountSwitchService Switcher
 @inject IStringLocalizer<BankLogins> L
 @inject ClockService Clock
 
@@ -190,6 +191,20 @@ else
                                             {
                                                 <span data-testid="linked-to"><i class="bi bi-link-45deg" aria-hidden="true"></i> @(a.LinkedAccountName ?? "?")</span>
                                                 <button class="btn btn-sm btn-outline-secondary ms-2" data-action="unlink" @onclick="() => UnlinkAsync(a.Id)">@L["Button_Unlink"]</button>
+                                                @if (a.AwaitingSwitch)
+                                                {
+                                                    <div class="small mt-1" data-testid="awaiting-switch">
+                                                        <span class="text-body-secondary">@L["Switch_Awaiting"]</span>
+                                                        <button class="btn btn-sm btn-primary ms-1" data-action="switch" @onclick="() => switchIds = [a.Id]">@L["Button_Switch"]</button>
+                                                    </div>
+                                                }
+                                                else if (!a.CreatedByConnector)
+                                                {
+                                                    <div class="small mt-1" data-testid="switched">
+                                                        <span class="text-body-secondary">@(a.SwitchedAt is { } switchedAt ? L["Switch_Done", Clock.ToLocal(switchedAt).ToString("yyyy-MM-dd")] : L["Switch_DoneUndated"])</span>
+                                                        <button class="btn btn-sm btn-link p-0 ms-1 align-baseline" data-action="switch-back" @onclick="() => pendingSwitchBack = a">@L["Button_SwitchBack"]</button>
+                                                    </div>
+                                                }
                                             }
                                             else if (!a.Closed)
                                             {
@@ -231,6 +246,19 @@ else
         </div>
     }
 }
+
+<AccountSwitchDialog LoginAccountIds="switchIds" OnClose="() => switchIds = null" OnSwitched="SwitchedAsync" />
+
+<Modal Show="@(pendingSwitchBack != null)" Title="@L["SwitchBack_Title"]" OnClose="@(() => pendingSwitchBack = null)">
+    <ChildContent>
+        <p>@L["SwitchBack_Body", pendingSwitchBack?.LinkedAccountName ?? ""]</p>
+        <p class="small text-body-secondary mb-0">@L["SwitchBack_Lost"]</p>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="() => pendingSwitchBack = null">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-danger" data-testid="switch-back-confirm" @onclick="SwitchBackConfirmedAsync">@L["Button_SwitchBack"]</button>
+    </Footer>
+</Modal>
 
 <Modal Show="@(editing != null)" Title="@L["Edit_Title"]" OnClose="@(() => editing = null)">
     <ChildContent>
@@ -305,6 +333,21 @@ else
     private RefreshInterval editInterval;
     private string? editError;
     private BankLoginView? pendingDelete;
+    private IReadOnlyList<int>? switchIds;
+    private BankLoginAccountView? pendingSwitchBack;
+
+    private async Task SwitchedAsync(int count)
+    {
+        switchIds = null;
+        await LoadAsync();
+    }
+
+    private async Task SwitchBackConfirmedAsync()
+    {
+        if (pendingSwitchBack is not { } a) return;
+        pendingSwitchBack = null;
+        await RunAsync(() => Switcher.SwitchBackAsync(a.Id));
+    }
 
     private static bool NeedsCredentials(ConnectorRegistration? c) => c == null || c.Credentials != CredentialRequirement.None;
 

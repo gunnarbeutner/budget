@@ -190,4 +190,40 @@
   <data name="Takeover_Confirm" xml:space="preserve">
     <value>Take over</value>
   </data>
+  <data name="Switch_Heading" xml:space="preserve">
+    <value>Bank connections for {0}</value>
+  </data>
+  <data name="Switch_Progress" xml:space="preserve">
+    <value>{0} of {1} linked accounts switched from MoneyMoney to their bank connection.</value>
+  </data>
+  <data name="Switch_Unlinked" xml:space="preserve">
+    <value>{0} MoneyMoney account(s) have no bank connection.</value>
+  </data>
+  <data name="Switch_All" xml:space="preserve">
+    <value>Switch all linked accounts ({0})…</value>
+  </data>
+  <data name="Finished_Button" xml:space="preserve">
+    <value>Finish MoneyMoney import</value>
+  </data>
+  <data name="Finished_Badge" xml:space="preserve">
+    <value>MoneyMoney import finished on {0}</value>
+  </data>
+  <data name="Finished_Hint" xml:space="preserve">
+    <value>Uploads are refused.</value>
+  </data>
+  <data name="Finished_Resume" xml:space="preserve">
+    <value>Resume MoneyMoney import</value>
+  </data>
+  <data name="Finished_Title" xml:space="preserve">
+    <value>Finish the MoneyMoney import of {0}?</value>
+  </data>
+  <data name="Finished_Body" xml:space="preserve">
+    <value>From now on, uploads from MoneyMoney (databases and statements) are refused with an explanation, so the import was a one-time move. Everything imported so far stays.</value>
+  </data>
+  <data name="Finished_Warning" xml:space="preserve">
+    <value>{0} linked account(s) are not switched yet and {1} account(s) have no bank connection: they will no longer be updated.</value>
+  </data>
+  <data name="Finished_Reversible" xml:space="preserve">
+    <value>You can resume the import here at any time.</value>
+  </data>
 </root>

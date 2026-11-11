@@ -5,6 +5,7 @@
 @inject DocumentService Documents
 @inject ProjectService Projects
 @inject BankLoginService BankLogins
+@inject AccountSwitchService Switcher
 @inject AccessScopeProvider AccessProvider
 @inject IStringLocalizer<SidebarStructure> L
 @inject IStringLocalizer<BrowseTreeRail> RailL
@@ -99,6 +100,8 @@
     </Footer>
 </Modal>
 
+<AccountSwitchDialog LoginAccountIds="_switchIds" OnTop="true" OnClose="() => _switchIds = null" OnSwitched="SwitchedAsync" />
+
 <Modal Show="_settings != null" Title="@L["Settings_Title"]" OnClose="() => _settings = null" CloseOnBackdropClick="false">
     <ChildContent>
     @if (_settings is { } s)
@@ -129,6 +132,38 @@
                 }
                 <div class="small mt-1"><a href="/banklogins">@L["Settings_Bank_Manage"]</a></div>
             </div>
+            @if (_switchState is { } sw)
+            {
+                <div class="mb-3" data-testid="account-settings-provider">
+                    <div class="form-label mb-1">@L["Settings_UpdatedBy"]</div>
+                    @if (sw.Provider == OpenBudget.Models.AccountProviders.MoneyMoney)
+                    {
+                        <div class="small">@L["Settings_UpdatedBy_MoneyMoney"]</div>
+                        @if (sw.Link is { Switched: false } link)
+                        {
+                            <div class="small text-body-secondary">@L["Settings_Switch_Linked", link.LoginName]</div>
+                            <button type="button" class="btn btn-sm btn-primary mt-1" data-testid="account-settings-switch"
+                                    @onclick="() => _switchIds = [link.LoginAccountId]">@L["Settings_Switch_Button"]</button>
+                        }
+                        else if (sw.CanManage)
+                        {
+                            <div class="small text-body-secondary">@L["Settings_Switch_LinkFirst"]</div>
+                        }
+                    }
+                    else if (sw.Provider is OpenBudget.Models.AccountProviders.Manual or OpenBudget.Models.AccountProviders.PortfolioPerformance)
+                    {
+                        <div class="small">@L["Settings_UpdatedBy_Other"]</div>
+                    }
+                    else
+                    {
+                        <div class="small">@L["Settings_UpdatedBy_Bank"]</div>
+                        @if (sw.Link is { Switched: true, SwitchedAt: { } at })
+                        {
+                            <div class="small text-body-secondary">@L["Settings_Switched_On", at.ToString("yyyy-MM-dd")]</div>
+                        }
+                    }
+                </div>
+            }
             <div>
                 <div class="form-label mb-1">@L["Settings_Statements"]</div>
                 @if (s.Statement is { Block: null, LoginAccountId: { } } st)
@@ -201,6 +236,19 @@
 
     private sealed record SettingsState(BrowseAccountNode Account, string? NameBlocked, StatementSetting? Statement);
     private SettingsState? _settings;
+    private AccountSwitchState? _switchState;
+    private IReadOnlyList<int>? _switchIds;
+
+    private async Task SwitchedAsync(int count)
+    {
+        _switchIds = null;
+        if (_settings is { } s)
+        {
+            try { _switchState = await Switcher.GetAccountStateAsync(s.Account.Id); }
+            catch (AccessDeniedException) { _switchState = null; }
+        }
+        await OnChanged.InvokeAsync(null);
+    }
     private string _settingsName = "";
     private bool _statementsOn;
     private StatementsInterval _interval;
@@ -430,6 +478,8 @@
         StatementSetting? statement = null;
         try { statement = (await Documents.GetSettingsAsync(ProjectId)).FirstOrDefault(s => s.AccountId == node.Id); }
         catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException) { statement = null; }
+        try { _switchState = await Switcher.GetAccountStateAsync(node.Id); }
+        catch (AccessDeniedException) { _switchState = null; }
         var block = BlockOf(node);
         string? nameBlocked = block switch
         {

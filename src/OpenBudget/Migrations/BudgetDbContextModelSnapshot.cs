@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261111094048_CloudFiles";
+        public override string LatestMigrationId => "20261111095515_AccountSwitch";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -402,6 +402,15 @@ namespace OpenBudget.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("PendingRefreshAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PendingRefreshJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("PendingSinceUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("RemoteId")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -412,6 +421,9 @@ namespace OpenBudget.Migrations
 
                     b.Property<int>("StatementsInterval")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("SwitchedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("SyncFloorUtc")
                         .HasColumnType("TEXT");
@@ -902,6 +914,9 @@ namespace OpenBudget.Migrations
 
                     b.Property<long?>("LastUploadSizeBytes")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("MoneyMoneyImportFinishedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
