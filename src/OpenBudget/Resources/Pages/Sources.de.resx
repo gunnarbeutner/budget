@@ -197,7 +197,7 @@
     <value>{0} von {1} verknüpften Konten von MoneyMoney auf ihre Bankverbindung umgestellt.</value>
   </data>
   <data name="Switch_Unlinked" xml:space="preserve">
-    <value>{0} MoneyMoney-Konto/Konten ohne Bankverbindung.</value>
+    <value>{0} MoneyMoney-Konten haben keine Bankverbindung.</value>
   </data>
   <data name="Switch_All" xml:space="preserve">
     <value>Alle verknüpften Konten umstellen ({0}) …</value>
@@ -221,9 +221,10 @@
     <value>Ab jetzt werden Uploads aus MoneyMoney (Datenbanken und Kontoauszüge) mit einer Erklärung abgelehnt; der Import war damit einmalig. Alles bisher Importierte bleibt.</value>
   </data>
   <data name="Finished_Warning" xml:space="preserve">
-    <value>{0} verknüpfte(s) Konto/Konten sind noch nicht umgestellt und {1} Konto/Konten haben keine Bankverbindung: Sie werden nicht mehr aktualisiert.</value>
+    <value>Noch nicht umgestellt: {0}. Ohne Bankverbindung: {1}. Diese Konten werden nicht mehr aktualisiert.</value>
   </data>
   <data name="Finished_Reversible" xml:space="preserve">
     <value>Der Import kann hier jederzeit fortgesetzt werden.</value>
   </data>
+  <data name="Switch_Unlinked_One" xml:space="preserve"><value>1 MoneyMoney-Konto hat keine Bankverbindung.</value></data>
 </root>

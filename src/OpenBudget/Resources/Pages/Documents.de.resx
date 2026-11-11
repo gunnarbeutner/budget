@@ -233,7 +233,7 @@
     <value>Konto auswählen</value>
   </data>
   <data name="Assign_Hint" xml:space="preserve">
-    <value>{0} Dokument(e) werden dem gewählten Konto zugeordnet.</value>
+    <value>{0} Dokumente werden dem gewählten Konto zugeordnet.</value>
   </data>
   <data name="Assign_NoAccounts" xml:space="preserve">
     <value>Dieses Projekt hat kein bearbeitbares Konto.</value>
@@ -247,4 +247,5 @@
   <data name="Assign_Denied" xml:space="preserve">
     <value>Diesem Konto können keine Dokumente zugeordnet werden.</value>
   </data>
+  <data name="Assign_Hint_One" xml:space="preserve"><value>1 Dokument wird dem gewählten Konto zugeordnet.</value></data>
 </root>

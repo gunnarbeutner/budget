@@ -147,7 +147,7 @@ else
             <p class="small mb-2" data-testid="switch-progress">@L["Switch_Progress", st.Links.Count - pending.Count, st.Links.Count]
                 @if (st.MoneyMoneyAccountsWithoutLink > 0)
                 {
-                    <span class="text-body-secondary"> @L["Switch_Unlinked", st.MoneyMoneyAccountsWithoutLink]</span>
+                    <span class="text-body-secondary ms-1">@L[st.MoneyMoneyAccountsWithoutLink == 1 ? "Switch_Unlinked_One" : "Switch_Unlinked", st.MoneyMoneyAccountsWithoutLink]</span>
                 }
             </p>
             @if (pending.Count > 0)

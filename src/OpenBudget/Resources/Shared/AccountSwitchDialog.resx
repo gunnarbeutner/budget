@@ -134,6 +134,7 @@
     <value>Cancel</value>
   </data>
   <data name="Confirm" xml:space="preserve">
-    <value>Switch {0} account(s)</value>
+    <value>Switch {0} accounts</value>
   </data>
+  <data name="Confirm_One" xml:space="preserve"><value>Switch 1 account</value></data>
 </root>

@@ -207,7 +207,7 @@
     }
     else
     {
-        <p class="small text-body-secondary mb-2">@L["Assign_Hint", SelectedVisible().Count(d => d.CanAssign)]</p>
+        <p class="small text-body-secondary mb-2">@{ var assignable = SelectedVisible().Count(d => d.CanAssign); }@L[assignable == 1 ? "Assign_Hint_One" : "Assign_Hint", assignable]</p>
         <label class="form-label" for="assign-account">@L["Assign_Account"]</label>
         <select id="assign-account" class="form-select" data-testid="assign-account"
                 @onchange="e => assignTo = long.TryParse(e.Value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : null">

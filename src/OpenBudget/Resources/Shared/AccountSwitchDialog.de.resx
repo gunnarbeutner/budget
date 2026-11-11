@@ -134,6 +134,7 @@
     <value>Abbrechen</value>
   </data>
   <data name="Confirm" xml:space="preserve">
-    <value>{0} Konto/Konten umstellen</value>
+    <value>{0} Konten umstellen</value>
   </data>
+  <data name="Confirm_One" xml:space="preserve"><value>1 Konto umstellen</value></data>
 </root>

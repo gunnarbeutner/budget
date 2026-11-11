@@ -233,7 +233,7 @@
     <value>Choose an account</value>
   </data>
   <data name="Assign_Hint" xml:space="preserve">
-    <value>{0} document(s) will be filed under the chosen account.</value>
+    <value>{0} documents will be filed under the chosen account.</value>
   </data>
   <data name="Assign_NoAccounts" xml:space="preserve">
     <value>This project has no account you may edit.</value>
@@ -247,4 +247,5 @@
   <data name="Assign_Denied" xml:space="preserve">
     <value>Documents cannot be assigned to this account.</value>
   </data>
+  <data name="Assign_Hint_One" xml:space="preserve"><value>1 document will be filed under the chosen account.</value></data>
 </root>

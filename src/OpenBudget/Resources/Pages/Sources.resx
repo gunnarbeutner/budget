@@ -197,7 +197,7 @@
     <value>{0} of {1} linked accounts switched from MoneyMoney to their bank connection.</value>
   </data>
   <data name="Switch_Unlinked" xml:space="preserve">
-    <value>{0} MoneyMoney account(s) have no bank connection.</value>
+    <value>{0} MoneyMoney accounts have no bank connection.</value>
   </data>
   <data name="Switch_All" xml:space="preserve">
     <value>Switch all linked accounts ({0})…</value>
@@ -221,9 +221,10 @@
     <value>From now on, uploads from MoneyMoney (databases and statements) are refused with an explanation, so the import was a one-time move. Everything imported so far stays.</value>
   </data>
   <data name="Finished_Warning" xml:space="preserve">
-    <value>{0} linked account(s) are not switched yet and {1} account(s) have no bank connection: they will no longer be updated.</value>
+    <value>Not switched yet: {0}. Without a bank connection: {1}. These accounts will no longer be updated.</value>
   </data>
   <data name="Finished_Reversible" xml:space="preserve">
     <value>You can resume the import here at any time.</value>
   </data>
+  <data name="Switch_Unlinked_One" xml:space="preserve"><value>1 MoneyMoney account has no bank connection.</value></data>
 </root>
