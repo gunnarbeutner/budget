@@ -29,7 +29,7 @@ else if (lastSync is { } last)
     </button>
 }
 
-<Modal Show="@(challenge != null)"
+<Modal Show="@(challenge != null && NeedsUser(challenge))"
        Title="@(challenge != null ? L[challenge.Challenge?.Kind == ChallengeKind.WebLogin ? "TitleSignIn" : "Title", LoginName(challenge.LoginId)].Value : "")"
        SizeClass="@(challenge?.Challenge?.Kind == ChallengeKind.WebLogin ? "modal-xl" : "")"
        ShowCloseButton="false" CloseOnBackdropClick="false" OnTop="true" OnClose="@(() => Task.CompletedTask)">
@@ -112,6 +112,17 @@ else if (lastSync is { } last)
 </Modal>
 
 @code {
+    /// <summary>
+    /// Whether the dialog shows: always for a question to the user; for a web login only once the page needs the user
+    /// (interactive), the user asked to see it, or the bank is probably waiting for a confirmation (the approval hint).
+    /// A sign-in that runs by itself stays in the top bar's sync status.
+    /// </summary>
+    private bool NeedsUser(BankSyncStatus c) =>
+        c.Challenge?.Kind != ChallengeKind.WebLogin
+        || c.WebLoginMode == OpenBudget.Browser.WebLoginMode.Interactive
+        || showBrowser
+        || ShowApprovalHint(c);
+
     [Inject] private ClockService ClockSvc { get; set; } = default!;
 
     private IReadOnlyList<BankSyncStatus> statuses = [];
