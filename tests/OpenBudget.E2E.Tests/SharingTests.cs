@@ -87,6 +87,37 @@ public sealed class SharingTests : EndToEndTestBase
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "New Budget" })).ToHaveCountAsync(0);
     }
 
+    private async Task SetDisplayNameAsync(string name)
+    {
+        await Page.GotoAsync("/Account");
+        await Page.Locator("#displayName").FillAsync(name);
+        await Page.Locator("#display-name-save").ClickAsync();
+        await Expect(Page.GetByText("Display name saved.")).ToBeVisibleAsync();
+    }
+
+    [Test]
+    public async Task Display_names_replace_user_names_in_the_switcher_share_list_and_top_bar()
+    {
+        await ShareDirectlyAsync(ProjectRole.Viewer);
+        await SetDisplayNameAsync("Owner Person");
+        await GoToAsync("/");
+        await Expect(Page.Locator("[data-testid=user-menu] > summary")).ToHaveAttributeAsync("title", "Owner Person");
+        await Expect(Page.Locator("[data-testid=user-menu] > summary")).ToHaveTextAsync("O");
+
+        await LogoutAsync();
+        await LoginAsync(E2ESeed.SecondUserName);
+        await SetDisplayNameAsync("Guest Person");
+        await GoToAsync("/");
+        await Page.Locator("[data-testid=project-selector] > summary").ClickAsync();
+        var row = Page.GetByTestId("switcher-project").Filter(new() { HasText = E2ESeed.ProjectName });
+        await Expect(row.Locator("[title='Shared by Owner Person · view only']")).ToBeVisibleAsync();
+
+        await LogoutAsync();
+        await LoginAsync(E2ESeed.UserName);
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/settings");
+        await Expect(Page.Locator("#sharing-card").GetByRole(AriaRole.Cell, new() { Name = "Guest Person" })).ToBeVisibleAsync();
+    }
+
     [Test]
     public async Task An_editor_can_edit_the_budget_but_sees_no_sharing_or_account_controls()
     {

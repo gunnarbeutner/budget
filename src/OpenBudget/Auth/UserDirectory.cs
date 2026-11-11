@@ -1,11 +1,12 @@
 using Microsoft.EntityFrameworkCore;
+using OpenBudget.Models;
 using OpenBudget.Services;
 
 namespace OpenBudget.Auth;
 
 /// <summary>
 /// Name-only view of the user table, for the sharing UI (pick a user, show who owns/shares a
-/// project). Exposes nothing but ids and user names.
+/// project). Exposes nothing but ids, user names and display names.
 /// </summary>
 public sealed class UserDirectory
 {
@@ -22,6 +23,7 @@ public sealed class UserDirectory
         return rows.Select(r => (r.Id, r.UserName ?? "")).ToList();
     }
 
+    /// <summary>Display names (falling back to the user name) by user id.</summary>
     public async Task<Dictionary<string, string>> GetNamesAsync(IEnumerable<string> ids, CancellationToken ct = default)
     {
         var idList = ids.Distinct(StringComparer.Ordinal).ToList();
@@ -29,6 +31,7 @@ public sealed class UserDirectory
         await using var db = await _system.CreateDbContextAsync(ct);
         return await db.Users.AsNoTracking()
             .Where(u => idList.Contains(u.Id))
-            .ToDictionaryAsync(u => u.Id, u => u.UserName ?? "", StringComparer.Ordinal, ct);
+            .Select(u => new { u.Id, u.UserName, u.DisplayName })
+            .ToDictionaryAsync(u => u.Id, u => AppUser.ShownName(u.DisplayName, u.UserName), StringComparer.Ordinal, ct);
     }
 }

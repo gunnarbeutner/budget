@@ -24,6 +24,7 @@ public class AccountIndexModel : PageModel
     }
 
     public string UserName { get; private set; } = "";
+    public string? DisplayName { get; private set; }
     public bool IsAdmin { get; private set; }
     public List<PasskeyRow> Passkeys { get; private set; } = new();
     public List<string> Errors { get; } = new();
@@ -65,6 +66,23 @@ public class AccountIndexModel : PageModel
             Errors.AddRange(result.Errors.Select(e => e.Description));
         }
 
+        await LoadAsync(user);
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostDisplayNameAsync(string? displayName)
+    {
+        var user = await _users.GetUserAsync(User);
+        if (user == null) return RedirectToPage("/Account/Login");
+
+        user.DisplayName = AppUser.NormalizeDisplayName(displayName);
+        var result = await _users.UpdateAsync(user);
+        if (result.Succeeded)
+        {
+            Message = _l["DisplayName_Saved"].Value;
+            return RedirectToPage();
+        }
+        Errors.AddRange(result.Errors.Select(e => e.Description));
         await LoadAsync(user);
         return Page();
     }
@@ -136,6 +154,7 @@ public class AccountIndexModel : PageModel
     private async Task LoadAsync(AppUser user)
     {
         UserName = user.UserName ?? "";
+        DisplayName = user.DisplayName;
         IsAdmin = user.IsAdmin;
         var passkeys = await _users.GetPasskeysAsync(user);
         Passkeys = passkeys

@@ -178,4 +178,16 @@
   <data name="Password_Changed" xml:space="preserve">
     <value>Password changed.</value>
   </data>
+  <data name="DisplayName_Heading" xml:space="preserve">
+    <value>Display name</value>
+  </data>
+  <data name="DisplayName_Intro" xml:space="preserve">
+    <value>Shown to people you share projects with. Leave empty to show your user name.</value>
+  </data>
+  <data name="DisplayName_Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="DisplayName_Saved" xml:space="preserve">
+    <value>Display name saved.</value>
+  </data>
 </root>

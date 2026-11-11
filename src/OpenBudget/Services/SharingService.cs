@@ -4,6 +4,7 @@ using OpenBudget.Models;
 namespace OpenBudget.Services;
 
 /// <summary>A user a project is shared with, as shown on the project's settings page.</summary>
+/// <summary>A share; <c>UserName</c> is the name shown for that user (display name, else user name).</summary>
 public sealed record ProjectShareInfo(int ShareId, string UserId, string UserName, ProjectRole Role);
 
 /// <summary>
@@ -100,6 +101,8 @@ public class SharingService
     {
         var list = ids.Distinct(StringComparer.Ordinal).ToList();
         await using var sys = await _system.CreateDbContextAsync(ct);
-        return await sys.Users.AsNoTracking().Where(u => list.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.UserName ?? "", StringComparer.Ordinal, ct);
+        return await sys.Users.AsNoTracking().Where(u => list.Contains(u.Id))
+            .Select(u => new { u.Id, u.UserName, u.DisplayName })
+            .ToDictionaryAsync(u => u.Id, u => AppUser.ShownName(u.DisplayName, u.UserName), StringComparer.Ordinal, ct);
     }
 }

@@ -25,6 +25,19 @@
 
 <div class="card mb-4">
     <div class="card-body">
+        <h2 class="h6">@L["DisplayName_Heading"]</h2>
+        <p class="small text-body-secondary">@L["DisplayName_Intro"]</p>
+        <form method="post" asp-page-handler="DisplayName" data-testid="display-name-form">
+            <div class="input-group">
+                <input type="text" name="displayName" id="displayName" class="form-control" maxlength="@OpenBudget.Models.AppUser.DisplayNameMaxLength" value="@Model.DisplayName" placeholder="@Model.UserName" aria-label="@L["DisplayName_Heading"]" />
+                <button type="submit" id="display-name-save" class="btn btn-primary">@L["DisplayName_Save"]</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
         <h2 class="h6">@L["Passkeys_Heading"]</h2>
         <p class="small text-body-secondary">@L["Passkeys_Intro"]</p>
         @if (Model.Passkeys.Count == 0)

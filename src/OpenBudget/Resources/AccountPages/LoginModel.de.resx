@@ -178,4 +178,16 @@
   <data name="Password_Changed" xml:space="preserve">
     <value>Passwort geändert.</value>
   </data>
+  <data name="DisplayName_Heading" xml:space="preserve">
+    <value>Anzeigename</value>
+  </data>
+  <data name="DisplayName_Intro" xml:space="preserve">
+    <value>Wird Personen angezeigt, mit denen du Projekte teilst. Leer lassen, um deinen Benutzernamen anzuzeigen.</value>
+  </data>
+  <data name="DisplayName_Save" xml:space="preserve">
+    <value>Speichern</value>
+  </data>
+  <data name="DisplayName_Saved" xml:space="preserve">
+    <value>Anzeigename gespeichert.</value>
+  </data>
 </root>
