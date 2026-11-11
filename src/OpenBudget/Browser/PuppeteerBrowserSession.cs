@@ -282,12 +282,14 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
     }
 
     /// <summary>
-    /// Requests <paramref name="url"/> from the signed-in page (its cookies, its fingerprint) with the CDP Fetch domain
-    /// pausing the answer: a redirect's Location is read and the request is then failed, so the target is never loaded.
+    /// Requests <paramref name="url"/> from the signed-in page (its cookies, its fingerprint) with redirects not followed
+    /// and the CDP Fetch domain pausing the answer. The paused answer's Location is read, the request is failed, and only
+    /// then the address is returned, so the redirect target is never loaded by the browser.
     /// </summary>
     public async Task<Uri?> ResolveRedirectAsync(Uri url, CancellationToken ct)
     {
         var found = new TaskCompletionSource<Uri?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handled = 0;
         void OnPaused(object? sender, MessageEventArgs e)
         {
             if (e.MessageID != "Fetch.requestPaused") return;
@@ -296,11 +298,14 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
         async Task HandlePausedAsync(JsonElement p)
         {
             var id = p.GetProperty("requestId").GetString();
+            var requested = p.TryGetProperty("request", out var r) && r.TryGetProperty("url", out var u) ? u.GetString() : null;
+            // one interception: the page's request for this URL; anything else the pattern pauses is failed as well
+            var mine = string.Equals(requested, url.ToString(), StringComparison.Ordinal) && Interlocked.Exchange(ref handled, 1) == 0;
+            Uri? target = null;
             try
             {
                 var status = p.TryGetProperty("responseStatusCode", out var s) && s.ValueKind == JsonValueKind.Number ? s.GetInt32() : 0;
-                Uri? target = null;
-                if (status is >= 300 and < 400 && p.TryGetProperty("responseHeaders", out var headers) && headers.ValueKind == JsonValueKind.Array)
+                if (mine && status is >= 300 and < 400 && p.TryGetProperty("responseHeaders", out var headers) && headers.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var h in headers.EnumerateArray())
                     {
@@ -309,13 +314,13 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
                             target = abs;
                     }
                 }
-                found.TrySetResult(target);
                 await _cdp.SendAsync("Fetch.failRequest", new { requestId = id, errorReason = "Aborted" });
             }
             catch (Exception ex) when (ex is PuppeteerException or InvalidOperationException or KeyNotFoundException)
             {
-                found.TrySetResult(null);
+                target = null;
             }
+            if (mine) found.TrySetResult(target); // only once the request was failed: it can never go on to the target
         }
 
         _cdp.MessageReceived += OnPaused;
@@ -325,8 +330,8 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
             {
                 patterns = new[] { new { urlPattern = "*" + url.AbsolutePath + "*", requestStage = "Response" } },
             });
-            // the page's fetch fails (the request is aborted); only the paused answer matters
-            _ = _page.EvaluateFunctionAsync("u => fetch(u, { credentials: 'same-origin', cache: 'no-store' }).catch(() => null)", url.ToString());
+            // the page's fetch fails (the request is aborted, redirects are not followed); only the paused answer matters
+            _ = _page.EvaluateFunctionAsync("u => fetch(u, { credentials: 'same-origin', cache: 'no-store', redirect: 'manual' }).catch(() => null)", url.ToString());
             return await found.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
         }
         catch (TimeoutException)
