@@ -62,6 +62,25 @@ public sealed class ManualAccountTests
     }
 
     [Fact]
+    public async Task Accounts_in_the_overview_show_their_group_path()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        await w.ImportMoneyMoneyAsync(Snapshot(w));
+        await using (var db = await w.T.System.CreateDbContextAsync())
+        {
+            var top = new AccountGroup { Id = SourceScope.Namespace(BankWorld.SourceAlice, 900), SourceId = BankWorld.SourceAlice, Name = "Savings" };
+            var sub = new AccountGroup { Id = SourceScope.Namespace(BankWorld.SourceAlice, 901), SourceId = BankWorld.SourceAlice, Name = "Old", ParentGroupId = top.Id };
+            db.AccountGroups.AddRange(top, sub);
+            await db.SaveChangesAsync();
+            (await db.Accounts.FindAsync(Savings))!.GroupId = sub.Id;
+            await db.SaveChangesAsync();
+        }
+
+        var state = await w.Switcher(BankWorld.Alice).GetSourceStateAsync(BankWorld.SourceAlice);
+        Assert.Equal(["Savings › Old:Old Savings", ":Old Giro"], state.MoneyMoneyAccounts.Select(a => $"{a.GroupPath}:{a.Name}"));
+    }
+
+    [Fact]
     public async Task Returning_to_MoneyMoney_hands_the_account_to_the_next_upload_and_is_refused_while_finished()
     {
         await using var w = await BankWorld.CreateAsync();

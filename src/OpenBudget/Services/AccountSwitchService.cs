@@ -50,7 +50,9 @@ public sealed record AccountSwitchState(
 public sealed record KeepManualPreview(SourceAccountItem Account, string SourceName, bool StructureTakenOver);
 
 /// <summary>An account of a MoneyMoney source without a bank link, as the switch overview lists it.</summary>
-public sealed record SourceAccountItem(long AccountId, string Name, int Bookings, DateOnly? LastBooking, decimal? Balance, string? Currency, string Provider = AccountProviders.MoneyMoney);
+/// <param name="GroupPath">The account's groups from the top down, joined with " › " (null when ungrouped).</param>
+public sealed record SourceAccountItem(long AccountId, string Name, int Bookings, DateOnly? LastBooking, decimal? Balance, string? Currency,
+    string Provider = AccountProviders.MoneyMoney, string? GroupPath = null);
 
 /// <summary>A source's switch progress and one-time import setting (owner only).</summary>
 public sealed record SourceSwitchState(
@@ -159,9 +161,9 @@ public sealed class AccountSwitchService
         var items = await ItemsAsync(db, [.. moneyMoney, .. manual, .. closed], ct);
         return new SourceSwitchState(sourceId, source.Name, source.StructureTakenOverAt != null, source.MoneyMoneyImportFinishedAt, links, moneyMoney.Count)
         {
-            MoneyMoneyAccounts = moneyMoney.Select(a => items[a.Id]).ToList(),
-            ManualAccounts = manual.Select(a => items[a.Id]).ToList(),
-            ClosedAccounts = closed.Select(a => items[a.Id]).ToList(),
+            MoneyMoneyAccounts = ByGroup(moneyMoney.Select(a => items[a.Id])),
+            ManualAccounts = ByGroup(manual.Select(a => items[a.Id])),
+            ClosedAccounts = ByGroup(closed.Select(a => items[a.Id])),
         };
     }
 
@@ -177,6 +179,11 @@ public sealed class AccountSwitchService
         && (source.LastUploadAt != null || source.MoneyMoneyImportFinishedAt != null)
         && (account.Id & ((1L << 40) - 1)) < BankTransactionStore.ConnectorRowBase;
 
+    /// <summary>Accounts ordered by their group path, then by name (ungrouped ones last).</summary>
+    private static List<SourceAccountItem> ByGroup(IEnumerable<SourceAccountItem> items) =>
+        [.. items.OrderBy(i => i.GroupPath == null).ThenBy(i => i.GroupPath, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(i => i.Name, StringComparer.CurrentCultureIgnoreCase)];
+
     private static async Task<Dictionary<long, SourceAccountItem>> ItemsAsync(BudgetDbContext db, List<Account> accounts, CancellationToken ct)
     {
         var stats = new Dictionary<long, (int Count, long Last)>();
@@ -190,11 +197,22 @@ public sealed class AccountSwitchService
                          .ToListAsync(ct))
                 stats[g.Key] = (g.Count, g.Last);
         }
+        var sourceIds = accounts.Select(a => a.SourceId).Distinct().ToList();
+        var groups = await db.AccountGroups.AsNoTracking().Where(g => sourceIds.Contains(g.SourceId))
+            .ToDictionaryAsync(g => g.Id, ct);
+        string? PathOf(long? groupId)
+        {
+            var names = new List<string>();
+            for (var depth = 0; groupId is { } id && groups.TryGetValue(id, out var g) && depth < 20; depth++, groupId = g.ParentGroupId)
+                names.Insert(0, g.Name ?? "?");
+            return names.Count > 0 ? string.Join(" › ", names) : null;
+        }
         return accounts.ToDictionary(a => a.Id, a =>
         {
             var has = stats.TryGetValue(a.Id, out var st);
             return new SourceAccountItem(a.Id, a.Name ?? "?", has ? st.Count : 0,
-                has ? DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(st.Last).UtcDateTime) : null, a.CurrentBalance, a.Currency, a.Provider);
+                has ? DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(st.Last).UtcDateTime) : null, a.CurrentBalance, a.Currency, a.Provider,
+                PathOf(a.GroupId));
         });
     }
 

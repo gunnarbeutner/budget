@@ -228,7 +228,7 @@
   </data>
   <data name="Switch_Unlinked_One" xml:space="preserve"><value>1 MoneyMoney account has no bank connection.</value></data>
   <data name="Accounts_Summary" xml:space="preserve">
-    <value>Accounts without bank connection: {0} on MoneyMoney, {1} manual, {2} closed</value>
+    <value>Accounts without bank connection: {0} on MoneyMoney, {1} manual</value>
   </data>
   <data name="Accounts_SelectAll" xml:space="preserve">
     <value>Select all</value>
@@ -236,14 +236,8 @@
   <data name="Accounts_KeepManual" xml:space="preserve">
     <value>Keep {0} as manual accounts…</value>
   </data>
-  <data name="Accounts_Close" xml:space="preserve">
-    <value>Mark {0} as closed</value>
-  </data>
   <data name="Accounts_KeepManualOne" xml:space="preserve">
     <value>Keep as manual…</value>
-  </data>
-  <data name="Accounts_CloseOne" xml:space="preserve">
-    <value>Mark closed</value>
   </data>
   <data name="Accounts_Bookings" xml:space="preserve">
     <value>{0:N0} bookings</value>
@@ -254,17 +248,11 @@
   <data name="Accounts_ManualHeading" xml:space="preserve">
     <value>Manual accounts (from MoneyMoney)</value>
   </data>
-  <data name="Accounts_ClosedHeading" xml:space="preserve">
-    <value>Closed accounts</value>
-  </data>
   <data name="Accounts_Return" xml:space="preserve">
     <value>Return to MoneyMoney</value>
   </data>
   <data name="Accounts_Return_Finished" xml:space="preserve">
     <value>Resume the MoneyMoney import first.</value>
-  </data>
-  <data name="Accounts_Reopen" xml:space="preserve">
-    <value>Reopen</value>
   </data>
   <data name="Return_Title" xml:space="preserve">
     <value>Return to MoneyMoney?</value>

@@ -25,7 +25,7 @@
                     @foreach (var p in _previews)
                     {
                         <li data-keep-account="@p.Account.AccountId">
-                            <strong>@p.Account.Name</strong>
+                            @if (p.Account.GroupPath is { } path) { <span class="text-body-secondary">@path › </span> }<strong>@p.Account.Name</strong>
                             <span class="text-body-secondary">· @L["Bookings", p.Account.Bookings]@(p.Account.LastBooking is { } last ? " · " + L["LastBooking", last.ToString("yyyy-MM-dd")] : "")</span>
                         </li>
                     }

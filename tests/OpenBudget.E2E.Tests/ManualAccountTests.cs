@@ -49,7 +49,7 @@ public sealed class ManualAccountTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task Keep_accounts_as_manual_in_bulk_then_close_and_reopen_one()
+    public async Task Keep_accounts_as_manual_in_bulk()
     {
         await SeedAsync();
         await GoToAsync("/sources");
@@ -71,14 +71,6 @@ public sealed class ManualAccountTests : EndToEndTestBase
         Assert.That((await AccountAsync(Cash)).Provider, Is.EqualTo(AccountProviders.Manual));
         Assert.That((await AccountAsync(Old)).Provider, Is.EqualTo(AccountProviders.Manual));
 
-        await manual.Locator($"[data-manual-account='{Old}']").GetByTestId("manual-account-close").ClickAsync();
-        var closed = section.GetByTestId("closed-accounts");
-        await Expect(closed.Locator($"[data-closed-account='{Old}']")).ToBeVisibleAsync();
-        Assert.That((await AccountAsync(Old)).Closed, Is.True);
-
-        await closed.Locator($"[data-closed-account='{Old}']").GetByTestId("closed-account-reopen").ClickAsync();
-        await Expect(section.GetByTestId("closed-accounts")).ToHaveCountAsync(0);
-        Assert.That((await AccountAsync(Old)).Closed, Is.False);
     }
 
     [Test]
