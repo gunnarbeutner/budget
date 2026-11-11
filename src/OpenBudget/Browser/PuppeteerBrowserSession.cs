@@ -244,7 +244,9 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
     private const string FetchScript = """
         async (req) => {
           try {
-            const r = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body ?? undefined, credentials: 'same-origin', redirect: 'follow', cache: 'no-store' });
+            let body = req.body ?? undefined;
+            if (req.form) { body = new FormData(); for (const k in req.form) body.append(k, req.form[k]); }
+            const r = await fetch(req.url, { method: req.method, headers: req.headers, body, credentials: 'same-origin', redirect: 'follow', cache: 'no-store' });
             const buf = new Uint8Array(await r.arrayBuffer());
             let s = '';
             for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
@@ -265,6 +267,7 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
                 ["url"] = request.Url.ToString(),
                 ["headers"] = request.Headers,
                 ["body"] = request.Body,
+                ["form"] = request.Form,
             }).WaitAsync(ct);
             var status = r.TryGetProperty("status", out var st) && st.ValueKind == JsonValueKind.Number ? st.GetInt32() : 0;
             Uri? url = r.TryGetProperty("url", out var u) && u.ValueKind == JsonValueKind.String && Uri.TryCreate(u.GetString(), UriKind.Absolute, out var parsed) ? parsed : null;
@@ -278,39 +281,66 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
         }
     }
 
+    /// <summary>
+    /// Requests <paramref name="url"/> from the signed-in page (its cookies, its fingerprint) with the CDP Fetch domain
+    /// pausing the answer: a redirect's Location is read and the request is then failed, so the target is never loaded.
+    /// </summary>
     public async Task<Uri?> ResolveRedirectAsync(Uri url, CancellationToken ct)
     {
-        IPage page;
-        try { page = await _context.NewPageAsync(); }
-        catch (PuppeteerException ex) { throw new BrowserActionException("The browser could not open a second tab.", ex); }
-        try
+        var found = new TaskCompletionSource<Uri?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnPaused(object? sender, MessageEventArgs e)
         {
-            if (UserAgent.Length > 0) await page.SetUserAgentAsync(UserAgent);
-            var found = new TaskCompletionSource<Uri?>(TaskCreationOptions.RunContinuationsAsynchronously);
-            await page.SetRequestInterceptionAsync(true);
-            page.Request += async (_, e) =>
+            if (e.MessageID != "Fetch.requestPaused") return;
+            _ = HandlePausedAsync(e.MessageData);
+        }
+        async Task HandlePausedAsync(JsonElement p)
+        {
+            var id = p.GetProperty("requestId").GetString();
+            try
             {
-                try
+                var status = p.TryGetProperty("responseStatusCode", out var s) && s.ValueKind == JsonValueKind.Number ? s.GetInt32() : 0;
+                Uri? target = null;
+                if (status is >= 300 and < 400 && p.TryGetProperty("responseHeaders", out var headers) && headers.ValueKind == JsonValueKind.Array)
                 {
-                    if (Uri.TryCreate(e.Request.Url, UriKind.Absolute, out var target) && !string.Equals(target.Host, url.Host, StringComparison.OrdinalIgnoreCase))
+                    foreach (var h in headers.EnumerateArray())
                     {
-                        found.TrySetResult(target);
-                        await e.Request.AbortAsync();
-                    }
-                    else
-                    {
-                        await e.Request.ContinueAsync();
+                        if (string.Equals(h.GetProperty("name").GetString(), "location", StringComparison.OrdinalIgnoreCase)
+                            && Uri.TryCreate(url, h.GetProperty("value").GetString(), out var abs))
+                            target = abs;
                     }
                 }
-                catch (PuppeteerException) { /* tab closing */ }
-            };
-            try { await page.GoToAsync(url.ToString(), _options.NavigationTimeoutMs, [WaitUntilNavigation.DOMContentLoaded]).WaitAsync(ct); }
-            catch (PuppeteerException) { /* the redirect target is not loaded on purpose */ }
-            return found.Task.IsCompleted ? await found.Task : null;
+                found.TrySetResult(target);
+                await _cdp.SendAsync("Fetch.failRequest", new { requestId = id, errorReason = "Aborted" });
+            }
+            catch (Exception ex) when (ex is PuppeteerException or InvalidOperationException or KeyNotFoundException)
+            {
+                found.TrySetResult(null);
+            }
+        }
+
+        _cdp.MessageReceived += OnPaused;
+        try
+        {
+            await _cdp.SendAsync("Fetch.enable", new
+            {
+                patterns = new[] { new { urlPattern = "*" + url.AbsolutePath + "*", requestStage = "Response" } },
+            });
+            // the page's fetch fails (the request is aborted); only the paused answer matters
+            _ = _page.EvaluateFunctionAsync("u => fetch(u, { credentials: 'same-origin', cache: 'no-store' }).catch(() => null)", url.ToString());
+            return await found.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
+        catch (PuppeteerException ex)
+        {
+            throw new BrowserActionException("The browser could not follow the download link.", ex);
         }
         finally
         {
-            await TryAsync(() => page.CloseAsync());
+            _cdp.MessageReceived -= OnPaused;
+            await TryAsync(() => _cdp.SendAsync("Fetch.disable"));
         }
     }
 

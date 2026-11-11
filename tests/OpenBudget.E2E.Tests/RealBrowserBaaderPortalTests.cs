@@ -13,8 +13,8 @@ namespace OpenBudget.E2E.Tests;
 /// <summary>
 /// The Baader portal connector against a real Chromium and a local made-up portal whose session, like the real one, only
 /// works from the browser that signed in (here: requests without the browser's Sec-Fetch-Mode header are sent away).
-/// Documents live on a storage host of another origin, one of them readable by the page (CORS) and one not.
-/// Skipped when no Chromium is present. No bank is contacted.
+/// The extended listing (session filter) stays empty until an SMS-TAN went to /mfa/check; downloads redirect to a storage
+/// host of another origin without CORS. Skipped when no Chromium is present. No bank is contacted.
 /// </summary>
 #pragma warning disable CA1001 // the listeners are closed in TearDown
 [TestFixture]
@@ -22,6 +22,12 @@ public sealed class RealBrowserBaaderPortalTests
 {
     private const string Customer = "4711";
     private const string PageToken = "tok-1";
+    private const string Tan = "135790";
+    private const string RecentId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01";
+    private const string OlderId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa02";
+    private readonly ConcurrentDictionary<string, bool> _filtered = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, bool> _tanPassed = new(StringComparer.Ordinal);
+    private int _storageDownloads;
     private static readonly ConnectorCredentials Credentials = new("alice", "pw");
     private static readonly RemoteAccount Cash = new("cash-1", "Verrechnungskonto", RemoteAccountType.Giro, null, "EUR");
 
@@ -115,9 +121,10 @@ public sealed class RealBrowserBaaderPortalTests
             Redirect(ctx, "/"); // like the portal: a session it does not accept ends on its start page
             return;
         }
-        if (path == "/dashboard")
+        var sidValue = request.Cookies["sid"]!.Value;
+        if (path is "/dashboard" or "/mail" && request.HttpMethod == "GET")
         {
-            await HtmlAsync(ctx, $"<html><head><meta content=\"{PageToken}\" name=\"infotok\" /></head><body>Dashboard</body></html>");
+            await HtmlAsync(ctx, Page(""));
             return;
         }
         if (path == "/fstatus")
@@ -125,41 +132,58 @@ public sealed class RealBrowserBaaderPortalTests
             await WriteAsync(ctx, "application/json", $"[{{\"customer_id\":{Customer},\"first_name\":\"Alice\",\"last_name\":\"Example\",\"amount\":\"0,00\",\"currency\":\"EUR\"}}]");
             return;
         }
-        if (path == "/mailrows/" + Customer && request.HttpMethod == "POST")
+        if (path == "/mail" && request.HttpMethod == "POST")
         {
             var form = await ReadFormAsync(request);
-            if (form.GetValueOrDefault("token") != PageToken || request.Headers["X-Requested-With"] != "XMLHttpRequest")
+            if (form.GetValueOrDefault("filter") == "1" && form.GetValueOrDefault("token") == PageToken && form.GetValueOrDefault("periods") == "720")
+                _filtered[sidValue] = true;
+            await HtmlAsync(ctx, Page(_tanPassed.ContainsKey(sidValue) ? "" : "<form id=mfaInputForm><input name=tan></form>"));
+            return;
+        }
+        if (path == "/mfa/check" && request.HttpMethod == "POST")
+        {
+            var form = await ReadMultipartAsync(request);
+            if (form.GetValueOrDefault("tan") == Tan && form.GetValueOrDefault("token") == PageToken) _tanPassed[sidValue] = true;
+            await WriteAsync(ctx, "application/json", _tanPassed.ContainsKey(sidValue) ? "{\"do\":\"success\"}" : "{\"do\":\"error\"}");
+            return;
+        }
+        if (path == "/mailrows" && request.HttpMethod == "POST")
+        {
+            if (request.ContentType?.StartsWith("multipart/form-data", StringComparison.Ordinal) != true || request.Headers["X-Requested-With"] != "XMLHttpRequest")
             {
-                ctx.Response.StatusCode = 403;
+                ctx.Response.StatusCode = 400;
                 return;
             }
-            var to = DateOnly.ParseExact(form["to"], "dd.MM.yyyy", CultureInfo.InvariantCulture);
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
-            if (form["section"] == "ACCOUNT_STATEMENT" && to >= today)
-            {
-                var day = today.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-                await WriteAsync(ctx, "application/json", $"[{{\"{day}\":[[1,\"Kontoauszug\",\"cors1\"],[0,\"Zinsstaffel\",\"plain2\"]]}}]");
-            }
-            else
-            {
-                await WriteAsync(ctx, "application/json", "{\"do\":\"error\",\"title\":\"Aktuell sind in Ihrem Postfach keine Dokumente hinterlegt\"}");
-            }
+            var day = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var rows = new List<string> { $"[1,\"Kontoauszug\",\"{RecentId}\"]" };
+            if (_filtered.ContainsKey(sidValue))
+                rows = _tanPassed.ContainsKey(sidValue) ? [.. rows, $"[0,\"Zinsstaffel\",\"{OlderId}\"]"] : [];
+            await WriteAsync(ctx, "application/json", rows.Count == 0 ? "[]" : $"[{{\"{day}\":[{string.Join(',', rows)}]}}]");
             return;
         }
         if (path.StartsWith("/maildownload/", StringComparison.Ordinal))
         {
-            Redirect(ctx, _storageUrl + "bucket/" + path["/maildownload/".Length..] + ".pdf?sig=1");
+            Redirect(ctx, _storageUrl + "PDF/" + path["/maildownload/".Length..] + ".pdf?X-Amz-Signature=sig");
             return;
         }
         ctx.Response.StatusCode = 404;
     }
 
+    private static string Page(string body) => $"<html><head><meta name=\"infotok\" content=\"{PageToken}\" /></head><body>{body}</body></html>";
+
     private async Task HandleStorageAsync(HttpListenerContext ctx)
     {
-        var path = ctx.Request.Url!.AbsolutePath;
-        // only one document's storage lets the portal's page read it; the other needs the resolved link
-        if (path.Contains("cors", StringComparison.Ordinal)) ctx.Response.AppendHeader("Access-Control-Allow-Origin", "*");
-        await WriteAsync(ctx, "application/pdf", "%PDF-1.4\n% " + path + "\n%%EOF\n");
+        // like the real storage: no CORS headers, so the portal's page cannot read it
+        Interlocked.Increment(ref _storageDownloads);
+        await WriteAsync(ctx, "application/pdf", "%PDF-1.4\n% " + ctx.Request.Url!.AbsolutePath + "\n%%EOF\n");
+    }
+
+    private static async Task<Dictionary<string, string>> ReadMultipartAsync(HttpListenerRequest request)
+    {
+        using var reader = new StreamReader(request.InputStream, Encoding.UTF8);
+        var body = await reader.ReadToEndAsync();
+        return System.Text.RegularExpressions.Regex.Matches(body, "name=\"(?<n>[^\"]+)\"\r\n\r\n(?<v>.*?)\r\n--", System.Text.RegularExpressions.RegexOptions.Singleline, TimeSpan.FromSeconds(1))
+            .ToDictionary(m => m.Groups["n"].Value, m => m.Groups["v"].Value, StringComparer.Ordinal);
     }
 
     private static async Task<Dictionary<string, string>> ReadFormAsync(HttpListenerRequest request)
@@ -193,12 +217,12 @@ public sealed class RealBrowserBaaderPortalTests
         TimeProvider.System, NullLoggerFactory.Instance);
 
     [Test]
-    public async Task Documents_are_listed_and_downloaded_through_the_kept_browser_which_is_closed_afterwards()
+    public async Task The_history_is_listed_after_the_tan_and_downloaded_through_the_kept_browser_which_is_closed_afterwards()
     {
         await using var browser = NewBrowser();
         var service = Service(browser);
         using var http = new BankHttpClient();
-        var portal = new BaaderPortal(http, TimeProvider.System, NullLogger.Instance, new Uri(_portalUrl));
+        var portal = new BaaderPortal(http, NullLogger.Instance, new Uri(_portalUrl));
         var none = new HashSet<string>(StringComparer.Ordinal);
 
         var ask = await portal.FetchAsync([Cash], none, Credentials, null, CancellationToken.None);
@@ -214,15 +238,21 @@ public sealed class RealBrowserBaaderPortalTests
         http.ReplaceCookies(spec, result.Cookies);
 
         // The exported cookie alone does not work outside the browser.
-        var overHttp = new BaaderPortal(http, TimeProvider.System, NullLogger.Instance, new Uri(_portalUrl));
-        Assert.That((await overHttp.FetchAsync([Cash], none, Credentials, null, CancellationToken.None)).Status, Is.EqualTo(StepStatus.Challenge));
+        using var probe = new HttpRequestMessage(HttpMethod.Get, new Uri(_portalUrl + "fstatus"));
+        using (var outside = await http.SendAsync(probe, CancellationToken.None))
+            Assert.That(outside.RequestMessage!.RequestUri!.AbsolutePath, Is.EqualTo("/"));
         Assert.That(_serverSideRefusals, Is.GreaterThan(0));
 
-        var done = await portal.FetchAsync([Cash], none, Credentials, new ChallengeAnswer(ask.Challenge, null) { Browser = kept }, CancellationToken.None);
+        var tan = await portal.FetchAsync([Cash], none, Credentials, new ChallengeAnswer(ask.Challenge, null) { Browser = kept }, CancellationToken.None);
+        Assert.That(tan.Status, Is.EqualTo(StepStatus.Challenge), tan.FailureReason);
+        Assert.That(tan.Challenge!.Reference, Is.EqualTo(BaaderPortal.TanReference));
+
+        var done = await portal.FetchAsync([Cash], none, Credentials, new ChallengeAnswer(tan.Challenge, Tan), CancellationToken.None);
         Assert.That(done.Status, Is.EqualTo(StepStatus.Done), done.FailureReason);
-        Assert.That(done.Value!.Select(d => d.Identifier), Is.EquivalentTo(new[] { "baader:cors1", "baader:plain2" }));
+        Assert.That(done.Value!.Select(d => d.Identifier), Is.EquivalentTo(new[] { "baader:" + RecentId, "baader:" + OlderId }));
         Assert.That(done.Value!.Select(d => Encoding.ASCII.GetString(d.Content, 0, 5)), Is.All.EqualTo("%PDF-"));
-        Assert.That(Encoding.ASCII.GetString(done.Value!.Single(d => d.Identifier == "baader:plain2").Content), Does.Contain("/bucket/plain2.pdf"));
+        Assert.That(Encoding.ASCII.GetString(done.Value!.Single(d => d.Identifier == "baader:" + OlderId).Content), Does.Contain("/PDF/" + OlderId + ".pdf"));
+        Assert.That(_storageDownloads, Is.EqualTo(2), "each PDF is fetched once, from the storage link");
 
         Assert.That(browser.OpenSessions, Is.EqualTo(1));
         await kept!.DisposeAsync();
@@ -238,7 +268,7 @@ public sealed class RealBrowserBaaderPortalTests
         await using var browser = NewBrowser();
         var service = Service(browser);
         using var http = new BankHttpClient();
-        var spec = new BaaderPortal(http, TimeProvider.System, NullLogger.Instance, new Uri(_portalUrl)).WebLogin(Credentials);
+        var spec = new BaaderPortal(http, NullLogger.Instance, new Uri(_portalUrl)).WebLogin(Credentials);
 
         IReadOnlyList<CookieState> cookies;
         await using (var first = await service.StartAsync("user-1", spec, [], CancellationToken.None))

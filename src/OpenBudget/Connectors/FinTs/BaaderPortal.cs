@@ -1,5 +1,4 @@
 #pragma warning disable S1075 // the portal's address is a fixed, published URL
-using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -10,43 +9,35 @@ namespace OpenBudget.Connectors.FinTs;
 /// not offer. This is Baader's own portal for its direct customers (Smartbroker+ for example), not the one of a broker
 /// front-end: documents of brokers that only use Baader as custodian come from that broker's own connector.
 ///
-/// Protocol (as observed from the portal):
+/// The portal's session only works from the browser that signed in, so every portal request runs in that browser's page
+/// (a web login with <see cref="WebLoginSpec.KeepBrowser"/>). Protocol (as observed in the portal):
 /// <list type="bullet">
-/// <item><c>GET /fstatus</c>: JSON array of the signed-in customers (<c>customer_id</c>, ...); without a session it redirects to <c>/login</c>.</item>
-/// <item>Sign-in: a form at <c>/login</c> (fields <c>user</c>, <c>password</c>, a CSRF <c>token</c> and a script-filled <c>pin</c>,
-/// sometimes followed by an SMS-TAN) that redirects to <c>/dashboard</c>. It runs in the app's browser (a web login with
-/// autofill) so the page's scripts and a TAN prompt work as they do for a person.</item>
-/// <item><c>POST /mailrows/{customerId}</c> per document type and period: JSON <c>[{"yyyy-MM-dd": [[read, title, id], ...]}]</c>,
-/// or <c>{"do":"error","title":...}</c> when the period holds none.</item>
-/// <item><c>GET /maildownload/{id}</c>: redirects to a short-lived storage URL that serves the PDF.</item>
+/// <item><c>GET /fstatus</c>: JSON array of the signed-in customers; anything else means no session.</item>
+/// <item>Sign-in: a form at <c>/login</c>, sometimes followed by an SMS-TAN, then <c>/dashboard</c>.</item>
+/// <item><c>POST /mailrows</c> with an empty multipart form: JSON <c>[{"yyyy-MM-dd": [[read, description, fileid], ...], ...}]</c>,
+/// by default only the recent documents.</item>
+/// <item>Older documents: a session-wide filter set by the full-page form <c>POST /mail</c> (<c>filter=1</c>, the page token
+/// <c>infotok</c>, <c>timeframe=period</c>, <c>periods=720</c>, ...). The extended listing needs an SMS-TAN: until it was
+/// entered, <c>/mailrows</c> answers empty and the page shows the <c>mfaInputForm</c> dialog; the TAN goes as a multipart
+/// form (<c>tan</c>, <c>token</c>) to <c>POST /mfa/check</c>.</item>
+/// <item><c>GET /maildownload/{fileid}</c>: a redirect to a pre-signed storage URL (another origin, no CORS) that serves
+/// the PDF; the browser reads the redirect's address and the PDF is fetched from it directly, without cookies.</item>
 /// </list>
-/// The request body of <c>/mailrows</c> was not visible in what was observed; the field names below are the best guess and
-/// live in one place (<see cref="ListFields"/>) so they are easy to correct.
+/// The first download (no Baader document known yet) asks for the TAN and lists the whole filtered history; later syncs
+/// use the default listing of recent documents, which needs no TAN.
 /// </summary>
 internal sealed partial class BaaderPortal
 {
     public static readonly Uri DefaultBaseUri = new("https://konto.baaderbank.de/");
     internal const string WebLoginReference = "baader-portal-web-login";
+    internal const string TanReference = "baader-portal-tan";
     internal const string IdentifierPrefix = "baader:";
     internal const string UsernameSelector = "input#user, input[name=user]";
     internal const string PasswordSelector = "input#password, input[name=password]";
     internal const string SubmitSelector = "button#ctaLogin, form#loginform button[type=submit]";
 
-    /// <summary>A period the portal lists at once (it offers 90 days by default).</summary>
-    internal static readonly TimeSpan Window = TimeSpan.FromDays(90);
-
-    /// <summary>How many periods the first download walks back (about three years).</summary>
-    internal const int FirstSyncWindows = 12;
-
-    /// <summary>The portal's document types and which account their documents belong to.</summary>
-    internal static readonly IReadOnlyList<(string Section, DocumentTarget Target)> Sections =
-    [
-        ("ACCOUNT_STATEMENT", DocumentTarget.Cash), // account statements, interest
-        ("NOTIFICATIONS", DocumentTarget.Depot), // "Mitteilungen": trade confirmations, corporate actions
-        ("TAXES", DocumentTarget.Login), // tax documents
-        ("CREDIT", DocumentTarget.Login),
-        ("MISC", DocumentTarget.Login), // cost reports, quarterly statements, ...
-    ];
+    /// <summary>The longest period the portal's filter offers, in days.</summary>
+    internal const string HistoryPeriod = "720";
 
     internal enum DocumentTarget
     {
@@ -56,16 +47,18 @@ internal sealed partial class BaaderPortal
     }
 
     private readonly IBankHttpClient _http;
-    private readonly TimeProvider _clock;
     private readonly ILogger _log;
     private readonly Uri _base;
-    private string? _token;
     private IBrowserFetcher? _browser;
+    private bool _checked;
+    private bool _filterSet;
+    private bool _tanRequired;
+    private bool _tanSubmitted;
+    private string? _token;
 
-    public BaaderPortal(IBankHttpClient http, TimeProvider clock, ILogger log, Uri? baseUri = null)
+    public BaaderPortal(IBankHttpClient http, ILogger log, Uri? baseUri = null)
     {
         _http = http;
-        _clock = clock;
         _log = log;
         _base = baseUri ?? DefaultBaseUri;
     }
@@ -86,143 +79,144 @@ internal sealed partial class BaaderPortal
     };
 
     /// <summary>
-    /// New documents for the wanted accounts. Asks for a web login when there is no working portal session; called again
-    /// after it, it runs the portal requests in the browser that signed in (<see cref="ChallengeAnswer.Browser"/>), or
-    /// over HTTP with the browser's cookies when no browser was kept.
+    /// New documents for the wanted accounts. Without a signed-in browser it asks for a web login (which resumes a stored
+    /// session without user interaction when it still works); on the first download it also asks for the SMS-TAN of the
+    /// extended listing.
     /// </summary>
     public async Task<ConnectorStep<IReadOnlyList<RemoteStatement>>> FetchAsync(
         IReadOnlyList<RemoteAccount> accounts, IReadOnlySet<string> known, ConnectorCredentials? credentials, ChallengeAnswer? answer, CancellationToken ct)
     {
-        if (answer?.Browser != null) _browser = answer.Browser;
-        if (_browser is { IsOpen: false }) _browser = null;
-        var customers = await CustomersAsync(ct);
-        if (customers == null)
+        if (answer?.Browser != null)
         {
-            if (answer?.Challenge.Kind == ChallengeKind.WebLogin)
-                throw new ConnectorException("The sign-in on the Baader portal did not complete.");
-            _log.LogInformation("No valid Baader portal session; asking for a sign-in.");
+            _browser = answer.Browser;
+            _checked = false;
+        }
+        if (_browser is { IsOpen: false }) _browser = null;
+        var signingIn = answer?.Challenge.Kind == ChallengeKind.WebLogin;
+        if (_browser == null || (!_checked && !await SignedInAsync(_browser, ct)))
+        {
+            if (signingIn) throw new ConnectorException("The sign-in on the Baader portal did not complete.");
+            _browser = null;
+            _log.LogInformation("No signed-in Baader portal browser; asking for a sign-in.");
             return ConnectorStep.Ask<IReadOnlyList<RemoteStatement>>(ConnectorChallenge.WebLogin(
                 "Sign in on the Baader portal to fetch documents.", WebLogin(credentials), WebLoginReference));
         }
-        _token = await TokenAsync(ct);
+        _checked = true;
+        var browser = _browser;
+
+        var history = !known.Any(k => k.StartsWith(IdentifierPrefix, StringComparison.Ordinal));
+        if (answer?.Challenge.Reference == TanReference)
+        {
+            await SubmitTanAsync(browser, answer.Value ?? "", ct);
+            _tanSubmitted = true;
+        }
+        if (history && !_filterSet)
+        {
+            await SetHistoryFilterAsync(browser, ct);
+            _filterSet = true;
+        }
+
+        var listing = await ListAsync(browser, ct);
+        if (history && !_tanSubmitted && (_tanRequired || listing.Count == 0))
+        {
+            _log.LogInformation("Baader portal: the document history needs an SMS-TAN.");
+            return ConnectorStep.Ask<IReadOnlyList<RemoteStatement>>(ConnectorChallenge.Code(
+                "Enter the TAN Baader sent you by SMS (needed once to list the older documents).", numeric: true, reference: TanReference));
+        }
+        if (history && listing.Count == 0)
+            _log.LogWarning("Baader portal: no documents listed after the TAN.");
 
         var cash = accounts.FirstOrDefault(a => a.Type != RemoteAccountType.Depot)?.RemoteId;
         var depot = accounts.FirstOrDefault(a => a.Type == RemoteAccountType.Depot)?.RemoteId;
-        var incremental = known.Any(k => k.StartsWith(IdentifierPrefix, StringComparison.Ordinal));
         var result = new List<RemoteStatement>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var customer in customers)
+        foreach (var doc in listing)
         {
-            foreach (var (section, target) in Sections)
+            var identifier = IdentifierPrefix + doc.Id;
+            if (known.Contains(identifier) || !seen.Add(identifier)) continue;
+            var target = TargetOf(doc.Title);
+            var account = target switch
             {
-                var account = target switch
-                {
-                    DocumentTarget.Cash => cash,
-                    DocumentTarget.Depot => depot ?? cash,
-                    DocumentTarget.Login => null,
-                    _ => null,
-                };
-                // A cash/depot document whose account's statements are off: not wanted.
-                if (target != DocumentTarget.Login && account == null) continue;
-                foreach (var doc in await ListAsync(customer, section, incremental, known, ct))
-                {
-                    var identifier = IdentifierPrefix + doc.Id;
-                    if (known.Contains(identifier) || !seen.Add(identifier)) continue;
-                    var bytes = await DownloadAsync(doc.Id, ct);
-                    if (bytes == null) continue;
-                    result.Add(new RemoteStatement(identifier, account, doc.Date, doc.Title, bytes));
-                }
-            }
+                DocumentTarget.Cash => cash,
+                DocumentTarget.Depot => depot ?? cash,
+                DocumentTarget.Login => null,
+                _ => null,
+            };
+            // A cash/depot document whose account's statements are off: not wanted.
+            if (target != DocumentTarget.Login && account == null) continue;
+            var bytes = await DownloadAsync(browser, doc.Id, ct);
+            if (bytes == null) continue;
+            result.Add(new RemoteStatement(identifier, account, doc.Date, doc.Title, bytes));
         }
-        _log.LogInformation("Baader portal: {Count} new document(s).", result.Count);
+        _log.LogInformation("Baader portal: {Listed} document(s) listed, {Count} new.", listing.Count, result.Count);
         return ConnectorStep.Done<IReadOnlyList<RemoteStatement>>(result);
     }
 
     internal sealed record PortalDocument(string Id, DateOnly Date, string Title);
 
+    /// <summary>Which account a document belongs to, from its description.</summary>
+    internal static DocumentTarget TargetOf(string title)
+    {
+        static bool Has(string t, string s) => t.Contains(s, StringComparison.OrdinalIgnoreCase);
+        if (Has(title, "Kontoauszug") || Has(title, "Zins") || Has(title, "Rechnungsabschluss")) return DocumentTarget.Cash;
+        if (Has(title, "Wertpapier") || Has(title, "Abrechnung") || Has(title, "Kauf") || Has(title, "Verkauf") || Has(title, "Dividende")
+            || Has(title, "Ertrag") || Has(title, "Depot") || Has(title, "Kapitalmaßnahme") || Has(title, "Ausschüttung"))
+            return DocumentTarget.Depot;
+        return DocumentTarget.Login;
+    }
+
+    private static readonly IReadOnlyDictionary<string, string> JsonHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["X-Requested-With"] = "XMLHttpRequest",
+        ["Accept"] = "application/json, text/javascript, */*; q=0.01",
+    };
+
+    private static readonly IReadOnlyDictionary<string, string> NoFields = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    private async Task<List<PortalDocument>> ListAsync(IBrowserFetcher browser, CancellationToken ct)
+    {
+        var response = await browser.PostMultipartAsync(new Uri(_base, "mailrows"), NoFields, JsonHeaders, ct);
+        EnsureSession(response, "listing documents");
+        if (!response.IsSuccess)
+            throw new ConnectorException($"The Baader portal answered HTTP {response.Status} to the document list.");
+        var text = response.Text;
+        JsonElement json;
+        try { json = JsonElement.Parse(text); }
+        catch (JsonException ex)
+        {
+            _log.LogWarning(ex, "The Baader portal's document list was not JSON ({Length} characters).", text.Length);
+            if (text.Contains("mfaInputForm", StringComparison.Ordinal)) _tanRequired = true;
+            return [];
+        }
+        return ParseRows(json, Shape);
+    }
+
+    private void Shape(string shape) => _log.LogInformation("Baader portal: the document list had an unexpected shape ({Shape}).", shape);
+
     /// <summary>
-    /// The documents of one type, newest period first. Walks back period by period: on the first download as far as
-    /// <see cref="FirstSyncWindows"/>, later only until a period brings nothing new.
+    /// Reads the documents of a <c>/mailrows</c> answer. An empty list, "no documents" or any other shape count as no
+    /// documents (an unexpected shape is reported to <paramref name="unexpected"/>, by kinds only).
     /// </summary>
-    private async Task<List<PortalDocument>> ListAsync(string customer, string section, bool incremental, IReadOnlySet<string> known, CancellationToken ct)
+    internal static List<PortalDocument> ParseRows(JsonElement json, Action<string>? unexpected = null)
     {
         var docs = new List<PortalDocument>();
-        var to = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
-        for (var i = 0; i < FirstSyncWindows; i++)
-        {
-            var from = to.AddDays(-(int)Window.TotalDays); // the portal's own default period: 91 days inclusive
-            var page = await ListWindowAsync(customer, section, from, to, ct);
-            docs.AddRange(page);
-            var anythingNew = page.Any(d => !known.Contains(IdentifierPrefix + d.Id));
-            if (incremental && !anythingNew) break;
-            to = from.AddDays(-1);
-        }
-        return docs;
-    }
-
-    /// <summary>The form fields of a list request (unverified guess, see the class remarks).</summary>
-    internal static IEnumerable<KeyValuePair<string, string>> ListFields(string section, DateOnly from, DateOnly to, string? token)
-    {
-        yield return new("section", section);
-        yield return new("from", from.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture));
-        yield return new("to", to.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture));
-        if (token != null) yield return new("token", token);
-    }
-
-    private async Task<List<PortalDocument>> ListWindowAsync(string customer, string section, DateOnly from, DateOnly to, CancellationToken ct)
-    {
-        var url = new Uri(_base, "mailrows/" + Uri.EscapeDataString(customer));
-        var fields = ListFields(section, from, to, _token).ToList();
-        PortalResponse response;
-        if (_browser != null)
-        {
-            response = PortalResponse.From(await _browser.PostFormAsync(url, fields, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["X-Requested-With"] = "XMLHttpRequest",
-                ["Accept"] = "application/json, text/javascript, */*; q=0.01",
-            }, ct));
-        }
-        else
-        {
-            using var content = new FormUrlEncodedContent(fields);
-            using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
-            request.Headers.TryAddWithoutValidation("X-Requested-With", "XMLHttpRequest");
-            request.Headers.TryAddWithoutValidation("Accept", "application/json, text/javascript, */*; q=0.01");
-            request.Headers.Referrer = new Uri(_base, "mail");
-            using var http = await _http.SendAsync(request, ct);
-            response = await PortalResponse.FromAsync(http, ct);
-        }
-        return ParseRows(ReadJson(response), section);
-    }
-
-    /// <summary>Reads the documents of a <c>/mailrows</c> answer; "no documents in this period" is an empty list.</summary>
-    internal static List<PortalDocument> ParseRows(JsonElement json, string section)
-    {
-        var docs = new List<PortalDocument>();
-        if (json.ValueKind == JsonValueKind.Object)
-        {
-            if (json.TryGetProperty("do", out var verb) && string.Equals(verb.GetString(), "error", StringComparison.Ordinal))
-            {
-                var title = json.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
-                if (title.Contains("keine Dokumente", StringComparison.OrdinalIgnoreCase) || title.Contains("no documents", StringComparison.OrdinalIgnoreCase))
-                    return docs;
-                throw new ConnectorException($"The Baader portal refused the document list ({section}): {Shorten(title)}");
-            }
-            throw new ConnectorException($"The Baader portal answered the document list ({section}) in an unexpected form.");
-        }
         if (json.ValueKind != JsonValueKind.Array)
-            throw new ConnectorException($"The Baader portal answered the document list ({section}) in an unexpected form.");
-
+        {
+            if (json.ValueKind == JsonValueKind.Object)
+                unexpected?.Invoke(string.Join(", ", json.EnumerateObject().Select(p => $"{p.Name}:{p.Value.ValueKind}")));
+            else unexpected?.Invoke(json.ValueKind.ToString());
+            return docs;
+        }
         foreach (var group in json.EnumerateArray())
         {
             if (group.ValueKind != JsonValueKind.Object) continue;
             foreach (var day in group.EnumerateObject())
             {
-                if (!DateOnly.TryParseExact(day.Name, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+                if (!DateOnly.TryParseExact(day.Name, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var date)
                     || day.Value.ValueKind != JsonValueKind.Array) continue;
                 foreach (var row in day.Value.EnumerateArray())
                 {
-                    // [read flag, title, document id]
+                    // [read flag, description, file id]
                     if (row.ValueKind != JsonValueKind.Array || row.GetArrayLength() < 3) continue;
                     var title = row[1].ValueKind == JsonValueKind.String ? row[1].GetString() : null;
                     var id = row[2].ValueKind == JsonValueKind.String ? row[2].GetString() : null;
@@ -234,19 +228,94 @@ internal sealed partial class BaaderPortal
         return docs;
     }
 
-    private async Task<byte[]?> DownloadAsync(string id, CancellationToken ct)
+    /// <summary>The fields of the mail filter form for the longest period (read and unread documents).</summary>
+    internal static IEnumerable<KeyValuePair<string, string>> HistoryFilterFields(string? token)
+    {
+        yield return new("filter", "1");
+        if (token != null) yield return new("token", token);
+        yield return new("timeframe", "period");
+        yield return new("periods", HistoryPeriod);
+        yield return new("from", "");
+        yield return new("until", "");
+        yield return new("isin", "");
+        yield return new("wkn", "");
+        yield return new("portfolio", "");
+    }
+
+    /// <summary>Sets the portal's session filter to the longest period, as the mail page's filter form does.</summary>
+    private async Task SetHistoryFilterAsync(IBrowserFetcher browser, CancellationToken ct)
+    {
+        _token ??= await TokenAsync(browser, ct);
+        var response = await browser.PostFormAsync(new Uri(_base, "mail"), HistoryFilterFields(_token),
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Accept"] = "text/html" }, ct);
+        EnsureSession(response, "setting the document filter");
+        var html = response.Text;
+        if (html.Contains("mfaInputForm", StringComparison.Ordinal)) _tanRequired = true;
+        if (InfoToken().Match(html) is { Success: true } m) _token = TokenOf(m);
+        _log.LogInformation("Baader portal: document filter set ({Period} days): HTTP {Status}{Mfa}.", HistoryPeriod, response.Status, _tanRequired ? ", TAN dialog shown" : "");
+    }
+
+    /// <summary>Sends the SMS-TAN the way the mail page's TAN dialog does; only the status and the answer's shape are logged.</summary>
+    private async Task SubmitTanAsync(IBrowserFetcher browser, string tan, CancellationToken ct)
+    {
+        var tanValue = tan.Trim();
+        if (tanValue.Length == 0) throw new ConnectorException("No TAN was entered for the Baader portal.");
+        _token ??= await TokenAsync(browser, ct);
+        var fields = new Dictionary<string, string>(StringComparer.Ordinal) { ["tan"] = tanValue };
+        if (_token != null) fields["token"] = _token;
+        var response = await browser.PostMultipartAsync(new Uri(_base, "mfa/check"), fields, JsonHeaders, ct);
+        EnsureSession(response, "checking the TAN");
+        string shape;
+        try
+        {
+            var json = JsonElement.Parse(response.Text);
+            shape = json.ValueKind == JsonValueKind.Object ? string.Join(", ", json.EnumerateObject().Select(p => $"{p.Name}:{p.Value.ValueKind}")) : json.ValueKind.ToString();
+        }
+        catch (JsonException) { shape = "not JSON"; }
+        _log.LogInformation("Baader portal: TAN check answered HTTP {Status} ({Shape}).", response.Status, shape);
+        if (response.Status is 400 or 401 or 403 or 422)
+            throw new ConnectorException("The Baader portal rejected the TAN.");
+    }
+
+    /// <summary>
+    /// The document's PDF: the browser reads the download's redirect to the pre-signed storage URL (without following it)
+    /// and the PDF is fetched from there at once, without cookies. Only the storage host is logged, never the URL.
+    /// </summary>
+    private async Task<byte[]?> DownloadAsync(IBrowserFetcher browser, string id, CancellationToken ct)
     {
         var url = new Uri(_base, "maildownload/" + id);
-        var response = _browser is { } browser ? await DownloadInBrowserAsync(browser, url, ct) : await GetOverHttpAsync(url, null, ct);
-        if (response == null) return null;
-        if (response.Url != null && IsLoginPage(response.Url))
-            throw new ConnectorException("The Baader portal ended the session while downloading documents; the next sync signs in again.");
-        if (!response.IsSuccess)
+        var target = await browser.ResolveRedirectAsync(url, ct);
+        byte[] bytes;
+        if (target == null)
         {
-            _log.LogWarning("Baader document download failed: HTTP {Status}; it is retried at the next sync.", response.Status);
-            return null;
+            // no redirect: the portal answered itself (an error page, or the file)
+            var direct = await browser.GetAsync(url, "application/pdf, */*", ct);
+            EnsureSession(direct, "downloading documents");
+            if (!direct.IsSuccess)
+            {
+                _log.LogWarning("Baader document download: no storage link (HTTP {Status}); it is retried at the next sync.", direct.Status);
+                return null;
+            }
+            bytes = direct.Body;
         }
-        var bytes = response.Body;
+        else
+        {
+            if (IsSessionEnd(target))
+                throw new ConnectorException("The Baader portal ended the session while downloading documents; the next sync signs in again.");
+            if (target.Scheme != Uri.UriSchemeHttps && !target.IsLoopback)
+            {
+                _log.LogWarning("Baader document download: the storage link on {Host} is not https; skipped.", target.Host);
+                return null;
+            }
+            using var request = new HttpRequestMessage(HttpMethod.Get, target);
+            using var response = await _http.SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                _log.LogWarning("Baader document download from {Host} failed: HTTP {Status}; it is retried at the next sync.", target.Host, (int)response.StatusCode);
+                return null;
+            }
+            bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        }
         if (bytes.Length < 5 || bytes[0] != '%' || bytes[1] != 'P' || bytes[2] != 'D' || bytes[3] != 'F')
         {
             _log.LogWarning("Baader document download did not return a PDF; it is retried at the next sync.");
@@ -255,135 +324,62 @@ internal sealed partial class BaaderPortal
         return bytes;
     }
 
-    /// <summary>
-    /// The download through the signed-in page. The portal redirects to a storage host; when the page may not read that
-    /// answer (another origin without CORS), the browser resolves the short-lived storage link, which needs no session,
-    /// and it is fetched directly.
-    /// </summary>
-    private async Task<PortalResponse?> DownloadInBrowserAsync(IBrowserFetcher browser, Uri url, CancellationToken ct)
+    /// <summary>True when the page's status call lists at least one customer (values are never logged).</summary>
+    private async Task<bool> SignedInAsync(IBrowserFetcher browser, CancellationToken ct)
     {
-        var response = await browser.GetAsync(url, "application/pdf, */*", ct);
-        if (response.Status != 0) return PortalResponse.From(response);
-        var target = await browser.ResolveRedirectAsync(url, ct);
-        if (target == null || (target.Scheme != Uri.UriSchemeHttps && !target.IsLoopback))
+        var response = await browser.GetAsync(new Uri(_base, "fstatus"), "application/json", ct);
+        if (!response.IsSuccess || (response.Url != null && IsSessionEnd(response.Url)))
         {
-            _log.LogWarning("Baader document download: the browser could not read the document and found no storage link; it is retried at the next sync.");
-            return null;
+            _log.LogInformation("Baader portal status: HTTP {Status} on {Path}; no session.", response.Status, response.Url?.AbsolutePath);
+            return false;
         }
-        return await GetOverHttpAsync(target, null, ct);
-    }
-
-    private async Task<PortalResponse> GetOverHttpAsync(Uri url, string? accept, CancellationToken ct)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        if (accept != null) request.Headers.TryAddWithoutValidation("Accept", accept);
-        using var response = await _http.SendAsync(request, ct);
-        return await PortalResponse.FromAsync(response, ct);
-    }
-
-    private async Task<PortalResponse> GetAsync(Uri url, string? accept, CancellationToken ct) =>
-        _browser != null ? PortalResponse.From(await _browser.GetAsync(url, accept, ct)) : await GetOverHttpAsync(url, accept, ct);
-
-    /// <summary>The signed-in customers' ids, or null when there is no valid session.</summary>
-    private async Task<List<string>?> CustomersAsync(CancellationToken ct)
-    {
-        var response = await GetAsync(new Uri(_base, "fstatus"), "application/json", ct);
-        var final = response.Url;
-        var via = _browser != null ? "browser" : "http";
-        if (response.Status is >= 300 and < 400 or 401 or 403 || (final != null && IsLoginPage(final)))
-        {
-            _log.LogInformation("Baader portal status ({Via}): HTTP {Status} on {Path}; no session.", via, response.Status, final?.AbsolutePath);
-            return null;
-        }
-        if (!response.IsSuccess)
-            throw new ConnectorException($"The Baader portal answered HTTP {response.Status}.");
-        var text = response.Text;
-        JsonElement json;
-        try { json = JsonElement.Parse(text); }
-        catch (JsonException ex)
-        {
-            _log.LogInformation(ex, "Baader portal status ({Via}): {Path} answered {Type} ({Length} characters), not JSON.",
-                via, final?.AbsolutePath, response.ContentType, text.Length);
-            return null; // an HTML page: the sign-in
-        }
-        if (json.ValueKind != JsonValueKind.Array)
-        {
-            // Shape only, never values: which fields the portal's answer has.
-            var keys = json.ValueKind == JsonValueKind.Object ? string.Join(", ", json.EnumerateObject().Select(p => $"{p.Name}:{p.Value.ValueKind}")) : json.ValueKind.ToString();
-            _log.LogInformation("Baader portal status: unexpected answer shape ({Keys}).", keys);
-            return null;
-        }
-        var ids = new List<string>();
-        foreach (var c in json.EnumerateArray())
-        {
-            if (c.ValueKind != JsonValueKind.Object || !c.TryGetProperty("customer_id", out var id)) continue;
-            var value = id.ValueKind == JsonValueKind.Number ? id.GetRawText() : id.GetString();
-            if (!string.IsNullOrEmpty(value) && CustomerId().IsMatch(value)) ids.Add(value);
-        }
-        if (ids.Count == 0)
-            _log.LogInformation("Baader portal status: {Count} entries, none with a customer id (fields: {Keys}).", json.GetArrayLength(),
-                json.GetArrayLength() > 0 && json[0].ValueKind == JsonValueKind.Object ? string.Join(", ", json[0].EnumerateObject().Select(p => $"{p.Name}:{p.Value.ValueKind}")) : "-");
-        return ids.Count == 0 ? null : ids;
-    }
-
-    /// <summary>The page token (<c>&lt;meta name="infotok"&gt;</c>) of the signed-in dashboard, sent along with list requests.</summary>
-    private async Task<string?> TokenAsync(CancellationToken ct)
-    {
         try
         {
-            var response = await GetAsync(new Uri(_base, "dashboard"), "text/html", ct);
-            if (!response.IsSuccess) return null;
-            var m = InfoToken().Match(response.Text);
-            return m.Success ? m.Groups["v"].Value : null;
+            var json = JsonElement.Parse(response.Text);
+            var ok = json.ValueKind == JsonValueKind.Array && json.EnumerateArray().Any(c => c.ValueKind == JsonValueKind.Object && c.TryGetProperty("customer_id", out _));
+            if (!ok) _log.LogInformation("Baader portal status: unexpected answer shape ({Kind}).", json.ValueKind);
+            return ok;
         }
-        catch (HttpRequestException)
-        {
-            return null;
-        }
-    }
-
-    private JsonElement ReadJson(PortalResponse response)
-    {
-        var final = response.Url;
-        if (response.Status is 401 or 403 || (final != null && IsLoginPage(final)))
-            throw new ConnectorException("The Baader portal ended the session while listing documents; the next sync signs in again.");
-        if (!response.IsSuccess)
-            throw new ConnectorException($"The Baader portal answered HTTP {response.Status} to the document list.");
-        var text = response.Text;
-        try { return JsonElement.Parse(text); }
         catch (JsonException ex)
         {
-            _log.LogWarning(ex, "The Baader portal's document list was not JSON ({Length} characters).", text.Length);
-            throw new ConnectorException("The Baader portal answered the document list in an unexpected form.", ex);
+            _log.LogInformation(ex, "Baader portal status: {Path} answered {Type}, not JSON.", response.Url?.AbsolutePath, response.ContentType);
+            return false;
         }
     }
 
-    /// <summary>An answer of the portal, whether it came over HTTP or through the signed-in browser.</summary>
-    private sealed record PortalResponse(int Status, Uri? Url, string? ContentType, byte[] Body)
+    /// <summary>The page token (<c>&lt;meta name="infotok"&gt;</c>) of the mail page (or the dashboard).</summary>
+    private async Task<string?> TokenAsync(IBrowserFetcher browser, CancellationToken ct)
     {
-        public bool IsSuccess => Status is >= 200 and < 300;
-
-        public string Text => System.Text.Encoding.UTF8.GetString(Body);
-
-        public static PortalResponse From(BrowserFetchResponse r) => new(r.Status, r.Url, r.ContentType, r.Body);
-
-        public static async Task<PortalResponse> FromAsync(HttpResponseMessage r, CancellationToken ct) =>
-            new((int)r.StatusCode, r.RequestMessage?.RequestUri, r.Content.Headers.ContentType?.MediaType, await r.Content.ReadAsByteArrayAsync(ct));
+        foreach (var page in new[] { "mail", "dashboard" })
+        {
+            var response = await browser.GetAsync(new Uri(_base, page), "text/html", ct);
+            if (!response.IsSuccess) continue;
+            var html = response.Text;
+            if (html.Contains("mfaInputForm", StringComparison.Ordinal)) _tanRequired = true;
+            if (InfoToken().Match(html) is { Success: true } m) return TokenOf(m);
+        }
+        _log.LogInformation("Baader portal: no page token found.");
+        return null;
     }
 
-    private bool IsLoginPage(Uri uri) =>
+    private static string TokenOf(Match m) => m.Groups["a"].Success ? m.Groups["a"].Value : m.Groups["b"].Value;
+
+    private void EnsureSession(BrowserFetchResponse response, string what)
+    {
+        if (response.Status is 401 or 403 || (response.Url != null && IsSessionEnd(response.Url)))
+            throw new ConnectorException($"The Baader portal ended the session while {what}; the next sync signs in again.");
+    }
+
+    /// <summary>The sign-in page, or the start page the portal sends a session it does not accept to.</summary>
+    private bool IsSessionEnd(Uri uri) =>
         string.Equals(uri.Host, _base.Host, StringComparison.OrdinalIgnoreCase)
         && (uri.AbsolutePath.StartsWith("/login", StringComparison.OrdinalIgnoreCase)
+            || uri.AbsolutePath == "/"
             || uri.Query.Contains("page=login", StringComparison.OrdinalIgnoreCase));
-
-    private static string Shorten(string text) => text.Length <= 200 ? text : text[..200];
 
     [GeneratedRegex("^[A-Za-z0-9_-]{1,128}$", RegexOptions.None, 1000)]
     private static partial Regex DocumentId();
 
-    [GeneratedRegex("^[0-9A-Za-z]{1,32}$", RegexOptions.None, 1000)]
-    private static partial Regex CustomerId();
-
-    [GeneratedRegex("<meta\\s+content=\"(?<v>[^\"]*)\"\\s+name=\"infotok\"", RegexOptions.IgnoreCase, 1000)]
+    [GeneratedRegex("<meta\\s+(?:content=\"(?<a>[^\"]*)\"\\s+name=\"infotok\"|name=\"infotok\"\\s+content=\"(?<b>[^\"]*)\")", RegexOptions.IgnoreCase, 1000)]
     private static partial Regex InfoToken();
 }

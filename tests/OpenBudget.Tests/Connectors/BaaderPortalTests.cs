@@ -7,10 +7,9 @@ using Xunit;
 
 namespace OpenBudget.Tests.Connectors;
 
-/// <summary>The Baader portal's document download against a made-up portal (no network).</summary>
+/// <summary>The Baader portal's document download against a made-up portal (no network, no Chromium).</summary>
 public sealed class BaaderPortalTests
 {
-    private static readonly DateTime Today = new(2026, 11, 10, 12, 0, 0, DateTimeKind.Utc);
     private static readonly RemoteAccount Cash = new("cash-1", "Verrechnungskonto", RemoteAccountType.Giro, "DE00000000000000000004", "EUR");
     private static readonly RemoteAccount Depot = new("depot-1", "Depot", RemoteAccountType.Depot, null, "EUR");
     private static readonly ConnectorCredentials Credentials = new("ALICE1", "Example-Password1!");
@@ -23,124 +22,121 @@ public sealed class BaaderPortalTests
 
         public BankHttpClient Http { get; }
 
-        public TestClock Clock { get; } = new();
-
-        public BaaderPortal Client { get; }
-
         public int WebLogins { get; private set; }
 
-        public Rig()
-        {
-            Http = Portal.CreateClient();
-            Clock.Set(Today);
-            Client = new BaaderPortal(Http, Clock, Logs.CreateLogger("baader"));
-        }
+        public int TanRequests { get; private set; }
 
-        /// <summary>Drives the fetch like the sync runner; a web login is "done" by the user signing in in the browser.</summary>
+        public List<FakeBaaderPortal.FakePortalBrowser> Browsers { get; } = [];
+
+        public Rig() => Http = Portal.CreateClient();
+
+        /// <summary>
+        /// One sync's statements step, driven like the sync runner: a web login hands over a signed-in browser (or none when
+        /// the user does not sign in); a TAN question is answered with <paramref name="tan"/>.
+        /// </summary>
         public async Task<ConnectorStep<IReadOnlyList<RemoteStatement>>> FetchAsync(
-            IReadOnlySet<string>? known = null, IReadOnlyList<RemoteAccount>? accounts = null, bool userSignsIn = true)
+            IReadOnlySet<string>? known = null, IReadOnlyList<RemoteAccount>? accounts = null, bool userSignsIn = true, string tan = FakeBaaderPortal.Tan)
         {
+            var client = new BaaderPortal(Http, Logs.CreateLogger("baader")); // a new connector per sync
             ChallengeAnswer? answer = null;
-            for (var i = 0; i < 5; i++)
+            for (var i = 0; i < 6; i++)
             {
-                var step = await Client.FetchAsync(accounts ?? [Cash, Depot], known ?? new HashSet<string>(StringComparer.Ordinal), Credentials, answer, default);
+                var step = await client.FetchAsync(accounts ?? [Cash, Depot], known ?? new HashSet<string>(StringComparer.Ordinal), Credentials, answer, default);
                 if (step.Status != StepStatus.Challenge) return step;
-                Assert.Equal(ChallengeKind.WebLogin, step.Challenge!.Kind);
-                WebLogins++;
-                if (userSignsIn) Http.ReplaceCookies(step.Challenge.WebLoginSpec!, [Portal.SignIn()]);
-                answer = new ChallengeAnswer(step.Challenge, null);
+                if (step.Challenge!.Kind == ChallengeKind.WebLogin)
+                {
+                    Assert.True(step.Challenge.WebLoginSpec!.KeepBrowser);
+                    WebLogins++;
+                    FakeBaaderPortal.FakePortalBrowser? browser = null;
+                    if (userSignsIn)
+                    {
+                        browser = Portal.SignInBrowser();
+                        Browsers.Add(browser);
+                    }
+                    answer = new ChallengeAnswer(step.Challenge, null) { Browser = browser };
+                }
+                else
+                {
+                    Assert.Equal(BaaderPortal.TanReference, step.Challenge.Reference);
+                    TanRequests++;
+                    answer = new ChallengeAnswer(step.Challenge, tan);
+                }
             }
             throw new InvalidOperationException("too many rounds");
         }
     }
 
-    private static FakeBaaderPortal.Doc D(string section, int y, int m, int d, string title, string id) => new(section, new DateOnly(y, m, d), title, id);
+    private static FakeBaaderPortal.Doc D(int y, int m, int d, string title, string id) => new(new DateOnly(y, m, d), title, id);
 
     private static void Seed(FakeBaaderPortal portal) => portal.Documents.AddRange(
     [
-        D("ACCOUNT_STATEMENT", 2026, 10, 31, "Kontoauszug monatlich", "a1"),
-        D("ACCOUNT_STATEMENT", 2026, 10, 1, "Kontoauszug monatlich", "a2"),
-        D("ACCOUNT_STATEMENT", 2026, 10, 1, "Zinsstaffel", "a3"),
-        D("NOTIFICATIONS", 2026, 9, 15, "Wertpapierabrechnung Kauf", "n1"),
-        D("TAXES", 2026, 3, 1, "Jahressteuerbescheinigung 2025", "t1"), // two periods back: found by paging
-        D("MISC", 2026, 10, 14, "Quartalsaufstellung", "m1"),
+        D(2026, 10, 31, "Kontoauszug monatlich", "0123456789abcdef0123456789abcd01"),
+        D(2026, 10, 14, "Quartalsaufstellung", "0123456789abcdef0123456789abcd02"),
+        D(2026, 9, 15, "Wertpapierabrechnung Kauf", "0123456789abcdef0123456789abcd03"),
+        D(2026, 3, 1, "Jahressteuerbescheinigung 2025", "0123456789abcdef0123456789abcd04"), // only in the extended listing
+        D(2025, 1, 2, "Kontoauszug monatlich", "0123456789abcdef0123456789abcd05"), // only in the extended listing
+        D(2023, 1, 2, "Kontoauszug monatlich", "0123456789abcdef0123456789abcd06"), // older than the longest period
     ]);
 
+    private static string Id(int n) => "baader:0123456789abcdef0123456789abcd0" + n;
+
     [Fact]
-    public async Task Signs_in_through_a_web_login_with_autofill_and_downloads_every_document()
+    public async Task The_first_download_asks_for_the_tan_and_lists_the_whole_filtered_history()
     {
         var rig = new Rig();
         Seed(rig.Portal);
         var step = await rig.FetchAsync();
+
         Assert.Equal(StepStatus.Done, step.Status);
         Assert.Equal(1, rig.WebLogins);
-
+        Assert.Equal(1, rig.TanRequests);
         var docs = step.Value!;
-        Assert.Equal(["baader:a1", "baader:a2", "baader:a3", "baader:m1", "baader:n1", "baader:t1"], docs.Select(d => d.Identifier).Order(StringComparer.Ordinal));
+        Assert.Equal([Id(1), Id(2), Id(3), Id(4), Id(5)], docs.Select(d => d.Identifier).Order(StringComparer.Ordinal));
         Assert.All(docs, d => Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(d.Content, 0, 4), StringComparison.Ordinal));
-        Assert.Equal("cash-1", docs.Single(d => d.Identifier == "baader:a1").AccountRemoteId);
-        Assert.Equal(new DateOnly(2026, 10, 31), docs.Single(d => d.Identifier == "baader:a1").Date);
-        Assert.Equal("Kontoauszug monatlich", docs.Single(d => d.Identifier == "baader:a1").Name);
-        Assert.Equal("depot-1", docs.Single(d => d.Identifier == "baader:n1").AccountRemoteId);
-        Assert.Null(docs.Single(d => d.Identifier == "baader:t1").AccountRemoteId);
-        Assert.Null(docs.Single(d => d.Identifier == "baader:m1").AccountRemoteId);
+        Assert.Equal("cash-1", docs.Single(d => d.Identifier == Id(1)).AccountRemoteId);
+        Assert.Equal(new DateOnly(2026, 10, 31), docs.Single(d => d.Identifier == Id(1)).Date);
+        Assert.Equal("depot-1", docs.Single(d => d.Identifier == Id(3)).AccountRemoteId);
+        Assert.Null(docs.Single(d => d.Identifier == Id(4)).AccountRemoteId);
 
-        // The list requests carry the type, the period and the page token.
-        var first = rig.Portal.ListRequests[0];
-        Assert.Equal("ACCOUNT_STATEMENT", first["section"]);
-        Assert.Equal("10.11.2026", first["to"]);
-        Assert.Equal("12.08.2026", first["from"]);
-        Assert.Equal(FakeBaaderPortal.PageToken, first["token"]);
+        var filter = Assert.Single(rig.Portal.FilterPosts);
+        Assert.Equal("1", filter["filter"]);
+        Assert.Equal(FakeBaaderPortal.PageToken, filter["token"]);
+        Assert.Equal("period", filter["timeframe"]);
+        Assert.Equal("720", filter["periods"]);
+        Assert.False(filter.ContainsKey("unread"));
+        var check = Assert.Single(rig.Portal.TanChecks);
+        Assert.Equal(FakeBaaderPortal.Tan, check["tan"]);
+        Assert.Equal("1", check["__multipart"]);
+        Assert.Equal(5, rig.Browsers[0].Resolved); // each download's storage link came from the browser
     }
 
     [Fact]
-    public async Task The_web_login_starts_on_the_portal_login_and_fills_in_the_stored_credentials()
-    {
-        var rig = new Rig();
-        var step = await rig.Client.FetchAsync([Cash], new HashSet<string>(StringComparer.Ordinal), Credentials, null, default);
-        Assert.Equal(StepStatus.Challenge, step.Status);
-        var spec = step.Challenge!.WebLoginSpec!;
-        Assert.Equal("https://konto.baaderbank.de/login", spec.StartUrl.ToString());
-        Assert.True(spec.IsSuccess(new Uri("https://konto.baaderbank.de/dashboard"), []));
-        Assert.False(spec.IsSuccess(new Uri("https://konto.baaderbank.de/login?referer=/fstatus"), []));
-        Assert.Equal("https://konto.baaderbank.de/dashboard", spec.ResumeUrl!.ToString());
-        Assert.True(spec.KeepBrowser);
-        Assert.Equal("ALICE1", spec.Autofill!.Username);
-        Assert.Equal(BaaderPortal.UsernameSelector, spec.Autofill.UsernameSelector);
-        Assert.DoesNotContain("Example-Password1!", spec.Autofill.ToString(), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task A_stored_session_is_reused_and_known_documents_are_not_downloaded_again()
+    public async Task Later_syncs_use_the_default_listing_without_a_tan()
     {
         var rig = new Rig();
         Seed(rig.Portal);
         var first = await rig.FetchAsync();
         var known = first.Value!.Select(d => d.Identifier).ToHashSet(StringComparer.Ordinal);
+        rig.Portal.Documents.Add(D(2026, 11, 9, "Kontoauszug monatlich", "0123456789abcdef0123456789abcd07"));
+        rig.Portal.FilterPosts.Clear();
 
-        rig.Portal.Documents.Add(D("ACCOUNT_STATEMENT", 2026, 11, 9, "Kontoauszug monatlich", "a4"));
-        rig.Portal.ListRequests.Clear();
         var second = await rig.FetchAsync(known);
-        Assert.Equal(1, rig.WebLogins); // the session cookie still works
-        Assert.Equal("baader:a4", Assert.Single(second.Value!).Identifier);
-        Assert.Equal(1, rig.Portal.Downloads["a1"]);
-        // Incremental: one period per type, plus one more where the newest held something new; not the whole history.
-        Assert.Equal(BaaderPortal.Sections.Count + 1, rig.Portal.ListRequests.Count);
+
+        Assert.Equal(1, rig.TanRequests);
+        Assert.Empty(rig.Portal.FilterPosts);
+        Assert.Equal(Id(7), Assert.Single(second.Value!).Identifier);
+        Assert.Equal(1, rig.Portal.Downloads["0123456789abcdef0123456789abcd01"]);
     }
 
     [Fact]
-    public async Task The_first_download_pages_back_through_the_history_and_stops_at_the_limit()
+    public async Task A_wrong_tan_lists_nothing_and_is_reported()
     {
         var rig = new Rig();
-        rig.Portal.Documents.Add(D("TAXES", 2024, 2, 1, "Old tax certificate", "old"));
-        rig.Portal.Documents.Add(D("TAXES", 2020, 2, 1, "Too old", "ancient"));
-        var docs = (await rig.FetchAsync()).Value!;
-        Assert.Equal("baader:old", Assert.Single(docs).Identifier);
-        Assert.Equal(BaaderPortal.FirstSyncWindows * BaaderPortal.Sections.Count, rig.Portal.ListRequests.Count);
-        // Periods join without gaps or overlaps.
-        var taxes = rig.Portal.ListRequests.Where(r => r["section"] == "TAXES").ToList();
-        Assert.Equal(DateOnly.Parse(taxes[0]["from"], System.Globalization.CultureInfo.GetCultureInfo("de-DE")).AddDays(-1),
-            DateOnly.Parse(taxes[1]["to"], System.Globalization.CultureInfo.GetCultureInfo("de-DE")));
+        Seed(rig.Portal);
+        var step = await rig.FetchAsync(tan: "000000");
+        Assert.Equal(StepStatus.Done, step.Status);
+        Assert.Empty(step.Value!);
+        Assert.Contains(rig.Logs.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("after the TAN", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -149,9 +145,8 @@ public sealed class BaaderPortalTests
         var rig = new Rig();
         Seed(rig.Portal);
         var docs = (await rig.FetchAsync(accounts: [Depot])).Value!;
-        Assert.DoesNotContain(docs, d => d.Identifier == "baader:a1");
-        Assert.Equal("depot-1", docs.Single(d => d.Identifier == "baader:n1").AccountRemoteId);
-        Assert.DoesNotContain(rig.Portal.ListRequests, r => r["section"] == "ACCOUNT_STATEMENT");
+        Assert.DoesNotContain(docs, d => d.Identifier == Id(1));
+        Assert.Equal("depot-1", docs.Single(d => d.Identifier == Id(3)).AccountRemoteId);
     }
 
     [Fact]
@@ -159,20 +154,11 @@ public sealed class BaaderPortalTests
     {
         var rig = new Rig();
         Seed(rig.Portal);
-        rig.Portal.BrokenDownloads.Add("a2");
+        rig.Portal.BrokenDownloads.Add("0123456789abcdef0123456789abcd02");
         var docs = (await rig.FetchAsync()).Value!;
-        Assert.DoesNotContain(docs, d => d.Identifier == "baader:a2");
-        Assert.Contains(docs, d => d.Identifier == "baader:a3");
+        Assert.DoesNotContain(docs, d => d.Identifier == Id(2));
+        Assert.Contains(docs, d => d.Identifier == Id(1));
         Assert.Contains(rig.Logs.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("did not return a PDF", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task A_portal_error_fails_the_fetch_with_its_message()
-    {
-        var rig = new Rig();
-        rig.Portal.FailingSections.Add("TAXES");
-        var ex = await Assert.ThrowsAsync<ConnectorException>(() => rig.FetchAsync());
-        Assert.Contains("nicht verfügbar", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -184,13 +170,28 @@ public sealed class BaaderPortalTests
     }
 
     [Fact]
-    public async Task An_expired_session_asks_for_a_new_sign_in()
+    public async Task A_session_that_ends_while_listing_fails_the_fetch()
     {
         var rig = new Rig();
         Seed(rig.Portal);
-        await rig.FetchAsync();
+        var client = new BaaderPortal(rig.Http, rig.Logs.CreateLogger("baader"));
+        var ask = await client.FetchAsync([Cash], new HashSet<string>(StringComparer.Ordinal), Credentials, null, default);
+        var browser = rig.Portal.SignInBrowser();
+        await client.FetchAsync([Cash], new HashSet<string>(StringComparer.Ordinal), Credentials, new ChallengeAnswer(ask.Challenge!, null) { Browser = browser }, default);
         rig.Portal.ExpireSessions();
-        var step = await rig.FetchAsync();
+        var ex = await Assert.ThrowsAsync<ConnectorException>(() => client.FetchAsync([Cash], new HashSet<string>(StringComparer.Ordinal), Credentials,
+            new ChallengeAnswer(ConnectorChallenge.Code("TAN", reference: BaaderPortal.TanReference), FakeBaaderPortal.Tan), default));
+        Assert.Contains("ended the session", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_expired_session_asks_for_a_new_sign_in_at_the_next_sync()
+    {
+        var rig = new Rig();
+        Seed(rig.Portal);
+        var first = await rig.FetchAsync();
+        rig.Portal.ExpireSessions();
+        var step = await rig.FetchAsync(first.Value!.Select(d => d.Identifier).ToHashSet(StringComparer.Ordinal));
         Assert.Equal(StepStatus.Done, step.Status);
         Assert.Equal(2, rig.WebLogins);
     }
@@ -201,81 +202,40 @@ public sealed class BaaderPortalTests
         var rig = new Rig();
         Seed(rig.Portal);
         await rig.FetchAsync();
-        Assert.DoesNotContain("Example-Password1!", rig.Logs.All, StringComparison.Ordinal);
-        Assert.DoesNotContain("secretvalue", rig.Logs.All, StringComparison.Ordinal);
-        Assert.DoesNotContain(FakeBaaderPortal.PageToken, rig.Logs.All, StringComparison.Ordinal);
-    }
-
-    /// <summary>Like the sync runner with a kept browser: the answer to the web login carries the signed-in browser.</summary>
-    private static async Task<ConnectorStep<IReadOnlyList<RemoteStatement>>> FetchThroughBrowserAsync(Rig rig, FakeBaaderPortal.FakePortalBrowser browser)
-    {
-        var step = await rig.Client.FetchAsync([Cash, Depot], new HashSet<string>(StringComparer.Ordinal), Credentials, null, default);
-        Assert.Equal(StepStatus.Challenge, step.Status);
-        var spec = step.Challenge!.WebLoginSpec!;
-        Assert.True(spec.KeepBrowser);
-        return await rig.Client.FetchAsync([Cash, Depot], new HashSet<string>(StringComparer.Ordinal), Credentials,
-            new ChallengeAnswer(step.Challenge, null) { Browser = browser }, default);
-    }
-
-    [Fact]
-    public async Task A_session_that_works_only_in_the_browser_lists_and_downloads_through_the_kept_browser()
-    {
-        var rig = new Rig();
-        Seed(rig.Portal);
-        rig.Portal.BrowserOnly = true;
-        using var browser = rig.Portal.SignInBrowser();
-
-        var step = await FetchThroughBrowserAsync(rig, browser);
-
-        Assert.Equal(StepStatus.Done, step.Status);
-        Assert.Equal(6, step.Value!.Count);
-        Assert.All(step.Value, d => Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(d.Content, 0, 4), StringComparison.Ordinal));
-        Assert.Equal(FakeBaaderPortal.PageToken, rig.Portal.ListRequests[0]["token"]);
-        Assert.Equal(0, browser.Resolved);
-        Assert.DoesNotContain(FakeBaaderPortal.CustomerId, rig.Logs.All, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task A_storage_the_page_may_not_read_is_downloaded_from_the_link_the_browser_resolves()
-    {
-        var rig = new Rig();
-        Seed(rig.Portal);
-        rig.Portal.BrowserOnly = true;
-        using var browser = rig.Portal.SignInBrowser();
-        browser.StorageBlocked = true;
-
-        var step = await FetchThroughBrowserAsync(rig, browser);
-
-        Assert.Equal(6, step.Value!.Count);
-        Assert.Equal(6, browser.Resolved);
-    }
-
-    [Fact]
-    public async Task A_closed_browser_ends_the_fetch_with_a_connector_error()
-    {
-        var rig = new Rig();
-        Seed(rig.Portal);
-        rig.Portal.BrowserOnly = true;
-        using var browser = rig.Portal.SignInBrowser();
-        var step = await rig.Client.FetchAsync([Cash], new HashSet<string>(StringComparer.Ordinal), Credentials, null, default);
-        var answer = new ChallengeAnswer(step.Challenge!, null) { Browser = browser };
-        browser.IsOpen = false;
-        // a closed browser is not used: the HTTP session does not work, so the sign-in counts as incomplete
-        await Assert.ThrowsAsync<ConnectorException>(() => rig.Client.FetchAsync([Cash], new HashSet<string>(StringComparer.Ordinal), Credentials, answer, default));
+        var all = string.Join("\n", rig.Logs.Entries.Select(e => e.Message));
+        Assert.DoesNotContain("Example-Password1!", all, StringComparison.Ordinal);
+        Assert.DoesNotContain("secretvalue", all, StringComparison.Ordinal);
+        Assert.DoesNotContain(FakeBaaderPortal.PageToken, all, StringComparison.Ordinal);
+        Assert.DoesNotContain(FakeBaaderPortal.Tan, all, StringComparison.Ordinal);
+        Assert.DoesNotContain(FakeBaaderPortal.Signature, all, StringComparison.Ordinal);
+        Assert.DoesNotContain(FakeBaaderPortal.CustomerId, all, StringComparison.Ordinal);
+        Assert.DoesNotContain("abcd01", all, StringComparison.Ordinal);
     }
 
     [Fact]
     public void Rows_parse_and_ignore_malformed_entries()
     {
         var json = JsonElement.Parse("""[{"2026-10-01":[[1,"Statement","abc123"],[0,"Bad id","../x"],["short"]],"not-a-date":[[1,"x","y"]]}]""");
-        var doc = Assert.Single(BaaderPortal.ParseRows(json, "X"));
+        var doc = Assert.Single(BaaderPortal.ParseRows(json));
         Assert.Equal(("abc123", new DateOnly(2026, 10, 1), "Statement"), (doc.Id, doc.Date, doc.Title));
-        Assert.Empty(BaaderPortal.ParseRows(JsonElement.Parse("""{"do":"error","title":"Aktuell sind in Ihrem Postfach keine Dokumente hinterlegt"}"""), "X"));
-        Assert.Throws<ConnectorException>(() => BaaderPortal.ParseRows(JsonElement.Parse("""{"do":"redirect"}"""), "X"));
+        Assert.Empty(BaaderPortal.ParseRows(JsonElement.Parse("[]")));
+        string? shape = null;
+        Assert.Empty(BaaderPortal.ParseRows(JsonElement.Parse("""{"do":"mfa"}"""), s => shape = s));
+        Assert.Equal("do:String", shape);
     }
 
+    [Theory]
+    [InlineData("Kontoauszug monatlich", "Cash")]
+    [InlineData("Zinsstaffel", "Cash")]
+    [InlineData("Wertpapierabrechnung Kauf", "Depot")]
+    [InlineData("Dividendengutschrift", "Depot")]
+    [InlineData("Jahressteuerbescheinigung 2025", "Login")]
+    [InlineData("Quartalsaufstellung", "Login")]
+    public void Documents_belong_to_an_account_by_their_description(string title, string target) =>
+        Assert.Equal(target, BaaderPortal.TargetOf(title).ToString());
+
     [Fact]
-    public void Baader_now_offers_statements()
+    public void Baader_offers_statements()
     {
         var registration = BaaderConnector.Registration(new FinTsOptions("X", "1"));
         Assert.True(registration.Statements);

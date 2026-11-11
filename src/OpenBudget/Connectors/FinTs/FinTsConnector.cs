@@ -136,7 +136,7 @@ public sealed class BaaderConnector : FinTsConnector
     public override Task<ConnectorStep<IReadOnlyList<RemoteStatement>>> FetchStatementsAsync(
         IReadOnlyList<RemoteAccount> accounts, IReadOnlySet<string> knownIdentifiers, ChallengeAnswer? answer, CancellationToken ct)
     {
-        _portal ??= new BaaderPortal(Context.Http, Context.Clock, Context.Logger, _portalUri);
+        _portal ??= new BaaderPortal(Context.Http, Context.Logger, _portalUri);
         return _portal.FetchAsync(accounts, knownIdentifiers, Credentials, answer, ct);
     }
 }

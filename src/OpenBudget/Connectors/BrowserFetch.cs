@@ -9,6 +9,9 @@ public sealed record BrowserFetchRequest(string Method, Uri Url)
     public IReadOnlyDictionary<string, string> Headers { get; init; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
     public string? Body { get; init; }
+
+    /// <summary>When set, the body is a multipart form (the page's <c>FormData</c>) with these fields; <see cref="Body"/> is ignored.</summary>
+    public IReadOnlyDictionary<string, string>? Form { get; init; }
 }
 
 /// <summary>
@@ -36,9 +39,8 @@ public interface IBrowserFetcher
     Task<BrowserFetchResponse> SendAsync(BrowserFetchRequest request, CancellationToken ct);
 
     /// <summary>
-    /// Loads <paramref name="url"/> as a top-level navigation in a second tab of the signed-in browser and returns the first
-    /// address it is redirected to on another host, without loading that one (a short-lived download link, say); null when
-    /// it does not leave the host.
+    /// Requests <paramref name="url"/> from the signed-in page and returns the Location of its redirect without following
+    /// it (a short-lived download link, say); null when it answers without a redirect.
     /// </summary>
     Task<Uri?> ResolveRedirectAsync(Uri url, CancellationToken ct);
 }
@@ -52,6 +54,11 @@ public static class BrowserFetcherExtensions
                 ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Accept"] = accept },
         }, ct);
+
+    /// <summary>A POST with a multipart body built like the page's own <c>FormData</c>.</summary>
+    public static Task<BrowserFetchResponse> PostMultipartAsync(
+        this IBrowserFetcher browser, Uri url, IReadOnlyDictionary<string, string> fields, IReadOnlyDictionary<string, string> headers, CancellationToken ct) =>
+        browser.SendAsync(new BrowserFetchRequest("POST", url) { Headers = headers, Form = fields }, ct);
 
     public static Task<BrowserFetchResponse> PostFormAsync(
         this IBrowserFetcher browser, Uri url, IEnumerable<KeyValuePair<string, string>> fields, IReadOnlyDictionary<string, string> headers, CancellationToken ct)
