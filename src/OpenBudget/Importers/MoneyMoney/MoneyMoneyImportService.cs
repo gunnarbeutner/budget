@@ -272,6 +272,7 @@ public class MoneyMoneyImportService
                   AND account_key NOT IN (SELECT Id FROM accounts WHERE SourceId = {0} AND provider <> {1})
                 """,
                 new object[] { sourceId, AccountProviders.MoneyMoney }, ct);
+            await RelocateKeptPortfolioChartAsync(db, sourceId, ct);
             await db.Database.ExecuteSqlRawAsync(
                 """
                 DELETE FROM holdings
@@ -863,6 +864,38 @@ public class MoneyMoneyImportService
             cmd.Parameters["$purchase"].Value = r.IsDBNull(11) ? DBNull.Value : r.GetDouble(11);
             cmd.Parameters["$asset_class"].Value = r.IsDBNull(12) ? DBNull.Value : r.GetInt64(12);
         }, SecurityInsertParameters, ct, skipRow: r => foreignAccountIds.Contains(SourceScope.Namespace(sourceId, r.GetInt64(1))));
+    }
+
+    /// <summary>
+    /// Portfolio history kept for connector-owned accounts may still carry ids from an earlier MoneyMoney upload; MoneyMoney
+    /// renumbers that table, so such ids would collide with the upload's rows. They move to the connector half of the id
+    /// space (<see cref="BankTransactionStore.ConnectorRowBase"/> and up), after any ids already there.
+    /// </summary>
+    private static async Task RelocateKeptPortfolioChartAsync(BudgetDbContext db, int sourceId, CancellationToken ct)
+    {
+        var lowest = SourceScope.Namespace(sourceId, 0);
+        var connectorBase = SourceScope.Namespace(sourceId, BankTransactionStore.ConnectorRowBase);
+        var next = SourceScope.Namespace(sourceId + 1, 0);
+        var conn = db.Database.GetDbConnection();
+        var stale = new List<long>();
+        long highest = connectorBase - 1;
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
+            cmd.CommandText = "SELECT Id FROM portfolio_chart WHERE SourceId = $sid ORDER BY Id";
+            var p = cmd.CreateParameter(); p.ParameterName = "$sid"; p.Value = sourceId; cmd.Parameters.Add(p);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var id = reader.GetInt64(0);
+                if (id >= lowest && id < connectorBase) stale.Add(id);
+                else if (id >= connectorBase && id < next) highest = Math.Max(highest, id);
+            }
+        }
+        foreach (var id in stale)
+        {
+            await db.Database.ExecuteSqlRawAsync("UPDATE portfolio_chart SET Id = {0} WHERE Id = {1}", new object[] { ++highest, id }, ct);
+        }
     }
 
     private static async Task<int> CopyPortfolioChartAsync(SqliteConnection src, BudgetDbContext db, int sourceId, HashSet<long> foreignAccountIds, CancellationToken ct)
