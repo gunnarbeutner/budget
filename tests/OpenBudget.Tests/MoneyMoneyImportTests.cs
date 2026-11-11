@@ -473,4 +473,25 @@ public sealed class MoneyMoneyImportTests : IDisposable
         Assert.Null(row.MandateReference);
         Assert.Null(row.ValueTimestamp);
     }
+
+    [Fact]
+    public async Task An_account_closed_in_MoneyMoney_is_imported_closed()
+    {
+        await using var t = new TestDb();
+        var path = Path.Combine(Path.GetTempPath(), $"ob-mm-{Guid.NewGuid():N}.sqlite");
+        _files.Add(path);
+        Exec(path, """
+            CREATE TABLE accounts (name TEXT, iban TEXT, currency TEXT, type INTEGER, portfolio INTEGER, balances TEXT, sort INTEGER, refresh_tsp INTEGER, error TEXT, group_key INTEGER, refresh INTEGER);
+            CREATE TABLE category_groups (name TEXT, group_key INTEGER, sort INTEGER, color TEXT);
+            CREATE TABLE categories (name TEXT, type INTEGER, color TEXT, rules TEXT, group_key INTEGER, sort INTEGER);
+            CREATE TABLE transactions (local_account_key INTEGER, amount REAL, currency TEXT, timestamp INTEGER, name TEXT, comment TEXT, category_key INTEGER, checkmark INTEGER, splitted INTEGER);
+            INSERT INTO accounts (name, currency, type, balances, refresh) VALUES ('Open account', 'EUR', 1, '', 3);
+            INSERT INTO accounts (name, currency, type, balances, refresh) VALUES ('Closed account', 'EUR', 1, '', 19);
+            INSERT INTO accounts (name, currency, type, balances, refresh) VALUES ('Offline account', 'EUR', 6, '', 0);
+            """);
+        await ImportAsync(t, path);
+        await using var db = await t.Factory.CreateDbContextAsync();
+        var closed = await db.Accounts.IgnoreQueryFilters().OrderBy(a => a.Id).Select(a => new { a.Name, a.Closed }).ToListAsync();
+        Assert.Equal(["Open account:False", "Closed account:True", "Offline account:False"], closed.Select(a => $"{a.Name}:{a.Closed}"));
+    }
 }

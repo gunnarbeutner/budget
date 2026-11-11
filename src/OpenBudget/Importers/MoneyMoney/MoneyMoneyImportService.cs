@@ -58,7 +58,7 @@ public class MoneyMoneyImportService
     // the arrays aren't reallocated on every import (CA1861); they mirror the VALUES lists below.
     private static readonly string[] AccountInsertParameters =
     {
-        "$id", "$sid", "$name", "$iban", "$currency", "$type", "$portfolio", "$balances", "$sort", "$refresh_tsp", "$error", "$group_key", "$provider"
+        "$id", "$sid", "$name", "$iban", "$currency", "$type", "$portfolio", "$balances", "$sort", "$refresh_tsp", "$error", "$group_key", "$provider", "$closed"
     };
     private static readonly string[] AccountGroupInsertParameters =
     {
@@ -222,7 +222,7 @@ public class MoneyMoneyImportService
             var providers = await db.Accounts
                 .Where(a => a.SourceId == sourceId)
                 .ToDictionaryAsync(a => a.Id, a => a.Provider, ct);
-            // The closed flag is OpenBudget's: remembered like the provider and restored after the accounts are copied.
+            // Closed accounts stay closed: the flag is remembered like the provider and restored after the accounts are copied (MoneyMoney's own closed bit is added while copying).
             var closedAccountIds = await db.Accounts.Where(a => a.SourceId == sourceId && a.Closed).Select(a => a.Id).ToListAsync(ct);
             var foreignAccountIds = providers
                 .Where(p => p.Value != AccountProviders.MoneyMoney)
@@ -316,7 +316,6 @@ public class MoneyMoneyImportService
                 string.Join(", ", (await ColumnsAsync(src, "transactions", ct)).Order(StringComparer.OrdinalIgnoreCase)));
             _logger.LogInformation("MoneyMoney accounts columns: {Columns}",
                 string.Join(", ", (await ColumnsAsync(src, "accounts", ct)).Order(StringComparer.OrdinalIgnoreCase)));
-            await LogAccountFlagsAsync(src, ct);
             int txCount = await CopyTransactionsAsync(src, db, sourceId, foreignAccountIds, ct);
             if (removedCategoryIds.Count > 0)
             {
@@ -484,19 +483,8 @@ public class MoneyMoneyImportService
     /// optional columns (e.g. SEPA <c>purpose</c>) backward-compatible with older MoneyMoney
     /// snapshots that may not carry them.
     /// </summary>
-    /// <summary>Which accounts carry MoneyMoney's closing date and refresh switch (row ids and values only, no names).</summary>
-    private async Task LogAccountFlagsAsync(SqliteConnection src, CancellationToken ct)
-    {
-        var columns = await ColumnsAsync(src, "accounts", ct);
-        if (!columns.Contains("cancel_tsp") || !columns.Contains("refresh")) return;
-        await using var cmd = src.CreateCommand();
-        cmd.CommandText = "SELECT rowid, COALESCE(CAST(cancel_tsp AS TEXT), '-'), COALESCE(CAST(refresh AS TEXT), '-') FROM accounts ORDER BY rowid";
-        var rows = new List<string>();
-        await using var r = await cmd.ExecuteReaderAsync(ct);
-        while (await r.ReadAsync(ct))
-            rows.Add($"{r.GetInt64(0)}:{r.GetString(1)}/{r.GetString(2)}");
-        _logger.LogInformation("MoneyMoney accounts (rowid:cancel_tsp/refresh): {Rows}", string.Join(" ", rows));
-    }
+    /// <summary>The bit of MoneyMoney's accounts.refresh that marks a closed account.</summary>
+    internal const int ClosedRefreshBit = 16;
 
     private static async Task<bool> ColumnExistsAsync(SqliteConnection src, string table, string column, CancellationToken ct) =>
         (await ColumnsAsync(src, table, ct)).Contains(column);
@@ -526,8 +514,10 @@ public class MoneyMoneyImportService
         // so we degrade cleanly if a forked schema ever drops it.
         bool hasGroupKey = await ColumnExistsAsync(src, "accounts", "group_key", ct);
         string groupKeyExpr = hasGroupKey ? "group_key" : "NULL AS group_key";
+        // MoneyMoney's refresh bit mask: 16 marks an account the user closed there.
+        string closedExpr = await ColumnExistsAsync(src, "accounts", "refresh", ct) ? $"(COALESCE(refresh, 0) & {ClosedRefreshBit}) <> 0" : "0";
         string select = $"""
-            SELECT rowid, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, {groupKeyExpr}
+            SELECT rowid, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, {groupKeyExpr}, {closedExpr}
             FROM accounts
             """;
         // After a structure takeover an upload only inserts accounts it newly reports (ungrouped, unsorted: they land
@@ -535,14 +525,15 @@ public class MoneyMoneyImportService
         string insert = keepStructure
             ? """
               INSERT INTO accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider, closed)
-              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider, 0)
+              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider, $closed)
               ON CONFLICT(Id) DO UPDATE SET iban = excluded.iban, currency = excluded.currency, type = excluded.type,
-                  portfolio = excluded.portfolio, balances = excluded.balances, refresh_tsp = excluded.refresh_tsp, error = excluded.error
+                  portfolio = excluded.portfolio, balances = excluded.balances, refresh_tsp = excluded.refresh_tsp, error = excluded.error,
+                  closed = accounts.closed OR excluded.closed
               WHERE accounts.provider = 'moneymoney'
               """
             : """
               INSERT INTO accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider, closed)
-              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider, 0)
+              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider, $closed)
               """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {
@@ -560,6 +551,8 @@ public class MoneyMoneyImportService
             cmd.Parameters["$sort"].Value = r.IsDBNull(7) ? DBNull.Value : r.GetInt64(7);
             cmd.Parameters["$refresh_tsp"].Value = r.IsDBNull(8) ? DBNull.Value : r.GetInt64(8);
             cmd.Parameters["$error"].Value = r.IsDBNull(9) ? DBNull.Value : r.GetString(9);
+            // only accounts MoneyMoney still owns take its closed state; the others keep OpenBudget's (restored below)
+            cmd.Parameters["$closed"].Value = providers.GetValueOrDefault(id, AccountProviders.MoneyMoney) == AccountProviders.MoneyMoney && r.GetInt64(11) != 0;
             cmd.Parameters["$group_key"].Value = r.IsDBNull(10)
                 ? DBNull.Value
                 : NamespaceParentKey(sourceId, r.GetInt64(10));
