@@ -2,11 +2,11 @@ syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
 
-// Minimal subset of PortfolioPerformance's client.proto — only the messages and fields the
-// taxonomy and lot import read. Field numbers MUST match the upstream schema
+// Subset of PortfolioPerformance's client.proto — only the messages and fields the taxonomy, lot
+// and portfolio-account import read. Field numbers MUST match the upstream schema
 // (portfolio-performance/portfolio, name.abuchen.portfolio/src/.../model/client.proto); proto3
 // silently skips the many fields we omit (prices, transactions, accounts, well-known-type
-// fields, …), which also keeps us off the google.protobuf.Timestamp/Any/Struct imports.
+// fields, …), which also keeps us off the google.protobuf.Any/Struct imports.
 //
 // The on-disk PP file is a ZIP whose single "data.portfolio" entry is the 6-byte ASCII signature
 // "PPPBV1" followed immediately by a serialized PClient. Strip the signature, then parse PClient.
@@ -22,6 +22,12 @@ message PFullHistoricalPrice {
   int64 close = 2;  // price ×1e8
 }
 
+// One historical close of a security (PSecurity.prices).
+message PHistoricalPrice {
+  int64 date = 1;   // epoch day
+  int64 close = 2;  // price ×1e8
+}
+
 message PSecurity {
   string uuid = 1;          // referenced by Assignment.investmentVehicle
   string name = 3;
@@ -29,17 +35,42 @@ message PSecurity {
   string isin = 7;          // join key to mm_securities; empty for crypto
   string tickerSymbol = 8;
   string wkn = 9;
+  repeated PHistoricalPrice prices = 13;  // price history, ascending by date
   PFullHistoricalPrice latest = 16;   // latest quote (online feed); absent for some securities
+}
+
+// A PortfolioPerformance cash account (deposit account); referenced by PTransaction.account.
+message PAccount {
+  string uuid = 1;
+  string name = 2;
+  string currencyCode = 3;
+  string note = 4;
+  bool isRetired = 5;
 }
 
 message PPortfolio {
   string uuid = 1;            // referenced by PTransaction.portfolio / .otherPortfolio
   string name = 2;            // depot name, e.g. "comdirect Depot" — matched to an MM depot account
+  string note = 3;
+  bool isRetired = 4;
+  string referenceAccount = 5;  // a PAccount.uuid
 }
 
-// One entry of PortfolioPerformance's unified client-level transaction ledger. We read only the
-// security-bearing rows (purchases, sales, deliveries, transfers) to reconstruct FIFO lots; cash
-// movements (deposits, dividends, fees, …) are skipped. Money is scaled ×100 (cents), shares ×1e8.
+// The breakdown of a transaction's amount (PTransactionUnit).
+message PTransactionUnit {
+  enum Type {
+    GROSS_VALUE = 0;
+    TAX = 1;
+    FEE = 2;
+  }
+  Type type = 1;
+  int64 amount = 2;          // cents
+  string currencyCode = 3;
+}
+
+// One entry of PortfolioPerformance's unified client-level transaction ledger: security movements
+// (purchases, sales, deliveries, transfers) and cash movements (deposits, dividends, fees, …).
+// Money is scaled ×100 (cents), shares ×1e8.
 message PTransaction {
   enum Type {
     PURCHASE = 0;
@@ -61,13 +92,17 @@ message PTransaction {
 
   string uuid = 1;
   Type type = 2;
+  optional string account = 3;            // cash account (source side for a CASH_TRANSFER)
   optional string portfolio = 4;          // owning depot (source side for a transfer)
+  optional string otherAccount = 5;       // target account for a CASH_TRANSFER
   optional string otherPortfolio = 6;     // target depot for a SECURITY_TRANSFER
   google.protobuf.Timestamp date = 9;
   string currencyCode = 10;
   int64 amount = 11;                       // total transaction value incl. fees (cents)
   optional int64 shares = 12;              // ×1e8
+  optional string note = 13;
   optional string security = 14;           // a PSecurity.uuid; absent for pure cash transactions
+  repeated PTransactionUnit units = 15;    // fee / tax / gross-value breakdown of the amount
 }
 
 message PTaxonomy {
@@ -92,7 +127,9 @@ message PTaxonomy {
 message PClient {
   int32 version = 1;
   repeated PSecurity securities = 2;
+  repeated PAccount accounts = 3;
   repeated PPortfolio portfolios = 4;
   repeated PTransaction transactions = 5;
   repeated PTaxonomy taxonomies = 8;
+  string baseCurrency = 12;
 }
