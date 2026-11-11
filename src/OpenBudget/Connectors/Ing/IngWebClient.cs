@@ -77,8 +77,12 @@ internal sealed class IngWebClient
         }
 
         var shown = _clock.GetTimestamp();
-        var form = IngHtml.FormWith(page.Html, SecretField)
-            ?? throw new ConnectorException("ING's sign-in page looks different than expected; the web banking part cannot sign in.");
+        var form = IngHtml.FormWith(page.Html, SecretField);
+        if (form == null)
+        {
+            _log.LogWarning("ING web banking: no sign-in form where one was expected: {Shape}", PageShape(page));
+            throw new ConnectorException("ING's sign-in page looks different than expected; the web banking part cannot sign in.");
+        }
         _log.LogInformation("ING web banking: submitting the sign-in form.");
         var fields = Without(form.Fields, AliasField, SecretField);
         fields.Add(new HtmlField(AliasField, credentials.Username));
@@ -115,7 +119,10 @@ internal sealed class IngWebClient
             page = await FollowAsync(await GetAsync(new Uri(BankingBase, "obligo/"), ct), ct);
         }
         if (!IngHtml.IsOverview(page.Html))
+        {
+            _log.LogWarning("ING web banking: after the sign-in the page is not the overview: {Shape}", PageShape(page));
             throw new ConnectorException("After the sign-in ING shows a page that needs your attention (a notice or new terms?). Please sign in once at banking.ing.de and confirm it.");
+        }
         return _overview = page;
     }
 
@@ -496,5 +503,30 @@ internal sealed class IngWebClient
             page = await GetAsync(Resolve(page.Url, next), ct);
         }
         throw new ConnectorException("ING's web banking kept forwarding without reaching a page.");
+    }
+
+    /// <summary>
+    /// The structure of an unexpected page for the log: path, title, headings, form ids and button labels, digits masked.
+    /// No field values and no body text.
+    /// </summary>
+    private static string PageShape(IngPage page)
+    {
+        static string Clean(string text) =>
+            System.Text.RegularExpressions.Regex.Replace(
+                System.Text.RegularExpressions.Regex.Replace(WebUtility.HtmlDecode(text), "<[^>]{0,500}>", " ", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1)),
+                @"\s+", " ", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1)).Trim();
+        static IEnumerable<string> All(string html, string pattern) =>
+            System.Text.RegularExpressions.Regex.Matches(html, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline, TimeSpan.FromSeconds(1))
+                .Select(m => Clean(m.Groups[1].Value)).Where(t => t.Length > 0).Select(t => t.Length > 80 ? t[..80] : t);
+        var html = page.Html;
+        var parts = new List<string>
+        {
+            "path=" + page.Url.AbsolutePath,
+            "title=" + string.Join(" / ", All(html, "<title[^>]{0,200}>(.{0,300}?)</title>")),
+            "headings=" + string.Join(" | ", All(html, "<h[1-3][^>]{0,300}>(.{0,400}?)</h[1-3]>").Take(6)),
+            "forms=" + string.Join(",", All(html, "<form[^>]{0,500}?\\sid=\"([^\"]{1,80})\"").Take(6)),
+            "buttons=" + string.Join(" | ", All(html, "<(?:button|a)[^>]{0,500}class=\"[^\"]{0,200}(?:button|btn)[^\"]{0,200}\"[^>]{0,500}>(.{0,300}?)</(?:button|a)>").Take(10)),
+        };
+        return System.Text.RegularExpressions.Regex.Replace(string.Join("; ", parts), "[0-9]", "#", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1));
     }
 }
