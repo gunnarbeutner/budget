@@ -8,8 +8,8 @@ namespace OpenBudget.Tests;
 
 /// <summary>
 /// The project switcher's context menu operations at the service level: drag-and-drop reorder (MoveProjectToAsync),
-/// rename (UpdateProjectAsync), and who may reorder / rename / delete — reordering and deleting are the owner's,
-/// renaming is open to editors, viewers can do none of it.
+/// rename (UpdateProjectAsync), and who may reorder / rename / delete — every user reorders their own list of
+/// the projects they see, deleting is the owner's, renaming is open to editors.
 /// </summary>
 public sealed class ProjectManagementTests
 {
@@ -87,50 +87,109 @@ public sealed class ProjectManagementTests
 
     // ---- access ----
 
-    [Fact]
-    public async Task The_owner_reorders_only_among_own_projects()
+    private static async Task<int[]> ListOfAsync(BankWorld w, string user, params int[] ids)
+        => (await w.View(user).Projects.GetProjectsAsync()).Select(p => p.Id).Where(ids.Contains).ToArray();
+
+    // Alice owns a1 and a2, Bob owns b1; both of Alice's projects are shared with Bob.
+    private static async Task<(BankWorld W, int A1, int A2, int B1)> SharedWorldAsync(ProjectRole role = ProjectRole.Editor)
     {
-        await using var w = await BankWorld.CreateAsync();
+        var w = await BankWorld.CreateAsync();
         var a1 = await NewProjectAsync(w, Alice, "Household");
         var a2 = await NewProjectAsync(w, Alice, "Holidays");
         var b1 = await NewProjectAsync(w, Bob, "Example Market");
-        var alice = w.View(Alice);
+        await w.View(Alice).Sharing.SetShareAsync(a1, Bob, role);
+        await w.View(Alice).Sharing.SetShareAsync(a2, Bob, role);
+        // Bob's list ends with a1, a2, b1 (dragging onto the last row lands a project at the end).
+        var bob = w.View(Bob).Projects;
+        foreach (var id in new[] { a1, a2, b1 })
+        {
+            var last = (await bob.GetProjectsAsync())[^1].Id;
+            if (last != id) await bob.MoveProjectToAsync(id, last);
+        }
+        return (w, a1, a2, b1);
+    }
 
-        await alice.Projects.MoveProjectToAsync(a2, a1);
-        Assert.True((await LoadAsync(w, a2))!.SortOrder < (await LoadAsync(w, a1))!.SortOrder);
-        var bobOrder = (await LoadAsync(w, b1))!.SortOrder;
+    [Fact]
+    public async Task Each_user_orders_a_shared_project_independently()
+    {
+        var (w, a1, a2, b1) = await SharedWorldAsync();
+        await using var _ = w;
+        Assert.Equal(new[] { a1, a2 }, await ListOfAsync(w, Alice, a1, a2));
+        Assert.Equal(new[] { a1, a2, b1 }, await ListOfAsync(w, Bob, a1, a2, b1));
 
-        await alice.Projects.MoveProjectAsync(a1, -1);
-        Assert.Equal(bobOrder, (await LoadAsync(w, b1))!.SortOrder);
+        await w.View(Bob).Projects.MoveProjectToAsync(b1, a1);
+        await w.View(Alice).Projects.MoveProjectToAsync(a2, a1);
+
+        Assert.Equal(new[] { b1, a1, a2 }, await ListOfAsync(w, Bob, a1, a2, b1));
+        Assert.Equal(new[] { a2, a1 }, await ListOfAsync(w, Alice, a1, a2));
+        // The projects themselves keep their creation order.
+        Assert.True((await LoadAsync(w, a1))!.SortOrder < (await LoadAsync(w, a2))!.SortOrder);
     }
 
     [Theory]
     [InlineData(ProjectRole.Editor)]
     [InlineData(ProjectRole.Viewer)]
-    public async Task A_sharee_cannot_reorder_or_delete(ProjectRole role)
+    public async Task A_sharee_reorders_her_own_list_but_cannot_delete(ProjectRole role)
     {
-        await using var w = await BankWorld.CreateAsync();
-        var a1 = await NewProjectAsync(w, Alice, "Household");
-        var a2 = await NewProjectAsync(w, Alice, "Holidays");
-        await w.View(Alice).Sharing.SetShareAsync(a1, Bob, role);
-        await w.View(Alice).Sharing.SetShareAsync(a2, Bob, role);
+        var (w, a1, a2, b1) = await SharedWorldAsync(role);
+        await using var _ = w;
         var bob = w.View(Bob);
 
-        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Projects.MoveProjectAsync(a2, -1));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Projects.MoveProjectToAsync(a2, a1));
+        await bob.Projects.MoveProjectAsync(a2, -1);
+        Assert.Equal(new[] { a2, a1, b1 }, await ListOfAsync(w, Bob, a1, a2, b1));
+        await bob.Projects.MoveProjectToAsync(a1, b1);
+        Assert.Equal(new[] { a2, b1, a1 }, await ListOfAsync(w, Bob, a1, a2, b1));
+        Assert.Equal(new[] { a1, a2 }, await ListOfAsync(w, Alice, a1, a2));
+
         await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Projects.DeleteProjectAsync(a1));
         Assert.NotNull(await LoadAsync(w, a1));
     }
 
     [Fact]
-    public async Task The_owner_cannot_drop_an_own_project_onto_a_shared_one()
+    public async Task The_owner_reordering_leaves_the_sharees_list_alone()
     {
-        await using var w = await BankWorld.CreateAsync();
-        var a1 = await NewProjectAsync(w, Alice, "Household");
-        var b1 = await NewProjectAsync(w, Bob, "Example Market");
-        await w.View(Bob).Sharing.SetShareAsync(b1, Alice, ProjectRole.Editor);
+        var (w, a1, a2, b1) = await SharedWorldAsync();
+        await using var _ = w;
+        await w.View(Bob).Projects.MoveProjectAsync(a1, 1);
+        Assert.Equal(new[] { a2, a1, b1 }, await ListOfAsync(w, Bob, a1, a2, b1));
 
-        await Assert.ThrowsAsync<AccessDeniedException>(() => w.View(Alice).Projects.MoveProjectToAsync(a1, b1));
+        await w.View(Alice).Projects.MoveProjectAsync(a2, 1);
+        await w.View(Alice).Projects.MoveProjectToAsync(a2, a1);
+        Assert.Equal(new[] { a2, a1, b1 }, await ListOfAsync(w, Bob, a1, a2, b1));
+    }
+
+    [Fact]
+    public async Task A_new_project_lands_after_the_ordered_ones()
+    {
+        var (w, a1, a2, _) = await SharedWorldAsync();
+        await using var __ = w;
+        await w.View(Alice).Projects.MoveProjectAsync(a2, -1);
+        var a3 = await NewProjectAsync(w, Alice, "Example Savings");
+        Assert.Equal(new[] { a2, a1, a3 }, await ListOfAsync(w, Alice, a1, a2, a3));
+    }
+
+    [Fact]
+    public async Task Losing_access_or_deleting_drops_the_order_rows()
+    {
+        var (w, a1, a2, b1) = await SharedWorldAsync();
+        await using var _ = w;
+        await w.View(Bob).Projects.MoveProjectAsync(a2, -1);
+        await w.View(Alice).Sharing.RevokeShareAsync(a2, Bob);
+        Assert.Equal(new[] { a1, b1 }, await ListOfAsync(w, Bob, a1, a2, b1));
+        await w.View(Alice).Projects.DeleteProjectAsync(a1);
+
+        await using var db = await w.T.System.CreateDbContextAsync();
+        Assert.False(await db.UserProjectOrders.AnyAsync(o => o.ProjectId == a1 || o.ProjectId == a2));
+    }
+
+    [Fact]
+    public async Task An_unrelated_user_cannot_move_a_project_into_her_list()
+    {
+        var (w, a1, _, b1) = await SharedWorldAsync();
+        await using var __ = w;
+        await w.View(Alice).Sharing.RevokeShareAsync(a1, Bob);
+        await Assert.ThrowsAsync<AccessDeniedException>(() => w.View(Bob).Projects.MoveProjectToAsync(b1, a1));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => w.View(Bob).Projects.MoveProjectToAsync(a1, b1));
     }
 
     [Fact]

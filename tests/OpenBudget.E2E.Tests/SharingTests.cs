@@ -59,8 +59,12 @@ public sealed class SharingTests : EndToEndTestBase
         await Expect(row.Locator($"[title='Shared by {E2ESeed.UserName} · view only']")).ToBeVisibleAsync();
         await Expect(Page.GetByTestId("switcher-project").Filter(new() { HasText = HiddenProject })).ToHaveCountAsync(0);
 
-        // A viewer gets no context menu on the row (nothing to edit).
+        // A viewer's menu only moves the row within her own list: no settings, no delete.
         await row.ClickAsync(new() { Button = MouseButton.Right });
+        await Expect(Page.GetByTestId("ctx-up")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("ctx-settings")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("ctx-delete")).ToHaveCountAsync(0);
+        await Page.Keyboard.PressAsync("Escape");
         await Expect(Page.GetByTestId("context-menu")).ToHaveCountAsync(0);
 
         await row.ClickAsync();

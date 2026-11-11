@@ -11,7 +11,7 @@ namespace OpenBudget.E2E.Tests;
 /// <summary>
 /// The project switcher's row context menu: opening it (right-click, Shift+F10), Settings… (rename, live in the
 /// top bar and in another session's switcher), Move up / Move down, drag-and-drop reordering, Delete with the
-/// typed-name confirmation, and the owner-only entries disabled for an editor.
+/// typed-name confirmation, and Delete disabled for an editor.
 /// </summary>
 [TestFixture]
 public sealed class ProjectSwitcherMenuTests : EndToEndTestBase
@@ -192,12 +192,12 @@ public sealed class ProjectSwitcherMenuTests : EndToEndTestBase
 
         await Row(E2ESeed.ProjectName).ClickAsync(new() { Button = MouseButton.Right });
         await Expect(Page.GetByTestId("ctx-settings")).ToBeEnabledAsync();
-        foreach (var key in new[] { "ctx-up", "ctx-down", "ctx-delete" })
-        {
-            await Expect(Page.GetByTestId(key)).ToBeDisabledAsync();
-            await Expect(Page.GetByTestId(key)).ToHaveAttributeAsync("title", "Only the project's owner can do this.");
-        }
-        await Expect(Row(E2ESeed.ProjectName)).ToHaveAttributeAsync("draggable", "false");
+        await Expect(Page.GetByTestId("ctx-delete")).ToBeDisabledAsync();
+        await Expect(Page.GetByTestId("ctx-delete")).ToHaveAttributeAsync("title", "Only the project's owner can do this.");
+        // Moving is the editor's own list; with a single project there is nowhere to go.
+        await Expect(Page.GetByTestId("ctx-up")).ToBeDisabledAsync();
+        await Expect(Page.GetByTestId("ctx-down")).ToBeDisabledAsync();
+        await Expect(Row(E2ESeed.ProjectName)).ToHaveAttributeAsync("draggable", "true");
 
         // The editor's settings dialog has name and description, but not the owner's parent / default settings.
         await Page.GetByTestId("ctx-settings").ClickAsync();

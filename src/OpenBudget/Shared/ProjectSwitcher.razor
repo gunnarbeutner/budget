@@ -17,8 +17,9 @@
    budget (bar + percentage), the default-for-new-accounts badge and who shared it. Then "New project". The
    numbers load when the menu opens, so it costs nothing until used.
    A row's context menu (right-click, touch long-press, Shift+F10 / the context-menu key) offers Settings…
-   (ProjectSettingsDialog), Move up / Move down and Delete (DeleteProjectDialog); owners also reorder by dragging
-   a row. Reordering and deleting are the owner's, viewers get no menu. Other sessions' changes reload the list. *@
+   (ProjectSettingsDialog), Move up / Move down and Delete (DeleteProjectDialog); rows also reorder by dragging.
+   The order is each user's own, so everyone reorders every project they see; Settings… needs an editor, Delete the
+   owner. Other sessions' changes reload the list. *@
 
 <details class="project-selector app-menu" data-testid="project-selector" @key="Current.ProjectId">
     <summary class="project-selector-toggle" @onclick="LoadAsync" aria-label="@L["Aria_Switcher"]">
@@ -51,8 +52,8 @@
                            data-ob-longpress="@(hasMenu ? "" : null)"
                            @oncontextmenu="e => OpenMenu(row, e.ClientX, e.ClientY)" @oncontextmenu:preventDefault="@hasMenu"
                            @onkeydown="e => MenuKeyAsync(row, e)"
-                           draggable="@(r.IsOwner ? "true" : "false")"
-                           @ondragstart="() => dragId = row.IsOwner ? row.Id : null"
+                           draggable="true"
+                           @ondragstart="() => dragId = row.Id"
                            @ondragenter="() => dragOverId = row.Id"
                            @ondragover:preventDefault="true"
                            @ondrop="() => DropAsync(row)" @ondrop:preventDefault="true"
@@ -212,23 +213,26 @@
 
     // ---- Context menu ----
 
-    /// <summary>Entries of a row's menu. Viewers get none; editors get Settings… and the owner-only entries
-    /// disabled with the reason; owners get everything (Move up/down among their own projects).</summary>
+    /// <summary>Entries of a row's menu. Everyone may move a row within their own list; Settings… needs an editor
+    /// (viewers don't see it), Delete is the owner's (disabled with the reason otherwise).</summary>
     private IReadOnlyList<ContextMenuItem> MenuFor(Row r)
     {
-        if (r.Role < ProjectRole.Editor) return [];
-        var owned = rows?.Where(x => x.IsOwner).Select(x => x.Id).ToList() ?? [];
-        var at = owned.IndexOf(r.Id);
-        var ownerOnly = r.IsOwner ? null : L["Reason_OwnerOnly"].Value;
-        return
-        [
-            new("settings", L["Menu_Settings"], "bi-gear"),
-            ContextMenuItem.Divider(),
-            new("up", L["Menu_MoveUp"], "bi-arrow-up", Disabled: !r.IsOwner || at <= 0, Tooltip: ownerOnly),
-            new("down", L["Menu_MoveDown"], "bi-arrow-down", Disabled: !r.IsOwner || at < 0 || at >= owned.Count - 1, Tooltip: ownerOnly),
-            ContextMenuItem.Divider(),
-            new("delete", L["Menu_Delete"], "bi-trash", Disabled: !r.IsOwner, Tooltip: ownerOnly, Danger: true),
-        ];
+        var all = rows ?? [];
+        var at = all.FindIndex(x => x.Id == r.Id);
+        var items = new List<ContextMenuItem>();
+        if (r.Role >= ProjectRole.Editor)
+        {
+            items.Add(new("settings", L["Menu_Settings"], "bi-gear"));
+            items.Add(ContextMenuItem.Divider());
+        }
+        items.Add(new("up", L["Menu_MoveUp"], "bi-arrow-up", Disabled: at <= 0));
+        items.Add(new("down", L["Menu_MoveDown"], "bi-arrow-down", Disabled: at < 0 || at >= all.Count - 1));
+        if (r.Role >= ProjectRole.Editor)
+        {
+            items.Add(ContextMenuItem.Divider());
+            items.Add(new("delete", L["Menu_Delete"], "bi-trash", Disabled: !r.IsOwner, Tooltip: r.IsOwner ? null : L["Reason_OwnerOnly"].Value, Danger: true));
+        }
+        return items;
     }
 
     private void OpenMenu(Row r, double x, double y)
@@ -277,7 +281,7 @@
     {
         var dragged = dragId;
         dragId = dragOverId = null;
-        if (dragged is not { } id || id == target.Id || !target.IsOwner) return;
+        if (dragged is not { } id || id == target.Id) return;
         await RunAsync(() => ProjectService.MoveProjectToAsync(id, target.Id));
     }
 

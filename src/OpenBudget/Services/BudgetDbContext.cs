@@ -66,6 +66,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<BankLoginAccount> BankLoginAccounts => Set<BankLoginAccount>();
     public DbSet<BankStatement> BankStatements => Set<BankStatement>();
     public DbSet<StatementRead> StatementReads => Set<StatementRead>();
+    public DbSet<UserProjectOrder> UserProjectOrders => Set<UserProjectOrder>();
     public DbSet<CategoryRule> CategoryRules => Set<CategoryRule>();
     public DbSet<CloudConnection> CloudConnections => Set<CloudConnection>();
     public DbSet<CloudFileLink> CloudFileLinks => Set<CloudFileLink>();
@@ -236,6 +237,10 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<BankStatement>().HasIndex(s => new { s.BankLoginId, s.Identifier }).IsUnique();
         modelBuilder.Entity<BankStatement>().HasIndex(s => s.AccountId);
         modelBuilder.Entity<BankStatement>().HasIndex(s => new { s.OwnerUserId, s.Sha256 });
+        modelBuilder.Entity<UserProjectOrder>().HasIndex(o => new { o.UserId, o.ProjectId }).IsUnique();
+        modelBuilder.Entity<UserProjectOrder>().HasIndex(o => o.ProjectId);
+        modelBuilder.Entity<UserProjectOrder>().HasOne<Project>().WithMany().HasForeignKey(o => o.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<UserProjectOrder>().HasOne<AppUser>().WithMany().HasForeignKey(o => o.UserId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<StatementRead>().HasKey(r => new { r.UserId, r.StatementId });
         modelBuilder.Entity<StatementRead>().HasIndex(r => r.StatementId);
         modelBuilder.Entity<StatementRead>().HasOne<BankStatement>().WithMany().HasForeignKey(r => r.StatementId).OnDelete(DeleteBehavior.Cascade);

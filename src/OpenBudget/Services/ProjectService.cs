@@ -27,15 +27,33 @@ public class ProjectService
     // Publish a change stamped with this circuit's origin so our own components skip the echo.
     private void Notify(DataChange change) => _notifier.Publish(change, _origin.Id);
 
+    /// <summary>
+    /// Every project the user can see, in the user's own order (<see cref="UserProjectOrder"/>); projects the user
+    /// hasn't placed follow, by <see cref="Project.SortOrder"/> and name.
+    /// </summary>
     public async Task<List<Project>> GetProjectsAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Projects
+        var projects = await db.Projects
             .AsNoTracking()
             .Include(b => b.CategoryAssignments)
-            .OrderBy(b => b.SortOrder)
-            .ThenByDescending(b => b.CreatedAt)
             .ToListAsync();
+        return await InUserOrderAsync(db, projects);
+    }
+
+    private static async Task<List<Project>> InUserOrderAsync(BudgetDbContext db, List<Project> projects)
+    {
+        var positions = db.Scope?.UserId is { } userId
+            ? await db.UserProjectOrders.AsNoTracking()
+                .Where(o => o.UserId == userId)
+                .ToDictionaryAsync(o => o.ProjectId, o => o.SortOrder)
+            : [];
+        return projects
+            .OrderBy(p => positions.ContainsKey(p.Id) ? 0 : 1)
+            .ThenBy(p => positions.GetValueOrDefault(p.Id))
+            .ThenBy(p => p.SortOrder)
+            .ThenBy(p => p.Name, StringComparer.CurrentCulture)
+            .ToList();
     }
 
     /// <summary>Get a project with assignments, tracking items, and category-type assignments.</summary>
@@ -77,8 +95,8 @@ public class ProjectService
     }
 
     /// <summary>
-    /// Move a project up (direction = -1) or down (+1) in the dashboard order by swapping
-    /// SortOrder with its immediate neighbor. No-op when already at the edge.
+    /// Move a project up (direction = -1) or down (+1) in the user's project list by swapping it with its
+    /// immediate neighbor. No-op when already at the edge.
     /// </summary>
     public async Task MoveProjectAsync(int projectId, int direction)
     {
@@ -86,7 +104,7 @@ public class ProjectService
             throw new ArgumentException("direction must be -1 or 1", nameof(direction));
 
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var ordered = await OwnedInOrderAsync(db, projectId);
+        var ordered = await VisibleInOrderAsync(db, projectId);
         var index = ordered.FindIndex(p => p.Id == projectId);
         if (index < 0) return;
 
@@ -99,13 +117,13 @@ public class ProjectService
 
     /// <summary>
     /// Drag and drop in the project switcher: move a project to the position of <paramref name="targetProjectId"/>
-    /// (dragging down lands after it, dragging up before it). Owner-only, among the owner's own projects.
+    /// (dragging down lands after it, dragging up before it) in the user's project list.
     /// </summary>
     public async Task MoveProjectToAsync(int projectId, int targetProjectId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        db.Scope?.RequireRole(targetProjectId, ProjectRole.Owner);
-        var ordered = await OwnedInOrderAsync(db, projectId);
+        db.Scope?.RequireRole(targetProjectId, ProjectRole.Viewer);
+        var ordered = await VisibleInOrderAsync(db, projectId);
         var from = ordered.FindIndex(p => p.Id == projectId);
         var to = ordered.FindIndex(p => p.Id == targetProjectId);
         if (from < 0 || to < 0 || from == to) return;
@@ -116,30 +134,36 @@ public class ProjectService
         await SaveOrderAsync(db, ordered);
     }
 
-    // The order is the owner's: only owned projects are reordered (shared ones keep their place), so a user can
-    // never rewrite another user's project rows. Moving a project you don't own is refused.
-    private static async Task<List<Project>> OwnedInOrderAsync(BudgetDbContext db, int projectId)
+    // The order is per user: any project the user can see may be moved, and only the user's own order rows change.
+    private static async Task<List<Project>> VisibleInOrderAsync(BudgetDbContext db, int projectId)
     {
-        var query = db.Projects.AsQueryable();
-        if (db.Scope is { } scope)
-        {
-            scope.RequireRole(projectId, ProjectRole.Owner);
-            var owned = scope.OwnedProjectIds;
-            query = query.Where(p => owned.Contains(p.Id));
-        }
-        return await query
-            .OrderBy(p => p.SortOrder)
-            .ThenByDescending(p => p.CreatedAt)
-            .ToListAsync();
+        db.Scope?.RequireRole(projectId, ProjectRole.Viewer);
+        var projects = await db.Projects.AsNoTracking().ToListAsync();
+        return await InUserOrderAsync(db, projects);
     }
 
-    // Renumber the whole list so the new order is unambiguous even if rows shared a SortOrder before.
+    // Write the whole visible list as the user's order, so it is unambiguous from then on. Without a signed-in
+    // user (system contexts) the projects' own SortOrder holds the order.
     private async Task SaveOrderAsync(BudgetDbContext db, List<Project> ordered)
     {
-        for (int i = 0; i < ordered.Count; i++)
-            ordered[i].SortOrder = i;
+        var userId = db.Scope?.UserId;
+        if (userId == null)
+        {
+            var tracked = await db.Projects.ToDictionaryAsync(p => p.Id);
+            for (int i = 0; i < ordered.Count; i++)
+                tracked[ordered[i].Id].SortOrder = i;
+        }
+        else
+        {
+            var rows = await db.UserProjectOrders.Where(o => o.UserId == userId).ToDictionaryAsync(o => o.ProjectId);
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                if (rows.TryGetValue(ordered[i].Id, out var row)) row.SortOrder = i;
+                else db.UserProjectOrders.Add(new UserProjectOrder { UserId = userId, ProjectId = ordered[i].Id, SortOrder = i });
+            }
+        }
         await db.SaveChangesAsync();
-        Notify(new DataChange(DataArea.ProjectOrder));
+        Notify(new DataChange(DataArea.ProjectOrder, UserId: userId));
     }
 
     /// <summary>Rename / re-describe a project (editors may; the context's write guard enforces it).</summary>
@@ -166,6 +190,7 @@ public class ProjectService
         if (project != null)
         {
             await db.ProjectShares.Where(s => s.ProjectId == projectId).ExecuteDeleteAsync();
+            await db.UserProjectOrders.IgnoreQueryFilters().Where(o => o.ProjectId == projectId).ExecuteDeleteAsync();
             db.Projects.Remove(project);
             await db.SaveChangesAsync();
             Notify(new DataChange(DataArea.Projects, ProjectId: projectId));

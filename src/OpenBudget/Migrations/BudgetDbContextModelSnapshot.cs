@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261111224530_AddAccountIconAndColor";
+        public override string LatestMigrationId => "20261111232624_UserProjectOrder";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -1727,6 +1727,33 @@ namespace OpenBudget.Migrations
                     b.ToTable("transactions");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.UserProjectOrder", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ProjectId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("UserId", "ProjectId")
+                        .IsUnique();
+
+                    b.ToTable("user_project_order");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<string>", b =>
                 {
                     b.HasOne("OpenBudget.Models.AppUser", null)
@@ -2002,6 +2029,21 @@ namespace OpenBudget.Migrations
                     b.Navigation("Account");
 
                     b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.UserProjectOrder", b =>
+                {
+                    b.HasOne("OpenBudget.Models.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OpenBudget.Models.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Account", b =>

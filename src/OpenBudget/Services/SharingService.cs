@@ -85,6 +85,8 @@ public class SharingService
         if (existing == null) return;
         db.ProjectShares.Remove(existing);
         await db.SaveChangesAsync(ct);
+        // The former sharee's place for the project goes with the access (the save above checked ownership).
+        await db.UserProjectOrders.IgnoreQueryFilters().Where(o => o.ProjectId == projectId && o.UserId == userId).ExecuteDeleteAsync(ct);
         _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId), _origin.Id);
     }
 

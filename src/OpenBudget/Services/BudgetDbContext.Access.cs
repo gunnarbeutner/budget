@@ -67,7 +67,8 @@ public partial class BudgetDbContext
         modelBuilder.Entity<BankStatement>().HasQueryFilter(s =>
             ScopeUnrestricted || s.OwnerUserId == ScopeUserId
             || (s.AccountId.HasValue && (ScopeSharedAccountIds.Contains(s.AccountId.Value) || (s.SourceId.HasValue && ScopeOwnedSourceIds.Contains(s.SourceId.Value)))));
-        // Read marks are personal.
+        // Read marks and the order of the project list are personal.
+        modelBuilder.Entity<UserProjectOrder>().HasQueryFilter(o => ScopeUnrestricted || o.UserId == ScopeUserId);
         modelBuilder.Entity<StatementRead>().HasQueryFilter(r => ScopeUnrestricted || r.UserId == ScopeUserId);
 
         // PortfolioPerformance data feeds the project-scoped rebalance view, so it follows the
@@ -101,10 +102,11 @@ public partial class BudgetDbContext
     /// <list type="bullet">
     /// <item>budgets, budget entries/splits, category assignments, tracking items, income/expense
     /// types, project name/description: Editor or Owner of the project;</item>
-    /// <item>account assignments, shares, parent, sort order, delete, creating projects: project Owner
+    /// <item>account assignments, shares, parent, delete, creating projects: project Owner
     /// (and the source must be owned);</item>
     /// <item>a transaction's category, note, check mark and new marker (and nothing else of it): the source Owner or an
     /// Editor of a project the account is in - and only while the account is not owned by MoneyMoney;</item>
+    /// <item>a user's own project-list order: that user, for projects they can see;</item>
     /// <item>sources and everything imported or configured per source: source Owner.</item>
     /// </list>
     /// </summary>
@@ -184,6 +186,11 @@ public partial class BudgetDbContext
                     if (!scope.IsAuthenticated || read.UserId != scope.UserId)
                         throw new AccessDeniedException("Read marks belong to their user.");
                     readStatements.Add(read.StatementId);
+                    break;
+                case UserProjectOrder order:
+                    if (!scope.IsAuthenticated || order.UserId != scope.UserId)
+                        throw new AccessDeniedException("The order of the project list belongs to its user.");
+                    if (entry.State != EntityState.Deleted) scope.RequireRole(order.ProjectId, ProjectRole.Viewer);
                     break;
                 case BankLoginAccount remote:
                     loginAccountLogins.Add(remote.BankLoginId);
