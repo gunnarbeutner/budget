@@ -90,7 +90,7 @@ public sealed class BankHttpTests : IDisposable
         var (aliceStatus, aliceBody) = await AppTestHost.GetAsync(aliceClient, "/banklogins");
         Assert.Equal(HttpStatusCode.OK, aliceStatus);
         Assert.Contains("AliceOnlyLogin", aliceBody, StringComparison.Ordinal);
-        Assert.Contains("Add a bank login", aliceBody, StringComparison.Ordinal);
+        Assert.Contains("Add bank login", aliceBody, StringComparison.Ordinal);
 
         using var bob = await _host.LoggedInClientAsync("bob");
         var (bobStatus, bobBody) = await AppTestHost.GetAsync(bob, "/banklogins");

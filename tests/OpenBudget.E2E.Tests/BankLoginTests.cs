@@ -67,6 +67,7 @@ public sealed class BankLoginTests : EndToEndTestBase
     {
         await SeedGiroAsync();
         await GoToAsync("/banklogins");
+        await Page.GetByTestId("add-login-open").ClickAsync();
 
         // The real banks are offered too; pick the fake one explicitly.
         await Page.Locator("#new-login-connector").SelectOptionAsync("fake");
@@ -137,6 +138,7 @@ public sealed class BankLoginTests : EndToEndTestBase
     public async Task Bank_logins_are_private_to_their_owner()
     {
         await GoToAsync("/banklogins");
+        await Page.GetByTestId("add-login-open").ClickAsync();
         await Page.Locator("#new-login-username").FillAsync("demo");
         await Page.Locator("#new-login-pin").FillAsync("1234");
         // The real banks are offered too; pick the fake one explicitly.

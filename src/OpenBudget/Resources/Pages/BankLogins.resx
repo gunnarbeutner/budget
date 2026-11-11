@@ -253,4 +253,16 @@
   <data name="SwitchBack_Lost" xml:space="preserve">
     <value>The next upload replaces the account's bookings and balance with MoneyMoney's: bookings the bank delivered and categories, notes, check marks and splits set in OpenBudget since the switch are not kept. The structure stays OpenBudget's.</value>
   </data>
+  <data name="Button_AddOpen" xml:space="preserve">
+    <value>Add bank login</value>
+  </data>
+  <data name="Pill_Ok" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="Pill_Error" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="Pill_Attention" xml:space="preserve">
+    <value>Needs attention</value>
+  </data>
 </root>

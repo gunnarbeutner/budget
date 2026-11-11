@@ -1707,6 +1707,22 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 .tx-transfer-row { font-size: 13px; }
 .tx-transfer-flag { color: var(--ob-accent); }
 
+/* Bank logins: one card per login with clear spacing; the header carries name, bank, last sync and a status pill, actions on the right. */
+.bank-login-list { display: flex; flex-direction: column; gap: 1.25rem; }
+.bank-login-card { border-radius: var(--bs-border-radius-lg); box-shadow: var(--bs-box-shadow-sm); overflow: hidden; }
+.bank-login-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .5rem 1rem; padding: .75rem 1rem; }
+.bank-login-title { min-width: 0; flex: 1 1 16rem; }
+.bank-login-title h5 { font-weight: 600; }
+.bank-login-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; }
+.bank-login-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.bank-pill-ok { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+.bank-pill-error { background: var(--bs-danger-bg-subtle); color: var(--bs-danger-text-emphasis); }
+.bank-pill-warn { background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); }
+.bank-pill-info { background: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis); }
+.bank-accounts-heading { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--bs-secondary-color); margin-bottom: .5rem; }
+.bank-accounts-table > :not(caption) > * > * { border-bottom-color: var(--bs-border-color-translucent); }
+.bank-accounts-table > tbody > tr:last-child > * { border-bottom-width: 0; }
+
 /* Bank logins: every login's account table uses the same column widths, so the columns line up from card to card. */
 .bank-accounts-table { table-layout: fixed; width: 100%; }
 .bank-accounts-table th:nth-child(1) { width: 40%; }

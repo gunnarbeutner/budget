@@ -253,4 +253,16 @@
   <data name="SwitchBack_Lost" xml:space="preserve">
     <value>Der nächste Upload ersetzt Buchungen und Saldo des Kontos durch die aus MoneyMoney: Von der Bank gelieferte Buchungen sowie seit der Umstellung in OpenBudget gesetzte Kategorien, Notizen, Häkchen und Aufteilungen bleiben nicht erhalten. Die Struktur bleibt bei OpenBudget.</value>
   </data>
+  <data name="Button_AddOpen" xml:space="preserve">
+    <value>Bank-Zugang hinzufügen</value>
+  </data>
+  <data name="Pill_Ok" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="Pill_Error" xml:space="preserve">
+    <value>Fehler</value>
+  </data>
+  <data name="Pill_Attention" xml:space="preserve">
+    <value>Prüfen nötig</value>
+  </data>
 </root>

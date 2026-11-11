@@ -30,57 +30,10 @@
     <div class="alert alert-info py-2" role="status" id="bank-message">@message</div>
 }
 
-<div class="card mb-4">
-    <div class="card-header"><h5 class="mb-0">@L["Add_Heading"]</h5></div>
-    <div class="card-body">
-        <form class="row g-2" @onsubmit="AddLoginAsync" @onsubmit:preventDefault>
-            <div class="col-md-3">
-                <label class="form-label" for="new-login-connector">@L["Field_Connector"]</label>
-                <select id="new-login-connector" class="form-select" @bind="newConnector">
-                    @foreach (var c in connectors)
-                    {
-                        <option value="@c.ConnectorType">@c.DisplayName</option>
-                    }
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label" for="new-login-name">@L["Field_Name"]</label>
-                <input id="new-login-name" class="form-control" @bind="newName" maxlength="200" />
-            </div>
-            @if (NeedsCredentials(SelectedConnector))
-            {
-            <div class="col-md-2">
-                <label class="form-label" for="new-login-username">@L["Field_Username"]</label>
-                <input id="new-login-username" class="form-control" @bind="newUsername" @bind:event="oninput" autocomplete="off" />
-            </div>
-            <div class="col-md-2">
-                <label class="form-label" for="new-login-pin">@L["Field_Pin"]</label>
-                <input id="new-login-pin" type="password" class="form-control" @bind="newPin" @bind:event="oninput" autocomplete="new-password" />
-            </div>
-            }
-            <div class="col-md-2">
-                <label class="form-label" for="new-login-interval">@L["Field_Interval"]</label>
-                <select id="new-login-interval" class="form-select" @bind="newInterval">
-                    @foreach (var i in Enum.GetValues<RefreshInterval>())
-                    {
-                        <option value="@i">@IntervalLabel(i)</option>
-                    }
-                </select>
-            </div>
-            <div class="col-12 d-flex align-items-center gap-3">
-                <button type="submit" class="btn btn-primary text-nowrap" id="new-login-add"
-                        disabled="@(NeedsCredentials(SelectedConnector) && (string.IsNullOrWhiteSpace(newUsername) || string.IsNullOrEmpty(newPin)))">@L["Button_Add"]</button>
-                @if (SelectedConnector is { } sel)
-                {
-                    <span class="small text-body-secondary">@ConnectorDescription(sel)</span>
-                }
-            </div>
-            @if (!string.IsNullOrEmpty(addError))
-            {
-                <div class="col-12 text-danger small" role="alert">@addError</div>
-            }
-        </form>
-    </div>
+<div class="mb-3">
+    <button type="button" class="btn btn-primary" data-testid="add-login-open" @onclick="OpenAdd">
+        <i class="bi bi-plus-lg" aria-hidden="true"></i> @L["Button_AddOpen"]
+    </button>
 </div>
 
 @if (logins == null)
@@ -93,28 +46,45 @@ else if (logins.Count == 0)
 }
 else
 {
+    <div class="bank-login-list">
     @foreach (var login in logins)
     {
         var status = statuses.GetValueOrDefault(login.Id);
         var running = status is { Phase: not SyncPhase.Finished };
         var accounts = accountsByLogin.GetValueOrDefault(login.Id) ?? [];
-        <div class="card mb-4" data-bank-login="@login.DisplayName" @key="login.Id">
-            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <div>
-                    <h5 class="mb-0 d-inline">@login.DisplayName</h5>
-                    <span class="text-body-secondary small ms-2">@login.ConnectorName</span>
-                    @if (running)
-                    {
-                        <span class="badge text-bg-primary ms-2" data-testid="login-status">
-                            @(status!.Phase == SyncPhase.Running ? L["Status_Syncing"] : status.Phase == SyncPhase.WaitingForApproval ? L["Status_WaitingApproval"] : L["Status_WaitingInput"])
-                        </span>
-                    }
-                    else if (login.CredentialsInvalid)
-                    {
-                        <span class="badge text-bg-danger ms-2" data-testid="login-status">@L["Status_ReenterCredentials"]</span>
-                    }
+        <div class="card bank-login-card" data-bank-login="@login.DisplayName" @key="login.Id">
+            <div class="card-header bank-login-header">
+                <div class="bank-login-title">
+                    <h5 class="mb-1 text-break">@login.DisplayName</h5>
+                    <div class="bank-login-meta small text-body-secondary">
+                        <span>@login.ConnectorName</span>
+                        <span aria-hidden="true">·</span>
+                        <span>@L["Label_LastSync"]: <span data-testid="last-sync">@(login.LastSyncAt is { } at ? Clock.ToLocal(at).ToString("yyyy-MM-dd HH:mm") : L["Never"].Value)</span></span>
+                        @if (running)
+                        {
+                            <span class="badge rounded-pill @(status!.Phase == SyncPhase.Running ? "bank-pill-info" : "bank-pill-warn")" data-testid="login-status">
+                                @(status.Phase == SyncPhase.Running ? L["Status_Syncing"] : status.Phase == SyncPhase.WaitingForApproval ? L["Status_WaitingApproval"] : L["Status_WaitingInput"])
+                            </span>
+                        }
+                        else if (login.CredentialsInvalid)
+                        {
+                            <span class="badge rounded-pill bank-pill-error" data-testid="login-status">@L["Status_ReenterCredentials"]</span>
+                        }
+                        else if (!string.IsNullOrEmpty(login.LastError))
+                        {
+                            <span class="badge rounded-pill bank-pill-error" data-testid="login-pill">@L["Pill_Error"]</span>
+                        }
+                        else if (!login.ConnectorAvailable)
+                        {
+                            <span class="badge rounded-pill bank-pill-warn" data-testid="login-pill">@L["Pill_Attention"]</span>
+                        }
+                        else if (login.LastSyncAt != null)
+                        {
+                            <span class="badge rounded-pill bank-pill-ok" data-testid="login-pill">@L["Pill_Ok"]</span>
+                        }
+                    </div>
                 </div>
-                <div class="d-flex flex-wrap gap-2">
+                <div class="bank-login-actions">
                     <button class="btn btn-sm btn-primary" data-action="sync-now" disabled="@running" @onclick="() => SyncNowAsync(login.Id)">
                         <i class="bi bi-arrow-repeat" aria-hidden="true"></i> @L["Button_SyncNow"]
                     </button>
@@ -123,8 +93,8 @@ else
                 </div>
             </div>
             <div class="card-body">
-                <div class="row g-3 mb-3 small">
-                    <div class="col-md-4">
+                <div class="row g-3 mb-3 small align-items-end">
+                    <div class="col-sm-6 col-md-4">
                         <label class="form-label mb-1" for="@($"interval-{login.Id}")">@L["Field_Interval"]</label>
                         <select id="@($"interval-{login.Id}")" class="form-select form-select-sm" value="@login.RefreshInterval"
                                 @onchange="e => SetIntervalAsync(login, e.Value?.ToString())">
@@ -134,20 +104,19 @@ else
                             }
                         </select>
                     </div>
-                    <div class="col-md-4">
-                        <div class="text-body-secondary">@L["Label_LastSync"]</div>
-                        <div data-testid="last-sync">@(login.LastSyncAt is { } at ? Clock.ToLocal(at).ToString("yyyy-MM-dd HH:mm") : L["Never"].Value)</div>
-                    </div>
-                    <div class="col-md-4">
-                        @if (running && !string.IsNullOrEmpty(status!.Message))
-                        {
-                            <div class="text-body-secondary">@status.Message…</div>
-                        }
-                        @if (status is { Phase: SyncPhase.WaitingForInput or SyncPhase.WaitingForApproval })
-                        {
-                            <div class="text-primary">@L["Hint_Challenge"]</div>
-                        }
-                    </div>
+                    @if (running)
+                    {
+                        <div class="col-sm-6 col-md-8">
+                            @if (!string.IsNullOrEmpty(status!.Message))
+                            {
+                                <div class="text-body-secondary">@status.Message…</div>
+                            }
+                            @if (status is { Phase: SyncPhase.WaitingForInput or SyncPhase.WaitingForApproval })
+                            {
+                                <div class="text-primary">@L["Hint_Challenge"]</div>
+                            }
+                        </div>
+                    }
                 </div>
 
                 @if (!running && !string.IsNullOrEmpty(login.LastError))
@@ -161,7 +130,7 @@ else
                     <div class="alert alert-warning py-2">@L["Error_ConnectorMissing", login.ConnectorType]</div>
                 }
 
-                <h6>@L["Accounts_Heading"]</h6>
+                <h6 class="bank-accounts-heading">@L["Accounts_Heading"]</h6>
                 @if (accounts.Count == 0)
                 {
                     <p class="text-body-secondary small">@L["Accounts_Empty"]</p>
@@ -169,7 +138,7 @@ else
                 else
                 {
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle bank-accounts-table">
+                        <table class="table table-sm align-middle mb-0 bank-accounts-table">
                             <thead>
                                 <tr>
                                     <th>@L["Table_Account"]</th>
@@ -200,9 +169,9 @@ else
                                                 }
                                                 else if (!a.CreatedByConnector)
                                                 {
-                                                    <div class="small mt-1" data-testid="switched">
-                                                        <span class="text-body-secondary">@(a.SwitchedAt is { } switchedAt ? L["Switch_Done", Clock.ToLocal(switchedAt).ToString("yyyy-MM-dd")] : L["Switch_DoneUndated"])</span>
-                                                        <button class="btn btn-sm btn-link p-0 ms-1 align-baseline" data-action="switch-back" @onclick="() => pendingSwitchBack = a">@L["Button_SwitchBack"]</button>
+                                                    <div class="small mt-1 text-body-secondary" data-testid="switched">
+                                                        <span>@(a.SwitchedAt is { } switchedAt ? L["Switch_Done", Clock.ToLocal(switchedAt).ToString("yyyy-MM-dd")] : L["Switch_DoneUndated"])</span>
+                                                        <button class="btn btn-sm btn-link link-secondary p-0 ms-1 align-baseline small" data-action="switch-back" @onclick="() => pendingSwitchBack = a">@L["Button_SwitchBack"]</button>
                                                     </div>
                                                 }
                                             }
@@ -245,7 +214,61 @@ else
             </div>
         </div>
     }
+    </div>
 }
+
+<Modal Show="@adding" Title="@L["Add_Heading"]" SizeClass="modal-lg" OnClose="@(() => adding = false)">
+    <ChildContent>
+        <form class="row g-2" id="new-login-form" @onsubmit="AddLoginAsync" @onsubmit:preventDefault>
+                <div class="col-sm-6">
+                    <label class="form-label" for="new-login-connector">@L["Field_Connector"]</label>
+                    <select id="new-login-connector" class="form-select" @bind="newConnector">
+                        @foreach (var c in connectors)
+                        {
+                            <option value="@c.ConnectorType">@c.DisplayName</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-sm-6">
+                    <label class="form-label" for="new-login-name">@L["Field_Name"]</label>
+                    <input id="new-login-name" class="form-control" @bind="newName" maxlength="200" />
+                </div>
+                @if (NeedsCredentials(SelectedConnector))
+                {
+                <div class="col-sm-6">
+                    <label class="form-label" for="new-login-username">@L["Field_Username"]</label>
+                    <input id="new-login-username" class="form-control" @bind="newUsername" @bind:event="oninput" autocomplete="off" />
+                </div>
+                <div class="col-sm-6">
+                    <label class="form-label" for="new-login-pin">@L["Field_Pin"]</label>
+                    <input id="new-login-pin" type="password" class="form-control" @bind="newPin" @bind:event="oninput" autocomplete="new-password" />
+                </div>
+                }
+                <div class="col-sm-6">
+                    <label class="form-label" for="new-login-interval">@L["Field_Interval"]</label>
+                    <select id="new-login-interval" class="form-select" @bind="newInterval">
+                        @foreach (var i in Enum.GetValues<RefreshInterval>())
+                        {
+                            <option value="@i">@IntervalLabel(i)</option>
+                        }
+                    </select>
+                </div>
+                @if (SelectedConnector is { } sel)
+                {
+                    <div class="col-12 small text-body-secondary">@ConnectorDescription(sel)</div>
+                }
+                @if (!string.IsNullOrEmpty(addError))
+                {
+                    <div class="col-12 text-danger small" role="alert">@addError</div>
+                }
+            </form>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="() => adding = false">@L["Button_Cancel"]</button>
+        <button type="submit" form="new-login-form" class="btn btn-primary text-nowrap" id="new-login-add"
+                disabled="@(NeedsCredentials(SelectedConnector) && (string.IsNullOrWhiteSpace(newUsername) || string.IsNullOrEmpty(newPin)))">@L["Button_Add"]</button>
+    </Footer>
+</Modal>
 
 <AccountSwitchDialog LoginAccountIds="switchIds" OnClose="() => switchIds = null" OnSwitched="SwitchedAsync" />
 
@@ -324,6 +347,7 @@ else
     private string newPin = "";
     private RefreshInterval newInterval = RefreshInterval.EveryTwoHours;
     private string? addError;
+    private bool adding;
     private string? message;
 
     private BankLoginView? editing;
@@ -415,6 +439,12 @@ else
         }
     }
 
+    private void OpenAdd()
+    {
+        addError = null;
+        adding = true;
+    }
+
     private async Task AddLoginAsync()
     {
         addError = null;
@@ -424,6 +454,7 @@ else
             newName = "";
             newUsername = "";
             newPin = "";
+            adding = false;
             // Start a first sync right away so the bank's accounts get listed (and any challenge shows up).
             await Bank.SyncNowAsync(created.Id);
         }
