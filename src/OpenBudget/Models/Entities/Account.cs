@@ -77,6 +77,13 @@ public class Account
     [Column("error")]
     public string? Error { get; set; }
 
+    /// <summary>
+    /// Marked closed by its owner in OpenBudget: history stays and counts in reports, but the sidebar hides it by default
+    /// and pickers for new bookings leave it out. OpenBudget's own flag; uploads never change it.
+    /// </summary>
+    [Column("closed")]
+    public bool Closed { get; set; }
+
     // Navigation properties
     public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
     public ICollection<Holding> Holdings { get; set; } = new List<Holding>();

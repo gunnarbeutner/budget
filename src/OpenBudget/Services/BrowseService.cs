@@ -359,6 +359,9 @@ public class BrowseService
                     SyncLoginId = link != null && viewerId != null && link.BankLogin.OwnerUserId == viewerId ? link.BankLoginId : null,
                     Closed = link?.Closed ?? false,
                     IsMoneyMoney = string.Equals(a.Provider, AccountProviders.MoneyMoney, StringComparison.Ordinal),
+                    MarkedClosed = a.Closed,
+                    CanEnterTransactions = string.Equals(a.Provider, AccountProviders.Manual, StringComparison.Ordinal)
+                        && (db.Scope == null || db.Scope.OwnsSource(a.SourceId)),
                     Id = a.Id,
                     Name = a.Name ?? "",
                     Balance = balance,

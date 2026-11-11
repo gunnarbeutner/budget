@@ -154,6 +154,73 @@ else
             {
                 <button class="btn btn-sm btn-primary me-2" data-testid="switch-all" @onclick="() => switchIds = pending.Select(l => l.LoginAccountId).ToList()">@L["Switch_All", pending.Count]</button>
             }
+            @if (st.MoneyMoneyAccounts.Count > 0 || st.ManualAccounts.Count > 0 || st.ClosedAccounts.Count > 0)
+            {
+                var picked = st.MoneyMoneyAccounts.Where(a => checkedAccounts.Contains(a.AccountId)).Select(a => a.AccountId).ToList();
+                <details class="mb-2" data-testid="switch-accounts" open>
+                    <summary class="small">@L["Accounts_Summary", st.MoneyMoneyAccounts.Count, st.ManualAccounts.Count, st.ClosedAccounts.Count]</summary>
+                    @if (st.MoneyMoneyAccounts.Count > 0)
+                    {
+                        <div class="d-flex flex-wrap gap-2 align-items-center my-2">
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="@($"mm-all-{st.SourceId}")" data-testid="mm-select-all"
+                                       checked="@(picked.Count == st.MoneyMoneyAccounts.Count)" @onchange="e => SelectAll(st, e.Value is true)" />
+                                <label class="form-check-label small" for="@($"mm-all-{st.SourceId}")">@L["Accounts_SelectAll"]</label>
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" data-testid="mm-keep-manual" disabled="@(picked.Count == 0)"
+                                    @onclick="() => keepManualIds = picked">@L["Accounts_KeepManual", picked.Count]</button>
+                            <button class="btn btn-sm btn-outline-secondary" data-testid="mm-close" disabled="@(picked.Count == 0)"
+                                    @onclick="() => SetClosedAsync(picked, true)">@L["Accounts_Close", picked.Count]</button>
+                        </div>
+                        <ul class="list-group list-group-flush small mb-2" data-testid="mm-accounts">
+                            @foreach (var a in st.MoneyMoneyAccounts)
+                            {
+                                var id = a.AccountId;
+                                <li class="list-group-item d-flex flex-wrap align-items-center gap-2 px-0" data-mm-account="@id">
+                                    <input class="form-check-input mt-0" type="checkbox" aria-label="@a.Name" data-testid="mm-account-check"
+                                           checked="@checkedAccounts.Contains(id)" @onchange="e => Toggle(id, e.Value is true)" />
+                                    <span class="flex-grow-1">@a.Name
+                                        <span class="text-body-secondary">· @L["Accounts_Bookings", a.Bookings]@(a.LastBooking is { } last ? " · " + L["Accounts_Last", last.ToString("yyyy-MM-dd")] : "")</span>
+                                    </span>
+                                    <button class="btn btn-sm btn-link p-0" data-testid="mm-account-keep" @onclick="() => keepManualIds = [id]">@L["Accounts_KeepManualOne"]</button>
+                                    <button class="btn btn-sm btn-link p-0" data-testid="mm-account-close" @onclick="() => SetClosedAsync([id], true)">@L["Accounts_CloseOne"]</button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    @if (st.ManualAccounts.Count > 0)
+                    {
+                        <div class="small fw-semibold mt-2">@L["Accounts_ManualHeading"]</div>
+                        <ul class="list-group list-group-flush small mb-2" data-testid="manual-accounts">
+                            @foreach (var a in st.ManualAccounts)
+                            {
+                                var item = a;
+                                <li class="list-group-item d-flex flex-wrap align-items-center gap-2 px-0" data-manual-account="@a.AccountId">
+                                    <span class="flex-grow-1">@a.Name <span class="text-body-secondary">· @L["Accounts_Bookings", a.Bookings]</span></span>
+                                    <button class="btn btn-sm btn-link p-0" data-testid="manual-account-return" disabled="@(st.ImportFinishedAt != null)"
+                                            title="@(st.ImportFinishedAt != null ? L["Accounts_Return_Finished"].Value : null)"
+                                            @onclick="() => pendingReturn = item">@L["Accounts_Return"]</button>
+                                    <button class="btn btn-sm btn-link p-0" data-testid="manual-account-close" @onclick="() => SetClosedAsync([item.AccountId], true)">@L["Accounts_CloseOne"]</button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    @if (st.ClosedAccounts.Count > 0)
+                    {
+                        <div class="small fw-semibold mt-2">@L["Accounts_ClosedHeading"]</div>
+                        <ul class="list-group list-group-flush small mb-2" data-testid="closed-accounts">
+                            @foreach (var a in st.ClosedAccounts)
+                            {
+                                var id = a.AccountId;
+                                <li class="list-group-item d-flex flex-wrap align-items-center gap-2 px-0" data-closed-account="@id">
+                                    <span class="flex-grow-1">@a.Name <span class="text-body-secondary">· @L["Accounts_Bookings", a.Bookings]</span></span>
+                                    <button class="btn btn-sm btn-link p-0" data-testid="closed-account-reopen" @onclick="() => SetClosedAsync([id], false)">@L["Accounts_Reopen"]</button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </details>
+            }
             @if (st.ImportFinishedAt is { } finishedAt)
             {
                 <span class="badge text-bg-secondary me-2" data-testid="import-finished">@L["Finished_Badge", Clock.ToLocal(finishedAt).ToString("yyyy-MM-dd")]</span>
@@ -169,6 +236,18 @@ else
 }
 
 <AccountSwitchDialog LoginAccountIds="switchIds" OnClose="() => switchIds = null" OnSwitched="SwitchedAsync" />
+<KeepManualDialog AccountIds="keepManualIds" OnClose="() => keepManualIds = null" OnDone="KeptManualAsync" />
+
+<Modal Show="@(pendingReturn != null)" Title="@L["Return_Title"]" OnClose="@(() => pendingReturn = null)">
+    <ChildContent>
+        <p>@L["Return_Body", pendingReturn?.Name ?? ""]</p>
+        <p class="small text-body-secondary mb-0">@L["Return_Lost"]</p>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="() => pendingReturn = null">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-danger" data-testid="return-mm-confirm" @onclick="ReturnConfirmedAsync">@L["Accounts_Return"]</button>
+    </Footer>
+</Modal>
 
 <Modal Show="@(pendingFinish != null)" Title="@(pendingFinish != null ? L["Finished_Title", pendingFinish.SourceName].Value : "")" OnClose="@(() => pendingFinish = null)">
     <ChildContent>
@@ -178,6 +257,14 @@ else
             <div class="alert alert-warning small" data-testid="finish-warning">
                 @L["Finished_Warning", pf.Links.Count(l => !l.Switched), pf.MoneyMoneyAccountsWithoutLink]
             </div>
+            @if (pf.MoneyMoneyAccountsWithoutLink > 0)
+            {
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="finish-keep-manual" data-testid="finish-keep-manual"
+                           checked="@finishKeepManual" @onchange="e => finishKeepManual = e.Value is true" />
+                    <label class="form-check-label small" for="finish-keep-manual">@L["Finished_KeepManual", pf.MoneyMoneyAccountsWithoutLink]</label>
+                </div>
+            }
         }
         <p class="small text-body-secondary mb-0">@L["Finished_Reversible"]</p>
     </ChildContent>
@@ -241,6 +328,42 @@ else
     private List<SourceSwitchState> switchStates = new();
     private IReadOnlyList<int>? switchIds;
     private SourceSwitchState? pendingFinish;
+    private bool finishKeepManual = true;
+    private IReadOnlyList<long>? keepManualIds;
+    private SourceAccountItem? pendingReturn;
+    private readonly HashSet<long> checkedAccounts = new();
+
+    private void Toggle(long id, bool on)
+    {
+        if (on) checkedAccounts.Add(id); else checkedAccounts.Remove(id);
+    }
+
+    private void SelectAll(SourceSwitchState st, bool on)
+    {
+        foreach (var a in st.MoneyMoneyAccounts) Toggle(a.AccountId, on);
+    }
+
+    private async Task KeptManualAsync(int count)
+    {
+        keepManualIds = null;
+        checkedAccounts.Clear();
+        await LoadAsync();
+    }
+
+    private async Task SetClosedAsync(IReadOnlyCollection<long> ids, bool closed)
+    {
+        await Switcher.SetClosedAsync(ids, closed);
+        checkedAccounts.Clear();
+        await LoadAsync();
+    }
+
+    private async Task ReturnConfirmedAsync()
+    {
+        if (pendingReturn is not { } a) return;
+        pendingReturn = null;
+        await Switcher.ReturnToMoneyMoneyAsync(a.AccountId);
+        await LoadAsync();
+    }
 
     private async Task SwitchedAsync(int count)
     {
@@ -252,6 +375,8 @@ else
     {
         if (pendingFinish is not { } st) return;
         pendingFinish = null;
+        if (finishKeepManual && st.MoneyMoneyAccounts.Count > 0)
+            await Switcher.KeepManualAsync(st.MoneyMoneyAccounts.Select(a => a.AccountId).ToList(), takeOverStructure: true);
         await SetFinishedAsync(st.SourceId, true);
     }
 

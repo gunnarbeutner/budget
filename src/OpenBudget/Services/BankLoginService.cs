@@ -237,7 +237,7 @@ public class BankLoginService
         var taken = await db.BankLoginAccounts.AsNoTracking().Where(a => a.LinkedAccountId != null).Select(a => a.LinkedAccountId!.Value).ToListAsync(ct);
         var sourceNames = await db.ImportSources.AsNoTracking().Where(s => owned.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
         var accounts = await db.Accounts.AsNoTracking()
-            .Where(a => owned.Contains(a.SourceId) && (a.Provider == AccountProviders.MoneyMoney || a.Provider == AccountProviders.Manual) && a.Type != 8)
+            .Where(a => owned.Contains(a.SourceId) && (a.Provider == AccountProviders.MoneyMoney || a.Provider == AccountProviders.Manual) && a.Type != 8 && !a.Closed)
             .OrderBy(a => a.Name).ToListAsync(ct);
         var wanted = NormalizeIban(remote.Iban);
         // A depot only links to a depot, and a cash account only to a non-depot account: positions and

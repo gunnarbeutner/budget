@@ -1,0 +1,198 @@
+@using System.Globalization
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject ManualTransactionService Manual
+@inject IStringLocalizer<ManualTxDialog> L
+@inject ClockService Clock
+@inject ILogger<ManualTxDialog> Logger
+
+@* Adding or editing a booking of a manual account (all fields), and deleting it. Opened from Transactions: the account
+   header's "Add booking", a row's context menu and its detail panel. The service checks the account and the owner. *@
+
+<Modal Show="Open" Title="@(Row == null ? L["Title_Add"] : L["Title_Edit"])" OnClose="CloseAsync" CloseOnBackdropClick="false">
+    <ChildContent>
+        <form data-testid="manual-tx-form" @onsubmit="SaveAsync" @onsubmit:preventDefault="true">
+            <div class="row g-2">
+                <div class="col-6">
+                    <label class="form-label small mb-1" for="mtx-date">@L["Date"]</label>
+                    <input id="mtx-date" type="date" class="form-control form-control-sm" data-testid="manual-tx-date"
+                           value="@_date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="OnDate" />
+                </div>
+                <div class="col-6">
+                    <label class="form-label small mb-1" for="mtx-amount">@L["Amount"]</label>
+                    <div class="input-group input-group-sm">
+                        <input id="mtx-amount" class="form-control text-end" inputmode="decimal" data-testid="manual-tx-amount"
+                               value="@_amount" disabled="@_amountLocked" title="@(_amountLocked ? L["Amount_Split"].Value : null)"
+                               @onchange="e => _amount = e.Value?.ToString() ?? string.Empty" />
+                        <input class="form-control" style="max-width: 4.5rem;" maxlength="3" aria-label="@L["Currency"]" data-testid="manual-tx-currency"
+                               value="@_currency" @onchange="e => _currency = e.Value?.ToString() ?? string.Empty" />
+                    </div>
+                </div>
+                <div class="col-12">
+                    <label class="form-label small mb-1" for="mtx-name">@L["Name"]</label>
+                    <input id="mtx-name" class="form-control form-control-sm" data-testid="manual-tx-name" value="@_name" @onchange="e => _name = e.Value?.ToString()" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label small mb-1" for="mtx-purpose">@L["Purpose"]</label>
+                    <input id="mtx-purpose" class="form-control form-control-sm" data-testid="manual-tx-purpose" value="@_purpose" @onchange="e => _purpose = e.Value?.ToString()" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label small mb-1" for="mtx-category">@L["Category"]</label>
+                    <select id="mtx-category" class="form-select form-select-sm" data-testid="manual-tx-category"
+                            value="@(_categoryId?.ToString(CultureInfo.InvariantCulture) ?? "")" @onchange="OnCategory">
+                        <option value="">@L["NoCategory"]</option>
+                        @foreach (var o in Categories?.Options ?? [])
+                        {
+                            <option @key="o.Id" value="@o.Id">@o.Path</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label small mb-1" for="mtx-note">@L["Note"]</label>
+                    <input id="mtx-note" class="form-control form-control-sm" data-testid="manual-tx-note" value="@_note" @onchange="e => _note = e.Value?.ToString()" />
+                </div>
+                <div class="col-12">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="mtx-booked" data-testid="manual-tx-booked"
+                               checked="@_booked" @onchange="e => _booked = e.Value is true" />
+                        <label class="form-check-label small" for="mtx-booked">@L["Booked"]</label>
+                    </div>
+                </div>
+            </div>
+            @if (_error != null)
+            {
+                <div class="alert alert-danger small mt-2 mb-0" role="alert">@_error</div>
+            }
+            <button type="submit" hidden></button>
+        </form>
+    </ChildContent>
+    <Footer>
+        @if (Row != null)
+        {
+            <button type="button" class="btn btn-outline-danger me-auto" data-testid="manual-tx-delete" disabled="@_busy" @onclick="DeleteAsync">@(_confirmDelete ? L["Delete_Confirm"] : L["Delete"])</button>
+        }
+        <button type="button" class="btn btn-secondary" @onclick="CloseAsync">@L["Cancel"]</button>
+        <button type="button" class="btn btn-primary" data-testid="manual-tx-save" disabled="@_busy" @onclick="SaveAsync">@L["Save"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    /// <summary>Whether the dialog shows.</summary>
+    [Parameter] public bool Open { get; set; }
+
+    /// <summary>The account a new booking goes to.</summary>
+    [Parameter] public long AccountId { get; set; }
+
+    /// <summary>The account's currency (the default for new bookings).</summary>
+    [Parameter] public string? AccountCurrency { get; set; }
+
+    /// <summary>The booking being edited; null adds a new one.</summary>
+    [Parameter] public TransactionRow? Row { get; set; }
+
+    [Parameter] public CategoryPickerData? Categories { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>Raised after a save or delete, with a short message for a toast.</summary>
+    [Parameter] public EventCallback<string> OnSaved { get; set; }
+
+    private bool _wasOpen;
+    private DateOnly _date;
+    private string _amount = "";
+    private string _currency = "";
+    private string? _name, _purpose, _note;
+    private long? _categoryId;
+    private bool _booked = true;
+    private bool _amountLocked;
+    private bool _busy;
+    private bool _confirmDelete;
+    private string? _error;
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen)
+        {
+            _error = null;
+            _confirmDelete = false;
+            if (Row is { } r)
+            {
+                _date = DateOnly.FromDateTime(Clock.ToLocal(r.Date));
+                _amount = r.Amount.ToString("0.00", CultureInfo.CurrentCulture);
+                _currency = r.Currency ?? AccountCurrency ?? "EUR";
+                (_name, _purpose, _note, _categoryId, _booked) = (r.Name, r.Purpose, r.Note, r.CategoryId, !r.IsPending);
+                _amountLocked = r.IsSplitChild || r.IsSplitRemainder || r.SplitParentId != null;
+            }
+            else
+            {
+                _date = DateOnly.FromDateTime(Clock.Today);
+                _amount = "";
+                _currency = AccountCurrency ?? "EUR";
+                (_name, _purpose, _note, _categoryId, _booked) = (null, null, null, null, true);
+                _amountLocked = false;
+            }
+        }
+        _wasOpen = Open;
+    }
+
+    private void OnDate(ChangeEventArgs e)
+    {
+        if (DateOnly.TryParseExact(e.Value?.ToString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) _date = d;
+    }
+
+    private void OnCategory(ChangeEventArgs e) =>
+        _categoryId = long.TryParse(e.Value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var id) ? id : null;
+
+    /// <summary>Parses "-12,34", "-12.34" or "1.234,56" (the current culture first, then the invariant one).</summary>
+    public static bool TryParseAmount(string? text, out decimal amount)
+    {
+        amount = 0;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var t = text.Trim().Replace("€", "", StringComparison.Ordinal).Replace(" ", "", StringComparison.Ordinal);
+        if (t.Contains(',', StringComparison.Ordinal))
+            return decimal.TryParse(t.Replace(".", "", StringComparison.Ordinal).Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out amount);
+        return decimal.TryParse(t, NumberStyles.Number, CultureInfo.InvariantCulture, out amount);
+    }
+
+    private Task CloseAsync() => OnClose.InvokeAsync();
+
+    private async Task SaveAsync()
+    {
+        if (_busy) return;
+        if (!TryParseAmount(_amount, out var amount))
+        {
+            _error = L["Error_Amount"];
+            return;
+        }
+        var input = new ManualTransactionInput(_date, amount, _currency, _name, _purpose, _categoryId, _note, _booked);
+        await RunAsync(async () =>
+        {
+            if (Row is { } r) await Manual.UpdateAsync(r.Id, input);
+            else await Manual.AddAsync(AccountId, input);
+            await OnSaved.InvokeAsync(Row == null ? L["Saved_Added"] : L["Saved_Edited"]);
+        });
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Row is not { } r || _busy) return;
+        if (!_confirmDelete) { _confirmDelete = true; return; }
+        await RunAsync(async () =>
+        {
+            await Manual.DeleteAsync(r.Id);
+            await OnSaved.InvokeAsync(L["Saved_Deleted"]);
+        });
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        _error = null;
+        try { await action(); }
+        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException or ArgumentException)
+        {
+            Logger.LogInformation(ex, "Manual booking refused");
+            _error = ex.Message;
+        }
+        finally { _busy = false; }
+    }
+}

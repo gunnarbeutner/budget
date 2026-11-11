@@ -115,4 +115,31 @@
   <data name="Settings_Switched_On" xml:space="preserve">
     <value>Switched from MoneyMoney on {0}.</value>
   </data>
+  <data name="Settings_KeepManual_Button" xml:space="preserve">
+    <value>Keep as manual account…</value>
+  </data>
+  <data name="Settings_UpdatedBy_Manual" xml:space="preserve">
+    <value>By hand in OpenBudget (manual account).</value>
+  </data>
+  <data name="Settings_Return_Button" xml:space="preserve">
+    <value>Return to MoneyMoney</value>
+  </data>
+  <data name="Settings_Return_Finished" xml:space="preserve">
+    <value>The MoneyMoney import of this source is finished; resume it on the Import page first.</value>
+  </data>
+  <data name="Return_Title" xml:space="preserve">
+    <value>Return to MoneyMoney?</value>
+  </data>
+  <data name="Return_Body" xml:space="preserve">
+    <value>The next MoneyMoney upload replaces the bookings, balance and bank details of "{0}" with MoneyMoney's.</value>
+  </data>
+  <data name="Return_Lost" xml:space="preserve">
+    <value>Bookings entered or edited here meanwhile (amounts, categories, notes, check marks, splits) are not kept.</value>
+  </data>
+  <data name="Settings_Closed" xml:space="preserve">
+    <value>Account closed</value>
+  </data>
+  <data name="Settings_Closed_Hint" xml:space="preserve">
+    <value>Its history stays and counts in reports; the sidebar hides it unless closed accounts are shown.</value>
+  </data>
 </root>

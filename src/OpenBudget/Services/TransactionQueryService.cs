@@ -111,6 +111,8 @@ public class TransactionQueryService
             AccountProvider = r.AccountId.HasValue && accts.TryGetValue(r.AccountId.Value, out var prov) ? prov.Provider : null,
             EditBlock = TransactionEditRules.Check(db.Scope, r.SourceId, r.AccountId,
                 r.AccountId.HasValue && accts.TryGetValue(r.AccountId.Value, out var p2) ? p2.Provider : null),
+            CanEditBooking = r.AccountId.HasValue && accts.TryGetValue(r.AccountId.Value, out var p3) && p3.Provider == AccountProviders.Manual
+                && (db.Scope == null || db.Scope.OwnsSource(r.SourceId)),
             SourceId = r.SourceId,
             Note = r.Note,
             IsChecked = r.Checked,

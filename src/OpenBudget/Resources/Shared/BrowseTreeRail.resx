@@ -88,4 +88,16 @@
   <data name="Ctx_Block_NotOwner" xml:space="preserve"><value>Only the owner of this data can change accounts and categories</value></data>
   <data name="Ctx_Block_NotEmpty" xml:space="preserve"><value>Only empty groups can be deleted – move or delete what is inside first</value></data>
   <data name="Tree_RenameLabel" xml:space="preserve"><value>New name</value></data>
+  <data name="Tree_ShowClosedAccounts" xml:space="preserve">
+    <value>Show {0} closed</value>
+  </data>
+  <data name="Tree_HideClosedAccounts" xml:space="preserve">
+    <value>Hide closed accounts</value>
+  </data>
+  <data name="Ctx_CloseAccount" xml:space="preserve">
+    <value>Mark as closed</value>
+  </data>
+  <data name="Ctx_ReopenAccount" xml:space="preserve">
+    <value>Reopen</value>
+  </data>
 </root>

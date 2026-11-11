@@ -184,4 +184,7 @@
   <data name="ReturnReason" xml:space="preserve">
     <value>Rückgabegrund</value>
   </data>
+  <data name="Action_EditBooking" xml:space="preserve">
+    <value>Buchung bearbeiten</value>
+  </data>
 </root>

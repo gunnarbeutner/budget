@@ -102,6 +102,19 @@
 
 <AccountSwitchDialog LoginAccountIds="_switchIds" OnTop="true" OnClose="() => _switchIds = null" OnSwitched="SwitchedAsync" />
 
+<KeepManualDialog AccountIds="_keepManualIds" OnTop="true" OnClose="() => _keepManualIds = null" OnDone="KeptManualAsync" />
+
+<Modal Show="_confirmReturn" Title="@L["Return_Title"]" OnClose="() => _confirmReturn = false" OnTop="true">
+    <ChildContent>
+        <p>@L["Return_Body", _settings?.Account.Name ?? ""]</p>
+        <p class="small text-body-secondary mb-0">@L["Return_Lost"]</p>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="() => _confirmReturn = false">@L["Cancel"]</button>
+        <button type="button" class="btn btn-danger" data-testid="return-mm-confirm" @onclick="ReturnConfirmedAsync">@L["Settings_Return_Button"]</button>
+    </Footer>
+</Modal>
+
 <Modal Show="_settings != null" Title="@L["Settings_Title"]" OnClose="() => _settings = null" CloseOnBackdropClick="false">
     <ChildContent>
     @if (_settings is { } s)
@@ -149,8 +162,23 @@
                         {
                             <div class="small text-body-secondary">@L["Settings_Switch_LinkFirst"]</div>
                         }
+                        @if (sw.CanKeepManual)
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-secondary mt-1" data-testid="account-settings-keep-manual"
+                                    @onclick="() => _keepManualIds = [s.Account.Id]">@L["Settings_KeepManual_Button"]</button>
+                        }
                     }
-                    else if (sw.Provider is OpenBudget.Models.AccountProviders.Manual or OpenBudget.Models.AccountProviders.PortfolioPerformance)
+                    else if (sw.Provider == OpenBudget.Models.AccountProviders.Manual)
+                    {
+                        <div class="small">@L["Settings_UpdatedBy_Manual"]</div>
+                        @if (sw.CanReturnToMoneyMoney)
+                        {
+                            <button type="button" class="btn btn-sm btn-link p-0 mt-1" data-testid="account-settings-return-mm"
+                                    disabled="@sw.ImportFinished" title="@(sw.ImportFinished ? L["Settings_Return_Finished"].Value : null)"
+                                    @onclick="() => _confirmReturn = true">@L["Settings_Return_Button"]</button>
+                        }
+                    }
+                    else if (sw.Provider is OpenBudget.Models.AccountProviders.PortfolioPerformance)
                     {
                         <div class="small">@L["Settings_UpdatedBy_Other"]</div>
                     }
@@ -162,6 +190,17 @@
                             <div class="small text-body-secondary">@L["Settings_Switched_On", at.ToString("yyyy-MM-dd")]</div>
                         }
                     }
+                </div>
+            }
+            @if (_switchState is { CanManage: true } owned)
+            {
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="account-settings-closed" data-testid="account-settings-closed"
+                               checked="@owned.Closed" @onchange="e => SetClosedAsync(s.Account.Id, e.Value is true)" />
+                        <label class="form-check-label" for="account-settings-closed">@L["Settings_Closed"]</label>
+                    </div>
+                    <div class="form-text">@L["Settings_Closed_Hint"]</div>
                 </div>
             }
             <div>
@@ -239,6 +278,39 @@
     private AccountSwitchState? _switchState;
     private IReadOnlyList<int>? _switchIds;
 
+    private IReadOnlyList<long>? _keepManualIds;
+    private bool _confirmReturn;
+
+    private async Task ReloadSwitchStateAsync()
+    {
+        if (_settings is { } s)
+        {
+            try { _switchState = await Switcher.GetAccountStateAsync(s.Account.Id); }
+            catch (AccessDeniedException) { _switchState = null; }
+        }
+    }
+
+    private async Task KeptManualAsync(int count)
+    {
+        _keepManualIds = null;
+        await ReloadSwitchStateAsync();
+        await OnChanged.InvokeAsync(null);
+    }
+
+    private async Task ReturnConfirmedAsync()
+    {
+        _confirmReturn = false;
+        if (_settings is not { } s) return;
+        await RunAsync(() => Switcher.ReturnToMoneyMoneyAsync(s.Account.Id));
+        await ReloadSwitchStateAsync();
+    }
+
+    private async Task SetClosedAsync(long accountId, bool closed)
+    {
+        await RunAsync(() => Switcher.SetClosedAsync([accountId], closed));
+        await ReloadSwitchStateAsync();
+    }
+
     private async Task SwitchedAsync(int count)
     {
         _switchIds = null;
@@ -282,7 +354,12 @@
 
     /// <summary>The context-menu entries of a sidebar row (Rules… plus the structure entries).</summary>
     public IReadOnlyList<ContextMenuItem> Menu(SidebarNode node) =>
-        SidebarMenus.For(node, new SidebarMenuContext(_canEditProject, BlockOf), RailL);
+        SidebarMenus.For(node, new SidebarMenuContext(_canEditProject, BlockOf, AccountClosedFor), RailL);
+
+    /// <summary>Whether an account the user owns is closed; null for others (no close/reopen entry).</summary>
+    private bool? AccountClosedFor(SidebarNode node) =>
+        node.Kind == SidebarNodeKind.Account && BlockOf(node) != StructureBlock.NotOwner
+            && Tree?.Accounts.FirstOrDefault(a => a.Id == node.Id) is { } a ? a.MarkedClosed : null;
 
     /// <summary>Whether the row may be dragged (editable structure).</summary>
     public bool CanDrag(SidebarNode node) => _canEditProject && BlockOf(node) == null;
@@ -344,6 +421,10 @@
                 return true;
             case SidebarMenus.Settings:
                 await OpenSettingsAsync(node);
+                return true;
+            case SidebarMenus.CloseAccount:
+            case SidebarMenus.ReopenAccount:
+                await RunAsync(() => Switcher.SetClosedAsync([node.Id], key == SidebarMenus.CloseAccount));
                 return true;
             case SidebarMenus.Delete:
                 _deleteNode = node;

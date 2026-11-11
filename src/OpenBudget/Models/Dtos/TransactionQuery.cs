@@ -128,6 +128,9 @@ public class TransactionRow
 
     public bool CanEdit => EditBlock == EditBlock.None;
 
+    /// <summary>The whole booking (amount, date, payee, ...) may be edited or deleted: a manual account of a source the user owns.</summary>
+    public bool CanEditBooking { get; init; }
+
     public DateTime? ValueDate { get; init; }
     public string? CounterpartyIban { get; init; }
     public string? CounterpartyBic { get; init; }

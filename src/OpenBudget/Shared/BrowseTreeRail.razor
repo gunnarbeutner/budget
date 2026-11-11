@@ -42,9 +42,11 @@
 
     @if (Tree.Accounts.Count > 0)
     {
-        var visibleAccounts = ShowRelatedAccounts
+        var closedCount = Tree.Accounts.Count(a => a.MarkedClosed && (ShowRelatedAccounts || a.IsAssigned));
+        var showClosed = _showClosed || (SelectionKind == "account" && Tree.Accounts.Any(a => a.Id == SelectionId && a.MarkedClosed));
+        var visibleAccounts = (ShowRelatedAccounts
             ? (IEnumerable<BrowseAccountNode>)Tree.Accounts
-            : Tree.Accounts.Where(a => a.IsAssigned);
+            : Tree.Accounts.Where(a => a.IsAssigned)).Where(a => showClosed || !a.MarkedClosed);
         var hiddenRelatedCount = Tree.Accounts.Count(a => !a.IsAssigned);
         <div class="browse-tree-section">@L["Tree_Section_Accounts"]</div>
         @if (Tree.Accounts.Count(a => a.IsPortfolio) >= 2)
@@ -70,6 +72,13 @@
                 @(ShowRelatedAccounts
                     ? L["Tree_HideRelatedAccounts"]
                     : L["Tree_ShowRelatedAccounts", hiddenRelatedCount])
+            </button>
+        }
+        @if (closedCount > 0)
+        {
+            <button type="button" class="btn btn-link btn-sm browse-tree-toggle" data-testid="tree-closed-toggle"
+                    @onclick="() => _showClosed = !showClosed">
+                @(showClosed ? L["Tree_HideClosedAccounts"] : L["Tree_ShowClosedAccounts", closedCount])
             </button>
         }
     }
@@ -99,6 +108,8 @@
     /// (auto-expand when a URL-selected related account needs revealing).</summary>
     [Parameter] public bool ShowRelatedAccounts { get; set; }
     [Parameter] public EventCallback<bool> ShowRelatedAccountsChanged { get; set; }
+    /// <summary>Accounts their owner marked closed are hidden until the viewer shows them (or selects one).</summary>
+    private bool _showClosed;
     [Parameter] public EventCallback OnSelectAll { get; set; }
     [Parameter] public EventCallback<long> OnSelectAccount { get; set; }
     /// <summary>Raised with the id of the account group whose name was picked.</summary>
@@ -308,7 +319,7 @@
             var accountId = a.Id;
             var accountNode = new SidebarNode(SidebarNodeKind.Account, a.Id, a.Name ?? "");
             bool isSel = SelectionKind == "account" && SelectionId == accountId;
-            <div class="browse-tree-row @(isSel ? "selected" : "") @(!a.IsAssigned ? "related" : "") @(a.Closed ? "closed" : "") @(DropClass(accountNode))" style="@pad"
+            <div class="browse-tree-row @(isSel ? "selected" : "") @(!a.IsAssigned ? "related" : "") @(a.Closed || a.MarkedClosed ? "closed" : "") @(DropClass(accountNode))" style="@pad"
                  role="treeitem" tabindex="0" aria-selected="@isSel.ToString().ToLower()" data-testid="tree-account"
                  data-ob-longpress="@LongPress(accountNode)"
                  draggable="@(Draggable(accountNode) ? "true" : null)" data-ob-drag="@(Draggable(accountNode) ? "" : null)"

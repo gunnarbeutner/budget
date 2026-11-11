@@ -227,4 +227,55 @@
     <value>Der Import kann hier jederzeit fortgesetzt werden.</value>
   </data>
   <data name="Switch_Unlinked_One" xml:space="preserve"><value>1 MoneyMoney-Konto hat keine Bankverbindung.</value></data>
+  <data name="Accounts_Summary" xml:space="preserve">
+    <value>Konten ohne Bankverbindung: {0} bei MoneyMoney, {1} manuell, {2} geschlossen</value>
+  </data>
+  <data name="Accounts_SelectAll" xml:space="preserve">
+    <value>Alle auswählen</value>
+  </data>
+  <data name="Accounts_KeepManual" xml:space="preserve">
+    <value>{0} als manuelle Konten behalten…</value>
+  </data>
+  <data name="Accounts_Close" xml:space="preserve">
+    <value>{0} als geschlossen markieren</value>
+  </data>
+  <data name="Accounts_KeepManualOne" xml:space="preserve">
+    <value>Als manuell behalten…</value>
+  </data>
+  <data name="Accounts_CloseOne" xml:space="preserve">
+    <value>Als geschlossen markieren</value>
+  </data>
+  <data name="Accounts_Bookings" xml:space="preserve">
+    <value>{0:N0} Buchungen</value>
+  </data>
+  <data name="Accounts_Last" xml:space="preserve">
+    <value>zuletzt {0}</value>
+  </data>
+  <data name="Accounts_ManualHeading" xml:space="preserve">
+    <value>Manuelle Konten (aus MoneyMoney)</value>
+  </data>
+  <data name="Accounts_ClosedHeading" xml:space="preserve">
+    <value>Geschlossene Konten</value>
+  </data>
+  <data name="Accounts_Return" xml:space="preserve">
+    <value>Zurück zu MoneyMoney</value>
+  </data>
+  <data name="Accounts_Return_Finished" xml:space="preserve">
+    <value>Nimm zuerst den MoneyMoney-Import wieder auf.</value>
+  </data>
+  <data name="Accounts_Reopen" xml:space="preserve">
+    <value>Wieder öffnen</value>
+  </data>
+  <data name="Return_Title" xml:space="preserve">
+    <value>Zurück zu MoneyMoney?</value>
+  </data>
+  <data name="Return_Body" xml:space="preserve">
+    <value>Der nächste MoneyMoney-Upload ersetzt Buchungen, Saldo und Bankdaten von „{0}“ durch die aus MoneyMoney.</value>
+  </data>
+  <data name="Return_Lost" xml:space="preserve">
+    <value>Zwischenzeitlich hier erfasste oder bearbeitete Buchungen (Beträge, Kategorien, Notizen, Häkchen, Aufteilungen) bleiben nicht erhalten.</value>
+  </data>
+  <data name="Finished_KeepManual" xml:space="preserve">
+    <value>Die {0} Konten ohne Bankverbindung als manuelle Konten behalten, damit ihre Buchungen bearbeitbar bleiben (übernimmt die Struktur)</value>
+  </data>
 </root>

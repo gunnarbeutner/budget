@@ -222,6 +222,8 @@ public class MoneyMoneyImportService
             var providers = await db.Accounts
                 .Where(a => a.SourceId == sourceId)
                 .ToDictionaryAsync(a => a.Id, a => a.Provider, ct);
+            // The closed flag is OpenBudget's: remembered like the provider and restored after the accounts are copied.
+            var closedAccountIds = await db.Accounts.Where(a => a.SourceId == sourceId && a.Closed).Select(a => a.Id).ToListAsync(ct);
             var foreignAccountIds = providers
                 .Where(p => p.Value != AccountProviders.MoneyMoney)
                 .Select(p => p.Key)
@@ -303,6 +305,8 @@ public class MoneyMoneyImportService
 
             int accountGroupCount = takenOver ? 0 : await CopyAccountGroupsAsync(src, db, sourceId, ct);
             int accountCount = await CopyAccountsAsync(src, db, sourceId, providers, foreignState, takenOver, removedAccountIds, ct);
+            if (closedAccountIds.Count > 0)
+                await db.Accounts.Where(a => closedAccountIds.Contains(a.Id)).ExecuteUpdateAsync(s => s.SetProperty(a => a.Closed, true), ct);
             int groupCount = takenOver ? 0 : await CopyCategoryGroupsAsync(src, db, sourceId, ct);
             int categoryCount = takenOver
                 ? await CopyNewCategoriesAsync(src, db, sourceId, removedCategoryIds, ct)
@@ -530,15 +534,15 @@ public class MoneyMoneyImportService
         // in "Other accounts") and refreshes the MoneyMoney-owned ones' bank-side fields; name, group and order stay.
         string insert = keepStructure
             ? """
-              INSERT INTO accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider)
-              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider)
+              INSERT INTO accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider, closed)
+              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider, 0)
               ON CONFLICT(Id) DO UPDATE SET iban = excluded.iban, currency = excluded.currency, type = excluded.type,
                   portfolio = excluded.portfolio, balances = excluded.balances, refresh_tsp = excluded.refresh_tsp, error = excluded.error
               WHERE accounts.provider = 'moneymoney'
               """
             : """
-              INSERT INTO accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider)
-              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider)
+              INSERT INTO accounts (Id, SourceId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider, closed)
+              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider, 0)
               """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {

@@ -227,4 +227,55 @@
     <value>You can resume the import here at any time.</value>
   </data>
   <data name="Switch_Unlinked_One" xml:space="preserve"><value>1 MoneyMoney account has no bank connection.</value></data>
+  <data name="Accounts_Summary" xml:space="preserve">
+    <value>Accounts without bank connection: {0} on MoneyMoney, {1} manual, {2} closed</value>
+  </data>
+  <data name="Accounts_SelectAll" xml:space="preserve">
+    <value>Select all</value>
+  </data>
+  <data name="Accounts_KeepManual" xml:space="preserve">
+    <value>Keep {0} as manual accounts…</value>
+  </data>
+  <data name="Accounts_Close" xml:space="preserve">
+    <value>Mark {0} as closed</value>
+  </data>
+  <data name="Accounts_KeepManualOne" xml:space="preserve">
+    <value>Keep as manual…</value>
+  </data>
+  <data name="Accounts_CloseOne" xml:space="preserve">
+    <value>Mark closed</value>
+  </data>
+  <data name="Accounts_Bookings" xml:space="preserve">
+    <value>{0:N0} bookings</value>
+  </data>
+  <data name="Accounts_Last" xml:space="preserve">
+    <value>last {0}</value>
+  </data>
+  <data name="Accounts_ManualHeading" xml:space="preserve">
+    <value>Manual accounts (from MoneyMoney)</value>
+  </data>
+  <data name="Accounts_ClosedHeading" xml:space="preserve">
+    <value>Closed accounts</value>
+  </data>
+  <data name="Accounts_Return" xml:space="preserve">
+    <value>Return to MoneyMoney</value>
+  </data>
+  <data name="Accounts_Return_Finished" xml:space="preserve">
+    <value>Resume the MoneyMoney import first.</value>
+  </data>
+  <data name="Accounts_Reopen" xml:space="preserve">
+    <value>Reopen</value>
+  </data>
+  <data name="Return_Title" xml:space="preserve">
+    <value>Return to MoneyMoney?</value>
+  </data>
+  <data name="Return_Body" xml:space="preserve">
+    <value>The next MoneyMoney upload replaces the bookings, balance and bank details of "{0}" with MoneyMoney's.</value>
+  </data>
+  <data name="Return_Lost" xml:space="preserve">
+    <value>Bookings entered or edited here meanwhile (amounts, categories, notes, check marks, splits) are not kept.</value>
+  </data>
+  <data name="Finished_KeepManual" xml:space="preserve">
+    <value>Keep the {0} accounts without bank connection as manual accounts, so their bookings stay editable (takes the structure over)</value>
+  </data>
 </root>

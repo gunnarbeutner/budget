@@ -1,0 +1,125 @@
+@using OpenBudget.Services
+@inject AccountSwitchService Switcher
+@inject IStringLocalizer<KeepManualDialog> L
+@inject ILogger<KeepManualDialog> Logger
+
+@* Keeping MoneyMoney accounts as manual accounts (no bank login): lists what changes and offers the structure takeover
+   the step needs. Opened from an account's settings and the Import page's switch overview (several at once). The
+   service enforces that only the source owner does this. *@
+
+<Modal Show="@(AccountIds != null)" Title="@L["Title"]" OnClose="CloseAsync" SizeClass="modal-lg" CloseOnBackdropClick="false" OnTop="OnTop">
+    <ChildContent>
+        <div data-testid="keep-manual-dialog">
+            <p>@L["Intro"]</p>
+            @if (_previews == null)
+            {
+                <div class="skeleton skeleton-line mb-2" style="width: 60%;" aria-busy="true"></div>
+            }
+            else if (_previews.Count == 0)
+            {
+                <div class="alert alert-info mb-0">@L["Nothing"]</div>
+            }
+            else
+            {
+                <ul class="list-unstyled small mb-2" data-testid="keep-manual-list" style="max-height: 14rem; overflow-y: auto;">
+                    @foreach (var p in _previews)
+                    {
+                        <li data-keep-account="@p.Account.AccountId">
+                            <strong>@p.Account.Name</strong>
+                            <span class="text-body-secondary">· @L["Bookings", p.Account.Bookings]@(p.Account.LastBooking is { } last ? " · " + L["LastBooking", last.ToString("yyyy-MM-dd")] : "")</span>
+                        </li>
+                    }
+                </ul>
+                <ul class="small text-body-secondary">
+                    <li>@L["Rule_History"]</li>
+                    <li>@L["Rule_Uploads"]</li>
+                    <li>@L["Rule_Entry"]</li>
+                    <li>@L["Rule_Return"]</li>
+                </ul>
+                @if (NeedsTakeover)
+                {
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="keep-manual-takeover" data-testid="keep-manual-takeover"
+                               checked="@_takeOver" @onchange="e => _takeOver = e.Value is true" />
+                        <label class="form-check-label" for="keep-manual-takeover">@L["Takeover"]</label>
+                        <div class="form-text">@L["Takeover_Hint"]</div>
+                    </div>
+                }
+            }
+            @if (_error != null)
+            {
+                <div class="alert alert-danger small mt-2 mb-0" role="alert">@_error</div>
+            }
+        </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="CloseAsync">@L["Cancel"]</button>
+        <button type="button" class="btn btn-primary" data-testid="keep-manual-confirm" disabled="@(!CanConfirm)" @onclick="ConfirmAsync">
+            @L[(_previews?.Count ?? 0) == 1 ? "Confirm_One" : "Confirm", _previews?.Count ?? 0]
+        </button>
+    </Footer>
+</Modal>
+
+@code {
+    /// <summary>The accounts to keep as manual accounts; null hides the dialog.</summary>
+    [Parameter] public IReadOnlyList<long>? AccountIds { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>Raised after the change, with the number of accounts changed.</summary>
+    [Parameter] public EventCallback<int> OnDone { get; set; }
+
+    [Parameter] public bool OnTop { get; set; }
+
+    private IReadOnlyList<long>? _loadedFor;
+    private List<KeepManualPreview>? _previews;
+    private bool _takeOver;
+    private bool _busy;
+    private string? _error;
+
+    private bool NeedsTakeover => _previews?.Any(p => !p.StructureTakenOver) == true;
+    private bool CanConfirm => !_busy && _previews?.Count > 0 && (!NeedsTakeover || _takeOver);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReferenceEquals(AccountIds, _loadedFor)) return;
+        _loadedFor = AccountIds;
+        _previews = null;
+        _error = null;
+        _takeOver = false;
+        if (AccountIds == null) return;
+        try
+        {
+            _previews = await Switcher.PreviewKeepManualAsync(AccountIds);
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException)
+        {
+            Logger.LogInformation(ex, "Keep-manual preview refused");
+            _previews = [];
+            _error = ex.Message;
+        }
+    }
+
+    private Task CloseAsync() => OnClose.InvokeAsync();
+
+    private async Task ConfirmAsync()
+    {
+        if (_previews == null) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var count = await Switcher.KeepManualAsync(_previews.Select(p => p.Account.AccountId).ToList(), _takeOver);
+            await OnDone.InvokeAsync(count);
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException)
+        {
+            Logger.LogInformation(ex, "Keep-manual refused");
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

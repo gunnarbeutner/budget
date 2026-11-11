@@ -408,4 +408,13 @@
   <data name="Tx_TransferTitle" xml:space="preserve">
     <value>Umbuchung zwischen eigenen Konten: zählt weder als Einnahme noch als Ausgabe.</value>
   </data>
+  <data name="Header_Closed" xml:space="preserve">
+    <value>Geschlossen</value>
+  </data>
+  <data name="Header_AddBooking" xml:space="preserve">
+    <value>Buchung hinzufügen</value>
+  </data>
+  <data name="Ctx_EditBooking" xml:space="preserve">
+    <value>Buchung bearbeiten…</value>
+  </data>
 </root>

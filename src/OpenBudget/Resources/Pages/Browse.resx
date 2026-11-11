@@ -408,4 +408,13 @@
   <data name="Tx_TransferTitle" xml:space="preserve">
     <value>Transfer between own accounts: counts as neither income nor spending.</value>
   </data>
+  <data name="Header_Closed" xml:space="preserve">
+    <value>Closed</value>
+  </data>
+  <data name="Header_AddBooking" xml:space="preserve">
+    <value>Add booking</value>
+  </data>
+  <data name="Ctx_EditBooking" xml:space="preserve">
+    <value>Edit booking…</value>
+  </data>
 </root>

@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Title" xml:space="preserve">
+    <value>Keep as manual account</value>
+  </data>
+  <data name="Intro" xml:space="preserve">
+    <value>These accounts leave MoneyMoney without a bank connection: from now on their bookings are entered by hand in OpenBudget.</value>
+  </data>
+  <data name="Nothing" xml:space="preserve">
+    <value>None of these accounts can be kept as a manual account (already changed, linked to a bank login, or not yours).</value>
+  </data>
+  <data name="Bookings" xml:space="preserve">
+    <value>{0:N0} bookings</value>
+  </data>
+  <data name="LastBooking" xml:space="preserve">
+    <value>last {0}</value>
+  </data>
+  <data name="Rule_History" xml:space="preserve">
+    <value>MoneyMoney's bookings stay as the account's history and become editable (amount, date, payee, category, note).</value>
+  </data>
+  <data name="Rule_Uploads" xml:space="preserve">
+    <value>MoneyMoney uploads no longer change these accounts (bookings, balance, name).</value>
+  </data>
+  <data name="Rule_Entry" xml:space="preserve">
+    <value>New bookings are added by hand; the balance follows them.</value>
+  </data>
+  <data name="Rule_Return" xml:space="preserve">
+    <value>An account can return to MoneyMoney later; the next upload then replaces what was changed here.</value>
+  </data>
+  <data name="Takeover" xml:space="preserve">
+    <value>Also take over the structure from MoneyMoney (account groups, account names, categories)</value>
+  </data>
+  <data name="Takeover_Hint" xml:space="preserve">
+    <value>Required: otherwise MoneyMoney uploads would still rename and regroup the accounts and replace the categories their bookings use.</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Confirm" xml:space="preserve">
+    <value>Keep {0} accounts as manual accounts</value>
+  </data>
+  <data name="Confirm_One" xml:space="preserve">
+    <value>Keep as manual account</value>
+  </data>
+</root>

@@ -37,8 +37,20 @@ public sealed record AccountSwitchPreview(
     decimal? BankBalance,
     bool StructureTakenOver);
 
-/// <summary>The account settings' view: who updates the account, and (for the source owner) its bank link.</summary>
-public sealed record AccountSwitchState(string Provider, bool CanManage, AccountSwitchLink? Link);
+/// <summary>
+/// The account settings' view: who updates the account, and (for the source owner) its bank link and whether it can be
+/// kept as a manual account (<see cref="CanKeepManual"/>) or returned to MoneyMoney (<see cref="CanReturnToMoneyMoney"/>;
+/// refused while <see cref="ImportFinished"/>).
+/// </summary>
+public sealed record AccountSwitchState(
+    string Provider, bool CanManage, AccountSwitchLink? Link, bool CanKeepManual = false, bool CanReturnToMoneyMoney = false, bool ImportFinished = false,
+    bool Closed = false);
+
+/// <summary>An account about to be kept as a manual account, with whether its source's structure is OpenBudget's already.</summary>
+public sealed record KeepManualPreview(SourceAccountItem Account, string SourceName, bool StructureTakenOver);
+
+/// <summary>An account of a MoneyMoney source without a bank link, as the switch overview lists it.</summary>
+public sealed record SourceAccountItem(long AccountId, string Name, int Bookings, DateOnly? LastBooking, decimal? Balance, string? Currency, string Provider = AccountProviders.MoneyMoney);
 
 /// <summary>A source's switch progress and one-time import setting (owner only).</summary>
 public sealed record SourceSwitchState(
@@ -47,7 +59,17 @@ public sealed record SourceSwitchState(
     bool StructureTakenOver,
     DateTime? ImportFinishedAt,
     IReadOnlyList<AccountSwitchLink> Links,
-    int MoneyMoneyAccountsWithoutLink);
+    int MoneyMoneyAccountsWithoutLink)
+{
+    /// <summary>The accounts counted in <see cref="MoneyMoneyAccountsWithoutLink"/>: still MoneyMoney's, no bank link.</summary>
+    public IReadOnlyList<SourceAccountItem> MoneyMoneyAccounts { get; init; } = [];
+
+    /// <summary>Accounts of this source kept as manual accounts (they can return to MoneyMoney).</summary>
+    public IReadOnlyList<SourceAccountItem> ManualAccounts { get; init; } = [];
+
+    /// <summary>Accounts of this source marked closed (they count as handled, whoever updates them).</summary>
+    public IReadOnlyList<SourceAccountItem> ClosedAccounts { get; init; } = [];
+}
 
 /// <summary>
 /// Moves accounts from MoneyMoney to a bank connection ("switch") and back. Linking an account MoneyMoney owns only
@@ -61,6 +83,10 @@ public sealed record SourceSwitchState(
 /// Switching back returns the account to MoneyMoney: the next upload replaces its rows, balance and bank details with
 /// MoneyMoney's, so what was edited or synced in OpenBudget meanwhile (categories, notes, check marks, splits, rows the
 /// bank delivered) is not kept. The structure takeover and the one-time import setting are not undone by it.
+///
+/// An account without a bank link can instead be kept as a manual account (<see cref="KeepManualAsync"/>): the same
+/// rules apply (structure taken over, MoneyMoney's rows stay as editable history, uploads stop touching it), but nobody
+/// refreshes it; its bookings are entered by hand. <see cref="ReturnToMoneyMoneyAsync"/> undoes it like switching back.
 ///
 /// Only the owner of the account's source (who is also the bank login's owner) can switch or change the import setting.
 /// </summary>
@@ -99,9 +125,15 @@ public sealed class AccountSwitchService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var account = await db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == accountId, ct);
         if (account == null) return null;
-        if (!scope.OwnsSource(account.SourceId)) return new AccountSwitchState(account.Provider, false, null);
+        if (!scope.OwnsSource(account.SourceId)) return new AccountSwitchState(account.Provider, false, null, Closed: account.Closed);
         var link = (await LinksAsync(db, l => l.LinkedAccountId == accountId, ct)).Where(l => !l.Created).Select(l => l.Link).FirstOrDefault();
-        return new AccountSwitchState(account.Provider, true, link);
+        var source = await db.ImportSources.AsNoTracking().FirstAsync(s => s.Id == account.SourceId, ct);
+        var linked = await db.BankLoginAccounts.AnyAsync(l => l.LinkedAccountId == accountId, ct);
+        return new AccountSwitchState(account.Provider, true, link,
+            CanKeepManual: account.Provider == AccountProviders.MoneyMoney && !linked && account.Type != GroupType,
+            CanReturnToMoneyMoney: IsKeptManual(account, source) && !linked,
+            ImportFinished: source.MoneyMoneyImportFinishedAt != null,
+            Closed: account.Closed);
     }
 
     /// <summary>The switch state of an owned source: its linked accounts and whether the MoneyMoney import is finished.</summary>
@@ -115,9 +147,179 @@ public sealed class AccountSwitchService
         var links = (await LinksAsync(db, l => l.LinkedAccountId != null && accountIds.Contains(l.LinkedAccountId.Value), ct))
             .Where(l => !l.Created).Select(l => l.Link).ToList();
         var linked = links.Select(l => l.AccountId).ToHashSet();
-        var unlinked = await db.Accounts.AsNoTracking()
-            .CountAsync(a => a.SourceId == sourceId && a.Provider == AccountProviders.MoneyMoney && !linked.Contains(a.Id), ct);
-        return new SourceSwitchState(sourceId, source.Name, source.StructureTakenOverAt != null, source.MoneyMoneyImportFinishedAt, links, unlinked);
+        linked.UnionWith(await db.BankLoginAccounts.AsNoTracking()
+            .Where(l => l.LinkedAccountId != null && accountIds.Contains(l.LinkedAccountId.Value)).Select(l => l.LinkedAccountId!.Value).ToListAsync(ct));
+        var all = (await db.Accounts.AsNoTracking().Where(a => a.SourceId == sourceId && a.Type != GroupType).ToListAsync(ct))
+            .OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        var closed = all.Where(a => a.Closed).ToList();
+        var candidates = all.Where(a => !a.Closed && !linked.Contains(a.Id)).ToList();
+        var moneyMoney = candidates.Where(a => a.Provider == AccountProviders.MoneyMoney).ToList();
+        var manual = candidates.Where(a => IsKeptManual(a, source)).ToList();
+        var items = await ItemsAsync(db, [.. moneyMoney, .. manual, .. closed], ct);
+        return new SourceSwitchState(sourceId, source.Name, source.StructureTakenOverAt != null, source.MoneyMoneyImportFinishedAt, links, moneyMoney.Count)
+        {
+            MoneyMoneyAccounts = moneyMoney.Select(a => items[a.Id]).ToList(),
+            ManualAccounts = manual.Select(a => items[a.Id]).ToList(),
+            ClosedAccounts = closed.Select(a => items[a.Id]).ToList(),
+        };
+    }
+
+    /// <summary>Account type code of an account group row (never kept as a manual account).</summary>
+    private const long GroupType = 8;
+
+    /// <summary>
+    /// A manual account that MoneyMoney delivered: it sits in a source MoneyMoney uploads to and has a MoneyMoney rowid
+    /// (accounts OpenBudget or a connector creates live in other sources or in the connector half of the id space).
+    /// </summary>
+    private static bool IsKeptManual(Account account, ImportSource source) =>
+        account.Provider == AccountProviders.Manual
+        && (source.LastUploadAt != null || source.MoneyMoneyImportFinishedAt != null)
+        && (account.Id & ((1L << 40) - 1)) < BankTransactionStore.ConnectorRowBase;
+
+    private static async Task<Dictionary<long, SourceAccountItem>> ItemsAsync(BudgetDbContext db, List<Account> accounts, CancellationToken ct)
+    {
+        var stats = new Dictionary<long, (int Count, long Last)>();
+        foreach (var chunk in accounts.Select(a => a.Id).Chunk(500))
+        {
+            var part = chunk;
+            foreach (var g in await db.Transactions.AsNoTracking()
+                         .Where(t => t.AccountId != null && part.Contains(t.AccountId.Value))
+                         .GroupBy(t => t.AccountId!.Value)
+                         .Select(g => new { g.Key, Count = g.Count(), Last = g.Max(t => t.Timestamp) })
+                         .ToListAsync(ct))
+                stats[g.Key] = (g.Count, g.Last);
+        }
+        return accounts.ToDictionary(a => a.Id, a =>
+        {
+            var has = stats.TryGetValue(a.Id, out var st);
+            return new SourceAccountItem(a.Id, a.Name ?? "?", has ? st.Count : 0,
+                has ? DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(st.Last).UtcDateTime) : null, a.CurrentBalance, a.Currency, a.Provider);
+        });
+    }
+
+    /// <summary>The accounts <see cref="KeepManualAsync"/> would change (owned, still MoneyMoney's, without a bank link).</summary>
+    public async Task<List<KeepManualPreview>> PreviewKeepManualAsync(IReadOnlyCollection<long> accountIds, CancellationToken ct = default)
+    {
+        var scope = await _access.GetAsync();
+        var ids = accountIds.Distinct().ToList();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var linked = (await db.BankLoginAccounts.AsNoTracking().Where(l => l.LinkedAccountId != null && ids.Contains(l.LinkedAccountId.Value))
+            .Select(l => l.LinkedAccountId!.Value).ToListAsync(ct)).ToHashSet();
+        var accounts = (await db.Accounts.AsNoTracking().Where(a => ids.Contains(a.Id) && a.Provider == AccountProviders.MoneyMoney && a.Type != GroupType).ToListAsync(ct))
+            .Where(a => scope.OwnsSource(a.SourceId) && !linked.Contains(a.Id))
+            .OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        var sourceIds = accounts.Select(a => a.SourceId).Distinct().ToList();
+        var sources = await db.ImportSources.AsNoTracking().Where(s => sourceIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, ct);
+        var items = await ItemsAsync(db, accounts, ct);
+        return accounts.Select(a => new KeepManualPreview(items[a.Id], sources[a.SourceId].Name, sources[a.SourceId].StructureTakenOverAt != null)).ToList();
+    }
+
+    /// <summary>
+    /// Keeps the given accounts (still MoneyMoney's, without a bank link; others are skipped) as manual accounts: MoneyMoney
+    /// uploads stop touching them and their rows become editable history. Refused while the structure of an affected
+    /// source is MoneyMoney's unless <paramref name="takeOverStructure"/> takes it over first. Returns how many changed.
+    /// </summary>
+    public async Task<int> KeepManualAsync(IReadOnlyCollection<long> accountIds, bool takeOverStructure, CancellationToken ct = default)
+    {
+        var scope = await _access.GetAsync();
+        if (scope.UserId == null) throw new AccessDeniedException("Not signed in.");
+        var ids = accountIds.Distinct().ToList();
+        List<Account> accounts;
+        HashSet<long> linked;
+        await using (var db = await _dbFactory.CreateDbContextAsync(ct))
+        {
+            accounts = await db.Accounts.AsNoTracking().Where(a => ids.Contains(a.Id)).ToListAsync(ct);
+            linked = (await db.BankLoginAccounts.AsNoTracking().Where(l => l.LinkedAccountId != null && ids.Contains(l.LinkedAccountId.Value))
+                .Select(l => l.LinkedAccountId!.Value).ToListAsync(ct)).ToHashSet();
+        }
+        if (accounts.Count < ids.Count) throw new AccessDeniedException("Account not found.");
+        foreach (var a in accounts) scope.RequireSourceOwner(a.SourceId);
+        var todo = accounts.Where(a => a.Provider == AccountProviders.MoneyMoney && a.Type != GroupType && !linked.Contains(a.Id)).ToList();
+        if (todo.Count == 0 && accounts.Any(a => linked.Contains(a.Id) && a.Provider == AccountProviders.MoneyMoney))
+            throw new InvalidOperationException("An account linked to a bank login is switched to that login; unlink it first to keep it as a manual account.");
+
+        foreach (var sourceId in todo.Select(a => a.SourceId).Distinct())
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync(ct);
+            var source = await db.ImportSources.AsNoTracking().FirstAsync(s => s.Id == sourceId, ct);
+            if (source.StructureTakenOverAt != null) continue;
+            if (!takeOverStructure)
+                throw new InvalidOperationException($"The structure of source '{source.Name}' is still MoneyMoney's; take it over to keep its accounts as manual accounts.");
+            await _takeover.TakeOverAsync(sourceId, ct);
+        }
+
+        var changed = 0;
+        foreach (var group in todo.GroupBy(a => a.SourceId))
+        {
+            string name;
+            await using (var db = await _dbFactory.CreateDbContextAsync(ct))
+                name = await db.ImportSources.Where(s => s.Id == group.Key).Select(s => s.Name).FirstAsync(ct);
+            var groupIds = group.Select(a => a.Id).ToList();
+            async Task<int> ApplyAsync()
+            {
+                await using var db = await _dbFactory.CreateDbContextAsync(ct);
+                var rows = await db.Accounts.Where(a => groupIds.Contains(a.Id) && a.Provider == AccountProviders.MoneyMoney).ToListAsync(ct);
+                foreach (var a in rows)
+                {
+                    a.Provider = AccountProviders.Manual;
+                    a.Error = null;
+                }
+                await db.SaveChangesAsync(ct);
+                return rows.Count;
+            }
+            changed += _importer == null ? await ApplyAsync() : await _importer.WithSourceLockAsync(name, ApplyAsync, ct);
+            _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: group.Key), _origin.Id);
+        }
+        if (todo.Count > 0) _notifier.Publish(new DataChange(DataArea.Sources), _origin.Id);
+        return changed;
+    }
+
+    /// <summary>
+    /// Marks the given accounts closed (or reopens them). Closed accounts keep their history and provider; the sidebar
+    /// hides them by default and they count as handled in the switch overview. Source owner only. Returns how many changed.
+    /// </summary>
+    public async Task<int> SetClosedAsync(IReadOnlyCollection<long> accountIds, bool closed, CancellationToken ct = default)
+    {
+        var scope = await _access.GetAsync();
+        if (scope.UserId == null) throw new AccessDeniedException("Not signed in.");
+        var ids = accountIds.Distinct().ToList();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var accounts = await db.Accounts.Where(a => ids.Contains(a.Id)).ToListAsync(ct);
+        if (accounts.Count < ids.Count) throw new AccessDeniedException("Account not found.");
+        foreach (var a in accounts) scope.RequireSourceOwner(a.SourceId);
+        var changed = accounts.Where(a => a.Closed != closed && a.Type != GroupType).ToList();
+        foreach (var a in changed) a.Closed = closed;
+        await db.SaveChangesAsync(ct);
+        foreach (var sourceId in changed.Select(a => a.SourceId).Distinct())
+            _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: sourceId), _origin.Id);
+        if (changed.Count > 0) _notifier.Publish(new DataChange(DataArea.Sources), _origin.Id);
+        return changed.Count;
+    }
+
+    /// <summary>
+    /// Returns a kept manual account to MoneyMoney; the next upload replaces its rows, balance and bank details (bookings
+    /// entered or edited meanwhile are not kept). Refused while the source's MoneyMoney import is finished.
+    /// </summary>
+    public async Task ReturnToMoneyMoneyAsync(long accountId, CancellationToken ct = default)
+    {
+        var scope = await _access.GetAsync();
+        if (scope.UserId == null) throw new AccessDeniedException("Not signed in.");
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var account = await db.Accounts.FirstOrDefaultAsync(a => a.Id == accountId, ct)
+            ?? throw new AccessDeniedException("Account not found.");
+        scope.RequireSourceOwner(account.SourceId);
+        if (account.Provider == AccountProviders.MoneyMoney) return;
+        var source = await db.ImportSources.AsNoTracking().FirstAsync(s => s.Id == account.SourceId, ct);
+        if (!IsKeptManual(account, source) || await db.BankLoginAccounts.AnyAsync(l => l.LinkedAccountId == accountId, ct))
+            throw new InvalidOperationException("Only a manual account that came from MoneyMoney can return to it.");
+        if (source.MoneyMoneyImportFinishedAt != null)
+            throw new InvalidOperationException("The MoneyMoney import of this source is finished; resume it before returning an account to MoneyMoney.");
+        account.Provider = AccountProviders.MoneyMoney;
+        await db.SaveChangesAsync(ct);
+        _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: account.SourceId), _origin.Id);
+        _notifier.Publish(new DataChange(DataArea.Sources), _origin.Id);
     }
 
     /// <summary>Previews switching the given links (bank login accounts of the current user).</summary>

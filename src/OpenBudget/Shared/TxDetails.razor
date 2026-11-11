@@ -109,6 +109,10 @@
                 <i class="bi bi-magic" aria-hidden="true"></i> @L["Action_Rule"]
             </button>
         }
+        @if (Row.CanEditBooking && OnEditBooking.HasDelegate)
+        {
+            <button type="button" class="ob-btn" data-testid="tx-details-edit-booking" @onclick="() => OnEditBooking.InvokeAsync()">@L["Action_EditBooking"]</button>
+        }
         <button type="button" class="ob-btn" data-testid="tx-details-similar" disabled="@string.IsNullOrWhiteSpace(Row.Name)"
                 @onclick="() => OnShowSimilar.InvokeAsync()">@L["Action_Similar"]</button>
     </div>
@@ -143,6 +147,8 @@
     [Parameter] public EventCallback<string> OnNoteSave { get; set; }
     [Parameter] public EventCallback OnToggleChecked { get; set; }
     [Parameter] public EventCallback OnShowSimilar { get; set; }
+    /// <summary>Opens the full edit form (bookings of manual accounts the user owns).</summary>
+    [Parameter] public EventCallback OnEditBooking { get; set; }
     /// <summary>"Create rule from this…": opens the rules bar of the category with a draft for the payee (the page asks for a category when there is none).</summary>
     [Parameter] public EventCallback<MouseEventArgs> OnCreateRule { get; set; }
 

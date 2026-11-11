@@ -6,7 +6,8 @@ namespace OpenBudget.Shared;
 /// <summary>What the sidebar's context menus may offer the current user.</summary>
 /// <param name="CanEditProject">Editor (or owner) of the project; viewers get no editing entries at all.</param>
 /// <param name="StructureBlock">Why a node's structure cannot be edited (null = it can); disabled entries show the reason.</param>
-public sealed record SidebarMenuContext(bool CanEditProject, Func<SidebarNode, StructureBlock?> StructureBlock)
+/// <param name="AccountClosed">For an account its owner may close or reopen: whether it is closed; null = no such entry.</param>
+public sealed record SidebarMenuContext(bool CanEditProject, Func<SidebarNode, StructureBlock?> StructureBlock, Func<SidebarNode, bool?>? AccountClosed = null)
 {
     public static SidebarMenuContext ReadOnly { get; } = new(false, _ => Services.StructureBlock.NotOwner);
 }
@@ -28,6 +29,8 @@ public static class SidebarMenus
     public const string MoveDown = "move-down";
     public const string Settings = "settings";
     public const string Delete = "delete";
+    public const string CloseAccount = "close-account";
+    public const string ReopenAccount = "reopen-account";
 
     public static IReadOnlyList<ContextMenuItem> For(SidebarNode node, SidebarMenuContext ctx, IStringLocalizer<BrowseTreeRail> l)
     {
@@ -63,6 +66,10 @@ public static class SidebarMenus
             case SidebarNodeKind.Account:
                 // Always open: the statement settings work on MoneyMoney's accounts too (the name field shows the reason).
                 items.Add(new ContextMenuItem(Settings, l["Ctx_AccountSettings"], "bi-gear"));
+                if (ctx.AccountClosed?.Invoke(node) is { } closed)
+                    items.Add(closed
+                        ? new ContextMenuItem(ReopenAccount, l["Ctx_ReopenAccount"], "bi-box-arrow-up")
+                        : new ContextMenuItem(CloseAccount, l["Ctx_CloseAccount"], "bi-archive"));
                 break;
             case SidebarNodeKind.AccountGroup:
                 items.Add(Item(NewGroup, l["Ctx_NewGroup"], "bi-folder-plus"));

@@ -61,6 +61,12 @@ public class BrowseAccountNode
 
     /// <summary>MoneyMoney owns the account's transactions (they are read-only in OpenBudget).</summary>
     public bool IsMoneyMoney { get; init; }
+
+    /// <summary>Its owner marked it closed in OpenBudget (the sidebar hides it by default).</summary>
+    public bool MarkedClosed { get; init; }
+
+    /// <summary>A manual account of a source the viewer owns: bookings are entered, edited and deleted by hand.</summary>
+    public bool CanEnterTransactions { get; init; }
 }
 
 public class BrowseCategoryNode

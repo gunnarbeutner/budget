@@ -123,6 +123,16 @@
                             <span class="browse-readonly ms-1" data-testid="browse-readonly" role="img" tabindex="0"
                                   title="@L["ReadOnly_MoneyMoney"]" aria-label="@L["ReadOnly_MoneyMoney"]"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
                         }
+                        @if (info.MarkedClosed)
+                        {
+                            <span class="badge text-bg-secondary ms-1" data-testid="account-closed">@L["Header_Closed"]</span>
+                        }
+                        @if (info.CanEnterTransactions && !info.MarkedClosed)
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-primary ms-2 py-0" data-testid="tx-add" @onclick="OpenAddBookingAsync">
+                                <i class="bi bi-plus-lg" aria-hidden="true"></i> @L["Header_AddBooking"]
+                            </button>
+                        }
                     }
                     else if (selectionKind == "accountgroup" && GroupAccounts() is { } members)
                     {
@@ -525,6 +535,7 @@
                                                OnNoteSave="note => SetNoteForAsync(row.Id, note)"
                                                OnToggleChecked="() => SetCheckedForAsync(row.Id, !row.IsChecked)"
                                                OnShowSimilar="() => ShowSimilarAsync(row)"
+                                               OnEditBooking="() => OpenEditBookingAsync(row)"
                                                OnCreateRule="e => CreateRuleFromAsync(row, e)"
                                                PickerData="pickerData" ProjectId="ProjectId"
                                                OnChanged="RefreshAfterEditAsync" />
@@ -569,6 +580,10 @@
 {
     <NotePanel Initial="PopupNoteInitial" Count="popupTargets.Count" X="popupX" Y="popupY" OnSave="SaveNotePanelAsync" OnClose="ClosePopup" />
 }
+
+<ManualTxDialog Open="_manualTxOpen" AccountId="@(SelectedAccountNode?.Id ?? _manualTxRow?.AccountId ?? 0)"
+                AccountCurrency="@(SelectedAccountNode?.Currency ?? _manualTxRow?.Currency)" Row="_manualTxRow" Categories="pickerData"
+                OnClose="CloseBookingDialog" OnSaved="BookingSavedAsync" />
 
 <UndoToasts Toasts="toasts" OnAction="OnToastAction" OnDismiss="DismissToast" />
 

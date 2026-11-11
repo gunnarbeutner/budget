@@ -281,7 +281,7 @@ public sealed class SplitTransferService
             .Where(a => a.ProjectId == projectId && a.AccountId != row.AccountId)
             .Select(a => a.AccountId).ToListAsync(ct);
         var accounts = await db.Accounts.AsNoTracking()
-            .Where(a => accountIds.Contains(a.Id) && a.SourceId == row.SourceId)
+            .Where(a => accountIds.Contains(a.Id) && a.SourceId == row.SourceId && !a.Closed)
             .Select(a => new { a.Id, a.Name, a.Provider, a.SourceId }).ToListAsync(ct);
         var usable = accounts
             .Where(a => TransactionEditRules.Check(db.Scope, a.SourceId, a.Id, a.Provider) == EditBlock.None)

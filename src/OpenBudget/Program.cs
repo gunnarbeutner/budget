@@ -54,6 +54,7 @@ builder.Services.AddScoped<AccountSwitchService>();
 builder.Services.AddScoped<CategoryColorService>();
 builder.Services.AddScoped<StructureService>();
 builder.Services.AddScoped<TransactionEditService>();
+builder.Services.AddScoped<ManualTransactionService>();
 builder.Services.AddScoped<SplitTransferService>();
 builder.Services.AddScoped<CategoryRuleService>();
 builder.Services.AddScoped<CategorizationService>();

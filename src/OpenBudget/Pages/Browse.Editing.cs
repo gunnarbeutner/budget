@@ -634,6 +634,11 @@ public partial class Browse
             items.Add(new("go-account", L["Ctx_GoAccount"], "bi-bank", single.AccountId == null));
             items.Add(new("go-category", L["Ctx_GoCategory"], "bi-diagram-3", single.CategoryId == null));
             if (contextStatement != null) items.Add(new("statement", L["Ctx_Statement"], "bi-file-earmark-pdf"));
+            if (single.CanEditBooking)
+            {
+                items.Add(ContextMenuItem.Divider());
+                items.Add(new("edit-booking", L["Ctx_EditBooking"], "bi-pencil"));
+            }
             items.Add(ContextMenuItem.Divider());
             var soon = L["Ctx_ComingSoon"].Value;
             items.Add(new("rule", L["Ctx_CreateRule"], "bi-funnel", true, soon));
@@ -677,12 +682,52 @@ public partial class Browse
             case "go-category" when single?.CategoryId is { } categoryId:
                 await GoToCategoryAsync(categoryId);
                 break;
+            case "edit-booking" when single is { CanEditBooking: true }:
+                await OpenEditBookingAsync(single);
+                break;
             case "statement" when contextStatement is { } statement:
                 await JS.InvokeVoidAsync("open", $"/statements/{statement.Id}", "_blank");
                 break;
             default:
                 break;
         }
+    }
+
+    // ---- manual bookings ----
+
+    private bool _manualTxOpen;
+    private TransactionRow? _manualTxRow;
+
+    private async Task OpenAddBookingAsync()
+    {
+        if (project == null) return;
+        pickerData ??= await Categorization.GetPickerDataAsync(project.SourceId);
+        _manualTxRow = null;
+        _manualTxOpen = true;
+    }
+
+    private async Task OpenEditBookingAsync(TransactionRow row)
+    {
+        if (project == null) return;
+        popup = PopupKind.None;
+        pickerData ??= await Categorization.GetPickerDataAsync(project.SourceId);
+        _manualTxRow = row;
+        _manualTxOpen = true;
+    }
+
+    private void CloseBookingDialog()
+    {
+        _manualTxOpen = false;
+        _manualTxRow = null;
+    }
+
+    private async Task BookingSavedAsync(string message)
+    {
+        CloseBookingDialog();
+        AddToast(new ToastItem { Message = message });
+        selected.Clear();
+        expandedId = null;
+        await RefreshAfterEditAsync();
     }
 
     private async Task GoToCategoryAsync(long categoryId)
