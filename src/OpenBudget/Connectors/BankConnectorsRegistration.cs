@@ -52,7 +52,9 @@ public static class BankConnectorsRegistration
         // Web logins: one lazily started Chromium (when installed), an isolated context per login.
         services.AddSingleton(sp => new BrowserOptions
         {
-            Headless = string.Equals(sp.GetRequiredService<IConfiguration>()[BrowserHeadlessVariable], "true", StringComparison.OrdinalIgnoreCase),
+            // Test hosts never open browser windows.
+            Headless = string.Equals(sp.GetRequiredService<IConfiguration>()[BrowserHeadlessVariable], "true", StringComparison.OrdinalIgnoreCase)
+                || sp.GetRequiredService<Microsoft.Extensions.Hosting.IHostEnvironment>().IsEnvironment("Test"),
         });
         services.AddSingleton<BrowserService>();
         services.AddSingleton<IBrowserHost>(sp => sp.GetRequiredService<BrowserService>());

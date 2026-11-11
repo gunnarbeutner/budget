@@ -176,7 +176,11 @@ public sealed class RealBrowserWebLoginTests
     [Test]
     public async Task Browser_keeps_its_native_identity_and_cookies_survive_a_fresh_context()
     {
-        // the identity of the headed browser that web logins use, so this one test opens a window
+        // The identity of the headed browser that web logins use. A headed browser is only invisible under Xvfb (Linux
+        // without a display); elsewhere the test runs when OPENBUDGET_TEST_HEADED=1 asks for the window.
+        if (!(OperatingSystem.IsLinux() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
+            && Environment.GetEnvironmentVariable("OPENBUDGET_TEST_HEADED") != "1")
+            Assert.Ignore("Opens a browser window; set OPENBUDGET_TEST_HEADED=1 to run it here.");
         await using var browser = NewBrowser(headless: false);
         IReadOnlyList<CookieState> cookies;
         string userAgent;
