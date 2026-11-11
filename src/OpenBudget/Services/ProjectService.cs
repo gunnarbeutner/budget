@@ -9,7 +9,7 @@ namespace OpenBudget.Services;
 /// just the records that describe what a project is and which accounts / categories it owns.
 /// </summary>
 /// <summary>Owner view of a project's "default for new accounts" setting.</summary>
-public sealed record DefaultProjectState(bool IsDefault, bool IsShared, bool ClearedNotice, int UnassignedAccounts);
+public sealed record DefaultProjectState(bool IsDefault, bool IsShared, bool ClearedNotice);
 
 public class ProjectService
 {
@@ -279,8 +279,7 @@ public class ProjectService
         var project = await db.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId);
         if (project == null) return null;
         var shared = await DefaultProjectAssigner.IsSharedAsync(db, projectId);
-        var unassigned = db.Scope == null ? 0 : await UnassignedOwnAccountsQuery(db).CountAsync();
-        return new DefaultProjectState(project.IsDefaultForNewAccounts, shared, project.DefaultClearedNotice, unassigned);
+        return new DefaultProjectState(project.IsDefaultForNewAccounts, shared, project.DefaultClearedNotice);
     }
 
     /// <summary>Dismiss the notice that sharing cleared this project's default status.</summary>
@@ -293,37 +292,6 @@ public class ProjectService
         if (!project.DefaultClearedNotice) return;
         project.DefaultClearedNotice = false;
         await db.SaveChangesAsync();
-    }
-
-    /// <summary>
-    /// One-time helper: assign every account of the caller's own sources that is not in any project yet to this
-    /// project. Owner-only; allowed on a shared project too (an explicit owner action — the UI asks first).
-    /// Returns the number of accounts assigned.
-    /// </summary>
-    public async Task<int> AssignUnassignedAccountsAsync(int projectId)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        var scope = db.Scope ?? throw new InvalidOperationException("Requires a user scope.");
-        scope.RequireRole(projectId, ProjectRole.Owner);
-        if (!await db.Projects.AnyAsync(p => p.Id == projectId))
-            throw new AccessDeniedException("Project not found.");
-
-        var unassigned = await UnassignedOwnAccountsQuery(db).ToListAsync();
-        var ids = unassigned.Select(a => a.Id).ToList();
-        foreach (var account in unassigned)
-            db.ProjectAccountAssignments.Add(AccountAssignmentDefaults.For(projectId, account));
-        if (ids.Count == 0) return 0;
-        await db.SaveChangesAsync();
-        Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
-        return ids.Count;
-    }
-
-    private static IQueryable<Account> UnassignedOwnAccountsQuery(BudgetDbContext db)
-    {
-        var owned = db.Scope!.OwnedSourceIds;
-        return db.Accounts.AsNoTracking()
-            .Where(a => owned.Contains(a.SourceId))
-            .Where(a => !db.ProjectAccountAssignments.Any(x => x.AccountId == a.Id));
     }
 
     public async Task AssignCategoryToProjectAsync(int projectId, long categoryId)

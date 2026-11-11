@@ -58,41 +58,10 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Status_Loading" xml:space="preserve">
-    <value>Wird geladen ...</value>
-  </data>
   <data name="Default_ClearedNotice" xml:space="preserve">
     <value>Dieses Projekt war das Standardprojekt für neue Konten, ist aber jetzt geteilt und daher nicht mehr Standard. Wählen Sie ein nicht geteiltes Projekt, wenn neue Konten automatisch zugeordnet werden sollen.</value>
   </data>
   <data name="Button_Dismiss" xml:space="preserve">
     <value>Ausblenden</value>
   </data>
-  <data name="Button_Cancel" xml:space="preserve">
-    <value>Abbrechen</value>
-  </data>
-  <data name="Assign_Heading" xml:space="preserve">
-    <value>Bestehende Konten zuordnen</value>
-  </data>
-  <data name="Assign_Description" xml:space="preserve">
-    <value>Einmalige Hilfe: Ordnet jedes Konto Ihrer eigenen Quellen, das noch in keinem Projekt ist, diesem Projekt zu. Konten, die bereits in einem Projekt sind, bleiben unberührt.</value>
-  </data>
-  <data name="Assign_Button" xml:space="preserve">
-    <value>Alle meine Konten zuordnen, die noch in keinem Projekt sind</value>
-  </data>
-  <data name="Assign_Result_One" xml:space="preserve">
-    <value>1 Konto zugeordnet.</value>
-  </data>
-  <data name="Assign_Result_Other" xml:space="preserve">
-    <value>{0} Konten zugeordnet.</value>
-  </data>
-  <data name="Assign_Confirm_Title" xml:space="preserve">
-    <value>Konten einem geteilten Projekt zuordnen</value>
-  </data>
-  <data name="Assign_Confirm_Body" xml:space="preserve">
-    <value>Dieses Projekt ist geteilt. Die {0} nicht zugeordneten Konten werden für alle sichtbar, mit denen dieses Projekt geteilt ist. Fortfahren?</value>
-  </data>
-  <data name="Assign_Confirm_Button" xml:space="preserve">
-    <value>Konten zuordnen</value>
-  </data>
-  <data name="Assign_Confirm_Body_One" xml:space="preserve"><value>Dieses Projekt ist geteilt. Das nicht zugeordnete Konto wird für alle sichtbar, mit denen dieses Projekt geteilt ist. Fortfahren?</value></data>
 </root>

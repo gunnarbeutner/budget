@@ -9,8 +9,7 @@ namespace OpenBudget.E2E.Tests;
 
 /// <summary>
 /// "Default project for new accounts": the switch in the switcher's Settings… dialog (with the switcher badge),
-/// its refusal and automatic clearing on shared projects, and the settings page's one-time "assign all accounts
-/// that are in no project yet" button (with a confirmation on shared projects).
+/// and its refusal and automatic clearing (with a notice) on shared projects.
 /// </summary>
 [TestFixture]
 public sealed class DefaultProjectTests : EndToEndTestBase
@@ -35,15 +34,6 @@ public sealed class DefaultProjectTests : EndToEndTestBase
         await Expect(Page.GetByTestId("modal-dialog")).ToBeVisibleAsync();
     }
 
-    private async Task SeedUnassignedAccountsAsync()
-    {
-        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
-        await using var db = await factory.CreateDbContextAsync();
-        db.Accounts.Add(new Account { Id = SourceScope.Namespace(E2ESeed.SourceId, 1), SourceId = E2ESeed.SourceId, Name = "Example Giro" });
-        db.Accounts.Add(new Account { Id = SourceScope.Namespace(E2ESeed.SourceId, 2), SourceId = E2ESeed.SourceId, Name = "Example Savings" });
-        await db.SaveChangesAsync();
-    }
-
     private async Task ShareDirectlyAsync()
     {
         var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
@@ -64,9 +54,9 @@ public sealed class DefaultProjectTests : EndToEndTestBase
 
         await OpenSwitcherAsync();
         await Expect(Badge).ToBeVisibleAsync();
-        // The settings page no longer has the switch (only the assign helper).
+        // The settings page has no switch.
         await GoToAsync(SettingsUrl);
-        await Expect(Page.Locator("#assign-unassigned")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("accounts-card")).ToBeVisibleAsync();
         await Expect(Toggle).ToHaveCountAsync(0);
 
         await OpenSettingsDialogAsync();
@@ -111,43 +101,7 @@ public sealed class DefaultProjectTests : EndToEndTestBase
         await Expect(notice).ToHaveCountAsync(0);
 
         await GoToAsync(SettingsUrl);
-        await Expect(Page.Locator("#assign-unassigned")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("accounts-card")).ToBeVisibleAsync();
         await Expect(Page.Locator("#default-cleared-notice")).ToHaveCountAsync(0);
-    }
-
-    [Test]
-    public async Task The_assign_button_assigns_all_unassigned_accounts_and_reports_the_count()
-    {
-        await SeedUnassignedAccountsAsync();
-        await GoToAsync(SettingsUrl);
-
-        await Page.Locator("#assign-unassigned").ClickAsync();
-
-        await Expect(Page.Locator("#assign-result")).ToHaveTextAsync("2 accounts assigned.");
-        await Expect(Page.Locator("#default-project-card")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("Example Giro").First).ToBeVisibleAsync();
-
-        await Page.Locator("#assign-unassigned").ClickAsync();
-        await Expect(Page.Locator("#assign-result")).ToHaveTextAsync("0 accounts assigned.");
-    }
-
-    [Test]
-    public async Task On_a_shared_project_the_assign_button_asks_for_confirmation_first()
-    {
-        await SeedUnassignedAccountsAsync();
-        await ShareDirectlyAsync();
-        await GoToAsync(SettingsUrl);
-
-        await Page.Locator("#assign-unassigned").ClickAsync();
-        var modal = Page.GetByTestId("modal-dialog");
-        await Expect(modal).ToContainTextAsync("visible to everyone this project is shared with");
-
-        // Cancelling assigns nothing.
-        await modal.GetByRole(AriaRole.Button, new() { Name = "Cancel" }).ClickAsync();
-        await Expect(Page.Locator("#assign-result")).ToHaveCountAsync(0);
-
-        await Page.Locator("#assign-unassigned").ClickAsync();
-        await Page.Locator("#assign-confirm").ClickAsync();
-        await Expect(Page.Locator("#assign-result")).ToHaveTextAsync("2 accounts assigned.");
     }
 }

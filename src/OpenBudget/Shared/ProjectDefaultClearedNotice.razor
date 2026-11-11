@@ -1,0 +1,40 @@
+@using OpenBudget.Services
+@inject ProjectService ProjectService
+@inject IStringLocalizer<ProjectDefaultClearedNotice> L
+
+@* Project-settings notice (owner only) shown when sharing cleared the project's "default for new accounts" flag.
+   The flag itself is switched in the project switcher's Settings… dialog (ProjectSettingsDialog). *@
+
+@if (state is { ClearedNotice: true })
+{
+    <div class="alert alert-warning d-flex justify-content-between align-items-center py-2 mb-4" role="alert" id="default-cleared-notice">
+        <span>@L["Default_ClearedNotice"]</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary ms-3" @onclick="DismissNotice">@L["Button_Dismiss"]</button>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public int ProjectId { get; set; }
+    /// <summary>Bumped by the page when sharing changed, so the notice re-reads the shared state.</summary>
+    [Parameter] public int RefreshToken { get; set; }
+
+    private DefaultProjectState? state;
+    private int _loadedFor;
+    private int _loadedToken;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor == ProjectId && _loadedToken == RefreshToken) return;
+        _loadedFor = ProjectId;
+        _loadedToken = RefreshToken;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync() => state = await ProjectService.GetDefaultStateAsync(ProjectId);
+
+    private async Task DismissNotice()
+    {
+        await ProjectService.DismissDefaultClearedNoticeAsync(ProjectId);
+        await LoadAsync();
+    }
+}

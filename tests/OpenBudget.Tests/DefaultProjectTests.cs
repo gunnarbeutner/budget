@@ -83,7 +83,6 @@ public sealed class DefaultProjectTests
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Projects.SetDefaultForNewAccountsAsync(a, true));
         await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Projects.SetDefaultForNewAccountsAsync(a, false));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Projects.AssignUnassignedAccountsAsync(a));
         Assert.Null(await bob.Projects.GetDefaultStateAsync(a));
         Assert.True((await LoadAsync(w, a)).IsDefaultForNewAccounts);
     }
@@ -256,57 +255,6 @@ public sealed class DefaultProjectTests
 
         await w.For(Alice).CreateAccountAsync(savings.Id);
 
-        Assert.Empty(await AssignmentsAsync(w));
-    }
-
-    // ---- assign all unassigned ----
-
-    [Fact]
-    public async Task Assign_unassigned_counts_and_only_touches_unassigned_accounts_of_the_owners_own_sources()
-    {
-        await using var w = await BankWorld.CreateAsync();
-        var alice = w.View(Alice);
-        await w.ImportMoneyMoneyAsync(Snapshot(w, 3));
-        w.T.AddAccount(SourceScope.Namespace(3, 1), "Example Bob Account", 3);
-        await w.T.Db.SaveChangesAsync();
-        var other = await NewProjectAsync(w, Alice, "Holidays");
-        var target = await NewProjectAsync(w, Alice, "Household");
-        await alice.Spending.AssignAccountToProjectAsync(other, Account(1), AccountScope.Exclusive);
-
-        Assert.Equal(2, (await alice.Projects.GetDefaultStateAsync(target))!.UnassignedAccounts);
-        Assert.Equal(2, await alice.Projects.AssignUnassignedAccountsAsync(target));
-
-        var assignments = await AssignmentsAsync(w);
-        Assert.Equal(other, assignments[Account(1)]);
-        Assert.Equal(target, assignments[Account(2)]);
-        Assert.Equal(target, assignments[Account(3)]);
-        Assert.False(assignments.ContainsKey(SourceScope.Namespace(3, 1)));   // bob's account untouched
-        Assert.Equal(0, await alice.Projects.AssignUnassignedAccountsAsync(target));
-    }
-
-    [Fact]
-    public async Task Assign_unassigned_is_allowed_on_a_shared_project()
-    {
-        await using var w = await BankWorld.CreateAsync();
-        var alice = w.View(Alice);
-        await w.ImportMoneyMoneyAsync(Snapshot(w, 2));
-        var target = await NewProjectAsync(w, Alice, "Household");
-        await alice.Sharing.SetShareAsync(target, Bob, ProjectRole.Viewer);
-
-        Assert.Equal(2, await alice.Projects.AssignUnassignedAccountsAsync(target));
-        // The sharee now sees these accounts through the share.
-        await using var db = await w.View(Bob).Factory.CreateDbContextAsync();
-        Assert.Equal(2, await db.Accounts.CountAsync());
-    }
-
-    [Fact]
-    public async Task A_sharee_cannot_assign_unassigned_accounts()
-    {
-        await using var w = await BankWorld.CreateAsync();
-        await w.ImportMoneyMoneyAsync(Snapshot(w, 2));
-        var target = await NewProjectAsync(w, Alice, "Household");
-        await w.View(Alice).Sharing.SetShareAsync(target, Bob, ProjectRole.Editor);
-        await Assert.ThrowsAsync<AccessDeniedException>(() => w.View(Bob).Projects.AssignUnassignedAccountsAsync(target));
         Assert.Empty(await AssignmentsAsync(w));
     }
 

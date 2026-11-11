@@ -58,41 +58,10 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Status_Loading" xml:space="preserve">
-    <value>Loading...</value>
-  </data>
   <data name="Default_ClearedNotice" xml:space="preserve">
     <value>This project was the default for new accounts, but it is now shared, so it is no longer the default. Choose an unshared project instead if you want new accounts assigned automatically.</value>
   </data>
   <data name="Button_Dismiss" xml:space="preserve">
     <value>Dismiss</value>
   </data>
-  <data name="Button_Cancel" xml:space="preserve">
-    <value>Cancel</value>
-  </data>
-  <data name="Assign_Heading" xml:space="preserve">
-    <value>Assign existing accounts</value>
-  </data>
-  <data name="Assign_Description" xml:space="preserve">
-    <value>One-time helper: assigns every account of your own sources that is not in any project yet to this project. Accounts that are already in a project are left alone.</value>
-  </data>
-  <data name="Assign_Button" xml:space="preserve">
-    <value>Assign all my accounts that are not in any project yet</value>
-  </data>
-  <data name="Assign_Result_One" xml:space="preserve">
-    <value>1 account assigned.</value>
-  </data>
-  <data name="Assign_Result_Other" xml:space="preserve">
-    <value>{0} accounts assigned.</value>
-  </data>
-  <data name="Assign_Confirm_Title" xml:space="preserve">
-    <value>Assign accounts to a shared project</value>
-  </data>
-  <data name="Assign_Confirm_Body" xml:space="preserve">
-    <value>This project is shared. The {0} unassigned accounts will become visible to everyone this project is shared with. Continue?</value>
-  </data>
-  <data name="Assign_Confirm_Button" xml:space="preserve">
-    <value>Assign accounts</value>
-  </data>
-  <data name="Assign_Confirm_Body_One" xml:space="preserve"><value>This project is shared. The unassigned account will become visible to everyone this project is shared with. Continue?</value></data>
 </root>
