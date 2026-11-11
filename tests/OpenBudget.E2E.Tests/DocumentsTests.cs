@@ -161,6 +161,7 @@ public sealed class DocumentsTests : EndToEndTestBase
         await Expect(Cards.First).ToContainTextAsync("Example Bank");
 
         await Page.GetByTestId("docs-status").SelectOptionAsync("all");
+        await Expect(Page).Not.ToHaveURLAsync(new Regex(@"status=unread")); // each filter navigates; let it land first
         await Page.GetByTestId("docs-account").SelectOptionAsync(EditingSeed.BankAccountId.ToString(CultureInfo.InvariantCulture));
         await Expect(Cards).ToHaveCountAsync(3);
 
