@@ -12,7 +12,7 @@ namespace OpenBudget.E2E.Tests;
 public sealed class SourcesTests : EndToEndTestBase
 {
     private ILocator Row(string sourceName) =>
-        Page.GetByRole(AriaRole.Row).Filter(new() { HasText = sourceName });
+        Page.GetByTestId("source-row").Filter(new() { HasText = sourceName });
 
     [Test]
     public async Task Sources_page_lists_both_sources()

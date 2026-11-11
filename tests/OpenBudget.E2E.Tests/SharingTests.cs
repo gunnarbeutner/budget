@@ -130,7 +130,7 @@ public sealed class SharingTests : EndToEndTestBase
     {
         await GoToAsync("/sources");
         await Expect(Page.GetByRole(AriaRole.Row).Filter(new() { HasText = "legacy" })).ToBeVisibleAsync();
-        await Page.GetByRole(AriaRole.Row).Filter(new() { HasText = "legacy" }).GetByRole(AriaRole.Button, new() { Name = "Upload token" }).ClickAsync();
+        await Page.GetByTestId("source-row").Filter(new() { HasText = "legacy" }).GetByRole(AriaRole.Button, new() { Name = "Upload token" }).ClickAsync();
         await Expect(Page.Locator("[data-source-token='legacy']")).ToHaveTextAsync("e2e-token-legacy");
 
         await LogoutAsync();

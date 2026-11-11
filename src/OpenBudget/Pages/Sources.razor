@@ -62,13 +62,13 @@ else
                 <th></th>
             </tr>
         </thead>
-        <tbody>
             @foreach (var s in sources)
             {
+                <tbody data-testid="source-row">
                 <tr>
                     <td><strong>@s.Name</strong></td>
-                    <td class="d-none d-md-table-cell"><span title="@s.CreatedAt.ToString("u")">@Clock.ToLocal(s.CreatedAt).ToString("yyyy-MM-dd")</span></td>
-                    <td>
+                    <td class="d-none d-md-table-cell text-nowrap"><span title="@s.CreatedAt.ToString("u")">@Clock.ToLocal(s.CreatedAt).ToString("yyyy-MM-dd")</span></td>
+                    <td class="text-nowrap">
                         @if (s.LastUploadAt.HasValue)
                         {
                             <span title="@s.LastUploadAt.Value.ToString("u")">@Clock.ToLocal(s.LastUploadAt.Value).ToString("yyyy-MM-dd HH:mm")</span>
@@ -82,7 +82,11 @@ else
                     <td class="text-end">@transactionCounts.GetValueOrDefault(s.Id, 0).ToString("N0")</td>
                     <td class="text-end d-none d-md-table-cell" data-testid="source-documents">@documentCounts.GetValueOrDefault(s.Id, 0).ToString("N0")</td>
                     <td class="text-end d-none d-md-table-cell">@(s.LastUploadSizeBytes.HasValue ? s.LastUploadSizeBytes.Value.ToString("N0") : "—")</td>
-                    <td class="text-end text-nowrap">
+                    <td></td>
+                </tr>
+                <tr class="source-actions-row">
+                    <td colspan="8" class="border-top-0 pt-0">
+                        <div class="d-flex flex-wrap align-items-center gap-1">
                         <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => ToggleToken(s.Id)">
                             @(revealed.Contains(s.Id) ? L["Token_Hide"] : L["Token_Show"])
                         </button>
@@ -111,12 +115,13 @@ else
                         {
                             <span class="text-body-secondary small">@L["InUse"]</span>
                         }
+                        </div>
                     </td>
                 </tr>
                 @if (revealed.Contains(s.Id))
                 {
                     <tr class="table-light" data-source-token-row="@s.Name">
-                        <td colspan="7">
+                        <td colspan="8">
                             <div class="small text-body-secondary mb-1">@L["Token_Label"]</div>
                             <code class="user-select-all" data-source-token="@s.Name">@s.UploadToken</code>
                             <div class="small text-body-secondary mt-2">
@@ -126,8 +131,8 @@ else
                         </td>
                     </tr>
                 }
+                </tbody>
             }
-        </tbody>
     </table>
     </div>
 }
