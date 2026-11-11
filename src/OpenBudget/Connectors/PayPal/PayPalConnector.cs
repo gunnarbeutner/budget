@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using OpenBudget.Connectors.Scalable;
 
 namespace OpenBudget.Connectors.PayPal;
@@ -15,17 +16,14 @@ public sealed class PayPalOptions
     /// <summary>The activity download page (sets up the page's CSRF token).</summary>
     public string ReportPage { get; init; } = "reports/dlog";
 
-    /// <summary>Asks for a report over a date range (JSON POST); answers the CSV itself or the new report's id.</summary>
-    public string ReportCreatePath { get; init; } = "reports/dlog/generate";
+    /// <summary>The reporting page's configuration and data freshness (JSON POST).</summary>
+    public string ReportMetadataPath { get; init; } = "reports/apis/dlog/ql";
 
-    /// <summary>The generated reports with their status (JSON).</summary>
-    public string ReportListPath { get; init; } = "reports/dlog/list";
-
-    /// <summary>A generated report's CSV; {0} is the report id.</summary>
-    public string ReportDownloadPath { get; init; } = "reports/dlog/download/{0}";
+    /// <summary>Creates, lists and downloads reports through the web client's reporting interface (JSON POST).</summary>
+    public string ReportApiPath { get; init; } = "reports/apis/common/ql";
 
     /// <summary>How often the report list is asked before giving up, and the wait in between.</summary>
-    public int PollAttempts { get; init; } = 30;
+    public int PollAttempts { get; init; } = 100;
 
     public TimeSpan PollDelay { get; init; } = TimeSpan.FromSeconds(3);
 
@@ -79,12 +77,6 @@ public sealed class PayPalConnector : IBankConnector
         "() => { const busy = document.querySelector('input[type=password], input[name=login_email], input[autocomplete=one-time-code], form[name=login]');"
         + " return { ok: location.pathname.startsWith('/myaccount') && !busy, reason: busy ? 'a sign-in form is shown' : '' }; }";
 
-    /// <summary>The page's CSRF token (meta tag, hidden input or the page's data), returned as the reason.</summary>
-    internal const string CsrfScript =
-        "() => { const m = document.querySelector('meta[name=csrf-token], meta[name=_csrf], input[name=_csrf], input[name=csrf], [data-csrf]');"
-        + " const t = m ? (m.getAttribute('content') || m.value || m.getAttribute('data-csrf') || '') : '';"
-        + " return { ok: t.length > 0, reason: t }; }";
-
     private readonly ConnectorContext _context;
     private readonly PayPalOptions _options;
     private ConnectorSession _session = new();
@@ -92,6 +84,7 @@ public sealed class PayPalConnector : IBankConnector
     private IBrowserFetcher? _browser;
     private List<PayPalRow> _rows = [];
     private DateOnly? _coveredFrom;
+    private ReportingSession? _reporting;
 
     public PayPalConnector(ConnectorContext context, PayPalOptions options)
     {
@@ -127,6 +120,10 @@ public sealed class PayPalConnector : IBankConnector
             new WebLoginStep(PasswordSelector, WebLoginCredential.Secret, LoginSelector) { SkipWhenEntered = true },
         ]),
         SuccessCheck = SignedInCheck,
+        CodePrompt = new WebLoginCodePrompt("/authflow/",
+            "input[autocomplete=one-time-code], input[inputmode=numeric][maxlength='1'], input[type=tel][maxlength='1']",
+            "button[type=submit], input[type=submit]", "Enter the six-digit security code from PayPal or your authenticator app."),
+        WaitingScript = "() => ({ ok: !location.pathname.startsWith('/authflow/'), reason: 'Complete the security check on the PayPal page.' })",
         Dismiss = DismissSelectors,
         CredentialsError = new WebLoginError(CredentialsErrorSelector, CredentialsErrorTexts, CredentialsRejectedMessage),
         ObservedRequests = ["/signin", "geo.ddc.paypal.com", "ct.ddc.paypal.com"],
@@ -149,6 +146,7 @@ public sealed class PayPalConnector : IBankConnector
         if (answer.Challenge.Reference != WebLoginReference || answer.Browser is not { IsOpen: true } browser)
             return Task.FromResult(ConnectorStep.Fail<ConnectorSession?>("The PayPal sign-in did not complete; please sync again."));
         _browser = browser;
+        _reporting = null;
         Log.LogInformation("Signed in to PayPal through the web login.");
         return Task.FromResult(ConnectorStep.Done<ConnectorSession?>(_session));
     }
@@ -179,7 +177,11 @@ public sealed class PayPalConnector : IBankConnector
 
     public async Task<ConnectorStep<AccountRefresh>> RefreshAsync(RemoteAccount account, DateOnly? since, ChallengeAnswer? answer, CancellationToken ct)
     {
-        if (answer?.Browser is { IsOpen: true } fresh) _browser = fresh;
+        if (answer?.Browser is { IsOpen: true } fresh)
+        {
+            _browser = fresh;
+            _reporting = null;
+        }
         if (_browser is not { IsOpen: true } browser)
         {
             if (answer != null) return ConnectorStep.Fail<AccountRefresh>("The PayPal sign-in did not complete; please sync again.");
@@ -206,14 +208,16 @@ public sealed class PayPalConnector : IBankConnector
     {
         var to = _coveredFrom?.AddDays(-1) ?? Today;
         if (from > to) return;
-        var rows = new List<PayPalRow>();
+        var requests = new List<RequestedReport>();
         for (var end = to; end >= from;)
         {
             var start = end.AddDays(-(_options.MaxRangeDays - 1));
             if (start < from) start = from;
-            rows.AddRange(await DownloadAsync(browser, start, end, ct));
+            if (await PrepareReportAsync(browser, start, end, ct) is { } request) requests.Add(request);
             end = start.AddDays(-1);
         }
+        var rows = new List<PayPalRow>();
+        foreach (var request in requests) rows.AddRange(await DownloadAsync(browser, request, ct));
         // Rows keep their file order within a report; newer reports are listed first, so the indexes are renumbered by date.
         _rows = [.. _rows.Concat(rows).OrderBy(r => r.Date).ThenBy(r => r.Time ?? TimeOnly.MinValue).Select((r, i) => r with { Index = i })];
         _coveredFrom = from;
@@ -221,48 +225,139 @@ public sealed class PayPalConnector : IBankConnector
 
     private Uri Url(string path) => new(_options.BaseUri, path);
 
-    /// <summary>One report over [from, to] through the signed-in page: ask for it, wait until it is ready, fetch the CSV.</summary>
-    private async Task<List<PayPalRow>> DownloadAsync(IBrowserFetcher browser, DateOnly from, DateOnly to, CancellationToken ct)
-    {
-        await browser.NavigateAsync(Url(_options.ReportPage), ct);
-        var (hasToken, token) = await browser.RunAsync(CsrfScript, "", ct);
-        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["Accept"] = "application/json, text/csv",
-            ["Content-Type"] = "application/json",
-        };
-        if (hasToken) headers["X-CSRF-Token"] = token;
-        var body = JsonSerializer.Serialize(new
-        {
-            startDate = from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            endDate = to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            transactionType = "BALANCE_AFFECTING",
-            fileFormat = "CSV",
-            fields = "ALL",
-        });
-        var created = await browser.SendAsync(new BrowserFetchRequest("POST", Url(_options.ReportCreatePath)) { Headers = headers, Body = body }, ct);
-        if (created.IsSuccess && PayPalCsv.LooksLikeCsv(created.Text)) return Parsed(created.Text, from, to);
-        var id = created.IsSuccess ? ReportId(created.Text) : null;
-        if (id == null)
-        {
-            LogShape("report request", created);
-            throw new ConnectorException("PayPal did not accept the request for the activity download.");
-        }
+    private sealed record ReportingSession(Dictionary<string, string> Headers, TimeZoneInfo TimeZone, DateTime UpdatedUntilUtc, string Template);
 
+    private sealed record ActivityReport(ReportState State, string[] Files);
+
+    private sealed record RequestedReport(DateOnly From, DateOnly To, ReportingSession Session, DateTime Start, DateTime End, ActivityReport? Existing);
+
+    private async Task<ReportingSession> ReportingAsync(IBrowserFetcher browser, CancellationToken ct)
+    {
+        if (_reporting != null) return _reporting;
+        await browser.NavigateAsync(Url(_options.ReportPage), ct);
+        // The site's JavaScript consumes and removes #server-data. Read the original response, rather than the rendered DOM.
+        var page = await browser.GetAsync(Url(_options.ReportPage), "text/html", ct);
+        try
+        {
+            var source = Regex.Match(page.Text, """<script\b[^>]*\bid=["']server-data["'][^>]*>(?<json>.*?)</script\s*>""",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
+            using var model = JsonDocument.Parse(source.Success ? source.Groups["json"].Value : "{}");
+            var token = model.RootElement.Str("_csrf");
+            var zone = model.RootElement.Str("locality", "timezone");
+            if (!page.IsSuccess || string.IsNullOrEmpty(token) || string.IsNullOrEmpty(zone))
+                throw new JsonException("Missing reporting bootstrap fields.");
+            var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Accept"] = "application/json, text/plain, */*",
+                ["Content-Type"] = "application/json",
+                ["X-CSRF-Token"] = token,
+                ["X-Requested-With"] = "XMLHttpRequest",
+            };
+            var response = await browser.SendAsync(new BrowserFetchRequest("POST", Url(_options.ReportMetadataPath))
+            {
+                Headers = headers,
+                Body = JsonSerializer.Serialize(new { apiType = "activityDownload", isAdmin = false }),
+            }, ct);
+            if (!response.IsSuccess)
+            {
+                LogShape("reporting metadata", response);
+                throw new ConnectorException("PayPal did not provide the activity download settings.");
+            }
+            using var metadata = JsonDocument.Parse(response.Text);
+            var settings = metadata.RootElement.Path().Items().FirstOrDefault();
+            var updated = settings.Str("data", "dlogRefreshInfo", "last_updated");
+            if (!DateTime.TryParseExact(updated, "yyyyMMddHHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var pacific))
+                throw new JsonException("Missing reporting freshness timestamp.");
+            // PayPal's client interprets last_updated in Los Angeles, while request dates are UTC and CSV dates are account-local.
+            var until = TimeZoneInfo.ConvertTimeToUtc(pacific, TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles"));
+            _reporting = new ReportingSession(headers, TimeZoneInfo.FindSystemTimeZoneById(zone), until,
+                settings.Str("userGroup") == "Personal" ? "DLOGCONSUMERTEMPLATE" : "DLOGTEMPLATE");
+            return _reporting;
+        }
+        catch (Exception ex) when (ex is JsonException or TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            LogShape("activity page", page);
+            throw new ConnectorException("PayPal's activity page did not provide a valid reporting session.", ex);
+        }
+    }
+
+    private Task<BrowserFetchResponse> ReportRequestAsync(IBrowserFetcher browser, ReportingSession session, object body, CancellationToken ct) =>
+        browser.SendAsync(new BrowserFetchRequest("POST", Url(_options.ReportApiPath)) { Headers = session.Headers, Body = JsonSerializer.Serialize(body) }, ct);
+
+    /// <summary>Queue every missing date range before waiting, so PayPal can prepare the exports together.</summary>
+    private async Task<RequestedReport?> PrepareReportAsync(IBrowserFetcher browser, DateOnly from, DateOnly to, CancellationToken ct)
+    {
+        var session = await ReportingAsync(browser, ct);
+        var start = TimeZoneInfo.ConvertTimeToUtc(from.ToDateTime(TimeOnly.MinValue), session.TimeZone);
+        var end = TimeZoneInfo.ConvertTimeToUtc(to.ToDateTime(new TimeOnly(23, 59, 59)), session.TimeZone);
+        if (end > session.UpdatedUntilUtc) end = session.UpdatedUntilUtc;
+        if (start > end) return null;
+        var localStart = TimeZoneInfo.ConvertTimeFromUtc(start, session.TimeZone);
+        var localEnd = TimeZoneInfo.ConvertTimeFromUtc(end, session.TimeZone);
+        var listBody = new { apiType = "reports", reportType = "DLOG", isAdmin = false };
+        var list = await ReportRequestAsync(browser, session, listBody, ct);
+        var report = FindReport(list, localStart, localEnd);
+        if (report == null)
+        {
+            var created = await ReportRequestAsync(browser, session, new
+            {
+                apiType = "reportCreate",
+                reportType = "DLOG",
+                isAdmin = (bool?)null,
+                formdata = new
+                {
+                    start_date = start.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture),
+                    end_date = end.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture),
+                    name = session.Template,
+                    file_format = "CSV",
+                    delivery_channel = "WEB",
+                    filters = "BALANCE_IMPACTING",
+                },
+            }, ct);
+            if (!ReportCreated(created))
+            {
+                LogShape("report request", created);
+                throw new ConnectorException("PayPal did not accept the request for the activity download.");
+            }
+        }
+        return new RequestedReport(from, to, session, localStart, localEnd, report);
+    }
+
+    private async Task<List<PayPalRow>> DownloadAsync(IBrowserFetcher browser, RequestedReport request, CancellationToken ct)
+    {
+        var (from, to, session, localStart, localEnd, existing) = request;
+        var report = existing;
+        var listBody = new { apiType = "reports", reportType = "DLOG", isAdmin = false };
+        if (report?.State is not (ReportState.Ready or ReportState.Failed))
+            _context.Progress?.Invoke($"Waiting for PayPal to prepare the activity export ({from:yyyy-MM-dd} to {to:yyyy-MM-dd})");
         for (var attempt = 0; attempt < _options.PollAttempts; attempt++)
         {
-            var list = await browser.GetAsync(Url(_options.ReportListPath), "application/json", ct);
-            var state = ReportStatus(list, id);
-            if (state == ReportState.Failed) throw new ConnectorException("PayPal could not create the activity download.");
-            if (state == ReportState.Ready)
+            if (report?.State is not (ReportState.Ready or ReportState.Failed))
             {
-                var csv = await browser.GetAsync(Url(string.Format(CultureInfo.InvariantCulture, _options.ReportDownloadPath, Uri.EscapeDataString(id))), "text/csv", ct);
-                if (csv.IsSuccess && (PayPalCsv.LooksLikeCsv(csv.Text) || csv.Text.Trim().Length == 0)) return Parsed(csv.Text, from, to);
-                LogShape("report download", csv);
-                throw new ConnectorException("PayPal's activity download did not answer a CSV file.");
+                if (attempt > 0) await Task.Delay(_options.PollDelay, _context.Clock, ct);
+                var list = await ReportRequestAsync(browser, session, listBody, ct);
+                report = FindReport(list, localStart, localEnd);
+                if (attempt == 0 && !list.IsSuccess) LogShape("report list", list);
             }
-            if (attempt == 0 && !list.IsSuccess) LogShape("report list", list);
-            await Task.Delay(_options.PollDelay, _context.Clock, ct);
+            if (report?.State == ReportState.Failed) throw new ConnectorException("PayPal could not create the activity download.");
+            if (report?.State == ReportState.Ready)
+            {
+                if (report.Files.Length == 0) throw new ConnectorException("PayPal's activity download did not provide a file.");
+                _context.Progress?.Invoke($"Downloading PayPal activity ({from:yyyy-MM-dd} to {to:yyyy-MM-dd})");
+                var rows = new List<PayPalRow>();
+                // One file per request keeps large, split reports as CSV rather than asking the site to bundle them into a ZIP.
+                foreach (var file in report.Files)
+                {
+                    var csv = await ReportRequestAsync(browser, session, new { apiType = "download", reportType = "DLOG", reportNames = new[] { file } }, ct);
+                    if (!csv.IsSuccess || !PayPalCsv.LooksLikeCsv(csv.Text))
+                    {
+                        LogShape("report download", csv);
+                        throw new ConnectorException("PayPal's activity download did not answer a CSV file.");
+                    }
+                    rows.AddRange(Parsed(csv.Text, from, to));
+                }
+                return rows;
+            }
         }
         throw new ConnectorException("PayPal's activity download was not ready in time; the next sync tries again.");
     }
@@ -301,54 +396,38 @@ public sealed class PayPalConnector : IBankConnector
         Failed,
     }
 
-    private static readonly string[] ListFields = ["reports", "data", "items"];
-
-    private static readonly string[] IdFields = ["reportId", "id", "requestId", "jobId"];
-
-    /// <summary>The new report's id in the request's answer (top level or under "data"/"report").</summary>
-    internal static string? ReportId(string json)
+    private static bool ReportCreated(BrowserFetchResponse response)
     {
+        if (!response.IsSuccess) return false;
         try
         {
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            foreach (var scope in new[] { (JsonElement?)root, root.Path("data"), root.Path("report") })
+            using var doc = JsonDocument.Parse(response.Text);
+            return doc.RootElement.Path().Items().Any(item => item.Str("document_id") is { Length: > 0 });
+        }
+        catch (JsonException) { return false; }
+    }
+
+    private static ActivityReport? FindReport(BrowserFetchResponse response, DateTime start, DateTime end)
+    {
+        if (!response.IsSuccess) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(response.Text);
+            foreach (var item in doc.RootElement.Path().Items().SelectMany(scope => scope.Path("reportDetails").Items()))
             {
-                foreach (var f in IdFields)
-                {
-                    if (scope.Str(f) is { Length: > 0 } id) return id;
-                }
+                if (item.Str("documentFileFormat") != "CSV" || item.Str("documentMetadata", "filters") != "BALANCE_IMPACTING"
+                    || !ReportDate(item.Str("documentStartDate"), start) || !ReportDate(item.Str("documentEndDate"), end)) continue;
+                var status = item.Str("status") ?? "";
+                var state = status == "AVAILABLE" ? ReportState.Ready
+                    : status == "FAILED" || status.EndsWith("_FAILED", StringComparison.Ordinal) ? ReportState.Failed : ReportState.Waiting;
+                var files = item.Path("downloadUrls").Items().Select(file => file.Str()).Where(file => !string.IsNullOrEmpty(file)).Select(file => file!).ToArray();
+                return new ActivityReport(state, files);
             }
         }
-        catch (JsonException)
-        {
-            return null;
-        }
+        catch (JsonException) { /* an unexpected list can still be transient while the report is being prepared */ }
         return null;
     }
 
-    /// <summary>The state of report <paramref name="id"/> in the report list (an array at the top or under reports/data/items).</summary>
-    internal static ReportState ReportStatus(BrowserFetchResponse list, string id)
-    {
-        if (!list.IsSuccess) return ReportState.Waiting;
-        try
-        {
-            using var doc = JsonDocument.Parse(list.Text);
-            var root = doc.RootElement;
-            var items = root.ValueKind == JsonValueKind.Array ? root.EnumerateArray().ToList()
-                : ListFields.Select(k => root.Path(k)).FirstOrDefault(e => e is { ValueKind: JsonValueKind.Array }).Items().ToList();
-            foreach (var item in items)
-            {
-                if (!IdFields.Any(f => item.Str(f) == id)) continue;
-                var status = (item.Str("status") ?? item.Str("state") ?? "").ToUpperInvariant();
-                if (status.Contains("FAIL", StringComparison.Ordinal) || status.Contains("ERROR", StringComparison.Ordinal)) return ReportState.Failed;
-                if (status is "COMPLETED" or "COMPLETE" or "READY" or "AVAILABLE" or "DONE" or "SUCCESS") return ReportState.Ready;
-            }
-        }
-        catch (JsonException)
-        {
-            return ReportState.Waiting;
-        }
-        return ReportState.Waiting;
-    }
+    private static bool ReportDate(string? value, DateTime expected) =>
+        DateTime.TryParseExact(value, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) && parsed == expected;
 }

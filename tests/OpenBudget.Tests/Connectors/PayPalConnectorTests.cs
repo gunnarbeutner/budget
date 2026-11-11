@@ -1,5 +1,7 @@
 #pragma warning disable CA2000 // test objects live for the test
+using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenBudget.Connectors;
 using OpenBudget.Connectors.PayPal;
@@ -89,7 +91,8 @@ public sealed class PayPalConnectorTests
     public async Task A_sync_signs_in_requests_the_report_waits_for_it_and_lists_one_account_per_currency()
     {
         var browser = new ScriptedPayPal(EnglishCsv) { ReadyAfter = 2 };
-        var connector = Connector();
+        var progress = new List<string>();
+        var connector = Connector(progress: progress.Add);
         var creds = new ConnectorCredentials("me@example.org", "pw");
 
         var ask = await connector.LoginAsync(creds, null, null, CancellationToken.None);
@@ -114,6 +117,11 @@ public sealed class PayPalConnectorTests
         Assert.Equal(6, refresh.Value.Transactions.Count);
         Assert.Equal(1, browser.Created); // the listing's report already covers the refresh
         Assert.True(browser.CsrfSeen);
+        Assert.Equal("20260812220000", browser.StartUtc); // account midnight in summer time, sent as UTC
+        Assert.Equal("20261111112959", browser.EndUtc); // Pacific freshness timestamp, not the end of a future day
+        Assert.Equal("DLOGTEMPLATE", browser.Template);
+        Assert.Contains(progress, message => message.StartsWith("Waiting for PayPal", StringComparison.Ordinal));
+        Assert.Contains(progress, message => message.StartsWith("Downloading PayPal", StringComparison.Ordinal));
 
         var session = await connector.LogoutAsync(CancellationToken.None);
         Assert.Equal("EUR", session!.Values[PayPalConnector.CurrenciesKey]);
@@ -131,51 +139,157 @@ public sealed class PayPalConnectorTests
         Assert.Contains("activity download", ex.Message, StringComparison.Ordinal);
     }
 
-    private static PayPalConnector Connector() => new(
-        new ConnectorContext(new BankHttpClient(), new FixedClock(new DateTimeOffset(2026, 11, 11, 12, 0, 0, TimeSpan.Zero)), NullLogger.Instance),
-        new PayPalOptions { BaseUri = new Uri("https://paypal.test/"), PollDelay = TimeSpan.Zero });
+    [Theory]
+    [InlineData("Personal", "DLOGCONSUMERTEMPLATE")]
+    [InlineData("Premier", "DLOGTEMPLATE")]
+    public async Task The_account_group_chooses_the_sites_CSV_template(string group, string template)
+    {
+        var browser = new ScriptedPayPal(EnglishCsv) { UserGroup = group };
+        var connector = await SignedInAsync(browser);
+        await connector.ListAccountsAsync(CancellationToken.None);
+        Assert.Equal(template, browser.Template);
+    }
+
+    [Fact]
+    public async Task A_matching_completed_report_is_reused_on_the_next_sync()
+    {
+        var browser = new ScriptedPayPal(EnglishCsv) { UnrelatedReport = true };
+        await (await SignedInAsync(browser)).ListAccountsAsync(CancellationToken.None);
+        await (await SignedInAsync(browser)).ListAccountsAsync(CancellationToken.None);
+        Assert.Equal(1, browser.Created);
+        Assert.Equal(2, browser.Downloaded);
+    }
+
+    [Fact]
+    public async Task A_pending_report_is_reused_when_a_sync_retries_after_timing_out()
+    {
+        var browser = new ScriptedPayPal(EnglishCsv) { ReadyAfter = 2 };
+        var first = await SignedInAsync(browser, new PayPalOptions { BaseUri = new Uri("https://paypal.test/"), PollAttempts = 1, PollDelay = TimeSpan.Zero });
+        await Assert.ThrowsAsync<ConnectorException>(() => first.ListAccountsAsync(CancellationToken.None));
+        await (await SignedInAsync(browser)).ListAccountsAsync(CancellationToken.None);
+        Assert.Equal(1, browser.Created);
+    }
+
+    [Fact]
+    public async Task A_split_report_is_downloaded_one_CSV_at_a_time()
+    {
+        var browser = new ScriptedPayPal(EnglishCsv) { FileCount = 2 };
+        await (await SignedInAsync(browser)).ListAccountsAsync(CancellationToken.None);
+        Assert.Equal(2, browser.Downloaded);
+    }
+
+    [Fact]
+    public async Task History_exports_are_all_requested_before_waiting_for_the_first_one()
+    {
+        var browser = new ScriptedPayPal(EnglishCsv);
+        var connector = await SignedInAsync(browser);
+        var accounts = await connector.ListAccountsAsync(CancellationToken.None);
+        browser.ReleaseAfterCreated = 4;
+        var refreshed = await connector.RefreshAsync(accounts[0], new DateOnly(2023, 11, 11), null, CancellationToken.None);
+        Assert.Equal(StepStatus.Done, refreshed.Status);
+        Assert.Equal(4, browser.Created);
+    }
+
+    private static async Task<PayPalConnector> SignedInAsync(ScriptedPayPal browser, PayPalOptions? options = null)
+    {
+        var connector = Connector(options);
+        var credentials = new ConnectorCredentials("me@example.org", "pw");
+        var ask = await connector.LoginAsync(credentials, null, null, CancellationToken.None);
+        await connector.LoginAsync(credentials, null, new ChallengeAnswer(ask.Challenge!, null) { Browser = browser }, CancellationToken.None);
+        return connector;
+    }
+
+    private static PayPalConnector Connector(PayPalOptions? options = null, Action<string>? progress = null) => new(
+        new ConnectorContext(new BankHttpClient(), new FixedClock(new DateTimeOffset(2026, 11, 11, 12, 0, 0, TimeSpan.Zero)), NullLogger.Instance) { Progress = progress },
+        options ?? new PayPalOptions { BaseUri = new Uri("https://paypal.test/"), PollDelay = TimeSpan.Zero });
 
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
     }
 
-    /// <summary>A signed-in PayPal page: the report request answers an id, the list says ready after a few polls.</summary>
+    /// <summary>The observed web reporting protocol, with only made-up report identifiers and activity.</summary>
     private sealed class ScriptedPayPal(string csv) : IBrowserFetcher
     {
         public int ReadyAfter { get; init; }
-
         public int CreateStatus { get; init; } = 200;
-
+        public string UserGroup { get; init; } = "Premier";
+        public bool UnrelatedReport { get; init; }
+        public int FileCount { get; init; } = 1;
         public int Created { get; private set; }
-
+        public int Downloaded { get; private set; }
         public bool CsrfSeen { get; private set; }
-
-        private int _polls;
-
+        public string? Template { get; private set; }
+        public string? StartUtc { get; private set; }
+        public string? EndUtc { get; private set; }
+        public int ReleaseAfterCreated { get; set; } = 1;
+        private readonly Dictionary<(DateTime Start, DateTime End), int> _reports = [];
         public bool IsOpen => true;
-
         public Task NavigateAsync(Uri url, CancellationToken ct) => Task.CompletedTask;
-
-        public Task<(bool Ok, string Reason)> RunAsync(string function, string argument, CancellationToken ct) => Task.FromResult((true, "csrf-1"));
-
+        public Task<(bool Ok, string Reason)> RunAsync(string function, string argument, CancellationToken ct) => throw new NotSupportedException();
         public Task<Uri?> ResolveRedirectAsync(Uri url, CancellationToken ct) => Task.FromResult<Uri?>(null);
 
-        public Task<BrowserFetchResponse> SendAsync(BrowserFetchRequest request, CancellationToken ct)
+        public async Task<BrowserFetchResponse> SendAsync(BrowserFetchRequest request, CancellationToken ct)
         {
             var path = request.Url.AbsolutePath;
-            if (path == "/reports/dlog/generate" && request.Method == "POST")
+            if (path == "/reports/dlog" && request.Method == "GET")
+                return await Answer(200, "text/html", """<script id="server-data" type="application/json">{"_csrf":"csrf-1","locality":{"timezone":"Europe/Berlin"}}</script>""");
+            Assert.Equal("POST", request.Method);
+            Assert.Equal("csrf-1", request.Headers["X-CSRF-Token"]);
+            Assert.Equal("XMLHttpRequest", request.Headers["X-Requested-With"]);
+            CsrfSeen = true;
+            using var doc = JsonDocument.Parse(request.Body!);
+            var body = doc.RootElement;
+            var operation = body.GetProperty("apiType").GetString();
+            if (path == "/reports/apis/dlog/ql")
+            {
+                Assert.Equal("activityDownload", operation);
+                return await JsonAnswer(new[] { new { userGroup = UserGroup, data = new { dlogRefreshInfo = new { last_updated = "20261111032959" } } } });
+            }
+            Assert.Equal("/reports/apis/common/ql", path);
+            Assert.Equal("DLOG", body.GetProperty("reportType").GetString());
+            if (operation == "reportCreate")
             {
                 Created++;
-                CsrfSeen = request.Headers.TryGetValue("X-CSRF-Token", out var t) && t == "csrf-1";
-                return Answer(CreateStatus, "application/json", CreateStatus == 200 ? "{\"data\":{\"reportId\":\"R1\"}}" : "{\"error\":\"x\"}");
+                var form = body.GetProperty("formdata");
+                Assert.Equal("CSV", form.GetProperty("file_format").GetString());
+                Assert.Equal("WEB", form.GetProperty("delivery_channel").GetString());
+                Assert.Equal("BALANCE_IMPACTING", form.GetProperty("filters").GetString());
+                Template = form.GetProperty("name").GetString();
+                StartUtc = form.GetProperty("start_date").GetString();
+                EndUtc = form.GetProperty("end_date").GetString();
+                var zone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
+                var start = TimeZoneInfo.ConvertTimeFromUtc(DateTime.ParseExact(StartUtc!, "yyyyMMddHHmmss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal), zone);
+                var end = TimeZoneInfo.ConvertTimeFromUtc(DateTime.ParseExact(EndUtc!, "yyyyMMddHHmmss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal), zone);
+                _reports[(start, end)] = 0;
+                return await Answer(CreateStatus, "application/json", CreateStatus == 200 ? """[{"document_id":"R1"}]""" : """{"error":true}""");
             }
-            if (path == "/reports/dlog/list")
-                return Answer(200, "application/json", $"{{\"reports\":[{{\"id\":\"R1\",\"status\":\"{(++_polls > ReadyAfter ? "COMPLETED" : "PENDING")}\"}}]}}");
-            if (path == "/reports/dlog/download/R1") return Answer(200, "text/csv", csv);
-            return Answer(404, "text/plain", "");
+            if (operation == "reports")
+            {
+                var reports = new List<object>();
+                foreach (var range in _reports.Keys.ToList())
+                {
+                    var (start, end) = range;
+                    var stampStart = start.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+                    var stampEnd = end.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+                    if (UnrelatedReport)
+                    {
+                        reports.Add(new { documentFileFormat = "CSV", documentStartDate = stampStart, documentEndDate = stampEnd, documentMetadata = new { filters = "ALL_TRANSACTIONS" }, status = "AVAILABLE", downloadUrls = new[] { "wrong.csv" } });
+                        reports.Add(new { documentFileFormat = "CSV", documentStartDate = start.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), documentEndDate = stampEnd, documentMetadata = new { filters = "BALANCE_IMPACTING" }, status = "AVAILABLE", downloadUrls = new[] { "wrong.csv" } });
+                        reports.Add(new { documentFileFormat = "PDF", documentStartDate = stampStart, documentEndDate = stampEnd, documentMetadata = new { filters = "BALANCE_IMPACTING" }, status = "AVAILABLE", downloadUrls = new[] { "wrong.csv" } });
+                    }
+                    reports.Add(new { documentFileFormat = "CSV", documentStartDate = stampStart, documentEndDate = stampEnd, documentMetadata = new { filters = "BALANCE_IMPACTING" }, status = ++_reports[range] > ReadyAfter && Created >= ReleaseAfterCreated ? "AVAILABLE" : "IN_PROGRESS", downloadUrls = Enumerable.Range(1, FileCount).Select(i => $"R{i}.CSV").ToArray() });
+                }
+                return await JsonAnswer(new[] { new { reportDetails = reports } });
+            }
+            Assert.Equal("download", operation);
+            var file = Assert.Single(body.GetProperty("reportNames").EnumerateArray()).GetString();
+            Assert.NotEqual("wrong.csv", file);
+            Downloaded++;
+            return await Answer(200, "application/octet-stream", csv);
         }
 
+        private static Task<BrowserFetchResponse> JsonAnswer(object body) => Answer(200, "application/json", JsonSerializer.Serialize(body));
         private static Task<BrowserFetchResponse> Answer(int status, string type, string body) =>
             Task.FromResult(new BrowserFetchResponse(status, null, type, Encoding.UTF8.GetBytes(body)));
     }

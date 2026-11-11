@@ -30,6 +30,9 @@ public interface IBrowserSession : IAsyncDisposable
 
     Task NavigateAsync(Uri url, CancellationToken ct);
 
+    /// <summary>Types a one-time code into a visible single field or a group of one-character fields.</summary>
+    Task<bool> FillCodeAsync(string selector, string code) => Task.FromResult(false);
+
     /// <summary>Puts cookies into the context (before the first navigation).</summary>
     Task SetCookiesAsync(IReadOnlyList<CookieState> cookies);
 

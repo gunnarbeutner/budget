@@ -58,7 +58,8 @@ public interface IWebLoginService
     /// Opens a fresh isolated browser for <paramref name="ownerUserId"/>, seeds it with <paramref name="seed"/> (filtered to the
     /// spec's domains) and starts watching for the success condition.
     /// </summary>
-    Task<WebLoginSession> StartAsync(string ownerUserId, WebLoginSpec spec, IReadOnlyList<CookieState> seed, CancellationToken ct);
+    Task<WebLoginSession> StartAsync(string ownerUserId, WebLoginSpec spec, IReadOnlyList<CookieState> seed, CancellationToken ct,
+        Func<ConnectorChallenge, CancellationToken, Task<ChallengeAnswer?>>? askForCode = null);
 
     /// <summary>The open web login with this id, only if it belongs to <paramref name="userId"/>.</summary>
     WebLoginSession? Find(string sessionId, string userId);
@@ -82,7 +83,8 @@ public sealed class WebLoginService : IWebLoginService
 
     public bool IsAvailable => _host.IsAvailable;
 
-    public async Task<WebLoginSession> StartAsync(string ownerUserId, WebLoginSpec spec, IReadOnlyList<CookieState> seed, CancellationToken ct)
+    public async Task<WebLoginSession> StartAsync(string ownerUserId, WebLoginSpec spec, IReadOnlyList<CookieState> seed, CancellationToken ct,
+        Func<ConnectorChallenge, CancellationToken, Task<ChallengeAnswer?>>? askForCode = null)
     {
         if (!_host.IsAvailable) throw new BrowserActionException("No browser is available on this server.");
         var browser = await _host.OpenSessionAsync(ct);
@@ -92,6 +94,7 @@ public sealed class WebLoginService : IWebLoginService
             _loggers.CreateLogger<WebLoginSession>(), s => _sessions.TryRemove(s.Id, out _))
         {
             Clock = _clock,
+            AskForCode = askForCode,
         };
         _sessions[session.Id] = session;
         session.Begin(seed.Where(c => spec.Matches(c) && (c.ExpiresUtc == null || c.ExpiresUtc > now.UtcDateTime)).ToList());
@@ -129,6 +132,8 @@ public sealed class WebLoginSession : IAsyncDisposable
 
     internal TimeProvider Clock { get; init; } = TimeProvider.System;
 
+    internal Func<ConnectorChallenge, CancellationToken, Task<ChallengeAnswer?>>? AskForCode { get; init; }
+
     /// <summary>
     /// The signed-in browser after a successful login whose spec keeps it (null otherwise, or once taken). The caller owns
     /// it from then on and must dispose it.
@@ -161,9 +166,9 @@ public sealed class WebLoginSession : IAsyncDisposable
 
     public event Action<WebLoginMode>? ModeChanged;
 
-    private void SetMode(WebLoginMode mode)
+    private void SetMode(WebLoginMode mode, bool notify = false)
     {
-        if (Mode == mode) return;
+        if (Mode == mode && !notify) return;
         Mode = mode;
         try { ModeChanged?.Invoke(mode); }
         catch (Exception ex) { _logger.LogDebug(ex, "A web login mode listener failed."); }
@@ -337,10 +342,10 @@ public sealed class WebLoginSession : IAsyncDisposable
         SetMode(WebLoginMode.Waiting);
     }
 
-    private void ShowPage(string reason)
+    private void ShowPage(string reason, bool notify = false)
     {
         _logger.LogInformation("Web login: {Reason} on {Path}; showing the page.", reason, SafePath(_browser.Url));
-        SetMode(WebLoginMode.Interactive);
+        SetMode(WebLoginMode.Interactive, notify);
     }
 
     /// <summary>Host and path of the page, without query or fragment (they may carry tokens).</summary>
@@ -415,6 +420,7 @@ public sealed class WebLoginSession : IAsyncDisposable
         while (await timer.WaitForNextTickAsync(ct))
         {
             var url = _browser.Url;
+            if (await HandleCodePromptAsync(url, ct)) continue;
             // after the app submitted the stored credentials, the bank's own error message means they are wrong:
             // end now instead of waiting for an approval that will never come (the user did not type anything)
             if (_submittedAt != null && (Mode != WebLoginMode.Interactive || _shownBecauseStuck) && _spec.CredentialsError is { } error
@@ -451,6 +457,37 @@ public sealed class WebLoginSession : IAsyncDisposable
         ct.ThrowIfCancellationRequested();
         return WebLoginResult.Fail("The web login ended.");
     }
+
+    private bool _codePromptDisabled;
+    private DateTime? _codeSubmittedAt;
+
+    private async Task<bool> HandleCodePromptAsync(Uri url, CancellationToken ct)
+    {
+        if (_codePromptDisabled || AskForCode == null || _spec.CodePrompt is not { } form
+            || !IsCodePage(url, form)) return false;
+        if (_codeSubmittedAt is { } submitted && DateTime.UtcNow - submitted < TimeSpan.FromSeconds(2)) return true;
+        if (!await _browser.IsVisibleAsync(form.FieldSelector) || !await _browser.IsVisibleAsync(form.SubmitSelector)) return false;
+        string code;
+        do
+        {
+            var answer = await AskForCode(ConnectorChallenge.Code(form.Message, form.Length, form.Numeric, Id), ct);
+            code = answer?.Value?.Trim() ?? throw new BrowserActionException("The security code was not provided in time.");
+        } while (code.Length != form.Length || form.Numeric && !code.All(char.IsAsciiDigit));
+        if (!IsCodePage(_browser.Url, form) || !await _browser.FillCodeAsync(form.FieldSelector, code) || !await ClickWhenReadyAsync(form.SubmitSelector, ct))
+        {
+            _codePromptDisabled = true;
+            ShowPage("the security-code form could not be filled; showing the bank's page", notify: true);
+            return true;
+        }
+        _codeSubmittedAt = DateTime.UtcNow;
+        // Restore the web-login status after the shared code challenge, even when the mode was already Waiting.
+        SetMode(WebLoginMode.Waiting, notify: true);
+        return true;
+    }
+
+    private bool IsCodePage(Uri url, WebLoginCodePrompt form) =>
+        string.Equals(url.GetLeftPart(UriPartial.Authority), _spec.StartUrl.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase)
+        && url.AbsolutePath.StartsWith(form.PathPrefix, StringComparison.OrdinalIgnoreCase);
 
     // the page was shown because the spec's waiting script asked for the user; it hides it again once the script acts
     private bool _shownByScript;

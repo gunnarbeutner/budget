@@ -157,25 +157,53 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
             if (el == null) return false;
             await using (el)
             {
-                // Focus the box and replace what it holds, then send the character as a single "char" key event (keypress,
-                // beforeinput, input): no keydown/keyup, so the page's keyup handler never runs on the box its own
-                // auto-advance focused next (that keyup would write the next, still empty, box into the page's state).
-                var focused = await el.EvaluateFunctionAsync<bool>("e => { e.focus(); if (e.select) e.select(); return document.activeElement === e; }");
-                if (!focused) return false;
-                const string holds = @"(e, c) => new Promise(r => setTimeout(() => r(e.value === c || (e.value.length > 0 && !/[0-9A-Za-z]/.test(e.value))), 50))"; // or masked ("•")
-                await _cdp.SendAsync("Input.dispatchKeyEvent", new { type = "char", text = character, unmodifiedText = character, key = character });
-                // let the page's handlers and a render run, then confirm the box holds exactly the character
-                if (await el.EvaluateFunctionAsync<bool>(holds, character)) return true;
-                // Some pages (Openbank) ignore a bare "char" event; a full key press does go through. Its keyup may land on
-                // the next box after auto-advance, which the step's verification (and repair) catches before submitting.
-                await el.EvaluateFunctionAsync("e => { e.focus(); if (e.select) e.select(); }");
-                await _page.Keyboard.PressAsync(character);
-                return await el.EvaluateFunctionAsync<bool>(holds, character);
+                return await TypeCharacterAsync(el, character);
             }
         }
-        catch (Exception ex) when (ex is WaitTaskTimeoutException or PuppeteerException)
+        catch (Exception ex) when (ex is WaitTaskTimeoutException or PuppeteerException) { return false; }
+    }
+
+    private async Task<bool> TypeCharacterAsync(IElementHandle el, string character)
+    {
+        // A bare char event avoids a keyup landing in the next box after the page auto-advances focus.
+        var focused = await el.EvaluateFunctionAsync<bool>("e => { e.focus(); if (e.select) e.select(); return document.activeElement === e; }");
+        if (!focused) return false;
+        const string holds = @"(e, c) => new Promise(r => setTimeout(() => r(e.value === c || (e.value.length > 0 && !/[0-9A-Za-z]/.test(e.value))), 50))";
+        await _cdp.SendAsync("Input.dispatchKeyEvent", new { type = "char", text = character, unmodifiedText = character, key = character });
+        if (await el.EvaluateFunctionAsync<bool>(holds, character)) return true;
+        await el.EvaluateFunctionAsync("e => { e.focus(); if (e.select) e.select(); }");
+        await _page.Keyboard.PressAsync(character);
+        return await el.EvaluateFunctionAsync<bool>(holds, character);
+    }
+
+    public async Task<bool> FillCodeAsync(string selector, string code)
+    {
+        IElementHandle[] fields = [];
+        try
         {
-            return false;
+            fields = await _page.QuerySelectorAllAsync(selector);
+            var visible = new List<IElementHandle>();
+            foreach (var field in fields)
+            {
+                if (await field.BoundingBoxAsync() != null) visible.Add(field);
+            }
+            if (visible.Count == 1)
+            {
+                var maxLength = await visible[0].EvaluateFunctionAsync<int>("e => e.maxLength");
+                if (maxLength > 0 && maxLength < code.Length) return false;
+                return await FillAsync(selector, code, TimeSpan.FromSeconds(2));
+            }
+            if (visible.Count != code.Length) return false;
+            for (var i = 0; i < visible.Count; i++)
+            {
+                if (!await TypeCharacterAsync(visible[i], code[i].ToString())) return false;
+            }
+            return true;
+        }
+        catch (PuppeteerException) { return false; }
+        finally
+        {
+            foreach (var field in fields) await field.DisposeAsync();
         }
     }
 

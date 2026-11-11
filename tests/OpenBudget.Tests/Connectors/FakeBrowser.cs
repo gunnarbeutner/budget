@@ -89,6 +89,8 @@ internal sealed class FakeBrowserSession : IBrowserSession
         }
     }
 
+    public Task<bool> FillCodeAsync(string selector, string code) => FillAsync(selector, code, TimeSpan.FromSeconds(2));
+
     public async Task<bool> ClickAsync(string selector)
     {
         lock (Visible)

@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
+using System.Text.Json;
+using System.Globalization;
 using Microsoft.Extensions.Logging.Abstractions;
 using NUnit.Framework;
 using OpenBudget.Browser;
@@ -37,11 +39,17 @@ public sealed class RealBrowserPayPalTests
     private int _bannerDeclined;
     private int _reports;
     private bool _combinedLogin;
+    private bool _requiresMfa;
+    private bool _splitMfa;
+    private DateTime _reportStart;
+    private DateTime _reportEnd;
 
     [SetUp]
     public void SetUp()
     {
         _combinedLogin = false;
+        _requiresMfa = false;
+        _splitMfa = false;
         _signIns = 0;
         _bannerDeclined = 0;
         _reports = 0;
@@ -74,7 +82,7 @@ public sealed class RealBrowserPayPalTests
     }
 
     private bool SignedIn(HttpListenerRequest r) =>
-        r.Cookies["sid"] is { } sid && _sessions.ContainsKey(sid.Value) && r.Headers["Sec-Fetch-Mode"] != null;
+        r.Cookies["sid"] is { } sid && _sessions.TryGetValue(sid.Value, out var signedIn) && signedIn && r.Headers["Sec-Fetch-Mode"] != null;
 
     private async Task HandleAsync(HttpListenerContext ctx)
     {
@@ -86,10 +94,10 @@ public sealed class RealBrowserPayPalTests
             if (form.GetValueOrDefault("login_email") == Email && form.GetValueOrDefault("login_password") == Password)
             {
                 var sid = Guid.NewGuid().ToString("N");
-                _sessions[sid] = true;
+                _sessions[sid] = !_requiresMfa;
                 Interlocked.Increment(ref _signIns);
                 ctx.Response.AppendHeader("Set-Cookie", $"sid={sid}; Path=/; HttpOnly; SameSite=Lax");
-                Redirect(ctx, "/myaccount/summary");
+                Redirect(ctx, _requiresMfa ? "/authflow/challenges/softwareToken/" : "/myaccount/summary");
                 return;
             }
             await HtmlAsync(ctx, SignInPage(request, "<div class=\"notification-critical\" role=\"alert\">Some of your info isn't correct. Please try again.</div>"));
@@ -106,6 +114,25 @@ public sealed class RealBrowserPayPalTests
             ctx.Response.AppendHeader("Set-Cookie", "cookie_prefs=necessary; Path=/; SameSite=Lax");
             return;
         }
+        if (path == "/authflow/challenges/softwareToken/" && request.Cookies["sid"] is { } pending)
+        {
+            if (request.HttpMethod == "POST")
+            {
+                var form = await ReadFormAsync(request);
+                var code = _splitMfa ? string.Concat(Enumerable.Range(0, 6).Select(i => form.GetValueOrDefault($"code{i}"))) : form.GetValueOrDefault("code");
+                if (code == "123456")
+                {
+                    _sessions[pending.Value] = true;
+                    Redirect(ctx, "/myaccount/summary");
+                    return;
+                }
+            }
+            var fields = _splitMfa
+                ? string.Concat(Enumerable.Range(0, 6).Select(i => $"<input name=code{i} inputmode=numeric maxlength=1 oninput='this.nextElementSibling?.focus()'>"))
+                : "<input name=code autocomplete=one-time-code maxlength=6>";
+            await HtmlAsync(ctx, "<html><body><form method=post>" + fields + "<button type=submit>Verify</button></form></body></html>");
+            return;
+        }
         if (!SignedIn(request))
         {
             Redirect(ctx, "/signin");
@@ -117,24 +144,52 @@ public sealed class RealBrowserPayPalTests
                 await HtmlAsync(ctx, "<html><body><h1>PayPal balance</h1><p>106,80 €</p></body></html>");
                 return;
             case "/reports/dlog":
-                await HtmlAsync(ctx, $"<html><head><meta name=\"csrf-token\" content=\"{Csrf}\"></head><body>Download activity</body></html>");
+                var bootstrap = JsonSerializer.Serialize(new { _csrf = Csrf, locality = new { timezone = "Europe/Berlin" } });
+                await HtmlAsync(ctx, $"<html><body><script id='server-data' type='application/json'>{bootstrap}</script><script>document.getElementById('server-data').remove()</script>Download activity</body></html>");
                 return;
-            case "/reports/dlog/generate" when request.HttpMethod == "POST":
-                if (request.Headers["X-CSRF-Token"] != Csrf)
+            case "/reports/apis/dlog/ql" when request.HttpMethod == "POST":
+                Assert.That(request.Headers["X-CSRF-Token"], Is.EqualTo(Csrf));
+                var refreshed = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow.AddHours(-1), TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles"));
+                await WriteAsync(ctx, "application/json", JsonSerializer.Serialize(new[] { new { userGroup = "Premier", data = new { dlogRefreshInfo = new { last_updated = refreshed.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture) } } } }));
+                return;
+            case "/reports/apis/common/ql" when request.HttpMethod == "POST":
+                Assert.That(request.Headers["X-CSRF-Token"], Is.EqualTo(Csrf));
+                Assert.That(request.Headers["X-Requested-With"], Is.EqualTo("XMLHttpRequest"));
+                using (var reader = new StreamReader(request.InputStream, Encoding.UTF8))
+                using (var body = JsonDocument.Parse(await reader.ReadToEndAsync()))
                 {
-                    ctx.Response.StatusCode = 403;
+                    var operation = body.RootElement.GetProperty("apiType").GetString();
+                    Assert.That(body.RootElement.GetProperty("reportType").GetString(), Is.EqualTo("DLOG"));
+                    if (operation == "reportCreate")
+                    {
+                        var form = body.RootElement.GetProperty("formdata");
+                        Assert.That(form.GetProperty("filters").GetString(), Is.EqualTo("BALANCE_IMPACTING"));
+                        Assert.That(form.GetProperty("name").GetString(), Is.EqualTo("DLOGTEMPLATE"));
+                        var zone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
+                        _reportStart = TimeZoneInfo.ConvertTimeFromUtc(DateTime.ParseExact(form.GetProperty("start_date").GetString()!, "yyyyMMddHHmmss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal), zone);
+                        _reportEnd = TimeZoneInfo.ConvertTimeFromUtc(DateTime.ParseExact(form.GetProperty("end_date").GetString()!, "yyyyMMddHHmmss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal), zone);
+                        Interlocked.Increment(ref _reports);
+                        await WriteAsync(ctx, "application/json", """[{"document_id":"R1"}]""");
+                        return;
+                    }
+                    if (operation == "reports")
+                    {
+                        var reports = _reports == 0 ? Array.Empty<object>() : new object[] { new
+                        {
+                            documentStartDate = _reportStart.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
+                            documentEndDate = _reportEnd.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
+                            documentFileFormat = "CSV", documentMetadata = new { filters = "BALANCE_IMPACTING" },
+                            status = "AVAILABLE", downloadUrls = new[] { "R1.CSV" },
+                        } };
+                        await WriteAsync(ctx, "application/json", JsonSerializer.Serialize(new[] { new { reportDetails = reports } }));
+                        return;
+                    }
+                    Assert.That(operation, Is.EqualTo("download"));
+                    Assert.That(body.RootElement.GetProperty("reportNames")[0].GetString(), Is.EqualTo("R1.CSV"));
+                    var day = DateTime.UtcNow.AddDays(-1).ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
+                    await WriteAsync(ctx, "application/octet-stream", Csv.Replace("{0}", day, StringComparison.Ordinal));
                     return;
                 }
-                Interlocked.Increment(ref _reports);
-                await WriteAsync(ctx, "application/json", "{\"reportId\":\"R1\"}");
-                return;
-            case "/reports/dlog/list":
-                await WriteAsync(ctx, "application/json", "{\"reports\":[{\"id\":\"R1\",\"status\":\"COMPLETED\"}]}");
-                return;
-            case "/reports/dlog/download/R1":
-                var day = DateTime.UtcNow.AddDays(-1).ToString("MM/dd/yyyy", System.Globalization.CultureInfo.InvariantCulture);
-                await WriteAsync(ctx, "text/csv", Csv.Replace("{0}", day, StringComparison.Ordinal));
-                return;
             default:
                 ctx.Response.StatusCode = 404;
                 return;
@@ -219,6 +274,48 @@ public sealed class RealBrowserPayPalTests
         Assert.That(refresh.Value.Transactions.Select(t => (t.BankTransactionId, t.Amount)),
             Is.EqualTo(new[] { ("TXA", -12.50m), ("TXB", 20.00m), ("TXB:fee", -0.70m) }));
         Assert.That(_reports, Is.EqualTo(1));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task A_security_code_uses_the_shared_prompt_and_retries_without_showing_the_browser(bool split)
+    {
+        _combinedLogin = true;
+        _requiresMfa = true;
+        _splitMfa = split;
+        await using var browser = NewBrowser();
+        using var http = new BankHttpClient();
+        var spec = (await Connector(http).LoginAsync(Credentials, null, null, CancellationToken.None)).Challenge!.WebLoginSpec!;
+        var asked = 0;
+        var modes = new List<WebLoginMode>();
+        Task<ChallengeAnswer?> AnswerCode(ConnectorChallenge challenge, CancellationToken ct)
+        {
+            Assert.That(challenge.Kind, Is.EqualTo(ChallengeKind.Code));
+            Assert.That(challenge.Length, Is.EqualTo(6));
+            Assert.That(challenge.Numeric, Is.True);
+            return Task.FromResult<ChallengeAnswer?>(new ChallengeAnswer(challenge, ++asked == 1 ? "000000" : "123456"));
+        }
+        await using var login = await Service(browser).StartAsync("user-1", spec, [], CancellationToken.None, AnswerCode);
+        login.ModeChanged += mode => modes.Add(mode);
+        var result = await login.Completion.WaitAsync(TimeSpan.FromSeconds(60));
+        Assert.That(result.Success, Is.True, result.Error);
+        Assert.That(asked, Is.EqualTo(2));
+        Assert.That(modes, Does.Not.Contain(WebLoginMode.Interactive));
+        await using var kept = login.TakeBrowser();
+    }
+
+    [Test]
+    public async Task A_security_check_without_a_code_prompt_handler_automatically_shows_the_browser()
+    {
+        _combinedLogin = true;
+        _requiresMfa = true;
+        await using var browser = NewBrowser();
+        using var http = new BankHttpClient();
+        var spec = (await Connector(http).LoginAsync(Credentials, null, null, CancellationToken.None)).Challenge!.WebLoginSpec!;
+        await using var login = await Service(browser).StartAsync("user-1", spec, [], CancellationToken.None);
+        for (var i = 0; i < 300 && login.Mode != WebLoginMode.Interactive; i++) await Task.Delay(100);
+        Assert.That(login.Mode, Is.EqualTo(WebLoginMode.Interactive));
+        Assert.That(login.Completion.IsCompleted, Is.False);
     }
 
     [Test]
