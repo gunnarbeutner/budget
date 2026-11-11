@@ -486,7 +486,8 @@ public class MoneyMoneyImportService
     /// </summary>
     /// <summary>
     /// MoneyMoney's initial balance of each account (also of accounts another provider owns by now: it belongs to the
-    /// account's history, which a balance computed from bookings needs).
+    /// account's history, which a balance computed from bookings needs). Accounts whose balance an extension reports have
+    /// none stored; MoneyMoney then shows the balance minus the sum of the bookings, and so does this.
     /// </summary>
     private static async Task CopyInitialBalancesAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
     {
@@ -494,10 +495,24 @@ public class MoneyMoneyImportService
         var balances = new Dictionary<long, long>();
         await using (var cmd = src.CreateCommand())
         {
-            cmd.CommandText = "SELECT rowid, CAST(ROUND(COALESCE(initial_balance, 0) * 100) AS INTEGER) FROM accounts";
+            cmd.CommandText = """
+                SELECT a.rowid, CAST(ROUND(a.initial_balance * 100) AS INTEGER), a.balances,
+                       CAST(ROUND(COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.local_account_key = a.rowid), 0) * 100) AS INTEGER)
+                FROM accounts a
+                """;
             await using var r = await cmd.ExecuteReaderAsync(ct);
             while (await r.ReadAsync(ct))
-                balances[SourceScope.Namespace(sourceId, r.GetInt64(0))] = r.GetInt64(1);
+            {
+                long cents;
+                if (!await r.IsDBNullAsync(1, ct)) cents = r.GetInt64(1);
+                else
+                {
+                    var blob = await r.IsDBNullAsync(2, ct) ? null : r.GetString(2);
+                    var balance = new Account { Balances = blob }.CurrentBalance;
+                    cents = balance is { } b ? (long)Math.Round(b * 100m, MidpointRounding.AwayFromZero) - r.GetInt64(3) : 0;
+                }
+                balances[SourceScope.Namespace(sourceId, r.GetInt64(0))] = cents;
+            }
         }
         foreach (var account in await db.Accounts.Where(a => a.SourceId == sourceId).ToListAsync(ct))
             account.InitialBalance = balances.GetValueOrDefault(account.Id);

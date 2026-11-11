@@ -496,7 +496,7 @@ public sealed class MoneyMoneyImportTests : IDisposable
     }
 
     [Fact]
-    public async Task MoneyMoney_initial_balances_are_imported_in_cents()
+    public async Task MoneyMoney_initial_balances_are_imported_in_cents_or_derived_from_the_reported_balance()
     {
         await using var t = new TestDb();
         var path = Path.Combine(Path.GetTempPath(), $"ob-mm-{Guid.NewGuid():N}.sqlite");
@@ -508,10 +508,12 @@ public sealed class MoneyMoneyImportTests : IDisposable
             CREATE TABLE transactions (local_account_key INTEGER, amount REAL, currency TEXT, timestamp INTEGER, name TEXT, comment TEXT, category_key INTEGER, checkmark INTEGER, splitted INTEGER);
             INSERT INTO accounts (name, currency, type, balances, initial_balance) VALUES ('Ledger', 'EUR', 3, '', 1234.56);
             INSERT INTO accounts (name, currency, type, balances, initial_balance) VALUES ('Giro', 'EUR', 1, '', NULL);
+            INSERT INTO accounts (name, currency, type, balances, initial_balance) VALUES ('Extension ledger', 'EUR', 3, '8:0.000000,3:EUR,', NULL);
+            INSERT INTO transactions (local_account_key, amount, currency, timestamp, name, checkmark, splitted) VALUES (3, -270.5, 'EUR', 1780000000, 'Purchase', 0, 0);
             """);
         await ImportAsync(t, path);
         await using var db = await t.Factory.CreateDbContextAsync();
         var initial = await db.Accounts.IgnoreQueryFilters().OrderBy(a => a.Id).Select(a => a.InitialBalance).ToListAsync();
-        Assert.Equal([123456L, 0L], initial);
+        Assert.Equal([123456L, 0L, 27050L], initial);
     }
 }
