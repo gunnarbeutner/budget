@@ -602,9 +602,6 @@ public sealed class StructureService
         {
             await using var tx = await sys.Database.BeginTransactionAsync(ct);
             var bookings = sys.Transactions.Where(t => t.SourceId == sourceId && t.AccountId == id);
-            // Transfers whose other half lives on another account become plain bookings again.
-            await sys.Transactions.Where(t => t.TransferPeerId != null && bookings.Select(b => (long?)b.Id).Contains(t.TransferPeerId))
-                .ExecuteUpdateAsync(s => s.SetProperty(t => t.TransferPeerId, (long?)null).SetProperty(t => t.IsTransfer, false), ct);
             await bookings.ExecuteDeleteAsync(ct);
             await sys.Holdings.Where(h => h.AccountId == id).ExecuteDeleteAsync(ct);
             await sys.PortfolioChartPoints.Where(p => p.AccountId == id).ExecuteDeleteAsync(ct);

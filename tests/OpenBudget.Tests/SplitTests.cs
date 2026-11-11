@@ -7,10 +7,10 @@ using Xunit;
 namespace OpenBudget.Tests;
 
 /// <summary>
-/// Splits and transfers: validation, how they change budget / cashflow / sidebar sums and the list, transfer
-/// suggestions, MoneyMoney rows and who may do what.
+/// Splits: validation, how they change budget / cashflow / sidebar sums and the list, MoneyMoney rows and who may do
+/// what. Also how bookings between own accounts are kept out of totals by their (untracked) category.
 /// </summary>
-public sealed class SplitTransferTests
+public sealed class SplitTests
 {
     private const long Tx1 = 1; // -100.00 on the Shared account (connector-owned), SharedLeaf
     private const long Tx3 = 3; // property account, still MoneyMoney-owned
@@ -39,7 +39,7 @@ public sealed class SplitTransferTests
         db.Accounts.Add(new Account { Id = AccountOther, SourceId = AccessWorld.SourceAlice, Name = "Unassigned", Provider = "fake" });
         db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = AccessWorld.Shared, AccountId = AccountSavings, Scope = AccountScope.Exclusive });
         db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = AccessWorld.Shared, AccountId = AccountMm, Scope = AccountScope.Exclusive });
-        // Transfer candidates for Tx1 (-100.00 on 10 March).
+        // Bookings on other accounts around Tx1 (-100.00 on 10 March).
         db.Transactions.Add(Row(20, AccountSavings, 10000, March10.AddDays(2)));   // match
         db.Transactions.Add(Row(21, AccountSavings, 10000, March10.AddDays(7)));   // too late
         db.Transactions.Add(Row(22, AccountSavings, -10000, March10));             // same sign
@@ -60,7 +60,7 @@ public sealed class SplitTransferTests
         Timestamp = new DateTimeOffset(date).ToUnixTimeSeconds(),
     };
 
-    private static SplitTransferService For(TestDb t, string? user) => new(t.ForUser(user).Factory, t.Notifier, new ChangeOrigin());
+    private static SplitService For(TestDb t, string? user) => new(t.ForUser(user).Factory, t.Notifier, new ChangeOrigin());
 
     private static Task<decimal> SpentAsync(TestDb t) =>
         t.Spending.GetSpendingSummaryAsync(AccessWorld.Shared, 2026, 3, 3).ContinueWith(s => s.Result.TotalSpent - OtherRows, TaskScheduler.Default);
@@ -95,38 +95,22 @@ public sealed class SplitTransferTests
     [InlineData(" 7 € ", 700)]
     [InlineData("1.000", 100000)]
     public void Amounts_parse_in_german_and_english_notation(string text, long cents) =>
-        Assert.Equal(cents, SplitTransferService.ParseCents(text));
+        Assert.Equal(cents, SplitService.ParseCents(text));
 
     [Theory]
     [InlineData("")]
     [InlineData("abc")]
     [InlineData("1,2,x")]
-    public void Garbage_does_not_parse(string text) => Assert.Null(SplitTransferService.ParseCents(text));
+    public void Garbage_does_not_parse(string text) => Assert.Null(SplitService.ParseCents(text));
 
     [Fact]
     public void Split_validation_needs_two_nonzero_parts_that_add_up()
     {
-        Assert.Equal(SplitError.None, SplitTransferService.Validate(-10000, SixtyForty));
-        Assert.Equal(SplitError.TooFewParts, SplitTransferService.Validate(-10000, [new(-10000, null, null)]));
-        Assert.Equal(SplitError.ZeroPart, SplitTransferService.Validate(-10000, [new(-10000, null, null), new(0, null, null)]));
-        Assert.Equal(SplitError.SumMismatch, SplitTransferService.Validate(-10000, [new(-6000, null, null), new(-3000, null, null)]));
-        Assert.Equal(-1000, SplitTransferService.Remaining(-10000, [-6000, -3000]));
-    }
-
-    [Fact]
-    public void A_transfer_match_needs_opposite_amount_close_date_and_another_account()
-    {
-        var row = Row(1, AccessWorld.AccountWp, -10000, March10);
-        Assert.True(SplitTransferService.IsTransferMatch(row, Row(2, AccountSavings, 10000, March10.AddDays(5))));
-        Assert.False(SplitTransferService.IsTransferMatch(row, Row(2, AccountSavings, 10000, March10.AddDays(6))));
-        Assert.False(SplitTransferService.IsTransferMatch(row, Row(2, AccountSavings, 9999, March10)));
-        Assert.False(SplitTransferService.IsTransferMatch(row, Row(2, AccessWorld.AccountWp, 10000, March10)));
-        var pending = Row(2, AccountSavings, 10000, March10);
-        pending.Booked = false;
-        Assert.False(SplitTransferService.IsTransferMatch(row, pending));
-        var already = Row(2, AccountSavings, 10000, March10);
-        already.IsTransfer = true;
-        Assert.False(SplitTransferService.IsTransferMatch(row, already));
+        Assert.Equal(SplitError.None, SplitService.Validate(-10000, SixtyForty));
+        Assert.Equal(SplitError.TooFewParts, SplitService.Validate(-10000, [new(-10000, null, null)]));
+        Assert.Equal(SplitError.ZeroPart, SplitService.Validate(-10000, [new(-10000, null, null), new(0, null, null)]));
+        Assert.Equal(SplitError.SumMismatch, SplitService.Validate(-10000, [new(-6000, null, null), new(-3000, null, null)]));
+        Assert.Equal(-1000, SplitService.Remaining(-10000, [-6000, -3000]));
     }
 
     // ---- splits ----
@@ -194,7 +178,7 @@ public sealed class SplitTransferTests
     {
         await using var t = await WorldAsync();
         var svc = For(t, AccessWorld.Alice);
-        await Assert.ThrowsAsync<SplitTransferException>(() => svc.SplitAsync(Tx1, [new(-6000, null, null), new(-3000, null, null)]));
+        await Assert.ThrowsAsync<SplitException>(() => svc.SplitAsync(Tx1, [new(-6000, null, null), new(-3000, null, null)]));
         await Assert.ThrowsAsync<AccessDeniedException>(() => svc.SplitAsync(Tx3, [new(-1000, null, null), new(-1500, null, null)]));
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             svc.SplitAsync(Tx1, [new(-6000, AccessWorld.Id(AccessWorld.SourceBob, 200), null), new(-4000, null, null)]));
@@ -204,8 +188,8 @@ public sealed class SplitTransferTests
             (await db.Transactions.SingleAsync(x => x.Id == Tx1)).Booked = false;
             await db.SaveChangesAsync();
         }
-        var ex = await Assert.ThrowsAsync<SplitTransferException>(() => svc.SplitAsync(Tx1, SixtyForty));
-        Assert.Equal(SplitTransferProblem.Pending, ex.Problem);
+        var ex = await Assert.ThrowsAsync<SplitException>(() => svc.SplitAsync(Tx1, SixtyForty));
+        Assert.Equal(SplitProblem.Pending, ex.Problem);
         Assert.Equal(100m, await SpentAsync(t));
     }
 
@@ -220,51 +204,30 @@ public sealed class SplitTransferTests
         Assert.False(CategoryRuleEngine.IsCandidate(parent));
     }
 
-    // ---- transfers ----
+    // ---- transfers between own accounts ----
 
     [Fact]
-    public async Task Suggestions_are_opposite_bookings_within_five_days_on_editable_project_accounts()
+    public async Task A_booking_in_an_untracked_transfer_category_stays_out_of_totals_but_in_the_balance()
     {
         await using var t = await WorldAsync();
-        var candidates = await For(t, AccessWorld.Alice).GetTransferCandidatesAsync(Tx1, AccessWorld.Shared);
-        Assert.Equal([25L, 20L], candidates.Select(c => c.Id).ToArray());
-        Assert.All(candidates, c => Assert.Equal("Example Savings", c.AccountName));
-    }
-
-    [Fact]
-    public async Task A_linked_transfer_counts_as_neither_spending_nor_income_until_unlinked()
-    {
-        await using var t = await WorldAsync();
-        var svc = For(t, AccessWorld.Alice);
-        await svc.LinkTransferAsync(Tx1, 20);
+        var before = (await t.Browse.GetTreeAsync(AccessWorld.Shared, 2026, 3, 3))!;
+        Assert.Equal(100m, await SpentAsync(t));
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            (await db.Transactions.SingleAsync(x => x.Id == Tx1)).CategoryId = UntrackedLeaf;
+            await db.SaveChangesAsync();
+        }
 
         Assert.Equal(0m, await SpentAsync(t));
         Assert.Equal(0m, await CashflowExpensesAsync(t));
         Assert.Equal(0m, await SidebarSpentAsync(t));
-        var info = await svc.GetTransferAsync(20);
-        Assert.Equal(Tx1, info!.PeerId);
-        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery
-        {
-            SourceId = AccessWorld.SourceAlice,
-            AccountIds = [AccessWorld.AccountWp],
-            Skip = 0,
-            Take = 50,
-        });
-        var row = page.Rows.Single(r => r.Id == Tx1);
-        Assert.True(row.IsTransfer);
-        Assert.Equal("Example Savings", row.TransferPeerAccountName);
-        // A booking that is already a transfer is no longer suggested, and can't be linked twice.
-        Assert.DoesNotContain(await svc.GetTransferCandidatesAsync(25, AccessWorld.Shared), c => c.Id == Tx1);
-        await Assert.ThrowsAsync<SplitTransferException>(() => svc.LinkTransferAsync(25, Tx1));
-
-        await svc.UnlinkTransferAsync(20);
-        Assert.Equal(100m, await SpentAsync(t));
-        await using var db = await t.System.CreateDbContextAsync();
-        Assert.False(await db.Transactions.AnyAsync(x => x.IsTransfer || x.TransferPeerId != null));
+        var after = (await t.Browse.GetTreeAsync(AccessWorld.Shared, 2026, 3, 3))!;
+        Assert.Equal(before.UncategorizedCount, after.UncategorizedCount);
+        Assert.Equal(before.Accounts.Single(a => a.Id == AccessWorld.AccountWp).PeriodSum, after.Accounts.Single(a => a.Id == AccessWorld.AccountWp).PeriodSum);
     }
 
     [Fact]
-    public async Task A_one_sided_transfer_drops_out_of_totals_and_the_uncategorized_count_but_not_the_balance()
+    public async Task Uncategorized_bookings_between_own_accounts_are_listed_as_to_do()
     {
         await using var t = await WorldAsync();
         await using (var db = await t.System.CreateDbContextAsync())
@@ -272,44 +235,27 @@ public sealed class SplitTransferTests
             (await db.Transactions.SingleAsync(x => x.Id == 20)).CategoryId = null;
             await db.SaveChangesAsync();
         }
-        var before = (await t.Browse.GetTreeAsync(AccessWorld.Shared, 2026, 3, 3))!;
-        var svc = For(t, AccessWorld.Alice);
-        await svc.MarkOneSidedTransferAsync(Tx1);
-        await svc.MarkOneSidedTransferAsync(20);
-
-        Assert.Equal(0m, await SpentAsync(t));
-        var after = (await t.Browse.GetTreeAsync(AccessWorld.Shared, 2026, 3, 3))!;
-        Assert.Equal(before.UncategorizedCount - 1, after.UncategorizedCount);
-        // The account's period flow still includes the booking.
-        Assert.Equal(before.Accounts.Single(a => a.Id == AccessWorld.AccountWp).PeriodSum, after.Accounts.Single(a => a.Id == AccessWorld.AccountWp).PeriodSum);
-        Assert.Null((await svc.GetTransferAsync(Tx1))!.PeerId);
-    }
-
-    [Fact]
-    public async Task Moneymoney_rows_cannot_be_transfer_counterparts_and_split_rows_cannot_be_transfers()
-    {
-        await using var t = await WorldAsync();
-        var svc = For(t, AccessWorld.Alice);
-        await Assert.ThrowsAsync<AccessDeniedException>(() => svc.LinkTransferAsync(Tx1, 23));
-        await svc.SplitAsync(Tx1, SixtyForty);
-        await Assert.ThrowsAsync<SplitTransferException>(() => svc.MarkOneSidedTransferAsync(Tx1));
-        await svc.RemoveSplitAsync(Tx1);
-        await svc.MarkOneSidedTransferAsync(Tx1);
-        await Assert.ThrowsAsync<SplitTransferException>(() => svc.SplitAsync(Tx1, SixtyForty));
+        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery
+        {
+            SourceId = AccessWorld.SourceAlice,
+            AccountIds = [AccountSavings],
+            UncategorizedOnly = true,
+            Skip = 0,
+            Take = 50,
+        });
+        Assert.Contains(page.Rows, r => r.Id == 20);
     }
 
     // ---- access ----
 
     [Fact]
-    public async Task A_project_editor_may_split_and_mark_transfers_on_shared_accounts()
+    public async Task A_project_editor_may_split_on_shared_accounts()
     {
         await using var t = await WorldAsync(ProjectRole.Editor);
         var svc = For(t, AccessWorld.Bob);
         await svc.SplitAsync(Tx1, SixtyForty);
         Assert.Equal(2, (await svc.GetSplitAsync(Tx1))!.Parts.Count);
         await svc.RemoveSplitAsync(Tx1);
-        await svc.LinkTransferAsync(Tx1, 20);
-        Assert.True((await svc.GetTransferAsync(Tx1))!.IsTransfer);
     }
 
     [Fact]
@@ -318,12 +264,9 @@ public sealed class SplitTransferTests
         await using var t = await WorldAsync(ProjectRole.Viewer);
         var viewer = For(t, AccessWorld.Bob);
         await Assert.ThrowsAsync<AccessDeniedException>(() => viewer.SplitAsync(Tx1, SixtyForty));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => viewer.MarkOneSidedTransferAsync(Tx1));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => viewer.LinkTransferAsync(Tx1, 20));
-        Assert.Empty(await viewer.GetTransferCandidatesAsync(Tx1, AccessWorld.Shared));
 
         await using var noShare = await WorldAsync(null);
-        await Assert.ThrowsAsync<SplitTransferException>(() => For(noShare, AccessWorld.Bob).SplitAsync(Tx1, SixtyForty)); // not even visible
+        await Assert.ThrowsAsync<SplitException>(() => For(noShare, AccessWorld.Bob).SplitAsync(Tx1, SixtyForty)); // not even visible
     }
 
     [Fact]

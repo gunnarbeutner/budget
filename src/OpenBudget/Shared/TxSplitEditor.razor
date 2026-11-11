@@ -1,7 +1,7 @@
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject IStringLocalizer<TxSplitEditor> L
-@inject SplitTransferService Splits
+@inject SplitService Splits
 
 @* Splits one booking into parts (amount, category, optional note). Amounts are entered without sign; every part takes
    the booking's sign. The parts must add up to the booking: the remaining amount is shown and "Assign rest" puts it on
@@ -93,15 +93,15 @@
             foreach (var p in parts)
             {
                 if (string.IsNullOrWhiteSpace(p.Amount)) continue;
-                if (SplitTransferService.ParseCents(p.Amount) is not { } c) return null;
+                if (SplitService.ParseCents(p.Amount) is not { } c) return null;
                 sum += Math.Abs(c) * Sign;
             }
             return info.TotalCents - sum;
         }
     }
 
-    private bool CanSave => info != null && SplitTransferService.Validate(info.TotalCents, ToInputs()) == SplitError.None
-        && parts.All(p => SplitTransferService.ParseCents(p.Amount) is not null);
+    private bool CanSave => info != null && SplitService.Validate(info.TotalCents, ToInputs()) == SplitError.None
+        && parts.All(p => SplitService.ParseCents(p.Amount) is not null);
 
     protected override async Task OnInitializedAsync()
     {
@@ -122,7 +122,7 @@
     private static string Format(long cents) => (cents / 100m).ToString("0.00", System.Globalization.CultureInfo.GetCultureInfo("de-DE"));
 
     private List<SplitPartInput> ToInputs() => parts
-        .Select(p => new SplitPartInput(Math.Abs(SplitTransferService.ParseCents(p.Amount) ?? 0) * Sign, p.CategoryId, p.Note))
+        .Select(p => new SplitPartInput(Math.Abs(SplitService.ParseCents(p.Amount) ?? 0) * Sign, p.CategoryId, p.Note))
         .ToList();
 
     private void AddPart() => parts.Add(new PartModel());
@@ -130,7 +130,7 @@
     private void AssignRest(int index)
     {
         if (Remaining is not { } rest || rest == 0) return;
-        var current = Math.Abs(SplitTransferService.ParseCents(parts[index].Amount) ?? 0) * Sign;
+        var current = Math.Abs(SplitService.ParseCents(parts[index].Amount) ?? 0) * Sign;
         var value = current + rest;
         parts[index].Amount = Format(Math.Abs(value));
     }
@@ -154,7 +154,7 @@
         }
         catch (InvalidOperationException ex)
         {
-            error = ex is SplitTransferException { Problem: SplitTransferProblem.Pending } ? L["Error_Pending"] : L["Error_Invalid"];
+            error = ex is SplitException { Problem: SplitProblem.Pending } ? L["Error_Pending"] : L["Error_Invalid"];
         }
         finally
         {

@@ -212,6 +212,55 @@ public sealed class ManualAccountTests
     }
 
     [Fact]
+    public async Task An_offsetting_entry_books_the_opposite_amount_with_payee_and_category_on_a_manual_account()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        await w.ImportMoneyMoneyAsync(Snapshot(w));
+        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro], takeOverStructure: true);
+        var category = SourceScope.Namespace(BankWorld.SourceAlice, 51);
+        int projectId;
+        await using (var db = await w.T.System.CreateDbContextAsync())
+        {
+            db.Categories.Add(new Category { Id = category, SourceId = BankWorld.SourceAlice, Name = "Own transfer" });
+            var project = new Project { Name = "Household", SourceId = BankWorld.SourceAlice, OwnerUserId = BankWorld.Alice };
+            db.Projects.Add(project);
+            await db.SaveChangesAsync();
+            projectId = project.Id;
+            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = projectId, AccountId = Giro });
+            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = projectId, AccountId = Savings });
+            var interest = db.Transactions.Single(t => t.AccountId == Savings);
+            interest.CategoryId = category;
+            await db.SaveChangesAsync();
+        }
+        var manual = Manual(w, BankWorld.Alice);
+        var original = (await w.TransactionsAsync(Savings)).Single();
+
+        // Only the manual account is offered, and not for its own bookings.
+        Assert.Equal([Giro], (await manual.GetOffsetTargetsAsync(projectId, Savings)).Select(t => t.AccountId));
+        Assert.Empty(await manual.GetOffsetTargetsAsync(projectId, Giro));
+        Assert.Empty(await Manual(w, BankWorld.Bob).GetOffsetTargetsAsync(projectId, Savings));
+
+        var id = await manual.CreateOffsettingEntryAsync(original.Id, Giro, "Offsetting entry for Interest");
+        var entry = (await w.TransactionsAsync(Giro)).Single(t => t.Id == id);
+        Assert.Equal(-original.Amount, entry.Amount);
+        Assert.Equal(-2500, entry.Amount);
+        Assert.Equal(original.Currency, entry.Currency);
+        Assert.Equal(original.Timestamp, entry.Timestamp);
+        Assert.Equal(original.Name, entry.Name);
+        Assert.Equal(original.Purpose, entry.Purpose);
+        Assert.Equal(category, entry.CategoryId);
+        Assert.Equal("Offsetting entry for Interest", entry.Note);
+        Assert.Equal(-15m, (await w.AccountAsync(Giro)).CurrentBalance);
+
+        // Not on a MoneyMoney account, not by someone else, not on the booking's own account.
+        var giroRow = (await w.TransactionsAsync(Giro)).First(t => t.Id != id);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => manual.CreateOffsettingEntryAsync(giroRow.Id, Savings, null));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => Manual(w, BankWorld.Bob).CreateOffsettingEntryAsync(original.Id, Giro, null));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => manual.CreateOffsettingEntryAsync(giroRow.Id, Giro, null));
+        Assert.Equal(-15m, (await w.AccountAsync(Giro)).CurrentBalance);
+    }
+
+    [Fact]
     public async Task Bookings_are_entered_only_on_manual_accounts_by_the_owner()
     {
         await using var w = await BankWorld.CreateAsync();

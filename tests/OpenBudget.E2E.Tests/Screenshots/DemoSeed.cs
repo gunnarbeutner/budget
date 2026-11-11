@@ -35,7 +35,7 @@ internal static class DemoSeed
     public static readonly long RentalId = SourceScope.Namespace(SourceId, 6);
 
     // Category ids (leaf categories) and groups.
-    private const long GLiving = 100, GHome = 101, GMobility = 102, GLeisure = 103, GIncome = 104, GShared = 105, GRental = 106;
+    private const long GLiving = 100, GHome = 101, GMobility = 102, GLeisure = 103, GIncome = 104, GShared = 105, GRental = 106, GTransfers = 107;
     public const long Groceries = 200, Drugstore = 201, Restaurants = 202, Clothing = 203;
     public const long Rent = 210, Energy = 211, Internet = 212, Insurance = 213, Furnishing = 214;
     public const long Transit = 220, Fuel = 221;
@@ -43,6 +43,7 @@ internal static class DemoSeed
     public const long Salary = 240, Interest = 241;
     public const long FlatRent = 250, FlatShares = 251, FlatSupplies = 252, FlatCleaning = 253;
     public const long RentalIncome = 260, Maintenance = 261, PropertyMgmt = 262, PropertyTax = 263;
+    public const long OwnTransfer = 270;
 
     private static readonly DateTime Created = new(2026, 1, 2, 9, 0, 0, DateTimeKind.Utc);
 
@@ -72,6 +73,7 @@ internal static class DemoSeed
         Group(db, GIncome, "Income", "#2e7d32");
         Group(db, GShared, "Shared flat", "#06989a");
         Group(db, GRental, "Rental flat", "#a40000");
+        Group(db, GTransfers, "Transfers", "#888a85");
         Cat(db, Groceries, "Groceries", GLiving); Cat(db, Drugstore, "Drugstore", GLiving); Cat(db, Restaurants, "Restaurants", GLiving); Cat(db, Clothing, "Clothing", GLiving);
         Cat(db, Rent, "Rent", GHome); Cat(db, Energy, "Energy", GHome); Cat(db, Internet, "Internet & phone", GHome); Cat(db, Insurance, "Insurance", GHome); Cat(db, Furnishing, "Furnishing", GHome);
         Cat(db, Transit, "Public transport", GMobility); Cat(db, Fuel, "Car sharing", GMobility);
@@ -79,6 +81,7 @@ internal static class DemoSeed
         Cat(db, Salary, "Salary", GIncome); Cat(db, Interest, "Interest & dividends", GIncome);
         Cat(db, FlatRent, "Flat rent", GShared); Cat(db, FlatShares, "Flatmate shares", GShared); Cat(db, FlatSupplies, "Shared supplies", GShared); Cat(db, FlatCleaning, "Cleaning", GShared);
         Cat(db, RentalIncome, "Rental income", GRental); Cat(db, Maintenance, "Maintenance", GRental); Cat(db, PropertyMgmt, "Property management", GRental); Cat(db, PropertyTax, "Property tax", GRental);
+        Cat(db, OwnTransfer, "Own transfer", GTransfers);
 
         // ---- accounts ----
         db.AccountGroups.Add(new AccountGroup { Id = 1, SourceId = SourceId, Name = "Example Bank", Sort = 1 });
@@ -212,7 +215,7 @@ internal static class DemoSeed
         await using (var scope = services.CreateAsyncScope())
         {
             // Built over the unrestricted factory: the app's own one only sees the signed-in user's data.
-            var split = new SplitTransferService(factory, scope.ServiceProvider.GetRequiredService<ChangeNotificationService>(), scope.ServiceProvider.GetRequiredService<ChangeOrigin>());
+            var split = new SplitService(factory, scope.ServiceProvider.GetRequiredService<ChangeNotificationService>(), scope.ServiceProvider.GetRequiredService<ChangeOrigin>());
             await split.SplitAsync(splitId,
             [
                 new SplitPartInput(-62_30, Groceries, "Food"),
@@ -326,13 +329,8 @@ internal static class DemoSeed
 
         public void Transfer(long from, long to, DateTime date, long cents, string name, string purpose)
         {
-            var outId = Add(from, date, -cents, name, null, purpose, "Überweisung");
-            var inId = Add(to, date, cents, "Giro account", null, purpose, "Gutschrift");
-            foreach (var e in db.ChangeTracker.Entries<Transaction>().Where(e => e.Entity.Id == outId || e.Entity.Id == inId))
-            {
-                e.Entity.IsTransfer = true;
-                e.Entity.TransferPeerId = e.Entity.Id == outId ? inId : outId;
-            }
+            Add(from, date, -cents, name, OwnTransfer, purpose, "Überweisung");
+            Add(to, date, cents, "Giro account", OwnTransfer, purpose, "Gutschrift");
         }
     }
 

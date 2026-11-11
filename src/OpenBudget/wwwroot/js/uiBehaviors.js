@@ -137,7 +137,7 @@ window.obTx = (function () {
 
     function startPress(e) {
         if (e.touches.length !== 1) return;
-        var row = e.target.closest && e.target.closest(".tx-row");
+        var row = window.obTxMenuRow(e.target);
         if (!row) return;
         var t = e.touches[0];
         touchStart = { x: t.clientX, y: t.clientY };
@@ -209,6 +209,42 @@ window.obScrollActive = function (container) {
     if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
 };
 
+// Places a context menu opened at (x, y) so it fits the window: below/right of the pointer when there is room,
+// otherwise above/left of it, always at least a margin from the edges; a menu taller than the window scrolls inside.
+window.obPlaceMenu = function (el, x, y) {
+    if (!el) return;
+    var m = 8, vw = window.innerWidth, vh = window.innerHeight;
+    el.style.maxHeight = (vh - 2 * m) + "px";
+    var r = el.getBoundingClientRect();
+    var w = r.width, h = Math.min(r.height, vh - 2 * m);
+    var left = x + w + m > vw ? x - w : x;
+    var top = y + h + m > vh ? y - h : y;
+    left = Math.max(m, Math.min(left, vw - w - m));
+    top = Math.max(m, Math.min(top, vh - h - m));
+    el.style.left = left + "px";
+    el.style.top = top + "px";
+    el.style.visibility = "visible";
+};
+
+// Places the open submenu of a context menu beside its entry: to the right, or to the left when there is no room,
+// top-aligned with the entry and kept inside the window like the menu itself.
+window.obPlaceSubmenu = function (menu) {
+    if (!menu) return;
+    var sub = menu.querySelector(".ctx-submenu");
+    var item = menu.querySelector(".ctx-item.ctx-open");
+    if (!sub || !item) return;
+    var m = 8, vw = window.innerWidth, vh = window.innerHeight;
+    sub.style.maxHeight = (vh - 2 * m) + "px";
+    var a = item.getBoundingClientRect(), r = sub.getBoundingClientRect();
+    var w = r.width, h = Math.min(r.height, vh - 2 * m);
+    var left = a.right + w + m > vw ? a.left - w : a.right;
+    left = Math.max(m, Math.min(left, vw - w - m));
+    var top = Math.max(m, Math.min(a.top - 4, vh - h - m));
+    sub.style.left = left + "px";
+    sub.style.top = top + "px";
+    sub.style.visibility = "visible";
+};
+
 window.obFocus = function (el) {
     if (el && el.focus) el.focus();
 };
@@ -276,6 +312,25 @@ document.addEventListener("dragstart", function (e) {
         else if (e.key === "ArrowRight") { set(current() + step, true); e.preventDefault(); }
     });
 })();
+
+// The row whose menu a right-click / long-press on a booking opens: the booking's row, also from its expanded details,
+// but not from the day header, text fields (they keep the browser's menu for copy/paste) or links.
+window.obTxMenuRow = function (target) {
+    if (!(target instanceof Element)) return null;
+    var item = target.closest(".tx-item");
+    if (!item || target.closest(".tx-day, input, textarea, select, a, [contenteditable]")) return null;
+    return item.querySelector(":scope > .tx-row");
+};
+
+// A right-click in a booking's expanded details opens the row's menu, as a right-click on the row does.
+document.addEventListener("contextmenu", function (e) {
+    if (!(e.target instanceof Element) || !e.target.closest(".tx-details")) return;
+    var row = window.obTxMenuRow(e.target);
+    if (!row) return;
+    e.preventDefault();
+    e.stopPropagation();
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY }));
+}, true);
 
 // Long-press on touch opens the context menu of an element marked [data-ob-longpress] (the sidebar's accounts and
 // categories, see BrowseTreeRail's node menu): a held finger dispatches "contextmenu" like a right-click; the click

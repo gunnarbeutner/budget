@@ -16,6 +16,9 @@ public sealed record ManualTransactionInput(
     string? Note,
     bool Booked = true);
 
+/// <summary>A manual account an offsetting entry can be booked on.</summary>
+public sealed record OffsetTarget(long AccountId, string Name, string Icon, string? Color);
+
 /// <summary>
 /// Adds, edits and deletes bookings of manual accounts (<see cref="AccountProviders.Manual"/>): nobody refreshes such an
 /// account, so all its fields - also those of the history MoneyMoney delivered (amount, date, payee, purpose) - are the
@@ -83,6 +86,60 @@ public sealed class ManualTransactionService
         return row.Id;
     }
 
+    /// <summary>
+    /// The manual accounts of the project (not closed) the user may enter bookings on, except
+    /// <paramref name="exceptAccountId"/>: where an offsetting entry for a booking of that account can go. Sorted by name.
+    /// </summary>
+    public async Task<List<OffsetTarget>> GetOffsetTargetsAsync(int projectId, long? exceptAccountId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var accountIds = db.ProjectAccountAssignments.Where(a => a.ProjectId == projectId).Select(a => a.AccountId);
+        var accounts = await db.Accounts.AsNoTracking()
+            .Where(a => accountIds.Contains(a.Id) && a.Provider == AccountProviders.Manual && !a.Closed && a.Id != exceptAccountId)
+            .ToListAsync(ct);
+        return accounts
+            .Where(a => db.Scope == null || db.Scope.OwnsSource(a.SourceId))
+            .OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(a => new OffsetTarget(a.Id, a.Name ?? "", a.Icon ?? a.KindIcon, a.Color))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Books the opposite of <paramref name="transactionId"/> on the manual account <paramref name="accountId"/>: same
+    /// date, negated amount in the same currency, same payee and purpose, and the same category (when the account is of
+    /// another source, its category of the same name, if any). Split bookings are refused (their parts are offset one
+    /// by one). Returns the new booking's id.
+    /// </summary>
+    public async Task<long> CreateOffsettingEntryAsync(long transactionId, long accountId, string? note, CancellationToken ct = default)
+    {
+        Transaction source;
+        string? categoryName = null;
+        await using (var db = await _dbFactory.CreateDbContextAsync(ct))
+        {
+            source = await db.Transactions.AsNoTracking().FirstOrDefaultAsync(t => t.Id == transactionId, ct)
+                ?? throw new AccessDeniedException("Booking not found.");
+            if (source.Splitted is SplitState.Parent)
+                throw new InvalidOperationException("A split booking is offset part by part.");
+            if (source.AccountId == accountId) throw new InvalidOperationException("The offsetting entry goes on another account.");
+            if (source.CategoryId is { } cid)
+                categoryName = await db.Categories.AsNoTracking().Where(c => c.Id == cid).Select(c => c.Name).FirstOrDefaultAsync(ct);
+        }
+        var (sourceId, _) = await RequireManualAccountAsync(accountId, ct);
+        long? categoryId = null;
+        if (source.CategoryId is { } sourceCategory && !string.IsNullOrEmpty(categoryName))
+        {
+            await using var sys = await _system.CreateDbContextAsync(ct);
+            categoryId = source.SourceId == sourceId
+                ? sourceCategory
+                : await sys.Categories.AsNoTracking()
+                    .Where(c => c.SourceId == sourceId && c.Name == categoryName)
+                    .OrderBy(c => c.Id).Select(c => (long?)c.Id).FirstOrDefaultAsync(ct);
+        }
+        var date = DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(source.Timestamp).UtcDateTime);
+        return await AddAsync(accountId, new ManualTransactionInput(
+            date, -source.Amount / 100m, source.Currency, source.Name, source.Purpose, categoryId, note), ct);
+    }
+
     /// <summary>Changes a booking of a manual account (also one MoneyMoney delivered).</summary>
     public async Task UpdateAsync(long transactionId, ManualTransactionInput input, CancellationToken ct = default)
     {
@@ -102,7 +159,7 @@ public sealed class ManualTransactionService
         Publish(row.SourceId);
     }
 
-    /// <summary>Deletes a booking of a manual account. The other half of a linked transfer becomes a one-sided transfer.</summary>
+    /// <summary>Deletes a booking of a manual account.</summary>
     public async Task DeleteAsync(long transactionId, CancellationToken ct = default)
     {
         var (_, accountCurrency) = await RequireManualRowAsync(transactionId, ct);
@@ -111,7 +168,6 @@ public sealed class ManualTransactionService
         var row = await db.Transactions.FirstAsync(t => t.Id == transactionId, ct);
         if (row.Splitted is SplitState.Child || await db.Transactions.AnyAsync(t => t.SplitParentId == row.Id, ct))
             throw new InvalidOperationException("A split booking is deleted after removing the split.");
-        await db.Transactions.Where(t => t.TransferPeerId == row.Id).ExecuteUpdateAsync(s => s.SetProperty(t => t.TransferPeerId, (long?)null), ct);
         db.Transactions.Remove(row);
         await AdjustBalanceAsync(db, row.AccountId!.Value, accountCurrency, row.Amount, row.Currency, 0, null, ct);
         await db.SaveChangesAsync(ct);
