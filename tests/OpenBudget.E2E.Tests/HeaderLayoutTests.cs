@@ -51,6 +51,52 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
     }
 
     /// <summary>
+    /// Transactions, Budget and Cashflow place the period selector at the same spot: the first control after the
+    /// view title, on the left of the toolbar (Transactions puts its tools on the row below its title block).
+    /// </summary>
+    [TestCase(1280)]
+    [TestCase(390)]
+    public async Task Period_selector_follows_the_view_title(int width)
+    {
+        await Page.SetViewportSizeAsync(width, 900);
+        var pid = E2ESeed.ProjectId;
+        foreach (var (path, toolbarSelector, titleSelector) in new[]
+                 {
+                     ($"/projects/{pid}/browse?year=2026&month=3", "[data-testid=browse-toolbar]", ".browse-ident"),
+                     ($"/projects/{pid}/budgets", "[data-testid=budget-toolbar]", ".view-title"),
+                     ($"/projects/{pid}/cashflow", ".page-toolbar.period-nav", ".view-title"),
+                 })
+        {
+            await GoToAsync(path);
+            var toolbar = Page.Locator(toolbarSelector);
+            var nav = toolbar.GetByTestId("period-nav");
+            await Expect(nav).ToBeVisibleAsync();
+            var bar = (await toolbar.BoundingBoxAsync())!;
+            var title = (await toolbar.Locator(titleSelector).First.BoundingBoxAsync())!;
+            var box = (await nav.BoundingBoxAsync())!;
+            Assert.That(box.X, Is.LessThan(bar.X + bar.Width / 2), $"{path}: the period selector sits on the left");
+            var besideTitle = box.Y < title.Y + title.Height && box.X >= title.X + title.Width - 1;
+            var underTitle = box.Y >= title.Y + title.Height - 1 && Math.Abs(box.X - title.X) < 4;
+            Assert.That(besideTitle || underTitle, Is.True, $"{path}: the period selector directly follows the title");
+            // Polls so a frame mid-render (before the toolbar wraps) is not taken for the final layout.
+            try { await Page.WaitForFunctionAsync("() => document.documentElement.scrollWidth <= window.innerWidth", null, new() { Timeout = 5000 }); }
+            catch (TimeoutException) { /* the assertion below names the overflowing elements */ }
+            Assert.That(await Page.EvaluateAsync<string>(@"() => document.documentElement.scrollWidth <= window.innerWidth ? '' :
+                [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 1)
+                    .slice(0, 5).map(e => e.tagName + '.' + e.className).join(' | ')"), Is.Empty,
+                $"{path}: no horizontal scroll");
+            var precedingControls = await toolbar.EvaluateAsync<int>(@"(bar, sel) => {
+                const nav = bar.querySelector('[data-testid=period-nav]');
+                const title = bar.querySelector(sel);
+                return [...bar.querySelectorAll('button, input, select, summary, a')]
+                    .filter(e => !nav.contains(e) && !title.contains(e) && e.offsetParent !== null)
+                    .filter(e => e.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).length;
+            }", titleSelector);
+            Assert.That(precedingControls, Is.EqualTo(0), $"{path}: no view control comes before the period selector");
+        }
+    }
+
+    /// <summary>
     /// A busy account (IBAN info line, balance, a full month of rows) in a tall window: the browse column is a
     /// height-bound flex column, and the long ledger used to squeeze the two-row toolbar down to its 48px
     /// min-height so its second row (period, search, Filter) was drawn over the summary row.

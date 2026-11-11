@@ -20,8 +20,10 @@
    (year, 1, "year") and only Year is meaningful.
 
    ShowMonthPicker turns the heading into a clickable <input type="month"> (full mode only).
-   Leading / Trailing are page-specific slots (e.g. a rail toggle on the left, a Sources link
-   pinned right).
+   Leading / Trailing are page-specific slots. Every view uses the same order: the view title,
+   then these controls, then the view's own controls, then right-aligned actions. Leading holds
+   the title; Trailing is pinned right. Inline pages place the controls directly after their
+   title in their own toolbar.
 
    Usage:
 
@@ -41,8 +43,8 @@ else
         {
             @Leading
         }
-        <div class="flex-grow-1"></div>
         @Controls
+        <div class="flex-grow-1"></div>
         @if (Trailing != null)
         {
             <div class="d-flex align-items-center gap-2">
@@ -89,7 +91,7 @@ else
 
     private RenderFragment Controls => __builder =>
     {
-        <div class="period-controls">
+        <div class="period-controls" data-testid="period-nav">
             <div class="period-stepper">
                 <button type="button" class="period-step" @onclick="() => Step(-1)" aria-label="@L["Aria_Previous"]" disabled="@PrevDisabled">
                     <i class="bi bi-chevron-left" aria-hidden="true"></i>
