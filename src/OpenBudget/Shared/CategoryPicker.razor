@@ -29,7 +29,7 @@
                     case ItemKind.Remove:
                         <button type="button" class="cp-row cp-remove @Active(item)" role="option" aria-selected="@(item.Index == active)"
                                 data-testid="category-picker-remove" @onclick="() => Pick(null)">
-                            <i class="bi bi-x-circle cp-icon" aria-hidden="true"></i><span class="cp-name">@L["Remove"]</span>
+                            <i class="bi bi-x-circle cp-icon" aria-hidden="true"></i><span class="cp-name">@(RemoveLabel ?? L["Remove"])</span>
                         </button>
                         break;
                     default:
@@ -58,6 +58,9 @@
     [Parameter, EditorRequired] public CategoryPickerData Data { get; set; } = new();
     [Parameter] public long? CurrentCategoryId { get; set; }
     [Parameter] public bool AllowRemove { get; set; } = true;
+
+    /// <summary>Label of the entry that picks null; "Remove category" unless set.</summary>
+    [Parameter] public string? RemoveLabel { get; set; }
     [Parameter] public double X { get; set; }
     [Parameter] public double Y { get; set; }
 
@@ -112,7 +115,7 @@
 
         if (string.IsNullOrWhiteSpace(query))
         {
-            if (AllowRemove) AddPick(ItemKind.Remove, 0, null, L["Remove"]);
+            if (AllowRemove) AddPick(ItemKind.Remove, 0, null, RemoveLabel ?? L["Remove"]);
             foreach (var row in Data.Tree)
             {
                 if (row.IsGroup) items.Add(new Item(ItemKind.Group, -1, row.Depth, row.Id, row.Name));

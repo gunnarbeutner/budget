@@ -261,14 +261,12 @@
                     }
                     else if (IsAccountScope && pickerData is { } categoriesForFilter)
                     {
-                        <select class="form-select form-select-sm filter-input-md" aria-label="@L["Filter_Category"]" data-testid="filter-category"
-                                value="@(categoryFilter?.ToString() ?? "")" @onchange="OnCategoryFilterChanged">
-                            <option value="">@L["Filter_AnyCategory"]</option>
-                            @foreach (var o in categoriesForFilter.Options)
-                            {
-                                <option @key="o.Id" value="@o.Id">@o.Path</option>
-                            }
-                        </select>
+                        var chosen = categoriesForFilter.Options.FirstOrDefault(o => o.Id == categoryFilter);
+                        <button type="button" class="form-select form-select-sm filter-input-md text-start text-truncate"
+                                aria-label="@L["Filter_Category"]" aria-haspopup="dialog" title="@(chosen?.Path ?? L["Filter_AnyCategory"])"
+                                data-testid="filter-category" @onclick="OpenFilterPickerAsync">
+                            @(chosen?.Name ?? L["Filter_AnyCategory"])
+                        </button>
                     }
                     <button type="button" class="ob-btn @(newOnly ? "active" : "")" data-testid="filter-new"
                             aria-pressed="@newOnly.ToString().ToLowerInvariant()" @onclick="ToggleNewOnly" title="@L["Filter_NewOnlyTitle"]">
@@ -546,6 +544,12 @@
 {
     <CategoryPicker Data="pickerModel" CurrentCategoryId="popupCurrentCategory"
                     AllowRemove="@(_rulePickPayee == null)" X="popupX" Y="popupY" OnPick="PickCategoryAsync" OnClose="ClosePopup" />
+}
+
+@if (popup == PopupKind.FilterPicker && pickerData is { } filterPickerModel)
+{
+    <CategoryPicker Data="filterPickerModel" CurrentCategoryId="categoryFilter" RemoveLabel="@L["Filter_AnyCategory"]"
+                    X="popupX" Y="popupY" OnPick="PickCategoryFilterAsync" OnClose="ClosePopup" />
 }
 
 @if (popup == PopupKind.Context)

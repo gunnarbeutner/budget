@@ -9,7 +9,8 @@ namespace OpenBudget.E2E.Tests;
 
 /// <summary>
 /// The category picker as a tree: muted group headers that the keyboard skips, colored ribbons, search that keeps the
-/// headers above a hit, and picking. The editing world gets a nested "Personal" group (Travel, Gifts) on top.
+/// headers above a hit, picking, and the account filter's category picker. The editing world gets a nested "Personal"
+/// group (Travel, Gifts) on top.
 /// </summary>
 [TestFixture]
 public sealed class CategoryPickerTests : EndToEndTestBase
@@ -101,6 +102,35 @@ public sealed class CategoryPickerTests : EndToEndTestBase
         var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         Assert.That((await db.Transactions.AsNoTracking().SingleAsync(t => t.Id == 104)).CategoryId, Is.EqualTo(211));
+    }
+
+    [Test]
+    public async Task The_account_filter_picks_a_category_by_search_and_any_category_clears_it()
+    {
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.BankAccountId}");
+        var rows = Page.GetByTestId("tx-row");
+        await Expect(rows.Filter(new() { HasText = "Example Employer" })).ToBeVisibleAsync();
+        var all = await rows.CountAsync();
+        await Page.GetByTestId("filter-toggle").ClickAsync();
+        var button = Page.GetByTestId("filter-category");
+        await Expect(button).ToHaveTextAsync("Any category");
+
+        await button.ClickAsync();
+        await Expect(Page.GetByTestId("category-picker-search")).ToBeFocusedAsync();
+        await Page.GetByTestId("category-picker-search").FillAsync("salar");
+        await Expect(Picker.Locator(".cp-active")).ToContainTextAsync("Salary");
+        await Page.Keyboard.PressAsync("Enter");
+        await Expect(Picker).ToHaveCountAsync(0);
+        await Expect(button).ToHaveTextAsync("Salary");
+        await Expect(Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("[?&]cat=\\d+"));
+        await Expect(rows.Filter(new() { HasText = "Example Employer" })).ToBeVisibleAsync();
+        Assert.That(await rows.CountAsync(), Is.LessThan(all));
+
+        await button.ClickAsync();
+        await Expect(Picker.Locator("[data-testid=category-picker-option].cp-current")).ToContainTextAsync("Salary");
+        await Picker.GetByTestId("category-picker-remove").ClickAsync();
+        await Expect(button).ToHaveTextAsync("Any category");
+        await Expect(rows).ToHaveCountAsync(all);
     }
 
     // Set OB_PICKER_SCREENSHOT_DIR to keep a full-page and a cropped screenshot of the open picker for review.

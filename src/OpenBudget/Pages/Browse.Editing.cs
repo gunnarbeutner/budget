@@ -19,6 +19,7 @@ public partial class Browse
     {
         None,
         Picker,
+        FilterPicker,
         Context,
         Note,
     }
@@ -310,9 +311,19 @@ public partial class Browse
         await FilterChangedAsync();
     }
 
-    private async Task OnCategoryFilterChanged(ChangeEventArgs e)
+    // The category filter's picker opens below the filter button; a mouse click on a browser that does not focus buttons
+    // falls back to the pointer position.
+    private async Task OpenFilterPickerAsync(MouseEventArgs e)
     {
-        categoryFilter = long.TryParse(e.Value?.ToString(), CultureInfo.InvariantCulture, out var id) ? id : null;
+        (popupX, popupY) = await JS.InvokeAsync<double[]?>("obFocusAnchor") is { Length: 2 } xy ? (xy[0] - 24, xy[1] + 4) : (e.ClientX, e.ClientY);
+        popup = PopupKind.FilterPicker;
+    }
+
+    /// <summary>A picked category filters the list to it; "Any category" (null) clears the filter.</summary>
+    private async Task PickCategoryFilterAsync(long? categoryId)
+    {
+        popup = PopupKind.None;
+        categoryFilter = categoryId;
         await FilterChangedAsync();
     }
 
