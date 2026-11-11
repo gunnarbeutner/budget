@@ -25,6 +25,9 @@ public class FinTsConnector : IBankConnector
 
     protected ConnectorContext Context => _context;
 
+    /// <summary>The login's durable session values (stored after the sync), for a bank's web part; null before the login.</summary>
+    protected IDictionary<string, string>? SessionValues => _client?.Session.Values;
+
     protected FinTsConnector(ConnectorContext context, FinTsBankConfig config, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null)
     {
         _context = context;
@@ -136,7 +139,7 @@ public sealed class BaaderConnector : FinTsConnector
     public override Task<ConnectorStep<IReadOnlyList<RemoteStatement>>> FetchStatementsAsync(
         IReadOnlyList<RemoteAccount> accounts, IReadOnlySet<string> knownIdentifiers, ChallengeAnswer? answer, CancellationToken ct)
     {
-        _portal ??= new BaaderPortal(Context.Http, Context.Logger, _portalUri);
+        _portal ??= new BaaderPortal(Context.Http, Context.Logger, _portalUri, SessionValues, Context.Clock);
         return _portal.FetchAsync(accounts, knownIdentifiers, Credentials, answer, ct);
     }
 }

@@ -12,7 +12,8 @@ namespace OpenBudget.Tests.Connectors;
 /// <summary>
 /// A made-up Baader customer portal with the observed protocol: a session that only works from the browser that signed in
 /// (requests carrying the browser's Sec-Fetch-Mode header), <c>POST /mailrows</c> with the recent documents by default,
-/// a session filter (<c>POST /mail</c>) whose extended listing stays empty until an SMS-TAN went to <c>/mfa/check</c>, and
+/// a general and a customer mailbox (<c>/mail</c>, <c>/mail/{customer_id}</c> with their <c>/mailrows</c>), a per-mailbox
+/// filter (period or date range) whose extended listing stays empty until an SMS-TAN went to <c>/mfa/check</c>, and
 /// downloads redirecting to a pre-signed storage URL on another host. Customers and documents are invented.
 /// </summary>
 internal sealed partial class FakeBaaderPortal : HttpMessageHandler
@@ -37,7 +38,8 @@ internal sealed partial class FakeBaaderPortal : HttpMessageHandler
 
     private sealed class SessionState
     {
-        public int? Period { get; set; }
+        /// <summary>The filter of each mailbox ("" for the general one, else the customer id).</summary>
+        public Dictionary<string, (DateOnly From, DateOnly Until)> Filters { get; } = new(StringComparer.Ordinal);
 
         public bool TanPassed { get; set; }
 
@@ -47,6 +49,18 @@ internal sealed partial class FakeBaaderPortal : HttpMessageHandler
     public sealed record Doc(DateOnly Date, string Title, string Id);
 
     public List<Doc> Documents { get; } = [];
+
+    /// <summary>The documents of the customer's own mailbox (<c>/mail/{customer_id}</c>).</summary>
+    public List<Doc> CustomerDocuments { get; } = [];
+
+    /// <summary>When set, the filter form answers a date range with an error and keeps the previous filter.</summary>
+    public bool RejectDateRange { get; set; }
+
+    /// <summary>The earliest date the filter form's from field allows.</summary>
+    public const string FromMin = "2016-01-01";
+
+    /// <summary>The path of each filter form post, in order.</summary>
+    public List<string> FilterPaths { get; } = [];
 
     public List<string> Requests { get; } = [];
 
@@ -125,12 +139,19 @@ internal sealed partial class FakeBaaderPortal : HttpMessageHandler
         if (session == null) return Redirect("/"); // a session the portal does not accept ends on its start page
         if (path == "/fstatus")
             return Json(new[] { new Dictionary<string, object>(StringComparer.Ordinal) { ["customer_id"] = int.Parse(CustomerId, CultureInfo.InvariantCulture), ["first_name"] = "Alice", ["last_name"] = "Example", ["amount"] = "0,00", ["currency"] = "EUR" } });
-        if (path is "/dashboard" or "/mail" && request.Method == HttpMethod.Get) return Html(Page(""));
-        if (path == "/mail" && request.Method == HttpMethod.Post)
+        var mailbox = MailboxOf(path, "/mail");
+        if ((path == "/dashboard" || mailbox != null) && request.Method == HttpMethod.Get) return Html(Page(""));
+        if (mailbox != null && request.Method == HttpMethod.Post)
         {
             FilterPosts.Add(form);
+            FilterPaths.Add(path);
             if (form.GetValueOrDefault("filter") != "1" || form.GetValueOrDefault("token") != PageToken) return Html(Page(""));
-            session.Period = int.Parse(form["periods"], CultureInfo.InvariantCulture);
+            if (form.GetValueOrDefault("timeframe") == "fromuntil")
+            {
+                if (RejectDateRange) return Html(Page("<div class=\"alert-danger\">Ungültiger Zeitraum</div>"));
+                session.Filters[mailbox] = (ParseDate(form["from"]), ParseDate(form["until"]));
+            }
+            else session.Filters[mailbox] = (Today.AddDays(-int.Parse(form["periods"], CultureInfo.InvariantCulture)), DateOnly.MaxValue);
             return Html(Page(session.TanPassed ? "" : "<form id=\"mfaInputForm\"><input name=\"tan\"></form>"));
         }
         if (path == "/mfa/check" && request.Method == HttpMethod.Post)
@@ -150,18 +171,20 @@ internal sealed partial class FakeBaaderPortal : HttpMessageHandler
             session.TanPassed = true;
             return Json(new { @do = "success" });
         }
-        if (path == "/mailrows" && request.Method == HttpMethod.Post)
+        var rows = MailboxOf(path, "/mailrows");
+        if (rows != null && request.Method == HttpMethod.Post)
         {
             ListRequests++;
             if (form.GetValueOrDefault("__multipart") != "1") return new HttpResponseMessage(HttpStatusCode.BadRequest);
             IEnumerable<Doc> docs;
             // Like the live portal: while the filter waits for its SMS-TAN, the list redirects to the start page.
-            if (session.Period is not null && !session.TanPassed)
+            if (session.Filters.ContainsKey(rows) && !session.TanPassed)
                 return new HttpResponseMessage(HttpStatusCode.Redirect) { Headers = { Location = new Uri($"https://{Host}/") } };
-            if (session.Period is { } days)
-                docs = Documents.Where(d => d.Date >= Today.AddDays(-days));
+            var source = rows.Length == 0 ? Documents : CustomerDocuments;
+            if (session.Filters.TryGetValue(rows, out var filter))
+                docs = source.Where(d => d.Date >= filter.From && d.Date <= filter.Until);
             else
-                docs = Documents.OrderByDescending(d => d.Date).Take(RecentCount);
+                docs = source.OrderByDescending(d => d.Date).Take(RecentCount);
             var byDay = docs.OrderByDescending(d => d.Date).GroupBy(d => d.Date)
                 .ToDictionary(g => g.Key.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), g => g.Select(d => new object[] { 1, d.Title, d.Id }).ToArray(), StringComparer.Ordinal);
             return byDay.Count == 0 ? Json(Array.Empty<object>()) : Json(new[] { byDay });
@@ -169,7 +192,7 @@ internal sealed partial class FakeBaaderPortal : HttpMessageHandler
         if (path.StartsWith("/maildownload/", StringComparison.Ordinal))
         {
             var id = path["/maildownload/".Length..];
-            if (Documents.All(d => d.Id != id)) return new HttpResponseMessage(HttpStatusCode.NotFound);
+            if (Documents.Concat(CustomerDocuments).All(d => d.Id != id)) return new HttpResponseMessage(HttpStatusCode.NotFound);
             var redirect = new HttpResponseMessage(HttpStatusCode.Found);
             redirect.Headers.Location = new Uri($"https://{StorageHost}/PDF/{id}.pdf?X-Amz-Signature={Signature}");
             return redirect;
@@ -177,7 +200,15 @@ internal sealed partial class FakeBaaderPortal : HttpMessageHandler
         return new HttpResponseMessage(HttpStatusCode.NotFound);
     }
 
-    private static string Page(string body) => $"<html><head><meta name=\"infotok\" content=\"{PageToken}\" /></head><body>{body}</body></html>";
+    private static string Page(string body) =>
+        $"<html><head><meta name=\"infotok\" content=\"{PageToken}\" /></head><body><form id=\"formFilterMail\"><input type=\"date\" name=\"from\" min=\"{FromMin}\"><input type=\"date\" name=\"until\"></form>{body}</body></html>";
+
+    /// <summary>"" for the general mailbox at <paramref name="prefix"/>, the customer id for <c>prefix/{id}</c>, else null.</summary>
+    private static string? MailboxOf(string path, string prefix) =>
+        path == prefix ? "" : path == prefix + "/" + CustomerId ? CustomerId : null;
+
+    private static DateOnly ParseDate(string value) =>
+        DateOnly.ParseExact(value, ["dd.MM.yyyy", "yyyy-MM-dd"], CultureInfo.InvariantCulture);
 
     private HttpResponseMessage Storage(Uri uri)
     {

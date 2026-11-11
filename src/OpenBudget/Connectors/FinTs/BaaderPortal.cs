@@ -13,19 +13,21 @@ namespace OpenBudget.Connectors.FinTs;
 /// The portal's session only works from the browser that signed in, so every portal request runs in that browser's page
 /// (a web login with <see cref="WebLoginSpec.KeepBrowser"/>). Protocol (as observed in the portal):
 /// <list type="bullet">
-/// <item><c>GET /fstatus</c>: JSON array of the signed-in customers; anything else means no session.</item>
+/// <item><c>GET /fstatus</c>: JSON array of the signed-in customers (<c>customer_id</c>, ...); anything else means no session.</item>
 /// <item>Sign-in: a form at <c>/login</c>, sometimes followed by an SMS-TAN, then <c>/dashboard</c>.</item>
-/// <item><c>POST /mailrows</c> with an empty multipart form: JSON <c>[{"yyyy-MM-dd": [[read, description, fileid], ...], ...}]</c>,
-/// by default only the recent documents.</item>
-/// <item>Older documents: a session-wide filter set by the full-page form <c>POST /mail</c> (<c>filter=1</c>, the page token
-/// <c>infotok</c>, <c>timeframe=period</c>, <c>periods=720</c>, ...). The extended listing needs an SMS-TAN: until it was
-/// entered, <c>/mailrows</c> answers empty and the page shows the <c>mfaInputForm</c> dialog; the TAN goes as a multipart
-/// form (<c>tan</c>, <c>token</c>) to <c>POST /mfa/check</c>.</item>
+/// <item>Two kinds of mailbox: the general one (page <c>/mail</c>, list <c>/mailrows</c>) and one per customer (page
+/// <c>/mail/{customer_id}</c>, list <c>/mailrows/{customer_id}</c>). A list is a <c>POST</c> with an empty multipart form
+/// answering JSON <c>[{"yyyy-MM-dd": [[read, description, fileid], ...], ...}]</c>, by default only the recent documents.</item>
+/// <item>Older documents: a filter set by the mailbox page's full-page form (<c>filter=1</c>, the page token <c>infotok</c>,
+/// either <c>timeframe=fromuntil</c> with <c>from</c>/<c>until</c> or <c>timeframe=period</c> with <c>periods=720</c>, ...).
+/// The extended listing needs an SMS-TAN: until it was entered, the list answers empty and the page shows the
+/// <c>mfaInputForm</c> dialog; the TAN goes as a multipart form (<c>tan</c>, <c>token</c>) to <c>POST /mfa/check</c>.</item>
 /// <item><c>GET /maildownload/{fileid}</c>: a redirect to a pre-signed storage URL (another origin, no CORS) that serves
 /// the PDF; the browser reads the redirect's address and the PDF is fetched from it directly, without cookies.</item>
 /// </list>
-/// The first download (no Baader document known yet) asks for the TAN and lists the whole filtered history; later syncs
-/// use the default listing of recent documents, which needs no TAN.
+/// A mailbox gets the long listing (a date range from the earliest date the form allows, else the longest period) while a
+/// requested account holds no documents; a customer mailbox also once until that ran. Other syncs use the default listing
+/// of recent documents, which needs no TAN. File ids are unique across mailboxes; a document listed twice is fetched once.
 /// </summary>
 internal sealed partial class BaaderPortal
 {
@@ -47,21 +49,37 @@ internal sealed partial class BaaderPortal
         Login,
     }
 
+    /// <summary>Prefix of the login's session values that record a customer mailbox whose long listing ran (followed by the customer id).</summary>
+    internal const string HistoryDoneKeyPrefix = "baader-portal:history-done:";
+
+    /// <summary>How far back the date-range filter reaches when the page names no earliest date.</summary>
+    internal const int FallbackRangeYears = 10;
+
     private readonly IBankHttpClient _http;
     private readonly ILogger _log;
     private readonly Uri _base;
+    private readonly IDictionary<string, string>? _state;
+    private readonly TimeProvider _clock;
+    private readonly HashSet<string> _filtered = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _tanAnswered = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<PortalDocument>> _listed = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _historyListed = new(StringComparer.Ordinal);
     private IBrowserFetcher? _browser;
     private bool _checked;
-    private bool _filterSet;
     private bool _tanRequired;
     private bool _tanSubmitted;
     private string? _token;
+    private string? _tanMailbox;
+    private List<string> _customers = [];
 
-    public BaaderPortal(IBankHttpClient http, ILogger log, Uri? baseUri = null)
+    /// <summary>A portal client; <paramref name="state"/> is the login's durable session values (which customer mailboxes already had their long listing).</summary>
+    public BaaderPortal(IBankHttpClient http, ILogger log, Uri? baseUri = null, IDictionary<string, string>? state = null, TimeProvider? clock = null)
     {
         _http = http;
         _log = log;
         _base = baseUri ?? DefaultBaseUri;
+        _state = state;
+        _clock = clock ?? TimeProvider.System;
     }
 
     internal WebLoginSpec WebLogin(ConnectorCredentials? credentials) => new(
@@ -80,9 +98,11 @@ internal sealed partial class BaaderPortal
     };
 
     /// <summary>
-    /// New documents for the wanted accounts. Without a signed-in browser it asks for a web login (which resumes a stored
-    /// session without user interaction when it still works); on the first download it also asks for the SMS-TAN of the
-    /// extended listing.
+    /// New documents for the wanted accounts, from the general mailbox (<c>/mail</c>) and each customer's own mailbox
+    /// (<c>/mail/{customer_id}</c>), merged by file id. Without a signed-in browser it asks for a web login (which resumes a
+    /// stored session without user interaction when it still works). A mailbox gets the long listing (filter set through
+    /// its page, SMS-TAN when the page's TAN dialog opens) while a requested account holds no documents yet; a customer
+    /// mailbox also until its long listing ran once (recorded in the login's session values).
     /// </summary>
     public async Task<ConnectorStep<IReadOnlyList<RemoteStatement>>> FetchAsync(
         IReadOnlyList<RemoteAccount> accounts, IReadOnlySet<string> known, ConnectorCredentials? credentials, ChallengeAnswer? answer, CancellationToken ct)
@@ -106,53 +126,69 @@ internal sealed partial class BaaderPortal
         var browser = _browser;
 
         // The long listing (with its SMS-TAN) runs until every requested account holds documents.
-        var history = !known.Any(k => k.StartsWith(IdentifierPrefix, StringComparison.Ordinal))
+        var accountsNeedHistory = !known.Any(k => k.StartsWith(IdentifierPrefix, StringComparison.Ordinal))
             || accounts.Any(a => !known.Contains(OpenBudget.Connectors.Sync.BankStatementStore.AccountHasDocumentsMarker + a.RemoteId));
         if (answer?.Challenge.Reference == TanReference)
         {
             await SubmitTanAsync(browser, answer.Value ?? "", ct);
             _tanSubmitted = true;
-        }
-        if (history && !_filterSet)
-        {
-            await SetHistoryFilterAsync(browser, ct);
-            _filterSet = true;
+            _tanAnswered.Add(_tanMailbox ?? "");
+            _tanMailbox = null;
         }
 
-        // While the portal waits for the SMS-TAN, the document list answers like an ended session: ask for the TAN first.
-        var tanPending = history && !_tanSubmitted && _tanRequired;
-        List<PortalDocument> listing;
-        if (tanPending) listing = [];
-        else if (history && _tanSubmitted)
+        foreach (var mailbox in Mailboxes())
         {
-            // A TAN the portal did not accept leaves the filter waiting, so the list still answers like an ended session.
-            try { listing = await ListAsync(browser, ct); }
-            catch (ConnectorException ex) when (ex.Message.Contains("ended the session", StringComparison.Ordinal))
+            if (_listed.ContainsKey(mailbox)) continue;
+            var label = Label(mailbox);
+            var history = accountsNeedHistory || (mailbox.Length > 0 && !HistoryDone(mailbox));
+            if (history && _filtered.Add(mailbox))
             {
-                _log.LogWarning(ex, "Baader portal: the document list still waits for a TAN after the TAN was sent; Baader probably did not accept it.");
-                listing = [];
+                _tanRequired = false;
+                await SetHistoryFilterAsync(browser, mailbox, ct);
+                // While the portal waits for the SMS-TAN, the document list answers like an ended session: ask for the TAN first.
+                if (_tanRequired) return await AskTanAsync(browser, mailbox, ct);
             }
+
+            List<PortalDocument> listing;
+            var answered = _tanAnswered.Contains(mailbox);
+            try
+            {
+                _tanRequired = false;
+                listing = await ListAsync(browser, mailbox, ct);
+            }
+            catch (ConnectorException ex) when (history && answered && ex.Message.Contains("ended the session", StringComparison.Ordinal))
+            {
+                // A TAN the portal did not accept leaves the filter waiting, so the list still answers like an ended session.
+                _log.LogWarning(ex, "Baader portal: the {Mailbox} still waits for a TAN after the TAN was sent; Baader probably did not accept it.", label);
+                _listed[mailbox] = [];
+                continue;
+            }
+            catch (ConnectorException ex) when (mailbox.Length > 0 && !ex.Message.Contains("ended the session", StringComparison.Ordinal))
+            {
+                // A customer mailbox the portal does not serve leaves the general one usable; it is tried again next sync.
+                _log.LogWarning(ex, "Baader portal: the {Mailbox} could not be listed; skipped.", label);
+                _listed[mailbox] = [];
+                continue;
+            }
+            if (history && !answered && !_tanSubmitted && (_tanRequired || (mailbox.Length == 0 && listing.Count == 0)))
+                return await AskTanAsync(browser, mailbox, ct);
+            if (history && answered && listing.Count == 0)
+                _log.LogWarning("Baader portal: no documents listed in the {Mailbox} after the TAN.", label);
+            _listed[mailbox] = listing;
+            if (history) _historyListed.Add(mailbox);
+            _log.LogInformation("Baader portal: {Count} document(s) listed in the {Mailbox} ({Kind} listing).", listing.Count, label, history ? "long" : "recent");
         }
-        else listing = await ListAsync(browser, ct);
-        if (history && !_tanSubmitted && (_tanRequired || listing.Count == 0))
-        {
-            _log.LogInformation("Baader portal: the document history needs an SMS-TAN.");
-            if (!_pageDriven) await RequestTanAsync(browser, ct);
-            return ConnectorStep.Ask<IReadOnlyList<RemoteStatement>>(ConnectorChallenge.Code(
-                "Enter the TAN Baader sent you by SMS (needed once to list the older documents).", numeric: true, reference: TanReference));
-        }
-        if (history && listing.Count == 0)
-            _log.LogWarning("Baader portal: no documents listed after the TAN.");
 
         var cash = accounts.FirstOrDefault(a => a.Type != RemoteAccountType.Depot)?.RemoteId;
         var depot = accounts.FirstOrDefault(a => a.Type == RemoteAccountType.Depot)?.RemoteId;
         var result = new List<RemoteStatement>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        int alreadyKnown = 0, unwanted = 0, notPdf = 0;
-        foreach (var doc in listing)
+        var incomplete = new HashSet<string>(StringComparer.Ordinal);
+        int listed = 0, alreadyKnown = 0, unwanted = 0, notPdf = 0;
+        foreach (var (mailbox, doc) in Merge(Mailboxes().Select(m => (m, (IReadOnlyList<PortalDocument>)_listed.GetValueOrDefault(m, [])))))
         {
+            listed++;
             var identifier = IdentifierPrefix + doc.Id;
-            if (known.Contains(identifier) || !seen.Add(identifier)) { alreadyKnown++; continue; }
+            if (known.Contains(identifier)) { alreadyKnown++; continue; }
             var target = TargetOf(doc.Title);
             var account = target switch
             {
@@ -164,14 +200,49 @@ internal sealed partial class BaaderPortal
             // A cash/depot document whose account's statements are off: not wanted.
             if (target != DocumentTarget.Login && account == null) { unwanted++; continue; }
             var bytes = await DownloadAsync(browser, doc.Id, ct);
-            if (bytes == null) { notPdf++; continue; }
+            if (bytes == null) { notPdf++; incomplete.Add(mailbox); continue; }
             result.Add(new RemoteStatement(identifier, account, doc.Date, doc.Title, bytes));
         }
+        // A customer mailbox whose long listing was read and downloaded completely does not get it again.
+        if (_state != null)
+        {
+            foreach (var mailbox in _historyListed.Where(m => m.Length > 0 && !incomplete.Contains(m)))
+                _state[HistoryDoneKeyPrefix + mailbox] = Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
         _log.LogInformation("Baader portal: {Listed} document(s) listed; {Known} already known, {Unwanted} for accounts not requested or with statements off, {NotPdf} not a PDF; {Count} new.",
-            listing.Count, alreadyKnown, unwanted, notPdf, result.Count);
+            listed, alreadyKnown, unwanted, notPdf, result.Count);
         return ConnectorStep.Done<IReadOnlyList<RemoteStatement>>(result);
     }
 
+    /// <summary>The general mailbox (<c>""</c>) and the signed-in customers' own mailboxes (by customer id).</summary>
+    private IEnumerable<string> Mailboxes() => _customers.Prepend("");
+
+    /// <summary>A mailbox's name for the log, without the customer id.</summary>
+    private string Label(string mailbox) => mailbox.Length == 0 ? "general mailbox" : $"customer mailbox {_customers.IndexOf(mailbox) + 1}";
+
+    private bool HistoryDone(string mailbox) => _state?.ContainsKey(HistoryDoneKeyPrefix + mailbox) == true;
+
+    /// <summary>The documents of several mailboxes, each file id once (from the first mailbox that lists it).</summary>
+    internal static IEnumerable<(string Mailbox, PortalDocument Document)> Merge(IEnumerable<(string Mailbox, IReadOnlyList<PortalDocument> Documents)> mailboxes)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (mailbox, docs) in mailboxes)
+        {
+            foreach (var doc in docs)
+            {
+                if (ids.Add(doc.Id)) yield return (mailbox, doc);
+            }
+        }
+    }
+
+    private async Task<ConnectorStep<IReadOnlyList<RemoteStatement>>> AskTanAsync(IBrowserFetcher browser, string mailbox, CancellationToken ct)
+    {
+        _log.LogInformation("Baader portal: the long listing of the {Mailbox} needs an SMS-TAN.", Label(mailbox));
+        _tanMailbox = mailbox;
+        if (!_pageDriven) await RequestTanAsync(browser, ct);
+        return ConnectorStep.Ask<IReadOnlyList<RemoteStatement>>(ConnectorChallenge.Code(
+            "Enter the TAN Baader sent you by SMS (needed once to list the older documents).", numeric: true, reference: TanReference));
+    }
     internal sealed record PortalDocument(string Id, DateOnly Date, string Title);
 
     /// <summary>Which account a document belongs to, from its description.</summary>
@@ -180,7 +251,9 @@ internal sealed partial class BaaderPortal
         static bool Has(string t, string s) => t.Contains(s, StringComparison.OrdinalIgnoreCase);
         if (Has(title, "Kontoauszug") || Has(title, "Zins") || Has(title, "Rechnungsabschluss")) return DocumentTarget.Cash;
         if (Has(title, "Wertpapier") || Has(title, "Abrechnung") || Has(title, "Kauf") || Has(title, "Verkauf") || Has(title, "Dividende")
-            || Has(title, "Ertrag") || Has(title, "Depot") || Has(title, "Kapitalmaßnahme") || Has(title, "Ausschüttung"))
+            || Has(title, "Ertrag") || Has(title, "Depot") || Has(title, "Kapitalmaßnahme") || Has(title, "Ausschüttung")
+            || Has(title, "Vorabpauschale") || Has(title, "Einbuchung") || Has(title, "Ausbuchung") || Has(title, "Umtausch")
+            || Has(title, "Tilgung") || Has(title, "Fälligkeit") || Has(title, "Bezugsrecht") || Has(title, "Kapitalerhöhung"))
             return DocumentTarget.Depot;
         return DocumentTarget.Login;
     }
@@ -193,9 +266,13 @@ internal sealed partial class BaaderPortal
 
     private static readonly IReadOnlyDictionary<string, string> NoFields = new Dictionary<string, string>(StringComparer.Ordinal);
 
-    private async Task<List<PortalDocument>> ListAsync(IBrowserFetcher browser, CancellationToken ct)
+    private static string MailPath(string mailbox) => mailbox.Length == 0 ? "mail" : "mail/" + mailbox;
+
+    private static string RowsPath(string mailbox) => mailbox.Length == 0 ? "mailrows" : "mailrows/" + mailbox;
+
+    private async Task<List<PortalDocument>> ListAsync(IBrowserFetcher browser, string mailbox, CancellationToken ct)
     {
-        var response = await browser.PostMultipartAsync(new Uri(_base, "mailrows"), NoFields, JsonHeaders, ct);
+        var response = await browser.PostMultipartAsync(new Uri(_base, RowsPath(mailbox)), NoFields, JsonHeaders, ct);
         EnsureSession(response, "listing documents");
         if (!response.IsSuccess)
             throw new ConnectorException($"The Baader portal answered HTTP {response.Status} to the document list.");
@@ -248,34 +325,64 @@ internal sealed partial class BaaderPortal
         return docs;
     }
 
-    /// <summary>The fields of the mail filter form for the longest period (read and unread documents).</summary>
-    internal static IEnumerable<KeyValuePair<string, string>> HistoryFilterFields(string? token)
+    /// <summary>
+    /// The fields of the mail filter form (read and unread documents): the date range <paramref name="from"/> to
+    /// <paramref name="until"/> when both are given, else the longest period.
+    /// </summary>
+    internal static IEnumerable<KeyValuePair<string, string>> HistoryFilterFields(string? token, DateOnly? from = null, DateOnly? until = null)
     {
+        var range = from != null && until != null;
         yield return new("filter", "1");
         if (token != null) yield return new("token", token);
-        yield return new("timeframe", "period");
+        yield return new("timeframe", range ? "fromuntil" : "period");
         yield return new("periods", HistoryPeriod);
-        yield return new("from", "");
-        yield return new("until", "");
+        yield return new("from", range ? from!.Value.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) : "");
+        yield return new("until", range ? until!.Value.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) : "");
         yield return new("isin", "");
         yield return new("wkn", "");
         yield return new("portfolio", "");
     }
 
-    /// <summary>Sets the portal's session filter to the longest period, as the mail page's filter form does.</summary>
-    // Sets the 720-day filter through the mail page's own form, so the portal's script opens its TAN dialog and sends the SMS.
+    /// <summary>
+    /// Sets the filter through the mail page's own form, so the portal's script opens its TAN dialog and sends the SMS.
+    /// The argument is JSON: <c>mode</c> "range" (from the earliest date the from field allows, else <c>from</c>, until
+    /// <c>until</c>; dates as yyyy-MM-dd) or "period" (<c>days</c>).
+    /// </summary>
     private const string SubmitFilterScript = """
-        (days) => {
+        (arg) => {
+          const a = JSON.parse(arg);
           const f = document.getElementById('formFilterMail');
           if (!f) return { ok: false, reason: 'no filter form' };
-          const period = f.querySelector('input[name=timeframe][value=period]');
-          if (period) period.checked = true;
-          if (f.elements['periods']) f.elements['periods'].value = days;
+          const fire = (e) => { e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); };
+          if (a.mode === 'range') {
+            const radio = f.querySelector('input[name=timeframe][value=fromuntil]');
+            const from = f.elements['from'], until = f.elements['until'];
+            if (!radio || !from || !until) return { ok: false, reason: 'no date range' };
+            const iso = /^\d{4}-\d{2}-\d{2}$/, de = /^\d{2}\.\d{2}\.\d{4}$/;
+            const min = from.getAttribute('min') || from.dataset.min || from.dataset.minDate || from.dataset.dateStartDate || '';
+            const start = iso.test(min) ? min : de.test(min) ? min.split('.').reverse().join('-') : a.from;
+            const show = (d) => from.type === 'date' ? d : d.split('-').reverse().join('.');
+            radio.checked = true; fire(radio);
+            from.value = show(start); fire(from);
+            until.value = show(a.until); fire(until);
+          } else {
+            const period = f.querySelector('input[name=timeframe][value=period]');
+            if (period) { period.checked = true; fire(period); }
+            if (f.elements['periods']) f.elements['periods'].value = a.days;
+          }
           const unread = f.querySelector('input[name=unread]');
           if (unread) unread.checked = false;
           const button = document.getElementById('submitFilterMail');
           setTimeout(() => f.requestSubmit ? f.requestSubmit(button || undefined) : f.submit(), 50);
-          return { ok: true, reason: '' };
+          return { ok: true, reason: a.mode };
+        }
+        """;
+
+    /// <summary>True unless the page shows a form error after the filter went out.</summary>
+    private const string FilterAcceptedScript = """
+        () => {
+          const e = Array.from(document.querySelectorAll('.alert-danger, .invalid-feedback, .is-invalid')).find(x => x.offsetParent !== null);
+          return { ok: !e, reason: e ? 'error shown' : '' };
         }
         """;
 
@@ -301,37 +408,110 @@ internal sealed partial class BaaderPortal
 
     private bool _pageDriven;
 
-    /// <summary>Drives the mail page itself: true when the filter went through the page's form (the page then handles the TAN).</summary>
-    private async Task<bool> SetHistoryFilterInPageAsync(IBrowserFetcher browser, CancellationToken ct)
+    private DateOnly Today => DateOnly.FromDateTime(_clock.GetLocalNow().DateTime);
+
+    private string FilterArgument(string mode)
     {
-        await browser.NavigateAsync(new Uri(_base, "mail"), ct);
+        var today = Today;
+        return JsonSerializer.Serialize(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["mode"] = mode,
+            ["days"] = HistoryPeriod,
+            ["from"] = today.AddYears(-FallbackRangeYears).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ["until"] = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        });
+    }
+
+    /// <summary>
+    /// Drives the mailbox's page itself: true when the filter went through the page's form (the page then handles the TAN).
+    /// The date range is tried first; a page without one, or one that shows an error for it, gets the longest period.
+    /// </summary>
+    private async Task<bool> SetHistoryFilterInPageAsync(IBrowserFetcher browser, string mailbox, CancellationToken ct)
+    {
+        var label = Label(mailbox);
+        var page = new Uri(_base, MailPath(mailbox));
+        await browser.NavigateAsync(page, ct);
         await Task.Delay(TimeSpan.FromSeconds(2), ct);
-        var (submitted, reason) = await browser.RunAsync(SubmitFilterScript, HistoryPeriod.ToString(CultureInfo.InvariantCulture), ct);
+        var (submitted, reason) = await browser.RunAsync(SubmitFilterScript, FilterArgument("range"), ct);
+        var mode = "date range";
+        if (submitted)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), ct);
+            var (dialogShown, _) = await browser.RunAsync(TanDialogScript, "", ct);
+            var (accepted, _) = dialogShown ? (true, "") : await browser.RunAsync(FilterAcceptedScript, "", ct);
+            if (!accepted)
+            {
+                _log.LogInformation("Baader portal: the {Mailbox} page rejected the date range; using the {Period}-day period.", label, HistoryPeriod);
+                submitted = false;
+                await browser.NavigateAsync(page, ct);
+                await Task.Delay(TimeSpan.FromSeconds(2), ct);
+            }
+        }
+        else if (reason != "no filter form")
+            _log.LogInformation("Baader portal: the {Mailbox} page offers no date range ({Reason}); using the {Period}-day period.", label, reason, HistoryPeriod);
         if (!submitted)
         {
-            _log.LogInformation("Baader portal: the mail page's filter could not be used ({Reason}).", reason);
-            return false;
+            mode = HistoryPeriod + "-day period";
+            (submitted, reason) = await browser.RunAsync(SubmitFilterScript, FilterArgument("period"), ct);
+            if (!submitted)
+            {
+                _log.LogInformation("Baader portal: the {Mailbox} page's filter could not be used ({Reason}).", label, reason);
+                return false;
+            }
+            await Task.Delay(TimeSpan.FromSeconds(5), ct);
         }
-        await Task.Delay(TimeSpan.FromSeconds(5), ct);
         var (dialog, _) = await browser.RunAsync(TanDialogScript, "", ct);
         _tanRequired = dialog;
-        _log.LogInformation("Baader portal: document filter set in the page ({Period} days){Mfa}.", HistoryPeriod, dialog ? ", TAN dialog shown" : "");
+        _log.LogInformation("Baader portal: {Mailbox} filter set in the page ({Mode}){Mfa}.", label, mode, dialog ? ", TAN dialog shown" : "");
         return true;
     }
 
-    private async Task SetHistoryFilterAsync(IBrowserFetcher browser, CancellationToken ct)
+    /// <summary>
+    /// Sets the mailbox's session filter: through its page when the browser can drive it, else by posting the page's form
+    /// (the date range from the from field's earliest date, falling back to the longest period when the portal rejects it).
+    /// </summary>
+    private async Task SetHistoryFilterAsync(IBrowserFetcher browser, string mailbox, CancellationToken ct)
     {
-        if (await SetHistoryFilterInPageAsync(browser, ct)) { _pageDriven = true; return; }
+        if (await SetHistoryFilterInPageAsync(browser, mailbox, ct)) { _pageDriven = true; return; }
+        _pageDriven = false;
+        var label = Label(mailbox);
+        var (token, min) = await MailPageAsync(browser, mailbox, ct);
+        if (token != null) _token = token;
         _token ??= await TokenAsync(browser, ct);
-        var response = await browser.PostFormAsync(new Uri(_base, "mail"), HistoryFilterFields(_token),
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Accept"] = "text/html" }, ct);
+        var page = new Uri(_base, MailPath(mailbox));
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Accept"] = "text/html" };
+        var today = Today;
+        var response = await browser.PostFormAsync(page, HistoryFilterFields(_token, min ?? today.AddYears(-FallbackRangeYears), today), headers, ct);
         EnsureSession(response, "setting the document filter");
+        var mode = "date range";
+        if (!response.IsSuccess || response.Text.Contains("alert-danger", StringComparison.Ordinal))
+        {
+            _log.LogInformation("Baader portal: the {Mailbox} rejected the date range (HTTP {Status}); using the {Period}-day period.", label, response.Status, HistoryPeriod);
+            if (InfoToken().Match(response.Text) is { Success: true } t) _token = TokenOf(t);
+            response = await browser.PostFormAsync(page, HistoryFilterFields(_token), headers, ct);
+            EnsureSession(response, "setting the document filter");
+            mode = HistoryPeriod + "-day period";
+        }
         var html = response.Text;
         if (html.Contains("mfaInputForm", StringComparison.Ordinal)) _tanRequired = true;
         if (InfoToken().Match(html) is { Success: true } m) _token = TokenOf(m);
-        _log.LogInformation("Baader portal: document filter set ({Period} days): HTTP {Status}{Mfa}.", HistoryPeriod, response.Status, _tanRequired ? ", TAN dialog shown" : "");
+        _log.LogInformation("Baader portal: {Mailbox} filter set ({Mode}): HTTP {Status}{Mfa}.", label, mode, response.Status, _tanRequired ? ", TAN dialog shown" : "");
     }
 
+    /// <summary>The page token and the earliest date the from field allows (its <c>min</c>), read from the mailbox's page.</summary>
+    private async Task<(string? Token, DateOnly? Min)> MailPageAsync(IBrowserFetcher browser, string mailbox, CancellationToken ct)
+    {
+        var response = await browser.GetAsync(new Uri(_base, MailPath(mailbox)), "text/html", ct);
+        EnsureSession(response, "opening the mailbox");
+        if (!response.IsSuccess) return (null, null);
+        var html = response.Text;
+        var token = InfoToken().Match(html) is { Success: true } m ? TokenOf(m) : null;
+        DateOnly? min = null;
+        if (FromMin().Match(html) is { Success: true } d
+            && DateOnly.TryParseExact(d.Groups["d"].Value, ["yyyy-MM-dd", "dd.MM.yyyy"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+            min = parsed;
+        return (token, min);
+    }
     /// <summary>
     /// Has the portal send the SMS-TAN: the page's TAN dialog opens with a <c>/mfa/check</c> call that carries no TAN,
     /// which is what triggers the SMS.
@@ -432,8 +612,10 @@ internal sealed partial class BaaderPortal
         try
         {
             var json = JsonElement.Parse(response.Text);
-            var ok = json.ValueKind == JsonValueKind.Array && json.EnumerateArray().Any(c => c.ValueKind == JsonValueKind.Object && c.TryGetProperty("customer_id", out _));
-            if (!ok) _log.LogInformation("Baader portal status: unexpected answer shape ({Kind}).", json.ValueKind);
+            var customers = CustomerIds(json);
+            var ok = customers.Count > 0;
+            if (ok) _customers = customers;
+            else _log.LogInformation("Baader portal status: unexpected answer shape ({Kind}).", json.ValueKind);
             return ok;
         }
         catch (JsonException ex)
@@ -441,6 +623,20 @@ internal sealed partial class BaaderPortal
             _log.LogInformation(ex, "Baader portal status: {Path} answered {Type}, not JSON.", response.Url?.AbsolutePath, response.ContentType);
             return false;
         }
+    }
+
+    /// <summary>The customer ids of a <c>/fstatus</c> answer (<c>[{"customer_id": …}, …]</c>), digits only, each once.</summary>
+    internal static List<string> CustomerIds(JsonElement json)
+    {
+        var ids = new List<string>();
+        if (json.ValueKind != JsonValueKind.Array) return ids;
+        foreach (var c in json.EnumerateArray())
+        {
+            if (c.ValueKind != JsonValueKind.Object || !c.TryGetProperty("customer_id", out var v)) continue;
+            var id = v.ValueKind == JsonValueKind.Number ? v.GetRawText() : v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+            if (id != null && CustomerId().IsMatch(id) && !ids.Contains(id, StringComparer.Ordinal)) ids.Add(id);
+        }
+        return ids;
     }
 
     /// <summary>The page token (<c>&lt;meta name="infotok"&gt;</c>) of the mail page (or the dashboard).</summary>
@@ -475,6 +671,13 @@ internal sealed partial class BaaderPortal
 
     [GeneratedRegex("^[A-Za-z0-9_-]{1,128}$", RegexOptions.None, 1000)]
     private static partial Regex DocumentId();
+
+    [GeneratedRegex("^[0-9]{1,16}$", RegexOptions.None, 1000)]
+    private static partial Regex CustomerId();
+
+    /// <summary>The <c>min</c> attribute of the filter form's from field.</summary>
+    [GeneratedRegex("<input\\b(?=[^>]*\\bname=\"from\")[^>]*\\bmin=\"(?<d>[^\"]*)\"", RegexOptions.IgnoreCase, 1000)]
+    private static partial Regex FromMin();
 
     [GeneratedRegex("<meta\\s+(?:content=\"(?<a>[^\"]*)\"\\s+name=\"infotok\"|name=\"infotok\"\\s+content=\"(?<b>[^\"]*)\")", RegexOptions.IgnoreCase, 1000)]
     private static partial Regex InfoToken();

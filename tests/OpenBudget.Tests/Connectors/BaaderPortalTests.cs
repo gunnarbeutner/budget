@@ -28,6 +28,9 @@ public sealed class BaaderPortalTests
 
         public List<FakeBaaderPortal.FakePortalBrowser> Browsers { get; } = [];
 
+        /// <summary>The login's session values, kept from sync to sync like the runner's stored session.</summary>
+        public Dictionary<string, string> State { get; } = new(StringComparer.Ordinal);
+
         public Rig() => Http = Portal.CreateClient();
 
         /// <summary>
@@ -37,7 +40,7 @@ public sealed class BaaderPortalTests
         public async Task<ConnectorStep<IReadOnlyList<RemoteStatement>>> FetchAsync(
             IReadOnlySet<string>? known = null, IReadOnlyList<RemoteAccount>? accounts = null, bool userSignsIn = true, string tan = FakeBaaderPortal.Tan)
         {
-            var client = new BaaderPortal(Http, Logs.CreateLogger("baader")); // a new connector per sync
+            var client = new BaaderPortal(Http, Logs.CreateLogger("baader"), state: State); // a new connector per sync
             ChallengeAnswer? answer = null;
             for (var i = 0; i < 6; i++)
             {
@@ -91,23 +94,102 @@ public sealed class BaaderPortalTests
         Assert.Equal(1, rig.WebLogins);
         Assert.Equal(1, rig.TanRequests);
         var docs = step.Value!;
-        Assert.Equal([Id(1), Id(2), Id(3), Id(4), Id(5)], docs.Select(d => d.Identifier).Order(StringComparer.Ordinal));
+        // the date range reaches back to the earliest date the form allows, beyond the longest period
+        Assert.Equal([Id(1), Id(2), Id(3), Id(4), Id(5), Id(6)], docs.Select(d => d.Identifier).Order(StringComparer.Ordinal));
         Assert.All(docs, d => Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(d.Content, 0, 4), StringComparison.Ordinal));
         Assert.Equal("cash-1", docs.Single(d => d.Identifier == Id(1)).AccountRemoteId);
         Assert.Equal(new DateOnly(2026, 10, 31), docs.Single(d => d.Identifier == Id(1)).Date);
         Assert.Equal("depot-1", docs.Single(d => d.Identifier == Id(3)).AccountRemoteId);
         Assert.Null(docs.Single(d => d.Identifier == Id(4)).AccountRemoteId);
 
-        var filter = Assert.Single(rig.Portal.FilterPosts);
+        Assert.Equal(["/mail", "/mail/" + FakeBaaderPortal.CustomerId], rig.Portal.FilterPaths);
+        var filter = rig.Portal.FilterPosts[0];
         Assert.Equal("1", filter["filter"]);
         Assert.Equal(FakeBaaderPortal.PageToken, filter["token"]);
-        Assert.Equal("period", filter["timeframe"]);
-        Assert.Equal("720", filter["periods"]);
+        Assert.Equal("fromuntil", filter["timeframe"]);
+        Assert.Equal("01.01.2016", filter["from"]);
         Assert.False(filter.ContainsKey("unread"));
         var check = Assert.Single(rig.Portal.TanChecks);
         Assert.Equal(FakeBaaderPortal.Tan, check["tan"]);
         Assert.Equal("1", check["__multipart"]);
-        Assert.Equal(5, rig.Browsers[0].Resolved); // each download's storage link came from the browser
+        Assert.Equal(6, rig.Browsers[0].Resolved); // each download's storage link came from the browser
+    }
+
+    [Fact]
+    public async Task A_rejected_date_range_falls_back_to_the_longest_period()
+    {
+        var rig = new Rig();
+        Seed(rig.Portal);
+        rig.Portal.RejectDateRange = true;
+        var docs = (await rig.FetchAsync()).Value!;
+
+        Assert.Equal([Id(1), Id(2), Id(3), Id(4), Id(5)], docs.Select(d => d.Identifier).Order(StringComparer.Ordinal));
+        Assert.Equal(["fromuntil", "period"], rig.Portal.FilterPosts.Take(2).Select(p => p["timeframe"]));
+        Assert.Equal("720", rig.Portal.FilterPosts[1]["periods"]);
+        Assert.Contains(rig.Logs.Entries, e => e.Message.Contains("rejected the date range", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task The_customer_mailbox_is_listed_too_and_merged_by_file_id()
+    {
+        var rig = new Rig();
+        Seed(rig.Portal);
+        rig.Portal.CustomerDocuments.AddRange(
+        [
+            D(2025, 6, 2, "Depotauszug Smartbroker+", "0123456789abcdef0123456789abcd11"),
+            D(2026, 9, 15, "Wertpapierabrechnung Kauf", "0123456789abcdef0123456789abcd03"), // also in the general mailbox
+        ]);
+        var docs = (await rig.FetchAsync()).Value!;
+
+        Assert.Equal(1, rig.TanRequests); // one TAN covers both mailboxes
+        Assert.Single(docs, d => d.Identifier == Id(3));
+        Assert.Equal("depot-1", docs.Single(d => d.Identifier == "baader:0123456789abcdef0123456789abcd11").AccountRemoteId);
+        Assert.Equal(1, rig.Portal.Downloads["0123456789abcdef0123456789abcd03"]);
+        Assert.Contains(rig.Logs.Entries, e => e.Message.Contains("listed in the customer mailbox 1 (long listing)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_customer_mailbox_gets_its_long_listing_once_even_when_accounts_have_documents()
+    {
+        var rig = new Rig();
+        Seed(rig.Portal);
+        var known = new HashSet<string>(StringComparer.Ordinal) { Id(1), Id(3) };
+        known.Add(OpenBudget.Connectors.Sync.BankStatementStore.AccountHasDocumentsMarker + "cash-1");
+        known.Add(OpenBudget.Connectors.Sync.BankStatementStore.AccountHasDocumentsMarker + "depot-1");
+        rig.Portal.CustomerDocuments.Add(D(2024, 6, 3, "Depotauszug Smartbroker+", "0123456789abcdef0123456789abcd11"));
+
+        var first = await rig.FetchAsync(known);
+
+        Assert.Equal(["/mail/" + FakeBaaderPortal.CustomerId], rig.Portal.FilterPaths); // the general mailbox keeps its recent listing
+        Assert.Equal(1, rig.TanRequests);
+        Assert.Contains(first.Value!, d => d.Identifier == "baader:0123456789abcdef0123456789abcd11");
+        Assert.Contains(BaaderPortal.HistoryDoneKeyPrefix + FakeBaaderPortal.CustomerId, rig.State.Keys);
+
+        rig.Portal.FilterPaths.Clear();
+        foreach (var d in first.Value!) known.Add(d.Identifier);
+        var second = await rig.FetchAsync(known);
+        Assert.Empty(rig.Portal.FilterPaths);
+        Assert.Equal(1, rig.TanRequests);
+        Assert.Empty(second.Value!);
+    }
+
+    [Fact]
+    public void Merge_keeps_each_file_id_once_from_the_first_mailbox()
+    {
+        var a = new BaaderPortal.PortalDocument("x1", new DateOnly(2026, 1, 1), "A");
+        var b = new BaaderPortal.PortalDocument("x2", new DateOnly(2026, 1, 2), "B");
+        var merged = BaaderPortal.Merge([("", [a, b]), ("4711", [b with { Title = "B again" }, a, new("x3", new DateOnly(2026, 1, 3), "C")])]).ToList();
+        Assert.Equal(["x1", "x2", "x3"], merged.Select(m => m.Document.Id));
+        Assert.Equal(["", "", "4711"], merged.Select(m => m.Mailbox));
+        Assert.Equal("B", merged[1].Document.Title);
+    }
+
+    [Fact]
+    public void Customer_ids_come_from_the_status_answer()
+    {
+        var json = JsonElement.Parse("""[{"customer_id":1234567,"first_name":"A"},{"customer_id":"7654321"},{"customer_id":1234567},{"customer_id":"../x"},{"other":1}]""");
+        Assert.Equal(["1234567", "7654321"], BaaderPortal.CustomerIds(json));
+        Assert.Empty(BaaderPortal.CustomerIds(JsonElement.Parse("{}")));
     }
 
     [Fact]
@@ -260,6 +342,8 @@ public sealed class BaaderPortalTests
     [InlineData("Dividendengutschrift", "Depot")]
     [InlineData("Jahressteuerbescheinigung 2025", "Login")]
     [InlineData("Quartalsaufstellung", "Login")]
+    [InlineData("Depotauszug planmässig", "Depot")]
+    [InlineData("Vorabpauschale 2025", "Depot")]
     public void Documents_belong_to_an_account_by_their_description(string title, string target) =>
         Assert.Equal(target, BaaderPortal.TargetOf(title).ToString());
 

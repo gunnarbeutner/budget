@@ -122,7 +122,7 @@ public sealed class RealBrowserBaaderPortalTests
             return;
         }
         var sidValue = request.Cookies["sid"]!.Value;
-        if (path is "/dashboard" or "/mail" && request.HttpMethod == "GET")
+        if (path is "/dashboard" or "/mail" or "/mail/" + Customer && request.HttpMethod == "GET")
         {
             await HtmlAsync(ctx, Page(""));
             return;
@@ -132,11 +132,12 @@ public sealed class RealBrowserBaaderPortalTests
             await WriteAsync(ctx, "application/json", $"[{{\"customer_id\":{Customer},\"first_name\":\"Alice\",\"last_name\":\"Example\",\"amount\":\"0,00\",\"currency\":\"EUR\"}}]");
             return;
         }
-        if (path == "/mail" && request.HttpMethod == "POST")
+        if (path is "/mail" or "/mail/" + Customer && request.HttpMethod == "POST")
         {
             var form = await ReadFormAsync(request);
-            if (form.GetValueOrDefault("filter") == "1" && form.GetValueOrDefault("token") == PageToken && form.GetValueOrDefault("periods") == "720")
-                _filtered[sidValue] = true;
+            if (form.GetValueOrDefault("filter") == "1" && form.GetValueOrDefault("token") == PageToken
+                && (form.GetValueOrDefault("timeframe") == "fromuntil" || form.GetValueOrDefault("periods") == "720"))
+                _filtered[sidValue + path] = true;
             await HtmlAsync(ctx, Page(_tanPassed.ContainsKey(sidValue) ? "" : "<form id=mfaInputForm><input name=tan></form>"));
             return;
         }
@@ -147,7 +148,7 @@ public sealed class RealBrowserBaaderPortalTests
             await WriteAsync(ctx, "application/json", _tanPassed.ContainsKey(sidValue) ? "{\"do\":\"success\"}" : "{\"do\":\"error\"}");
             return;
         }
-        if (path == "/mailrows" && request.HttpMethod == "POST")
+        if (path is "/mailrows" or "/mailrows/" + Customer && request.HttpMethod == "POST")
         {
             if (request.ContentType?.StartsWith("multipart/form-data", StringComparison.Ordinal) != true || request.Headers["X-Requested-With"] != "XMLHttpRequest")
             {
@@ -155,8 +156,10 @@ public sealed class RealBrowserBaaderPortalTests
                 return;
             }
             var day = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            var rows = new List<string> { $"[1,\"Kontoauszug\",\"{RecentId}\"]" };
-            if (_filtered.ContainsKey(sidValue))
+            // the customer mailbox lists the older document again: it is fetched once
+            var customer = path != "/mailrows";
+            var rows = customer ? [] : new List<string> { $"[1,\"Kontoauszug\",\"{RecentId}\"]" };
+            if (_filtered.ContainsKey(sidValue + (customer ? "/mail/" + Customer : "/mail")))
                 rows = _tanPassed.ContainsKey(sidValue) ? [.. rows, $"[0,\"Zinsstaffel\",\"{OlderId}\"]"] : [];
             await WriteAsync(ctx, "application/json", rows.Count == 0 ? "[]" : $"[{{\"{day}\":[{string.Join(',', rows)}]}}]");
             return;
