@@ -9,7 +9,7 @@ namespace OpenBudget.Tests;
 /// "spent / budget" for a project and month. All three read <see cref="BudgetService.GetSpendingSummaryAsync"/>;
 /// this pins that the period each one asks for resolves to the same window and that the shared sum
 /// follows the Budget view's rules: only the project's tracked categories (whatever account the
-/// booking is on), no transfers, split parts instead of their parent, income not counted as spending.
+/// booking is on), no transfers (they carry an untracked category), split parts instead of their parent, income not counted as spending.
 /// </summary>
 public class ProjectBudgetSumConsistencyTests
 {
@@ -43,17 +43,10 @@ public class ProjectBudgetSumConsistencyTests
         t.AddTransaction(5, Tracked, -30000, nov, accountId: ExclusiveAccount, splitted: SplitState.Parent); // parent: replaced by parts
         t.AddTransaction(6, Tracked, -12000, nov, accountId: ExclusiveAccount, splitted: 2);   // part: 120
         t.AddTransaction(7, Untracked, -18000, nov, accountId: ExclusiveAccount, splitted: 2); // part elsewhere
-        t.AddTransaction(8, Tracked, -700000, nov, accountId: SharedAccount);                  // transfer out
-        t.AddTransaction(9, Tracked, 700000, nov, accountId: ExclusiveAccount);                // transfer in
+        t.AddTransaction(8, Untracked, -700000, nov, accountId: SharedAccount);                // transfer out (transfer category)
+        t.AddTransaction(9, Untracked, 700000, nov, accountId: ExclusiveAccount);              // transfer in (transfer category)
         t.AddTransaction(10, TrackedIncome, 250000, nov, accountId: ExclusiveAccount);         // income
         t.AddTransaction(11, Tracked, -99900, new DateTime(2026, 10, 30), accountId: ExclusiveAccount); // other month
-        await t.Db.SaveChangesAsync();
-        foreach (var id in new long[] { 8, 9 })
-        {
-            var tx = await t.Db.Transactions.FindAsync(id);
-            tx!.IsTransfer = true;
-            tx.TransferPeerId = id == 8 ? 9 : 8;
-        }
         await t.Db.SaveChangesAsync();
 
         // Switcher: the current month.

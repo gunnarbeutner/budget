@@ -8,15 +8,11 @@ using OpenBudget.Services;
 namespace OpenBudget.E2E.Tests;
 
 /// <summary>
-/// Splitting a booking into parts in its details (with "Assign rest"), removing the split, and marking a booking as a
-/// transfer to another account of the project from the suggested counterparts, then unlinking it.
+/// Splitting a booking into parts in its details (with "Assign rest") and removing the split.
 /// </summary>
 [TestFixture]
-public sealed class SplitTransferTests : EndToEndTestBase
+public sealed class SplitTests : EndToEndTestBase
 {
-    private const string SavingsName = "Example Savings";
-    private static readonly long SavingsAccountId = SourceScope.Namespace(E2ESeed.SourceId, 3);
-
     private static string GiroUrl => $"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.BankAccountId}";
 
     [SetUp]
@@ -24,21 +20,6 @@ public sealed class SplitTransferTests : EndToEndTestBase
     {
         var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await EditingSeed.SeedAsync(factory);
-        await using var db = await factory.CreateDbContextAsync();
-        db.Accounts.Add(new Account { Id = SavingsAccountId, SourceId = E2ESeed.SourceId, Name = SavingsName, Provider = "fake", Type = 1, Currency = "EUR", Balances = "11:500.000000,3:EUR," });
-        await db.SaveChangesAsync();
-        db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = SavingsAccountId });
-        db.Transactions.Add(new Transaction
-        {
-            Id = 120,
-            SourceId = E2ESeed.SourceId,
-            AccountId = SavingsAccountId,
-            Amount = 25_00,
-            Currency = "EUR",
-            Name = "Example Transfer In",
-            Timestamp = new DateTimeOffset(2026, 3, 11, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds(),
-        });
-        await db.SaveChangesAsync();
     }
 
     private ILocator Row(string text) => Page.GetByTestId("tx-row").Filter(new() { HasText = text });
@@ -93,36 +74,11 @@ public sealed class SplitTransferTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task A_booking_is_marked_as_transfer_from_the_suggestions_and_unlinked_again()
-    {
-        await GoToAsync(GiroUrl);
-        await Row("−25,00").ClickAsync();
-        await Page.GetByTestId("tx-details-transfer-button").ClickAsync();
-
-        var candidate = Page.GetByTestId("transfer-candidate");
-        await Expect(candidate).ToHaveCountAsync(1);
-        await Expect(candidate).ToContainTextAsync(SavingsName);
-        await candidate.GetByTestId("transfer-link").ClickAsync();
-
-        await Expect(Row("−25,00").GetByTestId("tx-transfer-flag")).ToContainTextAsync("Transfer → " + SavingsName);
-        var rows = await RowsAsync();
-        Assert.That(rows.Single(t => t.Id == 101).TransferPeerId, Is.EqualTo(120));
-        Assert.That(rows.Single(t => t.Id == 120).IsTransfer, Is.True);
-
-        await Expect(Page.GetByTestId("tx-details-transfer")).ToContainTextAsync(SavingsName);
-        await Page.GetByTestId("tx-details-unlink-transfer").ClickAsync();
-        await Expect(Row("−25,00").GetByTestId("tx-transfer-flag")).ToHaveCountAsync(0);
-        rows = await RowsAsync();
-        Assert.That(rows.Any(t => t.IsTransfer), Is.False);
-    }
-
-    [Test]
-    public async Task Moneymoney_rows_offer_neither_split_nor_transfer()
+    public async Task Moneymoney_rows_offer_no_split()
     {
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.MoneyMoneyAccountId}");
         await Row("Example Bakery").ClickAsync();
         await Expect(Page.GetByTestId("tx-details")).ToBeVisibleAsync();
         await Expect(Page.GetByTestId("tx-details-split")).ToHaveCountAsync(0);
-        await Expect(Page.GetByTestId("tx-details-transfer-button")).ToHaveCountAsync(0);
     }
 }

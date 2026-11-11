@@ -20,6 +20,7 @@
 @inject BankLoginService BankLogins
 @inject TransactionEditService Edits
 @inject CategorizationService Categorization
+@inject ManualTransactionService ManualBookings
 @inject AccessScopeProvider AccessProvider
 @inject IStringLocalizer<BrowseTreeRail> RailL
 @inherits DataChangeAwareComponent
@@ -474,12 +475,6 @@
                                             {
                                                 <span class="tx-flag" title="@L["Tx_SplitChildTitle"]">@L["Tx_SplitChild"]</span>
                                             }
-                                            @if (row.IsTransfer)
-                                            {
-                                                <span class="tx-flag tx-transfer-flag" data-testid="tx-transfer-flag" title="@L["Tx_TransferTitle"]">
-                                                    @(row.TransferPeerAccountName is { } peerName ? L["Tx_TransferTo", peerName] : L["Tx_Transfer"])
-                                                </span>
-                                            }
                                         </div>
                                         @{ var purpose = PurposeText.Clean(row.Purpose); }
                                         @if (!string.IsNullOrEmpty(purpose) || (showAccountColumn && !string.IsNullOrEmpty(row.AccountName)))
@@ -513,6 +508,8 @@
                                                OnEditBooking="() => OpenEditBookingAsync(row)"
                                                OnCreateRule="e => CreateRuleFromAsync(row, e)"
                                                PickerData="pickerData" ProjectId="ProjectId"
+                                               OffsetTargets="expandedOffsetTargets"
+                                               OnCreateOffset="accountId => CreateOffsettingEntryAsync(row, accountId)"
                                                OnChanged="RefreshAfterEditAsync" />
                                 }
                             </div>
@@ -612,6 +609,8 @@
     private long? popupCurrentCategory;
     private IReadOnlyList<ContextMenuItem> contextItems = [];
     private (long Id, string Name)? contextStatement;
+    private List<OffsetTarget> contextOffsetTargets = [];
+    private List<OffsetTarget> expandedOffsetTargets = [];
     private CategoryPickerData? pickerData;
     private bool showShortcuts;
 

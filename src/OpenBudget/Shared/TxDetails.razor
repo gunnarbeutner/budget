@@ -2,7 +2,6 @@
 @using OpenBudget.Services
 @inject IStringLocalizer<TxDetails> L
 @inject ClockService Clock
-@inject SplitTransferService SplitTransfers
 
 @* The in-place expansion of a selected transaction: the bank's details as a flowing "Label value" list (empty ones
    skipped), the full purpose, then the note and the actions. Bank fields are plain text (never editable); category,
@@ -54,10 +53,6 @@
         {
             <span data-testid="tx-details-split-part"><b>@L["SplitPart"]</b>@L["SplitPart_Text"]</span>
         }
-        @if (Row.IsTransfer)
-        {
-            <span data-testid="tx-details-transfer"><b>@L["Transfer"]</b>@(Row.TransferPeerAccountName is { } peer ? L["Transfer_To", peer] : L["Transfer_OneSided"])</span>
-        }
         @if (Statement is { } statement)
         {
             <span><b>@L["Statement"]</b><a href="@($"/statements/{statement.Id}")" target="_blank" rel="noopener" data-testid="tx-details-statement"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> @statement.Name</a></span>
@@ -82,24 +77,18 @@
                 <i class="bi @(Row.IsChecked ? "bi-check-square-fill" : "bi-square")" aria-hidden="true"></i> @(Row.IsChecked ? L["Checked_Yes"] : L["Checked_No"])
             </button>
         }
-        @if (Row.CanEdit && PickerData != null && !Row.IsTransfer && !Row.IsSplitRemainder)
+        @if (Row.CanEdit && PickerData != null && !Row.IsSplitRemainder)
         {
             <button type="button" class="ob-btn @(panel == Panel.Split ? "active" : "")" data-testid="tx-details-split"
                     disabled="@Row.IsPending" title="@(Row.IsPending ? L["Pending_NotYet"].Value : null)" @onclick="() => Toggle(Panel.Split)">
                 <i class="bi bi-scissors" aria-hidden="true"></i> @(Row.IsSplitChild ? L["Action_EditSplit"] : L["Action_Split"])
             </button>
         }
-        @if (Row.CanEdit && Row.IsTransfer)
+        @if (OffsetTargets.Count > 0 && OnCreateOffset.HasDelegate)
         {
-            <button type="button" class="ob-btn" data-testid="tx-details-unlink-transfer" @onclick="UnlinkAsync">
-                <i class="bi bi-link-45deg" aria-hidden="true"></i> @L["Action_Unlink"]
-            </button>
-        }
-        else if (Row.CanEdit && ProjectId > 0 && !Row.IsSplitChild && !Row.IsSplitRemainder)
-        {
-            <button type="button" class="ob-btn @(panel == Panel.Transfer ? "active" : "")" data-testid="tx-details-transfer-button"
-                    disabled="@Row.IsPending" title="@(Row.IsPending ? L["Pending_NotYet"].Value : null)" @onclick="() => Toggle(Panel.Transfer)">
-                <i class="bi bi-arrow-left-right" aria-hidden="true"></i> @L["Action_Transfer"]
+            <button type="button" class="ob-btn @(panel == Panel.Offset ? "active" : "")" data-testid="tx-details-offset"
+                    aria-expanded="@((panel == Panel.Offset).ToString().ToLowerInvariant())" @onclick="() => Toggle(Panel.Offset)">
+                <i class="bi bi-arrow-left-right" aria-hidden="true"></i> @L["Action_Offset"]
             </button>
         }
         @if (Row.CanEdit && OnCreateRule.HasDelegate)
@@ -121,9 +110,17 @@
     {
         <TxSplitEditor Row="Row" PickerData="PickerData" OnDone="OnPanelDone" />
     }
-    else if (panel == Panel.Transfer)
+    else if (panel == Panel.Offset)
     {
-        <TxTransferPanel Row="Row" ProjectId="ProjectId" OnDone="OnPanelDone" />
+        <div class="tx-details-offset" data-testid="tx-details-offset-targets">
+            @foreach (var target in OffsetTargets)
+            {
+                var accountId = target.AccountId;
+                <button type="button" class="ob-btn" data-testid="@("tx-details-offset-" + accountId)" @onclick="() => OffsetAsync(accountId)">
+                    <i class="bi @target.Icon" aria-hidden="true"></i> @target.Name
+                </button>
+            }
+        </div>
     }
     @if (error != null)
     {
@@ -154,12 +151,16 @@
 
     /// <summary>Categories for the split editor; without them splitting is not offered.</summary>
     [Parameter] public CategoryPickerData? PickerData { get; set; }
-    /// <summary>The project whose other accounts are suggested as transfer counterparts (0 = no transfers).</summary>
+    /// <summary>The project whose manual accounts are offered for an offsetting entry (0 = none).</summary>
     [Parameter] public int ProjectId { get; set; }
-    /// <summary>A split or transfer changed: the page reloads its data.</summary>
+    /// <summary>Manual accounts an offsetting entry for this booking can be created on (empty = not offered).</summary>
+    [Parameter] public IReadOnlyList<OffsetTarget> OffsetTargets { get; set; } = [];
+    /// <summary>Creates the offsetting entry on the chosen account.</summary>
+    [Parameter] public EventCallback<long> OnCreateOffset { get; set; }
+    /// <summary>A split or an offsetting entry was created: the page reloads its data.</summary>
     [Parameter] public EventCallback OnChanged { get; set; }
 
-    private enum Panel { None, Split, Transfer }
+    private enum Panel { None, Split, Offset }
     private Panel panel;
     private string? error;
     private long shownRowId;
@@ -183,18 +184,10 @@
         if (changed) await OnChanged.InvokeAsync();
     }
 
-    private async Task UnlinkAsync()
+    private async Task OffsetAsync(long accountId)
     {
-        error = null;
-        try
-        {
-            await SplitTransfers.UnlinkTransferAsync(Row.Id);
-            await OnChanged.InvokeAsync();
-        }
-        catch (AccessDeniedException)
-        {
-            error = L["Error_Denied"];
-        }
+        panel = Panel.None;
+        await OnCreateOffset.InvokeAsync(accountId);
     }
 
     private string SetByText => Row.CategoryId == null && Row.CategorySetBy == TransactionCategorySource.Import
