@@ -184,6 +184,13 @@ public class BankStatement
     [MaxLength(64)]
     public string Sha256 { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The bank the document came from, as the importer named it (e.g. MoneyMoney's bank folder); set for imported
+    /// documents whose account is not in OpenBudget, so they can be told apart until they are assigned to an account.
+    /// </summary>
+    [MaxLength(200)]
+    public string? Institution { get; set; }
+
     public long SizeBytes { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -136,14 +136,44 @@ public sealed class MoneyMoneyStatementImportTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Documents_of_accounts_not_in_OpenBudget_are_skipped()
+    public async Task Documents_of_accounts_not_in_OpenBudget_are_kept_without_an_account_labelled_with_the_bank()
     {
         await ImportSnapshotAsync();
         var pdf = Pdf("orphan");
+        var hash = BankStatementStore.HashOf(pdf);
+        var refs = new[] { new MoneyMoneyStatementRef(99, hash) };
 
-        Assert.Empty(await _statements.WantedAsync(SourceName, [new MoneyMoneyStatementRef(99, BankStatementStore.HashOf(pdf))], CancellationToken.None));
-        Assert.Equal(MoneyMoneyStatementOutcome.NoAccount, await _statements.StoreAsync(SourceName, 99, new DateOnly(2026, 1, 1), "X", pdf, CancellationToken.None));
-        Assert.Equal(MoneyMoneyStatementOutcome.NoAccount, await _statements.StoreAsync("unknown-source", 1, new DateOnly(2026, 1, 1), "X", pdf, CancellationToken.None));
+        Assert.Equal([hash], await _statements.WantedAsync(SourceName, refs, CancellationToken.None));
+        Assert.Equal(MoneyMoneyStatementOutcome.Stored, await _statements.StoreAsync(SourceName, 99, new DateOnly(2021, 5, 31), "Statement", pdf, CancellationToken.None, "Example Bank"));
+
+        var doc = Assert.Single(await DocumentsAsync());
+        Assert.Null(doc.AccountId);
+        Assert.Null(doc.SourceId);
+        Assert.Null(doc.BankLoginId);
+        Assert.Equal(Owner, doc.OwnerUserId);
+        Assert.Equal("Example Bank", doc.Institution);
+        Assert.Equal("mm:" + hash, doc.Identifier);
+
+        // Uploading it again stores nothing new.
+        Assert.Empty(await _statements.WantedAsync(SourceName, refs, CancellationToken.None));
+        Assert.Equal(MoneyMoneyStatementOutcome.Duplicate, await _statements.StoreAsync(SourceName, 99, new DateOnly(2021, 5, 31), "Statement", pdf, CancellationToken.None, "Example Bank"));
+        Assert.Single(await DocumentsAsync());
+    }
+
+    [Fact]
+    public async Task Documents_of_a_known_account_carry_no_bank_label()
+    {
+        await ImportSnapshotAsync();
+        await _statements.StoreAsync(SourceName, 1, new DateOnly(2026, 1, 31), "A", Pdf("known"), CancellationToken.None, "Example Bank");
+        Assert.Null(Assert.Single(await DocumentsAsync()).Institution);
+    }
+
+    [Fact]
+    public async Task Documents_of_an_unknown_source_are_skipped()
+    {
+        var pdf = Pdf("nowhere");
+        Assert.Empty(await _statements.WantedAsync("unknown-source", [new MoneyMoneyStatementRef(1, BankStatementStore.HashOf(pdf))], CancellationToken.None));
+        Assert.Equal(MoneyMoneyStatementOutcome.NoAccount, await _statements.StoreAsync("unknown-source", 1, new DateOnly(2026, 1, 1), "X", pdf, CancellationToken.None, "Example Bank"));
         Assert.Empty(await DocumentsAsync());
     }
 }

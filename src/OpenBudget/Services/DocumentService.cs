@@ -5,8 +5,15 @@ using OpenBudget.Models;
 namespace OpenBudget.Services;
 
 /// <summary>A downloaded document as the Documents view shows it.</summary>
-/// <param name="AccountName">The account's name; for a document without an account, the bank login's name.</param>
-public sealed record DocumentItem(long Id, long? AccountId, string AccountName, DateTime Date, string Name, bool Unread);
+/// <param name="AccountName">
+/// The account's name; for a document without an account, the bank login's name or the bank it was imported from.
+/// </param>
+/// <param name="Institution">For a document without an account and login: the bank it was imported from.</param>
+/// <param name="CanAssign">Whether the current user owns the document and so may assign it to an account.</param>
+public sealed record DocumentItem(long Id, long? AccountId, string AccountName, DateTime Date, string Name, bool Unread, string? Institution = null, bool CanAssign = false);
+
+/// <summary>An account documents can be assigned to.</summary>
+public sealed record AssignableAccount(long Id, string Name);
 
 /// <summary>Why an account cannot download statements (null: it can).</summary>
 public enum StatementBlock
@@ -32,8 +39,9 @@ public sealed record StatementSetting(
 
 /// <summary>
 /// The Documents view of a project: the statements of its accounts (visible to everyone who can see the
-/// account) plus the account-less documents of the current user's own bank logins linked to them, each with the
-/// user's own unread state, and the per-account download settings. Every document query runs through the
+/// account) plus the account-less documents of the current user's own bank logins linked to them and the
+/// current user's imported documents that belong to no account and no login, each with the user's own unread
+/// state, and the per-account download settings. Every document query runs through the
 /// user-scoped context, so the access rules of <see cref="BankStatement"/> apply unchanged.
 /// </summary>
 public class DocumentService
@@ -63,7 +71,7 @@ public class DocumentService
         var query = DocumentsQuery(db, projectId);
         var rows = await query
             .OrderByDescending(s => s.Date).ThenByDescending(s => s.Id)
-            .Select(s => new { s.Id, s.AccountId, s.BankLoginId, s.Date, s.Name, s.CreatedAt, Read = db.StatementReads.Any(r => r.StatementId == s.Id && !r.Unread), MarkedUnread = db.StatementReads.Any(r => r.StatementId == s.Id && r.Unread) })
+            .Select(s => new { s.Id, s.AccountId, s.BankLoginId, s.Institution, s.OwnerUserId, s.Date, s.Name, s.CreatedAt, Read = db.StatementReads.Any(r => r.StatementId == s.Id && !r.Unread), MarkedUnread = db.StatementReads.Any(r => r.StatementId == s.Id && r.Unread) })
             .ToListAsync(ct);
         var since = await UserCreatedAtAsync(db, userId, ct);
         var accountIds = rows.Where(r => r.AccountId != null).Select(r => r.AccountId!.Value).Distinct().ToList();
@@ -73,10 +81,12 @@ public class DocumentService
         return rows.Select(r => new DocumentItem(
             r.Id,
             r.AccountId,
-            r.AccountId is { } a ? accountNames.GetValueOrDefault(a, "?") : r.BankLoginId is { } l ? loginNames.GetValueOrDefault(l, "?") : "?",
+            r.AccountId is { } a ? accountNames.GetValueOrDefault(a, "?") : r.BankLoginId is { } l ? loginNames.GetValueOrDefault(l, "?") : r.Institution ?? "?",
             r.Date,
             r.Name,
-            r.MarkedUnread || (!r.Read && r.CreatedAt > since))).ToList();
+            r.MarkedUnread || (!r.Read && r.CreatedAt > since),
+            r.AccountId == null && r.BankLoginId == null ? r.Institution : null,
+            r.OwnerUserId == userId)).ToList();
     }
 
     /// <summary>How many of the project's documents the current user has not read yet.</summary>
@@ -124,7 +134,10 @@ public class DocumentService
         }
     }
 
-    /// <summary>Statements of the project's accounts plus the user's own account-less login documents of logins linked to them.</summary>
+    /// <summary>
+    /// Statements of the project's accounts, the user's own account-less login documents of logins linked to them,
+    /// and documents with neither account nor login (only their owner sees those, through the access filter).
+    /// </summary>
     private static IQueryable<BankStatement> DocumentsQuery(BudgetDbContext db, int projectId)
     {
         var accountIds = db.ProjectAccountAssignments.Where(a => a.ProjectId == projectId).Select(a => a.AccountId);
@@ -133,7 +146,48 @@ public class DocumentService
             .Select(a => a.BankLoginId);
         return db.BankStatements.AsNoTracking().Where(s =>
             (s.AccountId != null && accountIds.Contains(s.AccountId.Value))
-            || (s.AccountId == null && s.BankLoginId != null && loginIds.Contains(s.BankLoginId.Value)));
+            || (s.AccountId == null && s.BankLoginId != null && loginIds.Contains(s.BankLoginId.Value))
+            || (s.AccountId == null && s.BankLoginId == null));
+    }
+
+    /// <summary>The project's accounts the current user may assign documents to (those whose transactions they may edit).</summary>
+    public async Task<List<AssignableAccount>> GetAssignableAccountsAsync(int projectId, CancellationToken ct = default)
+    {
+        var scope = await _access.GetAsync();
+        if (!scope.IsAuthenticated) return [];
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var accounts = await db.Accounts.AsNoTracking()
+            .Where(a => db.ProjectAccountAssignments.Any(p => p.ProjectId == projectId && p.AccountId == a.Id))
+            .Select(a => new { a.Id, a.SourceId, a.Name })
+            .ToListAsync(ct);
+        return accounts
+            .Where(a => scope.CanEditTransactionsOf(a.SourceId, a.Id))
+            .Select(a => new AssignableAccount(a.Id, a.Name ?? "?"))
+            .OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Files the current user's own documents among <paramref name="statementIds"/> under <paramref name="accountId"/>,
+    /// which must be an account whose transactions the user may edit. Returns how many documents were assigned.
+    /// </summary>
+    public async Task<int> AssignAsync(IReadOnlyCollection<long> statementIds, long accountId, CancellationToken ct = default)
+    {
+        var scope = await _access.GetAsync();
+        if (!scope.IsAuthenticated || statementIds.Count == 0) return 0;
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var account = await db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == accountId, ct);
+        if (account == null || !scope.CanEditTransactionsOf(account.SourceId, account.Id))
+            throw new AccessDeniedException("Documents can only be assigned to accounts you may edit.");
+        var ids = statementIds.Distinct().ToList();
+        var rows = await db.BankStatements.Where(s => ids.Contains(s.Id) && s.OwnerUserId == scope.UserId).ToListAsync(ct);
+        foreach (var row in rows)
+        {
+            row.AccountId = account.Id;
+            row.SourceId = account.SourceId;
+        }
+        if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
+        return rows.Count;
     }
 
     private static async Task<DateTime> UserCreatedAtAsync(BudgetDbContext db, string userId, CancellationToken ct) =>

@@ -49,6 +49,12 @@
             <button type="button" class="ob-btn" data-testid="docs-sel-unread" title="@L["Sel_MarkUnread"]" @onclick="() => MarkSelectedAsync(true)">
                 <i class="bi bi-envelope" aria-hidden="true"></i><span class="docs-selbar-label">@L["Sel_MarkUnread"]</span>
             </button>
+            @if (sel.Any(d => d.CanAssign))
+            {
+                <button type="button" class="ob-btn" data-testid="docs-sel-assign" title="@L["Sel_Assign"]" @onclick="OpenAssignAsync">
+                    <i class="bi bi-folder-symlink" aria-hidden="true"></i><span class="docs-selbar-label">@L["Sel_Assign"]</span>
+                </button>
+            }
         </div>
     }
     <div class="page-toolbar docs-toolbar @(selected.Count > 0 && SelectedVisible().Count > 0 ? "d-none" : "")" data-testid="documents-toolbar">
@@ -81,7 +87,11 @@
                 {
                     <option value="@id" selected="@(account == id.ToString(CultureInfo.InvariantCulture))">@name</option>
                 }
-                @if (items?.Any(i => i.AccountId == null) == true)
+                @foreach (var label in LabelOptions)
+                {
+                    <option value="@("bank:" + label)" selected="@(account == "bank:" + label)">@label</option>
+                }
+                @if (items?.Any(i => i.AccountId == null && i.Institution == null) == true)
                 {
                     <option value="none" selected="@(account == "none")">@L["Account_None"]</option>
                 }
@@ -185,6 +195,40 @@
     <div class="modal-backdrop show"></div>
 }
 
+<Modal Show="showAssign" Title="@L["Assign_Title"]" OnClose="CloseAssign">
+    <ChildContent>
+    @if (assignable == null)
+    {
+        <div class="skeleton skeleton-line" aria-busy="true"></div>
+    }
+    else if (assignable.Count == 0)
+    {
+        <p class="mb-0 text-body-secondary" data-testid="assign-none">@L["Assign_NoAccounts"]</p>
+    }
+    else
+    {
+        <p class="small text-body-secondary mb-2">@L["Assign_Hint", SelectedVisible().Count(d => d.CanAssign)]</p>
+        <label class="form-label" for="assign-account">@L["Assign_Account"]</label>
+        <select id="assign-account" class="form-select" data-testid="assign-account"
+                @onchange="e => assignTo = long.TryParse(e.Value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : null">
+            <option value="" selected="@(assignTo == null)">@L["Assign_Choose"]</option>
+            @foreach (var a in assignable)
+            {
+                <option value="@a.Id" selected="@(assignTo == a.Id)">@a.Name</option>
+            }
+        </select>
+        @if (assignError != null)
+        {
+            <div class="text-danger small mt-2" role="alert" data-testid="assign-error">@assignError</div>
+        }
+    }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" data-testid="assign-cancel" @onclick="CloseAssign">@L["Assign_Cancel"]</button>
+        <button type="button" class="btn btn-primary" data-testid="assign-confirm" disabled="@(assignTo == null || busy)" @onclick="AssignSelectedAsync">@L["Assign_Confirm"]</button>
+    </Footer>
+</Modal>
+
 <Modal Show="showSettings" Title="@L["Settings_Title"]" SizeClass="modal-lg modal-dialog-scrollable" OnClose="CloseSettings">
     <p class="small text-body-secondary mb-2" data-testid="settings-note">@L["Settings_Retry"]</p>
     @if (settings == null)
@@ -277,6 +321,10 @@
     private bool busy;
 
     private readonly HashSet<long> selected = [];
+    private bool showAssign;
+    private List<AssignableAccount>? assignable;
+    private long? assignTo;
+    private string? assignError;
     private long? selectionAnchor;
     private DotNetObjectReference<Documents>? selfRef;
     private bool keysBound;
@@ -291,6 +339,13 @@
         .Select(g => (g.Key, g.First().AccountName))
         .OrderBy(a => a.Item2, StringComparer.CurrentCultureIgnoreCase);
 
+    /// <summary>The banks of imported documents that have no account yet.</summary>
+    private IEnumerable<string> LabelOptions => (items ?? [])
+        .Where(i => i.AccountId == null && i.Institution != null)
+        .Select(i => i.Institution!)
+        .Distinct()
+        .OrderBy(l => l, StringComparer.CurrentCultureIgnoreCase);
+
     private List<DocumentItem> Visible()
     {
         IEnumerable<DocumentItem> q = items ?? [];
@@ -303,7 +358,8 @@
             _ => q,
         };
         if (status == "unread") q = q.Where(d => d.Unread || readThisVisit.Contains(d.Id)); // what was just opened stays until the filter changes
-        if (account == "none") q = q.Where(d => d.AccountId == null);
+        if (account == "none") q = q.Where(d => d.AccountId == null && d.Institution == null);
+        else if (account.StartsWith("bank:", StringComparison.Ordinal)) q = q.Where(d => d.AccountId == null && d.Institution == account[5..]);
         else if (long.TryParse(account, NumberStyles.None, CultureInfo.InvariantCulture, out var a)) q = q.Where(d => d.AccountId == a);
         var s = search.Trim();
         if (s.Length > 0)
@@ -516,7 +572,7 @@
     [JSInvokable]
     public void SelectAllFromKeys()
     {
-        if (viewing != null || showSettings || items == null) return;
+        if (viewing != null || showSettings || showAssign || items == null) return;
         SelectAll();
         StateHasChanged();
     }
@@ -525,7 +581,7 @@
     [JSInvokable]
     public bool ClearFromKeys()
     {
-        if (viewing != null || showSettings || selected.Count == 0) return false;
+        if (viewing != null || showSettings || showAssign || selected.Count == 0) return false;
         ClearSelection();
         StateHasChanged();
         return true;
@@ -551,6 +607,38 @@
         }
         var set = ids.ToHashSet();
         items = items!.Select(d => set.Contains(d.Id) ? d with { Unread = unread } : d).ToList();
+    }
+
+    private async Task OpenAssignAsync()
+    {
+        showAssign = true;
+        assignTo = null;
+        assignError = null;
+        assignable = await Docs.GetAssignableAccountsAsync(ProjectId);
+    }
+
+    private void CloseAssign() => showAssign = false;
+
+    private async Task AssignSelectedAsync()
+    {
+        if (assignTo is not { } target) return;
+        var ids = SelectedVisible().Where(d => d.CanAssign).Select(d => d.Id).ToList();
+        busy = true;
+        try
+        {
+            await Docs.AssignAsync(ids, target);
+            showAssign = false;
+            ClearSelection();
+            items = await Docs.GetDocumentsAsync(ProjectId);
+        }
+        catch (AccessDeniedException)
+        {
+            assignError = L["Assign_Denied"];
+        }
+        finally
+        {
+            busy = false;
+        }
     }
 
     private async Task OpenSettingsAsync()

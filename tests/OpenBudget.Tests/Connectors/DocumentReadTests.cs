@@ -154,4 +154,38 @@ public sealed class DocumentReadTests
         Assert.False(bg.CanChange);
         await Assert.ThrowsAsync<AccessDeniedException>(() => w.For(BankWorld.Bob).SetStatementsAsync(bg.LoginAccountId!.Value, false, StatementsInterval.Monthly));
     }
+
+    [Fact]
+    public async Task Documents_without_account_or_login_show_their_bank_and_their_owner_assigns_them_in_bulk()
+    {
+        var (w, _, giro) = await SetupAsync();
+        await using var _w = w;
+        var store = new BankStatementStore(new BankStorageOptions(Path.Combine(Path.GetTempPath(), $"ob-assign-{Guid.NewGuid():N}")));
+        var ids = new List<long>();
+        for (var i = 1; i <= 2; i++)
+        {
+            var row = await store.StoreAsync(w.T.Db, BankWorld.Alice, null, "import", null,
+                new OpenBudget.Connectors.RemoteStatement($"mm:{i}", null, new DateOnly(2021, i, 28), $"Statement {i}", System.Text.Encoding.ASCII.GetBytes($"%PDF-1.4 {i}")), CancellationToken.None, "Example Bank");
+            ids.Add(row.Id);
+        }
+        var alice = Docs(w, BankWorld.Alice);
+        var bob = Docs(w, BankWorld.Bob);
+
+        var labelled = (await alice.GetDocumentsAsync(1)).Where(d => ids.Contains(d.Id)).ToList();
+        Assert.Equal(2, labelled.Count);
+        Assert.All(labelled, d => Assert.Equal(("Example Bank", "Example Bank", null, true), (d.AccountName, d.Institution, d.AccountId, d.CanAssign)));
+        Assert.DoesNotContain(await bob.GetDocumentsAsync(1), d => ids.Contains(d.Id));
+
+        // A viewer may neither assign to the shared account nor touch the owner's documents.
+        Assert.Empty(await bob.GetAssignableAccountsAsync(1));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.AssignAsync(ids, giro));
+
+        Assert.Equal([giro], (await alice.GetAssignableAccountsAsync(1)).Select(a => a.Id));
+        Assert.Equal(2, await alice.AssignAsync(ids, giro));
+        var assigned = await w.T.Db.BankStatements.AsNoTracking().Where(s => ids.Contains(s.Id)).ToListAsync();
+        Assert.All(assigned, s => Assert.Equal(giro, s.AccountId));
+        var bobs = (await bob.GetDocumentsAsync(1)).Where(d => ids.Contains(d.Id)).ToList();
+        Assert.Equal(2, bobs.Count);
+        Assert.All(bobs, d => Assert.False(d.CanAssign));
+    }
 }

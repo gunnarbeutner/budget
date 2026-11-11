@@ -8,7 +8,8 @@
 //
 // Every export uploads the decrypted database, then offers MoneyMoney's stored statement PDFs
 // (Statements/<bank>/<file>, indexed by the `statements` table): the server answers which of them
-// (by account and SHA-256) it still needs, and only those are uploaded, one request per file.
+// (by SHA-256) it still needs, and only those are uploaded, one request per file, with the bank
+// folder so documents of accounts the server does not know can be labelled.
 // MoneyMoney's files and database are only read, never changed.
 //
 // Decryption runs in-process via SQLCipher.swift (binary xcframework); upload uses
@@ -818,6 +819,8 @@ enum Exporter {
         let accountKey: Int64
         let name: String
         let date: String
+        /// MoneyMoney's folder for the bank (e.g. "Example Bank"); labels documents of accounts the server does not know.
+        let directory: String
         let file: URL
         let sha256: String
     }
@@ -862,7 +865,10 @@ enum Exporter {
             }
             let title = row.name.isEmpty ? (row.filename as NSString).deletingPathExtension : row.name
             let date = dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(row.createdTimestamp)))
-            files.append(StatementFile(accountKey: row.accountKey, name: title, date: date, file: file, sha256: hash))
+            files.append(
+                StatementFile(
+                    accountKey: row.accountKey, name: title, date: date, directory: row.directory, file: file,
+                    sha256: hash))
         }
         logger("Found \(files.count) statement file(s)\(missing > 0 ? " (\(missing) listed but not readable)" : "")")
         return files
@@ -917,6 +923,7 @@ enum Exporter {
                 URLQueryItem(name: "accountKey", value: String(statement.accountKey)),
                 URLQueryItem(name: "date", value: statement.date),
                 URLQueryItem(name: "name", value: statement.name),
+                URLQueryItem(name: "bank", value: statement.directory),
             ]
             guard let url = components?.url else { continue }
             var request = URLRequest(url: url)

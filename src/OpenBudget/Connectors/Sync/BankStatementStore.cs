@@ -21,9 +21,10 @@ public sealed class BankStatementStore
 
     /// <summary>
     /// Writes the document and its index row for <paramref name="ownerUserId"/>; <paramref name="loginId"/> is null for
-    /// documents that came from no bank login. <paramref name="folder"/> is the subfolder below the owner's directory.
+    /// documents that came from no bank login. <paramref name="folder"/> is the subfolder below the owner's directory;
+    /// <paramref name="institution"/> labels a document stored without an account.
     /// </summary>
-    public async Task<BankStatement> StoreAsync(BudgetDbContext db, string ownerUserId, int? loginId, string folder, Account? account, RemoteStatement statement, CancellationToken ct)
+    public async Task<BankStatement> StoreAsync(BudgetDbContext db, string ownerUserId, int? loginId, string folder, Account? account, RemoteStatement statement, CancellationToken ct, string? institution = null)
     {
         var relative = Path.Combine(ownerUserId, folder, $"{Guid.NewGuid():N}.pdf");
         var full = Resolve(relative);
@@ -43,6 +44,7 @@ public sealed class BankStatementStore
                 FilePath = relative.Replace('\\', '/'),
                 Sha256 = HashOf(statement.Content),
                 SizeBytes = statement.Content.LongLength,
+                Institution = institution,
             };
             db.BankStatements.Add(row);
             await db.SaveChangesAsync(ct);

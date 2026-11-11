@@ -410,4 +410,41 @@ public sealed class DocumentsTests : EndToEndTestBase
         var overflow = await Page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth > window.innerWidth");
         Assert.That(overflow, Is.False);
     }
+
+    [Test]
+    public async Task Imported_documents_without_an_account_show_their_bank_and_are_assigned_to_an_account_in_bulk()
+    {
+        await SeedDocumentsAsync();
+        var store = Factory.Services.GetRequiredService<BankStatementStore>();
+        await using (var db = await Db.CreateDbContextAsync())
+        {
+            var owner = await db.Users.SingleAsync(u => u.UserName == E2ESeed.UserName);
+            for (var m = 1; m <= 2; m++)
+                await store.StoreAsync(db, owner.Id, null, "import", null,
+                    new RemoteStatement($"mm:{m}", null, new DateOnly(2021, m, 28), $"Imported 2021-{m:D2}", Pdf($"Imported statement 2021-{m:D2}")), CancellationToken.None, "Example Bank");
+        }
+
+        await GoToAsync($"/projects/{Pid}/documents");
+        await Expect(Cards).ToHaveCountAsync(6);
+        await Page.GetByTestId("docs-account").SelectOptionAsync("bank:Example Bank");
+        await Expect(Cards).ToHaveCountAsync(2);
+        await Expect(Cards.First).ToContainTextAsync("Example Bank");
+
+        await Cards.First.HoverAsync();
+        await Checks.First.ClickAsync();
+        await Page.GetByTestId("docs-sel-all").ClickAsync();
+        await Expect(Page.GetByTestId("docs-sel-count")).ToHaveTextAsync("2 selected");
+        await Page.GetByTestId("docs-sel-assign").ClickAsync();
+        await Expect(Page.GetByTestId("assign-confirm")).ToBeDisabledAsync();
+        await Page.GetByTestId("assign-account").SelectOptionAsync(EditingSeed.BankAccountId.ToString(CultureInfo.InvariantCulture));
+        await Page.GetByTestId("assign-confirm").ClickAsync();
+
+        await Expect(Page.GetByTestId("docs-selbar")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("documents-empty")).ToBeVisibleAsync();
+        await Page.GetByTestId("docs-account").SelectOptionAsync(EditingSeed.BankAccountId.ToString(CultureInfo.InvariantCulture));
+        await Expect(Cards).ToHaveCountAsync(5);
+        await using var check = await Db.CreateDbContextAsync();
+        var imported = await check.BankStatements.Where(s => s.Identifier.StartsWith("mm:")).ToListAsync();
+        Assert.That(imported.Select(s => s.AccountId), Is.All.EqualTo(EditingSeed.BankAccountId));
+    }
 }

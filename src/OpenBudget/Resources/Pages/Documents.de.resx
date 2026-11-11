@@ -220,4 +220,31 @@
   <data name="Sel_Bar" xml:space="preserve">
     <value>Auswahl</value>
   </data>
+  <data name="Sel_Assign" xml:space="preserve">
+    <value>Konto zuordnen…</value>
+  </data>
+  <data name="Assign_Title" xml:space="preserve">
+    <value>Konto zuordnen</value>
+  </data>
+  <data name="Assign_Account" xml:space="preserve">
+    <value>Konto</value>
+  </data>
+  <data name="Assign_Choose" xml:space="preserve">
+    <value>Konto auswählen</value>
+  </data>
+  <data name="Assign_Hint" xml:space="preserve">
+    <value>{0} Dokument(e) werden dem gewählten Konto zugeordnet.</value>
+  </data>
+  <data name="Assign_NoAccounts" xml:space="preserve">
+    <value>Dieses Projekt hat kein bearbeitbares Konto.</value>
+  </data>
+  <data name="Assign_Cancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="Assign_Confirm" xml:space="preserve">
+    <value>Zuordnen</value>
+  </data>
+  <data name="Assign_Denied" xml:space="preserve">
+    <value>Diesem Konto können keine Dokumente zugeordnet werden.</value>
+  </data>
 </root>

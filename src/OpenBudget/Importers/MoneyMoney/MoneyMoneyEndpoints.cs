@@ -9,7 +9,7 @@ namespace OpenBudget.Importers.MoneyMoney;
 /// <item><see cref="StatementsCheckRoute"/>: JSON <c>{"statements":[{"accountKey":1,"sha256":"..."}]}</c> of the
 /// statements MoneyMoney holds; answers <c>{"wanted":["..."]}</c>, the hashes still to upload;</item>
 /// <item><see cref="StatementsRoute"/>: one statement PDF as the body, with <c>accountKey</c>, <c>date</c>
-/// (yyyy-MM-dd) and <c>name</c> as query parameters.</item>
+/// (yyyy-MM-dd), <c>name</c> and <c>bank</c> (MoneyMoney's bank folder) as query parameters.</item>
 /// </list>
 /// </summary>
 internal static class MoneyMoneyEndpoints
@@ -79,7 +79,7 @@ internal static class MoneyMoneyEndpoints
         if (content.Length < 5 || !content.AsSpan(0, 5).SequenceEqual("%PDF-"u8))
             return Results.BadRequest("The statement is not a PDF.");
 
-        var outcome = await statements.StoreAsync(sourceName, accountKey, date, request.Query["name"].ToString(), content, ct);
+        var outcome = await statements.StoreAsync(sourceName, accountKey, date, request.Query["name"].ToString(), content, ct, request.Query["bank"].ToString());
         return Results.Ok(new { status = outcome switch { MoneyMoneyStatementOutcome.Stored => "stored", MoneyMoneyStatementOutcome.Duplicate => "duplicate", MoneyMoneyStatementOutcome.NoAccount => "skipped", _ => "skipped" } });
     }
 
