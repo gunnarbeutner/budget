@@ -423,6 +423,7 @@
                 keysBound = true;
                 selfRef ??= DotNetObjectReference.Create(this);
                 await module.InvokeVoidAsync("bindSelectionKeys", selfRef);
+                await module.InvokeVoidAsync("bindMarquee", selfRef);
             }
             if (renderViewer && viewing != null)
             {
@@ -587,6 +588,17 @@
         return true;
     }
 
+    /// <summary>Rectangle selection (or a click on empty space): the full set of selected ids.</summary>
+    [JSInvokable]
+    public void SetSelectionFromMarquee(long[] ids)
+    {
+        if (viewing != null || showSettings || showAssign || items == null) return;
+        selected.Clear();
+        foreach (var id in ids) selected.Add(id);
+        selectionAnchor = null;
+        StateHasChanged();
+    }
+
     private async Task DownloadSelectedAsync()
     {
         var ids = SelectedVisible().Select(d => d.Id).ToArray();
@@ -725,6 +737,7 @@
         try
         {
             await m.InvokeVoidAsync("unbindSelectionKeys");
+            await m.InvokeVoidAsync("unbindMarquee");
             await m.DisposeAsync();
         }
         catch (JSDisconnectedException) { /* circuit gone */ }

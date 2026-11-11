@@ -348,6 +348,51 @@ public sealed class DocumentsTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task The_checkbox_hides_again_after_the_viewer_closes()
+    {
+        await SeedDocumentsAsync();
+        await GoToAsync($"/projects/{Pid}/documents");
+        await Cards.First.ClickAsync();
+        await Expect(Page.GetByTestId("doc-viewer")).ToBeVisibleAsync();
+        await Page.GetByTestId("doc-close").ClickAsync();
+        await Expect(Page.GetByTestId("doc-viewer")).ToHaveCountAsync(0);
+        await Page.Mouse.MoveAsync(1, 1);
+        await Expect(Checks.First).ToHaveCSSAsync("opacity", "0");
+    }
+
+    [Test]
+    public async Task Dragging_a_rectangle_over_empty_space_selects_the_cards_it_touches()
+    {
+        await SeedDocumentsAsync();
+        await GoToAsync($"/projects/{Pid}/documents");
+        await Expect(Cards).ToHaveCountAsync(4);
+        var grid = await Page.GetByTestId("documents-grid").BoundingBoxAsync();
+        var first = await Cards.Nth(0).BoundingBoxAsync();
+        var second = await Cards.Nth(1).BoundingBoxAsync();
+        Assert.That(grid, Is.Not.Null);
+
+        // From the gap below the first row's cards, up across the first two cards.
+        var startX = first!.X + 10;
+        var startY = Math.Max(first.Y + first.Height, second!.Y + second.Height) + 6;
+        await Page.Mouse.MoveAsync(startX, startY);
+        await Page.Mouse.DownAsync();
+        await Page.Mouse.MoveAsync(startX + 20, startY - 20, new() { Steps = 3 });
+        await Page.Mouse.MoveAsync(second.X + 10, second.Y + second.Height / 2, new() { Steps = 5 });
+        await Expect(Page.GetByTestId("doc-marquee")).ToBeVisibleAsync();
+        await Page.Mouse.UpAsync();
+
+        await Expect(Page.GetByTestId("docs-sel-count")).ToHaveTextAsync("2 selected");
+        await Expect(Cards.Nth(0)).ToHaveAttributeAsync("data-selected", "true");
+        await Expect(Cards.Nth(1)).ToHaveAttributeAsync("data-selected", "true");
+        await Expect(Page.GetByTestId("doc-marquee")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("doc-viewer")).ToHaveCountAsync(0);
+
+        // A plain click on empty space clears the selection.
+        await Page.Mouse.ClickAsync(startX, startY);
+        await Expect(Page.GetByTestId("docs-selbar")).ToHaveCountAsync(0);
+    }
+
+    [Test]
     public async Task Several_selected_documents_download_as_one_zip_without_marking_them_read()
     {
         await SeedDocumentsAsync();

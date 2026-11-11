@@ -206,3 +206,128 @@ export function unbindSelectionKeys() {
     if (keyHandler) document.removeEventListener("keydown", keyHandler);
     keyHandler = null;
 }
+
+let marquee = null;
+
+/** The nearest scrolling ancestor of an element (the document when none scrolls). */
+function scrollerOf(el) {
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        const oy = getComputedStyle(p).overflowY;
+        if ((oy === "auto" || oy === "scroll") && p.scrollHeight > p.clientHeight) return p;
+    }
+    return document.scrollingElement || document.documentElement;
+}
+
+/**
+ * Rectangle selection on the grid with mouse or pen: dragging from empty space in the main area (not on a card,
+ * control or toolbar) draws a rectangle and selects the cards it touches; Shift or Cmd/Ctrl adds to the current
+ * selection, otherwise the rectangle replaces it. A plain click on empty space clears the selection. Near the top
+ * or bottom edge the view scrolls. The cards hit are highlighted locally while dragging and reported to .NET once
+ * on release (SetSelectionFromMarquee with the full selected id set).
+ */
+export function bindMarquee(dotnet) {
+    unbindMarquee();
+    const THRESHOLD = 4, EDGE = 40;
+    let drag = null;
+
+    const cardsOf = grid => [...grid.querySelectorAll(":scope > li")];
+    const idOf = li => li.querySelector("[data-doc-card]")?.dataset.docCard;
+    const isDoc = s => s === document.scrollingElement || s === document.documentElement;
+
+    const update = () => {
+        const d = drag;
+        const sx = d.scroller.scrollLeft, sy = d.scroller.scrollTop;
+        const x1 = Math.min(d.x0, d.x + sx) - sx, x2 = Math.max(d.x0, d.x + sx) - sx;
+        const y1 = Math.min(d.y0, d.y + sy) - sy, y2 = Math.max(d.y0, d.y + sy) - sy;
+        Object.assign(d.box.style, { left: `${x1}px`, top: `${y1}px`, width: `${x2 - x1}px`, height: `${y2 - y1}px` });
+        for (const li of cardsOf(d.grid)) {
+            const r = li.getBoundingClientRect();
+            li.classList.toggle("marquee-hit", r.right >= x1 && r.left <= x2 && r.bottom >= y1 && r.top <= y2);
+        }
+    };
+
+    const tick = () => {
+        if (!drag) return;
+        const rect = isDoc(drag.scroller) ? { top: 0, bottom: window.innerHeight } : drag.scroller.getBoundingClientRect();
+        const top = Math.max(0, rect.top), bottom = Math.min(window.innerHeight, rect.bottom);
+        let dy = 0;
+        if (drag.y < top + EDGE) dy = -Math.ceil((top + EDGE - drag.y) / 3);
+        else if (drag.y > bottom - EDGE) dy = Math.ceil((drag.y - bottom + EDGE) / 3);
+        if (dy !== 0 && drag.box) {
+            drag.scroller.scrollTop += dy;
+            update();
+        }
+        drag.raf = requestAnimationFrame(tick);
+    };
+
+    const down = e => {
+        if (e.button !== 0 || e.pointerType === "touch") return;
+        const t = e.target;
+        if (!(t instanceof Element)) return;
+        if (document.querySelector(".modal.show")) return;
+        const grid = document.querySelector(".doc-grid[data-testid='documents-grid']");
+        const area = grid?.closest(".browse-main");
+        if (!grid || !area || !area.contains(t)) return;
+        if (t.closest(".doc-grid > li, a, button, input, select, textarea, label, [contenteditable], .page-toolbar, .docs-selbar, .modal")) return;
+        const scroller = scrollerOf(grid);
+        e.preventDefault(); // no text selection while dragging
+        drag = {
+            grid, scroller, pointerId: e.pointerId, box: null,
+            additive: e.shiftKey || e.metaKey || e.ctrlKey,
+            x0: e.clientX + scroller.scrollLeft, y0: e.clientY + scroller.scrollTop,
+            sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY,
+        };
+        drag.raf = requestAnimationFrame(tick);
+    };
+
+    const move = e => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        drag.x = e.clientX;
+        drag.y = e.clientY;
+        if (!drag.box) {
+            if (Math.abs(e.clientX - drag.sx) < THRESHOLD && Math.abs(e.clientY - drag.sy) < THRESHOLD) return;
+            drag.box = document.createElement("div");
+            drag.box.className = "doc-marquee";
+            drag.box.dataset.testid = "doc-marquee";
+            document.body.appendChild(drag.box);
+            document.body.classList.add("doc-marquee-active");
+            drag.grid.classList.toggle("marquee-replace", !drag.additive);
+        }
+        e.preventDefault();
+        update();
+    };
+
+    const end = e => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        const d = drag;
+        drag = null;
+        cancelAnimationFrame(d.raf);
+        if (!d.box) {
+            if (e.type === "pointerup" && !d.additive) dotnet.invokeMethodAsync("SetSelectionFromMarquee", []).catch(() => { });
+            return;
+        }
+        const lis = cardsOf(d.grid);
+        const ids = new Set(d.additive ? lis.filter(li => li.classList.contains("selected")).map(idOf) : []);
+        for (const li of lis) if (li.classList.contains("marquee-hit")) ids.add(idOf(li));
+        d.box.remove();
+        document.body.classList.remove("doc-marquee-active");
+        d.grid.classList.remove("marquee-replace");
+        for (const li of lis) li.classList.remove("marquee-hit");
+        dotnet.invokeMethodAsync("SetSelectionFromMarquee", [...ids].filter(Boolean).map(Number)).catch(() => { });
+    };
+
+    document.addEventListener("pointerdown", down);
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", end);
+    document.addEventListener("pointercancel", end);
+    marquee = { down, move, end };
+}
+
+export function unbindMarquee() {
+    if (!marquee) return;
+    document.removeEventListener("pointerdown", marquee.down);
+    document.removeEventListener("pointermove", marquee.move);
+    document.removeEventListener("pointerup", marquee.end);
+    document.removeEventListener("pointercancel", marquee.end);
+    marquee = null;
+}

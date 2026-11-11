@@ -1608,7 +1608,7 @@ a.budget-cat:focus-visible { outline: 2px solid var(--ob-accent); outline-offset
 .doc-account { min-width: 0; }
 .doc-unread { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--ob-unread); }
 .doc-date { font-size: 12px; color: var(--ob-muted); font-variant-numeric: tabular-nums; }
-/* Multi-select: a checkbox on each card (on hover/focus, always once something is selected or on touch). */
+/* Multi-select: a checkbox on each card (on hover/keyboard focus, always once something is selected or on touch). */
 .doc-grid > li { position: relative; }
 .doc-check {
     position: absolute; top: 12px; left: 12px; z-index: 1;
@@ -1618,12 +1618,25 @@ a.budget-cat:focus-visible { outline: 2px solid var(--ob-accent); outline-offset
     box-shadow: 0 1px 3px var(--ob-thumb-shadow); opacity: 0; transition: opacity .1s;
 }
 .doc-check i { font-size: 15px; line-height: 1; }
-.doc-grid > li:hover .doc-check, .doc-grid > li:focus-within .doc-check, .doc-grid.selecting .doc-check { opacity: 1; }
+.doc-grid > li:hover .doc-check, .doc-grid > li:has(:focus-visible) .doc-check, .doc-grid.selecting .doc-check { opacity: 1; }
 .doc-check:focus-visible { outline: 2px solid var(--ob-accent); outline-offset: 2px; }
 .doc-grid > li.selected .doc-check { background: var(--ob-accent); border-color: var(--ob-accent); color: #fff; }
 .doc-grid > li.selected .doc-card { background: var(--ob-row-hover-bg); }
 .doc-grid > li.selected .doc-thumb { outline: 2px solid var(--ob-accent); outline-offset: 1px; }
 @media (hover: none) { .doc-check { opacity: 1; } }
+/* Rectangle selection: the dragged rectangle and the cards it touches. */
+.doc-marquee {
+    position: fixed; z-index: 1050; pointer-events: none;
+    border: 1px solid var(--ob-accent);
+    background: color-mix(in srgb, var(--ob-accent) 15%, transparent);
+}
+body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
+.doc-grid.marquee-replace > li.selected:not(.marquee-hit) .doc-check { background: var(--bs-body-bg); border-color: var(--ob-muted); color: transparent; }
+.doc-grid.marquee-replace > li.selected:not(.marquee-hit) .doc-card { background: none; }
+.doc-grid.marquee-replace > li.selected:not(.marquee-hit) .doc-thumb { outline: none; }
+.doc-grid > li.marquee-hit .doc-check { opacity: 1; background: var(--ob-accent); border-color: var(--ob-accent); color: #fff; }
+.doc-grid > li.marquee-hit .doc-card { background: var(--ob-row-hover-bg); }
+.doc-grid > li.marquee-hit .doc-thumb { outline: 2px solid var(--ob-accent); outline-offset: 1px; }
 .docs-selbar {
     position: sticky; top: 0; z-index: 5;
     display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
