@@ -511,14 +511,9 @@ public class MoneyMoneyImportService
             .GroupBy(t => t.AccountId!.Value).Select(g => new { g.Key, Sum = g.Sum(t => t.Amount) })
             .ToDictionaryAsync(x => x.Key, x => x.Sum, ct);
         foreach (var account in await db.Accounts.Where(a => a.SourceId == sourceId).ToListAsync(ct))
-        {
             account.InitialBalance = stored.TryGetValue(account.Id, out var cents) ? cents
                 : reported.TryGetValue(account.Id, out var balance) ? balance - sums.GetValueOrDefault(account.Id)
                 : 0;
-            // A PortfolioPerformance ledger's balance is its initial balance plus its bookings (see PortfolioAccountSync).
-            if (account.Provider == AccountProviders.PortfolioPerformance && account.Portfolio is null or 0)
-                account.Balances = $"11:{((account.InitialBalance + sums.GetValueOrDefault(account.Id)) / 100m).ToString("F6", CultureInfo.InvariantCulture)},3:{account.Currency ?? "EUR"},";
-        }
         await db.SaveChangesAsync(ct);
     }
 

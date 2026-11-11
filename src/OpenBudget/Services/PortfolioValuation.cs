@@ -41,9 +41,11 @@ public sealed record PpLedgerEntry(string Key, long Timestamp, string Type, doub
 /// <summary>The value of one security in a portfolio per day (epoch day → value), while it was held.</summary>
 public sealed record PpValueSeries(string SecurityUuid, string SecurityName, SortedDictionary<long, double> Values);
 
+/// <summary>One portfolio as an account: positions, ledger, value history and the cash beside it.</summary>
+/// <param name="CashBalance">The balance of the portfolio's reference (cash) account; null without one.</param>
 public sealed record PpPortfolioValuation(
     string Uuid, string Name, bool Retired, IReadOnlyList<PpPosition> Positions, IReadOnlyList<PpLedgerEntry> Ledger,
-    IReadOnlyList<PpValueSeries> History);
+    IReadOnlyList<PpValueSeries> History, double? CashBalance = null);
 
 public sealed record PpCashAccount(string Uuid, string Name, string Currency, bool Retired, double Balance);
 
@@ -218,8 +220,9 @@ public static class PortfolioValuation
             }
             positions = positions.OrderByDescending(x => x.Amount).ToList();
             var ledger = (ledgers.GetValueOrDefault(uuid) ?? []).OrderByDescending(e => e.Timestamp).ToList();
+            double? cashBalance = Str(p.ReferenceAccount) is { } reference && accounts.ContainsKey(reference) ? balances.GetValueOrDefault(reference) : null;
             portfolios.Add(new PpPortfolioValuation(uuid, Str(p.Name) ?? uuid, p.IsRetired, positions, ledger,
-                History(txns, uuid, client.Securities, priceHistory, todayDay)));
+                History(txns, uuid, client.Securities, priceHistory, todayDay), cashBalance));
         }
 
         var cash = accounts.Values

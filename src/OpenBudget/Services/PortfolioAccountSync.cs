@@ -397,9 +397,13 @@ public sealed class PortfolioAccountSync
         await CategoryRuleEngine.ApplyToNewAsync(db, account.Id, added, ct);
         await db.SaveChangesAsync(ct);
 
-        var sum = account.InitialBalance
-            + (await db.Transactions.Where(t => t.AccountId == account.Id && t.Splitted != SplitState.Parent).SumAsync(t => (long?)t.Amount, ct) ?? 0);
-        account.Balances = $"11:{(sum / 100m).ToString("F6", CultureInfo.InvariantCulture)},3:{account.Currency ?? currency},";
+        // The balance is the reference cash account's, as PortfolioPerformance shows it (deposits and transfers move
+        // it without a ledger line); a portfolio without one sums its ledger.
+        var balance = portfolio.CashBalance is { } cash
+            ? (decimal)Math.Round(cash, 2, MidpointRounding.AwayFromZero)
+            : (account.InitialBalance + (await db.Transactions.Where(t => t.AccountId == account.Id && t.Splitted != SplitState.Parent)
+                .SumAsync(t => (long?)t.Amount, ct) ?? 0)) / 100m;
+        account.Balances = $"11:{balance.ToString("F6", CultureInfo.InvariantCulture)},3:{account.Currency ?? currency},";
     }
 
     /// <summary>A booking of the taken-over ledger that is this PortfolioPerformance transaction: same amount within a day, by type and purpose, else by type.</summary>

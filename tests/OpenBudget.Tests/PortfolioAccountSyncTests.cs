@@ -116,7 +116,7 @@ public sealed class PortfolioAccountSyncTests : IAsyncDisposable
         var buy = rows.Single(r => r.ExternalId == "pp:t-buy1");
         Assert.Equal((-50000L, "Kauf", "Kauf: Gold (10)"), (buy.Amount, buy.Name, buy.Purpose));
         Assert.Equal(-300L, rows.Single(r => r.ExternalId == "pp:t-sell:tax").Amount);
-        Assert.Equal(-977m, ledger.CurrentBalance);
+        Assert.Equal(672m, ledger.CurrentBalance);   // the reference cash account: 1000 deposited − 510 + 175 + 8 − 1
         Assert.All(rows, r => Assert.False(r.IsNew));   // the first fill is not "unread"
 
         // New accounts land in the default project for new accounts.
@@ -228,7 +228,7 @@ public sealed class PortfolioAccountSyncTests : IAsyncDisposable
         var adopted = rows.Single(t => t.Id == 100);                      // the old booking is the PortfolioPerformance purchase
         Assert.Equal(("pp:t-buy1", 9001L), (adopted.ExternalId, adopted.CategoryId!.Value));
         Assert.Contains(rows, t => t.Id == 101 && t.ExternalId == null);
-        Assert.Equal(23m, (await AccountAsync(11)).CurrentBalance);      // −977 + 1000
+        Assert.Equal(672m, (await AccountAsync(11)).CurrentBalance);     // the reference cash account's balance, whatever the old rows
 
         await using var db = await _t.System.CreateDbContextAsync();
         var chart = await db.PortfolioChartPoints.Where(p => p.AccountId == 10).ToListAsync();
