@@ -121,6 +121,9 @@ internal sealed class KrakenApi
                 _log.LogInformation("Kraken refused the nonce of {Method}; retrying once with a fresh one.", method);
                 continue;
             }
+            if (errors.Any(e => e.Contains("Invalid nonce", StringComparison.OrdinalIgnoreCase)))
+                throw new ConnectorException("Kraken refused the request counter (nonce) again. This API key is probably also used by another app, " +
+                    "which counts higher: create a separate read-only key for OpenBudget (Settings › API › Create API key).");
             if (errors.Any(IsRateLimit) && attempt < _options.RateLimitRetries)
             {
                 await WaitAsync(attempt++, method, ct);
