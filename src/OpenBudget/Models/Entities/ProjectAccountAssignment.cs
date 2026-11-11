@@ -18,6 +18,16 @@ public enum AccountScope
     Informational = 2
 }
 
+/// <summary>The role an account starts with when it joins a project.</summary>
+public static class AccountScopeDefaults
+{
+    /// <summary>Depots and PortfolioPerformance accounts are informational (no cash moves there); others count fully.</summary>
+    public static AccountScope For(Account account) => IsInvestment(account) ? AccountScope.Informational : default;
+
+    public static bool IsInvestment(Account account) =>
+        account.Provider == AccountProviders.PortfolioPerformance || account.Portfolio is 1 || account.Type == 7;
+}
+
 /// <summary>
 /// Links a imported account to a project so cashflow / balance views can be scoped
 /// to the accounts that actually fund the project.

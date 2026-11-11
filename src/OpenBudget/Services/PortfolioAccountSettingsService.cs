@@ -112,7 +112,7 @@ public sealed class PortfolioAccountSettingsService
                 var already = await db.ProjectAccountAssignments.Where(a => a.ProjectId == pid && accounts.Contains(a.AccountId))
                     .Select(a => a.AccountId).ToListAsync(ct);
                 foreach (var id in accounts.Except(already))
-                    db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = pid, AccountId = id });
+                    db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = pid, AccountId = id, Scope = AccountScope.Informational });
             }
         }
         await db.SaveChangesAsync(ct);

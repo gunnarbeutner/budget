@@ -282,7 +282,7 @@ public sealed class PortfolioAccountSync
         if (projectId is { } pid && await db.Projects.AnyAsync(p => p.Id == pid && p.OwnerUserId == ownerUserId, ct))
         {
             foreach (var id in accountIds)
-                db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = pid, AccountId = id });
+                db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = pid, AccountId = id, Scope = AccountScope.Informational });
             await db.SaveChangesAsync(ct);
             return;
         }

@@ -308,9 +308,10 @@ public class ProjectService
         if (!await db.Projects.AnyAsync(p => p.Id == projectId))
             throw new AccessDeniedException("Project not found.");
 
-        var ids = await UnassignedOwnAccountsQuery(db).Select(a => a.Id).ToListAsync();
-        foreach (var id in ids)
-            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = projectId, AccountId = id });
+        var unassigned = await UnassignedOwnAccountsQuery(db).ToListAsync();
+        var ids = unassigned.Select(a => a.Id).ToList();
+        foreach (var account in unassigned)
+            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = projectId, AccountId = account.Id, Scope = AccountScopeDefaults.For(account) });
         if (ids.Count == 0) return 0;
         await db.SaveChangesAsync();
         Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
