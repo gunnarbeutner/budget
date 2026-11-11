@@ -186,7 +186,7 @@ public sealed class BankSyncRunner
         catch (OperationCanceledException ex) when (ct.IsCancellationRequested)
         {
             _logger.LogInformation(ex, "Sync of bank login {LoginId} was cancelled.", login.Id);
-            errors.Add("The sync was cancelled.");
+            errors.Add(CancelledMessage);
         }
         catch (Exception ex)
         {
@@ -223,7 +223,8 @@ public sealed class BankSyncRunner
                 login.EncryptedSession = _secrets.Encrypt(JsonSerializer.Serialize(session), SessionPurpose);
             }
             if (request.Transactions) login.LastSyncAt = attempted;
-            if (request.Transactions || errors.Count > 0)
+            // A run that only fetched statements leaves a transaction error in place, but not a mere interruption.
+            if (request.Transactions || errors.Count > 0 || login.LastError == CancelledMessage)
                 login.LastError = errors.Count == 0 ? null : Truncate(string.Join(" ", errors), 1000);
             if (credentialsInvalid) login.CredentialsInvalid = true;
             await db.SaveChangesAsync(CancellationToken.None);
@@ -233,6 +234,8 @@ public sealed class BankSyncRunner
             _logger.LogError(ex, "Could not record the result of the sync of bank login {LoginId}.", login.Id);
         }
     }
+
+    internal const string CancelledMessage = "The sync was cancelled.";
 
     private static string Truncate(string text, int max) => text.Length <= max ? text : text[..max];
 
