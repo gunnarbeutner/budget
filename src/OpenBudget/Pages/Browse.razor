@@ -446,7 +446,7 @@
                                 var isExpanded = expandedId == row.Id;
                                 var showNew = row.IsNew && !viewedIds.Contains(row.Id);
                             }
-                            <div class="tx-item @(isSelected ? "selected" : "") @(isExpanded ? "expanded" : "")" data-tx-id="@row.Id" data-testid="tx-item" @key="row.Id">
+                            <div class="tx-item @(isSelected ? "selected" : "") @(isExpanded ? "expanded" : "") @(row.IsPending ? "tx-item-pending" : "")" data-tx-id="@row.Id" data-testid="tx-item" @key="row.Id">
                                 @if (item.ShowDay)
                                 {
                                     <div class="tx-day" data-testid="tx-day">
@@ -457,7 +457,7 @@
                                         }
                                     </div>
                                 }
-                                <div class="tx-row @(cursorId == row.Id ? "tx-cursor" : "") @(row.IsPending ? "tx-row-pending" : "")" data-testid="tx-row" title="@(row.IsPending ? L["Tx_PendingTitle"].Value : null)"
+                                <div class="tx-row @(cursorId == row.Id ? "tx-cursor" : "")" data-testid="tx-row" title="@(row.IsPending ? L["Tx_PendingTitle"].Value : null)"
                                      aria-selected="@isSelected.ToString().ToLowerInvariant()"
                                      @onclick="e => OnRowClickAsync(item, e)"
                                      @oncontextmenu="e => OnRowContextAsync(item, e)" @oncontextmenu:preventDefault="true">

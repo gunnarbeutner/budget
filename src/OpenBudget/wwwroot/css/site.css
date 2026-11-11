@@ -1690,10 +1690,15 @@ a.budget-cat:focus-visible { outline: 2px solid var(--ob-accent); outline-offset
 .bank-accounts-table td { overflow-wrap: anywhere; }
 @media (max-width: 767.98px) { .bank-accounts-table { table-layout: auto; } }
 
-/* Pending bookings: diagonal stripes across the whole row; a visually hidden label names them for screen readers. */
-.tx-row.tx-row-pending {
+/* Pending bookings: diagonal stripes across the whole booking, its expanded details included;
+   the day header above keeps its own background. A visually hidden label names them for screen readers. */
+.tx-item.tx-item-pending {
     background-image: repeating-linear-gradient(-45deg, var(--ob-pending-stripe, rgba(127,127,127,.10)) 0 6px, transparent 6px 14px);
+    /* anchored to the viewport, so the stripes of neighbouring pending bookings line up */
+    background-attachment: fixed;
 }
+.tx-item.tx-item-pending .tx-row:hover { background: transparent; }
+.tx-item.tx-item-pending:not(.selected):not(.expanded):hover { background-color: var(--ob-row-hover-bg); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ob-pending-stripe: rgba(255,255,255,.06); } }
 :root[data-theme="dark"] { --ob-pending-stripe: rgba(255,255,255,.06); }
 

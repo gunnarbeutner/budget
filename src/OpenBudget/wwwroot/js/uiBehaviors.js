@@ -348,6 +348,14 @@ document.addEventListener("mousedown", function (e) {
     if (el) e.preventDefault();
 }, true);
 
+// Shift/Cmd/Ctrl-click on a booking extends or toggles the selection; without this the browser would also select the
+// text between the two clicks.
+document.addEventListener("mousedown", function (e) {
+    if (e.button !== 0 || !(e.shiftKey || e.metaKey || e.ctrlKey)) return;
+    var row = e.target instanceof Element ? e.target.closest(".tx-row") : null;
+    if (row && !e.target.closest("input, textarea, select, [contenteditable]")) e.preventDefault();
+}, true);
+
 // Category picker: toggles .cp-has-more on the list's wrapper while content remains below the visible part (fade + ▾ hint).
 window.obPickerMoreHint = function (list) {
     if (!list || !list.parentElement) return;
