@@ -255,10 +255,16 @@ public sealed class WebLoginSession : IAsyncDisposable
             await _browser.ClickAsync(selector);
             await Task.Delay(_options.SettleDelay, ct);
         }
+        var entered = new HashSet<WebLoginCredential>();
         for (var i = 0; i < fill.Steps.Count; i++)
         {
             var step = fill.Steps[i];
             var label = $"step {i + 1} of {fill.Steps.Count}";
+            if (step.SkipWhenEntered && step.Fields.All(f => entered.Contains(f.Credential)))
+            {
+                _logger.LogInformation("Web login: {Step} skipped; its fields were on an earlier page.", label);
+                continue;
+            }
             if (step.WaitFor != null && !await WaitVisibleAsync(step.WaitFor, _options.FormTimeout, ct))
             {
                 if (i == 0 && await SignedInAsync()) return;
@@ -276,6 +282,12 @@ public sealed class WebLoginSession : IAsyncDisposable
                     return;
                 }
                 var boxes = field.BoxSelectors();
+                if (field.Optional && field.CharacterBoxes == 0)
+                {
+                    if (await _browser.FillAsync(boxes[0], value, f == 0 ? _options.FormTimeout : TimeSpan.FromSeconds(2))) entered.Add(field.Credential);
+                    else _logger.LogInformation("Web login: {Step}: the optional field {Selector} is not on this page.", label, boxes[0]);
+                    continue;
+                }
                 for (var b = 0; b < boxes.Count; b++)
                 {
                     var timeout = f == 0 && b == 0 ? _options.FormTimeout : TimeSpan.FromSeconds(5);
@@ -296,6 +308,7 @@ public sealed class WebLoginSession : IAsyncDisposable
                     }
                     ct.ThrowIfCancellationRequested();
                 }
+                entered.Add(field.Credential);
             }
             if (step.Verify is { } verify && !await VerifyAsync(verify, fill.ValueOf(verify.Credential), label))
                 return;
@@ -305,8 +318,15 @@ public sealed class WebLoginSession : IAsyncDisposable
                     r.ErrorField != null ? $" ({r.ErrorField}={r.ErrorCode})" : ""));
             if (!await ClickWhenReadyAsync(step.SubmitSelector, ct))
             {
-                ShowPage($"{label}: no enabled button matched {step.SubmitSelector}");
-                return;
+                if (!step.EnterSubmits)
+                {
+                    ShowPage($"{label}: no enabled button matched {step.SubmitSelector}");
+                    return;
+                }
+                // the last filled field still has the focus: Enter submits its form like a person would
+                _logger.LogInformation("Web login: {Step}: no button matched {Selector}; pressing Enter.", label, step.SubmitSelector);
+                await _browser.DispatchKeyAsync("keyDown", "Enter", "Enter", "\r", 0, null);
+                await _browser.DispatchKeyAsync("keyUp", "Enter", "Enter", null, 0, null);
             }
             _logger.LogInformation("Web login: submitted {Step} of the sign-in form.", label);
         }
@@ -408,14 +428,18 @@ public sealed class WebLoginSession : IAsyncDisposable
                 _shownBecauseStuck = true;
                 SetMode(WebLoginMode.Interactive);
             }
+            if (_spec.WaitingScript is { } waiting && (_submittedAt != null || Mode == WebLoginMode.Interactive)
+                && await RunWaitingScriptAsync(waiting, url) is { } ended)
+                return ended;
             if (!_spec.UrlMatches(url)) continue;
             IReadOnlyList<CookieState> cookies = _spec.SuccessWhen != null ? await _browser.GetCookiesAsync() : [];
             if (!_spec.IsSuccess(url, cookies)) continue;
-            if (_spec.SuccessCheck is { } check && !(await _browser.CheckAsync(check, "")).Ok)
+            if (_spec.SuccessCheck is { } check && await _browser.CheckAsync(check, "") is { Ok: false } failed)
             {
                 if (Mode != WebLoginMode.Interactive)
                 {
-                    _logger.LogInformation("Web login: landed on {Path}, but the bank still wants something on the page; showing it.", SafePath(url));
+                    _logger.LogInformation("Web login: landed on {Path}, but the bank still wants something on the page; showing it.{Reason}",
+                        SafePath(url), failed.Reason.Length > 0 ? " " + failed.Reason : "");
                     SetMode(WebLoginMode.Interactive);
                 }
                 continue;
@@ -424,6 +448,46 @@ public sealed class WebLoginSession : IAsyncDisposable
         }
         ct.ThrowIfCancellationRequested();
         return WebLoginResult.Fail("The web login ended.");
+    }
+
+    // the page was shown because the spec's waiting script asked for the user; it hides it again once the script acts
+    private bool _shownByScript;
+
+    private string? _lastWaitingReason;
+
+    /// <summary>Runs the spec's <see cref="WebLoginSpec.WaitingScript"/> once; a result when it ended the sign-in.</summary>
+    private async Task<WebLoginResult?> RunWaitingScriptAsync(string script, Uri url)
+    {
+        var r = await _browser.CheckAsync(script, _spec.WaitingArgument);
+        if (r.Ok)
+        {
+            if (r.Reason.Length == 0) return null;
+            _logger.LogInformation("Web login: {Reason} on {Path}.", r.Reason, SafePath(url));
+            if (_shownByScript && Mode == WebLoginMode.Interactive)
+            {
+                _shownByScript = false;
+                SetMode(WebLoginMode.Waiting);
+            }
+            return null;
+        }
+        if (r.Reason.StartsWith("end:", StringComparison.Ordinal))
+        {
+            var message = r.Reason[4..].Trim();
+            _logger.LogWarning("Web login: ended by the page's state on {Path}: {Reason}", SafePath(url), message);
+            return WebLoginResult.Fail(message.Length > 0 ? message : "The sign-in did not complete.");
+        }
+        if (Mode != WebLoginMode.Interactive)
+        {
+            _logger.LogInformation("Web login: the page needs the user ({Reason}) on {Path}; showing it.", r.Reason, SafePath(url));
+            _shownByScript = true;
+            SetMode(WebLoginMode.Interactive);
+        }
+        else if (!string.Equals(_lastWaitingReason, r.Reason, StringComparison.Ordinal))
+        {
+            _logger.LogInformation("Web login: the page still needs the user ({Reason}) on {Path}.", r.Reason, SafePath(url));
+        }
+        _lastWaitingReason = r.Reason;
+        return null;
     }
 
     private async Task EndAsync(WebLoginResult result)

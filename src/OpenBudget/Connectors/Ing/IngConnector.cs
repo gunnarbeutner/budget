@@ -8,10 +8,10 @@ namespace OpenBudget.Connectors.Ing;
 /// <summary>
 /// ING (Germany): Girokonto and Extra-Konto over FinTS, plus a web banking part (<see cref="IngWebClient"/>) for what
 /// FinTS does not offer: the Postbox (statements, securities and tax documents) and web-only products (VL savings
-/// contracts, the Rahmenkredit credit line; see <see cref="WebProducts"/>). The web part
-/// signs in with the same access number and PIN and needs a confirmation in the Banking to go app, so it only runs
-/// when it is needed: once to discover web-only accounts, when a web-only account is refreshed, and when statements are
-/// fetched. A failed discovery never fails the FinTS part.
+/// contracts, the Rahmenkredit credit line; see <see cref="WebProducts"/>). The web part signs in in a browser (a web
+/// login that keeps the browser for the requests) with the same access number and PIN and needs a confirmation in the
+/// Banking to go app, so it only runs when it is needed: once to discover web-only accounts, when a web-only account is
+/// refreshed, and when statements are fetched. A failed discovery never fails the FinTS part.
 /// </summary>
 public sealed class IngConnector : IBankConnector, IBatchedStatements
 {
@@ -46,15 +46,16 @@ public sealed class IngConnector : IBankConnector, IBatchedStatements
     private ChallengeCoroutine<IReadOnlyList<RemoteStatement>>? _statements;
     private IReadOnlyList<RemoteAccount> _fintsAccounts = [];
 
-    public IngConnector(ConnectorContext context, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null)
+    /// <summary>The connector; <paramref name="webBase"/> is where the web banking lives (tests use a local one), ING's own address when null.</summary>
+    public IngConnector(ConnectorContext context, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null, Uri? webBase = null)
     {
         _context = context;
         _fints = FinTsConnector.Create(context, Config, options, transportFactory);
-        _web = new IngWebClient(context.Http, context.Clock, context.Logger);
+        _web = new IngWebClient(webBase, context.Clock, context.Logger);
     }
 
-    public static ConnectorRegistration Registration(FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null) =>
-        new(Config.ConnectorType, Config.DisplayName, Config.Description, ctx => new IngConnector(ctx, options, transportFactory), Statements: true);
+    public static ConnectorRegistration Registration(FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null, Uri? webBase = null) =>
+        new(Config.ConnectorType, Config.DisplayName, Config.Description, ctx => new IngConnector(ctx, options, transportFactory, webBase), Statements: true);
 
     public string ConnectorType => TypeName;
 
@@ -126,11 +127,18 @@ public sealed class IngConnector : IBankConnector, IBatchedStatements
         return true;
     }
 
-    /// <summary>Signs in to the web banking (once per sync) and refreshes the remembered web-only accounts.</summary>
+    /// <summary>
+    /// Signs in to the web banking in a browser unless the one kept from an earlier step of this sync is still open, and
+    /// refreshes the remembered web-only accounts.
+    /// </summary>
     private async Task EnsureWebAsync(IChallengeAsker ask, CancellationToken ct)
     {
         if (_web.LoggedIn) return;
-        await _web.LoginAsync(_credentials ?? throw new ConnectorException("Not logged in."), ask, ct);
+        var answer = await ask.AskAsync(ConnectorChallenge.WebLogin(
+            "Sign in to ING's web banking and confirm the sign-in in your Banking to go app.",
+            _web.WebLogin(_credentials ?? throw new ConnectorException("Not logged in.")), IngWebClient.WebLoginReference));
+        if (answer.Failure != null) throw new ConnectorException(answer.Failure);
+        await _web.AttachAsync(answer.Browser ?? throw new ConnectorException("The sign-in to ING's web banking did not complete."), ct);
         if (_web.PreferredDevice != null) _session.Values[DeviceKey] = _web.PreferredDevice;
         var fintsIbans = _fintsAccounts.Select(a => a.Iban).Where(i => i != null).ToHashSet(StringComparer.Ordinal);
         var found = _web.Accounts

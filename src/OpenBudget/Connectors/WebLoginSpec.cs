@@ -69,6 +69,27 @@ public sealed class WebLoginSpec
     /// </summary>
     public IReadOnlyList<string> ObservedRequests { get; init; } = [];
 
+    /// <summary>
+    /// A JavaScript function run in the page at every poll while the sign-in is not done yet (after the form was
+    /// submitted, or while the page is shown), with <see cref="WaitingArgument"/> as its argument, for steps between the
+    /// sign-in form and the landing page (a device choice, say). It returns <c>{ ok, reason }</c>: ok with an empty reason
+    /// means nothing to do; ok with a reason means the script acted (the reason is logged, and a page the script had
+    /// shown is hidden again); not ok means the page needs the user (it is shown, the reason is logged); not ok with a
+    /// reason starting with "end:" ends the sign-in as failed, the rest of the reason being the message. Reasons are logged:
+    /// the script's own words with counts and the page's structure, never field values.
+    /// </summary>
+    public string? WaitingScript { get; init; }
+
+    /// <summary>The argument of <see cref="WaitingScript"/> (a remembered choice, say); never logged.</summary>
+    public string WaitingArgument { get; init; } = "";
+
+    /// <summary>
+    /// When the sign-in fails (timed out, cancelled, ended by <see cref="WaitingScript"/>, or no browser on this server),
+    /// the connector gets an answer with <see cref="ChallengeAnswer.Failure"/> instead of the step failing, so it can carry
+    /// on without its web part. Rejected credentials still fail the step.
+    /// </summary>
+    public bool ReportFailure { get; init; }
+
     /// <summary>Cookies of these domains (and their sub-/parent domains' cookies that reach them) travel between the jar and the browser.</summary>
     public IReadOnlyList<string> CookieDomains { get; }
 
@@ -128,6 +149,9 @@ public enum WebLoginCredential
 /// </summary>
 public sealed record WebLoginField(string Selector, WebLoginCredential Credential, int CharacterBoxes = 0)
 {
+    /// <summary>A field the page may not show (a PIN asked on the same page or on the next one): skipped when it does not appear within a moment.</summary>
+    public bool Optional { get; init; }
+
     /// <summary>The selector of each box (or just <see cref="Selector"/> for a plain field).</summary>
     public IReadOnlyList<string> BoxSelectors() =>
         CharacterBoxes > 0
@@ -143,6 +167,12 @@ public sealed record WebLoginStep(IReadOnlyList<WebLoginField> Fields, string Su
 {
     /// <summary>Checked after the fields were filled and before the submit button is clicked (see <see cref="WebLoginVerify"/>).</summary>
     public WebLoginVerify? Verify { get; init; }
+
+    /// <summary>Skipped when earlier steps already entered every credential this one asks for (an optional field found there).</summary>
+    public bool SkipWhenEntered { get; init; }
+
+    /// <summary>When no enabled submit button matches, pressing Enter in the last filled field submits the step instead.</summary>
+    public bool EnterSubmits { get; init; }
 
     public WebLoginStep(string fieldSelector, WebLoginCredential credential, string submitSelector, string? waitFor = null)
         : this([new WebLoginField(fieldSelector, credential)], submitSelector, waitFor)

@@ -349,6 +349,18 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
         }
     }
 
+    public async Task<string> GetHtmlAsync()
+    {
+        try
+        {
+            return await _page.GetContentAsync();
+        }
+        catch (PuppeteerException ex)
+        {
+            throw new BrowserActionException("The page could not be read.", ex);
+        }
+    }
+
     public async Task<bool> IsVisibleAsync(string selector)
     {
         try

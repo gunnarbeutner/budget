@@ -77,6 +77,9 @@ public interface IBrowserSession : IAsyncDisposable
     /// </summary>
     Task<WebLoginCheck> CheckAsync(string function, string argument) => Task.FromResult(new WebLoginCheck(true, ""));
 
+    /// <summary>The page's current document as HTML (its DOM serialised, after the page's scripts ran).</summary>
+    Task<string> GetHtmlAsync() => Task.FromResult("");
+
     /// <summary>Runs a request with the page's own <c>fetch</c> (same-origin credentials, redirects followed in the browser).</summary>
     Task<BrowserFetchResponse> FetchAsync(BrowserFetchRequest request, CancellationToken ct) =>
         throw new NotSupportedException("This browser cannot run requests in the page.");

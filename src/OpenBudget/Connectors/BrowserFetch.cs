@@ -26,6 +26,9 @@ public sealed record BrowserFetchResponse(int Status, Uri? Url, string? ContentT
     public string Text => System.Text.Encoding.UTF8.GetString(Body);
 }
 
+/// <summary>The page a kept browser shows: its address and its document as HTML.</summary>
+public sealed record BrowserPage(Uri Url, string Html);
+
 /// <summary>
 /// A browser that stays signed in after a web login (<see cref="WebLoginSpec.KeepBrowser"/>), handed to the connector with
 /// the challenge's answer. It is closed when the sync step that asked for it ends, or after a lifetime limit; requests
@@ -46,6 +49,9 @@ public interface IBrowserFetcher
 
     /// <summary>Loads <paramref name="url"/> in the signed-in page, so the site's own scripts run there.</summary>
     Task NavigateAsync(Uri url, CancellationToken ct) => Task.CompletedTask;
+
+    /// <summary>The page's address and its current document (the DOM after the page's scripts ran).</summary>
+    Task<BrowserPage> PageAsync(CancellationToken ct) => Task.FromException<BrowserPage>(new ConnectorException("This browser cannot read its page."));
 
     /// <summary>
     /// Runs a JavaScript function in the page with <paramref name="argument"/>; it returns <c>{ ok, reason }</c>.

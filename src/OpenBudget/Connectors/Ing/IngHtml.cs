@@ -163,44 +163,11 @@ internal static partial class IngHtml
     public static WicketAjaxCall? AjaxFor(string html, string componentId) =>
         AjaxCalls(html).FirstOrDefault(c => string.Equals(c.ComponentId, componentId, StringComparison.Ordinal));
 
-    /// <summary>
-    /// How long after loading the page ignores submits and clicks (<c>RequestBlocker.checkEvent(event, ms)</c>);
-    /// the default when the page does not say.
-    /// </summary>
-    public static TimeSpan RequestBlock(string html)
-    {
-        var ms = RequestBlockRegex().Matches(html).Select(m => int.Parse(m.Groups["ms"].Value, CultureInfo.InvariantCulture)).DefaultIfEmpty(1000).Max();
-        return TimeSpan.FromMilliseconds(ms);
-    }
-
-    /// <summary>The URL a <c>Wicket.Timer</c> polls (the login's "has the app confirmed yet?" status call), or null.</summary>
-    public static string? TimerUrl(string html)
-    {
-        var m = TimerRegex().Match(html);
-        return m.Success ? m.Groups["u"].Value : null;
-    }
-
-    /// <summary>The target of a Wicket Ajax <c>&lt;redirect&gt;</c>, or null.</summary>
-    public static string? AjaxRedirect(string response)
-    {
-        var m = AjaxRedirectRegex().Match(response);
-        return m.Success ? m.Groups["u"].Value.Trim() : null;
-    }
-
     /// <summary>The download URL of a <c>Wicket.AjaxDownload.initiate(...)</c>, or null.</summary>
     public static string? AjaxDownloadUrl(string response)
     {
         var m = AjaxDownloadRegex().Match(response);
         return m.Success ? m.Groups["u"].Value.Replace("\\/", "/", StringComparison.Ordinal) : null;
-    }
-
-    /// <summary>A page that only forwards with JavaScript (<c>window.location.replace('...')</c>), or null.</summary>
-    public static string? ScriptRedirect(string html)
-    {
-        // Every page also carries a logout handler written the same way; that one is never a forward.
-        return ScriptRedirectRegex().Matches(html)
-            .Select(m => m.Groups["u"].Value.Replace("\\/", "/", StringComparison.Ordinal))
-            .FirstOrDefault(u => !u.Contains("logout", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>The href of the first link with CSS class <paramref name="cls"/>, or null.</summary>
@@ -441,20 +408,8 @@ internal static partial class IngHtml
     [GeneratedRegex(@"(?<open><a\b[^>]*>)(?<inner>.*?)</a>", RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 2000)]
     private static partial Regex AnchorRegex();
 
-    [GeneratedRegex(@"Wicket\.Timer\.set\('[^']*',\s*function\(\)\s*\{\s*Wicket\.Ajax\.ajax\(\{""u"":""(?<u>[^""]+)""", RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
-    private static partial Regex TimerRegex();
-
-    [GeneratedRegex(@"RequestBlocker\.checkEvent\(\s*event\s*,\s*(?<ms>\d{1,6})\s*\)", RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
-    private static partial Regex RequestBlockRegex();
-
-    [GeneratedRegex(@"<redirect>\s*<!\[CDATA\[(?<u>.*?)\]\]>\s*</redirect>", RegexOptions.Singleline | RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
-    private static partial Regex AjaxRedirectRegex();
-
     [GeneratedRegex(@"Wicket\.AjaxDownload\.initiate\(.*?""downloadUrl"":""(?<u>[^""]+)""", RegexOptions.Singleline | RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
     private static partial Regex AjaxDownloadRegex();
-
-    [GeneratedRegex(@"window\.location\.replace\('(?<u>[^']+)'\)", RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
-    private static partial Regex ScriptRedirectRegex();
 
     [GeneratedRegex(@"<div\b[^>]*class=""[^""]*\bpostbox-message\b[^""]*""", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 2000)]
     private static partial Regex PostboxRowStartRegex();

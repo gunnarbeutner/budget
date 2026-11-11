@@ -1,16 +1,17 @@
 #pragma warning disable CA2000 // test doubles: lifetimes are owned by the HTTP client
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Web;
-using OpenBudget.Connectors;
 
 namespace OpenBudget.Tests.Connectors;
 
 /// <summary>
-/// A made-up ING web banking (banking.ing.de / access.ing.de): the page structures and Wicket mechanics of the real
-/// one (sign-in form, device choice, app confirmation polled through a Wicket timer, JavaScript-forwarding post-login
-/// pages, overview, Postbox tabs with an Ajax time range, CSV export dialog) with invented people and IBANs.
+/// A made-up ING web banking: a JavaScript sign-in like the real one (a page whose form is rendered by script under a
+/// hash route, a device choice, the app confirmation polled by the page, then an empty page that forwards by script
+/// through the OAuth callback), and the Wicket pages behind it (overview, Postbox tabs with an Ajax time range, CSV
+/// export dialog) with invented people and IBANs. It serves any base address (a local one for a real browser).
 /// </summary>
 internal sealed class FakeIng : HttpMessageHandler
 {
@@ -19,12 +20,16 @@ internal sealed class FakeIng : HttpMessageHandler
     public const string CreditIban = "DE00000000000000000099";
     public const string GiroIban = "DE00000000000000000011"; // = SyntheticBank.Iban (the FinTS side)
     public const string SessionCookie = "ing_session";
-    private const string Banking = "https://banking.ing.de";
 
     private readonly Lock _lock = new();
     private readonly HashSet<string> _sessions = [];
+    private readonly string _base;
     private int _counter;
     private int _polls;
+    private bool _confirmed;
+
+    /// <summary>A fake living at <paramref name="baseUri"/> (ING's own address by default).</summary>
+    public FakeIng(string baseUri = "https://banking.ing.de") => _base = baseUri.TrimEnd('/');
 
     public string Pin { get; set; } = "654321PIN";
 
@@ -34,20 +39,26 @@ internal sealed class FakeIng : HttpMessageHandler
 
     public bool Reject { get; set; }
 
+    /// <summary>The sign-in page asks for the access number first and for the PIN on the next route.</summary>
+    public bool PinOnNextPage { get; set; }
+
     public string? ChosenDevice { get; private set; }
 
-    /// <summary>How long the sign-in pages ignore submits after loading (ING's RequestBlocker; 1000 ms there).</summary>
+    /// <summary>How long after showing the device choice (or the sign-in form) a submit is too fast for a push (ING ignores it).</summary>
     public int RequestBlockMs { get; set; } = 100;
 
     /// <summary>
     /// Push notifications sent to the app. Like ING, the confirmation is created by the submit that names the device
     /// (the device choice, or the sign-in itself with a single device), but pushed only when that submit did not come
-    /// faster than the page lets a person click; status polls never push.
+    /// faster than a person could click; status polls never push.
     /// </summary>
     public int Pushes { get; private set; }
 
     /// <summary>Confirmations created without a push (visible only when the app is opened).</summary>
     public int SilentApprovals { get; private set; }
+
+    /// <summary>Completed sign-ins (sessions created by the OAuth callback).</summary>
+    public int SignIns { get; private set; }
 
     private DateTime _pageShownAt;
 
@@ -90,26 +101,27 @@ internal sealed class FakeIng : HttpMessageHandler
 
     private string _opened = "vl";
 
-    public int Count(string needle) => Requests.Count(r => r.Contains(needle, StringComparison.Ordinal));
-
-    public BankHttpClient CreateClient() => new(jar => new CookieRedirectHandler(jar, this));
+    public int Count(string needle)
+    {
+        lock (_lock) return Requests.Count(r => r.Contains(needle, StringComparison.Ordinal));
+    }
 
     public void ExpireSessions()
     {
         lock (_lock) _sessions.Clear();
     }
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        var body = request.Content == null ? "" : request.Content.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
-        lock (_lock) return Task.FromResult(Handle(request, body));
+        var body = request.Content == null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
+        lock (_lock) return Handle(request, body);
     }
 
     private HttpResponseMessage Handle(HttpRequestMessage request, string body)
     {
         var uri = request.RequestUri!;
         var x = HttpUtility.ParseQueryString(uri.Query)["x"] ?? "";
-        Requests.Add($"{request.Method} {uri.Host}{uri.AbsolutePath}?x={x}");
+        Requests.Add($"{request.Method} {uri.AbsolutePath}?x={x}");
         if (body.Length > 0) Bodies.Add(body);
         var cookie = request.Headers.TryGetValues("Cookie", out var c) ? string.Join(';', c) : "";
         var m = Regex.Match(cookie, SessionCookie + "=(?<v>[^;]+)", RegexOptions.None, TimeSpan.FromSeconds(1));
@@ -117,65 +129,80 @@ internal sealed class FakeIng : HttpMessageHandler
         var ajax = request.Headers.Contains("Wicket-Ajax");
         var form = HttpUtility.ParseQueryString(body);
 
-        if (uri.Host == "access.ing.de") return Access(request.Method, x, form, ajax);
-        if (uri.AbsolutePath == "/app/login/oauth2/code/ibbr")
+        switch (uri.AbsolutePath)
         {
-            var id = $"s{++_counter}-secretvalue";
-            _sessions.Add(id);
-            var r = Redirect(Banking + "/app/postlogin/wait?x=w1");
-            r.Headers.Add("Set-Cookie", $"{SessionCookie}={id}; Path=/; Secure; HttpOnly");
-            return r;
+            case "/app/login/oauth":
+                _pageShownAt = DateTime.UtcNow;
+                return Html(LoginApp.Replace("__SPLIT__", PinOnNextPage ? "true" : "false", StringComparison.Ordinal));
+            case "/app/login/api/authenticate" when request.Method == HttpMethod.Post:
+                return Authenticate(body);
+            case "/app/login/api/device" when request.Method == HttpMethod.Post:
+                return ChooseDevice(body);
+            case "/app/login/api/status":
+                return Status();
+            case "/delogin/oauth/authorize":
+                // an empty page that only forwards by script
+                return Html("<!DOCTYPE html><html><head><title></title></head><body><script>setTimeout(function () { location.replace(\"/app/login/oauth2/code/ibbr?code=c1&state=s1\"); }, 200);</script></body></html>");
+            case "/app/login/oauth2/code/ibbr":
+                if (!_confirmed) return Redirect(_base + "/app/login/oauth");
+                _confirmed = false;
+                var id = $"s{++_counter}-secretvalue";
+                _sessions.Add(id);
+                SignIns++;
+                var r = Redirect(_base + "/app/obligo/obligo?x=ov");
+                r.Headers.Add("Set-Cookie", $"{SessionCookie}={id}; Path=/; HttpOnly{(_base.StartsWith("https:", StringComparison.Ordinal) ? "; Secure" : "")}");
+                return r;
+            default:
+                break;
         }
-        if (!signedIn) return Redirect("https://access.ing.de/delogin/w/login?t=T1&login_hint");
+        if (!signedIn) return Redirect(_base + "/app/login/oauth");
 
         return uri.AbsolutePath switch
         {
-            "/app/obligo" or "/app/obligo/" => Redirect(Banking + "/app/obligo/obligo?x=ov"),
-            "/app/postlogin/wait" => Html(Page("<p>Einen Moment bitte</p>",
-                "Wicket.Event.add(window, \"load\", function(event) { window.location.replace('https://banking.ing.de/app/postlogin/process?x=p1');;});")),
-            "/app/postlogin/process" => Redirect(Banking + "/app/obligo/obligo?x=ov"),
+            "/app/obligo" or "/app/obligo/" => Redirect(_base + "/app/obligo/obligo?x=ov"),
             "/app/obligo/obligo" => Html(Overview()),
-            "/app/obligo/postbox" => Redirect(Banking + "/app/postbox/postbox?x=box1"),
+            "/app/obligo/postbox" => Redirect(_base + "/app/postbox/postbox?x=box1"),
             "/app/obligo/umsatzanzeige" => Umsatz(request.Method, x, form, ajax),
             "/app/postbox/postbox" => Postbox(request.Method, x, form, ajax),
             _ => new HttpResponseMessage(HttpStatusCode.NotFound),
         };
     }
 
-    // ---- sign-in (access.ing.de, Wicket) ----
+    // ---- sign-in (a JavaScript app over a small JSON API) ----
 
-    private HttpResponseMessage Access(HttpMethod method, string x, System.Collections.Specialized.NameValueCollection form, bool ajax)
+    private HttpResponseMessage Authenticate(string body)
     {
-        if (method == HttpMethod.Get && x.Length == 0) return Shown(LoginPage());
-        if (method == HttpMethod.Post && x == "submit")
+        using var json = JsonDocument.Parse(body.Length == 0 ? "{}" : body);
+        var alias = json.RootElement.TryGetProperty("alias", out var a) ? a.GetString() : null;
+        var pin = json.RootElement.TryGetProperty("pin", out var p) ? p.GetString() : null;
+        if (alias != Alias || pin != Pin) return Json(HttpStatusCode.Unauthorized, "{\"error\":\"WRONG_CREDENTIALS\"}");
+        _polls = 0;
+        _confirmed = false;
+        if (Devices.Count > 1)
         {
-            if (form["view:alias:alias"] != Alias || form["view:secret:secret"] != Pin || form["view:p"] != "p") return Html(LoginPage());
-            _polls = 0;
-            if (Devices.Count > 1) return Shown(DevicePage());
-            CreateApproval();
-            return Html(ApprovalPage());
+            _pageShownAt = DateTime.UtcNow;
+            return Json(HttpStatusCode.OK, JsonSerializer.Serialize(new { next = "device", devices = Devices }));
         }
-        if (method == HttpMethod.Post && x == "device")
-        {
-            var index = int.Parse(form["view:auth:deviceSelection:device:device"] ?? "-1", System.Globalization.CultureInfo.InvariantCulture);
-            ChosenDevice = Devices[index];
-            if (form["buttons:next"] == null) return new HttpResponseMessage(HttpStatusCode.BadRequest);
-            CreateApproval();
-            return Html(ApprovalPage());
-        }
-        if (x == "status" && ajax)
-        {
-            if (Reject) return Xml("<ajax-response><component id=\"id1\"><![CDATA[<p>Die Freigabe wurde abgelehnt.</p>]]></component></ajax-response>");
-            if (++_polls <= PendingPolls) return Xml($"<?xml version=\"1.0\" encoding=\"UTF-8\"?><ajax-response><evaluate><![CDATA[{Timer()}]]></evaluate></ajax-response>");
-            return Xml("<ajax-response><redirect><![CDATA[https://banking.ing.de/app/login/oauth2/code/ibbr?code=c1&state=s1]]></redirect></ajax-response>");
-        }
-        return new HttpResponseMessage(HttpStatusCode.BadRequest);
+        CreateApproval();
+        return Json(HttpStatusCode.OK, "{\"next\":\"confirm\"}");
     }
 
-    private HttpResponseMessage Shown(string html)
+    private HttpResponseMessage ChooseDevice(string body)
     {
-        _pageShownAt = DateTime.UtcNow;
-        return Html(html);
+        using var json = JsonDocument.Parse(body);
+        var index = json.RootElement.GetProperty("index").GetInt32();
+        if (index < 0 || index >= Devices.Count) return Json(HttpStatusCode.BadRequest, "{}");
+        ChosenDevice = Devices[index];
+        CreateApproval();
+        return Json(HttpStatusCode.OK, "{\"next\":\"confirm\"}");
+    }
+
+    private HttpResponseMessage Status()
+    {
+        if (Reject) return Json(HttpStatusCode.OK, "{\"state\":\"rejected\"}");
+        if (++_polls <= PendingPolls) return Json(HttpStatusCode.OK, "{\"state\":\"pending\"}");
+        _confirmed = true;
+        return Json(HttpStatusCode.OK, "{\"state\":\"done\",\"redirect\":\"/delogin/oauth/authorize?client_id=ibbr&code_challenge=x\"}");
     }
 
     private void CreateApproval()
@@ -184,28 +211,72 @@ internal sealed class FakeIng : HttpMessageHandler
         else SilentApprovals++;
     }
 
-    private string Blocker() =>
-        $"$(document).ready(function() {{ $(document).submit(function(event) {{ return RequestBlocker.checkEvent(event, {RequestBlockMs}); }}); }});";
+    /// <summary>The sign-in page: an empty shell whose script renders each step under a hash route.</summary>
+    private const string LoginApp = """
+        <!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title></title></head><body><div id="app"></div><script>
+        (function () {
+          var app = document.getElementById('app');
+          var devices = [];
+          var split = __SPLIT__;
+          var alias = '';
+          function signIn(pin) {
+            api('authenticate', { alias: alias, pin: pin }).then(function (r) {
+              if (r.status !== 200) { document.getElementById('err').innerHTML = '<p role="alert">Zugangsnummer oder PIN falsch.</p>'; return; }
+              devices = r.json.devices || [];
+              location.hash = r.json.next === 'device' ? '#/authenticate/device' : '#/authenticate/confirm';
+            });
+          }
+          function api(path, body) {
+            return fetch('/app/login/api/' + path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, credentials: 'same-origin' })
+              .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, json: j }; }); });
+          }
+          function render() {
+            var route = location.hash;
+            if (route === '#/authenticate/ibbr') {
+              app.innerHTML = '<p>Laden …</p>';
+              setTimeout(function () {
+                app.innerHTML = '<h1>Anmeldung zum Internetbanking</h1><form id="login"><label>Zugangsnummer <input name="alias" autocomplete="username"></label>'
+                  + (split ? '<button type="submit">Weiter</button></form>' : '<label>PIN <input type="password" name="pin"></label><div id="err"></div><button type="submit">Anmelden</button></form>');
+                document.getElementById('login').addEventListener('submit', function (e) {
+                  e.preventDefault();
+                  alias = e.target.alias.value;
+                  if (split) location.hash = '#/authenticate/pin';
+                  else signIn(e.target.pin.value);
+                });
+              }, 300);
+            } else if (route === '#/authenticate/pin') {
+              app.innerHTML = '<h1>PIN eingeben</h1><form id="pin"><label>PIN <input type="password" name="pin"></label><div id="err"></div><button type="submit">Anmelden</button></form>';
+              document.getElementById('pin').addEventListener('submit', function (e) { e.preventDefault(); signIn(e.target.pin.value); });
+            } else if (route === '#/authenticate/device') {
+              app.innerHTML = '<h1>Gerät auswählen</h1><form id="dev">' + devices.map(function (d, i) {
+                return '<label><input type="radio" name="device" value="' + i + '"' + (i === 0 ? ' checked' : '') + '> <span>' + d + '</span></label>';
+              }).join('') + '<button type="submit">Weiter</button></form>';
+              document.getElementById('dev').addEventListener('submit', function (e) {
+                e.preventDefault();
+                api('device', { index: +e.target.querySelector('input[name=device]:checked').value }).then(function () { location.hash = '#/authenticate/confirm'; });
+              });
+            } else if (route === '#/authenticate/confirm') {
+              app.innerHTML = '<h1>Freigabe</h1><p>Bitte bestätigen Sie die Anmeldung in Ihrer Banking to go App.</p>';
+              var poll = function () {
+                api('status').then(function (r) {
+                  if (r.json.state === 'done') { location.href = r.json.redirect; return; }
+                  if (r.json.state === 'rejected') { app.innerHTML = '<h1>Anmeldung</h1><p>Die Freigabe wurde abgelehnt.</p>'; return; }
+                  setTimeout(poll, 300);
+                });
+              };
+              setTimeout(poll, 300);
+            } else {
+              location.replace('#/authenticate/ibbr');
+            }
+          }
+          window.addEventListener('hashchange', render);
+          render();
+        })();
+        </script></body></html>
+        """;
 
-    private static string Timer() =>
-        "<script type=\"text/javascript\"> /*<![CDATA[*/ (function(){Wicket.Timer.set('id1e.0', function(){Wicket.Ajax.ajax({\"u\":\"./login?x=status&t=T1\",\"c\":\"id1e\"});}, 3000);})(); /*]]]]><![CDATA[>*/ </script>";
-
-    private string LoginPage() => Page(
-        "<form id=\"id9\" method=\"post\" action=\"./login?x=submit&amp;t=T1\" novalidate=\"novalidate\"><input type=\"hidden\" value=\"p\" name=\"view:p\"/>"
-        + "<input class=\"input-field form-group--error-field\" type=\"text\" value=\"\" name=\"view:alias:alias\" id=\"id5\" autocomplete=\"username\"/>"
-        + "<input class=\"input-field form-group--error-field\" type=\"password\" value=\"\" name=\"view:secret:secret\" id=\"id6\"/>"
-        + "<button class=\"button orange\" role=\"button\" name=\"view:next-inline\" id=\"id8\">Weiter</button></form>", Blocker());
-
-    private string DevicePage()
-    {
-        var radios = string.Concat(Devices.Select((d, i) =>
-            $"<label class=\"form-group__controls-radio\"> <input class=\"input-field__radio\" type=\"radio\" id=\"idr{i}\" name=\"view:auth:deviceSelection:device:device\" value=\"{i}\"{(i == 0 ? " checked=\"checked\"" : "")}/> <span class=\"input-field__radio--button\"> <span class=\"input-field__radio--checked\"></span> </span> <span class=\"input-field__radio--label\">{d}</span> </label>"));
-        return Page($"<form id=\"id9\" method=\"post\" action=\"./login?x=device&amp;t=T1\">{radios}<button class=\"button orange\" type=\"submit\" name=\"buttons:next\" id=\"id17\">Weiter</button><button type=\"submit\" name=\"buttons:cancel\" id=\"id1c\">Abbrechen</button></form>", Blocker());
-    }
-
-    private static string ApprovalPage() => Page(
-        "<p>Bitte bestätigen Sie in Ihrer Banking to go App.</p><a class=\"link-standard--g2p\" id=\"id16\" href=\"#\">Probleme?</a>",
-        "Wicket.Ajax.ajax({\"u\":\"./login?x=open&t=T1\",\"c\":\"id16\",\"e\":\"click\",\"pd\":true});" + Timer());
+    private static HttpResponseMessage Json(HttpStatusCode status, string json) =>
+        new(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 
     // ---- overview ----
 
@@ -215,7 +286,7 @@ internal sealed class FakeIng : HttpMessageHandler
         + $" </span> <span class=\"g2p-account__type\">Alex Example</span> <span class=\"g2p-account__iban\">{iban}</span> <ing-tooltip has-arrow> <button slot=\"invoker\" type=\"button\" class=\"g2p-iban-copy\"></button> </ing-tooltip> </span>"
         + $" <span class=\"u-visuallyhidden u-block\">Betrag {amount} Euro</span> <span class=\"g2p-account__balance\"> <span>0</span>€ </span> </a> </div>";
 
-    private static string Overview() => Page(
+    internal static string Overview() => Page(
         "<a class=\"quicklinks__postbox\" id=\"id233\" href=\"./postbox?x=pb\"> Postbox </a>"
         + Row("./umsatzanzeige?x=giro", "Alltag", "Girokonto", "DE00 0000 0000 0000 0000 11", "955,11")
         + Row("./umsatzanzeige?x=vl", "VL-Sparen", null, "DE00 0000 0000 0000 0000 77", "1.040,00")
@@ -239,7 +310,7 @@ internal sealed class FakeIng : HttpMessageHandler
                     "Wicket.Ajax.ajax({\"u\":\"./umsatzanzeige?x=export\",\"c\":\"idexp\",\"e\":\"click\",\"pd\":true});"));
             case "filter" when method == HttpMethod.Post:
                 Filters.Add((form["filterAnzeige:datum:von:input"] ?? "", form["filterAnzeige:datum:bis:input"] ?? ""));
-                return Redirect(Banking + "/app/obligo/umsatzanzeige?x=" + _opened + "2");
+                return Redirect(_base + "/app/obligo/umsatzanzeige?x=" + _opened + "2");
             case "export" when ajax:
                 return Xml("<?xml version=\"1.0\" encoding=\"UTF-8\"?><ajax-response><component id=\"idm\"><![CDATA[<div class=\"panel-wrap\"> <form class=\"panel panel--modal\" id=\"idform\" method=\"post\" action=\"./umsatzanzeige?x=modal\"><div id=\"idform_hf_0\" hidden=\"\" class=\"hidden-fields\"></div>"
                     + "<label class=\"label--radio\"> <input type=\"radio\" class=\"input-field__radio\" id=\"r7\" name=\"content-container:content:exportTypes\" value=\"radio7\" checked=\"checked\"> <span class=\"input-field__radio--label\">PDF</span> </label>"

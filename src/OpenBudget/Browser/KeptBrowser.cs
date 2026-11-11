@@ -48,6 +48,9 @@ public sealed class KeptBrowser : IBrowserFetcher, IAsyncDisposable
     public Task NavigateAsync(Uri url, CancellationToken ct) =>
         RunAsync(async token => { await _browser.NavigateAsync(url, token); return true; }, ct);
 
+    public Task<BrowserPage> PageAsync(CancellationToken ct) =>
+        RunAsync(async _ => new BrowserPage(_browser.Url, await _browser.GetHtmlAsync()), ct);
+
     public Task<(bool Ok, string Reason)> RunAsync(string function, string argument, CancellationToken ct) =>
         RunAsync(async _ => { var r = await _browser.CheckAsync(function, argument); return (r.Ok, r.Reason); }, ct);
 

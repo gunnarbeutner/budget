@@ -272,8 +272,11 @@ public sealed class BankSyncRunner
     private async Task<(ChallengeAnswer? Answer, string? Rejected)> RunWebLoginAsync(ConnectorChallenge challenge, ISyncSink sink, SyncContext context, CancellationToken ct)
     {
         var spec = challenge.WebLoginSpec!;
+        // a spec that reports failures lets the connector carry on without its web part
+        (ChallengeAnswer?, string?) Failed(string message) =>
+            spec.ReportFailure ? (new ChallengeAnswer(challenge, null) { Failure = message }, null) : throw new ConnectorException(message);
         if (_webLogins is not { IsAvailable: true })
-            throw new ConnectorException("Signing in on the bank's web page needs a browser, which is not available on this server (Chromium is not installed).");
+            return Failed("Signing in on the bank's web page needs a browser, which is not available on this server (Chromium is not installed).");
         WebLoginSession session;
         try
         {
@@ -281,6 +284,7 @@ public sealed class BankSyncRunner
         }
         catch (BrowserActionException ex)
         {
+            if (spec.ReportFailure) return Failed(ex.Message);
             throw new ConnectorException(ex.Message, ex);
         }
         await using (session)
@@ -294,7 +298,7 @@ public sealed class BankSyncRunner
                 if (!result.Success)
                 {
                     if (result.CredentialsRejected) return (null, result.Error ?? "The bank rejected the credentials.");
-                    throw new ConnectorException(result.Error ?? "The web login failed.");
+                    return Failed(result.Error ?? "The web login failed.");
                 }
                 context.Http.ReplaceCookies(spec, result.Cookies);
                 if (result.UserAgent is { Length: > 0 } userAgent) context.Http.UseUserAgent(userAgent);

@@ -88,4 +88,7 @@ public sealed record ChallengeAnswer(ConnectorChallenge Challenge, string? Value
     /// closes it when the current step (login, refresh or statements) ends; the connector never disposes it.
     /// </summary>
     public IBrowserFetcher? Browser { get; init; }
+
+    /// <summary>After a web login whose spec has <see cref="WebLoginSpec.ReportFailure"/>: why the sign-in did not complete (null when it did).</summary>
+    public string? Failure { get; init; }
 }
