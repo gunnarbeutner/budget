@@ -116,7 +116,21 @@ internal sealed partial class BaaderPortal
             _filterSet = true;
         }
 
-        var listing = await ListAsync(browser, ct);
+        // While the portal waits for the SMS-TAN, the document list answers like an ended session: ask for the TAN first.
+        var tanPending = history && !_tanSubmitted && _tanRequired;
+        List<PortalDocument> listing;
+        if (tanPending) listing = [];
+        else if (history && _tanSubmitted)
+        {
+            // A TAN the portal did not accept leaves the filter waiting, so the list still answers like an ended session.
+            try { listing = await ListAsync(browser, ct); }
+            catch (ConnectorException ex) when (ex.Message.Contains("ended the session", StringComparison.Ordinal))
+            {
+                _log.LogWarning(ex, "Baader portal: the document list still waits for a TAN after the TAN was sent; Baader probably did not accept it.");
+                listing = [];
+            }
+        }
+        else listing = await ListAsync(browser, ct);
         if (history && !_tanSubmitted && (_tanRequired || listing.Count == 0))
         {
             _log.LogInformation("Baader portal: the document history needs an SMS-TAN.");

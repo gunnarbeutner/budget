@@ -142,8 +142,11 @@ internal sealed partial class FakeBaaderPortal : HttpMessageHandler
             ListRequests++;
             if (form.GetValueOrDefault("__multipart") != "1") return new HttpResponseMessage(HttpStatusCode.BadRequest);
             IEnumerable<Doc> docs;
+            // Like the live portal: while the filter waits for its SMS-TAN, the list redirects to the start page.
+            if (session.Period is not null && !session.TanPassed)
+                return new HttpResponseMessage(HttpStatusCode.Redirect) { Headers = { Location = new Uri($"https://{Host}/") } };
             if (session.Period is { } days)
-                docs = session.TanPassed ? Documents.Where(d => d.Date >= Today.AddDays(-days)) : [];
+                docs = Documents.Where(d => d.Date >= Today.AddDays(-days));
             else
                 docs = Documents.OrderByDescending(d => d.Date).Take(RecentCount);
             var byDay = docs.OrderByDescending(d => d.Date).GroupBy(d => d.Date)
