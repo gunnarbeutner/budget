@@ -18,6 +18,9 @@ public sealed class WebLoginOptions
 
     /// <summary>When the sign-in form is still (or again) there this long after submitting, the user is shown the page (wrong password, CAPTCHA, ...).</summary>
     public TimeSpan StuckAfter { get; set; } = TimeSpan.FromSeconds(8);
+
+    /// <summary>The longest a browser kept after the login (<see cref="WebLoginSpec.KeepBrowser"/>) stays open.</summary>
+    public TimeSpan KeptBrowserLifetime { get; set; } = TimeSpan.FromMinutes(15);
 }
 
 /// <summary>What the owner sees of a web login.</summary>
@@ -84,7 +87,10 @@ public sealed class WebLoginService : IWebLoginService
         var now = _clock.GetUtcNow();
         var session = new WebLoginSession(
             ownerUserId, spec, browser, _host.Options, _options, now.UtcDateTime + _options.Timeout,
-            _loggers.CreateLogger<WebLoginSession>(), s => _sessions.TryRemove(s.Id, out _));
+            _loggers.CreateLogger<WebLoginSession>(), s => _sessions.TryRemove(s.Id, out _))
+        {
+            Clock = _clock,
+        };
         _sessions[session.Id] = session;
         session.Begin(seed.Where(c => spec.Matches(c) && (c.ExpiresUtc == null || c.ExpiresUtc > now.UtcDateTime)).ToList());
         return session;
@@ -96,7 +102,9 @@ public sealed class WebLoginService : IWebLoginService
 
 /// <summary>
 /// One web login: an isolated browser context that navigates to the bank, waits for the success condition, hands back the
-/// cookies and then destroys the context. Nothing of it outlives <see cref="Completion"/>.
+/// cookies and then destroys the context. Nothing of it outlives <see cref="Completion"/>, except a browser kept for the
+/// connector (<see cref="WebLoginSpec.KeepBrowser"/>): <see cref="TakeBrowser"/> hands it over, and disposing the login
+/// destroys it when nobody took it.
 /// </summary>
 public sealed class WebLoginSession : IAsyncDisposable
 {
@@ -113,6 +121,17 @@ public sealed class WebLoginSession : IAsyncDisposable
     private Action? _cancelViewer;
     private Task? _run;
     private int _ended;
+#pragma warning disable CA2213 // disposed in DisposeAsync unless taken; whoever took it disposes it
+    private KeptBrowser? _kept;
+#pragma warning restore CA2213
+
+    internal TimeProvider Clock { get; init; } = TimeProvider.System;
+
+    /// <summary>
+    /// The signed-in browser after a successful login whose spec keeps it (null otherwise, or once taken). The caller owns
+    /// it from then on and must dispose it.
+    /// </summary>
+    public KeptBrowser? TakeBrowser() => Interlocked.Exchange(ref _kept, null);
 
     internal WebLoginSession(
         string ownerUserId, WebLoginSpec spec, IBrowserSession browser, BrowserOptions browserOptions, WebLoginOptions options,
@@ -167,6 +186,12 @@ public sealed class WebLoginSession : IAsyncDisposable
             var ct = _cts.Token;
             await _browser.SetCookiesAsync(seed);
             _ready.TrySetResult(); // a viewer may attach now and watch the page load
+            if (seed.Count > 0 && _spec.ResumeUrl != null && await ResumeAsync(_spec.ResumeUrl, ct) is { } resumed)
+            {
+                _ready.TrySetCanceled();
+                await EndAsync(resumed);
+                return;
+            }
             await _browser.NavigateAsync(_spec.StartUrl, ct);
             if (_spec.Autofill is { Username.Length: > 0, Password.Length: > 0 } fill)
                 await AutofillAsync(fill, ct);
@@ -191,6 +216,30 @@ public sealed class WebLoginSession : IAsyncDisposable
     }
 
     private bool _userCancelled;
+
+    /// <summary>
+    /// Opens the spec's signed-in page with the stored cookies; the login result when the full success condition holds
+    /// there (no form, no second factor), else null.
+    /// </summary>
+    private async Task<WebLoginResult?> ResumeAsync(Uri url, CancellationToken ct)
+    {
+        await _browser.NavigateAsync(url, ct);
+        if (!await SignedInAsync() || (_spec.SuccessCheck is { } check && !(await _browser.CheckAsync(check, "")).Ok))
+        {
+            _logger.LogInformation("Web login: the stored session does not open {Path}; signing in.", SafePath(url));
+            return null;
+        }
+        _logger.LogInformation("Web login: the stored session is still signed in.");
+        return await SucceededAsync(ct);
+    }
+
+    private async Task<WebLoginResult> SucceededAsync(CancellationToken ct)
+    {
+        if (_options.SettleDelay > TimeSpan.Zero) await Task.Delay(_options.SettleDelay, ct);
+        var all = await _browser.GetCookiesAsync();
+        _logger.LogInformation("Web login succeeded; exporting {Count} cookies of {Domains}.", all.Count(_spec.Matches), string.Join(", ", _spec.CookieDomains));
+        return WebLoginResult.Ok(all.Where(_spec.Matches).ToList(), _browser.UserAgent is { Length: > 0 } ua ? ua : null);
+    }
 
     /// <summary>
     /// Types the stored credentials into the bank's form, step by step, and submits it. Anything unexpected (no form,
@@ -371,10 +420,7 @@ public sealed class WebLoginSession : IAsyncDisposable
                 }
                 continue;
             }
-            if (_options.SettleDelay > TimeSpan.Zero) await Task.Delay(_options.SettleDelay, ct);
-            var all = await _browser.GetCookiesAsync();
-            _logger.LogInformation("Web login succeeded; exporting {Count} cookies of {Domains}.", all.Count(_spec.Matches), string.Join(", ", _spec.CookieDomains));
-            return WebLoginResult.Ok(all.Where(_spec.Matches).ToList(), _browser.UserAgent is { Length: > 0 } ua ? ua : null);
+            return await SucceededAsync(ct);
         }
         ct.ThrowIfCancellationRequested();
         return WebLoginResult.Fail("The web login ended.");
@@ -385,18 +431,27 @@ public sealed class WebLoginSession : IAsyncDisposable
         if (Interlocked.Exchange(ref _ended, 1) == 1) return;
         _onEnded(this);
         lock (_viewerGate) _cancelViewer?.Invoke();
-        try { await _browser.DisposeAsync(); }
-        catch (Exception ex) { _logger.LogDebug(ex, "Destroying the browser context failed."); }
+        if (result.Success && _spec.KeepBrowser)
+        {
+            // nobody can attach a viewer any more (the login is gone from the service); the page stays signed in
+            _kept = new KeptBrowser(_browser, _options.KeptBrowserLifetime, Clock, _logger);
+        }
+        else
+        {
+            try { await _browser.DisposeAsync(); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Destroying the browser context failed."); }
+        }
         _result.TrySetResult(result);
     }
 
-    /// <summary>Ends the login now (the sync was cancelled or finished) and destroys its browser.</summary>
+    /// <summary>Ends the login now (the sync was cancelled or finished) and destroys its browser, unless it was taken.</summary>
     public async ValueTask DisposeAsync()
     {
         _userCancelled = true;
         await _cts.CancelAsync();
         if (_run != null) await _run;
         else await EndAsync(WebLoginResult.Fail("The web login was cancelled."));
+        if (TakeBrowser() is { } untaken) await untaken.DisposeAsync();
         _cts.Dispose();
     }
 

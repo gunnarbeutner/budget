@@ -52,7 +52,28 @@ public sealed class BankSyncRunner
     private readonly IWebLoginService? _webLogins;
 
     /// <summary>The login-wide state a challenge may need: whose browser to open and which cookie jar to fill.</summary>
-    private sealed record SyncContext(string OwnerUserId, BankHttpClient Http);
+    private sealed record SyncContext(string OwnerUserId, BankHttpClient Http)
+    {
+        private readonly List<KeptBrowser> _browsers = [];
+
+        /// <summary>Holds a browser kept after a web login until <see cref="CloseBrowsersAsync"/>.</summary>
+        public void Keep(KeptBrowser browser)
+        {
+            lock (_browsers) _browsers.Add(browser);
+        }
+
+        /// <summary>Closes every kept browser: the step that signed in with it is over.</summary>
+        public async Task CloseBrowsersAsync()
+        {
+            List<KeptBrowser> all;
+            lock (_browsers)
+            {
+                all = [.. _browsers];
+                _browsers.Clear();
+            }
+            foreach (var b in all) await b.DisposeAsync();
+        }
+    }
 
     /// <summary>Test seam: <paramref name="httpFactory"/> creates the per-sync HTTP client (default: a real one).</summary>
     public BankSyncRunner(
@@ -150,7 +171,10 @@ public sealed class BankSyncRunner
             await db.SaveChangesAsync(ct);
 
             if (request.Transactions)
-                await RefreshAccountsAsync(db, login, connector, remoteAccounts, sink, context, errors, affected, ct);
+            {
+                try { await RefreshAccountsAsync(db, login, connector, remoteAccounts, sink, context, errors, affected, ct); }
+                finally { await context.CloseBrowsersAsync(); }
+            }
             if (request.Statements)
                 await FetchStatementsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct);
         }
@@ -172,6 +196,7 @@ public sealed class BankSyncRunner
         }
         finally
         {
+            await context.CloseBrowsersAsync();
             ConnectorSession? finalSession = null;
             if (connector != null && loggedIn)
             {
@@ -236,7 +261,9 @@ public sealed class BankSyncRunner
     /// <summary>
     /// Lets the owner sign in on the bank's page in an isolated browser that starts with this login's stored cookies
     /// (so "remember this device" cookies can spare the 2FA) and hands every cookie of the connector's domains back
-    /// into the login's jar. The browser is destroyed afterwards; the jar (stored encrypted) is the only copy.
+    /// into the login's jar. The browser is destroyed afterwards; the jar (stored encrypted) is the only copy. A spec with
+    /// <see cref="WebLoginSpec.KeepBrowser"/> keeps it signed in for the connector (<see cref="ChallengeAnswer.Browser"/>)
+    /// until the current refresh or statements step ends (or the sync does), never watchable by anyone.
     /// </summary>
     /// <returns>The answer, or (null, message) when the bank's page rejected the stored credentials.</returns>
     private async Task<(ChallengeAnswer? Answer, string? Rejected)> RunWebLoginAsync(ConnectorChallenge challenge, ISyncSink sink, SyncContext context, CancellationToken ct)
@@ -268,6 +295,12 @@ public sealed class BankSyncRunner
                 }
                 context.Http.ReplaceCookies(spec, result.Cookies);
                 if (result.UserAgent is { Length: > 0 } userAgent) context.Http.UseUserAgent(userAgent);
+                // a kept browser belongs to the sync from here on; disposing the login leaves it open
+                if (session.TakeBrowser() is { } kept)
+                {
+                    context.Keep(kept);
+                    return (new ChallengeAnswer(challenge, null) { Browser = kept }, null);
+                }
             }
             finally
             {
@@ -427,6 +460,7 @@ public sealed class BankSyncRunner
         }
         finally
         {
+            await context.CloseBrowsersAsync();
             foreach (var t in targets) t.LastStatementsAttemptAt = now;
             await db.SaveChangesAsync(CancellationToken.None);
         }

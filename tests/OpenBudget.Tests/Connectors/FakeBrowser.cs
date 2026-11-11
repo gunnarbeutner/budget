@@ -19,9 +19,12 @@ internal sealed class FakeBrowserHost : IBrowserHost
     /// <summary>How long a fill waits for its field to appear (see <see cref="FakeBrowserSession.FieldWait"/>).</summary>
     public TimeSpan FieldWait { get; set; } = TimeSpan.FromSeconds(2);
 
+    /// <summary>See <see cref="FakeBrowserSession.Redirect"/>.</summary>
+    public Func<Uri, Uri?>? Redirect { get; set; }
+
     public Task<IBrowserSession> OpenSessionAsync(CancellationToken ct)
     {
-        var session = new FakeBrowserSession(User) { FieldWait = FieldWait };
+        var session = new FakeBrowserSession(User) { FieldWait = FieldWait, Redirect = Redirect };
         lock (Sessions) Sessions.Add(session);
         return Task.FromResult<IBrowserSession>(session);
     }
@@ -129,10 +132,27 @@ internal sealed class FakeBrowserSession : IBrowserSession
         lock (_cookies) _cookies.RemoveAll(c => c.Name == name);
     }
 
+    /// <summary>Where the site sends a navigation (null: it stays); applied before the navigation returns.</summary>
+    public Func<Uri, Uri?>? Redirect { get; set; }
+
+    /// <summary>Every page the framework opened, in order.</summary>
+    public List<Uri> Navigations { get; } = [];
+
+    /// <summary>Requests the page ran (<see cref="FetchAsync"/>), in order.</summary>
+    public List<BrowserFetchRequest> Fetches { get; } = [];
+
+    public Task<BrowserFetchResponse> FetchAsync(BrowserFetchRequest request, CancellationToken ct)
+    {
+        if (Disposed) throw new BrowserActionException("The page is gone.");
+        lock (Fetches) Fetches.Add(request);
+        return Task.FromResult(new BrowserFetchResponse(200, request.Url, "text/plain", System.Text.Encoding.UTF8.GetBytes("ok " + request.Url.AbsolutePath)));
+    }
+
     public Task NavigateAsync(Uri url, CancellationToken ct)
     {
+        lock (Navigations) Navigations.Add(url);
         StartedAt = url;
-        Url = url;
+        Url = Redirect?.Invoke(url) ?? url;
         if (_user != null) _ = Task.Run(() => _user(this), CancellationToken.None);
         return Task.CompletedTask;
     }

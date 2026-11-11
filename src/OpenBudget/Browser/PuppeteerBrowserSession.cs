@@ -237,6 +237,83 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
         return (null, null);
     }
 
+    /// <summary>
+    /// The page's own fetch: the body comes back base64-encoded (binary-safe). A request the browser cannot complete
+    /// (network error, unreadable cross-origin answer) is status 0.
+    /// </summary>
+    private const string FetchScript = """
+        async (req) => {
+          try {
+            const r = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body ?? undefined, credentials: 'same-origin', redirect: 'follow', cache: 'no-store' });
+            const buf = new Uint8Array(await r.arrayBuffer());
+            let s = '';
+            for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+            return { status: r.status, url: r.url, type: r.headers.get('content-type'), body: btoa(s) };
+          } catch (e) {
+            return { status: 0, url: null, type: null, body: '' };
+          }
+        }
+        """;
+
+    public async Task<BrowserFetchResponse> FetchAsync(BrowserFetchRequest request, CancellationToken ct)
+    {
+        try
+        {
+            var r = await _page.EvaluateFunctionAsync<JsonElement>(FetchScript, new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["method"] = request.Method,
+                ["url"] = request.Url.ToString(),
+                ["headers"] = request.Headers,
+                ["body"] = request.Body,
+            }).WaitAsync(ct);
+            var status = r.TryGetProperty("status", out var st) && st.ValueKind == JsonValueKind.Number ? st.GetInt32() : 0;
+            Uri? url = r.TryGetProperty("url", out var u) && u.ValueKind == JsonValueKind.String && Uri.TryCreate(u.GetString(), UriKind.Absolute, out var parsed) ? parsed : null;
+            var type = r.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
+            var body = r.TryGetProperty("body", out var b) && b.ValueKind == JsonValueKind.String ? Convert.FromBase64String(b.GetString() ?? "") : [];
+            return new BrowserFetchResponse(status, url, type, body);
+        }
+        catch (Exception ex) when (ex is PuppeteerException or JsonException or FormatException)
+        {
+            throw new BrowserActionException("The request could not run in the page.", ex);
+        }
+    }
+
+    public async Task<Uri?> ResolveRedirectAsync(Uri url, CancellationToken ct)
+    {
+        IPage page;
+        try { page = await _context.NewPageAsync(); }
+        catch (PuppeteerException ex) { throw new BrowserActionException("The browser could not open a second tab.", ex); }
+        try
+        {
+            if (UserAgent.Length > 0) await page.SetUserAgentAsync(UserAgent);
+            var found = new TaskCompletionSource<Uri?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            await page.SetRequestInterceptionAsync(true);
+            page.Request += async (_, e) =>
+            {
+                try
+                {
+                    if (Uri.TryCreate(e.Request.Url, UriKind.Absolute, out var target) && !string.Equals(target.Host, url.Host, StringComparison.OrdinalIgnoreCase))
+                    {
+                        found.TrySetResult(target);
+                        await e.Request.AbortAsync();
+                    }
+                    else
+                    {
+                        await e.Request.ContinueAsync();
+                    }
+                }
+                catch (PuppeteerException) { /* tab closing */ }
+            };
+            try { await page.GoToAsync(url.ToString(), _options.NavigationTimeoutMs, [WaitUntilNavigation.DOMContentLoaded]).WaitAsync(ct); }
+            catch (PuppeteerException) { /* the redirect target is not loaded on purpose */ }
+            return found.Task.IsCompleted ? await found.Task : null;
+        }
+        finally
+        {
+            await TryAsync(() => page.CloseAsync());
+        }
+    }
+
     public async Task<bool> IsVisibleAsync(string selector)
     {
         try

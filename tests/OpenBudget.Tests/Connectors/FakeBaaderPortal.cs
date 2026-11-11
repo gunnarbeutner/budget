@@ -44,6 +44,61 @@ internal sealed partial class FakeBaaderPortal : HttpMessageHandler
 
     public BankHttpClient CreateClient() => new(jar => new CookieRedirectHandler(jar, this));
 
+    /// <summary>Like the real portal: a session works only from the browser that signed in (requests carrying the browser's fetch headers).</summary>
+    public bool BrowserOnly { get; set; }
+
+    /// <summary>Portal requests that came from the (fake) browser.</summary>
+    public int BrowserRequests { get; private set; }
+
+    /// <summary>A signed-in browser kept after the web login: its requests carry the browser's fetch headers and its own session.</summary>
+    public FakePortalBrowser SignInBrowser()
+    {
+        var http = CreateClient();
+        http.ImportCookies([SignIn()]);
+        return new FakePortalBrowser(http);
+    }
+
+    internal sealed class FakePortalBrowser : IBrowserFetcher, IDisposable
+    {
+        private readonly BankHttpClient _http;
+
+        public FakePortalBrowser(BankHttpClient http) => _http = http;
+
+        public bool IsOpen { get; set; } = true;
+
+        public int Resolved { get; private set; }
+
+        /// <summary>When set, downloads (redirects to the storage host) are not readable by the page, as for a storage without CORS.</summary>
+        public bool StorageBlocked { get; set; }
+
+        public async Task<BrowserFetchResponse> SendAsync(BrowserFetchRequest request, CancellationToken ct)
+        {
+            if (!IsOpen) throw new ConnectorException("closed");
+            if (StorageBlocked && request.Url.AbsolutePath.StartsWith("/maildownload/", StringComparison.Ordinal))
+                return new BrowserFetchResponse(0, null, null, []);
+            using var message = new HttpRequestMessage(new HttpMethod(request.Method), request.Url);
+            if (request.Body != null)
+                message.Content = new StringContent(request.Body, Encoding.UTF8, "application/x-www-form-urlencoded");
+            foreach (var (k, v) in request.Headers)
+            {
+                if (!k.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)) message.Headers.TryAddWithoutValidation(k, v);
+            }
+            message.Headers.TryAddWithoutValidation("Sec-Fetch-Mode", "cors");
+            using var response = await _http.SendAsync(message, ct);
+            return new BrowserFetchResponse((int)response.StatusCode, response.RequestMessage?.RequestUri, response.Content.Headers.ContentType?.MediaType,
+                await response.Content.ReadAsByteArrayAsync(ct));
+        }
+
+        public Task<Uri?> ResolveRedirectAsync(Uri url, CancellationToken ct)
+        {
+            Resolved++;
+            var id = url.AbsolutePath["/maildownload/".Length..];
+            return Task.FromResult<Uri?>(new Uri($"https://{StorageHost}/bucket/{id}.pdf?X-Amz-Signature=sig"));
+        }
+
+        public void Dispose() => _http.Dispose();
+    }
+
     /// <summary>What a sign-in in the browser leaves behind.</summary>
     public CookieState SignIn()
     {
@@ -74,7 +129,9 @@ internal sealed partial class FakeBaaderPortal : HttpMessageHandler
 
         var cookie = request.Headers.TryGetValues("Cookie", out var c) ? string.Join(';', c) : "";
         var m = SessionPattern().Match(cookie);
-        var signedIn = m.Success && _sessions.Contains(m.Groups["v"].Value);
+        var signedIn = m.Success && _sessions.Contains(m.Groups["v"].Value)
+            && (!BrowserOnly || request.Headers.Contains("Sec-Fetch-Mode"));
+        if (request.Headers.Contains("Sec-Fetch-Mode")) BrowserRequests++;
         var path = uri.AbsolutePath;
 
         if (path is "/login" or "/") return Html("<form action=\"/login\" method=\"post\" id=\"loginform\"><input name=\"user\"><input name=\"password\"></form>");

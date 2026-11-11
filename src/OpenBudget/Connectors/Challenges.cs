@@ -81,4 +81,11 @@ public sealed class ConnectorChallenge
 /// The user's reply to a <see cref="ConnectorChallenge"/> (a chosen option id, or the typed code).
 /// For approvals <see cref="Value"/> is null: the connector is merely being asked again.
 /// </summary>
-public sealed record ChallengeAnswer(ConnectorChallenge Challenge, string? Value);
+public sealed record ChallengeAnswer(ConnectorChallenge Challenge, string? Value)
+{
+    /// <summary>
+    /// After a web login whose spec has <see cref="WebLoginSpec.KeepBrowser"/>: the still signed-in browser. The sync
+    /// closes it when the current step (login, refresh or statements) ends; the connector never disposes it.
+    /// </summary>
+    public IBrowserFetcher? Browser { get; init; }
+}

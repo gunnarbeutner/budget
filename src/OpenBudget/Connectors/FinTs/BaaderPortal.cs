@@ -60,6 +60,7 @@ internal sealed partial class BaaderPortal
     private readonly ILogger _log;
     private readonly Uri _base;
     private string? _token;
+    private IBrowserFetcher? _browser;
 
     public BaaderPortal(IBankHttpClient http, TimeProvider clock, ILogger log, Uri? baseUri = null)
     {
@@ -78,15 +79,22 @@ internal sealed partial class BaaderPortal
         Dismiss = ["button::-p-text(Risiken bewusst)", "a::-p-text(Risiken bewusst)", "input[value*=\"Risiken bewusst\"]"],
         Autofill = credentials == null ? null
             : new WebLoginAutofill(credentials.Username, credentials.Secret, UsernameSelector, PasswordSelector, SubmitSelector),
+        // The portal's session only works from the browser that signed in: the requests run in its page.
+        KeepBrowser = true,
+        // With stored cookies the dashboard is tried first; a session that still passes the status check needs no sign-in.
+        ResumeUrl = new Uri(_base, "dashboard"),
     };
 
     /// <summary>
-    /// New documents for the wanted accounts. Asks for a web login when the stored portal session is gone; called again
-    /// after it, it continues with the browser's cookies.
+    /// New documents for the wanted accounts. Asks for a web login when there is no working portal session; called again
+    /// after it, it runs the portal requests in the browser that signed in (<see cref="ChallengeAnswer.Browser"/>), or
+    /// over HTTP with the browser's cookies when no browser was kept.
     /// </summary>
     public async Task<ConnectorStep<IReadOnlyList<RemoteStatement>>> FetchAsync(
         IReadOnlyList<RemoteAccount> accounts, IReadOnlySet<string> known, ConnectorCredentials? credentials, ChallengeAnswer? answer, CancellationToken ct)
     {
+        if (answer?.Browser != null) _browser = answer.Browser;
+        if (_browser is { IsOpen: false }) _browser = null;
         var customers = await CustomersAsync(ct);
         if (customers == null)
         {
@@ -163,14 +171,28 @@ internal sealed partial class BaaderPortal
 
     private async Task<List<PortalDocument>> ListWindowAsync(string customer, string section, DateOnly from, DateOnly to, CancellationToken ct)
     {
-        using var content = new FormUrlEncodedContent(ListFields(section, from, to, _token));
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(_base, "mailrows/" + Uri.EscapeDataString(customer))) { Content = content };
-        request.Headers.TryAddWithoutValidation("X-Requested-With", "XMLHttpRequest");
-        request.Headers.TryAddWithoutValidation("Accept", "application/json, text/javascript, */*; q=0.01");
-        request.Headers.Referrer = new Uri(_base, "mail");
-        using var response = await _http.SendAsync(request, ct);
-        var json = await ReadJsonAsync(response, ct);
-        return ParseRows(json, section);
+        var url = new Uri(_base, "mailrows/" + Uri.EscapeDataString(customer));
+        var fields = ListFields(section, from, to, _token).ToList();
+        PortalResponse response;
+        if (_browser != null)
+        {
+            response = PortalResponse.From(await _browser.PostFormAsync(url, fields, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["X-Requested-With"] = "XMLHttpRequest",
+                ["Accept"] = "application/json, text/javascript, */*; q=0.01",
+            }, ct));
+        }
+        else
+        {
+            using var content = new FormUrlEncodedContent(fields);
+            using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+            request.Headers.TryAddWithoutValidation("X-Requested-With", "XMLHttpRequest");
+            request.Headers.TryAddWithoutValidation("Accept", "application/json, text/javascript, */*; q=0.01");
+            request.Headers.Referrer = new Uri(_base, "mail");
+            using var http = await _http.SendAsync(request, ct);
+            response = await PortalResponse.FromAsync(http, ct);
+        }
+        return ParseRows(ReadJson(response), section);
     }
 
     /// <summary>Reads the documents of a <c>/mailrows</c> answer; "no documents in this period" is an empty list.</summary>
@@ -214,17 +236,17 @@ internal sealed partial class BaaderPortal
 
     private async Task<byte[]?> DownloadAsync(string id, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(_base, "maildownload/" + id));
-        using var response = await _http.SendAsync(request, ct);
-        var final = response.RequestMessage?.RequestUri;
-        if (final != null && IsLoginPage(final))
+        var url = new Uri(_base, "maildownload/" + id);
+        var response = _browser is { } browser ? await DownloadInBrowserAsync(browser, url, ct) : await GetOverHttpAsync(url, null, ct);
+        if (response == null) return null;
+        if (response.Url != null && IsLoginPage(response.Url))
             throw new ConnectorException("The Baader portal ended the session while downloading documents; the next sync signs in again.");
-        if (!response.IsSuccessStatusCode)
+        if (!response.IsSuccess)
         {
-            _log.LogWarning("Baader document download failed: HTTP {Status}; it is retried at the next sync.", (int)response.StatusCode);
+            _log.LogWarning("Baader document download failed: HTTP {Status}; it is retried at the next sync.", response.Status);
             return null;
         }
-        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        var bytes = response.Body;
         if (bytes.Length < 5 || bytes[0] != '%' || bytes[1] != 'P' || bytes[2] != 'D' || bytes[3] != 'F')
         {
             _log.LogWarning("Baader document download did not return a PDF; it is retried at the next sync.");
@@ -233,27 +255,55 @@ internal sealed partial class BaaderPortal
         return bytes;
     }
 
+    /// <summary>
+    /// The download through the signed-in page. The portal redirects to a storage host; when the page may not read that
+    /// answer (another origin without CORS), the browser resolves the short-lived storage link, which needs no session,
+    /// and it is fetched directly.
+    /// </summary>
+    private async Task<PortalResponse?> DownloadInBrowserAsync(IBrowserFetcher browser, Uri url, CancellationToken ct)
+    {
+        var response = await browser.GetAsync(url, "application/pdf, */*", ct);
+        if (response.Status != 0) return PortalResponse.From(response);
+        var target = await browser.ResolveRedirectAsync(url, ct);
+        if (target == null || (target.Scheme != Uri.UriSchemeHttps && !target.IsLoopback))
+        {
+            _log.LogWarning("Baader document download: the browser could not read the document and found no storage link; it is retried at the next sync.");
+            return null;
+        }
+        return await GetOverHttpAsync(target, null, ct);
+    }
+
+    private async Task<PortalResponse> GetOverHttpAsync(Uri url, string? accept, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        if (accept != null) request.Headers.TryAddWithoutValidation("Accept", accept);
+        using var response = await _http.SendAsync(request, ct);
+        return await PortalResponse.FromAsync(response, ct);
+    }
+
+    private async Task<PortalResponse> GetAsync(Uri url, string? accept, CancellationToken ct) =>
+        _browser != null ? PortalResponse.From(await _browser.GetAsync(url, accept, ct)) : await GetOverHttpAsync(url, accept, ct);
+
     /// <summary>The signed-in customers' ids, or null when there is no valid session.</summary>
     private async Task<List<string>?> CustomersAsync(CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(_base, "fstatus"));
-        request.Headers.TryAddWithoutValidation("Accept", "application/json");
-        using var response = await _http.SendAsync(request, ct);
-        var final = response.RequestMessage?.RequestUri;
-        if ((int)response.StatusCode is >= 300 and < 400 or 401 or 403 || (final != null && IsLoginPage(final)))
+        var response = await GetAsync(new Uri(_base, "fstatus"), "application/json", ct);
+        var final = response.Url;
+        var via = _browser != null ? "browser" : "http";
+        if (response.Status is >= 300 and < 400 or 401 or 403 || (final != null && IsLoginPage(final)))
         {
-            _log.LogInformation("Baader portal status: HTTP {Status} on {Path}; no session.", (int)response.StatusCode, final?.AbsolutePath);
+            _log.LogInformation("Baader portal status ({Via}): HTTP {Status} on {Path}; no session.", via, response.Status, final?.AbsolutePath);
             return null;
         }
-        if (!response.IsSuccessStatusCode)
-            throw new ConnectorException($"The Baader portal answered HTTP {(int)response.StatusCode}.");
-        var text = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccess)
+            throw new ConnectorException($"The Baader portal answered HTTP {response.Status}.");
+        var text = response.Text;
         JsonElement json;
         try { json = JsonElement.Parse(text); }
         catch (JsonException ex)
         {
-            _log.LogInformation(ex, "Baader portal status: {Path} answered {Type} ({Length} characters), not JSON.",
-                final?.AbsolutePath, response.Content.Headers.ContentType?.MediaType, text.Length);
+            _log.LogInformation(ex, "Baader portal status ({Via}): {Path} answered {Type} ({Length} characters), not JSON.",
+                via, final?.AbsolutePath, response.ContentType, text.Length);
             return null; // an HTML page: the sign-in
         }
         if (json.ValueKind != JsonValueKind.Array)
@@ -281,8 +331,9 @@ internal sealed partial class BaaderPortal
     {
         try
         {
-            var html = await _http.GetStringAsync(new Uri(_base, "dashboard"), ct);
-            var m = InfoToken().Match(html);
+            var response = await GetAsync(new Uri(_base, "dashboard"), "text/html", ct);
+            if (!response.IsSuccess) return null;
+            var m = InfoToken().Match(response.Text);
             return m.Success ? m.Groups["v"].Value : null;
         }
         catch (HttpRequestException)
@@ -291,20 +342,33 @@ internal sealed partial class BaaderPortal
         }
     }
 
-    private async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response, CancellationToken ct)
+    private JsonElement ReadJson(PortalResponse response)
     {
-        var final = response.RequestMessage?.RequestUri;
-        if ((int)response.StatusCode is 401 or 403 || (final != null && IsLoginPage(final)))
+        var final = response.Url;
+        if (response.Status is 401 or 403 || (final != null && IsLoginPage(final)))
             throw new ConnectorException("The Baader portal ended the session while listing documents; the next sync signs in again.");
-        if (!response.IsSuccessStatusCode)
-            throw new ConnectorException($"The Baader portal answered HTTP {(int)response.StatusCode} to the document list.");
-        var text = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccess)
+            throw new ConnectorException($"The Baader portal answered HTTP {response.Status} to the document list.");
+        var text = response.Text;
         try { return JsonElement.Parse(text); }
         catch (JsonException ex)
         {
             _log.LogWarning(ex, "The Baader portal's document list was not JSON ({Length} characters).", text.Length);
             throw new ConnectorException("The Baader portal answered the document list in an unexpected form.", ex);
         }
+    }
+
+    /// <summary>An answer of the portal, whether it came over HTTP or through the signed-in browser.</summary>
+    private sealed record PortalResponse(int Status, Uri? Url, string? ContentType, byte[] Body)
+    {
+        public bool IsSuccess => Status is >= 200 and < 300;
+
+        public string Text => System.Text.Encoding.UTF8.GetString(Body);
+
+        public static PortalResponse From(BrowserFetchResponse r) => new(r.Status, r.Url, r.ContentType, r.Body);
+
+        public static async Task<PortalResponse> FromAsync(HttpResponseMessage r, CancellationToken ct) =>
+            new((int)r.StatusCode, r.RequestMessage?.RequestUri, r.Content.Headers.ContentType?.MediaType, await r.Content.ReadAsByteArrayAsync(ct));
     }
 
     private bool IsLoginPage(Uri uri) =>

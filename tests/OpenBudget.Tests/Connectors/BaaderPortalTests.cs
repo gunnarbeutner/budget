@@ -103,6 +103,8 @@ public sealed class BaaderPortalTests
         Assert.Equal("https://konto.baaderbank.de/login", spec.StartUrl.ToString());
         Assert.True(spec.IsSuccess(new Uri("https://konto.baaderbank.de/dashboard"), []));
         Assert.False(spec.IsSuccess(new Uri("https://konto.baaderbank.de/login?referer=/fstatus"), []));
+        Assert.Equal("https://konto.baaderbank.de/dashboard", spec.ResumeUrl!.ToString());
+        Assert.True(spec.KeepBrowser);
         Assert.Equal("ALICE1", spec.Autofill!.Username);
         Assert.Equal(BaaderPortal.UsernameSelector, spec.Autofill.UsernameSelector);
         Assert.DoesNotContain("Example-Password1!", spec.Autofill.ToString(), StringComparison.Ordinal);
@@ -202,6 +204,64 @@ public sealed class BaaderPortalTests
         Assert.DoesNotContain("Example-Password1!", rig.Logs.All, StringComparison.Ordinal);
         Assert.DoesNotContain("secretvalue", rig.Logs.All, StringComparison.Ordinal);
         Assert.DoesNotContain(FakeBaaderPortal.PageToken, rig.Logs.All, StringComparison.Ordinal);
+    }
+
+    /// <summary>Like the sync runner with a kept browser: the answer to the web login carries the signed-in browser.</summary>
+    private static async Task<ConnectorStep<IReadOnlyList<RemoteStatement>>> FetchThroughBrowserAsync(Rig rig, FakeBaaderPortal.FakePortalBrowser browser)
+    {
+        var step = await rig.Client.FetchAsync([Cash, Depot], new HashSet<string>(StringComparer.Ordinal), Credentials, null, default);
+        Assert.Equal(StepStatus.Challenge, step.Status);
+        var spec = step.Challenge!.WebLoginSpec!;
+        Assert.True(spec.KeepBrowser);
+        return await rig.Client.FetchAsync([Cash, Depot], new HashSet<string>(StringComparer.Ordinal), Credentials,
+            new ChallengeAnswer(step.Challenge, null) { Browser = browser }, default);
+    }
+
+    [Fact]
+    public async Task A_session_that_works_only_in_the_browser_lists_and_downloads_through_the_kept_browser()
+    {
+        var rig = new Rig();
+        Seed(rig.Portal);
+        rig.Portal.BrowserOnly = true;
+        using var browser = rig.Portal.SignInBrowser();
+
+        var step = await FetchThroughBrowserAsync(rig, browser);
+
+        Assert.Equal(StepStatus.Done, step.Status);
+        Assert.Equal(6, step.Value!.Count);
+        Assert.All(step.Value, d => Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(d.Content, 0, 4), StringComparison.Ordinal));
+        Assert.Equal(FakeBaaderPortal.PageToken, rig.Portal.ListRequests[0]["token"]);
+        Assert.Equal(0, browser.Resolved);
+        Assert.DoesNotContain(FakeBaaderPortal.CustomerId, rig.Logs.All, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_storage_the_page_may_not_read_is_downloaded_from_the_link_the_browser_resolves()
+    {
+        var rig = new Rig();
+        Seed(rig.Portal);
+        rig.Portal.BrowserOnly = true;
+        using var browser = rig.Portal.SignInBrowser();
+        browser.StorageBlocked = true;
+
+        var step = await FetchThroughBrowserAsync(rig, browser);
+
+        Assert.Equal(6, step.Value!.Count);
+        Assert.Equal(6, browser.Resolved);
+    }
+
+    [Fact]
+    public async Task A_closed_browser_ends_the_fetch_with_a_connector_error()
+    {
+        var rig = new Rig();
+        Seed(rig.Portal);
+        rig.Portal.BrowserOnly = true;
+        using var browser = rig.Portal.SignInBrowser();
+        var step = await rig.Client.FetchAsync([Cash], new HashSet<string>(StringComparer.Ordinal), Credentials, null, default);
+        var answer = new ChallengeAnswer(step.Challenge!, null) { Browser = browser };
+        browser.IsOpen = false;
+        // a closed browser is not used: the HTTP session does not work, so the sign-in counts as incomplete
+        await Assert.ThrowsAsync<ConnectorException>(() => rig.Client.FetchAsync([Cash], new HashSet<string>(StringComparer.Ordinal), Credentials, answer, default));
     }
 
     [Fact]

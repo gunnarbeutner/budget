@@ -38,6 +38,19 @@ public sealed class WebLoginSpec
     public string? SuccessCheck { get; init; }
 
     /// <summary>
+    /// Keeps the browser open and signed in after the login succeeded and hands it to the connector
+    /// (<see cref="ChallengeAnswer.Browser"/>), for sites whose session only works from the browser it was signed in with.
+    /// </summary>
+    public bool KeepBrowser { get; init; }
+
+    /// <summary>
+    /// A signed-in page tried first when the browser starts with stored cookies: when the success condition (including
+    /// <see cref="SuccessCheck"/>) holds there, the login is done without the sign-in form; otherwise it goes on at
+    /// <see cref="StartUrl"/>.
+    /// </summary>
+    public Uri? ResumeUrl { get; init; }
+
+    /// <summary>
     /// Interstitials to click away before filling in the form (e.g. a "browser not supported" notice), as selectors;
     /// Puppeteer's text selectors such as <c>button::-p-text(…)</c> work too. Clicked only when visible.
     /// </summary>

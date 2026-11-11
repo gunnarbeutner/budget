@@ -32,6 +32,12 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
 
     public BrowserOptions Options { get; }
 
+    /// <summary>Browser contexts open right now (web logins and kept browsers).</summary>
+    internal int OpenSessions
+    {
+        get { lock (_gate) return _open; }
+    }
+
     public bool IsAvailable => FindChrome(Options.ExecutablePath) != null;
 
     /// <summary>Resolved Chromium path, or null when none is installed.</summary>

@@ -77,6 +77,13 @@ public interface IBrowserSession : IAsyncDisposable
     /// </summary>
     Task<WebLoginCheck> CheckAsync(string function, string argument) => Task.FromResult(new WebLoginCheck(true, ""));
 
+    /// <summary>Runs a request with the page's own <c>fetch</c> (same-origin credentials, redirects followed in the browser).</summary>
+    Task<BrowserFetchResponse> FetchAsync(BrowserFetchRequest request, CancellationToken ct) =>
+        throw new NotSupportedException("This browser cannot run requests in the page.");
+
+    /// <summary>See <see cref="IBrowserFetcher.ResolveRedirectAsync"/>.</summary>
+    Task<Uri?> ResolveRedirectAsync(Uri url, CancellationToken ct) => Task.FromResult<Uri?>(null);
+
     /// <summary>Calls <paramref name="onResponse"/> with the status (and a short error code, if any) of each response whose URL contains one of <paramref name="urlParts"/>.</summary>
     void ObserveResponses(IReadOnlyList<string> urlParts, Action<ObservedResponse> onResponse)
     {
