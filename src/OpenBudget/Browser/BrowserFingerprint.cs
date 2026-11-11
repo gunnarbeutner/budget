@@ -11,9 +11,9 @@ public sealed record BrowserFingerprint(string UserAgent, string FullVersion, st
     /// <summary>Builds the identity from the browser's product string (e.g. "HeadlessChrome/154.0.7444.59") or UA.</summary>
     public static BrowserFingerprint Create(string? productOrUserAgent)
     {
-        var m = Regex.Match(productOrUserAgent ?? "", @"Chrome/(\d+)\.(\d+\.\d+\.\d+)", RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
-        var major = m.Success ? m.Groups[1].Value : "140";
-        var full = m.Success ? $"{major}.{m.Groups[2].Value}" : $"{major}.0.0.0";
+        var m = Regex.Match(productOrUserAgent ?? "", @"Chrome/(?<major>\d+)\.(?<rest>\d+\.\d+\.\d+)", RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
+        var major = m.Success ? m.Groups["major"].Value : "140";
+        var full = m.Success ? $"{major}.{m.Groups["rest"].Value}" : $"{major}.0.0.0";
         // Chrome's reduced UA: real major, minor parts zeroed, platform token fixed.
         var ua = $"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36";
         return new BrowserFingerprint(ua, full, major);
