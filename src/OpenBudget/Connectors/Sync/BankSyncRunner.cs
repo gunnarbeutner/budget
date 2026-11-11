@@ -420,6 +420,11 @@ public sealed class BankSyncRunner
         sink.Report("Fetching statements");
         var now = _clock.GetUtcNow().UtcDateTime;
         var known = await BankStatementStore.KnownIdentifiersAsync(db, login.Id, ct);
+        // Markers for connectors that read a long history once per account: which requested accounts already have documents.
+        var withDocuments = await db.BankStatements.Where(s => s.BankLoginId == login.Id && s.AccountId != null)
+            .Select(s => s.AccountId!.Value).Distinct().ToListAsync(ct);
+        foreach (var t in targets.Where(t => t.LinkedAccountId is { } a && withDocuments.Contains(a)))
+            known.Add(BankStatementStore.AccountHasDocumentsMarker + t.RemoteId);
         var remoteTargets = targets.Select(t => remote.First(r => string.Equals(r.RemoteId, t.RemoteId, StringComparison.Ordinal))).ToList();
         try
         {

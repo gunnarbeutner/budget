@@ -65,6 +65,9 @@ public sealed class BankStatementStore
     }
 
     /// <summary>Identifiers already downloaded for a login (never downloaded again).</summary>
+    /// <summary>Prefix of the entries in the known set that name a requested account (by remote id) already holding documents.</summary>
+    public const string AccountHasDocumentsMarker = "@account-has-documents:";
+
     public static async Task<HashSet<string>> KnownIdentifiersAsync(BudgetDbContext db, int loginId, CancellationToken ct) =>
         (await db.BankStatements.Where(s => s.BankLoginId == loginId).Select(s => s.Identifier).ToListAsync(ct))
         .ToHashSet(StringComparer.Ordinal);

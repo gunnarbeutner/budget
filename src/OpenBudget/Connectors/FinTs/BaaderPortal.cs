@@ -104,7 +104,9 @@ internal sealed partial class BaaderPortal
         _checked = true;
         var browser = _browser;
 
-        var history = !known.Any(k => k.StartsWith(IdentifierPrefix, StringComparison.Ordinal));
+        // The long listing (with its SMS-TAN) runs until every requested account holds documents.
+        var history = !known.Any(k => k.StartsWith(IdentifierPrefix, StringComparison.Ordinal))
+            || accounts.Any(a => !known.Contains(OpenBudget.Connectors.Sync.BankStatementStore.AccountHasDocumentsMarker + a.RemoteId));
         if (answer?.Challenge.Reference == TanReference)
         {
             await SubmitTanAsync(browser, answer.Value ?? "", ct);
@@ -144,10 +146,11 @@ internal sealed partial class BaaderPortal
         var depot = accounts.FirstOrDefault(a => a.Type == RemoteAccountType.Depot)?.RemoteId;
         var result = new List<RemoteStatement>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        int alreadyKnown = 0, unwanted = 0, notPdf = 0;
         foreach (var doc in listing)
         {
             var identifier = IdentifierPrefix + doc.Id;
-            if (known.Contains(identifier) || !seen.Add(identifier)) continue;
+            if (known.Contains(identifier) || !seen.Add(identifier)) { alreadyKnown++; continue; }
             var target = TargetOf(doc.Title);
             var account = target switch
             {
@@ -157,12 +160,13 @@ internal sealed partial class BaaderPortal
                 _ => null,
             };
             // A cash/depot document whose account's statements are off: not wanted.
-            if (target != DocumentTarget.Login && account == null) continue;
+            if (target != DocumentTarget.Login && account == null) { unwanted++; continue; }
             var bytes = await DownloadAsync(browser, doc.Id, ct);
-            if (bytes == null) continue;
+            if (bytes == null) { notPdf++; continue; }
             result.Add(new RemoteStatement(identifier, account, doc.Date, doc.Title, bytes));
         }
-        _log.LogInformation("Baader portal: {Listed} document(s) listed, {Count} new.", listing.Count, result.Count);
+        _log.LogInformation("Baader portal: {Listed} document(s) listed; {Known} already known, {Unwanted} for accounts not requested or with statements off, {NotPdf} not a PDF; {Count} new.",
+            listing.Count, alreadyKnown, unwanted, notPdf, result.Count);
         return ConnectorStep.Done<IReadOnlyList<RemoteStatement>>(result);
     }
 

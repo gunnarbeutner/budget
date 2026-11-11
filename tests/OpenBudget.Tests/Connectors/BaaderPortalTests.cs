@@ -111,12 +111,31 @@ public sealed class BaaderPortalTests
     }
 
     [Fact]
+    public async Task An_account_without_documents_gets_its_own_history_pass()
+    {
+        var rig = new Rig();
+        Seed(rig.Portal);
+        var depotOnly = await rig.FetchAsync(accounts: [Depot]);
+        var known = depotOnly.Value!.Select(d => d.Identifier).ToHashSet(StringComparer.Ordinal);
+        known.Add(OpenBudget.Connectors.Sync.BankStatementStore.AccountHasDocumentsMarker + "depot-1");
+        rig.Portal.FilterPosts.Clear();
+
+        var withCash = await rig.FetchAsync(known);
+
+        Assert.NotEmpty(rig.Portal.FilterPosts); // the long listing again, for the cash account
+        Assert.Contains(withCash.Value!, d => d.AccountRemoteId != null && d.AccountRemoteId != "depot-1");
+    }
+
+    [Fact]
     public async Task Later_syncs_use_the_default_listing_without_a_tan()
     {
         var rig = new Rig();
         Seed(rig.Portal);
         var first = await rig.FetchAsync();
         var known = first.Value!.Select(d => d.Identifier).ToHashSet(StringComparer.Ordinal);
+        // the runner marks requested accounts that already hold documents
+        foreach (var account in first.Value!.Where(d => d.AccountRemoteId != null).Select(d => d.AccountRemoteId!).Distinct(StringComparer.Ordinal))
+            known.Add(OpenBudget.Connectors.Sync.BankStatementStore.AccountHasDocumentsMarker + account);
         rig.Portal.Documents.Add(D(2026, 11, 9, "Kontoauszug monatlich", "0123456789abcdef0123456789abcd07"));
         rig.Portal.FilterPosts.Clear();
 
