@@ -48,15 +48,12 @@ public static class DefaultProjectAssigner
         var fresh = accountIds.Except(already).ToList();
         if (fresh.Count == 0) return 0;
 
-        var investments = (await db.Accounts.AsNoTracking().Where(a => fresh.Contains(a.Id)).ToListAsync(ct))
-            .Where(AccountScopeDefaults.IsInvestment).Select(a => a.Id).ToHashSet();
+        var accounts = (await db.Accounts.AsNoTracking().Where(a => fresh.Contains(a.Id)).ToListAsync(ct))
+            .ToDictionary(a => a.Id);
         foreach (var accountId in fresh)
-            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment
-            {
-                ProjectId = id,
-                AccountId = accountId,
-                Scope = investments.Contains(accountId) ? AccountScope.Informational : default,
-            });
+            db.ProjectAccountAssignments.Add(accounts.TryGetValue(accountId, out var account)
+                ? AccountAssignmentDefaults.For(id, account)
+                : new ProjectAccountAssignment { ProjectId = id, AccountId = accountId, Scope = AccountAssignmentDefaults.Scope, InCashflow = false });
         await db.SaveChangesAsync(ct);
         return fresh.Count;
     }

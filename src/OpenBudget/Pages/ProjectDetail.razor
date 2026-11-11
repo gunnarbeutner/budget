@@ -61,7 +61,8 @@ else
                              AllAccountGroups="allAccountGroups"
                              OnAdd="AddAccounts"
                              OnRemove="RemoveAccount"
-                             OnScopeChange="OnScopeChange" />
+                             OnScopeChange="OnScopeChange"
+                             OnInCashflowChange="OnInCashflowChange" />
     }
 
     <ProjectIncomeExpenseCard Categories="incomeExpenseCategories"
@@ -237,6 +238,12 @@ else
     private async Task OnScopeChange((long AccountId, AccountScope Scope) req)
     {
         await BudgetService.SetAccountScopeAsync(ProjectId, req.AccountId, req.Scope);
+        await LoadAccountAssignments();
+    }
+
+    private async Task OnInCashflowChange((long AccountId, bool InCashflow) req)
+    {
+        await BudgetService.SetAccountInCashflowAsync(ProjectId, req.AccountId, req.InCashflow);
         await LoadAccountAssignments();
     }
 

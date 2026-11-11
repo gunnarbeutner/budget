@@ -65,19 +65,19 @@
     <value>Add Account</value>
   </data>
   <data name="Accounts_Description_Before" xml:space="preserve">
-    <value>Link accounts that fund this project. </value>
+    <value>Link accounts that fund this project. Bookings: </value>
   </data>
   <data name="Accounts_Description_Shared" xml:space="preserve">
-    <value>Shared</value>
+    <value>Project categories</value>
   </data>
   <data name="Accounts_Description_Middle" xml:space="preserve">
     <value> only counts transactions whose category is assigned to the project (use for a main account that mixes traffic). </value>
   </data>
   <data name="Accounts_Description_Exclusive" xml:space="preserve">
-    <value>Exclusive</value>
+    <value>All</value>
   </data>
   <data name="Accounts_Description_After" xml:space="preserve">
-    <value> counts every transaction in the account (use for dedicated accounts like a rental Mietkautionskonto).</value>
+    <value> counts every transaction in the account (use for dedicated accounts like a rental Mietkautionskonto). In cashflow decides whether the account counts in the Cashflow view and the project balance.</value>
   </data>
   <data name="Status_LoadingEllipsis" xml:space="preserve">
     <value>Loading…</value>
@@ -98,7 +98,7 @@
     <value>Last refresh</value>
   </data>
   <data name="Table_Scope" xml:space="preserve">
-    <value>Scope</value>
+    <value>Bookings</value>
   </data>
   <data name="Account_MissingName" xml:space="preserve">
     <value>Account #{0} (missing)</value>
@@ -113,10 +113,10 @@
     <value>error</value>
   </data>
   <data name="Scope_Shared" xml:space="preserve">
-    <value>Shared</value>
+    <value>Project categories</value>
   </data>
   <data name="Scope_Exclusive" xml:space="preserve">
-    <value>Exclusive</value>
+    <value>All</value>
   </data>
   <data name="Button_Remove" xml:space="preserve">
     <value>Remove</value>
@@ -134,10 +134,10 @@
     <value>Account</value>
   </data>
   <data name="Form_ScopeLabel" xml:space="preserve">
-    <value>Scope</value>
+    <value>Bookings</value>
   </data>
   <data name="AddAccount_ScopeHelp" xml:space="preserve">
-    <value>Shared: only transactions in the project's categories count. Exclusive: every transaction in the account counts.</value>
+    <value>Project categories: only transactions in the project's categories count. All: every transaction in the account counts.</value>
   </data>
   <data name="Button_Cancel" xml:space="preserve">
     <value>Cancel</value>
@@ -163,12 +163,6 @@
   <data name="RelativeAge_MonthsAgo" xml:space="preserve">
     <value>{0}mo ago</value>
   </data>
-  <data name="Scope_Informational" xml:space="preserve">
-    <value>Informational</value>
-  </data>
-  <data name="Scope_Informational_Help" xml:space="preserve">
-    <value>Shown in Browse and balance totals only; excluded from budget and cashflow.</value>
-  </data>
   <data name="Statements_Link" xml:space="preserve">
     <value>Statements</value>
   </data>
@@ -192,5 +186,11 @@
   </data>
   <data name="Button_AddAccounts_Many" xml:space="preserve">
     <value>Add {0} accounts</value>
+  </data>
+  <data name="Table_InCashflow" xml:space="preserve">
+    <value>In cashflow</value>
+  </data>
+  <data name="InCashflow_Help" xml:space="preserve">
+    <value>Counts in the Cashflow view and the project balance.</value>
   </data>
 </root>

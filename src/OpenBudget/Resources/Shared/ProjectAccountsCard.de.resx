@@ -65,19 +65,19 @@
     <value>Konto hinzufügen</value>
   </data>
   <data name="Accounts_Description_Before" xml:space="preserve">
-    <value>Konten verknüpfen, die dieses Projekt finanzieren. </value>
+    <value>Konten verknüpfen, die dieses Projekt finanzieren. Buchungen: </value>
   </data>
   <data name="Accounts_Description_Shared" xml:space="preserve">
-    <value>Gemeinsam</value>
+    <value>Projektkategorien</value>
   </data>
   <data name="Accounts_Description_Middle" xml:space="preserve">
     <value> zählt nur Transaktionen, deren Kategorie dem Projekt zugeordnet ist (für ein Hauptkonto mit gemischtem Verkehr). </value>
   </data>
   <data name="Accounts_Description_Exclusive" xml:space="preserve">
-    <value>Exklusiv</value>
+    <value>Alle</value>
   </data>
   <data name="Accounts_Description_After" xml:space="preserve">
-    <value> zählt jede Transaktion im Konto (für dedizierte Konten wie ein Mietkautionskonto).</value>
+    <value> zählt jede Transaktion im Konto (für dedizierte Konten wie ein Mietkautionskonto). Im Cashflow legt fest, ob das Konto in der Cashflow-Ansicht und im Projektsaldo zählt.</value>
   </data>
   <data name="Status_LoadingEllipsis" xml:space="preserve">
     <value>Wird geladen…</value>
@@ -98,7 +98,7 @@
     <value>Letzte Aktualisierung</value>
   </data>
   <data name="Table_Scope" xml:space="preserve">
-    <value>Bereich</value>
+    <value>Buchungen</value>
   </data>
   <data name="Account_MissingName" xml:space="preserve">
     <value>Konto #{0} (fehlt)</value>
@@ -113,10 +113,10 @@
     <value>Fehler</value>
   </data>
   <data name="Scope_Shared" xml:space="preserve">
-    <value>Gemeinsam</value>
+    <value>Projektkategorien</value>
   </data>
   <data name="Scope_Exclusive" xml:space="preserve">
-    <value>Exklusiv</value>
+    <value>Alle</value>
   </data>
   <data name="Button_Remove" xml:space="preserve">
     <value>Entfernen</value>
@@ -134,10 +134,10 @@
     <value>Konto</value>
   </data>
   <data name="Form_ScopeLabel" xml:space="preserve">
-    <value>Bereich</value>
+    <value>Buchungen</value>
   </data>
   <data name="AddAccount_ScopeHelp" xml:space="preserve">
-    <value>Gemeinsam: Nur Transaktionen in den Projektkategorien zählen. Exklusiv: Jede Transaktion im Konto zählt.</value>
+    <value>Projektkategorien: Nur Transaktionen in den Projektkategorien zählen. Alle: Jede Transaktion im Konto zählt.</value>
   </data>
   <data name="Button_Cancel" xml:space="preserve">
     <value>Abbrechen</value>
@@ -163,12 +163,6 @@
   <data name="RelativeAge_MonthsAgo" xml:space="preserve">
     <value>vor {0}Mo</value>
   </data>
-  <data name="Scope_Informational" xml:space="preserve">
-    <value>Informativ</value>
-  </data>
-  <data name="Scope_Informational_Help" xml:space="preserve">
-    <value>Nur in Durchsuchen und in der Gesamtsumme sichtbar; aus Budget und Cashflow ausgeschlossen.</value>
-  </data>
   <data name="Statements_Link" xml:space="preserve">
     <value>Kontoauszüge</value>
   </data>
@@ -192,5 +186,11 @@
   </data>
   <data name="Button_AddAccounts_Many" xml:space="preserve">
     <value>{0} Konten hinzufügen</value>
+  </data>
+  <data name="Table_InCashflow" xml:space="preserve">
+    <value>Im Cashflow</value>
+  </data>
+  <data name="InCashflow_Help" xml:space="preserve">
+    <value>Zählt in der Cashflow-Ansicht und im Projektsaldo.</value>
   </data>
 </root>

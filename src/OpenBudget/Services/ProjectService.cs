@@ -311,7 +311,7 @@ public class ProjectService
         var unassigned = await UnassignedOwnAccountsQuery(db).ToListAsync();
         var ids = unassigned.Select(a => a.Id).ToList();
         foreach (var account in unassigned)
-            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = projectId, AccountId = account.Id, Scope = AccountScopeDefaults.For(account) });
+            db.ProjectAccountAssignments.Add(AccountAssignmentDefaults.For(projectId, account));
         if (ids.Count == 0) return 0;
         await db.SaveChangesAsync();
         Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
@@ -443,7 +443,7 @@ public class ProjectService
         var accountById = accounts.ToDictionary(a => a.Id);
 
         // Depot accounts report holdings market value rather than the cash blob (mirrors
-        // BrowseService), so an informational securities depot contributes its real value to the
+        // BrowseService), so a securities depot contributes its real value to the
         // total. One grouped query over every assigned depot in view.
         var depotIds = accounts.Where(a => a.Type == 7 || a.Portfolio == 1).Select(a => a.Id).ToList();
         var holdingsValueByAccount = depotIds.Count == 0
@@ -470,8 +470,8 @@ public class ProjectService
                 decimal b = BalanceOf(acc);
                 totalBalance += b;
                 totalCount++;
-                // Informational accounts count toward the total only, not the cashflow balance.
-                if (assignment.Scope != AccountScope.Informational)
+                // Accounts outside the cashflow count toward the total only.
+                if (assignment.InCashflow)
                 {
                     cashflowBalance += b;
                     cashflowCount++;

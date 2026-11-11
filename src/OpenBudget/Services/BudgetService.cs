@@ -737,11 +737,13 @@ public class BudgetService
         }
         else
         {
+            var account = await db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == accountId);
             db.ProjectAccountAssignments.Add(new ProjectAccountAssignment
             {
                 ProjectId = projectId,
                 AccountId = accountId,
-                Scope = scope
+                Scope = scope,
+                InCashflow = account != null && AccountAssignmentDefaults.InCashflow(account),
             });
         }
         await db.SaveChangesAsync();
@@ -749,8 +751,9 @@ public class BudgetService
     }
 
     /// <summary>
-    /// Assigns several accounts to a project in one save with the same scope. Accounts already
-    /// in the project are skipped (their scope is left alone). Raises a single DataChange.
+    /// Assigns several accounts to a project in one save with the same scope; "In cashflow" follows
+    /// <see cref="AccountAssignmentDefaults.InCashflow"/>. Accounts already in the project are
+    /// skipped (their settings are left alone). Raises a single DataChange.
     /// Returns how many assignments were added.
     /// </summary>
     public async Task<int> AssignAccountsToProjectAsync(int projectId, IEnumerable<long> accountIds, AccountScope scope)
@@ -762,10 +765,19 @@ public class BudgetService
             .Where(paa => paa.ProjectId == projectId && ids.Contains(paa.AccountId))
             .Select(paa => paa.AccountId)
             .ToListAsync()).ToHashSet();
+        var fresh = ids.Where(id => !existing.Contains(id)).ToList();
+        var cashflowIds = (await db.Accounts.AsNoTracking().Where(a => fresh.Contains(a.Id)).ToListAsync())
+            .Where(AccountAssignmentDefaults.InCashflow).Select(a => a.Id).ToHashSet();
         var added = 0;
-        foreach (var id in ids.Where(id => !existing.Contains(id)))
+        foreach (var id in fresh)
         {
-            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = projectId, AccountId = id, Scope = scope });
+            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment
+            {
+                ProjectId = projectId,
+                AccountId = id,
+                Scope = scope,
+                InCashflow = cashflowIds.Contains(id),
+            });
             added++;
         }
         if (added == 0) return 0;
@@ -781,6 +793,18 @@ public class BudgetService
             .FirstOrDefaultAsync(paa => paa.ProjectId == projectId && paa.AccountId == accountId);
         if (existing == null) return;
         existing.Scope = scope;
+        await db.SaveChangesAsync();
+        Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
+    }
+
+    /// <summary>Sets whether the account counts in the project's Cashflow view and cashflow balance.</summary>
+    public async Task SetAccountInCashflowAsync(int projectId, long accountId, bool inCashflow)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var existing = await db.ProjectAccountAssignments
+            .FirstOrDefaultAsync(paa => paa.ProjectId == projectId && paa.AccountId == accountId);
+        if (existing == null) return;
+        existing.InCashflow = inCashflow;
         await db.SaveChangesAsync();
         Notify(new DataChange(DataArea.Projects, ProjectId: projectId));
     }

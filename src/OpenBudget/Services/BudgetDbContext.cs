@@ -135,6 +135,10 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<ProjectAccountAssignment>()
             .HasIndex(paa => new { paa.ProjectId, paa.AccountId })
             .IsUnique();
+        modelBuilder.Entity<ProjectAccountAssignment>()
+            .Property(paa => paa.InCashflow)
+            .HasDefaultValue(true)
+            .ValueGeneratedNever(); // EF always writes the value; the default serves raw inserts.
 
         // Source binding: every Project belongs to exactly one ImportSource. OnDelete is
         // Restrict so a source with attached projects can't be silently deleted; the UI surfaces

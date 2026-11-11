@@ -143,11 +143,19 @@ public sealed class ProjectSettingsTests : EndToEndTestBase
         foreach (var name in new[] { "Example Bank Savings", "Another Bank Giro" })
         {
             var row = Page.GetByRole(AriaRole.Row).Filter(new() { HasText = name });
-            await Expect(row.GetByRole(AriaRole.Button, new() { Name = "Exclusive" })).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("active"));
+            await Expect(row.GetByRole(AriaRole.Button, new() { Name = "All" })).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("active"));
         }
         await Expect(Page.GetByRole(AriaRole.Row).Filter(new() { HasText = "Example Bank Card" })).ToHaveCountAsync(0);
         await Expect(Page.GetByRole(AriaRole.Row).Filter(new() { HasText = "Example Bank Giro" })
-            .GetByRole(AriaRole.Button, new() { Name = "Shared" })).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("active"));
+            .GetByRole(AriaRole.Button, new() { Name = "Project categories" })).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("active"));
+
+        // Giro and savings join the cashflow; the "In cashflow" checkbox takes them out again.
+        var savingsCashflow = Page.GetByRole(AriaRole.Row).Filter(new() { HasText = "Example Bank Savings" }).GetByTestId("in-cashflow");
+        await Expect(savingsCashflow).ToBeCheckedAsync();
+        await savingsCashflow.UncheckAsync();
+        await Expect(savingsCashflow).Not.ToBeCheckedAsync();
+        await Page.ReloadAsync();
+        await Expect(savingsCashflow).Not.ToBeCheckedAsync();
     }
 
     [Test]

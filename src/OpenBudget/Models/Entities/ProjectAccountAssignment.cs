@@ -4,28 +4,42 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// Controls how an assigned account's transactions contribute to a project's balance.
-/// Exclusive: every transaction in the account counts (dedicated rental account, Mietkautionskonto).
-/// Shared: only transactions whose category is in the project's category set count
+/// Which of an assigned account's bookings belong to the project.
+/// Exclusive: every booking in the account counts (dedicated rental account, Mietkautionskonto).
+/// Shared: only bookings whose category is in the project's category set count
 /// (main household giro that sees mixed traffic).
-/// Informational: linked for the Browse tab and balance totals only — excluded from budget and
-/// cashflow math (e.g. a securities depot whose buys/sells shouldn't distort the cash projection).
+/// Whether the account counts in the Cashflow view is a separate setting,
+/// <see cref="ProjectAccountAssignment.InCashflow"/>.
 /// </summary>
 public enum AccountScope
 {
     Shared = 0,
     Exclusive = 1,
-    Informational = 2
 }
 
-/// <summary>The role an account starts with when it joins a project.</summary>
-public static class AccountScopeDefaults
+/// <summary>The settings an account starts with when it joins a project.</summary>
+public static class AccountAssignmentDefaults
 {
-    /// <summary>Depots and PortfolioPerformance accounts are informational (no cash moves there); others count fully.</summary>
-    public static AccountScope For(Account account) => IsInvestment(account) ? AccountScope.Informational : default;
+    /// <summary>Booking scope for a new assignment.</summary>
+    public const AccountScope Scope = AccountScope.Shared;
+
+    /// <summary>
+    /// Only cash accounts (giro, savings, credit card, cash) count in the Cashflow view by default.
+    /// Depots, PortfolioPerformance accounts, loans and other or unknown types start outside it.
+    /// </summary>
+    public static bool InCashflow(Account account) =>
+        !IsInvestment(account) && account.Type is 1 or 2 or 3 or 6;
 
     public static bool IsInvestment(Account account) =>
         account.Provider == AccountProviders.PortfolioPerformance || account.Portfolio is 1 || account.Type == 7;
+
+    public static ProjectAccountAssignment For(int projectId, Account account) => new()
+    {
+        ProjectId = projectId,
+        AccountId = account.Id,
+        Scope = Scope,
+        InCashflow = InCashflow(account),
+    };
 }
 
 /// <summary>
@@ -47,6 +61,13 @@ public class ProjectAccountAssignment
     public long AccountId { get; set; }
 
     public AccountScope Scope { get; set; } = AccountScope.Shared;
+
+    /// <summary>
+    /// Whether the account counts in the Cashflow view and in the project's cashflow balance
+    /// (<see cref="ProjectBalanceSummary.Balance"/>). Accounts outside it still show in Browse
+    /// and in the total balance.
+    /// </summary>
+    public bool InCashflow { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

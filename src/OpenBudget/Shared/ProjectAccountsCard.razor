@@ -3,10 +3,11 @@
 @inject IStringLocalizer<ProjectAccountsCard> L
 @inject ClockService Clock
 
-@* Project-settings panel: imported accounts funding this project, their scope (Shared vs
-   Exclusive), refresh freshness, and an Add dialog backed by a grouped TreePicker.
+@* Project-settings panel: imported accounts funding this project, whether each counts in the
+   cashflow, which bookings count (Shared = project categories, Exclusive = all), refresh
+   freshness, and an Add dialog backed by a grouped TreePicker.
    Presentational — the page owns the data (Assignments/AllAccounts/AllAccountGroups) and the
-   service calls; this raises OnAdd / OnRemove / OnScopeChange. *@
+   service calls; this raises OnAdd / OnRemove / OnScopeChange / OnInCashflowChange. *@
 
 <div class="row mt-4">
     <div class="col-12">
@@ -37,6 +38,7 @@
                                     <th>@L["Table_Kind"]</th>
                                     <th class="text-end">@L["Table_CurrentBalance"]</th>
                                     <th>@L["Table_LastRefresh"]</th>
+                                    <th>@L["Table_InCashflow"]</th>
                                     <th>@L["Table_Scope"]</th>
                                     <th class="text-end"></th>
                                 </tr>
@@ -80,6 +82,12 @@
                                             }
                                         </td>
                                         <td>
+                                            <input type="checkbox" class="form-check-input" data-testid="in-cashflow"
+                                                   aria-label="@L["Table_InCashflow"]" title="@L["InCashflow_Help"]"
+                                                   checked="@assignment.InCashflow"
+                                                   @onchange="e => OnInCashflowChange.InvokeAsync((assignment.AccountId, e.Value is true))" />
+                                        </td>
+                                        <td>
                                             <div class="segmented" role="group">
                                                 <button type="button"
                                                         class="btn @(assignment.Scope == AccountScope.Shared ? "active" : "")"
@@ -90,12 +98,6 @@
                                                         class="btn @(assignment.Scope == AccountScope.Exclusive ? "active" : "")"
                                                         @onclick="() => OnScopeChange.InvokeAsync((assignment.AccountId, AccountScope.Exclusive))">
                                                     @L["Scope_Exclusive"]
-                                                </button>
-                                                <button type="button"
-                                                        class="btn @(assignment.Scope == AccountScope.Informational ? "active" : "")"
-                                                        title="@L["Scope_Informational_Help"]"
-                                                        @onclick="() => OnScopeChange.InvokeAsync((assignment.AccountId, AccountScope.Informational))">
-                                                    @L["Scope_Informational"]
                                                 </button>
                                             </div>
                                         </td>
@@ -226,6 +228,8 @@
     [Parameter] public EventCallback<long> OnRemove { get; set; }
     /// <summary>Raised with the account id + new scope when a row's scope toggle is clicked.</summary>
     [Parameter] public EventCallback<(long AccountId, AccountScope Scope)> OnScopeChange { get; set; }
+    /// <summary>Raised with the account id + new value when a row's "In cashflow" checkbox is toggled.</summary>
+    [Parameter] public EventCallback<(long AccountId, bool InCashflow)> OnInCashflowChange { get; set; }
 
     private bool _showDialog;
     private readonly HashSet<long> _selected = new();

@@ -45,14 +45,11 @@ public class CashflowProjectionService
         if (project == null) return new ProjectDailyDeltaResult { DailyDelta = Array.Empty<decimal>() };
         var sourceId = project.SourceId;
 
-        // Informational accounts (e.g. securities depots) are linked for Browse + balance totals
-        // only; they must not move the projected cash trajectory, so drop them here. The filter
+        // Only accounts marked "In cashflow" move the projected cash trajectory. The filter
         // cascades to accountIds / currentBalance / the YTD + per-day transaction sums below.
-        var assignments = (await db.ProjectAccountAssignments
-            .Where(paa => paa.ProjectId == projectId)
-            .ToListAsync())
-            .Where(a => a.Scope != AccountScope.Informational)
-            .ToList();
+        var assignments = await db.ProjectAccountAssignments
+            .Where(paa => paa.ProjectId == projectId && paa.InCashflow)
+            .ToListAsync();
 
         int daysInYear = DateTime.IsLeapYear(year) ? 366 : 365;
         var result = new ProjectDailyDeltaResult

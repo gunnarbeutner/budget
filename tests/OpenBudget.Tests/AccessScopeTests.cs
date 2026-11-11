@@ -220,7 +220,8 @@ public class AccessScopeTests
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Spending.AssignAccountToProjectAsync(AccessWorld.Shared, AccessWorld.AccountPrivate, AccountScope.Shared));
         await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Spending.RemoveAccountFromProjectAsync(AccessWorld.Shared, AccessWorld.AccountWp));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Spending.SetAccountScopeAsync(AccessWorld.Shared, AccessWorld.AccountWp, AccountScope.Informational));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Spending.SetAccountScopeAsync(AccessWorld.Shared, AccessWorld.AccountWp, AccountScope.Shared));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Spending.SetAccountInCashflowAsync(AccessWorld.Shared, AccessWorld.AccountWp, false));
 
         // Nothing changed: the private account is still hidden from her.
         await using var db = await bob.Factory.CreateDbContextAsync();
