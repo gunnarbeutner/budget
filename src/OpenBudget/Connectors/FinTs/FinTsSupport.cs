@@ -75,8 +75,9 @@ public sealed class FinTsHttpTransport : IFinTsTransport
         }
         catch (HttpRequestException ex)
         {
-            // the cause (DNS, TLS, connection reset, …) stays attached for the log
-            throw new ConnectorException("The bank server could not be reached.", ex);
+            // the cause (DNS, TLS, connection reset, …) is named: it carries no credentials
+            var cause = (ex.InnerException ?? ex).Message;
+            throw new ConnectorException($"The bank server could not be reached ({cause.TrimEnd('.')}).", ex);
         }
         catch (TaskCanceledException) when (!ct.IsCancellationRequested)
         {
