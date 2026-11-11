@@ -65,7 +65,6 @@
                             OnSelectAll="@(() => OpenTransactions(null))"
                             OnSelectAccount="@(id => OpenTransactions($"acct-{id}"))"
                             OnSelectAccountGroup="@(id => OpenTransactions($"g{id}"))"
-                            OnSelectPortfolio="@(() => OpenTransactions("securities"))"
                             OnSelectUncategorized="@(() => OpenTransactions("uncategorized"))"
                             OnSelectCategory="@(n => OpenTransactions((n.ItemType == CategoryItemType.Category ? "cat-" : "grp-") + n.Id))"
                             NodeMenu="NodeMenu"

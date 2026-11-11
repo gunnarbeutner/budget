@@ -4,7 +4,7 @@ using Xunit;
 namespace OpenBudget.Tests;
 
 /// <summary>
-/// PortfolioService.GetCombinedHoldingsAsync aggregates several depots into one view, merging a
+/// PortfolioService.GetProjectHoldingsAsync aggregates a project's depots into one view, merging a
 /// security held in more than one depot into a single row.
 /// </summary>
 public class CombinedHoldingsTests
@@ -40,6 +40,8 @@ public class CombinedHoldingsTests
         a.Type = 7;
         var b = t.AddAccount(21, "Depot B");
         b.Type = 7;
+        t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 1, AccountId = 20 });
+        t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 1, AccountId = 21 });
 
         // Same ETF in both depots — should merge.
         AddHolding(t, 20, "IE000WORLD0", "VWRL", "World ETF", quantity: 10, amount: 1000, purchasePerUnit: 80);
@@ -48,7 +50,7 @@ public class CombinedHoldingsTests
         AddHolding(t, 20, null, "XAU", "Gold", quantity: 1, amount: 2000, purchasePerUnit: null);
         await t.Db.SaveChangesAsync();
 
-        var combined = await t.Portfolio.GetCombinedHoldingsAsync(1, new long[] { 20, 21 });
+        var combined = await t.Portfolio.GetProjectHoldingsAsync(1);
 
         Assert.NotNull(combined);
         Assert.Equal(3500m, combined!.TotalValue);
@@ -212,9 +214,10 @@ public class CombinedHoldingsTests
         await using var t = new TestDb();
         t.AddProject(1);
         t.AddAccount(20, "Empty depot").Type = 7;
+        t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 1, AccountId = 20 });
         await t.Db.SaveChangesAsync();
 
-        var combined = await t.Portfolio.GetCombinedHoldingsAsync(1, new long[] { 20 });
+        var combined = await t.Portfolio.GetProjectHoldingsAsync(1);
 
         Assert.Null(combined);
     }

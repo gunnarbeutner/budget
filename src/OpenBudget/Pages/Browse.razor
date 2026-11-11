@@ -62,7 +62,6 @@
                             OnSelectAll="SelectAll"
                             OnSelectAccount="SelectAccount"
                             OnSelectAccountGroup="SelectAccountGroup"
-                            OnSelectPortfolio="SelectPortfolio"
                             OnSelectUncategorized="SelectUncategorized"
                             OnSelectCategory="SelectCategoryNode"
                             NodeMenu="NodeMenu"
@@ -146,10 +145,6 @@
                         <span> · @(SelectionIsIncome ? L["Header_Expected"] : L["Header_Available"])
                             <span class="@(avail < 0 && !SelectionIsIncome ? "money-neg" : "")">@Formatting.FormatMoneyDe(avail)</span>
                         </span>
-                    }
-                    else if (selectionKind == "portfolio")
-                    {
-                        <span>@L["Header_TotalValue"]</span>
                     }
                 </div>
             </div>
@@ -395,7 +390,7 @@
                 </div>
             }
 
-            @if ((selectionKind == "account" || selectionKind == "portfolio") && holdings is { } h)
+            @if (selectionKind == "account" && holdings is { } h)
             {
                 <div class="browse-cards"><HoldingsCard Holdings="h" /></div>
             }
@@ -958,10 +953,6 @@
             {
                 selectionKind = "uncategorized"; selectionId = null;
             }
-            else if (raw == "securities")
-            {
-                selectionKind = "portfolio"; selectionId = null;
-            }
         }
 
         if (query.TryGetValue("acct", out var af) && long.TryParse(af, out var afl)) accountFilter = afl;
@@ -1019,7 +1010,6 @@
             "group" => $"grp-{selectionId}",
             "account" => $"acct-{selectionId}",
             "accountgroup" => $"g{selectionId}",
-            "portfolio" => "securities",
             "uncategorized" => "uncategorized",
             _ => null
         },
@@ -1109,20 +1099,6 @@
     private async Task SelectAccount(long id)
     {
         selectionKind = "account"; selectionId = id;
-        ResetTransientFilters();
-        CoerceChartGranularityForSelection();
-        railOpen = false;
-        UpdateUrl();
-        await ReloadTransactionsAsync();
-    }
-
-    // Portfolio (depot) accounts in the rail. The combined "All securities" view aggregates these.
-    private List<long> PortfolioAccountIds() =>
-        tree?.Accounts.Where(a => a.IsPortfolio).Select(a => a.Id).ToList() ?? new List<long>();
-
-    private async Task SelectPortfolio()
-    {
-        selectionKind = "portfolio"; selectionId = null;
         ResetTransientFilters();
         CoerceChartGranularityForSelection();
         railOpen = false;
@@ -1368,8 +1344,6 @@
         // is selected and clear them otherwise so the card doesn't linger on the next selection.
         if (selectionKind == "account" && SelectedAccountNode is { IsPortfolio: true } depot)
             holdings = await Portfolio.GetAccountHoldingsAsync(ProjectId, depot.Id);
-        else if (selectionKind == "portfolio")
-            holdings = await Portfolio.GetCombinedHoldingsAsync(ProjectId, PortfolioAccountIds());
         else
             holdings = null;
 
@@ -1443,12 +1417,6 @@
     {
         if (selectionKind == "account" && selectionId is { } aid) return new[] { aid };
         if (selectionKind == "accountgroup") return GroupAccounts()?.Select(a => a.Id).ToList() ?? [];
-        // Combined securities view: the transaction list spans all the project's depot accounts.
-        if (selectionKind == "portfolio")
-        {
-            var ids = PortfolioAccountIds();
-            return ids.Count > 0 ? ids : null;
-        }
         if (accountFilter is { } af) return new[] { af };
         return null;
     }
@@ -1459,8 +1427,6 @@
         {
             if (selectionKind == "account" && selectionId is { } aid && tree != null)
                 return tree.Accounts.FirstOrDefault(a => a.Id == aid)?.Name ?? "";
-            if (selectionKind == "portfolio")
-                return L["Header_AllSecurities"];
             if (selectionKind == "accountgroup")
                 return SelectedGroupNode?.Name ?? "";
             if (selectionKind == "uncategorized")
@@ -1508,8 +1474,6 @@
                 return SelectedGroupNode?.Sums.FirstOrDefault() is { } gs ? (gs.Amount, gs.Currency) : null;
             if (selectionKind == "uncategorized")
                 return txTotals is { } t ? (t.Sum, null) : null;
-            if (selectionKind == "portfolio")
-                return holdings is { } ph ? (ph.TotalValue, ph.Currency) : null;
             return (SelectionIsIncome ? SelectionSpent : -SelectionSpent, null);
         }
     }

@@ -49,18 +49,6 @@
             : Tree.Accounts.Where(a => a.IsAssigned)).Where(a => showClosed || !a.MarkedClosed);
         var hiddenRelatedCount = Tree.Accounts.Count(a => !a.IsAssigned);
         <div class="browse-tree-section">@L["Tree_Section_Accounts"]</div>
-        @if (Tree.Accounts.Count(a => a.IsPortfolio) >= 2)
-        {
-            bool portfolioSel = SelectionKind == "portfolio";
-            <div class="browse-tree-row @(portfolioSel ? "selected" : "")"
-                 role="treeitem" tabindex="0" aria-selected="@portfolioSel.ToString().ToLower()"
-                 @onclick="() => OnSelectPortfolio.InvokeAsync()"
-                 @onkeydown="OnPortfolioKeydown">
-                <span class="browse-tree-name fw-semibold">
-                    <i class="bi bi-collection me-1" aria-hidden="true"></i>@L["Tree_AllSecurities"]
-                </span>
-            </div>
-        }
         @foreach (var node in AccountNodes(visibleAccounts))
         {
             @RenderAccountNode(node, 0)
@@ -114,7 +102,6 @@
     [Parameter] public EventCallback<long> OnSelectAccount { get; set; }
     /// <summary>Raised with the id of the account group whose name was picked.</summary>
     [Parameter] public EventCallback<long> OnSelectAccountGroup { get; set; }
-    [Parameter] public EventCallback OnSelectPortfolio { get; set; }
     [Parameter] public EventCallback OnSelectUncategorized { get; set; }
     [Parameter] public EventCallback<BrowseCategoryNode> OnSelectCategory { get; set; }
     /// <summary>The context-menu items of a row (see <see cref="SidebarNode"/>); null or empty = no menu.</summary>
@@ -388,11 +375,6 @@
     private async Task OnUncategorizedKeydown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" || e.Key == " ") await OnSelectUncategorized.InvokeAsync();
-    }
-
-    private async Task OnPortfolioKeydown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" || e.Key == " ") await OnSelectPortfolio.InvokeAsync();
     }
 
     private async Task OnCategoryKeydown(KeyboardEventArgs e, BrowseCategoryNode node)

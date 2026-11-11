@@ -91,8 +91,6 @@
   <data name="Tx_PendingTitle" xml:space="preserve"><value>Die Buchung ist vorgemerkt und noch nicht von der Bank gebucht.</value></data>
   <data name="Tx_SplitRemainder" xml:space="preserve"><value>Split-Rest</value></data>
   <data name="Tx_SplitRemainderTitle" xml:space="preserve"><value>Teil einer Splitbuchung, der keinem Teilbetrag zugeordnet ist.</value></data>
-  <data name="Header_AllSecurities" xml:space="preserve"><value>Alle Wertpapiere</value></data>
-  <data name="Header_TotalValue" xml:space="preserve"><value>Gesamtwert</value></data>
   <data name="Header_Pending" xml:space="preserve"><value>Vorgemerkt:</value></data>
   <data name="Header_LastUpdated" xml:space="preserve"><value>Zuletzt aktualisiert:</value></data>
   <data name="Header_Today" xml:space="preserve"><value>Heute</value></data>

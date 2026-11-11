@@ -40,28 +40,6 @@ public class PortfolioService
     }
 
     /// <summary>
-    /// Combined holdings across several of a project's portfolio accounts — a unified view when a
-    /// project holds more than one depot. Positions sharing an ISIN (or, for ISIN-less crypto, a
-    /// symbol/name) are merged across accounts into one row. Null when the accounts hold nothing.
-    /// </summary>
-    public async Task<AccountHoldings?> GetCombinedHoldingsAsync(
-        int projectId, IReadOnlyCollection<long> accountIds, CancellationToken ct = default)
-    {
-        if (accountIds.Count == 0) return null;
-        var project = await _projects.GetProjectAsync(projectId);
-        if (project == null) return null;
-
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var holdings = await db.Holdings
-            .AsNoTracking()
-            .Where(h => h.SourceId == project.SourceId && accountIds.Contains(h.AccountId))
-            .ToListAsync(ct);
-        if (holdings.Count == 0) return null;
-
-        return await BuildAsync(db, project.SourceId, holdings, accountId: 0, merge: true, ct);
-    }
-
-    /// <summary>
     /// The first project (in the user's order) on <paramref name="sourceId"/> that has a depot account assigned — the
     /// Portfolio view the source's depot / instrument / tax pages send the user to. Null when there is none.
     /// </summary>
@@ -80,9 +58,8 @@ public class PortfolioService
     }
 
     /// <summary>
-    /// Combined holdings across every portfolio (depot) account assigned to a project — resolves
-    /// the depots itself, so callers without the Browse tree can use it (e.g. the rebalance page).
-    /// Null when the project has no assigned depots holding anything.
+    /// Combined holdings across every portfolio (depot) account assigned to a project (the Portfolio
+    /// view). Positions sharing an ISIN (or, for ISIN-less crypto, a symbol/name) merge into one row. Null when the project has no assigned depots holding anything.
     /// </summary>
     public async Task<AccountHoldings?> GetProjectHoldingsAsync(int projectId, CancellationToken ct = default)
     {
