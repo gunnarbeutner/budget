@@ -28,8 +28,9 @@ public sealed record PortfolioTakeoverCandidate(long? DepotAccountId, string? De
 /// earlier MoneyMoney extension) is not given new accounts until the owner takes those over or declines; taken-over
 /// accounts keep their history: bookings that match a PortfolioPerformance transaction are adopted, others (e.g.
 /// funding transfers) stay, and value history before the first PortfolioPerformance day is kept.
-/// Accounts of a portfolio that is switched off or deleted in PortfolioPerformance are released: they keep their data
-/// and return to MoneyMoney (taken over) or become manual (created).
+/// Accounts of a portfolio that is switched off or deleted in PortfolioPerformance are released: taken-over ones keep
+/// their data and return to MoneyMoney; ones this sync created are removed when the portfolio is switched off, and become
+/// manual when it is deleted in PortfolioPerformance.
 /// </summary>
 public sealed class PortfolioAccountSync
 {
@@ -115,7 +116,7 @@ public sealed class PortfolioAccountSync
             var show = setting?.ShowAsAccount ?? DefaultShow(linked.Contains(portfolio.Uuid), portfolio.Retired);
             if (!show)
             {
-                if (setting != null) await ReleaseAsync(db, setting, touchedSources, ct);
+                if (setting != null) await ReleaseAsync(db, setting, touchedSources, removeCreated: true, ct);
                 continue;
             }
 
@@ -183,23 +184,55 @@ public sealed class PortfolioAccountSync
         // Portfolios deleted in PortfolioPerformance: their accounts stop being updated.
         var present = valuation.Portfolios.Select(p => p.Uuid).ToHashSet(StringComparer.Ordinal);
         foreach (var gone in settings.Where(s => !present.Contains(s.PpPortfolioUuid)))
-            await ReleaseAsync(db, gone, touchedSources, ct);
+            await ReleaseAsync(db, gone, touchedSources, removeCreated: false, ct);
 
         await db.SaveChangesAsync(ct);
         _logger.LogInformation("PortfolioPerformance accounts of source {SourceId} recomputed ({Portfolios} portfolios)", sourceId, valuation.Portfolios.Count);
         foreach (var s in touchedSources) _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: s));
     }
 
-    /// <summary>Hands a portfolio's accounts back: taken-over ones to MoneyMoney, created ones become manual. Data stays.</summary>
-    private static async Task ReleaseAsync(BudgetDbContext db, PpPortfolioSetting setting, HashSet<int> touched, CancellationToken ct)
+    /// <summary>
+    /// Releases a portfolio's accounts: one taken over from MoneyMoney (it lives in the portfolio's own source) returns to
+    /// MoneyMoney with its data. One this sync created (in the "-pp" source) is removed with its bookings, positions and
+    /// value history when the owner switched the portfolio off (<paramref name="removeCreated"/>; it is created afresh if
+    /// the portfolio is shown again), and stays as a manual account when the portfolio disappeared from the file.
+    /// </summary>
+    private static async Task ReleaseAsync(BudgetDbContext db, PpPortfolioSetting setting, HashSet<int> touched, bool removeCreated, CancellationToken ct)
     {
         var ids = new[] { setting.DepotAccountId, setting.LedgerAccountId }.OfType<long>().ToList();
-        var provider = setting.TakenOver ? AccountProviders.MoneyMoney : AccountProviders.Manual;
         foreach (var account in await db.Accounts.Where(a => ids.Contains(a.Id) && a.Provider == AccountProviders.PortfolioPerformance).ToListAsync(ct))
         {
-            account.Provider = provider;
             touched.Add(account.SourceId);
+            if (account.SourceId == setting.SourceId)
+            {
+                account.Provider = AccountProviders.MoneyMoney;
+                continue;
+            }
+            if (!removeCreated)
+            {
+                account.Provider = AccountProviders.Manual;
+                continue;
+            }
+            await RemoveCreatedAccountAsync(db, account.Id, ct);
+            db.Accounts.Remove(account);
+            if (setting.DepotAccountId == account.Id) setting.DepotAccountId = null;
+            if (setting.LedgerAccountId == account.Id) setting.LedgerAccountId = null;
         }
+    }
+
+    /// <summary>Everything that hangs off an account this sync created; transfers into it become plain bookings.</summary>
+    private static async Task RemoveCreatedAccountAsync(BudgetDbContext db, long id, CancellationToken ct)
+    {
+        var bookings = db.Transactions.Where(t => t.AccountId == id);
+        await db.Transactions.Where(t => t.TransferPeerId != null && bookings.Select(b => (long?)b.Id).Contains(t.TransferPeerId))
+            .ExecuteUpdateAsync(u => u.SetProperty(t => t.TransferPeerId, (long?)null).SetProperty(t => t.IsTransfer, false), ct);
+        await bookings.ExecuteDeleteAsync(ct);
+        await db.Holdings.Where(h => h.AccountId == id).ExecuteDeleteAsync(ct);
+        await db.PortfolioChartPoints.Where(p => p.AccountId == id).ExecuteDeleteAsync(ct);
+        await db.PpPortfolioLinks.Where(p => p.AccountId == id).ExecuteDeleteAsync(ct);
+        await db.ProjectAccountAssignments.Where(p => p.AccountId == id).ExecuteDeleteAsync(ct);
+        await db.BankLoginAccounts.Where(l => l.LinkedAccountId == id)
+            .ExecuteUpdateAsync(u => u.SetProperty(l => l.LinkedAccountId, (long?)null), ct);
     }
 
     private static async Task<Account> CreateAccountAsync(BudgetDbContext db, ImportSource source, string name, string currency, bool depot, CancellationToken ct)

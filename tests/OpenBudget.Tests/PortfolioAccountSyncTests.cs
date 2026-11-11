@@ -170,20 +170,26 @@ public sealed class PortfolioAccountSyncTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Switching_a_portfolio_off_releases_its_accounts_and_on_again_resumes_them()
+    public async Task Switching_a_portfolio_off_removes_the_accounts_it_created_and_on_again_creates_them_afresh()
     {
         await UploadAsync(Client());
         var setting = await SettingAsync("pf-a");
         var settings = Settings();
 
         await settings.SetShowAsync(Source, "pf-a", false);
-        Assert.Equal(AccountProviders.Manual, (await AccountAsync(setting.DepotAccountId!.Value)).Provider);
-        Assert.Equal(AccountProviders.Manual, (await AccountAsync(setting.LedgerAccountId!.Value)).Provider);
-        Assert.Equal(11, (await LedgerAsync(setting.LedgerAccountId!.Value)).Count);   // data stays
+        var off = await SettingAsync("pf-a");
+        Assert.Equal((null, null), (off.DepotAccountId, off.LedgerAccountId));
+        await using (var db = await _t.System.CreateDbContextAsync())
+        {
+            Assert.False(await db.Accounts.AnyAsync(a => a.Id == setting.DepotAccountId || a.Id == setting.LedgerAccountId));
+            Assert.False(await db.Transactions.AnyAsync(t => t.AccountId == setting.LedgerAccountId));
+            Assert.False(await db.Holdings.AnyAsync(h => h.AccountId == setting.DepotAccountId));
+        }
 
         await settings.SetShowAsync(Source, "pf-a", true);
-        Assert.Equal(AccountProviders.PortfolioPerformance, (await AccountAsync(setting.DepotAccountId!.Value)).Provider);
-        Assert.Equal(setting.LedgerAccountId, (await SettingAsync("pf-a")).LedgerAccountId);
+        var on = await SettingAsync("pf-a");
+        Assert.Equal(AccountProviders.PortfolioPerformance, (await AccountAsync(on.DepotAccountId!.Value)).Provider);
+        Assert.Equal(11, (await LedgerAsync(on.LedgerAccountId!.Value)).Count);
 
         // Broker is off by default (linked to nothing here, but switched on explicitly it gets accounts).
         await settings.SetShowAsync(Source, "pf-b", true);
