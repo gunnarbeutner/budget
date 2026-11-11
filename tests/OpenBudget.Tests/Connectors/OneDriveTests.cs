@@ -31,7 +31,8 @@ internal sealed class OneDriveWorld : IAsyncDisposable
         Http = new FakeClientFactory(Fake);
         Loggers = LoggerFactory.Create(b => b.AddProvider(new CapturingProvider(Logged)).SetMinimumLevel(LogLevel.Trace));
         Service = Build(Secrets);
-        var importer = new PortfolioPerformanceImportService(t.System, t.Notifier, NullLogger<PortfolioPerformanceImportService>.Instance);
+        PortfolioFiles = new UploadedPortfolioFileSource(Path.Combine(_staging, "pp"));
+        var importer = new PortfolioPerformanceImportService(t.System, t.Notifier, NullLogger<PortfolioPerformanceImportService>.Instance, PortfolioFiles);
         Consumer = new PortfolioPerformanceCloudFileConsumer(t.System, importer, new CloudFileStaging(_staging));
         Coordinator = new CloudFileSyncCoordinator(t.System, Service, Service, [Consumer], Options, Clock, t.Notifier, Loggers.CreateLogger<CloudFileSyncCoordinator>());
     }
@@ -45,6 +46,7 @@ internal sealed class OneDriveWorld : IAsyncDisposable
     public ILoggerFactory Loggers { get; }
     public ConcurrentQueue<string> Logged { get; } = new();
     public OneDriveService Service { get; }
+    public UploadedPortfolioFileSource PortfolioFiles { get; }
     public PortfolioPerformanceCloudFileConsumer Consumer { get; }
     public CloudFileSyncCoordinator Coordinator { get; }
 
@@ -364,6 +366,9 @@ public sealed class OneDriveTests
         Assert.NotNull(link.LastImportedAt);
         Assert.Equal("\"c:{f1},1\"", link.LastCTag);
         Assert.Equal("Germany", (await w.T.Db.SecurityTaxonomies.AsNoTracking().SingleAsync(t => t.SourceId == 2)).ClassificationName);
+        // Like an upload, the file becomes the source's current file for the IPortfolioFileSource seam.
+        await using (var stored = await w.PortfolioFiles.OpenLatestAsync(2))
+            Assert.NotNull(stored);
 
         // Unchanged: checked, not downloaded.
         await w.Coordinator.CheckNowAsync(Alice);

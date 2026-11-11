@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261111092612_PortfolioPerformanceAccounts";
+        public override string LatestMigrationId => "20261111094048_CloudFiles";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -712,6 +712,114 @@ namespace OpenBudget.Migrations
                         .IsUnique();
 
                     b.ToTable("category_type_assignments");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.CloudConnection", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AccountName")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ConnectedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EncryptedRefreshToken")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("NeedsReconnect")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerUserId", "Provider")
+                        .IsUnique();
+
+                    b.ToTable("cloud_connections");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.CloudFileLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ConnectionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DisplayPath")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DriveId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ItemId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastCTag")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastCheckedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastETag")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastImportedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RemoteModifiedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TargetSourceName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("ConnectionId", "DriveId", "ItemId")
+                        .IsUnique();
+
+                    b.ToTable("cloud_file_links");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Holding", b =>
@@ -1695,6 +1803,17 @@ namespace OpenBudget.Migrations
                     b.Navigation("Project");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.CloudFileLink", b =>
+                {
+                    b.HasOne("OpenBudget.Models.CloudConnection", "Connection")
+                        .WithMany("Files")
+                        .HasForeignKey("ConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Connection");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.Holding", b =>
                 {
                     b.HasOne("OpenBudget.Models.Account", "Account")
@@ -1864,6 +1983,11 @@ namespace OpenBudget.Migrations
                     b.Navigation("Categories");
 
                     b.Navigation("SubGroups");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.CloudConnection", b =>
+                {
+                    b.Navigation("Files");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.ImportSource", b =>
