@@ -40,7 +40,8 @@
 @* Transactions (Browse): the project shell's sidebar holds this page's account/category tree; the main column
    has the 48px toolbar (what is selected + balance, period, search, filter) and the ledger list. Below md the
    sidebar is an off-canvas sheet, opened from the title or the bottom bar. *@
-<ProjectShell ProjectId="ProjectId" Active="ProjectTab.Browse" Tree="tree" @bind-RailOpen="railOpen" OnTransactions="SelectAll">
+<ProjectShell ProjectId="ProjectId" Active="ProjectTab.Browse" Tree="tree" @bind-RailOpen="railOpen" OnTransactions="SelectAll"
+              TransactionsCurrent="@(selectionKind == "all")">
     <Rail>
         @if (tree == null)
         {

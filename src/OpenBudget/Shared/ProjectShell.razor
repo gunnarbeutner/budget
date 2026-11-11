@@ -110,6 +110,11 @@
     [Parameter] public BrowseTree? Tree { get; set; }
     /// <summary>Clicking "Transactions" while on Transactions: the page resets to all transactions instead of navigating.</summary>
     [Parameter] public EventCallback OnTransactions { get; set; }
+    /// <summary>
+    /// Whether "Transactions" shows as the current entry on Transactions: only while all transactions are listed, so an
+    /// account or category picked in the rail is the one highlighted.
+    /// </summary>
+    [Parameter] public bool TransactionsCurrent { get; set; } = true;
     [Parameter] public bool RailOpen { get; set; }
     [Parameter] public EventCallback<bool> RailOpenChanged { get; set; }
     /// <summary>Extra classes for the main column ("shell-page" for a page that scrolls as a whole).</summary>
@@ -233,7 +238,8 @@
     {
         var active = Active == tab;
         var intercept = tab == ProjectTab.Browse && active && OnTransactions.HasDelegate;
-        <a class="shell-view @(active ? "active" : "")" href="@href" aria-current="@(active ? "page" : null)" data-testid="@testId"
+        var current = active && (tab != ProjectTab.Browse || TransactionsCurrent);
+        <a class="shell-view @(current ? "active" : "")" href="@href" aria-current="@(current ? "page" : null)" data-testid="@testId"
            @onclick="() => OnViewClick(tab)" @onclick:preventDefault="intercept">
             <i class="bi @icon" aria-hidden="true"></i>
             <span class="shell-view-label">@label</span>
