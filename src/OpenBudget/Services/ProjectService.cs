@@ -139,7 +139,7 @@ public class ProjectService
         for (int i = 0; i < ordered.Count; i++)
             ordered[i].SortOrder = i;
         await db.SaveChangesAsync();
-        Notify(new DataChange(DataArea.Projects));
+        Notify(new DataChange(DataArea.ProjectOrder));
     }
 
     /// <summary>Rename / re-describe a project (editors may; the context's write guard enforces it).</summary>

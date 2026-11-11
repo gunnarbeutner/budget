@@ -63,6 +63,7 @@ public abstract class DataChangeAwareComponent : ComponentBase, IDisposable
             var previous = _knownScope;
             _knownScope = current;
             if (!current.IsChangeVisible(change) && !previous.IsChangeVisible(change)) return;
+            if (change.Area == DataArea.ProjectOrder && !ListensToProjectOrder) return;
             if (!IsRelevantChange(change)) return;
             if (ShouldAutoReload(change))
             {
@@ -96,6 +97,9 @@ public abstract class DataChangeAwareComponent : ComponentBase, IDisposable
 
     /// <summary>Does this change affect what the page is currently showing?</summary>
     protected abstract bool IsRelevantChange(DataChange change);
+
+    /// <summary>Whether a new order of the project list concerns this component (only lists of projects).</summary>
+    protected virtual bool ListensToProjectOrder => false;
 
     /// <summary>Re-fetch the page's data (or force a fresh navigation).</summary>
     protected abstract Task ReloadAfterChangeAsync();

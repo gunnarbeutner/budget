@@ -9,8 +9,10 @@ namespace OpenBudget.Services;
 /// </summary>
 public enum DataArea
 {
-    /// <summary>Project rows, tracking items, account/category assignments, sort order.</summary>
+    /// <summary>Project rows, tracking items, account/category assignments.</summary>
     Projects,
+    /// <summary>Only the order of projects in the project list changed; nothing a project shows.</summary>
+    ProjectOrder,
     /// <summary>Budgets, their monthly entries, and contribution splits.</summary>
     Budgets,
     /// <summary>Project tracking-item rows specifically (a finer signal than Projects).</summary>

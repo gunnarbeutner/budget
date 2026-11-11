@@ -167,7 +167,9 @@
 
     // Another session added, renamed, reordered, shared or deleted a project: refresh the list if it was loaded and
     // the name in the top bar.
-    protected override bool IsRelevantChange(DataChange change) => change.Area == DataArea.Projects;
+    protected override bool ListensToProjectOrder => true;
+
+    protected override bool IsRelevantChange(DataChange change) => change.Area is DataArea.Projects or DataArea.ProjectOrder;
 
     protected override async Task ReloadAfterChangeAsync()
     {
