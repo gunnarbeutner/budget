@@ -39,6 +39,11 @@ public class Holding
     [Column("symbol")]
     public string? Symbol { get; set; }
 
+    /// <summary>PortfolioPerformance security uuid for holdings written by the PortfolioPerformance
+    /// sync; null for imported holdings. Lets a holding without an ISIN find its taxonomy.</summary>
+    [Column("pp_security_uuid")]
+    public string? PpSecurityUuid { get; set; }
+
     /// <summary>Units held. REAL — crypto holdings are fractional to many decimals.</summary>
     [Column("quantity")]
     public double Quantity { get; set; }

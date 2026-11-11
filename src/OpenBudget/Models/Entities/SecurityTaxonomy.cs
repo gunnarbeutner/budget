@@ -4,8 +4,9 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// One security → taxonomy-classification weighting imported from PortfolioPerformance, keyed by
-/// ISIN so it joins to <see cref="Holding"/> (which the source app provides with ISINs). A security
+/// One security → taxonomy-classification weighting imported from PortfolioPerformance. It joins to
+/// a <see cref="Holding"/> by ISIN when the security has one, otherwise by the PortfolioPerformance
+/// security uuid (<see cref="Holding.PpSecurityUuid"/> or a <see cref="PpSecurityLink"/>). A security
 /// can appear in several classifications of the same taxonomy (e.g. a World ETF split across
 /// regions), so this is one row per (security, classification) assignment.
 ///
@@ -20,8 +21,11 @@ public class SecurityTaxonomy
 
     public int SourceId { get; set; }
 
-    /// <summary>ISIN of the security; the join key to <see cref="Holding.Isin"/>.</summary>
+    /// <summary>ISIN of the security, or empty when it has none; the join key to <see cref="Holding.Isin"/>.</summary>
     public string Isin { get; set; } = "";
+
+    /// <summary>PortfolioPerformance security uuid; the join key for securities without an ISIN.</summary>
+    public string SecurityUuid { get; set; } = "";
 
     /// <summary>PortfolioPerformance taxonomy UUID (stable across renames).</summary>
     public string TaxonomyId { get; set; } = "";

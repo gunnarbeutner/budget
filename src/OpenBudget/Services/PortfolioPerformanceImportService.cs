@@ -11,7 +11,7 @@ namespace OpenBudget.Services;
 /// <see cref="PortfolioPerformanceFile"/>; this owns the replace-for-source transaction and the
 /// per-source serialization (singleton, like the other importers).
 ///
-/// The taxonomy supplements imported holdings (joined by ISIN), so the source must already exist
+/// The taxonomy supplements imported holdings (joined by ISIN or PP security uuid), so the source must already exist
 /// — a PortfolioPerformance upload for an unknown source throws <see cref="KeyNotFoundException"/>.
 /// </summary>
 public class PortfolioPerformanceImportService
@@ -99,7 +99,7 @@ public class PortfolioPerformanceImportService
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
 
-        int distinctIsins = rows.Select(r => r.Isin).Distinct(StringComparer.Ordinal).Count();
+        int distinctIsins = rows.Select(r => r.SecurityUuid).Distinct(StringComparer.Ordinal).Count();
         int distinctTaxonomies = rows.Select(r => r.TaxonomyName).Distinct(StringComparer.Ordinal).Count();
 
         _logger.LogInformation(

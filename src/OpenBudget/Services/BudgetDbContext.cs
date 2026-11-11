@@ -303,12 +303,14 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<PortfolioChartPoint>()
             .HasIndex(p => new { p.SourceId, p.AccountId, p.Timestamp });
 
-        // PortfolioPerformance taxonomy, joined to holdings by ISIN. App-native (not namespaced);
+        // PortfolioPerformance taxonomy, joined to holdings by ISIN or PP security uuid. App-native (not namespaced);
         // scoped + indexed by source, and by source+taxonomy for the per-taxonomy lookups.
         modelBuilder.Entity<SecurityTaxonomy>()
             .HasIndex(t => new { t.SourceId, t.Isin });
         modelBuilder.Entity<SecurityTaxonomy>()
             .HasIndex(t => new { t.SourceId, t.TaxonomyId });
+        modelBuilder.Entity<SecurityTaxonomy>()
+            .Property(t => t.SecurityUuid).HasDefaultValue("");
 
         // PortfolioPerformance security catalogue. App-native (not namespaced); scoped by source
         // and looked up by source+ISIN to merge against held securities.

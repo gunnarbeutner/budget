@@ -147,6 +147,57 @@ public class CombinedHoldingsTests
         Assert.Equal(600m, regions.Slices.Single(s => s.Label == "Unclassified").Value);
     }
 
+    private static SecurityTaxonomy UuidTax(string uuid, string taxonomy, string cls, int bp)
+    {
+        var row = Tax("", taxonomy, cls, bp);
+        row.SecurityUuid = uuid;
+        return row;
+    }
+
+    [Fact]
+    public async Task LookThrough_classifies_isinless_holdings_by_pp_security_uuid()
+    {
+        await using var t = new TestDb();
+        t.AddProject(1);
+        t.AddAccount(20, "Depot").Type = 7;
+        // An ETF matched by ISIN, a sync-written holding carrying its PP uuid, an imported holding
+        // linked to a PP security by hand, and an unmatched one.
+        AddHolding(t, 20, "IE000EQ0", "EQ", "Equity ETF", quantity: 1, amount: 100, purchasePerUnit: null);
+        AddHolding(t, 20, null, "ZZQ-EUR", "Sample Token", quantity: 1, amount: 200, purchasePerUnit: null);
+        AddHolding(t, 20, null, null, "Sample House", quantity: 1, amount: 300, purchasePerUnit: null);
+        AddHolding(t, 20, null, "ZZX", "Unknown Thing", quantity: 1, amount: 400, purchasePerUnit: null);
+        var list = t.Db.ChangeTracker.Entries<Holding>().Select(e => e.Entity).ToList();
+        list.Single(h => h.Symbol == "ZZQ-EUR").PpSecurityUuid = "pp-token";
+        t.Db.PpSecurityLinks.Add(new PpSecurityLink { SourceId = 1, PpSecurityUuid = "pp-house", MmHoldingKey = "name:Sample House" });
+        t.Db.SecurityTaxonomies.AddRange(
+            Tax("IE000EQ0", "Asset Classes", "Equity", 10000),
+            UuidTax("pp-token", "Asset Classes", "Alternatives", 10000),
+            UuidTax("pp-house", "Asset Classes", "Real Estate", 10000),
+            // A classified security nobody holds stays out of the view.
+            UuidTax("pp-unrelated", "Asset Classes", "Bonds", 10000));
+        await t.Db.SaveChangesAsync();
+
+        var view = await t.Portfolio.GetAccountHoldingsAsync(1, 20);
+
+        var assets = view!.Taxonomies.Single(x => x.TaxonomyName == "Asset Classes");
+        Assert.Equal(100m, assets.Slices.Single(s => s.Label == "Equity").Value);
+        Assert.Equal(200m, assets.Slices.Single(s => s.Label == "Alternatives").Value);
+        Assert.Equal(300m, assets.Slices.Single(s => s.Label == "Real Estate").Value);
+        Assert.DoesNotContain(assets.Slices, s => s.Label == "Bonds");
+        Assert.Equal(1000m, assets.Slices.Sum(s => s.Value));
+
+        Assert.Equal("uuid:pp-token", view.Rows.Single(r => r.Symbol == "ZZQ-EUR").TaxonomyKey);
+        Assert.Equal("uuid:pp-house", view.Rows.Single(r => r.Name == "Sample House").TaxonomyKey);
+        Assert.Equal("isin:IE000EQ0", view.Rows.Single(r => r.Isin == "IE000EQ0").TaxonomyKey);
+        Assert.Null(view.Rows.Single(r => r.Symbol == "ZZX").TaxonomyKey);
+
+        var weights = await t.Portfolio.GetSecurityTaxonomyWeightsAsync(1, "Asset Classes",
+            new[] { "isin:IE000EQ0", "uuid:pp-token", "uuid:pp-house" });
+        Assert.Equal(1m, weights["isin:IE000EQ0"]["Equity"]);
+        Assert.Equal(1m, weights["uuid:pp-token"]["Alternatives"]);
+        Assert.Equal(1m, weights["uuid:pp-house"]["Real Estate"]);
+    }
+
     [Theory]
     [InlineData("Asset Classes", true)]
     [InlineData("anlageklassen", true)]

@@ -119,25 +119,23 @@ public class PortfolioService
     }
 
     /// <summary>
-    /// Per-security top-level classification weights for one taxonomy, keyed by ISIN. Each inner
+    /// Per-security top-level classification weights for one taxonomy, keyed by taxonomy key
+    /// (<see cref="HoldingRow.TaxonomyKey"/>: "isin:…" or "uuid:…"). Each inner
     /// dictionary maps a top-level class (e.g. a region) to the security's fraction in it; the
     /// remainder up to 1 is unclassified. Securities not present have no taxonomy coverage.
     /// </summary>
     public async Task<Dictionary<string, Dictionary<string, decimal>>> GetSecurityTaxonomyWeightsAsync(
-        int projectId, string taxonomyName, IReadOnlyCollection<string> isins, CancellationToken ct = default)
+        int projectId, string taxonomyName, IReadOnlyCollection<string> taxonomyKeys, CancellationToken ct = default)
     {
         var result = new Dictionary<string, Dictionary<string, decimal>>(StringComparer.Ordinal);
-        if (isins.Count == 0) return result;
+        if (taxonomyKeys.Count == 0) return result;
         var project = await _projects.GetProjectAsync(projectId);
         if (project == null) return result;
 
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var rows = await db.SecurityTaxonomies
-            .AsNoTracking()
-            .Where(t => t.SourceId == project.SourceId && t.TaxonomyName == taxonomyName && isins.Contains(t.Isin))
-            .ToListAsync(ct);
+        var rows = await LoadTaxonomyRowsAsync(db, project.SourceId, taxonomyKeys, taxonomyName, ct);
 
-        foreach (var g in rows.GroupBy(t => t.Isin, StringComparer.Ordinal))
+        foreach (var g in rows.GroupBy(TaxonomyKeyOf, StringComparer.Ordinal))
         {
             var byClass = new Dictionary<string, decimal>(StringComparer.Ordinal);
             foreach (var t in g)
@@ -330,7 +328,9 @@ public class PortfolioService
         decimal total = holdings.Sum(h => (decimal)(h.Amount ?? 0));
         var currency = holdings.FirstOrDefault(h => !string.IsNullOrEmpty(h.AmountCurrency))?.AmountCurrency ?? "EUR";
 
-        var rows = merge ? BuildMergedRows(holdings, total) : BuildRows(holdings, total);
+        var linkedUuids = await LinkedSecurityUuidsAsync(db, sourceId, ct);
+        string? TaxKey(Holding h) => TaxonomyKeyOf(h, linkedUuids);
+        var rows = merge ? BuildMergedRows(holdings, total, TaxKey) : BuildRows(holdings, total, TaxKey);
 
         var allocation = holdings
             .GroupBy(h => h.AssetClassLabel, StringComparer.Ordinal)
@@ -347,7 +347,7 @@ public class PortfolioService
             .OrderByDescending(s => s.Value)
             .ToList();
 
-        var taxonomies = await BuildLookThroughAsync(db, sourceId, holdings, total, ct);
+        var taxonomies = await BuildLookThroughAsync(db, sourceId, holdings, total, TaxKey, ct);
 
         return new AccountHoldings
         {
@@ -367,7 +367,50 @@ public class PortfolioService
         : !string.IsNullOrEmpty(h.Symbol) ? "sym:" + h.Symbol
         : "name:" + (h.Name ?? "");
 
-    private static List<HoldingRow> BuildRows(List<Holding> holdings, decimal total) =>
+    /// <summary>
+    /// Key a holding's taxonomy rows are found by: "isin:" + ISIN when it has one, else "uuid:" +
+    /// the PortfolioPerformance security uuid — its own (holdings written by the PortfolioPerformance
+    /// sync) or the one linked to it via <see cref="PpSecurityLink"/>. Null when neither exists.
+    /// </summary>
+    internal static string? TaxonomyKeyOf(Holding h, IReadOnlyDictionary<string, string> uuidByHoldingKey)
+    {
+        if (!string.IsNullOrEmpty(h.Isin)) return "isin:" + h.Isin;
+        if (!string.IsNullOrEmpty(h.PpSecurityUuid)) return "uuid:" + h.PpSecurityUuid;
+        return uuidByHoldingKey.TryGetValue(KeyOf(h), out var uuid) ? "uuid:" + uuid : null;
+    }
+
+    /// <summary>Key of a taxonomy row, matching <see cref="TaxonomyKeyOf(Holding, IReadOnlyDictionary{string, string})"/>.</summary>
+    internal static string TaxonomyKeyOf(SecurityTaxonomy t) =>
+        !string.IsNullOrEmpty(t.Isin) ? "isin:" + t.Isin : "uuid:" + t.SecurityUuid;
+
+    // Holding key → PP security uuid from the source's manual instrument links.
+    private static async Task<Dictionary<string, string>> LinkedSecurityUuidsAsync(BudgetDbContext db, int sourceId, CancellationToken ct)
+    {
+        var links = await db.PpSecurityLinks.AsNoTracking()
+            .Where(l => l.SourceId == sourceId)
+            .Select(l => new { l.MmHoldingKey, l.PpSecurityUuid })
+            .ToListAsync(ct);
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var l in links) result[l.MmHoldingKey] = l.PpSecurityUuid;
+        return result;
+    }
+
+    // Taxonomy rows of a source for the given taxonomy keys, optionally limited to one taxonomy.
+    private static async Task<List<SecurityTaxonomy>> LoadTaxonomyRowsAsync(
+        BudgetDbContext db, int sourceId, IEnumerable<string> taxonomyKeys, string? taxonomyName, CancellationToken ct)
+    {
+        var keys = taxonomyKeys.ToHashSet(StringComparer.Ordinal);
+        var isins = keys.Where(k => k.StartsWith("isin:", StringComparison.Ordinal)).Select(k => k[5..]).ToList();
+        var uuids = keys.Where(k => k.StartsWith("uuid:", StringComparison.Ordinal)).Select(k => k[5..]).ToList();
+        if (isins.Count == 0 && uuids.Count == 0) return new List<SecurityTaxonomy>();
+        var query = db.SecurityTaxonomies.AsNoTracking()
+            .Where(t => t.SourceId == sourceId && (isins.Contains(t.Isin) || (t.Isin == "" && uuids.Contains(t.SecurityUuid))));
+        if (taxonomyName != null) query = query.Where(t => t.TaxonomyName == taxonomyName);
+        var rows = await query.ToListAsync(ct);
+        return rows.Where(t => keys.Contains(TaxonomyKeyOf(t))).ToList();
+    }
+
+    private static List<HoldingRow> BuildRows(List<Holding> holdings, decimal total, Func<Holding, string?> taxKey) =>
         holdings
             .OrderByDescending(h => h.Amount ?? 0)
             .Select(h => new HoldingRow
@@ -378,6 +421,7 @@ public class PortfolioService
                 Wkn = h.Wkn,
                 Symbol = h.Symbol,
                 AssetClassLabel = h.AssetClassLabel,
+                TaxonomyKey = taxKey(h),
                 Quantity = h.Quantity,
                 Price = h.Price.HasValue ? (decimal)h.Price.Value : null,
                 PriceCurrency = h.PriceCurrency,
@@ -389,7 +433,7 @@ public class PortfolioService
             })
             .ToList();
 
-    private static List<HoldingRow> BuildMergedRows(List<Holding> holdings, decimal total)
+    private static List<HoldingRow> BuildMergedRows(List<Holding> holdings, decimal total, Func<Holding, string?> taxKey)
     {
         // Merge by KeyOf so the same security held in two depots becomes one row (and ISIN-less
         // crypto still merges by symbol/name).
@@ -414,6 +458,7 @@ public class PortfolioService
                 Wkn = first.Wkn,
                 Symbol = first.Symbol,
                 AssetClassLabel = first.AssetClassLabel,
+                TaxonomyKey = members.Select(taxKey).FirstOrDefault(k => k != null),
                 Quantity = quantity,
                 Price = first.Price.HasValue ? (decimal)first.Price.Value : null,
                 PriceCurrency = first.PriceCurrency,
@@ -429,29 +474,25 @@ public class PortfolioService
 
     /// <summary>
     /// Distributes each holding's value across a PortfolioPerformance taxonomy's top-level
-    /// classifications by ISIN-matched weights. Holdings with no (or partial) coverage contribute
+    /// classifications by weights matched on the holding's taxonomy key (ISIN, else PP security uuid). Holdings with no (or partial) coverage contribute
     /// their remaining value to MoneyMoney's asset type (asset-class taxonomy, see
     /// <see cref="IsAssetClassTaxonomy"/>) or to "Unclassified" (others), so each taxonomy's slices sum to the
     /// account total. Returns only taxonomies that classify at least some value.
     /// </summary>
     private static async Task<List<TaxonomyLookThrough>> BuildLookThroughAsync(
-        BudgetDbContext db, int sourceId, List<Holding> holdings, decimal total, CancellationToken ct)
+        BudgetDbContext db, int sourceId, List<Holding> holdings, decimal total, Func<Holding, string?> taxKey, CancellationToken ct)
     {
-        // Value per ISIN within this account (same ETF held twice would sum).
-        var valueByIsin = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        // Value per taxonomy key within this account (same ETF held twice would sum).
+        var valueByKey = new Dictionary<string, decimal>(StringComparer.Ordinal);
         foreach (var h in holdings)
         {
-            if (string.IsNullOrEmpty(h.Isin)) continue;
-            valueByIsin.TryGetValue(h.Isin, out var v);
-            valueByIsin[h.Isin] = v + (decimal)(h.Amount ?? 0);
+            if (taxKey(h) is not { } key) continue;
+            valueByKey.TryGetValue(key, out var v);
+            valueByKey[key] = v + (decimal)(h.Amount ?? 0);
         }
-        if (valueByIsin.Count == 0) return new List<TaxonomyLookThrough>();
+        if (valueByKey.Count == 0) return new List<TaxonomyLookThrough>();
 
-        var isins = valueByIsin.Keys.ToList();
-        var taxRows = await db.SecurityTaxonomies
-            .AsNoTracking()
-            .Where(t => t.SourceId == sourceId && isins.Contains(t.Isin))
-            .ToListAsync(ct);
+        var taxRows = await LoadTaxonomyRowsAsync(db, sourceId, valueByKey.Keys, taxonomyName: null, ct);
         if (taxRows.Count == 0) return new List<TaxonomyLookThrough>();
 
         var result = new List<TaxonomyLookThrough>();
@@ -467,24 +508,25 @@ public class PortfolioService
                 byLabel[label] = bucket + value;
             }
 
-            var assignedByIsin = new Dictionary<string, decimal>(StringComparer.Ordinal);
+            var assignedByKey = new Dictionary<string, decimal>(StringComparer.Ordinal);
             foreach (var row in taxGroup)
             {
-                if (!valueByIsin.TryGetValue(row.Isin, out var isinValue)) continue;
+                var rowKey = TaxonomyKeyOf(row);
+                if (!valueByKey.TryGetValue(rowKey, out var keyValue)) continue;
                 decimal weight = row.WeightBp / 10000m;
-                Add(TopLevel(row), isinValue * weight);
-                assignedByIsin.TryGetValue(row.Isin, out var a);
-                assignedByIsin[row.Isin] = a + weight;
+                Add(TopLevel(row), keyValue * weight);
+                assignedByKey.TryGetValue(rowKey, out var a);
+                assignedByKey[rowKey] = a + weight;
             }
 
             // Whatever PP doesn't place — the unassigned part of classified securities and every
-            // holding PP doesn't know at all (including ISIN-less positions) — goes, for the
+            // holding PP doesn't classify or can't be matched to — goes, for the
             // asset-class taxonomy, to MoneyMoney's own type for that position, and for any other
             // taxonomy to "Unclassified". Either way the slices sum to the account total.
             foreach (var h in holdings)
             {
                 decimal amount = (decimal)(h.Amount ?? 0);
-                decimal assigned = !string.IsNullOrEmpty(h.Isin) && assignedByIsin.TryGetValue(h.Isin, out var w)
+                decimal assigned = taxKey(h) is { } hk && assignedByKey.TryGetValue(hk, out var w)
                     ? Math.Min(1m, w) : 0m;
                 decimal rest = amount * (1m - assigned);
                 if (rest == 0m) continue;

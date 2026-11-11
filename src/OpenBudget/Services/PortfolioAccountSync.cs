@@ -316,6 +316,7 @@ public sealed class PortfolioAccountSync
                 Isin = p.Security.Isin,
                 Wkn = p.Security.Wkn,
                 Symbol = p.Security.Ticker,
+                PpSecurityUuid = p.Security.Uuid,
                 Quantity = p.Shares,
                 Amount = p.Amount,
                 AmountCurrency = currency,

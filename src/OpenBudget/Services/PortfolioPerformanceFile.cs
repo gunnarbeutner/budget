@@ -42,19 +42,19 @@ public static class PortfolioPerformanceFile
     }
 
     /// <summary>
-    /// Flattens every taxonomy assignment that targets an ISIN-bearing security into rows for the
-    /// given source. Assignments to accounts, portfolios, or securities without an ISIN (e.g.
-    /// crypto) are skipped — they can't join to <see cref="Holding"/>.
+    /// Flattens every taxonomy assignment that targets a security into rows for the given source,
+    /// carrying the security's uuid and its ISIN (empty when it has none). Assignments to accounts
+    /// or portfolios are skipped.
     /// </summary>
     public static List<SecurityTaxonomy> Flatten(PClient client, int sourceId)
     {
-        // uuid → ISIN for securities that carry one. Indexer (not ToDictionary) so a duplicate
+        // uuid → ISIN ("" when none) for every security. Indexer (not ToDictionary) so a duplicate
         // uuid — never seen in practice — degrades to last-wins instead of throwing mid-import.
         var uuidToIsin = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var s in client.Securities)
         {
-            if (!string.IsNullOrEmpty(s.Uuid) && !string.IsNullOrEmpty(s.Isin))
-                uuidToIsin[s.Uuid] = s.Isin;
+            if (!string.IsNullOrEmpty(s.Uuid))
+                uuidToIsin[s.Uuid] = s.Isin ?? "";
         }
 
         var rows = new List<SecurityTaxonomy>();
@@ -74,6 +74,7 @@ public static class PortfolioPerformanceFile
                     {
                         SourceId = sourceId,
                         Isin = isin,
+                        SecurityUuid = assignment.InvestmentVehicle,
                         TaxonomyId = taxonomy.Id,
                         TaxonomyName = taxonomy.Name,
                         ClassificationId = classification.Id,

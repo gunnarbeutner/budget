@@ -102,6 +102,7 @@ public sealed class PortfolioAccountSyncTests : IAsyncDisposable
         Assert.Equal(["Gold", "Example ETF", "Real estate"], holdings.Select(h => h.Name));
         Assert.Equal((10.0, 62.0, 620.0, 53.0), (holdings[0].Quantity, holdings[0].Price!.Value, holdings[0].Amount!.Value, holdings[0].Purchase!.Value));
         Assert.Equal(("IE00EXAMPLE1", "USD"), (holdings[1].Isin, holdings[1].PriceCurrency));
+        Assert.Equal("sec-re", holdings[2].PpSecurityUuid);
 
         // Value history: a total per day (Jan 2..10) plus a line per held security with history (Gold 9 days, ETF 8).
         var chart = await db.PortfolioChartPoints.Where(p => p.AccountId == depot.Id).ToListAsync();

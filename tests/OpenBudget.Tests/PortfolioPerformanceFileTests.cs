@@ -40,7 +40,7 @@ public class PortfolioPerformanceFileTests
         tax.Classifications.Add(new PTaxonomy.Types.Classification { Id = "eu", ParentId = "root", Name = "Europe" });
         var germany = new PTaxonomy.Types.Classification { Id = "de", ParentId = "eu", Name = "Germany" };
         germany.Assignments.Add(new PTaxonomy.Types.Assignment { InvestmentVehicle = "sec-etf", Weight = 6000 });
-        germany.Assignments.Add(new PTaxonomy.Types.Assignment { InvestmentVehicle = "sec-gold", Weight = 5000 }); // no ISIN → skipped
+        germany.Assignments.Add(new PTaxonomy.Types.Assignment { InvestmentVehicle = "sec-gold", Weight = 5000 }); // no ISIN → kept under its uuid
         germany.Assignments.Add(new PTaxonomy.Types.Assignment { InvestmentVehicle = "ghost", Weight = 1000 }); // unknown vehicle → skipped
         tax.Classifications.Add(germany);
         client.Taxonomies.Add(tax);
@@ -59,12 +59,18 @@ public class PortfolioPerformanceFileTests
     }
 
     [Fact]
-    public void Flatten_keeps_only_isin_bearing_assignments_with_root_excluded_paths()
+    public void Flatten_keeps_security_assignments_with_root_excluded_paths()
     {
         var rows = PortfolioPerformanceFile.Flatten(SampleClient(), sourceId: 7);
 
-        // Only the ETF assignment survives: the gold security has no ISIN, and "ghost" isn't a security.
-        var row = Assert.Single(rows);
+        // "ghost" isn't a security, so only the ETF and the gold assignments survive.
+        Assert.Equal(2, rows.Count);
+        var gold = rows.Single(r => r.SecurityUuid == "sec-gold");
+        Assert.Equal("", gold.Isin);
+        Assert.Equal("Europe / Germany", gold.ClassificationPath);
+        Assert.Equal(5000, gold.WeightBp);
+
+        var row = rows.Single(r => r.SecurityUuid == "sec-etf");
         Assert.Equal(7, row.SourceId);
         Assert.Equal("IE000WORLD0", row.Isin);
         Assert.Equal("Regions", row.TaxonomyName);

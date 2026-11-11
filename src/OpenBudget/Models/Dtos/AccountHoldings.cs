@@ -40,6 +40,9 @@ public class HoldingRow
     public string? Wkn { get; init; }
     public string? Symbol { get; init; }
     public string AssetClassLabel { get; init; } = "";
+    /// <summary>Key its PortfolioPerformance taxonomy rows are found by ("isin:…" or "uuid:…"), or
+    /// null when it can't be matched to a PortfolioPerformance security.</summary>
+    public string? TaxonomyKey { get; init; }
     /// <summary>Units held. Kept as double — crypto positions are fractional to many decimals.</summary>
     public double Quantity { get; init; }
     public decimal? Price { get; init; }

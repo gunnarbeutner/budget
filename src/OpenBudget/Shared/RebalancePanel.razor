@@ -368,7 +368,7 @@ else
     private Dictionary<string, decimal> regionTargets = new(StringComparer.Ordinal);                  // class -> percent
     private readonly Dictionary<string, decimal> regionPins = new(StringComparer.Ordinal);            // key -> fixed € target (taxonomy mode)
     private readonly HashSet<string> regionExempt = new(StringComparer.Ordinal);                      // keys excluded from the taxonomy balance
-    private Dictionary<string, Dictionary<string, decimal>> securityWeights = new(StringComparer.Ordinal); // isin -> class -> fraction
+    private Dictionary<string, Dictionary<string, decimal>> securityWeights = new(StringComparer.Ordinal); // taxonomy key -> class -> fraction
     private static readonly Dictionary<string, decimal> EmptyWeights = new(StringComparer.Ordinal);
     private const string UnclassifiedLabel = "Unclassified";
 
@@ -617,8 +617,8 @@ else
     private async Task LoadRegionWeightsAsync(bool preserveTargets = false)
     {
         if (string.IsNullOrEmpty(regionTaxonomy)) { regionList = new List<string>(); return; }
-        var isins = securities.Where(s => !string.IsNullOrEmpty(s.Isin)).Select(s => s.Isin!).Distinct(StringComparer.Ordinal).ToList();
-        securityWeights = await Portfolio.GetSecurityTaxonomyWeightsAsync(ProjectId, regionTaxonomy, isins);
+        var taxKeys = securities.Select(TaxonomyKeyOf).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+        securityWeights = await Portfolio.GetSecurityTaxonomyWeightsAsync(ProjectId, regionTaxonomy, taxKeys);
         var classes = securityWeights.Values.SelectMany(d => d.Keys).Distinct(StringComparer.Ordinal)
             .OrderBy(x => x, StringComparer.Ordinal).ToList();
         // Asset-class taxonomy: what PP doesn't classify falls back to MoneyMoney's type for the
@@ -643,7 +643,11 @@ else
     }
 
     private IReadOnlyDictionary<string, decimal> WeightsFor(HoldingRow s) =>
-        !string.IsNullOrEmpty(s.Isin) && securityWeights.TryGetValue(s.Isin!, out var w) ? w : EmptyWeights;
+        TaxonomyKeyOf(s) is { } k && securityWeights.TryGetValue(k, out var w) ? w : EmptyWeights;
+
+    // Rows added from the catalogue carry only an ISIN; held rows carry their resolved key.
+    private static string? TaxonomyKeyOf(HoldingRow s) =>
+        s.TaxonomyKey ?? (!string.IsNullOrEmpty(s.Isin) ? "isin:" + s.Isin : null);
 
     private double[] WeightVector(HoldingRow s, Dictionary<string, int> idx)
     {
