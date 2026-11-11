@@ -17,6 +17,12 @@ public sealed class BrowserOptions
     /// <summary>Browser language (Chromium's --lang option).</summary>
     public string Locale { get; set; } = "de-DE";
 
+    /// <summary>
+    /// Runs Chromium without a window (its built-in headless mode) instead of the headed browser web logins use;
+    /// for automated tests, so they open no windows.
+    /// </summary>
+    public bool Headless { get; set; }
+
     /// <summary>Null = auto (on inside a container or when running as root).</summary>
     public bool? NoSandbox { get; set; }
 

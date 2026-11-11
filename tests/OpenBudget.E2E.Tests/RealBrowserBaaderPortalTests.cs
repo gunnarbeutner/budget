@@ -213,7 +213,7 @@ public sealed class RealBrowserBaaderPortalTests
         await ctx.Response.OutputStream.WriteAsync(bytes);
     }
 
-    private BrowserService NewBrowser() => new(NullLogger<BrowserService>.Instance, new BrowserOptions { ExecutablePath = _chrome, IdleShutdown = TimeSpan.FromSeconds(1) });
+    private BrowserService NewBrowser() => new(NullLogger<BrowserService>.Instance, new BrowserOptions { ExecutablePath = _chrome, IdleShutdown = TimeSpan.FromSeconds(1), Headless = true });
 
     private static WebLoginService Service(BrowserService browser) => new(browser,
         new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },

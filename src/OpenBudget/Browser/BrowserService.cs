@@ -159,6 +159,9 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
                 "--remote-debugging-address=127.0.0.1", $"--remote-debugging-port={debuggingPort}",
             };
             if (noSandbox) args.Add("--no-sandbox");
+            // headless pages otherwise count as hidden and stop rendering, which stalls clicks (they wait for a frame)
+            if (Options.Headless)
+                args.AddRange(["--headless=new", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows"]);
             var launch = new LaunchOptions
             {
                 ExecutablePath = exe,
@@ -169,14 +172,14 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
                 DefaultViewport = null,
                 Timeout = 60000,
             };
-            if (OperatingSystem.IsLinux() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
+            if (!Options.Headless && OperatingSystem.IsLinux() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
             {
                 const string xvfb = "/usr/bin/xvfb-run";
                 if (!File.Exists(xvfb)) throw new BrowserActionException("Web logins need a headed browser; install Xvfb and xauth or provide a DISPLAY.");
                 launch.ExecutablePath = xvfb;
                 launch.Args = ["--auto-servernum", "--", exe, .. args];
             }
-            _logger.LogInformation("Starting headed Chromium {Exe} (no-sandbox={NoSandbox}).", exe, noSandbox);
+            _logger.LogInformation("Starting {Mode} Chromium {Exe} (no-sandbox={NoSandbox}).", Options.Headless ? "headless" : "headed", exe, noSandbox);
             var browser = await Puppeteer.LaunchAsync(launch);
             _browser = browser;
             return browser;

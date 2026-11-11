@@ -15,6 +15,8 @@ public static class BankConnectorsRegistration
 {
     public const string EnableFakeBankVariable = "OPENBUDGET_ENABLE_FAKE_BANK";
     public const string StatementsDirVariable = "OPENBUDGET_STATEMENTS_DIR";
+    /// <summary>"true" runs the web-login browser headless (automated tests; no windows).</summary>
+    public const string BrowserHeadlessVariable = "OPENBUDGET_BROWSER_HEADLESS";
 
     /// <summary>Registers the connector framework: secrets, registry, sync engine and the per-user service.</summary>
     public static IServiceCollection AddBankConnectors(this IServiceCollection services, IHostEnvironment env, string contentRoot)
@@ -46,7 +48,10 @@ public static class BankConnectorsRegistration
                 ? custom
                 : Path.Combine(OpenBudgetPaths.DataDir(contentRoot), "statements")));
         // Web logins: one lazily started Chromium (when installed), an isolated context per login.
-        services.AddSingleton(new BrowserOptions());
+        services.AddSingleton(sp => new BrowserOptions
+        {
+            Headless = string.Equals(sp.GetRequiredService<IConfiguration>()[BrowserHeadlessVariable], "true", StringComparison.OrdinalIgnoreCase),
+        });
         services.AddSingleton<BrowserService>();
         services.AddSingleton<IBrowserHost>(sp => sp.GetRequiredService<BrowserService>());
         services.AddSingleton(new WebLoginOptions());

@@ -41,6 +41,7 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
         builder.UseEnvironment("Test");
         // Bank connectors need a secrets key (the fake bank is always on in the Test environment).
         builder.UseSetting("OPENBUDGET_SECRETS_KEY", Convert.ToBase64String(new byte[32].Select((_, i) => (byte)(i + 1)).ToArray()));
+        builder.UseSetting(OpenBudget.Connectors.BankConnectorsRegistration.BrowserHeadlessVariable, "true");
         builder.UseSetting("OPENBUDGET_STATEMENTS_DIR", Path.Combine(Path.GetTempPath(), $"mmb-e2e-stmts-{Guid.NewGuid():N}"));
         // OneDrive against the fake Microsoft (see Microsoft).
         builder.UseSetting(OpenBudget.Connectors.OneDrive.OneDriveOptions.ClientIdVariable, OpenBudget.Tests.Connectors.FakeMicrosoftCloud.ClientId);

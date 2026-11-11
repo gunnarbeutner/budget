@@ -176,7 +176,8 @@ public sealed class RealBrowserWebLoginTests
     [Test]
     public async Task Browser_keeps_its_native_identity_and_cookies_survive_a_fresh_context()
     {
-        await using var browser = NewBrowser();
+        // the identity of the headed browser that web logins use, so this one test opens a window
+        await using var browser = NewBrowser(headless: false);
         IReadOnlyList<CookieState> cookies;
         string userAgent;
         await using (var page = await browser.OpenSessionAsync(CancellationToken.None))
@@ -296,7 +297,7 @@ public sealed class RealBrowserWebLoginTests
         Assert.That(result.Cookies.Select(c => c.Name), Has.Member("sid"));
     }
 
-    private BrowserService NewBrowser() => new(NullLogger<BrowserService>.Instance, new BrowserOptions { ExecutablePath = _chrome, IdleShutdown = TimeSpan.FromSeconds(1) });
+    private BrowserService NewBrowser(bool headless = true) => new(NullLogger<BrowserService>.Instance, new BrowserOptions { ExecutablePath = _chrome, IdleShutdown = TimeSpan.FromSeconds(1), Headless = headless });
 
     [Test]
     public async Task A_web_login_seeds_the_browser_exports_the_cookies_and_leaves_nothing_behind()
