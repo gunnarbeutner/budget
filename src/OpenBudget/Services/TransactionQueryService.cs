@@ -443,4 +443,40 @@ public class TransactionQueryService
             .Select(r => (DateTimeOffset.FromUnixTimeSeconds(r.Timestamp).UtcDateTime, r.Amount / 100m))
             .ToList();
     }
+
+    /// <summary>
+    /// Stored value history (<c>portfolio_chart</c>) of the given accounts, per account as ascending
+    /// (day, value) points. A day's value is the account-total row (no security) when the source
+    /// stored one, otherwise the sum of that day's per-security rows. Accounts without any point
+    /// are absent from the result. One grouped query across all accounts.
+    /// </summary>
+    public async Task<Dictionary<long, List<(DateTime Day, decimal Value)>>> GetDepotValueHistoryAsync(
+        int sourceId,
+        IReadOnlyCollection<long> accountIds,
+        CancellationToken ct = default)
+    {
+        var result = new Dictionary<long, List<(DateTime Day, decimal Value)>>();
+        if (accountIds.Count == 0) return result;
+        var acctList = accountIds.ToList();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var rows = await db.PortfolioChartPoints
+            .Where(p => p.SourceId == sourceId && acctList.Contains(p.AccountId))
+            .GroupBy(p => new { p.AccountId, p.Timestamp })
+            .Select(g => new
+            {
+                g.Key.AccountId,
+                g.Key.Timestamp,
+                Totals = g.Count(p => p.SecurityId == null),
+                Total = g.Sum(p => p.SecurityId == null ? p.Balance ?? 0 : 0),
+                Securities = g.Sum(p => p.SecurityId != null ? p.Balance ?? 0 : 0),
+            })
+            .ToListAsync(ct);
+        foreach (var r in rows.OrderBy(r => r.Timestamp))
+        {
+            if (!result.TryGetValue(r.AccountId, out var list)) result[r.AccountId] = list = new();
+            var day = DateTimeOffset.FromUnixTimeSeconds(r.Timestamp).UtcDateTime.Date;
+            list.Add((day, Math.Round((decimal)(r.Totals > 0 ? r.Total : r.Securities), 2)));
+        }
+        return result;
+    }
 }

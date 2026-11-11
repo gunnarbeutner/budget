@@ -10,6 +10,14 @@ public sealed record BrowseChartData(
     bool InvertY);
 
 /// <summary>
+/// A depot's stored value history for the balance chart: ascending (day, value) points from
+/// <c>portfolio_chart</c> and the depot's current value.
+/// </summary>
+public sealed record DepotValueSeries(
+    IReadOnlyList<(DateTime Day, decimal Value)> Points,
+    decimal CurrentValue);
+
+/// <summary>
 /// Pure bucketing/window math for the Browse history chart. Lifted out of Browse.razor so it can
 /// be unit-tested without a circuit; the page keeps only the DB queries that feed it.
 /// </summary>
@@ -105,13 +113,18 @@ public static class BrowseChart
     /// period [<paramref name="fromMonth"/>, <paramref name="toMonth"/>] of
     /// <paramref name="anchorYear"/>, and — for the account daily view — replaces flows with a
     /// back-walked running closing balance from <paramref name="currentBalanceForDaily"/>.
+    /// <paramref name="depots"/> add each depot's stored value at the end of every balance bucket
+    /// (see <see cref="DepotValueAt"/>); <paramref name="raw"/> and
+    /// <paramref name="currentBalanceForDaily"/> then cover only the booking-based accounts.
     /// </summary>
     public static BrowseChartData BuildChartSeries(
         DateTime earliest, DateTime rightEdge, string granularity,
         int anchorYear, int fromMonth, int toMonth,
         bool requestInvertY, bool isAccountDaily,
         IReadOnlyList<(DateTime Date, decimal Amount)> raw,
-        decimal? currentBalanceForDaily)
+        decimal? currentBalanceForDaily,
+        IReadOnlyList<DepotValueSeries>? depots = null,
+        DateTime? today = null)
     {
         var (windowStart, windowEndExclusive, bucketCount, bucketOf, labelOf) =
             ResolveChartWindow(earliest, rightEdge, granularity);
@@ -123,6 +136,7 @@ public static class BrowseChart
             bars[i] = (labelOf(i), 0m, false);
         }
         // Reconstruct bucket month-starts: walk forward bucket-by-bucket.
+        var bucketEnds = new DateTime[bucketCount];
         var cursor = windowStart;
         for (int i = 0; i < bucketCount; i++)
         {
@@ -134,6 +148,7 @@ public static class BrowseChart
                 "D" => cursor.AddDays(1),
                 _ => cursor.AddMonths(1)
             };
+            bucketEnds[i] = cursor;
         }
         for (int m = fromMonth; m <= toMonth; m++)
         {
@@ -189,6 +204,16 @@ public static class BrowseChart
                 bars[i] = (bars[i].Label, closing, bars[i].IsAnchor);
             }
         }
+        if (isAccountDaily && depots is { Count: > 0 })
+        {
+            var todayDate = (today ?? DateTime.UtcNow).Date;
+            for (int i = 0; i < bucketCount; i++)
+            {
+                decimal sum = 0m;
+                foreach (var depot in depots) sum += DepotValueAt(depot, bucketEnds[i], todayDate);
+                bars[i] = (bars[i].Label, bars[i].Value + sum, bars[i].IsAnchor);
+            }
+        }
         // Y-axis inversion is only honest when every bar is non-positive: with invert on,
         // positive values would grow downward. The moment one bucket has a positive value
         // (a refund larger than the period's outflows, or income mixed into an "expense"
@@ -197,5 +222,22 @@ public static class BrowseChart
         if (invertY && bars.Any(b => b.Value > 0)) invertY = false;
 
         return new BrowseChartData(bars, months, invertY);
+    }
+
+    /// <summary>
+    /// A depot's value at the end of the bucket ending (exclusively) at <paramref name="bucketEndExclusive"/>:
+    /// the current value once the bucket reaches today, otherwise the last stored point before the
+    /// bucket's end (carried forward between points), and 0 before the first point.
+    /// </summary>
+    public static decimal DepotValueAt(DepotValueSeries depot, DateTime bucketEndExclusive, DateTime today)
+    {
+        if (bucketEndExclusive > today.Date) return depot.CurrentValue;
+        decimal value = 0m;
+        foreach (var (day, v) in depot.Points)
+        {
+            if (day >= bucketEndExclusive) break;
+            value = v;
+        }
+        return value;
     }
 }

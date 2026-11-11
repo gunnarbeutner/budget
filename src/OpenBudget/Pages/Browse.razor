@@ -1706,6 +1706,27 @@
         // A balance in daily mode spans exactly the shown period (month, YTD or year), one point per day,
         // so even a single booking draws a line across the whole period.
         var balancePeriod = IsAccountScope && SelectionAccountBalance != null && chartGranularity == "D";
+        // Depots in a balance chart contribute their stored value history (portfolio_chart) instead of
+        // their bookings; the remaining accounts walk back from today's balance minus the depots' value.
+        var isAccountDaily = IsAccountScope && SelectionAccountBalance != null;
+        var depotSeries = new List<DepotValueSeries>();
+        decimal? bookingBalance = SelectionAccountBalance;
+        DateTime? depotEarliest = null;
+        if (isAccountDaily && accounts != null)
+        {
+            var history = await TransactionQueries.GetDepotValueHistoryAsync(project.SourceId, accounts);
+            if (history.Count > 0)
+            {
+                foreach (var (id, points) in history)
+                {
+                    var current = tree.Accounts.FirstOrDefault(a => a.Id == id)?.Balance ?? points[^1].Value;
+                    depotSeries.Add(new DepotValueSeries(points, current));
+                    bookingBalance -= current;
+                    if (depotEarliest == null || points[0].Day < depotEarliest) depotEarliest = points[0].Day;
+                }
+                accounts = accounts.Where(id => !history.ContainsKey(id)).ToList();
+            }
+        }
         DateTime earliest, rightEdge;
         if (balancePeriod)
         {
@@ -1714,8 +1735,11 @@
         }
         else
         {
-            var (scopeEarliest, scopeLatest) = await TransactionQueries.GetScopeDateRangeAsync(
-                project.SourceId, leaves, accounts);
+            DateTime? scopeEarliest = null, scopeLatest = null;
+            if (leaves != null || accounts is { Count: > 0 })
+                (scopeEarliest, scopeLatest) = await TransactionQueries.GetScopeDateRangeAsync(
+                    project.SourceId, leaves, accounts);
+            if (depotEarliest is { } de && (scopeEarliest == null || de < scopeEarliest)) scopeEarliest = de;
             if (scopeEarliest == null) { chartBars = null; return; }
 
             var anchorDate = new DateTime(anchor.Year, anchor.Month, 1);
@@ -1733,7 +1757,6 @@
         var queryEndExclusive = windowEndExclusive;
         // Accounts and account groups chart their balance over time (end of each day / month), walked back from
         // today's balance; the query has to reach today for that.
-        var isAccountDaily = IsAccountScope && SelectionAccountBalance != null;
         if (isAccountDaily)
         {
             var tomorrow = Clock.Today.AddDays(1);
@@ -1749,7 +1772,7 @@
             earliest, rightEdge, chartGranularity,
             anchor.Year, fm, tm,
             invertY, isAccountDaily,
-            raw, SelectionAccountBalance);
+            raw, bookingBalance, depotSeries, Clock.Today);
         chartBarMonths = chart.BarMonths;
         chartInvertY = chart.InvertY;
         chartIsBalance = isAccountDaily;
