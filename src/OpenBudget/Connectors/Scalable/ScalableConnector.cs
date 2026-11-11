@@ -56,7 +56,20 @@ public sealed partial class ScalableConnector : IBankConnector
     {
         Autofill = new WebLoginAutofill(credentials.Username, credentials.Secret,
             UsernameSelector, PasswordSelector, "button[type=submit]"),
+        WaitingScript = ExpiredConfirmationScript,
     };
+
+    /// <summary>
+    /// Asks Scalable for a new confirmation when the previous one ran out ("Login nicht verifiziert", "Die Anfrage ist
+    /// abgelaufen") by clicking its retry button; the sign-in's own expiry bounds how often that happens.
+    /// </summary>
+    internal const string ExpiredConfirmationScript =
+        "() => { if (!location.pathname.startsWith('/auth/mfa')) return { ok: true, reason: '' };"
+        + " const t = (document.body && document.body.innerText) || '';"
+        + " if (!/abgelaufen|nicht verifiziert|expired|not verified/i.test(t)) return { ok: true, reason: '' };"
+        + " const b = [...document.querySelectorAll('button, a, [role=button]')].find(e => /erneut versuchen|try again|retry/i.test(e.textContent || ''));"
+        + " if (!b) return { ok: false, reason: 'the confirmation expired and no retry button was found' };"
+        + " b.click(); return { ok: true, reason: 'the confirmation expired; requested a new one' }; }";
 
     // Scalable's sign-in form (auth0): an e-mail field and a password field on one page.
     internal const string UsernameSelector = "input#username, input[name=username], input[type=email]";
