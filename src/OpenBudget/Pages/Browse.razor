@@ -544,7 +544,7 @@
 
 @if (popup == PopupKind.Picker && pickerData is { } pickerModel)
 {
-    <CategoryPicker Data="pickerModel" Suggestions="popupSuggestions" CurrentCategoryId="popupCurrentCategory"
+    <CategoryPicker Data="pickerModel" CurrentCategoryId="popupCurrentCategory"
                     AllowRemove="@(_rulePickPayee == null)" X="popupX" Y="popupY" OnPick="PickCategoryAsync" OnClose="ClosePopup" />
 }
 
@@ -605,7 +605,6 @@
     private double popupX;
     private double popupY;
     private List<long> popupTargets = [];
-    private IReadOnlyList<CategorySuggestion> popupSuggestions = [];
     private long? popupCurrentCategory;
     private IReadOnlyList<ContextMenuItem> contextItems = [];
     private (long Id, string Name)? contextStatement;

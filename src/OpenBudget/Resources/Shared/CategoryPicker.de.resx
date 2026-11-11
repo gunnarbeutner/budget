@@ -67,19 +67,7 @@
   <data name="Remove" xml:space="preserve">
     <value>Kategorie entfernen</value>
   </data>
-  <data name="Suggestions" xml:space="preserve">
-    <value>Vorschläge</value>
-  </data>
-  <data name="AllCategories" xml:space="preserve">
-    <value>Alle Kategorien</value>
-  </data>
   <data name="NoMatch" xml:space="preserve">
     <value>Keine passende Kategorie.</value>
-  </data>
-  <data name="Reason_SamePayee" xml:space="preserve">
-    <value>gleicher Empfänger, {0}×</value>
-  </data>
-  <data name="Reason_Recent" xml:space="preserve">
-    <value>zuletzt verwendet</value>
   </data>
 </root>

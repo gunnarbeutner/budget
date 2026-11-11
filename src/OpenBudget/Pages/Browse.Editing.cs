@@ -197,7 +197,6 @@ public partial class Browse
         _rulePickPayee = row.Name.Trim();
         popupTargets = [];
         popupCurrentCategory = null;
-        popupSuggestions = await Categorization.GetSuggestionsAsync(project.SourceId, row.Name, pickerData);
         (popupX, popupY) = (e.ClientX, e.ClientY);
         popup = PopupKind.Picker;
     }
@@ -547,7 +546,6 @@ public partial class Browse
         popupTargets = [.. selected];
         var single = popupTargets.Count == 1 && rowCache.TryGetValue(popupTargets[0], out var r) ? r : null;
         popupCurrentCategory = single?.CategoryId;
-        popupSuggestions = await Categorization.GetSuggestionsAsync(project.SourceId, single?.Name, pickerData);
         (popupX, popupY) = (x, y);
         popup = PopupKind.Picker;
     }

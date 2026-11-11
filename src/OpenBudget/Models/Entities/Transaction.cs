@@ -121,7 +121,7 @@ public class Transaction
     [Column("rule_id")]
     public int? RuleId { get; set; }
 
-    /// <summary>Unix seconds of the last manual categorization; feeds the "recently used" suggestions.</summary>
+    /// <summary>Unix seconds of the last manual categorization.</summary>
     [Column("category_set_at")]
     public long? CategorySetAt { get; set; }
 

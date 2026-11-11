@@ -16,8 +16,6 @@ public sealed class CategoryPickerData
 {
     public IReadOnlyList<CategoryOption> Options { get; init; } = [];
     public IReadOnlyList<CategoryPickerRow> Tree { get; init; } = [];
-
-    public CategoryOption? Find(long id) => Options.FirstOrDefault(o => o.Id == id);
 }
 
 /// <summary>

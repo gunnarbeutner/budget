@@ -3,8 +3,7 @@
 @inject IJSRuntime JS
 
 @* Floating category picker, used inline on a row's category cell, from the action bar and from the context menu.
-   Search over name and path; with an empty search the suggestions (same payee, recently used) come first and the
-   tree below. Enter picks the highlighted entry (the first hit), arrows move, Esc closes. *@
+   Search over name and path; with an empty search the whole tree. Enter picks the highlighted entry (the first hit), arrows move, Esc closes. *@
 
 <div class="cp-backdrop" data-ob-overlay @onclick="Close" @oncontextmenu="Close" @oncontextmenu:preventDefault></div>
 <div class="cp-panel" style="@PositionStyle" role="dialog" aria-label="@L["Title"]" data-ob-overlay data-testid="category-picker"
@@ -18,9 +17,6 @@
             {
                 switch (item.Kind)
                 {
-                    case ItemKind.Section:
-                        <div class="cp-section">@item.Name</div>
-                        break;
                     case ItemKind.Group:
                         <div class="cp-group" style="@Indent(item.Depth)" data-testid="category-picker-group">
                             <svg class="cp-ribbon" viewBox="0 0 12 16" aria-hidden="true"><path d="M1 1h10v14l-5-3.6L1 15z" /></svg>
@@ -41,14 +37,10 @@
                         var current = id == CurrentCategoryId;
                         <button type="button" class="cp-row @Active(item) @(current ? "cp-current" : "")" style="@(Indent(item.Depth) + item.ColorStyle)"
                                 role="option" aria-selected="@(item.Index == active)" aria-current="@(current ? "true" : null)"
-                                data-testid="@(item.Kind == ItemKind.Suggestion ? "category-picker-suggestion" : "category-picker-option")"
+                                data-testid="category-picker-option"
                                 @onclick="() => Pick(id)">
                             <svg class="cp-ribbon" viewBox="0 0 12 16" aria-hidden="true"><path d="M1 1h10v14l-5-3.6L1 15z" /></svg>
                             <span class="cp-name">@item.Name</span>
-                            @if (item.Reason is { } reason)
-                            {
-                                <span class="cp-reason">@reason</span>
-                            }
                             @if (current)
                             {
                                 <i class="bi bi-check2 cp-check" aria-hidden="true"></i>
@@ -64,7 +56,6 @@
 
 @code {
     [Parameter, EditorRequired] public CategoryPickerData Data { get; set; } = new();
-    [Parameter] public IReadOnlyList<CategorySuggestion> Suggestions { get; set; } = [];
     [Parameter] public long? CurrentCategoryId { get; set; }
     [Parameter] public bool AllowRemove { get; set; } = true;
     [Parameter] public double X { get; set; }
@@ -74,10 +65,10 @@
     [Parameter] public EventCallback<long?> OnPick { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
-    private enum ItemKind { Section, Group, Empty, Remove, Suggestion, Leaf }
+    private enum ItemKind { Group, Empty, Remove, Leaf }
 
     // One rendered line. Index is the position among the pickable lines (-1 for headers), which Enter and the arrows address.
-    private sealed record Item(ItemKind Kind, int Index, int Depth, long? Id, string Name, string? Reason = null, string ColorStyle = "");
+    private sealed record Item(ItemKind Kind, int Index, int Depth, long? Id, string Name, string ColorStyle = "");
 
     private ElementReference input;
     private ElementReference list;
@@ -94,10 +85,6 @@
         FormattableString.Invariant($"padding-left: {0.5 + depth * 1.5:0.##}rem;");
 
     private string Active(Item item) => item.Index == active ? "cp-active" : "";
-
-    private string Reason(CategorySuggestion s) => s.Reason == SuggestionReason.SamePayee
-        ? L["Reason_SamePayee", s.Count].Value
-        : L["Reason_Recent"].Value;
 
     protected override void OnParametersSet() => Rebuild();
 
@@ -116,22 +103,16 @@
     {
         items = [];
         entries = [];
-        void AddPick(ItemKind kind, int depth, long? id, string name, string? reason = null, string? color = null)
+        void AddPick(ItemKind kind, int depth, long? id, string name, string? color = null)
         {
             var style = kind == ItemKind.Remove || id is not { } cid ? "" : CategoryColors.For(cid, color).Style;
-            items.Add(new Item(kind, entries.Count, depth, id, name, reason, style));
+            items.Add(new Item(kind, entries.Count, depth, id, name, style));
             entries.Add(id);
         }
 
         if (string.IsNullOrWhiteSpace(query))
         {
             if (AllowRemove) AddPick(ItemKind.Remove, 0, null, L["Remove"]);
-            if (Suggestions.Count > 0)
-            {
-                items.Add(new Item(ItemKind.Section, -1, 0, null, L["Suggestions"]));
-                foreach (var s in Suggestions) AddPick(ItemKind.Suggestion, 0, s.CategoryId, s.Path, Reason(s), Data.Find(s.CategoryId)?.Color);
-            }
-            items.Add(new Item(ItemKind.Section, -1, 0, null, L["AllCategories"]));
             foreach (var row in Data.Tree)
             {
                 if (row.IsGroup) items.Add(new Item(ItemKind.Group, -1, row.Depth, row.Id, row.Name));

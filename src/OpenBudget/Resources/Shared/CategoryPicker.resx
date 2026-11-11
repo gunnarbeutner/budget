@@ -67,19 +67,7 @@
   <data name="Remove" xml:space="preserve">
     <value>Remove category</value>
   </data>
-  <data name="Suggestions" xml:space="preserve">
-    <value>Suggestions</value>
-  </data>
-  <data name="AllCategories" xml:space="preserve">
-    <value>All categories</value>
-  </data>
   <data name="NoMatch" xml:space="preserve">
     <value>No category matches.</value>
-  </data>
-  <data name="Reason_SamePayee" xml:space="preserve">
-    <value>same payee, {0}×</value>
-  </data>
-  <data name="Reason_Recent" xml:space="preserve">
-    <value>recently used</value>
   </data>
 </root>

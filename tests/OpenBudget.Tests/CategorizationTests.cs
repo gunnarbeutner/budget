@@ -9,7 +9,7 @@ using Xunit;
 
 namespace OpenBudget.Tests;
 
-/// <summary>Category picker data and search, suggestions, similar-transaction lookup, list filters, running balance, is_new from syncs.</summary>
+/// <summary>Category picker data and search, similar-transaction lookup, list filters, running balance, is_new from syncs.</summary>
 public sealed class CategorizationTests
 {
     private const int Source = 2;
@@ -53,7 +53,7 @@ public sealed class CategorizationTests
             ["Haushalt › Lebensmittel", "Haushalt › Strom", "Freizeit › Café & Bäckerei", "Freizeit › Reisen", "Loose"],
             data.Options.Select(o => o.Path));
         Assert.DoesNotContain(data.Options, o => o.Name.Length == 0);                 // the unnamed sentinel category
-        Assert.Equal("Haushalt › Lebensmittel", data.Find(Id(101))!.Path);
+        Assert.Equal("Haushalt › Lebensmittel", data.Options.Single(o => o.Id == Id(101)).Path);
     }
 
     [Fact]
@@ -108,8 +108,6 @@ public sealed class CategorizationTests
         Assert.Single(CategoryPickerLogic.Search(options, "strassenbahn"));
     }
 
-    // ---- suggestions ----
-
     private static async Task<TestDb> WorldAsync()
     {
         var t = new TestDb();
@@ -125,7 +123,7 @@ public sealed class CategorizationTests
         return t;
     }
 
-    private static void AddTx(TestDb t, long id, long account, string? payee, long? category, int day, long? setAt = null) =>
+    private static void AddTx(TestDb t, long id, long account, string? payee, long? category, int day) =>
         t.Db.Transactions.Add(new Transaction
         {
             Id = id,
@@ -135,58 +133,7 @@ public sealed class CategorizationTests
             CategoryId = category,
             Amount = -1000,
             Timestamp = new DateTimeOffset(2026, 5, day, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds(),
-            CategorySetAt = setAt,
         });
-
-    [Fact]
-    public async Task Suggestions_lead_with_the_most_frequent_category_of_the_same_payee_and_say_how_often()
-    {
-        await using var t = await WorldAsync();
-        for (var i = 0; i < 3; i++) AddTx(t, 100 + i, Id(1), "Example Grocery", Id(101), 1 + i);
-        AddTx(t, 110, Id(1), "example grocery", Id(100), 10);          // case-insensitive payee match
-        AddTx(t, 111, Id(1), "Other Payee", Id(102), 11);
-        await t.Db.SaveChangesAsync();
-        var svc = new CategorizationService(t.Factory);
-        var picker = await svc.GetPickerDataAsync(Source);
-
-        var suggestions = await svc.GetSuggestionsAsync(Source, "Example Grocery", picker);
-
-        Assert.Equal(SuggestionReason.SamePayee, suggestions[0].Reason);
-        Assert.Equal(Id(101), suggestions[0].CategoryId);
-        Assert.Equal(3, suggestions[0].Count);
-        Assert.Equal("Haushalt › Lebensmittel", suggestions[0].Path);
-        Assert.Equal(Id(100), suggestions[1].CategoryId);               // second most used for the payee
-        Assert.Equal(1, suggestions[1].Count);
-        // "Reisen" shows up as recently used, and no category appears twice.
-        Assert.Contains(suggestions, s => s.Reason == SuggestionReason.RecentlyUsed && s.CategoryId == Id(102));
-        Assert.Equal(suggestions.Count, suggestions.Select(s => s.CategoryId).Distinct().Count());
-    }
-
-    [Fact]
-    public async Task Recently_used_orders_by_the_last_manual_categorization_and_works_without_a_payee()
-    {
-        await using var t = await WorldAsync();
-        AddTx(t, 100, Id(1), "A", Id(101), 20);                          // newest booking, never set by hand
-        AddTx(t, 101, Id(1), "B", Id(102), 1, setAt: new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds());
-        await t.Db.SaveChangesAsync();
-        var svc = new CategorizationService(t.Factory);
-
-        var suggestions = await svc.GetSuggestionsAsync(Source, null, await svc.GetPickerDataAsync(Source));
-
-        Assert.All(suggestions, s => Assert.Equal(SuggestionReason.RecentlyUsed, s.Reason));
-        Assert.Equal(Id(102), suggestions[0].CategoryId);                // categorized by hand most recently
-        Assert.Equal(Id(101), suggestions[1].CategoryId);
-    }
-
-    [Fact]
-    public async Task Suggestions_never_offer_categories_that_cannot_be_assigned()
-    {
-        await using var t = await WorldAsync();
-        AddTx(t, 100, Id(1), "A", Id(104), 1);                           // the unnamed sentinel category
-        await t.Db.SaveChangesAsync();
-        var svc = new CategorizationService(t.Factory);
-        Assert.Empty(await svc.GetSuggestionsAsync(Source, "A", await svc.GetPickerDataAsync(Source)));
-    }
 
     // ---- similar transactions ----
 
