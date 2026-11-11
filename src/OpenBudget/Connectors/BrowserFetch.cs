@@ -43,6 +43,15 @@ public interface IBrowserFetcher
     /// it (a short-lived download link, say); null when it answers without a redirect.
     /// </summary>
     Task<Uri?> ResolveRedirectAsync(Uri url, CancellationToken ct);
+
+    /// <summary>Loads <paramref name="url"/> in the signed-in page, so the site's own scripts run there.</summary>
+    Task NavigateAsync(Uri url, CancellationToken ct) => Task.CompletedTask;
+
+    /// <summary>
+    /// Runs a JavaScript function in the page with <paramref name="argument"/>; it returns <c>{ ok, reason }</c>.
+    /// Browsers that cannot run scripts answer "not supported".
+    /// </summary>
+    Task<(bool Ok, string Reason)> RunAsync(string function, string argument, CancellationToken ct) => Task.FromResult((false, "not supported"));
 }
 
 public static class BrowserFetcherExtensions

@@ -45,6 +45,12 @@ public sealed class KeptBrowser : IBrowserFetcher, IAsyncDisposable
     public Task<Uri?> ResolveRedirectAsync(Uri url, CancellationToken ct) =>
         RunAsync(token => _browser.ResolveRedirectAsync(url, token), ct);
 
+    public Task NavigateAsync(Uri url, CancellationToken ct) =>
+        RunAsync(async token => { await _browser.NavigateAsync(url, token); return true; }, ct);
+
+    public Task<(bool Ok, string Reason)> RunAsync(string function, string argument, CancellationToken ct) =>
+        RunAsync(async _ => { var r = await _browser.CheckAsync(function, argument); return (r.Ok, r.Reason); }, ct);
+
     private async Task<T> RunAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)
     {
         if (!IsOpen) throw SessionEnded();

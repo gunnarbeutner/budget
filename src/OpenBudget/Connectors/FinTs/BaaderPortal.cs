@@ -1,3 +1,4 @@
+using System.Globalization;
 #pragma warning disable S1075 // the portal's address is a fixed, published URL
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -136,7 +137,7 @@ internal sealed partial class BaaderPortal
         if (history && !_tanSubmitted && (_tanRequired || listing.Count == 0))
         {
             _log.LogInformation("Baader portal: the document history needs an SMS-TAN.");
-            await RequestTanAsync(browser, ct);
+            if (!_pageDriven) await RequestTanAsync(browser, ct);
             return ConnectorStep.Ask<IReadOnlyList<RemoteStatement>>(ConnectorChallenge.Code(
                 "Enter the TAN Baader sent you by SMS (needed once to list the older documents).", numeric: true, reference: TanReference));
         }
@@ -262,8 +263,65 @@ internal sealed partial class BaaderPortal
     }
 
     /// <summary>Sets the portal's session filter to the longest period, as the mail page's filter form does.</summary>
+    // Sets the 720-day filter through the mail page's own form, so the portal's script opens its TAN dialog and sends the SMS.
+    private const string SubmitFilterScript = """
+        (days) => {
+          const f = document.getElementById('formFilterMail');
+          if (!f) return { ok: false, reason: 'no filter form' };
+          const period = f.querySelector('input[name=timeframe][value=period]');
+          if (period) period.checked = true;
+          if (f.elements['periods']) f.elements['periods'].value = days;
+          const unread = f.querySelector('input[name=unread]');
+          if (unread) unread.checked = false;
+          const button = document.getElementById('submitFilterMail');
+          setTimeout(() => f.requestSubmit ? f.requestSubmit(button || undefined) : f.submit(), 50);
+          return { ok: true, reason: '' };
+        }
+        """;
+
+    private const string TanDialogScript = """
+        () => { const f = document.getElementById('mfaInputForm'); return { ok: !!f && f.offsetParent !== null, reason: f ? 'present' : 'none' }; }
+        """;
+
+    // Enters the TAN into the page's own dialog and submits it, the way a person would.
+    private const string EnterTanScript = """
+        (tan) => {
+          const f = document.getElementById('mfaInputForm');
+          const input = f && f.querySelector('input[name=tan]');
+          if (!input) return { ok: false, reason: 'no TAN field' };
+          const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+          set.call(input, tan);
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('keyup', { bubbles: true }));
+          const button = f.querySelector('button[type=submit], input[type=submit], button:not([type])');
+          setTimeout(() => button ? button.click() : (f.requestSubmit ? f.requestSubmit() : f.submit()), 50);
+          return { ok: true, reason: '' };
+        }
+        """;
+
+    private bool _pageDriven;
+
+    /// <summary>Drives the mail page itself: true when the filter went through the page's form (the page then handles the TAN).</summary>
+    private async Task<bool> SetHistoryFilterInPageAsync(IBrowserFetcher browser, CancellationToken ct)
+    {
+        await browser.NavigateAsync(new Uri(_base, "mail"), ct);
+        await Task.Delay(TimeSpan.FromSeconds(2), ct);
+        var (submitted, reason) = await browser.RunAsync(SubmitFilterScript, HistoryPeriod.ToString(CultureInfo.InvariantCulture), ct);
+        if (!submitted)
+        {
+            _log.LogInformation("Baader portal: the mail page's filter could not be used ({Reason}).", reason);
+            return false;
+        }
+        await Task.Delay(TimeSpan.FromSeconds(5), ct);
+        var (dialog, _) = await browser.RunAsync(TanDialogScript, "", ct);
+        _tanRequired = dialog;
+        _log.LogInformation("Baader portal: document filter set in the page ({Period} days){Mfa}.", HistoryPeriod, dialog ? ", TAN dialog shown" : "");
+        return true;
+    }
+
     private async Task SetHistoryFilterAsync(IBrowserFetcher browser, CancellationToken ct)
     {
+        if (await SetHistoryFilterInPageAsync(browser, ct)) { _pageDriven = true; return; }
         _token ??= await TokenAsync(browser, ct);
         var response = await browser.PostFormAsync(new Uri(_base, "mail"), HistoryFilterFields(_token),
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Accept"] = "text/html" }, ct);
@@ -274,7 +332,6 @@ internal sealed partial class BaaderPortal
         _log.LogInformation("Baader portal: document filter set ({Period} days): HTTP {Status}{Mfa}.", HistoryPeriod, response.Status, _tanRequired ? ", TAN dialog shown" : "");
     }
 
-    /// <summary>Sends the SMS-TAN the way the mail page's TAN dialog does; only the status and the answer's shape are logged.</summary>
     /// <summary>
     /// Has the portal send the SMS-TAN: the page's TAN dialog opens with a <c>/mfa/check</c> call that carries no TAN,
     /// which is what triggers the SMS.
@@ -289,6 +346,16 @@ internal sealed partial class BaaderPortal
     {
         var tanValue = tan.Trim();
         if (tanValue.Length == 0) throw new ConnectorException("No TAN was entered for the Baader portal.");
+        if (_pageDriven)
+        {
+            var (entered, reason) = await browser.RunAsync(EnterTanScript, tanValue, ct);
+            _log.LogInformation("Baader portal: TAN entered in the page{Reason}.", entered ? "" : $" failed ({reason})");
+            if (entered)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                return;
+            }
+        }
         _token ??= await TokenAsync(browser, ct);
         var fields = new Dictionary<string, string>(StringComparer.Ordinal) { ["tan"] = tanValue };
         if (_token != null) fields["token"] = _token;

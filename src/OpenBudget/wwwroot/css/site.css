@@ -1802,3 +1802,6 @@ a.budget-cat:focus-visible { outline: 2px solid var(--ob-accent); outline-offset
 }
 
 .modal.ob-modal-on-top { z-index: 1065; background: rgba(0, 0, 0, 0.35); }
+
+/* The bank's question dialog lives in the top bar; while it is open the bar stacks above other dialogs. */
+.app-topbar:has(.ob-modal-on-top) { z-index: 1065; }
