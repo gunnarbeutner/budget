@@ -175,7 +175,7 @@ public sealed class BankSyncRunner
                 context.UserAgent = userAgent;
             }
 
-            connector = registration.Create(new ConnectorContext(http, _clock, _loggers.CreateLogger(registration.ConnectorType)));
+            connector = registration.Create(new ConnectorContext(http, _clock, _loggers.CreateLogger(registration.ConnectorType)) { Progress = sink.Report });
 
             sink.Report("Logging in");
             var loginStep = await DriveAsync(a => connector.LoginAsync(credentials, stored, a, ct), sink, context, ct);
@@ -308,9 +308,16 @@ public sealed class BankSyncRunner
         if (_webLogins is not { IsAvailable: true })
             return Failed("Signing in on the bank's web page needs a browser, which is not available on this server (Chromium is not installed).");
         WebLoginSession session;
+        var attached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task<ChallengeAnswer?> AskForCodeAsync(ConnectorChallenge code, CancellationToken token)
+        {
+            await attached.Task.WaitAsync(token);
+            sink.HideWebLogin();
+            return await sink.AskAsync(code, token);
+        }
         try
         {
-            session = await _webLogins.StartAsync(context.OwnerUserId, spec, context.Http.ExportCookies(), ct);
+            session = await _webLogins.StartAsync(context.OwnerUserId, spec, context.Http.ExportCookies(), ct, AskForCodeAsync);
         }
         catch (BrowserActionException ex)
         {
@@ -322,6 +329,7 @@ public sealed class BankSyncRunner
             void OnMode(WebLoginMode mode) => sink.ShowWebLogin(challenge, session.Id, session.ExpiresAt, mode);
             session.ModeChanged += OnMode;
             sink.ShowWebLogin(challenge, session.Id, session.ExpiresAt, session.Mode);
+            attached.TrySetResult();
             try
             {
                 WebLoginResult result;

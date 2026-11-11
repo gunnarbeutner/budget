@@ -17,7 +17,7 @@ public sealed class WebLoginTests
     private static readonly Uri Start = new("https://bank.example/login");
 
     /// <summary>A bank whose only way in is a web login: asks for it, then is done.</summary>
-    private sealed class WebBankConnector(ConnectorContext context, bool probeHeaders = false) : IBankConnector
+    private sealed class WebBankConnector(ConnectorContext context, bool probeHeaders = false, bool codePrompt = false) : IBankConnector
     {
         public const string Type = "webbank";
 
@@ -31,7 +31,10 @@ public sealed class WebLoginTests
             if (probeHeaders) await context.Http.GetStringAsync(new Uri("https://bank.example/probe"), ct);
             return answer == null
                 ? ConnectorStep.Ask<ConnectorSession?>(ConnectorChallenge.WebLogin("Sign in", new WebLoginSpec(
-                    Start, [Domain], successUrlPrefix: new Uri("https://bank.example/home"))))
+                    Start, [Domain], successUrlPrefix: new Uri("https://bank.example/home"))
+                {
+                    CodePrompt = codePrompt ? new WebLoginCodePrompt("/mfa", "#code", "#verify", "Enter the bank's security code.") : null,
+                }))
                 : ConnectorStep.Done<ConnectorSession?>(new ConnectorSession());
         }
 
@@ -73,6 +76,67 @@ public sealed class WebLoginTests
     }
 
     private static SyncRequest LoginOnly(int id) => new(id, Transactions: false, Statements: false);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_browser_security_code_uses_the_coordinators_existing_code_challenge(bool shortFirst)
+    {
+        var browser = new FakeBrowserHost
+        {
+            User = page =>
+            {
+                page.Url = new Uri("https://bank.example/mfa");
+                page.Visible.UnionWith(["#code", "#verify"]);
+                page.OnClick = (p, _) => SignedIn(p);
+                return Task.CompletedTask;
+            },
+        };
+        var registration = new ConnectorRegistration(WebBankConnector.Type, "Web bank", "Web login",
+            context => new WebBankConnector(context, codePrompt: true), CredentialRequirement.None);
+        await using var world = await BankWorld.CreateAsync(extras: new BankWorldExtras { Registrations = [registration], BrowserHost = browser });
+        var login = await world.For(BankWorld.Alice).CreateLoginAsync(WebBankConnector.Type, "Web bank", "", "");
+        var result = await world.SyncAsync(BankWorld.Alice, login.Id, LoginOnly(login.Id), shortFirst ? ["12", "123456"] : ["123456"]);
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal("123456", browser.Sessions.Single().Filled["#code"]);
+        Assert.Single(browser.Sessions.Single().Clicked);
+    }
+
+    [Fact]
+    public async Task A_security_code_is_not_typed_if_the_browser_leaves_the_banks_origin_while_waiting()
+    {
+        var browser = new FakeBrowserHost
+        {
+            User = page =>
+            {
+                page.Url = new Uri("https://bank.example/mfa");
+                page.Visible.UnionWith(["#code", "#verify"]);
+                return Task.CompletedTask;
+            },
+        };
+        var service = new WebLoginService(browser, new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(10), SettleDelay = TimeSpan.Zero }, TimeProvider.System, NullLoggerFactory.Instance);
+        var spec = new WebLoginSpec(Start, [Domain], new Uri("https://bank.example/home"))
+        {
+            CodePrompt = new WebLoginCodePrompt("/mfa", "#code", "#verify", "Enter the code."),
+        };
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var shown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        WebLoginSession? active = null;
+        async Task<ChallengeAnswer?> Answer(ConnectorChallenge challenge, CancellationToken ct)
+        {
+            await ready.Task.WaitAsync(ct);
+            active!.ModeChanged += mode => { if (mode == WebLoginMode.Interactive) shown.TrySetResult(); };
+            browser.Sessions.Single().Url = new Uri("https://other.example/mfa");
+            return new ChallengeAnswer(challenge, "123456");
+        }
+        await using var session = await service.StartAsync("user", spec, [], CancellationToken.None, Answer);
+        active = session;
+        ready.TrySetResult();
+        await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Empty(browser.Sessions.Single().Filled);
+        Assert.Empty(browser.Sessions.Single().Clicked);
+        Assert.False(session.Completion.IsCompleted);
+    }
 
     [Fact]
     public async Task Streamed_input_uses_the_native_viewport_instead_of_the_configured_window_size()

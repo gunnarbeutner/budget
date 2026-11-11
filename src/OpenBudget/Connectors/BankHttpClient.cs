@@ -164,4 +164,8 @@ public sealed class BankHttpClient : IBankHttpClient, IDisposable
 }
 
 /// <summary>What a connector gets when it is created for a sync.</summary>
-public sealed record ConnectorContext(IBankHttpClient Http, TimeProvider Clock, ILogger Logger);
+public sealed record ConnectorContext(IBankHttpClient Http, TimeProvider Clock, ILogger Logger)
+{
+    /// <summary>Updates the owner's current sync status during a longer bank-side operation; never include secrets.</summary>
+    public Action<string>? Progress { get; init; }
+}

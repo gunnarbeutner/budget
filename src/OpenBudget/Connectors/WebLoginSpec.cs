@@ -80,6 +80,9 @@ public sealed class WebLoginSpec
     /// </summary>
     public string? WaitingScript { get; init; }
 
+    /// <summary>A recognized bank code form that can use the shared code prompt while the browser stays signed in.</summary>
+    public WebLoginCodePrompt? CodePrompt { get; init; }
+
     /// <summary>The argument of <see cref="WaitingScript"/> (a remembered choice, say); never logged.</summary>
     public string WaitingArgument { get; init; } = "";
 
@@ -118,6 +121,9 @@ public sealed class WebLoginSpec
         return SuccessWhen(url, cookies);
     }
 }
+
+/// <summary>A code field (or one field per digit) and its submit button on a known security-check path.</summary>
+public sealed record WebLoginCodePrompt(string PathPrefix, string FieldSelector, string SubmitSelector, string Message, int Length = 6, bool Numeric = true);
 
 /// <summary>How a sign-in page shows that it rejected the credentials (see <see cref="WebLoginSpec.CredentialsError"/>).</summary>
 /// <param name="Selector">Candidate elements (e.g. "[role=alert]").</param>
