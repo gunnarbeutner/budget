@@ -29,6 +29,8 @@ import SwiftUI
 // headless branch awaits the export inline and exits with an explicit status; the UI branch
 // hands control to NSApplication.run() and never returns.
 
+LegacySettings.migrate()
+
 if CommandLine.arguments.contains("--run-once") {
     LogFile.append("Starting headless export")
     do {
@@ -398,6 +400,34 @@ enum Config {
     }
 }
 
+// MARK: - Settings of the app's earlier name
+
+/// The app was called MoneyMoneyExport (bundle id de.beutner.MoneyMoneyExport) before; its settings and Keychain entries
+/// live under that name. They are copied once when this app has none of its own; the old entries stay untouched.
+enum LegacySettings {
+    private static let legacyDomain = "de.beutner.MoneyMoneyExport"
+
+    static func migrate() {
+        let defaults = UserDefaults.standard
+        if Config.baseURLs.isEmpty, let old = UserDefaults(suiteName: legacyDomain) {
+            let urls = old.stringArray(forKey: "baseURLs") ?? (old.string(forKey: "baseURL").map { [$0] } ?? [])
+            if !urls.isEmpty {
+                defaults.set(urls, forKey: "baseURLs")
+                if let name = old.string(forKey: "sourceName") { defaults.set(name, forKey: "sourceName") }
+                if let path = old.string(forKey: "portfolioPath") { defaults.set(path, forKey: "portfolioPath") }
+            }
+        }
+        if Keychain.token == nil, let token = Keychain.read(service: legacyDomain, account: "api-token") {
+            try? Keychain.setToken(token)
+        }
+        if Keychain.dbPassword == nil, let password = Keychain.read(service: legacyDomain, account: "db-password"),
+            !password.isEmpty
+        {
+            try? Keychain.setDBPassword(password)
+        }
+    }
+}
+
 // MARK: - Keychain helpers
 
 enum Keychain {
@@ -421,7 +451,9 @@ enum Keychain {
         }
     }
 
-    private static func read(account: String) -> String? {
+    private static func read(account: String) -> String? { read(service: service, account: account) }
+
+    static func read(service: String, account: String) -> String? {
         var result: AnyObject?
         let q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
