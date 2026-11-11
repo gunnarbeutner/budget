@@ -4,7 +4,9 @@ namespace OpenBudget.Services;
 
 /// <summary>An account group as the rail needs it (imported from MoneyMoney's account groups).</summary>
 /// <param name="KeepEmpty">Show the group even without visible accounts (it is empty in its source: just created, waiting to be filled).</param>
-public sealed record AccountGroupInfo(long Id, long? ParentId, string Name, long? Sort, bool KeepEmpty = false);
+/// <param name="Icon">The icon its owner picked (null = the folder).</param>
+/// <param name="Color">The colour (hex) of its icon, or null.</param>
+public sealed record AccountGroupInfo(long Id, long? ParentId, string Name, long? Sort, bool KeepEmpty = false, string? Icon = null, string? Color = null);
 
 /// <summary>A sum in one currency.</summary>
 public sealed record CurrencyAmount(string Currency, decimal Amount);
@@ -22,6 +24,10 @@ public sealed class AccountTreeNode
     /// <summary>One entry per currency, EUR first. Empty for accounts without a balance.</summary>
     public List<CurrencyAmount> Sums { get; init; } = [];
     public bool IsGroup => Account == null;
+    /// <summary>For a group: the Bootstrap icon class to show (the picked one, else the folder).</summary>
+    public string GroupIcon { get; init; } = AccountIcons.GroupDefault;
+    /// <summary>For a group: the colour (hex) of its icon, or null.</summary>
+    public string? GroupColor { get; init; }
 }
 
 /// <summary>
@@ -122,7 +128,7 @@ public static class AccountTreeBuilder
                     foreach (var a in own) { items.Add((a.Sort, a.Name, Leaf(a))); below.Add(a); }
                 }
                 if (items.Count == 0 && !g.KeepEmpty) return null;
-                var node = new AccountTreeNode { Key = GroupKey(g.Id), Name = g.Name, Sums = SumOf(below) };
+                var node = new AccountTreeNode { Key = GroupKey(g.Id), Name = g.Name, Sums = SumOf(below), GroupIcon = AccountIcons.ForGroup(g.Icon), GroupColor = g.Color };
                 node.Children.AddRange(Order(items));
                 return node;
             }

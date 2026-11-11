@@ -368,7 +368,9 @@ public class BrowseService
                     Currency = a.Currency,
                     PeriodSum = accountPeriodSumsCents.TryGetValue(a.Id, out var s) ? s / 100m : 0m,
                     IsPortfolio = isPortfolio,
-                    IsAssigned = assignedAccountSet.Contains(a.Id)
+                    IsAssigned = assignedAccountSet.Contains(a.Id),
+                    Icon = a.Icon,
+                    Color = a.Color,
                 });
             }
         }
@@ -386,7 +388,7 @@ public class BrowseService
             // Only the owner sees every account of a source, so only for them "no accounts visible" means empty.
             var scope = _access == null ? null : await _access.GetAsync();
             accountGroups.AddRange(rows.Select(g => new AccountGroupInfo(g.Id, g.ParentGroupId, g.Name ?? "", g.Sort,
-                !filled.Contains(g.Id) && (scope == null || scope.OwnsSource(g.SourceId)))));
+                !filled.Contains(g.Id) && (scope == null || scope.OwnsSource(g.SourceId)), g.Icon, g.Color)));
         }
 
         var uncategorizedCount = await db.Transactions

@@ -16,20 +16,50 @@ public sealed record CategoryPillColors(string Background, string Text, string D
 /// </summary>
 public static class CategoryColors
 {
-    /// <summary>The fixed palette: (text color = the stored key, pastel background) for light mode.</summary>
+    /// <summary>
+    /// The fixed palette of categories, accounts and account groups: (text color = the stored key, pastel background) for
+    /// light mode. Ten hues spread around the colour wheel (red, orange, yellow, green, teal, cyan, blue, indigo, purple,
+    /// pink) plus a neutral grey.
+    /// </summary>
     public static readonly IReadOnlyList<(string Key, string Background)> Palette =
     [
-        ("#1f6b35", "#e3f1e6"),
-        ("#a3332a", "#fde7e4"),
-        ("#2b5797", "#e5eefb"),
-        ("#5b3b8f", "#efe7fa"),
-        ("#17675d", "#e2f3f1"),
-        ("#8a5a12", "#fbefdc"),
-        ("#9b4119", "#fdeae2"),
-        ("#93305f", "#fbe6f0"),
-        ("#56611a", "#eef2dc"),
-        ("#3f5164", "#e8edf2"),
+        ("#b91c1c", "#fee2e2"),
+        ("#a3480a", "#ffedd5"),
+        ("#856404", "#fdf3c4"),
+        ("#2a7330", "#e3f4e4"),
+        ("#0f766e", "#d9f4f0"),
+        ("#0a6a8a", "#dcf1f8"),
+        ("#1d4ed8", "#e2eafd"),
+        ("#4f3fc4", "#e9e7fc"),
+        ("#7e22ce", "#f3e6fd"),
+        ("#be185d", "#fde6f1"),
+        ("#4b5563", "#eceef1"),
     ];
+
+    /// <summary>
+    /// The palette key closest to a stored colour (for a picker's selection state: colours stored before the palette
+    /// changed, or imported from MoneyMoney, mark their nearest swatch); null when it does not parse.
+    /// </summary>
+    public static string? NearestSwatch(string? color)
+    {
+        if (!TryParse(color, out var rgb)) return null;
+        return Palette.MinBy(p =>
+        {
+            var k = Parse(p.Key);
+            return (k.R - rgb.R) * (k.R - rgb.R) + (k.G - rgb.G) * (k.G - rgb.G) + (k.B - rgb.B) * (k.B - rgb.B);
+        }).Key;
+    }
+
+    /// <summary>
+    /// Inline style tinting an icon in a stored colour: the readable text colour of its pill for light mode, and (as
+    /// <c>--ob-tint-d</c>, applied by site.css) the one for dark mode; null without a colour.
+    /// </summary>
+    public static string? TintStyle(string? color)
+    {
+        if (!IsValid(color)) return null;
+        var p = For(0, color);
+        return $"color:{p.Text};--ob-tint-d:{p.DarkText};";
+    }
 
     private const double MinContrast = 4.5;
     private static readonly (double R, double G, double B) White = (255, 255, 255);

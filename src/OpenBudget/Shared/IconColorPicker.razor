@@ -1,0 +1,48 @@
+@using OpenBudget.Services
+@inject IStringLocalizer<IconColorPicker> L
+
+@* Icon and colour of an account or account group: the curated icon set (AccountIcons) plus the category colour palette.
+   No icon picked = the default icon (shown as the first choice); no colour = the default text colour. *@
+
+<div class="icon-color-picker" data-testid="icon-color-picker">
+    <div class="form-label mb-1">@L["Icon"]</div>
+    <div class="icon-choices" role="radiogroup" aria-label="@L["Icon"]">
+        <button type="button" class="icon-choice @(Icon == null ? "current" : "")" role="radio" aria-checked="@((Icon == null).ToString().ToLower())"
+                title="@L["Icon_Default"]" aria-label="@L["Icon_Default"]" disabled="@Disabled" data-testid="icon-choice-default"
+                @onclick="() => IconChanged.InvokeAsync(null)">
+            <i class="bi @DefaultIcon" style="@AccountIcons.TintStyle(Color)" aria-hidden="true"></i>
+        </button>
+        @foreach (var icon in AccountIcons.All.Where(i => i != DefaultIcon))
+        {
+            var current = icon == Icon;
+            <button type="button" class="icon-choice @(current ? "current" : "")" role="radio" aria-checked="@current.ToString().ToLower()"
+                    title="@icon[3..]" aria-label="@icon[3..]" disabled="@Disabled" data-testid="icon-choice" data-icon="@icon"
+                    @onclick="() => IconChanged.InvokeAsync(icon)">
+                <i class="bi @icon" style="@AccountIcons.TintStyle(Color)" aria-hidden="true"></i>
+            </button>
+        }
+    </div>
+    <div class="form-label mb-1 mt-2">@L["Color"]</div>
+    <div class="color-swatches" role="radiogroup" aria-label="@L["Color"]">
+        @foreach (var (key, bg) in CategoryColors.Palette)
+        {
+            var current = CategoryColors.NearestSwatch(Color) == key;
+            <button type="button" class="color-swatch @(current ? "current" : "")" style="background:@bg;color:@key" role="radio"
+                    aria-checked="@current.ToString().ToLower()" title="@key" aria-label="@key" disabled="@Disabled" data-testid="icon-color-swatch"
+                    @onclick="() => ColorChanged.InvokeAsync(key)">A</button>
+        }
+    </div>
+    <button type="button" class="btn btn-link btn-sm p-0 mt-1" disabled="@(Disabled || Color == null)" @onclick="() => ColorChanged.InvokeAsync(null)">@L["Color_Reset"]</button>
+</div>
+
+@code {
+    /// <summary>The picked icon (one of <see cref="AccountIcons.All"/>), or null for the default.</summary>
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public EventCallback<string?> IconChanged { get; set; }
+    /// <summary>The picked colour (hex), or null.</summary>
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public EventCallback<string?> ColorChanged { get; set; }
+    /// <summary>The icon shown without a pick (the account type's icon, or the folder for a group).</summary>
+    [Parameter, EditorRequired] public string DefaultIcon { get; set; } = AccountIcons.GroupDefault;
+    [Parameter] public bool Disabled { get; set; }
+}

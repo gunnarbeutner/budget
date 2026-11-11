@@ -73,7 +73,7 @@ public sealed class StructureMenuTests : EndToEndTestBase
         await using var db = await Db.CreateDbContextAsync();
         var category = await db.Categories.SingleAsync(c => c.Id == 200);
         Assert.That(category.Name, Is.EqualTo("Example Market"));
-        Assert.That(category.Color, Is.EqualTo("#2b5797"));
+        Assert.That(category.Color, Is.EqualTo("#856404"));
     }
 
     [Test]
@@ -224,5 +224,56 @@ public sealed class StructureMenuTests : EndToEndTestBase
         await Expect(Category("Groceries")).ToBeVisibleAsync();
         await Category("Groceries").ClickAsync(new() { Button = MouseButton.Right });
         await Expect(Page.GetByTestId("context-menu")).ToHaveCountAsync(0);
+    }
+
+    [Test]
+    public async Task Account_settings_pick_an_icon_and_colour_and_group_settings_change_the_folder()
+    {
+        await GroupGiroInBanksAsync();
+        await GoToAsync(BrowseUrl);
+
+        await OpenMenuAsync(Account(EditingSeed.BankAccountName));
+        await Page.GetByTestId("ctx-settings").ClickAsync();
+        var dialog = Page.GetByTestId("account-settings");
+        await dialog.Locator("[data-testid=icon-choice][data-icon=bi-house]").ClickAsync();
+        await dialog.GetByTestId("icon-color-swatch").Nth(6).ClickAsync();
+        await Page.GetByTestId("account-settings-save").ClickAsync();
+        await Expect(Account(EditingSeed.BankAccountName).GetByTestId("tree-account-icon")).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("bi-house"));
+
+        var group = Sidebar.GetByTestId("tree-group").Filter(new() { HasText = "Banks" }).First;
+        await Expect(group.GetByTestId("tree-group-icon")).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("bi-folder"));
+        await OpenMenuAsync(group);
+        await Page.GetByTestId("ctx-settings").ClickAsync();
+        await Page.GetByTestId("group-settings").Locator("[data-testid=icon-choice][data-icon=bi-safe]").ClickAsync();
+        await Page.GetByTestId("group-settings-save").ClickAsync();
+        await Expect(group.GetByTestId("tree-group-icon")).ToHaveClassAsync(new System.Text.RegularExpressions.Regex("bi-safe"));
+
+        await using var db = await Db.CreateDbContextAsync();
+        var account = await db.Accounts.SingleAsync(a => a.Id == EditingSeed.BankAccountId);
+        Assert.That((account.Icon, account.Color), Is.EqualTo(("bi-house", (string?)"#1d4ed8")));
+        Assert.That((await db.AccountGroups.SingleAsync(g => g.Id == BanksGroupId)).Icon, Is.EqualTo("bi-safe"));
+    }
+
+    [Test]
+    public async Task A_category_group_folds_with_its_chevron_and_stays_folded_after_a_reload()
+    {
+        await GoToAsync(BrowseUrl);
+        var living = Sidebar.GetByTestId("tree-category").Filter(new() { HasText = "Living" }).First;
+        await Expect(Category("Groceries")).ToBeVisibleAsync();
+        await Expect(living).ToHaveAttributeAsync("aria-expanded", "true");
+
+        await living.GetByTestId("tree-category-group-toggle").ClickAsync();
+        await Expect(living).ToHaveAttributeAsync("aria-expanded", "false");
+        await Expect(Sidebar.GetByTestId("tree-category").Filter(new() { HasText = "Groceries" })).ToHaveCountAsync(0);
+        // Folding does not select the group.
+        await Expect(living).ToHaveAttributeAsync("aria-selected", "false");
+
+        await Page.ReloadAsync();
+        await Expect(living).ToHaveAttributeAsync("aria-expanded", "false");
+
+        // ArrowRight on the focused group unfolds it again.
+        await living.FocusAsync();
+        await Page.Keyboard.PressAsync("ArrowRight");
+        await Expect(Category("Groceries")).ToBeVisibleAsync();
     }
 }

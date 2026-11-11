@@ -24,7 +24,7 @@
         <div class="color-swatches">
             @foreach (var (key, bg) in CategoryColors.Palette)
             {
-                var current = string.Equals(CategoryColors.ToCss(_colorCurrent), key, StringComparison.OrdinalIgnoreCase);
+                var current = CategoryColors.NearestSwatch(_colorCurrent) == key;
                 <button type="button" class="color-swatch @(current ? "current" : "")" style="background:@bg;color:@key"
                         title="@key" aria-label="@key" data-testid="color-swatch" @onclick="() => SetColorAsync(colorNode, key)">A</button>
             }
@@ -128,6 +128,10 @@
                 {
                     <div class="form-text">@s.NameBlocked</div>
                 }
+            </div>
+            <div class="mb-3" data-testid="account-settings-appearance">
+                <IconColorPicker Icon="@_settingsIcon" IconChanged="i => _settingsIcon = i" Color="@_settingsColor" ColorChanged="c => _settingsColor = c"
+                                 DefaultIcon="@AccountIcons.ForAccount(null, s.Account.Type, s.Account.IsPortfolio)" Disabled="@(!s.CanStyle)" />
             </div>
             <div class="mb-3">
                 <div class="form-label mb-1">@L["Settings_Bank"]</div>
@@ -242,6 +246,23 @@
     </Footer>
 </Modal>
 
+<Modal Show="_groupSettings != null" Title="@L["GroupSettings_Title", _groupSettings?.Name ?? ""]" OnClose="() => _groupSettings = null" SizeClass="modal-sm">
+    <ChildContent>
+        <div data-testid="group-settings">
+            <IconColorPicker Icon="@_groupIcon" IconChanged="i => _groupIcon = i" Color="@_groupColor" ColorChanged="c => _groupColor = c"
+                             DefaultIcon="@AccountIcons.GroupDefault" />
+            @if (_error != null)
+            {
+                <div class="alert alert-danger small mt-2 mb-0" role="alert">@_error</div>
+            }
+        </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="() => _groupSettings = null">@L["Cancel"]</button>
+        <button type="button" class="btn btn-primary" data-testid="group-settings-save" @onclick="SaveGroupSettingsAsync">@L["Save"]</button>
+    </Footer>
+</Modal>
+
 @code {
     [Parameter, EditorRequired] public int ProjectId { get; set; }
     // The project's source (its category tree), looked up once per project.
@@ -273,7 +294,13 @@
     private string? _error;
     private bool _busy;
 
-    private sealed record SettingsState(BrowseAccountNode Account, string? NameBlocked, StatementSetting? Statement);
+    private sealed record SettingsState(BrowseAccountNode Account, string? NameBlocked, StatementSetting? Statement, bool CanStyle);
+    private string? _settingsIcon;
+    private string? _settingsColor;
+    private SidebarNode? _groupSettings;
+    private AccountGroupInfo? _groupInfo;
+    private string? _groupIcon;
+    private string? _groupColor;
     private SettingsState? _settings;
     private AccountSwitchState? _switchState;
     private IReadOnlyList<int>? _switchIds;
@@ -418,6 +445,12 @@
             case SidebarMenus.MoveUp:
             case SidebarMenus.MoveDown:
                 await RunAsync(() => Structure.MoveStepAsync(KindOf(node), node.Id, key == SidebarMenus.MoveUp ? -1 : 1));
+                return true;
+            case SidebarMenus.Settings when node.Kind == SidebarNodeKind.AccountGroup:
+                _groupInfo = Tree?.AccountGroups.FirstOrDefault(g => g.Id == node.Id);
+                _groupIcon = AccountIcons.IsValid(_groupInfo?.Icon) ? _groupInfo!.Icon : null;
+                _groupColor = CategoryColors.ToCss(_groupInfo?.Color);
+                _groupSettings = node;
                 return true;
             case SidebarMenus.Settings:
                 await OpenSettingsAsync(node);
@@ -572,7 +605,27 @@
         _statementsOn = statement?.Enabled ?? false;
         _interval = statement?.Interval ?? StatementsInterval.Monthly;
         _error = null;
-        _settings = new SettingsState(account, nameBlocked, statement);
+        _settingsIcon = AccountIcons.IsValid(account.Icon) ? account.Icon : null;
+        _settingsColor = CategoryColors.ToCss(account.Color);
+        _settings = new SettingsState(account, nameBlocked, statement, block != StructureBlock.NotOwner);
+    }
+
+    private async Task SaveGroupSettingsAsync()
+    {
+        if (_groupSettings is not { } node) return;
+        _error = null;
+        try
+        {
+            if (_groupIcon != _groupInfo?.Icon || _groupColor != CategoryColors.ToCss(_groupInfo?.Color))
+                await Structure.SetAppearanceAsync(StructureItemKind.AccountGroup, node.Id, _groupIcon, _groupColor);
+            _groupSettings = null;
+            await OnChanged.InvokeAsync(null);
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException or ArgumentException or KeyNotFoundException)
+        {
+            Logger.LogInformation(ex, "Account group settings refused");
+            _error = L["Error_Refused"];
+        }
     }
 
     private async Task SaveSettingsAsync()
@@ -582,6 +635,8 @@
         {
             if (s.NameBlocked == null && !string.IsNullOrWhiteSpace(_settingsName) && _settingsName.Trim() != s.Account.Name)
                 await Structure.RenameAsync(StructureItemKind.Account, s.Account.Id, _settingsName);
+            if (s.CanStyle && (_settingsIcon != s.Account.Icon || _settingsColor != CategoryColors.ToCss(s.Account.Color)))
+                await Structure.SetAppearanceAsync(StructureItemKind.Account, s.Account.Id, _settingsIcon, _settingsColor);
             if (s.Statement is { Block: null, LoginAccountId: { } loginAccount, CanChange: true } st
                 && (st.Enabled != _statementsOn || st.Interval != _interval))
                 await BankLogins.SetStatementsAsync(loginAccount, _statementsOn, _interval);

@@ -74,6 +74,7 @@
   <data name="Cancel" xml:space="preserve"><value>Abbrechen</value></data>
   <data name="Save" xml:space="preserve"><value>Speichern</value></data>
   <data name="Settings_Title" xml:space="preserve"><value>Kontoeinstellungen</value></data>
+  <data name="GroupSettings_Title" xml:space="preserve"><value>Einstellungen von „{0}“</value></data>
   <data name="Settings_Name" xml:space="preserve"><value>Name</value></data>
   <data name="Settings_Bank" xml:space="preserve"><value>Bankzugang</value></data>
   <data name="Settings_Bank_MoneyMoney" xml:space="preserve"><value>Wird von MoneyMoney aktualisiert</value></data>

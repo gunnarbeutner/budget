@@ -25,6 +25,14 @@ public class AccountGroup
     [Column("sort")]
     public long? Sort { get; set; }
 
+    /// <summary>The Bootstrap icon its owner picked; null = the folder. Uploads never change it.</summary>
+    [Column("icon")]
+    public string? Icon { get; set; }
+
+    /// <summary>The colour (hex) its owner picked for the icon; null = the default text colour. Uploads never change it.</summary>
+    [Column("color")]
+    public string? Color { get; set; }
+
     // Navigation properties
     public AccountGroup? ParentGroup { get; set; }
     public ICollection<AccountGroup> SubGroups { get; set; } = new List<AccountGroup>();

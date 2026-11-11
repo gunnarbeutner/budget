@@ -67,6 +67,15 @@ public class BrowseAccountNode
 
     /// <summary>A manual account of a source the viewer owns: bookings are entered, edited and deleted by hand.</summary>
     public bool CanEnterTransactions { get; init; }
+
+    /// <summary>The icon its owner picked, or null (the type's icon shows; see <see cref="DisplayIcon"/>).</summary>
+    public string? Icon { get; init; }
+
+    /// <summary>The colour (hex) its icon is tinted in, or null.</summary>
+    public string? Color { get; init; }
+
+    /// <summary>The Bootstrap icon class to show: the picked one, else the one of its type.</summary>
+    public string DisplayIcon => AccountIcons.ForAccount(Icon, Type, IsPortfolio);
 }
 
 public class BrowseCategoryNode

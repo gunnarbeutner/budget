@@ -72,6 +72,10 @@ public static class SidebarMenus
                         : new ContextMenuItem(CloseAccount, l["Ctx_CloseAccount"], "bi-archive"));
                 break;
             case SidebarNodeKind.AccountGroup:
+                // Icon and colour survive MoneyMoney uploads, so only other users' groups block the settings.
+                items.Add(block == StructureBlock.NotOwner
+                    ? Item(Settings, l["Ctx_GroupSettings"], "bi-gear")
+                    : new ContextMenuItem(Settings, l["Ctx_GroupSettings"], "bi-gear"));
                 items.Add(Item(NewGroup, l["Ctx_NewGroup"], "bi-folder-plus"));
                 break;
             default:

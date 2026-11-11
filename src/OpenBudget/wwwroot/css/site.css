@@ -1213,13 +1213,27 @@ button.cat-pill:hover { filter: brightness(0.96); }
     color: var(--ob-muted);
 }
 
-.color-swatches { display: grid; grid-template-columns: repeat(5, 28px); gap: 6px; padding: 8px; }
+.color-swatches { display: grid; grid-template-columns: repeat(6, 28px); gap: 6px; padding: 8px; }
 .color-swatch {
     width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--ob-line); cursor: pointer; padding: 0;
     font-size: 11px; font-weight: 700;
 }
 .color-swatch.current { box-shadow: 0 0 0 2px var(--ob-accent); }
 .color-popover { position: fixed; z-index: 1060; padding: 0.3rem; }
+
+/* Tinted account / group icons (CategoryColors.TintStyle): the dark theme uses the lighter variant */
+[data-bs-theme="dark"] [style*="--ob-tint-d"] { color: var(--ob-tint-d) !important; }
+
+/* Icon and colour of an account / account group (IconColorPicker) */
+.icon-color-picker .color-swatches { padding: 0; }
+.icon-choices { display: grid; grid-template-columns: repeat(auto-fill, 32px); gap: 4px; }
+.icon-choice {
+    width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--ob-line); background: transparent;
+    color: inherit; padding: 0; font-size: 16px; line-height: 1; cursor: pointer;
+}
+.icon-choice:hover:not(:disabled) { border-color: var(--ob-accent); }
+.icon-choice.current { box-shadow: 0 0 0 2px var(--ob-accent); }
+.icon-choice:disabled, .icon-color-picker .color-swatch:disabled { opacity: 0.5; cursor: default; }
 
 /* Sidebar structure editing: inline rename and drop targets of drag and drop. */
 .browse-tree-rename { height: 1.6rem; padding: 0 0.35rem; font-size: 0.88rem; min-width: 0; flex: 1 1 auto; }

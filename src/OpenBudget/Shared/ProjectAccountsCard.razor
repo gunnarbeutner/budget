@@ -158,7 +158,7 @@
                                         disabled="@(selectable.Count == 0)"
                                         @onclick="@(() => ToggleGroup(selectable))">
                                     <i class="bi @icon account-picker-check" aria-hidden="true"></i>
-                                    <i class="bi bi-folder account-picker-icon" aria-hidden="true"></i>
+                                    <i class="bi @row.Icon account-picker-icon" style="@AccountIcons.TintStyle(row.Color)" aria-hidden="true"></i>
                                     <span class="account-picker-label">@row.Label</span>
                                 </button>
                             }
@@ -175,7 +175,7 @@
                                     <i class="bi @(added ? "bi-check-square" : isChecked ? "bi-check-square-fill" : "bi-square") account-picker-check" aria-hidden="true"></i>
                                     @if (!string.IsNullOrEmpty(row.Icon))
                                     {
-                                        <i class="bi @row.Icon account-picker-icon" aria-hidden="true"></i>
+                                        <i class="bi @row.Icon account-picker-icon" style="@AccountIcons.TintStyle(row.Color)" aria-hidden="true"></i>
                                     }
                                     <span class="account-picker-label">@row.Label</span>
                                     @if (added)
@@ -275,7 +275,7 @@
     }
 
     /// <summary>One picker row: a group header (carrying every visible account id in its subtree) or an account.</summary>
-    private sealed record PickerRow(bool IsGroup, long Id, int Level, string Label, string? Icon, List<long> AccountIds);
+    private sealed record PickerRow(bool IsGroup, long Id, int Level, string Label, string? Icon, List<long> AccountIds, string? Color = null);
 
     /// <summary>
     /// Walk the source's account_groups hierarchy and produce a flat, depth-first list of rows:
@@ -332,7 +332,8 @@
         List<long> Walk(long id, string label, List<AccountGroup> subGroups, List<Account> own, int level, bool ancestorMatched)
         {
             var matched = ancestorMatched || Matches(label);
-            var header = new PickerRow(true, id, level, label, null, new List<long>());
+            var group = groupById.GetValueOrDefault(id);
+            var header = new PickerRow(true, id, level, label, AccountIcons.ForGroup(group?.Icon), new List<long>(), group?.Color);
             var at = rows.Count;
             rows.Add(header);
             foreach (var sub in subGroups)
@@ -343,7 +344,7 @@
             {
                 var text = AccountLabel(a);
                 if (!matched && !Matches(text)) continue;
-                rows.Add(new PickerRow(false, a.Id, level + 1, text, a.KindIcon, new List<long>()));
+                rows.Add(new PickerRow(false, a.Id, level + 1, text, AccountIcons.ForAccount(a.Icon, a.Type, a.Portfolio == 1), new List<long>(), a.Color));
                 header.AccountIds.Add(a.Id);
             }
             if (header.AccountIds.Count == 0) rows.RemoveRange(at, rows.Count - at);

@@ -58,12 +58,10 @@ public partial class Browse
         _ => L["Period_Custom"],
     };
 
-    // ---- toolbar: filter panel, documents, category color ----
+    // ---- toolbar: filter panel, documents ----
 
     private bool _filterOpen;
     private int _statementCount;
-    private bool _canEditColors;
-    private int _colorMenuVersion;
 
     /// <summary>How many of the panel's filters are set (search has its own field and is not counted).</summary>
     private int ActiveFilterCount =>
@@ -80,14 +78,6 @@ public partial class Browse
             catch (AccessDeniedException) { _statementCount = 0; }
             catch (InvalidOperationException) { _statementCount = 0; }
         }
-        _canEditColors = project != null && selectionKind == "category" && await CategoryColorEdits.CanEditAsync(project.SourceId);
-    }
-
-    private async Task SetCategoryColorAsync(long categoryId, string? color)
-    {
-        if (!await CategoryColorEdits.SetColorAsync(categoryId, color)) return;
-        _colorMenuVersion++;   // re-creates the <details>, which closes it
-        await ReloadAsync();
     }
 
     private async Task ShowSimilarAsync(TransactionRow row)

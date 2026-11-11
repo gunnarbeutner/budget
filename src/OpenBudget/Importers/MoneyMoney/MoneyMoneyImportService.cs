@@ -224,6 +224,11 @@ public class MoneyMoneyImportService
                 .ToDictionaryAsync(a => a.Id, a => a.Provider, ct);
             // Closed accounts stay closed: the flag is remembered like the provider and restored after the accounts are copied (MoneyMoney's own closed bit is added while copying).
             var closedAccountIds = await db.Accounts.Where(a => a.SourceId == sourceId && a.Closed).Select(a => a.Id).ToListAsync(ct);
+            // Icons and colours picked in OpenBudget are remembered the same way and restored after the copy.
+            var accountLooks = await db.Accounts.Where(a => a.SourceId == sourceId && (a.Icon != null || a.Color != null))
+                .Select(a => new { a.Id, a.Icon, a.Color }).ToListAsync(ct);
+            var groupLooks = await db.AccountGroups.Where(g => g.SourceId == sourceId && (g.Icon != null || g.Color != null))
+                .Select(g => new { g.Id, g.Icon, g.Color }).ToListAsync(ct);
             var foreignAccountIds = providers
                 .Where(p => p.Value != AccountProviders.MoneyMoney)
                 .Select(p => p.Key)
@@ -307,6 +312,12 @@ public class MoneyMoneyImportService
             int accountCount = await CopyAccountsAsync(src, db, sourceId, providers, foreignState, takenOver, removedAccountIds, ct);
             if (closedAccountIds.Count > 0)
                 await db.Accounts.Where(a => closedAccountIds.Contains(a.Id)).ExecuteUpdateAsync(s => s.SetProperty(a => a.Closed, true), ct);
+            foreach (var look in accountLooks)
+                await db.Accounts.Where(a => a.Id == look.Id)
+                    .ExecuteUpdateAsync(s => s.SetProperty(a => a.Icon, look.Icon).SetProperty(a => a.Color, look.Color), ct);
+            foreach (var look in groupLooks)
+                await db.AccountGroups.Where(g => g.Id == look.Id)
+                    .ExecuteUpdateAsync(s => s.SetProperty(g => g.Icon, look.Icon).SetProperty(g => g.Color, look.Color), ct);
             int groupCount = takenOver ? 0 : await CopyCategoryGroupsAsync(src, db, sourceId, ct);
             int categoryCount = takenOver
                 ? await CopyNewCategoriesAsync(src, db, sourceId, removedCategoryIds, ct)

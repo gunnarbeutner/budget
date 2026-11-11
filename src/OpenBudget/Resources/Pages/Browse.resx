@@ -351,15 +351,6 @@
   <data name="ReadOnly_MoneyMoney" xml:space="preserve">
     <value>Categorized in MoneyMoney until this account switches to a bank connector</value>
   </data>
-  <data name="Color_Title" xml:space="preserve">
-    <value>Category color</value>
-  </data>
-  <data name="Color_Button" xml:space="preserve">
-    <value>Color</value>
-  </data>
-  <data name="Color_Reset" xml:space="preserve">
-    <value>Automatic color</value>
-  </data>
   <data name="Filter_Button" xml:space="preserve">
     <value>Filter</value>
   </data>

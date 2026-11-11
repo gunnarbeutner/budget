@@ -20,7 +20,6 @@
 @inject BankLoginService BankLogins
 @inject TransactionEditService Edits
 @inject CategorizationService Categorization
-@inject CategoryColorService CategoryColorEdits
 @inject AccessScopeProvider AccessProvider
 @inject IStringLocalizer<BrowseTreeRail> RailL
 @inherits DataChangeAwareComponent
@@ -152,25 +151,6 @@
             @if (ToolbarAmount is { } amount)
             {
                 <span class="browse-balance @(amount.Value < 0 ? "money-neg" : "")" data-testid="browse-balance">@Formatting.FormatMoneyDe(amount.Value, amount.Currency)</span>
-            }
-            @if (selectionKind == "category" && _canEditColors && SelectedCategoryNode is { } colorNode)
-            {
-                <details class="app-menu" data-testid="category-color" @key="_colorMenuVersion">
-                    <summary class="cat-pill" style="@CategoryColors.For(colorNode.Id, colorNode.Color).Style" title="@L["Color_Title"]">
-                        <i class="bi bi-palette me-1" aria-hidden="true"></i>@L["Color_Button"]
-                    </summary>
-                    <div class="dropdown-menu show app-menu-list" style="left: 0; right: auto;">
-                        <div class="color-swatches">
-                            @foreach (var (key, bg) in CategoryColors.Palette)
-                            {
-                                var current = string.Equals(CategoryColors.ToCss(colorNode.Color), key, StringComparison.OrdinalIgnoreCase);
-                                <button type="button" class="color-swatch @(current ? "current" : "")" style="background:@bg;color:@key"
-                                        title="@key" aria-label="@key" @onclick="() => SetCategoryColorAsync(colorNode.Id, key)">A</button>
-                            }
-                        </div>
-                        <button type="button" class="dropdown-item small" @onclick="() => SetCategoryColorAsync(colorNode.Id, null)">@L["Color_Reset"]</button>
-                    </div>
-                </details>
             }
             <div class="browse-tools d-flex flex-wrap align-items-center gap-2" data-testid="browse-tools">
                 <PeriodNav Inline="true" Anchor="anchor" Period="@period" ShowMonthPicker="true"
@@ -1481,11 +1461,6 @@
             return (SelectionIsIncome ? SelectionSpent : -SelectionSpent, null);
         }
     }
-
-    private BrowseCategoryNode? SelectedCategoryNode =>
-        tree != null && selectionKind == "category" && selectionId is { } cid
-            ? FindCategoryNode(tree.Categories, cid, CategoryItemType.Category)
-            : null;
 
     private BrowseAccountNode? SelectedAccountNode =>
         tree != null && selectionKind == "account" && selectionId is { } aid

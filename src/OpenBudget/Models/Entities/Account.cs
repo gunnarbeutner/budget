@@ -91,6 +91,14 @@ public class Account
     [Column("closed")]
     public bool Closed { get; set; }
 
+    /// <summary>The Bootstrap icon its owner picked (see <c>AccountIcons</c>); null = the icon of its <see cref="Type"/>. Uploads never change it.</summary>
+    [Column("icon")]
+    public string? Icon { get; set; }
+
+    /// <summary>The colour (hex) its owner picked for the icon; null = the default text colour. Uploads never change it.</summary>
+    [Column("color")]
+    public string? Color { get; set; }
+
     // Navigation properties
     public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
     public ICollection<Holding> Holdings { get; set; } = new List<Holding>();

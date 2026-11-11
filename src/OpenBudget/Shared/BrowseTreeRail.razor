@@ -239,6 +239,11 @@
     // collapsed groups: new groups default to expanded, like MoneyMoney's sidebar).
     private const string CollapseScope = "browse-accounts-collapsed";
     private readonly HashSet<string> collapsed = new(StringComparer.Ordinal);
+    // Collapsed category groups, persisted the same way under their own scope ("cg:<id>").
+    private const string CategoryCollapseScope = "browse-categories-collapsed";
+    private readonly HashSet<string> collapsedCategories = new(StringComparer.Ordinal);
+
+    private static string CategoryGroupKey(long id) => "cg:" + id.ToString(CultureInfo.InvariantCulture);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -258,20 +263,23 @@
         try
         {
             var keys = await JS.InvokeAsync<string[]>("expandState.get", CollapseScope);
-            if (keys.Length > 0)
-            {
-                collapsed.UnionWith(keys);
-                StateHasChanged();
-            }
+            collapsed.UnionWith(keys);
+            var categoryKeys = await JS.InvokeAsync<string[]>("expandState.get", CategoryCollapseScope);
+            collapsedCategories.UnionWith(categoryKeys);
+            if (keys.Length > 0 || categoryKeys.Length > 0) StateHasChanged();
         }
         catch (JSDisconnectedException) { /* circuit gone */ }
         catch (InvalidOperationException) { /* JS unreachable (prerender) */ }
     }
 
-    private async Task ToggleGroupAsync(string key)
+    private Task ToggleGroupAsync(string key) => ToggleAsync(collapsed, CollapseScope, key);
+
+    private Task ToggleCategoryGroupAsync(long id) => ToggleAsync(collapsedCategories, CategoryCollapseScope, CategoryGroupKey(id));
+
+    private async Task ToggleAsync(HashSet<string> set, string scope, string key)
     {
-        if (!collapsed.Remove(key)) collapsed.Add(key);
-        try { await JS.InvokeVoidAsync("expandState.set", CollapseScope, collapsed.ToArray()); }
+        if (!set.Remove(key)) set.Add(key);
+        try { await JS.InvokeVoidAsync("expandState.set", scope, set.ToArray()); }
         catch (JSDisconnectedException) { /* circuit gone */ }
         catch (InvalidOperationException) { /* JS unreachable (prerender) */ }
     }
@@ -315,7 +323,7 @@
                  @onclick="() => OnSelectAccount.InvokeAsync(accountId)"
                  @oncontextmenu="e => OpenMenu(accountNode, e)" @oncontextmenu:preventDefault="@HasMenu(accountNode)"
                  @onkeydown="e => OnAccountKeydown(e, accountNode)">
-                <span class="browse-tree-name"><i class="bi @(a.IsPortfolio ? "bi-graph-up-arrow" : Account.IconForType(a.Type)) me-1" aria-hidden="true"></i>@if (IsRenaming(accountNode)) { @RenameField(accountNode) } else { <span class="browse-tree-label" title="@a.Name">@a.Name</span> }</span>
+                <span class="browse-tree-name"><i class="bi @a.DisplayIcon me-1" style="@AccountIcons.TintStyle(a.Color)" data-testid="tree-account-icon" aria-hidden="true"></i>@if (IsRenaming(accountNode)) { @RenameField(accountNode) } else { <span class="browse-tree-label" title="@a.Name">@a.Name</span> }</span>
                 @if (a.Balance.HasValue)
                 {
                     <span class="browse-tree-amount @(a.Balance < 0 ? "text-danger" : "text-body-secondary")">
@@ -347,7 +355,7 @@
                             aria-label="@(open ? L["Tree_Collapse"] : L["Tree_Expand"])"
                             @onclick="() => ToggleGroupAsync(key)" @onclick:stopPropagation="true">
                         <i class="bi @(open ? "bi-chevron-down" : "bi-chevron-right")" aria-hidden="true"></i>
-                    </button>@if (groupNode != null && IsRenaming(groupNode)) { @RenameField(groupNode) } else { <span class="browse-tree-label" title="@n.Name">@n.Name</span> }
+                    </button><i class="bi @n.GroupIcon me-1" style="@AccountIcons.TintStyle(n.GroupColor)" data-testid="tree-group-icon" aria-hidden="true"></i>@if (groupNode != null && IsRenaming(groupNode)) { @RenameField(groupNode) } else { <span class="browse-tree-label" title="@n.Name">@n.Name</span> }
                 </span>
                 <span class="browse-tree-amount fw-bold" data-testid="tree-group-sum">@SumsText(n)</span>
             </div>
@@ -380,8 +388,14 @@
     private async Task OnCategoryKeydown(KeyboardEventArgs e, BrowseCategoryNode node)
     {
         if (await MenuKeyAsync(SidebarNodeOf(node), e) || await MoveKeyAsync(SidebarNodeOf(node), e)) return;
-        if (e.Key == "Enter" || e.Key == " ") await OnSelectCategory.InvokeAsync(node);
+        if (e.Key == "Enter" || e.Key == " ") { await OnSelectCategory.InvokeAsync(node); return; }
+        // ArrowRight / ArrowLeft unfold / fold a category group, like an account group.
+        if (!IsFoldable(node)) return;
+        var open = !collapsedCategories.Contains(CategoryGroupKey(node.Id));
+        if ((e.Key == "ArrowRight" && !open) || (e.Key == "ArrowLeft" && open)) await ToggleCategoryGroupAsync(node.Id);
     }
+
+    private static bool IsFoldable(BrowseCategoryNode node) => node.ItemType == CategoryItemType.Group && node.Children.Count > 0;
 
     // NOTE: deliberately no builder.SetKey(...) on these nodes. The tree structure is stable
     // across the re-renders this page actually does (selection / period / search change classes
@@ -399,6 +413,9 @@
         builder.AddAttribute(2, "role", "treeitem");
         builder.AddAttribute(3, "tabindex", "0");
         builder.AddAttribute(4, "aria-selected", isSelected ? "true" : "false");
+        bool foldable = IsFoldable(node);
+        bool open = !foldable || !collapsedCategories.Contains(CategoryGroupKey(node.Id));
+        if (foldable) builder.AddAttribute(80, "aria-expanded", open ? "true" : "false");
         // FormattableString.Invariant: CSS lengths need a decimal point, but Razor's $""
         // interpolation defaults to CurrentCulture — German renders "1,5rem", which browsers
         // silently drop as invalid and the tree flattens.
@@ -433,6 +450,20 @@
 
         builder.OpenElement(10, "span");
         builder.AddAttribute(11, "class", "browse-tree-name");
+        if (foldable)
+        {
+            // The chevron only folds the group; the rest of the row selects it.
+            builder.OpenElement(81, "button");
+            builder.AddAttribute(82, "type", "button");
+            builder.AddAttribute(83, "class", "browse-tree-chevron");
+            builder.AddAttribute(84, "tabindex", "-1");
+            builder.AddAttribute(85, "data-testid", "tree-category-group-toggle");
+            builder.AddAttribute(86, "aria-label", open ? L["Tree_Collapse"].Value : L["Tree_Expand"].Value);
+            builder.AddAttribute(87, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, () => ToggleCategoryGroupAsync(node.Id)));
+            builder.AddEventStopPropagationAttribute(88, "onclick", true);
+            builder.AddMarkupContent(89, open ? "<i class=\"bi bi-chevron-down\" aria-hidden=\"true\"></i>" : "<i class=\"bi bi-chevron-right\" aria-hidden=\"true\"></i>");
+            builder.CloseElement();
+        }
         if (CategoryColors.ToCss(node.Color) is { } dotColor)
         {
             // the same ribbon as the category picker, in the category's colour (a parsed hex value, safe to inline)
@@ -485,7 +516,8 @@
 
         builder.CloseElement(); // div.browse-tree-row
 
-        // Children rendered as siblings at the next indent level.
+        // Children rendered as siblings at the next indent level (none while the group is folded).
+        if (!open) return;
         foreach (var c in node.Children)
         {
             builder.AddContent(50, RenderCategoryNode(c, level + 1));

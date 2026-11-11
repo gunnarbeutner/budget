@@ -391,6 +391,43 @@ public sealed class MoneyMoneyImportTests : IDisposable
 
     // ---- detail fields ----
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reimport_keeps_icons_and_colours_picked_for_accounts_and_groups(bool takenOver)
+    {
+        await using var t = new TestDb();
+        string Snapshot()
+        {
+            var path = BuildSnapshot([new Row(1, -1)]);
+            Exec(path, """
+                INSERT INTO account_groups (name, sort) VALUES ('Banks', 0);
+                UPDATE accounts SET group_key = 1;
+                """);
+            return path;
+        }
+        var first = await ImportAsync(t, Snapshot());
+        var account = SourceScope.Namespace(first.SourceId, 1);
+        var group = SourceScope.Namespace(first.SourceId, 1);
+        await using (var db = await t.Factory.CreateDbContextAsync())
+        {
+            await db.Accounts.Where(a => a.Id == account).ExecuteUpdateAsync(s => s.SetProperty(a => a.Icon, "bi-wallet2").SetProperty(a => a.Color, "#2b5797"));
+            await db.AccountGroups.Where(g => g.Id == group).ExecuteUpdateAsync(s => s.SetProperty(g => g.Icon, "bi-safe").SetProperty(g => g.Color, "#1f6b35"));
+            if (takenOver)
+                await db.ImportSources.Where(s => s.Id == first.SourceId).ExecuteUpdateAsync(s => s.SetProperty(x => x.StructureTakenOverAt, DateTime.UtcNow));
+        }
+
+        await ImportAsync(t, Snapshot());
+
+        await using var check = await t.Factory.CreateDbContextAsync();
+        var a = await check.Accounts.SingleAsync(x => x.Id == account);
+        Assert.Equal(("bi-wallet2", "#2b5797"), (a.Icon, a.Color));
+        var g = await check.AccountGroups.SingleAsync(x => x.Id == group);
+        Assert.Equal(("bi-safe", "#1f6b35"), (g.Icon, g.Color));
+        // The other account keeps its default.
+        Assert.Null((await check.Accounts.SingleAsync(x => x.Id == SourceScope.Namespace(first.SourceId, 2))).Icon);
+    }
+
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA2100", Justification = "Test-only constant SQL.")]
     private static void Exec(string path, string sql)
     {

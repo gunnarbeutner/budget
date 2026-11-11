@@ -166,6 +166,33 @@ public sealed class StructureService
         Changed(sourceId);
     }
 
+    // ---- Icon and colour ----
+
+    /// <summary>
+    /// Sets the icon and colour of an account or account group (null = its default icon / the default colour). Only the
+    /// source's owner may; unlike the other structure edits this also works while MoneyMoney owns the structure, since
+    /// uploads keep both.
+    /// </summary>
+    public async Task SetAppearanceAsync(StructureItemKind kind, long id, string? icon, string? color, CancellationToken ct = default)
+    {
+        if (icon != null && !AccountIcons.IsValid(icon)) throw new ArgumentException("Not an offered icon.", nameof(icon));
+        if (color != null && !CategoryColors.IsValid(color)) throw new ArgumentException("Not a color.", nameof(color));
+        var css = color == null ? null : CategoryColors.ToCss(color);
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var (sourceId, _) = await LocateAsync(db, kind, id, ct);
+        if (await BlockAsync(db, sourceId, ct) == StructureBlock.NotOwner)
+            throw new AccessDeniedException("Only the source's owner can change its structure.");
+        await (kind switch
+        {
+            StructureItemKind.Account => db.Accounts.Where(x => x.Id == id).ForEachAsync(x => (x.Icon, x.Color) = (icon, css), ct),
+            StructureItemKind.AccountGroup => db.AccountGroups.Where(x => x.Id == id).ForEachAsync(x => (x.Icon, x.Color) = (icon, css), ct),
+            StructureItemKind.Category or StructureItemKind.CategoryGroup => throw new ArgumentOutOfRangeException(nameof(kind)),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        });
+        await db.SaveChangesAsync(ct);
+        Changed(sourceId);
+    }
+
     private static KeyNotFoundException NotFound() => new("Not found.");
 
     // ---- Create ----

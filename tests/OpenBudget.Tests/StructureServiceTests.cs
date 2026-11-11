@@ -129,6 +129,71 @@ public sealed class StructureServiceTests
     }
 
     [Fact]
+    public async Task The_owner_sets_icon_and_colour_of_accounts_and_groups_even_while_MoneyMoney_owns_the_structure()
+    {
+        await using var t = await WorldAsync(takenOver: false);
+        await AccountGroupsAsync(t);
+        var alice = For(t, AccessWorld.Alice);
+
+        await alice.SetAppearanceAsync(StructureItemKind.Account, AccessWorld.AccountWp, "bi-wallet2", "#2B5797");
+        await alice.SetAppearanceAsync(StructureItemKind.AccountGroup, Id(10), "bi-safe", null);
+
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            var account = await db.Accounts.SingleAsync(a => a.Id == AccessWorld.AccountWp);
+            Assert.Equal(("bi-wallet2", "#2b5797"), (account.Icon, account.Color));
+            var group = await db.AccountGroups.SingleAsync(g => g.Id == Id(10));
+            Assert.Equal("bi-safe", group.Icon);
+            Assert.Null(group.Color);
+            // Untouched rows keep the defaults.
+            Assert.Null((await db.Accounts.SingleAsync(a => a.Id == AccessWorld.AccountPrivate)).Icon);
+            Assert.Null((await db.AccountGroups.SingleAsync(g => g.Id == Id(11))).Icon);
+        }
+
+        // Back to the defaults.
+        await alice.SetAppearanceAsync(StructureItemKind.Account, AccessWorld.AccountWp, null, null);
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            var account = await db.Accounts.SingleAsync(a => a.Id == AccessWorld.AccountWp);
+            Assert.Null(account.Icon);
+            Assert.Null(account.Color);
+        }
+
+        await Assert.ThrowsAsync<ArgumentException>(() => alice.SetAppearanceAsync(StructureItemKind.Account, AccessWorld.AccountWp, "bi-not-offered", null));
+        await Assert.ThrowsAsync<ArgumentException>(() => alice.SetAppearanceAsync(StructureItemKind.Account, AccessWorld.AccountWp, null, "red"));
+        // Bob edits the shared project but does not own the source.
+        await Assert.ThrowsAsync<AccessDeniedException>(() =>
+            For(t, AccessWorld.Bob).SetAppearanceAsync(StructureItemKind.Account, AccessWorld.AccountWp, "bi-wallet2", null));
+    }
+
+    [Fact]
+    public void Accounts_without_a_picked_icon_show_their_type_icon_and_groups_the_folder()
+    {
+        Assert.Equal("bi-piggy-bank", AccountIcons.ForAccount(null, 2, false));
+        Assert.Equal("bi-graph-up-arrow", AccountIcons.ForAccount(null, 1, true));
+        Assert.Equal("bi-house", AccountIcons.ForAccount("bi-house", 2, false));
+        Assert.Equal("bi-piggy-bank", AccountIcons.ForAccount("bi-unknown", 2, false));
+        Assert.Equal("bi-folder", AccountIcons.ForGroup(null));
+        Assert.Equal("bi-briefcase", AccountIcons.ForGroup("bi-briefcase"));
+        var pill = CategoryColors.For(0, "#1D4ED8");
+        Assert.Equal($"color:{pill.Text};--ob-tint-d:{pill.DarkText};", AccountIcons.TintStyle("#1D4ED8"));
+        Assert.Null(AccountIcons.TintStyle(null));
+    }
+
+    [Fact]
+    public void The_palette_has_clearly_distinct_hues_and_old_colours_mark_their_nearest_swatch()
+    {
+        var keys = CategoryColors.Palette.Select(p => p.Key).ToList();
+        Assert.InRange(keys.Count, 10, 12);
+        Assert.Equal(keys.Count, keys.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        // Colours stored with the earlier palette (or imported) select the swatch closest to them; the data stays as is.
+        Assert.Equal("#2a7330", CategoryColors.NearestSwatch("#1f6b35"));
+        Assert.Equal("#b91c1c", CategoryColors.NearestSwatch("#a3332a"));
+        Assert.Equal("#1d4ed8", CategoryColors.NearestSwatch("#1d4ed8"));
+        Assert.Null(CategoryColors.NearestSwatch("not a color"));
+    }
+
+    [Fact]
     public async Task Deleting_an_account_group_moves_its_accounts_up_into_its_place()
     {
         await using var t = await WorldAsync();

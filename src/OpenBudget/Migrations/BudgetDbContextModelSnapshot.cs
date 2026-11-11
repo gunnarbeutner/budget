@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261111224030_AccountInCashflow";
+        public override string LatestMigrationId => "20261111224530_AddAccountIconAndColor";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -156,6 +156,10 @@ namespace OpenBudget.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("closed");
 
+                    b.Property<string>("Color")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("color");
+
                     b.Property<string>("Currency")
                         .HasColumnType("TEXT")
                         .HasColumnName("currency");
@@ -171,6 +175,10 @@ namespace OpenBudget.Migrations
                     b.Property<string>("Iban")
                         .HasColumnType("TEXT")
                         .HasColumnName("iban");
+
+                    b.Property<string>("Icon")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("icon");
 
                     b.Property<long>("InitialBalance")
                         .ValueGeneratedOnAdd()
@@ -222,6 +230,14 @@ namespace OpenBudget.Migrations
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("Color")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("color");
+
+                    b.Property<string>("Icon")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("icon");
 
                     b.Property<string>("Name")
                         .HasColumnType("TEXT")

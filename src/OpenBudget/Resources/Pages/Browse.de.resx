@@ -351,15 +351,6 @@
   <data name="ReadOnly_MoneyMoney" xml:space="preserve">
     <value>Wird in MoneyMoney kategorisiert, bis dieses Konto auf einen Bankzugang umgestellt wird</value>
   </data>
-  <data name="Color_Title" xml:space="preserve">
-    <value>Kategoriefarbe</value>
-  </data>
-  <data name="Color_Button" xml:space="preserve">
-    <value>Farbe</value>
-  </data>
-  <data name="Color_Reset" xml:space="preserve">
-    <value>Automatische Farbe</value>
-  </data>
   <data name="Filter_Button" xml:space="preserve">
     <value>Filter</value>
   </data>

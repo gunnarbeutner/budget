@@ -78,6 +78,7 @@
   <data name="Ctx_NewCategory" xml:space="preserve"><value>New category</value></data>
   <data name="Ctx_NewGroup" xml:space="preserve"><value>New group</value></data>
   <data name="Ctx_AccountSettings" xml:space="preserve"><value>Settings…</value></data>
+  <data name="Ctx_GroupSettings" xml:space="preserve"><value>Settings…</value></data>
   <data name="Ctx_MoveTo" xml:space="preserve"><value>Move to group…</value></data>
   <data name="Ctx_MoveUp" xml:space="preserve"><value>Move up</value></data>
   <data name="Ctx_MoveDown" xml:space="preserve"><value>Move down</value></data>
