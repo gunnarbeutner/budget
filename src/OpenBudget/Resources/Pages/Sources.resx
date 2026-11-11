@@ -88,6 +88,12 @@
   <data name="Table_Projects" xml:space="preserve">
     <value>Projects</value>
   </data>
+  <data name="Table_Documents" xml:space="preserve">
+    <value>Documents</value>
+  </data>
+  <data name="Table_Documents_Title" xml:space="preserve">
+    <value>Statements and documents imported from MoneyMoney</value>
+  </data>
   <data name="Table_Transactions" xml:space="preserve">
     <value>Transactions</value>
   </data>

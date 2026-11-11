@@ -6,12 +6,18 @@
 //                launchd agent, run a one-shot export).
 //   - --run-once → headless export driven by launchd.
 //
+// Every export uploads the decrypted database, then offers MoneyMoney's stored statement PDFs
+// (Statements/<bank>/<file>, indexed by the `statements` table): the server answers which of them
+// (by account and SHA-256) it still needs, and only those are uploaded, one request per file.
+// MoneyMoney's files and database are only read, never changed.
+//
 // Decryption runs in-process via SQLCipher.swift (binary xcframework); upload uses
 // URLSession. There is no shell helper and no external sqlcipher binary in the chain — the
 // whole pipeline is part of the signed .app, so the Full Disk Access grant only flows to
 // code we sealed at build time.
 
 import AppKit
+import CryptoKit
 import Foundation
 import SQLCipher
 import Security
@@ -593,6 +599,8 @@ enum Exporter {
     // (from Keychain) overrides this when present; cipher compatibility is the same either way.
     private static let defaultCipherKey = "nopasswd"
     private static let cipherCompatibility = 4
+    private static let statementsDirPath =
+        "\(NSHomeDirectory())/Library/Containers/com.moneymoney-app.retail/Data/Library/Application Support/MoneyMoney/Statements"
 
     static func runOnce(logger: @escaping @Sendable (String) -> Void) async throws {
         let baseURLs = Config.baseURLs
@@ -621,7 +629,8 @@ enum Exporter {
 
         let cipherKey = Keychain.dbPassword.flatMap { $0.isEmpty ? nil : $0 } ?? defaultCipherKey
         logger("Decrypting + exporting tables")
-        try decryptAndExport(source: srcCopy.path, output: outFile.path, cipherKey: cipherKey)
+        let statementRows = try decryptAndExport(source: srcCopy.path, output: outFile.path, cipherKey: cipherKey)
+        let statements = hashStatements(statementRows, logger: logger)
 
         let attrs = try FileManager.default.attributesOfItem(atPath: outFile.path)
         let size = (attrs[.size] as? Int64) ?? 0
@@ -639,6 +648,14 @@ enum Exporter {
             } catch {
                 logger("✗ Upload to \(baseURL) failed: \(error.localizedDescription)")
                 failures.append((baseURL, error))
+                continue
+            }
+            do {
+                try await uploadStatements(
+                    statements, baseURL: baseURL, sourceName: sourceName, token: token, logger: logger)
+            } catch {
+                logger("✗ Statement upload to \(baseURL) failed: \(error.localizedDescription)")
+                failures.append(("\(baseURL) (statements)", error))
             }
         }
 
@@ -692,7 +709,11 @@ enum Exporter {
     /// DETACH. Using `PRAGMA key` instead of `sqlite3_key()` keeps us on the public API —
     /// `sqlite3_key` is only exposed in the sqlcipher.swift package behind `SQLITE_HAS_CODEC`,
     /// which the binary distribution doesn't surface to consumers.
-    private static func decryptAndExport(source: String, output: String, cipherKey: String) throws {
+    /// Returns the (not deleted) statements MoneyMoney's `statements` table lists; empty when the
+    /// table doesn't exist.
+    private static func decryptAndExport(source: String, output: String, cipherKey: String) throws
+        -> [StatementRow]
+    {
         var db: OpaquePointer?
         let openResult = sqlite3_open(source, &db)
         guard openResult == SQLITE_OK, let db else {
@@ -748,6 +769,134 @@ enum Exporter {
             try exec(db, "CREATE TABLE export.\(table) AS SELECT * FROM \(table);")
         }
         try exec(db, "DETACH DATABASE export;")
+        return try readStatementRows(db)
+    }
+
+    /// One row of MoneyMoney's `statements` table: the file lives at Statements/<directory>/<filename>.
+    struct StatementRow {
+        let accountKey: Int64
+        let name: String
+        let directory: String
+        let filename: String
+        let createdTimestamp: Int64
+    }
+
+    /// A statement file ready to offer to the server.
+    struct StatementFile {
+        let accountKey: Int64
+        let name: String
+        let date: String
+        let file: URL
+        let sha256: String
+    }
+
+    private static func readStatementRows(_ db: OpaquePointer) throws -> [StatementRow] {
+        var stmt: OpaquePointer?
+        let sql =
+            "SELECT account_key, name, directory, filename, created_tsp FROM statements "
+            + "WHERE account_key IS NOT NULL AND filename IS NOT NULL AND COALESCE(deleted, 0) = 0"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
+            // Older MoneyMoney versions have no statements table.
+            sqlite3_finalize(stmt)
+            return []
+        }
+        defer { sqlite3_finalize(stmt) }
+        func text(_ i: Int32) -> String { sqlite3_column_text(stmt, i).map { String(cString: $0) } ?? "" }
+        var rows: [StatementRow] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            rows.append(
+                StatementRow(
+                    accountKey: sqlite3_column_int64(stmt, 0), name: text(1), directory: text(2), filename: text(3),
+                    createdTimestamp: sqlite3_column_int64(stmt, 4)))
+        }
+        return rows
+    }
+
+    /// Resolves each row to its file and hashes it (streamed in chunks); rows whose file is missing
+    /// or lies outside the Statements folder are left out.
+    private static func hashStatements(_ rows: [StatementRow], logger: (String) -> Void) -> [StatementFile] {
+        let root = URL(fileURLWithPath: statementsDirPath).standardizedFileURL
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        var files: [StatementFile] = []
+        var missing = 0
+        for row in rows {
+            let file = root.appendingPathComponent(row.directory).appendingPathComponent(row.filename)
+                .standardizedFileURL
+            guard file.path.hasPrefix(root.path + "/"), let hash = sha256(of: file) else {
+                missing += 1
+                continue
+            }
+            let title = row.name.isEmpty ? (row.filename as NSString).deletingPathExtension : row.name
+            let date = dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(row.createdTimestamp)))
+            files.append(StatementFile(accountKey: row.accountKey, name: title, date: date, file: file, sha256: hash))
+        }
+        logger("Found \(files.count) statement file(s)\(missing > 0 ? " (\(missing) listed but not readable)" : "")")
+        return files
+    }
+
+    private static func sha256(of file: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while true {
+            guard let chunk = try? handle.read(upToCount: 1 << 20) else { return nil }
+            if chunk.isEmpty { break }
+            hasher.update(data: chunk)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Asks the server which statements it still needs, then uploads those one by one.
+    private static func uploadStatements(
+        _ statements: [StatementFile], baseURL: String, sourceName: String, token: String,
+        logger: @escaping (String) -> Void
+    ) async throws {
+        if statements.isEmpty { return }
+        let trimmed = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let base = "\(trimmed)/api/import/moneymoney/\(sourceName)"
+        guard let checkURL = URL(string: "\(base)/statements/check") else {
+            throw AppError.invalidConfig("Could not assemble statements URL")
+        }
+        var check = URLRequest(url: checkURL)
+        check.httpMethod = "POST"
+        check.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        check.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload: [String: Any] = [
+            "statements": statements.map { ["accountKey": $0.accountKey, "sha256": $0.sha256] }
+        ]
+        check.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, response) = try await URLSession.shared.data(for: check)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw AppError.upload("Statement check: HTTP \(code): \(String(data: data, encoding: .utf8) ?? "")")
+        }
+        let wanted = Set(
+            ((try JSONSerialization.jsonObject(with: data) as? [String: Any])?["wanted"] as? [String] ?? [])
+                .map { $0.lowercased() })
+        var seen = Set<String>()
+        var stored = 0
+        for statement in statements where wanted.contains(statement.sha256) && seen.insert(statement.sha256).inserted {
+            var components = URLComponents(string: "\(base)/statements")
+            components?.queryItems = [
+                URLQueryItem(name: "accountKey", value: String(statement.accountKey)),
+                URLQueryItem(name: "date", value: statement.date),
+                URLQueryItem(name: "name", value: statement.name),
+            ]
+            guard let url = components?.url else { continue }
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/pdf", forHTTPHeaderField: "Content-Type")
+            let (body, resp) = try await URLSession.shared.upload(for: request, fromFile: statement.file)
+            guard let r = resp as? HTTPURLResponse, (200..<300).contains(r.statusCode) else {
+                let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                throw AppError.upload("Statement upload: HTTP \(code): \(String(data: body, encoding: .utf8) ?? "")")
+            }
+            stored += 1
+        }
+        logger("Statements: \(statements.count) offered, \(stored) uploaded")
     }
 
     private static func exec(_ db: OpaquePointer, _ sql: String) throws {

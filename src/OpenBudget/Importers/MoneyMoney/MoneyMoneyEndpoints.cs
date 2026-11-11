@@ -3,12 +3,23 @@ using OpenBudget.Services;
 namespace OpenBudget.Importers.MoneyMoney;
 
 /// <summary>
-/// HTTP upload endpoint for MoneyMoney database snapshots. The request is the raw SQLite file as
-/// the body (Content-Type application/octet-stream) with "Authorization: Bearer &lt;token&gt;".
+/// HTTP upload endpoints for MoneyMoney, all with "Authorization: Bearer &lt;token&gt;":
+/// <list type="bullet">
+/// <item><see cref="Route"/>: a database snapshot, the raw SQLite file as the body (application/octet-stream);</item>
+/// <item><see cref="StatementsCheckRoute"/>: JSON <c>{"statements":[{"accountKey":1,"sha256":"..."}]}</c> of the
+/// statements MoneyMoney holds; answers <c>{"wanted":["..."]}</c>, the hashes still to upload;</item>
+/// <item><see cref="StatementsRoute"/>: one statement PDF as the body, with <c>accountKey</c>, <c>date</c>
+/// (yyyy-MM-dd) and <c>name</c> as query parameters.</item>
+/// </list>
 /// </summary>
 internal static class MoneyMoneyEndpoints
 {
     public const string Route = "/api/import/moneymoney/{name}";
+    public const string StatementsCheckRoute = "/api/import/moneymoney/{name}/statements/check";
+    public const string StatementsRoute = "/api/import/moneymoney/{name}/statements";
+
+    /// <summary>Largest statement file accepted.</summary>
+    public const long MaxStatementBytes = 100L * 1024 * 1024;
 
     /// <summary>
     /// OLD-EXPORTER SHIM: the route the already-installed MoneyMoneyExport tool posts to. Must
@@ -26,6 +37,50 @@ internal static class MoneyMoneyEndpoints
         // app-wide login requirement.
         app.MapPost(Route, handler).AllowAnonymous();
         app.MapPost(LegacyExporterRoute, handler).AllowAnonymous();
+        app.MapPost(StatementsCheckRoute, (string name, HttpRequest request, MoneyMoneyStatementImport statements, UploadAuthorizer authorizer, CancellationToken ct) =>
+            HandleStatementsCheckAsync(name, request, statements, authorizer, ct)).AllowAnonymous();
+        app.MapPost(StatementsRoute, (string name, HttpRequest request, MoneyMoneyStatementImport statements, UploadAuthorizer authorizer, CancellationToken ct) =>
+            HandleStatementUploadAsync(name, request, statements, authorizer, ct)).AllowAnonymous();
+    }
+
+    private sealed record StatementsCheckRequest(List<StatementsCheckItem>? Statements);
+
+    private sealed record StatementsCheckItem(long AccountKey, string? Sha256);
+
+    internal static async Task<IResult> HandleStatementsCheckAsync(string sourceName, HttpRequest request, MoneyMoneyStatementImport statements, UploadAuthorizer authorizer, CancellationToken ct)
+    {
+        if (!SourceData.IsValidSlug(sourceName)) return Results.BadRequest("Invalid source name.");
+        var denied = UploadAuthorizer.ToFailure(await authorizer.AuthorizeAsync(request.Headers.Authorization.ToString(), sourceName, ct));
+        if (denied != null) return denied;
+        StatementsCheckRequest? body;
+        try { body = await request.ReadFromJsonAsync<StatementsCheckRequest>(ct); }
+        catch (System.Text.Json.JsonException) { return Results.BadRequest("Invalid JSON."); }
+        var refs = (body?.Statements ?? [])
+            .Where(s => s.Sha256 is { Length: 64 } h && h.All(Uri.IsHexDigit))
+            .Select(s => new MoneyMoneyStatementRef(s.AccountKey, s.Sha256!))
+            .ToList();
+        return Results.Ok(new { wanted = await statements.WantedAsync(sourceName, refs, ct) });
+    }
+
+    internal static async Task<IResult> HandleStatementUploadAsync(string sourceName, HttpRequest request, MoneyMoneyStatementImport statements, UploadAuthorizer authorizer, CancellationToken ct)
+    {
+        if (!SourceData.IsValidSlug(sourceName)) return Results.BadRequest("Invalid source name.");
+        var denied = UploadAuthorizer.ToFailure(await authorizer.AuthorizeAsync(request.Headers.Authorization.ToString(), sourceName, ct));
+        if (denied != null) return denied;
+        if (!long.TryParse(request.Query["accountKey"], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var accountKey)
+            || !DateOnly.TryParseExact(request.Query["date"], "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var date))
+            return Results.BadRequest("accountKey and date (yyyy-MM-dd) are required.");
+        if (request.ContentLength > MaxStatementBytes) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+
+        using var buffer = new MemoryStream();
+        await request.Body.CopyToAsync(buffer, ct);
+        if (buffer.Length > MaxStatementBytes) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        var content = buffer.ToArray();
+        if (content.Length < 5 || !content.AsSpan(0, 5).SequenceEqual("%PDF-"u8))
+            return Results.BadRequest("The statement is not a PDF.");
+
+        var outcome = await statements.StoreAsync(sourceName, accountKey, date, request.Query["name"].ToString(), content, ct);
+        return Results.Ok(new { status = outcome switch { MoneyMoneyStatementOutcome.Stored => "stored", MoneyMoneyStatementOutcome.Duplicate => "duplicate", MoneyMoneyStatementOutcome.NoAccount => "skipped", _ => "skipped" } });
     }
 
     internal static async Task<IResult> HandleUploadAsync(

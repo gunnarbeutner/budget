@@ -27,7 +27,7 @@ public static class StatementArchive
             .ToListAsync(ct);
         var accountIds = rows.Where(r => r.AccountId != null).Select(r => r.AccountId!.Value).Distinct().ToList();
         var accounts = await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.Name ?? "", ct);
-        var loginIds = rows.Where(r => r.AccountId == null).Select(r => r.BankLoginId).Distinct().ToList();
+        var loginIds = rows.Where(r => r.AccountId == null).Where(r => r.BankLoginId != null).Select(r => r.BankLoginId!.Value).Distinct().ToList();
         var logins = await db.BankLogins.AsNoTracking().Where(l => loginIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, l => l.DisplayName, ct);
 
         var byId = rows.ToDictionary(r => r.Id);
@@ -40,7 +40,7 @@ public static class StatementArchive
             try { path = store.Resolve(r.FilePath); }
             catch (InvalidOperationException) { continue; }
             if (!File.Exists(path)) continue;
-            var owner = r.AccountId is { } a ? accounts.GetValueOrDefault(a, "") : logins.GetValueOrDefault(r.BankLoginId, "");
+            var owner = r.AccountId is { } a ? accounts.GetValueOrDefault(a, "") : r.BankLoginId is { } l ? logins.GetValueOrDefault(l, "") : "";
             result.Add(new StatementArchiveEntry(path, Unique(used, FileName(r.Date, owner, r.Name))));
         }
         return result;

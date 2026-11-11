@@ -88,6 +88,12 @@
   <data name="Table_Projects" xml:space="preserve">
     <value>Projekte</value>
   </data>
+  <data name="Table_Documents" xml:space="preserve">
+    <value>Dokumente</value>
+  </data>
+  <data name="Table_Documents_Title" xml:space="preserve">
+    <value>Aus MoneyMoney importierte Kontoauszüge und Dokumente</value>
+  </data>
   <data name="Table_Transactions" xml:space="preserve">
     <value>Transaktionen</value>
   </data>

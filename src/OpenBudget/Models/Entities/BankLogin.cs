@@ -149,9 +149,10 @@ public class BankStatement
     /// <summary>The source of <see cref="AccountId"/>; null for documents that belong to no account.</summary>
     public int? SourceId { get; set; }
 
-    public int BankLoginId { get; set; }
+    /// <summary>The login that downloaded the document, or null for documents imported from MoneyMoney.</summary>
+    public int? BankLoginId { get; set; }
 
-    /// <summary>The login's owner; always sees the document, even without an account.</summary>
+    /// <summary>The login's (or the import source's) owner; always sees the document, even without an account.</summary>
     [Required]
     [MaxLength(450)]
     public string OwnerUserId { get; set; } = string.Empty;
@@ -162,7 +163,10 @@ public class BankStatement
     /// </summary>
     public long? AccountId { get; set; }
 
-    /// <summary>The bank's identifier of the document; unique per login so each is downloaded once.</summary>
+    /// <summary>
+    /// The bank's identifier of the document; unique per login so each is downloaded once. Documents imported from
+    /// MoneyMoney use "mm:" plus their <see cref="Sha256"/>.
+    /// </summary>
     [Required]
     [MaxLength(300)]
     public string Identifier { get; set; } = string.Empty;

@@ -406,7 +406,7 @@ public class BankLoginService
             .Distinct()
             .ToListAsync(ct);
         if (loginIds.Count == 0) return [];
-        return await ToViewsAsync(db, db.BankStatements.AsNoTracking().Where(s => s.AccountId == null && loginIds.Contains(s.BankLoginId)), ct);
+        return await ToViewsAsync(db, db.BankStatements.AsNoTracking().Where(s => s.AccountId == null && s.BankLoginId != null && loginIds.Contains(s.BankLoginId.Value)), ct);
     }
 
     private static async Task<List<StatementView>> ToViewsAsync(BudgetDbContext db, IQueryable<BankStatement> query, CancellationToken ct)

@@ -15,6 +15,8 @@ public static class ImporterRegistration
         // unrestricted factory (a singleton can't consume the per-user scoped one anyway).
         services.AddSingleton(sp => ActivatorUtilities.CreateInstance<MoneyMoneyImportService>(
             sp, sp.GetRequiredService<SystemDbContextFactory>()));
+        services.AddSingleton(sp => ActivatorUtilities.CreateInstance<MoneyMoneyStatementImport>(
+            sp, sp.GetRequiredService<SystemDbContextFactory>()));
         return services;
     }
 

@@ -57,6 +57,7 @@ else
                 <th>@L["Table_LastUpload"]</th>
                 <th class="text-end">@L["Table_Projects"]</th>
                 <th class="text-end">@L["Table_Transactions"]</th>
+                <th class="text-end d-none d-md-table-cell" title="@L["Table_Documents_Title"]">@L["Table_Documents"]</th>
                 <th class="text-end d-none d-md-table-cell">@L["Table_Bytes"]</th>
                 <th></th>
             </tr>
@@ -79,6 +80,7 @@ else
                     </td>
                     <td class="text-end">@projectCounts.GetValueOrDefault(s.Id, 0)</td>
                     <td class="text-end">@transactionCounts.GetValueOrDefault(s.Id, 0).ToString("N0")</td>
+                    <td class="text-end d-none d-md-table-cell" data-testid="source-documents">@documentCounts.GetValueOrDefault(s.Id, 0).ToString("N0")</td>
                     <td class="text-end d-none d-md-table-cell">@(s.LastUploadSizeBytes.HasValue ? s.LastUploadSizeBytes.Value.ToString("N0") : "—")</td>
                     <td class="text-end text-nowrap">
                         <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => ToggleToken(s.Id)">
@@ -173,6 +175,7 @@ else
     private List<ImportSource>? sources;
     private Dictionary<int, int> projectCounts = new();
     private Dictionary<int, int> transactionCounts = new();
+    private Dictionary<int, int> documentCounts = new();
     private Dictionary<int, int> ppDepotCounts = new();
     private ImportSource? pendingDelete;
     private ImportSource? pendingRotate;
@@ -241,6 +244,12 @@ else
             .ToDictionaryAsync(x => x.SourceId, x => x.Count);
         transactionCounts = await db.Transactions
             .GroupBy(t => t.SourceId)
+            .Select(g => new { SourceId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.SourceId, x => x.Count);
+        // Documents the source's uploads imported (MoneyMoney's stored statements).
+        documentCounts = await db.BankStatements
+            .Where(s => s.SourceId != null && s.BankLoginId == null)
+            .GroupBy(s => s.SourceId!.Value)
             .Select(g => new { SourceId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.SourceId, x => x.Count);
         ppDepotCounts = await db.PpPortfolios

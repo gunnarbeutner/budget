@@ -227,6 +227,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         // their account (viewers of a shared account may read them) while the login stays private.
         modelBuilder.Entity<BankStatement>().HasIndex(s => new { s.BankLoginId, s.Identifier }).IsUnique();
         modelBuilder.Entity<BankStatement>().HasIndex(s => s.AccountId);
+        modelBuilder.Entity<BankStatement>().HasIndex(s => new { s.OwnerUserId, s.Sha256 });
         modelBuilder.Entity<StatementRead>().HasKey(r => new { r.UserId, r.StatementId });
         modelBuilder.Entity<StatementRead>().HasIndex(r => r.StatementId);
         modelBuilder.Entity<StatementRead>().HasOne<BankStatement>().WithMany().HasForeignKey(r => r.StatementId).OnDelete(DeleteBehavior.Cascade);

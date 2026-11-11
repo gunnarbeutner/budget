@@ -68,12 +68,12 @@ public class DocumentService
         var since = await UserCreatedAtAsync(db, userId, ct);
         var accountIds = rows.Where(r => r.AccountId != null).Select(r => r.AccountId!.Value).Distinct().ToList();
         var accountNames = await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.Name ?? "?", ct);
-        var loginIds = rows.Where(r => r.AccountId == null).Select(r => r.BankLoginId).Distinct().ToList();
+        var loginIds = rows.Where(r => r.AccountId == null).Where(r => r.BankLoginId != null).Select(r => r.BankLoginId!.Value).Distinct().ToList();
         var loginNames = await db.BankLogins.AsNoTracking().Where(l => loginIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, l => l.DisplayName, ct);
         return rows.Select(r => new DocumentItem(
             r.Id,
             r.AccountId,
-            r.AccountId is { } a ? accountNames.GetValueOrDefault(a, "?") : loginNames.GetValueOrDefault(r.BankLoginId, "?"),
+            r.AccountId is { } a ? accountNames.GetValueOrDefault(a, "?") : r.BankLoginId is { } l ? loginNames.GetValueOrDefault(l, "?") : "?",
             r.Date,
             r.Name,
             r.MarkedUnread || (!r.Read && r.CreatedAt > since))).ToList();
@@ -133,7 +133,7 @@ public class DocumentService
             .Select(a => a.BankLoginId);
         return db.BankStatements.AsNoTracking().Where(s =>
             (s.AccountId != null && accountIds.Contains(s.AccountId.Value))
-            || (s.AccountId == null && loginIds.Contains(s.BankLoginId)));
+            || (s.AccountId == null && s.BankLoginId != null && loginIds.Contains(s.BankLoginId.Value)));
     }
 
     private static async Task<DateTime> UserCreatedAtAsync(BudgetDbContext db, string userId, CancellationToken ct) =>

@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261110225854_TransactionSepaDetails";
+        public override string LatestMigrationId => "20261111015335_MoneyMoneyStatements";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -436,7 +436,7 @@ namespace OpenBudget.Migrations
                     b.Property<long?>("AccountId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("BankLoginId")
+                    b.Property<int?>("BankLoginId")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("CreatedAt")
@@ -482,6 +482,8 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("BankLoginId", "Identifier")
                         .IsUnique();
+
+                    b.HasIndex("OwnerUserId", "Sha256");
 
                     b.ToTable("bank_statements");
                 });

@@ -16,9 +16,16 @@ public sealed class BankStatementStore
     public BankStatementStore(BankStorageOptions options) => _options = options;
 
     /// <summary>Writes the document and its index row. <paramref name="account"/> is null for documents of the login as a whole.</summary>
-    public async Task<BankStatement> StoreAsync(BudgetDbContext db, BankLogin login, Account? account, RemoteStatement statement, CancellationToken ct)
+    public Task<BankStatement> StoreAsync(BudgetDbContext db, BankLogin login, Account? account, RemoteStatement statement, CancellationToken ct) =>
+        StoreAsync(db, login.OwnerUserId, login.Id, login.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), account, statement, ct);
+
+    /// <summary>
+    /// Writes the document and its index row for <paramref name="ownerUserId"/>; <paramref name="loginId"/> is null for
+    /// documents that came from no bank login. <paramref name="folder"/> is the subfolder below the owner's directory.
+    /// </summary>
+    public async Task<BankStatement> StoreAsync(BudgetDbContext db, string ownerUserId, int? loginId, string folder, Account? account, RemoteStatement statement, CancellationToken ct)
     {
-        var relative = Path.Combine(login.OwnerUserId, login.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), $"{Guid.NewGuid():N}.pdf");
+        var relative = Path.Combine(ownerUserId, folder, $"{Guid.NewGuid():N}.pdf");
         var full = Resolve(relative);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
         await File.WriteAllBytesAsync(full, statement.Content, ct);
@@ -26,15 +33,15 @@ public sealed class BankStatementStore
         {
             var row = new BankStatement
             {
-                OwnerUserId = login.OwnerUserId,
-                BankLoginId = login.Id,
+                OwnerUserId = ownerUserId,
+                BankLoginId = loginId,
                 AccountId = account?.Id,
                 SourceId = account?.SourceId,
                 Identifier = statement.Identifier,
                 Date = DateTime.SpecifyKind(statement.Date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc),
                 Name = statement.Name,
                 FilePath = relative.Replace('\\', '/'),
-                Sha256 = Convert.ToHexString(SHA256.HashData(statement.Content)).ToUpperInvariant(),
+                Sha256 = HashOf(statement.Content),
                 SizeBytes = statement.Content.LongLength,
             };
             db.BankStatements.Add(row);
@@ -47,6 +54,9 @@ public sealed class BankStatementStore
             throw;
         }
     }
+
+    /// <summary>The content hash stored in <see cref="BankStatement.Sha256"/> (upper-case hex).</summary>
+    public static string HashOf(byte[] content) => Convert.ToHexString(SHA256.HashData(content));
 
     /// <summary>The absolute path of a stored file; refuses anything that escapes the statements root.</summary>
     public string Resolve(string relativePath)
