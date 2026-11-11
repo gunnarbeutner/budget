@@ -73,9 +73,10 @@ public sealed class FinTsHttpTransport : IFinTsTransport
         {
             response = await _http.SendAsync(request, ct);
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException ex)
         {
-            throw new ConnectorException("The bank server could not be reached.");
+            // the cause (DNS, TLS, connection reset, …) stays attached for the log
+            throw new ConnectorException("The bank server could not be reached.", ex);
         }
         catch (TaskCanceledException) when (!ct.IsCancellationRequested)
         {
