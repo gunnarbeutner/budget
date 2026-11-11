@@ -61,6 +61,8 @@ public partial class BudgetDbContext
 
         // Bank logins are strictly personal. Statements follow their account (shared viewers may read them); account-less ones are owner-only.
         modelBuilder.Entity<BankLogin>().HasQueryFilter(b => ScopeUnrestricted || b.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<CloudConnection>().HasQueryFilter(c => ScopeUnrestricted || c.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<CloudFileLink>().HasQueryFilter(f => ScopeUnrestricted || f.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<BankLoginAccount>().HasQueryFilter(a => ScopeUnrestricted || a.BankLogin.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<BankStatement>().HasQueryFilter(s =>
             ScopeUnrestricted || s.OwnerUserId == ScopeUserId
@@ -169,6 +171,14 @@ public partial class BudgetDbContext
                 case BankStatement statement:
                     if (!scope.IsAuthenticated || statement.OwnerUserId != scope.UserId)
                         throw new AccessDeniedException("Statements can only be changed by the login's owner.");
+                    break;
+                case CloudConnection connection:
+                    if (!scope.IsAuthenticated || connection.OwnerUserId != scope.UserId)
+                        throw new AccessDeniedException("Cloud connections belong to their user.");
+                    break;
+                case CloudFileLink link:
+                    if (!scope.IsAuthenticated || link.OwnerUserId != scope.UserId)
+                        throw new AccessDeniedException("Linked cloud files belong to their user.");
                     break;
                 case StatementRead read:
                     if (!scope.IsAuthenticated || read.UserId != scope.UserId)

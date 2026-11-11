@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Heading" xml:space="preserve">
+    <value>OneDrive</value>
+  </data>
+  <data name="Intro" xml:space="preserve">
+    <value>Connect your Microsoft account to read PortfolioPerformance files from OneDrive (or files shared with you) on the server, even when your computer is off. New versions are imported while you have OpenBudget open.</value>
+  </data>
+  <data name="Connect" xml:space="preserve">
+    <value>Connect to Microsoft</value>
+  </data>
+  <data name="ConnectedAs" xml:space="preserve">
+    <value>Connected as {0}</value>
+  </data>
+  <data name="UnknownAccount" xml:space="preserve">
+    <value>Microsoft account</value>
+  </data>
+  <data name="Disconnect" xml:space="preserve">
+    <value>Disconnect</value>
+  </data>
+  <data name="Disconnect_Title" xml:space="preserve">
+    <value>Disconnect OneDrive?</value>
+  </data>
+  <data name="Disconnect_Body" xml:space="preserve">
+    <value>OpenBudget forgets the sign-in and all linked files. Data already imported stays.</value>
+  </data>
+  <data name="ReconnectNeeded" xml:space="preserve">
+    <value>Microsoft no longer accepts OpenBudget's access.</value>
+  </data>
+  <data name="Reconnect" xml:space="preserve">
+    <value>Reconnect</value>
+  </data>
+  <data name="Table_File" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="Table_Source" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="Table_Checked" xml:space="preserve">
+    <value>Last checked</value>
+  </data>
+  <data name="Table_Imported" xml:space="preserve">
+    <value>Last imported</value>
+  </data>
+  <data name="CheckNow" xml:space="preserve">
+    <value>Check now</value>
+  </data>
+  <data name="Unlink" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="NoFiles" xml:space="preserve">
+    <value>No files linked yet.</value>
+  </data>
+  <data name="LinkFile" xml:space="preserve">
+    <value>Link a file</value>
+  </data>
+  <data name="Never" xml:space="preserve">
+    <value>never</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Picker_Title" xml:space="preserve">
+    <value>Choose a PortfolioPerformance file</value>
+  </data>
+  <data name="Picker_MyFiles" xml:space="preserve">
+    <value>My files</value>
+  </data>
+  <data name="Picker_Shared" xml:space="preserve">
+    <value>Shared with me</value>
+  </data>
+  <data name="Picker_Path" xml:space="preserve">
+    <value>Folder</value>
+  </data>
+  <data name="Picker_Loading" xml:space="preserve">
+    <value>Loading…</value>
+  </data>
+  <data name="Picker_Empty" xml:space="preserve">
+    <value>No folders or .portfolio files here.</value>
+  </data>
+  <data name="Picker_Target" xml:space="preserve">
+    <value>Import into source</value>
+  </data>
+  <data name="Picker_NoTarget" xml:space="preserve">
+    <value>(do not import)</value>
+  </data>
+  <data name="Picker_Link" xml:space="preserve">
+    <value>Link</value>
+  </data>
+  <data name="Outcome_Connected" xml:space="preserve">
+    <value>Connected to Microsoft.</value>
+  </data>
+  <data name="Outcome_Denied" xml:space="preserve">
+    <value>The Microsoft sign-in was cancelled or not permitted.</value>
+  </data>
+  <data name="Outcome_Expired" xml:space="preserve">
+    <value>The Microsoft sign-in expired; please try again.</value>
+  </data>
+  <data name="Outcome_Failed" xml:space="preserve">
+    <value>Connecting to Microsoft failed; see the server log.</value>
+  </data>
+</root>

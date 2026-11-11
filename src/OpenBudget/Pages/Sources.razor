@@ -132,6 +132,8 @@ else
     </div>
 }
 
+<OneDriveSettings />
+
 <Modal Show="@(pendingTakeover != null)"
        Title="@(pendingTakeover != null ? L["Takeover_Title", pendingTakeover.Name].Value : "")"
        OnClose="@(() => pendingTakeover = null)">

@@ -1,0 +1,36 @@
+@implements IDisposable
+@using OpenBudget.Connectors.OneDrive
+@using OpenBudget.Services
+@inject CloudFileSyncCoordinator CloudFiles
+@inject AccessScopeProvider Access
+@inject NavigationManager Navigation
+
+@* The page-load trigger for linked cloud files (like BankSyncHost for bank logins): when the signed-in user opens
+   or navigates in OpenBudget, their linked files are checked in the background if the last check is older than the
+   check interval. Renders nothing. *@
+
+@code {
+    private bool subscribed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Interactive only (not during prerender).
+        if (!firstRender || !CloudFiles.IsEnabled) return;
+        Navigation.LocationChanged += OnLocationChanged;
+        subscribed = true;
+        await StartDueAsync();
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) =>
+        _ = InvokeAsync(StartDueAsync);
+
+    private async Task StartDueAsync()
+    {
+        if ((await Access.GetAsync()).UserId is { Length: > 0 } userId) CloudFiles.StartDue(userId);
+    }
+
+    public void Dispose()
+    {
+        if (subscribed) Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

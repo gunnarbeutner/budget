@@ -8,6 +8,7 @@ using OpenBudget.Cli;
 using OpenBudget.Compat;
 using OpenBudget.Connectors;
 using OpenBudget.Connectors.Sync;
+using OpenBudget.Connectors.OneDrive;
 using System.Security.Claims;
 using OpenBudget.Importers;
 using OpenBudget.Services;
@@ -118,6 +119,7 @@ Directory.CreateDirectory(uploadStagingDir);
 builder.Services.AddOpenBudgetDatabase(budgetDbPath);
 builder.Services.AddOpenBudgetAuth(builder.Environment, builder.Environment.ContentRootPath);
 builder.Services.AddBankConnectors(builder.Environment, builder.Environment.ContentRootPath);
+builder.Services.AddOneDrive(builder.Environment.ContentRootPath);
 
 // PortfolioPerformance portfolios as accounts: recomputed from each source's current file, which is the uploaded one.
 var portfolioFiles = new UploadedPortfolioFileSource(Path.Combine(dataDir, "portfolioperformance"));
@@ -181,6 +183,7 @@ app.MapFallbackToPage("/_Host");
 // Lightweight liveness probe for the container HEALTHCHECK. Deliberately doesn't touch the
 // database — it answers "is the process up and serving HTTP", which is what a restart fixes.
 app.MapWebLoginEndpoints();
+app.MapOneDriveEndpoints();
 
 app.MapGet("/healthz", () => Results.Ok("healthy")).AllowAnonymous();
 
@@ -316,25 +319,9 @@ static async Task<IResult> HandlePortfolioPerformanceUploadAsync(
     var denied = UploadAuthorizer.ToFailure(await authorizer.AuthorizeAsync(request.Headers.Authorization.ToString(), sourceName, ct));
     if (denied != null) return denied;
 
-    Directory.CreateDirectory(stagingDir);
-    var tempPath = Path.Combine(stagingDir, $"{sourceName}-{Guid.NewGuid():N}.portfolio");
     try
     {
-        await using (var tempStream = File.Create(tempPath))
-        {
-            await request.Body.CopyToAsync(tempStream, ct);
-        }
-
-        // PortfolioPerformance ".portfolio" files are ZIP archives — magic "PK\x03\x04".
-        await using (var checkStream = File.OpenRead(tempPath))
-        {
-            var magic = new byte[4];
-            var read = await checkStream.ReadAsync(magic.AsMemory(0, 4), ct);
-            if (read < 4 || magic[0] != 'P' || magic[1] != 'K' || magic[2] != 0x03 || magic[3] != 0x04)
-                return Results.BadRequest("Uploaded payload is not a PortfolioPerformance (.portfolio) file.");
-        }
-
-        var result = await importer.ImportFromFileAsync(sourceName, tempPath, ct);
+        var result = await PortfolioPerformanceUpload.ImportAsync(importer, sourceName, request.Body, stagingDir, ct);
         return Results.Ok(new
         {
             status = "ok",
@@ -350,6 +337,10 @@ static async Task<IResult> HandlePortfolioPerformanceUploadAsync(
         // Unknown source — the source's data must be imported first.
         return Results.NotFound(new { error = ex.Message });
     }
+    catch (InvalidDataException ex) when (ex.Message == PortfolioPerformanceUpload.NotAPortfolioFile)
+    {
+        return Results.BadRequest(ex.Message);
+    }
     catch (InvalidDataException ex)
     {
         // Wrong format (XML / encrypted / not a PP file). The message is safe to surface and is
@@ -360,13 +351,6 @@ static async Task<IResult> HandlePortfolioPerformanceUploadAsync(
     {
         logger.LogError(ex, "PortfolioPerformance upload failed for source '{Source}'.", sourceName);
         return Results.Problem("Upload failed. See server logs for details.", statusCode: StatusCodes.Status500InternalServerError);
-    }
-    finally
-    {
-        if (File.Exists(tempPath))
-        {
-            try { File.Delete(tempPath); } catch { /* best-effort cleanup */ }
-        }
     }
 }
 

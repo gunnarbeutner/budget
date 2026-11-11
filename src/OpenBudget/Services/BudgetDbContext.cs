@@ -67,6 +67,8 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<BankStatement> BankStatements => Set<BankStatement>();
     public DbSet<StatementRead> StatementReads => Set<StatementRead>();
     public DbSet<CategoryRule> CategoryRules => Set<CategoryRule>();
+    public DbSet<CloudConnection> CloudConnections => Set<CloudConnection>();
+    public DbSet<CloudFileLink> CloudFileLinks => Set<CloudFileLink>();
     public DbSet<RemovedImportItem> RemovedImportItems => Set<RemovedImportItem>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -233,6 +235,12 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<StatementRead>().HasIndex(r => r.StatementId);
         modelBuilder.Entity<StatementRead>().HasOne<BankStatement>().WithMany().HasForeignKey(r => r.StatementId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<StatementRead>().HasOne<AppUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<CloudConnection>().HasIndex(c => new { c.OwnerUserId, c.Provider }).IsUnique();
+        modelBuilder.Entity<CloudFileLink>()
+            .HasOne(f => f.Connection).WithMany(c => c.Files).HasForeignKey(f => f.ConnectionId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<CloudFileLink>().HasIndex(f => new { f.ConnectionId, f.DriveId, f.ItemId }).IsUnique();
+        modelBuilder.Entity<CloudFileLink>().HasIndex(f => f.OwnerUserId);
         modelBuilder.Entity<CategoryRule>().HasOne(r => r.Project).WithMany().HasForeignKey(r => r.ProjectId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<CategoryRule>().HasIndex(r => new { r.ProjectId, r.SortOrder });
 

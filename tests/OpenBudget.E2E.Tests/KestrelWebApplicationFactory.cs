@@ -26,6 +26,9 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
     /// <summary>Starts from a copy of a migrated database (the hosts of a parallel run don't each apply every migration).</summary>
     public KestrelWebApplicationFactory() => OpenBudget.Tests.MigratedDatabase.CopyTo(_dbPath);
 
+    /// <summary>The fake Microsoft identity platform and Graph every host of this factory talks to.</summary>
+    internal OpenBudget.Tests.Connectors.FakeMicrosoftCloud Microsoft { get; } = new();
+
     /// <summary>The http://127.0.0.1:&lt;port&gt; address Playwright should navigate to.</summary>
     public string BaseUrl { get; private set; } = string.Empty;
 
@@ -39,8 +42,13 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
         // Bank connectors need a secrets key (the fake bank is always on in the Test environment).
         builder.UseSetting("OPENBUDGET_SECRETS_KEY", Convert.ToBase64String(new byte[32].Select((_, i) => (byte)(i + 1)).ToArray()));
         builder.UseSetting("OPENBUDGET_STATEMENTS_DIR", Path.Combine(Path.GetTempPath(), $"mmb-e2e-stmts-{Guid.NewGuid():N}"));
+        // OneDrive against the fake Microsoft (see Microsoft).
+        builder.UseSetting(OpenBudget.Connectors.OneDrive.OneDriveOptions.ClientIdVariable, OpenBudget.Tests.Connectors.FakeMicrosoftCloud.ClientId);
+        builder.UseSetting(OpenBudget.Connectors.OneDrive.OneDriveOptions.ClientSecretVariable, OpenBudget.Tests.Connectors.FakeMicrosoftCloud.ClientSecret);
         builder.ConfigureServices(services =>
         {
+            services.AddHttpClient(OpenBudget.Connectors.OneDrive.OneDriveOptions.HttpClientName)
+                .ConfigurePrimaryHttpMessageHandler(() => Microsoft);
             // Surface circuit-fatal exceptions to the browser console so E2E failures point at the
             // real server error instead of a bare "circuit terminated".
             services.Configure<Microsoft.AspNetCore.Components.Server.CircuitOptions>(
@@ -93,6 +101,7 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
     {
         var factory = Services.GetRequiredService<SystemDbContextFactory>();
         await E2ESeed.ResetAsync(factory);
+        Microsoft.Reset();
         // The login every test uses (owns the baseline world) and a second user to share with.
         var owner = await CreateUserAsync(E2ESeed.UserName, E2ESeed.Password);
         await CreateUserAsync(E2ESeed.SecondUserName, E2ESeed.Password);

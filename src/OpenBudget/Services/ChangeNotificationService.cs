@@ -20,7 +20,9 @@ public enum DataArea
     /// <summary>Imported imported transactions/categories/accounts for a source.</summary>
     ImportedData,
     /// <summary>A bank login's sync progress, challenge or settings changed (carries the owner's user id).</summary>
-    BankSync
+    BankSync,
+    /// <summary>A user's cloud connection or linked cloud files changed (carries the owner's user id).</summary>
+    CloudFiles
 }
 
 /// <summary>

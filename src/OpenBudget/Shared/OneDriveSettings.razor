@@ -1,0 +1,342 @@
+@inherits DataChangeAwareComponent
+@using OpenBudget.Connectors.OneDrive
+@using OpenBudget.Services
+@inject OneDriveService OneDrive
+@inject CloudFileSyncCoordinator CloudFiles
+@inject SourceService Sources
+@inject NavigationManager Navigation
+@inject ClockService Clock
+@inject IStringLocalizer<OneDriveSettings> L
+
+@* The OneDrive section of Settings › Import: connect the signed-in user's Microsoft account, pick PortfolioPerformance
+   files from their OneDrive (or files shared with them), and see when each linked file was last read. Everything
+   shown and changed is the signed-in user's own; nothing renders when OneDrive is not configured on the server. *@
+
+@if (OneDrive.IsEnabled)
+{
+    <section id="onedrive" class="mt-4" data-testid="onedrive-section">
+        <h2 class="h5">@L["Heading"]</h2>
+        <p class="text-body-secondary small">@L["Intro"]</p>
+
+        @if (notice is { } n)
+        {
+            <div class="alert @(n.Ok ? "alert-success" : "alert-warning") py-2" role="status" data-testid="onedrive-notice">@n.Text</div>
+        }
+
+        @if (!loaded)
+        {
+            <div class="skeleton skeleton-line" style="width: 40%;"></div>
+        }
+        else if (connection == null)
+        {
+            <a class="btn btn-primary" href="@OneDriveOptions.ConnectPath" target="_top" data-testid="onedrive-connect">
+                <i class="bi bi-microsoft" aria-hidden="true"></i> @L["Connect"]
+            </a>
+        }
+        else
+        {
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <span data-testid="onedrive-account">
+                    <i class="bi bi-cloud-check" aria-hidden="true"></i>
+                    @L["ConnectedAs", connection.AccountName ?? L["UnknownAccount"].Value]
+                </span>
+                <button type="button" class="btn btn-sm btn-outline-danger" data-testid="onedrive-disconnect" @onclick="() => confirmDisconnect = true">@L["Disconnect"]</button>
+            </div>
+            @if (connection.NeedsReconnect)
+            {
+                <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2 py-2" role="alert" data-testid="onedrive-reconnect-needed">
+                    <span>@(connection.LastError ?? L["ReconnectNeeded"].Value)</span>
+                    <a class="btn btn-sm btn-warning" href="@OneDriveOptions.ConnectPath" target="_top" data-testid="onedrive-reconnect">@L["Reconnect"]</a>
+                </div>
+            }
+
+            @if (files.Count > 0)
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle" data-testid="onedrive-files">
+                        <thead>
+                            <tr>
+                                <th>@L["Table_File"]</th>
+                                <th>@L["Table_Source"]</th>
+                                <th class="d-none d-md-table-cell">@L["Table_Checked"]</th>
+                                <th>@L["Table_Imported"]</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var f in files)
+                            {
+                                <tr data-onedrive-file="@f.DisplayPath">
+                                    <td class="text-break">
+                                        @f.DisplayPath
+                                        @if (f.LastError is { } err)
+                                        {
+                                            <div class="text-danger small" data-testid="onedrive-file-error">@err</div>
+                                        }
+                                    </td>
+                                    <td>@(f.TargetSourceName ?? "—")</td>
+                                    <td class="d-none d-md-table-cell">@Format(f.LastCheckedAt)</td>
+                                    <td data-testid="onedrive-file-imported">@Format(f.LastImportedAt)</td>
+                                    <td class="text-end text-nowrap">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary me-1" data-action="check" disabled="@checking.Contains(f.Id)"
+                                                @onclick="() => CheckNowAsync(f.Id)">@L["CheckNow"]</button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" data-action="unlink" @onclick="() => UnlinkAsync(f.Id)">@L["Unlink"]</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <p class="small text-body-secondary" data-testid="onedrive-no-files">@L["NoFiles"]</p>
+            }
+            <button type="button" class="btn btn-outline-primary btn-sm" data-testid="onedrive-pick" disabled="@connection.NeedsReconnect" @onclick="OpenPickerAsync">
+                <i class="bi bi-file-earmark-plus" aria-hidden="true"></i> @L["LinkFile"]
+            </button>
+        }
+    </section>
+
+    <Modal Show="@pickerOpen" Title="@L["Picker_Title"].Value" SizeClass="modal-lg" OnClose="@(() => pickerOpen = false)">
+        <ChildContent>
+            <div data-testid="onedrive-picker">
+                <ul class="nav nav-tabs mb-2">
+                    <li class="nav-item">
+                        <button type="button" class="nav-link @(sharedRoot ? "" : "active")" data-testid="picker-myfiles" @onclick="() => OpenRootAsync(false)">@L["Picker_MyFiles"]</button>
+                    </li>
+                    <li class="nav-item">
+                        <button type="button" class="nav-link @(sharedRoot ? "active" : "")" data-testid="picker-shared" @onclick="() => OpenRootAsync(true)">@L["Picker_Shared"]</button>
+                    </li>
+                </ul>
+                <nav aria-label="@L["Picker_Path"]" class="small mb-2" data-testid="picker-path">
+                    @for (var i = 0; i < trail.Count; i++)
+                    {
+                        var depth = i;
+                        @if (i > 0) { <span class="text-body-secondary"> / </span> }
+                        @if (i < trail.Count - 1)
+                        {
+                            <button type="button" class="btn btn-link btn-sm p-0 align-baseline" @onclick="() => GoUpAsync(depth)">@trail[i].Name</button>
+                        }
+                        else
+                        {
+                            <strong>@trail[i].Name</strong>
+                        }
+                    }
+                </nav>
+                @if (pickerError != null)
+                {
+                    <div class="alert alert-warning py-2" role="alert" data-testid="picker-error">@pickerError</div>
+                }
+                @if (items == null)
+                {
+                    <div class="d-flex align-items-center gap-2 text-body-secondary"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> @L["Picker_Loading"]</div>
+                }
+                else if (items.Count == 0)
+                {
+                    <p class="text-body-secondary small" data-testid="picker-empty">@L["Picker_Empty"]</p>
+                }
+                else
+                {
+                    <div class="list-group mb-2" style="max-height: 50vh; overflow-y: auto;">
+                        @foreach (var item in items)
+                        {
+                            var it = item;
+                            <button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-2 @(selected == it ? "active" : "")"
+                                    data-picker-item="@it.Name" data-kind="@(it.IsFolder ? "folder" : "file")" @onclick="() => ChooseAsync(it)">
+                                <i class="bi @(it.IsFolder ? "bi-folder" : "bi-file-earmark") " aria-hidden="true"></i>
+                                <span class="flex-grow-1 text-break">@it.Name</span>
+                                @if (it.SharedBy is { } by) { <span class="small opacity-75">@by</span> }
+                            </button>
+                        }
+                    </div>
+                }
+                @if (selected != null)
+                {
+                    <label class="form-label small mb-1" for="onedrive-target">@L["Picker_Target"]</label>
+                    <select id="onedrive-target" class="form-select form-select-sm" @bind="targetSource">
+                        <option value="">@L["Picker_NoTarget"]</option>
+                        @foreach (var s in ownedSources)
+                        {
+                            <option value="@s">@s</option>
+                        }
+                    </select>
+                }
+            </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="() => pickerOpen = false">@L["Cancel"]</button>
+            <button type="button" class="btn btn-primary" data-testid="picker-link" disabled="@(selected == null || linking)" @onclick="LinkAsync">@L["Picker_Link"]</button>
+        </Footer>
+    </Modal>
+
+    <Modal Show="@confirmDisconnect" Title="@L["Disconnect_Title"].Value" OnClose="@(() => confirmDisconnect = false)">
+        <ChildContent><p>@L["Disconnect_Body"]</p></ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="() => confirmDisconnect = false">@L["Cancel"]</button>
+            <button type="button" class="btn btn-danger" data-testid="onedrive-disconnect-confirm" @onclick="DisconnectAsync">@L["Disconnect"]</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private sealed record Crumb(string Name, CloudFolder Folder);
+    private sealed record Notice(bool Ok, string Text);
+
+    private bool loaded;
+    private string? userId;
+    private CloudConnectionView? connection;
+    private List<CloudFileLinkView> files = [];
+    private Notice? notice;
+    private bool confirmDisconnect;
+    private readonly HashSet<int> checking = [];
+
+    private bool pickerOpen;
+    private bool sharedRoot;
+    private List<Crumb> trail = [];
+    private IReadOnlyList<CloudItem>? items;
+    private CloudItem? selected;
+    private string? pickerError;
+    private string targetSource = "";
+    private List<string> ownedSources = [];
+    private bool linking;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!OneDrive.IsEnabled) return;
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
+        if (query.TryGetValue("onedrive", out var outcome))
+        {
+            var key = outcome.ToString() switch
+            {
+                "connected" => "Outcome_Connected",
+                "denied" => "Outcome_Denied",
+                "expired" => "Outcome_Expired",
+                _ => "Outcome_Failed",
+            };
+            notice = new Notice(key == "Outcome_Connected", L[key].Value);
+        }
+        await LoadAsync();
+    }
+
+    protected override bool IsRelevantChange(DataChange change) => change.Area == DataArea.CloudFiles && change.UserId == userId;
+
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        userId = (await Access.GetAsync()).UserId;
+        if (userId == null) return;
+        connection = await OneDrive.GetConnectionAsync(userId);
+        files = connection == null ? [] : await OneDrive.GetLinkedFilesAsync(userId);
+        loaded = true;
+    }
+
+    private string Format(DateTime? utc) => utc is { } t ? Clock.ToLocal(t).ToString("yyyy-MM-dd HH:mm") : L["Never"].Value;
+
+    private async Task DisconnectAsync()
+    {
+        confirmDisconnect = false;
+        if (userId == null) return;
+        await OneDrive.DisconnectAsync(userId);
+        notice = null;
+        await LoadAsync();
+    }
+
+    private async Task CheckNowAsync(int linkId)
+    {
+        if (userId == null) return;
+        checking.Add(linkId);
+        try { await CloudFiles.CheckNowAsync(userId, linkId); }
+        finally { checking.Remove(linkId); }
+        await LoadAsync();
+    }
+
+    private async Task UnlinkAsync(int linkId)
+    {
+        if (userId == null) return;
+        await OneDrive.UnlinkFileAsync(userId, linkId);
+        await LoadAsync();
+    }
+
+    // ---- Picker ----
+
+    private async Task OpenPickerAsync()
+    {
+        ownedSources = (await Sources.GetOwnedSourcesAsync()).Select(s => s.Name).OrderBy(n => n, StringComparer.Ordinal).ToList();
+        targetSource = ownedSources.Count == 1 ? ownedSources[0] : "";
+        pickerOpen = true;
+        await OpenRootAsync(false);
+    }
+
+    private async Task OpenRootAsync(bool shared)
+    {
+        sharedRoot = shared;
+        trail = [new Crumb(shared ? L["Picker_Shared"].Value : L["Picker_MyFiles"].Value, shared ? CloudFolder.Shared : CloudFolder.MyFiles)];
+        await ListAsync();
+    }
+
+    private async Task GoUpAsync(int depth)
+    {
+        trail = trail.Take(depth + 1).ToList();
+        await ListAsync();
+    }
+
+    private async Task ChooseAsync(CloudItem item)
+    {
+        if (item.IsFolder)
+        {
+            trail.Add(new Crumb(item.Name, new CloudFolder(item.DriveId, item.ItemId)));
+            await ListAsync();
+        }
+        else
+        {
+            selected = item;
+        }
+    }
+
+    private async Task ListAsync()
+    {
+        items = null;
+        selected = null;
+        pickerError = null;
+        if (userId == null) return;
+        try
+        {
+            items = await OneDrive.ListAsync(userId, trail[^1].Folder);
+        }
+        catch (CloudException ex)
+        {
+            items = [];
+            pickerError = ex.Message;
+            if (ex is CloudReconnectRequiredException) await LoadAsync();
+        }
+    }
+
+    private async Task LinkAsync()
+    {
+        if (selected == null || userId == null) return;
+        linking = true;
+        pickerError = null;
+        try
+        {
+            var path = string.Join("/", trail.Select(c => c.Name).Append(selected.Name));
+            var id = await OneDrive.LinkFileAsync(userId, selected.DriveId, selected.ItemId, path, targetSource.Length > 0 ? targetSource : null);
+            pickerOpen = false;
+            await LoadAsync();
+            // Read the new file right away.
+            checking.Add(id);
+            try { await CloudFiles.CheckNowAsync(userId, id); }
+            finally { checking.Remove(id); }
+            await LoadAsync();
+        }
+        catch (Exception ex) when (ex is CloudException or ArgumentException)
+        {
+            pickerError = ex.Message;
+        }
+        finally
+        {
+            linking = false;
+        }
+    }
+}

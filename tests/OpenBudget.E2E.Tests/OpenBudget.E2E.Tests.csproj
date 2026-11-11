@@ -22,6 +22,7 @@
   <ItemGroup>
     <!-- the migrated template database the app hosts start from -->
     <Compile Include="../OpenBudget.Tests/MigratedDatabase.cs" Link="MigratedDatabase.cs" />
+    <Compile Include="../OpenBudget.Tests/Connectors/FakeMicrosoftCloud.cs" Link="FakeMicrosoftCloud.cs" />
   </ItemGroup>
 
   <ItemGroup>
