@@ -48,6 +48,13 @@ public class Account
     public long? Sort { get; set; }
 
     /// <summary>
+    /// The balance the account started with before its first booking (MoneyMoney's "initial balance"), in cents. A balance
+    /// computed from bookings adds it.
+    /// </summary>
+    [Column("initial_balance")]
+    public long InitialBalance { get; set; }
+
+    /// <summary>
     /// Source <c>accounts.group_key</c>, mapped to <see cref="AccountGroup.Id"/> via
     /// the same namespacing scheme. Null for orphans; the source app itself anchors every
     /// account under a group in practice.

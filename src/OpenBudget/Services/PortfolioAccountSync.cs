@@ -397,7 +397,8 @@ public sealed class PortfolioAccountSync
         await CategoryRuleEngine.ApplyToNewAsync(db, account.Id, added, ct);
         await db.SaveChangesAsync(ct);
 
-        var sum = await db.Transactions.Where(t => t.AccountId == account.Id && t.Splitted != SplitState.Parent).SumAsync(t => (long?)t.Amount, ct) ?? 0;
+        var sum = account.InitialBalance
+            + (await db.Transactions.Where(t => t.AccountId == account.Id && t.Splitted != SplitState.Parent).SumAsync(t => (long?)t.Amount, ct) ?? 0);
         account.Balances = $"11:{(sum / 100m).ToString("F6", CultureInfo.InvariantCulture)},3:{account.Currency ?? currency},";
     }
 

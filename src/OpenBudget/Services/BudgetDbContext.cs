@@ -199,6 +199,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<Transaction>().Property(t => t.Checked).HasDefaultValue(false);
         modelBuilder.Entity<Transaction>().Property(t => t.IsNew).HasDefaultValue(false);
         modelBuilder.Entity<Transaction>().Property(t => t.IsTransfer).HasDefaultValue(false);
+        modelBuilder.Entity<Account>().Property(a => a.InitialBalance).HasDefaultValue(0L);
 
         // Same trick as Booked: the default (true) is the sentinel so an explicit false is inserted.
         modelBuilder.Entity<Category>()

@@ -494,4 +494,24 @@ public sealed class MoneyMoneyImportTests : IDisposable
         var closed = await db.Accounts.IgnoreQueryFilters().OrderBy(a => a.Id).Select(a => new { a.Name, a.Closed }).ToListAsync();
         Assert.Equal(["Open account:False", "Closed account:True", "Offline account:False"], closed.Select(a => $"{a.Name}:{a.Closed}"));
     }
+
+    [Fact]
+    public async Task MoneyMoney_initial_balances_are_imported_in_cents()
+    {
+        await using var t = new TestDb();
+        var path = Path.Combine(Path.GetTempPath(), $"ob-mm-{Guid.NewGuid():N}.sqlite");
+        _files.Add(path);
+        Exec(path, """
+            CREATE TABLE accounts (name TEXT, iban TEXT, currency TEXT, type INTEGER, portfolio INTEGER, balances TEXT, sort INTEGER, refresh_tsp INTEGER, error TEXT, group_key INTEGER, initial_balance REAL);
+            CREATE TABLE category_groups (name TEXT, group_key INTEGER, sort INTEGER, color TEXT);
+            CREATE TABLE categories (name TEXT, type INTEGER, color TEXT, rules TEXT, group_key INTEGER, sort INTEGER);
+            CREATE TABLE transactions (local_account_key INTEGER, amount REAL, currency TEXT, timestamp INTEGER, name TEXT, comment TEXT, category_key INTEGER, checkmark INTEGER, splitted INTEGER);
+            INSERT INTO accounts (name, currency, type, balances, initial_balance) VALUES ('Ledger', 'EUR', 3, '', 1234.56);
+            INSERT INTO accounts (name, currency, type, balances, initial_balance) VALUES ('Giro', 'EUR', 1, '', NULL);
+            """);
+        await ImportAsync(t, path);
+        await using var db = await t.Factory.CreateDbContextAsync();
+        var initial = await db.Accounts.IgnoreQueryFilters().OrderBy(a => a.Id).Select(a => a.InitialBalance).ToListAsync();
+        Assert.Equal([123456L, 0L], initial);
+    }
 }

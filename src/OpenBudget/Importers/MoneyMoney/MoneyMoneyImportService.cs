@@ -305,6 +305,7 @@ public class MoneyMoneyImportService
 
             int accountGroupCount = takenOver ? 0 : await CopyAccountGroupsAsync(src, db, sourceId, ct);
             int accountCount = await CopyAccountsAsync(src, db, sourceId, providers, foreignState, takenOver, removedAccountIds, ct);
+            await CopyInitialBalancesAsync(src, db, sourceId, ct);
             if (closedAccountIds.Count > 0)
                 await db.Accounts.Where(a => closedAccountIds.Contains(a.Id)).ExecuteUpdateAsync(s => s.SetProperty(a => a.Closed, true), ct);
             int groupCount = takenOver ? 0 : await CopyCategoryGroupsAsync(src, db, sourceId, ct);
@@ -483,6 +484,26 @@ public class MoneyMoneyImportService
     /// optional columns (e.g. SEPA <c>purpose</c>) backward-compatible with older MoneyMoney
     /// snapshots that may not carry them.
     /// </summary>
+    /// <summary>
+    /// MoneyMoney's initial balance of each account (also of accounts another provider owns by now: it belongs to the
+    /// account's history, which a balance computed from bookings needs).
+    /// </summary>
+    private static async Task CopyInitialBalancesAsync(SqliteConnection src, BudgetDbContext db, int sourceId, CancellationToken ct)
+    {
+        if (!await ColumnExistsAsync(src, "accounts", "initial_balance", ct)) return;
+        var balances = new Dictionary<long, long>();
+        await using (var cmd = src.CreateCommand())
+        {
+            cmd.CommandText = "SELECT rowid, CAST(ROUND(COALESCE(initial_balance, 0) * 100) AS INTEGER) FROM accounts";
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                balances[SourceScope.Namespace(sourceId, r.GetInt64(0))] = r.GetInt64(1);
+        }
+        foreach (var account in await db.Accounts.Where(a => a.SourceId == sourceId).ToListAsync(ct))
+            account.InitialBalance = balances.GetValueOrDefault(account.Id);
+        await db.SaveChangesAsync(ct);
+    }
+
     /// <summary>The bit of MoneyMoney's accounts.refresh that marks a closed account.</summary>
     internal const int ClosedRefreshBit = 16;
 
