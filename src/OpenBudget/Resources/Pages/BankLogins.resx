@@ -148,6 +148,9 @@
   <data name="ConnectorDescription_openbank" xml:space="preserve">
     <value>Openbank credit cards (kunden.openbankpay.com, e.g. Amazon Visa): balance, booked and pending card transactions. Sign in with your Openbank username and password; confirm with the SMS code or in the app.</value>
   </data>
+  <data name="ConnectorDescription_paypal" xml:space="preserve">
+    <value>PayPal personal account (paypal.com): balance per currency and payments from PayPal's activity download. Sign in with your PayPal e-mail address and password; complete the security check (SMS code, app approval) on PayPal's page.</value>
+  </data>
   <data name="Accounts_Heading" xml:space="preserve">
     <value>Accounts</value>
   </data>

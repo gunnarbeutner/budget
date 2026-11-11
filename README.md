@@ -177,7 +177,7 @@ should use their own token only.
 
 ## Bank connectors
 
-Besides MoneyMoney uploads, OpenBudget can talk to banks directly through **connectors** (one per bank, registered by a stable type string). The framework is bank independent; it is proven end to end with a fake bank; real banks are separate connectors (currently ING, Baader Bank, PSD Bank Nürnberg and Scalable Capital).
+Besides MoneyMoney uploads, OpenBudget can talk to banks directly through **connectors** (one per bank, registered by a stable type string). The framework is bank independent; it is proven end to end with a fake bank; real banks are separate connectors (currently ING, Baader Bank, PSD Bank Nürnberg, Scalable Capital, Openbank and PayPal).
 
 ### Secrets key (required)
 
@@ -217,6 +217,12 @@ Username is the ING access number (or alias), PIN the ING PIN. Girokonto and Ext
 No credentials are stored: when the session is gone, OpenBudget opens a **web login** (see below) on Scalable's own login page, you sign in yourself (captcha and 2FA included) and the sync goes on. The connector then speaks to Scalable's web client GraphQL interface over plain HTTP with the cookies that sign-in produced. They are stored encrypted, so later syncs skip the sign-in until Scalable ends the session (the log says how long a session lasted when it expires).
 
 Every broker portfolio shows up as two accounts: a **Depot** (positions; link it to a depot account) and a **Verrechnungskonto** (cash balance, IBAN and all bookings including security buys/sells and savings plans). Mailbox documents become statements: documents of a portfolio go to its depot (or, when only the cash account has statements switched on, to the cash account); documents without a portfolio are account-less. Savings accounts (Scalable's interest product) are not read yet.
+
+### PayPal (`paypal`)
+
+Username is the PayPal e-mail address, the secret the PayPal password. PayPal has no API for personal accounts, so the connector uses PayPal's own web site in a **web login** that keeps its browser: the app types the e-mail address (Next) and the password (Log in), declines the cookie banner (necessary cookies only), and you complete PayPal's security check (SMS code, app approval, security key) in the dialog yourself. With stored cookies the account summary is tried first; a session PayPal still accepts needs no sign-in.
+
+Every balance currency is an account ("PayPal EUR"; EUR always, other currencies when the activity shows them). Transactions and the balance come from PayPal's **activity download** (balance-affecting payments as CSV) for the sync's date range, requested and fetched in the signed-in page; the first sync reaches back three years. A payment is its gross amount, a fee a separate line, so both net to what the balance moved by; pending payments are unbooked; authorizations and other "memo" rows are left out. Bank deposits and withdrawals (also the "deposit to PayPal" row of a payment funded by bank or card) are kept, so the balance reconciles. For a payment in a foreign currency, the conversion row in the funding currency carries the payment's name; the payment and its conversion in the foreign currency cancel out and are left out. The PayPal transaction id is the booking's id (a fee: `<id>:fee`). The download's request and list endpoints are not documented by PayPal and may change; when a sync fails there, the log names the HTTP status and field names of the unexpected answer.
 
 ### Web logins: signing in on the bank's own page
 
