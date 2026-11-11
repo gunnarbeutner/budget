@@ -43,7 +43,7 @@ public sealed class PayPalOptions
 /// A private PayPal account over PayPal's own web site (PayPal offers no API for personal accounts).
 ///
 /// Sign-in: PayPal's sign-in page in the app's browser, a web login that keeps the browser (PayPal's session only works
-/// from it). The app types the e-mail address, clicks Next, types the password and clicks Log in; a second factor (SMS
+/// from it). The app fills the e-mail address and password, on one page or two, and clicks Log in; a second factor (SMS
 /// code, app approval, security key) is completed by the user on that page. The cookie banner is declined (only
 /// necessary cookies). The login counts as done on the signed-in account summary. With stored cookies the summary is
 /// tried first, so a session PayPal still accepts needs no sign-in.
@@ -120,12 +120,16 @@ public sealed class PayPalConnector : IBankConnector
     {
         Autofill = credentials == null ? null : new WebLoginAutofill(credentials.Username, credentials.Secret,
         [
-            new WebLoginStep(EmailSelector, WebLoginCredential.Username, NextSelector),
-            new WebLoginStep(PasswordSelector, WebLoginCredential.Secret, LoginSelector),
+            new WebLoginStep([
+                new WebLoginField(EmailSelector, WebLoginCredential.Username),
+                new WebLoginField(PasswordSelector, WebLoginCredential.Secret) { Optional = true },
+            ], NextSelector + ", " + LoginSelector),
+            new WebLoginStep(PasswordSelector, WebLoginCredential.Secret, LoginSelector) { SkipWhenEntered = true },
         ]),
         SuccessCheck = SignedInCheck,
         Dismiss = DismissSelectors,
         CredentialsError = new WebLoginError(CredentialsErrorSelector, CredentialsErrorTexts, CredentialsRejectedMessage),
+        ObservedRequests = ["/signin", "geo.ddc.paypal.com", "ct.ddc.paypal.com"],
         KeepBrowser = true,
         ResumeUrl = new Uri(_options.BaseUri, "myaccount/summary"),
     };

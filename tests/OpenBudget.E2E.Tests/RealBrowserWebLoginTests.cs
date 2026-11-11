@@ -174,6 +174,38 @@ public sealed class RealBrowserWebLoginTests
     };
 
     [Test]
+    public async Task Browser_keeps_its_native_identity_and_cookies_survive_a_fresh_context()
+    {
+        await using var browser = NewBrowser();
+        IReadOnlyList<CookieState> cookies;
+        string userAgent;
+        await using (var page = await browser.OpenSessionAsync(CancellationToken.None))
+        {
+            await page.NavigateAsync(new Uri(_baseUrl + "home"), CancellationToken.None);
+            var native = await page.CheckAsync("""
+                () => ({
+                    ok: !navigator.userAgent.includes('HeadlessChrome')
+                        && !navigator.userAgentData.brands.some(b => b.brand === 'Not/A)Brand')
+                        && navigator.webdriver === false
+                        && window.open.toString().includes('[native code]')
+                        && !Object.prototype.hasOwnProperty.call(navigator, 'languages'),
+                    reason: navigator.userAgent
+                })
+                """, "");
+            Assert.That(native.Ok, Is.True, native.Reason);
+            Assert.That(page.UserAgent, Is.EqualTo(native.Reason));
+            userAgent = page.UserAgent;
+            await page.CheckAsync("() => { document.cookie = 'verification=verified; path=/; max-age=3600'; return { ok: true, reason: '' }; }", "");
+            cookies = await page.GetCookiesAsync();
+        }
+        await using var restored = await browser.OpenSessionAsync(CancellationToken.None);
+        await restored.SetCookiesAsync(cookies);
+        await restored.NavigateAsync(new Uri(_baseUrl + "home"), CancellationToken.None);
+        Assert.That(restored.UserAgent, Is.EqualTo(userAgent));
+        Assert.That((await restored.GetCookiesAsync()).Any(c => c.Name == "verification" && c.Value == "verified"), Is.True);
+    }
+
+    [Test]
     public async Task A_landing_page_that_still_needs_a_second_factor_is_shown_and_does_not_count_as_signed_in()
     {
         await using var browser = NewBrowser();

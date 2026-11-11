@@ -16,6 +16,9 @@ public sealed class KeptBrowser : IBrowserFetcher, IAsyncDisposable
     private readonly CancellationTokenSource _closed = new();
 #pragma warning restore CA2213, S2930
     private readonly ITimer _expiry;
+    private readonly Lock _disposeGate = new();
+    private Task? _disposeTask;
+    private Action<IReadOnlyList<CookieState>>? _cookieSink;
     private int _disposed;
 
     internal KeptBrowser(IBrowserSession browser, TimeSpan lifetime, TimeProvider clock, ILogger logger)
@@ -33,6 +36,9 @@ public sealed class KeptBrowser : IBrowserFetcher, IAsyncDisposable
     }
 
     public bool IsOpen => Volatile.Read(ref _disposed) == 0;
+
+    /// <summary>Returns the browser's final cookie jar before it is destroyed, including when its lifetime expires.</summary>
+    internal void SetCookieSink(Action<IReadOnlyList<CookieState>> sink) => _cookieSink = sink;
 
     public Task<BrowserFetchResponse> SendAsync(BrowserFetchRequest request, CancellationToken ct) =>
         RunAsync(async token =>
@@ -87,11 +93,25 @@ public sealed class KeptBrowser : IBrowserFetcher, IAsyncDisposable
 
     private static ConnectorException SessionEnded() => new("The bank's browser session has ended; the next sync signs in again.");
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+        lock (_disposeGate) return new ValueTask(_disposeTask ??= CloseAsync());
+    }
+
+    private async Task CloseAsync()
+    {
+        Interlocked.Exchange(ref _disposed, 1);
         await _expiry.DisposeAsync();
         await _closed.CancelAsync();
+        if (_cookieSink != null)
+        {
+            try
+            {
+                var cookies = await _browser.GetCookiesAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                _cookieSink(cookies);
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "Could not collect cookies from the kept browser."); }
+        }
         try { await _browser.DisposeAsync(); }
         catch (Exception ex) { _logger.LogDebug(ex, "Destroying a kept browser failed."); }
         _logger.LogInformation("Closed the kept browser.");

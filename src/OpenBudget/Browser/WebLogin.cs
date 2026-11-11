@@ -39,6 +39,8 @@ public enum WebLoginMode
 /// <summary>Outcome of a web login. On success <see cref="Cookies"/> holds every cookie of the connector's domains.</summary>
 public sealed record WebLoginResult(bool Success, string? Error, IReadOnlyList<CookieState> Cookies, bool CredentialsRejected = false, string? UserAgent = null)
 {
+    public bool HasCookieSnapshot { get; init; }
+
     public static WebLoginResult Ok(IReadOnlyList<CookieState> cookies, string? userAgent = null) => new(true, null, cookies, UserAgent: userAgent);
 
     public static WebLoginResult Fail(string error) => new(false, error, []);
@@ -184,6 +186,10 @@ public sealed class WebLoginSession : IAsyncDisposable
         {
             _cts.CancelAfter(_options.Timeout);
             var ct = _cts.Token;
+            if (_spec.ObservedRequests.Count > 0)
+                _browser.ObserveResponses(_spec.ObservedRequests, r => _logger.LogInformation(
+                    "Web login: {Path} answered {Status}{Code}.", r.Path, r.Status,
+                    r.ErrorField != null ? $" ({r.ErrorField}={r.ErrorCode})" : ""));
             await _browser.SetCookiesAsync(seed);
             _ready.TrySetResult(); // a viewer may attach now and watch the page load
             if (seed.Count > 0 && _spec.ResumeUrl != null && await ResumeAsync(_spec.ResumeUrl, ct) is { } resumed)
@@ -312,10 +318,6 @@ public sealed class WebLoginSession : IAsyncDisposable
             }
             if (step.Verify is { } verify && !await VerifyAsync(verify, fill.ValueOf(verify.Credential), label))
                 return;
-            if (i == fill.Steps.Count - 1 && _spec.ObservedRequests.Count > 0)
-                _browser.ObserveResponses(_spec.ObservedRequests, r => _logger.LogInformation(
-                    "Web login: {Path} answered {Status}{Code}.", r.Path, r.Status,
-                    r.ErrorField != null ? $" ({r.ErrorField}={r.ErrorCode})" : ""));
             if (!await ClickWhenReadyAsync(step.SubmitSelector, ct))
             {
                 if (!step.EnterSubmits)
@@ -495,6 +497,20 @@ public sealed class WebLoginSession : IAsyncDisposable
         if (Interlocked.Exchange(ref _ended, 1) == 1) return;
         _onEnded(this);
         lock (_viewerGate) _cancelViewer?.Invoke();
+        if (!result.Success)
+        {
+            try
+            {
+                var cookies = await _browser.GetCookiesAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                result = result with
+                {
+                    Cookies = cookies.Where(_spec.Matches).ToList(),
+                    HasCookieSnapshot = true,
+                    UserAgent = _browser.UserAgent is { Length: > 0 } ua ? ua : null,
+                };
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "Could not collect cookies from the interrupted web login."); }
+        }
         if (result.Success && _spec.KeepBrowser)
         {
             // nobody can attach a viewer any more (the login is gone from the service); the page stays signed in
@@ -511,12 +527,17 @@ public sealed class WebLoginSession : IAsyncDisposable
     /// <summary>Ends the login now (the sync was cancelled or finished) and destroys its browser, unless it was taken.</summary>
     public async ValueTask DisposeAsync()
     {
+        await CancelAsync();
+        if (TakeBrowser() is { } untaken) await untaken.DisposeAsync();
+        _cts.Dispose();
+    }
+
+    internal async Task CancelAsync()
+    {
         _userCancelled = true;
         await _cts.CancelAsync();
         if (_run != null) await _run;
         else await EndAsync(WebLoginResult.Fail("The web login was cancelled."));
-        if (TakeBrowser() is { } untaken) await untaken.DisposeAsync();
-        _cts.Dispose();
     }
 
     /// <summary>Streams the page to a viewer until the socket closes or the login ends. A newer viewer replaces an older one.</summary>

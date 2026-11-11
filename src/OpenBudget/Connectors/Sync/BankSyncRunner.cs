@@ -54,11 +54,34 @@ public sealed class BankSyncRunner
     /// <summary>The login-wide state a challenge may need: whose browser to open and which cookie jar to fill.</summary>
     private sealed record SyncContext(string OwnerUserId, BankHttpClient Http)
     {
+        public bool CookiesChanged { get; set; }
+
+        public string? UserAgent { get; set; }
+
+        public void ApplyWebLoginResult(WebLoginSpec spec, WebLoginResult result)
+        {
+            if (result.Success || result.HasCookieSnapshot)
+            {
+                Http.ReplaceCookies(spec, result.Cookies);
+                CookiesChanged = true;
+            }
+            if (result.UserAgent is { Length: > 0 } userAgent)
+            {
+                Http.UseUserAgent(userAgent);
+                UserAgent = userAgent;
+            }
+        }
+
         private readonly List<KeptBrowser> _browsers = [];
 
         /// <summary>Holds a browser kept after a web login until <see cref="CloseBrowsersAsync"/>.</summary>
-        public void Keep(KeptBrowser browser)
+        public void Keep(KeptBrowser browser, WebLoginSpec spec)
         {
+            browser.SetCookieSink(cookies =>
+            {
+                Http.ReplaceCookies(spec, cookies.Where(spec.Matches));
+                CookiesChanged = true;
+            });
             lock (_browsers) _browsers.Add(browser);
         }
 
@@ -121,6 +144,7 @@ public sealed class BankSyncRunner
 
         var errors = new List<string>();
         var attempted = _clock.GetUtcNow().UtcDateTime;
+        ConnectorSession? stored = null;
         bool loggedIn = false;
         bool credentialsInvalid = false;
         IBankConnector? connector = null;
@@ -139,13 +163,17 @@ public sealed class BankSyncRunner
             var registration = _registry.Find(login.ConnectorType)
                 ?? throw new ConnectorException($"The connector '{login.ConnectorType}' is not available.");
 
-            ConnectorSession? stored = null;
             if (_secrets.TryDecrypt(login.EncryptedSession, SessionPurpose, out var sessionJson))
             {
                 try { stored = JsonSerializer.Deserialize<ConnectorSession>(sessionJson); }
                 catch (JsonException) { stored = null; }
             }
             if (stored != null) http.ImportCookies(stored.Cookies);
+            if (stored?.UserAgent is { Length: > 0 } userAgent)
+            {
+                http.UseUserAgent(userAgent);
+                context.UserAgent = userAgent;
+            }
 
             connector = registration.Create(new ConnectorContext(http, _clock, _loggers.CreateLogger(registration.ConnectorType)));
 
@@ -203,6 +231,8 @@ public sealed class BankSyncRunner
                 try { finalSession = await connector.LogoutAsync(CancellationToken.None); }
                 catch (Exception ex) { _logger.LogWarning(ex, "Logout of bank login {LoginId} failed.", login.Id); }
             }
+            finalSession ??= context.CookiesChanged ? stored ?? new ConnectorSession() : null;
+            finalSession?.UserAgent = context.UserAgent;
             await FinishAsync(db, login, request, finalSession, http, errors, credentialsInvalid, attempted);
         }
 
@@ -294,18 +324,26 @@ public sealed class BankSyncRunner
             sink.ShowWebLogin(challenge, session.Id, session.ExpiresAt, session.Mode);
             try
             {
-                var result = await session.Completion.WaitAsync(ct);
+                WebLoginResult result;
+                try { result = await session.Completion.WaitAsync(ct); }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    // Wait for the interrupted login to snapshot its cookies before destroying the browser.
+                    await session.CancelAsync();
+                    result = await session.Completion;
+                    context.ApplyWebLoginResult(spec, result);
+                    throw;
+                }
+                context.ApplyWebLoginResult(spec, result);
                 if (!result.Success)
                 {
                     if (result.CredentialsRejected) return (null, result.Error ?? "The bank rejected the credentials.");
                     return Failed(result.Error ?? "The web login failed.");
                 }
-                context.Http.ReplaceCookies(spec, result.Cookies);
-                if (result.UserAgent is { Length: > 0 } userAgent) context.Http.UseUserAgent(userAgent);
                 // a kept browser belongs to the sync from here on; disposing the login leaves it open
                 if (session.TakeBrowser() is { } kept)
                 {
-                    context.Keep(kept);
+                    context.Keep(kept, spec);
                     return (new ChallengeAnswer(challenge, null) { Browser = kept }, null);
                 }
             }

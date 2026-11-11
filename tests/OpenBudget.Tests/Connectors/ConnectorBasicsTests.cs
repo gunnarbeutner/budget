@@ -175,6 +175,21 @@ public sealed class ConnectorBasicsTests
     }
 
     [Fact]
+    public void Browser_sessions_with_many_cookies_survive_export_and_import_without_eviction()
+    {
+        var cookies = Enumerable.Range(0, 50)
+            .Select(i => new CookieState($"cookie-{i}", $"value-{i}", ".bank.example", "/", null, true, true, "None"))
+            .ToList();
+        using var first = new BankHttpClient();
+        first.ImportCookies(cookies);
+        using var restored = new BankHttpClient();
+        restored.ImportCookies(first.ExportCookies());
+
+        Assert.Equal(cookies.OrderBy(c => c.Name, StringComparer.Ordinal),
+            restored.ExportCookies().OrderBy(c => c.Name, StringComparer.Ordinal));
+    }
+
+    [Fact]
     public void Expired_cookies_are_not_restored()
     {
         using var client = new BankHttpClient();

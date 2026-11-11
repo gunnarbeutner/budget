@@ -13,6 +13,8 @@ internal sealed class FakeBrowserHost : IBrowserHost
 
     public List<FakeBrowserSession> Sessions { get; } = [];
 
+    public string UserAgent { get; set; } = "";
+
     /// <summary>What the user does on the page once it has loaded (null: nothing, the login stays open).</summary>
     public Func<FakeBrowserSession, Task>? User { get; set; }
 
@@ -24,7 +26,7 @@ internal sealed class FakeBrowserHost : IBrowserHost
 
     public Task<IBrowserSession> OpenSessionAsync(CancellationToken ct)
     {
-        var session = new FakeBrowserSession(User) { FieldWait = FieldWait, Redirect = Redirect };
+        var session = new FakeBrowserSession(User) { FieldWait = FieldWait, Redirect = Redirect, UserAgent = UserAgent };
         lock (Sessions) Sessions.Add(session);
         return Task.FromResult<IBrowserSession>(session);
     }
@@ -38,6 +40,12 @@ internal sealed class FakeBrowserSession : IBrowserSession
     public FakeBrowserSession(Func<FakeBrowserSession, Task>? user) => _user = user;
 
     public Uri Url { get; set; } = new("about:blank");
+
+    public string UserAgent { get; init; } = "";
+
+    public int? ViewportWidth { get; init; }
+
+    public int? ViewportHeight { get; init; }
 
     public Task GoBackAsync() => Task.CompletedTask;
 
@@ -118,6 +126,10 @@ internal sealed class FakeBrowserSession : IBrowserSession
 
     public List<(string Type, string Key)> Keys { get; } = [];
 
+    public List<(string Type, double X, double Y)> Mouse { get; } = [];
+
+    public List<double?> MouseTimestamps { get; } = [];
+
     public void SetCookie(CookieState cookie)
     {
         lock (_cookies)
@@ -141,10 +153,13 @@ internal sealed class FakeBrowserSession : IBrowserSession
     /// <summary>Requests the page ran (<see cref="FetchAsync"/>), in order.</summary>
     public List<BrowserFetchRequest> Fetches { get; } = [];
 
+    public Action<FakeBrowserSession>? OnFetch { get; set; }
+
     public Task<BrowserFetchResponse> FetchAsync(BrowserFetchRequest request, CancellationToken ct)
     {
         if (Disposed) throw new BrowserActionException("The page is gone.");
         lock (Fetches) Fetches.Add(request);
+        OnFetch?.Invoke(this);
         return Task.FromResult(new BrowserFetchResponse(200, request.Url, "text/plain", System.Text.Encoding.UTF8.GetBytes("ok " + request.Url.AbsolutePath)));
     }
 
@@ -164,9 +179,12 @@ internal sealed class FakeBrowserSession : IBrowserSession
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<CookieState>> GetCookiesAsync()
+    public Func<Task>? BeforeGetCookies { get; set; }
+
+    public async Task<IReadOnlyList<CookieState>> GetCookiesAsync()
     {
-        lock (_cookies) return Task.FromResult<IReadOnlyList<CookieState>>([.. _cookies]);
+        if (BeforeGetCookies != null) await BeforeGetCookies();
+        lock (_cookies) return [.. _cookies];
     }
 
     public Task StartScreencastAsync(Func<ScreencastFrame, Task> onFrame, int maxWidth, int maxHeight, int quality) => Task.CompletedTask;
@@ -177,7 +195,15 @@ internal sealed class FakeBrowserSession : IBrowserSession
 
     public Task<ScreencastFrame?> CaptureStillAsync(int quality, double scale) => Task.FromResult<ScreencastFrame?>(null);
 
-    public Task DispatchMouseAsync(string type, double x, double y, string button, int clickCount, double deltaX, double deltaY, int buttons, int modifiers) => Task.CompletedTask;
+    public Task DispatchMouseAsync(string type, double x, double y, string button, int clickCount, double deltaX, double deltaY, int buttons, int modifiers, double? timestamp = null)
+    {
+        lock (Mouse)
+        {
+            Mouse.Add((type, x, y));
+            MouseTimestamps.Add(timestamp);
+        }
+        return Task.CompletedTask;
+    }
 
     public Task DispatchKeyAsync(string type, string key, string? code, string? text, int modifiers, string[]? commands)
     {

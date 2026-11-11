@@ -9,20 +9,13 @@ public sealed class BrowserOptions
     /// <summary>How many web logins may be open at once (each is one browser context with one page).</summary>
     public int MaxConcurrentSessions { get; set; } = 3;
 
-    /// <summary>Window/viewport size of the remote page; the reported screen is <see cref="ScreenWidth"/> x <see cref="ScreenHeight"/>.</summary>
+    /// <summary>Initial browser window size; frames and input use the native page's actual viewport.</summary>
     public int ViewportWidth { get; set; } = 1280;
 
     public int ViewportHeight { get; set; } = 800;
 
-    public int ScreenWidth { get; set; } = 1280;
-
-    public int ScreenHeight { get; set; } = 900;
-
-    /// <summary>Browser language (launch --lang and navigator.language).</summary>
+    /// <summary>Browser language (Chromium's --lang option).</summary>
     public string Locale { get; set; } = "de-DE";
-
-    /// <summary>Accept-Language header.</summary>
-    public string AcceptLanguage { get; set; } = "de-DE,de;q=0.9,en;q=0.5";
 
     /// <summary>Null = auto (on inside a container or when running as root).</summary>
     public bool? NoSandbox { get; set; }

@@ -3,6 +3,10 @@
 data/
 .git/
 .github/
+.claude/
+.codex/
+.agents/
+.env
 .vs/
 .vscode/
 .idea/

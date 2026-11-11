@@ -30,29 +30,26 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
     }
 
     public static async Task<PuppeteerBrowserSession> CreateAsync(
-        IBrowserContext context, IPage page, BrowserFingerprint fingerprint, BrowserOptions options, Action onClosed)
+        IBrowserContext context, IPage page, BrowserOptions options, Action onClosed)
     {
         var cdp = await page.CreateCDPSessionAsync();
-        await cdp.SendAsync("Emulation.setUserAgentOverride", fingerprint.ToOverrideParams(options));
-        await TryAsync(() => cdp.SendAsync("Emulation.setLocaleOverride", new { locale = options.Locale }));
-        await cdp.SendAsync("Emulation.setDeviceMetricsOverride", new
-        {
-            width = options.ViewportWidth,
-            height = options.ViewportHeight,
-            deviceScaleFactor = 1,
-            mobile = false,
-            screenWidth = options.ScreenWidth,
-            screenHeight = options.ScreenHeight,
-        });
-        // Links and window.open load in this tab: the user only ever sees one page.
-        await page.EvaluateFunctionOnNewDocumentAsync(
-            "() => { " + SameTabLinks + " window.open = (u) => { if (u) location.href = u; return null; };"
-            + " Object.defineProperty(navigator, 'languages', { get: () => ['de-DE', 'de'] }); }");
+        // Ordinary links stay in the streamed tab without replacing native browser functions or identity properties.
+        await page.EvaluateFunctionOnNewDocumentAsync("() => { " + SameTabLinks + " }");
         page.DefaultNavigationTimeout = options.NavigationTimeoutMs;
-        return new PuppeteerBrowserSession(context, page, cdp, options, onClosed) { UserAgent = fingerprint.UserAgent };
+        var native = await page.EvaluateFunctionAsync<JsonElement>("() => ({ userAgent: navigator.userAgent, width: innerWidth, height: innerHeight })");
+        return new PuppeteerBrowserSession(context, page, cdp, options, onClosed)
+        {
+            UserAgent = native.GetProperty("userAgent").GetString()!,
+            ViewportWidth = native.GetProperty("width").GetInt32(),
+            ViewportHeight = native.GetProperty("height").GetInt32(),
+        };
     }
 
     public string UserAgent { get; private init; } = "";
+
+    public int? ViewportWidth { get; private set; }
+
+    public int? ViewportHeight { get; private set; }
 
     public Uri Url => Uri.TryCreate(_page.Url, UriKind.Absolute, out var u) ? u : new Uri("about:blank");
 
@@ -200,6 +197,16 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
 
     public void ObserveResponses(IReadOnlyList<string> urlParts, Action<ObservedResponse> onResponse)
     {
+        _page.RequestFailed += (_, e) =>
+        {
+            var url = e.Request.Url;
+            if (!urlParts.Any(p => url.Contains(p, StringComparison.OrdinalIgnoreCase))) return;
+            var path = Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.GetLeftPart(UriPartial.Path) : "?";
+            var code = e.Request.FailureText;
+            if (code is not { Length: > 0 and <= 80 } || !code.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '-' or ':'))
+                code = "request_failed";
+            onResponse(new ObservedResponse(path, 0, "network", code));
+        };
         _page.Response += async (_, e) =>
         {
             try
@@ -462,7 +469,11 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
             var m = p.GetProperty("metadata");
             double D(string n) => m.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : 0;
             var data = Convert.FromBase64String(p.GetProperty("data").GetString()!);
-            pump.Post(new ScreencastFrame(data, (int)Math.Round(D("deviceWidth")), (int)Math.Round(D("deviceHeight")), false));
+            var width = (int)Math.Round(D("deviceWidth"));
+            var height = (int)Math.Round(D("deviceHeight"));
+            if (width > 0) ViewportWidth = width;
+            if (height > 0) ViewportHeight = height;
+            pump.Post(new ScreencastFrame(data, width, height, false));
         }
         catch (Exception ex) when (ex is JsonException or FormatException or KeyNotFoundException or InvalidOperationException)
         {
@@ -492,29 +503,40 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
         }
         var r = (await _cdp.SendAsync("Page.captureScreenshot", args))!.Value;
         var data = Convert.FromBase64String(r.GetProperty("data").GetString()!);
-        return new ScreencastFrame(data, w > 0 ? w : _options.ViewportWidth, h > 0 ? h : _options.ViewportHeight, true);
+        return new ScreencastFrame(data, w > 0 ? w : ViewportWidth ?? _options.ViewportWidth, h > 0 ? h : ViewportHeight ?? _options.ViewportHeight, true);
     }
 
     // ---- input ----
 
     public Task InsertTextAsync(string text) => _cdp.SendAsync("Input.insertText", new { text });
 
-    public async Task DispatchMouseAsync(string type, double x, double y, string button, int clickCount, double deltaX, double deltaY, int buttons, int modifiers)
+    public Task DispatchMouseAsync(string type, double x, double y, string button, int clickCount, double deltaX, double deltaY, int buttons, int modifiers, double? timestamp = null)
     {
+        var args = new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["type"] = type,
+            ["x"] = x,
+            ["y"] = y,
+            ["modifiers"] = modifiers,
+        };
+        if (timestamp is { } time) args["timestamp"] = time;
         if (type == "mouseWheel")
-            await _cdp.SendAsync("Input.dispatchMouseEvent", new { type, x, y, deltaX, deltaY, modifiers });
+        {
+            args["deltaX"] = deltaX;
+            args["deltaY"] = deltaY;
+        }
         else if (type == "mouseMoved")
-            await _cdp.SendAsync("Input.dispatchMouseEvent", new
-            {
-                type,
-                x,
-                y,
-                modifiers,
-                buttons,
-                button = (buttons & 1) != 0 ? "left" : (buttons & 4) != 0 ? "middle" : (buttons & 2) != 0 ? "right" : "none",
-            });
+        {
+            args["buttons"] = buttons;
+            args["button"] = (buttons & 1) != 0 ? "left" : (buttons & 4) != 0 ? "middle" : (buttons & 2) != 0 ? "right" : "none";
+        }
         else
-            await _cdp.SendAsync("Input.dispatchMouseEvent", new { type, x, y, button, buttons, modifiers, clickCount = Math.Max(1, clickCount) });
+        {
+            args["button"] = button;
+            args["buttons"] = buttons;
+            args["clickCount"] = Math.Max(1, clickCount);
+        }
+        return _cdp.SendAsync("Input.dispatchMouseEvent", args);
     }
 
     public Task DispatchKeyAsync(string type, string key, string? code, string? text, int modifiers, string[]? commands) =>

@@ -1,7 +1,7 @@
 // Shows the remote browser of a web login in a canvas and forwards mouse/keyboard/paste to the server over a WebSocket
 // (/browser/ws/<session id>, authenticated by the app's cookie). No eval, no external code. Frames arrive as binary JPEGs;
-// only the newest frame is decoded and painted (once per animation frame). Input goes back as small JSON messages; moves
-// and wheel deltas are coalesced per frame. Nothing typed is kept here.
+// only the newest frame is decoded and painted (once per animation frame). Input goes back as small JSON messages;
+// hover moves and wheel deltas are coalesced per frame; drag paths retain every event. Nothing typed is kept here.
 export function attach(canvas, dotnet, sessionId) {
     const ctx = canvas.getContext('2d');
     let cssW = 1366, cssH = 850;
@@ -51,15 +51,16 @@ export function attach(canvas, dotnet, sessionId) {
         const x = (e.clientX - r.left) / r.width * cssW, y = (e.clientY - r.top) / r.height * cssH;
         return [Math.min(Math.max(x, 0), cssW), Math.min(Math.max(y, 0), cssH)];
     };
+    const stamp = (e) => (e.timeStamp > 1e12 ? e.timeStamp : performance.timeOrigin + e.timeStamp) / 1000;
     const btn = (e) => e.button === 2 ? 'right' : e.button === 1 ? 'middle' : 'left';
     const mods = (e) => (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0);
 
-    // mousemove / wheel: at most one message per animation frame, always flushed before any other input to keep the order
+    // Hover / wheel: at most one message per animation frame, flushed before other input to keep the order.
     let move = null, wheel = null, flushRaf = 0, pressed = 0;
     const flush = () => {
         flushRaf = 0;
-        if (move) { const m = move; move = null; send({ t: 'm', k: 'move', x: m.x, y: m.y, bs: m.bs, m: m.m }); }
-        if (wheel) { const w = wheel; wheel = null; send({ t: 'm', k: 'wheel', x: w.x, y: w.y, dx: w.dx, dy: w.dy, m: w.m }); }
+        if (move) { const m = move; move = null; send({ t: 'm', k: 'move', x: m.x, y: m.y, bs: m.bs, m: m.m, ts: m.ts }); }
+        if (wheel) { const w = wheel; wheel = null; send({ t: 'm', k: 'wheel', x: w.x, y: w.y, dx: w.dx, dy: w.dy, m: w.m, ts: w.ts }); }
     };
     const tick = new MessageChannel(), tickPort = tick.port2;
     tick.port1.onmessage = () => flush();
@@ -75,15 +76,21 @@ export function attach(canvas, dotnet, sessionId) {
     offs.push(on(window, 'mousemove', e => {
         if (!pressed && e.target !== canvas) return;
         const [x, y] = pos(e);
-        move = { x, y, bs: e.buttons, m: mods(e) };
-        schedule();
+        if (e.buttons) {
+            // A drag's path and timing matter (sliders, drawing and verification widgets).
+            flush();
+            send({ t: 'm', k: 'move', x, y, bs: e.buttons, m: mods(e), ts: stamp(e) });
+        } else {
+            move = { x, y, bs: e.buttons, m: mods(e), ts: stamp(e) };
+            schedule();
+        }
     }));
     offs.push(on(canvas, 'mousedown', e => {
         canvas.focus({ preventScroll: true });
         flush();
         pressed = e.buttons || 1;
         const [x, y] = pos(e);
-        send({ t: 'm', k: 'down', x, y, b: btn(e), bs: e.buttons, c: e.detail || 1, m: mods(e) });
+        send({ t: 'm', k: 'down', x, y, b: btn(e), bs: e.buttons, c: e.detail || 1, m: mods(e), ts: stamp(e) });
         e.preventDefault();
     }));
     offs.push(on(window, 'mouseup', e => {
@@ -91,7 +98,7 @@ export function attach(canvas, dotnet, sessionId) {
         flush();
         pressed = e.buttons;
         const [x, y] = pos(e);
-        send({ t: 'm', k: 'up', x, y, b: btn(e), bs: e.buttons, c: e.detail || 1, m: mods(e) });
+        send({ t: 'm', k: 'up', x, y, b: btn(e), bs: e.buttons, c: e.detail || 1, m: mods(e), ts: stamp(e) });
         e.preventDefault();
     }));
     offs.push(on(canvas, 'contextmenu', e => e.preventDefault()));
@@ -99,7 +106,7 @@ export function attach(canvas, dotnet, sessionId) {
         const [x, y] = pos(e);
         const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? cssH : 1;
         if (move) flush();
-        wheel = { x, y, dx: (wheel?.dx || 0) + e.deltaX * k, dy: (wheel?.dy || 0) + e.deltaY * k, m: mods(e) };
+        wheel = { x, y, dx: (wheel?.dx || 0) + e.deltaX * k, dy: (wheel?.dy || 0) + e.deltaY * k, m: mods(e), ts: stamp(e) };
         schedule();
         e.preventDefault();
     }, { passive: false }));

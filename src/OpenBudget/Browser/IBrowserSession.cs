@@ -23,6 +23,11 @@ public interface IBrowserSession : IAsyncDisposable
     /// <summary>The User-Agent the page sees; requests that continue the session should send the same.</summary>
     string UserAgent => "";
 
+    /// <summary>The native page dimensions, when available, for streamed frames and input coordinates.</summary>
+    int? ViewportWidth => null;
+
+    int? ViewportHeight => null;
+
     Task NavigateAsync(Uri url, CancellationToken ct);
 
     /// <summary>Puts cookies into the context (before the first navigation).</summary>
@@ -40,7 +45,7 @@ public interface IBrowserSession : IAsyncDisposable
     Task<ScreencastFrame?> CaptureStillAsync(int quality, double scale);
 
     /// <summary>type: mousePressed | mouseReleased | mouseMoved | mouseWheel; coordinates in CSS px of the page.</summary>
-    Task DispatchMouseAsync(string type, double x, double y, string button, int clickCount, double deltaX, double deltaY, int buttons, int modifiers);
+    Task DispatchMouseAsync(string type, double x, double y, string button, int clickCount, double deltaX, double deltaY, int buttons, int modifiers, double? timestamp = null);
 
     /// <summary>type: keyDown | keyUp | rawKeyDown | char.</summary>
     Task DispatchKeyAsync(string type, string key, string? code, string? text, int modifiers, string[]? commands);

@@ -1,4 +1,6 @@
 #pragma warning disable CA2000 // test objects live for the test
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenBudget.Browser;
 using OpenBudget.Connectors;
@@ -106,6 +108,34 @@ public sealed class KeptBrowserTests
     }
 
     [Fact]
+    public async Task Closing_an_expired_browser_waits_for_its_final_cookie_snapshot()
+    {
+        var host = new FakeBrowserHost { User = SignsIn };
+        await using var session = await Service(host, TimeSpan.FromMilliseconds(100)).StartAsync(BankWorld.Alice, Spec(), [], CancellationToken.None);
+        await session.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        var kept = session.TakeBrowser()!;
+        var page = Assert.Single(host.Sessions);
+        var collecting = new TaskCompletionSource();
+        var release = new TaskCompletionSource();
+        page.SetCookie(Sid("renewed"));
+        page.BeforeGetCookies = async () => { collecting.TrySetResult(); await release.Task; };
+        IReadOnlyList<CookieState>? finalCookies = null;
+        kept.SetCookieSink(cookies => finalCookies = cookies);
+
+        await collecting.Task.WaitAsync(TimeSpan.FromSeconds(5)); // the lifetime timer starts closing it
+        var closing = kept.DisposeAsync().AsTask();
+        try
+        {
+            Assert.False(closing.IsCompleted);
+            Assert.False(page.Disposed);
+        }
+        finally { release.TrySetResult(); }
+        await closing;
+        Assert.Equal("renewed", Assert.Single(finalCookies!).Value);
+        Assert.True(page.Disposed);
+    }
+
+    [Fact]
     public async Task A_stored_session_that_still_works_on_the_resume_page_needs_no_sign_in()
     {
         var host = new FakeBrowserHost(); // the stored cookie keeps the resume page signed in; nobody would sign in on the form
@@ -140,6 +170,8 @@ public sealed class KeptBrowserTests
 
         public static string? Answer { get; set; }
 
+        public static bool FailListing { get; set; }
+
         public string ConnectorType => Type;
 
         public static ConnectorRegistration Registration { get; } = new(
@@ -154,7 +186,9 @@ public sealed class KeptBrowserTests
             return ConnectorStep.Done<ConnectorSession?>(new ConnectorSession());
         }
 
-        public Task<IReadOnlyList<RemoteAccount>> ListAccountsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<RemoteAccount>>([]);
+        public Task<IReadOnlyList<RemoteAccount>> ListAccountsAsync(CancellationToken ct) => FailListing
+            ? Task.FromException<IReadOnlyList<RemoteAccount>>(new ConnectorException("Account listing failed."))
+            : Task.FromResult<IReadOnlyList<RemoteAccount>>([]);
 
         public Task<ConnectorStep<AccountRefresh>> RefreshAsync(RemoteAccount account, DateOnly? since, ChallengeAnswer? answer, CancellationToken ct) =>
             throw new NotSupportedException();
@@ -184,5 +218,47 @@ public sealed class KeptBrowserTests
         Assert.Equal("ok /api/me", KeepingConnector.Answer);
         Assert.False(KeepingConnector.Browser!.IsOpen);
         Assert.True(Assert.Single(host.Sessions).Disposed);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Final_browser_cookies_are_saved_even_when_account_listing_fails(bool failListing)
+    {
+        var host = new FakeBrowserHost
+        {
+            User = s =>
+            {
+                s.SetCookie(new CookieState("removed", "old", Domain, "/", null, true, true));
+                s.OnFetch = page =>
+                {
+                    page.SetCookie(Sid("renewed"));
+                    page.DropCookie("removed");
+                    page.SetCookie(new CookieState("unrelated", "discard", "ads.invalid", "/", null, true, true));
+                };
+                return SignsIn(s);
+            },
+        };
+        await using var world = await BankWorld.CreateAsync(extras: new BankWorldExtras
+        {
+            Registrations = [KeepingConnector.Registration],
+            BrowserHost = host,
+            WebLoginOptions = new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(10), SettleDelay = TimeSpan.Zero },
+        });
+        var view = await world.For(BankWorld.Alice).CreateLoginAsync(KeepingConnector.Type, "Keeping bank", "", "");
+        KeepingConnector.FailListing = failListing;
+        try
+        {
+            var status = await world.SyncAsync(BankWorld.Alice, view.Id, new SyncRequest(view.Id, Transactions: false, Statements: false));
+            Assert.Equal(!failListing, status.Succeeded);
+            await using var db = await world.T.System.CreateDbContextAsync();
+            var login = await db.BankLogins.SingleAsync(l => l.Id == view.Id);
+            Assert.True(world.Secrets.TryDecrypt(login.EncryptedSession, BankSyncRunner.SessionPurpose, out var json));
+            var cookie = Assert.Single(JsonSerializer.Deserialize<ConnectorSession>(json)!.Cookies);
+            Assert.Equal("sid", cookie.Name);
+            Assert.Equal("renewed", cookie.Value);
+            Assert.True(Assert.Single(host.Sessions).Disposed);
+        }
+        finally { KeepingConnector.FailListing = false; }
     }
 }

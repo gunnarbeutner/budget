@@ -1,6 +1,8 @@
 #pragma warning disable CA2000 // test objects live for the test
 using System.Text.Json;
+using System.Net;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using OpenBudget.Browser;
 using OpenBudget.Connectors;
 using OpenBudget.Connectors.Sync;
@@ -15,20 +17,23 @@ public sealed class WebLoginTests
     private static readonly Uri Start = new("https://bank.example/login");
 
     /// <summary>A bank whose only way in is a web login: asks for it, then is done.</summary>
-    private sealed class WebBankConnector : IBankConnector
+    private sealed class WebBankConnector(ConnectorContext context, bool probeHeaders = false) : IBankConnector
     {
         public const string Type = "webbank";
 
         public string ConnectorType => Type;
 
         public static ConnectorRegistration Registration { get; } = new(
-            Type, "Web Bank", "Signs in on the bank's page.", _ => new WebBankConnector(), CredentialRequirement.None);
+            Type, "Web Bank", "Signs in on the bank's page.", ctx => new WebBankConnector(ctx), CredentialRequirement.None);
 
-        public Task<ConnectorStep<ConnectorSession?>> LoginAsync(ConnectorCredentials credentials, ConnectorSession? storedSession, ChallengeAnswer? answer, CancellationToken ct) =>
-            Task.FromResult(answer == null
+        public async Task<ConnectorStep<ConnectorSession?>> LoginAsync(ConnectorCredentials credentials, ConnectorSession? storedSession, ChallengeAnswer? answer, CancellationToken ct)
+        {
+            if (probeHeaders) await context.Http.GetStringAsync(new Uri("https://bank.example/probe"), ct);
+            return answer == null
                 ? ConnectorStep.Ask<ConnectorSession?>(ConnectorChallenge.WebLogin("Sign in", new WebLoginSpec(
                     Start, [Domain], successUrlPrefix: new Uri("https://bank.example/home"))))
-                : ConnectorStep.Done<ConnectorSession?>(new ConnectorSession()));
+                : ConnectorStep.Done<ConnectorSession?>(new ConnectorSession());
+        }
 
         public Task<IReadOnlyList<RemoteAccount>> ListAccountsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<RemoteAccount>>([]);
 
@@ -69,12 +74,113 @@ public sealed class WebLoginTests
 
     private static SyncRequest LoginOnly(int id) => new(id, Transactions: false, Statements: false);
 
+    [Fact]
+    public async Task Streamed_input_uses_the_native_viewport_instead_of_the_configured_window_size()
+    {
+        var page = new FakeBrowserSession(null) { ViewportWidth = 1600, ViewportHeight = 1000 };
+        await using var view = new RemoteViewSession(page, new BrowserOptions(), NullLogger.Instance, _ => Task.CompletedTask);
+        await view.StartAsync(1600, 1);
+        view.Post("""{"t":"m","k":"down","x":1450,"y":950,"b":"left","bs":1,"c":1}""");
+        for (var i = 0; i < 100; i++)
+        {
+            lock (page.Mouse) { if (page.Mouse.Count > 0) break; }
+            await Task.Delay(10);
+        }
+        lock (page.Mouse) Assert.Equal(("mousePressed", 1450d, 950d), Assert.Single(page.Mouse));
+    }
+
     private async Task<List<CookieState>> StoredCookiesAsync(BankWorld world, int loginId)
     {
         await using var db = await world.T.System.CreateDbContextAsync();
         var login = await db.BankLogins.AsNoTracking().FirstAsync(l => l.Id == loginId);
         Assert.True(world.Secrets.TryDecrypt(login.EncryptedSession, BankSyncRunner.SessionPurpose, out var json));
         return JsonSerializer.Deserialize<ConnectorSession>(json)!.Cookies;
+    }
+
+    private sealed class HeaderCapture(List<string> agents) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            agents.Add(request.Headers.UserAgent.ToString());
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("ok") });
+        }
+    }
+
+    [Fact]
+    public async Task Browser_identity_is_used_by_HTTPS_requests_and_restored_on_the_next_sync()
+    {
+        const string browserAgent = "Mozilla/5.0 NativeBrowser/1.0";
+        var agents = new List<string>();
+        var browser = new FakeBrowserHost { User = SignedIn, UserAgent = browserAgent };
+        var registration = new ConnectorRegistration(WebBankConnector.Type, "Web Bank", "Web login",
+            ctx => new WebBankConnector(ctx, probeHeaders: true), CredentialRequirement.None);
+        await using var world = await BankWorld.CreateAsync(extras: new BankWorldExtras
+        {
+            Registrations = [registration],
+            BrowserHost = browser,
+            HttpFactory = () => new BankHttpClient(new HeaderCapture(agents)),
+        });
+        var login = await world.For(BankWorld.Alice).CreateLoginAsync(WebBankConnector.Type, "Web bank", "", "");
+
+        Assert.True((await world.SyncAsync(BankWorld.Alice, login.Id, LoginOnly(login.Id))).Succeeded);
+        Assert.Equal(browserAgent, agents[1]); // API request after the browser login
+        Assert.True((await world.SyncAsync(BankWorld.Alice, login.Id, LoginOnly(login.Id))).Succeeded);
+        Assert.Equal(browserAgent, agents[2]); // API request before opening the next browser
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Interrupted_sign_in_keeps_bank_cookies_for_the_next_attempt(bool cancel, bool previousSession)
+    {
+        var verified = new TaskCompletionSource();
+        Task VerifyDevice(FakeBrowserSession session)
+        {
+            session.SetCookie(Cookie("verification", "device-verified", DateTime.UtcNow.AddDays(7), sameSite: "None"));
+            session.SetCookie(Cookie("unrelated", "discard", DateTime.UtcNow.AddDays(7), domain: "ads.invalid"));
+            verified.TrySetResult();
+            return Task.CompletedTask;
+        }
+        var (world, browser, loginId) = await CreateAsync(previousSession ? SignedIn : VerifyDevice,
+            options: new WebLoginOptions
+            {
+                Timeout = cancel ? TimeSpan.FromSeconds(5) : TimeSpan.FromMilliseconds(300),
+                PollInterval = TimeSpan.FromMilliseconds(10),
+                SettleDelay = TimeSpan.Zero,
+            });
+        await using var _ = world;
+        if (previousSession)
+        {
+            Assert.True((await world.SyncAsync(BankWorld.Alice, loginId, LoginOnly(loginId))).Succeeded);
+            await world.EditSessionAsync(loginId, values => values["known-account"] = "EUR");
+            browser.User = VerifyDevice;
+        }
+
+        Assert.Equal(StartResult.Started, await world.Coordinator.StartAsync(BankWorld.Alice, LoginOnly(loginId)));
+        await verified.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        if (cancel) Assert.True(world.Coordinator.Cancel(BankWorld.Alice, loginId));
+        var interrupted = await world.WaitAsync(BankWorld.Alice, loginId, []);
+        Assert.False(interrupted.Succeeded);
+        Assert.Contains(cancel ? "cancelled" : "timed out", interrupted.Error!, StringComparison.OrdinalIgnoreCase);
+
+        var cookies = await StoredCookiesAsync(world, loginId);
+        var verification = Assert.Single(cookies, c => c.Name == "verification");
+        Assert.Equal("device-verified", verification.Value);
+        Assert.Equal("None", verification.SameSite);
+        Assert.DoesNotContain(cookies, c => c.Domain == "ads.invalid");
+        if (previousSession)
+        {
+            await using var db = await world.T.System.CreateDbContextAsync();
+            var login = await db.BankLogins.SingleAsync(l => l.Id == loginId);
+            Assert.True(world.Secrets.TryDecrypt(login.EncryptedSession, BankSyncRunner.SessionPurpose, out var json));
+            Assert.Equal("EUR", JsonSerializer.Deserialize<ConnectorSession>(json)!.Values["known-account"]);
+        }
+
+        browser.User = SignedIn;
+        Assert.True((await world.SyncAsync(BankWorld.Alice, loginId, LoginOnly(loginId))).Succeeded);
+        Assert.Contains(browser.Sessions[^1].Seeded, c => c.Name == "verification" && c.Value == "device-verified");
     }
 
     [Fact]
@@ -464,6 +570,40 @@ public sealed class WebLoginTests
         Assert.Equal(2, result[0].X);
         Assert.Equal(15, result[2].Dy);
         Assert.Equal(2, result[3].W);
+    }
+
+    [Fact]
+    public void Drag_moves_keep_their_path_and_original_timestamps()
+    {
+        var drag = new[]
+        {
+            new RemoteInput { T = "m", K = "down", Buttons = 1, X = 10, Timestamp = 1000 },
+            new RemoteInput { T = "m", K = "move", Buttons = 1, X = 20, Timestamp = 1000.01 },
+            new RemoteInput { T = "m", K = "move", Buttons = 1, X = 40, Timestamp = 1000.03 },
+            new RemoteInput { T = "m", K = "up", Buttons = 0, X = 40, Timestamp = 1000.05 },
+        };
+        var forwarded = InputCoalescer.Coalesce(drag);
+        Assert.Equal(drag, forwarded);
+        Assert.Equal([1000d, 1000.01d, 1000.03d, 1000.05d], forwarded.Select(m => m.Timestamp!.Value));
+        Assert.Null(new RemoteInput { T = "m", K = "move", Timestamp = double.NaN }.Sanitize(1280, 800)!.Timestamp);
+    }
+
+    [Fact]
+    public async Task Streamed_drag_timestamps_reach_the_browser_without_being_replaced_by_queue_time()
+    {
+        var page = new FakeBrowserSession(null);
+        await using var view = new RemoteViewSession(page, new BrowserOptions(), NullLogger.Instance, _ => Task.CompletedTask);
+        await view.StartAsync(1280, 1);
+        view.Post("""{"t":"m","k":"down","x":10,"y":10,"bs":1,"ts":1000}""");
+        view.Post("""{"t":"m","k":"move","x":20,"y":10,"bs":1,"ts":1000.01}""");
+        view.Post("""{"t":"m","k":"move","x":40,"y":10,"bs":1,"ts":1000.03}""");
+        view.Post("""{"t":"m","k":"up","x":40,"y":10,"bs":0,"ts":1000.05}""");
+        for (var i = 0; i < 100; i++)
+        {
+            lock (page.Mouse) { if (page.Mouse.Count == 4) break; }
+            await Task.Delay(10);
+        }
+        lock (page.Mouse) Assert.Equal(new double?[] { 1000, 1000.01, 1000.03, 1000.05 }, page.MouseTimestamps);
     }
 
     [Theory]

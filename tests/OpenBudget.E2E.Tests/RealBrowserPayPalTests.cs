@@ -10,8 +10,8 @@ using OpenBudget.Connectors.PayPal;
 namespace OpenBudget.E2E.Tests;
 
 /// <summary>
-/// The PayPal connector against a real Chromium and a local made-up PayPal: a two-step sign-in form (e-mail, Next,
-/// password, Log in) under a cookie banner, an account summary, and the activity download (report request with the
+/// The PayPal connector against a real Chromium and a local made-up PayPal: a combined or two-step sign-in form
+/// under a cookie banner, an account summary, and the activity download (report request with the
 /// page's CSRF token, report list, CSV). Like the real site, the session only works from the browser that signed in
 /// (requests without the browser's Sec-Fetch-Mode header are refused). Skipped when no Chromium is present.
 /// </summary>
@@ -36,10 +36,16 @@ public sealed class RealBrowserPayPalTests
     private int _signIns;
     private int _bannerDeclined;
     private int _reports;
+    private bool _combinedLogin;
 
     [SetUp]
     public void SetUp()
     {
+        _combinedLogin = false;
+        _signIns = 0;
+        _bannerDeclined = 0;
+        _reports = 0;
+        _sessions.Clear();
         _chrome = ChromiumLocator.Find() ?? "";
         if (_chrome.Length == 0) Assert.Ignore("No Chromium found (set CHROME_PATH or run `playwright install chromium`).");
         var port = System.Security.Cryptography.RandomNumberGenerator.GetInt32(20000, 40000);
@@ -135,15 +141,17 @@ public sealed class RealBrowserPayPalTests
         }
     }
 
-    /// <summary>E-mail first; Next reveals the password. The cookie banner sits on top until a choice was stored.</summary>
-    private static string SignInPage(HttpListenerRequest request, string notice) => "<html><body>"
+    /// <summary>E-mail and password on one page or two. The cookie banner sits on top until a choice was stored.</summary>
+    private string SignInPage(HttpListenerRequest request, string notice) => "<html><body>"
         + (request.Cookies["cookie_prefs"] != null ? "" : "<div id=gdprCookieBanner style=\"position:fixed;inset:0;background:#fff;z-index:9\"><p>Cookies</p>"
         + "<button id=acceptAllButton onclick=\"this.parentNode.remove()\">Accept</button>"
         + "<button id=bannerDeclineButton onclick=\"fetch('/cookie-decline');this.parentNode.remove()\">Decline</button></div>")
         + notice
         + "<form name=login method=post action=/signin>"
-        + "<div id=splitEmail><input id=email name=login_email type=email><button id=btnNext type=button onclick=\"document.getElementById('splitEmail').style.display='none';document.getElementById('splitPassword').style.display='block'\">Next</button></div>"
-        + "<div id=splitPassword style=display:none><input id=password name=login_password type=password><button id=btnLogin type=submit>Log In</button></div>"
+        + (_combinedLogin
+            ? "<input id=email name=login_email type=email><input id=password name=login_password type=password><button id=btnLogin type=submit>Log In</button>"
+            : "<div id=splitEmail><input id=email name=login_email type=email><button id=btnNext type=button onclick=\"document.getElementById('splitEmail').style.display='none';document.getElementById('splitPassword').style.display='block'\">Next</button></div>"
+                + "<div id=splitPassword style=display:none><input id=password name=login_password type=password><button id=btnLogin type=submit>Log In</button></div>")
         + "</form></body></html>";
 
     private static async Task<Dictionary<string, string>> ReadFormAsync(HttpListenerRequest request)
@@ -179,9 +187,11 @@ public sealed class RealBrowserPayPalTests
     private PayPalConnector Connector(BankHttpClient http) =>
         new(new ConnectorContext(http, TimeProvider.System, NullLogger.Instance), new PayPalOptions { BaseUri = new Uri(_url), PollDelay = TimeSpan.Zero });
 
-    [Test]
-    public async Task Signs_in_in_two_steps_declines_cookies_and_reads_the_activity_download_through_the_kept_browser()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Signs_in_declines_cookies_and_reads_the_activity_download_through_the_kept_browser(bool combinedLogin)
     {
+        _combinedLogin = combinedLogin;
         await using var browser = NewBrowser();
         var service = Service(browser);
         using var http = new BankHttpClient();

@@ -28,7 +28,9 @@ public interface IBankHttpClient
 /// <summary><see cref="IBankHttpClient"/> over a private <see cref="HttpClient"/> with its own <see cref="CookieContainer"/>.</summary>
 public sealed class BankHttpClient : IBankHttpClient, IDisposable
 {
-    private readonly CookieContainer _jar = new();
+    // Browser logins can have more than CookieContainer's default 20 cookies per domain.
+    // Keep a browser-sized jar so importing a verified session does not silently evict its cookies.
+    private readonly CookieContainer _jar = new(capacity: 3000, perDomainCapacity: 180, maxCookieSize: 4096);
     private readonly HttpClient _http;
 
     public BankHttpClient() : this(handlerFactory: null)

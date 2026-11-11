@@ -24,7 +24,7 @@ RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates curl tzdata libicu76 libssl3t64 \
-        chromium fonts-liberation fonts-dejavu-core \
+        chromium xvfb xauth fonts-liberation fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/* /usr/share/man /usr/share/info
 # /app/data holds the SQLite files (budgets.db). Mount as a volume; writable by the non-root app user.
 RUN mkdir -p /app/data && chown -R app:app /app/data

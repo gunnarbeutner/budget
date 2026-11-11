@@ -97,4 +97,7 @@ public sealed class ConnectorSession
     public Dictionary<string, string> Values { get; set; } = new(StringComparer.Ordinal);
 
     public List<CookieState> Cookies { get; set; } = [];
+
+    /// <summary>The browser identity associated with the saved cookies, also used by subsequent HTTPS requests.</summary>
+    public string? UserAgent { get; set; }
 }

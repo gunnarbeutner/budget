@@ -1,11 +1,13 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using PuppeteerSharp;
 
 namespace OpenBudget.Browser;
 
 /// <summary>
-/// Singleton owning one lazily launched headless Chromium. It has no persistent profile (a throw-away
+/// Singleton owning one lazily launched headed Chromium with its native browser identity. It has no persistent profile (a throw-away
 /// user-data directory per process) and hands out <see cref="IBrowserSession"/>s that are each an isolated
 /// incognito-style context, so bank sessions of different users can never mix. The process is closed again a
 /// minute after the last session ended.
@@ -18,7 +20,6 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
     private readonly Lock _gate = new();
     private IBrowser? _browser;
     private string? _profileDir;
-    private BrowserFingerprint? _fingerprint;
     private int _open;
     private CancellationTokenSource? _idleCts;
     private bool _disposed;
@@ -76,7 +77,7 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
             try
             {
                 var page = await context.NewPageAsync();
-                var session = await PuppeteerBrowserSession.CreateAsync(context, page, _fingerprint!, Options, OnSessionClosed);
+                var session = await PuppeteerBrowserSession.CreateAsync(context, page, Options, OnSessionClosed);
                 return session;
             }
             catch
@@ -145,24 +146,38 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
             Directory.CreateDirectory(_profileDir);
             var noSandbox = Options.NoSandbox ?? (File.Exists("/.dockerenv") || Environment.UserName == "root"
                 || Environment.GetEnvironmentVariable("BROWSER_NO_SANDBOX") == "1");
+            int debuggingPort;
+            using (var reservation = new Socket(AddressFamily.InterNetwork, SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp))
+            {
+                reservation.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+                debuggingPort = ((IPEndPoint)reservation.LocalEndPoint!).Port;
+            }
             var args = new List<string>
             {
-                "--disable-dev-shm-usage", "--disable-gpu", $"--lang={Options.Locale}", $"--accept-lang={Options.Locale},de", "--no-first-run",
-                "--no-default-browser-check", "--disable-blink-features=AutomationControlled", "--disable-crash-reporter",
-                "--disable-features=Translate,MediaRouter", $"--window-size={Options.ViewportWidth},{Options.ViewportHeight}",
+                "--disable-dev-shm-usage", $"--lang={Options.Locale}", "--no-first-run", "--no-default-browser-check",
+                $"--window-size={Options.ViewportWidth},{Options.ViewportHeight}", $"--user-data-dir={_profileDir}",
+                "--remote-debugging-address=127.0.0.1", $"--remote-debugging-port={debuggingPort}",
             };
             if (noSandbox) args.Add("--no-sandbox");
-            _logger.LogInformation("Starting Chromium {Exe} (no-sandbox={NoSandbox}).", exe, noSandbox);
-            var browser = await Puppeteer.LaunchAsync(new LaunchOptions
+            var launch = new LaunchOptions
             {
                 ExecutablePath = exe,
-                Headless = true,
+                Headless = false,
+                IgnoreDefaultArgs = true,
                 UserDataDir = _profileDir,
                 Args = [.. args],
-                DefaultViewport = new ViewPortOptions { Width = Options.ViewportWidth, Height = Options.ViewportHeight },
+                DefaultViewport = null,
                 Timeout = 60000,
-            });
-            _fingerprint = BrowserFingerprint.Create(await browser.GetVersionAsync());
+            };
+            if (OperatingSystem.IsLinux() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
+            {
+                const string xvfb = "/usr/bin/xvfb-run";
+                if (!File.Exists(xvfb)) throw new BrowserActionException("Web logins need a headed browser; install Xvfb and xauth or provide a DISPLAY.");
+                launch.ExecutablePath = xvfb;
+                launch.Args = ["--auto-servernum", "--", exe, .. args];
+            }
+            _logger.LogInformation("Starting headed Chromium {Exe} (no-sandbox={NoSandbox}).", exe, noSandbox);
+            var browser = await Puppeteer.LaunchAsync(launch);
             _browser = browser;
             return browser;
         }

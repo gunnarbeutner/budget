@@ -34,6 +34,9 @@ public sealed class RemoteInput
     /// <summary>Modifiers: alt 1, ctrl 2, meta 4, shift 8.</summary>
     [JsonPropertyName("m")] public int Mod { get; set; }
 
+    /// <summary>Original mouse-event time in Unix seconds, so queued drag events retain their timing.</summary>
+    [JsonPropertyName("ts")] public double? Timestamp { get; set; }
+
     [JsonPropertyName("key")] public string? Key { get; set; }
 
     [JsonPropertyName("code")] public string? Code { get; set; }
@@ -61,6 +64,7 @@ public sealed class RemoteInput
                 Buttons &= 7;
                 Mod &= 15;
                 Clicks = Math.Clamp(Clicks, 0, 3);
+                if (Timestamp is { } timestamp && (!double.IsFinite(timestamp) || timestamp <= 0)) Timestamp = null;
                 if (Button is not ("left" or "middle" or "right")) Button = "left";
                 return this;
             case "k" when K is "down" or "up" or "raw" or "char":
@@ -87,7 +91,7 @@ public sealed class RemoteInput
 public static class InputCoalescer
 {
     /// <summary>
-    /// Collapses neighbours that only matter as the last one: consecutive mouse moves (same buttons/modifiers), consecutive
+    /// Collapses neighbours that only matter as the last one: consecutive hover moves, consecutive
     /// wheel events (deltas summed) and consecutive view sizes. Everything else keeps its order.
     /// </summary>
     public static List<RemoteInput> Coalesce(IEnumerable<RemoteInput> input)
@@ -98,7 +102,7 @@ public static class InputCoalescer
             var last = r.Count > 0 ? r[^1] : null;
             if (last is { T: "m" } && m.T == "m" && string.Equals(last.K, m.K, StringComparison.Ordinal))
             {
-                if (m.K == "move" && last.Buttons == m.Buttons && last.Mod == m.Mod)
+                if (m.K == "move" && last.Buttons == 0 && m.Buttons == 0 && last.Mod == m.Mod)
                 {
                     r[^1] = m;
                     continue;
@@ -150,6 +154,8 @@ public sealed class RemoteViewSession : IAsyncDisposable
 
     private readonly IBrowserSession _page;
     private readonly BrowserOptions _options;
+    private int ViewportWidth => _page.ViewportWidth ?? _options.ViewportWidth;
+    private int ViewportHeight => _page.ViewportHeight ?? _options.ViewportHeight;
     private readonly ILogger _logger;
     private readonly Func<byte[], Task> _sendBinary;
     private readonly Func<string, Task>? _sendText;
@@ -184,7 +190,7 @@ public sealed class RemoteViewSession : IAsyncDisposable
     {
         _displayW = displayCssWidth;
         _dpr = dpr;
-        var (w, h) = ScreencastPolicy.FrameSize(_displayW, _dpr, _options.ViewportWidth, _options.ViewportHeight);
+        var (w, h) = ScreencastPolicy.FrameSize(_displayW, _dpr, ViewportWidth, ViewportHeight);
         await _page.StartScreencastAsync(OnFrameAsync, w, h, _options.ScreencastQuality);
         _loop = Task.Run(LoopAsync);
     }
@@ -235,7 +241,7 @@ public sealed class RemoteViewSession : IAsyncDisposable
         try
         {
             var seq = Interlocked.Read(ref _frameSeq);
-            var still = await _page.CaptureStillAsync(_options.StillQuality, ScreencastPolicy.StillScale(_displayW, _dpr, _options.ViewportWidth));
+            var still = await _page.CaptureStillAsync(_options.StillQuality, ScreencastPolicy.StillScale(_displayW, _dpr, ViewportWidth));
             if (still is null) return;
             var packet = RemoteFramePacket.Build(still);
             await _sendLock.WaitAsync();
@@ -258,7 +264,7 @@ public sealed class RemoteViewSession : IAsyncDisposable
     public void Post(string json)
     {
         RemoteInput? m;
-        try { m = JsonSerializer.Deserialize<RemoteInput>(json)?.Sanitize(_options.ViewportWidth, _options.ViewportHeight); }
+        try { m = JsonSerializer.Deserialize<RemoteInput>(json)?.Sanitize(ViewportWidth, ViewportHeight); }
         catch (JsonException) { return; }
         if (m is not null) _in.Writer.TryWrite(m);
     }
@@ -293,7 +299,7 @@ public sealed class RemoteViewSession : IAsyncDisposable
         {
             case "m":
                 var type = m.K switch { "down" => "mousePressed", "up" => "mouseReleased", "wheel" => "mouseWheel", _ => "mouseMoved" };
-                await _page.DispatchMouseAsync(type, m.X, m.Y, m.Button ?? "left", m.Clicks, m.Dx, m.Dy, m.Buttons, m.Mod);
+                await _page.DispatchMouseAsync(type, m.X, m.Y, m.Button ?? "left", m.Clicks, m.Dx, m.Dy, m.Buttons, m.Mod, m.Timestamp);
                 if (m.K != "move" || m.Buttons != 0) ArmStill();
                 break;
             case "k":
@@ -311,7 +317,7 @@ public sealed class RemoteViewSession : IAsyncDisposable
             case "v":
                 _displayW = m.W;
                 _dpr = m.Dpr;
-                var (w, h) = ScreencastPolicy.FrameSize(m.W, m.Dpr, _options.ViewportWidth, _options.ViewportHeight);
+                var (w, h) = ScreencastPolicy.FrameSize(m.W, m.Dpr, ViewportWidth, ViewportHeight);
                 await _page.ResizeScreencastAsync(w, h, _options.ScreencastQuality);
                 ArmStill();
                 break;

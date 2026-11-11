@@ -334,7 +334,7 @@ internal sealed partial class FakeIngBrowserSession : IBrowserSession
 
     public Task<ScreencastFrame?> CaptureStillAsync(int quality, double scale) => Task.FromResult<ScreencastFrame?>(null);
 
-    public Task DispatchMouseAsync(string type, double x, double y, string button, int clickCount, double deltaX, double deltaY, int buttons, int modifiers) => Task.CompletedTask;
+    public Task DispatchMouseAsync(string type, double x, double y, string button, int clickCount, double deltaX, double deltaY, int buttons, int modifiers, double? timestamp = null) => Task.CompletedTask;
 
     public Task DispatchKeyAsync(string type, string key, string? code, string? text, int modifiers, string[]? commands) => Task.CompletedTask;
 

@@ -64,8 +64,8 @@ public sealed class WebLoginSpec
     public WebLoginError? CredentialsError { get; init; }
 
     /// <summary>
-    /// URL fragments of the page's own sign-in requests (an API call): after submitting, their HTTP status (and a short
-    /// top-level error code) is logged; never bodies or tokens.
+    /// URL fragments to observe throughout sign-in, including security checks: HTTP status, network failures and a short
+    /// top-level error code are logged; never query strings, bodies or tokens.
     /// </summary>
     public IReadOnlyList<string> ObservedRequests { get; init; } = [];
 
