@@ -310,6 +310,8 @@ public class MoneyMoneyImportService
             // Column names only (no data): which MoneyMoney fields this upload offers for the detail mapping.
             _logger.LogInformation("MoneyMoney transactions columns: {Columns}",
                 string.Join(", ", (await ColumnsAsync(src, "transactions", ct)).Order(StringComparer.OrdinalIgnoreCase)));
+            _logger.LogInformation("MoneyMoney accounts columns: {Columns}",
+                string.Join(", ", (await ColumnsAsync(src, "accounts", ct)).Order(StringComparer.OrdinalIgnoreCase)));
             int txCount = await CopyTransactionsAsync(src, db, sourceId, foreignAccountIds, ct);
             if (removedCategoryIds.Count > 0)
             {
