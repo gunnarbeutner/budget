@@ -83,4 +83,19 @@ public sealed class BrowseTests : EndToEndTestBase
         await Expect(Page.GetByText("txn-1")).ToBeVisibleAsync();
         await Expect(Page.GetByText("txn-2")).Not.ToBeVisibleAsync();
     }
+
+    [Test]
+    public async Task A_budgeted_category_charts_its_budget_line()
+    {
+        await GoToAsync($"{BrowseUrl}&sel=cat-200");
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Chart" }).ClickAsync();
+        await Expect(Page.GetByTestId("browse-chart")).ToBeVisibleAsync();
+
+        // Groceries is budgeted 100 € a month; as an expense the line shares the bars' negative sign.
+        await Page.WaitForFunctionAsync("() => Chart.getChart('browseChart')?.data.datasets.length === 2");
+        var budget = await Page.EvaluateAsync<double[]>("() => Chart.getChart('browseChart').data.datasets[1].data");
+        Assert.That(budget, Has.All.EqualTo(-100d));
+        var label = await Page.EvaluateAsync<string>("() => Chart.getChart('browseChart').data.datasets[1].label");
+        Assert.That(label, Is.EqualTo("Budget"));
+    }
 }

@@ -24,6 +24,60 @@ public sealed record DepotValueSeries(
 public static class BrowseChart
 {
     /// <summary>
+    /// A category's or group's 12 monthly budget amounts from one budget's stored entries. A
+    /// group sums the stored amounts of everything beneath it, falling back to its own entry
+    /// when no descendant carries an amount. Null when nothing non-zero is budgeted.
+    /// </summary>
+    public static decimal[]? BudgetMonthsFor(
+        long id, CategoryItemType itemType,
+        IReadOnlyDictionary<(long Id, CategoryItemType ItemType), decimal[]> stored,
+        List<CategoryGroupWithChildCount> hierarchy)
+    {
+        decimal[]? months = null;
+        if (itemType == CategoryItemType.Group)
+        {
+            var sum = new decimal[12];
+            var any = false;
+            foreach (var d in CategoryGroupWithChildCount.CollectDescendants(id, hierarchy, includeLeafCategories: true))
+            {
+                if (!stored.TryGetValue((d.Id, d.ItemType), out var dm)) continue;
+                for (int m = 0; m < 12; m++) sum[m] += dm[m];
+                if (dm.Any(x => x != 0m)) any = true;
+            }
+            if (any) months = sum;
+        }
+        if (months == null && stored.TryGetValue((id, itemType), out var own)) months = own;
+        return months != null && months.Any(x => x != 0m) ? months : null;
+    }
+
+    /// <summary>
+    /// Per-bar budget amounts for the history chart: a monthly bar takes that month's budget,
+    /// a quarter or year bar the sum of its months. Bars in a year without a budget are null.
+    /// Daily bars get no series. Expense selections (<paramref name="negate"/>) carry the budget
+    /// as a negative amount so it shares the bars' sign. Null when no bar has a budget.
+    /// </summary>
+    public static decimal?[]? BuildBudgetSeries(
+        (int Year, int Month)[] barMonths, string granularity,
+        IReadOnlyDictionary<int, decimal[]> monthsByYear, bool negate)
+    {
+        int span = granularity switch { "M" => 1, "Q" => 3, "Y" => 12, _ => 0 };
+        if (span == 0 || barMonths.Length == 0) return null;
+        var series = new decimal?[barMonths.Length];
+        var any = false;
+        for (int i = 0; i < barMonths.Length; i++)
+        {
+            var (y, m) = barMonths[i];
+            if (!monthsByYear.TryGetValue(y, out var months)) continue;
+            int first = span == 12 ? 0 : m - 1;
+            decimal total = 0m;
+            for (int k = first; k < first + span && k < 12; k++) total += months[k];
+            series[i] = negate ? -total : total;
+            any = true;
+        }
+        return any ? series : null;
+    }
+
+    /// <summary>
     /// Resolve the chart's bucket window for a granularity ("Y"/"Q"/"D", default "M"): the start,
     /// the exclusive end, the bucket count, a date→bucket-index map, and an index→label map.
     /// </summary>

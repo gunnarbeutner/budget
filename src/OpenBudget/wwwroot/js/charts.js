@@ -803,7 +803,7 @@ const zeroLinePlugin = {
 // Browse page bar chart: handles its own rendering since it needs (a) a Blazor click bridge
 // for navigating to a clicked bar's month, and (b) auto-scrolling the container to the
 // right-most (most recent) bar on each render so the user lands looking at the anchor.
-window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values, bg, invertY, dotnetRef, noAnimate, asLine) {
+window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values, bg, invertY, dotnetRef, noAnimate, asLine, budget, budgetLabel) {
     const ctx = document.getElementById(canvasId);
     if (!ctx) return false;
     if (window.chartInstances[canvasId]) {
@@ -820,11 +820,23 @@ window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values,
             ? { label: 'Balance', data: values, borderColor: 'rgba(54, 162, 235, 0.9)', backgroundColor: 'rgba(54, 162, 235, 0.12)',
                 fill: true, borderWidth: 2, pointRadius: values.length < 40 ? 3 : 0, pointHitRadius: 6, stepped: true }
             : { label: 'Amount', data: values, backgroundColor: bg, borderWidth: 0 };
+        const datasets = [dataset];
+        // The selected category's budget per bar: a dotted line in the bars' sign, stepping
+        // between bars where the budget changes. Nulls (years without a budget) leave gaps.
+        if (!asLine && budget && budget.length === values.length) {
+            const dark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+            const color = dark ? 'rgba(255, 193, 7, 0.95)' : 'rgba(214, 51, 132, 0.95)';
+            datasets.push({
+                type: 'line', label: budgetLabel || 'Budget', data: budget,
+                borderColor: color, backgroundColor: color, borderWidth: 2, borderDash: [3, 3],
+                pointRadius: 0, pointHitRadius: 6, fill: false, stepped: 'middle', spanGaps: false, order: -1
+            });
+        }
         window.chartInstances[canvasId] = new Chart(ctx, {
             type: asLine ? 'line' : 'bar',
             data: {
                 labels: labels,
-                datasets: [dataset]
+                datasets: datasets
             },
             options: {
                 // responsive:true tracks the canvas's CSS parent (.browse-chart, which we
@@ -841,7 +853,11 @@ window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values,
                     legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            label: function(ctx) { return formatEuro(ctx.parsed.y); }
+                            label: function(ctx) {
+                                return ctx.datasetIndex > 0
+                                    ? ctx.dataset.label + ': ' + formatEuro(ctx.parsed.y)
+                                    : formatEuro(ctx.parsed.y);
+                            }
                         }
                     }
                 },

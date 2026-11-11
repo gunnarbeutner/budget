@@ -105,4 +105,52 @@ public class BrowseChartTests
         Assert.Equal(980m, chart.Bars[2].Value);   // Mar 3
         Assert.Equal(980m, chart.Bars[^1].Value);  // Mar 31 (window close)
     }
+
+    private static decimal[] Flat(decimal v) => Enumerable.Repeat(v, 12).ToArray();
+
+    [Fact]
+    public void BuildBudgetSeries_monthly_constant_and_negated_for_expenses()
+    {
+        var bars = new[] { (2026, 1), (2026, 2), (2026, 3) };
+        var series = BrowseChart.BuildBudgetSeries(bars, "M", new Dictionary<int, decimal[]> { [2026] = Flat(100m) }, negate: true);
+        Assert.Equal(new decimal?[] { -100m, -100m, -100m }, series);
+    }
+
+    [Fact]
+    public void BuildBudgetSeries_follows_varying_months_and_gaps_without_a_budget()
+    {
+        var months = Flat(50m);
+        months[11] = 300m; // December
+        var bars = new[] { (2025, 11), (2025, 12), (2026, 1) };
+        var series = BrowseChart.BuildBudgetSeries(bars, "M", new Dictionary<int, decimal[]> { [2025] = months }, negate: false);
+        Assert.Equal(new decimal?[] { 50m, 300m, null }, series);
+    }
+
+    [Fact]
+    public void BuildBudgetSeries_sums_quarters_and_years_and_skips_days()
+    {
+        var byYear = new Dictionary<int, decimal[]> { [2026] = Flat(10m) };
+        Assert.Equal(new decimal?[] { 30m, 30m }, BrowseChart.BuildBudgetSeries(new[] { (2026, 1), (2026, 4) }, "Q", byYear, false));
+        Assert.Equal(new decimal?[] { 120m }, BrowseChart.BuildBudgetSeries(new[] { (2026, 1) }, "Y", byYear, false));
+        Assert.Null(BrowseChart.BuildBudgetSeries(new[] { (2026, 1) }, "D", byYear, false));
+        Assert.Null(BrowseChart.BuildBudgetSeries(new[] { (2026, 1) }, "M", new Dictionary<int, decimal[]>(), false));
+    }
+
+    [Fact]
+    public void BudgetMonthsFor_sums_a_groups_children_and_returns_null_without_budget()
+    {
+        var group = new CategoryGroupWithChildCount { CategoryGroup = new OpenBudget.Models.CategoryGroup { Id = 1, Name = "Home" }, ItemType = CategoryItemType.Group };
+        var a = new CategoryGroupWithChildCount { CategoryGroup = new OpenBudget.Models.CategoryGroup { Id = 1 }, Category = new OpenBudget.Models.Category { Id = 10, GroupId = 1, Name = "Rent" }, ItemType = CategoryItemType.Category, ParentCategoryGroupId = 1 };
+        var b = new CategoryGroupWithChildCount { CategoryGroup = new OpenBudget.Models.CategoryGroup { Id = 1 }, Category = new OpenBudget.Models.Category { Id = 11, GroupId = 1, Name = "Power" }, ItemType = CategoryItemType.Category, ParentCategoryGroupId = 1 };
+        var hierarchy = new List<CategoryGroupWithChildCount> { group, a, b };
+        var stored = new Dictionary<(long, CategoryItemType), decimal[]>
+        {
+            [(10, CategoryItemType.Category)] = Flat(500m),
+            [(11, CategoryItemType.Category)] = Flat(80m),
+        };
+
+        Assert.Equal(Flat(580m), BrowseChart.BudgetMonthsFor(1, CategoryItemType.Group, stored, hierarchy));
+        Assert.Equal(Flat(80m), BrowseChart.BudgetMonthsFor(11, CategoryItemType.Category, stored, hierarchy));
+        Assert.Null(BrowseChart.BudgetMonthsFor(12, CategoryItemType.Category, stored, hierarchy));
+    }
 }

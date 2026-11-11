@@ -372,6 +372,9 @@
   <data name="Filter_AmountMax" xml:space="preserve">
     <value>Höchstbetrag</value>
   </data>
+  <data name="Chart_Budget" xml:space="preserve">
+    <value>Budget</value>
+  </data>
   <data name="Chart_Button" xml:space="preserve">
     <value>Diagramm</value>
   </data>

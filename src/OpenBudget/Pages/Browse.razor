@@ -8,6 +8,7 @@
 @inject BrowseService BrowseService
 @inject PortfolioService Portfolio
 @inject BudgetService BudgetService
+@inject BudgetEntryService BudgetEntries
 @inject TransactionQueryService TransactionQueries
 @inject CategoryHierarchyService Hierarchy
 @inject ProjectService ProjectService
@@ -748,6 +749,9 @@
     // Accounts and account groups chart their balance over time as a line (like MoneyMoney's header chart);
     // categories keep the bars of their period sums.
     private bool chartIsBalance;
+    // Per-bar budget of the selected category/group from each year's active budget, drawn as a
+    // dotted line over the bars; null when nothing is budgeted or the bars are daily.
+    private decimal?[]? chartBudget;
 
     // JS ↔ Blazor bridge for chart bar clicks. Allocated once per page lifetime; the chart
     // re-render hands the same reference each time so click events route back to us.
@@ -871,7 +875,7 @@
     private void ResetForProjectSwitch()
     {
         notFound = false;
-        tree = null; txTotals = null; holdings = null; chartBars = null; chartBarMonths = null;
+        tree = null; txTotals = null; holdings = null; chartBars = null; chartBarMonths = null; chartBudget = null;
         selectionKind = "all"; selectionId = null;
         accountFilter = null;
         searchInput = ""; searchEffective = "";
@@ -1741,7 +1745,26 @@
         chartInvertY = chart.InvertY;
         chartIsBalance = isAccountDaily;
         chartFullWidth = balancePeriod;
+        chartBudget = leaves != null ? await ComputeChartBudgetAsync(chart.BarMonths, chart.InvertY) : null;
         chartBars = chart.Bars;
+    }
+
+    private async Task<decimal?[]?> ComputeChartBudgetAsync((int Year, int Month)[] barMonths, bool negate)
+    {
+        if (project == null || selectionId is not { } id || chartGranularity == "D") return null;
+        var itemType = selectionKind == "group" ? CategoryItemType.Group : CategoryItemType.Category;
+        var budgets = (await BudgetEntries.GetBudgetsForProjectAsync(project.Id)).Where(b => b.IsActive).ToList();
+        if (budgets.Count == 0) return null;
+        var hierarchy = await Hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        var byYear = new Dictionary<int, decimal[]>();
+        foreach (var b in budgets)
+        {
+            var stored = b.MonthlyEntries.ToDictionary(e => (e.CategoryId, e.ItemType),
+                e => Enumerable.Range(1, 12).Select(e.GetMonthAmount).ToArray());
+            if (BrowseChart.BudgetMonthsFor(id, itemType, stored, hierarchy) is { } months)
+                byYear.TryAdd(b.Year, months);
+        }
+        return BrowseChart.BuildBudgetSeries(barMonths, chartGranularity, byYear, negate);
     }
 
 
@@ -1759,7 +1782,8 @@
         try
         {
             await JS.InvokeVoidAsync("renderBrowseChart", "browseChart", "browseChartScroll",
-                labels, values, bg, chartInvertY, selfRef, noAnimate, chartIsBalance);
+                labels, values, bg, chartInvertY, selfRef, noAnimate, chartIsBalance,
+                chartBudget?.Select(b => b is { } v ? (double?)v : null).ToArray(), L["Chart_Budget"].Value);
         }
         catch (JSDisconnectedException) { /* page navigation in flight */ }
     }
