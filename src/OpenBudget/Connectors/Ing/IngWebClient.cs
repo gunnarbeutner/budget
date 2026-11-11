@@ -196,6 +196,8 @@ internal sealed class IngWebClient
             SuccessCheck = SuccessScript,
             WaitingScript = Waiting,
             WaitingArgument = JsonSerializer.Serialize(new Dictionary<string, string?>(StringComparer.Ordinal) { ["device"] = PreferredDevice }),
+            // the cookie banner over the sign-in form: necessary cookies only
+            Dismiss = ["button::-p-text(Optionale Cookies ablehnen)", "a::-p-text(Optionale Cookies ablehnen)", ">>> button::-p-text(Optionale Cookies ablehnen)"],
             KeepBrowser = true,
             ResumeUrl = overview,
             ReportFailure = true,
