@@ -55,7 +55,11 @@ public sealed partial class ScalableConnector : IBankConnector
         successUrlPrefix: new Uri(_options.BaseUri, "cockpit/"))
     {
         Autofill = new WebLoginAutofill(credentials.Username, credentials.Secret,
-            UsernameSelector, PasswordSelector, "button[type=submit]"),
+        [
+            new WebLoginStep(
+                [new WebLoginField(UsernameSelector, WebLoginCredential.Username), new WebLoginField(PasswordSelector, WebLoginCredential.Secret)],
+                "button[type=submit]") { Verify = new WebLoginVerify(CaptchaSolvedScript) },
+        ]),
         WaitingScript = ExpiredConfirmationScript,
     };
 
@@ -77,6 +81,17 @@ public sealed partial class ScalableConnector : IBankConnector
         + " b.click(); return { ok: true, reason: 'the confirmation expired; requested a new one (' + n + ' of " + MaxConfirmationRetriesText + ")' }; }";
 
     private const string MaxConfirmationRetriesText = "5";
+
+    /// <summary>
+    /// Holds the filled-in form back while its captcha ("I am human") is unsolved: the page is then shown, and the user
+    /// solves it and presses Login. Also checks that the password field holds the whole password (compares lengths only).
+    /// </summary>
+    internal const string CaptchaSolvedScript =
+        "(secret) => { const pw = document.querySelector('input#password, input[name=password], input[type=password]');"
+        + " if (!pw || pw.value.length !== secret.length) return { ok: false, reason: 'the password field holds ' + (pw ? pw.value.length : 0) + ' of ' + secret.length + ' characters' };"
+        + " const solutions = [...document.querySelectorAll('input[name^=frc-captcha]')];"
+        + " const open = solutions.filter(i => !i.value || i.value.startsWith('.'));"
+        + " return open.length ? { ok: false, reason: 'a captcha waits for the user' } : { ok: true, reason: '' }; }";
 
     // Scalable's sign-in form (auth0): an e-mail field and a password field on one page.
     internal const string UsernameSelector = "input#username, input[name=username], input[type=email]";
