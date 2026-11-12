@@ -440,6 +440,16 @@ document.addEventListener("dragstart", function (e) {
 
 // A right-click on a row with a context menu must not first select the word under the pointer (macOS does that on
 // mousedown): keep the secondary button's mousedown from starting a selection there.
+// Safari selects the word on the contextmenu event itself, so a selection it made there is cleared right after.
+document.addEventListener("contextmenu", function (e) {
+    var el = e.target instanceof Element ? e.target.closest("[data-ob-longpress]") : null;
+    if (!el || e.target.closest("input, textarea, [contenteditable]")) return;
+    setTimeout(function () {
+        var sel = window.getSelection();
+        if (sel && !sel.isCollapsed && el.contains(sel.anchorNode)) sel.removeAllRanges();
+    }, 0);
+}, true);
+
 document.addEventListener("mousedown", function (e) {
     if (e.button !== 2) return;
     var el = e.target instanceof Element ? e.target.closest("[data-ob-longpress]") : null;
@@ -467,3 +477,41 @@ window.obPickerMoreHint = function (list) {
     }
     update();
 };
+
+// While a dialog is open, Tab and Shift+Tab cycle through the topmost dialog's own controls instead of reaching the page
+// behind it; focus that lands outside (a click on the backdrop page, say) is pulled back in.
+(function () {
+    var focusable = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), ' +
+        'textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
+    function topDialog() {
+        var open = document.querySelectorAll('.modal.show[aria-modal="true"]');
+        if (open.length === 0) return null;
+        var top = open[0];
+        open.forEach(function (m) { if (m.classList.contains("ob-modal-on-top")) top = m; });
+        return top;
+    }
+    function items(dialog) {
+        return Array.prototype.filter.call(dialog.querySelectorAll(focusable), function (el) {
+            return el.offsetParent !== null || el === document.activeElement;
+        });
+    }
+    document.addEventListener("keydown", function (e) {
+        if (e.key !== "Tab") return;
+        var dialog = topDialog();
+        if (!dialog) return;
+        var list = items(dialog);
+        if (list.length === 0) { e.preventDefault(); dialog.focus(); return; }
+        var first = list[0], last = list[list.length - 1];
+        var inside = dialog.contains(document.activeElement);
+        if (e.shiftKey && (document.activeElement === first || !inside)) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && (document.activeElement === last || !inside)) { e.preventDefault(); first.focus(); }
+    }, true);
+    document.addEventListener("focusin", function (e) {
+        var dialog = topDialog();
+        if (!dialog || dialog.contains(e.target)) return;
+        // a second open dialog (a picker over a dialog) keeps its own focus
+        if (e.target.closest && e.target.closest('.modal.show, .dropdown-menu.show, [data-ob-popup]')) return;
+        var list = items(dialog);
+        (list[0] || dialog).focus();
+    });
+})();

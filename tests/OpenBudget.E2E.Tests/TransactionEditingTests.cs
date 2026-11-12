@@ -397,7 +397,6 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     {
         await Page.SetViewportSizeAsync(1440, 900);
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.BankAccountId}");
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Chart" }).ClickAsync();
         var chart = Page.GetByTestId("browse-chart");
         await Expect(chart).ToBeVisibleAsync();
         await Expect(Page.GetByTestId("chart-granularity").GetByRole(AriaRole.Button, new() { Name = "D" })).ToHaveClassAsync(new Regex("active"));

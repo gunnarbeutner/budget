@@ -749,7 +749,7 @@
     private bool chartSkipAnimation;
     // User-driven collapse of the chart row to reclaim vertical space. The chart canvas is
     // removed from the DOM when collapsed, so expanding re-renders via the chartDirty path.
-    private bool chartCollapsed = true;
+    private bool chartCollapsed;
 
     // Rail accounts section hides accounts that aren't explicitly assigned to the project
     // by default; the toggle below the list flips this when the user wants to see related
@@ -864,7 +864,7 @@
         searchInput = ""; searchEffective = "";
         amountMin = null; amountMax = null; amountMinInput = ""; amountMaxInput = "";
         chartGranularity = "M"; chartMonthlyPicked = false;
-        showRelatedAccounts = false; railOpen = false; chartCollapsed = true;
+        showRelatedAccounts = false; railOpen = false; chartCollapsed = false;
         periodFilter = PeriodFilter.All; customFrom = null; customTo = null;
         checkedFilter = "any"; directionFilter = "any"; newOnly = false; categoryFilter = null; pinFilters = false;
         ResetSelectionState();
@@ -1706,7 +1706,8 @@
                 var to = new DateTime(lastDay.Year, lastDay.Month, 1);
                 if (to < rightEdge) rightEdge = to;
             }
-            if (rightEdge < earliest) { chartBars = null; return; }
+            // rightEdge is a month start, earliest a day within its month
+            if (rightEdge < new DateTime(earliest.Year, earliest.Month, 1)) { chartBars = null; return; }
         }
         var (windowStart, windowEndExclusive, _, _, _) = BrowseChart.ResolveChartWindow(earliest, rightEdge, chartGranularity);
 

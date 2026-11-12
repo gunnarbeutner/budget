@@ -636,7 +636,8 @@ public partial class Browse
             items.Add(new("similar", L["Ctx_Similar"], "bi-intersect", string.IsNullOrWhiteSpace(single.Name)));
             items.Add(ContextMenuItem.Divider());
             items.Add(new("go-account", L["Ctx_GoAccount"], "bi-bank", single.AccountId == null));
-            items.Add(new("go-category", L["Ctx_GoCategory"], "bi-diagram-3", single.CategoryId == null));
+            // MoneyMoney's nameless root category stands for "no category", as on the row itself
+            items.Add(new("go-category", L["Ctx_GoCategory"], "bi-diagram-3", single.CategoryId == null || string.IsNullOrEmpty(single.CategoryName)));
             if (contextStatement != null) items.Add(new("statement", L["Ctx_Statement"], "bi-file-earmark-pdf"));
             if (single.CanEditBooking || contextOffsetTargets.Count > 0)
                 items.Add(ContextMenuItem.Divider());

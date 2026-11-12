@@ -88,7 +88,6 @@ public sealed class BrowseTests : EndToEndTestBase
     public async Task A_budgeted_category_charts_its_budget_line()
     {
         await GoToAsync($"{BrowseUrl}&sel=cat-200");
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Chart" }).ClickAsync();
         await Expect(Page.GetByTestId("browse-chart")).ToBeVisibleAsync();
 
         // Groceries is budgeted 100 € a month; as an expense the line shares the bars' negative sign.
