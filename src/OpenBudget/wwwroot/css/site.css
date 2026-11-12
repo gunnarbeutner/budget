@@ -1566,6 +1566,8 @@ a.budget-cat:focus-visible { outline: 2px solid var(--ob-accent); outline-offset
 /* Account group rows: the chevron folds, the name selects. */
 .browse-tree-chevron { border: 0; background: transparent; color: inherit; padding: 0 4px 0 0; line-height: 1; }
 .browse-tree-chevron:hover { color: var(--ob-accent); }
+/* Leaf rows reserve the chevron's width, so a group's children line up one step right of the group's own icon. */
+.browse-tree-chevron-spacer { display: inline-block; width: calc(1em + 4px); flex: none; }
 
 /* ---- Documents (statements grid, viewer, download settings) ---- */
 .docs-select { width: auto; max-width: 11rem; font-size: 13px; }

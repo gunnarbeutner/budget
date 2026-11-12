@@ -323,7 +323,7 @@
                  @onclick="() => OnSelectAccount.InvokeAsync(accountId)"
                  @oncontextmenu="e => OpenMenu(accountNode, e)" @oncontextmenu:preventDefault="@HasMenu(accountNode)"
                  @onkeydown="e => OnAccountKeydown(e, accountNode)">
-                <span class="browse-tree-name"><i class="bi @a.DisplayIcon me-1" style="@AccountIcons.TintStyle(a.Color)" data-testid="tree-account-icon" aria-hidden="true"></i>@if (IsRenaming(accountNode)) { @RenameField(accountNode) } else { <span class="browse-tree-label" title="@a.Name">@a.Name</span> }</span>
+                <span class="browse-tree-name"><span class="browse-tree-chevron-spacer" aria-hidden="true"></span><i class="bi @a.DisplayIcon me-1" style="@AccountIcons.TintStyle(a.Color)" data-testid="tree-account-icon" aria-hidden="true"></i>@if (IsRenaming(accountNode)) { @RenameField(accountNode) } else { <span class="browse-tree-label" title="@a.Name">@a.Name</span> }</span>
                 @if (a.Balance.HasValue)
                 {
                     <span class="browse-tree-amount @(a.Balance < 0 ? "text-danger" : "text-body-secondary")">
@@ -463,6 +463,10 @@
             builder.AddEventStopPropagationAttribute(88, "onclick", true);
             builder.AddMarkupContent(89, open ? "<i class=\"bi bi-chevron-down\" aria-hidden=\"true\"></i>" : "<i class=\"bi bi-chevron-right\" aria-hidden=\"true\"></i>");
             builder.CloseElement();
+        }
+        else
+        {
+            builder.AddMarkupContent(90, "<span class=\"browse-tree-chevron-spacer\" aria-hidden=\"true\"></span>");
         }
         if (CategoryColors.ToCss(node.Color) is { } dotColor)
         {
