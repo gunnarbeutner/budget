@@ -10,17 +10,13 @@ namespace OpenBudget.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "is_transfer",
-                table: "transactions");
-
-            migrationBuilder.DropColumn(
-                name: "transfer_peer_id",
-                table: "transactions");
-
-            migrationBuilder.DropColumn(
-                name: "show_in_charts",
-                table: "categories");
+            // SQLite drops these columns in place. EF's DropColumn rebuilds both tables
+            // instead, and dropping the old "categories" while "transactions" references it
+            // counts a deferred foreign key violation per categorised transaction, so the
+            // commit fails on any database that has categorised transactions.
+            migrationBuilder.Sql("ALTER TABLE \"transactions\" DROP COLUMN \"is_transfer\";");
+            migrationBuilder.Sql("ALTER TABLE \"transactions\" DROP COLUMN \"transfer_peer_id\";");
+            migrationBuilder.Sql("ALTER TABLE \"categories\" DROP COLUMN \"show_in_charts\";");
         }
 
         /// <inheritdoc />
