@@ -392,10 +392,12 @@ public class BrowseService
                 !filled.Contains(g.Id) && (scope == null || scope.OwnsSource(g.SourceId)), g.Icon, g.Color)));
         }
 
-        // only the project's own accounts: another project's account of the same source is that project's to-do
+        // only the project's own accounts (another project's account of the same source is that project's to-do);
+        // a project without assigned accounts covers its whole source
         var projectAccountIds = db.ProjectAccountAssignments.Where(p => p.ProjectId == project.Id).Select(p => (long?)p.AccountId);
+        var hasAssignments = await projectAccountIds.AnyAsync(ct);
         var uncategorizedCount = await db.Transactions
-            .Where(t => t.SourceId == project.SourceId && projectAccountIds.Contains(t.AccountId))
+            .Where(t => t.SourceId == project.SourceId && (!hasAssignments || projectAccountIds.Contains(t.AccountId)))
             .CountedAsFlow()
             .WhereUncategorized(db, project.SourceId)
             .CountAsync(ct);

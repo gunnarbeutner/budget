@@ -1410,7 +1410,7 @@
         if (selectionKind == "account" && selectionId is { } aid) return new[] { aid };
         if (selectionKind == "accountgroup") return GroupAccounts()?.Select(a => a.Id).ToList() ?? [];
         if (accountFilter is { } af) return new[] { af };
-        // Uncategorized covers the project's own accounts, not every account of its source.
+        // Uncategorized covers the project's own accounts, not every account of its source (none assigned: the whole source).
         if (selectionKind == "uncategorized" && tree != null) return tree.Accounts.Where(a => a.IsAssigned).Select(a => a.Id).ToList();
         return null;
     }
