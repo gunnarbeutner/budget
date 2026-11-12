@@ -42,6 +42,9 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
         // Bank connectors need a secrets key (the fake bank is always on in the Test environment).
         builder.UseSetting("OPENBUDGET_SECRETS_KEY", Convert.ToBase64String(new byte[32].Select((_, i) => (byte)(i + 1)).ToArray()));
         builder.UseSetting(OpenBudget.Connectors.BankConnectorsRegistration.BrowserHeadlessVariable, "true");
+        // Every app start clears the MoneyMoney upload staging, so each host has its own: a shared one would lose the
+        // upload of an import running in another host.
+        builder.UseSetting("OPENBUDGET_UPLOAD_STAGING_DIR", Path.Combine(Path.GetTempPath(), $"mmb-e2e-uploads-{Guid.NewGuid():N}"));
         builder.UseSetting("OPENBUDGET_STATEMENTS_DIR", Path.Combine(Path.GetTempPath(), $"mmb-e2e-stmts-{Guid.NewGuid():N}"));
         // OneDrive against the fake Microsoft (see Microsoft).
         builder.UseSetting(OpenBudget.Connectors.OneDrive.OneDriveOptions.ClientIdVariable, OpenBudget.Tests.Connectors.FakeMicrosoftCloud.ClientId);

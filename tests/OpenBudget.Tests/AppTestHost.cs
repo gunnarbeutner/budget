@@ -24,6 +24,7 @@ internal sealed partial class AppTestHost : IDisposable
     public const string Password = "Correct-Horse-9";
 
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"ob-app-{Guid.NewGuid():N}.db");
+    private readonly string _stagingDir = Path.Combine(Path.GetTempPath(), $"ob-app-uploads-{Guid.NewGuid():N}");
     private readonly WebApplicationFactory<Program> _factory;
 
     public AppTestHost(params (string Key, string Value)[] settings)
@@ -34,6 +35,9 @@ internal sealed partial class AppTestHost : IDisposable
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Test");
+            // Every app start clears the MoneyMoney upload staging; its own keeps the hosts (and the E2E suite running
+            // alongside) from deleting each other's uploads.
+            b.UseSetting("OPENBUDGET_UPLOAD_STAGING_DIR", _stagingDir);
             b.ConfigureLogging(l => l.AddProvider(new ProblemLogger(LoggedProblems)));
             b.ConfigureAppConfiguration((_, c) =>
             {
@@ -198,6 +202,7 @@ internal sealed partial class AppTestHost : IDisposable
         _factory.Dispose();
         SqliteConnection.ClearAllPools();
         try { File.Delete(_dbPath); } catch { /* best-effort */ }
+        try { Directory.Delete(_stagingDir, recursive: true); } catch { /* best-effort */ }
     }
 
     private sealed class ProblemLogger(List<string> sink) : ILoggerProvider

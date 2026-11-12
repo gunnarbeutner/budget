@@ -106,7 +106,11 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 // endpoint below.
 var dataDir = OpenBudgetPaths.DataDir(builder.Environment.ContentRootPath);
 var budgetDbPath = OpenBudgetPaths.DatabasePath(builder.Environment.ContentRootPath);
-var uploadStagingDir = Path.Combine(dataDir, "uploads");
+// OPENBUDGET_UPLOAD_STAGING_DIR moves the upload staging out of the data dir (test hosts give each app its own, since
+// every start clears the MoneyMoney staging below).
+var uploadStagingDir = builder.Configuration["OPENBUDGET_UPLOAD_STAGING_DIR"] is { Length: > 0 } customStaging
+    ? customStaging
+    : Path.Combine(dataDir, "uploads");
 
 // Ensure the data dir exists before EF opens the SQLite file — fresh checkouts and Docker
 // volumes both arrive without it, and SQLite errors with "unable to open database file"
