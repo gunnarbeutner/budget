@@ -76,6 +76,9 @@
   <data name="Income_Label" xml:space="preserve">
     <value>Einnahmen</value>
   </data>
+  <data name="InclUncategorized" xml:space="preserve">
+    <value>inkl. {0} unkategorisiert</value>
+  </data>
   <data name="Net" xml:space="preserve">
     <value>Saldo {0}</value>
   </data>

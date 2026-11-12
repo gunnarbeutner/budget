@@ -1067,6 +1067,11 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
     white-space: nowrap;
     margin-left: 4px;
 }
+.browse-balance-note {
+    font-size: 12px;
+    color: var(--ob-muted);
+    white-space: nowrap;
+}
 .browse-search {
     display: flex;
     align-items: center;

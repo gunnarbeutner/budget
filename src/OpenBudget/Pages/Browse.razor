@@ -153,6 +153,10 @@
             @if (ToolbarAmount is { } amount)
             {
                 <span class="browse-balance @(amount.Value < 0 ? "money-neg" : "")" data-testid="browse-balance">@Formatting.FormatMoneyDe(amount.Value, amount.Currency)</span>
+                @if (selectionKind == "all" && uncategorizedPeriod is { } up && (up.Income != 0m || up.Spent != 0m))
+                {
+                    <span class="browse-balance-note" data-testid="browse-balance-uncategorized">@L["Header_InclUncategorized", Formatting.FormatMoneyDe(up.Income - up.Spent)]</span>
+                }
             }
             <div class="browse-tools d-flex flex-wrap align-items-center gap-2" data-testid="browse-tools">
                 <PeriodNav Anchor="anchor" Period="@period" RangeFrom="rangeFrom" RangeTo="rangeTo" ShowMonthPicker="true"
@@ -215,6 +219,7 @@
             var (stripFrom, stripTo) = PeriodRange;
             <ProjectSummaryStrip ProjectId="ProjectId" Year="anchor.Year" FromMonth="stripFrom" ToMonth="stripTo"
                                  PeriodLabel="@AnchorHeading" NewCount="newCount" UncategorizedCount="tree!.UncategorizedCount"
+                                 UncategorizedSpent="uncategorizedPeriod?.Spent ?? 0m" UncategorizedIncome="uncategorizedPeriod?.Income ?? 0m"
                                  Version="summaryVersion" OnPick="OnSummaryPickAsync" />
         }
         else if (selectionKind == "category" && SelectionBudget is { } lineBudget && tree != null)
@@ -675,6 +680,10 @@
     // The list rows themselves are streamed by <Virtualize> via LoadTxRowsAsync.
     private BrowseTree? tree;
     private (int Count, decimal Sum)? txTotals;
+
+    /// <summary>The project's uncategorized bookings in the selected period (pending ones included), split into money
+    /// out (positive) and in: "Transactions" lists them, so its figure and summary tiles count them. Null outside it.</summary>
+    private (decimal Spent, decimal Income)? uncategorizedPeriod;
     // Live holdings for the selected depot account; null whenever the selection isn't a
     // portfolio account (or it holds nothing). Drives the holdings card above the tx list.
     private AccountHoldings? holdings;
@@ -1359,6 +1368,7 @@
         // Totals (count + sum) feed the footer; row data streams through <Virtualize> via
         // LoadTxRowsAsync below.
         txTotals = await TransactionQueries.QueryTotalsAsync(await BuildTransactionQueryAsync(0, 1));
+        uncategorizedPeriod = selectionKind == "all" && tree != null ? await LoadUncategorizedPeriodAsync(tree) : null;
         if (ShowSummaryStrip)
         {
             newCount = (await TransactionQueries.QueryTotalsAsync(await BuildTransactionQueryAsync(0, 1, newOnlyOverride: true))).Count;
@@ -1420,6 +1430,21 @@
 
     /// <summary>The project's assigned accounts; empty when it has none (it then covers its whole source).</summary>
     private List<long> ProjectAccountIds() => tree?.Accounts.Where(a => a.IsAssigned).Select(a => a.Id).ToList() ?? [];
+
+    private async Task<(decimal Spent, decimal Income)> LoadUncategorizedPeriodAsync(BrowseTree t)
+    {
+        TransactionQuery Query(AmountDirection direction) => new()
+        {
+            SourceId = project!.SourceId,
+            UncategorizedOnly = true,
+            AccountIds = ProjectAccountIds(),
+            Period = new TimeRangeFilter(t.Year, t.FromMonth, t.ToMonth),
+            Direction = direction,
+        };
+        var spent = (await TransactionQueries.QueryTotalsAsync(Query(AmountDirection.Outgoing))).Sum;
+        var income = (await TransactionQueries.QueryTotalsAsync(Query(AmountDirection.Incoming))).Sum;
+        return (-spent, income);
+    }
 
     private IReadOnlyCollection<long>? ResolveSelectionAccounts()
     {
@@ -1484,6 +1509,13 @@
                 return SelectedGroupNode?.Sums.FirstOrDefault() is { } gs ? (gs.Amount, gs.Currency) : null;
             if (selectionKind == "uncategorized")
                 return txTotals is { } t ? (t.Sum, null) : null;
+            if (selectionKind == "all")
+            {
+                // The period's net of what the list shows: tracked income minus tracked spending, plus the
+                // uncategorized bookings' own signed amounts.
+                var tracked = tree.Categories.Sum(c => c.IsIncome ? c.Spent : -c.Spent);
+                return (tracked + (uncategorizedPeriod is { } u ? u.Income - u.Spent : 0m), null);
+            }
             return (SelectionIsIncome ? SelectionSpent : -SelectionSpent, null);
         }
     }

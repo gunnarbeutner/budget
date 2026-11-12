@@ -76,6 +76,9 @@
   <data name="Income_Label" xml:space="preserve">
     <value>Income</value>
   </data>
+  <data name="InclUncategorized" xml:space="preserve">
+    <value>incl. {0} uncategorized</value>
+  </data>
   <data name="Net" xml:space="preserve">
     <value>Net {0}</value>
   </data>

@@ -25,24 +25,35 @@
         <div class="summary-tile" data-testid="tile-spent">
             @if (summary.HasBudget)
             {
-                var status = ProjectStatus.BarClass(summary.TotalSpent, summary.TotalBudget);
+                var spent = summary.TotalSpent + UncategorizedSpent;
+                var status = ProjectStatus.BarClass(spent, summary.TotalBudget);
+                var percent = summary.TotalBudget > 0 ? spent / summary.TotalBudget * 100m : 0m;
                 <a class="summary-label" href="@budgetUrl">@L["Spent_Label", PeriodLabel]</a>
-                <span class="summary-value">@Formatting.FormatMoneyDe(summary.TotalSpent) <span class="summary-of">@L["Of", Formatting.FormatMoneyDe(summary.TotalBudget)]</span></span>
-                <span class="ob-bar" role="img" aria-label="@L["Spent_Percent", ProjectStatus.OverallPercent(summary).ToString("F0", CultureInfo.CurrentCulture)]">
-                    <span class="status-bg-@status" style="width: @ProjectStatus.BarWidth(summary.TotalSpent, summary.TotalBudget)"></span>
+                <span class="summary-value">@Formatting.FormatMoneyDe(spent) <span class="summary-of">@L["Of", Formatting.FormatMoneyDe(summary.TotalBudget)]</span></span>
+                <span class="ob-bar" role="img" aria-label="@L["Spent_Percent", percent.ToString("F0", CultureInfo.CurrentCulture)]">
+                    <span class="status-bg-@status" style="width: @ProjectStatus.BarWidth(spent, summary.TotalBudget)"></span>
                 </span>
+                @UncategorizedNote(UncategorizedSpent, "tile-spent-uncategorized")
             }
             else
             {
                 <a class="summary-label" href="@budgetUrl">@L["Expenses_Label", PeriodLabel]</a>
-                <span class="summary-value">@Formatting.FormatMoneyDe(summary.MonthExpenses)</span>
-                <span class="summary-note">@L["NoBudget"]</span>
+                <span class="summary-value">@Formatting.FormatMoneyDe(summary.MonthExpenses + UncategorizedSpent)</span>
+                @if (UncategorizedSpent != 0m)
+                {
+                    @UncategorizedNote(UncategorizedSpent, "tile-spent-uncategorized")
+                }
+                else
+                {
+                    <span class="summary-note">@L["NoBudget"]</span>
+                }
             }
         </div>
         <div class="summary-tile" data-testid="tile-income">
             @PickLink("income", "?dir=in", L["Income_Label"], "summary-label")
-            <span class="summary-value">@Formatting.FormatMoneyDe(summary.MonthIncome)</span>
-            <span class="summary-note">@L["Net", Formatting.FormatMoneyDe(summary.MonthNet)]</span>
+            <span class="summary-value">@Formatting.FormatMoneyDe(summary.MonthIncome + UncategorizedIncome)</span>
+            <span class="summary-note">@L["Net", Formatting.FormatMoneyDe(summary.MonthNet + UncategorizedIncome - UncategorizedSpent)]</span>
+            @UncategorizedNote(UncategorizedIncome, "tile-income-uncategorized")
         </div>
         <div class="summary-tile" data-testid="tile-over">
             @{
@@ -113,6 +124,19 @@
     [Parameter] public string PeriodLabel { get; set; } = "";
     [Parameter] public int NewCount { get; set; }
     [Parameter] public int UncategorizedCount { get; set; }
+    /// <summary>Money out (positive) of the project's uncategorized bookings in the period: the page lists them, so the
+    /// tiles count them on top of the budget figures and say how much of the number they make up.</summary>
+    [Parameter] public decimal UncategorizedSpent { get; set; }
+    /// <summary>Money in of the project's uncategorized bookings in the period.</summary>
+    [Parameter] public decimal UncategorizedIncome { get; set; }
+
+    private RenderFragment UncategorizedNote(decimal amount, string testId) => __builder =>
+    {
+        if (amount != 0m)
+        {
+            <span class="summary-note" data-testid="@testId">@L["InclUncategorized", Formatting.FormatMoneyDe(amount)]</span>
+        }
+    };
     /// <summary>Bumped by the page after a data change so the numbers reload.</summary>
     [Parameter] public int Version { get; set; }
     /// <summary>Filters the list in place: "new", "uncategorized", "income", "cat-{id}", "grp-{id}".</summary>

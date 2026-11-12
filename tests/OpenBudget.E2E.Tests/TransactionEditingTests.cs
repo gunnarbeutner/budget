@@ -270,8 +270,13 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     public async Task The_filter_bar_narrows_by_check_mark_new_direction_and_period()
     {
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3");
-        // "All transactions" shows the categorized rows of tracked categories: the baseline pair plus the salary.
-        await Expect(Page.GetByText(new Regex("3 transactions"))).ToBeVisibleAsync();
+        // "All transactions" shows the rows of tracked categories (the baseline pair plus the salary) and the four
+        // uncategorized rows of the project's accounts.
+        await Expect(Page.GetByText(new Regex("7 transactions"))).ToBeVisibleAsync();
+        // The figure and the summary tiles count them too and say how much of the number they make up.
+        await Expect(Page.GetByTestId("browse-balance-uncategorized")).ToHaveTextAsync(new Regex("incl\\. −72,00.*uncategorized"));
+        await Expect(Page.GetByTestId("tile-spent-uncategorized")).ToHaveTextAsync(new Regex("incl\\. 72,00.*uncategorized"));
+        await Expect(Page.GetByTestId("tile-income-uncategorized")).ToHaveCountAsync(0);
         await Expect(Page.GetByTestId("filter-bar")).ToHaveCountAsync(0);                             // the panel opens from the toolbar
         await Page.GetByTestId("filter-toggle").ClickAsync();
         await Page.GetByTestId("filter-direction").SelectOptionAsync("in");
