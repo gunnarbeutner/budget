@@ -71,7 +71,9 @@ public class TransactionQueryService
                 t.TransactionCode,
                 t.Primanota,
                 t.ReturnReason,
-                t.SplitParentId
+                t.SplitParentId,
+                t.IsTransfer,
+                t.TransferPeerId
             })
             .ToListAsync(ct);
 
@@ -86,6 +88,13 @@ public class TransactionQueryService
             ? new Dictionary<long, (string Name, string Provider)>()
             : (await db.Accounts.Where(a => acctIds.Contains(a.Id)).Select(a => new { a.Id, a.Name, a.Provider }).ToListAsync(ct))
                 .ToDictionary(a => a.Id, a => (Name: a.Name ?? "", a.Provider));
+
+        // Counterpart accounts of linked transfers (only those the user can see).
+        var peerIds = rowsRaw.Where(r => r.IsTransfer && r.TransferPeerId.HasValue).Select(r => r.TransferPeerId!.Value).Distinct().ToList();
+        var peerAccounts = peerIds.Count == 0
+            ? new Dictionary<long, string>()
+            : await db.Transactions.Where(t => peerIds.Contains(t.Id) && t.Account != null)
+                .Select(t => new { t.Id, Name = t.Account!.Name ?? "" }).ToDictionaryAsync(x => x.Id, x => x.Name, ct);
 
         var rows = rowsRaw.Select(r => new TransactionRow
         {
@@ -125,6 +134,8 @@ public class TransactionQueryService
             Currency = r.Currency,
             IsSplitChild = r.Splitted == SplitState.Child,
             SplitParentId = r.Splitted == SplitState.Child ? r.SplitParentId : null,
+            IsTransfer = r.IsTransfer,
+            TransferPeerAccountName = r.TransferPeerId is { } peer && peerAccounts.TryGetValue(peer, out var peerName) ? peerName : null,
             IsSplitRemainder = r.Splitted == SplitState.Remainder,
             IsPending = !r.Booked
         }).ToList();
@@ -189,7 +200,8 @@ public class TransactionQueryService
 
         if (query.UncategorizedOnly)
         {
-            baseQuery = baseQuery.WhereUncategorized(db, query.SourceId);
+            // Transfers between own accounts need no category, so they are not "to do" either.
+            baseQuery = baseQuery.Where(t => !t.IsTransfer).WhereUncategorized(db, query.SourceId);
         }
         else if (query.CategoryLeafIds is { Count: > 0 } leafIds)
         {

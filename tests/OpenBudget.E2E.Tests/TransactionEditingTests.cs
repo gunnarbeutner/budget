@@ -202,7 +202,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         await Row("\u221225,00").ClickAsync(new() { Button = MouseButton.Right });
 
         var menu = Page.GetByTestId("context-menu");
-        foreach (var key in new[] { "category", "remove-category", "note", "check", "search-payee", "similar", "go-account", "rule", "split" })
+        foreach (var key in new[] { "category", "remove-category", "note", "check", "search-payee", "similar", "go-account", "rule", "split", "transfer" })
             await Expect(menu.GetByTestId("ctx-" + key)).ToBeVisibleAsync();
         await Expect(menu.GetByTestId("ctx-rule")).ToBeDisabledAsync();
         await Expect(menu.GetByTestId("ctx-go-category")).ToBeDisabledAsync();            // uncategorized: nothing to go to

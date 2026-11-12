@@ -142,8 +142,23 @@
   <data name="SplitPart_Text" xml:space="preserve">
     <value>Teil einer aufgeteilten Buchung</value>
   </data>
+  <data name="Transfer" xml:space="preserve">
+    <value>Umbuchung</value>
+  </data>
+  <data name="Transfer_To" xml:space="preserve">
+    <value>von/an {0}</value>
+  </data>
+  <data name="Transfer_OneSided" xml:space="preserve">
+    <value>von/an ein hier nicht geführtes Konto</value>
+  </data>
   <data name="Action_EditSplit" xml:space="preserve">
     <value>Aufteilung bearbeiten</value>
+  </data>
+  <data name="Action_Unlink" xml:space="preserve">
+    <value>Keine Umbuchung</value>
+  </data>
+  <data name="Action_Transfer" xml:space="preserve">
+    <value>Als Umbuchung markieren</value>
   </data>
   <data name="Pending_NotYet" xml:space="preserve">
     <value>Möglich, sobald die Buchung gebucht ist</value>
@@ -171,8 +186,5 @@
   </data>
   <data name="Action_EditBooking" xml:space="preserve">
     <value>Buchung bearbeiten</value>
-  </data>
-  <data name="Action_Offset" xml:space="preserve">
-    <value>Gegenbuchung</value>
   </data>
 </root>

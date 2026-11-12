@@ -285,6 +285,9 @@
   <data name="Ctx_Split" xml:space="preserve">
     <value>Aufteilen …</value>
   </data>
+  <data name="Ctx_Transfer" xml:space="preserve">
+    <value>Als Umbuchung markieren …</value>
+  </data>
   <data name="Toast_NoChange" xml:space="preserve">
     <value>Nichts zu ändern.</value>
   </data>
@@ -388,6 +391,15 @@
     <value>{0} Konten</value>
   </data>
   <data name="RulePick_Hint" xml:space="preserve"><value>Wähle die Kategorie, die die neue Regel setzen soll.</value></data>
+  <data name="Tx_Transfer" xml:space="preserve">
+    <value>Umbuchung</value>
+  </data>
+  <data name="Tx_TransferTo" xml:space="preserve">
+    <value>Umbuchung → {0}</value>
+  </data>
+  <data name="Tx_TransferTitle" xml:space="preserve">
+    <value>Umbuchung zwischen eigenen Konten: zählt weder als Einnahme noch als Ausgabe.</value>
+  </data>
   <data name="Header_Closed" xml:space="preserve">
     <value>Geschlossen</value>
   </data>
@@ -396,17 +408,5 @@
   </data>
   <data name="Ctx_EditBooking" xml:space="preserve">
     <value>Buchung bearbeiten…</value>
-  </data>
-  <data name="Ctx_Offset" xml:space="preserve">
-    <value>Gegenbuchung erstellen</value>
-  </data>
-  <data name="Offset_Note" xml:space="preserve">
-    <value>Gegenbuchung zu {0}</value>
-  </data>
-  <data name="Toast_Offset" xml:space="preserve">
-    <value>Gegenbuchung auf {0} erstellt.</value>
-  </data>
-  <data name="Toast_ShowBooking" xml:space="preserve">
-    <value>Anzeigen</value>
   </data>
 </root>

@@ -285,6 +285,9 @@
   <data name="Ctx_Split" xml:space="preserve">
     <value>Split …</value>
   </data>
+  <data name="Ctx_Transfer" xml:space="preserve">
+    <value>Mark as transfer …</value>
+  </data>
   <data name="Toast_NoChange" xml:space="preserve">
     <value>Nothing to change.</value>
   </data>
@@ -388,6 +391,15 @@
     <value>{0} accounts</value>
   </data>
   <data name="RulePick_Hint" xml:space="preserve"><value>Pick the category the new rule should set.</value></data>
+  <data name="Tx_Transfer" xml:space="preserve">
+    <value>Transfer</value>
+  </data>
+  <data name="Tx_TransferTo" xml:space="preserve">
+    <value>Transfer → {0}</value>
+  </data>
+  <data name="Tx_TransferTitle" xml:space="preserve">
+    <value>Transfer between own accounts: counts as neither income nor spending.</value>
+  </data>
   <data name="Header_Closed" xml:space="preserve">
     <value>Closed</value>
   </data>
@@ -396,17 +408,5 @@
   </data>
   <data name="Ctx_EditBooking" xml:space="preserve">
     <value>Edit booking…</value>
-  </data>
-  <data name="Ctx_Offset" xml:space="preserve">
-    <value>Create offsetting entry</value>
-  </data>
-  <data name="Offset_Note" xml:space="preserve">
-    <value>Offsetting entry for {0}</value>
-  </data>
-  <data name="Toast_Offset" xml:space="preserve">
-    <value>Offsetting entry created on {0}.</value>
-  </data>
-  <data name="Toast_ShowBooking" xml:space="preserve">
-    <value>Show</value>
   </data>
 </root>

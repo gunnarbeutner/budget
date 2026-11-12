@@ -31,9 +31,11 @@ public static class TransactionEditRules
         nameof(Transaction.Note),
         nameof(Transaction.Checked),
         nameof(Transaction.IsNew),
-        // Splits (SplitService keeps them consistent).
+        // Splits and transfers (SplitTransferService keeps them consistent).
         nameof(Transaction.Splitted),
         nameof(Transaction.SplitOriginalAmount),
+        nameof(Transaction.IsTransfer),
+        nameof(Transaction.TransferPeerId),
     };
 
     /// <summary>

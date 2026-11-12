@@ -1,0 +1,73 @@
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject IStringLocalizer<TxTransferPanel> L
+@inject SplitTransferService Transfers
+@inject ClockService Clock
+
+@* "Mark as transfer": suggests counterpart bookings (opposite amount, ±5 days, another editable account of the project)
+   to link, or marks the booking as a one-sided transfer when the other account is not tracked here. *@
+
+<div class="tx-transfer" data-testid="transfer-panel">
+    <b>@L["Title"]</b>
+    @if (candidates == null)
+    {
+        <div class="skeleton skeleton-line"></div>
+    }
+    else if (candidates.Count == 0)
+    {
+        <div class="text-body-secondary small" data-testid="transfer-no-candidates">@L["NoCandidates"]</div>
+    }
+    else
+    {
+        <div class="small text-body-secondary">@L["Candidates"]</div>
+        @foreach (var c in candidates)
+        {
+            var id = c.Id;
+            <div class="tx-transfer-row" data-testid="transfer-candidate">
+                <span>@Clock.ToLocal(c.Date).ToString("dd.MM.yyyy")</span>
+                <span class="fw-semibold">@c.AccountName</span>
+                <span class="text-truncate">@c.Name</span>
+                <span class="ms-auto">@Formatting.FormatMoneyDe(c.AmountCents / 100m)</span>
+                <button type="button" class="ob-btn" data-testid="transfer-link" @onclick="() => RunAsync(() => Transfers.LinkTransferAsync(Row.Id, id))">@L["Link"]</button>
+            </div>
+        }
+    }
+    <div class="tx-split-foot">
+        <button type="button" class="ob-btn" data-testid="transfer-one-sided" @onclick="() => RunAsync(() => Transfers.MarkOneSidedTransferAsync(Row.Id))">@L["OneSided"]</button>
+        <span class="flex-grow-1"></span>
+        <button type="button" class="ob-btn" data-testid="transfer-cancel" @onclick="() => OnDone.InvokeAsync(false)">@L["Cancel"]</button>
+    </div>
+    @if (error != null)
+    {
+        <div class="text-danger small mt-1" data-testid="transfer-error">@error</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public TransactionRow Row { get; set; } = null!;
+    [Parameter, EditorRequired] public int ProjectId { get; set; }
+    [Parameter] public EventCallback<bool> OnDone { get; set; }
+
+    private List<TransferCandidate>? candidates;
+    private string? error;
+
+    protected override async Task OnInitializedAsync() => candidates = await Transfers.GetTransferCandidatesAsync(Row.Id, ProjectId);
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        error = null;
+        try
+        {
+            await action();
+            await OnDone.InvokeAsync(true);
+        }
+        catch (AccessDeniedException)
+        {
+            error = L["Error_Denied"];
+        }
+        catch (InvalidOperationException)
+        {
+            error = L["Error_Invalid"];
+        }
+    }
+}

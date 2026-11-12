@@ -1,9 +1,6 @@
 @inject IJSRuntime JS
 
-@* Right-click / long-press menu at a screen position. Presentational: the page decides the entries and what a key does.
-   The menu opens at the pointer and is moved by obPlaceMenu so it always fits the window: above / left of the pointer
-   when there is no room below / right, clamped to the edges, and scrolling inside when it is taller than the window.
-   An entry with children opens a submenu beside it (hover, click or →); picking a child reports the child's key. *@
+@* Right-click / long-press menu at a screen position. Presentational: the page decides the entries and what a key does. *@
 
 <div class="ctx-backdrop" data-ob-overlay @onclick="Close" @oncontextmenu="Close" @oncontextmenu:preventDefault></div>
 <div class="ctx-menu" style="@PositionStyle" role="menu" tabindex="-1" data-ob-overlay data-testid="context-menu"
@@ -21,46 +18,13 @@
         {
             var i = index++;
             var key = item.Key;
-            var hasChildren = item.Children is { Count: > 0 };
-            var open = hasChildren && openSub == key;
-            <button type="button" role="menuitem" class="ctx-item @(i == active ? "ctx-active" : "") @(item.Danger ? "ctx-danger" : "") @(open ? "ctx-open" : "")" disabled="@item.Disabled"
+            <button type="button" role="menuitem" class="ctx-item @(i == active ? "ctx-active" : "") @(item.Danger ? "ctx-danger" : "")" disabled="@item.Disabled"
                     title="@item.Tooltip" data-testid="@("ctx-" + item.Key)"
-                    aria-haspopup="@(hasChildren ? "menu" : null)" aria-expanded="@(hasChildren ? open.ToString().ToLowerInvariant() : null)"
-                    @onmouseenter="() => Hover(i, key, hasChildren)"
-                    @onclick="() => Activate(i, item)">
+                    @onclick="() => Pick(key)">
                 <span class="ctx-icon">@if (item.Icon != null) { <i class="bi @item.Icon" aria-hidden="true"></i> }</span>
-                <span class="ctx-label">@item.Label</span>
-                @if (hasChildren)
-                {
-                    <i class="bi bi-chevron-right ctx-chevron" aria-hidden="true"></i>
-                }
+                <span>@item.Label</span>
             </button>
         }
-    }
-    @if (OpenChildren is { } children)
-    {
-        <div class="ctx-menu ctx-submenu" role="menu" data-testid="context-submenu" style="visibility: hidden;">
-            @{
-                var subIndex = 0;
-            }
-            @foreach (var child in children)
-            {
-                if (child.Separator)
-                {
-                    <div class="ctx-sep" role="separator"></div>
-                }
-                else
-                {
-                    var j = subIndex++;
-                    var childKey = child.Key;
-                    <button type="button" role="menuitem" class="ctx-item @(subFocus && j == subActive ? "ctx-active" : "")" disabled="@child.Disabled"
-                            title="@child.Tooltip" data-testid="@("ctx-" + child.Key)" @onclick="() => Pick(childKey)">
-                        <span class="ctx-icon">@if (child.Icon != null) { <i class="bi @child.Icon" aria-hidden="true"></i> }</span>
-                        <span class="ctx-label">@child.Label</span>
-                    </button>
-                }
-            }
-        </div>
     }
 </div>
 
@@ -73,101 +37,29 @@
 
     private ElementReference menu;
     private int active;
-    private string? openSub;
-    private int subActive;
-    private bool subFocus;
-    private (double X, double Y)? placedAt;
-    private string? placedSub;
 
-    // Hidden until obPlaceMenu has measured and placed it, so it never flashes at a clipped position.
-    private string PositionStyle => FormattableString.Invariant($"left: {X:0}px; top: {Y:0}px; visibility: hidden;");
-
-    private IReadOnlyList<ContextMenuItem>? OpenChildren =>
-        openSub == null ? null : Items.FirstOrDefault(i => i.Key == openSub && !i.Separator)?.Children;
+    private string PositionStyle =>
+        FormattableString.Invariant($"left: max(0.5rem, min({X:0}px, calc(100vw - 16rem))); top: max(0.5rem, min({Y:0}px, calc(100vh - 22rem)));");
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (placedAt != (X, Y))
-        {
-            placedAt = (X, Y);
-            await JS.InvokeVoidAsync("obPlaceMenu", menu, X, Y);
-        }
-        // Focus once it is visible (a hidden element can't take focus).
         if (firstRender) await JS.InvokeVoidAsync("obFocus", menu);
-        if (placedSub != openSub)
-        {
-            placedSub = openSub;
-            if (openSub != null) await JS.InvokeVoidAsync("obPlaceSubmenu", menu);
-        }
-    }
-
-    private void Hover(int index, string key, bool hasChildren)
-    {
-        active = index;
-        subFocus = false;
-        openSub = hasChildren ? key : null;
-    }
-
-    private async Task Activate(int index, ContextMenuItem item)
-    {
-        active = index;
-        if (item.Children is { Count: > 0 })
-        {
-            // Hovering has usually opened it already; a click (or tap) keeps it open.
-            openSub = item.Key;
-            subFocus = false;
-            return;
-        }
-        await Pick(item.Key);
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
         var selectable = Items.Where(i => !i.Separator).ToList();
-        if (subFocus && OpenChildren is { } children)
-        {
-            var subItems = children.Where(i => !i.Separator).ToList();
-            switch (e.Key)
-            {
-                case "ArrowDown":
-                    subActive = NextEnabled(subItems, subActive, 1);
-                    break;
-                case "ArrowUp":
-                    subActive = NextEnabled(subItems, subActive, -1);
-                    break;
-                case "Enter":
-                case " ":
-                    if (subActive >= 0 && subActive < subItems.Count && !subItems[subActive].Disabled) await Pick(subItems[subActive].Key);
-                    break;
-                case "ArrowLeft":
-                case "Escape":
-                    subFocus = false;
-                    openSub = null;
-                    break;
-            }
-            return;
-        }
         switch (e.Key)
         {
             case "ArrowDown":
                 active = NextEnabled(selectable, active, 1);
-                openSub = null;
                 break;
             case "ArrowUp":
                 active = NextEnabled(selectable, active, -1);
-                openSub = null;
-                break;
-            case "ArrowRight":
-                if (active >= 0 && active < selectable.Count && selectable[active] is { Disabled: false, Children.Count: > 0 } parent)
-                    OpenSubmenu(parent);
                 break;
             case "Enter":
             case " ":
-                if (active >= 0 && active < selectable.Count && !selectable[active].Disabled)
-                {
-                    if (selectable[active].Children is { Count: > 0 }) OpenSubmenu(selectable[active]);
-                    else await Pick(selectable[active].Key);
-                }
+                if (active >= 0 && active < selectable.Count && !selectable[active].Disabled) await Pick(selectable[active].Key);
                 break;
             case "Escape":
                 await Close();
@@ -175,16 +67,8 @@
         }
     }
 
-    private void OpenSubmenu(ContextMenuItem parent)
-    {
-        openSub = parent.Key;
-        subFocus = true;
-        subActive = NextEnabled(parent.Children!.Where(i => !i.Separator).ToList(), -1, 1);
-    }
-
     private static int NextEnabled(List<ContextMenuItem> items, int from, int step)
     {
-        if (items.Count == 0) return from;
         var i = from;
         for (var n = 0; n < items.Count; n++)
         {

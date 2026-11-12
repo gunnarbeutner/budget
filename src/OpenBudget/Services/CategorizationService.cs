@@ -28,7 +28,7 @@ public sealed class CategorizationService
         if (string.IsNullOrEmpty(name)) return [];
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var rows = await db.Transactions.AsNoTracking()
-            .Where(t => t.SourceId == sourceId && t.Splitted != 1 && t.Name != null && EF.Functions.Collate(t.Name, "NOCASE") == name)
+            .Where(t => t.SourceId == sourceId && t.Splitted != 1 && !t.IsTransfer && t.Name != null && EF.Functions.Collate(t.Name, "NOCASE") == name)
             .WhereUncategorized(db, sourceId)
             .Select(t => new { t.Id, t.SourceId, t.AccountId })
             .ToListAsync(ct);

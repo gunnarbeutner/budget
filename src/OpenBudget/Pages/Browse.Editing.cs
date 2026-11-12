@@ -401,7 +401,6 @@ public partial class Browse
         if (expandedId is { } id && selected.Count == 1 && rowCache.TryGetValue(id, out var row))
         {
             expandedStatement = row.AccountId is { } account ? await TransactionQueries.FindStatementAsync(account, row.Date) : null;
-            expandedOffsetTargets = await OffsetTargetsForAsync(row);
             // Looking at a new row is what clears its marker.
             if (row.IsNew && row.CanEdit && viewedIds.Add(id)) await Edits.MarkViewedAsync([id]);
         }
@@ -607,12 +606,8 @@ public partial class Browse
     {
         if (selected.Count == 0) return;
         contextStatement = null;
-        contextOffsetTargets = [];
-        if (selected.Count == 1 && rowCache.TryGetValue(selected.First(), out var row))
-        {
-            if (row.AccountId is { } account) contextStatement = await TransactionQueries.FindStatementAsync(account, row.Date);
-            contextOffsetTargets = await OffsetTargetsForAsync(row);
-        }
+        if (selected.Count == 1 && rowCache.TryGetValue(selected.First(), out var row) && row.AccountId is { } account)
+            contextStatement = await TransactionQueries.FindStatementAsync(account, row.Date);
         contextItems = BuildContextItems();
         (popupX, popupY) = (x, y);
         popup = PopupKind.Context;
@@ -638,21 +633,16 @@ public partial class Browse
             items.Add(new("go-account", L["Ctx_GoAccount"], "bi-bank", single.AccountId == null));
             items.Add(new("go-category", L["Ctx_GoCategory"], "bi-diagram-3", single.CategoryId == null));
             if (contextStatement != null) items.Add(new("statement", L["Ctx_Statement"], "bi-file-earmark-pdf"));
-            if (single.CanEditBooking || contextOffsetTargets.Count > 0)
-                items.Add(ContextMenuItem.Divider());
             if (single.CanEditBooking)
-                items.Add(new("edit-booking", L["Ctx_EditBooking"], "bi-pencil"));
-            if (contextOffsetTargets.Count > 0)
             {
-                items.Add(new("offset", L["Ctx_Offset"], "bi-arrow-left-right")
-                {
-                    Children = [.. contextOffsetTargets.Select(t => new ContextMenuItem(OffsetKeyPrefix + t.AccountId.ToString(CultureInfo.InvariantCulture), t.Name, t.Icon))],
-                });
+                items.Add(ContextMenuItem.Divider());
+                items.Add(new("edit-booking", L["Ctx_EditBooking"], "bi-pencil"));
             }
             items.Add(ContextMenuItem.Divider());
             var soon = L["Ctx_ComingSoon"].Value;
             items.Add(new("rule", L["Ctx_CreateRule"], "bi-funnel", true, soon));
             items.Add(new("split", L["Ctx_Split"], "bi-diagram-2", true, soon));
+            items.Add(new("transfer", L["Ctx_Transfer"], "bi-arrow-left-right", true, soon));
         }
         return items;
     }
@@ -690,10 +680,6 @@ public partial class Browse
                 break;
             case "go-category" when single?.CategoryId is { } categoryId:
                 await GoToCategoryAsync(categoryId);
-                break;
-            case not null when single != null && key.StartsWith(OffsetKeyPrefix, StringComparison.Ordinal)
-                && long.TryParse(key.AsSpan(OffsetKeyPrefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out var offsetAccount):
-                await CreateOffsettingEntryAsync(single, offsetAccount);
                 break;
             case "edit-booking" when single is { CanEditBooking: true }:
                 await OpenEditBookingAsync(single);
@@ -741,48 +727,6 @@ public partial class Browse
         selected.Clear();
         expandedId = null;
         await RefreshAfterEditAsync();
-    }
-
-    private const string OffsetKeyPrefix = "offset-";
-
-    /// <summary>Where an offsetting entry for <paramref name="row"/> can go; none for pending bookings and split remainders.</summary>
-    private async Task<List<OffsetTarget>> OffsetTargetsForAsync(TransactionRow row) =>
-        row.IsPending || row.IsSplitRemainder ? [] : await ManualBookings.GetOffsetTargetsAsync(ProjectId, row.AccountId);
-
-    /// <summary>Books the opposite of <paramref name="row"/> on a manual account; the toast leads to the new booking.</summary>
-    private async Task CreateOffsettingEntryAsync(TransactionRow row, long accountId)
-    {
-        popup = PopupKind.None;
-        try
-        {
-            var payee = string.IsNullOrWhiteSpace(row.Name) ? Formatting.FormatMoneyDe(row.Amount, row.Currency) : row.Name.Trim();
-            var newId = await ManualBookings.CreateOffsettingEntryAsync(row.Id, accountId, L["Offset_Note", payee]);
-            var accountName = expandedOffsetTargets.Concat(contextOffsetTargets).FirstOrDefault(t => t.AccountId == accountId)?.Name ?? "";
-            var toast = new ToastItem { Message = L["Toast_Offset", accountName] };
-            toast.Actions.Add(new ToastAction(L["Toast_ShowBooking"], () => ShowBookingAsync(toast, accountId, newId), "toast-show-booking"));
-            AddToast(toast);
-            await RefreshAfterEditAsync();
-        }
-        catch (AccessDeniedException)
-        {
-            AddToast(new ToastItem { Message = L["Toast_Denied"], IsError = true });
-        }
-        catch (InvalidOperationException ex)
-        {
-            AddToast(new ToastItem { Message = ex.Message, IsError = true });
-        }
-    }
-
-    /// <summary>Opens the account of a booking and selects and expands it.</summary>
-    private async Task ShowBookingAsync(ToastItem toast, long accountId, long transactionId)
-    {
-        RemoveToast(toast);
-        await SelectAccount(accountId);
-        selected.Clear();
-        selected.Add(transactionId);
-        anchorId = cursorId = transactionId;
-        expandedId = transactionId;
-        await AfterSelectionChangedAsync();
     }
 
     private async Task GoToCategoryAsync(long categoryId)

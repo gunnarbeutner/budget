@@ -220,10 +220,12 @@ public sealed class PortfolioAccountSync
         }
     }
 
-    /// <summary>Removes an account this sync created with everything that hangs off it.</summary>
+    /// <summary>Everything that hangs off an account this sync created; transfers into it become plain bookings.</summary>
     private static async Task RemoveCreatedAccountAsync(BudgetDbContext db, long id, CancellationToken ct)
     {
         var bookings = db.Transactions.Where(t => t.AccountId == id);
+        await db.Transactions.Where(t => t.TransferPeerId != null && bookings.Select(b => (long?)b.Id).Contains(t.TransferPeerId))
+            .ExecuteUpdateAsync(u => u.SetProperty(t => t.TransferPeerId, (long?)null).SetProperty(t => t.IsTransfer, false), ct);
         await bookings.ExecuteDeleteAsync(ct);
         await db.Holdings.Where(h => h.AccountId == id).ExecuteDeleteAsync(ct);
         await db.PortfolioChartPoints.Where(p => p.AccountId == id).ExecuteDeleteAsync(ct);
@@ -415,12 +417,14 @@ public sealed class PortfolioAccountSync
             row.BookingText = e.Type;
         }
 
-        // Transactions deleted in PortfolioPerformance disappear (with their split parts).
+        // Transactions deleted in PortfolioPerformance disappear (with links pointing at them).
         var stale = byKey.Where(kv => !seen.Contains(kv.Key)).Select(kv => kv.Value).ToList();
         if (stale.Count > 0)
         {
             var staleIds = stale.Select(t => t.Id).ToList();
             db.Transactions.RemoveRange(stale);
+            foreach (var peer in await db.Transactions.Where(t => t.TransferPeerId != null && staleIds.Contains(t.TransferPeerId.Value)).ToListAsync(ct))
+                peer.TransferPeerId = null;
             await db.Transactions.Where(t => t.SplitParentId != null && staleIds.Contains(t.SplitParentId.Value)).ExecuteDeleteAsync(ct);
         }
 

@@ -26,45 +26,59 @@ public enum SplitError
     SumMismatch,
 }
 
-/// <summary>Raised for a split request that is not possible for this booking.</summary>
-public sealed class SplitException : InvalidOperationException
-{
-    public SplitException() : this(SplitProblem.Invalid) { }
-    public SplitException(string message) : base(message) => Problem = SplitProblem.Invalid;
-    public SplitException(string message, Exception innerException) : base(message, innerException) => Problem = SplitProblem.Invalid;
-    public SplitException(SplitProblem problem) : base(problem.ToString()) => Problem = problem;
+/// <summary>A booking that could be the other side of a transfer.</summary>
+public sealed record TransferCandidate(long Id, long AccountId, string AccountName, DateTime Date, long AmountCents, string? Name);
 
-    public SplitProblem Problem { get; }
+/// <summary>Transfer state of a booking. <see cref="PeerId"/> is null for a one-sided transfer.</summary>
+public sealed record TransferInfo(bool IsTransfer, long? PeerId, string? PeerAccountName, DateTime? PeerDate);
+
+/// <summary>Raised for a split / transfer request that is not possible for this booking.</summary>
+public sealed class SplitTransferException : InvalidOperationException
+{
+    public SplitTransferException() : this(SplitTransferProblem.Invalid) { }
+    public SplitTransferException(string message) : base(message) => Problem = SplitTransferProblem.Invalid;
+    public SplitTransferException(string message, Exception innerException) : base(message, innerException) => Problem = SplitTransferProblem.Invalid;
+    public SplitTransferException(SplitTransferProblem problem) : base(problem.ToString()) => Problem = problem;
+
+    public SplitTransferProblem Problem { get; }
 }
 
-public enum SplitProblem
+public enum SplitTransferProblem
 {
     NotFound,
     Pending,
+    IsTransfer,
     IsSplit,
     Invalid,
+    NotACandidate,
 }
 
 /// <summary>
-/// Splits bookings into parts.
+/// Splits bookings into parts and links transfers between the household's own accounts.
 ///
 /// A split stores its parts as child rows (<see cref="SplitState.Child"/>, <see cref="Transaction.SplitParentId"/>) and
 /// marks the booking itself as a split parent, exactly the shape MoneyMoney imports have, so every list and total that
 /// already skips split parents counts the parts instead. Part ids come from the connector row range of the source.
 ///
+/// A transfer sets <see cref="Transaction.IsTransfer"/> on both bookings (and points them at each other) or on one booking
+/// whose counterpart account is not tracked. Transfers drop out of income/spending totals but stay in balances.
+///
 /// Everything goes through the user-scoped context: only rows the user may edit are touched (see
-/// <see cref="TransactionEditRules"/>), so MoneyMoney-owned accounts cannot be split (their next upload would replace the
-/// rows and lose the parts). Pending bookings are rebuilt on every sync, so they are
+/// <see cref="TransactionEditRules"/>), so MoneyMoney-owned accounts can neither be split nor be a transfer counterpart
+/// (their next upload would replace the rows and lose the link). Pending bookings are rebuilt on every sync, so they are
 /// excluded too.
 /// </summary>
-public sealed class SplitService
+public sealed class SplitTransferService
 {
+    /// <summary>How far apart (days) the two bookings of a transfer may be.</summary>
+    public const int TransferWindowDays = 5;
+
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly ChangeNotificationService _notifier;
     private readonly ChangeOrigin _origin;
     private readonly TimeProvider _time;
 
-    public SplitService(
+    public SplitTransferService(
         IDbContextFactory<BudgetDbContext> dbFactory, ChangeNotificationService notifier, ChangeOrigin origin, TimeProvider? time = null)
     {
         _dbFactory = dbFactory;
@@ -111,6 +125,17 @@ public sealed class SplitService
         return SplitError.None;
     }
 
+    /// <summary>Whether <paramref name="candidate"/> can be the other side of a transfer of <paramref name="row"/>.</summary>
+    public static bool IsTransferMatch(Transaction row, Transaction candidate) =>
+        candidate.Id != row.Id
+        && candidate.AccountId != null && candidate.AccountId != row.AccountId
+        && candidate.SourceId == row.SourceId
+        && row.Amount != 0 && candidate.Amount == -row.Amount
+        && Math.Abs(candidate.Timestamp - row.Timestamp) <= TransferWindowDays * 86400L
+        && candidate.Booked
+        && !candidate.IsTransfer
+        && (candidate.Splitted ?? SplitState.Normal) is SplitState.Normal;
+
     // ---- splits ----
 
     /// <summary>The split of the booking (given by the booking's or one part's id); null when the user can't see it.</summary>
@@ -142,10 +167,11 @@ public sealed class SplitService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var parent = await LoadParentAsync(db, id, ct);
         await RequireEditableAsync(db, [parent], ct);
-        if (!parent.Booked) throw new SplitException(SplitProblem.Pending);
-        if (parent.Splitted is SplitState.Remainder) throw new SplitException(SplitProblem.Invalid);
+        if (!parent.Booked) throw new SplitTransferException(SplitTransferProblem.Pending);
+        if (parent.IsTransfer) throw new SplitTransferException(SplitTransferProblem.IsTransfer);
+        if (parent.Splitted is SplitState.Remainder) throw new SplitTransferException(SplitTransferProblem.Invalid);
         var total = parent.SplitOriginalAmount ?? parent.Amount;
-        if (Validate(total, parts) != SplitError.None) throw new SplitException(SplitProblem.Invalid);
+        if (Validate(total, parts) != SplitError.None) throw new SplitTransferException(SplitTransferProblem.Invalid);
 
         var categoryIds = parts.Where(p => p.CategoryId != null).Select(p => p.CategoryId!.Value).Distinct().ToList();
         if (categoryIds.Count > 0)
@@ -224,15 +250,126 @@ public sealed class SplitService
         Publish(parent.SourceId);
     }
 
+    // ---- transfers ----
+
+    public async Task<TransferInfo?> GetTransferAsync(long id, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var row = await db.Transactions.AsNoTracking().Where(t => t.Id == id)
+            .Select(t => new { t.IsTransfer, t.TransferPeerId }).FirstOrDefaultAsync(ct);
+        if (row == null) return null;
+        if (!row.IsTransfer || row.TransferPeerId is not { } peerId) return new TransferInfo(row.IsTransfer, null, null, null);
+        var peer = await db.Transactions.AsNoTracking().Where(t => t.Id == peerId)
+            .Select(t => new { t.Timestamp, AccountName = t.Account != null ? t.Account.Name : null }).FirstOrDefaultAsync(ct);
+        return peer == null
+            ? new TransferInfo(true, null, null, null)
+            : new TransferInfo(true, peerId, peer.AccountName, DateTimeOffset.FromUnixTimeSeconds(peer.Timestamp).UtcDateTime);
+    }
+
+    /// <summary>
+    /// Bookings that could be the other side of a transfer: opposite amount, within ±<see cref="TransferWindowDays"/> days,
+    /// on another account of the project that the user may edit (not MoneyMoney's), not already a transfer or split.
+    /// Closest date first.
+    /// </summary>
+    public async Task<List<TransferCandidate>> GetTransferCandidatesAsync(long id, int projectId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var row = await db.Transactions.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (row == null || row.AccountId == null) return [];
+
+        var accountIds = await db.ProjectAccountAssignments.AsNoTracking()
+            .Where(a => a.ProjectId == projectId && a.AccountId != row.AccountId)
+            .Select(a => a.AccountId).ToListAsync(ct);
+        var accounts = await db.Accounts.AsNoTracking()
+            .Where(a => accountIds.Contains(a.Id) && a.SourceId == row.SourceId && !a.Closed)
+            .Select(a => new { a.Id, a.Name, a.Provider, a.SourceId }).ToListAsync(ct);
+        var usable = accounts
+            .Where(a => TransactionEditRules.Check(db.Scope, a.SourceId, a.Id, a.Provider) == EditBlock.None)
+            .ToDictionary(a => a.Id, a => a.Name ?? "");
+        if (usable.Count == 0) return [];
+
+        var ids = usable.Keys.ToList();
+        var from = row.Timestamp - TransferWindowDays * 86400L;
+        var to = row.Timestamp + TransferWindowDays * 86400L;
+        var target = -row.Amount;
+        var rows = await db.Transactions.AsNoTracking()
+            .Where(t => t.AccountId.HasValue && ids.Contains(t.AccountId.Value) && t.Amount == target && t.Timestamp >= from && t.Timestamp <= to)
+            .ToListAsync(ct);
+        return rows
+            .Where(c => IsTransferMatch(row, c))
+            .OrderBy(c => Math.Abs(c.Timestamp - row.Timestamp)).ThenBy(c => c.Id)
+            .Select(c => new TransferCandidate(c.Id, c.AccountId!.Value, usable[c.AccountId!.Value],
+                DateTimeOffset.FromUnixTimeSeconds(c.Timestamp).UtcDateTime, c.Amount, c.Name))
+            .ToList();
+    }
+
+    /// <summary>Links two bookings as a transfer between own accounts.</summary>
+    public async Task LinkTransferAsync(long id, long peerId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var row = await db.Transactions.FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new SplitTransferException(SplitTransferProblem.NotFound);
+        var peer = await db.Transactions.FirstOrDefaultAsync(t => t.Id == peerId, ct) ?? throw new SplitTransferException(SplitTransferProblem.NotFound);
+        await RequireEditableAsync(db, [row, peer], ct);
+        RequireTransferable(row);
+        if (row.IsTransfer || !IsTransferMatch(row, peer)) throw new SplitTransferException(SplitTransferProblem.NotACandidate);
+        row.IsTransfer = peer.IsTransfer = true;
+        row.TransferPeerId = peer.Id;
+        peer.TransferPeerId = row.Id;
+        row.IsNew = peer.IsNew = false;
+        await db.SaveChangesAsync(ct);
+        Publish(row.SourceId);
+    }
+
+    /// <summary>Marks a booking as a transfer to/from an account that is not tracked here.</summary>
+    public async Task MarkOneSidedTransferAsync(long id, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var row = await db.Transactions.FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new SplitTransferException(SplitTransferProblem.NotFound);
+        await RequireEditableAsync(db, [row], ct);
+        RequireTransferable(row);
+        if (row.IsTransfer) return;
+        row.IsTransfer = true;
+        row.TransferPeerId = null;
+        row.IsNew = false;
+        await db.SaveChangesAsync(ct);
+        Publish(row.SourceId);
+    }
+
+    /// <summary>Ends a transfer: the booking (and its linked counterpart, if any) counts as income/spending again.</summary>
+    public async Task UnlinkTransferAsync(long id, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var row = await db.Transactions.FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new SplitTransferException(SplitTransferProblem.NotFound);
+        var rows = new List<Transaction> { row };
+        if (row.TransferPeerId is { } peerId
+            && await db.Transactions.FirstOrDefaultAsync(t => t.Id == peerId && t.TransferPeerId == row.Id, ct) is { } peer)
+            rows.Add(peer);
+        await RequireEditableAsync(db, rows, ct);
+        if (!row.IsTransfer && row.TransferPeerId == null) return;
+        foreach (var t in rows)
+        {
+            t.IsTransfer = false;
+            t.TransferPeerId = null;
+        }
+        await db.SaveChangesAsync(ct);
+        Publish(row.SourceId);
+    }
+
     // ---- helpers ----
+
+    private static void RequireTransferable(Transaction row)
+    {
+        if (!row.Booked) throw new SplitTransferException(SplitTransferProblem.Pending);
+        if ((row.Splitted ?? SplitState.Normal) != SplitState.Normal) throw new SplitTransferException(SplitTransferProblem.IsSplit);
+    }
 
     private static async Task<Transaction> LoadParentAsync(BudgetDbContext db, long id, CancellationToken ct)
     {
-        var row = await db.Transactions.FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new SplitException(SplitProblem.NotFound);
+        var row = await db.Transactions.FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new SplitTransferException(SplitTransferProblem.NotFound);
         if (row.Splitted == SplitState.Child)
         {
-            if (row.SplitParentId is not { } pid) throw new SplitException(SplitProblem.Invalid);
-            row = await db.Transactions.FirstOrDefaultAsync(t => t.Id == pid, ct) ?? throw new SplitException(SplitProblem.NotFound);
+            if (row.SplitParentId is not { } pid) throw new SplitTransferException(SplitTransferProblem.Invalid);
+            row = await db.Transactions.FirstOrDefaultAsync(t => t.Id == pid, ct) ?? throw new SplitTransferException(SplitTransferProblem.NotFound);
         }
         return row;
     }

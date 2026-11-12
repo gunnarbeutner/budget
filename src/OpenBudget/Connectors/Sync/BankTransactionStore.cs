@@ -29,7 +29,7 @@ public sealed record ApplyPreview(int Adopted, int Inserted, int AlreadyKnown, i
 /// name on the same day, then amount + purpose within a day, then amount alone within a day (texts differ between
 /// MoneyMoney and the bank; only rows from <c>since</c> on are candidates). Candidates are taken oldest first, so the
 /// outcome is deterministic. An adopted row is the bank's from then on: the bank's texts, dates and details replace
-/// MoneyMoney's, while what the user set on it (category, note, check mark, splits) and its id stay.
+/// MoneyMoney's, while what the user set on it (category, note, check mark, splits, transfers) and its id stay.
 /// Row ids are allocated in the upper half of the 40-bit rowid space of the account's source, where MoneyMoney imports
 /// never write.
 /// </summary>
@@ -39,7 +39,7 @@ public sealed class BankTransactionStore
     public const long ConnectorRowBase = 1L << 39;
 
     // One writer at a time: id allocation reads the current maximum.
-    // Also taken by SplitService, which allocates split-part ids from the same range.
+    // Also taken by SplitTransferService, which allocates split-part ids from the same range.
     internal static readonly SemaphoreSlim Gate = new(1, 1);
 
     /// <summary>Applies a connector's report to the account (see the class remarks).</summary>

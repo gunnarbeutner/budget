@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261111234518_RemoveTransferFlagAndShowInCharts";
+        public override string LatestMigrationId => "20261111233728_UserDisplayName";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -621,6 +621,12 @@ namespace OpenBudget.Migrations
                     b.Property<string>("Rules")
                         .HasColumnType("TEXT")
                         .HasColumnName("rules");
+
+                    b.Property<bool>("ShowInCharts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true)
+                        .HasColumnName("show_in_charts");
 
                     b.Property<long?>("Sort")
                         .HasColumnType("INTEGER")
@@ -1645,6 +1651,12 @@ namespace OpenBudget.Migrations
                         .HasDefaultValue(false)
                         .HasColumnName("is_new");
 
+                    b.Property<bool>("IsTransfer")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_transfer");
+
                     b.Property<string>("MandateReference")
                         .HasColumnType("TEXT")
                         .HasColumnName("mandate_reference");
@@ -1695,6 +1707,10 @@ namespace OpenBudget.Migrations
                     b.Property<string>("TransactionCode")
                         .HasColumnType("TEXT")
                         .HasColumnName("transaction_code");
+
+                    b.Property<long?>("TransferPeerId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("transfer_peer_id");
 
                     b.Property<long?>("ValueTimestamp")
                         .HasColumnType("INTEGER")
