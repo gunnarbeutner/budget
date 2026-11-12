@@ -70,12 +70,6 @@
   <data name="Item_ProjectSettings" xml:space="preserve">
     <value>Project settings</value>
   </data>
-  <data name="Item_AccountsCategories" xml:space="preserve">
-    <value>Accounts and categories</value>
-  </data>
-  <data name="Item_Sharing" xml:space="preserve">
-    <value>Sharing</value>
-  </data>
   <data name="Section_Data" xml:space="preserve">
     <value>Data</value>
   </data>

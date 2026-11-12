@@ -37,19 +37,6 @@
                     <i class="bi bi-sliders2 me-2" aria-hidden="true"></i>@L["Item_ProjectSettings"]
                 </a>
             </li>
-            <li>
-                <a class="dropdown-item" href="@($"/projects/{projectId}/settings/categories")" data-testid="gear-accounts-categories">
-                    <i class="bi bi-diagram-3 me-2" aria-hidden="true"></i>@L["Item_AccountsCategories"]
-                </a>
-            </li>
-            @if (isOwner)
-            {
-                <li>
-                    <a class="dropdown-item" href="@($"/projects/{projectId}/settings/sharing")" data-testid="gear-sharing">
-                        <i class="bi bi-people me-2" aria-hidden="true"></i>@L["Item_Sharing"]
-                    </a>
-                </li>
-            }
             <li><hr class="dropdown-divider" /></li>
         }
         <li><h6 class="dropdown-header">@L["Section_Data"]</h6></li>
@@ -75,7 +62,6 @@
     [Parameter] public bool BottomBar { get; set; }
 
     private bool canEditProject;
-    private bool isOwner;
     private int bankErrors;
 
     protected override async Task OnInitializedAsync()
@@ -89,7 +75,6 @@
     {
         var scope = await AccessProvider.GetAsync();
         canEditProject = Current.ProjectId is { } id && scope.CanEdit(id);
-        isOwner = Current.ProjectId is { } oid && scope.IsOwner(oid);
         bankErrors = 0;
         if (Bank.IsEnabled && scope.IsAuthenticated)
         {
