@@ -17,6 +17,7 @@ public sealed class DefaultProjectTests
 {
     private const string Alice = BankWorld.Alice;
     private const string Bob = BankWorld.Bob;
+    private const string Carol = BankWorld.Carol;
 
     private static string Snapshot(BankWorld w, int accounts) =>
         w.BuildSnapshot(Enumerable.Range(1, accounts).Select(i => ($"Example Account {i}", (string?)null)), []);
@@ -242,6 +243,49 @@ public sealed class DefaultProjectTests
         var created = await w.For(Alice).CreateAccountAsync(savings.Id);
 
         Assert.Equal(def, (await AssignmentsAsync(w))[created]);
+    }
+
+    [Fact]
+    public async Task A_connector_created_account_goes_into_the_source_of_the_default_project()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        await using (var db = await w.T.System.CreateDbContextAsync())
+        {
+            db.ImportSources.Add(new ImportSource { Id = 4, Name = "alice-other", OwnerUserId = Alice, UploadToken = "tok-a2" });
+            await db.SaveChangesAsync();
+        }
+        await NewProjectAsync(w, Alice, "First");
+        var def = await NewProjectAsync(w, Alice, "Household", sourceId: 4);
+        await w.View(Alice).Projects.SetDefaultForNewAccountsAsync(def, true);
+        var id = await w.AddLoginAsync(Alice, "demo");
+        await w.SyncAsync(Alice, id, new SyncRequest(id, false, false));
+        var depot = await w.RemoteAsync(Alice, id, FakeBankConnector.DepotId);
+
+        var created = await w.For(Alice).CreateAccountAsync(depot.Id);
+
+        var account = await w.AccountAsync(created);
+        Assert.Equal(4, account.SourceId);
+        Assert.Equal(FakeBankConnector.TypeName, account.Provider);
+        Assert.Equal(def, (await AssignmentsAsync(w))[created]);
+        await using var check = await w.T.System.CreateDbContextAsync();
+        Assert.False(await check.ImportSources.AnyAsync(s => s.Name.StartsWith("bank-")));
+    }
+
+    [Fact]
+    public async Task A_connector_created_account_gets_a_new_source_only_when_the_owner_has_none()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        var id = await w.AddLoginAsync(Carol, "demo");
+        await w.SyncAsync(Carol, id, new SyncRequest(id, false, false));
+        var savings = await w.RemoteAsync(Carol, id, FakeBankConnector.SavingsId);
+
+        var created = await w.For(Carol).CreateAccountAsync(savings.Id);
+
+        var sourceId = (await w.AccountAsync(created)).SourceId;
+        await using var db = await w.T.System.CreateDbContextAsync();
+        var source = await db.ImportSources.SingleAsync(s => s.Id == sourceId);
+        Assert.Equal($"bank-{id}", source.Name);
+        Assert.Equal(Carol, source.OwnerUserId);
     }
 
     [Fact]

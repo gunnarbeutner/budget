@@ -155,7 +155,7 @@ public sealed class BankDataTests
     }
 
     [Fact]
-    public async Task Connector_created_accounts_live_in_a_dedicated_owned_source_and_become_manual_when_unlinked()
+    public async Task Connector_created_accounts_live_in_the_owners_source_and_become_manual_when_unlinked()
     {
         await using var w = await BankWorld.CreateAsync();
         var id = await w.AddLoginAsync(BankWorld.Alice);
@@ -167,8 +167,8 @@ public sealed class BankDataTests
         await using (var db = await w.T.System.CreateDbContextAsync())
         {
             var source = await db.ImportSources.SingleAsync(s => s.Id == account.SourceId);
-            Assert.Equal($"bank-{id}", source.Name);
-            Assert.Equal(BankWorld.Alice, source.OwnerUserId);
+            Assert.Equal(BankWorld.AliceSourceName, source.Name);
+            Assert.Equal(1, await db.ImportSources.CountAsync(s => s.OwnerUserId == BankWorld.Alice));
         }
         Assert.Equal(account.SourceId, (await w.AccountAsync((await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.DepotId)).LinkedAccountId!.Value)).SourceId);
         Assert.Equal("fake", account.Provider);

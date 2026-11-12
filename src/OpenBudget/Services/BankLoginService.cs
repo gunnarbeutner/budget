@@ -327,8 +327,9 @@ public class BankLoginService
     }
 
     /// <summary>
-    /// Creates a new local account for a remote one in a dedicated source of this login ("bank-&lt;id&gt;", owned by the user;
-    /// kept apart because a MoneyMoney upload replaces every account of the source it targets).
+    /// Creates a new local account for a remote one in the user's own source (see <see cref="TargetSourceAsync"/>),
+    /// synced by the login's connector and assigned to the default project for new accounts. A MoneyMoney upload
+    /// into that source leaves it alone, as it only replaces MoneyMoney's accounts.
     /// </summary>
     public async Task<long> CreateAccountAsync(int loginAccountId, CancellationToken ct = default)
     {
@@ -340,9 +341,7 @@ public class BankLoginService
         if (remote.LinkedAccountId != null) throw new InvalidOperationException("Already linked; unlink it first.");
         var login = remote.BankLogin;
 
-        var sourceName = $"bank-{login.Id}";
-        var source = (await _sources.GetOwnedSourcesAsync(ct: ct)).FirstOrDefault(s => string.Equals(s.Name, sourceName, StringComparison.Ordinal))
-            ?? await CreateSourceWithFallbackAsync(sourceName, ct);
+        var source = await TargetSourceAsync(db, userId, login.Id, ct);
 
         // The scope snapshot must know the new source before an account may be written into it.
         await using var writeDb = await _dbFactory.CreateDbContextAsync(ct);
@@ -381,6 +380,22 @@ public class BankLoginService
         Changed(userId);
         _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: source.Id), _origin.Id);
         return account.Id;
+    }
+
+    /// <summary>
+    /// The source a connector-created account goes into: that of the user's default project for new accounts, else of
+    /// their first own project, else their first owned source. Only a user without any source gets a new one ("bank-&lt;login id&gt;").
+    /// </summary>
+    private async Task<ImportSource> TargetSourceAsync(BudgetDbContext db, string userId, int loginId, CancellationToken ct)
+    {
+        var owned = await _sources.GetOwnedSourcesAsync(ct: ct);
+        if (owned.Count == 0) return await CreateSourceWithFallbackAsync($"bank-{loginId}", ct);
+        var ownedIds = owned.Select(s => s.Id).ToList();
+        var projectSourceId = await db.Projects.AsNoTracking()
+            .Where(p => p.OwnerUserId == userId && ownedIds.Contains(p.SourceId))
+            .OrderByDescending(p => p.IsDefaultForNewAccounts).ThenBy(p => p.ParentProjectId != null).ThenBy(p => p.SortOrder).ThenBy(p => p.Id)
+            .Select(p => (int?)p.SourceId).FirstOrDefaultAsync(ct);
+        return owned.FirstOrDefault(s => s.Id == projectSourceId) ?? owned.OrderBy(s => s.Id).First();
     }
 
     private async Task<ImportSource> CreateSourceWithFallbackAsync(string name, CancellationToken ct)
