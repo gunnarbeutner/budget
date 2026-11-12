@@ -1891,3 +1891,6 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
     .sched-main { grid-area: main; }
     .sched-amount { grid-area: amount; }
 }
+
+/* Project switcher rows act as menu items: their text is not selectable. */
+.project-switcher-row { -webkit-user-select: none; user-select: none; }
