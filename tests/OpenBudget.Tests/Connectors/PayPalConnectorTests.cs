@@ -190,6 +190,93 @@ public sealed class PayPalConnectorTests
         Assert.Equal(4, browser.Created);
     }
 
+    private static string Row(string id, string amount, string description) =>
+        $"""<div aria-controls="transactionDetails-{id}" aria-expanded="false"><div><div><div data-testid="trans_overview_root_container">"""
+        + $"""<span data-testid="counterparty_name">Example Shop</span><span data-testid="transaction_amount">{amount}</span>"""
+        + $"""<span data-testid="transaction_description">{description}</span><span data-testid="second_row_description_right"></span></div></div></div></div>""";
+
+    internal static readonly string ActivityHtml =
+        """<html><body><h3 data-testid="activity_list_header_view">This month</h3>"""
+        + Row("1AB23456CD7890123", "\u221212,34 €", "9 Nov . Payment")
+        + Row("98765432EF1234567", "5,00 €", "7 Nov . Money received")
+        + "</body></html>";
+
+    private static readonly string PendingHtml =
+        ActivityHtml.Replace("</body>", Row("5PQ12345RS6789012", "\u22121,00 €", "10 Nov . <b>Pending</b>") + "</body>", StringComparison.Ordinal);
+
+    [Fact]
+    public void The_activity_page_lists_ids_and_pending_rows()
+    {
+        var list = PayPalActivityPage.Parse(PendingHtml)!;
+        Assert.Equal(["1AB23456CD7890123", "98765432EF1234567", "5PQ12345RS6789012"], list.Ids);
+        Assert.Equal(["5PQ12345RS6789012"], list.PendingIds);
+        Assert.Empty(PayPalActivityPage.Parse("<html><body>No activity</body></html>")!.Ids);
+    }
+
+    [Fact]
+    public void An_activity_page_without_the_expected_markers_is_unreadable()
+    {
+        Assert.Null(PayPalActivityPage.Parse(ActivityHtml.Replace("aria-controls=\"transactionDetails-1AB23456CD7890123\"", "", StringComparison.Ordinal)));
+        Assert.Null(PayPalActivityPage.Parse(ActivityHtml.Replace("transaction_amount", "amount", StringComparison.Ordinal)));
+        Assert.Null(PayPalActivityPage.Parse(ActivityHtml.Replace("transaction_description", "description", StringComparison.Ordinal)));
+    }
+
+    private static SyncHistory History(int pending = 0, params string[] known) =>
+        new(new DateTime(2026, 11, 8, 6, 0, 0, DateTimeKind.Utc), known.ToHashSet(StringComparer.Ordinal), pending);
+
+    [Fact]
+    public void The_decision_skips_only_when_every_listed_id_is_stored_and_nothing_is_pending()
+    {
+        var page = PayPalActivityPage.Parse(ActivityHtml);
+        var both = History(0, "1AB23456CD7890123", "98765432EF1234567", "OLDER");
+        Assert.Equal(PayPalConnector.QuickOutcome.NothingNew, PayPalConnector.Decide(page, both, 50));
+        Assert.Equal(PayPalConnector.QuickOutcome.Changed, PayPalConnector.Decide(page, History(0, "1AB23456CD7890123"), 50));
+        Assert.Equal(PayPalConnector.QuickOutcome.Changed, PayPalConnector.Decide(page, History(1, "1AB23456CD7890123", "98765432EF1234567"), 50));
+        Assert.Equal(PayPalConnector.QuickOutcome.Changed, PayPalConnector.Decide(PayPalActivityPage.Parse(PendingHtml), both, 50));
+        Assert.Equal(PayPalConnector.QuickOutcome.Unreadable, PayPalConnector.Decide(null, both, 50));
+        Assert.Equal(PayPalConnector.QuickOutcome.Unreadable, PayPalConnector.Decide(page, both, 2)); // possibly cut off
+    }
+
+    [Fact]
+    public async Task Nothing_new_on_the_activity_page_ends_the_sync_without_a_download()
+    {
+        var browser = new ScriptedPayPal(EnglishCsv) { ActivityPage = ActivityHtml };
+        var connector = await SignedInAsync(browser);
+        connector.UseSyncHistory(History(0, "1AB23456CD7890123", "98765432EF1234567"));
+        var account = Assert.Single(await connector.ListAccountsAsync(CancellationToken.None));
+        var refresh = await connector.RefreshAsync(account, new DateOnly(2026, 11, 1), null, CancellationToken.None);
+        Assert.Null(refresh.Value!.Balance); // kept as it was
+        Assert.Empty(refresh.Value.Transactions);
+        Assert.Equal(0, browser.Created);
+        Assert.Contains("start_date=2026-11-05&end_date=2026-11-11", browser.ActivityQuery, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_new_id_or_an_unreadable_page_downloads_only_the_days_since_the_last_sync(bool readable)
+    {
+        var browser = new ScriptedPayPal(EnglishCsv) { ActivityPage = readable ? ActivityHtml : "<html>changed layout</html><div data-testid=\"trans_overview_root_container\">" };
+        var connector = await SignedInAsync(browser);
+        connector.UseSyncHistory(History(0, "1AB23456CD7890123"));
+        var account = Assert.Single(await connector.ListAccountsAsync(CancellationToken.None));
+        var refresh = await connector.RefreshAsync(account, new DateOnly(2026, 10, 1), null, CancellationToken.None);
+        Assert.Equal(StepStatus.Done, refresh.Status);
+        Assert.Equal(1, browser.Created);
+        Assert.Equal("20261104230000", browser.StartUtc); // 2026-11-05, account midnight
+    }
+
+    [Fact]
+    public async Task A_last_sync_older_than_the_limit_skips_the_quick_check()
+    {
+        var browser = new ScriptedPayPal(EnglishCsv) { ActivityPage = ActivityHtml };
+        var connector = await SignedInAsync(browser);
+        connector.UseSyncHistory(new SyncHistory(new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc), new HashSet<string>(StringComparer.Ordinal), 0));
+        await connector.ListAccountsAsync(CancellationToken.None);
+        Assert.Null(browser.ActivityQuery);
+        Assert.Equal("20260812220000", browser.StartUtc);
+    }
+
     private static async Task<PayPalConnector> SignedInAsync(ScriptedPayPal browser, PayPalOptions? options = null)
     {
         var connector = Connector(options);
@@ -223,6 +310,8 @@ public sealed class PayPalConnectorTests
         public string? StartUtc { get; private set; }
         public string? EndUtc { get; private set; }
         public int ReleaseAfterCreated { get; set; } = 1;
+        public string? ActivityPage { get; init; }
+        public string? ActivityQuery { get; private set; }
         private readonly Dictionary<(DateTime Start, DateTime End), int> _reports = [];
         public bool IsOpen => true;
         public Task NavigateAsync(Uri url, CancellationToken ct) => Task.CompletedTask;
@@ -234,6 +323,11 @@ public sealed class PayPalConnectorTests
             var path = request.Url.AbsolutePath;
             if (path == "/reports/dlog" && request.Method == "GET")
                 return await Answer(200, "text/html", """<script id="server-data" type="application/json">{"_csrf":"csrf-1","locality":{"timezone":"Europe/Berlin"}}</script>""");
+            if (path == "/myaccount/activities" && request.Method == "GET")
+            {
+                ActivityQuery = request.Url.Query;
+                return await Answer(ActivityPage == null ? 404 : 200, "text/html", ActivityPage ?? "");
+            }
             Assert.Equal("POST", request.Method);
             Assert.Equal("csrf-1", request.Headers["X-CSRF-Token"]);
             Assert.Equal("XMLHttpRequest", request.Headers["X-Requested-With"]);

@@ -189,6 +189,9 @@ public sealed class BankSyncRunner
             }
             loggedIn = true;
 
+            if (connector is ISyncHistoryConsumer historyConsumer)
+                historyConsumer.UseSyncHistory(await SyncHistoryAsync(db, login, login.ConnectorType, historyConsumer.HistoryOverlapDays, ct));
+
             sink.Report("Listing accounts");
             var remoteAccounts = await connector.ListAccountsAsync(ct);
             _logger.LogInformation("Bank login {LoginId}: the bank lists {Count} accounts.", login.Id, remoteAccounts.Count);
@@ -456,6 +459,24 @@ public sealed class BankSyncRunner
             }
             await db.SaveChangesAsync(ct);
         }
+    }
+
+    /// <summary>The login's linked accounts as a <see cref="SyncHistory"/> (see there).</summary>
+    internal static async Task<SyncHistory> SyncHistoryAsync(BudgetDbContext db, BankLogin login, string connectorType, int overlapDays, CancellationToken ct)
+    {
+        var empty = new SyncHistory(null, new HashSet<string>(StringComparer.Ordinal), 0);
+        var links = login.Accounts.Where(a => a.LinkedAccountId != null && !a.Closed).ToList();
+        if (links.Count == 0 || links.Any(l => l.LastSuccessAt == null)) return empty;
+        var ids = links.Select(l => l.LinkedAccountId!.Value).ToList();
+        var accounts = await db.Accounts.Where(a => ids.Contains(a.Id)).Select(a => a.Provider).ToListAsync(ct);
+        if (accounts.Count != ids.Count || accounts.Any(p => !string.Equals(p, connectorType, StringComparison.Ordinal))) return empty;
+        var last = links.Min(l => l.LastSuccessAt!.Value);
+        var from = new DateTimeOffset(DateTime.SpecifyKind(last, DateTimeKind.Utc)).AddDays(-overlapDays - 2).ToUnixTimeSeconds();
+        var external = await db.Transactions
+            .Where(t => t.AccountId != null && ids.Contains(t.AccountId.Value) && t.Booked && t.Timestamp >= from && t.ExternalId != null && t.ExternalId.StartsWith("id:"))
+            .Select(t => t.ExternalId!).ToListAsync(ct);
+        var pending = await db.Transactions.CountAsync(t => t.AccountId != null && ids.Contains(t.AccountId.Value) && !t.Booked, ct);
+        return new SyncHistory(last, external.Select(e => e[3..]).ToHashSet(StringComparer.Ordinal), pending);
     }
 
     private static async Task RecordAccountErrorAsync(BudgetDbContext db, BankLoginAccount link, string message, List<string> errors, CancellationToken ct)

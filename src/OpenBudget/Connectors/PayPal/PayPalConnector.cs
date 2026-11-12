@@ -35,6 +35,18 @@ public sealed class PayPalOptions
 
     /// <summary>How far back the account listing looks to find the balance currencies.</summary>
     public int ListingDays { get; init; } = 90;
+
+    /// <summary>The activity list, rendered by the server; the quick check reads it.</summary>
+    public string ActivitiesPage { get; init; } = "myaccount/activities";
+
+    /// <summary>The quick check runs when the oldest last refresh of the linked accounts is at most this old.</summary>
+    public int QuickCheckMaxAgeDays { get; init; } = 30;
+
+    /// <summary>The quick check and its short download start this many days before that last refresh.</summary>
+    public int QuickCheckOverlapDays { get; init; } = 3;
+
+    /// <summary>An activity page with at least this many rows may be cut off and counts as unreadable.</summary>
+    public int QuickCheckMaxRows { get; init; } = 50;
 }
 
 /// <summary>
@@ -52,8 +64,14 @@ public sealed class PayPalOptions
 /// payments as CSV) for a date range, requested and fetched through the signed-in page (see <see cref="PayPalOptions"/>
 /// for the paths). The balance is the "Balance" column after the newest row of the currency. Mapping: see
 /// <see cref="PayPalCsv.Map"/>.
+///
+/// Quick check: when every linked account was refreshed within <see cref="PayPalOptions.QuickCheckMaxAgeDays"/>, the
+/// activity page is read for the days since shortly before that refresh, and its transaction ids are compared with the
+/// ids the app already stores (<see cref="SyncHistory"/>). With nothing new and nothing pending (neither on the page
+/// nor stored), the sync ends without a download and the balances stay as they were. Otherwise, or when the page cannot
+/// be read, the download covers only the days since that point.
 /// </summary>
-public sealed class PayPalConnector : IBankConnector
+public sealed class PayPalConnector : IBankConnector, ISyncHistoryConsumer
 {
     public const string TypeName = "paypal";
     internal const string WebLoginReference = "paypal-web-login";
@@ -94,6 +112,8 @@ public sealed class PayPalConnector : IBankConnector
     private List<PayPalRow> _rows = [];
     private DateOnly? _coveredFrom;
     private ReportingSession? _reporting;
+    private SyncHistory? _history;
+    private QuickPlan? _quick;
 
     public PayPalConnector(ConnectorContext context, PayPalOptions options)
     {
@@ -178,12 +198,58 @@ public sealed class PayPalConnector : IBankConnector
     /// <summary>The stored cookies (a remembered device spares the second factor next time).</summary>
     public Task<ConnectorSession?> LogoutAsync(CancellationToken ct) => Task.FromResult<ConnectorSession?>(_session);
 
+    // ---- quick check ----
+
+    public int HistoryOverlapDays => _options.QuickCheckOverlapDays;
+
+    public void UseSyncHistory(SyncHistory history) => _history = history;
+
+    internal enum QuickOutcome
+    {
+        NothingNew,
+        Changed,
+        Unreadable,
+    }
+
+    /// <summary>The quick check's result: <see cref="From"/> is the first day it covered.</summary>
+    private sealed record QuickPlan(QuickOutcome Outcome, DateOnly From);
+
+    /// <summary>Whether the listed activity holds anything the app does not have yet (see the class remarks).</summary>
+    internal static QuickOutcome Decide(PayPalActivityList? page, SyncHistory history, int maxRows)
+    {
+        if (page == null || page.Ids.Count >= maxRows) return QuickOutcome.Unreadable;
+        if (page.PendingIds.Count > 0 || history.PendingCount > 0) return QuickOutcome.Changed;
+        return page.Ids.All(history.KnownTransactionIds.Contains) ? QuickOutcome.NothingNew : QuickOutcome.Changed;
+    }
+
+    private async Task<QuickPlan?> QuickCheckAsync(IBrowserFetcher browser, CancellationToken ct)
+    {
+        if (_history is not { LastSuccessUtc: { } last } history) return null;
+        var lastDay = DateOnly.FromDateTime(last);
+        if (lastDay < Today.AddDays(-_options.QuickCheckMaxAgeDays)) return null;
+        var from = lastDay.AddDays(-_options.QuickCheckOverlapDays);
+        var url = Url(FormattableString.Invariant(
+            $"{_options.ActivitiesPage}?free_text_search=&start_date={from:yyyy-MM-dd}&end_date={Today:yyyy-MM-dd}&type=&status=&currency=&filter_id=&issuance_product_name=&asset_names=&asset_symbols="));
+        _context.Progress?.Invoke("Checking PayPal activity");
+        PayPalActivityList? page = null;
+        var response = await browser.GetAsync(url, "text/html", ct);
+        if (response.IsSuccess) page = PayPalActivityPage.Parse(response.Text);
+        var outcome = Decide(page, history, _options.QuickCheckMaxRows);
+        if (page == null) Log.LogWarning("PayPal activity page: HTTP {Status}, {Length} bytes, not readable.", response.Status, response.Body.Length);
+        Log.LogInformation("PayPal quick check since {From}: {Rows} listed, {New} not stored, {Pending} pending on the page, {StoredPending} stored pending; {Outcome}.",
+            from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), page?.Ids.Count ?? 0,
+            page?.Ids.Count(id => !history.KnownTransactionIds.Contains(id)) ?? 0, page?.PendingIds.Count ?? 0, history.PendingCount, outcome);
+        return new QuickPlan(outcome, from);
+    }
+
     // ---- accounts ----
 
     public async Task<IReadOnlyList<RemoteAccount>> ListAccountsAsync(CancellationToken ct)
     {
         var browser = _browser is { IsOpen: true } b ? b : throw new ConnectorException("The PayPal session has ended; please sync again.");
-        await EnsureRowsAsync(browser, Today.AddDays(-_options.ListingDays), ct);
+        _quick = await QuickCheckAsync(browser, ct);
+        if (_quick?.Outcome != QuickOutcome.NothingNew)
+            await EnsureRowsAsync(browser, _quick?.From ?? Today.AddDays(-_options.ListingDays), ct);
         var currencies = new SortedSet<string>(StringComparer.Ordinal) { _options.PrimaryCurrency };
         if (_session.Values.TryGetValue(CurrenciesKey, out var known))
             currencies.UnionWith(known.Split(',', StringSplitOptions.RemoveEmptyEntries));
@@ -212,7 +278,14 @@ public sealed class PayPalConnector : IBankConnector
             Log.LogInformation("PayPal: the browser session has ended; asking for a sign-in.");
             return ConnectorStep.Ask<AccountRefresh>(AskSignIn());
         }
+        if (_quick?.Outcome == QuickOutcome.NothingNew)
+        {
+            Log.LogInformation("PayPal {Currency}: nothing new since the last sync; no download, the balance stays as it was.", account.Currency);
+            return ConnectorStep.Done(new AccountRefresh(null, [], []));
+        }
         var from = since ?? Today.AddYears(-_options.HistoryYears);
+        // After a quick check the stored rows are complete up to its first day; the download starts there.
+        if (_quick is { } quick && from < quick.From) from = quick.From;
         await EnsureRowsAsync(browser, from, ct);
         var transactions = PayPalCsv.Map(_rows, account.Currency, from);
         var balance = PayPalCsv.LatestBalance(_rows, account.Currency);

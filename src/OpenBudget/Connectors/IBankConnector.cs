@@ -46,3 +46,21 @@ public interface IBatchedStatements
 
     int? StatementsTotal { get; }
 }
+
+/// <summary>
+/// What the app already holds for a login's linked accounts, handed to a connector after the login and before the account
+/// listing, so it can tell whether anything new happened. <see cref="LastSuccessUtc"/> is the oldest last successful
+/// refresh among the linked accounts; null when one of them was never refreshed, still waits for its switch from
+/// MoneyMoney, or none is linked. <see cref="KnownTransactionIds"/> are the bank transaction ids stored for those
+/// accounts from a few days before that point on; <see cref="PendingCount"/> counts their stored pending rows.
+/// </summary>
+public sealed record SyncHistory(DateTime? LastSuccessUtc, IReadOnlySet<string> KnownTransactionIds, int PendingCount);
+
+/// <summary>A connector that uses the <see cref="SyncHistory"/> of its login (to skip a slow download when nothing changed).</summary>
+public interface ISyncHistoryConsumer
+{
+    /// <summary>How many days before <see cref="SyncHistory.LastSuccessUtc"/> the known ids reach back.</summary>
+    int HistoryOverlapDays { get; }
+
+    void UseSyncHistory(SyncHistory history);
+}
