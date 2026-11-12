@@ -17,7 +17,7 @@ public sealed class WebLoginTests
     private static readonly Uri Start = new("https://bank.example/login");
 
     /// <summary>A bank whose only way in is a web login: asks for it, then is done.</summary>
-    private sealed class WebBankConnector(ConnectorContext context, bool probeHeaders = false, bool codePrompt = false) : IBankConnector
+    private sealed class WebBankConnector(ConnectorContext context, bool probeHeaders = false, bool codePrompt = false, bool autofill = false) : IBankConnector
     {
         public const string Type = "webbank";
 
@@ -34,6 +34,7 @@ public sealed class WebLoginTests
                     Start, [Domain], successUrlPrefix: new Uri("https://bank.example/home"))
                 {
                     CodePrompt = codePrompt ? new WebLoginCodePrompt("/mfa", "#code", "#verify", "Enter the bank's security code.") : null,
+                    Autofill = autofill ? new WebLoginAutofill("alice", "Example-Password1!", [new WebLoginStep("#user", WebLoginCredential.Username, "#go")]) : null,
                 }))
                 : ConnectorStep.Done<ConnectorSession?>(new ConnectorSession());
         }
@@ -320,6 +321,38 @@ public sealed class WebLoginTests
     }
 
     [Fact]
+    public async Task A_web_login_waits_for_the_user_only_while_its_page_is_shown_to_them()
+    {
+        // The app fills the form by itself first; the form never turns up, so after the timeout the page goes to the user.
+        var browser = new FakeBrowserHost { FieldWait = TimeSpan.FromMilliseconds(600) };
+        var registration = new ConnectorRegistration(WebBankConnector.Type, "Web bank", "Web login",
+            context => new WebBankConnector(context, autofill: true), CredentialRequirement.None);
+        await using var world = await BankWorld.CreateAsync(extras: new BankWorldExtras
+        {
+            Registrations = [registration],
+            BrowserHost = browser,
+            WebLoginOptions = new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(10), SettleDelay = TimeSpan.Zero, FormTimeout = TimeSpan.FromMilliseconds(600) },
+        });
+        var loginId = (await world.For(BankWorld.Alice).CreateLoginAsync(WebBankConnector.Type, "Web bank", "", "")).Id;
+
+        Assert.Equal(StartResult.Started, await world.Coordinator.StartAsync(BankWorld.Alice, LoginOnly(loginId)));
+        await WaitForAsync(() => world.Coordinator.GetStatus(BankWorld.Alice, loginId)?.WebLoginSessionId != null);
+        var signingIn = world.Coordinator.GetStatus(BankWorld.Alice, loginId)!;
+        Assert.Equal(WebLoginMode.Starting, signingIn.WebLoginMode);
+        Assert.Equal(SyncPhase.Running, signingIn.Phase);
+        Assert.NotNull(signingIn.Challenge); // the top bar can still offer the page
+
+        await WaitForAsync(() => world.Coordinator.GetStatus(BankWorld.Alice, loginId)?.Phase == SyncPhase.WaitingForInput);
+        Assert.Equal(WebLoginMode.Interactive, world.Coordinator.GetStatus(BankWorld.Alice, loginId)!.WebLoginMode);
+
+        await SignedIn(browser.Sessions.Single());
+        var done = await world.WaitAsync(BankWorld.Alice, loginId, []);
+        Assert.True(done.Succeeded, done.Error);
+        Assert.Equal(SyncPhase.Finished, done.Phase);
+        Assert.Null(done.Challenge);
+    }
+
+    [Fact]
     public async Task The_challenge_is_shown_to_the_owner_only_and_nobody_else_can_attach_to_the_session()
     {
         var gate = new TaskCompletionSource();
@@ -339,7 +372,7 @@ public sealed class WebLoginTests
         }
         Assert.NotNull(open?.WebLoginSessionId);
         Assert.Equal(ChallengeKind.WebLogin, open.Challenge!.Kind);
-        Assert.Equal(SyncPhase.WaitingForInput, open.Phase);
+        Assert.Equal(SyncPhase.WaitingForInput, open.Phase); // without a stored form the user signs in on the page
         Assert.Equal(32, open.WebLoginSessionId.Length); // 128 random bits as hex
         Assert.NotNull(open.ChallengeExpiresAt);
 

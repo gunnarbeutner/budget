@@ -282,7 +282,8 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
         public void ShowWebLogin(ConnectorChallenge challenge, string sessionId, DateTime expiresAt, WebLoginMode mode = WebLoginMode.Interactive) =>
             Update(s => s with
             {
-                Phase = SyncPhase.WaitingForInput,
+                // Only a page the user acts on waits for them; a sign-in running (or waiting) by itself is still syncing.
+                Phase = mode == WebLoginMode.Interactive ? SyncPhase.WaitingForInput : SyncPhase.Running,
                 Challenge = challenge,
                 // the same login changing its mode keeps its id (the dialog keeps its state)
                 ChallengeId = s.WebLoginSessionId == sessionId ? s.ChallengeId : Guid.NewGuid(),

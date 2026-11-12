@@ -198,7 +198,7 @@ else if (lastSync is { } last)
         names = logins.ToDictionary(l => l.Id, l => l.DisplayName);
         lastSync = logins.Where(l => l.LastSyncAt != null).Select(l => l.LastSyncAt).Max();
 
-        var open = statuses.FirstOrDefault(s => s.Challenge != null && s.Phase is SyncPhase.WaitingForInput or SyncPhase.WaitingForApproval);
+        var open = statuses.FirstOrDefault(s => s.Challenge != null && s.Phase != SyncPhase.Finished);
         if (open?.ChallengeId != shownChallengeId)
         {
             shownChallengeId = open?.ChallengeId ?? Guid.Empty;
