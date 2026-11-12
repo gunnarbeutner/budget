@@ -439,6 +439,7 @@ public sealed class BankSyncRunner
                 if (link.SyncFloorUtc == null && firstSync)
                     link.SyncFloorUtc = since is { } s ? s.ToDateTime(TimeOnly.MinValue) : null;
                 await _transactions.ApplyAsync(db, account.Id, step.Value!, since, now, ct, markNew: !firstSync);
+                await DepotHistoryStore.RecordAsync(db, account, step.Value!, DateOnly.FromDateTime(_clock.GetLocalNow().DateTime), ct);
                 await ScheduledPaymentStore.ApplyAsync(db, account, step.Value!, now, ct);
                 link.ScheduledError = step.Value!.ScheduledError is { } scheduledError ? Truncate(scheduledError, 1000) : null;
                 if (link.ScheduledError != null)
