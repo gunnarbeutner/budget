@@ -875,6 +875,8 @@
         chartGranularity = "M"; chartMonthlyPicked = false;
         showRelatedAccounts = false; railOpen = false; chartCollapsed = false;
         checkedFilter = "any"; directionFilter = "any"; newOnly = false; categoryFilter = null; pinFilters = false;
+        // The picker lists the categories of the project's own source; another project may sit on another source.
+        pickerData = null;
         ResetSelectionState();
     }
 
