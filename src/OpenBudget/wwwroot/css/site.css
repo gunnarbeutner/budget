@@ -1037,6 +1037,10 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
     min-height: 0;
     overflow-y: auto;
 }
+/* The ledger's header (filter panel, summary/action row, chart) sits above the scroll pane, so only the bookings
+   scroll. On a short window it is capped at half the viewport and scrolls inside itself; the chart can also be
+   collapsed via its toggle. */
+.browse-head { max-height: 50vh; overflow-y: auto; }
 .browse-rail-header { display: none; }
 .browse-backdrop {
     position: fixed;
@@ -1173,6 +1177,15 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
     color: var(--ob-muted);
     border-bottom: 1px solid var(--ob-line);
 }
+/* In the title row the summary/actions sit between the title and the balance, without a bar of their own. */
+.browse-toolbar .browse-summary {
+    flex: 0 1 auto;
+    justify-content: flex-end;
+    padding: 0;
+    border-bottom: 0;
+}
+.browse-main > .page-toolbar.browse-toolbar { padding-top: 4px; padding-bottom: 4px; }
+.browse-summary .browse-action-label { margin-left: 3px; }
 .browse-summary .money-neg { color: var(--ob-negative); }
 .browse-cards { padding: 12px 20px 0; }
 
@@ -1341,6 +1354,11 @@ button.cat-pill:hover { filter: brightness(0.96); }
     .browse-shell { grid-template-columns: minmax(0, 1fr); height: auto; }
     .browse-main > .page-toolbar { flex-wrap: wrap; padding: 6px 12px; position: sticky; top: var(--ob-topbar-h); }
     .browse-scroll { overflow: visible; }
+    /* On a phone the page scrolls as a whole: the sticky toolbar (title and actions) stays, the chart scrolls away. */
+    .browse-head { max-height: none; overflow: visible; }
+    /* The actions take a row of their own under the title and show as icons only (their titles name them). */
+    .browse-toolbar .browse-summary { flex: 1 1 100%; order: 3; justify-content: flex-start; gap: 4px 14px; }
+    .browse-summary .browse-action-label { display: none; }
     .browse-rail {
         position: fixed;
         top: 0;

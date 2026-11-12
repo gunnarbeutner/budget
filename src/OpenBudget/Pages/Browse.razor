@@ -150,6 +150,72 @@
                     }
                 </div>
             </div>
+            @* The view's actions share the title row: period sum, filter chips and toggles left of the balance. *@
+            @if (tree != null)
+            {
+                <div class="browse-summary" data-testid="browse-summary" role="group">
+                    @if (selectionKind == "account" && SelectedAccountNode is { } acct)
+                    {
+                        <span>@AnchorHeading: <span class="@(SelectionAccountPeriodSum < 0 ? "money-neg" : "")">@Formatting.FormatMoneyDe(SelectionAccountPeriodSum, SelectionAccountCurrency)</span></span>
+                        @if (acct.PendingBalance is { } pending)
+                        {
+                            <span data-testid="account-pending">@L["Header_Pending"] @Formatting.FormatMoneyDe(pending, acct.Currency)</span>
+                        }
+                    }
+                    @if (!string.IsNullOrEmpty(payeeEquals))
+                    {
+                        <span class="badge text-bg-secondary" data-testid="filter-payee">@L["Filter_Payee", payeeEquals]</span>
+                    }
+                    @if (HasActiveFilter)
+                    {
+                        <button type="button" class="btn btn-sm btn-link p-0" @onclick="ClearFilters">@L["Filter_Clear"]</button>
+                    }
+                    <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none @(_filterOpen ? "fw-semibold" : "")" data-testid="filter-toggle" title="@L["Filter_Button"]"
+                            aria-expanded="@_filterOpen.ToString().ToLowerInvariant()" aria-controls="browse-filter-panel" @onclick="() => _filterOpen = !_filterOpen">
+                        <i class="bi @(_filterOpen || ActiveFilterCount > 0 ? "bi-funnel-fill" : "bi-funnel")" aria-hidden="true"></i><span class="browse-action-label"> @L["Filter_Button"]</span>
+                        @if (ActiveFilterCount > 0)
+                        {
+                            <span class="ob-badge" data-testid="filter-count">@ActiveFilterCount</span>
+                        }
+                    </button>
+                    @if (selectionKind == "account" && SelectedAccountNode is { } docAccount && (_statementCount > 0 || docAccount.SyncLoginId != null))
+                    {
+                        <a class="btn btn-sm btn-link p-0 text-decoration-none" href="@($"/projects/{ProjectId}/documents?account={docAccount.Id}")" data-testid="account-documents" title="@L["Documents"]">
+                            <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i><span class="browse-action-label"> @L["Documents"]</span>
+                            @if (_statementCount > 0)
+                            {
+                                <span class="ob-badge">@_statementCount</span>
+                            }
+                        </a>
+                    }
+                    @if (ShowSummaryStrip)
+                    {
+                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" data-testid="summary-toggle" title="@L["Summary_Button"]"
+                                @onclick="ToggleSummaryAsync" aria-expanded="@((!summaryCollapsed).ToString().ToLowerInvariant())">
+                            <i class="bi bi-layout-three-columns" aria-hidden="true"></i><span class="browse-action-label"> @L["Summary_Button"]</span>
+                            <i class="bi @(summaryCollapsed ? "bi-chevron-down" : "bi-chevron-up")" aria-hidden="true"></i>
+                        </button>
+                    }
+                    @if (txTotals is { Count: > 0 })
+                    {
+                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" data-testid="mark-all-checked" @onclick="MarkAllCheckedAsync"
+                                title="@L["MarkAll_Title"]">
+                            <i class="bi bi-check2-all" aria-hidden="true"></i><span class="browse-action-label"> @L["MarkAll"]</span>
+                        </button>
+                    }
+                    @if (chartBars != null && chartBars.Length > 0)
+                    {
+                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none"
+                                @onclick="ToggleChartCollapsed"
+                                aria-expanded="@((!chartCollapsed).ToString().ToLowerInvariant())"
+                                aria-controls="browseChartScroll"
+                                title="@(chartCollapsed ? L["Chart_Expand"] : L["Chart_Collapse"])">
+                            <i class="bi bi-bar-chart" aria-hidden="true"></i><span class="browse-action-label"> @L["Chart_Button"]</span>
+                            <i class="bi @(chartCollapsed ? "bi-chevron-down" : "bi-chevron-up")" aria-hidden="true"></i>
+                        </button>
+                    }
+                </div>
+            }
             @if (ToolbarAmount is { } amount)
             {
                 <span class="browse-balance @(amount.Value < 0 ? "money-neg" : "")" data-testid="browse-balance">@Formatting.FormatMoneyDe(amount.Value, amount.Currency)</span>
@@ -217,7 +283,7 @@
             </div>
         }
 
-        <div class="browse-scroll tx-scroll">
+        <div class="browse-head" data-testid="browse-head">
             @if (_filterOpen && tree != null)
             {
                 <div id="browse-filter-panel" class="browse-filter-panel d-flex flex-wrap align-items-center gap-2 tx-filterbar" data-testid="filter-bar">
@@ -276,72 +342,6 @@
                 </div>
             }
 
-            @if (tree != null)
-            {
-                <div class="browse-summary" data-testid="browse-summary">
-                    @if (selectionKind == "account" && SelectedAccountNode is { } acct)
-                    {
-                        <span>@AnchorHeading: <span class="@(SelectionAccountPeriodSum < 0 ? "money-neg" : "")">@Formatting.FormatMoneyDe(SelectionAccountPeriodSum, SelectionAccountCurrency)</span></span>
-                        @if (acct.PendingBalance is { } pending)
-                        {
-                            <span data-testid="account-pending">@L["Header_Pending"] @Formatting.FormatMoneyDe(pending, acct.Currency)</span>
-                        }
-                    }
-                    @if (!string.IsNullOrEmpty(payeeEquals))
-                    {
-                        <span class="badge text-bg-secondary" data-testid="filter-payee">@L["Filter_Payee", payeeEquals]</span>
-                    }
-                    @if (HasActiveFilter)
-                    {
-                        <button type="button" class="btn btn-sm btn-link p-0" @onclick="ClearFilters">@L["Filter_Clear"]</button>
-                    }
-                    <div class="flex-grow-1"></div>
-                    <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none @(_filterOpen ? "fw-semibold" : "")" data-testid="filter-toggle"
-                            aria-expanded="@_filterOpen.ToString().ToLowerInvariant()" aria-controls="browse-filter-panel" @onclick="() => _filterOpen = !_filterOpen">
-                        <i class="bi @(_filterOpen || ActiveFilterCount > 0 ? "bi-funnel-fill" : "bi-funnel")" aria-hidden="true"></i> @L["Filter_Button"]
-                        @if (ActiveFilterCount > 0)
-                        {
-                            <span class="ob-badge" data-testid="filter-count">@ActiveFilterCount</span>
-                        }
-                    </button>
-                    @if (selectionKind == "account" && SelectedAccountNode is { } docAccount && (_statementCount > 0 || docAccount.SyncLoginId != null))
-                    {
-                        <a class="btn btn-sm btn-link p-0 text-decoration-none" href="@($"/projects/{ProjectId}/documents?account={docAccount.Id}")" data-testid="account-documents">
-                            <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> @L["Documents"]
-                            @if (_statementCount > 0)
-                            {
-                                <span class="ob-badge">@_statementCount</span>
-                            }
-                        </a>
-                    }
-                    @if (ShowSummaryStrip)
-                    {
-                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" data-testid="summary-toggle"
-                                @onclick="ToggleSummaryAsync" aria-expanded="@((!summaryCollapsed).ToString().ToLowerInvariant())">
-                            <i class="bi bi-layout-three-columns" aria-hidden="true"></i> @L["Summary_Button"]
-                            <i class="bi @(summaryCollapsed ? "bi-chevron-down" : "bi-chevron-up")" aria-hidden="true"></i>
-                        </button>
-                    }
-                    @if (txTotals is { Count: > 0 })
-                    {
-                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" data-testid="mark-all-checked" @onclick="MarkAllCheckedAsync"
-                                title="@L["MarkAll_Title"]">
-                            <i class="bi bi-check2-all" aria-hidden="true"></i> @L["MarkAll"]
-                        </button>
-                    }
-                    @if (chartBars != null && chartBars.Length > 0)
-                    {
-                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none"
-                                @onclick="ToggleChartCollapsed"
-                                aria-expanded="@((!chartCollapsed).ToString().ToLowerInvariant())"
-                                aria-controls="browseChartScroll"
-                                title="@(chartCollapsed ? L["Chart_Expand"] : L["Chart_Collapse"])">
-                            <i class="bi bi-bar-chart" aria-hidden="true"></i> @L["Chart_Button"]
-                            <i class="bi @(chartCollapsed ? "bi-chevron-down" : "bi-chevron-up")" aria-hidden="true"></i>
-                        </button>
-                    }
-                </div>
-            }
 
             @if (tree == null)
             {
@@ -350,9 +350,7 @@
                     <div class="skeleton skeleton-block mt-3"></div>
                 </div>
             }
-            else
-            {
-            @if (chartBars != null && chartBars.Length > 0 && !chartCollapsed)
+            else if (chartBars != null && chartBars.Length > 0 && !chartCollapsed)
             {
                 <div class="browse-cards">
                     <div class="browse-chart-frame">
@@ -389,6 +387,11 @@
                 </div>
             }
 
+        </div>
+
+        <div class="browse-scroll tx-scroll">
+            @if (tree != null)
+            {
             @if (selectionKind == "account" && holdings is { } h)
             {
                 <div class="browse-cards"><HoldingsCard Holdings="h" /></div>

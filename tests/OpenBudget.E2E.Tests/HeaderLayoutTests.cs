@@ -34,7 +34,7 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
         Assert.That(rail!.Width, Is.EqualTo(520).Within(2), "the sidebar keeps its resized width");
         await AssertNoOverlapAsync(toolbar,
             ".browse-ident, .browse-balance, .period-stepper, .segmented, .browse-search, [data-testid=filter-toggle], [data-testid=account-documents]");
-        await AssertBelowAsync(toolbar, Page.GetByTestId("browse-summary"));
+        await Expect(toolbar.GetByTestId("browse-summary")).ToBeVisibleAsync();
 
         foreach (var (path, testId) in new[]
                  {
@@ -167,7 +167,7 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
         Assert.That(scrollHeight, Is.LessThanOrEqualTo(tb.Height + 1), "the toolbar is as tall as its content");
         await AssertNoOverlapAsync(toolbar,
             ".browse-ident, .browse-balance, .period-stepper, .segmented, .browse-search, [data-testid=filter-toggle], [data-testid=account-documents]");
-        await AssertBelowAsync(toolbar, summary);
+        await Expect(toolbar.GetByTestId("browse-summary")).ToBeVisibleAsync();
         var docOverflow = await Page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth > window.innerWidth + 1");
         Assert.That(docOverflow, Is.False, "no horizontal page scroll");
 
@@ -179,7 +179,6 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
         await Expect(add).ToBeVisibleAsync();
         await Expect(summary).ToBeVisibleAsync();
         await AssertBelowAsync(toolbar, rulesBar);
-        await AssertBelowAsync(rulesBar, summary);
         var barBox = (await rulesBar.BoundingBoxAsync())!;
         Assert.That(await rulesBar.EvaluateAsync<double>("e => e.scrollHeight"), Is.LessThanOrEqualTo(barBox.Height + 1),
             "the rules bar is as tall as its content");
