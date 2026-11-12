@@ -34,8 +34,8 @@
 
         <nav class="shell-views" aria-label="@L["Aria_Views"]" data-testid="project-views">
             @ViewLink(ProjectTab.Browse, TransactionsUrl, "bi-list-ul", L["View_Transactions"], null, "view-transactions")
-            @ViewLink(ProjectTab.Budgets, $"/projects/{ProjectId}/budgets", "bi-calendar3", L["View_Budget"], BudgetBadge, "view-budget")
-            @ViewLink(ProjectTab.Cashflow, $"/projects/{ProjectId}/cashflow", "bi-graph-up", L["View_Cashflow"], null, "view-cashflow")
+            @ViewLink(ProjectTab.Budgets, BudgetUrl, "bi-calendar3", L["View_Budget"], BudgetBadge, "view-budget")
+            @ViewLink(ProjectTab.Cashflow, $"/projects/{ProjectId}/cashflow?{PeriodQuery}", "bi-graph-up", L["View_Cashflow"], null, "view-cashflow")
             @ViewLink(ProjectTab.Scheduled, $"/projects/{ProjectId}/scheduled", "bi-calendar-check", L["View_Scheduled"], null, "view-scheduled")
             @if (HasPortfolio)
             {
@@ -95,7 +95,7 @@
         <i class="bi bi-wallet2" aria-hidden="true"></i><span>@L["Bottom_Accounts"]</span>
     </button>
     @BottomLink(ProjectTab.Browse, TransactionsUrl, "bi-list-ul", L["View_Transactions"])
-    @BottomLink(ProjectTab.Budgets, $"/projects/{ProjectId}/budgets", "bi-calendar3", L["View_Budget"])
+    @BottomLink(ProjectTab.Budgets, BudgetUrl, "bi-calendar3", L["View_Budget"])
     @BottomLink(ProjectTab.Documents, DocumentsUrl, "bi-file-earmark-text", L["View_Documents"], unreadDocs)
     <GearMenu BottomBar="true" />
 </nav>
@@ -130,7 +130,10 @@
     private BrowseTree? EffectiveTree => Tree ?? ownTree;
     private bool HasPortfolio => EffectiveTree?.Accounts.Any(a => a.IsPortfolio && a.IsAssigned) == true || Active == ProjectTab.Portfolio;
     private string? BudgetBadge => budgetBadge;
-    private string TransactionsUrl => $"/projects/{ProjectId}/browse";
+    // The period views' links carry the shared period, so the next view's URL names it.
+    private string PeriodQuery => TimeState.Current(Clock.NowLocal).ToQueryString();
+    private string TransactionsUrl => $"/projects/{ProjectId}/browse?{PeriodQuery}";
+    private string BudgetUrl => $"/projects/{ProjectId}/budgets?{PeriodQuery}";
     private string DocumentsUrl => $"/projects/{ProjectId}/documents";
     private int unreadDocs;
 
@@ -153,14 +156,9 @@
     protected override async Task OnParametersSetAsync()
     {
         open = RailOpen;
-        var now = Clock.NowLocal;
-        var (year, month) = (TimeState.Year ?? now.Year, TimeState.Month ?? now.Month);
-        var (fromMonth, toMonth) = TimeState.Period switch
-        {
-            "year" => (1, 12),
-            "ytd" => (1, month),
-            _ => (month, month),
-        };
+        var shared = TimeState.Current(Clock.NowLocal);
+        var (year, month) = (shared.Year, shared.Month);
+        var (fromMonth, toMonth) = shared.Months;
         var badgeKey = (ProjectId, year, fromMonth, toMonth);
         if (_loadedProjectId != ProjectId)
         {
@@ -174,7 +172,7 @@
         if (_badgeKey == badgeKey) return;
         _badgeKey = badgeKey;
         // "57 %" next to Budget: spending against the budget for the period the views currently show (the
-        // remembered month / YTD / year), the same number the Budget view's strip shows.
+        // shared period, a custom range by the months it touches), the same number the Budget view's strip shows.
         try
         {
             var summary = await BudgetService.GetSpendingSummaryAsync(ProjectId, year, fromMonth, toMonth);
@@ -211,7 +209,7 @@
     private async Task OnNodeMenuPick((SidebarNode Node, string Key) pick)
     {
         if (pick.Key == SidebarMenus.Rules && pick.Node.Kind == SidebarNodeKind.Category)
-            Navigation.NavigateTo($"{TransactionsUrl}?sel=cat-{pick.Node.Id}&rules=1");
+            Navigation.NavigateTo($"{TransactionsUrl}&sel=cat-{pick.Node.Id}&rules=1");
         else if (structure != null)
             await structure.PickAsync(pick.Node, pick.Key);
     }
@@ -219,13 +217,12 @@
     // Structure edits from this sidebar: reload the tree for the remembered month in place.
     private async Task ReloadOwnTreeAsync(SidebarNode? deleted)
     {
-        var now = Clock.NowLocal;
-        var (year, month) = (TimeState.Year ?? now.Year, TimeState.Month ?? now.Month);
+        var (year, month) = (TimeState.Current(Clock.NowLocal).Year, TimeState.Current(Clock.NowLocal).Month);
         ownTree = await BrowseService.GetTreeAsync(ProjectId, year, month, month) ?? ownTree;
     }
 
     private void OpenTransactions(string? sel) =>
-        Navigation.NavigateTo(sel == null ? TransactionsUrl : $"{TransactionsUrl}?sel={Uri.EscapeDataString(sel)}");
+        Navigation.NavigateTo(sel == null ? TransactionsUrl : $"{TransactionsUrl}&sel={Uri.EscapeDataString(sel)}");
 
     private async Task OnViewClick(ProjectTab tab)
     {

@@ -39,7 +39,8 @@
 <ProjectPageHeader ProjectId="@ProjectId" ProjectName="@(project?.Name ?? "")" />
 
 @* Transactions (Browse): the project shell's sidebar holds this page's account/category tree; the main column
-   has the 48px toolbar (what is selected + balance, period, search, filter) and the ledger list. Below md the
+   has the 48px toolbar (what is selected + balance, search, filter) and the ledger list; the period selector it places
+   renders in the top bar. Below md the
    sidebar is an off-canvas sheet, opened from the title or the bottom bar. *@
 <ProjectShell ProjectId="ProjectId" Active="ProjectTab.Browse" Tree="tree" @bind-RailOpen="railOpen" OnTransactions="SelectAll"
               TransactionsCurrent="@(selectionKind == "all")">
@@ -154,8 +155,8 @@
                 <span class="browse-balance @(amount.Value < 0 ? "money-neg" : "")" data-testid="browse-balance">@Formatting.FormatMoneyDe(amount.Value, amount.Currency)</span>
             }
             <div class="browse-tools d-flex flex-wrap align-items-center gap-2" data-testid="browse-tools">
-                <PeriodNav Inline="true" Anchor="anchor" Period="@period" ShowMonthPicker="true"
-                           MinMonth="monthMin" MaxMonth="monthMax" OnChanged="OnPeriodChanged" />
+                <PeriodNav Anchor="anchor" Period="@period" RangeFrom="rangeFrom" RangeTo="rangeTo" ShowMonthPicker="true"
+                           MinMonth="monthMin" MaxMonth="monthMax" OnChanged="OnPeriodChanged" OnRangeChanged="OnRangeChanged" />
                 <label class="browse-search mb-0">
                     <i class="bi bi-search" aria-hidden="true"></i>
                     <input type="search" placeholder="@L["Filter_SearchPlaceholder"]" aria-label="@L["Filter_SearchPlaceholder"]" data-testid="tx-search"
@@ -242,20 +243,6 @@
                         <input type="number" class="form-control" step="1" min="0" aria-label="@L["Filter_AmountMax"]"
                                value="@amountMaxInput" @onchange="OnAmountMaxChanged" />
                     </div>
-                    <select class="form-select form-select-sm filter-input-md" aria-label="@L["Filter_Period"]" data-testid="filter-period"
-                            value="@periodFilter" @onchange="OnPeriodFilterChanged">
-                        @foreach (var choice in PeriodChoices)
-                        {
-                            <option @key="choice.Key" value="@choice.Key">@PeriodLabel(choice)</option>
-                        }
-                    </select>
-                    @if (periodFilter == PeriodFilter.Custom)
-                    {
-                        <input type="date" class="form-control form-control-sm filter-input-date" aria-label="@L["Filter_From"]" data-testid="filter-from"
-                               value="@customFrom?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="e => OnCustomDateChanged(e, true)" />
-                        <input type="date" class="form-control form-control-sm filter-input-date" aria-label="@L["Filter_To"]" data-testid="filter-to"
-                               value="@customTo?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="e => OnCustomDateChanged(e, false)" />
-                    }
                     <select class="form-select form-select-sm filter-input-sm" aria-label="@L["Filter_Checked"]" data-testid="filter-checked"
                             value="@checkedFilter" @onchange="OnCheckedFilterChanged">
                         <option value="any">@L["Filter_CheckedAny"]</option>
@@ -624,9 +611,6 @@
 
     // ---- review filters ----
 
-    private string periodFilter = PeriodFilter.All;
-    private DateOnly? customFrom;
-    private DateOnly? customTo;
     private string checkedFilter = "any";
     private string directionFilter = "any";
     private bool newOnly;
@@ -701,6 +685,8 @@
     // URL state.
     private (int Year, int Month) anchor;
     private string period = "month";
+    // First and last day of a custom range (period "range"); the list, chart and sidebar sums cover exactly these days.
+    private DateOnly? rangeFrom, rangeTo;
 
     // Selection — "all" | "account" | "category" | "group".
     private string selectionKind = "all";
@@ -854,6 +840,8 @@
         _canEditRules = (await AccessProvider.GetAsync()).CanEdit(ProjectId);
         (monthMin, monthMax) = await BudgetService.GetMonthBoundsForProjectAsync(ProjectId);
         ReadStateFromQuery();
+        // A link with the former filter's "per" key is rewritten to the period it opened.
+        if (QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query).ContainsKey("per")) UpdateUrl();
         await ReloadAsync();
     }
 
@@ -870,7 +858,6 @@
         amountMin = null; amountMax = null; amountMinInput = ""; amountMaxInput = "";
         chartGranularity = "M"; chartMonthlyPicked = false;
         showRelatedAccounts = false; railOpen = false; chartCollapsed = false;
-        periodFilter = PeriodFilter.All; customFrom = null; customTo = null;
         checkedFilter = "any"; directionFilter = "any"; newOnly = false; categoryFilter = null; pinFilters = false;
         ResetSelectionState();
     }
@@ -903,22 +890,10 @@
 
     private void ReadStateFromQuery()
     {
-        var now = Clock.NowLocal;
-        // Seed from the remembered selection (survives a detour through Budgets/Cashflow),
-        // falling back to the current month on a fresh session.
-        anchor = (TimeState.Year ?? now.Year, TimeState.Month ?? now.Month);
-        period = TimeState.Period ?? "month";
+        // The shared period of the project views (survives a detour through Budget/Cashflow), overlaid with the URL's.
+        ApplyPeriod(TimeState.ReadFromUrl(Navigation, Clock.NowLocal));
+        if (period != ViewPeriod.Range) anchor = Anchoring.Clamp(anchor, EffectiveMin, EffectiveMax);
         var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
-
-        if (query.TryGetValue("year", out var y) && int.TryParse(y, out var py) && py >= 1900)
-            anchor.Year = py;
-        if (query.TryGetValue("month", out var m) && int.TryParse(m, out var pm) && pm is >= 1 and <= 12)
-            anchor.Month = pm;
-        // Clamp into the source's [first..last transaction] month window.
-        anchor = Anchoring.Clamp(anchor, EffectiveMin, EffectiveMax);
-
-        if (query.TryGetValue("period", out var p) && p.ToString() is var pv && (pv == "month" || pv == "ytd" || pv == "year"))
-            period = pv;
 
         RememberTimeState();
 
@@ -953,9 +928,6 @@
         { amountMin = minVal; amountMinInput = minRaw.ToString(); }
         if (query.TryGetValue("amax", out var maxRaw) && decimal.TryParse(maxRaw, NumberStyles.Number, CultureInfo.InvariantCulture, out var maxVal))
         { amountMax = maxVal; amountMaxInput = maxRaw.ToString(); }
-        if (query.TryGetValue("per", out var perRaw) && IsKnownPeriodKey(perRaw.ToString())) periodFilter = perRaw.ToString();
-        if (query.TryGetValue("from", out var fromRaw) && DateOnly.TryParseExact(fromRaw, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var fromDate)) customFrom = fromDate;
-        if (query.TryGetValue("to", out var toRaw) && DateOnly.TryParseExact(toRaw, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var toDate)) customTo = toDate;
         if (query.TryGetValue("chk", out var chkRaw) && chkRaw.ToString() is "yes" or "no") checkedFilter = chkRaw.ToString();
         if (query.TryGetValue("dir", out var dirRaw) && dirRaw.ToString() is "in" or "out") directionFilter = dirRaw.ToString();
         if (query.TryGetValue("new", out var newRaw) && newRaw.ToString() == "1") newOnly = true;
@@ -991,11 +963,8 @@
         }
     }
 
-    private void UpdateUrl() => PageState.ReplaceQuery(Navigation, new Dictionary<string, object?>
+    private void UpdateUrl() => PageState.ReplaceQuery(Navigation, new Dictionary<string, object?>(CurrentPeriod.ToQuery())
     {
-        ["year"] = anchor.Year,
-        ["month"] = anchor.Month,
-        ["period"] = period == "month" ? null : period,
         ["sel"] = selectionKind switch
         {
             "category" => $"cat-{selectionId}",
@@ -1010,9 +979,6 @@
         ["amin"] = amountMin?.ToString(CultureInfo.InvariantCulture),
         ["amax"] = amountMax?.ToString(CultureInfo.InvariantCulture),
         ["g"] = chartGranularity == (IsAccountScope ? "D" : "M") ? null : chartGranularity,
-        ["per"] = periodFilter == PeriodFilter.All ? null : periodFilter,
-        ["from"] = periodFilter == PeriodFilter.Custom ? customFrom?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : null,
-        ["to"] = periodFilter == PeriodFilter.Custom ? customTo?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : null,
         ["chk"] = checkedFilter == "any" ? null : checkedFilter,
         ["dir"] = directionFilter == "any" ? null : directionFilter,
         ["new"] = newOnly ? "1" : null,
@@ -1022,12 +988,18 @@
         ["rules"] = _rulesOpen && selectionKind == "category" ? "1" : null
     });
 
-    private (int FromMonth, int ToMonth) PeriodRange => period switch
+    private ViewPeriod CurrentPeriod => period == ViewPeriod.Range && rangeFrom is { } f && rangeTo is { } t
+        ? ViewPeriod.WithRange(f, t)
+        : new ViewPeriod(anchor.Year, anchor.Month, period == ViewPeriod.Range ? "month" : period);
+
+    private void ApplyPeriod(ViewPeriod p)
     {
-        "year" => (1, 12),
-        "ytd" => (1, anchor.Month),
-        _ => (anchor.Month, anchor.Month)
-    };
+        anchor = (p.Year, p.Month);
+        period = p.IsRange ? ViewPeriod.Range : p.Mode;
+        (rangeFrom, rangeTo) = p.IsRange ? (p.From, p.To) : (null, null);
+    }
+
+    private (int FromMonth, int ToMonth) PeriodRange => CurrentPeriod.Months;
 
     private string AnchorHeading
     {
@@ -1036,6 +1008,8 @@
             var d = new DateTime(anchor.Year, anchor.Month, 1);
             return period switch
             {
+                ViewPeriod.Range when rangeFrom is { } f && rangeTo is { } t => L["Heading_Range",
+                    f.ToString("d MMM yyyy", CultureInfo.CurrentCulture), t.ToString("d MMM yyyy", CultureInfo.CurrentCulture)].Value,
                 "year" => L["Heading_Year", anchor.Year].Value,
                 "ytd" => L["Heading_YTD", d.ToString("MMMM yyyy")].Value,
                 _ => d.ToString("MMMM yyyy")
@@ -1046,19 +1020,43 @@
     private async Task OnPeriodChanged((int Year, int Month, string Period) sel)
     {
         if (sel.Year == anchor.Year && sel.Month == anchor.Month && sel.Period == period) return;
-        anchor = (sel.Year, sel.Month);
-        period = sel.Period;
+        var wasRange = period == ViewPeriod.Range;
+        ApplyPeriod(new ViewPeriod(sel.Year, sel.Month, sel.Period));
+        await PeriodChangedAsync(wasRange);
+    }
+
+    private async Task OnRangeChanged((DateOnly From, DateOnly To) range)
+    {
+        ApplyPeriod(ViewPeriod.WithRange(range.From, range.To));
+        await PeriodChangedAsync(true);
+    }
+
+    // A custom range restricts the list to its days, so entering or leaving one reloads the list; between months,
+    // YTD and years the list stays and scrolls to the period.
+    private async Task PeriodChangedAsync(bool wasRange)
+    {
         RememberTimeState();
         UpdateUrl();
+        if (wasRange || period == ViewPeriod.Range)
+        {
+            tree = await LoadTreeAsync() ?? tree;
+            await ReloadTransactionsAsync(keepSelection: true);
+            return;
+        }
         await ReloadHighlightAsync();
         await JumpListToAnchorAsync();
     }
 
-    private void RememberTimeState()
+    private void RememberTimeState() => TimeState.Period = CurrentPeriod;
+
+    /// <summary>The sidebar tree with its sums and budgets over the shown period.</summary>
+    private Task<BrowseTree?> LoadTreeAsync()
     {
-        TimeState.Year = anchor.Year;
-        TimeState.Month = anchor.Month;
-        TimeState.Period = period;
+        var p = CurrentPeriod;
+        var (fm, tm) = p.Months;
+        if (!p.IsRange) return BrowseService.GetTreeAsync(ProjectId, p.Year, fm, tm);
+        var (from, to) = PeriodBoundsUtc;
+        return BrowseService.GetTreeAsync(ProjectId, p.Year, fm, tm, from!.Value, to!.Value);
     }
 
     /// <summary>
@@ -1070,8 +1068,7 @@
     private async Task ReloadHighlightAsync()
     {
         if (project == null) return;
-        var (fm, tm) = PeriodRange;
-        tree = await BrowseService.GetTreeAsync(ProjectId, anchor.Year, fm, tm);
+        tree = await LoadTreeAsync();
         if (ActiveFilterCount > 0) _filterOpen = true;
         await ComputeChartAsync();
         chartDirty = true;
@@ -1155,10 +1152,19 @@
         if (barIndex < 0 || barIndex >= chartBarMonths.Length) return;
         var (y, m) = chartBarMonths[barIndex];
         bool anchorChanged = !(y == anchor.Year && m == anchor.Month);
+        if (period == ViewPeriod.Range)
+        {
+            // A bar of a custom range opens its month.
+            chartSkipAnimation = true;
+            ApplyPeriod(new ViewPeriod(y, m, "month"));
+            await PeriodChangedAsync(true);
+            return;
+        }
         if (anchorChanged)
         {
             anchor = (y, m);
             chartSkipAnimation = true;
+            RememberTimeState();
             UpdateUrl();
             await ReloadHighlightAsync();
         }
@@ -1173,7 +1179,7 @@
     /// </summary>
     private async Task JumpListToAnchorAsync()
     {
-        if (project == null) return;
+        if (project == null || period == ViewPeriod.Range) return;
         var (_, tm) = PeriodRange;
         var periodEndExclusive = new DateTime(anchor.Year, tm, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
         var newerCount = await TransactionQueries.CountNewerThanAsync(
@@ -1294,7 +1300,7 @@
 
     private bool HasActiveFilter =>
         accountFilter.HasValue || !string.IsNullOrWhiteSpace(searchEffective) || amountMin.HasValue || amountMax.HasValue
-        || periodFilter != PeriodFilter.All || checkedFilter != "any" || directionFilter != "any" || newOnly || categoryFilter.HasValue
+        || checkedFilter != "any" || directionFilter != "any" || newOnly || categoryFilter.HasValue
         || !string.IsNullOrEmpty(payeeEquals);
 
     private Task ReloadAsync() => ReloadAsync(quiet: false);
@@ -1309,8 +1315,7 @@
         // The hierarchy may have changed (external data change) — drop the leaf-id cache so the
         // current selection re-resolves against fresh data.
         _leafCacheKey = null; _leafCache = null;
-        var (fm, tm) = PeriodRange;
-        var fresh = await BrowseService.GetTreeAsync(ProjectId, anchor.Year, fm, tm);
+        var fresh = await LoadTreeAsync();
         if (quiet && fresh != null) txTotals = null;
         tree = fresh;
         if (ActiveFilterCount > 0) _filterOpen = true;
@@ -1340,9 +1345,8 @@
             holdings = null;
 
 
-        // The transaction list is intentionally unfiltered by the period anchor — matches
-        // the source's "Period: Show All" default. The anchor only drives chart-highlight
-        // and the header period sum. Other filters (search/amount/account) still apply.
+        // The list is unfiltered by a month / YTD / year period (it scrolls there; the period drives the chart
+        // highlight and the header sum); a custom range restricts it to the range's days. The filters still apply.
         // Totals (count + sum) feed the footer; row data streams through <Virtualize> via
         // LoadTxRowsAsync below.
         txTotals = await TransactionQueries.QueryTotalsAsync(await BuildTransactionQueryAsync(0, 1));
@@ -1682,10 +1686,11 @@
             }
         }
         DateTime earliest, rightEdge;
+        var range = CurrentPeriod.IsRange ? CurrentPeriod.Days : ((DateOnly From, DateOnly To)?)null;
         if (balancePeriod)
         {
-            earliest = new DateTime(anchor.Year, fm, 1, 0, 0, 0, DateTimeKind.Utc);
-            rightEdge = new DateTime(anchor.Year, tm, 1, 0, 0, 0, DateTimeKind.Utc);
+            earliest = range is { } br ? br.From.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc) : new DateTime(anchor.Year, fm, 1, 0, 0, 0, DateTimeKind.Utc);
+            rightEdge = range is { } bt ? new DateTime(bt.To.Year, bt.To.Month, 1, 0, 0, 0, DateTimeKind.Utc) : new DateTime(anchor.Year, tm, 1, 0, 0, 0, DateTimeKind.Utc);
         }
         else
         {
@@ -1701,17 +1706,12 @@
             rightEdge = scopeLatest is { } lt && lt > anchorDate
                 ? new DateTime(lt.Year, lt.Month, 1)
                 : anchorDate;
-            // The filter's period narrows the chart to the same range as the list.
-            var (periodFrom, periodTo) = PeriodFilter.Resolve(periodFilter, DateOnly.FromDateTime(Clock.Today), customFrom, customTo);
-            if (periodFrom is { } pf)
+            // A custom range narrows the chart to the same months as the list.
+            if (range is { } r)
             {
-                var from = new DateTime(pf.Year, pf.Month, 1);
+                var from = new DateTime(r.From.Year, r.From.Month, 1);
                 if (from > earliest) earliest = from;
-            }
-            if (periodTo is { } pt)
-            {
-                var lastDay = pt.AddDays(-1);
-                var to = new DateTime(lastDay.Year, lastDay.Month, 1);
+                var to = new DateTime(r.To.Year, r.To.Month, 1);
                 if (to < rightEdge) rightEdge = to;
             }
             // rightEdge is a month start, earliest a day within its month

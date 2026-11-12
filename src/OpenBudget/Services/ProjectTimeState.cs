@@ -1,21 +1,29 @@
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.WebUtilities;
+
 namespace OpenBudget.Services;
 
 /// <summary>
-/// Per-circuit memory of the month-model time selection — the (year, month) anchor and the
-/// month / YTD / year display mode — shared by a project's Transactions and Budget views.
+/// Per-circuit memory of the period the project views show (see <see cref="ViewPeriod"/>), shared by Transactions,
+/// Budget and Cashflow: switching between them keeps it. A view seeds its period from here, overlays what its URL
+/// carries (links stay authoritative), and writes every change back; the sidebar's view links carry it in their
+/// query so the next view's URL names it too.
 ///
-/// Cashflow is year-only and doesn't carry this selection, so detouring through it used to
-/// reset the display mode on the way back. Transactions and Budget seed their state from
-/// here when the URL doesn't specify one, and write back on every change, so the mode survives
-/// the round trip. The URL still wins when it carries an explicit selection (shareable links,
-/// dashboard links that target a specific month), keeping links authoritative.
-///
-/// Registered scoped — in Blazor Server that's the lifetime of the user's circuit, so it
-/// persists across in-app navigations but never leaks between users.
+/// Registered scoped — in Blazor Server that's the lifetime of the user's circuit, so it persists across in-app
+/// navigations but never leaks between users.
 /// </summary>
 public class ProjectTimeState
 {
-    public int? Year { get; set; }
-    public int? Month { get; set; }
-    public string? Period { get; set; }
+    public ViewPeriod? Period { get; set; }
+
+    /// <summary>The remembered period, or the current month.</summary>
+    public ViewPeriod Current(DateTime nowLocal) => Period ?? new ViewPeriod(nowLocal.Year, nowLocal.Month, "month");
+
+    /// <summary>The remembered period overlaid with the one in the current URL; remembered as well.</summary>
+    public ViewPeriod ReadFromUrl(NavigationManager nav, DateTime nowLocal)
+    {
+        var query = QueryHelpers.ParseQuery(nav.ToAbsoluteUri(nav.Uri).Query);
+        Period = ViewPeriod.Read(query, Current(nowLocal), DateOnly.FromDateTime(nowLocal));
+        return Period;
+    }
 }

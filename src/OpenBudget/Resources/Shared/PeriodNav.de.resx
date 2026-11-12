@@ -88,4 +88,22 @@
   <data name="Heading_YTD" xml:space="preserve">
     <value>Jahr bis {0}</value>
   </data>
+  <data name="Button_Range" xml:space="preserve">
+    <value>Zeitraum</value>
+  </data>
+  <data name="Label_From" xml:space="preserve">
+    <value>Von</value>
+  </data>
+  <data name="Label_To" xml:space="preserve">
+    <value>Bis</value>
+  </data>
+  <data name="Button_Cancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="Button_Apply" xml:space="preserve">
+    <value>Anwenden</value>
+  </data>
+  <data name="Heading_Range" xml:space="preserve">
+    <value>{0} – {1}</value>
+  </data>
 </root>

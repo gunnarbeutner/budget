@@ -299,9 +299,11 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         await Expect(Page.GetByText(new Regex("3 transactions"))).ToBeVisibleAsync();
         await Page.GetByTestId("filter-checked").SelectOptionAsync("any");
 
-        await Page.GetByTestId("filter-period").SelectOptionAsync("custom");
-        await Page.GetByTestId("filter-from").FillAsync("2026-03-11");
-        await Page.GetByTestId("filter-to").FillAsync("2026-03-12");
+        await Expect(Page.GetByTestId("filter-period")).ToHaveCountAsync(0);                     // the period lives in the top bar
+        await Page.GetByTestId("period-range").ClickAsync();
+        await Page.GetByTestId("period-range-from").FillAsync("2026-03-11");
+        await Page.GetByTestId("period-range-to").FillAsync("2026-03-12");
+        await Page.GetByTestId("period-range-apply").ClickAsync();
         await Expect(Page.GetByText(new Regex("2 transactions"))).ToBeVisibleAsync();          // the 12th (Grocer) and the 11th (Bakery)
     }
 

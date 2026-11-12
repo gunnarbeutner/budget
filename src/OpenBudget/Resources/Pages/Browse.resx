@@ -96,15 +96,6 @@
   <data name="Header_Today" xml:space="preserve"><value>Today</value></data>
   <data name="Header_Yesterday" xml:space="preserve"><value>Yesterday</value></data>
   <data name="Header_SyncNow" xml:space="preserve"><value>Sync now</value></data>
-  <data name="Filter_Period" xml:space="preserve">
-    <value>Period</value>
-  </data>
-  <data name="Filter_From" xml:space="preserve">
-    <value>From</value>
-  </data>
-  <data name="Filter_To" xml:space="preserve">
-    <value>To</value>
-  </data>
   <data name="Filter_Checked" xml:space="preserve">
     <value>Check mark</value>
   </data>
@@ -233,21 +224,6 @@
   </data>
   <data name="Key_Help" xml:space="preserve">
     <value>Show this list</value>
-  </data>
-  <data name="Period_All" xml:space="preserve">
-    <value>All time</value>
-  </data>
-  <data name="Period_Days" xml:space="preserve">
-    <value>Last {0} days</value>
-  </data>
-  <data name="Period_Months" xml:space="preserve">
-    <value>Last {0} months</value>
-  </data>
-  <data name="Period_Quarter" xml:space="preserve">
-    <value>Q{0} {1}</value>
-  </data>
-  <data name="Period_Custom" xml:space="preserve">
-    <value>Custom…</value>
   </data>
   <data name="Ctx_SetCategory" xml:space="preserve">
     <value>Set category …</value>
@@ -417,5 +393,8 @@
   </data>
   <data name="Chart_AriaSummary" xml:space="preserve">
     <value>{0}, {1} to {2}: lowest {3}, highest {4}, latest {5}</value>
+  </data>
+  <data name="Heading_Range" xml:space="preserve">
+    <value>{0} – {1}</value>
   </data>
 </root>

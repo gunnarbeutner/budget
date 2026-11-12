@@ -24,16 +24,10 @@ public partial class Browse
         Note,
     }
 
-    private IReadOnlyList<PeriodChoice> PeriodChoices => PeriodFilter.Choices(DateOnly.FromDateTime(Clock.Today));
-
-    private (DateTime? From, DateTime? ToExclusive) PeriodBoundsUtc
-    {
-        get
-        {
-            var (from, to) = PeriodFilter.Resolve(periodFilter, DateOnly.FromDateTime(Clock.Today), customFrom, customTo);
-            return (from is { } f ? LocalMidnightToUtc(f) : null, to is { } t ? LocalMidnightToUtc(t) : null);
-        }
-    }
+    /// <summary>The custom range's bounds in UTC (local midnights); open while the period is a month, YTD or year.</summary>
+    private (DateTime? From, DateTime? ToExclusive) PeriodBoundsUtc => CurrentPeriod is { IsRange: true } p
+        ? (LocalMidnightToUtc(p.From!.Value), LocalMidnightToUtc(p.To!.Value.AddDays(1)))
+        : (null, null);
 
     private DateTime LocalMidnightToUtc(DateOnly day)
     {
@@ -44,21 +38,6 @@ public partial class Browse
 
     private DateOnly ToLocalDay(DateTime utc) => DateOnly.FromDateTime(Clock.ToLocal(utc));
 
-    private static bool IsKnownPeriodKey(string key) =>
-        key is "all" or "30d" or "90d" or "12m" or "custom"
-        || PeriodFilter.Resolve(key, new DateOnly(2000, 1, 1)) is { From: not null };
-
-    private string PeriodLabel(PeriodChoice choice) => choice.Kind switch
-    {
-        "all" => L["Period_All"],
-        "days" => L["Period_Days", choice.Number],
-        "months" => L["Period_Months", choice.Number],
-        "month" => new DateTime(choice.Year, choice.Number, 1).ToString("MMMM yyyy", CultureInfo.CurrentCulture),
-        "quarter" => L["Period_Quarter", choice.Number, choice.Year],
-        "year" => choice.Year.ToString(CultureInfo.InvariantCulture),
-        _ => L["Period_Custom"],
-    };
-
     // ---- toolbar: filter panel, documents ----
 
     private bool _filterOpen;
@@ -67,7 +46,7 @@ public partial class Browse
     /// <summary>How many of the panel's filters are set (search has its own field and is not counted).</summary>
     private int ActiveFilterCount =>
         (accountFilter.HasValue ? 1 : 0) + (amountMin.HasValue ? 1 : 0) + (amountMax.HasValue ? 1 : 0)
-        + (periodFilter != PeriodFilter.All ? 1 : 0) + (checkedFilter != "any" ? 1 : 0) + (directionFilter != "any" ? 1 : 0)
+        + (checkedFilter != "any" ? 1 : 0) + (directionFilter != "any" ? 1 : 0)
         + (newOnly ? 1 : 0) + (categoryFilter.HasValue ? 1 : 0);
 
     private async Task LoadToolbarExtrasAsync()
@@ -298,7 +277,6 @@ public partial class Browse
         searchInput = ""; searchEffective = "";
         amountMin = null; amountMax = null;
         amountMinInput = ""; amountMaxInput = "";
-        periodFilter = PeriodFilter.All; customFrom = null; customTo = null;
         checkedFilter = "any"; directionFilter = "any"; newOnly = false; categoryFilter = null;
         payeeEquals = null;
     }
@@ -345,19 +323,6 @@ public partial class Browse
     }
 
     // ---- filter handlers ----
-
-    private async Task OnPeriodFilterChanged(ChangeEventArgs e)
-    {
-        periodFilter = e.Value?.ToString() ?? PeriodFilter.All;
-        await FilterChangedAsync();
-    }
-
-    private async Task OnCustomDateChanged(ChangeEventArgs e, bool isFrom)
-    {
-        DateOnly? value = DateOnly.TryParseExact(e.Value?.ToString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
-        if (isFrom) customFrom = value; else customTo = value;
-        await FilterChangedAsync();
-    }
 
     private async Task OnCheckedFilterChanged(ChangeEventArgs e)
     {
@@ -961,8 +926,7 @@ public partial class Browse
     private async Task RefreshAfterEditAsync()
     {
         if (project == null) return;
-        var (fm, tm) = PeriodRange;
-        tree = await BrowseService.GetTreeAsync(ProjectId, anchor.Year, fm, tm) ?? tree;
+        tree = await LoadTreeAsync() ?? tree;
         await ReloadTransactionsAsync(keepSelection: true);
         // The rows the refresh reloaded carry fresh values; the expanded row's details follow along.
         await AfterSelectionChangedAsync();

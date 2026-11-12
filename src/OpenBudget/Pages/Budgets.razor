@@ -36,8 +36,8 @@
     {
         <span class="view-sub d-none d-md-inline">@sb.Name</span>
     }
-    <PeriodNav Inline="true" Anchor="anchor" Period="@period" ShowMonthPicker="true"
-               MinMonth="monthMin" MaxMonth="monthMax" OnChanged="OnPeriodChanged" />
+    <PeriodNav Anchor="anchor" Period="@period" RangeFrom="rangeFrom" RangeTo="rangeTo" ShowMonthPicker="true"
+               MinMonth="monthMin" MaxMonth="monthMax" OnChanged="OnPeriodChanged" OnRangeChanged="OnRangeChanged" />
     <div class="flex-grow-1"></div>
     <BudgetMenu AvailableBudgets="availableBudgets"
                 SelectedBudgetId="selectedCompareBudgetId"
@@ -472,6 +472,8 @@ else
 
     private (int Year, int Month) anchor;
     private string period = "month";
+    // A custom range's days; the budget covers the whole months the range touches in its last year.
+    private DateOnly? rangeFrom, rangeTo;
     private (int Year, int Month)? monthMin;
     private (int Year, int Month)? monthMax;
     private BudgetTableModel? table;
@@ -480,15 +482,22 @@ else
 
     private Budget? SelectedBudget => availableBudgets?.FirstOrDefault(b => b.Id == selectedCompareBudgetId);
 
-    private (int FromMonth, int ToMonth) PeriodRange => Anchoring.Range(anchor.Month, period);
+    private ViewPeriod CurrentPeriod => period == ViewPeriod.Range && rangeFrom is { } f && rangeTo is { } t
+        ? ViewPeriod.WithRange(f, t)
+        : new ViewPeriod(anchor.Year, anchor.Month, period == ViewPeriod.Range ? "month" : period);
+
+    private (int FromMonth, int ToMonth) PeriodRange => CurrentPeriod.Months;
 
     private string PeriodName
     {
         get
         {
             var d = new DateTime(anchor.Year, anchor.Month, 1);
+            var (fm, tm) = PeriodRange;
             return period switch
             {
+                ViewPeriod.Range => L["Period_Range", new DateTime(anchor.Year, fm, 1).ToString("MMMM yyyy", CultureInfo.CurrentCulture),
+                    new DateTime(anchor.Year, tm, 1).ToString("MMMM yyyy", CultureInfo.CurrentCulture)].Value,
                 "year" => anchor.Year.ToString(CultureInfo.CurrentCulture),
                 "ytd" => L["Period_Ytd", d.ToString("MMMM yyyy", CultureInfo.CurrentCulture)].Value,
                 _ => d.ToString("MMMM yyyy", CultureInfo.CurrentCulture),
@@ -500,6 +509,7 @@ else
     {
         "year" => L["Strip_LeftYear"],
         "ytd" => L["Strip_LeftYtd"],
+        ViewPeriod.Range => L["Strip_LeftRange"],
         _ => L["Strip_LeftMonth"],
     };
 
@@ -540,7 +550,7 @@ else
 
     /// <summary>Transactions filtered to the row's category, on this view's period.</summary>
     private string RowHref(BudgetTableRow row) =>
-        $"/projects/{ProjectId}/browse?year={anchor.Year}&month={anchor.Month}" + (period == "month" ? "" : $"&period={period}") + $"&sel={row.Selection}";
+        $"/projects/{ProjectId}/browse?{CurrentPeriod.ToQueryString()}&sel={row.Selection}";
 
     private async Task LoadTableAsync()
     {
@@ -550,41 +560,36 @@ else
         table = BudgetTableModel.Build(summary, allCategories, SourceScope.SentinelRoot(projectSourceId));
     }
 
-    private async Task OnPeriodChanged((int Year, int Month, string Period) next)
+    private async Task OnPeriodChanged((int Year, int Month, string Period) next) =>
+        await ChangePeriodAsync(new ViewPeriod(next.Year, next.Month, next.Period));
+
+    private async Task OnRangeChanged((DateOnly From, DateOnly To) range) =>
+        await ChangePeriodAsync(ViewPeriod.WithRange(range.From, range.To));
+
+    private async Task ChangePeriodAsync(ViewPeriod next)
     {
         var yearChanged = next.Year != anchor.Year;
-        anchor = (next.Year, next.Month);
-        period = next.Period;
-        RememberTimeState();
-        PageState.ReplaceQuery(Navigation, new Dictionary<string, object?>
-        {
-            ["year"] = anchor.Year,
-            ["month"] = anchor.Month,
-            ["period"] = period == "month" ? null : period,
-        });
+        ApplyPeriod(next);
+        TimeState.Period = CurrentPeriod;
+        PageState.ReplaceQuery(Navigation, CurrentPeriod.ToQuery());
         if (yearChanged) await OnYearChanged(anchor.Year);
         else await LoadTableAsync();
     }
 
-    private void RememberTimeState()
+    private void ApplyPeriod(ViewPeriod p)
     {
-        TimeState.Year = anchor.Year;
-        TimeState.Month = anchor.Month;
-        TimeState.Period = period;
+        anchor = (p.Year, p.Month);
+        period = p.IsRange ? ViewPeriod.Range : p.Mode;
+        (rangeFrom, rangeTo) = p.IsRange ? (p.From, p.To) : (null, null);
     }
 
+    // The shared period of the project views, overlaid with the URL's.
     private void ReadPeriodFromQuery()
     {
         var now = Clock.NowLocal;
-        anchor = (TimeState.Year ?? now.Year, TimeState.Month ?? now.Month);
-        period = TimeState.Period ?? "month";
-        if (PageState.ReadIntQuery(Navigation, "year") is { } y && PageState.ReadIntQuery(Navigation, "month") is { } m && m is >= 1 and <= 12)
-            anchor = (y, m);
-        var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
-        if (query.TryGetValue("period", out var p) && p.ToString() is "month" or "ytd" or "year")
-            period = p.ToString();
-        anchor = Anchoring.Clamp(anchor, monthMin ?? (1900, 1), monthMax ?? (now.Year, now.Month));
-        RememberTimeState();
+        ApplyPeriod(TimeState.ReadFromUrl(Navigation, now));
+        if (period != ViewPeriod.Range) anchor = Anchoring.Clamp(anchor, monthMin ?? (1900, 1), monthMax ?? (now.Year, now.Month));
+        TimeState.Period = CurrentPeriod;
     }
 
     private async Task ToggleChartsAsync()

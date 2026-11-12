@@ -4,88 +4,58 @@
 @inject IStringLocalizer<PeriodNav> L
 @inject ClockService Clock
 
-@* Shared sticky time-navigation strip: prev / next / today, with the current period as a
-   heading in the middle. The single source of time-nav chrome across the app, so every view
-   shares one vocabulary instead of each rolling its own.
+@* The period selector of the project views: prev / next / today around the current period, the Month / YTD / Year /
+   Custom range modes, and for a custom range a small popover with its first and last day. Wherever a page places it,
+   it renders in the app's top bar (MainLayout's "topbar-period" outlet, a second row on phones), so the views that
+   have no period show none there.
 
-   Two modes:
-   • Full (default): a month-YTD-year segmented control + a clickable month heading. Used by
-     Transactions — the views that work at month granularity.
-   • Year-only (YearOnly=true): no segmented control; the chevrons step through Years and the
-     heading is the bare year. Used by Budgets / Cashflow, which are inherently annual.
+   Year-only mode (YearOnly=true, Cashflow): no modes; the chevrons step through Years and the heading is the bare
+   year. OnChanged then reports (year, 1, "year").
 
-   Controlled component: the parent owns Anchor + Period and reloads its data in OnChanged.
-   We never mutate the parameters locally — every interaction reports the *next* state and
-   waits for the parent to feed it back down. In year-only mode OnChanged reports
-   (year, 1, "year") and only Year is meaningful.
+   Controlled component: the parent owns Anchor + Period (+ RangeFrom / RangeTo) and reloads in OnChanged /
+   OnRangeChanged; every interaction reports the next state and waits for the parent to feed it back down.
 
-   ShowMonthPicker turns the heading into a clickable <input type="month"> (full mode only).
-   Leading / Trailing are page-specific slots. Every view uses the same order: the view title,
-   then these controls, then the view's own controls, then right-aligned actions. Leading holds
-   the title; Trailing is pinned right. Inline pages place the controls directly after their
-   title in their own toolbar.
-
-   Usage:
-
-       <PeriodNav Anchor="anchor" Period="period" ShowMonthPicker="true" OnChanged="OnPeriodChanged" />
-       <PeriodNav Anchor="(selectedYear, 1)" Period="@("year")" YearOnly="true"
-                  Years="availableYears" OnChanged="OnYearChanged" />
+       <PeriodNav Anchor="anchor" Period="@period" RangeFrom="from" RangeTo="to" ShowMonthPicker="true"
+                  OnChanged="OnPeriodChanged" OnRangeChanged="OnRangeChanged" />
 *@
 
-@if (Inline)
-{
+<SectionContent SectionName="@SectionName">
     @Controls
-}
-else
-{
-    <div class="page-toolbar period-nav">
-        @if (Leading != null)
-        {
-            @Leading
-        }
-        @Controls
-        <div class="flex-grow-1"></div>
-        @if (Trailing != null)
-        {
-            <div class="d-flex align-items-center gap-2">
-                @Trailing
-            </div>
-        }
-    </div>
-}
+</SectionContent>
 
 @code {
+    /// <summary>The top bar's outlet the selector renders into.</summary>
+    public const string SectionName = "topbar-period";
+
     [Parameter, EditorRequired] public (int Year, int Month) Anchor { get; set; }
+    /// <summary>"month", "ytd", "year" or "range".</summary>
     [Parameter, EditorRequired] public string Period { get; set; } = "month";
 
-    /// <summary>Fired with the next (year, month, period) after any interaction. The parent
-    /// stores it and reloads, then feeds the new values back as parameters.</summary>
+    /// <summary>Fired with the next (year, month, period) after any interaction but a range pick.</summary>
     [Parameter] public EventCallback<(int Year, int Month, string Period)> OnChanged { get; set; }
+
+    /// <summary>First and last day of the custom range (Period "range").</summary>
+    [Parameter] public DateOnly? RangeFrom { get; set; }
+    [Parameter] public DateOnly? RangeTo { get; set; }
+
+    /// <summary>Fired with the first and last day when a custom range is applied.</summary>
+    [Parameter] public EventCallback<(DateOnly From, DateOnly To)> OnRangeChanged { get; set; }
 
     /// <summary>Render the heading as a clickable month picker rather than a plain label (full mode only).</summary>
     [Parameter] public bool ShowMonthPicker { get; set; }
 
-    /// <summary>Year-only mode: drop the period segmented control and step through <see cref="Years"/>.</summary>
+    /// <summary>Year-only mode: drop the modes and step through <see cref="Years"/>.</summary>
     [Parameter] public bool YearOnly { get; set; }
 
     /// <summary>The selectable years in year-only mode; the chevrons step between adjacent entries.</summary>
     [Parameter] public IReadOnlyList<int>? Years { get; set; }
 
-    /// <summary>Earliest selectable month in full mode (the first transaction's month). Stops the
-    /// prev chevron / month picker from scrolling into empty months before any data. Defaults to
-    /// 1900-01 when not supplied.</summary>
+    /// <summary>Earliest selectable month in full mode (the first transaction's month). Defaults to 1900-01.</summary>
     [Parameter] public (int Year, int Month)? MinMonth { get; set; }
 
-    /// <summary>Latest selectable month in full mode (the last transaction's month, which may be in
-    /// the future — e.g. pending rows). Lets the next chevron / month picker reach future-dated data
-    /// instead of stopping at the current month. Defaults to the current month when not supplied.</summary>
+    /// <summary>Latest selectable month in full mode (the last transaction's month, which may be in the future, e.g.
+    /// pending rows). Defaults to the current month.</summary>
     [Parameter] public (int Year, int Month)? MaxMonth { get; set; }
-
-    [Parameter] public RenderFragment? Leading { get; set; }
-
-    /// <summary>Render only the controls (no toolbar of its own), for pages that place them in their own toolbar.</summary>
-    [Parameter] public bool Inline { get; set; }
-    [Parameter] public RenderFragment? Trailing { get; set; }
 
     private ElementReference monthInputRef;
 
@@ -93,12 +63,17 @@ else
     {
         <div class="period-controls" data-testid="period-nav">
             <div class="period-stepper">
-                <button type="button" class="period-step" @onclick="() => Step(-1)" aria-label="@L["Aria_Previous"]" disabled="@PrevDisabled">
+                <button type="button" class="period-step" @onclick="() => Step(-1)" aria-label="@L["Aria_Previous"]" disabled="@PrevDisabled" hidden="@IsRange">
                     <i class="bi bi-chevron-left" aria-hidden="true"></i>
                 </button>
                 @if (YearOnly)
                 {
                     <span class="period-nav-heading">@L["Heading_Year", Anchor.Year]</span>
+                }
+                else if (IsRange)
+                {
+                    <span class="period-nav-heading" role="button" tabindex="0" data-testid="period-range-heading"
+                          @onclick="OpenRange" @onkeydown="OnRangeHeadingKey">@RangeHeading</span>
                 }
                 else if (ShowMonthPicker)
                 {
@@ -115,11 +90,11 @@ else
                 {
                     <span class="period-nav-heading browse-anchor-label">@HeadingText</span>
                 }
-                <button type="button" class="period-step" @onclick="() => Step(1)" aria-label="@L["Aria_Next"]" disabled="@NextDisabled">
+                <button type="button" class="period-step" @onclick="() => Step(1)" aria-label="@L["Aria_Next"]" disabled="@NextDisabled" hidden="@IsRange">
                     <i class="bi bi-chevron-right" aria-hidden="true"></i>
                 </button>
             </div>
-            @if (!TodayDisabled)
+            @if (!TodayDisabled && !IsRange)
             {
                 <button type="button" class="btn btn-sm btn-link period-today" @onclick="TodayClicked">@L["Button_Today"]</button>
             }
@@ -132,10 +107,69 @@ else
                             @onclick='() => SetPeriod("ytd")'>@L["Button_YTD"]</button>
                     <button type="button" class="btn @(Period == "year" ? "active" : "")"
                             @onclick='() => SetPeriod("year")'>@L["Button_Year"]</button>
+                    <button type="button" class="btn @(IsRange ? "active" : "")" data-testid="period-range"
+                            aria-expanded="@rangeOpen.ToString().ToLowerInvariant()" @onclick="ToggleRange">@L["Button_Range"]</button>
                 </div>
+                @if (rangeOpen)
+                {
+                    <div class="period-range-popover" role="dialog" aria-label="@L["Button_Range"]" data-testid="period-range-popover">
+                        <label>@L["Label_From"]
+                            <input type="date" class="form-control form-control-sm" data-testid="period-range-from"
+                                   value="@ViewPeriod.Format(draftFrom)" @onchange="e => OnDraftDay(e, true)" />
+                        </label>
+                        <label>@L["Label_To"]
+                            <input type="date" class="form-control form-control-sm" data-testid="period-range-to"
+                                   value="@ViewPeriod.Format(draftTo)" @onchange="e => OnDraftDay(e, false)" />
+                        </label>
+                        <div class="d-flex gap-2 justify-content-end">
+                            <button type="button" class="btn btn-sm btn-link" @onclick="() => rangeOpen = false">@L["Button_Cancel"]</button>
+                            <button type="button" class="btn btn-sm btn-primary" data-testid="period-range-apply" @onclick="ApplyRange">@L["Button_Apply"]</button>
+                        </div>
+                    </div>
+                }
             }
         </div>
     };
+
+    private bool IsRange => !YearOnly && Period == ViewPeriod.Range && RangeFrom != null && RangeTo != null;
+    private bool rangeOpen;
+    private DateOnly draftFrom, draftTo;
+
+    private string RangeHeading => L["Heading_Range", RangeFrom!.Value.ToString("d MMM yyyy", CultureInfo.CurrentCulture),
+        RangeTo!.Value.ToString("d MMM yyyy", CultureInfo.CurrentCulture)].Value;
+
+    // The popover opens on the days shown now: the range itself, or the month / YTD / year.
+    private void OpenRange()
+    {
+        (draftFrom, draftTo) = IsRange
+            ? (RangeFrom!.Value, RangeTo!.Value)
+            : new ViewPeriod(Anchor.Year, Anchor.Month, Period).Days;
+        rangeOpen = true;
+    }
+
+    private void ToggleRange()
+    {
+        if (rangeOpen) rangeOpen = false;
+        else OpenRange();
+    }
+
+    private void OnRangeHeadingKey(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " " or "Spacebar") OpenRange();
+    }
+
+    private void OnDraftDay(ChangeEventArgs e, bool isFrom)
+    {
+        if (!ViewPeriod.TryParseDay(e.Value?.ToString(), out var day)) return;
+        if (isFrom) draftFrom = day; else draftTo = day;
+    }
+
+    private async Task ApplyRange()
+    {
+        rangeOpen = false;
+        var (from, to) = draftTo < draftFrom ? (draftTo, draftFrom) : (draftFrom, draftTo);
+        await OnRangeChanged.InvokeAsync((from, to));
+    }
 
     private List<int> GetSortedYears() => Years?.OrderBy(y => y).ToList() ?? new List<int>();
 
@@ -222,6 +256,7 @@ else
 
     private async Task SetPeriod(string value)
     {
+        rangeOpen = false;
         if (value == Period) return;
         await OnChanged.InvokeAsync((Anchor.Year, Anchor.Month, value));
     }

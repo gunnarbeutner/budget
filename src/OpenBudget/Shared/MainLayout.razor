@@ -5,11 +5,15 @@
 <PageTitle>OpenBudget</PageTitle>
 
 @* App chrome: one 44px top bar for every page — wordmark, the project switcher (which replaced the start page),
-   the bank-sync status, the gear (project settings and data sources) and the account menu. There are no tabs:
-   a project's views live in its sidebar (ProjectShell). Page toolbars (period navigation, filters) follow in the body. *@
+   the period selector of the views that have one (PeriodNav renders into the outlet; on phones it takes a second
+   row), the bank-sync status, the gear (project settings and data sources) and the account menu. There are no tabs:
+   a project's views live in its sidebar (ProjectShell). Page toolbars (filters, actions) follow in the body. *@
 <header class="app-topbar d-print-none" data-testid="app-topbar">
     <a href="/" class="app-wordmark">OpenBudget</a>
     <ProjectSwitcher />
+    <div class="app-topbar-period" data-testid="topbar-period">
+        <SectionOutlet SectionName="@PeriodNav.SectionName" />
+    </div>
     <div class="flex-grow-1"></div>
     <BankSyncHost />
     <CloudFileSyncHost />

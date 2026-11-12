@@ -36,7 +36,22 @@ public class BrowseService
         _budgets = budgets;
     }
 
-    public async Task<BrowseTree?> GetTreeAsync(int projectId, int year, int fromMonth, int toMonth, CancellationToken ct = default)
+    public Task<BrowseTree?> GetTreeAsync(int projectId, int year, int fromMonth, int toMonth, CancellationToken ct = default)
+    {
+        if (fromMonth < 1 || fromMonth > 12) throw new ArgumentOutOfRangeException(nameof(fromMonth));
+        if (toMonth < fromMonth || toMonth > 12) throw new ArgumentOutOfRangeException(nameof(toMonth));
+        return GetTreeAsync(projectId, year, fromMonth, toMonth,
+            new DateTime(year, fromMonth, 1, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(year, toMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1), ct);
+    }
+
+    /// <summary>
+    /// The tree with its sums over [<paramref name="fromUtc"/>, <paramref name="toUtcExclusive"/>) and its budgets over
+    /// <paramref name="fromMonth"/>..<paramref name="toMonth"/> of <paramref name="year"/> (a custom range of days
+    /// passes the months it covers).
+    /// </summary>
+    public async Task<BrowseTree?> GetTreeAsync(int projectId, int year, int fromMonth, int toMonth,
+        DateTime fromUtc, DateTime toUtcExclusive, CancellationToken ct = default)
     {
         if (fromMonth < 1 || fromMonth > 12) throw new ArgumentOutOfRangeException(nameof(fromMonth));
         if (toMonth < fromMonth || toMonth > 12) throw new ArgumentOutOfRangeException(nameof(toMonth));
@@ -153,9 +168,7 @@ public class BrowseService
         var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(nodeKeysList, hierarchy);
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
 
-        var range = TimeRange.Between(
-            new DateTime(year, fromMonth, 1, 0, 0, 0, DateTimeKind.Utc),
-            new DateTime(year, toMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1));
+        var range = TimeRange.Between(fromUtc, toUtcExclusive);
 
         var perLeafSumCents = new Dictionary<long, long>();
         if (allLeafIds.Count > 0)

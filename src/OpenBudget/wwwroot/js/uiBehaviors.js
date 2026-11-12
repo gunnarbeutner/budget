@@ -515,3 +515,24 @@ window.obPickerMoreHint = function (list) {
         (list[0] || dialog).focus();
     });
 })();
+
+// --ob-topbar-h follows the top bar's real height: below 1200px the period selector takes a second row, and the
+// sticky page toolbars sit under the whole bar.
+(function () {
+    if (typeof ResizeObserver === "undefined") return;
+    var observed = null;
+    var ro = new ResizeObserver(function (entries) {
+        var h = Math.round(entries[0].target.getBoundingClientRect().height);
+        if (h > 0) document.documentElement.style.setProperty("--ob-topbar-h", h + "px");
+    });
+    function attach() {
+        var bar = document.querySelector(".app-topbar");
+        if (bar && bar !== observed) {
+            if (observed) ro.unobserve(observed);
+            observed = bar;
+            ro.observe(bar);
+        }
+    }
+    new MutationObserver(attach).observe(document.documentElement, { childList: true, subtree: true });
+    attach();
+})();

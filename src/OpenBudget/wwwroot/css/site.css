@@ -897,15 +897,48 @@ button.app-sync:hover { color: var(--bs-body-color); background: var(--ob-chip-b
     position: absolute; left: 50%; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0;
 }
 .period-today { padding: 2px 6px; font-size: 13px; text-decoration: none; }
-.page-toolbar .segmented {
+.page-toolbar .segmented,
+.app-topbar .segmented {
     background: var(--ob-chip-bg);
     border-radius: 6px;
     padding: 2px;
 }
-.page-toolbar .segmented .btn {
+.page-toolbar .segmented .btn,
+.app-topbar .segmented .btn {
     border-radius: 5px !important;
     padding: 3px 10px !important;
     font-size: 13px;
+}
+
+/* The period selector in the top bar (PeriodNav), with the custom range's popover under it. */
+.app-topbar-period { display: flex; align-items: center; min-width: 0; }
+.app-topbar-period:not(:has(.period-controls)) { display: none; }
+.app-topbar .period-controls { position: relative; flex-wrap: nowrap; }
+.period-range-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 1040;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 15rem;
+    padding: 10px;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--ob-line);
+    border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+.period-range-popover label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+@media (max-width: 1199.98px) {
+    /* The selector takes a row of its own under the bar; uiBehaviors.js keeps --ob-topbar-h at the bar's height. */
+    .app-topbar:has(.period-controls) { flex-wrap: wrap; height: auto; min-height: 44px; row-gap: 0; }
+    .app-topbar-period { order: 10; flex: 0 0 100%; min-height: 40px; padding-bottom: 4px; }
+    .app-topbar .period-controls { flex-wrap: wrap; row-gap: 4px; }
+}
+@media (max-width: 575.98px) {
+    .app-topbar .period-nav-heading { min-width: 0; }
+    .app-topbar .segmented .btn { padding: 3px 7px !important; font-size: 12px; }
 }
 
 /* ---- Browse: sidebar + main ---- */

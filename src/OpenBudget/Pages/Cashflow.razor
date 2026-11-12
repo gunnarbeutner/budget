@@ -15,6 +15,7 @@
 @inject IStringLocalizer<Cashflow> L
 @inject ClockService Clock
 @inject AccessScopeProvider AccessProvider
+@inject ProjectTimeState TimeState
 
 <PageTitle>@(projectName != null ? L["PageTitle_WithProject", projectName] : L["PageTitle"])</PageTitle>
 
@@ -32,10 +33,12 @@
 
 <DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
+@* Cashflow works in whole years: it shows the year of the shared period, and its selector offers only years. *@
+<div class="page-toolbar">
+    <h1 class="view-title">@L["View_Title"]</h1>
+</div>
 <PeriodNav Anchor="(selectedYear, 1)" Period="@("year")" YearOnly="true"
-           Years="availableYears" OnChanged="OnYearChanged">
-    <Leading><h1 class="view-title">@L["View_Title"]</h1></Leading>
-</PeriodNav>
+           Years="availableYears" OnChanged="OnYearChanged" />
 
 @* Grid widths are tuned for the income-projection segmented control's German labels
    ("Letzten Monat wiederholen" is ~25 chars wide). Budget needs room for the name; the
@@ -623,6 +626,7 @@ else
     {
         var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
 
+        selectedYear = TimeState.ReadFromUrl(Navigation, Clock.NowLocal).Year;
         if (query.TryGetValue("year", out var y) && int.TryParse(y, out var py))
             selectedYear = py;
 
@@ -649,7 +653,7 @@ else
     /// to avoid creating a history entry per keystroke; guarded against no-op navigations that
     /// would otherwise 302-loop during ServerPrerendered.
     /// </summary>
-    private void UpdateUrl() => PageState.ReplaceQuery(Navigation, new Dictionary<string, object?>
+    private void UpdateUrl() => PageState.ReplaceQuery(Navigation, new Dictionary<string, object?>(TimeState.Current(Clock.NowLocal).ToQuery())
     {
         ["year"] = selectedYear,
         ["budgetId"] = selectedBudgetId == 0 ? null : selectedBudgetId,
@@ -707,6 +711,9 @@ else
     {
         if (sel.Year == selectedYear) return;
         selectedYear = sel.Year;
+        // The shared period moves to the picked year; a custom range becomes that year.
+        var shared = TimeState.Current(Clock.NowLocal);
+        TimeState.Period = shared.IsRange ? new ViewPeriod(sel.Year, 12, "year") : shared with { Year = sel.Year };
         // Re-pick the active budget for the new year unless the user already chose one
         // for it explicitly.
         var currentMatch = availableBudgets?.FirstOrDefault(b => b.Id == selectedBudgetId);

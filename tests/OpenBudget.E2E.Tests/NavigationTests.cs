@@ -47,7 +47,7 @@ public sealed class NavigationTests : EndToEndTestBase
         await Expect(Page.GetByTestId("project-sidebar").GetByText("Statements")).ToHaveCountAsync(0);
 
         await View("budget").ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/budgets$"));
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/budgets\\?year=\\d+&month=\\d+$"));
         await Expect(View("budget")).ToHaveAttributeAsync("aria-current", "page");
         await Expect(View("transactions")).Not.ToHaveAttributeAsync("aria-current", "page");
 
@@ -92,7 +92,7 @@ public sealed class NavigationTests : EndToEndTestBase
 
         await Page.GetByTestId("tree-account").Filter(new() { HasText = EditingSeed.BankAccountName }).ClickAsync();
 
-        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/browse\\?sel=acct-{EditingSeed.BankAccountId}"));
+        await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/browse\\?year=\\d+&month=\\d+&sel=acct-{EditingSeed.BankAccountId}"));
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = EditingSeed.BankAccountName })).ToBeVisibleAsync();
     }
 

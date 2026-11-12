@@ -51,49 +51,58 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
     }
 
     /// <summary>
-    /// Transactions, Budget and Cashflow place the period selector at the same spot: the first control after the
-    /// view title, on the left of the toolbar (Transactions puts its tools on the row below its title block).
+    /// Transactions, Budget and Cashflow show the period selector in the top bar, after the project switcher and
+    /// before the sync status, gear and account menu; below 1200px it takes a second row under the bar. The views'
+    /// own toolbars carry none, and the page never scrolls sideways.
     /// </summary>
     [TestCase(1280)]
     [TestCase(390)]
-    public async Task Period_selector_follows_the_view_title(int width)
+    public async Task Period_selector_sits_in_the_top_bar(int width)
     {
         await Page.SetViewportSizeAsync(width, 900);
         var pid = E2ESeed.ProjectId;
-        foreach (var (path, toolbarSelector, titleSelector) in new[]
+        foreach (var (path, toolbarSelector) in new[]
                  {
-                     ($"/projects/{pid}/browse?year=2026&month=3", "[data-testid=browse-toolbar]", ".browse-ident"),
-                     ($"/projects/{pid}/budgets", "[data-testid=budget-toolbar]", ".view-title"),
-                     ($"/projects/{pid}/cashflow", ".page-toolbar.period-nav", ".view-title"),
+                     ($"/projects/{pid}/browse?year=2026&month=3", "[data-testid=browse-toolbar]"),
+                     ($"/projects/{pid}/budgets", "[data-testid=budget-toolbar]"),
+                     ($"/projects/{pid}/cashflow", ".page-toolbar"),
                  })
         {
             await GoToAsync(path);
-            var toolbar = Page.Locator(toolbarSelector);
-            var nav = toolbar.GetByTestId("period-nav");
+            var topbar = Page.GetByTestId("app-topbar");
+            var nav = topbar.GetByTestId("period-nav");
             await Expect(nav).ToBeVisibleAsync();
-            var bar = (await toolbar.BoundingBoxAsync())!;
-            var title = (await toolbar.Locator(titleSelector).First.BoundingBoxAsync())!;
+            await Expect(Page.Locator(toolbarSelector).First.GetByTestId("period-nav")).ToHaveCountAsync(0);
+            var switcher = (await topbar.GetByTestId("project-selector").BoundingBoxAsync())!;
+            var user = (await topbar.GetByTestId("user-menu").BoundingBoxAsync())!;
+            var bar = (await topbar.BoundingBoxAsync())!;
             var box = (await nav.BoundingBoxAsync())!;
-            Assert.That(box.X, Is.LessThan(bar.X + bar.Width / 2), $"{path}: the period selector sits on the left");
-            var besideTitle = box.Y < title.Y + title.Height && box.X >= title.X + title.Width - 1;
-            var underTitle = box.Y >= title.Y + title.Height - 1 && Math.Abs(box.X - title.X) < 4;
-            Assert.That(besideTitle || underTitle, Is.True, $"{path}: the period selector directly follows the title");
-            // Polls so a frame mid-render (before the toolbar wraps) is not taken for the final layout.
+            if (width >= 1200)
+            {
+                Assert.That(box.X, Is.GreaterThanOrEqualTo(switcher.X + switcher.Width - 1), $"{path}: right of the project switcher");
+                Assert.That(box.X + box.Width, Is.LessThanOrEqualTo(user.X + 1), $"{path}: left of the account menu");
+                Assert.That(box.Y + box.Height / 2, Is.EqualTo(switcher.Y + switcher.Height / 2).Within(4), $"{path}: on the bar's row");
+            }
+            else
+            {
+                Assert.That(box.Y, Is.GreaterThanOrEqualTo(switcher.Y + switcher.Height - 1), $"{path}: on a row under the switcher");
+                Assert.That(box.Y + box.Height, Is.LessThanOrEqualTo(bar.Y + bar.Height + 1), $"{path}: inside the bar");
+            }
+            // The page's sticky toolbar starts under the (taller) bar instead of under its first row.
+            var toolbar = (await Page.Locator(toolbarSelector).First.BoundingBoxAsync())!;
+            Assert.That(toolbar.Y, Is.GreaterThanOrEqualTo(bar.Y + bar.Height - 1), $"{path}: the toolbar sits below the bar");
+            // Polls so a frame mid-render (before the bar wraps) is not taken for the final layout.
             try { await Page.WaitForFunctionAsync("() => document.documentElement.scrollWidth <= window.innerWidth", null, new() { Timeout = 5000 }); }
             catch (TimeoutException) { /* the assertion below names the overflowing elements */ }
             Assert.That(await Page.EvaluateAsync<string>(@"() => document.documentElement.scrollWidth <= window.innerWidth ? '' :
                 [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > window.innerWidth + 1)
                     .slice(0, 5).map(e => e.tagName + '.' + e.className).join(' | ')"), Is.Empty,
                 $"{path}: no horizontal scroll");
-            var precedingControls = await toolbar.EvaluateAsync<int>(@"(bar, sel) => {
-                const nav = bar.querySelector('[data-testid=period-nav]');
-                const title = bar.querySelector(sel);
-                return [...bar.querySelectorAll('button, input, select, summary, a')]
-                    .filter(e => !nav.contains(e) && !title.contains(e) && e.offsetParent !== null)
-                    .filter(e => e.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).length;
-            }", titleSelector);
-            Assert.That(precedingControls, Is.EqualTo(0), $"{path}: no view control comes before the period selector");
         }
+
+        await GoToAsync($"/projects/{pid}/portfolio");
+        await Expect(Page.GetByTestId("app-topbar")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("period-nav")).ToHaveCountAsync(0);
     }
 
     /// <summary>

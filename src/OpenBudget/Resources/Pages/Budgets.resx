@@ -244,4 +244,10 @@
   <data name="Income_Total" xml:space="preserve">
     <value>Total income</value>
   </data>
+  <data name="Strip_LeftRange" xml:space="preserve">
+    <value>Left in these months</value>
+  </data>
+  <data name="Period_Range" xml:space="preserve">
+    <value>{0} – {1}</value>
+  </data>
 </root>

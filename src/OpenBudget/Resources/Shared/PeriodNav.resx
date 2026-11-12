@@ -88,4 +88,22 @@
   <data name="Heading_YTD" xml:space="preserve">
     <value>YTD through {0}</value>
   </data>
+  <data name="Button_Range" xml:space="preserve">
+    <value>Custom range</value>
+  </data>
+  <data name="Label_From" xml:space="preserve">
+    <value>From</value>
+  </data>
+  <data name="Label_To" xml:space="preserve">
+    <value>To</value>
+  </data>
+  <data name="Button_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Button_Apply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="Heading_Range" xml:space="preserve">
+    <value>{0} – {1}</value>
+  </data>
 </root>
