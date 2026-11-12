@@ -6,6 +6,9 @@
 @inject ProjectService Projects
 @inject BankLoginService BankLogins
 @inject AccountSwitchService Switcher
+@inject ManualTransactionService ManualTx
+@inject TransactionQueryService TxQueries
+@inject ClockService Clock
 @inject AccessScopeProvider AccessProvider
 @inject IStringLocalizer<SidebarStructure> L
 @inject IStringLocalizer<BrowseTreeRail> RailL
@@ -149,6 +152,59 @@
                 }
                 <div class="small mt-1"><a href="/banklogins">@L["Settings_Bank_Manage"]</a></div>
             </div>
+            @if (_initial is { } ib)
+            {
+                var editable = ib.Lock == InitialBalanceLock.None;
+                <div class="mb-3" data-testid="account-settings-initial">
+                    <label class="form-label" for="account-settings-initial-amount">@L["Settings_Initial"]</label>
+                    <div class="input-group" style="max-width: 20rem;">
+                        <input id="account-settings-initial-amount" class="form-control text-end" inputmode="decimal" data-testid="account-settings-initial-amount"
+                               value="@_initialText" disabled="@(!editable)" @onchange="e => _initialText = e.Value?.ToString() ?? string.Empty" />
+                        <span class="input-group-text">@CurrencySymbol(ib.Currency)</span>
+                        @if (editable)
+                        {
+                            <button type="button" class="btn btn-outline-secondary" data-testid="account-settings-calibrate"
+                                    @onclick="ToggleCalibrate">@L["Settings_Calibrate"]</button>
+                        }
+                    </div>
+                    <div class="form-text" data-testid="account-settings-initial-hint">@L[ib.Lock switch
+                    {
+                        InitialBalanceLock.Bank => "Settings_Initial_Bank",
+                        InitialBalanceLock.Portfolio => "Settings_Initial_Portfolio",
+                        InitialBalanceLock.NotOwner => "Settings_Initial_NotOwner",
+                        _ => "Settings_Initial_Hint",
+                    }]</div>
+                    @if (_calibrating && editable)
+                    {
+                        <div class="border rounded p-2 mt-2" data-testid="account-settings-calibration">
+                            <div class="small text-body-secondary mb-2">@L["Settings_Calibrate_Hint"]</div>
+                            <div class="row g-2 align-items-end">
+                                <div class="col-6">
+                                    <label class="form-label small mb-1" for="account-settings-cal-date">@L["Settings_Calibrate_Date"]</label>
+                                    <input id="account-settings-cal-date" type="date" class="form-control form-control-sm" data-testid="account-settings-cal-date"
+                                           value="@_calDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="OnCalDateAsync" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small mb-1" for="account-settings-cal-balance">@L["Settings_Calibrate_Balance"]</label>
+                                    <div class="input-group input-group-sm">
+                                        <input id="account-settings-cal-balance" class="form-control text-end" inputmode="decimal" data-testid="account-settings-cal-balance"
+                                               value="@_calText" @onchange="OnCalBalanceAsync" />
+                                        <span class="input-group-text">@CurrencySymbol(ib.Currency)</span>
+                                    </div>
+                                </div>
+                            </div>
+                            @if (_calResult is { } result)
+                            {
+                                <div class="d-flex align-items-center gap-2 mt-2">
+                                    <span class="small" data-testid="account-settings-cal-result">@L["Settings_Calibrate_Result", Formatting.FormatMoneyDe(result / 100m, ib.Currency)]</span>
+                                    <button type="button" class="btn btn-sm btn-primary ms-auto" data-testid="account-settings-cal-apply"
+                                            @onclick="ApplyCalibration">@L["Settings_Calibrate_Apply"]</button>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
             @if (_switchState is { } sw)
             {
                 <div class="mb-3" data-testid="account-settings-provider">
@@ -607,7 +663,60 @@
         _error = null;
         _settingsIcon = AccountIcons.IsValid(account.Icon) ? account.Icon : null;
         _settingsColor = CategoryColors.ToCss(account.Color);
+        try { _initial = await ManualTx.GetInitialBalanceAsync(node.Id); }
+        catch (AccessDeniedException) { _initial = null; }
+        _initialText = _initial is { } ib ? FormatAmount(ib.Cents / 100m) : "";
+        _calibrating = false;
+        _calFlows = null;
+        _calText = "";
+        _calResult = null;
+        _calDate = DateOnly.FromDateTime(Clock.Today);
         _settings = new SettingsState(account, nameBlocked, statement, block != StructureBlock.NotOwner);
+    }
+
+    private InitialBalanceState? _initial;
+    private string _initialText = "";
+    private bool _calibrating;
+    private DateOnly _calDate;
+    private string _calText = "";
+    private long? _calResult;
+    private List<(DateTime Date, decimal Amount)>? _calFlows;
+
+    private static readonly CultureInfo German = CultureInfo.GetCultureInfo("de-DE");
+    private static string FormatAmount(decimal value) => value.ToString("N2", German);
+    private static string CurrencySymbol(string currency) => currency == "EUR" ? "€" : currency;
+
+    private static bool TryParseAmount(string? text, out decimal amount) =>
+        ManualTxDialog.TryParseAmount(text?.Replace('−', '-'), out amount);
+
+    private void ToggleCalibrate() => _calibrating = !_calibrating;
+
+    private async Task OnCalDateAsync(ChangeEventArgs e)
+    {
+        if (DateOnly.TryParseExact(e.Value?.ToString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) _calDate = d;
+        await UpdateCalibrationAsync();
+    }
+
+    private async Task OnCalBalanceAsync(ChangeEventArgs e)
+    {
+        _calText = e.Value?.ToString() ?? "";
+        await UpdateCalibrationAsync();
+    }
+
+    /// <summary>The initial balance the entered balance implies, from the account's stored state (not the unsaved field).</summary>
+    private async Task UpdateCalibrationAsync()
+    {
+        if (_settings is not { } s || _initial is not { } ib || !TryParseAmount(_calText, out var target)) { _calResult = null; return; }
+        _calFlows ??= await TxQueries.GetBookedFlowsAsync(s.Account.Id);
+        _calResult = ManualTransactionService.CalibratedInitialBalance(ib.Cents, ib.CurrentBalance, _calFlows, _calDate, target,
+            utc => DateOnly.FromDateTime(Clock.ToLocal(utc)));
+    }
+
+    private void ApplyCalibration()
+    {
+        if (_calResult is not { } cents) return;
+        _initialText = FormatAmount(cents / 100m);
+        _calibrating = false;
     }
 
     private async Task SaveGroupSettingsAsync()
@@ -640,6 +749,16 @@
             if (s.Statement is { Block: null, LoginAccountId: { } loginAccount, CanChange: true } st
                 && (st.Enabled != _statementsOn || st.Interval != _interval))
                 await BankLogins.SetStatementsAsync(loginAccount, _statementsOn, _interval);
+            if (_initial is { Lock: InitialBalanceLock.None } ib)
+            {
+                if (!TryParseAmount(_initialText, out var initial))
+                {
+                    _error = L["Settings_Initial_Invalid"];
+                    return;
+                }
+                var cents = (long)Math.Round(initial * 100m, MidpointRounding.AwayFromZero);
+                if (cents != ib.Cents) await ManualTx.SetInitialBalanceAsync(s.Account.Id, cents);
+            }
             _settings = null;
             await OnChanged.InvokeAsync(null);
         }

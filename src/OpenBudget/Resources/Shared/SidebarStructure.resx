@@ -143,4 +143,40 @@
   <data name="Settings_Closed_Hint" xml:space="preserve">
     <value>Its history stays and counts in reports; the sidebar hides it unless closed accounts are shown.</value>
   </data>
+  <data name="Settings_Initial" xml:space="preserve">
+    <value>Initial balance</value>
+  </data>
+  <data name="Settings_Initial_Hint" xml:space="preserve">
+    <value>The balance before the first booking. Changing it moves all balances of the account by the difference.</value>
+  </data>
+  <data name="Settings_Initial_Bank" xml:space="preserve">
+    <value>The balance comes from the bank; an initial balance would be overwritten by the next update.</value>
+  </data>
+  <data name="Settings_Initial_Portfolio" xml:space="preserve">
+    <value>The balance is the value of the holdings; it has no initial balance of its own.</value>
+  </data>
+  <data name="Settings_Initial_NotOwner" xml:space="preserve">
+    <value>Only the account's owner can change the initial balance.</value>
+  </data>
+  <data name="Settings_Initial_Invalid" xml:space="preserve">
+    <value>Enter an amount such as -484,53.</value>
+  </data>
+  <data name="Settings_Calibrate" xml:space="preserve">
+    <value>Calibrate</value>
+  </data>
+  <data name="Settings_Calibrate_Hint" xml:space="preserve">
+    <value>Enter the actual balance at the end of a day; the initial balance is set so the account shows it.</value>
+  </data>
+  <data name="Settings_Calibrate_Date" xml:space="preserve">
+    <value>Balance on</value>
+  </data>
+  <data name="Settings_Calibrate_Balance" xml:space="preserve">
+    <value>Balance</value>
+  </data>
+  <data name="Settings_Calibrate_Result" xml:space="preserve">
+    <value>New initial balance: {0}</value>
+  </data>
+  <data name="Settings_Calibrate_Apply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
 </root>

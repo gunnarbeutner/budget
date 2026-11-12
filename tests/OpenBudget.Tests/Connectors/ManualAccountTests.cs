@@ -275,4 +275,39 @@ public sealed class ManualAccountTests
         Assert.True(await Manual(w, BankWorld.Alice).CanEnterAsync(Giro));
         Assert.False(await Manual(w, BankWorld.Alice).CanEnterAsync(Savings));
     }
+
+    [Fact]
+    public async Task The_initial_balance_of_a_manual_account_moves_its_balance_and_is_the_owners_alone()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        await w.ImportMoneyMoneyAsync(Snapshot(w));
+        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro], takeOverStructure: true);
+        var alice = Manual(w, BankWorld.Alice);
+        var before = await w.AccountAsync(Giro);
+
+        var state = (await alice.GetInitialBalanceAsync(Giro))!;
+        Assert.Equal(InitialBalanceLock.None, state.Lock);
+        await alice.SetInitialBalanceAsync(Giro, before.InitialBalance - 48453);
+        var after = await w.AccountAsync(Giro);
+        Assert.Equal(before.InitialBalance - 48453, after.InitialBalance);
+        Assert.Equal(before.CurrentBalance - 484.53m, after.CurrentBalance);
+
+        // Accounts the bank still updates keep their initial balance.
+        Assert.Equal(InitialBalanceLock.Bank, (await alice.GetInitialBalanceAsync(Savings))!.Lock);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => alice.SetInitialBalanceAsync(Savings, 100));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => Manual(w, BankWorld.Bob).SetInitialBalanceAsync(Giro, 0));
+        Assert.Equal(after.InitialBalance, (await w.AccountAsync(Giro)).InitialBalance);
+    }
+
+    [Fact]
+    public void Calibrating_sets_the_initial_balance_so_the_day_balance_matches()
+    {
+        static DateOnly Local(DateTime utc) => DateOnly.FromDateTime(utc);
+        (DateTime, decimal)[] flows = [(Day(3, 1), -100m), (Day(3, 10), 50m), (Day(3, 20), -20m)];
+
+        // Current balance 30 (after all three); entered 100 today → initial moves by 70.
+        Assert.Equal(1000 + 7000, ManualTransactionService.CalibratedInitialBalance(1000, 30m, flows, new DateOnly(2026, 4, 1), 100m, Local));
+        // At the end of 10 March the account showed 30 + 20 = 50; entered 40 → initial moves by -10.
+        Assert.Equal(1000 - 1000, ManualTransactionService.CalibratedInitialBalance(1000, 30m, flows, new DateOnly(2026, 3, 10), 40m, Local));
+    }
 }

@@ -124,4 +124,52 @@ public sealed class ManualAccountTests : EndToEndTestBase
         await Expect(kiosk).ToHaveCountAsync(0);
         Assert.That((await AccountAsync(Cash)).CurrentBalance, Is.EqualTo(95m));
     }
+
+    /// <summary>
+    /// A manual account's initial balance is calibrated in its settings from the balance on a day; accounts the bank
+    /// updates show it read-only. Set OB_INITIAL_BALANCE_SCREENSHOT_DIR to keep screenshots of the settings.
+    /// </summary>
+    [TestCase("light")]
+    [TestCase("dark")]
+    public async Task Calibrate_the_initial_balance_of_a_manual_account(string theme)
+    {
+        var dir = Environment.GetEnvironmentVariable("OB_INITIAL_BALANCE_SCREENSHOT_DIR");
+        await Page.EmulateMediaAsync(new PageEmulateMediaOptions { ColorScheme = theme == "dark" ? ColorScheme.Dark : ColorScheme.Light });
+        await SeedAsync(AccountProviders.Manual);
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{Cash}");
+        var sidebar = Page.GetByTestId("project-sidebar");
+
+        await sidebar.GetByTestId("tree-account").Filter(new() { HasText = "Example Old Savings" }).First.ClickAsync(new() { Button = MouseButton.Right });
+        await Page.GetByTestId("ctx-settings").ClickAsync();
+        var dialog = Page.GetByTestId("account-settings");
+        await Expect(dialog.GetByTestId("account-settings-initial-amount")).ToBeDisabledAsync();
+        await Expect(dialog.GetByTestId("account-settings-calibrate")).ToHaveCountAsync(0);
+        await Page.GetByTestId("modal-dialog").GetByText("Cancel").ClickAsync();
+        await Expect(dialog).ToHaveCountAsync(0);
+
+        await sidebar.GetByTestId("tree-account").Filter(new() { HasText = "Example Cash" }).First.ClickAsync(new() { Button = MouseButton.Right });
+        await Page.GetByTestId("ctx-settings").ClickAsync();
+        await Expect(dialog.GetByTestId("account-settings-initial-amount")).ToHaveValueAsync("0,00");
+        await dialog.GetByTestId("account-settings-calibrate").ClickAsync();
+        // At the end of 4 March the account held 120 (100 now, the -20 of 5 March not yet booked); 150 then means +30.
+        await dialog.GetByTestId("account-settings-cal-date").FillAsync("2026-03-04");
+        await dialog.GetByTestId("account-settings-cal-date").DispatchEventAsync("change");
+        await dialog.GetByTestId("account-settings-cal-balance").FillAsync("150");
+        await dialog.GetByTestId("account-settings-cal-balance").BlurAsync();
+        await Expect(dialog.GetByTestId("account-settings-cal-result")).ToContainTextAsync("30,00 €");
+        if (dir != null)
+        {
+            Directory.CreateDirectory(dir);
+            await Page.GetByTestId("modal-dialog").ScreenshotAsync(new() { Path = Path.Combine(dir, $"initial-balance-{theme}.png") });
+        }
+        await dialog.GetByTestId("account-settings-cal-apply").ClickAsync();
+        await Expect(dialog.GetByTestId("account-settings-initial-amount")).ToHaveValueAsync("30,00");
+        await Page.GetByTestId("account-settings-save").ClickAsync();
+        await Expect(dialog).ToHaveCountAsync(0);
+
+        var account = await AccountAsync(Cash);
+        Assert.That(account.InitialBalance, Is.EqualTo(3000));
+        Assert.That(account.CurrentBalance, Is.EqualTo(130m));
+        await Expect(sidebar.GetByTestId("tree-account").Filter(new() { HasText = "Example Cash" }).First).ToContainTextAsync("130,00");
+    }
 }

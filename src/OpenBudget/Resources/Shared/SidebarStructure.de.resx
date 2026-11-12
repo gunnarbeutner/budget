@@ -143,4 +143,40 @@
   <data name="Settings_Closed_Hint" xml:space="preserve">
     <value>Der Verlauf bleibt erhalten und zählt in Auswertungen; die Seitenleiste blendet es aus, solange geschlossene Konten nicht angezeigt werden.</value>
   </data>
+  <data name="Settings_Initial" xml:space="preserve">
+    <value>Anfangssaldo</value>
+  </data>
+  <data name="Settings_Initial_Hint" xml:space="preserve">
+    <value>Der Saldo vor der ersten Buchung. Eine Änderung verschiebt alle Salden des Kontos um die Differenz.</value>
+  </data>
+  <data name="Settings_Initial_Bank" xml:space="preserve">
+    <value>Der Saldo kommt von der Bank; ein Anfangssaldo würde bei der nächsten Aktualisierung überschrieben.</value>
+  </data>
+  <data name="Settings_Initial_Portfolio" xml:space="preserve">
+    <value>Der Saldo ist der Wert der Bestände; einen eigenen Anfangssaldo gibt es nicht.</value>
+  </data>
+  <data name="Settings_Initial_NotOwner" xml:space="preserve">
+    <value>Nur der Inhaber des Kontos kann den Anfangssaldo ändern.</value>
+  </data>
+  <data name="Settings_Initial_Invalid" xml:space="preserve">
+    <value>Bitte einen Betrag wie -484,53 eingeben.</value>
+  </data>
+  <data name="Settings_Calibrate" xml:space="preserve">
+    <value>Kalibrieren</value>
+  </data>
+  <data name="Settings_Calibrate_Hint" xml:space="preserve">
+    <value>Tatsächlichen Saldo am Ende eines Tages eingeben; der Anfangssaldo wird so gesetzt, dass das Konto ihn zeigt.</value>
+  </data>
+  <data name="Settings_Calibrate_Date" xml:space="preserve">
+    <value>Saldo am</value>
+  </data>
+  <data name="Settings_Calibrate_Balance" xml:space="preserve">
+    <value>Saldo</value>
+  </data>
+  <data name="Settings_Calibrate_Result" xml:space="preserve">
+    <value>Neuer Anfangssaldo: {0}</value>
+  </data>
+  <data name="Settings_Calibrate_Apply" xml:space="preserve">
+    <value>Übernehmen</value>
+  </data>
 </root>

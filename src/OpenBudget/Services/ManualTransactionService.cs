@@ -16,6 +16,12 @@ public sealed record ManualTransactionInput(
     string? Note,
     bool Booked = true);
 
+/// <summary>Why an account's initial balance cannot be edited; <see cref="None"/> when it can.</summary>
+public enum InitialBalanceLock { None, Bank, Portfolio, NotOwner }
+
+/// <summary>An account's initial balance (cents), its stored current balance and whether the user may change it.</summary>
+public sealed record InitialBalanceState(long Cents, decimal CurrentBalance, string Currency, InitialBalanceLock Lock);
+
 /// <summary>A manual account an offsetting entry can be booked on.</summary>
 public sealed record OffsetTarget(long AccountId, string Name, string Icon, string? Color);
 
@@ -52,6 +58,59 @@ public sealed class ManualTransactionService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var account = await db.Accounts.AsNoTracking().Where(a => a.Id == accountId).Select(a => new { a.SourceId, a.Provider }).FirstOrDefaultAsync(ct);
         return account != null && account.Provider == AccountProviders.Manual && (db.Scope == null || db.Scope.OwnsSource(account.SourceId));
+    }
+
+    /// <summary>
+    /// The account's initial balance and whether the user may edit it. Every balance shown for an account is derived
+    /// backwards from its stored current balance, so the initial balance only means something where that stored balance
+    /// is the sum of the initial balance and the bookings: on manual accounts. A bank connection or upload overwrites the
+    /// stored balance with the one the bank reports (<see cref="InitialBalanceLock.Bank"/>); depots and portfolio-file
+    /// accounts are valued from holdings or the portfolio file (<see cref="InitialBalanceLock.Portfolio"/>).
+    /// </summary>
+    public async Task<InitialBalanceState?> GetInitialBalanceAsync(long accountId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var account = await db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == accountId, ct);
+        if (account == null) return null;
+        var lockReason = account.Portfolio == 1 || account.Type == 7 || account.Provider == AccountProviders.PortfolioPerformance
+            ? InitialBalanceLock.Portfolio
+            : account.Provider != AccountProviders.Manual ? InitialBalanceLock.Bank
+            : db.Scope != null && !db.Scope.OwnsSource(account.SourceId) ? InitialBalanceLock.NotOwner
+            : InitialBalanceLock.None;
+        return new InitialBalanceState(account.InitialBalance, account.CurrentBalance ?? 0m,
+            string.IsNullOrWhiteSpace(account.Currency) ? "EUR" : account.Currency, lockReason);
+    }
+
+    /// <summary>
+    /// The initial balance (cents) that makes the account's balance at the end of <paramref name="day"/> equal
+    /// <paramref name="balance"/>: the balance there, derived from the current balance and the booked flows like the
+    /// transaction list's day balances, moved by the difference.
+    /// </summary>
+    public static long CalibratedInitialBalance(
+        long initialCents, decimal currentBalance, IEnumerable<(DateTime Date, decimal Amount)> bookedFlows, DateOnly day, decimal balance,
+        Func<DateTime, DateOnly> toLocalDay)
+    {
+        var atDay = new RunningBalance(currentBalance, bookedFlows, toLocalDay).AtEndOf(day);
+        return initialCents + (long)Math.Round((balance - atDay) * 100m, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>
+    /// Sets a manual account's initial balance; its stored current balance moves by the same difference, so every
+    /// balance derived from it (sidebar, day balances, charts, cash flow) follows. Only the source's owner may do this.
+    /// </summary>
+    public async Task SetInitialBalanceAsync(long accountId, long cents, CancellationToken ct = default)
+    {
+        var state = await GetInitialBalanceAsync(accountId, ct) ?? throw new AccessDeniedException("Account not found.");
+        if (state.Lock == InitialBalanceLock.NotOwner) throw new AccessDeniedException("Only the owner edits this account.");
+        if (state.Lock != InitialBalanceLock.None) throw new InvalidOperationException("The initial balance is editable only on manual accounts.");
+        await using var db = await _system.CreateDbContextAsync(ct);
+        var account = await db.Accounts.FirstAsync(a => a.Id == accountId, ct);
+        var delta = cents - account.InitialBalance;
+        if (delta == 0) return;
+        account.InitialBalance = cents;
+        account.Balances = BalanceBlob((account.CurrentBalance ?? 0m) + delta / 100m, state.Currency);
+        await db.SaveChangesAsync(ct);
+        Publish(account.SourceId);
     }
 
     /// <summary>Adds a booking to a manual account; returns its id.</summary>
