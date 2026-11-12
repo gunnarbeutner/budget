@@ -38,7 +38,7 @@ public sealed class OnboardingService
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         if (db.Scope is not { IsAuthenticated: true } scope) return new OnboardingState(0, false, null, false, null);
-        var owned = await _sources.GetOwnedSourcesAsync(ct: ct);
+        var owned = await _sources.GetOwnedSourcesAsync(ct);
         var ownedIds = owned.Select(s => s.Id).ToList();
         var logins = await db.BankLogins.CountAsync(l => l.OwnerUserId == scope.UserId, ct);
         var hasAccounts = await db.Accounts.AnyAsync(ct);

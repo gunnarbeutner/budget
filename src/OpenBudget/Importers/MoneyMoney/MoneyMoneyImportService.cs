@@ -143,7 +143,7 @@ public class MoneyMoneyImportService
     /// <summary>The explanation a refused upload gets once the owner declared the source's MoneyMoney import finished.</summary>
     public const string ImportFinishedMessage =
         "The MoneyMoney import of this source is finished: its accounts are kept up to date by bank connections in OpenBudget. "
-        + "The owner can resume the import on the Import page if MoneyMoney should deliver data again.";
+        + "The owner can resume the import on the Get started page if MoneyMoney should deliver data again.";
 
     /// <summary>True when the owner declared the MoneyMoney import of <paramref name="sourceName"/> finished (uploads are refused).</summary>
     public async Task<bool> IsImportFinishedAsync(string sourceName, CancellationToken ct)

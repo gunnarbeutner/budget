@@ -23,7 +23,7 @@ fictional demo household.
 - **Transactions** — browse, filter, categorize, add notes and check marks, with bulk edits, undo and keyboard
   shortcuts.
 - **Bank connectors** — sync accounts and statement PDFs directly from banks (see below).
-- **Importers** — MoneyMoney and PortfolioPerformance.
+- **Importers** — a one-time move from MoneyMoney (uploaded in the browser) and PortfolioPerformance files.
 - **Logins** — passwords and passkeys; English and German UI.
 
 ## Running it
@@ -31,8 +31,7 @@ fictional demo household.
 Production via Docker (see [`docker-compose.yml`](docker-compose.yml)):
 
 ```bash
-echo "OPENBUDGET_UPLOAD_TOKEN=$(openssl rand -hex 32)" > .env
-echo "OPENBUDGET_SECRETS_KEY=$(openssl rand -base64 32)" >> .env
+echo "OPENBUDGET_SECRETS_KEY=$(openssl rand -base64 32)" > .env
 docker compose up -d
 docker exec openbudget dotnet OpenBudget.dll users add <username> --admin
 ```
@@ -55,14 +54,11 @@ dotnet run --project src/OpenBudget
 | Variable | Purpose |
 | --- | --- |
 | `OPENBUDGET_SECRETS_KEY` | Base64 256-bit key encrypting bank credentials and sessions. Required for bank logins. Not stored in the data volume; keep it safe and keep using the same value, or stored credentials must be re-entered. |
-| `OPENBUDGET_UPLOAD_TOKEN` | Global upload token for importers. Each source also has its own token on the Sources page. |
 | `OPENBUDGET_FINTS_PRODUCT_ID` | FinTS product ID registered with the [Deutsche Kreditwirtschaft](https://www.fints.org/de/hersteller/produktregistrierung). Required for FinTS banks. |
 | `OPENBUDGET_RP_ID` | Pins the passkey relying-party id (default: the request host). Changing it invalidates registered passkeys. |
 | `CHROME_PATH` | Chromium for web logins outside Docker (the image ships one). |
 | `OPENBUDGET_ONEDRIVE_CLIENT_ID`, `_SECRET`, `_TENANT` | Entra ID app registration for reading PortfolioPerformance files from OneDrive; the feature is hidden without them. |
 | `OPENBUDGET_ENABLE_FAKE_BANK` | `true` offers a made-up bank for trying out connectors. |
-
-`MONEYMONEY_DB_UPLOAD_TOKEN` is still accepted as a deprecated alias of `OPENBUDGET_UPLOAD_TOKEN`.
 
 ### User commands
 
@@ -80,8 +76,8 @@ existing user. `--admin` grants no access to other users' data.
 ## Bank connectors
 
 Bank logins belong to one user and sync only while that user has OpenBudget open (there is no background fetching).
-TANs, app approvals and captchas are answered in a dialog. Linked accounts can be switched from MoneyMoney to the
-bank connection, which then becomes the account's source of truth.
+TANs, app approvals and captchas are answered in a dialog. Accounts imported from MoneyMoney can be switched to
+the bank connection, which then becomes the account's source of truth.
 
 - **ING** — FinTS for current and savings accounts; web banking for VL savings and the postbox.
 - **Baader Bank** — FinTS: cash account and depot positions.
@@ -96,17 +92,16 @@ yourself. The Docker image includes Chromium and Xvfb.
 
 ## Importers
 
-The `exporter/` directory contains a macOS helper that decrypts the [MoneyMoney](https://moneymoney-app.com)
-database and uploads it (build with `exporter/build.sh`; it needs Full Disk Access). Uploads use
-`Authorization: Bearer <token>` with the source's upload token or `OPENBUDGET_UPLOAD_TOKEN`:
+**Get started** (gear menu) leads a new user through bank logins, the optional imports and the first settings.
 
-- `POST /api/import/moneymoney/{source}` — MoneyMoney database
-- `POST /api/portfolioperformance/{source}` — PortfolioPerformance file
-- `DELETE /api/sources/{source}` — remove a source
-
-Each upload replaces the source's MoneyMoney-owned accounts. **Take over structure from MoneyMoney** (Sources page)
-lets you organize accounts and categories in OpenBudget instead; **Finish MoneyMoney import** (Import page) stops
-further uploads once all accounts are switched to bank connectors.
+- **MoneyMoney** — a one-time move of the history: in MoneyMoney choose Help › Show Database in Finder…, quit
+  MoneyMoney, compress the folder that contains `Database` and `Statements`, and upload the ZIP with the MoneyMoney
+  password. The upload goes in chunks (so reverse-proxy body limits don't matter); the server decrypts the database
+  with SQLCipher and imports accounts, categories, bookings and the stored statements in the background. The password
+  is not stored; the upload and the decrypted copy are deleted afterwards. Then switch the accounts to their bank
+  connections (or keep them as manual accounts) and **finish the MoneyMoney import**.
+- **PortfolioPerformance** — link the `.portfolio` file on OneDrive (read on the server, kept current) or upload it
+  on the Portfolio Performance page.
 
 ## Development
 
@@ -118,6 +113,5 @@ dotnet test tests/OpenBudget.E2E.Tests --filter Category=Screenshots   # regener
 
 - `src/OpenBudget/` — the app (Blazor Server, .NET 11 preview, EF Core + SQLite, ASP.NET Core Identity)
 - `src/OpenBudget/Connectors/` — bank connectors, one folder each; `FinTs/` is the built-in FinTS client
-- `src/OpenBudget/Importers/` — importers; `src/OpenBudget/Compat/` — legacy route names
+- `src/OpenBudget/Importers/` — importers
 - `tests/` — unit tests (`OpenBudget.Tests`) and Playwright E2E tests (`OpenBudget.E2E.Tests`)
-- `exporter/` — the MoneyMoney upload helper for macOS

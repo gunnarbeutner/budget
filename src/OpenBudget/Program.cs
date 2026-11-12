@@ -5,7 +5,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenBudget.Auth;
 using OpenBudget.Browser;
 using OpenBudget.Cli;
-using OpenBudget.Compat;
 using OpenBudget.Connectors;
 using OpenBudget.Connectors.Sync;
 using OpenBudget.Connectors.OneDrive;
@@ -66,11 +65,10 @@ builder.Services.AddScoped<CategorizationService>();
 // pages render dates/times and "current period" decisions in the user's zone, not the server's.
 builder.Services.AddScoped<ClockService>();
 builder.Services.AddImporters();
-// Importers run for token-authenticated uploads (no logged-in user), so they use the explicit
+// Importers also run outside a user's request (background imports, linked cloud files), so they use the explicit
 // unrestricted factory rather than the user-scoped IDbContextFactory.
 builder.Services.AddSingleton(sp => ActivatorUtilities.CreateInstance<PortfolioPerformanceImportService>(
     sp, sp.GetRequiredService<SystemDbContextFactory>()));
-builder.Services.AddSingleton<UploadAuthorizer>();
 builder.Services.AddSingleton<ChangeNotificationService>();
 // Per-circuit origin id, stamped onto changes this circuit publishes so its own components can
 // ignore the echo of their commits (see ChangeOrigin / DataChangeAwareComponent).
@@ -182,8 +180,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 // Everything below requires a logged-in user via the fallback authorization policy unless it opts
-// out with AllowAnonymous (static assets, health probe, the token-authenticated upload API; the
-// login page opts out itself).
+// out with AllowAnonymous (static assets, health probe; the login page opts out itself).
 app.MapStaticAssets().AllowAnonymous();
 
 app.MapBlazorHub();
@@ -197,25 +194,8 @@ app.MapOneDriveEndpoints();
 
 app.MapGet("/healthz", () => Results.Ok("healthy")).AllowAnonymous();
 
-// The source app (and any future) importer upload endpoints live in the Importers module.
-app.MapImporterEndpoints(uploadStagingDir);
-
-// POST /api/portfolioperformance/{name} — uploads a PortfolioPerformance ".portfolio" file and
-// imports its security taxonomy (region/asset-class look-through) for an existing source.
-// Auth: same "Authorization: Bearer <OPENBUDGET_UPLOAD_TOKEN>" as the importer uploads.
-app.MapPost("/api/portfolioperformance/{name}", async (
-    string name,
-    HttpRequest request,
-    PortfolioPerformanceImportService importer,
-    UploadAuthorizer authorizer,
-    ILogger<Program> logger,
-    CancellationToken ct) =>
-{
-    if (!SourceData.IsValidSlug(name))
-        return Results.BadRequest($"Invalid source name '{name}'. Use lowercase letters, digits, and hyphens; start with letter/digit.");
-
-    return await HandlePortfolioPerformanceUploadAsync(name, request, importer, authorizer, logger, uploadStagingDir, ct);
-}).AllowAnonymous();
+// The browser's chunked MoneyMoney upload lives in the Importers module.
+app.MapImporterEndpoints();
 
 // GET /statements/{id} — a downloaded bank statement (PDF). Authorization is the account's visibility:
 // the lookup runs through a context scoped to the signed-in user, so documents of accounts they cannot
@@ -262,107 +242,8 @@ app.MapPost("/statements/zip", async (
     return Results.Stream(body => StatementArchive.WriteAsync(body, entries, ct), "application/zip", name);
 });
 
-// DELETE /api/sources/{name} — removes a source. Refused with 409 when any project
-// references it, with the offending project list in the response. The old route is kept as an
-// alias for the already-installed exporter (see LegacyCompat).
-Delegate deleteSourceHandler = async (
-    string name,
-    SystemDbContextFactory dbFactory,
-    UploadAuthorizer authorizer,
-    ChangeNotificationService notifier,
-    ILogger<Program> logger,
-    HttpRequest request,
-    CancellationToken ct) =>
-{
-    var denied = UploadAuthorizer.ToFailure(await authorizer.AuthorizeAsync(request.Headers.Authorization.ToString(), name, ct));
-    if (denied != null) return denied;
-
-    await using var db = await dbFactory.CreateDbContextAsync(ct);
-    var source = await db.ImportSources.FirstOrDefaultAsync(s => s.Name == name, ct);
-    if (source == null) return Results.NotFound();
-
-    var blockingProjects = await db.Projects
-        .Where(p => p.SourceId == source.Id)
-        .Select(p => new { p.Id, p.Name })
-        .ToListAsync(ct);
-    if (blockingProjects.Count > 0)
-    {
-        return Results.Conflict(new
-        {
-            error = "Source still referenced by projects. Delete or rebind them first.",
-            projects = blockingProjects
-        });
-    }
-
-    await SourceData.DeleteSourceDataAsync(db, source.Id, ct);
-    db.ImportSources.Remove(source);
-    await db.SaveChangesAsync(ct);
-
-    notifier.Publish(new DataChange(DataArea.Sources, SourceId: source.Id));
-    notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: source.Id));
-
-    logger.LogInformation("Deleted source '{Name}' (id={Id}).", name, source.Id);
-    return Results.Ok(new { status = "deleted", name });
-};
-app.MapDelete("/api/sources/{name}", deleteSourceHandler).AllowAnonymous();
-app.MapDelete(LegacyCompat.LegacyDeleteSourceRoute, deleteSourceHandler).AllowAnonymous();
-
 await app.RunAsync();
 return 0;
-
-static async Task<IResult> HandlePortfolioPerformanceUploadAsync(
-    string sourceName,
-    HttpRequest request,
-    PortfolioPerformanceImportService importer,
-    UploadAuthorizer authorizer,
-    ILogger<Program> logger,
-    string stagingDir,
-    CancellationToken ct)
-{
-    // PP files are small (single-digit MB), but allow generous headroom over Kestrel's ~30 MB
-    // default rather than leaving it unbounded.
-    const long maxUploadBytes = 256L * 1024 * 1024;
-    var sizeFeature = request.HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
-    if (sizeFeature != null && !sizeFeature.IsReadOnly)
-        sizeFeature.MaxRequestBodySize = maxUploadBytes;
-
-    var denied = UploadAuthorizer.ToFailure(await authorizer.AuthorizeAsync(request.Headers.Authorization.ToString(), sourceName, ct));
-    if (denied != null) return denied;
-
-    try
-    {
-        var result = await PortfolioPerformanceUpload.ImportAsync(importer, sourceName, request.Body, stagingDir, ct);
-        return Results.Ok(new
-        {
-            status = "ok",
-            result.SourceId,
-            result.SourceName,
-            result.RowsImported,
-            result.SecuritiesClassified,
-            result.TaxonomiesImported
-        });
-    }
-    catch (KeyNotFoundException ex)
-    {
-        // Unknown source — the source's data must be imported first.
-        return Results.NotFound(new { error = ex.Message });
-    }
-    catch (InvalidDataException ex) when (ex.Message == PortfolioPerformanceUpload.NotAPortfolioFile)
-    {
-        return Results.BadRequest(ex.Message);
-    }
-    catch (InvalidDataException ex)
-    {
-        // Wrong format (XML / encrypted / not a PP file). The message is safe to surface and is
-        // actionable ("save as the default binary format without encryption").
-        return Results.BadRequest(new { error = ex.Message });
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "PortfolioPerformance upload failed for source '{Source}'.", sourceName);
-        return Results.Problem("Upload failed. See server logs for details.", statusCode: StatusCodes.Status500InternalServerError);
-    }
-}
 
 // Exposes the implicit top-level Program class so WebApplicationFactory<Program> in the E2E
 // test project can boot this exact app (same DI/middleware wiring) on a real Kestrel port.

@@ -1,12 +1,11 @@
 using Microsoft.EntityFrameworkCore;
-using OpenBudget.Auth;
 using OpenBudget.Models;
 
 namespace OpenBudget.Services;
 
 /// <summary>
-/// The user's own sources: create, view/rotate the per-source upload token, delete. Everything here
-/// is owner-only; other users never see a source's page, token or data except through a shared project.
+/// The user's own sources: list, create (also on demand for an import), label, delete. Everything here is
+/// owner-only; other users never see a source's data except through a shared project.
 /// </summary>
 public class SourceService
 {
@@ -21,11 +20,8 @@ public class SourceService
         _origin = origin;
     }
 
-    /// <summary>
-    /// Sources owned by the current user, ordered by name. With <paramref name="ensureTokens"/> a
-    /// source that has no upload token yet (claimed before per-source tokens existed) gets one.
-    /// </summary>
-    public async Task<List<ImportSource>> GetOwnedSourcesAsync(bool ensureTokens = false, CancellationToken ct = default)
+    /// <summary>Sources owned by the current user, ordered by name.</summary>
+    public async Task<List<ImportSource>> GetOwnedSourcesAsync(CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var query = db.ImportSources.AsQueryable();
@@ -35,15 +31,7 @@ public class SourceService
             query = query.Where(s => owned.Contains(s.Id));
         }
 
-        var sources = await query.OrderBy(s => s.Name).ToListAsync(ct);
-        var missing = ensureTokens ? sources.Where(s => string.IsNullOrEmpty(s.UploadToken)).ToList() : [];
-        if (missing.Count > 0)
-        {
-            // Sources claimed before per-source tokens existed: mint theirs now so the owner can see it.
-            foreach (var s in missing) s.UploadToken = TokenGenerator.NewUploadToken();
-            await db.SaveChangesAsync(ct);
-        }
-        return sources;
+        return await query.OrderBy(s => s.Name).ToListAsync(ct);
     }
 
     public async Task<ImportSource> CreateSourceAsync(string name, CancellationToken ct = default)
@@ -55,13 +43,12 @@ public class SourceService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         if (db.Scope is { IsAuthenticated: false })
             throw new AccessDeniedException("Not signed in.");
-        // Names are global (they key the upload URL), so a taken name may belong to someone else
-        // and is not distinguishable from "exists" here — the unique index decides.
+        // Names are global, so a taken name may belong to someone else and is not distinguishable
+        // from "exists" here — the unique index decides.
         var source = new ImportSource
         {
             Name = name,
             OwnerUserId = db.Scope?.UserId,
-            UploadToken = TokenGenerator.NewUploadToken(),
         };
         db.ImportSources.Add(source);
         try
@@ -83,7 +70,7 @@ public class SourceService
     /// </summary>
     public async Task<ImportSource> EnsureOwnSourceAsync(bool preferMoneyMoney = false, CancellationToken ct = default)
     {
-        var owned = await GetOwnedSourcesAsync(ct: ct);
+        var owned = await GetOwnedSourcesAsync(ct);
         var pick = (preferMoneyMoney ? owned.OrderBy(s => s.Id).FirstOrDefault(s => s.LastUploadAt != null) : null)
             ?? owned.OrderBy(s => s.Id).FirstOrDefault();
         if (pick != null) return pick;
@@ -142,19 +129,6 @@ public class SourceService
             }
         }
         return labels;
-    }
-
-    /// <summary>Replaces the source's upload token; the old one stops working immediately.</summary>
-    public async Task<string> RotateTokenAsync(int sourceId, CancellationToken ct = default)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        db.Scope?.RequireSourceOwner(sourceId);
-        var source = await db.ImportSources.FirstOrDefaultAsync(s => s.Id == sourceId, ct)
-            ?? throw new AccessDeniedException("Source not found.");
-        source.UploadToken = TokenGenerator.NewUploadToken();
-        await db.SaveChangesAsync(ct);
-        _notifier.Publish(new DataChange(DataArea.Sources, SourceId: sourceId), _origin.Id);
-        return source.UploadToken;
     }
 
     /// <summary>Deletes an owned source and all its imported data; refused while projects still use it.</summary>

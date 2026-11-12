@@ -439,39 +439,6 @@ public sealed class AccountSwitchService
         return true;
     }
 
-    /// <summary>
-    /// Returns a switched account to MoneyMoney; the next upload replaces its rows. Refused while the source's MoneyMoney
-    /// import is finished (no upload would come).
-    /// </summary>
-    public async Task SwitchBackAsync(int loginAccountId, CancellationToken ct = default)
-    {
-        var scope = await _access.GetAsync();
-        var userId = scope.UserId ?? throw new AccessDeniedException("Not signed in.");
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var (link, created, _) = (await LinksAsync(db, l => l.Id == loginAccountId, ct)).FirstOrDefault();
-        if (link == null) throw new AccessDeniedException("Bank account not found.");
-        scope.RequireSourceOwner(link.SourceId);
-        if (created) throw new InvalidOperationException("This account was created by the bank connection; it has no MoneyMoney counterpart.");
-        if (!link.Switched) return;
-        if (await db.ImportSources.AnyAsync(s => s.Id == link.SourceId && s.MoneyMoneyImportFinishedAt != null, ct))
-            throw new InvalidOperationException("The MoneyMoney import of this source is finished; resume it before switching an account back.");
-
-        await using var sys = await _system.CreateDbContextAsync(ct);
-        var row = await sys.BankLoginAccounts.FirstAsync(l => l.Id == loginAccountId, ct);
-        var account = await sys.Accounts.FirstAsync(a => a.Id == link.AccountId, ct);
-        account.Provider = AccountProviders.MoneyMoney;
-        row.SwitchedAt = null;
-        row.LastSuccessAt = null;
-        row.SyncFloorUtc = null;
-        row.PendingRefreshJson = null;
-        row.PendingRefreshAt = null;
-        row.PendingSinceUtc = null;
-        await sys.SaveChangesAsync(ct);
-        _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: link.SourceId), _origin.Id);
-        _notifier.Publish(new DataChange(DataArea.Sources), _origin.Id);
-        _notifier.Publish(new DataChange(DataArea.BankSync, UserId: userId), _origin.Id);
-    }
-
     /// <summary>Marks the source's MoneyMoney import finished (uploads are refused) or resumes it.</summary>
     public async Task SetImportFinishedAsync(int sourceId, bool finished, CancellationToken ct = default)
     {

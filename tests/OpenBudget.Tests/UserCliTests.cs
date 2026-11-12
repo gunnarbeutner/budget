@@ -77,11 +77,6 @@ public sealed class UserCliTests : IDisposable
         var projects = await ProjectOwnersAsync();
         Assert.All(new[] { "Shared", "Alice Private", "House A", "House B" }, n => Assert.Equal("alice", projects[n]));
         Assert.Null(projects["Bob Private"]);
-
-        // The claimed source got its own upload token.
-        await using var db = await _host.System.CreateDbContextAsync();
-        Assert.False(string.IsNullOrEmpty((await db.ImportSources.SingleAsync(s => s.Name == "alice")).UploadToken));
-        Assert.Null((await db.ImportSources.SingleAsync(s => s.Name == "bob")).UploadToken);
     }
 
     [Fact]

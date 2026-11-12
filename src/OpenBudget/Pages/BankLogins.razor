@@ -171,7 +171,6 @@ else
                                                 {
                                                     <div class="small mt-1 text-body-secondary" data-testid="switched">
                                                         <span>@(a.SwitchedAt is { } switchedAt ? L["Switch_Done", Clock.ToLocal(switchedAt).ToString("yyyy-MM-dd")] : L["Switch_DoneUndated"])</span>
-                                                        <button class="btn btn-sm btn-link link-secondary p-0 ms-1 align-baseline small" data-action="switch-back" @onclick="() => pendingSwitchBack = a">@L["Button_SwitchBack"]</button>
                                                     </div>
                                                 }
                                             }
@@ -280,17 +279,6 @@ else
 
 <AccountSwitchDialog LoginAccountIds="switchIds" OnClose="() => switchIds = null" OnSwitched="SwitchedAsync" />
 
-<Modal Show="@(pendingSwitchBack != null)" Title="@L["SwitchBack_Title"]" OnClose="@(() => pendingSwitchBack = null)">
-    <ChildContent>
-        <p>@L["SwitchBack_Body", pendingSwitchBack?.LinkedAccountName ?? ""]</p>
-        <p class="small text-body-secondary mb-0">@L["SwitchBack_Lost"]</p>
-    </ChildContent>
-    <Footer>
-        <button type="button" class="btn btn-secondary" @onclick="() => pendingSwitchBack = null">@L["Button_Cancel"]</button>
-        <button type="button" class="btn btn-danger" data-testid="switch-back-confirm" @onclick="SwitchBackConfirmedAsync">@L["Button_SwitchBack"]</button>
-    </Footer>
-</Modal>
-
 <Modal Show="@(editing != null)" Title="@L["Edit_Title"]" OnClose="@(() => editing = null)">
     <ChildContent>
         @if (editing != null)
@@ -387,19 +375,11 @@ else
     private string? editError;
     private BankLoginView? pendingDelete;
     private IReadOnlyList<int>? switchIds;
-    private BankLoginAccountView? pendingSwitchBack;
 
     private async Task SwitchedAsync(int count)
     {
         switchIds = null;
         await LoadAsync();
-    }
-
-    private async Task SwitchBackConfirmedAsync()
-    {
-        if (pendingSwitchBack is not { } a) return;
-        pendingSwitchBack = null;
-        await RunAsync(() => Switcher.SwitchBackAsync(a.Id));
     }
 
     private static bool NeedsCredentials(ConnectorRegistration? c) => c == null || c.Credentials != CredentialRequirement.None;

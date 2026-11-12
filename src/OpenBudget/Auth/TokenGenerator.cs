@@ -4,9 +4,6 @@ namespace OpenBudget.Auth;
 
 internal static class TokenGenerator
 {
-    /// <summary>A fresh 256-bit random upload token, hex encoded.</summary>
-    public static string NewUploadToken() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
-
     /// <summary>A random initial password that satisfies Identity's default password policy.</summary>
     public static string NewPassword()
     {

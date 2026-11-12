@@ -1,5 +1,4 @@
 #pragma warning disable CA2000 // test objects live for the test
-using System.Net;
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Connectors.FakeBank;
 using OpenBudget.Connectors.Sync;
@@ -231,26 +230,7 @@ public sealed class AccountSwitchTests
     }
 
     [Fact]
-    public async Task Switching_back_hands_the_account_to_the_next_upload()
-    {
-        await using var w = await BankWorld.CreateAsync();
-        var (loginId, linkId) = await LinkedAndFetchedAsync(w);
-        await w.SwitchAsync(BankWorld.Alice, linkId);
-
-        await w.Switcher(BankWorld.Alice).SwitchBackAsync(linkId);
-        Assert.Equal(AccountProviders.MoneyMoney, (await w.AccountAsync(Giro)).Provider);
-        var link = await w.RemoteAsync(BankWorld.Alice, loginId, FakeBankConnector.GiroId);
-        Assert.True(link.AwaitingSwitch);
-        Assert.Null(link.SwitchedAt);
-
-        await w.ImportMoneyMoneyAsync(Snapshot(w));
-        var rows = await w.TransactionsAsync(Giro);
-        Assert.Equal(History.Length, rows.Count);
-        Assert.All(rows, t => Assert.Null(t.ExternalId));
-    }
-
-    [Fact]
-    public async Task A_finished_import_refuses_uploads_until_resumed_and_blocks_switching_back()
+    public async Task A_finished_import_refuses_imports_until_resumed()
     {
         await using var w = await BankWorld.CreateAsync();
         var (_, linkId) = await LinkedAndFetchedAsync(w);
@@ -264,48 +244,8 @@ public sealed class AccountSwitchTests
         await switcher.SetImportFinishedAsync(BankWorld.SourceAlice, true);
         Assert.NotNull((await switcher.GetSourceStateAsync(BankWorld.SourceAlice)).ImportFinishedAt);
         await Assert.ThrowsAsync<MoneyMoneyImportFinishedException>(() => w.ImportMoneyMoneyAsync(Snapshot(w)));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => switcher.SwitchBackAsync(linkId));
 
         await switcher.SetImportFinishedAsync(BankWorld.SourceAlice, false);
         await w.ImportMoneyMoneyAsync(Snapshot(w));
-    }
-}
-
-/// <summary>The upload endpoints answer 409 Conflict with an explanation once the MoneyMoney import is finished.</summary>
-public sealed class FinishedImportUploadTests : IDisposable
-{
-    private readonly AppTestHost _host = new();
-
-    public void Dispose() => _host.Dispose();
-
-    private async Task SetFinishedAsync(bool finished)
-    {
-        await using var db = await _host.System.CreateDbContextAsync();
-        var source = await db.ImportSources.SingleAsync(s => s.Id == AccessWorld.SourceAlice);
-        source.MoneyMoneyImportFinishedAt = finished ? DateTime.UtcNow : null;
-        await db.SaveChangesAsync();
-    }
-
-    [Fact]
-    public async Task Uploads_are_refused_with_409_while_finished()
-    {
-        await _host.SeedWorldAsync();
-        await SetFinishedAsync(true);
-        using var client = _host.CreateClient();
-
-        using (var request = AppTestHost.Upload("/api/import/moneymoney/alice", AppTestHost.BuildSnapshot(), "tok-alice"))
-        using (var response = await client.SendAsync(request))
-        {
-            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-            Assert.Contains("import of this source is finished", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
-        }
-        using (var request = AppTestHost.Upload("/api/import/moneymoney/alice/statements?accountKey=1&date=2026-10-01", "%PDF-1.4"u8.ToArray(), "tok-alice"))
-        using (var response = await client.SendAsync(request))
-            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-
-        await SetFinishedAsync(false);
-        using (var request = AppTestHost.Upload("/api/import/moneymoney/alice", AppTestHost.BuildSnapshot(), "tok-alice"))
-        using (var response = await client.SendAsync(request))
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 }

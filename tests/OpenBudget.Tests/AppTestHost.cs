@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
@@ -10,7 +9,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpenBudget.Auth;
-using OpenBudget.Compat;
 using OpenBudget.Models;
 using OpenBudget.Services;
 
@@ -19,12 +17,10 @@ namespace OpenBudget.Tests;
 /// <summary>
 /// The real app (same DI + middleware as production, "Test" environment) over a throwaway SQLite
 /// file, driven through HTTP with a cookie-keeping client: log in through the real login form, then
-/// request real pages. The upload tokens are host settings (not process environment variables), so
-/// hosts run in parallel.
+/// request real pages. Each host has its own database, so hosts run in parallel.
 /// </summary>
 internal sealed partial class AppTestHost : IDisposable
 {
-    public const string LegacyToken = "legacy-token";
     public const string Password = "Correct-Horse-9";
 
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"ob-app-{Guid.NewGuid():N}.db");
@@ -33,8 +29,6 @@ internal sealed partial class AppTestHost : IDisposable
     public AppTestHost(params (string Key, string Value)[] settings)
     {
         MigratedDatabase.CopyTo(_dbPath);
-        _tokens.Set(LegacyCompat.UploadTokenVariable, "");
-        _tokens.Set(LegacyCompat.LegacyUploadTokenVariable, LegacyToken);
 
 #pragma warning disable CA2000 // the derived factory is disposed in Dispose and owns the root factory
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
@@ -44,7 +38,6 @@ internal sealed partial class AppTestHost : IDisposable
             b.ConfigureAppConfiguration((_, c) =>
             {
                 if (settings.Length > 0) c.AddInMemoryCollection(settings.Select(x => KeyValuePair.Create(x.Key, (string?)x.Value)));
-                c.Add(_tokens); // last: overrides any token in the developer's environment
             });
             b.ConfigureServices(services =>
             {
@@ -59,11 +52,6 @@ internal sealed partial class AppTestHost : IDisposable
         });
 #pragma warning restore CA2000
     }
-
-    private readonly MutableSettings _tokens = new();
-
-    /// <summary>Configures (or with null, removes) the legacy global upload token while the host runs.</summary>
-    public void SetLegacyToken(string? token) => _tokens.Set(LegacyCompat.LegacyUploadTokenVariable, token ?? "");
 
     /// <summary>Warnings/errors the app logged; handy context when an HTTP assertion fails.</summary>
     public List<string> LoggedProblems { get; } = new();
@@ -138,46 +126,6 @@ internal sealed partial class AppTestHost : IDisposable
         return (response.StatusCode, await response.Content.ReadAsStringAsync());
     }
 
-    public static HttpRequestMessage Upload(string path, byte[] body, string? token)
-    {
-        var request = new HttpRequestMessage(HttpMethod.Post, new Uri(path, UriKind.Relative));
-        if (token != null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        request.Content = new ByteArrayContent(body);
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        return request;
-    }
-
-    /// <summary>A minimal database in the shape the exporter produces: one account, one transaction.</summary>
-    public static byte[] BuildSnapshot()
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"ob-snap-{Guid.NewGuid():N}.sqlite");
-        try
-        {
-            using (var conn = new SqliteConnection($"Data Source={path}"))
-            {
-                conn.Open();
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = """
-                    CREATE TABLE accounts (name TEXT, iban TEXT, currency TEXT, type INTEGER, portfolio INTEGER, balances TEXT, sort INTEGER, refresh_tsp INTEGER, error TEXT, group_key INTEGER);
-                    CREATE TABLE account_groups (name TEXT, group_key INTEGER, sort INTEGER);
-                    CREATE TABLE category_groups (name TEXT, group_key INTEGER, sort INTEGER, color TEXT);
-                    CREATE TABLE categories (name TEXT, type INTEGER, color TEXT, rules TEXT, group_key INTEGER, sort INTEGER);
-                    CREATE TABLE transactions (local_account_key INTEGER, amount REAL, currency TEXT, timestamp INTEGER, name TEXT, comment TEXT, unformatted_purpose TEXT, category_key INTEGER, checkmark INTEGER, splitted INTEGER);
-                    INSERT INTO accounts (name, currency, type, balances) VALUES ('Giro', 'EUR', 1, '11:100.000000,3:EUR,');
-                    INSERT INTO transactions (local_account_key, amount, currency, timestamp, name, category_key, checkmark, splitted)
-                        VALUES (1, -12.5, 'EUR', 1700000000, 'Shop', 0, 0, 0);
-                    """;
-                cmd.ExecuteNonQuery();
-            }
-            SqliteConnection.ClearAllPools();
-            return File.ReadAllBytes(path);
-        }
-        finally
-        {
-            try { File.Delete(path); } catch { /* best-effort */ }
-        }
-    }
-
     /// <summary>Seeds the AccessWorld data (sources, projects, shares) into this host's database as an unscoped writer.</summary>
     public async Task SeedWorldAsync(ProjectRole? bobOnWp = ProjectRole.Editor)
     {
@@ -250,12 +198,6 @@ internal sealed partial class AppTestHost : IDisposable
         _factory.Dispose();
         SqliteConnection.ClearAllPools();
         try { File.Delete(_dbPath); } catch { /* best-effort */ }
-    }
-
-    /// <summary>Settings that can change while the host runs (read live through IConfiguration).</summary>
-    internal sealed class MutableSettings : ConfigurationProvider, IConfigurationSource
-    {
-        public IConfigurationProvider Build(IConfigurationBuilder builder) => this;
     }
 
     private sealed class ProblemLogger(List<string> sink) : ILoggerProvider

@@ -11,6 +11,7 @@ loads the third-party components below, each under its own license.
 | [Bootstrap Icons](https://icons.getbootstrap.com/) (`wwwroot/css/bootstrap-icons`) | 1.11.3 | [MIT](https://github.com/twbs/icons/blob/main/LICENSE) | Copyright (c) 2019-2024 The Bootstrap Authors |
 | [Chart.js](https://www.chartjs.org/) (loaded from jsDelivr) | 4.5.1 | [MIT](https://github.com/chartjs/Chart.js/blob/master/LICENSE.md) | Copyright (c) 2014-2024 Chart.js Contributors |
 | [Google.Protobuf](https://github.com/protocolbuffers/protobuf) | 3.28.3 | [BSD-3-Clause](https://github.com/protocolbuffers/protobuf/blob/main/LICENSE) | Copyright 2008 Google Inc. |
+| [SQLCipher](https://www.zetetic.net/sqlcipher/) native library via [SQLitePCLRaw.lib.e_sqlcipher](https://github.com/ericsink/SQLitePCL.raw) (decrypts MoneyMoney databases on import) | 2.1.11 | SQLCipher: BSD-3-Clause style ([Community Edition license](https://github.com/sqlcipher/sqlcipher/blob/master/LICENSE.md)); SQLitePCLRaw: [Apache-2.0](https://github.com/ericsink/SQLitePCL.raw/blob/master/LICENSE.TXT) | SQLCipher: Copyright (c) 2025, ZETETIC LLC; SQLitePCLRaw: Copyright 2014-2024 SourceGear, LLC |
 | [PDF.js](https://mozilla.github.io/pdf.js/) (`wwwroot/lib/pdfjs`, pdfjs-dist legacy build; renders statement thumbnails and the viewer) | 4.10.38 | [Apache-2.0](https://github.com/mozilla/pdf.js/blob/master/LICENSE) (copy in `wwwroot/lib/pdfjs/LICENSE`) | Copyright Mozilla Foundation and contributors |
 | [PuppeteerSharp](https://github.com/hardkoded/puppeteer-sharp) (drives the browser for web logins) | 25.12.0 | [MIT](https://github.com/hardkoded/puppeteer-sharp/blob/master/LICENSE) | Copyright (c) Darío Kondratiuk and contributors |
 | [.NET / ASP.NET Core / Entity Framework Core](https://github.com/dotnet) | 11.0 preview | [MIT](https://github.com/dotnet/runtime/blob/main/LICENSE.TXT) | Copyright (c) .NET Foundation and Contributors |
@@ -22,15 +23,8 @@ loads the third-party components below, each under its own license.
 | [Chromium](https://www.chromium.org/) (Debian `chromium` package, started only for web logins) | as packaged by Debian trixie | [BSD-3-Clause](https://source.chromium.org/chromium/chromium/src/+/main:LICENSE) and the licenses of its bundled components (listed in the package's `/usr/share/doc/chromium/copyright` and at `chrome://credits`) | Copyright 2015 The Chromium Authors |
 | [Debian GNU/Linux](https://www.debian.org/) base system, `fonts-liberation` (SIL OFL 1.1), `fonts-dejavu-core` (Bitstream Vera / public domain) | trixie | various, see `/usr/share/doc/*/copyright` in the image | the respective authors |
 
-## Shipped with the macOS importer (`exporter/`)
-
-| Component | Version | License | Copyright |
-| --- | --- | --- | --- |
-| [SQLCipher](https://www.zetetic.net/sqlcipher/) via [sqlcipher.swift](https://github.com/sqlcipher/sqlcipher.swift) | 4.16+ | BSD-3-Clause style ([Community Edition license](https://github.com/sqlcipher/sqlcipher/blob/master/LICENSE.md)) | Copyright (c) 2025, ZETETIC LLC |
-
-SQLCipher's license requires that binary redistributions reproduce its
-copyright notice and disclaimer, so include this file with any distributed
-build of the importer app.
+SQLCipher's license requires that binary redistributions reproduce its copyright notice and disclaimer, so include
+this file with any distributed build of the app or its Docker image.
 
 ## File-format definitions
 

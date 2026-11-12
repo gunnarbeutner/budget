@@ -11,7 +11,7 @@ public static class ImporterRegistration
 {
     public static IServiceCollection AddImporters(this IServiceCollection services)
     {
-        // Uploads are token-authenticated, not user-authenticated, so the importer uses the explicit
+        // Imports run as background jobs, outside a user's request, so the importer uses the explicit
         // unrestricted factory (a singleton can't consume the per-user scoped one anyway).
         services.AddSingleton(sp => ActivatorUtilities.CreateInstance<MoneyMoneyImportService>(
             sp, sp.GetRequiredService<SystemDbContextFactory>()));
@@ -21,9 +21,8 @@ public static class ImporterRegistration
         return services;
     }
 
-    public static IEndpointRouteBuilder MapImporterEndpoints(this IEndpointRouteBuilder app, string stagingDir)
+    public static IEndpointRouteBuilder MapImporterEndpoints(this IEndpointRouteBuilder app)
     {
-        MoneyMoneyEndpoints.Map(app, stagingDir);
         MoneyMoneyUploadEndpoints.Map(app);
         return app;
     }

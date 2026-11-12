@@ -440,17 +440,6 @@ public sealed class AuthHttpTests : IDisposable
     }
 
     [Fact]
-    public async Task With_no_users_the_upload_api_still_accepts_the_legacy_token()
-    {
-        using var client = _host.CreateClient();
-
-        using var request = AppTestHost.Upload("/api/moneymoney-db/alice", AppTestHost.BuildSnapshot(), AppTestHost.LegacyToken);
-        using var response = await client.SendAsync(request);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-    }
-
-    [Fact]
     public async Task The_setup_message_goes_away_once_a_user_exists()
     {
         using var client = _host.CreateClient();

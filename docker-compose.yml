@@ -6,12 +6,10 @@
 # `docker compose pull && docker compose up -d`.
 #
 # Before the first start:
-#   echo "OPENBUDGET_UPLOAD_TOKEN=$(openssl rand -hex 32)" > .env
-#   (an existing .env with the old MONEYMONEY_DB_UPLOAD_TOKEN keeps working; rename it when
-#   convenient — the server logs a deprecation warning while only the old name is set)
+#   echo "OPENBUDGET_SECRETS_KEY=$(openssl rand -base64 32)" > .env
 #
-# Bootstrap data: copy budgets.db into ./data/ before first start, or POST an importer snapshot
-# (see README, "Importers") after start.
+# Bootstrap data: copy budgets.db into ./data/ before first start, or import from MoneyMoney on the
+# Get started page after start (see README, "Importers").
 #
 # First start: no users exist yet and every page shows only a setup message. Create the first
 # admin (it also takes over a source of the same name and that source's projects):
@@ -32,10 +30,6 @@ services:
     volumes:
       - ./data:/app/data
     environment:
-      # Either variable works; the second is the deprecated pre-rename name, still honoured so an
-      # existing .env keeps working. The app returns 503 on uploads when neither is set.
-      OPENBUDGET_UPLOAD_TOKEN: ${OPENBUDGET_UPLOAD_TOKEN:-}
-      MONEYMONEY_DB_UPLOAD_TOKEN: ${MONEYMONEY_DB_UPLOAD_TOKEN:-}
       # Required for bank logins (see README, "Bank connectors"): `openssl rand -base64 32`. Not stored in ./data.
       OPENBUDGET_SECRETS_KEY: ${OPENBUDGET_SECRETS_KEY:-}
       # OPENBUDGET_ENABLE_FAKE_BANK: "true"   # offers a made-up bank for trying the connector flow

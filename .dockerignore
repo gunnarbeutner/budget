@@ -16,10 +16,8 @@ data/
 Dockerfile
 docker-compose*.yml
 .dockerignore
-# Not part of the runtime image — the test project is .NET but not shipped, and the
-# exporter is a separate macOS Swift project.
+# Not part of the runtime image — the test project is .NET but not shipped.
 tests/
-exporter/
 # Not needed to build the app (the Dockerfile copies src/ only; ignoring them also keeps the context small).
 docs/
 tools/

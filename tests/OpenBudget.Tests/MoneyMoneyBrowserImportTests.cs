@@ -182,6 +182,24 @@ public sealed class MoneyMoneyBrowserImportTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task A_finished_MoneyMoney_import_refuses_another_one()
+    {
+        var (import, staging) = await ServiceAsync();
+        await using (var db = await _t.System.CreateDbContextAsync())
+        {
+            (await db.ImportSources.SingleAsync(s => s.Name == SourceName)).MoneyMoneyImportFinishedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+        var id = await UploadAsync(import, MoneyMoneyZipFixture.Build("secret"), 1 << 20);
+
+        Assert.True(import.StartImport(Owner, id, SourceName, "secret"));
+        var job = await WaitAsync(import);
+
+        Assert.Equal(MoneyMoneyImportError.ImportFinished, job.Error);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(staging));
+    }
+
+    [Fact]
     public async Task An_incomplete_upload_does_not_start()
     {
         var (import, _) = await ServiceAsync();

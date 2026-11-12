@@ -14,7 +14,7 @@ public class ImportSource
     [Key]
     public int Id { get; set; }
 
-    /// <summary>URL-safe slug used in the upload endpoint path and as the dashboard label.</summary>
+    /// <summary>Internal URL-safe slug, unique across users; never shown (see SourceService.GetLabelsAsync).</summary>
     [Required]
     [MaxLength(100)]
     public string Name { get; set; } = string.Empty;
@@ -33,11 +33,7 @@ public class ImportSource
     [MaxLength(450)]
     public string? OwnerUserId { get; set; }
 
-    /// <summary>
-    /// Per-source upload token (bearer). Authorizes uploads to this source only. Stored in clear
-    /// because the owner can view it on the Sources page. Null until generated; the legacy global
-    /// token (see LegacyCompat) keeps working for every source in addition.
-    /// </summary>
+    /// <summary>Not used by the app; the column stays in the schema.</summary>
     [MaxLength(100)]
     public string? UploadToken { get; set; }
 

@@ -23,11 +23,7 @@ public static class UserClaims
         var sources = await db.ImportSources
             .Where(s => s.OwnerUserId == null && s.Name == userName)
             .ToListAsync(ct);
-        foreach (var s in sources)
-        {
-            s.OwnerUserId = userId;
-            s.UploadToken ??= TokenGenerator.NewUploadToken();
-        }
+        foreach (var s in sources) s.OwnerUserId = userId;
 
         var sourceIds = sources.Select(s => s.Id).ToList();
         var projects = sourceIds.Count == 0

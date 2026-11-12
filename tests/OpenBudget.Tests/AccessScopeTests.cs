@@ -373,12 +373,11 @@ public class AccessScopeTests
     // ---- Sources (owner-only) ----
 
     [Fact]
-    public async Task Source_pages_and_tokens_are_owner_only()
+    public async Task Source_pages_are_owner_only()
     {
         await using var t = await AccessWorld.BuildAsync();
         var bob = t.ForUser(AccessWorld.Bob);
 
-        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Sources.RotateTokenAsync(AccessWorld.SourceAlice));
         await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Sources.DeleteSourceAsync(AccessWorld.SourceAlice));
         await Assert.ThrowsAsync<AccessDeniedException>(() => bob.DepotMapping.GetAsync(AccessWorld.SourceAlice));
         await Assert.ThrowsAsync<AccessDeniedException>(() => bob.DepotMapping.SaveLinkAsync(AccessWorld.SourceAlice, "x", null));
@@ -392,17 +391,13 @@ public class AccessScopeTests
     }
 
     [Fact]
-    public async Task Owner_can_create_a_source_with_a_token_and_rotate_it()
+    public async Task Owner_can_create_a_source()
     {
         await using var t = await AccessWorld.BuildAsync();
         var bob = t.ForUser(AccessWorld.Bob);
 
         var created = await bob.Sources.CreateSourceAsync("holiday");
         Assert.Equal(AccessWorld.Bob, created.OwnerUserId);
-        Assert.False(string.IsNullOrEmpty(created.UploadToken));
-
-        var rotated = await bob.Sources.RotateTokenAsync(created.Id);
-        Assert.NotEqual(created.UploadToken, rotated);
         await Assert.ThrowsAsync<ArgumentException>(() => bob.Sources.CreateSourceAsync("Not A Slug"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => bob.Sources.CreateSourceAsync("alice"));   // taken
     }

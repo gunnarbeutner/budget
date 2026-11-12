@@ -241,18 +241,6 @@
   <data name="Switch_DoneUndated" xml:space="preserve">
     <value>Von MoneyMoney umgestellt.</value>
   </data>
-  <data name="Button_SwitchBack" xml:space="preserve">
-    <value>Zurück zu MoneyMoney</value>
-  </data>
-  <data name="SwitchBack_Title" xml:space="preserve">
-    <value>Zurück zu MoneyMoney wechseln?</value>
-  </data>
-  <data name="SwitchBack_Body" xml:space="preserve">
-    <value>„{0}“ wird wieder durch MoneyMoney-Uploads aktualisiert; die Bankverbindung bereitet nur eine neue Umstellung vor.</value>
-  </data>
-  <data name="SwitchBack_Lost" xml:space="preserve">
-    <value>Der nächste Upload ersetzt Buchungen und Saldo des Kontos durch die aus MoneyMoney: Von der Bank gelieferte Buchungen sowie seit der Umstellung in OpenBudget gesetzte Kategorien, Notizen, Häkchen und Aufteilungen bleiben nicht erhalten. Die Struktur bleibt bei OpenBudget.</value>
-  </data>
   <data name="Button_AddOpen" xml:space="preserve">
     <value>Bank-Zugang hinzufügen</value>
   </data>
