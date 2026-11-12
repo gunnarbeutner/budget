@@ -170,7 +170,7 @@ public sealed class BankTransactionStore
         var knownIds = existing.Where(t => t.ExternalId != null).Select(t => t.ExternalId).ToHashSet(StringComparer.Ordinal);
         var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
         var plan = new List<PlannedRow>(remote.Count);
-        foreach (var r in remote)
+        foreach (var r in remote.Select(BankText.Repair))
         {
             var cents = ToCents(r.Amount);
             var ts = ToTimestamp(r.BookingDate);

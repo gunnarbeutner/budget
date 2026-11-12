@@ -37,8 +37,7 @@ internal static class CamtParser
         XDocument doc;
         try
         {
-            using var reader = XmlReader.Create(new StringReader(xml), new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
-            doc = XDocument.Load(reader);
+            doc = Load(xml);
         }
         catch (XmlException ex)
         {
@@ -82,6 +81,31 @@ internal static class CamtParser
                 Sepa(entry, details)));
         }
         return result;
+    }
+
+    /// <summary>
+    /// The FinTS wire is read as ISO-8859-1, so a camt document arrives as one character per byte. Its bytes are read
+    /// again with the encoding the XML declares (UTF-8 when it declares none); a document whose bytes do not fit that
+    /// encoding, or text that is not one character per byte, is read as it stands.
+    /// </summary>
+    private static XDocument Load(string xml)
+    {
+        var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null };
+        if (xml.All(c => c <= 'ÿ'))
+        {
+            try
+            {
+                using var stream = new MemoryStream(Encoding.Latin1.GetBytes(xml));
+                using var bytesReader = XmlReader.Create(stream, settings);
+                return XDocument.Load(bytesReader);
+            }
+            catch (XmlException) when (xml.Any(c => c > '\u007F'))
+            {
+                // Bytes that are not valid in the declared encoding: the text is read below as it stands.
+            }
+        }
+        using var reader = XmlReader.Create(new StringReader(xml), settings);
+        return XDocument.Load(reader);
     }
 
     private static SepaDetails? Sepa(XElement entry, XElement? details)
