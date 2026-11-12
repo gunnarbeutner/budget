@@ -1810,6 +1810,22 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 }
 .settings-page .card-body { padding: 0; }
 .settings-page .card-footer { background: transparent; border: 0; padding: 8px 0 0; }
+/* Bank login cards keep a visible card inside the flat settings layout. */
+.settings-page .card.bank-login-card {
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg);
+    background: var(--bs-body-bg);
+    box-shadow: var(--bs-box-shadow-sm);
+    padding: 0;
+    margin: 0 !important;
+}
+.settings-page .card.bank-login-card + .card.bank-login-card { padding-top: 0; }
+.settings-page .bank-login-card > .card-header {
+    background: var(--bs-tertiary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    padding: .75rem 1rem;
+}
+.settings-page .bank-login-card > .card-body { padding: 1rem; }
 .settings-page { font-size: 14px; }
 .settings-page .form-control, .settings-page .form-select, .settings-page .input-group-text { font-size: 14px; }
 .settings-page .btn:not(.btn-sm):not(.btn-link) { font-size: 13px; padding: 4px 12px; }
