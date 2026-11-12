@@ -157,5 +157,27 @@ public sealed class BrowseTests : EndToEndTestBase
         var label = await Page.EvaluateAsync<string>("() => Chart.getChart('browseChart').data.datasets[1].label");
         Assert.That(label, Is.EqualTo("Budget"));
         Assert.That(await Page.EvaluateAsync<string>("() => Chart.getChart('browseChart').data.datasets[0].type ?? Chart.getChart('browseChart').config.type"), Is.EqualTo("bar"));
+
+        // Only spending and an expense budget: the axis reaches down to them and stops at 0 on the other side.
+        var scale = await Page.EvaluateAsync<double[]>("() => { const y = Chart.getChart('browseChart').scales.y; return [y.min, y.max]; }");
+        Assert.That(scale[0], Is.LessThanOrEqualTo(-100d));
+        Assert.That(scale[1], Is.EqualTo(0d));
+        Assert.That(await Page.EvaluateAsync<bool>("() => Chart.getChart('browseChart').scales.y.ticks.some(t => t.value === 0)"), Is.True);
+    }
+
+    [Test]
+    public async Task The_chart_axis_fits_the_data_on_each_side_of_zero()
+    {
+        await GoToAsync($"{BrowseUrl}&sel=cat-200");
+        await Page.WaitForFunctionAsync("() => typeof window.browseChartAxis === 'function'");
+
+        var positive = await Page.EvaluateAsync<double[]>("() => { const a = browseChartAxis([4800, 1200, null, 300]); return [a.min, a.max, a.step]; }");
+        Assert.That(positive[0], Is.EqualTo(0d));
+        Assert.That(positive[1], Is.GreaterThan(4800d).And.LessThan(5500d));
+        Assert.That(positive[2], Is.EqualTo(2500d));
+
+        var mixed = await Page.EvaluateAsync<double[]>("() => { const a = browseChartAxis([4800, -300]); return [a.min, a.max]; }");
+        Assert.That(mixed[0], Is.LessThan(-300d).And.GreaterThan(-1000d));
+        Assert.That(mixed[1], Is.GreaterThan(4800d).And.LessThan(5500d));
     }
 }

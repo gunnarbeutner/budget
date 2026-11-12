@@ -809,6 +809,24 @@ const zeroLinePlugin = {
 // which for the current period is the right end. Colours come from the --chart-* tokens on
 // .browse-chart-frame so light and dark theme each get their own steps.
 // A click on a bar asks Blazor (OnChartBarClicked) to move the list to that bar's month.
+// The browse chart's y range: from min(0, lowest value) to max(0, highest value), budget line
+// included, with a little headroom, so a side without data takes no space and 0 stays the
+// baseline. Ticks step by a nice amount (1/2/2.5/5 x 10^k) counted from 0, about three of them.
+window.browseChartAxis = function(values) {
+    let lo = 0, hi = 0;
+    for (const v of values) {
+        if (v === null || v === undefined || !isFinite(v)) continue;
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+    }
+    const span = hi - lo;
+    if (span === 0) return { min: 0, max: 1, step: 1 };
+    const raw = span / 2, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 2.5, 5, 10].map(f => f * mag).find(s => s >= raw);
+    const head = span * 0.06;
+    return { min: lo < 0 ? lo - head : 0, max: hi > 0 ? hi + head : 0, step };
+};
+
 window.renderBrowseChart = function(canvasId, d, dotnetRef) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return false;
@@ -971,6 +989,8 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
         }
     };
 
+    const axis = window.browseChartAxis(values.concat(hasBudget ? d.budget : []));
+
     const datasets = [{
         label: d.balance ? 'Balance' : 'Amount', data: values, backgroundColor: colors, borderWidth: 0,
         borderRadius: g === 'D' || n > 60 ? 0 : 2, borderSkipped: 'start',
@@ -1005,9 +1025,11 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
                         // Expense values are negative; the reversed axis lets spending grow upward
                         // while the labels still read "−300 €".
                         reverse: !!d.invertY,
+                        min: axis.min,
+                        max: axis.max,
                         border: { display: false },
                         grid: { color: c.grid, drawTicks: false },
-                        ticks: { display: !axisCanvas, color: c.text, font: { size: 10 }, maxTicksLimit: 3, padding: 4, callback: v => compact(v) }
+                        ticks: { display: !axisCanvas, color: c.text, font: { size: 10 }, stepSize: axis.step, includeBounds: false, padding: 4, callback: v => compact(v) }
                     }
                 },
                 onClick: function(_evt, _els, chart) {
