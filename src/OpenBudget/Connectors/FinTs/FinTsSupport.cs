@@ -71,7 +71,7 @@ public sealed class FinTsHttpTransport : IFinTsTransport
         HttpResponseMessage response;
         try
         {
-            response = await _http.SendAsync(request, ct);
+            response = await _http.SendWithoutSessionAsync(request, ct);
         }
         catch (HttpRequestException ex)
         {

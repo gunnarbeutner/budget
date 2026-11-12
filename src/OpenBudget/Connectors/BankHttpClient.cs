@@ -10,6 +10,12 @@ public interface IBankHttpClient
 {
     Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct);
 
+    /// <summary>
+    /// Sends without the session: no cookies from the jar, no browser identity (protocols like FinTS that carry their
+    /// own dialog state; a bank's firewall may drop requests that bring along a web-banking session).
+    /// </summary>
+    Task<HttpResponseMessage> SendWithoutSessionAsync(HttpRequestMessage request, CancellationToken ct);
+
     Task<string> GetStringAsync(Uri url, CancellationToken ct);
 
     Task<HttpResponseMessage> PostFormAsync(Uri url, IEnumerable<KeyValuePair<string, string>> fields, CancellationToken ct);
@@ -32,6 +38,7 @@ public sealed class BankHttpClient : IBankHttpClient, IDisposable
     // Keep a browser-sized jar so importing a verified session does not silently evict its cookies.
     private readonly CookieContainer _jar = new(capacity: 3000, perDomainCapacity: 180, maxCookieSize: 4096);
     private readonly HttpClient _http;
+    private readonly HttpClient _plain;
 
     public BankHttpClient() : this(handlerFactory: null)
     {
@@ -57,6 +64,13 @@ public sealed class BankHttpClient : IBankHttpClient, IDisposable
             disposeHandler: true);
 #pragma warning restore CA2000
         _http.Timeout = TimeSpan.FromSeconds(60);
+#pragma warning disable CA2000 // owned by the HttpClient (disposeHandler: true)
+        // In tests the fake bank's handler (built around a jar of its own); otherwise a handler without cookies.
+        _plain = handlerFactory != null
+            ? new HttpClient(handlerFactory(new CookieContainer()), disposeHandler: true)
+            : new HttpClient(new SocketsHttpHandler { UseCookies = false, AllowAutoRedirect = true, AutomaticDecompression = DecompressionMethods.All }, disposeHandler: true);
+#pragma warning restore CA2000
+        _plain.Timeout = TimeSpan.FromSeconds(60);
         // Look like the browser a person would use. Sign-in services with bot detection (Scalable's Auth0, for example)
         // put up a captcha for clients that announce themselves as bots, which a connector cannot solve.
         _http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", BrowserUserAgent);
@@ -65,6 +79,8 @@ public sealed class BankHttpClient : IBankHttpClient, IDisposable
     }
 
     public Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) => _http.SendAsync(request, ct);
+
+    public Task<HttpResponseMessage> SendWithoutSessionAsync(HttpRequestMessage request, CancellationToken ct) => _plain.SendAsync(request, ct);
 
     public Task<string> GetStringAsync(Uri url, CancellationToken ct) => _http.GetStringAsync(url, ct);
 
@@ -160,7 +176,11 @@ public sealed class BankHttpClient : IBankHttpClient, IDisposable
         ImportCookies(fromBrowser.Where(spec.Matches));
     }
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose()
+    {
+        _http.Dispose();
+        _plain.Dispose();
+    }
 }
 
 /// <summary>What a connector gets when it is created for a sync.</summary>
