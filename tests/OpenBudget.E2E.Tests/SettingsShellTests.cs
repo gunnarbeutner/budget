@@ -20,7 +20,7 @@ public sealed class SettingsShellTests : EndToEndTestBase
     /// the project sidebar for project settings, the settings list for the app-level pages.
     /// </summary>
     [TestCase("/banklogins", "settings-nav")]
-    [TestCase("/sources", "settings-nav")]
+    [TestCase("/get-started", "settings-nav")]
     [TestCase("/portfolio-performance", "settings-nav")]
     [TestCase("/portfolio-performance/1/depots", "settings-nav")]
     [TestCase("/portfolio-performance/1/instruments", "settings-nav")]
@@ -47,9 +47,9 @@ public sealed class SettingsShellTests : EndToEndTestBase
         await Page.GetByTestId("gear-menu").Locator("summary").ClickAsync();
         await Page.GetByTestId("gear-menu").GetByTestId("gear-bank-logins").ClickAsync();
         await Expect(Page.GetByTestId("settings-nav-banklogins")).ToHaveAttributeAsync("aria-current", "page");
-        await Page.GetByTestId("settings-nav-sources").ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/sources$"));
-        await Expect(Page.GetByTestId("settings-nav-sources")).ToHaveAttributeAsync("aria-current", "page");
+        await Page.GetByTestId("settings-nav-portfolio-performance").ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/portfolio-performance$"));
+        await Expect(Page.GetByTestId("settings-nav-portfolio-performance")).ToHaveAttributeAsync("aria-current", "page");
         await Expect(Page.GetByTestId("settings-back")).ToContainTextAsync(E2ESeed.ProjectName);
         await Page.GetByTestId("settings-back").ClickAsync();
         await Expect(Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex($"/projects/{E2ESeed.ProjectId}/browse"));
@@ -59,7 +59,7 @@ public sealed class SettingsShellTests : EndToEndTestBase
     public async Task Settings_pages_fit_a_phone()
     {
         await Page.SetViewportSizeAsync(390, 844);
-        foreach (var path in new[] { "/banklogins", "/sources", "/portfolio-performance", $"/projects/{E2ESeed.ProjectId}/settings" })
+        foreach (var path in new[] { "/banklogins", "/get-started", "/portfolio-performance", $"/projects/{E2ESeed.ProjectId}/settings" })
         {
             await GoToAsync(path);
             await Expect(Page.GetByTestId("page-header")).ToBeVisibleAsync();

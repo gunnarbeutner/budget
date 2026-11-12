@@ -7,7 +7,7 @@ using OpenBudget.Services;
 namespace OpenBudget.E2E.Tests;
 
 /// <summary>
-/// The Import page's switch section: switching all linked accounts of a source with a preview, and finishing the
+/// The follow-up of Get started's MoneyMoney step: switching all linked accounts of a source with a preview, and finishing the
 /// MoneyMoney import (and resuming it).
 /// </summary>
 [TestFixture]
@@ -22,6 +22,7 @@ public sealed class AccountSwitchTests : EndToEndTestBase
     {
         await using var db = await Db.CreateDbContextAsync();
         var owner = await db.Users.SingleAsync(u => u.UserName == E2ESeed.UserName);
+        (await db.ImportSources.SingleAsync(s => s.Id == E2ESeed.SourceId)).LastUploadAt = DateTime.UtcNow;
         db.Accounts.Add(new Account { Id = GiroId, SourceId = E2ESeed.SourceId, Name = "E2E Giro", Currency = "EUR", Type = 1 });
         db.Transactions.Add(new Transaction
         {
@@ -45,9 +46,9 @@ public sealed class AccountSwitchTests : EndToEndTestBase
     public async Task Switch_all_linked_accounts_then_finish_and_resume_the_import()
     {
         await SeedLinkedGiroAsync();
-        await GoToAsync("/sources");
+        await GoToAsync("/get-started");
 
-        var section = Page.Locator("[data-source-switch='legacy']");
+        var section = Page.GetByTestId("step-moneymoney");
         await Expect(section.GetByTestId("switch-progress")).ToContainTextAsync("0 of 1");
         await section.GetByTestId("switch-all").ClickAsync();
 

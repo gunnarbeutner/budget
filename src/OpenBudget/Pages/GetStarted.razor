@@ -1,0 +1,482 @@
+@page "/get-started"
+@inherits DataChangeAwareComponent
+@using OpenBudget.Importers.MoneyMoney
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject OnboardingService Onboarding
+@inject SourceService SourceService
+@inject StructureTakeoverService Takeover
+@inject AccountSwitchService Switcher
+@inject MoneyMoneyBrowserImport BrowserImport
+@inject IJSRuntime JS
+@inject ClockService Clock
+@inject IStringLocalizer<GetStarted> L
+
+@* The way into OpenBudget: (1) bank logins, (2) optionally the history from MoneyMoney, uploaded as a ZIP of its
+   data folder and imported in the background (MoneyMoneyBrowserImport), (3) optionally a Portfolio Performance file,
+   (4) which accounts count for the cashflow, and budgets. While a MoneyMoney import is unfinished, step 2 also
+   switches its accounts to their bank connections (or keeps them as manual ones) and finishes the import. The gear
+   menu offers this page only while it is useful (OnboardingState.ShowInMenu); the URL always works. *@
+
+<PageTitle>@L["PageTitle"]</PageTitle>
+
+<SettingsShell Active="get-started">
+<PageHeader Title="@L["Heading"]" />
+
+<p class="text-body-secondary">@L["Intro"]</p>
+
+@if (state == null)
+{
+    <div class="skeleton skeleton-block" aria-busy="true"></div>
+}
+else
+{
+<ol class="list-unstyled get-started-steps">
+    <li class="card mb-3" data-testid="step-banks">
+        <div class="card-body">
+            <h2 class="h5 card-title">@StepMark(state.BankLogins > 0) @L["Step1_Heading"]</h2>
+            <p class="mb-2">@L["Step1_Body"]</p>
+            @if (state.BankLogins > 0)
+            {
+                <p class="small text-body-secondary mb-2" data-testid="step-banks-count">@L[state.BankLogins == 1 ? "Step1_Count_One" : "Step1_Count", state.BankLogins]</p>
+            }
+            <a class="btn btn-primary btn-sm" href="/banklogins" data-testid="step-banks-link"><i class="bi bi-bank me-1" aria-hidden="true"></i>@L["Step1_Link"]</a>
+        </div>
+    </li>
+
+    <li class="card mb-3" data-testid="step-moneymoney">
+        <div class="card-body">
+            <h2 class="h5 card-title">@StepMark(state.MoneyMoneySource?.LastUploadAt != null) @L["Step2_Heading"] <span class="badge text-bg-light border fw-normal">@L["Optional"]</span></h2>
+            <p class="mb-2">@L["Step2_Body"]</p>
+
+            @if (job is { Running: true } running)
+            {
+                <div data-testid="mm-job" role="status">
+                    <div class="small mb-1">@PhaseText(running)</div>
+                    <div class="progress" style="height: .5rem;"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width: @(PhasePercent(running))%"></div></div>
+                    <p class="small text-body-secondary mt-1 mb-0">@L["Job_Background"]</p>
+                </div>
+            }
+            else if (job is { Phase: MoneyMoneyImportPhase.Done } done)
+            {
+                <div class="alert alert-success py-2" data-testid="mm-job-done">
+                    @L["Job_Done", done.Result?.AccountsImported ?? 0, done.Result?.TransactionsImported ?? 0, done.Statements?.Stored ?? 0]
+                    <button type="button" class="btn btn-sm btn-link" @onclick="Dismiss">@L["Job_Ok"]</button>
+                </div>
+            }
+            else if (state.MoneyMoneySource is { MoneyMoneyImportFinishedAt: { } finishedAt } finishedSource)
+            {
+                <p class="mb-0">
+                    <span class="badge text-bg-secondary me-2" data-testid="import-finished">@L["Finished_Badge", Clock.ToLocal(finishedAt).ToString("yyyy-MM-dd")]</span>
+                    <span class="small text-body-secondary me-2">@L["Finished_Hint"]</span>
+                    <button class="btn btn-sm btn-outline-secondary" data-testid="import-resume" @onclick="() => SetFinishedAsync(finishedSource.Id, false)">@L["Finished_Resume"]</button>
+                </p>
+            }
+            else
+            {
+                @if (job is { Phase: MoneyMoneyImportPhase.Failed } failed)
+                {
+                    <div class="alert alert-warning py-2" role="alert" data-testid="mm-job-error">@ErrorText(failed.Error)</div>
+                }
+                <ol class="small mb-2" data-testid="mm-instructions">
+                    <li>@L["Step2_How1"]</li>
+                    <li>@L["Step2_How2"]</li>
+                    <li>@L["Step2_How3"]</li>
+                    <li>@L["Step2_How4"]</li>
+                </ol>
+                <div class="row g-2 align-items-end mb-2">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label small mb-1" for="mm-zip">@L["Upload_File"]</label>
+                        <input type="file" id="mm-zip" class="form-control form-control-sm" accept=".zip,application/zip" @ref="fileInput"
+                               disabled="@uploading" @onchange="() => fileChosen = true" />
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label small mb-1" for="mm-password">@L["Upload_Password"]</label>
+                        <input type="password" id="mm-password" class="form-control form-control-sm" autocomplete="off" disabled="@uploading"
+                               @bind="password" @bind:event="oninput" />
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <button type="button" class="btn btn-primary btn-sm w-100" data-testid="mm-upload" disabled="@(uploading || !fileChosen)" @onclick="UploadAsync">@L["Upload_Button"]</button>
+                    </div>
+                </div>
+                <p class="small text-body-secondary mb-2">@L["Upload_PasswordHint"]</p>
+                @if (uploading)
+                {
+                    <div data-testid="mm-upload-progress" role="status">
+                        <div class="small mb-1">@L["Upload_Progress", FormatMb(uploaded), FormatMb(uploadSize)]</div>
+                        <div class="progress" style="height: .5rem;"><div class="progress-bar" style="width: @(uploadSize > 0 ? uploaded * 100 / uploadSize : 0)%"></div></div>
+                    </div>
+                }
+                @if (uploadError != null)
+                {
+                    <div class="alert alert-warning py-2" role="alert" data-testid="mm-upload-error">@uploadError</div>
+                }
+            }
+
+            @if (switchState is { } st && state.MoneyMoneyUnfinished && job is not { Running: true })
+            {
+                var pending = st.Links.Where(l => !l.Switched).ToList();
+                <hr />
+                <div data-source-switch data-testid="mm-followup">
+                    <h3 class="h6">@L["Switch_Heading"]</h3>
+                    <p class="small mb-2" data-testid="switch-progress">@L["Switch_Progress", st.Links.Count - pending.Count, st.Links.Count]
+                        @if (st.MoneyMoneyAccountsWithoutLink > 0)
+                        {
+                            <span class="text-body-secondary ms-1">@L[st.MoneyMoneyAccountsWithoutLink == 1 ? "Switch_Unlinked_One" : "Switch_Unlinked", st.MoneyMoneyAccountsWithoutLink]</span>
+                        }
+                    </p>
+                    @if (pending.Count > 0)
+                    {
+                        <button class="btn btn-sm btn-primary me-2" data-testid="switch-all" @onclick="() => switchIds = pending.Select(l => l.LoginAccountId).ToList()">@L["Switch_All", pending.Count]</button>
+                    }
+                    @if (state.MoneyMoneySource is { StructureTakenOverAt: null } src)
+                    {
+                        <button class="btn btn-sm btn-outline-secondary me-2" data-testid="structure-takeover" @onclick="() => pendingTakeover = src">@L["Takeover_Button"]</button>
+                    }
+                    else if (state.MoneyMoneySource?.StructureTakenOverAt is { } takenAt)
+                    {
+                        <span class="badge text-bg-light border me-1" data-testid="structure-owned" title="@L["Takeover_DoneTitle"]">
+                            <i class="bi bi-check2" aria-hidden="true"></i> @L["Takeover_Done", Clock.ToLocal(takenAt).ToString("yyyy-MM-dd")]
+                        </span>
+                    }
+                    @if (st.MoneyMoneyAccounts.Count > 0 || st.ManualAccounts.Count > 0)
+                    {
+                        var picked = st.MoneyMoneyAccounts.Where(a => checkedAccounts.Contains(a.AccountId)).Select(a => a.AccountId).ToList();
+                        <details class="my-2" data-testid="switch-accounts" open>
+                            <summary class="small">@L["Accounts_Summary", st.MoneyMoneyAccounts.Count, st.ManualAccounts.Count]</summary>
+                            @if (st.MoneyMoneyAccounts.Count > 0)
+                            {
+                                <div class="d-flex flex-wrap gap-2 align-items-center my-2">
+                                    <div class="form-check mb-0">
+                                        <input class="form-check-input" type="checkbox" id="mm-all" data-testid="mm-select-all"
+                                               checked="@(picked.Count == st.MoneyMoneyAccounts.Count)" @onchange="e => SelectAll(st, e.Value is true)" />
+                                        <label class="form-check-label small" for="mm-all">@L["Accounts_SelectAll"]</label>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-primary" data-testid="mm-keep-manual" disabled="@(picked.Count == 0)"
+                                            @onclick="() => keepManualIds = picked">@L["Accounts_KeepManual", picked.Count]</button>
+                                </div>
+                                <ul class="list-group list-group-flush small mb-2" data-testid="mm-accounts">
+                                    @foreach (var a in st.MoneyMoneyAccounts)
+                                    {
+                                        var id = a.AccountId;
+                                        <li class="list-group-item d-flex flex-wrap align-items-center gap-2 px-0" data-mm-account="@id">
+                                            <input class="form-check-input mt-0" type="checkbox" aria-label="@a.Name" data-testid="mm-account-check"
+                                                   checked="@checkedAccounts.Contains(id)" @onchange="e => Toggle(id, e.Value is true)" />
+                                            <span class="flex-grow-1">@if (a.GroupPath is { } path) { <span class="text-body-secondary" data-testid="mm-account-group">@path › </span> }@a.Name
+                                                <span class="text-body-secondary">· @L["Accounts_Bookings", a.Bookings]@(a.LastBooking is { } last ? " · " + L["Accounts_Last", last.ToString("yyyy-MM-dd")] : "")</span>
+                                            </span>
+                                            <button class="btn btn-sm btn-link p-0" data-testid="mm-account-keep" @onclick="() => keepManualIds = [id]">@L["Accounts_KeepManualOne"]</button>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                            @if (st.ManualAccounts.Count > 0)
+                            {
+                                <div class="small fw-semibold mt-2">@L["Accounts_ManualHeading"]</div>
+                                <ul class="list-group list-group-flush small mb-2" data-testid="manual-accounts">
+                                    @foreach (var a in st.ManualAccounts)
+                                    {
+                                        var item = a;
+                                        <li class="list-group-item d-flex flex-wrap align-items-center gap-2 px-0" data-manual-account="@a.AccountId">
+                                            <span class="flex-grow-1">@if (a.GroupPath is { } path) { <span class="text-body-secondary">@path › </span> }@a.Name <span class="text-body-secondary">· @L["Accounts_Bookings", a.Bookings]</span></span>
+                                            <button class="btn btn-sm btn-link p-0" data-testid="manual-account-return" @onclick="() => pendingReturn = item">@L["Accounts_Return"]</button>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </details>
+                    }
+                    <button class="btn btn-sm btn-outline-secondary" data-testid="import-finish" @onclick="() => pendingFinish = st">@L["Finished_Button"]</button>
+                </div>
+            }
+        </div>
+    </li>
+
+    <li class="card mb-3" data-testid="step-portfolio">
+        <div class="card-body">
+            <h2 class="h5 card-title">@StepMark(state.HasPortfolioData) @L["Step3_Heading"] <span class="badge text-bg-light border fw-normal">@L["Optional"]</span></h2>
+            <p class="mb-2">@L["Step3_Body"]</p>
+            <a class="btn btn-outline-primary btn-sm" href="/portfolio-performance" data-testid="step-portfolio-link"><i class="bi bi-pie-chart me-1" aria-hidden="true"></i>@L["Step3_Link"]</a>
+        </div>
+    </li>
+
+    <li class="card mb-3" data-testid="step-cashflow">
+        <div class="card-body">
+            <h2 class="h5 card-title">@L["Step4_Heading"]</h2>
+            <p class="mb-2">@L["Step4_Body"]</p>
+            @if (state.ProjectId is { } pid)
+            {
+                <a class="btn btn-outline-primary btn-sm me-1" href="@($"/projects/{pid}/settings/accounts")" data-testid="step-cashflow-accounts">@L["Step4_Accounts"]</a>
+                <a class="btn btn-outline-primary btn-sm" href="@($"/projects/{pid}/budgets")" data-testid="step-cashflow-budgets">@L["Step4_Budgets"]</a>
+            }
+            else
+            {
+                <p class="small text-body-secondary mb-0">@L["Step4_NoProject"]</p>
+            }
+        </div>
+    </li>
+</ol>
+}
+
+<AccountSwitchDialog LoginAccountIds="switchIds" OnClose="() => switchIds = null" OnSwitched="ReloadAfterDialogAsync" />
+<KeepManualDialog AccountIds="keepManualIds" OnClose="() => keepManualIds = null" OnDone="ReloadAfterDialogAsync" />
+
+<Modal Show="@(pendingReturn != null)" Title="@L["Return_Title"]" OnClose="@(() => pendingReturn = null)">
+    <ChildContent>
+        <p>@L["Return_Body", pendingReturn?.Name ?? ""]</p>
+        <p class="small text-body-secondary mb-0">@L["Return_Lost"]</p>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="() => pendingReturn = null">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-danger" data-testid="return-mm-confirm" @onclick="ReturnConfirmedAsync">@L["Accounts_Return"]</button>
+    </Footer>
+</Modal>
+
+<Modal Show="@(pendingFinish != null)" Title="@L["Finished_Title"]" OnClose="@(() => pendingFinish = null)">
+    <ChildContent>
+        <p>@L["Finished_Body"]</p>
+        @if (pendingFinish is { } pf && (pf.Links.Any(l => !l.Switched) || pf.MoneyMoneyAccountsWithoutLink > 0))
+        {
+            <div class="alert alert-warning small" data-testid="finish-warning">
+                @L["Finished_Warning", pf.Links.Count(l => !l.Switched), pf.MoneyMoneyAccountsWithoutLink]
+            </div>
+            @if (pf.MoneyMoneyAccountsWithoutLink > 0)
+            {
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="finish-keep-manual" data-testid="finish-keep-manual"
+                           checked="@finishKeepManual" @onchange="e => finishKeepManual = e.Value is true" />
+                    <label class="form-check-label small" for="finish-keep-manual">@L["Finished_KeepManual", pf.MoneyMoneyAccountsWithoutLink]</label>
+                </div>
+            }
+        }
+        <p class="small text-body-secondary mb-0">@L["Finished_Reversible"]</p>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="() => pendingFinish = null">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-primary" data-testid="import-finish-confirm" @onclick="FinishConfirmedAsync">@L["Finished_Button"]</button>
+    </Footer>
+</Modal>
+
+<Modal Show="@(pendingTakeover != null)" Title="@L["Takeover_Title"]" OnClose="@(() => pendingTakeover = null)">
+    <ChildContent>
+        <p>@L["Takeover_Body"]</p>
+        <p class="small text-body-secondary mb-0">@L["Takeover_Body2"]</p>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="() => pendingTakeover = null">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-primary" data-testid="structure-takeover-confirm" @onclick="TakeoverConfirmedAsync">@L["Takeover_Confirm"]</button>
+    </Footer>
+</Modal>
+</SettingsShell>
+
+@code {
+    private OnboardingState? state;
+    private SourceSwitchState? switchState;
+    private string? userId;
+    private MoneyMoneyImportJob? job;
+
+    private ElementReference fileInput;
+    private bool fileChosen;
+    private string password = "";
+    private bool uploading;
+    private long uploaded;
+    private long uploadSize;
+    private string? uploadError;
+    private string? sourceName;
+    private DotNetObjectReference<GetStarted>? selfRef;
+
+    private IReadOnlyList<int>? switchIds;
+    private IReadOnlyList<long>? keepManualIds;
+    private SourceAccountItem? pendingReturn;
+    private SourceSwitchState? pendingFinish;
+    private ImportSource? pendingTakeover;
+    private bool finishKeepManual = true;
+    private readonly HashSet<long> checkedAccounts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        userId = (await Access.GetAsync()).UserId;
+        BrowserImport.Changed += OnJobChanged;
+        await LoadAsync();
+    }
+
+    protected override bool IsRelevantChange(DataChange change) =>
+        change.Area is DataArea.Sources or DataArea.ImportedData or DataArea.Projects or DataArea.BankSync;
+
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        job = userId == null ? null : BrowserImport.GetJob(userId);
+        state = await Onboarding.GetAsync();
+        switchState = state.MoneyMoneySource is { } s ? await Switcher.GetSourceStateAsync(s.Id) : null;
+    }
+
+    private void OnJobChanged(string changedUser)
+    {
+        if (changedUser != userId) return;
+        _ = InvokeAsync(async () =>
+        {
+            var previous = job;
+            job = BrowserImport.GetJob(changedUser);
+            if (job is { Running: false } && previous is { Running: true }) await LoadAsync();
+            StateHasChanged();
+        });
+    }
+
+    private RenderFragment StepMark(bool done) => __builder =>
+    {
+        if (done)
+        {
+            <i class="bi bi-check-circle-fill text-success me-1" aria-hidden="true"></i>
+        }
+        else
+        {
+            <i class="bi bi-circle text-body-secondary me-1" aria-hidden="true"></i>
+        }
+    };
+
+    private string PhaseText(MoneyMoneyImportJob j) => j.Phase switch
+    {
+        MoneyMoneyImportPhase.Extracting => L["Job_Extracting"],
+        MoneyMoneyImportPhase.Decrypting => L["Job_Decrypting"],
+        MoneyMoneyImportPhase.Importing => L["Job_Importing"],
+        _ => L["Job_Statements", j.Done, j.Total],
+    };
+
+    private static int PhasePercent(MoneyMoneyImportJob j) => j.Phase switch
+    {
+        MoneyMoneyImportPhase.Extracting => 10,
+        MoneyMoneyImportPhase.Decrypting => 25,
+        MoneyMoneyImportPhase.Importing => 45,
+        _ => 60 + (j.Total > 0 ? 40 * j.Done / j.Total : 0),
+    };
+
+    private string ErrorText(MoneyMoneyImportError error) => error switch
+    {
+        MoneyMoneyImportError.WrongPassword => L["Error_WrongPassword"],
+        MoneyMoneyImportError.NoDatabase => L["Error_NoDatabase"],
+        MoneyMoneyImportError.NotAZip => L["Error_NotAZip"],
+        MoneyMoneyImportError.ImportFinished => L["Error_Finished"],
+        _ => L["Error_Failed"],
+    };
+
+    private static string FormatMb(long bytes) => (bytes / 1024d / 1024d).ToString("N1", System.Globalization.CultureInfo.CurrentCulture);
+
+    private async Task UploadAsync()
+    {
+        uploadError = null;
+        var source = await SourceService.EnsureOwnSourceAsync(preferMoneyMoney: true);
+        if (source.MoneyMoneyImportFinishedAt != null)
+        {
+            uploadError = L["Error_Finished"];
+            return;
+        }
+        sourceName = source.Name;
+        uploading = true;
+        uploaded = 0;
+        selfRef ??= DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("obMoneyMoneyUpload.start", fileInput, selfRef);
+    }
+
+    [JSInvokable]
+    public string BeginUpload(long size)
+    {
+        if (userId == null) throw new InvalidOperationException("Not signed in.");
+        uploadSize = size;
+        return BrowserImport.BeginUpload(userId, size);
+    }
+
+    [JSInvokable]
+    public Task UploadProgress(long received, long size) => InvokeAsync(() =>
+    {
+        uploaded = received;
+        uploadSize = size;
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public Task UploadDone(string uploadId) => InvokeAsync(() =>
+    {
+        uploading = false;
+        var secret = password;
+        password = "";
+        if (userId == null || sourceName == null || !BrowserImport.StartImport(userId, uploadId, sourceName, secret))
+            uploadError = L["Error_Failed"];
+        job = userId == null ? null : BrowserImport.GetJob(userId);
+        StateHasChanged();
+    });
+
+    [JSInvokable]
+    public Task UploadFailed(string reason) => InvokeAsync(() =>
+    {
+        uploading = false;
+        uploadError = reason == "size" ? L["Error_TooLarge"] : L["Error_Upload"];
+        StateHasChanged();
+    });
+
+    private async Task Dismiss()
+    {
+        if (userId != null) BrowserImport.Dismiss(userId);
+        await LoadAsync();
+    }
+
+    private void Toggle(long id, bool on)
+    {
+        if (on) checkedAccounts.Add(id); else checkedAccounts.Remove(id);
+    }
+
+    private void SelectAll(SourceSwitchState st, bool on)
+    {
+        foreach (var a in st.MoneyMoneyAccounts) Toggle(a.AccountId, on);
+    }
+
+    private async Task ReloadAfterDialogAsync(int count)
+    {
+        switchIds = null;
+        keepManualIds = null;
+        checkedAccounts.Clear();
+        await LoadAsync();
+    }
+
+    private async Task ReturnConfirmedAsync()
+    {
+        if (pendingReturn is not { } a) return;
+        pendingReturn = null;
+        await Switcher.ReturnToMoneyMoneyAsync(a.AccountId);
+        await LoadAsync();
+    }
+
+    private async Task FinishConfirmedAsync()
+    {
+        if (pendingFinish is not { } st) return;
+        pendingFinish = null;
+        if (finishKeepManual && st.MoneyMoneyAccounts.Count > 0)
+            await Switcher.KeepManualAsync(st.MoneyMoneyAccounts.Select(a => a.AccountId).ToList(), takeOverStructure: true);
+        await SetFinishedAsync(st.SourceId, true);
+    }
+
+    private async Task SetFinishedAsync(int sourceId, bool finished)
+    {
+        await Switcher.SetImportFinishedAsync(sourceId, finished);
+        await LoadAsync();
+    }
+
+    private async Task TakeoverConfirmedAsync()
+    {
+        if (pendingTakeover is not { } s) return;
+        pendingTakeover = null;
+        await Takeover.TakeOverAsync(s.Id);
+        await LoadAsync();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            BrowserImport.Changed -= OnJobChanged;
+            selfRef?.Dispose();
+        }
+        base.Dispose(disposing);
+    }
+}

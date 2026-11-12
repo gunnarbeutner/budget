@@ -9,6 +9,15 @@ namespace OpenBudget.Importers.MoneyMoney;
 /// <summary>A statement MoneyMoney holds: its account (MoneyMoney rowid) and the SHA-256 of its file.</summary>
 public sealed record MoneyMoneyStatementRef(long AccountKey, string Sha256);
 
+/// <summary>One row of MoneyMoney's <c>statements</c> table: the file lives at Statements/&lt;Directory&gt;/&lt;Filename&gt;.</summary>
+public sealed record MoneyMoneyStatementRow(long AccountKey, string Name, string Directory, string Filename, long CreatedTimestamp);
+
+/// <summary>
+/// Result of <see cref="MoneyMoneyStatementImport.ImportFolderAsync"/>: statements MoneyMoney lists, those whose file
+/// was found, those stored, and those the owner already had.
+/// </summary>
+public sealed record MoneyMoneyStatementSummary(int Listed, int Found, int Stored, int AlreadyKept);
+
 public enum MoneyMoneyStatementOutcome
 {
     Stored,
@@ -90,6 +99,84 @@ public sealed class MoneyMoneyStatementImport
             _notifier.Publish(new DataChange(DataArea.BankSync, UserId: owner));
             return MoneyMoneyStatementOutcome.Stored;
         }, ct);
+
+    /// <summary>
+    /// Imports the statements MoneyMoney lists in its <c>statements</c> table (not deleted ones) from the files under
+    /// <paramref name="statementsRoot"/> (<c>&lt;directory&gt;/&lt;filename&gt;</c>), through <see cref="WantedAsync"/> and
+    /// <see cref="StoreAsync"/>. Files that are missing, outside the folder or not PDFs are skipped.
+    /// <paramref name="progress"/> gets (done, total) after each statement.
+    /// </summary>
+    public async Task<MoneyMoneyStatementSummary> ImportFolderAsync(string sourceName, string plainDatabasePath, string statementsRoot,
+        Action<int, int>? progress, CancellationToken ct)
+    {
+        var rows = await ReadStatementRowsAsync(plainDatabasePath, ct);
+        var root = Path.GetFullPath(statementsRoot);
+        var files = new List<(MoneyMoneyStatementRow Row, string Path, string Sha256)>();
+        foreach (var row in rows)
+        {
+            var path = Path.GetFullPath(Path.Combine(root, row.Directory, row.Filename));
+            if (!path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal) || !File.Exists(path)) continue;
+            await using var stream = File.OpenRead(path);
+            var hash = Convert.ToHexStringLower(await System.Security.Cryptography.SHA256.HashDataAsync(stream, ct));
+            files.Add((row, path, hash));
+        }
+        var wanted = (await WantedAsync(sourceName, files.Select(f => new MoneyMoneyStatementRef(f.Row.AccountKey, f.Sha256)).ToList(), ct))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        int stored = 0, duplicates = 0, done = 0;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        progress?.Invoke(0, files.Count);
+        foreach (var (row, path, hash) in files)
+        {
+            if (wanted.Contains(hash) && seen.Add(hash))
+            {
+                var content = await File.ReadAllBytesAsync(path, ct);
+                if (content.Length >= 5 && content.AsSpan(0, 5).SequenceEqual("%PDF-"u8))
+                {
+                    var date = DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(row.CreatedTimestamp).UtcDateTime);
+                    var name = string.IsNullOrWhiteSpace(row.Name) ? Path.GetFileNameWithoutExtension(row.Filename) : row.Name;
+                    var outcome = await StoreAsync(sourceName, row.AccountKey, date, name, content, ct, row.Directory);
+                    if (outcome == MoneyMoneyStatementOutcome.Stored) stored++;
+                    else if (outcome == MoneyMoneyStatementOutcome.Duplicate) duplicates++;
+                }
+            }
+            else
+            {
+                duplicates++;
+            }
+            progress?.Invoke(++done, files.Count);
+        }
+        return new MoneyMoneyStatementSummary(rows.Count, files.Count, stored, duplicates);
+    }
+
+    /// <summary>The not deleted rows of MoneyMoney's <c>statements</c> table; empty when the table does not exist.</summary>
+    private static async Task<List<MoneyMoneyStatementRow>> ReadStatementRowsAsync(string plainDatabasePath, CancellationToken ct)
+    {
+        var rows = new List<MoneyMoneyStatementRow>();
+        var connection = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+        {
+            DataSource = plainDatabasePath,
+            Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly,
+            Pooling = false,
+        }.ToString();
+        await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(connection);
+        await conn.OpenAsync(ct);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'statements'";
+        if (Convert.ToInt64(await cmd.ExecuteScalarAsync(ct), CultureInfo.InvariantCulture) == 0) return rows;
+        cmd.CommandText = "SELECT account_key, name, directory, filename, created_tsp FROM statements "
+            + "WHERE account_key IS NOT NULL AND filename IS NOT NULL AND COALESCE(deleted, 0) = 0";
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            rows.Add(new MoneyMoneyStatementRow(
+                reader.GetInt64(0),
+                await reader.IsDBNullAsync(1, ct) ? "" : reader.GetString(1),
+                await reader.IsDBNullAsync(2, ct) ? "" : reader.GetString(2),
+                reader.GetString(3),
+                await reader.IsDBNullAsync(4, ct) ? 0 : reader.GetInt64(4)));
+        }
+        return rows;
+    }
 
     private static string Label(string? bank)
     {

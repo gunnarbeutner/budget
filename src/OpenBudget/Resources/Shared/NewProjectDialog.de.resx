@@ -70,22 +70,13 @@
   <data name="Label_Description" xml:space="preserve">
     <value>Beschreibung (optional)</value>
   </data>
-  <data name="Label_Source" xml:space="preserve">
-    <value>Importquelle</value>
-  </data>
   <data name="Button_Cancel" xml:space="preserve">
     <value>Abbrechen</value>
   </data>
   <data name="Button_Create" xml:space="preserve">
     <value>Erstellen</value>
   </data>
-  <data name="Hint_NoSources_Before" xml:space="preserve">
-    <value>Um Projekte anzulegen, brauchst du zuerst eine Quelle: </value>
-  </data>
-  <data name="Hint_NoSources_Link" xml:space="preserve">
-    <value>richte eine unter MoneyMoney-Import ein</value>
-  </data>
-  <data name="Hint_NoSources_After" xml:space="preserve">
-    <value>.</value>
+  <data name="Label_Source" xml:space="preserve">
+    <value>Daten aus</value>
   </data>
 </root>

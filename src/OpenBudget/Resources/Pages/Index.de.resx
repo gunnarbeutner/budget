@@ -70,4 +70,7 @@
   <data name="Button_NewProject" xml:space="preserve">
     <value>Neues Projekt</value>
   </data>
+  <data name="Button_GetStarted" xml:space="preserve">
+    <value>Erste Schritte</value>
+  </data>
 </root>

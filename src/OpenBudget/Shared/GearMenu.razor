@@ -3,11 +3,12 @@
 @inject CurrentProjectState Current
 @inject AccessScopeProvider AccessProvider
 @inject BankLoginService Bank
+@inject OnboardingService Onboarding
 @inject IStringLocalizer<GearMenu> L
 
 @* The gear in the top bar: everything that is set up once. First the current project (settings, sharing,
-   accounts and categories — all sections of the project settings page), then the data sources (bank logins,
-   MoneyMoney import). The same list is the "More" entry of the phone bottom bar (BottomBar="true").
+   accounts and categories — all sections of the project settings page), then the data (bank logins, Portfolio
+   Performance, and Get started while the user has no data yet or an unfinished MoneyMoney import). The same list is the "More" entry of the phone bottom bar (BottomBar="true").
    A <details> dropdown like the project switcher: uiBehaviors.js closes it on click-away, on Escape and
    when one of its links is followed. *@
 
@@ -54,11 +55,14 @@
                 <i class="bi bi-pie-chart me-2" aria-hidden="true"></i>@L["Item_PortfolioPerformance"]
             </a>
         </li>
-        <li>
-            <a class="dropdown-item" href="/sources" data-testid="gear-moneymoney">
-                <i class="bi bi-database me-2" aria-hidden="true"></i>@L["Item_MoneyMoney"]
-            </a>
-        </li>
+        @if (showGetStarted)
+        {
+            <li>
+                <a class="dropdown-item" href="/get-started" data-testid="gear-get-started">
+                    <i class="bi bi-signpost-2 me-2" aria-hidden="true"></i>@L["Item_GetStarted"]
+                </a>
+            </li>
+        }
     </ul>
 </details>
 
@@ -68,6 +72,7 @@
 
     private bool canEditProject;
     private int bankErrors;
+    private bool showGetStarted;
 
     protected override async Task OnInitializedAsync()
     {
@@ -81,6 +86,7 @@
         var scope = await AccessProvider.GetAsync();
         canEditProject = Current.ProjectId is { } id && scope.CanEdit(id);
         bankErrors = 0;
+        showGetStarted = scope.IsAuthenticated && (await Onboarding.GetAsync()).ShowInMenu;
         if (Bank.IsEnabled && scope.IsAuthenticated)
         {
             var logins = await Bank.GetLoginsAsync();

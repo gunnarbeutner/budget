@@ -147,7 +147,7 @@ public sealed class NavigationTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task Gear_menu_reaches_project_settings_bank_logins_and_moneymoney_import()
+    public async Task Gear_menu_reaches_project_settings_bank_logins_and_portfolio_performance()
     {
         await GoToAsync($"/projects/{Pid}/browse");
         var gear = Page.Locator("[data-testid=gear-menu]");
@@ -159,10 +159,6 @@ public sealed class NavigationTests : EndToEndTestBase
         await gear.Locator("summary").ClickAsync();
         await gear.GetByTestId("gear-bank-logins").ClickAsync();
         await Expect(Page).ToHaveURLAsync(new Regex(".*/banklogins$"));
-
-        await gear.Locator("summary").ClickAsync();
-        await gear.GetByTestId("gear-moneymoney").ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex(".*/sources$"));
 
         await gear.Locator("summary").ClickAsync();
         await gear.GetByTestId("gear-portfolio-performance").ClickAsync();

@@ -164,11 +164,11 @@ public sealed class SharingHttpTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, (await GetAsync(bob, "/portfolio-performance/3/depots")).Status);   // her own source
         Assert.Equal("/portfolio-performance/3/depots", await RedirectTargetAsync(bob, "/sources/3/depots"));   // old links
 
-        // The sources list shows only her own source, and never alice's token.
-        var (_, sources) = await GetAsync(bob, "/sources");
-        Assert.Contains("bob", sources, StringComparison.Ordinal);
-        Assert.DoesNotContain("tok-alice", sources, StringComparison.Ordinal);
-        Assert.DoesNotContain(">alice<", sources, StringComparison.Ordinal);
+        // Get started shows nothing of alice's data.
+        Assert.Equal("/get-started", await RedirectTargetAsync(bob, "/sources"));
+        var (_, start) = await GetAsync(bob, "/get-started");
+        Assert.DoesNotContain("tok-alice", start, StringComparison.Ordinal);
+        Assert.DoesNotContain(">alice<", start, StringComparison.Ordinal);
     }
 
     [Fact]

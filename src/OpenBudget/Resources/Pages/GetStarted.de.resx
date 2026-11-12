@@ -58,104 +58,8 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="PageTitle" xml:space="preserve">
-    <value>Quellen</value>
-  </data>
-  <data name="Heading" xml:space="preserve">
-    <value>Quellen</value>
-  </data>
-  <data name="Intro_Before" xml:space="preserve">
-    <value>Jede benannte Quelle enthält die Daten einer importierten Installation (z. B. MoneyMoney). Eine neue DB hochladen mit </value>
-  </data>
-  <data name="Intro_After" xml:space="preserve">
-    <value> — der erste Upload unter einem neuen Namen registriert die Quelle.</value>
-  </data>
-  <data name="Status_Loading" xml:space="preserve">
-    <value>Lädt</value>
-  </data>
-  <data name="Empty" xml:space="preserve">
-    <value>Noch keine Quellen registriert.</value>
-  </data>
-  <data name="Table_Name" xml:space="preserve">
-    <value>Name</value>
-  </data>
-  <data name="Table_Created" xml:space="preserve">
-    <value>Erstellt</value>
-  </data>
-  <data name="Table_LastUpload" xml:space="preserve">
-    <value>Letzter Upload</value>
-  </data>
-  <data name="Table_Projects" xml:space="preserve">
-    <value>Projekte</value>
-  </data>
-  <data name="Table_Documents" xml:space="preserve">
-    <value>Dokumente</value>
-  </data>
-  <data name="Table_Documents_Title" xml:space="preserve">
-    <value>Aus MoneyMoney importierte Kontoauszüge und Dokumente</value>
-  </data>
-  <data name="Table_Transactions" xml:space="preserve">
-    <value>Transaktionen</value>
-  </data>
-  <data name="Table_Bytes" xml:space="preserve">
-    <value>Bytes</value>
-  </data>
-  <data name="Never" xml:space="preserve">
-    <value>nie</value>
-  </data>
-  <data name="InUse" xml:space="preserve">
-    <value>in Verwendung</value>
-  </data>
-  <data name="Button_Delete" xml:space="preserve">
-    <value>Löschen</value>
-  </data>
   <data name="Button_Cancel" xml:space="preserve">
     <value>Abbrechen</value>
-  </data>
-  <data name="Modal_Title" xml:space="preserve">
-    <value>Quelle „{0}" löschen?</value>
-  </data>
-  <data name="Modal_Body" xml:space="preserve">
-    <value>Löscht alle importierten Konten, Kategorien und Buchungen dieser Quelle und entfernt die Quelle selbst.</value>
-  </data>
-  <data name="Modal_BodyWarning" xml:space="preserve">
-    <value>Projekte, die diese Quelle nutzen, müssen vorher gelöscht werden; andernfalls wird die Aktion abgebrochen.</value>
-  </data>
-  <data name="Create_Placeholder" xml:space="preserve">
-    <value>Name der neuen Quelle, z. B. haushalt</value>
-  </data>
-  <data name="Create_Button" xml:space="preserve">
-    <value>Quelle anlegen</value>
-  </data>
-  <data name="Token_Show" xml:space="preserve">
-    <value>Upload-Token</value>
-  </data>
-  <data name="Token_Hide" xml:space="preserve">
-    <value>Token verbergen</value>
-  </data>
-  <data name="Token_Label" xml:space="preserve">
-    <value>Upload-Token (berechtigt nur zum Hochladen in diese Quelle)</value>
-  </data>
-  <data name="Token_Usage_Before" xml:space="preserve">
-    <value>Sende ihn als </value>
-  </data>
-  <data name="Token_Usage_After" xml:space="preserve">
-    <value> mit dem Upload. Behandle ihn wie ein Passwort.</value>
-  </data>
-  <data name="Token_Rotate" xml:space="preserve">
-    <value>Token erneuern</value>
-  </data>
-  <data name="Rotate_Title" xml:space="preserve">
-    <value>Upload-Token von {0} erneuern?</value>
-  </data>
-  <data name="Rotate_Body" xml:space="preserve">
-    <value>Der aktuelle Token funktioniert sofort nicht mehr; aktualisiere den Exporter mit dem neuen.</value>
-  </data>
-  <data name="Link_BankLogins" xml:space="preserve">
-    <value>Bank-Zugänge</value>
-  </data>
-  <data name="Link_BankLogins_Hint" xml:space="preserve">
-    <value> - Banken direkt anbinden, statt oder neben MoneyMoney.</value>
   </data>
   <data name="Takeover_Button" xml:space="preserve">
     <value>Struktur aus MoneyMoney übernehmen</value>
@@ -167,10 +71,10 @@
     <value>Uploads liefern weiterhin Umsätze und Salden der MoneyMoney-Konten, ändern aber keine Namen, Gruppen, Reihenfolge oder Kategorien mehr.</value>
   </data>
   <data name="Takeover_Title" xml:space="preserve">
-    <value>Struktur von {0} übernehmen</value>
+    <value>Struktur aus MoneyMoney übernehmen</value>
   </data>
   <data name="Takeover_Body" xml:space="preserve">
-    <value>OpenBudget übernimmt die Kontogruppen, Konten und den Kategorienbaum dieser Quelle mit Namen, Verschachtelung, Reihenfolge und Farben. Das lässt sich nicht rückgängig machen.</value>
+    <value>OpenBudget übernimmt die Kontogruppen, Konten und den Kategorienbaum aus MoneyMoney mit Namen, Verschachtelung, Reihenfolge und Farben. Das lässt sich nicht rückgängig machen.</value>
   </data>
   <data name="Takeover_Body2" xml:space="preserve">
     <value>Danach liefern MoneyMoney-Uploads weiterhin Umsätze und Salden der MoneyMoney-Konten, überschreiben die Struktur aber nicht mehr. Neue Konten landen in 'Weitere Konten', neue Kategorien in der Gruppe 'New categories'.</value>
@@ -179,7 +83,7 @@
     <value>Übernehmen</value>
   </data>
   <data name="Switch_Heading" xml:space="preserve">
-    <value>Bankverbindungen für {0}</value>
+    <value>Auf deine Bankverbindungen umstellen</value>
   </data>
   <data name="Switch_Progress" xml:space="preserve">
     <value>{0} von {1} verknüpften Konten von MoneyMoney auf ihre Bankverbindung umgestellt.</value>
@@ -203,10 +107,10 @@
     <value>MoneyMoney-Import fortsetzen</value>
   </data>
   <data name="Finished_Title" xml:space="preserve">
-    <value>MoneyMoney-Import von {0} abschließen?</value>
+    <value>MoneyMoney-Import abschließen?</value>
   </data>
   <data name="Finished_Body" xml:space="preserve">
-    <value>Ab jetzt werden Uploads aus MoneyMoney (Datenbanken und Kontoauszüge) mit einer Erklärung abgelehnt; der Import war damit einmalig. Alles bisher Importierte bleibt.</value>
+    <value>Ab jetzt werden Uploads aus MoneyMoney abgelehnt; der Import war damit einmalig. Alles bisher Importierte bleibt.</value>
   </data>
   <data name="Finished_Warning" xml:space="preserve">
     <value>Noch nicht umgestellt: {0}. Ohne Bankverbindung: {1}. Diese Konten werden nicht mehr aktualisiert.</value>
@@ -214,7 +118,9 @@
   <data name="Finished_Reversible" xml:space="preserve">
     <value>Der Import kann hier jederzeit fortgesetzt werden.</value>
   </data>
-  <data name="Switch_Unlinked_One" xml:space="preserve"><value>1 MoneyMoney-Konto hat keine Bankverbindung.</value></data>
+  <data name="Switch_Unlinked_One" xml:space="preserve">
+    <value>1 MoneyMoney-Konto hat keine Bankverbindung.</value>
+  </data>
   <data name="Accounts_Summary" xml:space="preserve">
     <value>Konten ohne Bankverbindung: {0} bei MoneyMoney, {1} manuell</value>
   </data>
@@ -239,9 +145,6 @@
   <data name="Accounts_Return" xml:space="preserve">
     <value>Zurück zu MoneyMoney</value>
   </data>
-  <data name="Accounts_Return_Finished" xml:space="preserve">
-    <value>Nimm zuerst den MoneyMoney-Import wieder auf.</value>
-  </data>
   <data name="Return_Title" xml:space="preserve">
     <value>Zurück zu MoneyMoney?</value>
   </data>
@@ -253,5 +156,131 @@
   </data>
   <data name="Finished_KeepManual" xml:space="preserve">
     <value>Die {0} Konten ohne Bankverbindung als manuelle Konten behalten, damit ihre Buchungen bearbeitbar bleiben (übernimmt die Struktur)</value>
+  </data>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Erste Schritte</value>
+  </data>
+  <data name="Heading" xml:space="preserve">
+    <value>Erste Schritte</value>
+  </data>
+  <data name="Intro" xml:space="preserve">
+    <value>In vier Schritten kommt dein Geld in OpenBudget. Die optionalen Schritte können warten.</value>
+  </data>
+  <data name="Optional" xml:space="preserve">
+    <value>optional</value>
+  </data>
+  <data name="Step1_Heading" xml:space="preserve">
+    <value>Bank-Zugänge hinzufügen</value>
+  </data>
+  <data name="Step1_Body" xml:space="preserve">
+    <value>Verbinde deine Banken: OpenBudget holt Salden, Buchungen und Kontoauszüge dann selbst ab.</value>
+  </data>
+  <data name="Step1_Link" xml:space="preserve">
+    <value>Bank-Zugänge</value>
+  </data>
+  <data name="Step1_Count" xml:space="preserve">
+    <value>{0} Bank-Zugänge eingerichtet.</value>
+  </data>
+  <data name="Step1_Count_One" xml:space="preserve">
+    <value>1 Bank-Zugang eingerichtet.</value>
+  </data>
+  <data name="Step2_Heading" xml:space="preserve">
+    <value>Verlauf aus MoneyMoney übernehmen</value>
+  </data>
+  <data name="Step2_Body" xml:space="preserve">
+    <value>Du kommst von MoneyMoney? Lade dessen Daten einmal hoch: Konten, Kategorien, alle Buchungen und die gespeicherten Kontoauszüge kommen mit.</value>
+  </data>
+  <data name="Step2_How1" xml:space="preserve">
+    <value>Wähle in MoneyMoney Hilfe › Datenbank im Finder zeigen …</value>
+  </data>
+  <data name="Step2_How2" xml:space="preserve">
+    <value>Beende MoneyMoney.</value>
+  </data>
+  <data name="Step2_How3" xml:space="preserve">
+    <value>Klicke im Finder mit der rechten Maustaste auf den MoneyMoney-Ordner, der Database und Statements enthält, und wähle Komprimieren.</value>
+  </data>
+  <data name="Step2_How4" xml:space="preserve">
+    <value>Lade die ZIP-Datei hier hoch und gib dein MoneyMoney-Passwort ein.</value>
+  </data>
+  <data name="Upload_File" xml:space="preserve">
+    <value>ZIP-Datei</value>
+  </data>
+  <data name="Upload_Password" xml:space="preserve">
+    <value>MoneyMoney-Passwort</value>
+  </data>
+  <data name="Upload_PasswordHint" xml:space="preserve">
+    <value>Das Passwort wird einmal zum Entschlüsseln der Datenbank auf dem Server verwendet und nicht gespeichert. Der Upload wird nach dem Import gelöscht.</value>
+  </data>
+  <data name="Upload_Button" xml:space="preserve">
+    <value>Hochladen und importieren</value>
+  </data>
+  <data name="Upload_Progress" xml:space="preserve">
+    <value>Wird hochgeladen … {0} von {1} MB</value>
+  </data>
+  <data name="Job_Extracting" xml:space="preserve">
+    <value>ZIP-Datei wird entpackt …</value>
+  </data>
+  <data name="Job_Decrypting" xml:space="preserve">
+    <value>Datenbank wird entschlüsselt …</value>
+  </data>
+  <data name="Job_Importing" xml:space="preserve">
+    <value>Konten und Buchungen werden importiert …</value>
+  </data>
+  <data name="Job_Statements" xml:space="preserve">
+    <value>Kontoauszüge werden importiert … {0} von {1}</value>
+  </data>
+  <data name="Job_Background" xml:space="preserve">
+    <value>Der Import läuft auf dem Server weiter, auch wenn du diese Seite schließt.</value>
+  </data>
+  <data name="Job_Done" xml:space="preserve">
+    <value>Importiert: {0} Konten, {1} Buchungen, {2} neue Kontoauszüge.</value>
+  </data>
+  <data name="Job_Ok" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="Error_WrongPassword" xml:space="preserve">
+    <value>Das Passwort öffnet die MoneyMoney-Datenbank nicht. Prüfe es und lade erneut hoch.</value>
+  </data>
+  <data name="Error_NoDatabase" xml:space="preserve">
+    <value>Die ZIP-Datei enthält keine MoneyMoney-Datenbank. Komprimiere den Ordner, der Database und Statements enthält.</value>
+  </data>
+  <data name="Error_NotAZip" xml:space="preserve">
+    <value>Das ist keine ZIP-Datei.</value>
+  </data>
+  <data name="Error_Finished" xml:space="preserve">
+    <value>Der MoneyMoney-Import ist abgeschlossen. Setze ihn zuerst fort, um erneut hochzuladen.</value>
+  </data>
+  <data name="Error_Failed" xml:space="preserve">
+    <value>Der Import ist fehlgeschlagen. Bitte versuche es erneut.</value>
+  </data>
+  <data name="Error_Upload" xml:space="preserve">
+    <value>Das Hochladen wurde unterbrochen. Bitte versuche es erneut.</value>
+  </data>
+  <data name="Error_TooLarge" xml:space="preserve">
+    <value>Die Datei ist leer oder zu groß.</value>
+  </data>
+  <data name="Step3_Heading" xml:space="preserve">
+    <value>Portfolio-Performance-Datei verbinden</value>
+  </data>
+  <data name="Step3_Body" xml:space="preserve">
+    <value>Wertpapiere, Lots und Klassifizierungen kommen aus deiner Portfolio-Performance-Datei.</value>
+  </data>
+  <data name="Step3_Link" xml:space="preserve">
+    <value>Portfolio Performance</value>
+  </data>
+  <data name="Step4_Heading" xml:space="preserve">
+    <value>Alltagskonten wählen und Budgets festlegen</value>
+  </data>
+  <data name="Step4_Body" xml:space="preserve">
+    <value>Hake „Im Cashflow“ bei den Konten an, von denen du im Alltag ausgibst, und lege dann Budgets für deine Kategorien fest.</value>
+  </data>
+  <data name="Step4_Accounts" xml:space="preserve">
+    <value>Konten</value>
+  </data>
+  <data name="Step4_Budgets" xml:space="preserve">
+    <value>Budgets</value>
+  </data>
+  <data name="Step4_NoProject" xml:space="preserve">
+    <value>Lege zuerst ein Projekt an; es enthält deine Konten und Budgets.</value>
   </data>
 </root>

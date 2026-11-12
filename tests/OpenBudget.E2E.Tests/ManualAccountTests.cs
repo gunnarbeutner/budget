@@ -52,9 +52,9 @@ public sealed class ManualAccountTests : EndToEndTestBase
     public async Task Keep_accounts_as_manual_in_bulk()
     {
         await SeedAsync();
-        await GoToAsync("/sources");
+        await GoToAsync("/get-started");
 
-        var section = Page.Locator("[data-source-switch='legacy']");
+        var section = Page.GetByTestId("step-moneymoney");
         var list = section.GetByTestId("mm-accounts");
         await Expect(list.Locator($"[data-mm-account='{Cash}']")).ToBeVisibleAsync();
         await section.GetByTestId("mm-select-all").CheckAsync();

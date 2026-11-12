@@ -58,104 +58,8 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="PageTitle" xml:space="preserve">
-    <value>Sources</value>
-  </data>
-  <data name="Heading" xml:space="preserve">
-    <value>Sources</value>
-  </data>
-  <data name="Intro_Before" xml:space="preserve">
-    <value>Each named source holds the data of one imported installation (for example MoneyMoney). Upload a fresh DB with </value>
-  </data>
-  <data name="Intro_After" xml:space="preserve">
-    <value> — the first upload to a new name registers it.</value>
-  </data>
-  <data name="Status_Loading" xml:space="preserve">
-    <value>Loading</value>
-  </data>
-  <data name="Empty" xml:space="preserve">
-    <value>No sources registered yet.</value>
-  </data>
-  <data name="Table_Name" xml:space="preserve">
-    <value>Name</value>
-  </data>
-  <data name="Table_Created" xml:space="preserve">
-    <value>Created</value>
-  </data>
-  <data name="Table_LastUpload" xml:space="preserve">
-    <value>Last upload</value>
-  </data>
-  <data name="Table_Projects" xml:space="preserve">
-    <value>Projects</value>
-  </data>
-  <data name="Table_Documents" xml:space="preserve">
-    <value>Documents</value>
-  </data>
-  <data name="Table_Documents_Title" xml:space="preserve">
-    <value>Statements and documents imported from MoneyMoney</value>
-  </data>
-  <data name="Table_Transactions" xml:space="preserve">
-    <value>Transactions</value>
-  </data>
-  <data name="Table_Bytes" xml:space="preserve">
-    <value>Bytes</value>
-  </data>
-  <data name="Never" xml:space="preserve">
-    <value>never</value>
-  </data>
-  <data name="InUse" xml:space="preserve">
-    <value>in use</value>
-  </data>
-  <data name="Button_Delete" xml:space="preserve">
-    <value>Delete</value>
-  </data>
   <data name="Button_Cancel" xml:space="preserve">
     <value>Cancel</value>
-  </data>
-  <data name="Modal_Title" xml:space="preserve">
-    <value>Delete source "{0}"?</value>
-  </data>
-  <data name="Modal_Body" xml:space="preserve">
-    <value>Deletes all imported accounts, categories, and transactions for this source, and removes the source itself.</value>
-  </data>
-  <data name="Modal_BodyWarning" xml:space="preserve">
-    <value>Projects bound to this source must be deleted first; the action will refuse otherwise.</value>
-  </data>
-  <data name="Create_Placeholder" xml:space="preserve">
-    <value>New source name, e.g. household</value>
-  </data>
-  <data name="Create_Button" xml:space="preserve">
-    <value>Create source</value>
-  </data>
-  <data name="Token_Show" xml:space="preserve">
-    <value>Upload token</value>
-  </data>
-  <data name="Token_Hide" xml:space="preserve">
-    <value>Hide token</value>
-  </data>
-  <data name="Token_Label" xml:space="preserve">
-    <value>Upload token (authorizes uploads to this source only)</value>
-  </data>
-  <data name="Token_Usage_Before" xml:space="preserve">
-    <value>Send it as </value>
-  </data>
-  <data name="Token_Usage_After" xml:space="preserve">
-    <value> with the upload request. Treat it like a password.</value>
-  </data>
-  <data name="Token_Rotate" xml:space="preserve">
-    <value>Rotate token</value>
-  </data>
-  <data name="Rotate_Title" xml:space="preserve">
-    <value>Rotate the upload token of {0}?</value>
-  </data>
-  <data name="Rotate_Body" xml:space="preserve">
-    <value>The current token stops working immediately; update the exporter with the new one.</value>
-  </data>
-  <data name="Link_BankLogins" xml:space="preserve">
-    <value>Bank logins</value>
-  </data>
-  <data name="Link_BankLogins_Hint" xml:space="preserve">
-    <value> - connect banks directly instead of (or next to) MoneyMoney.</value>
   </data>
   <data name="Takeover_Button" xml:space="preserve">
     <value>Take over structure from MoneyMoney</value>
@@ -167,10 +71,10 @@
     <value>Uploads still deliver transactions and balances of MoneyMoney accounts, but no longer change names, groups, order or categories.</value>
   </data>
   <data name="Takeover_Title" xml:space="preserve">
-    <value>Take over structure of {0}</value>
+    <value>Take over the structure from MoneyMoney</value>
   </data>
   <data name="Takeover_Body" xml:space="preserve">
-    <value>OpenBudget takes over the account groups, accounts and the category tree of this source, with names, nesting, order and colors. This cannot be undone.</value>
+    <value>OpenBudget takes over the account groups, accounts and the category tree from MoneyMoney, with names, nesting, order and colors. This cannot be undone.</value>
   </data>
   <data name="Takeover_Body2" xml:space="preserve">
     <value>Afterwards MoneyMoney uploads still deliver transactions and balances of MoneyMoney accounts, but they no longer overwrite the structure. New accounts land in 'Other accounts', new categories in the group 'New categories'.</value>
@@ -179,7 +83,7 @@
     <value>Take over</value>
   </data>
   <data name="Switch_Heading" xml:space="preserve">
-    <value>Bank connections for {0}</value>
+    <value>Switch to your bank connections</value>
   </data>
   <data name="Switch_Progress" xml:space="preserve">
     <value>{0} of {1} linked accounts switched from MoneyMoney to their bank connection.</value>
@@ -203,10 +107,10 @@
     <value>Resume MoneyMoney import</value>
   </data>
   <data name="Finished_Title" xml:space="preserve">
-    <value>Finish the MoneyMoney import of {0}?</value>
+    <value>Finish the MoneyMoney import?</value>
   </data>
   <data name="Finished_Body" xml:space="preserve">
-    <value>From now on, uploads from MoneyMoney (databases and statements) are refused with an explanation, so the import was a one-time move. Everything imported so far stays.</value>
+    <value>From now on, MoneyMoney uploads are refused, so the import was a one-time move. Everything imported so far stays.</value>
   </data>
   <data name="Finished_Warning" xml:space="preserve">
     <value>Not switched yet: {0}. Without a bank connection: {1}. These accounts will no longer be updated.</value>
@@ -214,7 +118,9 @@
   <data name="Finished_Reversible" xml:space="preserve">
     <value>You can resume the import here at any time.</value>
   </data>
-  <data name="Switch_Unlinked_One" xml:space="preserve"><value>1 MoneyMoney account has no bank connection.</value></data>
+  <data name="Switch_Unlinked_One" xml:space="preserve">
+    <value>1 MoneyMoney account has no bank connection.</value>
+  </data>
   <data name="Accounts_Summary" xml:space="preserve">
     <value>Accounts without bank connection: {0} on MoneyMoney, {1} manual</value>
   </data>
@@ -239,9 +145,6 @@
   <data name="Accounts_Return" xml:space="preserve">
     <value>Return to MoneyMoney</value>
   </data>
-  <data name="Accounts_Return_Finished" xml:space="preserve">
-    <value>Resume the MoneyMoney import first.</value>
-  </data>
   <data name="Return_Title" xml:space="preserve">
     <value>Return to MoneyMoney?</value>
   </data>
@@ -253,5 +156,131 @@
   </data>
   <data name="Finished_KeepManual" xml:space="preserve">
     <value>Keep the {0} accounts without bank connection as manual accounts, so their bookings stay editable (takes the structure over)</value>
+  </data>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Get started</value>
+  </data>
+  <data name="Heading" xml:space="preserve">
+    <value>Get started</value>
+  </data>
+  <data name="Intro" xml:space="preserve">
+    <value>Four steps bring your money into OpenBudget. The optional ones can wait.</value>
+  </data>
+  <data name="Optional" xml:space="preserve">
+    <value>optional</value>
+  </data>
+  <data name="Step1_Heading" xml:space="preserve">
+    <value>Add your bank logins</value>
+  </data>
+  <data name="Step1_Body" xml:space="preserve">
+    <value>Connect your banks: OpenBudget then fetches balances, bookings and statements itself.</value>
+  </data>
+  <data name="Step1_Link" xml:space="preserve">
+    <value>Bank logins</value>
+  </data>
+  <data name="Step1_Count" xml:space="preserve">
+    <value>{0} bank logins set up.</value>
+  </data>
+  <data name="Step1_Count_One" xml:space="preserve">
+    <value>1 bank login set up.</value>
+  </data>
+  <data name="Step2_Heading" xml:space="preserve">
+    <value>Bring your history over from MoneyMoney</value>
+  </data>
+  <data name="Step2_Body" xml:space="preserve">
+    <value>Coming from MoneyMoney? Upload its data once: accounts, categories, all bookings and the stored statements come along.</value>
+  </data>
+  <data name="Step2_How1" xml:space="preserve">
+    <value>In MoneyMoney, choose Help › Show Database in Finder…</value>
+  </data>
+  <data name="Step2_How2" xml:space="preserve">
+    <value>Quit MoneyMoney.</value>
+  </data>
+  <data name="Step2_How3" xml:space="preserve">
+    <value>In Finder, right-click the MoneyMoney folder that contains Database and Statements and choose Compress.</value>
+  </data>
+  <data name="Step2_How4" xml:space="preserve">
+    <value>Upload the ZIP file here and enter your MoneyMoney password.</value>
+  </data>
+  <data name="Upload_File" xml:space="preserve">
+    <value>ZIP file</value>
+  </data>
+  <data name="Upload_Password" xml:space="preserve">
+    <value>MoneyMoney password</value>
+  </data>
+  <data name="Upload_PasswordHint" xml:space="preserve">
+    <value>The password is used once to decrypt the database on the server and is not stored. The upload is deleted after the import.</value>
+  </data>
+  <data name="Upload_Button" xml:space="preserve">
+    <value>Upload and import</value>
+  </data>
+  <data name="Upload_Progress" xml:space="preserve">
+    <value>Uploading… {0} of {1} MB</value>
+  </data>
+  <data name="Job_Extracting" xml:space="preserve">
+    <value>Unpacking the ZIP file…</value>
+  </data>
+  <data name="Job_Decrypting" xml:space="preserve">
+    <value>Decrypting the database…</value>
+  </data>
+  <data name="Job_Importing" xml:space="preserve">
+    <value>Importing accounts and bookings…</value>
+  </data>
+  <data name="Job_Statements" xml:space="preserve">
+    <value>Importing statements… {0} of {1}</value>
+  </data>
+  <data name="Job_Background" xml:space="preserve">
+    <value>The import goes on on the server even if you close this page.</value>
+  </data>
+  <data name="Job_Done" xml:space="preserve">
+    <value>Imported: {0} accounts, {1} bookings, {2} new statements.</value>
+  </data>
+  <data name="Job_Ok" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="Error_WrongPassword" xml:space="preserve">
+    <value>The password does not open the MoneyMoney database. Check it and upload again.</value>
+  </data>
+  <data name="Error_NoDatabase" xml:space="preserve">
+    <value>The ZIP file contains no MoneyMoney database. Compress the folder that contains Database and Statements.</value>
+  </data>
+  <data name="Error_NotAZip" xml:space="preserve">
+    <value>That is not a ZIP file.</value>
+  </data>
+  <data name="Error_Finished" xml:space="preserve">
+    <value>The MoneyMoney import is finished. Resume it first to upload again.</value>
+  </data>
+  <data name="Error_Failed" xml:space="preserve">
+    <value>The import failed. Please try again.</value>
+  </data>
+  <data name="Error_Upload" xml:space="preserve">
+    <value>The upload was interrupted. Please try again.</value>
+  </data>
+  <data name="Error_TooLarge" xml:space="preserve">
+    <value>The file is empty or too large.</value>
+  </data>
+  <data name="Step3_Heading" xml:space="preserve">
+    <value>Connect a Portfolio Performance file</value>
+  </data>
+  <data name="Step3_Body" xml:space="preserve">
+    <value>Securities, lots and classifications come from your Portfolio Performance file.</value>
+  </data>
+  <data name="Step3_Link" xml:space="preserve">
+    <value>Portfolio Performance</value>
+  </data>
+  <data name="Step4_Heading" xml:space="preserve">
+    <value>Choose your everyday accounts and set budgets</value>
+  </data>
+  <data name="Step4_Body" xml:space="preserve">
+    <value>Tick "In cashflow" for the accounts you spend from day to day, then set budgets for your categories.</value>
+  </data>
+  <data name="Step4_Accounts" xml:space="preserve">
+    <value>Accounts</value>
+  </data>
+  <data name="Step4_Budgets" xml:space="preserve">
+    <value>Budgets</value>
+  </data>
+  <data name="Step4_NoProject" xml:space="preserve">
+    <value>Create a project first; it holds your accounts and budgets.</value>
   </data>
 </root>

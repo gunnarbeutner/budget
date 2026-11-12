@@ -5,7 +5,7 @@ using OpenBudget.Services;
 
 namespace OpenBudget.E2E.Tests;
 
-/// <summary>The one-time "Take over structure from MoneyMoney" action on the Sources page.</summary>
+/// <summary>The one-time "Take over structure from MoneyMoney" action in Get started's MoneyMoney step.</summary>
 [TestFixture]
 public sealed class StructureTakeoverTests : EndToEndTestBase
 {
@@ -22,7 +22,7 @@ public sealed class StructureTakeoverTests : EndToEndTestBase
     [Test]
     public async Task Taking_over_the_structure_asks_for_confirmation_and_then_marks_the_source()
     {
-        await GoToAsync("/sources");
+        await GoToAsync("/get-started");
         await Page.GetByTestId("structure-takeover").First.ClickAsync();
         await Expect(Page.GetByTestId("modal-dialog")).ToContainTextAsync("cannot be undone");
         await Page.GetByTestId("structure-takeover-confirm").ClickAsync();

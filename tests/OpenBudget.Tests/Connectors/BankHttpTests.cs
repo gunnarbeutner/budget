@@ -189,7 +189,7 @@ public sealed class BankHttpWithoutKeyTests : IDisposable
         Assert.DoesNotContain("Add a bank login", body, StringComparison.Ordinal);
 
         // The rest of the app is unaffected.
-        var (home, _) = await AppTestHost.GetAsync(client, "/sources");
+        var (home, _) = await AppTestHost.GetAsync(client, "/get-started");
         Assert.Equal(HttpStatusCode.OK, home);
     }
 }

@@ -169,19 +169,4 @@ public sealed class SharingTests : EndToEndTestBase
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
         await Expect(Page.GetByText(NotFound)).ToBeVisibleAsync();
     }
-
-    [Test]
-    public async Task The_sources_page_shows_only_the_users_own_sources_with_their_tokens()
-    {
-        await GoToAsync("/sources");
-        await Expect(Page.GetByRole(AriaRole.Row).Filter(new() { HasText = "legacy" })).ToBeVisibleAsync();
-        await Page.GetByTestId("source-row").Filter(new() { HasText = "legacy" }).GetByRole(AriaRole.Button, new() { Name = "Upload token" }).ClickAsync();
-        await Expect(Page.Locator("[data-source-token='legacy']")).ToHaveTextAsync("e2e-token-legacy");
-
-        await LogoutAsync();
-        await LoginAsync(E2ESeed.SecondUserName);
-        await GoToAsync("/sources");
-        await Expect(Page.GetByText("No sources registered yet.")).ToBeVisibleAsync();
-        await Expect(Page.GetByText("e2e-token-legacy")).ToHaveCountAsync(0);
-    }
 }

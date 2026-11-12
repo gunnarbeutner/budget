@@ -22,7 +22,8 @@
     <div class="alert alert-info mt-4">
         <h4>@L["Welcome_Heading"]</h4>
         <p>@L["Welcome_Body"]</p>
-        <button type="button" class="btn btn-primary" @onclick="() => showNewProject = true">@L["Button_NewProject"]</button>
+        <a class="btn btn-primary me-2" href="/get-started" data-testid="welcome-get-started">@L["Button_GetStarted"]</a>
+        <button type="button" class="btn btn-outline-primary" @onclick="() => showNewProject = true">@L["Button_NewProject"]</button>
     </div>
     <NewProjectDialog Show="showNewProject" OnClose="() => showNewProject = false" />
 }

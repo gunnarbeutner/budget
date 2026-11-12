@@ -15,7 +15,7 @@ namespace OpenBudget.E2E.Tests;
 [TestFixture]
 public sealed class PortfolioPerformanceSettingsTests : EndToEndTestBase
 {
-    private static byte[] PortfolioFile(params string[] portfolios)
+    internal static byte[] PortfolioFile(params string[] portfolios)
     {
         var client = new PClient();
         foreach (var name in portfolios)

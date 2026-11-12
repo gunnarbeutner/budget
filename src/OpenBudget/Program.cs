@@ -52,6 +52,7 @@ builder.Services.AddScoped<ProjectTimeState>();
 builder.Services.AddScoped<CurrentProjectState>();
 builder.Services.AddScoped<SharingService>();
 builder.Services.AddScoped<SourceService>();
+builder.Services.AddScoped<OnboardingService>();
 builder.Services.AddScoped<StructureTakeoverService>();
 builder.Services.AddScoped<AccountSwitchService>();
 builder.Services.AddScoped<CategoryColorService>();
@@ -114,6 +115,10 @@ var uploadStagingDir = Path.Combine(dataDir, "uploads");
 // rather than auto-creating the parent directory.
 Directory.CreateDirectory(dataDir);
 Directory.CreateDirectory(uploadStagingDir);
+// The browser's MoneyMoney import keeps its ZIP and the decrypted copy here only while it runs.
+var moneyMoneyStagingDir = Path.Combine(uploadStagingDir, "moneymoney");
+OpenBudget.Importers.MoneyMoney.MoneyMoneyBrowserImport.CleanLeftovers(moneyMoneyStagingDir);
+builder.Services.AddSingleton(new OpenBudget.Importers.MoneyMoney.MoneyMoneyStaging(moneyMoneyStagingDir));
 
 // Use a context *factory* rather than a scoped DbContext. In Blazor Server "scoped" means the
 // lifetime of the SignalR circuit, so a scoped context would live for the whole browser session

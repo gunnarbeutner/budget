@@ -58,9 +58,6 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Aria_Menu" xml:space="preserve">
-    <value>Einstellungen: Projekt, Bank-Zugänge, MoneyMoney-Import</value>
-  </data>
   <data name="Bottom_More" xml:space="preserve">
     <value>Mehr</value>
   </data>
@@ -79,11 +76,14 @@
   <data name="Badge_Errors" xml:space="preserve">
     <value>{0} Fehler</value>
   </data>
-  <data name="Item_MoneyMoney" xml:space="preserve">
-    <value>MoneyMoney-Import</value>
-  </data>
   <data name="Badge_Errors_One" xml:space="preserve"><value>1 Fehler</value></data>
   <data name="Item_PortfolioPerformance" xml:space="preserve">
     <value>Portfolio Performance</value>
+  </data>
+  <data name="Item_GetStarted" xml:space="preserve">
+    <value>Erste Schritte</value>
+  </data>
+  <data name="Aria_Menu" xml:space="preserve">
+    <value>Einstellungen: Projekt, Bank-Zugänge, Portfolio Performance</value>
   </data>
 </root>

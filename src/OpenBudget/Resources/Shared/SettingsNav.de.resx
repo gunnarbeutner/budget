@@ -73,9 +73,6 @@
   <data name="Item_BankLogins" xml:space="preserve">
     <value>Bank-Zugänge</value>
   </data>
-  <data name="Item_Sources" xml:space="preserve">
-    <value>Import</value>
-  </data>
   <data name="Item_Account" xml:space="preserve">
     <value>Profil und Passkeys</value>
   </data>
@@ -84,5 +81,8 @@
   </data>
   <data name="Item_PortfolioPerformance" xml:space="preserve">
     <value>Portfolio Performance</value>
+  </data>
+  <data name="Item_GetStarted" xml:space="preserve">
+    <value>Erste Schritte</value>
   </data>
 </root>

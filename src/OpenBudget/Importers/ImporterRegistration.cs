@@ -17,12 +17,14 @@ public static class ImporterRegistration
             sp, sp.GetRequiredService<SystemDbContextFactory>()));
         services.AddSingleton(sp => ActivatorUtilities.CreateInstance<MoneyMoneyStatementImport>(
             sp, sp.GetRequiredService<SystemDbContextFactory>()));
+        services.AddSingleton<MoneyMoneyBrowserImport>();
         return services;
     }
 
     public static IEndpointRouteBuilder MapImporterEndpoints(this IEndpointRouteBuilder app, string stagingDir)
     {
         MoneyMoneyEndpoints.Map(app, stagingDir);
+        MoneyMoneyUploadEndpoints.Map(app);
         return app;
     }
 }
