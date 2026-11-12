@@ -196,7 +196,7 @@ public class DocumentService
 
     /// <summary>
     /// The current user's own documents that no project shows under an account: those without an account, and those
-    /// whose account is closed, gone or in none of the user's projects. Labelled by account, login or bank, newest first.
+    /// whose account is gone or in none of the user's projects. Labelled by account, login or bank, newest first.
     /// </summary>
     public async Task<List<DocumentItem>> GetUnassignedAsync(CancellationToken ct = default)
     {
@@ -236,7 +236,7 @@ public class DocumentService
 
     private static IQueryable<BankStatement> UnassignedQuery(BudgetDbContext db, string userId)
     {
-        var inProjects = db.ProjectAccountAssignments.Where(p => db.Accounts.Any(a => a.Id == p.AccountId && !a.Closed)).Select(p => p.AccountId);
+        var inProjects = db.ProjectAccountAssignments.Select(p => p.AccountId);
         return db.BankStatements.AsNoTracking().Where(s =>
             s.OwnerUserId == userId && (s.AccountId == null || !inProjects.Contains(s.AccountId.Value)));
     }

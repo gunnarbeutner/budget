@@ -220,7 +220,7 @@ public sealed class DocumentReadTests
     }
 
     [Fact]
-    public async Task Documents_to_assign_are_the_owners_documents_without_an_open_account_in_a_project()
+    public async Task Documents_to_assign_are_the_owners_documents_without_an_account_in_a_project()
     {
         var (w, giro, noAccount, orphan, onClosed, onGiro) = await SetupUnassignedAsync();
         await using var _w = w;
@@ -230,13 +230,12 @@ public sealed class DocumentReadTests
         var ids = list.Select(d => d.Id).ToHashSet();
         Assert.Contains(noAccount, ids);
         Assert.Contains(orphan, ids);
-        Assert.Contains(onClosed, ids);
+        Assert.DoesNotContain(onClosed, ids); // a closed account in a project still shows its documents
         Assert.DoesNotContain(onGiro, ids);
         Assert.DoesNotContain(list, d => d.AccountId == giro);
         Assert.Equal(list.Count, await alice.GetUnassignedCountAsync());
         Assert.Equal("Example Bank", list.Single(d => d.Id == noAccount).AccountName);
         Assert.Equal("Orphan", list.Single(d => d.Id == orphan).AccountName);
-        Assert.Equal("Old savings", list.Single(d => d.Id == onClosed).AccountName);
         Assert.All(list, d => Assert.True(d.CanAssign));
     }
 
@@ -274,6 +273,12 @@ public sealed class DocumentReadTests
         var second = (await alice.GetDocumentsAsync(2)).Where(d => d.AccountId == 9101).Select(d => d.Id).ToList();
         Assert.Contains(noAccount, second);
         Assert.Contains(orphan, second);
-        Assert.Contains(onClosed, (await alice.GetUnassignedAsync()).Select(d => d.Id));
+
+        // A closed account takes documents like an open one; they then show under it in its project.
+        Assert.Equal(1, await alice.AssignAsync([orphan], 9102));
+        Assert.Equal(before - 2, await alice.GetUnassignedCountAsync());
+        var first = (await alice.GetDocumentsAsync(1)).Where(d => d.AccountId == 9102).Select(d => d.Id).ToList();
+        Assert.Contains(orphan, first);
+        Assert.Contains(onClosed, first);
     }
 }
