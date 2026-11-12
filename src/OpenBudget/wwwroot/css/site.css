@@ -392,31 +392,39 @@ a, .btn-link {
     margin-right: 0.4rem;
 }
 
-.browse-chart {
+/* Transactions chart: thin neutral bars, negatives in a muted red, the selected period / today in
+   the accent colour. charts.js reads these tokens when it draws. */
+.browse-chart-frame {
+    --chart-bar: #7b8494;
+    --chart-bar-neg: #c96161;
+    --chart-bar-accent: #3b82c4;
+    --chart-budget: #c2417f;
+    --chart-grid: rgba(0, 0, 0, 0.08);
+    --chart-text: #6b7280;
+    --chart-label-bg: #1f2937;
+    --chart-label-fg: #ffffff;
     background: var(--bs-body-bg);
     border-radius: 0.5rem;
-    padding: 0.25rem 0.5rem;
-    /* Set via inline style: width grows with bucket count so each bar gets a stable px width
-       even when the source has 10+ years of history. */
-    /* Center when narrower than the scroll wrapper; auto-margins collapse to 0 when the
-       chart overflows so horizontal scrolling still works normally. */
-    margin-inline: auto;
+    padding: 0.25rem 0.5rem 0.35rem;
 }
-
-/* Chart with its granularity toggle in the top-right corner of the same frame. */
-.browse-chart-frame { position: relative; }
-.browse-chart-frame .browse-chart-scroll { padding-top: 26px; }
-.browse-chart-gran { position: absolute; top: 0; right: 0; z-index: 1; border-radius: 6px; padding: 2px; }
+[data-bs-theme="dark"] .browse-chart-frame {
+    --chart-bar: #9aa3b2;
+    --chart-bar-neg: #e08585;
+    --chart-bar-accent: #6cb2f0;
+    --chart-budget: #f2c14e;
+    --chart-grid: rgba(255, 255, 255, 0.09);
+    --chart-text: #9ca3af;
+    --chart-label-bg: #e5e7eb;
+    --chart-label-fg: #111827;
+}
+.browse-chart-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-height: 22px; }
+.browse-chart-title { font-size: 12px; color: var(--chart-text); }
+.browse-chart-gran { border-radius: 6px; padding: 2px; }
 .segmented.segmented-sm .btn { padding: 0.05rem 0.55rem !important; font-size: 12px; border-radius: 4px !important; }
-
-.browse-chart-scroll {
-    overflow-x: auto;
-    overflow-y: hidden;
-    background: var(--bs-body-bg);
-    border-radius: 0.5rem;
-    /* min-width:0 + overflow-x:auto = clip wide child to parent's width and scroll. Without
-       it the wide canvas wrapper would push the grid column out. */
-    min-width: 0;
+.browse-chart { position: relative; height: 180px; }
+.browse-chart canvas { cursor: crosshair; }
+@media (max-width: 575.98px) {
+    .browse-chart { height: 140px; }
 }
 
 /* Scrollable, lightly-framed container for the checkbox tree shown in tracking-config
@@ -586,7 +594,6 @@ a, .btn-link {
     .sticky-top { position: static !important; }
     .tx-scroll,
     .table-responsive,
-    .browse-chart-scroll,
     .browse-tree {
         overflow: visible !important;
         max-height: none !important;

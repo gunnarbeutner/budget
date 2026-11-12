@@ -55,6 +55,7 @@ public class BrowseChartTests
         Assert.Equal(-50m, chart.Bars[1].Value);
         Assert.Equal(30m, chart.Bars[2].Value);
         Assert.Equal(new[] { (2026, 1), (2026, 2), (2026, 3) }, chart.BarMonths);
+        Assert.Equal(new[] { new DateTime(2026, 1, 1), new DateTime(2026, 2, 1), new DateTime(2026, 3, 1) }, chart.BarStarts);
         // Only March is in the anchor period.
         Assert.False(chart.Bars[0].IsAnchor);
         Assert.False(chart.Bars[1].IsAnchor);
@@ -152,5 +153,19 @@ public class BrowseChartTests
         Assert.Equal(Flat(580m), BrowseChart.BudgetMonthsFor(1, CategoryItemType.Group, stored, hierarchy));
         Assert.Equal(Flat(80m), BrowseChart.BudgetMonthsFor(11, CategoryItemType.Category, stored, hierarchy));
         Assert.Null(BrowseChart.BudgetMonthsFor(12, CategoryItemType.Category, stored, hierarchy));
+    }
+
+    [Fact]
+    public void Daily_bars_start_on_consecutive_days_of_the_period()
+    {
+        var chart = BrowseChart.BuildChartSeries(
+            earliest: new DateTime(2026, 2, 1), rightEdge: new DateTime(2026, 2, 1), granularity: "D",
+            anchorYear: 2026, fromMonth: 2, toMonth: 2,
+            requestInvertY: false, isAccountDaily: true,
+            raw: new List<(DateTime, decimal)>(), currentBalanceForDaily: 10m);
+
+        Assert.Equal(28, chart.BarStarts.Length);
+        Assert.Equal(new DateTime(2026, 2, 1), chart.BarStarts[0]);
+        Assert.Equal(new DateTime(2026, 2, 28), chart.BarStarts[^1]);
     }
 }

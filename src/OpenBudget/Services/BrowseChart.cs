@@ -1,13 +1,14 @@
 namespace OpenBudget.Services;
 
 /// <summary>
-/// Bars + their (year, month) mapping + whether the y-axis should be inverted, for the Browse
-/// page's history chart.
+/// Bars + their (year, month) mapping, each bar's first day, and whether the y-axis should be
+/// inverted, for the Browse page's history chart.
 /// </summary>
 public sealed record BrowseChartData(
     (string Label, decimal Value, bool IsAnchor)[] Bars,
     (int Year, int Month)[] BarMonths,
-    bool InvertY);
+    bool InvertY,
+    DateTime[] BarStarts);
 
 /// <summary>
 /// A depot's stored value history for the balance chart: ascending (day, value) points from
@@ -191,9 +192,11 @@ public static class BrowseChart
         }
         // Reconstruct bucket month-starts: walk forward bucket-by-bucket.
         var bucketEnds = new DateTime[bucketCount];
+        var starts = new DateTime[bucketCount];
         var cursor = windowStart;
         for (int i = 0; i < bucketCount; i++)
         {
+            starts[i] = cursor;
             months[i] = (cursor.Year, cursor.Month);
             cursor = granularity switch
             {
@@ -275,7 +278,7 @@ public static class BrowseChart
         var invertY = requestInvertY;
         if (invertY && bars.Any(b => b.Value > 0)) invertY = false;
 
-        return new BrowseChartData(bars, months, invertY);
+        return new BrowseChartData(bars, months, invertY, starts);
     }
 
     /// <summary>

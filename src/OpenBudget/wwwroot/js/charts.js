@@ -799,89 +799,192 @@ const zeroLinePlugin = {
     }
 };
 
-// Generic chart rendering function
-// Browse page bar chart: handles its own rendering since it needs (a) a Blazor click bridge
-// for navigating to a clicked bar's month, and (b) auto-scrolling the container to the
-// right-most (most recent) bar on each render so the user lands looking at the anchor.
-window.renderBrowseChart = function(canvasId, scrollContainerId, labels, values, bg, invertY, dotnetRef, noAnimate, asLine, budget, budgetLabel) {
-    const ctx = document.getElementById(canvasId);
-    if (!ctx) return false;
-    if (window.chartInstances[canvasId]) {
-        window.chartInstances[canvasId].destroy();
-    }
-    // Format a euro value with the natural sign. Chart.js calls this for both tick labels
-    // and tooltips, so a single helper keeps them consistent.
-    const formatEuro = function(v) {
-        return window.obMoney(v);
+// Transactions chart: one thin bar per bucket (end-of-day / end-of-month balance for accounts,
+// the bucket's sum for categories) from the zero line, month labels along the top with thin
+// separators, a sparse money scale at the right edge, and on hover/touch a crosshair snapped to
+// the bar with a date + value label pinned to the bottom edge. Colours come from the
+// --chart-* tokens on .browse-chart-frame so light and dark theme each get their own steps.
+// A click on a bar asks Blazor (OnChartBarClicked) to move the list to that bar's month.
+window.renderBrowseChart = function(canvasId, d, dotnetRef) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return false;
+    if (window.chartInstances[canvasId]) window.chartInstances[canvasId].destroy();
+    const css = getComputedStyle(canvas.closest('.browse-chart-frame') || document.documentElement);
+    const tok = (name, fallback) => (css.getPropertyValue(name) || '').trim() || fallback;
+    const c = {
+        bar: tok('--chart-bar', '#7b8494'), neg: tok('--chart-bar-neg', '#c96161'),
+        accent: tok('--chart-bar-accent', '#3b82c4'), budget: tok('--chart-budget', '#c2417f'),
+        grid: tok('--chart-grid', 'rgba(0,0,0,0.08)'), text: tok('--chart-text', '#6b7280'),
+        labelBg: tok('--chart-label-bg', '#1f2937'), labelFg: tok('--chart-label-fg', '#fff')
     };
-    try {
-        // A balance (account / account group) is a line over time; period sums (categories) are bars.
-        const dataset = asLine
-            ? { label: 'Balance', data: values, borderColor: 'rgba(54, 162, 235, 0.9)', backgroundColor: 'rgba(54, 162, 235, 0.12)',
-                fill: true, borderWidth: 2, pointRadius: values.length < 40 ? 3 : 0, pointHitRadius: 6, stepped: true }
-            : { label: 'Amount', data: values, backgroundColor: bg, borderWidth: 0 };
-        const datasets = [dataset];
-        // The selected category's budget per bar: a dotted line in the bars' sign, stepping
-        // between bars where the budget changes. Nulls (years without a budget) leave gaps.
-        if (!asLine && budget && budget.length === values.length) {
-            const dark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
-            const color = dark ? 'rgba(255, 193, 7, 0.95)' : 'rgba(214, 51, 132, 0.95)';
-            datasets.push({
-                type: 'line', label: budgetLabel || 'Budget', data: budget,
-                borderColor: color, backgroundColor: color, borderWidth: 2, borderDash: [3, 3],
-                pointRadius: 0, pointHitRadius: 6, fill: false, stepped: 'middle', spanGaps: false, order: -1
-            });
+    const font = '11px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+    const g = d.granularity;
+    const n = d.values.length;
+    const starts = d.starts.map(s => { const [y, m, day] = s.split('-').map(Number); return { y, m, day }; });
+    // Future buckets of a balance aren't known yet and stay empty.
+    const isFuture = i => d.balance && d.starts[i] > d.today;
+    const values = d.values.map((v, i) => isFuture(i) ? null : v);
+    let lastReal = -1;
+    for (let i = 0; i < n; i++) if (values[i] !== null) lastReal = i;
+    const markToday = d.balance && lastReal >= 0 && (lastReal + 1 >= n ? d.starts[lastReal] <= d.today : isFuture(lastReal + 1));
+    // Daily balance bars all lie in the selected period, so only today stands out; otherwise
+    // the selected period's bars carry the accent.
+    const colors = values.map((v, i) => {
+        if (markToday && i === lastReal) return c.accent;
+        if (!(d.balance && g === 'D') && d.anchors[i]) return c.accent;
+        // On an expense chart (reversed axis) spending is the normal case; only a balance or
+        // income below zero reads as negative.
+        return v !== null && v < 0 && !d.invertY ? c.neg : c.bar;
+    });
+    const pad2 = x => String(x).padStart(2, '0');
+    const quarter = s => 'Q' + (Math.floor((s.m - 1) / 3) + 1);
+    const titleOf = i => {
+        const s = starts[i];
+        if (g === 'D') return pad2(s.day) + '.' + pad2(s.m) + '.' + s.y;
+        if (g === 'Q') return quarter(s) + ' ' + s.y;
+        if (g === 'Y') return String(s.y);
+        return d.monthNames[s.m - 1] + ' ' + s.y;
+    };
+    // Compact scale labels: "15k €", "1,5k €", "−300 €".
+    const compact = v => {
+        const a = Math.abs(v), sign = v < 0 ? '−' : '';
+        if (a >= 1e6) return sign + (a / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' Mio €';
+        if (a >= 1e4) return sign + Math.round(a / 1e3).toLocaleString('de-DE') + 'k €';
+        if (a >= 1e3) return sign + (a / 1e3).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + 'k €';
+        return sign + Math.round(a).toLocaleString('de-DE') + ' €';
+    };
+    const hasBudget = !d.balance && Array.isArray(d.budget) && d.budget.length === n;
+
+    // Month (or year) labels along the top with a thin separator where each one starts. Major
+    // labels (first bar, January) are placed first, then the others wherever they fit.
+    const topAxis = {
+        id: 'obTopAxis',
+        afterDraw(chart) {
+            const x = chart.scales.x, area = chart.chartArea, ctx = chart.ctx;
+            if (!x || !area) return;
+            const half = n > 1 ? (x.getPixelForValue(1) - x.getPixelForValue(0)) / 2 : (area.right - area.left) / 2;
+            const marks = [];
+            for (let i = 0; i < n; i++) {
+                const s = starts[i], first = i === 0;
+                let text = null, major = first || s.m === 1;
+                if (g === 'D') {
+                    if (first || s.day === 1) text = d.monthNames[s.m - 1] + (major ? ' ' + s.y : '');
+                } else if (g === 'M') {
+                    text = major ? d.monthNames[s.m - 1] + ' ' + s.y : d.monthNames[s.m - 1];
+                } else if (g === 'Q') {
+                    text = major ? quarter(s) + ' ' + s.y : quarter(s);
+                } else {
+                    major = true; text = String(s.y);
+                }
+                if (text) marks.push({ i, text, major, px: x.getPixelForValue(i) - half });
+            }
+            ctx.save();
+            ctx.font = font;
+            ctx.textBaseline = 'top';
+            const placed = [];
+            const fits = (l, r) => r <= area.right && placed.every(p => r + 8 <= p.l || l >= p.r + 8);
+            for (const pass of [true, false]) {
+                for (const m of marks) {
+                    if (m.major !== pass) continue;
+                    const l = Math.max(m.px, area.left) + 3, r = l + ctx.measureText(m.text).width;
+                    if (fits(l, r)) placed.push({ l, r, m });
+                }
+            }
+            ctx.strokeStyle = c.grid;
+            ctx.lineWidth = 1;
+            // Separators at every month start (daily) or year start (coarser).
+            for (const m of marks) {
+                if (m.i === 0 || (g !== 'D' && !m.major)) continue;
+                const sx = Math.round(m.px) + 0.5;
+                ctx.beginPath(); ctx.moveTo(sx, area.top - 16); ctx.lineTo(sx, area.bottom); ctx.stroke();
+            }
+            ctx.fillStyle = c.text;
+            for (const p of placed) ctx.fillText(p.m.text, p.l, area.top - 15);
+            ctx.restore();
         }
-        window.chartInstances[canvasId] = new Chart(ctx, {
-            type: asLine ? 'line' : 'bar',
-            data: {
-                labels: labels,
-                datasets: datasets
-            },
+    };
+
+    // Crosshair snapped to the hovered bar and a compact label pinned to the bottom edge.
+    const hover = {
+        id: 'obHover',
+        afterEvent(chart, args) {
+            const e = args.event, area = chart.chartArea;
+            let idx = null;
+            if (e.type !== 'mouseout' && e.x >= area.left && e.x <= area.right) {
+                idx = Math.round(chart.scales.x.getValueForPixel(e.x));
+                if (idx < 0 || idx >= n || values[idx] === null) idx = null;
+            }
+            if (idx !== chart.$obIdx) { chart.$obIdx = idx; args.changed = true; }
+        },
+        afterDraw(chart) {
+            const i = chart.$obIdx;
+            if (i === null || i === undefined) return;
+            const ctx = chart.ctx, area = chart.chartArea;
+            const x = Math.round(chart.scales.x.getPixelForValue(i)) + 0.5;
+            ctx.save();
+            ctx.strokeStyle = c.text; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(x, area.top); ctx.lineTo(x, area.bottom); ctx.stroke();
+            let text = titleOf(i) + '   ' + window.obMoney(values[i]);
+            if (hasBudget && d.budget[i] !== null) text += '   ' + d.budgetLabel + ' ' + window.obMoney(d.budget[i]);
+            ctx.font = font;
+            const w = ctx.measureText(text).width + 12, h = 18;
+            const lx = Math.max(area.left, Math.min(x - w / 2, area.right - w));
+            const ly = chart.height - h;
+            ctx.fillStyle = c.labelBg;
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(lx, ly, w, h, 4); else ctx.rect(lx, ly, w, h);
+            ctx.fill();
+            ctx.fillStyle = c.labelFg; ctx.textBaseline = 'middle';
+            ctx.fillText(text, lx + 6, ly + h / 2 + 0.5);
+            ctx.restore();
+        }
+    };
+
+    const datasets = [{
+        label: d.balance ? 'Balance' : 'Amount', data: values, backgroundColor: colors, borderWidth: 0,
+        borderRadius: n > 60 ? 0 : 2, borderSkipped: 'start',
+        categoryPercentage: 1, barPercentage: n > 120 ? 0.9 : n > 40 ? 0.8 : 0.7, maxBarThickness: 24, order: 1
+    }];
+    // The selected category's budget per bar: a dotted line in the bars' sign, stepping between
+    // bars where the budget changes. Nulls (years without a budget) leave gaps.
+    if (hasBudget) {
+        datasets.push({
+            type: 'line', label: d.budgetLabel || 'Budget', data: d.budget,
+            borderColor: c.budget, backgroundColor: c.budget, borderWidth: 2, borderDash: [3, 3],
+            pointRadius: 0, fill: false, stepped: 'middle', spanGaps: false, order: 0
+        });
+    }
+    try {
+        window.chartInstances[canvasId] = new Chart(canvas, {
+            type: 'bar',
+            data: { labels: d.labels, datasets },
+            plugins: [topAxis, hover],
             options: {
-                // responsive:true tracks the canvas's CSS parent (.browse-chart, which we
-                // size explicitly to N pixels for N buckets). maintainAspectRatio:false
-                // lets the canvas honor its own style height (140px) without forcing a
-                // ratio against the wide width.
                 responsive: true,
                 maintainAspectRatio: false,
-                // Bar-click re-renders pass noAnimate=true so picking a month doesn't replay
-                // the grow-from-zero animation under the user's cursor.
-                animation: noAnimate ? false : undefined,
-                interaction: asLine ? { mode: 'index', intersect: false } : undefined,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function(ctx) {
-                                return ctx.datasetIndex > 0
-                                    ? ctx.dataset.label + ': ' + formatEuro(ctx.parsed.y)
-                                    : formatEuro(ctx.parsed.y);
-                            }
-                        }
-                    }
-                },
+                animation: d.noAnimate ? false : { duration: 250 },
+                events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
+                layout: { padding: { top: 18, bottom: 22, left: 0, right: 0 } },
+                plugins: { legend: { display: false }, tooltip: { enabled: false } },
                 scales: {
+                    x: { display: false, grid: { display: false } },
                     y: {
-                        // For expense items the underlying values are negative; reversing
-                        // the axis makes the bars still grow upward visually (spending you
-                        // can compare at a glance) while the tick labels honestly read
-                        // "−300 €". Income + account selections use the natural axis where
-                        // positive = up.
-                        reverse: !!invertY,
-                        ticks: { callback: function(v) { return formatEuro(v); } }
+                        position: 'right',
+                        // Expense values are negative; the reversed axis lets spending grow upward
+                        // while the labels still read "−300 €".
+                        reverse: !!d.invertY,
+                        border: { display: false },
+                        grid: { color: c.grid, drawTicks: false },
+                        ticks: { color: c.text, font: { size: 10 }, maxTicksLimit: 3, padding: 4, callback: v => compact(v) }
                     }
                 },
-                onClick: function(evt, elements) {
-                    if (!elements || !elements.length || !dotnetRef) return;
-                    const idx = elements[0].index;
-                    dotnetRef.invokeMethodAsync('OnChartBarClicked', idx);
+                onClick: function(_evt, _els, chart) {
+                    const i = chart.$obIdx;
+                    if (i === null || i === undefined || !dotnetRef) return;
+                    dotnetRef.invokeMethodAsync('OnChartBarClicked', i);
                 }
             }
         });
-        // Scroll the wrapper to the right edge so the newest bar (= anchor end) is in view.
-        const scroller = document.getElementById(scrollContainerId);
-        if (scroller) scroller.scrollLeft = scroller.scrollWidth;
         return true;
     } catch (error) {
         console.error('Error creating browse chart:', error);

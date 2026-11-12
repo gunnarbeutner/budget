@@ -393,7 +393,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task An_account_balance_chart_shows_daily_points_across_the_month_at_full_width()
+    public async Task An_account_balance_chart_shows_a_daily_bar_across_the_month_at_full_width()
     {
         await Page.SetViewportSizeAsync(1440, 900);
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.BankAccountId}");
@@ -406,6 +406,10 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         Assert.That(box.Height, Is.GreaterThanOrEqualTo(170));
         var points = await Page.EvaluateAsync<int>("() => Chart.getChart('browseChart').data.labels.length");
         Assert.That(points, Is.EqualTo(31));
+        // One bar per day, no bottom axis with tilted labels (months are drawn along the top), a summary for screen readers.
+        Assert.That(await Page.EvaluateAsync<string>("() => Chart.getChart('browseChart').config.type"), Is.EqualTo("bar"));
+        Assert.That(await Page.EvaluateAsync<bool>("() => Chart.getChart('browseChart').options.scales.x.display"), Is.False);
+        await Expect(chart).ToHaveAttributeAsync("aria-label", new Regex("^Balance, 01.03.2026 to "));
 
         // Monthly history on request, remembered in the URL.
         await Page.GetByTestId("chart-granularity").GetByRole(AriaRole.Button, new() { Name = "M" }).ClickAsync();

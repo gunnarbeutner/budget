@@ -363,28 +363,29 @@
             {
                 <div class="browse-cards">
                     <div class="browse-chart-frame">
-                        <div id="browseChartScroll" class="browse-chart-scroll">
-                            <div class="browse-chart" style="width: @(chartFullWidth ? "100%" : $"{ChartCanvasWidthPx}px");">
-                                <canvas id="browseChart" style="height: @(chartFullWidth ? 180 : 140)px;" data-testid="browse-chart"></canvas>
+                        <div class="browse-chart-head">
+                            <span class="browse-chart-title">@(chartIsBalance ? L["Chart_Balance"] : L["Chart_Amount"])</span>
+                            <div class="segmented segmented-sm browse-chart-gran" role="group" aria-label="@L["Chart_AriaGranularity"]" data-testid="chart-granularity">
+                                @if (IsAccountScope)
+                                {
+                                    <button type="button" class="btn @(chartGranularity == "D" ? "active" : "")"
+                                            @onclick='() => SetChartGranularity("D")'>@L["Chart_D"]</button>
+                                    <button type="button" class="btn @(chartGranularity == "M" ? "active" : "")"
+                                            @onclick='() => SetChartGranularity("M")'>@L["Chart_M"]</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn @(chartGranularity == "M" ? "active" : "")"
+                                            @onclick='() => SetChartGranularity("M")'>@L["Chart_M"]</button>
+                                    <button type="button" class="btn @(chartGranularity == "Q" ? "active" : "")"
+                                            @onclick='() => SetChartGranularity("Q")'>@L["Chart_Q"]</button>
+                                    <button type="button" class="btn @(chartGranularity == "Y" ? "active" : "")"
+                                            @onclick='() => SetChartGranularity("Y")'>@L["Chart_Y"]</button>
+                                }
                             </div>
                         </div>
-                        <div class="segmented segmented-sm browse-chart-gran" role="group" aria-label="@L["Chart_AriaGranularity"]" data-testid="chart-granularity">
-                            @if (IsAccountScope)
-                            {
-                                <button type="button" class="btn @(chartGranularity == "D" ? "active" : "")"
-                                        @onclick='() => SetChartGranularity("D")'>@L["Chart_D"]</button>
-                                <button type="button" class="btn @(chartGranularity == "M" ? "active" : "")"
-                                        @onclick='() => SetChartGranularity("M")'>@L["Chart_M"]</button>
-                            }
-                            else
-                            {
-                                <button type="button" class="btn @(chartGranularity == "M" ? "active" : "")"
-                                        @onclick='() => SetChartGranularity("M")'>@L["Chart_M"]</button>
-                                <button type="button" class="btn @(chartGranularity == "Q" ? "active" : "")"
-                                        @onclick='() => SetChartGranularity("Q")'>@L["Chart_Q"]</button>
-                                <button type="button" class="btn @(chartGranularity == "Y" ? "active" : "")"
-                                        @onclick='() => SetChartGranularity("Y")'>@L["Chart_Y"]</button>
-                            }
+                        <div id="browseChartScroll" class="browse-chart">
+                            <canvas id="browseChart" role="img" aria-label="@ChartAriaLabel" data-testid="browse-chart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -721,6 +722,8 @@
     // Each chart bar's start month, in (Year, Month) tuples. Used by OnChartBarClicked to
     // translate the bar index back into an anchor date.
     private (int Year, int Month)[]? chartBarMonths;
+    // Each chart bar's first day, so the chart can label months and dates.
+    private DateTime[]? chartBarStarts;
     private string chartGranularity = "M";
     /// <summary>The user chose the monthly history for an account balance (the default there is daily over the shown period).</summary>
     private bool chartMonthlyPicked;
@@ -1580,21 +1583,22 @@
     private bool showAccountColumn => selectionKind != "account" && accountFilter == null && (tree?.Accounts.Count ?? 0) > 1;
 
 
-    /// <summary>
-    /// Canvas width in pixels — bar width × bucket count, floored at 320 so a near-empty
-    /// source doesn't collapse the chart to nothing. Lives here rather than inline in markup
-    /// because Razor doesn't allow @{} statement blocks inside an @if body.
-    /// </summary>
-    /// <summary>The balance over the shown period: the chart fills the main column instead of growing per bucket.</summary>
-    private bool chartFullWidth;
-
-    private int ChartCanvasWidthPx
+    /// <summary>The chart's text alternative: series, span, lowest, highest and latest value.</summary>
+    private string ChartAriaLabel
     {
         get
         {
-            if (chartBars == null || chartFullWidth) return 320;
-            int barPx = chartGranularity switch { "Y" => 64, "Q" => 52, "D" => 10, _ => 36 };
-            return Math.Max(chartBars.Length * barPx, 320);
+            if (chartBars is not { Length: > 0 } bars || chartBarStarts is not { Length: > 0 } starts) return "";
+            var real = Enumerable.Range(0, bars.Length).Where(i => !chartIsBalance || starts[i] <= Clock.Today).ToArray();
+            if (real.Length == 0) real = [0];
+            var values = real.Select(i => bars[i].Value).ToArray();
+            var fmt = chartGranularity == "D" ? "dd.MM.yyyy" : "MM.yyyy";
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            return string.Format(L["Chart_AriaSummary"].Value,
+                chartIsBalance ? L["Chart_Balance"].Value : L["Chart_Amount"].Value,
+                starts[real[0]].ToString(fmt, ci), starts[real[^1]].ToString(fmt, ci),
+                Formatting.FormatMoneyDe(values.Min()), Formatting.FormatMoneyDe(values.Max()),
+                Formatting.FormatMoneyDe(values[^1]));
         }
     }
 
@@ -1739,7 +1743,7 @@
         chartBarMonths = chart.BarMonths;
         chartInvertY = chart.InvertY;
         chartIsBalance = isAccountDaily;
-        chartFullWidth = balancePeriod;
+        chartBarStarts = chart.BarStarts;
         // expenses carry a negative budget like their bars, whichever way the axis ends up pointing
         chartBudget = leaves != null ? await ComputeChartBudgetAsync(chart.BarMonths, negate: invertY) : null;
         chartBars = chart.Bars;
@@ -1766,20 +1770,29 @@
 
     private async Task RenderChartAsync()
     {
-        if (chartBars == null) return;
+        if (chartBars == null || chartBarStarts == null) return;
         selfRef ??= DotNetObjectReference.Create(this);
-        var labels = chartBars.Select(b => b.Label).ToArray();
-        var values = chartBars.Select(b => (double)b.Value).ToArray();
-        var bg = chartBars.Select(b => b.IsAnchor
-            ? "rgba(54, 162, 235, 0.9)"
-            : "rgba(54, 162, 235, 0.4)").ToArray();
         var noAnimate = chartSkipAnimation;
         chartSkipAnimation = false;
+        var ci = System.Globalization.CultureInfo.CurrentUICulture;
+        var data = new
+        {
+            labels = chartBars.Select(b => b.Label).ToArray(),
+            values = chartBars.Select(b => (double)b.Value).ToArray(),
+            anchors = chartBars.Select(b => b.IsAnchor).ToArray(),
+            starts = chartBarStarts.Select(d => d.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)).ToArray(),
+            monthNames = ci.DateTimeFormat.AbbreviatedMonthNames.Take(12).Select(n => n.TrimEnd('.')).ToArray(),
+            today = Clock.Today.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            granularity = chartGranularity,
+            invertY = chartInvertY,
+            balance = chartIsBalance,
+            noAnimate,
+            budget = chartBudget?.Select(b => b is { } v ? (double?)v : null).ToArray(),
+            budgetLabel = L["Chart_Budget"].Value,
+        };
         try
         {
-            await JS.InvokeVoidAsync("renderBrowseChart", "browseChart", "browseChartScroll",
-                labels, values, bg, chartInvertY, selfRef, noAnimate, chartIsBalance,
-                chartBudget?.Select(b => b is { } v ? (double?)v : null).ToArray(), L["Chart_Budget"].Value);
+            await JS.InvokeVoidAsync("renderBrowseChart", "browseChart", data, selfRef);
         }
         catch (JSDisconnectedException) { /* page navigation in flight */ }
     }

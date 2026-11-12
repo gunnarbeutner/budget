@@ -96,5 +96,6 @@ public sealed class BrowseTests : EndToEndTestBase
         Assert.That(budget, Has.All.EqualTo(-100d));
         var label = await Page.EvaluateAsync<string>("() => Chart.getChart('browseChart').data.datasets[1].label");
         Assert.That(label, Is.EqualTo("Budget"));
+        Assert.That(await Page.EvaluateAsync<string>("() => Chart.getChart('browseChart').data.datasets[0].type ?? Chart.getChart('browseChart').config.type"), Is.EqualTo("bar"));
     }
 }

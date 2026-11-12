@@ -409,4 +409,13 @@
   <data name="Toast_ShowBooking" xml:space="preserve">
     <value>Anzeigen</value>
   </data>
+  <data name="Chart_Balance" xml:space="preserve">
+    <value>Saldo</value>
+  </data>
+  <data name="Chart_Amount" xml:space="preserve">
+    <value>Betrag</value>
+  </data>
+  <data name="Chart_AriaSummary" xml:space="preserve">
+    <value>{0}, {1} bis {2}: niedrigster Wert {3}, höchster {4}, zuletzt {5}</value>
+  </data>
 </root>
