@@ -9,7 +9,8 @@ public sealed record MoneyMoneyFolder(string DatabasePath, string StatementsDire
 /// Reads the ZIP of MoneyMoney's data folder (the folder Help › Show Database in Finder opens, compressed in Finder):
 /// <c>…/Database/MoneyMoney.sqlite</c> (with its -wal/-shm files when present) and the PDFs under <c>…/Statements/</c>.
 /// Only those entries are written, each under the target directory (entries escaping it are skipped), and macOS
-/// metadata (<c>__MACOSX/</c>, <c>._*</c>) is ignored.
+/// metadata (<c>__MACOSX/</c>, <c>._*</c>) is ignored. Statement paths are written in Unicode NFC: macOS stores
+/// non-ASCII names in the ZIP decomposed (NFD), MoneyMoney's <c>statements</c> table may hold either form.
 /// </summary>
 public static class MoneyMoneyArchive
 {
@@ -68,7 +69,7 @@ public static class MoneyMoneyArchive
             foreach (var entry in entries)
             {
                 if (!entry.FullName.StartsWith(statementsPrefix, StringComparison.OrdinalIgnoreCase) || entry.FullName.EndsWith('/', StringComparison.Ordinal)) continue;
-                var relative = entry.FullName[statementsPrefix.Length..];
+                var relative = entry.FullName[statementsPrefix.Length..].Normalize(System.Text.NormalizationForm.FormC);
                 var target = Path.GetFullPath(Path.Combine(statementsDir, relative.Replace('/', Path.DirectorySeparatorChar)));
                 if (!target.StartsWith(statementsDir + Path.DirectorySeparatorChar, StringComparison.Ordinal)) continue;
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);

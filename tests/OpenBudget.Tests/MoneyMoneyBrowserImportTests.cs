@@ -165,6 +165,41 @@ public sealed class MoneyMoneyBrowserImportTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Statements_with_non_ASCII_names_match_in_either_Unicode_form_and_are_cleaned_up()
+    {
+        var (import, staging) = await ServiceAsync();
+        var zip = MoneyMoneyZipFixture.Build("secret", unicodeStatements: true);
+        var id = await UploadAsync(import, zip, 4096);
+
+        Assert.True(import.StartImport(Owner, id, SourceName, "secret"));
+        var job = await WaitAsync(import);
+
+        Assert.True(job.Phase == MoneyMoneyImportPhase.Done, _log.All);
+        Assert.Equal(3, job.Statements!.Found);
+        Assert.Equal(3, job.Statements.Stored);
+        await using (var db = await _t.System.CreateDbContextAsync())
+        {
+            Assert.Equal(new[] { "Statement January", "Statement March", "Statement Savings" },
+                await db.BankStatements.OrderBy(s => s.Name).Select(s => s.Name).ToListAsync());
+        }
+        Assert.Empty(Directory.EnumerateFileSystemEntries(staging));
+    }
+
+    [Fact]
+    public void Leftovers_with_non_ASCII_names_are_deleted()
+    {
+        var staging = Path.Combine(_dir, "leftovers");
+        var bank = Path.Combine(staging, "abc", "Statements", MoneyMoneyZipFixture.UnicodeBank.Normalize(System.Text.NormalizationForm.FormD));
+        Directory.CreateDirectory(bank);
+        File.WriteAllBytes(Path.Combine(bank, MoneyMoneyZipFixture.UnicodeFile), MoneyMoneyZipFixture.Pdf("left"));
+        File.WriteAllBytes(Path.Combine(staging, "abc.zip"), [1]);
+
+        MoneyMoneyBrowserImport.CleanLeftovers(staging);
+
+        Assert.Empty(Directory.EnumerateFileSystemEntries(staging));
+    }
+
+    [Fact]
     public async Task A_wrong_password_fails_clearly_and_leaves_nothing_behind()
     {
         var (import, staging) = await ServiceAsync();

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Connectors;
@@ -112,10 +113,17 @@ public sealed class MoneyMoneyStatementImport
         var rows = await ReadStatementRowsAsync(plainDatabasePath, ct);
         var root = Path.GetFullPath(statementsRoot);
         var files = new List<(MoneyMoneyStatementRow Row, string Path, string Sha256)>();
+        var byNormalizedPath = Directory.Exists(root)
+            ? Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                .GroupBy(f => f.Normalize(NormalizationForm.FormC), StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal)
+            : [];
         foreach (var row in rows)
         {
             var path = Path.GetFullPath(Path.Combine(root, row.Directory, row.Filename));
-            if (!path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal) || !File.Exists(path)) continue;
+            if (!path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal)) continue;
+            // Names compare in Unicode NFC: the table and the file system may hold "ü" composed or decomposed.
+            if (!File.Exists(path) && !byNormalizedPath.TryGetValue(path.Normalize(NormalizationForm.FormC), out path)) continue;
             await using var stream = File.OpenRead(path);
             var hash = Convert.ToHexStringLower(await System.Security.Cryptography.SHA256.HashDataAsync(stream, ct));
             files.Add((row, path, hash));

@@ -16,11 +16,19 @@ public static class MoneyMoneyZipFixture
     public const string Bank = "Example Bank";
     public const string StatementFile = "Statement 2026-01.pdf";
 
+    /// <summary>A bank folder and file name with non-ASCII characters (NFC), for <c>unicodeStatements</c>.</summary>
+    public const string UnicodeBank = "Bänk Nürnberg";
+    public const string UnicodeFile = "Auszug März Straße café.pdf";
+    public const string ReverseBank = "Crédit Exämple";
+    public const string ReverseFile = "Kontoauszug Größe.pdf";
+
+    private static string Nfd(string s) => s.Normalize(NormalizationForm.FormD);
+
     /// <summary>A small PDF (only the header matters to the import).</summary>
     public static byte[] Pdf(string text) => Encoding.ASCII.GetBytes($"%PDF-1.4\n% {text}\n%%EOF\n");
 
     /// <summary>The plain MoneyMoney database (unencrypted), written to <paramref name="path"/>.</summary>
-    public static void WritePlainDatabase(string path)
+    public static void WritePlainDatabase(string path, bool unicodeStatements = false)
     {
         using (var conn = new SqliteConnection($"Data Source={path};Pooling=False"))
         {
@@ -45,12 +53,25 @@ public static class MoneyMoneyZipFixture
                 INSERT INTO statements (account_key, name, directory, filename, created_tsp, deleted) VALUES (1, 'Deleted statement', '{Bank}', 'gone.pdf', 1769904000, 1);
                 """;
             cmd.ExecuteNonQuery();
+            if (unicodeStatements)
+            {
+                // The first statement is listed composed (NFC) and zipped decomposed (NFD), the second the other way round.
+                cmd.CommandText = "INSERT INTO statements (account_key, name, directory, filename, created_tsp, deleted) VALUES (1, 'Statement March', $b1, $f1, 1772323200, 0), (2, 'Statement Savings', $b2, $f2, 1772323200, 0)";
+                cmd.Parameters.AddWithValue("$b1", UnicodeBank);
+                cmd.Parameters.AddWithValue("$f1", UnicodeFile);
+                cmd.Parameters.AddWithValue("$b2", Nfd(ReverseBank));
+                cmd.Parameters.AddWithValue("$f2", Nfd(ReverseFile));
+                cmd.ExecuteNonQuery();
+            }
         }
         SqliteConnection.ClearAllPools();
     }
 
-    /// <summary>The ZIP bytes, the database encrypted with <paramref name="password"/>.</summary>
-    public static byte[] Build(string password, string? workDirectory = null)
+    /// <summary>
+    /// The ZIP bytes, the database encrypted with <paramref name="password"/>; <paramref name="unicodeStatements"/> adds
+    /// two statements with non-ASCII bank and file names, spelled differently (NFC/NFD) in the table and the ZIP.
+    /// </summary>
+    public static byte[] Build(string password, string? workDirectory = null, bool unicodeStatements = false)
     {
         var dir = workDirectory ?? Path.Combine(Path.GetTempPath(), $"ob-mm-zip-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dir);
@@ -58,7 +79,7 @@ public static class MoneyMoneyZipFixture
         {
             var plain = Path.Combine(dir, "plain.sqlite");
             var encrypted = Path.Combine(dir, "MoneyMoney.sqlite");
-            WritePlainDatabase(plain);
+            WritePlainDatabase(plain, unicodeStatements);
             MoneyMoneyCipher.Encrypt(plain, encrypted, password);
             using var zip = new MemoryStream();
             using (var archive = new ZipArchive(zip, ZipArchiveMode.Create, leaveOpen: true))
@@ -69,6 +90,11 @@ public static class MoneyMoneyZipFixture
                 Add(archive, $"MoneyMoney/Statements/{Bank}/not-listed.pdf", Pdf("not listed"));
                 Add(archive, "__MACOSX/MoneyMoney/Database/._MoneyMoney.sqlite", [0, 5, 22, 7]);
                 Add(archive, "MoneyMoney/Statements/../../escape.pdf", Pdf("escape"));
+                if (unicodeStatements)
+                {
+                    Add(archive, Nfd($"MoneyMoney/Statements/{UnicodeBank}/{UnicodeFile}"), Pdf("statement march"));
+                    Add(archive, $"MoneyMoney/Statements/{ReverseBank}/{ReverseFile}", Pdf("statement savings"));
+                }
             }
             return zip.ToArray();
         }

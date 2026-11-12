@@ -89,15 +89,52 @@ public sealed class MoneyMoneyBrowserImport
         if (!Directory.Exists(directory)) return;
         foreach (var entry in Directory.EnumerateFileSystemEntries(directory))
         {
-            try
-            {
-                if (Directory.Exists(entry)) Directory.Delete(entry, recursive: true);
-                else File.Delete(entry);
-            }
-            catch (IOException) { /* best effort */ }
-            catch (UnauthorizedAccessException) { /* best effort */ }
+            if (Directory.Exists(entry)) DeleteTree(entry);
+            else DeleteFile(entry);
         }
     }
+
+    /// <summary>
+    /// Deletes <paramref name="path"/> with everything below it, best effort: whatever cannot be deleted in one go is
+    /// deleted entry by entry, each name also tried in Unicode NFC and NFD (some file systems and mounts hand out a
+    /// non-ASCII name in one form but only accept the other).
+    /// </summary>
+    public static void DeleteTree(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+            return;
+        }
+        catch (IOException) { /* deleted entry by entry below */ }
+        catch (UnauthorizedAccessException) { /* deleted entry by entry below */ }
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(path)) DeleteFile(file);
+            foreach (var dir in Directory.EnumerateDirectories(path)) DeleteTree(dir);
+        }
+        catch (IOException) { /* best effort */ }
+        catch (UnauthorizedAccessException) { /* best effort */ }
+        foreach (var name in Spellings(path))
+        {
+            try { if (Directory.Exists(name)) Directory.Delete(name, recursive: false); }
+            catch (IOException) { /* best effort; cleaned on the next start */ }
+            catch (UnauthorizedAccessException) { /* best effort; cleaned on the next start */ }
+        }
+    }
+
+    private static void DeleteFile(string path)
+    {
+        foreach (var name in Spellings(path))
+        {
+            try { if (File.Exists(name)) File.Delete(name); }
+            catch (IOException) { /* best effort; cleaned on the next start */ }
+            catch (UnauthorizedAccessException) { /* best effort; cleaned on the next start */ }
+        }
+    }
+
+    private static IEnumerable<string> Spellings(string path) =>
+        new[] { path, path.Normalize(System.Text.NormalizationForm.FormC), path.Normalize(System.Text.NormalizationForm.FormD) }.Distinct(StringComparer.Ordinal);
 
     /// <summary>The user's current or last job; null when they have not started one since the app started.</summary>
     public MoneyMoneyImportJob? GetJob(string userId) => _jobs.GetValueOrDefault(userId);
@@ -249,19 +286,12 @@ public sealed class MoneyMoneyBrowserImport
         Changed?.Invoke(userId);
     }
 
-    private static void TryDelete(string path)
-    {
-        try { if (File.Exists(path)) File.Delete(path); }
-        catch (IOException) { /* best effort; cleaned on the next start */ }
-        catch (UnauthorizedAccessException) { /* best effort; cleaned on the next start */ }
-    }
+    private static void TryDelete(string path) => DeleteFile(path);
 
     private static void TryDeleteDirectory(string path)
     {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
-        catch (IOException) { /* best effort; cleaned on the next start */ }
-        catch (UnauthorizedAccessException) { /* best effort; cleaned on the next start */ }
+        DeleteTree(path);
     }
 }
 
