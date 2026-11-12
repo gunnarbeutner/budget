@@ -56,7 +56,7 @@ dotnet run --project src/OpenBudget
 | --- | --- |
 | `OPENBUDGET_SECRETS_KEY` | Base64 256-bit key encrypting bank credentials and sessions. Required for bank logins. Not stored in the data volume; keep it safe and keep using the same value, or stored credentials must be re-entered. |
 | `OPENBUDGET_UPLOAD_TOKEN` | Global upload token for importers. Each source also has its own token on the Sources page. |
-| `OPENBUDGET_FINTS_PRODUCT_ID` | FinTS product ID registered with the [Deutsche Kreditwirtschaft](https://www.hbci-zka.de/register/prod_register.htm). Required for FinTS banks. |
+| `OPENBUDGET_FINTS_PRODUCT_ID` | FinTS product ID registered with the [Deutsche Kreditwirtschaft](https://www.fints.org/de/hersteller/produktregistrierung). Required for FinTS banks. |
 | `OPENBUDGET_RP_ID` | Pins the passkey relying-party id (default: the request host). Changing it invalidates registered passkeys. |
 | `CHROME_PATH` | Chromium for web logins outside Docker (the image ships one). |
 | `OPENBUDGET_ONEDRIVE_CLIENT_ID`, `_SECRET`, `_TENANT` | Entra ID app registration for reading PortfolioPerformance files from OneDrive; the feature is hidden without them. |
