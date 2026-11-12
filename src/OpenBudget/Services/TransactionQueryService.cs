@@ -216,12 +216,20 @@ public class TransactionQueryService
 
         if (!string.IsNullOrWhiteSpace(query.SearchText))
         {
+            // Text matches name, comment, note or purpose; a text that reads as an amount (AmountSearch) also matches
+            // bookings of exactly that amount, in either direction unless the text carries a sign.
             var needle = query.SearchText.Trim();
+            var amount = AmountSearch.TryParse(needle);
+            var hasAmount = amount != null;
+            var cents = amount?.Cents ?? 0;
+            var negCents = -cents;
+            var sign = amount?.Sign ?? 0;
             baseQuery = baseQuery.Where(t =>
                 (t.Name != null && EF.Functions.Like(t.Name, $"%{needle}%"))
                 || (t.Comment != null && EF.Functions.Like(t.Comment, $"%{needle}%"))
                 || (t.Note != null && EF.Functions.Like(t.Note, $"%{needle}%"))
-                || (t.Purpose != null && EF.Functions.Like(t.Purpose, $"%{needle}%")));
+                || (t.Purpose != null && EF.Functions.Like(t.Purpose, $"%{needle}%"))
+                || (hasAmount && ((sign >= 0 && t.Amount == cents) || (sign <= 0 && t.Amount == negCents))));
         }
 
         if (query.MinAbsAmount is { } minAmt)

@@ -70,6 +70,66 @@ public sealed class BrowseTests : EndToEndTestBase
         await Expect(Page.GetByText(new Regex("2 transactions"))).ToBeVisibleAsync();
     }
 
+    /// <summary>
+    /// The search field sits in the top bar; an amount finds bookings of that amount, Escape clears it. Views without a
+    /// transaction list show no search field.
+    /// </summary>
+    [Test]
+    public async Task Top_bar_search_matches_amounts_and_escape_clears_it()
+    {
+        await GoToAsync(BrowseUrl);
+        var search = Page.GetByTestId("topbar-search").GetByTestId("tx-search");
+        await Expect(search).ToBeVisibleAsync();
+
+        await search.FillAsync("500,00 €");
+        await Expect(Page.GetByText(new Regex("1 transactions"))).ToBeVisibleAsync();
+        await Expect(Page.GetByText("txn-2")).ToBeVisibleAsync();
+        await Expect(Page.GetByText("txn-1")).Not.ToBeVisibleAsync();
+
+        await search.PressAsync("Escape");
+        await Expect(search).ToHaveValueAsync("");
+        await Expect(Page.GetByText(new Regex("2 transactions"))).ToBeVisibleAsync();
+
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/budgets");
+        await Expect(Page.GetByTestId("budget-toolbar")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("tx-search")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("topbar-search")).ToBeHiddenAsync();
+    }
+
+    /// <summary>
+    /// At phone width the search is an icon in the top bar that opens over the bar; the page never scrolls sideways.
+    /// Set OB_SEARCH_SCREENSHOT_DIR to keep screenshots of the top bar for review.
+    /// </summary>
+    [TestCase("light")]
+    [TestCase("dark")]
+    public async Task Top_bar_search_collapses_to_an_icon_on_phones(string theme)
+    {
+        var dir = Environment.GetEnvironmentVariable("OB_SEARCH_SCREENSHOT_DIR");
+        await Page.EmulateMediaAsync(new PageEmulateMediaOptions { ColorScheme = theme == "dark" ? ColorScheme.Dark : ColorScheme.Light });
+
+        await Page.SetViewportSizeAsync(1280, 720);
+        await GoToAsync(BrowseUrl);
+        await Expect(Page.GetByTestId("tx-search")).ToBeVisibleAsync();
+        if (!string.IsNullOrEmpty(dir))
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"search-desktop-{theme}.png") });
+
+        await Page.SetViewportSizeAsync(390, 760);
+        await GoToAsync(BrowseUrl);
+        var label = Page.GetByTestId("topbar-search").Locator(".topbar-search");
+        Assert.That((await label.BoundingBoxAsync())!.Width, Is.LessThanOrEqualTo(40), "collapsed to an icon");
+        Assert.That(await Page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth > window.innerWidth + 1"), Is.False);
+        if (!string.IsNullOrEmpty(dir))
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"search-phone-{theme}.png") });
+
+        await label.ClickAsync();
+        await Expect(Page.GetByTestId("tx-search")).ToBeFocusedAsync();
+        await Page.GetByTestId("tx-search").FillAsync("txn");
+        Assert.That((await label.BoundingBoxAsync())!.Width, Is.GreaterThan(300), "opens over the bar");
+        Assert.That(await Page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth > window.innerWidth + 1"), Is.False);
+        if (!string.IsNullOrEmpty(dir))
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"search-phone-open-{theme}.png") });
+    }
+
     [Test]
     public async Task Selecting_a_category_in_the_rail_scopes_the_view()
     {

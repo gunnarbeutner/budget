@@ -263,6 +263,68 @@ public class TransactionQueryServiceTests
         Assert.Equal(new[] { 2L, 1L }, page.Rows.Select(r => r.Id).OrderByDescending(x => x).ToArray());
     }
 
+    [Theory]
+    [InlineData("10,60", new[] { 1L, 2L })]
+    [InlineData("10.60", new[] { 1L, 2L })]
+    [InlineData("-10,60", new[] { 1L })]
+    [InlineData("+10,60", new[] { 2L })]
+    [InlineData("229", new[] { 3L, 5L })]       // the whole amount 229,00 and the name containing 229; not 2.290,00
+    [InlineData("€ 229", new[] { 3L })]
+    [InlineData("229 €", new[] { 3L })]
+    [InlineData("1.234,56", new[] { 4L })]
+    [InlineData("1234.56", new[] { 4L })]
+    [InlineData("10,6", new[] { 1L, 2L })]
+    public async Task Search_text_that_reads_as_an_amount_also_matches_by_amount(string text, long[] expected)
+    {
+        await using var t = new TestDb();
+        t.AddGroup(100);
+        t.AddLeaf(101, parent: 100);
+        t.AddTransaction(id: 1, categoryId: 101, amountCents: -1060, date: new DateTime(2026, 5, 1), name: "Kiosk");
+        t.AddTransaction(id: 2, categoryId: 101, amountCents: 1060, date: new DateTime(2026, 5, 2), name: "Refund");
+        t.AddTransaction(id: 3, categoryId: 101, amountCents: -22900, date: new DateTime(2026, 5, 3), name: "Insurance");
+        t.AddTransaction(id: 4, categoryId: 101, amountCents: -123456, date: new DateTime(2026, 5, 4), name: "Rent");
+        t.AddTransaction(id: 5, categoryId: 101, amountCents: -500, date: new DateTime(2026, 5, 5), name: "Order 2291");
+        t.AddTransaction(id: 6, categoryId: 101, amountCents: -229000, date: new DateTime(2026, 5, 6), name: "Car");
+        t.AddTransaction(id: 7, categoryId: 101, amountCents: -22950, date: new DateTime(2026, 5, 7), name: "Shop");
+        await t.Db.SaveChangesAsync();
+
+        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = 1, SearchText = text });
+        Assert.Equal(expected, page.Rows.Select(r => r.Id).OrderBy(x => x).ToArray());
+    }
+
+    [Theory]
+    [InlineData("10,60", 1060L, 0)]
+    [InlineData("10.60", 1060L, 0)]
+    [InlineData("-10,60", 1060L, -1)]
+    [InlineData("+10,60", 1060L, 1)]
+    [InlineData("1.234,56", 123456L, 0)]
+    [InlineData("1,234.56", 123456L, 0)]
+    [InlineData("1234.56", 123456L, 0)]
+    [InlineData("1.234", 123400L, 0)]
+    [InlineData("229", 22900L, 0)]
+    [InlineData("€ 229", 22900L, 0)]
+    [InlineData("229 €", 22900L, 0)]
+    [InlineData("229€", 22900L, 0)]
+    [InlineData("-€ 5", 500L, -1)]
+    [InlineData("0,5", 50L, 0)]
+    public void Amount_search_parses_german_and_plain_notations(string text, long cents, int sign)
+    {
+        var m = AmountSearch.TryParse(text);
+        Assert.NotNull(m);
+        Assert.Equal(cents, m.Cents);
+        Assert.Equal(sign, m.Sign);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("rewe")]
+    [InlineData("10,6055")]
+    [InlineData("1.23.4")]
+    [InlineData("12a")]
+    [InlineData("€")]
+    [InlineData("--5")]
+    public void Amount_search_rejects_non_amounts(string text) => Assert.Null(AmountSearch.TryParse(text));
+
     [Fact]
     public async Task Amount_filter_compares_on_absolute_value()
     {

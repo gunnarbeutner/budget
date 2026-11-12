@@ -39,8 +39,8 @@
 <ProjectPageHeader ProjectId="@ProjectId" ProjectName="@(project?.Name ?? "")" />
 
 @* Transactions (Browse): the project shell's sidebar holds this page's account/category tree; the main column
-   has the 48px toolbar (what is selected + balance, search, filter) and the ledger list; the period selector it places
-   renders in the top bar. Below md the
+   has the 48px toolbar (what is selected + balance) and the ledger list; the period selector and the search field it places
+   render in the top bar. Below md the
    sidebar is an off-canvas sheet, opened from the title or the bottom bar. *@
 <ProjectShell ProjectId="ProjectId" Active="ProjectTab.Browse" Tree="tree" @bind-RailOpen="railOpen" OnTransactions="SelectAll"
               TransactionsCurrent="@(selectionKind == "all")">
@@ -158,33 +158,16 @@
                     <span class="browse-balance-note" data-testid="browse-balance-uncategorized">@L["Header_InclUncategorized", Formatting.FormatMoneyDe(up.Income - up.Spent)]</span>
                 }
             }
-            <div class="browse-tools d-flex flex-wrap align-items-center gap-2" data-testid="browse-tools">
-                <PeriodNav Anchor="anchor" Period="@period" RangeFrom="rangeFrom" RangeTo="rangeTo" ShowMonthPicker="true"
-                           MinMonth="monthMin" MaxMonth="monthMax" OnChanged="OnPeriodChanged" OnRangeChanged="OnRangeChanged" />
-                <label class="browse-search mb-0">
+            @* The period selector and the search field both render into the top bar. *@
+            <PeriodNav Anchor="anchor" Period="@period" RangeFrom="rangeFrom" RangeTo="rangeTo" ShowMonthPicker="true"
+                       MinMonth="monthMin" MaxMonth="monthMax" OnChanged="OnPeriodChanged" OnRangeChanged="OnRangeChanged" />
+            <SectionContent SectionName="@MainLayout.SearchSectionName">
+                <label class="browse-search topbar-search mb-0 @(string.IsNullOrEmpty(searchInput) ? "" : "has-value")" title="@L["Filter_SearchPlaceholder"]">
                     <i class="bi bi-search" aria-hidden="true"></i>
                     <input type="search" placeholder="@L["Filter_SearchPlaceholder"]" aria-label="@L["Filter_SearchPlaceholder"]" data-testid="tx-search"
-                           value="@searchInput" @oninput="OnSearchInput" />
+                           value="@searchInput" @oninput="OnSearchInput" @onkeydown="OnSearchKeyDown" />
                 </label>
-                <button type="button" class="ob-btn @(_filterOpen ? "active" : "")" data-testid="filter-toggle"
-                        aria-expanded="@_filterOpen.ToString().ToLowerInvariant()" aria-controls="browse-filter-panel" @onclick="() => _filterOpen = !_filterOpen">
-                    <i class="bi bi-funnel" aria-hidden="true"></i> @L["Filter_Button"]
-                    @if (ActiveFilterCount > 0)
-                    {
-                        <span class="ob-badge" data-testid="filter-count">@ActiveFilterCount</span>
-                    }
-                </button>
-                @if (selectionKind == "account" && SelectedAccountNode is { } docAccount && (_statementCount > 0 || docAccount.SyncLoginId != null))
-                {
-                    <a class="ob-btn" href="@($"/projects/{ProjectId}/documents?account={docAccount.Id}")" data-testid="account-documents">
-                        <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> @L["Documents"]
-                        @if (_statementCount > 0)
-                        {
-                            <span class="ob-badge">@_statementCount</span>
-                        }
-                    </a>
-                }
-            </div>
+            </SectionContent>
             @* The selection's actions as the toolbar's last row: above the list, never over it. *@
             @if (selected.Count > 0)
             {
@@ -313,6 +296,24 @@
                         <button type="button" class="btn btn-sm btn-link p-0" @onclick="ClearFilters">@L["Filter_Clear"]</button>
                     }
                     <div class="flex-grow-1"></div>
+                    <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none @(_filterOpen ? "fw-semibold" : "")" data-testid="filter-toggle"
+                            aria-expanded="@_filterOpen.ToString().ToLowerInvariant()" aria-controls="browse-filter-panel" @onclick="() => _filterOpen = !_filterOpen">
+                        <i class="bi @(_filterOpen || ActiveFilterCount > 0 ? "bi-funnel-fill" : "bi-funnel")" aria-hidden="true"></i> @L["Filter_Button"]
+                        @if (ActiveFilterCount > 0)
+                        {
+                            <span class="ob-badge" data-testid="filter-count">@ActiveFilterCount</span>
+                        }
+                    </button>
+                    @if (selectionKind == "account" && SelectedAccountNode is { } docAccount && (_statementCount > 0 || docAccount.SyncLoginId != null))
+                    {
+                        <a class="btn btn-sm btn-link p-0 text-decoration-none" href="@($"/projects/{ProjectId}/documents?account={docAccount.Id}")" data-testid="account-documents">
+                            <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> @L["Documents"]
+                            @if (_statementCount > 0)
+                            {
+                                <span class="ob-badge">@_statementCount</span>
+                            }
+                        </a>
+                    }
                     @if (ShowSummaryStrip)
                     {
                         <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" data-testid="summary-toggle"
@@ -1267,6 +1268,16 @@
     {
         searchInput = e.Value?.ToString() ?? "";
         _ = DebounceSearchAsync(++searchToken);
+    }
+
+    // Escape clears the search at once (no debounce) and reloads the list.
+    private async Task OnSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Escape" || (searchInput.Length == 0 && searchEffective.Length == 0)) return;
+        searchInput = ""; searchEffective = "";
+        searchToken++;
+        UpdateUrl();
+        await ReloadTransactionsAsync();
     }
 
     private async Task DebounceSearchAsync(long token)
