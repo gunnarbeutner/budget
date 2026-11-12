@@ -1793,27 +1793,28 @@
         chartInvertY = chart.InvertY;
         chartIsBalance = isAccountDaily;
         chartBarStarts = chart.BarStarts;
-        // expenses carry a negative budget like their bars, whichever way the axis ends up pointing
-        chartBudget = leaves != null ? await ComputeChartBudgetAsync(chart.BarMonths, negate: invertY) : null;
+        chartBudget = leaves != null ? await ComputeChartBudgetAsync(chart.BarMonths) : null;
         chartBars = chart.Bars;
     }
 
-    private async Task<decimal?[]?> ComputeChartBudgetAsync((int Year, int Month)[] barMonths, bool negate)
+    private async Task<decimal?[]?> ComputeChartBudgetAsync((int Year, int Month)[] barMonths)
     {
         if (project == null || selectionId is not { } id || chartGranularity == "D") return null;
         var itemType = selectionKind == "group" ? CategoryItemType.Group : CategoryItemType.Category;
         var budgets = (await BudgetEntries.GetBudgetsForProjectAsync(project.Id)).Where(b => b.IsActive).ToList();
         if (budgets.Count == 0) return null;
         var hierarchy = await Hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        // signed like the bars: income budgets positive, expense budgets negative, a group netting both
+        var incomeItems = await BudgetService.GetIncomeItemsForProjectAsync(project.Id);
         var byYear = new Dictionary<int, decimal[]>();
         foreach (var b in budgets)
         {
             var stored = b.MonthlyEntries.ToDictionary(e => (e.CategoryId, e.ItemType),
                 e => Enumerable.Range(1, 12).Select(e.GetMonthAmount).ToArray());
-            if (BrowseChart.BudgetMonthsFor(id, itemType, stored, hierarchy) is { } months)
+            if (BrowseChart.BudgetMonthsFor(id, itemType, stored, hierarchy, incomeItems.Contains) is { } months)
                 byYear.TryAdd(b.Year, months);
         }
-        return BrowseChart.BuildBudgetSeries(barMonths, chartGranularity, byYear, negate);
+        return BrowseChart.BuildBudgetSeries(barMonths, chartGranularity, byYear);
     }
 
 
