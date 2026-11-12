@@ -222,6 +222,34 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                         <div style="position: relative; height: 320px;">
                             <canvas id="balanceChart"></canvas>
                         </div>
+                        @if (breakeven is { } be)
+                        {
+                            <p class="text-body-secondary small mt-2 mb-0" data-testid="cashflow-breakeven-note">
+                                <i class="bi bi-bullseye me-1" aria-hidden="true"></i>
+                                @if (be.RemainingMonths == 0)
+                                {
+                                    @L["Breakeven_YearOver"]
+                                }
+                                else if (be.Sources.Count == 0)
+                                {
+                                    @L["Breakeven_NoSplits"]
+                                }
+                                else if (be.Sources.Values.All(v => v <= 0m))
+                                {
+                                    @L["Breakeven_NothingNeeded"]
+                                }
+                                else if (be.Sources.Count == 1)
+                                {
+                                    var only = be.Sources.Values.Single();
+                                    @L["Breakeven_Needed", FormatEuro(only), FormatEuro(only / be.RemainingMonths)]
+                                }
+                                else
+                                {
+                                    @L["Breakeven_NeededBySource"]
+                                    @string.Join("; ", be.Sources.Select(kv => L["Breakeven_SourcePart", kv.Key, FormatEuro(kv.Value), FormatEuro(kv.Value / be.RemainingMonths)].Value))
+                                }
+                            </p>
+                        }
                         <div class="table-responsive mt-3">
                             <table class="table table-sm mb-0">
                                 <thead>
@@ -346,8 +374,8 @@ else
             .ToList();
 
     /// <summary>"budget" (default) projects income from the selected budget's monthly income
-    /// amounts (per-category, with seasonality intact). "breakeven" derives income at the level
-    /// needed to cover budgeted expenses, attributed by contribution split. "recent" repeats
+    /// amounts (per-category, with seasonality intact). "breakeven" derives the income that brings
+    /// the balance line back to its starting balance by year end, split by contribution split. "recent" repeats
     /// each income category's last completed calendar month flat across the projected months
     /// for stress-testing.</summary>
     private string incomeProjectionMode = "budget";
@@ -1028,9 +1056,17 @@ else
         return Task.CompletedTask;
     }
 
+    /// <summary>The last "breakeven" projection, shown in the note under the balance chart; null in other modes.</summary>
+    private BreakevenIncome? breakeven;
+
     private void ApplyIncomeProjection()
     {
-        if (firstProjectedMonth > 12) return;
+        breakeven = null;
+        if (firstProjectedMonth > 12)
+        {
+            if (incomeProjectionMode == "breakeven") breakeven = new BreakevenIncome();
+            return;
+        }
 
         if (incomeProjectionMode == "budget")
         {
@@ -1067,69 +1103,14 @@ else
             return;
         }
 
-        // "breakeven" mode: per-source prepayment math. Each source's annual obligation is
-        // (annual expenses × its split%); attributed what-ifs count toward THAT source's
-        // remaining obligation only — not the global pool — so one person prepaying their
-        // share doesn't shift the burden onto the others. Annual split is preserved as long
-        // as nobody overpays their target. Future months are filled with the per-source
-        // remainder spread flat across the projection window.
-        //
-        // We unconditionally overwrite future MonthlyAmounts (even when remaining is zero)
-        // so a previous run's what-if mutation doesn't linger after the user removes it.
-        int remainingMonths = 13 - firstProjectedMonth;
-
-        decimal whatIfExpenseTotal = 0m;
-        var whatIfIncomeBySource = new Dictionary<string, decimal>();
-        foreach (var w in whatIfs)
-        {
-            var key = w.ParseCategory();
-            if (key == null) continue;
-            if (w.Amount == 0m) continue;
-            if (w.Date.Year != selectedYear) continue;
-            var incomeRow = incomeCategories.FirstOrDefault(c =>
-                c.CategoryId == key.Value.Id && c.ItemType == key.Value.Type && c.IsAggregateRow);
-            if (incomeRow != null)
-            {
-                whatIfIncomeBySource.TryGetValue(incomeRow.CategoryName, out var prev);
-                whatIfIncomeBySource[incomeRow.CategoryName] = prev + w.Amount;
-                continue;
-            }
-            if (expenseCategories.Any(c =>
-                c.CategoryId == key.Value.Id && c.ItemType == key.Value.Type && c.IsAggregateRow))
-            {
-                // ApplyWhatIfsToCategories stores -Amount on expense rows, so a negative
-                // (outflow) what-if raises annual expenses by |Amount|. Mirror that here.
-                whatIfExpenseTotal += -w.Amount;
-            }
-        }
-
-        // Aggregate expense rows currently carry actuals + self-corrected projection (the
-        // pre-pass in LoadOneProjectCashflowSliceAsync). Expense what-ifs are layered on
-        // afterwards by ApplyWhatIfsToCategories, so add their contribution here to land
-        // on the post-what-if annual expense target.
-        decimal annualExpenseTarget = expenseCategories
-            .Where(c => c.IsAggregateRow)
-            .Sum(c => c.MonthlyAmounts.Sum()) + whatIfExpenseTotal;
-
-        foreach (var income in incomeCategories)
-        {
-            var split = contributionSplits.GetValueOrDefault(income.CategoryName, 0m);
-            decimal perMonth = 0m;
-            if (income.IsAggregateRow && split > 0m && remainingMonths > 0)
-            {
-                decimal sourceAnnualTarget = annualExpenseTarget * (split / 100m);
-                decimal sourceYtd = 0m;
-                for (int m = 0; m < firstProjectedMonth - 1; m++)
-                    sourceYtd += income.MonthlyAmounts[m];
-                decimal sourceWhatIfs = whatIfIncomeBySource.GetValueOrDefault(income.CategoryName, 0m);
-                decimal sourceRemaining = Math.Max(0m, sourceAnnualTarget - sourceYtd - sourceWhatIfs);
-                perMonth = sourceRemaining / remainingMonths;
-            }
-            for (int m = firstProjectedMonth - 1; m < 12; m++)
-            {
-                income.MonthlyAmounts[m] = perMonth;
-            }
-        }
+        // "breakeven" mode: income that brings the balance line back to its starting balance
+        // by year end, split by contribution split (see CashflowCalculator.ComputeBreakevenIncome).
+        // Future months are always overwritten so an earlier pass's what-ifs don't linger.
+        breakeven = CashflowCalculator.ComputeBreakevenIncome(
+            cachedDeltaResult ?? new ProjectDailyDeltaResult(), selectedYear, Clock.NowLocal.Year, firstProjectedMonth,
+            incomeCategories, expenseCategories, cachedHistograms, whatIfs, contributionSplits, cachedScheduled);
+        for (int i = 0; i < incomeCategories.Count; i++)
+            Array.Copy(breakeven.RowMonthly[i], incomeCategories[i].MonthlyAmounts, 12);
     }
 
     private void RecomputeTotals()

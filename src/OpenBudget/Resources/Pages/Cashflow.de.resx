@@ -182,7 +182,7 @@
     <value>Auf Kostendeckung</value>
   </data>
   <data name="Projection_Breakeven_Help" xml:space="preserve">
-    <value>Künftige Monate zeigen Einnahmen auf dem Niveau, das nötig ist, um die budgetierten Ausgaben zu decken.</value>
+    <value>Künftige Monate zeigen Einnahmen auf dem Niveau, das nötig ist, damit der Kontostand das Jahr mit seinem Anfangsstand beendet.</value>
   </data>
   <data name="Projection_Budget" xml:space="preserve">
     <value>Aus dem Budget</value>
@@ -219,5 +219,23 @@
   </data>
   <data name="Balance_ScheduledLink" xml:space="preserve">
     <value>Geplante Zahlungen anzeigen</value>
+  </data>
+  <data name="Breakeven_Needed" xml:space="preserve">
+    <value>Für Kostendeckung fehlen bis Jahresende noch {0} Einnahmen ({1} pro Monat).</value>
+  </data>
+  <data name="Breakeven_NeededBySource" xml:space="preserve">
+    <value>Für Kostendeckung fehlen bis Jahresende noch Einnahmen: </value>
+  </data>
+  <data name="Breakeven_SourcePart" xml:space="preserve">
+    <value>{0} {1} ({2} pro Monat)</value>
+  </data>
+  <data name="Breakeven_NothingNeeded" xml:space="preserve">
+    <value>Für Kostendeckung sind dieses Jahr keine weiteren Einnahmen nötig: Der Kontostand endet bereits auf oder über dem Anfangsstand.</value>
+  </data>
+  <data name="Breakeven_YearOver" xml:space="preserve">
+    <value>Das Jahr ist vorbei; für Kostendeckung sind keine weiteren Einnahmen eingeplant.</value>
+  </data>
+  <data name="Breakeven_NoSplits" xml:space="preserve">
+    <value>Lege Beitragsanteile für die Einnahmequellen fest, um kostendeckende Einnahmen zu berechnen.</value>
   </data>
 </root>

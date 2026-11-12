@@ -329,4 +329,128 @@ public static class CashflowCalculator
             futureMinBalance, futureMinDayOfYear, firstFutureNegativeDayOfYear,
             currentBalanceForYear, currentlyNegative);
     }
+
+    /// <summary>
+    /// "Pace to break even" income: the income each split source still has to bring in so the
+    /// balance line (the project's In-cashflow accounts) ends the selected year at the balance it
+    /// started it with. The need is measured on the line itself: the line is computed with no
+    /// projected income beyond the standing orders already in each row, and the gap between its
+    /// year-end value and the starting balance is the income still required. That gap is split by
+    /// <paramref name="splits"/> (percent per income source name); each source's income what-ifs
+    /// in the year count toward its own share only. Shares never go below zero.
+    /// Returns per source name the remaining amount and the flat monthly amount over the
+    /// projected months, plus the monthly amounts to write into each income row
+    /// (<see cref="BreakevenIncome.RowMonthly"/>, indexed like <paramref name="incomeCategories"/>).
+    /// </summary>
+    public static BreakevenIncome ComputeBreakevenIncome(
+        ProjectDailyDeltaResult data,
+        int selectedYear,
+        int currentYear,
+        int firstProjectedMonth,
+        IReadOnlyList<CategoryCashflow> incomeCategories,
+        IReadOnlyList<CategoryCashflow> expenseCategories,
+        IReadOnlyDictionary<(long, CategoryItemType), DayOfMonthDistribution>? histograms,
+        IReadOnlyList<WhatIfEntry> whatIfs,
+        IReadOnlyDictionary<string, decimal> splits,
+        ScheduledCashflow? scheduled = null)
+    {
+        int remainingMonths = Math.Max(0, 13 - firstProjectedMonth);
+
+        // Income rows carry only their actuals and, in projected months, the standing orders
+        // already booked on their execution days.
+        var baseIncome = incomeCategories.Select(c =>
+        {
+            var row = CopyRow(c);
+            for (int m = firstProjectedMonth; m <= 12; m++)
+                row.MonthlyAmounts[m - 1] = Math.Max(0m, Covered(scheduled, c, m));
+            return row;
+        }).ToList();
+        var expenses = expenseCategories.Select(CopyRow).ToList();
+
+        // What-ifs: income what-ifs of a split source are that source's prepayments and stay out
+        // of the baseline; every other what-if is part of it (expense what-ifs on their rows,
+        // the rest as the line's raw deltas).
+        var whatIfBySource = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        var baselineWhatIfs = new List<WhatIfEntry>();
+        foreach (var w in whatIfs)
+        {
+            var key = w.ParseCategory();
+            if (key != null && w.Amount != 0m && w.Date.Year == selectedYear)
+            {
+                var incomeRow = incomeCategories.FirstOrDefault(c =>
+                    c.CategoryId == key.Value.Id && c.ItemType == key.Value.Type && c.IsAggregateRow);
+                if (incomeRow != null && splits.GetValueOrDefault(incomeRow.CategoryName, 0m) > 0m)
+                {
+                    whatIfBySource[incomeRow.CategoryName] = whatIfBySource.GetValueOrDefault(incomeRow.CategoryName) + w.Amount;
+                    continue;
+                }
+                int idx = w.Date.Month - 1;
+                var target = baseIncome.FirstOrDefault(c => c.CategoryId == key.Value.Id && c.ItemType == key.Value.Type && c.IsAggregateRow);
+                var exp = expenses.FirstOrDefault(c => c.CategoryId == key.Value.Id && c.ItemType == key.Value.Type && c.IsAggregateRow);
+                if (target is not null)
+                    target.MonthlyAmounts[idx] += w.Amount;
+                else
+                    exp?.MonthlyAmounts[idx] += -w.Amount;
+            }
+            baselineWhatIfs.Add(w);
+        }
+
+        var result = new BreakevenIncome { RemainingMonths = remainingMonths };
+        if (data.HasAccounts && remainingMonths > 0)
+        {
+            var baseline = ComputeBalance(data, selectedYear, currentYear, firstProjectedMonth,
+                baseIncome, expenses, histograms, baselineWhatIfs, 0m, scheduled);
+            decimal yearEnd = baseline.BalanceDaily.Length > 0 ? baseline.BalanceDaily[^1] : data.StartingBalance;
+            result.Needed = data.StartingBalance - yearEnd;
+        }
+
+        foreach (var c in incomeCategories)
+        {
+            var split = splits.GetValueOrDefault(c.CategoryName, 0m);
+            if (!c.IsAggregateRow || split <= 0m || result.Sources.ContainsKey(c.CategoryName)) continue;
+            decimal remaining = remainingMonths > 0
+                ? Math.Max(0m, result.Needed * split / 100m - whatIfBySource.GetValueOrDefault(c.CategoryName))
+                : 0m;
+            result.Sources[c.CategoryName] = remaining;
+        }
+
+        // A source's share goes onto its first aggregate row only.
+        var placed = new HashSet<string>(StringComparer.Ordinal);
+        result.RowMonthly = incomeCategories.Select((c, i) =>
+        {
+            var monthly = (decimal[])baseIncome[i].MonthlyAmounts.Clone();
+            // Rows start from the pre-what-if amounts; ApplyWhatIfsToCategories layers what-ifs later.
+            for (int m = 0; m < firstProjectedMonth - 1 && m < 12; m++) monthly[m] = c.MonthlyAmounts[m];
+            decimal perMonth = c.IsAggregateRow && result.Sources.TryGetValue(c.CategoryName, out var r)
+                && remainingMonths > 0 && placed.Add(c.CategoryName)
+                ? r / remainingMonths : 0m;
+            for (int m = firstProjectedMonth; m <= 12; m++)
+                monthly[m - 1] = Math.Max(0m, Covered(scheduled, c, m)) + perMonth;
+            return monthly;
+        }).ToList();
+        return result;
+    }
+
+    private static CategoryCashflow CopyRow(CategoryCashflow c) => new()
+    {
+        CategoryId = c.CategoryId,
+        ItemType = c.ItemType,
+        CategoryName = c.CategoryName,
+        MonthlyAmounts = (decimal[])c.MonthlyAmounts.Clone(),
+        IsAggregateRow = c.IsAggregateRow,
+        OriginProjectId = c.OriginProjectId,
+        OriginProjectName = c.OriginProjectName,
+    };
+}
+
+/// <summary>Result of <see cref="CashflowCalculator.ComputeBreakevenIncome"/>.</summary>
+public sealed class BreakevenIncome
+{
+    /// <summary>Income the balance line still needs by year end to close at its starting balance (negative when it already ends above).</summary>
+    public decimal Needed { get; set; }
+    public int RemainingMonths { get; set; }
+    /// <summary>Remaining income per split source (never negative).</summary>
+    public Dictionary<string, decimal> Sources { get; } = new(StringComparer.Ordinal);
+    /// <summary>Monthly amounts per income row, in the order of the rows passed in.</summary>
+    public List<decimal[]> RowMonthly { get; set; } = [];
 }

@@ -182,7 +182,7 @@
     <value>Pace to break even</value>
   </data>
   <data name="Projection_Breakeven_Help" xml:space="preserve">
-    <value>Future months show income at the level needed to cover budgeted expenses.</value>
+    <value>Future months show income at the level needed for the balance to end the year at its starting balance.</value>
   </data>
   <data name="Projection_Budget" xml:space="preserve">
     <value>From budget</value>
@@ -219,5 +219,23 @@
   </data>
   <data name="Balance_ScheduledLink" xml:space="preserve">
     <value>Show scheduled payments</value>
+  </data>
+  <data name="Breakeven_Needed" xml:space="preserve">
+    <value>Break even needs {0} more income by year end ({1} per month).</value>
+  </data>
+  <data name="Breakeven_NeededBySource" xml:space="preserve">
+    <value>Break even needs more income by year end: </value>
+  </data>
+  <data name="Breakeven_SourcePart" xml:space="preserve">
+    <value>{0} {1} ({2} per month)</value>
+  </data>
+  <data name="Breakeven_NothingNeeded" xml:space="preserve">
+    <value>Break even needs no more income this year: the balance already ends the year at or above its starting balance.</value>
+  </data>
+  <data name="Breakeven_YearOver" xml:space="preserve">
+    <value>The year is over; break even needs no more projected income.</value>
+  </data>
+  <data name="Breakeven_NoSplits" xml:space="preserve">
+    <value>Set contribution splits for the income sources to project break-even income.</value>
   </data>
 </root>
