@@ -34,6 +34,45 @@ public class TransactionQueryServiceTests
     }
 
     [Fact]
+    public async Task IncludeUncategorized_adds_uncategorized_and_pending_rows_of_the_given_accounts()
+    {
+        await using var t = new TestDb();
+        t.AddGroup(100);
+        t.AddLeaf(101, parent: 100);
+        t.AddLeaf(102, parent: 100); // not tracked
+        t.AddAccount(7);
+        t.AddAccount(8);
+        t.Db.Categories.Add(new Category { Id = 1, SourceId = 1, Name = "" });
+        t.AddTransaction(id: 1, categoryId: 101, amountCents: -1000, date: new DateTime(2026, 5, 1), accountId: 7);
+        t.AddTransaction(id: 2, categoryId: 102, amountCents: -2000, date: new DateTime(2026, 5, 2), accountId: 7);
+        t.AddTransaction(id: 3, categoryId: 1, amountCents: -4000, date: new DateTime(2026, 5, 3), accountId: 7);
+        t.AddTransaction(id: 4, categoryId: 1, amountCents: -8000, date: new DateTime(2026, 5, 4), accountId: 8);
+        await t.Db.SaveChangesAsync();
+        t.Db.Transactions.Add(new Transaction { Id = 5, SourceId = 1, AccountId = 7, CategoryId = null, Amount = -500, Timestamp = 1, Booked = false });
+        await t.Db.SaveChangesAsync();
+
+        var scoped = await t.TransactionQueries.QueryAsync(new TransactionQuery
+        {
+            SourceId = 1,
+            CategoryLeafIds = new[] { 101L },
+            IncludeUncategorized = true,
+            UncategorizedAccountIds = new[] { 7L },
+        });
+        Assert.Equal(new long[] { 1, 3, 5 }, scoped.Rows.Select(r => r.Id).OrderBy(i => i).ToArray());
+        Assert.True(scoped.Rows.Single(r => r.Id == 5).IsPending);
+        Assert.Equal(-55m, scoped.TotalSum);
+
+        // No assigned accounts: the whole source's uncategorized rows; no tracked categories: only those.
+        var whole = await t.TransactionQueries.QueryAsync(new TransactionQuery
+        {
+            SourceId = 1,
+            CategoryLeafIds = Array.Empty<long>(),
+            IncludeUncategorized = true,
+        });
+        Assert.Equal(new long[] { 3, 4, 5 }, whole.Rows.Select(r => r.Id).OrderBy(i => i).ToArray());
+    }
+
+    [Fact]
     public async Task Split_parent_rows_are_excluded()
     {
         await using var t = new TestDb();

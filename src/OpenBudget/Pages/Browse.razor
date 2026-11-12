@@ -1203,6 +1203,10 @@
     {
         SourceId = project!.SourceId,
         UncategorizedOnly = selectionKind == "uncategorized",
+        // "Transactions" lists the tracked categories' bookings plus the uncategorized ones (pending rows mostly are) of the
+        // project's accounts, scoped like the Uncategorized entry.
+        IncludeUncategorized = selectionKind == "all",
+        UncategorizedAccountIds = selectionKind == "all" ? ProjectAccountIds() : null,
         CategoryLeafIds = categoryFilter is { } cf && IsAccountScope ? new[] { cf } : await ResolveSelectionLeavesAsync(),
         AccountIds = ResolveSelectionAccounts(),
         SearchText = string.IsNullOrWhiteSpace(searchEffective) ? null : searchEffective,
@@ -1414,13 +1418,16 @@
         return null;
     }
 
+    /// <summary>The project's assigned accounts; empty when it has none (it then covers its whole source).</summary>
+    private List<long> ProjectAccountIds() => tree?.Accounts.Where(a => a.IsAssigned).Select(a => a.Id).ToList() ?? [];
+
     private IReadOnlyCollection<long>? ResolveSelectionAccounts()
     {
         if (selectionKind == "account" && selectionId is { } aid) return new[] { aid };
         if (selectionKind == "accountgroup") return GroupAccounts()?.Select(a => a.Id).ToList() ?? [];
         if (accountFilter is { } af) return new[] { af };
         // Uncategorized covers the project's own accounts, not every account of its source (none assigned: the whole source).
-        if (selectionKind == "uncategorized" && tree != null) return tree.Accounts.Where(a => a.IsAssigned).Select(a => a.Id).ToList();
+        if (selectionKind == "uncategorized" && tree != null) return ProjectAccountIds();
         return null;
     }
 

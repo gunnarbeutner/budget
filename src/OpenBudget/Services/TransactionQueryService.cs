@@ -191,6 +191,17 @@ public class TransactionQueryService
         {
             baseQuery = baseQuery.WhereUncategorized(db, query.SourceId);
         }
+        else if (query.IncludeUncategorized && query.CategoryLeafIds is { } trackedLeaves)
+        {
+            var sourceId = query.SourceId;
+            var leafList = trackedLeaves.ToList();
+            var uncatAccounts = query.UncategorizedAccountIds is { Count: > 0 } ua ? ua.ToList() : null;
+            baseQuery = baseQuery.Where(t =>
+                (t.CategoryId.HasValue && leafList.Contains(t.CategoryId.Value))
+                || ((t.CategoryId == null
+                        || !db.Categories.Any(c => c.SourceId == sourceId && c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)))
+                    && (uncatAccounts == null || (t.AccountId.HasValue && uncatAccounts.Contains(t.AccountId.Value)))));
+        }
         else if (query.CategoryLeafIds is { Count: > 0 } leafIds)
         {
             var leafList = leafIds.ToList();

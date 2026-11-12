@@ -21,6 +21,15 @@ public class TransactionQuery
     /// Takes precedence over <see cref="CategoryLeafIds"/>.
     /// </summary>
     public bool UncategorizedOnly { get; init; }
+
+    /// <summary>
+    /// With <see cref="CategoryLeafIds"/> set (even empty): uncategorized rows match too, limited to
+    /// <see cref="UncategorizedAccountIds"/> when that is non-empty. The project's "Transactions" view.
+    /// </summary>
+    public bool IncludeUncategorized { get; init; }
+
+    /// <summary>Accounts whose uncategorized rows <see cref="IncludeUncategorized"/> adds; null or empty = any account.</summary>
+    public IReadOnlyCollection<long>? UncategorizedAccountIds { get; init; }
     public TimeRangeFilter? Period { get; init; }
     public string? SearchText { get; init; }
     public decimal? MinAbsAmount { get; init; }
