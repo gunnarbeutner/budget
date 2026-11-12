@@ -116,8 +116,9 @@ public sealed class BankSyncRunner
         _logger = loggers.CreateLogger<BankSyncRunner>();
     }
 
-    public static string EncodeCredentials(SecretsProtector secrets, string username, string secret) =>
-        secrets.Encrypt(JsonSerializer.Serialize(new CredentialsDto(username, secret)), CredentialsPurpose);
+    public static string EncodeCredentials(SecretsProtector secrets, string username, string secret, IReadOnlyDictionary<string, string>? extra = null) =>
+        secrets.Encrypt(JsonSerializer.Serialize(new CredentialsDto(username, secret,
+            extra is { Count: > 0 } ? new Dictionary<string, string>(extra, StringComparer.Ordinal) : null)), CredentialsPurpose);
 
     public static ConnectorCredentials? DecodeCredentials(SecretsProtector secrets, string? payload)
     {
@@ -125,7 +126,7 @@ public sealed class BankSyncRunner
         try
         {
             var dto = JsonSerializer.Deserialize<CredentialsDto>(json);
-            return dto == null ? null : new ConnectorCredentials(dto.Username, dto.Secret);
+            return dto == null ? null : new ConnectorCredentials(dto.Username, dto.Secret, dto.Extra);
         }
         catch (JsonException)
         {
@@ -133,7 +134,9 @@ public sealed class BankSyncRunner
         }
     }
 
-    private sealed record CredentialsDto(string Username, string Secret);
+    private sealed record CredentialsDto(
+        string Username, string Secret,
+        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] Dictionary<string, string>? Extra = null);
 
     public async Task<SyncOutcome> RunAsync(SyncRequest request, ISyncSink sink, CancellationToken ct)
     {

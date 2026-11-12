@@ -152,7 +152,7 @@
     <value>Kraken-Guthaben als ein Depotkonto, jedes Asset eine Position mit Wert in EUR (Euro zu 1,00). Verwende einen schreibgeschützten API-Schlüssel: auf kraken.com unter Einstellungen › API › API-Schlüssel erstellen nur „Query Funds“ und „Query Ledger Entries“ erlauben. Den API-Schlüssel als Benutzername und den privaten Schlüssel (Private Key) als PIN/Passwort eintragen.</value>
   </data>
   <data name="ConnectorDescription_paypal" xml:space="preserve">
-    <value>Privates PayPal-Konto (paypal.com): Guthaben je Währung und Zahlungen aus PayPals Aktivitäten-Download. Anmeldung mit PayPal-E-Mail-Adresse und Passwort; die Sicherheitsprüfung (SMS-Code, Bestätigung in der App) erledigst du auf der PayPal-Seite.</value>
+    <value>Privates PayPal-Konto (paypal.com): Guthaben je Währung und Zahlungen aus PayPals Aktivitäten-Download. Anmeldung mit PayPal-E-Mail-Adresse und Passwort; die Sicherheitsprüfung (SMS-Code, Bestätigung in der App) erledigst du auf der PayPal-Seite. Optional kannst du einen TOTP-Schlüssel speichern; dann wird der Authenticator-Code automatisch eingegeben und Synchronisierungen laufen ohne dich: in PayPal unter Einstellungen › Sicherheit › 2-Schritt-Verifizierung eine Authenticator-App hinzufügen und „Scannen nicht möglich?“ wählen, um den Schlüssel zu sehen (ein otpauth://-Link geht auch); trag ihn auch in deine Authenticator-App ein. Abwägung: Wer an die auf diesem Server gespeicherten Zugangsdaten kommt, hat dann beide Faktoren deines PayPal-Kontos.</value>
   </data>
   <data name="Accounts_Heading" xml:space="preserve">
     <value>Konten</value>
@@ -264,5 +264,14 @@
   </data>
   <data name="Pill_Attention" xml:space="preserve">
     <value>Prüfen nötig</value>
+  </data>
+  <data name="Field_ExtraKeep" xml:space="preserve">
+    <value>(gespeichert; leer lassen zum Beibehalten)</value>
+  </data>
+  <data name="Field_ExtraRemove" xml:space="preserve">
+    <value>Gespeicherten Wert entfernen</value>
+  </data>
+  <data name="CredentialField_paypal_totp" xml:space="preserve">
+    <value>TOTP-Schlüssel (optional)</value>
   </data>
 </root>

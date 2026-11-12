@@ -123,7 +123,28 @@ public sealed class WebLoginSpec
 }
 
 /// <summary>A code field (or one field per digit) and its submit button on a known security-check path.</summary>
-public sealed record WebLoginCodePrompt(string PathPrefix, string FieldSelector, string SubmitSelector, string Message, int Length = 6, bool Numeric = true);
+public sealed record WebLoginCodePrompt(string PathPrefix, string FieldSelector, string SubmitSelector, string Message, int Length = 6, bool Numeric = true)
+{
+    /// <summary>
+    /// The login's authenticator-app secret: the form gets the current TOTP code and is submitted without asking. When the
+    /// form is shown again afterwards (the code was rejected), the code of the adjacent time window is tried once; after
+    /// that the shared code prompt takes over with <see cref="TotpRejectedMessage"/>. Never logged.
+    /// </summary>
+    public TotpSecret? Totp { get; init; }
+
+    /// <summary>
+    /// The site's "use the authenticator app" choice on a security-check page that offers several methods (selectors,
+    /// Puppeteer text selectors included): with a <see cref="Totp"/> secret, the first visible one is clicked once, followed
+    /// by <see cref="SubmitSelector"/> when visible.
+    /// </summary>
+    public IReadOnlyList<string> ChooseAuthenticator { get; init; } = [];
+
+    /// <summary>Put before <see cref="Message"/> when the stored secret's codes were not accepted.</summary>
+    public string TotpRejectedMessage { get; init; } = "The stored TOTP secret was not accepted.";
+
+    /// <summary>How long after submitting a TOTP code the form may still show before it counts as rejected.</summary>
+    public TimeSpan TotpSettle { get; init; } = TimeSpan.FromSeconds(5);
+}
 
 /// <summary>How a sign-in page shows that it rejected the credentials (see <see cref="WebLoginSpec.CredentialsError"/>).</summary>
 /// <param name="Selector">Candidate elements (e.g. "[role=alert]").</param>

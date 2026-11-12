@@ -16,7 +16,9 @@ public sealed record BankLoginView(
     DateTime? LastSyncAt,
     string? LastError,
     bool CredentialsInvalid,
-    string? Username);
+    string? Username,
+    IReadOnlyList<string>? StoredExtraCredentials = null);
+// StoredExtraCredentials: keys of the extra credential values that are stored (the values themselves never leave the server).
 
 public sealed record BankLoginAccountView(
     int Id,
@@ -117,13 +119,15 @@ public class BankLoginService
     private BankLoginView ToView(BankLogin l)
     {
         var registration = _registry.Find(l.ConnectorType);
-        var username = BankSyncRunner.DecodeCredentials(_secrets, l.EncryptedCredentials)?.Username;
+        var credentials = BankSyncRunner.DecodeCredentials(_secrets, l.EncryptedCredentials);
         return new BankLoginView(l.Id, l.ConnectorType, registration?.DisplayName ?? l.ConnectorType, registration != null,
-            l.DisplayName, l.RefreshInterval, l.LastSyncAt, l.LastError, l.CredentialsInvalid, username);
+            l.DisplayName, l.RefreshInterval, l.LastSyncAt, l.LastError, l.CredentialsInvalid, credentials?.Username,
+            credentials?.Extra.Where(e => e.Value.Length > 0).Select(e => e.Key).ToList() ?? []);
     }
 
     public async Task<BankLoginView> CreateLoginAsync(
-        string connectorType, string displayName, string username, string secret, RefreshInterval interval = RefreshInterval.EveryTwoHours, CancellationToken ct = default)
+        string connectorType, string displayName, string username, string secret, RefreshInterval interval = RefreshInterval.EveryTwoHours,
+        IReadOnlyDictionary<string, string>? extra = null, CancellationToken ct = default)
     {
         RequireEnabled();
         var userId = await RequireUserAsync();
@@ -138,6 +142,7 @@ public class BankLoginService
             if (string.IsNullOrWhiteSpace(username)) throw new ArgumentException("A username is required.", nameof(username));
             if (string.IsNullOrEmpty(secret)) throw new ArgumentException("A PIN or password is required.", nameof(secret));
         }
+        var extras = ApplyExtras(registration, new Dictionary<string, string>(StringComparer.Ordinal), extra);
 
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var login = new BankLogin
@@ -145,7 +150,7 @@ public class BankLoginService
             OwnerUserId = userId,
             ConnectorType = registration.ConnectorType,
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? registration.DisplayName : displayName.Trim(),
-            EncryptedCredentials = BankSyncRunner.EncodeCredentials(_secrets, username.Trim(), secret),
+            EncryptedCredentials = BankSyncRunner.EncodeCredentials(_secrets, username.Trim(), secret, extras),
             RefreshInterval = interval,
         };
         db.BankLogins.Add(login);
@@ -154,17 +159,23 @@ public class BankLoginService
         return ToView(login);
     }
 
-    /// <summary>Updates name and interval; a non-empty <paramref name="secret"/> and/or username re-enters the credentials and clears the "re-enter credentials" state.</summary>
+    /// <summary>
+    /// Updates name and interval; a non-empty <paramref name="secret"/>, username and/or extra value re-enters the
+    /// credentials and clears the "re-enter credentials" state. In <paramref name="extra"/> a non-empty value replaces the
+    /// stored one and an empty value removes it; keys left out keep theirs.
+    /// </summary>
     public async Task UpdateLoginAsync(
-        int id, string displayName, RefreshInterval interval, string? username = null, string? secret = null, CancellationToken ct = default)
+        int id, string displayName, RefreshInterval interval, string? username = null, string? secret = null,
+        IReadOnlyDictionary<string, string>? extra = null, CancellationToken ct = default)
     {
         var userId = await RequireUserAsync();
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var login = await db.BankLogins.FirstOrDefaultAsync(l => l.Id == id, ct) ?? throw new AccessDeniedException("Bank login not found.");
         if (!string.IsNullOrWhiteSpace(displayName)) login.DisplayName = displayName.Trim();
         login.RefreshInterval = interval;
-        var needsCredentials = _registry.Find(login.ConnectorType)?.Credentials != CredentialRequirement.None;
-        if (needsCredentials && (!string.IsNullOrWhiteSpace(username) || !string.IsNullOrEmpty(secret)))
+        var registration = _registry.Find(login.ConnectorType);
+        var needsCredentials = registration?.Credentials != CredentialRequirement.None;
+        if (needsCredentials && (!string.IsNullOrWhiteSpace(username) || !string.IsNullOrEmpty(secret) || extra is { Count: > 0 }))
         {
             RequireEnabled();
             var current = BankSyncRunner.DecodeCredentials(_secrets, login.EncryptedCredentials);
@@ -172,12 +183,39 @@ public class BankLoginService
             var newSecret = string.IsNullOrEmpty(secret) ? current?.Secret : secret;
             if (newUser == null || newSecret == null)
                 throw new ArgumentException("The stored credentials cannot be read; enter both username and PIN again.", nameof(secret));
-            login.EncryptedCredentials = BankSyncRunner.EncodeCredentials(_secrets, newUser, newSecret);
+            var extras = new Dictionary<string, string>(current?.Extra ?? new Dictionary<string, string>(StringComparer.Ordinal), StringComparer.Ordinal);
+            if (registration != null) ApplyExtras(registration, extras, extra);
+            login.EncryptedCredentials = BankSyncRunner.EncodeCredentials(_secrets, newUser, newSecret, extras);
             login.EncryptedSession = null;
             login.CredentialsInvalid = false;
         }
         await db.SaveChangesAsync(ct);
         Changed(userId);
+    }
+
+    /// <summary>Checks and applies entered extra credential values: unknown keys are ignored, empty values remove the stored one.</summary>
+    private static Dictionary<string, string> ApplyExtras(
+        ConnectorRegistration registration, Dictionary<string, string> stored, IReadOnlyDictionary<string, string>? entered)
+    {
+        if (entered == null || registration.Credentials == CredentialRequirement.None) return stored;
+        foreach (var field in registration.ExtraCredentials)
+        {
+            if (!entered.TryGetValue(field.Key, out var value)) continue;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                stored.Remove(field.Key);
+                continue;
+            }
+            try
+            {
+                stored[field.Key] = field.Accept(value);
+            }
+            catch (FormatException ex)
+            {
+                throw new ArgumentException(field.Label + ": " + ex.Message, nameof(entered), ex);
+            }
+        }
+        return stored;
     }
 
     /// <summary>

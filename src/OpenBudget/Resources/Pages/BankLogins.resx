@@ -152,7 +152,7 @@
     <value>Kraken balances as one depot account, every asset a position valued in EUR (euros at 1.00). Use a read-only API key: on kraken.com open Settings › API › Create API key and allow only “Query Funds” and “Query Ledger Entries”. Enter the API key as username and the private key as PIN/password.</value>
   </data>
   <data name="ConnectorDescription_paypal" xml:space="preserve">
-    <value>PayPal personal account (paypal.com): balance per currency and payments from PayPal's activity download. Sign in with your PayPal e-mail address and password; complete the security check (SMS code, app approval) on PayPal's page.</value>
+    <value>PayPal personal account (paypal.com): balance per currency and payments from PayPal's activity download. Sign in with your PayPal e-mail address and password; complete the security check (SMS code, app approval) on PayPal's page. Optionally store a TOTP secret so the authenticator code is entered automatically and syncs run unattended: in PayPal open Settings › Security › 2-step verification, add an authenticator app and choose "Can't scan?" to see the key (an otpauth:// link works too); add it to your authenticator app as well. Trade-off: whoever gets hold of the credentials stored on this server then has both factors of your PayPal account.</value>
   </data>
   <data name="Accounts_Heading" xml:space="preserve">
     <value>Accounts</value>
@@ -264,5 +264,14 @@
   </data>
   <data name="Pill_Attention" xml:space="preserve">
     <value>Needs attention</value>
+  </data>
+  <data name="Field_ExtraKeep" xml:space="preserve">
+    <value>(stored; leave empty to keep)</value>
+  </data>
+  <data name="Field_ExtraRemove" xml:space="preserve">
+    <value>Remove the stored value</value>
+  </data>
+  <data name="CredentialField_paypal_totp" xml:space="preserve">
+    <value>TOTP secret (optional)</value>
   </data>
 </root>

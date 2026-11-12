@@ -42,7 +42,8 @@ public sealed class PayPalOptions
 ///
 /// Sign-in: PayPal's sign-in page in the app's browser, a web login that keeps the browser (PayPal's session only works
 /// from it). The app fills the e-mail address and password, on one page or two, and clicks Log in; a second factor (SMS
-/// code, app approval, security key) is completed by the user on that page. The cookie banner is declined (only
+/// code, app approval, security key) is completed by the user on that page, except an authenticator-app code when the
+/// login stores a TOTP secret: then the app picks the authenticator option and enters the code itself. The cookie banner is declined (only
 /// necessary cookies). The login counts as done on the signed-in account summary. With stored cookies the summary is
 /// tried first, so a session PayPal still accepts needs no sign-in.
 ///
@@ -57,6 +58,14 @@ public sealed class PayPalConnector : IBankConnector
     public const string TypeName = "paypal";
     internal const string WebLoginReference = "paypal-web-login";
     internal const string CurrenciesKey = "currencies";
+
+    /// <summary>The optional authenticator-app secret among the login's credentials.</summary>
+    internal const string TotpKey = "totp";
+
+    /// <summary>PayPal's "authenticator app" option where the security check offers several methods.</summary>
+    internal static readonly string[] AuthenticatorChoiceSelectors =
+        ["input[type=radio][value*=SOFTWARE_TOKEN i]", "input[type=radio][value*=AUTHENTICATOR i]",
+         "label::-p-text(Authenticator)", "label::-p-text(Authentifizierungs)"];
 
     internal const string EmailSelector = "#email, input[name=login_email]";
     internal const string NextSelector = "#btnNext";
@@ -95,10 +104,21 @@ public sealed class PayPalConnector : IBankConnector
     public static ConnectorRegistration CreateRegistration(PayPalOptions options) => new(
         TypeName,
         "PayPal",
-        "PayPal personal account (paypal.com): balance per currency and payments from PayPal's activity download. Sign in with your PayPal e-mail address and password: the app fills them in on PayPal's own sign-in page, where you complete a security check (SMS code, app approval) yourself.",
+        "PayPal personal account (paypal.com): balance per currency and payments from PayPal's activity download. Sign in with your PayPal e-mail address and password: the app fills them in on PayPal's own sign-in page, where you complete a security check (SMS code, app approval) yourself. Optionally store a TOTP secret so the authenticator code is entered automatically and syncs run unattended: in PayPal open Settings › Security › 2-step verification, add an authenticator app and choose \"Can't scan?\" to see the key (an otpauth:// link works too). Trade-off: whoever gets hold of the credentials stored on this server then has both factors of your PayPal account.",
         ctx => new PayPalConnector(ctx, options),
         CredentialRequirement.UsernameAndSecret,
-        Statements: false);
+        Statements: false)
+    {
+        ExtraCredentials = [new CredentialField(TotpKey, "TOTP secret (optional)", Normalize: NormalizeTotp)],
+    };
+
+    /// <summary>A usable secret is stored as entered (trimmed); <see cref="TotpSecret.Parse"/> reads it at sign-in.</summary>
+    private static string NormalizeTotp(string value)
+    {
+        var trimmed = value.Trim();
+        TotpSecret.Parse(trimmed);
+        return trimmed;
+    }
 
     public string ConnectorType => TypeName;
 
@@ -122,7 +142,11 @@ public sealed class PayPalConnector : IBankConnector
         SuccessCheck = SignedInCheck,
         CodePrompt = new WebLoginCodePrompt("/authflow/",
             "input[autocomplete=one-time-code], input[inputmode=numeric][maxlength='1'], input[type=tel][maxlength='1']",
-            "button[type=submit], input[type=submit]", "Enter the six-digit security code from PayPal or your authenticator app."),
+            "button[type=submit], input[type=submit]", "Enter the six-digit security code from PayPal or your authenticator app.")
+        {
+            Totp = TotpSecret.TryParse(credentials?.ExtraValue(TotpKey), out var totp) ? totp : null,
+            ChooseAuthenticator = AuthenticatorChoiceSelectors,
+        },
         WaitingScript = "() => ({ ok: !location.pathname.startsWith('/authflow/'), reason: 'Complete the security check on the PayPal page.' })",
         Dismiss = DismissSelectors,
         CredentialsError = new WebLoginError(CredentialsErrorSelector, CredentialsErrorTexts, CredentialsRejectedMessage),

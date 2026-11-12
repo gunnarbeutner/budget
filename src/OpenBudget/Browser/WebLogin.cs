@@ -461,18 +461,53 @@ public sealed class WebLoginSession : IAsyncDisposable
     private bool _codePromptDisabled;
     private DateTime? _codeSubmittedAt;
 
+    // codes entered from the stored TOTP secret; once they were rejected the shared prompt takes over
+    private int _totpAttempts;
+    private bool _totpRejected;
+    private bool _authenticatorChosen;
+
     private async Task<bool> HandleCodePromptAsync(Uri url, CancellationToken ct)
     {
-        if (_codePromptDisabled || AskForCode == null || _spec.CodePrompt is not { } form
-            || !IsCodePage(url, form)) return false;
-        if (_codeSubmittedAt is { } submitted && DateTime.UtcNow - submitted < TimeSpan.FromSeconds(2)) return true;
+        if (_codePromptDisabled || _spec.CodePrompt is not { } form || !IsCodePage(url, form)) return false;
+        var totp = _totpRejected ? null : form.Totp;
+        if (AskForCode == null && totp == null) return false;
+        var settle = _totpAttempts > 0 && !_totpRejected ? form.TotpSettle : TimeSpan.FromSeconds(2);
+        if (_codeSubmittedAt is { } submitted && DateTime.UtcNow - submitted < settle) return true;
+        if (totp != null && !_authenticatorChosen && form.ChooseAuthenticator.Count > 0 && !await _browser.IsVisibleAsync(form.FieldSelector))
+            return await ChooseAuthenticatorAsync(form, ct);
         if (!await _browser.IsVisibleAsync(form.FieldSelector) || !await _browser.IsVisibleAsync(form.SubmitSelector)) return false;
+
         string code;
-        do
+        var fromSecret = false;
+        string? notice = null;
+        if (totp != null && TotpDecision.Next(_totpAttempts, totp, Clock.GetUtcNow()) is { } generated)
         {
-            var answer = await AskForCode(ConnectorChallenge.Code(form.Message, form.Length, form.Numeric, Id), ct);
-            code = answer?.Value?.Trim() ?? throw new BrowserActionException("The security code was not provided in time.");
-        } while (code.Length != form.Length || form.Numeric && !code.All(char.IsAsciiDigit));
+            code = generated;
+            fromSecret = true;
+            _totpAttempts++;
+            _logger.LogInformation("Web login: entering the authenticator code from the stored TOTP secret (attempt {Attempt}).", _totpAttempts);
+        }
+        else
+        {
+            if (totp != null)
+            {
+                _totpRejected = true;
+                notice = form.TotpRejectedMessage;
+                _logger.LogWarning("Web login: the site did not accept the codes from the stored TOTP secret.");
+                if (AskForCode == null)
+                {
+                    _codePromptDisabled = true;
+                    ShowPage(notice, notify: true);
+                    return true;
+                }
+            }
+            var message = notice == null ? form.Message : notice + " " + form.Message;
+            do
+            {
+                var answer = await AskForCode!(ConnectorChallenge.Code(message, form.Length, form.Numeric, Id), ct);
+                code = answer?.Value?.Trim() ?? throw new BrowserActionException("The security code was not provided in time.");
+            } while (code.Length != form.Length || form.Numeric && !code.All(char.IsAsciiDigit));
+        }
         if (!IsCodePage(_browser.Url, form) || !await _browser.FillCodeAsync(form.FieldSelector, code) || !await ClickWhenReadyAsync(form.SubmitSelector, ct))
         {
             _codePromptDisabled = true;
@@ -481,8 +516,24 @@ public sealed class WebLoginSession : IAsyncDisposable
         }
         _codeSubmittedAt = DateTime.UtcNow;
         // Restore the web-login status after the shared code challenge, even when the mode was already Waiting.
-        SetMode(WebLoginMode.Waiting, notify: true);
+        SetMode(WebLoginMode.Waiting, notify: !fromSecret);
         return true;
+    }
+
+    /// <summary>Picks the authenticator app on a page that offers several methods (once); true when something was clicked.</summary>
+    private async Task<bool> ChooseAuthenticatorAsync(WebLoginCodePrompt form, CancellationToken ct)
+    {
+        foreach (var selector in form.ChooseAuthenticator)
+        {
+            if (!await _browser.IsVisibleAsync(selector)) continue;
+            _authenticatorChosen = true;
+            if (!await _browser.ClickAsync(selector)) return false;
+            _logger.LogInformation("Web login: chose the authenticator app as the security check.");
+            if (await _browser.IsVisibleAsync(form.SubmitSelector)) await ClickWhenReadyAsync(form.SubmitSelector, ct);
+            _codeSubmittedAt = DateTime.UtcNow;
+            return true;
+        }
+        return false;
     }
 
     private bool IsCodePage(Uri url, WebLoginCodePrompt form) =>

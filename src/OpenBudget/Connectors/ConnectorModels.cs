@@ -112,11 +112,17 @@ public sealed record RemoteStatement(string Identifier, string? AccountRemoteId,
 /// <summary>The decrypted credentials of a bank login. Never log or persist this unencrypted.</summary>
 public sealed class ConnectorCredentials
 {
-    public ConnectorCredentials(string username, string secret)
+    public ConnectorCredentials(string username, string secret, IReadOnlyDictionary<string, string>? extra = null)
     {
         Username = username;
         Secret = secret;
+        Extra = extra ?? new Dictionary<string, string>(StringComparer.Ordinal);
     }
+
+    /// <summary>The connector's extra credential values (see <see cref="ConnectorRegistration.ExtraCredentials"/>) by key; absent when not entered.</summary>
+    public IReadOnlyDictionary<string, string> Extra { get; }
+
+    public string? ExtraValue(string key) => Extra.TryGetValue(key, out var v) && v.Length > 0 ? v : null;
 
     public string Username { get; }
 

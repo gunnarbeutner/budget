@@ -243,6 +243,14 @@ else
                     <label class="form-label" for="new-login-pin">@L["Field_Pin"]</label>
                     <input id="new-login-pin" type="password" class="form-control" @bind="newPin" @bind:event="oninput" autocomplete="new-password" />
                 </div>
+                @foreach (var field in SelectedConnector?.ExtraCredentials ?? [])
+                {
+                <div class="col-sm-6">
+                    <label class="form-label" for="@("new-login-extra-" + field.Key)">@ExtraLabel(SelectedConnector!, field)</label>
+                    <input id="@("new-login-extra-" + field.Key)" type="password" class="form-control" autocomplete="off"
+                           value="@newExtra.GetValueOrDefault(field.Key)" @oninput="e => newExtra[field.Key] = e.Value?.ToString() ?? string.Empty" />
+                </div>
+                }
                 }
                 <div class="col-sm-6">
                     <label class="form-label" for="new-login-interval">@L["Field_Interval"]</label>
@@ -301,6 +309,24 @@ else
                     <label class="form-label" for="edit-pin">@L["Field_PinKeep"]</label>
                     <input id="edit-pin" type="password" class="form-control" @bind="editPin" autocomplete="new-password" />
                 </div>
+                @foreach (var field in EditingConnector?.ExtraCredentials ?? [])
+                {
+                    var stored = editing.StoredExtraCredentials?.Contains(field.Key) == true;
+                    <div class="mb-2">
+                        <label class="form-label" for="@("edit-extra-" + field.Key)">@ExtraLabel(EditingConnector!, field)@(stored ? " " + L["Field_ExtraKeep"].Value : "")</label>
+                        <input id="@("edit-extra-" + field.Key)" type="password" class="form-control" autocomplete="off"
+                               disabled="@editExtraRemove.Contains(field.Key)"
+                               value="@editExtra.GetValueOrDefault(field.Key)" @oninput="e => editExtra[field.Key] = e.Value?.ToString() ?? string.Empty" />
+                        @if (stored)
+                        {
+                            <div class="form-check mt-1">
+                                <input id="@("edit-extra-remove-" + field.Key)" type="checkbox" class="form-check-input" checked="@editExtraRemove.Contains(field.Key)"
+                                       @onchange="e => ToggleExtraRemove(field.Key, e.Value is true)" />
+                                <label class="form-check-label small" for="@("edit-extra-remove-" + field.Key)">@L["Field_ExtraRemove"]</label>
+                            </div>
+                        }
+                    </div>
+                }
             }
             <div class="mb-2">
                 <label class="form-label" for="edit-interval">@L["Field_Interval"]</label>
@@ -345,6 +371,9 @@ else
     private string newName = "";
     private string newUsername = "";
     private string newPin = "";
+    private Dictionary<string, string> newExtra = new(StringComparer.Ordinal);
+    private Dictionary<string, string> editExtra = new(StringComparer.Ordinal);
+    private HashSet<string> editExtraRemove = new(StringComparer.Ordinal);
     private RefreshInterval newInterval = RefreshInterval.EveryTwoHours;
     private string? addError;
     private bool adding;
@@ -374,6 +403,18 @@ else
     }
 
     private static bool NeedsCredentials(ConnectorRegistration? c) => c == null || c.Credentials != CredentialRequirement.None;
+
+    private ConnectorRegistration? EditingConnector => editing == null ? null : connectors.FirstOrDefault(c => c.ConnectorType == editing.ConnectorType);
+
+    private void ToggleExtraRemove(string key, bool remove)
+    {
+        if (remove) editExtraRemove.Add(key);
+        else editExtraRemove.Remove(key);
+    }
+
+    /// <summary>An extra credential field's label in the UI language when translated (CredentialField_&lt;type&gt;_&lt;key&gt;).</summary>
+    private string ExtraLabel(ConnectorRegistration c, CredentialField field) =>
+        L["CredentialField_" + c.ConnectorType + "_" + field.Key] is { ResourceNotFound: false } s ? s.Value : field.Label;
 
     /// <summary>The connector's description in the UI language when translated (ConnectorDescription_&lt;type&gt;), else its built-in English text.</summary>
     private string ConnectorDescription(ConnectorRegistration c) =>
@@ -450,10 +491,11 @@ else
         addError = null;
         try
         {
-            var created = await Bank.CreateLoginAsync(newConnector, newName, newUsername, newPin, newInterval);
+            var created = await Bank.CreateLoginAsync(newConnector, newName, newUsername, newPin, newInterval, newExtra);
             newName = "";
             newUsername = "";
             newPin = "";
+            newExtra = new(StringComparer.Ordinal);
             adding = false;
             // Start a first sync right away so the bank's accounts get listed (and any challenge shows up).
             await Bank.SyncNowAsync(created.Id);
@@ -484,6 +526,8 @@ else
         editName = login.DisplayName;
         editUsername = login.Username ?? "";
         editPin = "";
+        editExtra = new(StringComparer.Ordinal);
+        editExtraRemove = new(StringComparer.Ordinal);
         editInterval = login.RefreshInterval;
         editError = null;
     }
@@ -494,7 +538,11 @@ else
         editError = null;
         try
         {
-            await Bank.UpdateLoginAsync(editing.Id, editName, editInterval, editUsername, editPin);
+            // only entered values and removals travel: an untouched field keeps what is stored
+            var extra = editExtra.Where(e => !string.IsNullOrWhiteSpace(e.Value) && !editExtraRemove.Contains(e.Key))
+                .Concat(editExtraRemove.Select(k => KeyValuePair.Create(k, "")))
+                .ToDictionary(StringComparer.Ordinal);
+            await Bank.UpdateLoginAsync(editing.Id, editName, editInterval, editUsername, editPin, extra);
             editing = null;
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or AccessDeniedException)
