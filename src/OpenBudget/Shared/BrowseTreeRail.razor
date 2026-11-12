@@ -468,9 +468,10 @@
         {
             builder.AddMarkupContent(90, "<span class=\"browse-tree-chevron-spacer\" aria-hidden=\"true\"></span>");
         }
-        if (CategoryColors.ToCss(node.Color) is { } dotColor)
+        if ((CategoryColors.ToCss(node.Color) ?? (node.ItemType == CategoryItemType.Group ? null : CategoryColors.FallbackColor(node.Id))) is { } dotColor)
         {
-            // the same ribbon as the category picker, in the category's colour (a parsed hex value, safe to inline)
+            // the same ribbon as the category picker, in the category's colour or, for a category without one, the palette
+            // colour its pills use (a parsed hex value, safe to inline)
             builder.AddMarkupContent(12, $"<svg class=\"browse-color-dot browse-ribbon\" viewBox=\"0 0 12 16\" aria-hidden=\"true\" style=\"fill:{dotColor};\"><path d=\"M1 1h10v14l-5-3.6L1 15z\"/></svg>");
         }
         else

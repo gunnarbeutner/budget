@@ -66,6 +66,9 @@ public static class CategoryColors
     private static readonly (double R, double G, double B) Black = (0, 0, 0);
     private static readonly (double R, double G, double B) DarkSurface = (0x21, 0x25, 0x29);
 
+    /// <summary>The palette colour of a category without its own colour (the one <see cref="For"/> uses for its pills).</summary>
+    public static string FallbackColor(long categoryId) => Palette[(int)(Math.Abs(categoryId % Palette.Count))].Key;
+
     /// <summary>The pill colors for a category: its own color when it parses, otherwise the palette entry for its id.</summary>
     public static CategoryPillColors For(long categoryId, string? color)
     {
