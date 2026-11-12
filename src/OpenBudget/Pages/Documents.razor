@@ -104,6 +104,12 @@
             <button type="button" class="ob-btn" data-testid="docs-mark-all" disabled="@(!Visible().Any(d => d.Unread))" @onclick="MarkAllReadAsync">
                 <i class="bi bi-check2-all" aria-hidden="true"></i> @L["MarkAllRead"]
             </button>
+            @if (toAssign > 0)
+            {
+                <a class="ob-btn" href="/documents/assign" data-testid="docs-to-assign">
+                    <i class="bi bi-folder-symlink" aria-hidden="true"></i> @L["ToAssign", toAssign]
+                </a>
+            }
             <button type="button" class="ob-btn" data-testid="docs-settings" @onclick="OpenSettingsAsync">
                 <i class="bi bi-gear" aria-hidden="true"></i> @L["Settings"]
             </button>
@@ -128,7 +134,7 @@
     }
     else
     {
-        <ul class="doc-grid @(SelectedVisible().Count > 0 ? "selecting" : "")" @ref="gridRef" data-testid="documents-grid" aria-label="@L["View_Title"]">
+        <ul class="doc-grid @(SelectedVisible().Count > 0 ? "selecting" : "")" @ref="gridRef" data-marquee data-testid="documents-grid" aria-label="@L["View_Title"]">
             @foreach (var d in Visible())
             {
                 var alt = L["Thumb_Alt", d.AccountName, Date(d)].Value;
@@ -322,6 +328,7 @@
 
     private readonly HashSet<long> selected = [];
     private bool showAssign;
+    private int toAssign;
     private List<AssignableAccount>? assignable;
     private long? assignTo;
     private string? assignError;
@@ -409,6 +416,7 @@
         project = await ProjectService.GetProjectAsync(ProjectId);
         if (project == null) { notFound = true; return; }
         items = await Docs.GetDocumentsAsync(ProjectId);
+        toAssign = await Docs.GetUnassignedCountAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -642,6 +650,7 @@
             showAssign = false;
             ClearSelection();
             items = await Docs.GetDocumentsAsync(ProjectId);
+            toAssign = await Docs.GetUnassignedCountAsync();
         }
         catch (AccessDeniedException)
         {

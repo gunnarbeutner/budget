@@ -15,6 +15,10 @@ public sealed record DocumentItem(long Id, long? AccountId, string AccountName, 
 /// <summary>An account documents can be assigned to.</summary>
 public sealed record AssignableAccount(long Id, string Name);
 
+/// <summary>An account in the cross-project "Documents to assign" picker, listed under each project that holds it.</summary>
+/// <param name="GroupName">The account group it sits in within its source (null: none).</param>
+public sealed record AssignTarget(int ProjectId, string ProjectName, long AccountId, string Name, string? GroupName, string Icon, bool Closed);
+
 /// <summary>Why an account cannot download statements (null: it can).</summary>
 public enum StatementBlock
 {
@@ -188,6 +192,79 @@ public class DocumentService
         }
         if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
         return rows.Count;
+    }
+
+    /// <summary>
+    /// The current user's own documents that no project shows under an account: those without an account, and those
+    /// whose account is closed, gone or in none of the user's projects. Labelled by account, login or bank, newest first.
+    /// </summary>
+    public async Task<List<DocumentItem>> GetUnassignedAsync(CancellationToken ct = default)
+    {
+        var userId = (await _access.GetAsync()).UserId;
+        if (userId == null) return [];
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var rows = await UnassignedQuery(db, userId)
+            .OrderByDescending(s => s.Date).ThenByDescending(s => s.Id)
+            .Select(s => new { s.Id, s.AccountId, s.BankLoginId, s.Institution, s.Date, s.Name, s.CreatedAt, Read = db.StatementReads.Any(r => r.StatementId == s.Id && !r.Unread), MarkedUnread = db.StatementReads.Any(r => r.StatementId == s.Id && r.Unread) })
+            .ToListAsync(ct);
+        var since = await UserCreatedAtAsync(db, userId, ct);
+        var accountIds = rows.Where(r => r.AccountId != null).Select(r => r.AccountId!.Value).Distinct().ToList();
+        var accountNames = await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.Name ?? "?", ct);
+        var loginIds = rows.Where(r => r.BankLoginId != null).Select(r => r.BankLoginId!.Value).Distinct().ToList();
+        var loginNames = await db.BankLogins.AsNoTracking().Where(l => loginIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, l => l.DisplayName, ct);
+        return rows.Select(r => new DocumentItem(
+            r.Id,
+            r.AccountId,
+            r.AccountId is { } a && accountNames.TryGetValue(a, out var an) ? an
+                : r.BankLoginId is { } l && loginNames.TryGetValue(l, out var ln) ? ln
+                : r.Institution ?? "?",
+            r.Date,
+            r.Name,
+            r.MarkedUnread || (!r.Read && r.CreatedAt > since),
+            r.Institution,
+            true)).ToList();
+    }
+
+    /// <summary>How many documents <see cref="GetUnassignedAsync"/> lists.</summary>
+    public async Task<int> GetUnassignedCountAsync(CancellationToken ct = default)
+    {
+        var userId = (await _access.GetAsync()).UserId;
+        if (userId == null) return 0;
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await UnassignedQuery(db, userId).CountAsync(ct);
+    }
+
+    private static IQueryable<BankStatement> UnassignedQuery(BudgetDbContext db, string userId)
+    {
+        var inProjects = db.ProjectAccountAssignments.Where(p => db.Accounts.Any(a => a.Id == p.AccountId && !a.Closed)).Select(p => p.AccountId);
+        return db.BankStatements.AsNoTracking().Where(s =>
+            s.OwnerUserId == userId && (s.AccountId == null || !inProjects.Contains(s.AccountId.Value)));
+    }
+
+    /// <summary>
+    /// Every account in the current user's projects that they may assign documents to (those whose transactions they
+    /// may edit), by project and then account group; closed accounts only with <paramref name="includeClosed"/>.
+    /// </summary>
+    public async Task<List<AssignTarget>> GetAssignTargetsAsync(bool includeClosed, CancellationToken ct = default)
+    {
+        var scope = await _access.GetAsync();
+        if (!scope.IsAuthenticated) return [];
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var rows = await (
+            from p in db.ProjectAccountAssignments
+            join pr in db.Projects on p.ProjectId equals pr.Id
+            join a in db.Accounts on p.AccountId equals a.Id
+            where includeClosed || !a.Closed
+            select new { pr.Id, ProjectName = pr.Name, pr.SortOrder, Account = a, GroupName = a.Group != null ? a.Group.Name : null })
+            .AsNoTracking()
+            .ToListAsync(ct);
+        return rows
+            .Where(r => scope.CanEditTransactionsOf(r.Account.SourceId, r.Account.Id))
+            .OrderBy(r => r.SortOrder).ThenBy(r => r.ProjectName, StringComparer.CurrentCultureIgnoreCase).ThenBy(r => r.Id)
+            .ThenBy(r => r.GroupName ?? "", StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(r => r.Account.Sort ?? long.MaxValue).ThenBy(r => r.Account.Name ?? "", StringComparer.CurrentCultureIgnoreCase)
+            .Select(r => new AssignTarget(r.Id, r.ProjectName, r.Account.Id, r.Account.Name ?? "?", r.GroupName, r.Account.Icon ?? r.Account.KindIcon, r.Account.Closed))
+            .ToList();
     }
 
     private static async Task<DateTime> UserCreatedAtAsync(BudgetDbContext db, string userId, CancellationToken ct) =>

@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Zuzuordnende Dokumente</value>
+  </data>
+  <data name="Heading" xml:space="preserve">
+    <value>Zuzuordnende Dokumente</value>
+  </data>
+  <data name="Count" xml:space="preserve">
+    <value>{0} Dokumente</value>
+  </data>
+  <data name="Intro" xml:space="preserve">
+    <value>Ihre Dokumente, die kein Projekt unter einem Konto zeigt: importierte oder heruntergeladene Dokumente ohne Konto und solche, deren Konto aufgelöst ist oder in keinem Ihrer Projekte liegt. Wählen Sie welche aus und ordnen Sie sie einem Konto aus einem beliebigen Ihrer Projekte zu.</value>
+  </data>
+  <data name="Empty" xml:space="preserve">
+    <value>Alle Dokumente sind einem Konto zugeordnet.</value>
+  </data>
+  <data name="Group_Count" xml:space="preserve">
+    <value>· {0}</value>
+  </data>
+  <data name="Thumb_Alt" xml:space="preserve">
+    <value>Erste Seite des Dokuments {0} vom {1}</value>
+  </data>
+  <data name="Sel_Bar" xml:space="preserve">
+    <value>Ausgewählte Dokumente</value>
+  </data>
+  <data name="Sel_Count" xml:space="preserve">
+    <value>{0} ausgewählt</value>
+  </data>
+  <data name="Sel_SelectAll" xml:space="preserve">
+    <value>Alle auswählen</value>
+  </data>
+  <data name="Sel_Clear" xml:space="preserve">
+    <value>Auswahl aufheben</value>
+  </data>
+  <data name="Sel_Toggle" xml:space="preserve">
+    <value>{0} vom {1} auswählen</value>
+  </data>
+  <data name="Sel_Assign" xml:space="preserve">
+    <value>Konto zuordnen…</value>
+  </data>
+  <data name="Assign_Title" xml:space="preserve">
+    <value>Konto zuordnen</value>
+  </data>
+  <data name="Assign_Account" xml:space="preserve">
+    <value>Konto</value>
+  </data>
+  <data name="Assign_Hint" xml:space="preserve">
+    <value>{0} Dokumente werden dem gewählten Konto zugeordnet.</value>
+  </data>
+  <data name="Assign_Hint_One" xml:space="preserve">
+    <value>1 Dokument wird dem gewählten Konto zugeordnet.</value>
+  </data>
+  <data name="Assign_IncludeClosed" xml:space="preserve">
+    <value>Aufgelöste Konten zeigen</value>
+  </data>
+  <data name="Assign_Closed" xml:space="preserve">
+    <value>aufgelöst</value>
+  </data>
+  <data name="Assign_NoAccounts" xml:space="preserve">
+    <value>Keines Ihrer Projekte hat ein Konto, dem Sie Dokumente zuordnen dürfen.</value>
+  </data>
+  <data name="Assign_Cancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="Assign_Confirm" xml:space="preserve">
+    <value>Zuordnen</value>
+  </data>
+  <data name="Assign_Denied" xml:space="preserve">
+    <value>Sie dürfen diesem Konto keine Dokumente zuordnen.</value>
+  </data>
+  <data name="Assigned" xml:space="preserve">
+    <value>{0} Dokumente {1} zugeordnet.</value>
+  </data>
+  <data name="Assigned_One" xml:space="preserve">
+    <value>1 Dokument {1} zugeordnet.</value>
+  </data>
+</root>

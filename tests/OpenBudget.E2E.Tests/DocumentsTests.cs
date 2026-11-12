@@ -482,4 +482,56 @@ public sealed class DocumentsTests : EndToEndTestBase
         var imported = await check.BankStatements.Where(s => s.Identifier.StartsWith("mm:")).ToListAsync();
         Assert.That(imported.Select(s => s.AccountId), Is.All.EqualTo(EditingSeed.BankAccountId));
     }
+
+    [Test]
+    public async Task Documents_to_assign_lists_documents_outside_every_project_and_assigns_them_to_another_projects_account()
+    {
+        await SeedDocumentsAsync();
+        int second;
+        const long retiredId = 9501, holidayId = 9502;
+        var store = Factory.Services.GetRequiredService<BankStatementStore>();
+        await using (var db = await Db.CreateDbContextAsync())
+        {
+            var first = await db.Projects.SingleAsync(p => p.Id == Pid);
+            var project = new Project { Name = "Second Example Project", SourceId = first.SourceId, OwnerUserId = first.OwnerUserId, SortOrder = first.SortOrder + 1 };
+            db.Projects.Add(project);
+            db.Accounts.Add(new Account { Id = retiredId, SourceId = E2ESeed.SourceId, Name = "Retired account", Type = 1, Currency = "EUR" });
+            db.Accounts.Add(new Account { Id = holidayId, SourceId = E2ESeed.SourceId, Name = "Holiday account", Type = 1, Currency = "EUR" });
+            await db.SaveChangesAsync();
+            second = project.Id;
+            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = second, AccountId = holidayId });
+            await db.SaveChangesAsync();
+            var retired = await db.Accounts.SingleAsync(a => a.Id == retiredId);
+            for (var m = 1; m <= 2; m++)
+                await store.StoreAsync(db, first.OwnerUserId!, null, "import", retired,
+                    new RemoteStatement($"mm:r{m}", null, new DateOnly(2021, m, 28), $"Retired 2021-{m:D2}", Pdf($"Retired statement 2021-{m:D2}")), CancellationToken.None, "Example Bank");
+        }
+
+        await GoToAsync($"/projects/{Pid}/documents");
+        await Page.GetByTestId("docs-to-assign").ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex("/documents/assign$"));
+        var group = Page.Locator("[data-testid=assign-group][data-label='Retired account']");
+        await Expect(group.GetByTestId("doc-card")).ToHaveCountAsync(2);
+        await Expect(Page.GetByTestId("doc-card")).ToHaveCountAsync(3); // plus the login's tax certificate without an account
+
+        foreach (var card in await group.Locator("li").AllAsync())
+        {
+            await card.HoverAsync();
+            await card.GetByTestId("doc-check").ClickAsync();
+        }
+        await Expect(Page.GetByTestId("docs-sel-count")).ToHaveTextAsync("2 selected");
+        await Page.GetByTestId("docs-sel-assign").ClickAsync();
+        await Expect(Page.GetByTestId("assign-confirm")).ToBeDisabledAsync();
+        await Expect(Page.Locator($"[data-testid=assign-target][data-account='{EditingSeed.BankAccountId}']")).ToBeVisibleAsync();
+        await Page.Locator($"[data-testid=assign-target][data-account='{holidayId}']").ClickAsync();
+        await Page.GetByTestId("assign-confirm").ClickAsync();
+
+        await Expect(Page.GetByTestId("assign-done")).ToContainTextAsync("2 documents assigned to Holiday account");
+        await Expect(group).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("doc-card")).ToHaveCountAsync(1);
+
+        await GoToAsync($"/projects/{second}/documents?account={holidayId}");
+        await Expect(Cards).ToHaveCountAsync(2);
+        await Expect(Cards.First).ToContainTextAsync("Holiday account");
+    }
 }

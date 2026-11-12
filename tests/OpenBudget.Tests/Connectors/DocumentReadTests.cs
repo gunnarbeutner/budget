@@ -188,4 +188,92 @@ public sealed class DocumentReadTests
         Assert.Equal(2, bobs.Count);
         Assert.All(bobs, d => Assert.False(d.CanAssign));
     }
+
+    private static async Task<long> ImportAsync(BankWorld w, string owner, long? accountId, int n)
+    {
+        var store = new BankStatementStore(new BankStorageOptions(Path.Combine(Path.GetTempPath(), $"ob-assign-{Guid.NewGuid():N}")));
+        var account = accountId is { } id ? await w.T.Db.Accounts.SingleAsync(a => a.Id == id) : null;
+        var row = await store.StoreAsync(w.T.Db, owner, null, "import", account,
+            new OpenBudget.Connectors.RemoteStatement($"mm:x{n}", null, new DateOnly(2022, 1, n), $"Statement {n}", System.Text.Encoding.ASCII.GetBytes($"%PDF-1.4 x{n}")), CancellationToken.None, "Example Bank");
+        return row.Id;
+    }
+
+    /// <summary>
+    /// Alice's imported documents: one without account, one on an account in no project, one on a closed account of
+    /// project 1 and one on the giro account; project 2 (Alice's, not shared) holds a further open account.
+    /// </summary>
+    private static async Task<(BankWorld World, long Giro, long NoAccount, long Orphan, long OnClosed, long OnGiro)> SetupUnassignedAsync()
+    {
+        var (w, _, giro) = await SetupAsync();
+        w.T.Db.Accounts.Add(new Account { Id = 9101, SourceId = BankWorld.SourceAlice, Name = "Depot", Provider = AccountProviders.Manual });
+        w.T.Db.Accounts.Add(new Account { Id = 9102, SourceId = BankWorld.SourceAlice, Name = "Old savings", Provider = AccountProviders.Manual, Closed = true });
+        w.T.Db.Accounts.Add(new Account { Id = 9103, SourceId = BankWorld.SourceAlice, Name = "Orphan", Provider = AccountProviders.Manual });
+        w.T.Db.Projects.Add(new Project { Id = 2, Name = "Second", SourceId = BankWorld.SourceAlice, OwnerUserId = BankWorld.Alice, CreatedAt = DateTime.UtcNow });
+        w.T.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 2, AccountId = 9101 });
+        w.T.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 1, AccountId = 9102 });
+        await w.T.Db.SaveChangesAsync();
+        var noAccount = await ImportAsync(w, BankWorld.Alice, null, 1);
+        var orphan = await ImportAsync(w, BankWorld.Alice, 9103, 2);
+        var onClosed = await ImportAsync(w, BankWorld.Alice, 9102, 3);
+        var onGiro = await ImportAsync(w, BankWorld.Alice, giro, 4);
+        return (w, giro, noAccount, orphan, onClosed, onGiro);
+    }
+
+    [Fact]
+    public async Task Documents_to_assign_are_the_owners_documents_without_an_open_account_in_a_project()
+    {
+        var (w, giro, noAccount, orphan, onClosed, onGiro) = await SetupUnassignedAsync();
+        await using var _w = w;
+        var alice = Docs(w, BankWorld.Alice);
+
+        var list = await alice.GetUnassignedAsync();
+        var ids = list.Select(d => d.Id).ToHashSet();
+        Assert.Contains(noAccount, ids);
+        Assert.Contains(orphan, ids);
+        Assert.Contains(onClosed, ids);
+        Assert.DoesNotContain(onGiro, ids);
+        Assert.DoesNotContain(list, d => d.AccountId == giro);
+        Assert.Equal(list.Count, await alice.GetUnassignedCountAsync());
+        Assert.Equal("Example Bank", list.Single(d => d.Id == noAccount).AccountName);
+        Assert.Equal("Orphan", list.Single(d => d.Id == orphan).AccountName);
+        Assert.Equal("Old savings", list.Single(d => d.Id == onClosed).AccountName);
+        Assert.All(list, d => Assert.True(d.CanAssign));
+    }
+
+    [Fact]
+    public async Task Other_users_never_see_documents_to_assign_of_sources_they_do_not_own()
+    {
+        var (w, giro, noAccount, orphan, onClosed, _) = await SetupUnassignedAsync();
+        await using var _w = w;
+        var bob = Docs(w, BankWorld.Bob);
+
+        Assert.Empty(await bob.GetUnassignedAsync());
+        Assert.Equal(0, await bob.GetUnassignedCountAsync());
+        Assert.Empty(await bob.GetAssignTargetsAsync(true)); // a viewer of project 1 may edit none of its accounts
+        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.AssignAsync([noAccount, orphan, onClosed], giro));
+    }
+
+    [Fact]
+    public async Task Assign_targets_span_all_projects_and_assigning_moves_documents_into_another_project()
+    {
+        var (w, giro, noAccount, orphan, onClosed, _) = await SetupUnassignedAsync();
+        await using var _w = w;
+        var alice = Docs(w, BankWorld.Alice);
+
+        var open = await alice.GetAssignTargetsAsync(false);
+        Assert.Contains(open, t => t.ProjectId == 1 && t.AccountId == giro);
+        Assert.Contains(open, t => t.ProjectId == 2 && t.AccountId == 9101 && t.ProjectName == "Second" && t.Icon.Length > 0);
+        Assert.DoesNotContain(open, t => t.AccountId == 9102);
+        Assert.DoesNotContain(open, t => t.AccountId == 9103); // in no project
+        Assert.Contains(await alice.GetAssignTargetsAsync(true), t => t.AccountId == 9102 && t.Closed);
+
+        Assert.DoesNotContain(orphan, (await alice.GetDocumentsAsync(2)).Select(d => d.Id));
+        var before = await alice.GetUnassignedCountAsync();
+        Assert.Equal(2, await alice.AssignAsync([noAccount, orphan], 9101));
+        Assert.Equal(before - 2, await alice.GetUnassignedCountAsync());
+        var second = (await alice.GetDocumentsAsync(2)).Where(d => d.AccountId == 9101).Select(d => d.Id).ToList();
+        Assert.Contains(noAccount, second);
+        Assert.Contains(orphan, second);
+        Assert.Contains(onClosed, (await alice.GetUnassignedAsync()).Select(d => d.Id));
+    }
 }

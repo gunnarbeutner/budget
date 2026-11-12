@@ -248,4 +248,7 @@
     <value>Documents cannot be assigned to this account.</value>
   </data>
   <data name="Assign_Hint_One" xml:space="preserve"><value>1 document will be filed under the chosen account.</value></data>
+  <data name="ToAssign" xml:space="preserve">
+    <value>To assign ({0})</value>
+  </data>
 </root>

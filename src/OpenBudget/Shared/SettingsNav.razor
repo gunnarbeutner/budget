@@ -15,11 +15,12 @@
     <div class="settings-nav-heading">@L["Heading"]</div>
     @Item("banklogins", "/banklogins", "bi-bank", L["Item_BankLogins"])
     @Item("sources", "/sources", "bi-database", L["Item_Sources"])
+    @Item("documents", "/documents/assign", "bi-folder-symlink", L["Item_Documents"])
     @Item("account", "/Account", "bi-person", L["Item_Account"], forceLoad: true)
 </nav>
 
 @code {
-    /// <summary>The highlighted section: "banklogins", "sources" or "account".</summary>
+    /// <summary>The highlighted section: "banklogins", "sources", "documents" or "account".</summary>
     [Parameter] public string? Active { get; set; }
 
     private string BackHref => Current.ProjectId is { } id ? $"/projects/{id}/browse" : "/";

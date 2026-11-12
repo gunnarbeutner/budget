@@ -219,7 +219,8 @@ function scrollerOf(el) {
 }
 
 /**
- * Rectangle selection on the grid with mouse or pen: dragging from empty space in the main area (not on a card,
+ * Rectangle selection on the document grids (every .doc-grid[data-marquee] inside the [data-marquee-area]) with
+ * mouse or pen: dragging from empty space in the main area (not on a card,
  * control or toolbar) draws a rectangle and selects the cards it touches; Shift or Cmd/Ctrl adds to the current
  * selection, otherwise the rectangle replaces it. A plain click on empty space clears the selection. Near the top
  * or bottom edge the view scrolls. The cards hit are highlighted locally while dragging and reported to .NET once
@@ -230,7 +231,7 @@ export function bindMarquee(dotnet) {
     const THRESHOLD = 4, EDGE = 40;
     let drag = null;
 
-    const cardsOf = grid => [...grid.querySelectorAll(":scope > li")];
+    const cardsOf = grids => grids.flatMap(grid => [...grid.querySelectorAll(":scope > li")]);
     const idOf = li => li.querySelector("[data-doc-card]")?.dataset.docCard;
     const isDoc = s => s === document.scrollingElement || s === document.documentElement;
 
@@ -240,7 +241,7 @@ export function bindMarquee(dotnet) {
         const x1 = Math.min(d.x0, d.x + sx) - sx, x2 = Math.max(d.x0, d.x + sx) - sx;
         const y1 = Math.min(d.y0, d.y + sy) - sy, y2 = Math.max(d.y0, d.y + sy) - sy;
         Object.assign(d.box.style, { left: `${x1}px`, top: `${y1}px`, width: `${x2 - x1}px`, height: `${y2 - y1}px` });
-        for (const li of cardsOf(d.grid)) {
+        for (const li of cardsOf(d.grids)) {
             const r = li.getBoundingClientRect();
             li.classList.toggle("marquee-hit", r.right >= x1 && r.left <= x2 && r.bottom >= y1 && r.top <= y2);
         }
@@ -265,14 +266,15 @@ export function bindMarquee(dotnet) {
         const t = e.target;
         if (!(t instanceof Element)) return;
         if (document.querySelector(".modal.show")) return;
-        const grid = document.querySelector(".doc-grid[data-testid='documents-grid']");
-        const area = grid?.closest(".browse-main");
+        const grids = [...document.querySelectorAll(".doc-grid[data-marquee]")];
+        const grid = grids[0];
+        const area = grid?.closest("[data-marquee-area]");
         if (!grid || !area || !area.contains(t)) return;
         if (t.closest(".doc-grid > li, a, button, input, select, textarea, label, [contenteditable], .page-toolbar, .docs-selbar, .modal")) return;
         const scroller = scrollerOf(grid);
         e.preventDefault(); // no text selection while dragging
         drag = {
-            grid, scroller, pointerId: e.pointerId, box: null,
+            grids, scroller, pointerId: e.pointerId, box: null,
             additive: e.shiftKey || e.metaKey || e.ctrlKey,
             x0: e.clientX + scroller.scrollLeft, y0: e.clientY + scroller.scrollTop,
             sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY,
@@ -291,7 +293,7 @@ export function bindMarquee(dotnet) {
             drag.box.dataset.testid = "doc-marquee";
             document.body.appendChild(drag.box);
             document.body.classList.add("doc-marquee-active");
-            drag.grid.classList.toggle("marquee-replace", !drag.additive);
+            for (const g of drag.grids) g.classList.toggle("marquee-replace", !drag.additive);
         }
         e.preventDefault();
         update();
@@ -306,12 +308,12 @@ export function bindMarquee(dotnet) {
             if (e.type === "pointerup" && !d.additive) dotnet.invokeMethodAsync("SetSelectionFromMarquee", []).catch(() => { });
             return;
         }
-        const lis = cardsOf(d.grid);
+        const lis = cardsOf(d.grids);
         const ids = new Set(d.additive ? lis.filter(li => li.classList.contains("selected")).map(idOf) : []);
         for (const li of lis) if (li.classList.contains("marquee-hit")) ids.add(idOf(li));
         d.box.remove();
         document.body.classList.remove("doc-marquee-active");
-        d.grid.classList.remove("marquee-replace");
+        for (const g of d.grids) g.classList.remove("marquee-replace");
         for (const li of lis) li.classList.remove("marquee-hit");
         dotnet.invokeMethodAsync("SetSelectionFromMarquee", [...ids].filter(Boolean).map(Number)).catch(() => { });
     };

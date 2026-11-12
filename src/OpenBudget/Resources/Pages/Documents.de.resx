@@ -248,4 +248,7 @@
     <value>Diesem Konto können keine Dokumente zugeordnet werden.</value>
   </data>
   <data name="Assign_Hint_One" xml:space="preserve"><value>1 Dokument wird dem gewählten Konto zugeordnet.</value></data>
+  <data name="ToAssign" xml:space="preserve">
+    <value>Zuzuordnen ({0})</value>
+  </data>
 </root>

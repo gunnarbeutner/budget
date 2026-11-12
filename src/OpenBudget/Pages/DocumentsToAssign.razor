@@ -1,0 +1,343 @@
+@page "/documents/assign"
+@inherits DataChangeAwareComponent
+@using OpenBudget.Services
+@inject DocumentService Docs
+@inject IJSRuntime JS
+@inject IStringLocalizer<DocumentsToAssign> L
+
+@* The current user's own documents that no project shows under an account (no account, or one that is closed or in
+   none of their projects), as document grids per label (account, login or bank), newest first. Cards are selected
+   like in the Documents view (checkbox, Shift range, rectangle, Cmd/Ctrl+A, Escape); "Assign to account…" files the
+   selection under any account of any of the user's projects that they may edit, after which it leaves the list. *@
+
+<PageTitle>@L["PageTitle"]</PageTitle>
+
+<SettingsShell Active="documents">
+    @if (Selected() is { Count: > 0 } sel)
+    {
+        <div class="docs-selbar" role="toolbar" aria-label="@L["Sel_Bar"]" data-testid="docs-selbar">
+            <span class="docs-selbar-count" role="status" data-testid="docs-sel-count">@L["Sel_Count", sel.Count]</span>
+            <button type="button" class="ob-btn" data-testid="docs-sel-all" disabled="@(sel.Count == items!.Count)" @onclick="SelectAll">
+                <i class="bi bi-check2-square" aria-hidden="true"></i><span class="docs-selbar-label">@L["Sel_SelectAll"]</span>
+            </button>
+            <button type="button" class="ob-btn" data-testid="docs-sel-clear" @onclick="ClearSelection">
+                <i class="bi bi-x-lg" aria-hidden="true"></i><span class="docs-selbar-label">@L["Sel_Clear"]</span>
+            </button>
+            <div class="flex-grow-1"></div>
+            <button type="button" class="ob-btn" data-testid="docs-sel-assign" @onclick="OpenAssignAsync">
+                <i class="bi bi-folder-symlink" aria-hidden="true"></i><span class="docs-selbar-label">@L["Sel_Assign"]</span>
+            </button>
+        </div>
+    }
+    else
+    {
+        <PageHeader Title="@L["Heading"]" Subtitle="@(items == null ? null : L["Count", items.Count].Value)" />
+    }
+
+    <p class="text-body-secondary">@L["Intro"]</p>
+
+    @if (message != null)
+    {
+        <div class="alert alert-success py-2" role="status" data-testid="assign-done">@message</div>
+    }
+
+    @if (items == null)
+    {
+        <div class="doc-grid" aria-busy="true">
+            @for (int i = 0; i < 6; i++)
+            {
+                <div class="skeleton doc-skeleton"></div>
+            }
+        </div>
+    }
+    else if (items.Count == 0)
+    {
+        <div class="text-body-secondary py-5 text-center" data-testid="assign-empty">
+            <i class="bi bi-check2-circle" style="font-size: 1.8rem;" aria-hidden="true"></i>
+            <div class="mt-2">@L["Empty"]</div>
+        </div>
+    }
+    else
+    {
+        <div @ref="gridsRef" data-testid="assign-groups">
+            @foreach (var g in Groups())
+            {
+                <section class="mb-4" data-testid="assign-group" data-label="@g.Key">
+                    <h2 class="h6 mb-2">@g.Key <span class="text-body-secondary fw-normal" data-testid="assign-group-count">@L["Group_Count", g.Count()]</span></h2>
+                    <ul class="doc-grid @(selected.Count > 0 ? "selecting" : "")" data-marquee data-testid="documents-grid" aria-label="@g.Key">
+                        @foreach (var d in g)
+                        {
+                            var isSelected = selected.Contains(d.Id);
+                            <li @key="d.Id" class="@(isSelected ? "selected" : "")">
+                                <button type="button" class="doc-check" role="checkbox" aria-checked="@(isSelected ? "true" : "false")"
+                                        aria-label="@L["Sel_Toggle", d.AccountName, Date(d)]" data-testid="doc-check"
+                                        @onclick="e => Toggle(d.Id, e.ShiftKey)"><i class="bi bi-check-lg" aria-hidden="true"></i></button>
+                                <a class="doc-card" href="@($"/statements/{d.Id}")" target="_blank" rel="noopener" data-doc-card="@d.Id" data-testid="doc-card"
+                                   data-selected="@(isSelected ? "true" : "false")">
+                                    <div class="doc-thumb">
+                                        <img data-statement="@d.Id" data-src="@($"statements/{d.Id}")" alt="@L["Thumb_Alt", d.AccountName, Date(d)]" loading="lazy" />
+                                        <i class="bi bi-file-earmark-pdf doc-thumb-fallback" aria-hidden="true"></i>
+                                    </div>
+                                    <div class="doc-meta">
+                                        <span class="doc-account text-truncate" title="@d.Name">@d.Name</span>
+                                    </div>
+                                    <div class="doc-date">@Date(d)</div>
+                                </a>
+                            </li>
+                        }
+                    </ul>
+                </section>
+            }
+        </div>
+    }
+</SettingsShell>
+
+<Modal Show="showAssign" Title="@L["Assign_Title"]" SizeClass="modal-dialog-scrollable" OnClose="CloseAssign">
+    <ChildContent>
+        <p class="small text-body-secondary mb-2">@L[Selected().Count == 1 ? "Assign_Hint_One" : "Assign_Hint", Selected().Count]</p>
+        <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="assign-closed" data-testid="assign-closed"
+                   checked="@includeClosed" @onchange="ToggleClosedAsync" />
+            <label class="form-check-label" for="assign-closed">@L["Assign_IncludeClosed"]</label>
+        </div>
+        @if (targets == null)
+        {
+            <div class="skeleton skeleton-line" aria-busy="true"></div>
+        }
+        else if (targets.Count == 0)
+        {
+            <p class="mb-0 text-body-secondary" data-testid="assign-none">@L["Assign_NoAccounts"]</p>
+        }
+        else
+        {
+            <div role="radiogroup" aria-label="@L["Assign_Account"]" data-testid="assign-targets">
+                @foreach (var project in targets.GroupBy(t => (t.ProjectId, t.ProjectName)))
+                {
+                    <div class="fw-semibold mt-2" data-testid="assign-project">@project.Key.ProjectName</div>
+                    @foreach (var group in project.GroupBy(t => t.GroupName))
+                    {
+                        @if (group.Key != null)
+                        {
+                            <div class="small text-body-secondary ms-2 mt-1">@group.Key</div>
+                        }
+                        @foreach (var t in group)
+                        {
+                            var chosen = assignTo == t.AccountId && assignProject == t.ProjectId;
+                            <button type="button" role="radio" aria-checked="@(chosen ? "true" : "false")"
+                                    class="btn btn-sm w-100 text-start d-flex align-items-center gap-2 ms-2 @(chosen ? "btn-primary" : "btn-light")"
+                                    style="max-width: calc(100% - .5rem);"
+                                    data-testid="assign-target" data-account="@t.AccountId" data-project="@t.ProjectId"
+                                    @onclick="() => { assignTo = t.AccountId; assignProject = t.ProjectId; }">
+                                <i class="bi @t.Icon" aria-hidden="true"></i>
+                                <span class="text-truncate">@t.Name</span>
+                                @if (t.Closed)
+                                {
+                                    <span class="ob-badge ms-auto">@L["Assign_Closed"]</span>
+                                }
+                            </button>
+                        }
+                    }
+                }
+            </div>
+        }
+        @if (assignError != null)
+        {
+            <div class="text-danger small mt-2" role="alert" data-testid="assign-error">@assignError</div>
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" data-testid="assign-cancel" @onclick="CloseAssign">@L["Assign_Cancel"]</button>
+        <button type="button" class="btn btn-primary" data-testid="assign-confirm" disabled="@(assignTo == null || busy)" @onclick="AssignSelectedAsync">@L["Assign_Confirm"]</button>
+    </Footer>
+</Modal>
+
+@code {
+    private List<DocumentItem>? items;
+    private readonly HashSet<long> selected = [];
+    private long? selectionAnchor;
+    private ElementReference gridsRef;
+    private IJSObjectReference? module;
+    private DotNetObjectReference<DocumentsToAssign>? selfRef;
+    private bool keysBound;
+
+    private bool showAssign;
+    private bool includeClosed;
+    private List<AssignTarget>? targets;
+    private long? assignTo;
+    private int? assignProject;
+    private string? assignError;
+    private string? message;
+    private bool busy;
+
+    private static string Date(DocumentItem d) => d.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+
+    /// <summary>The documents by label, the labels alphabetically; within a label newest first.</summary>
+    private IEnumerable<IGrouping<string, DocumentItem>> Groups() => (items ?? [])
+        .GroupBy(d => d.AccountName)
+        .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase);
+
+    /// <summary>The documents in display order (what Shift ranges run over).</summary>
+    private List<DocumentItem> Ordered() => Groups().SelectMany(g => g).ToList();
+
+    private List<DocumentItem> Selected() => selected.Count == 0 ? [] : (items ?? []).Where(d => selected.Contains(d.Id)).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        items = await Docs.GetUnassignedAsync();
+    }
+
+    protected override bool IsRelevantChange(DataChange change) => change.Area is DataArea.BankSync or DataArea.ImportedData or DataArea.Projects;
+
+    protected override async Task ReloadAfterChangeAsync()
+    {
+        items = await Docs.GetUnassignedAsync();
+        selected.IntersectWith(items.Select(d => d.Id));
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (items == null) return;
+        try
+        {
+            module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/documents.js");
+            if (items.Count > 0) await module.InvokeVoidAsync("thumbs", gridsRef);
+            if (!keysBound)
+            {
+                keysBound = true;
+                selfRef ??= DotNetObjectReference.Create(this);
+                await module.InvokeVoidAsync("bindSelectionKeys", selfRef);
+                await module.InvokeVoidAsync("bindMarquee", selfRef);
+            }
+        }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+        catch (InvalidOperationException) { /* prerendering */ }
+    }
+
+    /// <summary>Checkbox click: toggles one card; with Shift, sets the range from the last clicked card to this one.</summary>
+    private void Toggle(long id, bool shift)
+    {
+        var list = Ordered();
+        var to = list.FindIndex(d => d.Id == id);
+        var from = shift && selectionAnchor is { } a ? list.FindIndex(d => d.Id == a) : -1;
+        var select = !selected.Contains(id);
+        if (from >= 0 && to >= 0)
+        {
+            select = selected.Contains(list[from].Id) || select;
+            for (var i = Math.Min(from, to); i <= Math.Max(from, to); i++)
+            {
+                if (select) selected.Add(list[i].Id);
+                else selected.Remove(list[i].Id);
+            }
+        }
+        else if (select) selected.Add(id);
+        else selected.Remove(id);
+        selectionAnchor = id;
+    }
+
+    private void SelectAll()
+    {
+        foreach (var d in items ?? []) selected.Add(d.Id);
+    }
+
+    private void ClearSelection()
+    {
+        selected.Clear();
+        selectionAnchor = null;
+    }
+
+    /// <summary>Cmd/Ctrl+A on the page (not in a field or dialog).</summary>
+    [JSInvokable]
+    public void SelectAllFromKeys()
+    {
+        if (showAssign || items == null) return;
+        SelectAll();
+        StateHasChanged();
+    }
+
+    /// <summary>Escape on the page: clears the selection.</summary>
+    [JSInvokable]
+    public bool ClearFromKeys()
+    {
+        if (showAssign || selected.Count == 0) return false;
+        ClearSelection();
+        StateHasChanged();
+        return true;
+    }
+
+    /// <summary>Rectangle selection (or a click on empty space): the full set of selected ids.</summary>
+    [JSInvokable]
+    public void SetSelectionFromMarquee(long[] ids)
+    {
+        if (showAssign || items == null) return;
+        selected.Clear();
+        foreach (var id in ids) selected.Add(id);
+        selectionAnchor = null;
+        StateHasChanged();
+    }
+
+    private async Task OpenAssignAsync()
+    {
+        showAssign = true;
+        assignTo = null;
+        assignProject = null;
+        assignError = null;
+        message = null;
+        targets = null;
+        targets = await Docs.GetAssignTargetsAsync(includeClosed);
+    }
+
+    private async Task ToggleClosedAsync(ChangeEventArgs e)
+    {
+        includeClosed = e.Value is true;
+        targets = await Docs.GetAssignTargetsAsync(includeClosed);
+        if (!targets.Any(t => t.AccountId == assignTo && t.ProjectId == assignProject))
+        {
+            assignTo = null;
+            assignProject = null;
+        }
+    }
+
+    private void CloseAssign() => showAssign = false;
+
+    private async Task AssignSelectedAsync()
+    {
+        if (assignTo is not { } target) return;
+        var ids = Selected().Select(d => d.Id).ToList();
+        busy = true;
+        try
+        {
+            var count = await Docs.AssignAsync(ids, target);
+            var name = targets?.FirstOrDefault(t => t.AccountId == target)?.Name ?? "";
+            showAssign = false;
+            ClearSelection();
+            items = await Docs.GetUnassignedAsync();
+            message = L[count == 1 ? "Assigned_One" : "Assigned", count, name];
+        }
+        catch (AccessDeniedException)
+        {
+            assignError = L["Assign_Denied"];
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && module != null) _ = DisposeModuleAsync(module);
+        if (disposing) selfRef?.Dispose();
+        base.Dispose(disposing);
+    }
+
+    private static async Task DisposeModuleAsync(IJSObjectReference m)
+    {
+        try
+        {
+            await m.InvokeVoidAsync("unbindSelectionKeys");
+            await m.InvokeVoidAsync("unbindMarquee");
+            await m.DisposeAsync();
+        }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+    }
+}

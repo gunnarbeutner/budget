@@ -79,4 +79,7 @@
   <data name="Item_Account" xml:space="preserve">
     <value>Profil und Passkeys</value>
   </data>
+  <data name="Item_Documents" xml:space="preserve">
+    <value>Zuzuordnende Dokumente</value>
+  </data>
 </root>
