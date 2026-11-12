@@ -353,6 +353,43 @@ public sealed class WebLoginTests
     }
 
     [Fact]
+    public async Task A_web_login_waiting_for_an_app_confirmation_waits_for_the_user_once_the_approval_delay_has_passed()
+    {
+        // The form is filled and sent by itself; the bank then waits for a confirmation in its app.
+        var confirmed = new TaskCompletionSource();
+        var browser = new FakeBrowserHost
+        {
+            User = async page =>
+            {
+                lock (page.Visible) page.Visible.UnionWith(["#user", "#go"]);
+                await confirmed.Task;
+                await SignedIn(page);
+            },
+        };
+        var registration = new ConnectorRegistration(WebBankConnector.Type, "Web bank", "Web login",
+            context => new WebBankConnector(context, autofill: true), CredentialRequirement.None);
+        await using var world = await BankWorld.CreateAsync(extras: new BankWorldExtras
+        {
+            Registrations = [registration],
+            BrowserHost = browser,
+            WebLoginOptions = new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(10), SettleDelay = TimeSpan.Zero, StuckAfter = TimeSpan.FromMinutes(1) },
+        });
+        world.Options.ApprovalHintAfter = TimeSpan.FromMilliseconds(400);
+        var loginId = (await world.For(BankWorld.Alice).CreateLoginAsync(WebBankConnector.Type, "Web bank", "", "")).Id;
+
+        Assert.Equal(StartResult.Started, await world.Coordinator.StartAsync(BankWorld.Alice, LoginOnly(loginId)));
+        await WaitForAsync(() => world.Coordinator.GetStatus(BankWorld.Alice, loginId)?.WebLoginMode == WebLoginMode.Waiting);
+        Assert.Equal(SyncPhase.Running, world.Coordinator.GetStatus(BankWorld.Alice, loginId)!.Phase); // the bank may let it through by itself
+
+        await WaitForAsync(() => world.Coordinator.GetStatus(BankWorld.Alice, loginId)?.Phase == SyncPhase.WaitingForInput);
+        Assert.Equal(WebLoginMode.Waiting, world.Coordinator.GetStatus(BankWorld.Alice, loginId)!.WebLoginMode);
+
+        confirmed.SetResult();
+        var done = await world.WaitAsync(BankWorld.Alice, loginId, []);
+        Assert.True(done.Succeeded, done.Error);
+    }
+
+    [Fact]
     public async Task The_challenge_is_shown_to_the_owner_only_and_nobody_else_can_attach_to_the_session()
     {
         var gate = new TaskCompletionSource();

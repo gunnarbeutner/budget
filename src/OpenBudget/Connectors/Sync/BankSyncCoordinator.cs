@@ -12,6 +12,12 @@ public sealed class BankSyncOptions
 
     /// <summary>Delay between polls of a decoupled approval when the connector names none.</summary>
     public TimeSpan DefaultPollInterval { get; set; } = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// How long a web login may wait by itself after the form was sent before the bank is taken to be waiting for the
+    /// user (an app confirmation): banks that need none finish within a few seconds.
+    /// </summary>
+    public TimeSpan ApprovalHintAfter { get; set; } = TimeSpan.FromSeconds(4);
 }
 
 public enum SyncPhase
@@ -279,21 +285,61 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
 
         public void Report(string message) => Update(s => s with { Message = message });
 
-        public void ShowWebLogin(ConnectorChallenge challenge, string sessionId, DateTime expiresAt, WebLoginMode mode = WebLoginMode.Interactive) =>
-            Update(s => s with
-            {
-                // Only a page the user acts on waits for them; a sign-in running (or waiting) by itself is still syncing.
-                Phase = mode == WebLoginMode.Interactive ? SyncPhase.WaitingForInput : SyncPhase.Running,
-                Challenge = challenge,
-                // the same login changing its mode keeps its id (the dialog keeps its state)
-                ChallengeId = s.WebLoginSessionId == sessionId ? s.ChallengeId : Guid.NewGuid(),
-                WebLoginMode = mode,
-                ChallengeExpiresAt = expiresAt,
-                WebLoginSessionId = sessionId,
-            });
+        // Counts the web login's waiting episodes, so that a delay that elapses after the mode changed does nothing.
+        private int _waitingEpisode;
 
-        public void HideWebLogin() =>
+        /// <summary>
+        /// Shows the job's web login. The job waits for the user while the page needs them (interactive) and, once
+        /// <see cref="BankSyncOptions.ApprovalHintAfter"/> has passed, while the bank waits for a confirmation
+        /// (<see cref="WebLoginMode.Waiting"/>); a sign-in running by itself is still syncing. The sign-in dialog
+        /// follows this phase.
+        /// </summary>
+        public void ShowWebLogin(ConnectorChallenge challenge, string sessionId, DateTime expiresAt, WebLoginMode mode = WebLoginMode.Interactive)
+        {
+            int? startWaiting = null;
+            lock (_owner._lock)
+            {
+                var sameSession = _status.WebLoginSessionId == sessionId;
+                var keepWaiting = mode == WebLoginMode.Waiting && sameSession && _status.WebLoginMode == WebLoginMode.Waiting;
+                if (!keepWaiting)
+                {
+                    _waitingEpisode++;
+                    if (mode == WebLoginMode.Waiting) startWaiting = _waitingEpisode;
+                }
+                _status = _status with
+                {
+                    Phase = mode == WebLoginMode.Interactive ? SyncPhase.WaitingForInput
+                        : keepWaiting ? _status.Phase
+                        : SyncPhase.Running,
+                    Challenge = challenge,
+                    // the same login changing its mode keeps its id (the dialog keeps its state)
+                    ChallengeId = sameSession ? _status.ChallengeId : Guid.NewGuid(),
+                    WebLoginMode = mode,
+                    ChallengeExpiresAt = expiresAt,
+                    WebLoginSessionId = sessionId,
+                };
+            }
+            _owner.Publish(UserId);
+            if (startWaiting is { } episode) _ = AwaitApprovalAsync(episode, sessionId);
+        }
+
+        private async Task AwaitApprovalAsync(int episode, string sessionId)
+        {
+            try { await Task.Delay(_owner._options.ApprovalHintAfter, _owner._clock); }
+            catch (Exception) { return; }
+            lock (_owner._lock)
+            {
+                if (_waitingEpisode != episode || _status.WebLoginSessionId != sessionId || _status.Phase != SyncPhase.Running) return;
+                _status = _status with { Phase = SyncPhase.WaitingForInput };
+            }
+            _owner.Publish(UserId);
+        }
+
+        public void HideWebLogin()
+        {
+            lock (_owner._lock) _waitingEpisode++;
             Update(s => s with { Phase = SyncPhase.Running, Challenge = null, ChallengeExpiresAt = null, WebLoginSessionId = null });
+        }
 
         public async Task RunAsync(CancellationToken shutdown)
         {

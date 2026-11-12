@@ -114,14 +114,14 @@ else if (lastSync is { } last)
 @code {
     /// <summary>
     /// Whether the dialog shows: always for a question to the user; for a web login only once the page needs the user
-    /// (interactive), the user asked to see it, or the bank is probably waiting for a confirmation (the approval hint).
-    /// A sign-in that runs by itself stays in the top bar's sync status.
+    /// or the user asked to see it. Whether the page needs the user (interactive, or the bank waiting for a confirmation
+    /// long enough for the approval hint) is the job's phase, which the Bank logins card shows as well. A sign-in that
+    /// runs by itself stays in the top bar's sync status.
     /// </summary>
     private bool NeedsUser(BankSyncStatus c) =>
         c.Challenge?.Kind != ChallengeKind.WebLogin
-        || c.WebLoginMode == OpenBudget.Browser.WebLoginMode.Interactive
-        || showBrowser
-        || ShowApprovalHint(c);
+        || c.Phase == SyncPhase.WaitingForInput
+        || showBrowser;
 
     [Inject] private ClockService ClockSvc { get; set; } = default!;
 
@@ -237,20 +237,8 @@ else if (lastSync is { } last)
         base.Dispose(disposing);
     }
 
-    // Banks that need no app approval finish within a few seconds of the form being sent; only a longer wait means the
-    // bank is really waiting for the user, so the approval hint appears after that.
-    private static readonly TimeSpan ApprovalHintAfter = TimeSpan.FromSeconds(4);
-    private DateTime? waitingSince;
-
-    private bool ShowApprovalHint(BankSyncStatus status)
-    {
-        if (status.WebLoginMode != OpenBudget.Browser.WebLoginMode.Waiting) { waitingSince = null; return false; }
-        if (waitingSince == null)
-        {
-            waitingSince = DateTime.UtcNow;
-            _ = Task.Delay(ApprovalHintAfter).ContinueWith(_ => InvokeAsync(StateHasChanged));
-        }
-        return DateTime.UtcNow - waitingSince >= ApprovalHintAfter;
-    }
+    /// <summary>The bank waits for a confirmation in its app: the job waits for the user without the page needing them.</summary>
+    private static bool ShowApprovalHint(BankSyncStatus status) =>
+        status.WebLoginMode == OpenBudget.Browser.WebLoginMode.Waiting && status.Phase == SyncPhase.WaitingForInput;
 
 }
