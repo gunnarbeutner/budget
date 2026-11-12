@@ -15,18 +15,14 @@
 
 @code {
     [Parameter, EditorRequired] public int ProjectId { get; set; }
-    /// <summary>Bumped by the page when sharing changed, so the notice re-reads the shared state.</summary>
-    [Parameter] public int RefreshToken { get; set; }
 
     private DefaultProjectState? state;
     private int _loadedFor;
-    private int _loadedToken;
 
     protected override async Task OnParametersSetAsync()
     {
-        if (_loadedFor == ProjectId && _loadedToken == RefreshToken) return;
+        if (_loadedFor == ProjectId) return;
         _loadedFor = ProjectId;
-        _loadedToken = RefreshToken;
         await LoadAsync();
     }
 

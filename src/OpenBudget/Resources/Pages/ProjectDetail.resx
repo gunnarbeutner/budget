@@ -73,4 +73,31 @@
   <data name="Heading_Settings" xml:space="preserve">
     <value>Project settings · {0}</value>
   </data>
+  <data name="Aria_SettingsNav" xml:space="preserve">
+    <value>Project settings</value>
+  </data>
+  <data name="Nav_General" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="Nav_Accounts" xml:space="preserve">
+    <value>Accounts</value>
+  </data>
+  <data name="Nav_Categories" xml:space="preserve">
+    <value>Categories</value>
+  </data>
+  <data name="Nav_Sharing" xml:space="preserve">
+    <value>Sharing</value>
+  </data>
+  <data name="Heading_General" xml:space="preserve">
+    <value>Name and description</value>
+  </data>
+  <data name="Label_Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Label_Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="Button_Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
 </root>

@@ -42,7 +42,7 @@ public sealed class SharingTests : EndToEndTestBase
         await SeedHiddenProjectAsync();
 
         // Owner: share from the settings page.
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/settings");
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/settings/sharing");
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Sharing" })).ToBeVisibleAsync();
         await Page.Locator("#share-user").SelectOptionAsync(new SelectOptionValue { Label = E2ESeed.SecondUserName });
         await Page.Locator("#share-role").SelectOptionAsync(new SelectOptionValue { Label = "Viewer" });
@@ -114,7 +114,7 @@ public sealed class SharingTests : EndToEndTestBase
 
         await LogoutAsync();
         await LoginAsync(E2ESeed.UserName);
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/settings");
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/settings/sharing");
         await Expect(Page.Locator("#sharing-card").GetByRole(AriaRole.Cell, new() { Name = "Guest Person" })).ToBeVisibleAsync();
     }
 
@@ -129,11 +129,21 @@ public sealed class SharingTests : EndToEndTestBase
         await Page.GetByTestId("budget-menu").Locator("summary").ClickAsync();
         await Expect(Page.GetByRole(AriaRole.Link, new() { Name = "New Budget" })).ToBeVisibleAsync();
 
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/settings");
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/settings/categories");
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Category Assignments" })).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Sharing" })).ToHaveCountAsync(0);
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Accounts" })).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("project-settings-nav-accounts")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("project-settings-nav-sharing")).ToHaveCountAsync(0);
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/settings");
         await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Delete Project" })).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("project-general-save")).ToBeVisibleAsync();
+
+        // The owner-only views lead an editor back to General.
+        foreach (var view in new[] { "accounts", "sharing" })
+        {
+            await GoToAsync($"/projects/{E2ESeed.ProjectId}/settings/{view}");
+            await Expect(Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex($"/projects/{E2ESeed.ProjectId}/settings$"));
+            await Expect(Page.GetByTestId("project-settings-view-general")).ToBeVisibleAsync();
+        }
 
         await GoToAsync($"/budgets/{E2ESeed.BudgetId}/edit");
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Monthly amounts" })).ToBeVisibleAsync();

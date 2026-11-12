@@ -1451,9 +1451,6 @@ button.cat-pill:hover { filter: brightness(0.96); }
 .status-bg-warning { background: var(--ob-warn); }
 .status-bg-danger { background: var(--ob-negative); }
 
-/* Targets of the gear menu's deep links into the project settings page. */
-.scroll-anchor { scroll-margin-top: calc(var(--ob-topbar-h) + 8px); }
-
 @media print {
     .app-bottombar, .shell-views { display: none !important; }
 }
@@ -1793,7 +1790,6 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 .settings-main { min-width: 0; min-height: 0; }
 .settings-toolbar-sub { min-width: 0; }
 .settings-page > :not(.page-toolbar):not(.modal):not(.modal-backdrop) { max-width: 72rem; }
-.settings-page .scroll-anchor { scroll-margin-top: calc(var(--ob-toolbar-h) + 8px); }
 .settings-page .card {
     background: transparent;
     border: 0;
@@ -1803,7 +1799,7 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
     margin: 0 !important;
     padding: 4px 0 20px;
 }
-.settings-page .card + .card, .settings-page .scroll-anchor + .card { padding-top: 16px; }
+.settings-page .card + .card { padding-top: 16px; }
 .settings-page .card-header {
     background: transparent;
     border: 0;
@@ -1867,6 +1863,39 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
     .settings-nav .shell-view, .settings-nav-back { flex: 0 0 auto; border-radius: 6px; }
     .settings-nav .shell-view.active { box-shadow: none; }
     .settings-nav-back .text-truncate { max-width: 9rem; }
+}
+
+/* Project settings: the list of views on the left of the view itself; below md the list is a row of tabs above it. */
+.project-settings {
+    display: grid;
+    grid-template-columns: 12rem minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+.project-settings-nav {
+    position: sticky;
+    top: calc(var(--ob-toolbar-h) + 8px);
+    padding: 4px 0;
+    border-right: 1px solid var(--ob-line);
+    min-width: 0;
+}
+.project-settings-view { min-width: 0; }
+.project-settings-field { max-width: 30rem; }
+@media (max-width: 767.98px) {
+    .project-settings { display: block; }
+    .project-settings-nav {
+        position: static;
+        display: flex;
+        gap: 2px;
+        padding: 4px 0;
+        margin-bottom: 12px;
+        overflow-x: auto;
+        white-space: nowrap;
+        border-right: 0;
+        border-bottom: 1px solid var(--ob-line);
+    }
+    .project-settings-nav .shell-view { flex: 0 0 auto; border-radius: 6px; }
+    .project-settings-nav .shell-view.active { box-shadow: none; }
 }
 
 .modal.ob-modal-on-top { z-index: 1065; background: rgba(0, 0, 0, 0.35); }

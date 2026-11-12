@@ -161,7 +161,7 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                     @if (!hasAssignedAccounts)
                     {
                         <div class="alert alert-info mb-0 py-2 small">
-                            @L["Balance_NoAccountsAssigned_Before"]<a href="@($"/projects/{selectedProjectId}/settings")">@L["Balance_NoAccountsAssigned_LinkText"]</a>@L["Balance_NoAccountsAssigned_After"]
+                            @L["Balance_NoAccountsAssigned_Before"]<a href="@($"/projects/{selectedProjectId}/settings/accounts")">@L["Balance_NoAccountsAssigned_LinkText"]</a>@L["Balance_NoAccountsAssigned_After"]
                         </div>
                     }
                     else if (balanceDaily.Length == 0)

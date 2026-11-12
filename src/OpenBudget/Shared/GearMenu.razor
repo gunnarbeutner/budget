@@ -38,14 +38,14 @@
                 </a>
             </li>
             <li>
-                <a class="dropdown-item" href="@($"/projects/{projectId}/settings#accounts-categories")" data-testid="gear-accounts-categories">
+                <a class="dropdown-item" href="@($"/projects/{projectId}/settings/categories")" data-testid="gear-accounts-categories">
                     <i class="bi bi-diagram-3 me-2" aria-hidden="true"></i>@L["Item_AccountsCategories"]
                 </a>
             </li>
             @if (isOwner)
             {
                 <li>
-                    <a class="dropdown-item" href="@($"/projects/{projectId}/settings#sharing")" data-testid="gear-sharing">
+                    <a class="dropdown-item" href="@($"/projects/{projectId}/settings/sharing")" data-testid="gear-sharing">
                         <i class="bi bi-people me-2" aria-hidden="true"></i>@L["Item_Sharing"]
                     </a>
                 </li>

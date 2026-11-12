@@ -56,7 +56,7 @@ public sealed class DefaultProjectTests : EndToEndTestBase
         await Expect(Badge).ToBeVisibleAsync();
         // The settings page has no switch.
         await GoToAsync(SettingsUrl);
-        await Expect(Page.GetByTestId("accounts-card")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("project-general-card")).ToBeVisibleAsync();
         await Expect(Toggle).ToHaveCountAsync(0);
 
         await OpenSettingsDialogAsync();
@@ -86,9 +86,11 @@ public sealed class DefaultProjectTests : EndToEndTestBase
         await Page.GetByTestId("project-settings-save").ClickAsync();
         await Expect(Page.GetByTestId("modal-dialog")).ToHaveCountAsync(0);
 
-        await GoToAsync(SettingsUrl);
+        await GoToAsync(SettingsUrl + "/sharing");
         await Page.Locator("#share-user").SelectOptionAsync(new SelectOptionValue { Label = E2ESeed.SecondUserName });
         await Page.Locator("#share-add").ClickAsync();
+        await Expect(Page.Locator("#sharing-card").GetByRole(AriaRole.Cell, new() { Name = E2ESeed.SecondUserName })).ToBeVisibleAsync();
+        await Page.GetByTestId("project-settings-nav-general").ClickAsync();
         await Expect(Page.Locator("#default-cleared-notice")).ToBeVisibleAsync();
 
         // The dialog shows it too, with the switch off and disabled; dismissing it there clears it everywhere.
@@ -101,7 +103,7 @@ public sealed class DefaultProjectTests : EndToEndTestBase
         await Expect(notice).ToHaveCountAsync(0);
 
         await GoToAsync(SettingsUrl);
-        await Expect(Page.GetByTestId("accounts-card")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("project-general-card")).ToBeVisibleAsync();
         await Expect(Page.Locator("#default-cleared-notice")).ToHaveCountAsync(0);
     }
 }

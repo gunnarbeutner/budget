@@ -7,14 +7,17 @@ using OpenBudget.Services;
 namespace OpenBudget.E2E.Tests;
 
 /// <summary>
-/// Covers the project settings page (/projects/{id}/settings): the configuration cards render,
-/// category assignments can be removed and re-added through the live circuit, and the destructive
+/// Covers the project settings views (/projects/{id}/settings and its accounts, categories and sharing views):
+/// the left list switches views and the old anchors open the matching view, category assignments can be removed
+/// and re-added through the live circuit, accounts can be added, the name can be changed, and the destructive
 /// "Delete Project" flow confirms via the modal and returns to the dashboard.
 /// </summary>
 [TestFixture]
 public sealed class ProjectSettingsTests : EndToEndTestBase
 {
     private string SettingsUrl => $"/projects/{E2ESeed.ProjectId}/settings";
+    private string CategoriesUrl => SettingsUrl + "/categories";
+    private string AccountsUrl => SettingsUrl + "/accounts";
 
     // "Living" shows up in several cards; the Category Assignments row is the one carrying a
     // "Remove" button, so scope to that to avoid a strict-mode multi-match.
@@ -24,22 +27,74 @@ public sealed class ProjectSettingsTests : EndToEndTestBase
             .Filter(new() { Has = Page.GetByRole(AriaRole.Button, new() { Name = "Remove" }) });
 
     [Test]
-    public async Task Settings_page_shows_all_configuration_cards()
+    public async Task The_settings_list_switches_between_the_four_views()
     {
         await GoToAsync(SettingsUrl);
-
+        var nav = Page.GetByTestId("project-settings-nav");
+        await Expect(nav.GetByTestId("project-settings-nav-general")).ToHaveAttributeAsync("aria-current", "page");
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Parent project" })).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Category Assignments" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Delete Project" })).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Category Assignments" })).ToHaveCountAsync(0);
+
+        await nav.GetByTestId("project-settings-nav-accounts").ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/settings/accounts$"));
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Accounts", Exact = true })).ToBeVisibleAsync();
+        await Expect(nav.GetByTestId("project-settings-nav-accounts")).ToHaveAttributeAsync("aria-current", "page");
+
+        await nav.GetByTestId("project-settings-nav-categories").ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/settings/categories$"));
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Category Assignments" })).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Category Income/Expense Configuration" })).ToBeVisibleAsync();
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Budget Tracking Configuration" })).ToBeVisibleAsync();
-        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Delete Project" })).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("accounts-card")).ToHaveCountAsync(0);
+
+        await nav.GetByTestId("project-settings-nav-sharing").ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/settings/sharing$"));
+        await Expect(Page.Locator("#sharing-card")).ToBeVisibleAsync();
+        await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Delete Project" })).ToHaveCountAsync(0);
+    }
+
+    [TestCase("#accounts-categories", "categories")]
+    [TestCase("#sharing", "sharing")]
+    public async Task Old_anchors_open_the_matching_view(string anchor, string view)
+    {
+        await GoToAsync(SettingsUrl + anchor);
+        await Expect(Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex($"/settings/{view}$"));
+        await Expect(Page.GetByTestId($"project-settings-view-{view}")).ToBeVisibleAsync();
+    }
+
+    [Test]
+    public async Task The_general_view_renames_the_project()
+    {
+        await GoToAsync(SettingsUrl);
+        var save = Page.GetByTestId("project-general-save");
+        await Expect(save).ToBeDisabledAsync();
+        await Page.Locator("#project-name").FillAsync("Renamed Project");
+        await save.ClickAsync();
+        await Expect(Page.GetByTestId("page-header")).ToContainTextAsync("Renamed Project");
+        await Expect(save).ToBeDisabledAsync();
+    }
+
+    [Test]
+    public async Task The_views_fit_a_phone_with_the_list_as_a_tab_row()
+    {
+        await Page.SetViewportSizeAsync(390, 844);
+        foreach (var view in new[] { "", "/accounts", "/categories", "/sharing" })
+        {
+            await GoToAsync(SettingsUrl + view);
+            await Expect(Page.GetByTestId("project-settings-nav-sharing")).ToBeVisibleAsync();
+            var overflow = await Page.EvaluateAsync<bool>("document.documentElement.scrollWidth > document.documentElement.clientWidth");
+            Assert.That(overflow, Is.False, $"{view} scrolls horizontally");
+        }
+        var general = await Page.GetByTestId("project-settings-nav-general").BoundingBoxAsync();
+        var sharing = await Page.GetByTestId("project-settings-nav-sharing").BoundingBoxAsync();
+        Assert.That(sharing!.Y, Is.EqualTo(general!.Y).Within(2), "the views sit in one row on a phone");
     }
 
     [Test]
     public async Task Removing_an_assigned_category_clears_the_list()
     {
-        await GoToAsync(SettingsUrl);
+        await GoToAsync(CategoriesUrl);
 
         // The baseline world assigns the "Living" group to the project.
         var row = AssignmentRow("Living");
@@ -52,7 +107,7 @@ public sealed class ProjectSettingsTests : EndToEndTestBase
     [Test]
     public async Task Adding_a_category_through_the_picker_shows_it_in_the_list()
     {
-        await GoToAsync(SettingsUrl);
+        await GoToAsync(CategoriesUrl);
 
         // Start from a clean slate so the re-add is unambiguous.
         await AssignmentRow("Living").GetByRole(AriaRole.Button, new() { Name = "Remove" }).ClickAsync();
@@ -104,7 +159,7 @@ public sealed class ProjectSettingsTests : EndToEndTestBase
     public async Task Several_accounts_can_be_added_at_once()
     {
         await SeedAccountsAsync();
-        await GoToAsync(SettingsUrl);
+        await GoToAsync(AccountsUrl);
 
         await Page.GetByRole(AriaRole.Button, new() { Name = "Add Account" }).ClickAsync();
         var modal = Page.GetByTestId("modal-dialog");
