@@ -1693,6 +1693,20 @@
             rightEdge = scopeLatest is { } lt && lt > anchorDate
                 ? new DateTime(lt.Year, lt.Month, 1)
                 : anchorDate;
+            // The filter's period narrows the chart to the same range as the list.
+            var (periodFrom, periodTo) = PeriodFilter.Resolve(periodFilter, DateOnly.FromDateTime(Clock.Today), customFrom, customTo);
+            if (periodFrom is { } pf)
+            {
+                var from = new DateTime(pf.Year, pf.Month, 1);
+                if (from > earliest) earliest = from;
+            }
+            if (periodTo is { } pt)
+            {
+                var lastDay = pt.AddDays(-1);
+                var to = new DateTime(lastDay.Year, lastDay.Month, 1);
+                if (to < rightEdge) rightEdge = to;
+            }
+            if (rightEdge < earliest) { chartBars = null; return; }
         }
         var (windowStart, windowEndExclusive, _, _, _) = BrowseChart.ResolveChartWindow(earliest, rightEdge, chartGranularity);
 
@@ -1723,7 +1737,8 @@
         chartInvertY = chart.InvertY;
         chartIsBalance = isAccountDaily;
         chartFullWidth = balancePeriod;
-        chartBudget = leaves != null ? await ComputeChartBudgetAsync(chart.BarMonths, chart.InvertY) : null;
+        // expenses carry a negative budget like their bars, whichever way the axis ends up pointing
+        chartBudget = leaves != null ? await ComputeChartBudgetAsync(chart.BarMonths, negate: invertY) : null;
         chartBars = chart.Bars;
     }
 
