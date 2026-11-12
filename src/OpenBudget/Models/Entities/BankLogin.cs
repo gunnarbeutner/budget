@@ -218,3 +218,24 @@ public class BankStatement
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// A further bank identifier of a stored document: the bank offered the same file (same content, same date) under
+/// another identifier, and only one copy is kept. The sync treats the identifier as known, so it is not downloaded again.
+/// </summary>
+[Table("bank_statement_aliases")]
+public class BankStatementAlias
+{
+    [Key]
+    public long Id { get; set; }
+
+    /// <summary>The kept document.</summary>
+    public long StatementId { get; set; }
+
+    /// <summary>The login that offers the document under <see cref="Identifier"/>.</summary>
+    public int BankLoginId { get; set; }
+
+    [Required]
+    [MaxLength(300)]
+    public string Identifier { get; set; } = string.Empty;
+}

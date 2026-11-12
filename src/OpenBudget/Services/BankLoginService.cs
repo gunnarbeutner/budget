@@ -236,6 +236,7 @@ public class BankLoginService
 
         var statements = await db.BankStatements.Where(s => s.BankLoginId == id).ToListAsync(ct);
         db.BankStatements.RemoveRange(statements);
+        db.BankStatementAliases.RemoveRange(await db.BankStatementAliases.Where(a => a.BankLoginId == id).ToListAsync(ct));
         db.BankLogins.Remove(login);
         await db.SaveChangesAsync(ct);
         foreach (var s in statements) _statementStore.DeleteFile(s.FilePath);

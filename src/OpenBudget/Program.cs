@@ -18,6 +18,8 @@ using System.Globalization;
 // server. Handled before the web host is built so its flags aren't parsed as host configuration.
 if (args.Length > 0 && args[0].Equals("users", StringComparison.OrdinalIgnoreCase))
     return await UserCli.RunAsync(args[1..]);
+if (args.Length > 0 && args[0].Equals(DocumentsCli.Command, StringComparison.OrdinalIgnoreCase))
+    return await DocumentsCli.RunAsync(args[1..]);
 
 var builder = WebApplication.CreateBuilder(args);
 

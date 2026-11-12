@@ -75,7 +75,12 @@ public sealed class MoneyMoneyStatementImport
 
             var hash = BankStatementStore.HashOf(content);
             if (await db.BankStatements.AnyAsync(s => s.OwnerUserId == owner && s.Sha256 == hash, ct))
+            {
+                // a copy of the same date without an account takes over MoneyMoney's account
+                if (account != null)
+                    await BankStatementStore.MergeIntoExistingAsync(db, owner, null, account, IdentifierPrefix + hash, hash, date, ct);
                 return MoneyMoneyStatementOutcome.Duplicate;
+            }
 
             var title = string.IsNullOrWhiteSpace(name) ? date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : name.Trim();
             if (title.Length > 300) title = title[..300];

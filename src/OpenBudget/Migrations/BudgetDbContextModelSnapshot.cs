@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261112045115_RemoveCategorySetAt";
+        public override string LatestMigrationId => "20261112155916_StatementAliases";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -536,6 +536,33 @@ namespace OpenBudget.Migrations
                     b.HasIndex("OwnerUserId", "Sha256");
 
                     b.ToTable("bank_statements");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.BankStatementAlias", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BankLoginId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Identifier")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("StatementId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StatementId");
+
+                    b.HasIndex("BankLoginId", "Identifier")
+                        .IsUnique();
+
+                    b.ToTable("bank_statement_aliases");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Budget", b =>
@@ -1880,6 +1907,15 @@ namespace OpenBudget.Migrations
                         .IsRequired();
 
                     b.Navigation("BankLogin");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.BankStatementAlias", b =>
+                {
+                    b.HasOne("OpenBudget.Models.BankStatement", null)
+                        .WithMany()
+                        .HasForeignKey("StatementId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Budget", b =>
