@@ -180,6 +180,26 @@
                     </a>
                 }
             </div>
+            @* The selection's actions as the toolbar's last row: above the list, never over it. *@
+            @if (selected.Count > 0)
+            {
+                <div class="tx-actionbar" data-testid="action-bar" role="toolbar" aria-label="@L["Bar_Aria"]">
+                    <span class="tx-actionbar-count" data-testid="action-bar-count">@L["Bar_Selected", selected.Count] · @Formatting.FormatMoneyDe(selectionSum)</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="action-category" @onclick="e => OpenPickerFromBar(e)">
+                        <i class="bi bi-tag" aria-hidden="true"></i> @L["Bar_Category"]
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="action-note" @onclick="e => OpenNote(e.ClientX, e.ClientY)">
+                        <i class="bi bi-sticky" aria-hidden="true"></i> @L["Bar_Note"]
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="action-check" @onclick="ToggleCheckSelectionAsync">
+                        <i class="bi bi-check2-square" aria-hidden="true"></i> @L["Bar_Check"]
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="action-more" @onclick="e => OpenContextMenu(e.ClientX, e.ClientY)">
+                        <i class="bi bi-three-dots" aria-hidden="true"></i> @L["Bar_More"]
+                    </button>
+                    <button type="button" class="btn btn-sm btn-link ms-auto" data-testid="action-clear" @onclick="ClearSelection">@L["Bar_Clear"]</button>
+                </div>
+            }
         </div>
 
         @if (RulesCategoryId is { } rulesCategory)
@@ -375,25 +395,6 @@
                 <div class="browse-cards"><HoldingsCard Holdings="h" /></div>
             }
 
-            @if (selected.Count > 0)
-            {
-                <div class="tx-actionbar" data-testid="action-bar" role="toolbar" aria-label="@L["Bar_Aria"]">
-                    <span class="tx-actionbar-count" data-testid="action-bar-count">@L["Bar_Selected", selected.Count] · @Formatting.FormatMoneyDe(selectionSum)</span>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="action-category" @onclick="e => OpenPickerFromBar(e)">
-                        <i class="bi bi-tag" aria-hidden="true"></i> @L["Bar_Category"]
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="action-note" @onclick="e => OpenNote(e.ClientX, e.ClientY)">
-                        <i class="bi bi-sticky" aria-hidden="true"></i> @L["Bar_Note"]
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="action-check" @onclick="ToggleCheckSelectionAsync">
-                        <i class="bi bi-check2-square" aria-hidden="true"></i> @L["Bar_Check"]
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="action-more" @onclick="e => OpenContextMenu(e.ClientX, e.ClientY)">
-                        <i class="bi bi-three-dots" aria-hidden="true"></i> @L["Bar_More"]
-                    </button>
-                    <button type="button" class="btn btn-sm btn-link ms-auto" data-testid="action-clear" @onclick="ClearSelection">@L["Bar_Clear"]</button>
-                </div>
-            }
 
             @if (txTotals == null)
             {

@@ -226,6 +226,49 @@ window.obPlaceMenu = function (el, x, y) {
     el.style.visibility = "visible";
 };
 
+// Places the category picker for the point (x, y): below it when at least 360px are free there, otherwise on the side
+// with more room (growing upward from the point), and gives the list the free height of that side minus a margin,
+// at least 120px and at most 70% of the window. Horizontally it stays inside the window. It follows window resizes
+// and scrolling while it is open.
+window.obPlacePicker = function (panel, list, x, y) {
+    if (!panel || !list) return;
+    var place = function () {
+        var m = 8, vw = window.innerWidth, vh = window.innerHeight;
+        var below = vh - y - m, above = y - m;
+        var down = below >= 360 || below >= above;
+        var chrome = panel.offsetHeight - list.offsetHeight;
+        var space = (down ? below : above) - chrome;
+        list.style.maxHeight = Math.max(120, Math.min(space, vh * 0.7 - chrome)) + "px";
+        var w = panel.offsetWidth, h = panel.offsetHeight;
+        panel.style.left = Math.max(m, Math.min(x, vw - w - m)) + "px";
+        if (down) {
+            panel.style.bottom = "auto";
+            panel.style.top = Math.max(m, Math.min(y, vh - h - m)) + "px";
+        } else {
+            panel.style.top = "auto";
+            panel.style.bottom = Math.max(m, Math.min(vh - y, vh - h - m)) + "px";
+        }
+        panel.dataset.placement = down ? "below" : "above";
+        panel.style.visibility = "visible";
+    };
+    panel.__obPlace = place;
+    place();
+    if (!panel.__obPlaceBound) {
+        panel.__obPlaceBound = true;
+        var onChange = function (e) {
+            if (e && e.target instanceof Node && panel.contains(e.target)) return;
+            if (!panel.isConnected) {
+                window.removeEventListener("resize", onChange);
+                window.removeEventListener("scroll", onChange, true);
+                return;
+            }
+            panel.__obPlace();
+        };
+        window.addEventListener("resize", onChange);
+        window.addEventListener("scroll", onChange, true);
+    }
+};
+
 // Places the open submenu of a context menu beside its entry: to the right, or to the left when there is no room,
 // top-aligned with the entry and kept inside the window like the menu itself.
 window.obPlaceSubmenu = function (menu) {

@@ -3,10 +3,12 @@
 @inject IJSRuntime JS
 
 @* Floating category picker, used inline on a row's category cell, from the action bar and from the context menu.
+   obPlacePicker opens it below the point (X, Y) when there is room, otherwise toward the larger free side, and sizes the
+   list to the space there; hidden until placed so it never flashes at a clipped position.
    Search over name and path; with an empty search the whole tree. Enter picks the highlighted entry (the first hit), arrows move, Esc closes. *@
 
 <div class="cp-backdrop" data-ob-overlay @onclick="Close" @oncontextmenu="Close" @oncontextmenu:preventDefault></div>
-<div class="cp-panel" style="@PositionStyle" role="dialog" aria-label="@L["Title"]" data-ob-overlay data-testid="category-picker"
+<div class="cp-panel" @ref="panel" style="visibility: hidden" role="dialog" aria-label="@L["Title"]" data-ob-overlay data-testid="category-picker"
      @onkeydown="OnKeyDown">
     <input @ref="input" type="search" class="form-control form-control-sm cp-search" autocomplete="off"
            placeholder="@L["Search_Placeholder"]" aria-label="@L["Search_Placeholder"]" data-testid="category-picker-search"
@@ -73,6 +75,7 @@
     // One rendered line. Index is the position among the pickable lines (-1 for headers), which Enter and the arrows address.
     private sealed record Item(ItemKind Kind, int Index, int Depth, long? Id, string Name, string ColorStyle = "");
 
+    private ElementReference panel;
     private ElementReference input;
     private ElementReference list;
     private string query = "";
@@ -80,9 +83,6 @@
     private List<long?> entries = [];
     private int active;
     private bool scrollPending;
-
-    private string PositionStyle =>
-        FormattableString.Invariant($"left: max(0.5rem, min({X:0}px, calc(100vw - 25.5rem))); top: max(0.5rem, min({Y:0}px, calc(100vh - 31rem)));");
 
     private static string Indent(int depth) =>
         FormattableString.Invariant($"padding-left: {0.5 + depth * 1.5:0.##}rem;");
@@ -93,6 +93,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        await JS.InvokeVoidAsync("obPlacePicker", panel, list, X, Y);
         if (firstRender) await JS.InvokeVoidAsync("obFocus", input);
         if (scrollPending)
         {

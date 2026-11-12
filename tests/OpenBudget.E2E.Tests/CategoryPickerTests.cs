@@ -153,4 +153,56 @@ public sealed class CategoryPickerTests : EndToEndTestBase
             Clip = new() { X = box.X - 20, Y = box.Y - 20, Width = box.Width + 40, Height = box.Height + 40 },
         });
     }
+
+    // A short window with the clicked row in its lower part: the picker opens upward over the free space, stays inside
+    // the window and shows a good part of the tree without scrolling.
+    [Test]
+    public async Task Opens_upward_and_uses_the_free_space_near_the_bottom_of_a_short_window()
+    {
+        await Page.SetViewportSizeAsync(1200, 520);
+        await GoToAsync(UncategorizedUrl);
+        var pill = Page.GetByTestId("tx-row").Last.GetByTestId("tx-category");
+        await pill.ScrollIntoViewIfNeededAsync();
+        var pillBox = (await pill.BoundingBoxAsync())!;
+        Assert.That(pillBox.Y, Is.GreaterThan(260), "the row sits in the lower half");
+        await pill.ClickAsync();
+        await Expect(Picker).ToBeVisibleAsync();
+        await Expect(Picker).ToHaveAttributeAsync("data-placement", "above");
+
+        var box = (await Picker.BoundingBoxAsync())!;
+        Assert.That(box.Y, Is.GreaterThanOrEqualTo(0));
+        Assert.That(box.Y + box.Height, Is.LessThanOrEqualTo(pillBox.Y + pillBox.Height + 1), "grows upward from the click");
+        Assert.That(box.X + box.Width, Is.LessThanOrEqualTo(1200));
+        Assert.That(box.Height, Is.GreaterThan(240), "uses the space above instead of a small fixed height");
+        var shown = await Picker.Locator(".cp-list").EvaluateAsync<int>(
+            "l => { const b = l.getBoundingClientRect(); return [...l.children].filter(e => { const r = e.getBoundingClientRect(); return r.height > 0 && r.top >= b.top - 1 && r.bottom <= b.bottom + 1; }).length; }");
+        Assert.That(shown, Is.GreaterThanOrEqualTo(8));
+        await Expect(Page.GetByTestId("category-picker-search")).ToBeInViewportAsync();
+
+        // A taller window gives room below again.
+        await Page.Keyboard.PressAsync("Escape");
+        await Page.SetViewportSizeAsync(1200, 1000);
+        await pill.ClickAsync();
+        await Expect(Picker).ToHaveAttributeAsync("data-placement", "below");
+    }
+
+    // The selection bar sits above the list: it never covers the first row, on desktop and on a phone, light and dark.
+    [TestCase(1200, "light")]
+    [TestCase(1200, "dark")]
+    [TestCase(390, "light")]
+    public async Task Action_bar_does_not_cover_the_first_row(int width, string theme)
+    {
+        await Page.SetViewportSizeAsync(width, 800);
+        await Page.EmulateMediaAsync(new PageEmulateMediaOptions { ColorScheme = theme == "dark" ? ColorScheme.Dark : ColorScheme.Light });
+        await GoToAsync(UncategorizedUrl);
+        var first = Page.GetByTestId("tx-row").First;
+        await first.Locator(".tx-amount").ClickAsync();
+        var bar = Page.GetByTestId("action-bar");
+        await Expect(bar).ToBeVisibleAsync();
+        var b = (await bar.BoundingBoxAsync())!;
+        var r = (await first.BoundingBoxAsync())!;
+        Assert.That(b.Y + b.Height, Is.LessThanOrEqualTo(r.Y + 0.5), "bar ends above the first row");
+        var bg = await bar.EvaluateAsync<string>("e => getComputedStyle(e).backgroundColor");
+        Assert.That(bg, Does.Not.Contain("rgba"), "opaque background");
+    }
 }
