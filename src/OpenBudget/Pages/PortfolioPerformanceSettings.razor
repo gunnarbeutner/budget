@@ -1,0 +1,128 @@
+@page "/portfolio-performance"
+@inherits DataChangeAwareComponent
+@using OpenBudget.Connectors.OneDrive
+@using OpenBudget.Services
+@using Microsoft.EntityFrameworkCore
+@inject SourceService SourceService
+@inject PortfolioPerformanceImportService PpImporter
+@inject CloudFileStaging Staging
+@inject IDbContextFactory<BudgetDbContext> DbFactory
+@inject ILogger<PortfolioPerformanceSettings> Logger
+@inject IStringLocalizer<PortfolioPerformanceSettings> L
+
+@* Everything Portfolio Performance: the file the data comes from (a linked OneDrive file, read on the server, or a
+   one-off upload), then per data set its portfolio accounts, depot and instrument mapping and tax settings. Data sets
+   are labelled by the project that shows them (see SourceService.GetLabelsAsync), never by the internal source name;
+   with a single one there is no label at all. *@
+
+<PageTitle>@L["PageTitle"]</PageTitle>
+
+<SettingsShell Active="portfolio-performance">
+<PageHeader Title="@L["Heading"]" />
+
+<p class="text-body-secondary">@L["Intro"]</p>
+
+<OneDriveSettings />
+
+<section class="mt-4" data-testid="pp-upload">
+    <h2 class="h5">@L["Upload_Heading"]</h2>
+    <p class="text-body-secondary small">@L["Upload_Intro"]</p>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <InputFile id="pp-upload-file" class="form-control w-auto" accept=".portfolio" OnChange="UploadAsync" disabled="@uploading" />
+        @if (uploading)
+        {
+            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span class="small">@L["Upload_Running"]</span>
+        }
+    </div>
+    @if (uploadMessage is { } m)
+    {
+        <div class="alert @(m.Ok ? "alert-success" : "alert-warning") py-2 mt-2" role="status" data-testid="pp-upload-result">@m.Text</div>
+    }
+</section>
+
+<section class="mt-4" data-testid="pp-data">
+    <h2 class="h5">@L["Data_Heading"]</h2>
+    @if (sets == null)
+    {
+        <div class="skeleton skeleton-line" style="width: 50%;"></div>
+    }
+    else if (sets.Count == 0)
+    {
+        <p class="text-body-secondary small" data-testid="pp-no-data">@L["Data_None"]</p>
+    }
+    else
+    {
+        @foreach (var set in sets)
+        {
+            <div class="card mb-2" data-testid="pp-data-set" data-source-id="@set.SourceId">
+                <div class="card-body py-2">
+                    @if (sets.Count > 1)
+                    {
+                        <h3 class="h6 card-title" data-testid="pp-data-label">@set.Label</h3>
+                    }
+                    <p class="small text-body-secondary mb-2">@L["Data_Portfolios", set.Portfolios]</p>
+                    <div class="d-flex flex-wrap gap-1">
+                        <a class="btn btn-sm btn-outline-secondary" href="@($"/portfolio-performance/{set.SourceId}/portfolios")" data-testid="pp-portfolio-accounts">@L["Button_PortfolioAccounts"]</a>
+                        <a class="btn btn-sm btn-outline-secondary" href="@($"/portfolio-performance/{set.SourceId}/depots")" data-testid="pp-depots">@L["Button_Depots"]</a>
+                        <a class="btn btn-sm btn-outline-secondary" href="@($"/portfolio-performance/{set.SourceId}/instruments")" data-testid="pp-instruments">@L["Button_Instruments"]</a>
+                        <a class="btn btn-sm btn-outline-secondary" href="@($"/portfolio-performance/{set.SourceId}/tax")" data-testid="pp-tax">@L["Button_Tax"]</a>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</section>
+</SettingsShell>
+
+@code {
+    private sealed record DataSet(int SourceId, string Label, int Portfolios);
+    private sealed record Message(bool Ok, string Text);
+
+    private List<DataSet>? sets;
+    private bool uploading;
+    private Message? uploadMessage;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    protected override bool IsRelevantChange(DataChange change) => change.Area is DataArea.Sources or DataArea.ImportedData or DataArea.Projects;
+
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        var owned = (await SourceService.GetOwnedSourcesAsync()).Select(s => s.Id).ToList();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var counts = await db.PpPortfolios.Where(p => owned.Contains(p.SourceId))
+            .GroupBy(p => p.SourceId).Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+        var labels = await SourceService.GetLabelsAsync(counts.Keys.ToList());
+        sets = counts.OrderBy(c => c.Key).Select(c => new DataSet(c.Key, labels.GetValueOrDefault(c.Key, ""), c.Value)).ToList();
+    }
+
+    private async Task UploadAsync(InputFileChangeEventArgs e)
+    {
+        uploadMessage = null;
+        uploading = true;
+        try
+        {
+            var source = await SourceService.EnsureOwnSourceAsync();
+            await using var stream = PortfolioPerformanceUpload.OpenBrowserFile(e.File);
+            var result = await PortfolioPerformanceUpload.ImportAsync(PpImporter, source.Name, stream, Staging.Directory, CancellationToken.None);
+            uploadMessage = new Message(true, L["Upload_Done", result.RowsImported].Value);
+            await LoadAsync();
+        }
+        catch (InvalidDataException ex)
+        {
+            uploadMessage = new Message(false, ex.Message == PortfolioPerformanceUpload.NotAPortfolioFile ? L["Upload_NotPortfolio"].Value : ex.Message);
+        }
+        catch (IOException ex)
+        {
+            Logger.LogWarning(ex, "Portfolio Performance upload failed.");
+            uploadMessage = new Message(false, L["Upload_Failed"].Value);
+        }
+        finally
+        {
+            uploading = false;
+        }
+    }
+}

@@ -160,8 +160,9 @@ public sealed class SharingHttpTests : IDisposable
         await _host.SeedWorldAsync(ProjectRole.Editor);
         using var bob = await _host.LoggedInClientAsync("bob");
 
-        await AssertNotFoundAsync(bob, "/sources/2/depots", "/sources/2/instruments", "/sources/2/tax");
-        Assert.Equal(HttpStatusCode.OK, (await GetAsync(bob, "/sources/3/depots")).Status);   // her own source
+        await AssertNotFoundAsync(bob, "/portfolio-performance/2/depots", "/portfolio-performance/2/instruments", "/portfolio-performance/2/tax");
+        Assert.Equal(HttpStatusCode.OK, (await GetAsync(bob, "/portfolio-performance/3/depots")).Status);   // her own source
+        Assert.Equal("/portfolio-performance/3/depots", await RedirectTargetAsync(bob, "/sources/3/depots"));   // old links
 
         // The sources list shows only her own source, and never alice's token.
         var (_, sources) = await GetAsync(bob, "/sources");

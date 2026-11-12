@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Portfolio Performance</value>
+  </data>
+  <data name="Heading" xml:space="preserve">
+    <value>Portfolio Performance</value>
+  </data>
+  <data name="Intro" xml:space="preserve">
+    <value>OpenBudget liest deine Portfolio-Performance-Datei für Wertpapiere, Lots und Klassifizierungen: verknüpfe sie auf OneDrive, damit sie aktuell bleibt, oder lade sie einmalig hoch.</value>
+  </data>
+  <data name="Upload_Heading" xml:space="preserve">
+    <value>Datei hochladen</value>
+  </data>
+  <data name="Upload_Intro" xml:space="preserve">
+    <value>Eine .portfolio-Datei im Standardformat von Portfolio Performance (nicht XML, nicht verschlüsselt). Ein erneutes Hochladen ersetzt die Daten.</value>
+  </data>
+  <data name="Upload_Running" xml:space="preserve">
+    <value>Wird importiert…</value>
+  </data>
+  <data name="Upload_Done" xml:space="preserve">
+    <value>Importiert ({0} Zeilen).</value>
+  </data>
+  <data name="Upload_NotPortfolio" xml:space="preserve">
+    <value>Das ist keine Portfolio-Performance-Datei (.portfolio).</value>
+  </data>
+  <data name="Upload_Failed" xml:space="preserve">
+    <value>Das Hochladen ist fehlgeschlagen; bitte versuche es erneut.</value>
+  </data>
+  <data name="Data_Heading" xml:space="preserve">
+    <value>Portfolios</value>
+  </data>
+  <data name="Data_None" xml:space="preserve">
+    <value>Noch keine Daten aus Portfolio Performance.</value>
+  </data>
+  <data name="Data_Portfolios" xml:space="preserve">
+    <value>{0} Portfolios aus der Datei</value>
+  </data>
+  <data name="Button_PortfolioAccounts" xml:space="preserve">
+    <value>Depot-Konten</value>
+  </data>
+  <data name="Button_Depots" xml:space="preserve">
+    <value>Depots</value>
+  </data>
+  <data name="Button_Instruments" xml:space="preserve">
+    <value>Instrumente</value>
+  </data>
+  <data name="Button_Tax" xml:space="preserve">
+    <value>Steuer</value>
+  </data>
+</root>

@@ -61,8 +61,6 @@
   <data name="PageTitle" xml:space="preserve"><value>Portfolio accounts</value></data>
   <data name="PageTitle_WithSource" xml:space="preserve"><value>Portfolio accounts — {0}</value></data>
   <data name="Heading" xml:space="preserve"><value>Portfolio accounts</value></data>
-  <data name="Back" xml:space="preserve"><value>Back to sources</value></data>
-  <data name="NotFound" xml:space="preserve"><value>Source not found.</value></data>
   <data name="Empty" xml:space="preserve"><value>No PortfolioPerformance portfolios for this source. Upload a .portfolio file first.</value></data>
   <data name="Intro" xml:space="preserve"><value>A portfolio shown as accounts gets a depot account with its positions and value history and a ledger account with its buys, sells, dividends, fees and taxes. Both are recomputed from every upload of the PortfolioPerformance file.</value></data>
   <data name="NoFile" xml:space="preserve"><value>The PortfolioPerformance file is not stored yet; the accounts appear with the next upload.</value></data>
@@ -80,4 +78,10 @@
   <data name="Released" xml:space="preserve"><value>no longer updated</value></data>
   <data name="Pending" xml:space="preserve"><value>created with the next update</value></data>
   <data name="Project_Default" xml:space="preserve"><value>Default project for new accounts</value></data>
+  <data name="Back" xml:space="preserve">
+    <value>Back to Portfolio Performance</value>
+  </data>
+  <data name="NotFound" xml:space="preserve">
+    <value>Not found.</value>
+  </data>
 </root>

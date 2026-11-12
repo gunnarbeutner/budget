@@ -21,9 +21,10 @@ public sealed class SettingsShellTests : EndToEndTestBase
     /// </summary>
     [TestCase("/banklogins", "settings-nav")]
     [TestCase("/sources", "settings-nav")]
-    [TestCase("/sources/1/depots", "settings-nav")]
-    [TestCase("/sources/1/instruments", "settings-nav")]
-    [TestCase("/sources/1/tax", "settings-nav")]
+    [TestCase("/portfolio-performance", "settings-nav")]
+    [TestCase("/portfolio-performance/1/depots", "settings-nav")]
+    [TestCase("/portfolio-performance/1/instruments", "settings-nav")]
+    [TestCase("/portfolio-performance/1/tax", "settings-nav")]
     [TestCase("/Account", "settings-nav")]
     [TestCase("/projects/1/settings", "project-sidebar")]
     [TestCase("/projects/1/budgets/new", "project-sidebar")]
@@ -58,7 +59,7 @@ public sealed class SettingsShellTests : EndToEndTestBase
     public async Task Settings_pages_fit_a_phone()
     {
         await Page.SetViewportSizeAsync(390, 844);
-        foreach (var path in new[] { "/banklogins", "/sources", $"/projects/{E2ESeed.ProjectId}/settings" })
+        foreach (var path in new[] { "/banklogins", "/sources", "/portfolio-performance", $"/projects/{E2ESeed.ProjectId}/settings" })
         {
             await GoToAsync(path);
             await Expect(Page.GetByTestId("page-header")).ToBeVisibleAsync();

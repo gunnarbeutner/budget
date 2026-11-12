@@ -1,19 +1,20 @@
-@page "/sources/{SourceId:int}/portfolios"
+@page "/portfolio-performance/{SourceId:int}/portfolios"
 @attribute [RequireSourceOwner]
 @inherits DataChangeAwareComponent
 @using OpenBudget.Services
 @inject PortfolioAccountSettingsService Settings
+@inject SourceService SourceService
 @inject IStringLocalizer<SourcePortfolioAccounts> L
 
 @* Which PortfolioPerformance portfolios of a source show as accounts (a depot with positions and value history plus a
    ledger with the transactions), the project they belong to, and taking over accounts that already exist. *@
 
-<PageTitle>@(settings != null ? L["PageTitle_WithSource", settings.SourceName] : L["PageTitle"])</PageTitle>
+<PageTitle>@(settings != null ? L["PageTitle_WithSource", label ?? ""] : L["PageTitle"])</PageTitle>
 
-<SettingsShell Active="sources">
-<PageHeader Title="@L["Heading"]" Subtitle="@settings?.SourceName">
+<SettingsShell Active="portfolio-performance">
+<PageHeader Title="@L["Heading"]" Subtitle="@label">
     <Actions>
-        <a class="ob-btn" href="/sources"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a>
+        <a class="ob-btn" href="/portfolio-performance"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a>
     </Actions>
 </PageHeader>
 
@@ -125,6 +126,7 @@ else
     [Parameter] public int SourceId { get; set; }
 
     private PortfolioAccountSettings? settings;
+    private string? label;
     private bool loading = true;
     private bool busy;
     private string? error;
@@ -144,6 +146,7 @@ else
     private async Task LoadAsync()
     {
         settings = await Settings.GetAsync(SourceId);
+        label = settings == null ? null : (await SourceService.GetLabelsAsync([SourceId])).GetValueOrDefault(SourceId);
         loading = false;
     }
 

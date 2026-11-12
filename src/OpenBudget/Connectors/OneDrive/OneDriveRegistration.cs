@@ -6,7 +6,7 @@ namespace OpenBudget.Connectors.OneDrive;
 public static class OneDriveRegistration
 {
     /// <summary>The settings page that hosts the OneDrive section; the sign-in returns there with ?onedrive=&lt;outcome&gt;.</summary>
-    public const string SettingsPath = "/sources";
+    public const string SettingsPath = "/portfolio-performance";
 
     /// <summary>Registers the OneDrive connection, reader, change detection and the PortfolioPerformance consumer.</summary>
     public static IServiceCollection AddOneDrive(this IServiceCollection services, string contentRoot)

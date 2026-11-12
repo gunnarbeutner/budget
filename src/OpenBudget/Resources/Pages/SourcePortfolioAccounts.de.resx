@@ -61,8 +61,6 @@
   <data name="PageTitle" xml:space="preserve"><value>Depot-Konten</value></data>
   <data name="PageTitle_WithSource" xml:space="preserve"><value>Depot-Konten — {0}</value></data>
   <data name="Heading" xml:space="preserve"><value>Depot-Konten</value></data>
-  <data name="Back" xml:space="preserve"><value>Zurück zu den Quellen</value></data>
-  <data name="NotFound" xml:space="preserve"><value>Quelle nicht gefunden.</value></data>
   <data name="Empty" xml:space="preserve"><value>Keine PortfolioPerformance-Depots für diese Quelle. Lade zuerst eine .portfolio-Datei hoch.</value></data>
   <data name="Intro" xml:space="preserve"><value>Ein als Konto angezeigtes Depot erhält ein Depotkonto mit seinen Positionen und dem Wertverlauf sowie ein Verrechnungskonto mit Käufen, Verkäufen, Dividenden, Gebühren und Steuern. Beide werden bei jedem Upload der PortfolioPerformance-Datei neu berechnet.</value></data>
   <data name="NoFile" xml:space="preserve"><value>Die PortfolioPerformance-Datei ist noch nicht gespeichert; die Konten erscheinen mit dem nächsten Upload.</value></data>
@@ -80,4 +78,10 @@
   <data name="Released" xml:space="preserve"><value>wird nicht mehr aktualisiert</value></data>
   <data name="Pending" xml:space="preserve"><value>wird mit der nächsten Aktualisierung angelegt</value></data>
   <data name="Project_Default" xml:space="preserve"><value>Standardprojekt für neue Konten</value></data>
+  <data name="Back" xml:space="preserve">
+    <value>Zurück zu Portfolio Performance</value>
+  </data>
+  <data name="NotFound" xml:space="preserve">
+    <value>Nicht gefunden.</value>
+  </data>
 </root>

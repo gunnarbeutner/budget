@@ -109,18 +109,6 @@
   <data name="Button_Delete" xml:space="preserve">
     <value>Delete</value>
   </data>
-  <data name="Button_PortfolioAccounts" xml:space="preserve">
-    <value>Portfolio accounts</value>
-  </data>
-  <data name="Button_Depots" xml:space="preserve">
-    <value>Depots</value>
-  </data>
-  <data name="Button_Instruments" xml:space="preserve">
-    <value>Instruments</value>
-  </data>
-  <data name="Button_Tax" xml:space="preserve">
-    <value>Tax</value>
-  </data>
   <data name="Button_Cancel" xml:space="preserve">
     <value>Cancel</value>
   </data>

@@ -61,7 +61,6 @@
   <data name="PageTitle" xml:space="preserve"><value>Depot-Zuordnung</value></data>
   <data name="PageTitle_WithSource" xml:space="preserve"><value>Depot-Zuordnung — {0}</value></data>
   <data name="Heading" xml:space="preserve"><value>Depot-Zuordnung</value></data>
-  <data name="Back" xml:space="preserve"><value>Zurück zu den Quellen</value></data>
   <data name="Intro" xml:space="preserve"><value>Ordne jedes PortfolioPerformance-Depot dem Konto zu, das dieselben Wertpapiere hält, damit die rekonstruierten Steuer-Lots den richtigen Positionen zugeordnet werden.</value></data>
   <data name="Col_Depot" xml:space="preserve"><value>PortfolioPerformance-Depot</value></data>
   <data name="Col_Lots" xml:space="preserve"><value>Offene Lots</value></data>
@@ -70,5 +69,10 @@
   <data name="Empty" xml:space="preserve"><value>Keine PortfolioPerformance-Depots für diese Quelle. Lade zuerst eine .portfolio-Datei hoch.</value></data>
   <data name="Lots_Summary" xml:space="preserve"><value>{0} Lots · {1} Wertpapiere</value></data>
   <data name="Lots_None" xml:space="preserve"><value>keine Lots</value></data>
-  <data name="NotFound" xml:space="preserve"><value>Quelle nicht gefunden.</value></data>
+  <data name="Back" xml:space="preserve">
+    <value>Zurück zu Portfolio Performance</value>
+  </data>
+  <data name="NotFound" xml:space="preserve">
+    <value>Nicht gefunden.</value>
+  </data>
 </root>

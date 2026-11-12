@@ -10,6 +10,14 @@ public static class PortfolioPerformanceUpload
     /// <summary>The message of the <see cref="InvalidDataException"/> thrown for content that is not a ".portfolio" file.</summary>
     public const string NotAPortfolioFile = "Uploaded payload is not a PortfolioPerformance (.portfolio) file.";
 
+    /// <summary>Largest file a browser upload may send.</summary>
+    public const long MaxBrowserUploadBytes = 256L * 1024 * 1024;
+
+    /// <summary>The content of a file picked in the browser, capped at <see cref="MaxBrowserUploadBytes"/>.</summary>
+#pragma warning disable S5693 // files with years of prices outgrow the 8 MB default; the cap stays finite
+    public static Stream OpenBrowserFile(Microsoft.AspNetCore.Components.Forms.IBrowserFile file) => file.OpenReadStream(MaxBrowserUploadBytes);
+#pragma warning restore S5693
+
     /// <summary>
     /// Copies <paramref name="content"/> to a temp file, verifies the ZIP magic and imports it. Throws
     /// <see cref="InvalidDataException"/> for a wrong format and <see cref="KeyNotFoundException"/> for an unknown source.

@@ -83,4 +83,7 @@
     <value>MoneyMoney-Import</value>
   </data>
   <data name="Badge_Errors_One" xml:space="preserve"><value>1 Fehler</value></data>
+  <data name="Item_PortfolioPerformance" xml:space="preserve">
+    <value>Portfolio Performance</value>
+  </data>
 </root>

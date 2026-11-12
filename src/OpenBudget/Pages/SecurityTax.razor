@@ -1,4 +1,4 @@
-@page "/sources/{SourceId:int}/tax"
+@page "/portfolio-performance/{SourceId:int}/tax"
 @attribute [RequireSourceOwner]
 @inherits DataChangeAwareComponent
 @using System.Globalization
@@ -8,16 +8,17 @@
 @inject ProjectService ProjectService
 @inject PortfolioService PortfolioService
 @inject NavigationManager Navigation
+@inject SourceService SourceService
 @inject IStringLocalizer<SecurityTax> L
 
-<SettingsShell Active="sources" Bare="@Embedded">
+<SettingsShell Active="portfolio-performance" Bare="@Embedded">
 @if (!Embedded)
 {
 <PageTitle>@(sourceName != null ? L["PageTitle_WithSource", sourceName] : L["PageTitle"])</PageTitle>
 
 <PageHeader Title="@L["Heading"]" Subtitle="@sourceName">
     <Actions>
-        <a class="ob-btn" href="/sources"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a>
+        <a class="ob-btn" href="/portfolio-performance"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a>
     </Actions>
 </PageHeader>
 }
@@ -133,7 +134,7 @@ else
         var sources = await ProjectService.GetAllSourcesAsync();
         var source = sources.FirstOrDefault(s => s.Id == SourceId);
         if (source == null) { notFound = true; loading = false; return; }
-        sourceName = source.Name;
+        sourceName = (await SourceService.GetLabelsAsync([source.Id])).GetValueOrDefault(source.Id);
         rows = await TaxService.GetSettingsAsync(SourceId);
         loading = false;
     }

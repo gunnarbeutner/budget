@@ -97,9 +97,10 @@ public sealed class PortfolioTests : EndToEndTestBase
         await GoToAsync($"/sources/{E2ESeed.SourceId}/depots");
         await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{Pid}/portfolio\\?tab=positions$"));
 
-        // A source without such a project keeps its own page.
+        // A source without such a project keeps its own page on the Portfolio Performance settings (old links redirect there).
         await GoToAsync($"/sources/{E2ESeed.SpareSourceId}/depots");
-        await Expect(Page).ToHaveURLAsync(new Regex($"/sources/{E2ESeed.SpareSourceId}/depots$"));
+        await Expect(Page).ToHaveURLAsync(new Regex($"/portfolio-performance/{E2ESeed.SpareSourceId}/depots$"));
+        await Expect(Page.GetByTestId("settings-nav-portfolio-performance")).ToHaveAttributeAsync("aria-current", "page");
     }
 
     [Test]

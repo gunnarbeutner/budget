@@ -68,7 +68,7 @@ public sealed class OneDriveSettingsTests : EndToEndTestBase
         Microsoft.Add(new() { Drive = FakeMicrosoftCloud.MyDrive, Id = "pp", ParentId = "fin", Name = "Depot.portfolio", Content = PortfolioFile() });
         await RouteMicrosoftSignInAsync();
 
-        await GoToAsync("/sources");
+        await GoToAsync("/portfolio-performance");
         var section = Page.GetByTestId("onedrive-section");
         await Expect(section).ToBeVisibleAsync();
 
@@ -132,7 +132,7 @@ public sealed class OneDriveSettingsTests : EndToEndTestBase
             });
         });
 
-        await GoToAsync("/sources");
+        await GoToAsync("/portfolio-performance");
         await Page.GetByTestId("onedrive-connect").ClickAsync();
         await Page.WaitForURLAsync(url => url.Contains("onedrive=denied", StringComparison.Ordinal));
         await WaitForInteractiveAsync();

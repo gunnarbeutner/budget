@@ -1,0 +1,18 @@
+@page "/sources/{SourceId:int}/portfolios"
+@page "/sources/{SourceId:int}/depots"
+@page "/sources/{SourceId:int}/instruments"
+@page "/sources/{SourceId:int}/tax"
+@inject NavigationManager Navigation
+
+@* Old links to a source's Portfolio Performance pages: the same page under /portfolio-performance. *@
+
+@code {
+    [Parameter] public int SourceId { get; set; }
+
+    protected override void OnInitialized()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var section = uri.AbsolutePath[(uri.AbsolutePath.LastIndexOf('/') + 1)..];
+        Navigation.NavigateTo($"/portfolio-performance/{SourceId}/{section}{uri.Query}", replace: true);
+    }
+}

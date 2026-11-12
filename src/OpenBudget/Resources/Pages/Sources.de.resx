@@ -109,18 +109,6 @@
   <data name="Button_Delete" xml:space="preserve">
     <value>Löschen</value>
   </data>
-  <data name="Button_PortfolioAccounts" xml:space="preserve">
-    <value>Depot-Konten</value>
-  </data>
-  <data name="Button_Depots" xml:space="preserve">
-    <value>Depots</value>
-  </data>
-  <data name="Button_Instruments" xml:space="preserve">
-    <value>Instrumente</value>
-  </data>
-  <data name="Button_Tax" xml:space="preserve">
-    <value>Steuer</value>
-  </data>
   <data name="Button_Cancel" xml:space="preserve">
     <value>Abbrechen</value>
   </data>

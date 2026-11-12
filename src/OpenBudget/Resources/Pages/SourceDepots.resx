@@ -61,7 +61,6 @@
   <data name="PageTitle" xml:space="preserve"><value>Depot mapping</value></data>
   <data name="PageTitle_WithSource" xml:space="preserve"><value>Depot mapping — {0}</value></data>
   <data name="Heading" xml:space="preserve"><value>Depot mapping</value></data>
-  <data name="Back" xml:space="preserve"><value>Back to sources</value></data>
   <data name="Intro" xml:space="preserve"><value>Map each PortfolioPerformance depot to the account that holds the same securities, so reconstructed tax lots attach to the right positions.</value></data>
   <data name="Col_Depot" xml:space="preserve"><value>PortfolioPerformance depot</value></data>
   <data name="Col_Lots" xml:space="preserve"><value>Open lots</value></data>
@@ -70,5 +69,10 @@
   <data name="Empty" xml:space="preserve"><value>No PortfolioPerformance depots for this source. Upload a .portfolio file first.</value></data>
   <data name="Lots_Summary" xml:space="preserve"><value>{0} lots · {1} securities</value></data>
   <data name="Lots_None" xml:space="preserve"><value>no lots</value></data>
-  <data name="NotFound" xml:space="preserve"><value>Source not found.</value></data>
+  <data name="Back" xml:space="preserve">
+    <value>Back to Portfolio Performance</value>
+  </data>
+  <data name="NotFound" xml:space="preserve">
+    <value>Not found.</value>
+  </data>
 </root>

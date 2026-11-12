@@ -76,6 +76,74 @@ public class SourceService
         return source;
     }
 
+    /// <summary>
+    /// The current user's source to import into: with <paramref name="preferMoneyMoney"/> the one that already holds
+    /// MoneyMoney data, else the oldest one they own; a new source owned by them when they have none. Its name is
+    /// internal (never shown), so a new one gets a generated slug.
+    /// </summary>
+    public async Task<ImportSource> EnsureOwnSourceAsync(bool preferMoneyMoney = false, CancellationToken ct = default)
+    {
+        var owned = await GetOwnedSourcesAsync(ct: ct);
+        var pick = (preferMoneyMoney ? owned.OrderBy(s => s.Id).FirstOrDefault(s => s.LastUploadAt != null) : null)
+            ?? owned.OrderBy(s => s.Id).FirstOrDefault();
+        if (pick != null) return pick;
+        for (var attempt = 1; attempt < 4; attempt++)
+        {
+            try
+            {
+                return await CreateSourceAsync(NewSourceName(), ct);
+            }
+            catch (InvalidOperationException)
+            {
+                // a generated name that is taken: try another one
+            }
+        }
+        return await CreateSourceAsync(NewSourceName(), ct);
+    }
+
+    private static string NewSourceName() => "data-" + Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(4));
+
+    /// <summary>
+    /// What users read for each of <paramref name="sourceIds"/> instead of its internal name: the project that shows
+    /// the source's portfolio (else its first project), else the owner's name. Sources that would share a label get
+    /// the owner's name added.
+    /// </summary>
+    public async Task<Dictionary<int, string>> GetLabelsAsync(IReadOnlyCollection<int> sourceIds, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var ids = sourceIds.Distinct().ToList();
+        var projects = await db.Projects.AsNoTracking().Where(p => ids.Contains(p.SourceId))
+            .Select(p => new { p.Id, p.Name, p.SourceId }).ToListAsync(ct);
+        var projectIds = projects.Select(p => p.Id).ToList();
+        var withDepot = (await db.ProjectAccountAssignments.AsNoTracking()
+            .Where(a => projectIds.Contains(a.ProjectId))
+            .Join(db.Accounts.Where(a => a.Type == 7 || a.Portfolio == 1), pa => pa.AccountId, a => a.Id, (pa, _) => pa.ProjectId)
+            .Distinct().ToListAsync(ct)).ToHashSet();
+        var owners = await db.ImportSources.AsNoTracking().Where(s => ids.Contains(s.Id))
+            .Select(s => new { s.Id, s.OwnerUserId }).ToDictionaryAsync(s => s.Id, s => s.OwnerUserId, ct);
+        var ownerIds = owners.Values.OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+        var ownerNames = await db.Users.AsNoTracking().Where(u => ownerIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => AppUser.ShownName(u.DisplayName, u.UserName), StringComparer.Ordinal, ct);
+
+        string OwnerName(int id) => owners.GetValueOrDefault(id) is { } o && ownerNames.TryGetValue(o, out var n) ? n : "";
+        var labels = new Dictionary<int, string>();
+        foreach (var id in ids)
+        {
+            var project = projects.Where(p => p.SourceId == id)
+                .OrderByDescending(p => withDepot.Contains(p.Id)).ThenBy(p => p.Id).FirstOrDefault();
+            labels[id] = project?.Name ?? OwnerName(id);
+        }
+        foreach (var group in labels.GroupBy(l => l.Value, StringComparer.Ordinal).Where(g => g.Count() > 1).ToList())
+        {
+            foreach (var (id, label) in group.ToList())
+            {
+                var owner = OwnerName(id);
+                labels[id] = owner.Length > 0 && owner != label ? $"{label} · {owner}" : label;
+            }
+        }
+        return labels;
+    }
+
     /// <summary>Replaces the source's upload token; the old one stops working immediately.</summary>
     public async Task<string> RotateTokenAsync(int sourceId, CancellationToken ct = default)
     {

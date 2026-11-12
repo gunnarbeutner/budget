@@ -82,4 +82,7 @@
   <data name="Item_Documents" xml:space="preserve">
     <value>Zuzuordnende Dokumente</value>
   </data>
+  <data name="Item_PortfolioPerformance" xml:space="preserve">
+    <value>Portfolio Performance</value>
+  </data>
 </root>

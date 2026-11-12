@@ -61,7 +61,6 @@
   <data name="PageTitle" xml:space="preserve"><value>Wertpapier-Steuereinstellungen</value></data>
   <data name="PageTitle_WithSource" xml:space="preserve"><value>Wertpapier-Steuereinstellungen — {0}</value></data>
   <data name="Heading" xml:space="preserve"><value>Wertpapier-Steuereinstellungen</value></data>
-  <data name="Back" xml:space="preserve"><value>Zurück zu den Quellen</value></data>
   <data name="Intro" xml:space="preserve"><value>Lege je Instrument die steuerliche Behandlung fest — das bestimmt Regime und §23 EStG-Haltefrist — und für Fonds die Teilfreistellung (den steuerfreien Anteil des Gewinns). Es werden nur Instrumente mit rekonstruierten Lots angezeigt.</value></data>
   <data name="Col_Security" xml:space="preserve"><value>Instrument</value></data>
   <data name="Col_Kind" xml:space="preserve"><value>Steuerliche Behandlung</value></data>
@@ -72,10 +71,15 @@
   <data name="Acquired_Hint" xml:space="preserve"><value>Ursprüngliches Anschaffungsdatum — bei geerbten oder geschenkten Vermögenswerten (§23 EStG zählt ab Anschaffung des Rechtsvorgängers).</value></data>
   <data name="NoIsin" xml:space="preserve"><value>keine ISIN</value></data>
   <data name="Empty" xml:space="preserve"><value>Noch keine Wertpapiere mit rekonstruierten Lots für diese Quelle. Lade zuerst eine PortfolioPerformance-Datei mit Transaktionen hoch.</value></data>
-  <data name="NotFound" xml:space="preserve"><value>Quelle nicht gefunden.</value></data>
   <data name="Type_0" xml:space="preserve"><value>Direktanlage / Rentenfonds</value></data>
   <data name="Type_1500" xml:space="preserve"><value>Mischfonds</value></data>
   <data name="Type_3000" xml:space="preserve"><value>Aktienfonds</value></data>
   <data name="Type_6000" xml:space="preserve"><value>Inlands-Immobilienfonds</value></data>
   <data name="Type_8000" xml:space="preserve"><value>Auslands-Immobilienfonds</value></data>
+  <data name="Back" xml:space="preserve">
+    <value>Zurück zu Portfolio Performance</value>
+  </data>
+  <data name="NotFound" xml:space="preserve">
+    <value>Nicht gefunden.</value>
+  </data>
 </root>
