@@ -156,6 +156,10 @@ public class BankLoginAccount
 
     [MaxLength(1000)]
     public string? LastError { get; set; }
+
+    /// <summary>Why the last sync could not read the account's standing orders and scheduled transfers (null: it could, or the bank offers none).</summary>
+    [MaxLength(1000)]
+    public string? ScheduledError { get; set; }
 }
 
 /// <summary>A downloaded statement document (indexed here, stored as a file on the data volume).</summary>

@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Scheduled</value>
+  </data>
+  <data name="PageTitle_WithProject" xml:space="preserve">
+    <value>Scheduled · {0}</value>
+  </data>
+  <data name="View_Title" xml:space="preserve">
+    <value>Scheduled</value>
+  </data>
+  <data name="Count" xml:space="preserve">
+    <value>{0} upcoming</value>
+  </data>
+  <data name="Filter_Kind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="Kind_All" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="Kind_Scheduled" xml:space="preserve">
+    <value>Scheduled transfers</value>
+  </data>
+  <data name="Kind_Standing" xml:space="preserve">
+    <value>Standing orders</value>
+  </data>
+  <data name="Filter_Account" xml:space="preserve">
+    <value>Account</value>
+  </data>
+  <data name="Account_All" xml:space="preserve">
+    <value>All accounts</value>
+  </data>
+  <data name="Problem" xml:space="preserve">
+    <value>{0}: the bank did not deliver the standing orders at the last sync ({1}).</value>
+  </data>
+  <data name="Empty" xml:space="preserve">
+    <value>No standing orders or scheduled transfers. Banks connected over FinTS (such as ING) deliver them with every sync; they show up here after the next one.</value>
+  </data>
+  <data name="Empty_Filtered" xml:space="preserve">
+    <value>Nothing matches the filters.</value>
+  </data>
+  <data name="NoName" xml:space="preserve">
+    <value>(no name)</value>
+  </data>
+  <data name="Today" xml:space="preserve">
+    <value>today</value>
+  </data>
+  <data name="Tomorrow" xml:space="preserve">
+    <value>tomorrow</value>
+  </data>
+  <data name="InDays" xml:space="preserve">
+    <value>in {0} days</value>
+  </data>
+  <data name="Rhythm_Once" xml:space="preserve">
+    <value>Once</value>
+  </data>
+  <data name="Rhythm_Weekly" xml:space="preserve">
+    <value>Weekly</value>
+  </data>
+  <data name="Rhythm_EveryWeeks" xml:space="preserve">
+    <value>Every {0} weeks</value>
+  </data>
+  <data name="Rhythm_OnWeekday" xml:space="preserve">
+    <value>{0} on {1}</value>
+  </data>
+  <data name="Rhythm_Monthly" xml:space="preserve">
+    <value>Monthly</value>
+  </data>
+  <data name="Rhythm_Quarterly" xml:space="preserve">
+    <value>Quarterly</value>
+  </data>
+  <data name="Rhythm_HalfYearly" xml:space="preserve">
+    <value>Half-yearly</value>
+  </data>
+  <data name="Rhythm_Yearly" xml:space="preserve">
+    <value>Yearly</value>
+  </data>
+  <data name="Rhythm_EveryMonths" xml:space="preserve">
+    <value>Every {0} months</value>
+  </data>
+  <data name="Rhythm_OnDay" xml:space="preserve">
+    <value>{0} on {1}</value>
+  </data>
+  <data name="Day_Nth" xml:space="preserve">
+    <value>the {0}</value>
+  </data>
+  <data name="Day_Ultimo" xml:space="preserve">
+    <value>the last day</value>
+  </data>
+  <data name="Day_UltimoMinus" xml:space="preserve">
+    <value>the last day minus {0}</value>
+  </data>
+  <data name="Until" xml:space="preserve">
+    <value>until {0}</value>
+  </data>
+</root>

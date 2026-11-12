@@ -26,6 +26,16 @@ public sealed class FinTsRecordedDialogTests
     {
         var fixture = FinTsFixture.Load("ing");
         var replay = new ReplayBank(fixture, ignoreBpdVersion: true);
+        // ING's parameters offer the standing order list (HICDBS) and the scheduled transfer list (HICSBS) without a TAN;
+        // the recording predates them, so they get a made-up "none" answer and their shape is checked here.
+        var orderRequests = new List<FinTsSegment>();
+        replay.Unrecorded = r =>
+        {
+            if (r.Segments.FirstOrDefault(s => s.Name is "HKCDB" or "HKCSB") is not { } job) return null;
+            orderRequests.Add(job);
+            return new ReplyBuilder().Global("0010::Nachricht entgegengenommen.").Codes(job.Number, "3010::Keine Aufträge vorhanden.")
+                .Wrap(r.DialogId, r.MessageNumber);
+        };
         using var server = new MockFinTsServer(replay.Respond);
         var connector = new IngConnector(FinTsHarness.Context(server), FinTsHarness.Options);
         var credentials = new ConnectorCredentials("testuser2", "12345");
@@ -45,6 +55,15 @@ public sealed class FinTsRecordedDialogTests
         Assert.Equal(2, refresh.Transactions.Count(t => t.Booked));
         var pending = Assert.Single(refresh.Transactions, t => !t.Booked);
         Assert.Equal(-9.99m, pending.Amount);
+        Assert.Empty(refresh.Scheduled!);
+        Assert.Null(refresh.ScheduledError);
+        Assert.Equal(["HKCDB", "HKCSB"], orderRequests.Select(s => s.Name));
+        Assert.All(orderRequests, s =>
+        {
+            Assert.Equal(1, s.Version);
+            Assert.Equal(accounts[0].Iban, s.Component(0, 0));
+            Assert.Equal("urn:iso:std:iso:20022:tech:xsd:pain.001.003.03", s.Element(1)); // the format ING lists in HISPAS
+        });
 
         var session = await connector.LogoutAsync(default);
         Assert.NotNull(session);

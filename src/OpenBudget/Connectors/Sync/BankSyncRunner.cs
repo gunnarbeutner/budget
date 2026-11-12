@@ -433,6 +433,10 @@ public sealed class BankSyncRunner
                 if (link.SyncFloorUtc == null && firstSync)
                     link.SyncFloorUtc = since is { } s ? s.ToDateTime(TimeOnly.MinValue) : null;
                 await _transactions.ApplyAsync(db, account.Id, step.Value!, since, now, ct, markNew: !firstSync);
+                await ScheduledPaymentStore.ApplyAsync(db, account, step.Value!, now, ct);
+                link.ScheduledError = step.Value!.ScheduledError is { } scheduledError ? Truncate(scheduledError, 1000) : null;
+                if (link.ScheduledError != null)
+                    _logger.LogWarning("Bank login {LoginId}: account link {LinkId}: standing orders not read: {Error}", login.Id, link.Id, link.ScheduledError);
                 link.LastSuccessAt = now;
                 link.LastError = null;
                 affected.Add(account.SourceId);

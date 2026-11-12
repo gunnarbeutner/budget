@@ -1,0 +1,253 @@
+@page "/projects/{ProjectId:int}/scheduled"
+@inherits DataChangeAwareComponent
+@using OpenBudget.Models
+@using OpenBudget.Services
+@using OpenBudget.Connectors
+@using Microsoft.AspNetCore.WebUtilities
+@inject ProjectService ProjectService
+@inject ScheduledPaymentService Payments
+@inject ClockService Clock
+@inject NavigationManager Navigation
+@inject IStringLocalizer<Scheduled> L
+
+@* The Scheduled view of a project: the standing orders and future-dated transfers the banks reported for the
+   project's accounts at the last sync, soonest first, with filters in the URL (?kind=standing|scheduled,
+   ?account=<id>). Read-only: orders are managed at the bank. *@
+
+<PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
+
+@if (notFound)
+{
+    <NotFoundMessage />
+    return;
+}
+
+<ProjectPageHeader ProjectId="ProjectId" ProjectName="@(project?.Name ?? "")" />
+
+<ProjectShell ProjectId="ProjectId" Active="ProjectTab.Scheduled" MainClass="shell-page">
+    <div class="page-toolbar" data-testid="scheduled-toolbar">
+        <h1 class="view-title">@L["View_Title"]</h1>
+        @if (overview != null)
+        {
+            <span class="view-sub d-none d-md-inline" data-testid="scheduled-count">@L["Count", Visible().Count]</span>
+        }
+        <div class="flex-grow-1"></div>
+        <div class="docs-filters d-flex flex-wrap align-items-center gap-2">
+            <select class="form-select form-select-sm docs-select" aria-label="@L["Filter_Kind"]" data-testid="scheduled-kind"
+                    @onchange="e => SetFilter(kind: e.Value?.ToString())">
+                <option value="all" selected="@(kind == "all")">@L["Kind_All"]</option>
+                <option value="scheduled" selected="@(kind == "scheduled")">@L["Kind_Scheduled"]</option>
+                <option value="standing" selected="@(kind == "standing")">@L["Kind_Standing"]</option>
+            </select>
+            <select class="form-select form-select-sm docs-select docs-select-wide" aria-label="@L["Filter_Account"]" data-testid="scheduled-account"
+                    @onchange="e => SetFilter(account: e.Value?.ToString())">
+                <option value="all" selected="@(account == "all")">@L["Account_All"]</option>
+                @foreach (var (id, name) in AccountOptions)
+                {
+                    <option value="@id" selected="@(account == id.ToString(CultureInfo.InvariantCulture))">@name</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (overview?.Problems is { Count: > 0 } problems)
+    {
+        @foreach (var p in problems)
+        {
+            <div class="alert alert-warning py-2 small" role="status" data-testid="scheduled-problem">
+                <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>@L["Problem", p.AccountName, p.Error]
+            </div>
+        }
+    }
+
+    @if (overview == null)
+    {
+        <div aria-busy="true">
+            @for (int i = 0; i < 5; i++)
+            {
+                <div class="skeleton skeleton-line"></div>
+            }
+        </div>
+    }
+    else if (Visible().Count == 0)
+    {
+        <div class="text-body-secondary py-5 text-center sched-empty" data-testid="scheduled-empty">
+            <i class="bi bi-calendar-check" style="font-size: 1.8rem;" aria-hidden="true"></i>
+            <div class="mt-2">@(overview.Items.Count == 0 ? L["Empty"] : L["Empty_Filtered"])</div>
+        </div>
+    }
+    else
+    {
+        <ul class="sched-list list-unstyled mb-0" data-testid="scheduled-list" aria-label="@L["View_Title"]">
+            @foreach (var item in Visible())
+            {
+                <li class="sched-row" @key="item.Id" data-testid="scheduled-row" data-kind="@(item.Kind == ScheduledPaymentKind.Standing ? "standing" : "scheduled")">
+                    <div class="sched-date">
+                        <div class="fw-semibold" data-testid="scheduled-date">@item.NextDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</div>
+                        <div class="small text-body-secondary" data-testid="scheduled-in">@InDays(item.NextDate)</div>
+                    </div>
+                    <div class="sched-main min-w-0">
+                        <div class="sched-name text-truncate" data-testid="scheduled-name">@(item.CounterpartyName ?? L["NoName"])</div>
+                        @if (!string.IsNullOrWhiteSpace(item.Purpose))
+                        {
+                            <div class="small text-body-secondary sched-purpose" data-testid="scheduled-purpose">@item.Purpose</div>
+                        }
+                        <div class="small text-body-secondary sched-meta">
+                            <span class="sched-rhythm" data-testid="scheduled-rhythm">
+                                <i class="bi @(item.Kind == ScheduledPaymentKind.Standing ? "bi-arrow-repeat" : "bi-calendar-event") me-1" aria-hidden="true"></i>@Rhythm(item)
+                            </span>
+                            @if (!string.IsNullOrEmpty(item.CounterpartyIban))
+                            {
+                                <span class="sched-iban" data-testid="scheduled-iban">@AccountDisplay.FormatIban(item.CounterpartyIban)@(item.CounterpartyBic is { Length: > 0 } bic ? $" · {bic}" : "")</span>
+                            }
+                            <span class="sched-account text-truncate" data-testid="scheduled-account-name">
+                                <i class="bi @item.AccountIcon me-1" style="@AccountIcons.TintStyle(item.AccountColor)" aria-hidden="true"></i>@item.AccountName
+                            </span>
+                        </div>
+                    </div>
+                    <div class="sched-amount @(item.Amount < 0 ? "money-neg" : "money-pos")" data-testid="scheduled-amount">
+                        @Formatting.FormatMoneyDe(item.Amount, item.Currency)
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+</ProjectShell>
+
+@code {
+    [Parameter] public int ProjectId { get; set; }
+
+    private Project? project;
+    private bool notFound;
+    private ScheduledOverview? overview;
+    private int _loadedProjectId;
+    private string kind = "all";
+    private string account = "all";
+
+    private IEnumerable<(long Id, string Name)> AccountOptions => (overview?.Items ?? [])
+        .GroupBy(i => i.AccountId)
+        .Select(g => (g.Key, g.First().AccountName))
+        .OrderBy(a => a.Item2, StringComparer.CurrentCultureIgnoreCase);
+
+    private List<ScheduledItem> Visible()
+    {
+        IEnumerable<ScheduledItem> q = overview?.Items ?? [];
+        if (kind == "standing") q = q.Where(i => i.Kind == ScheduledPaymentKind.Standing);
+        else if (kind == "scheduled") q = q.Where(i => i.Kind == ScheduledPaymentKind.Scheduled);
+        if (long.TryParse(account, NumberStyles.None, CultureInfo.InvariantCulture, out var a)) q = q.Where(i => i.AccountId == a);
+        return q.ToList();
+    }
+
+    private string InDays(DateOnly date)
+    {
+        var days = date.DayNumber - DateOnly.FromDateTime(Clock.Today).DayNumber;
+        return days switch
+        {
+            <= 0 => L["Today"],
+            1 => L["Tomorrow"],
+            _ => L["InDays", days],
+        };
+    }
+
+    /// <summary>"Monthly on the 1st · until 25.12.2026" / "Every 2 weeks on Monday · ∞" / "Once".</summary>
+    private string Rhythm(ScheduledItem item)
+    {
+        if (item.Kind != ScheduledPaymentKind.Standing) return L["Rhythm_Once"];
+        var count = item.IntervalCount is > 0 ? item.IntervalCount.Value : 1;
+        string every;
+        if (item.IntervalUnit == ScheduleUnit.Week)
+        {
+            var weekday = item.ExecutionDay is >= 1 and <= 7
+                ? CultureInfo.CurrentCulture.DateTimeFormat.GetDayName((DayOfWeek)(item.ExecutionDay.Value % 7))
+                : null;
+            every = count == 1 ? L["Rhythm_Weekly"] : L["Rhythm_EveryWeeks", count];
+            if (weekday != null) every = L["Rhythm_OnWeekday", every, weekday];
+        }
+        else
+        {
+            every = count switch
+            {
+                1 => L["Rhythm_Monthly"],
+                3 => L["Rhythm_Quarterly"],
+                6 => L["Rhythm_HalfYearly"],
+                12 => L["Rhythm_Yearly"],
+                _ => L["Rhythm_EveryMonths", count],
+            };
+            var day = item.ExecutionDay switch
+            {
+                PaymentSchedule.Ultimo => L["Day_Ultimo"].Value,
+                PaymentSchedule.UltimoMinus1 => L["Day_UltimoMinus", 1].Value,
+                PaymentSchedule.UltimoMinus2 => L["Day_UltimoMinus", 2].Value,
+                >= 1 and <= 31 => L["Day_Nth", Ordinal(item.ExecutionDay.Value)].Value,
+                _ => null,
+            };
+            if (day != null) every = L["Rhythm_OnDay", every, day];
+        }
+        var until = item.LastDate is { } last ? L["Until", last.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)].Value : "∞";
+        return $"{every} · {until}";
+    }
+
+    /// <summary>"1." in German, "1st"/"2nd"/"3rd"/"11th" in English.</summary>
+    private static string Ordinal(int n)
+    {
+        var text = n.ToString(CultureInfo.CurrentCulture);
+        if (CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "de") return text + ".";
+        var suffix = (n % 100) is 11 or 12 or 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" };
+        return text + suffix;
+    }
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    // A filter change only changes the query string, which does not set parameters again.
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => _ = InvokeAsync(async () =>
+    {
+        await OnParametersSetAsync();
+        StateHasChanged();
+    });
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
+        kind = query.TryGetValue("kind", out var k) && k.ToString() is "standing" or "scheduled" ? k.ToString() : "all";
+        account = query.TryGetValue("account", out var ac) && ac.ToString() is { Length: > 0 } av ? av : "all";
+        if (_loadedProjectId != ProjectId)
+        {
+            _loadedProjectId = ProjectId;
+            await LoadAsync();
+        }
+    }
+
+    protected override bool IsRelevantChange(DataChange change) => change.Area is DataArea.BankSync or DataArea.ImportedData or DataArea.Projects;
+
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        notFound = false;
+        project = await ProjectService.GetProjectAsync(ProjectId);
+        if (project == null) { notFound = true; return; }
+        overview = await Payments.GetAsync(ProjectId, DateOnly.FromDateTime(Clock.Today));
+    }
+
+    private void SetFilter(string? kind = null, string? account = null)
+    {
+        var values = new Dictionary<string, object?>
+        {
+            ["kind"] = Clean(kind ?? this.kind),
+            ["account"] = Clean(account ?? this.account),
+        };
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters(values), replace: true);
+
+        static string? Clean(string v) => v == "all" ? null : v;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) Navigation.LocationChanged -= OnLocationChanged;
+        base.Dispose(disposing);
+    }
+}

@@ -97,4 +97,7 @@
   <data name="Documents_New" xml:space="preserve">
     <value>{0} neu</value>
   </data>
+  <data name="View_Scheduled" xml:space="preserve">
+    <value>Geplant</value>
+  </data>
 </root>

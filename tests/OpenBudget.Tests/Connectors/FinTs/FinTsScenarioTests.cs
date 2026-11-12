@@ -1,4 +1,5 @@
 #pragma warning disable CA2000 // test harness: lifetimes are owned by the test
+using System.Globalization;
 using System.Net;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -611,6 +612,125 @@ public sealed class FinTsScenarioTests
         using var rig = new Rig();
         var (connector, _, _) = await rig.LoginAsync(rig.Seed("940"));
         Assert.Equal(new Uri("https://bank.invalid/fints"), rig.Server.LastUrl);
+        await connector.LogoutAsync(default);
+    }
+
+    // ---------------------------------------------------------------- standing orders and scheduled transfers
+
+    /// <summary>A bank that lists standing orders (HKCDB) and scheduled transfers (HKCSB) for the giro account.</summary>
+    private static void WithOrders(SyntheticBank b, bool tan = false)
+    {
+        var flag = tan ? "J" : "N";
+        b.BpdText = SyntheticBank.DefaultBpd.Replace("HKEKA:J'", $"HKEKA:J:HKCDB:{flag}:HKCSB:{flag}'", StringComparison.Ordinal)
+            + "HICDBS:13:1:4+1+1+0+N'HICSBS:14:1:4+1+1+0+N:N'"
+            + "HISPAS:15:1:4+1+1+0+J:J:N:N:sepade?:xsd?:pain.001.001.02.xsd:urn?:iso?:std?:iso?:20022?:tech?:xsd?:pain.001.001.03'";
+        b.UpdText = SyntheticBank.DefaultUpd.Replace("+HKEKA:1'", "+HKEKA:1+HKCDB:1+HKCSB:1'", StringComparison.Ordinal);
+        b.UseCamt();
+        b.UseBalance();
+    }
+
+    private static readonly string NextMonth = DateTime.UtcNow.AddDays(40).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private static void ServeOrders(SyntheticBank b)
+    {
+        // Standing orders over two pages: the second request carries the touchdown point after the padded format list.
+        b.Handlers["HKCDB"] = (s, rb, _) =>
+        {
+            var second = s.Elements.Count > 2;
+            var doc = second
+                ? FinTsScheduledOrdersTests.Pain("2025-03-15", ("25.00", "Example Gym", "DE00000000000000000044", null, "Mitgliedschaft"))
+                : FinTsScheduledOrdersTests.Pain("2024-01-01", ("850.00", "Example Landlord", "DE00000000000000000099", "TESTDEFF001", "Miete"));
+            rb.Segment("HICDB", 1, s.Number, $"{SyntheticBank.Iban}", FinTsScheduledOrdersTests.Pain03, FinTsScheduledOrdersTests.Bin(doc),
+                second ? "SO-2" : "SO-1", second ? "20250315:M:1:15" : "20240101:M:1:1");
+            rb.Codes(s.Number, second ? "0020::Ausgeführt." : "3040::Weitere Daueraufträge vorhanden.:TD-SO");
+        };
+        b.Handlers["HKCSB"] = (s, rb, _) =>
+        {
+            rb.Segment("HICSB", 1, s.Number, $"{SyntheticBank.Iban}", FinTsScheduledOrdersTests.Pain03,
+                FinTsScheduledOrdersTests.Bin(FinTsScheduledOrdersTests.Pain(NextMonth, ("99.90", "Example Shop", "DE00000000000000000033", null, "Rechnung 12"))), "T-1");
+            rb.Codes(s.Number, "0020::Ausgeführt.");
+        };
+    }
+
+    [Fact]
+    public async Task Standing_orders_and_scheduled_transfers_come_with_the_refresh_over_touchdown_pages()
+    {
+        using var rig = new Rig(b => { WithOrders(b); ServeOrders(b); });
+        var (connector, _, _) = await rig.LoginAsync(rig.Seed("940"));
+        var account = (await connector.ListAccountsAsync(default)).Single(a => a.Type == RemoteAccountType.Giro);
+        var (step, challenges) = await FinTsHarness.DriveAsync(a => connector.RefreshAsync(account, null, a, default), _ => null);
+
+        Assert.Equal(StepStatus.Done, step.Status);
+        Assert.Empty(challenges);
+        var refresh = step.Value!;
+        Assert.Null(refresh.ScheduledError);
+        Assert.Equal(["SO-1", "SO-2", "T-1"], refresh.Scheduled!.Select(o => o.BankOrderId));
+        Assert.Equal([ScheduledPaymentKind.Standing, ScheduledPaymentKind.Standing, ScheduledPaymentKind.Scheduled], refresh.Scheduled!.Select(o => o.Kind));
+        Assert.Equal(-99.90m, refresh.Scheduled![2].Amount);
+        Assert.Equal(2, refresh.Transactions.Count);
+
+        var cdb = rig.Server.Requests.Where(r => r.Segments.Any(s => s.Name == "HKCDB")).Select(r => r.Segments.Single(s => s.Name == "HKCDB")).ToList();
+        Assert.Equal(2, cdb.Count);
+        // The newest pain.001 format the bank lists, one per request; the account by IBAN.
+        Assert.Equal("urn:iso:std:iso:20022:tech:xsd:pain.001.001.03", cdb[0].Element(1));
+        Assert.Equal(SyntheticBank.Iban, cdb[0].Component(0, 0));
+        Assert.Equal(2, cdb[0].Elements.Count);
+        Assert.Equal("TD-SO", cdb[1].Element(101)); // 99 format repetitions, maximum entries, touchdown point
+        await connector.LogoutAsync(default);
+    }
+
+    [Fact]
+    public async Task A_bank_without_order_lists_is_skipped_and_logged_once()
+    {
+        using var rig = new Rig(b => { b.UseCamt(); b.UseBalance(); });
+        var (connector, _, _) = await rig.LoginAsync(rig.Seed("940"));
+        var account = (await connector.ListAccountsAsync(default)).Single(a => a.Type == RemoteAccountType.Giro);
+        for (var i = 0; i < 2; i++)
+        {
+            var (step, _) = await FinTsHarness.DriveAsync(a => connector.RefreshAsync(account, null, a, default), _ => null);
+            Assert.Equal(StepStatus.Done, step.Status);
+            Assert.Null(step.Value!.Scheduled);
+            Assert.Null(step.Value.ScheduledError);
+        }
+        Assert.DoesNotContain(rig.Server.Requests, r => r.Segments.Any(s => s.Name is "HKCDB" or "HKCSB"));
+        Assert.Single(rig.Logs, l => l.Contains("standing order", StringComparison.Ordinal));
+        await connector.LogoutAsync(default);
+    }
+
+    [Fact]
+    public async Task A_refused_order_list_is_reported_without_failing_the_refresh()
+    {
+        using var rig = new Rig(b => { WithOrders(b); ServeOrders(b); b.Unsupported.Add("HKCSB"); });
+        var (connector, _, _) = await rig.LoginAsync(rig.Seed("940"));
+        var account = (await connector.ListAccountsAsync(default)).Single(a => a.Type == RemoteAccountType.Giro);
+        var (step, _) = await FinTsHarness.DriveAsync(a => connector.RefreshAsync(account, null, a, default), _ => null);
+
+        Assert.Equal(StepStatus.Done, step.Status);
+        Assert.Equal(1234.56m, step.Value!.Balance);
+        Assert.Null(step.Value.Scheduled);
+        Assert.Contains("9120", step.Value.ScheduledError, StringComparison.Ordinal);
+        await connector.LogoutAsync(default);
+    }
+
+    [Fact]
+    public async Task A_tan_for_the_order_list_goes_through_the_usual_tan_flow()
+    {
+        using var rig = new Rig(b =>
+        {
+            WithOrders(b, tan: true);
+            ServeOrders(b);
+            b.AllowedMethods = ["930"];
+            b.JobTan = TanMode.Code;
+            b.BpdText = b.BpdText.Replace("HKCAZ:J:HKSAL:J", "HKCAZ:N:HKSAL:N", StringComparison.Ordinal);
+        });
+        var (connector, _, _) = await rig.LoginAsync(rig.Seed("930"));
+        var account = (await connector.ListAccountsAsync(default)).Single(a => a.Type == RemoteAccountType.Giro);
+        var (step, challenges) = await FinTsHarness.DriveAsync(a => connector.RefreshAsync(account, null, a, default), _ => rig.Bank.TanCode);
+
+        Assert.Equal(StepStatus.Done, step.Status);
+        Assert.All(challenges, c => Assert.Equal(ChallengeKind.Code, c.Kind));
+        Assert.Equal(3, challenges.Count); // two HKCDB pages and HKCSB
+        Assert.Equal(3, step.Value!.Scheduled!.Count);
         await connector.LogoutAsync(default);
     }
 }

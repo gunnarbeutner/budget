@@ -173,6 +173,14 @@ else if (incomeCategories.Any() || expenseCategories.Any())
                         <p class="text-body-secondary small mb-2">
                             @L["Balance_StartingBalance_Before"]<strong>@FormatEuro(startingBalance)</strong>@L["Balance_StartingBalance_After"]
                         </p>
+                        @if (cachedScheduled is { Occurrences.Count: > 0 } sched)
+                        {
+                            <p class="text-body-secondary small mb-2" data-testid="cashflow-scheduled-note">
+                                <i class="bi bi-calendar-check me-1" aria-hidden="true"></i>
+                                @L["Balance_ScheduledIncluded", sched.Occurrences.Count]
+                                <a href="@($"/projects/{selectedProjectId}/scheduled")">@L["Balance_ScheduledLink"]</a>
+                            </p>
+                        }
                         @if (balanceFloorEnabled && balanceDaily.Length > 0 && yearMinBalance < EffectiveFloor)
                         {
                             var floor = EffectiveFloor;
@@ -377,6 +385,8 @@ else
     // their results.
     private ProjectDailyDeltaResult? cachedDeltaResult;
     private Dictionary<(long Id, CategoryItemType ItemType), DayOfMonthDistribution>? cachedHistograms;
+    /// <summary>The bank's standing orders and scheduled transfers in the projection.</summary>
+    private ScheduledCashflow? cachedScheduled;
 
     // Balance / watermark state. Populated from GetProjectActualDailyDeltaAsync after the bar
     // chart's projection arrays exist; future months are layered on top via spreading the
@@ -512,6 +522,7 @@ else
         rollupCollisions = new();
         cachedDeltaResult = null;
         cachedHistograms = null;
+        cachedScheduled = null;
         availableBudgets = null;
         availableYears = null;
         firstProjectedMonth = 13;
@@ -799,6 +810,10 @@ else
             var projItems = slices.SelectMany(s => s.ProjectionItems).Distinct().ToList();
             cachedHistograms = await CashflowProjectionService.GetCategoryDayOfMonthWeightsAsync(projItems, projectSourceId);
         }
+        var rowKeys = incomeCategories.Concat(expenseCategories).Where(c => c.IsAggregateRow)
+            .Select(c => (c.CategoryId, c.ItemType)).Distinct().ToList();
+        cachedScheduled = await CashflowProjectionService.GetScheduledCashflowAsync(
+            selectedProjectId, selectedYear, DateOnly.FromDateTime(Clock.Today), rowKeys);
 
         // Attribute projected income to each source via the contribution splits and
         // recompute the rollup totals from the resulting per-source arrays.
@@ -996,7 +1011,7 @@ else
         var data = cachedDeltaResult ?? new ProjectDailyDeltaResult();
         var result = CashflowCalculator.ComputeBalance(
             data, selectedYear, Clock.NowLocal.Year, firstProjectedMonth,
-            incomeCategories, expenseCategories, cachedHistograms, whatIfs, EffectiveFloor);
+            incomeCategories, expenseCategories, cachedHistograms, whatIfs, EffectiveFloor, cachedScheduled);
 
         hasAssignedAccounts = result.HasAccounts;
         startingBalance = result.StartingBalance;

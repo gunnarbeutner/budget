@@ -396,7 +396,8 @@ internal sealed partial class FinTsClient
             && _session.Values.TryGetValue(inventoryKey, out var seen) && string.Equals(seen, info.Inventory + "|0", StringComparison.Ordinal))
         {
             _logger.LogDebug("FinTS: nothing has changed according to the UPD inventory marker; skipping the transaction fetch.");
-            return new AccountRefresh(null, [], []);
+            var (unchangedOrders, unchangedError) = await FetchScheduledAsync(info, ask, ct);
+            return new AccountRefresh(null, [], [], unchangedOrders, unchangedError);
         }
 
         var transactions = await FetchTransactionsAsync(info, since, ask, ct);
@@ -412,8 +413,103 @@ internal sealed partial class FinTsClient
         }
 
         if (info.Inventory != null) _session.Values[inventoryKey] = info.Inventory + (transactions.Any(t => !t.Booked) ? "|1" : "|0");
-        return new AccountRefresh(balance, transactions, []);
+        var (orders, ordersError) = await FetchScheduledAsync(info, ask, ct);
+        return new AccountRefresh(balance, transactions, [], orders, ordersError);
     }
+
+    // ---------------------------------------------------------------- standing orders (HKCDB) and scheduled transfers (HKCSB)
+
+    private static readonly int[] StandingOrderVersions = [1];
+    private static readonly int[] ScheduledTransferVersions = [1];
+
+    /// <summary>
+    /// How many repetitions the "supported SEPA data formats" element of HKCDB/HKCSB has: unused ones are sent empty
+    /// when later elements (the touchdown point) follow, so those keep their position.
+    /// </summary>
+    private const int SepaDescriptorRepeats = 99;
+
+    private bool _scheduledSkipLogged;
+
+    /// <summary>
+    /// The account's standing orders and future-dated transfers, read only (nothing is ever created or changed).
+    /// Null when the bank offers neither for the account (the stored ones stay); a failure is returned as the error
+    /// text and never fails the refresh. A TAN the bank wants for it goes through the usual TAN flow.
+    /// </summary>
+    private async Task<(List<RemoteScheduledPayment>? Orders, string? Error)> FetchScheduledAsync(FinTsAccountInfo info, IChallengeAsker ask, CancellationToken ct)
+    {
+        var standing = string.IsNullOrEmpty(info.Iban) || !info.Allows("HKCDB") ? null : _data.BestVersion("HKCDB", StandingOrderVersions);
+        var scheduled = string.IsNullOrEmpty(info.Iban) || !info.Allows("HKCSB") ? null : _data.BestVersion("HKCSB", ScheduledTransferVersions);
+        if (standing == null && scheduled == null)
+        {
+            if (!_scheduledSkipLogged)
+            {
+                _scheduledSkipLogged = true;
+                _logger.LogInformation("FinTS: the bank offers no standing order or scheduled transfer list for this account; skipping them.");
+            }
+            return (null, null);
+        }
+
+        var descriptor = PainDescriptor();
+        var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
+        var result = new List<RemoteScheduledPayment>();
+        try
+        {
+            if (standing is { } sv)
+            {
+                var pages = await ExecuteAsync("HKCDB", touchdown =>
+                {
+                    var seg = new FinTsSegmentBuilder("HKCDB", sv).Add(AccountDeg(info, true)).Add(descriptor);
+                    if (touchdown == null) return seg;
+                    for (var i = 1; i < SepaDescriptorRepeats; i++) seg.Add(string.Empty);
+                    return seg.Add(string.Empty).Add(touchdown);
+                }, ask, ct);
+                result.AddRange(FinTsScheduledOrders.ReadStandingOrders(pages.SelectMany(p => p.Of("HICDB")), today));
+            }
+            if (scheduled is { } cv)
+            {
+                var pages = await ExecuteAsync("HKCSB", touchdown =>
+                {
+                    var seg = new FinTsSegmentBuilder("HKCSB", cv).Add(AccountDeg(info, true)).Add(descriptor);
+                    if (touchdown == null) return seg;
+                    for (var i = 1; i < SepaDescriptorRepeats; i++) seg.Add(string.Empty);
+                    return seg.Add(string.Empty).Add(string.Empty).Add(string.Empty).Add(touchdown);
+                }, ask, ct);
+                result.AddRange(FinTsScheduledOrders.ReadScheduledTransfers(pages.SelectMany(p => p.Of("HICSB")), today));
+            }
+        }
+        catch (Exception ex) when (ex is FinTsException or FinTsProtocolException or ConnectorException)
+        {
+            _logger.LogInformation(ex, "FinTS: reading the standing orders failed: {Error}", ex.Message);
+            return (null, ex.Message);
+        }
+        return (result, null);
+    }
+
+    /// <summary>
+    /// The pain.001 format to ask for: the newest credit transfer format the bank lists among its supported SEPA data
+    /// formats (HISPAS); pain.001.001.03 when it lists none.
+    /// </summary>
+    private string PainDescriptor()
+    {
+        var listed = _data.BpdSegments
+            .Where(s => string.Equals(s.Name, "HISPAS", StringComparison.Ordinal))
+            .SelectMany(s => s.Elements.SelectMany(e => e))
+            .Where(c => c.Contains("pain.001.", StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        return listed.Count == 0 ? DefaultPainDescriptor : listed.OrderByDescending(PainVersion).First();
+
+        static (int Version, int Variant) PainVersion(string descriptor)
+        {
+            // "urn:iso:std:iso:20022:tech:xsd:pain.001.001.09", "sepade.pain.001.003.03.xsd": variant (001 ISO, 002/003 German), version.
+            var at = descriptor.IndexOf("pain.001.", StringComparison.Ordinal) + "pain.001.".Length;
+            var parts = descriptor[at..].Split('.');
+            int Part(int i) => parts.Length > i && int.TryParse(parts[i], NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : 0;
+            return (Part(1), Part(0));
+        }
+    }
+
+    private const string DefaultPainDescriptor = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.03";
 
     private async Task<List<RemoteTransaction>> FetchTransactionsAsync(FinTsAccountInfo info, DateOnly? since, IChallengeAsker ask, CancellationToken ct)
     {

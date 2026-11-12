@@ -153,12 +153,27 @@ public sealed class FakeBankConnector : IBankConnector
 
         var refresh = account.RemoteId switch
         {
-            GiroId => new AccountRefresh(GiroBalance, Filter(GiroTransactions(), since), []),
+            GiroId => new AccountRefresh(GiroBalance, Filter(GiroTransactions(), since), [], GiroOrders()),
             SavingsId => new AccountRefresh(5000.00m, Filter(SavingsTransactions(), since), []),
             DepotId => DepotRefresh(),
             _ => throw new ConnectorException($"Unknown account {account.RemoteId}."),
         };
         return Task.FromResult(ConnectorStep.Done(refresh));
+    }
+
+    /// <summary>The giro's standing order (rent on the 1st) and one transfer scheduled three weeks ahead.</summary>
+    private List<RemoteScheduledPayment> GiroOrders()
+    {
+        var today = DateOnly.FromDateTime(_context.Clock.GetUtcNow().UtcDateTime);
+        var first = new DateOnly(2024, 1, 1);
+        return
+        [
+            new RemoteScheduledPayment(ScheduledPaymentKind.Standing, "FAKE-SO-1",
+                PaymentSchedule.Next(first, ScheduleUnit.Month, 1, 1, null, today)!.Value, -850.00m, "EUR",
+                "Example Landlord", "DE00000000000000000099", "TESTDEFFXXX", "Rent", first, null, ScheduleUnit.Month, 1, 1),
+            new RemoteScheduledPayment(ScheduledPaymentKind.Scheduled, "FAKE-T-1", today.AddDays(21), -120.00m, "EUR",
+                "Example Insurance", "DE00000000000000000077", null, "Annual premium"),
+        ];
     }
 
     private static List<RemoteTransaction> Filter(IEnumerable<RemoteTransaction> all, DateOnly? since) =>

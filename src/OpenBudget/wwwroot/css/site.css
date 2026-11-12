@@ -1871,3 +1871,21 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 
 /* The bank's question dialog lives in the top bar; while it is open the bar stacks above other dialogs. */
 .app-topbar:has(.ob-modal-on-top) { z-index: 1065; }
+
+/* ---- Scheduled (the bank's standing orders and future-dated transfers) ---- */
+.sched-list { max-width: 960px; }
+.sched-row {
+    display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) auto; gap: 4px 16px; align-items: start;
+    padding: 10px 0; border-bottom: 1px solid var(--bs-border-color-translucent);
+}
+.sched-name { font-weight: 600; }
+.sched-purpose { overflow-wrap: anywhere; }
+.sched-meta { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 2px; }
+.sched-amount { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; text-align: right; }
+.money-pos { color: var(--bs-success-text-emphasis); }
+@media (max-width: 767.98px) {
+    .sched-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "date amount" "main main"; }
+    .sched-date { grid-area: date; display: flex; gap: 8px; align-items: baseline; }
+    .sched-main { grid-area: main; }
+    .sched-amount { grid-area: amount; }
+}

@@ -1,3 +1,4 @@
+using OpenBudget.Connectors;
 using OpenBudget.Models;
 
 namespace OpenBudget.Services;
@@ -36,6 +37,21 @@ public class CategoryCashflow
     /// these rows so a tracked group + tracked sub-cat don't double-count.
     /// </summary>
     public bool IsAggregateRow { get; set; }
+}
+
+/// <summary>One execution of a standing order or scheduled transfer in the projection (amount signed, in currency units).</summary>
+public sealed record ScheduledOccurrence(DateOnly Date, decimal Amount, string Label, ScheduledPaymentKind Kind);
+
+/// <summary>
+/// The bank's orders in the cashflow projection (<see cref="CashflowProjectionService.GetScheduledCashflowAsync"/>):
+/// their executions, and per cashflow row the signed amounts per month (index 0 = January) that the row's category
+/// projection already contains.
+/// </summary>
+public sealed class ScheduledCashflow
+{
+    public List<ScheduledOccurrence> Occurrences { get; } = [];
+
+    public Dictionary<(long Id, CategoryItemType ItemType), decimal[]> CoveredByRow { get; } = [];
 }
 
 /// <summary>Per-month low / high / closing balance for the cashflow balance line.</summary>
@@ -120,6 +136,10 @@ public static class CashflowCalculator
         }
     }
 
+    /// <summary>The signed amount of standing orders in <paramref name="row"/>'s projection for <paramref name="month"/> (1-12).</summary>
+    private static decimal Covered(ScheduledCashflow? scheduled, CategoryCashflow row, int month) =>
+        scheduled != null && scheduled.CoveredByRow.TryGetValue((row.CategoryId, row.ItemType), out var months) ? months[month - 1] : 0m;
+
     /// <summary>
     /// Reshape a <see cref="ProjectDailyDeltaResult"/> into the daily balance line + summary
     /// points. Layers histogram-spread projected amounts (for months ≥ <paramref name="firstProjectedMonth"/>)
@@ -136,7 +156,8 @@ public static class CashflowCalculator
         IReadOnlyList<CategoryCashflow> expenseCategories,
         IReadOnlyDictionary<(long, CategoryItemType), DayOfMonthDistribution>? histograms,
         IReadOnlyList<WhatIfEntry> whatIfs,
-        decimal floor)
+        decimal floor,
+        ScheduledCashflow? scheduled = null)
     {
         var hasAssignedAccounts = data.HasAccounts;
         var startingBalance = data.StartingBalance;
@@ -165,10 +186,12 @@ public static class CashflowCalculator
                 // Filter to aggregate rows so a tracked parent group + its tracked descendants
                 // don't both distribute the same money. The displayed total uses the same
                 // filter — keeping them in lockstep means the balance line matches the total.
+                // The bank's standing orders are booked on their own days below, so the part of a row's
+                // projection they cover is taken out here (incoming orders from income, outgoing from expenses).
                 foreach (var income in incomeCategories)
                 {
                     if (!income.IsAggregateRow) continue;
-                    var amount = income.MonthlyAmounts[m - 1];
+                    var amount = Math.Max(0m, income.MonthlyAmounts[m - 1] - Math.Max(0m, Covered(scheduled, income, m)));
                     if (amount == 0m) continue;
                     if (!weights.TryGetValue((income.CategoryId, income.ItemType), out var dist)) continue;
                     DistributeAcrossMonth(deltas, startDoy, daysInMonth, amount, dist.Weights, sign: +1);
@@ -177,7 +200,7 @@ public static class CashflowCalculator
                 foreach (var expense in expenseCategories)
                 {
                     if (!expense.IsAggregateRow) continue;
-                    var amount = expense.MonthlyAmounts[m - 1];
+                    var amount = Math.Max(0m, expense.MonthlyAmounts[m - 1] - Math.Max(0m, -Covered(scheduled, expense, m)));
                     if (amount == 0m) continue;
                     if (!weights.TryGetValue((expense.CategoryId, expense.ItemType), out var dist)) continue;
                     DistributeAcrossMonth(deltas, startDoy, daysInMonth, amount, dist.Weights, sign: -1);
@@ -203,6 +226,19 @@ public static class CashflowCalculator
             var key = w.ParseCategory();
             if (key != null && w.Date.Month >= firstProjectedMonth) continue;
             deltas[idx] += w.Amount;
+        }
+
+        // The bank's standing orders and scheduled transfers on their execution days (only after the last day with
+        // real bookings, so an execution already booked is not counted twice).
+        if (scheduled != null)
+        {
+            foreach (var o in scheduled.Occurrences)
+            {
+                if (o.Date.Year != selectedYear) continue;
+                int idx = o.Date.DayOfYear - 1;
+                if (idx < lastActualDayOfYear || idx >= deltas.Length) continue;
+                deltas[idx] += o.Amount;
+            }
         }
 
         // Cumulate into the daily balance line.

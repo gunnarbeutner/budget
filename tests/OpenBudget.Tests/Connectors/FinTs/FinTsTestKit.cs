@@ -224,6 +224,7 @@ internal sealed class ReplayBank
     private readonly List<string> _bank;
     private readonly bool _ignoreBpdVersion;
     private int _next;
+    private int _unrecorded;
 
     public ReplayBank(FinTsFixture fixture, bool ignoreBpdVersion = false)
     {
@@ -236,10 +237,24 @@ internal sealed class ReplayBank
 
     public int Expected => _client.Count;
 
+    /// <summary>Answers requests the recording does not contain (null: the request must match the recording).</summary>
+    public Func<MockRequest, string?>? Unrecorded { get; set; }
+
     public string Respond(MockRequest request)
     {
+        if (Unrecorded?.Invoke(request) is { } extra)
+        {
+            _unrecorded++;
+            return extra;
+        }
         Assert.True(_next < _client.Count, "the client sent more messages than were recorded");
-        Assert.Equal(MockRequest.Normalize(_client[_next], _ignoreBpdVersion), MockRequest.Normalize(request.Raw, _ignoreBpdVersion));
+        // Unrecorded messages in the same dialog shift the message number; compare as if they had not been sent.
+        var actual = MockRequest.Normalize(request.Raw, _ignoreBpdVersion)
+            .Select(l => _unrecorded > 0 && (l.StartsWith("HNHBK:", StringComparison.Ordinal) || l.StartsWith("HNHBS:", StringComparison.Ordinal))
+                ? l[..(l.LastIndexOf('+') + 1)] + (request.MessageNumber - _unrecorded).ToString(CultureInfo.InvariantCulture) + "'"
+                : l)
+            .ToList();
+        Assert.Equal(MockRequest.Normalize(_client[_next], _ignoreBpdVersion), actual);
         return _bank[_next++];
     }
 }

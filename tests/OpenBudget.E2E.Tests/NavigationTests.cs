@@ -43,7 +43,7 @@ public sealed class NavigationTests : EndToEndTestBase
         await Expect(View("portfolio")).ToHaveCountAsync(0);   // no depot in this project
         // Documents is one of the views, below the others, with no separate documents section in the sidebar.
         await Expect(Page.GetByTestId("project-views").Locator(".shell-view-label"))
-            .ToHaveTextAsync(new[] { "Transactions", "Budget", "Cashflow", "Documents" });
+            .ToHaveTextAsync(new[] { "Transactions", "Budget", "Cashflow", "Scheduled", "Documents" });
         await Expect(Page.GetByTestId("project-sidebar").GetByText("Statements")).ToHaveCountAsync(0);
 
         await View("budget").ClickAsync();

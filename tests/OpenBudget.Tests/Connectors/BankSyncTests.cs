@@ -110,6 +110,28 @@ public sealed class BankSyncTests
     }
 
     [Fact]
+    public async Task A_sync_stores_the_banks_standing_orders_and_scheduled_transfers_per_account()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        var id = await w.AddLoginAsync(BankWorld.Alice);
+        await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, true, false));
+        await w.LinkAllAsync(BankWorld.Alice, id);
+        var s = await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, true, false));
+        Assert.True(s.Succeeded, s.Error);
+        s = await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, true, false)); // replaced, not added again
+        Assert.True(s.Succeeded, s.Error);
+
+        var giro = (await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).LinkedAccountId!.Value;
+        await using var db = await w.T.System.CreateDbContextAsync();
+        var orders = await db.ScheduledPayments.AsNoTracking().OrderBy(p => p.Kind).ToListAsync();
+        Assert.Equal([ScheduledPaymentKind.Scheduled, ScheduledPaymentKind.Standing], orders.Select(o => o.Kind));
+        Assert.All(orders, o => Assert.Equal(giro, o.AccountId));
+        Assert.Equal(-85000, orders[1].Amount);
+        Assert.Equal(1, orders[1].ExecutionDay);
+        Assert.Null(await db.BankLoginAccounts.Where(a => a.LinkedAccountId == giro).Select(a => a.ScheduledError).SingleAsync());
+    }
+
+    [Fact]
     public async Task Filters_and_write_guard_hide_and_protect_logins_at_the_context_level()
     {
         await using var w = await BankWorld.CreateAsync();

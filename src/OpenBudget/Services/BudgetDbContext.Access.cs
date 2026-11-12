@@ -54,6 +54,8 @@ public partial class BudgetDbContext
             || (t.AccountId.HasValue && ScopeSharedAccountIds.Contains(t.AccountId.Value)));
         modelBuilder.Entity<Holding>().HasQueryFilter(h =>
             ScopeUnrestricted || ScopeOwnedSourceIds.Contains(h.SourceId) || ScopeSharedAccountIds.Contains(h.AccountId));
+        modelBuilder.Entity<ScheduledPayment>().HasQueryFilter(p =>
+            ScopeUnrestricted || ScopeOwnedSourceIds.Contains(p.SourceId) || ScopeSharedAccountIds.Contains(p.AccountId));
         modelBuilder.Entity<PortfolioChartPoint>().HasQueryFilter(p =>
             ScopeUnrestricted || ScopeOwnedSourceIds.Contains(p.SourceId) || ScopeSharedAccountIds.Contains(p.AccountId));
         modelBuilder.Entity<PpPortfolioLink>().HasQueryFilter(l =>

@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Geplant</value>
+  </data>
+  <data name="PageTitle_WithProject" xml:space="preserve">
+    <value>Geplant · {0}</value>
+  </data>
+  <data name="View_Title" xml:space="preserve">
+    <value>Geplant</value>
+  </data>
+  <data name="Count" xml:space="preserve">
+    <value>{0} anstehend</value>
+  </data>
+  <data name="Filter_Kind" xml:space="preserve">
+    <value>Art</value>
+  </data>
+  <data name="Kind_All" xml:space="preserve">
+    <value>Alle</value>
+  </data>
+  <data name="Kind_Scheduled" xml:space="preserve">
+    <value>Terminierte Überweisungen</value>
+  </data>
+  <data name="Kind_Standing" xml:space="preserve">
+    <value>Daueraufträge</value>
+  </data>
+  <data name="Filter_Account" xml:space="preserve">
+    <value>Konto</value>
+  </data>
+  <data name="Account_All" xml:space="preserve">
+    <value>Alle Konten</value>
+  </data>
+  <data name="Problem" xml:space="preserve">
+    <value>{0}: Die Bank hat die Daueraufträge beim letzten Abgleich nicht geliefert ({1}).</value>
+  </data>
+  <data name="Empty" xml:space="preserve">
+    <value>Keine Daueraufträge oder terminierten Überweisungen. Über FinTS verbundene Banken (etwa ING) liefern sie bei jedem Abgleich; sie erscheinen hier nach dem nächsten.</value>
+  </data>
+  <data name="Empty_Filtered" xml:space="preserve">
+    <value>Nichts passt zu den Filtern.</value>
+  </data>
+  <data name="NoName" xml:space="preserve">
+    <value>(kein Name)</value>
+  </data>
+  <data name="Today" xml:space="preserve">
+    <value>heute</value>
+  </data>
+  <data name="Tomorrow" xml:space="preserve">
+    <value>morgen</value>
+  </data>
+  <data name="InDays" xml:space="preserve">
+    <value>in {0} Tagen</value>
+  </data>
+  <data name="Rhythm_Once" xml:space="preserve">
+    <value>Einmalig</value>
+  </data>
+  <data name="Rhythm_Weekly" xml:space="preserve">
+    <value>Wöchentlich</value>
+  </data>
+  <data name="Rhythm_EveryWeeks" xml:space="preserve">
+    <value>Alle {0} Wochen</value>
+  </data>
+  <data name="Rhythm_OnWeekday" xml:space="preserve">
+    <value>{0} am {1}</value>
+  </data>
+  <data name="Rhythm_Monthly" xml:space="preserve">
+    <value>Monatlich</value>
+  </data>
+  <data name="Rhythm_Quarterly" xml:space="preserve">
+    <value>Vierteljährlich</value>
+  </data>
+  <data name="Rhythm_HalfYearly" xml:space="preserve">
+    <value>Halbjährlich</value>
+  </data>
+  <data name="Rhythm_Yearly" xml:space="preserve">
+    <value>Jährlich</value>
+  </data>
+  <data name="Rhythm_EveryMonths" xml:space="preserve">
+    <value>Alle {0} Monate</value>
+  </data>
+  <data name="Rhythm_OnDay" xml:space="preserve">
+    <value>{0} am {1}</value>
+  </data>
+  <data name="Day_Nth" xml:space="preserve">
+    <value>{0}</value>
+  </data>
+  <data name="Day_Ultimo" xml:space="preserve">
+    <value>Monatsletzten</value>
+  </data>
+  <data name="Day_UltimoMinus" xml:space="preserve">
+    <value>Monatsletzten − {0}</value>
+  </data>
+  <data name="Until" xml:space="preserve">
+    <value>bis {0}</value>
+  </data>
+</root>

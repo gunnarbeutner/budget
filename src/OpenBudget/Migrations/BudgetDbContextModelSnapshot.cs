@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261111234518_RemoveTransferFlagAndShowInCharts";
+        public override string LatestMigrationId => "20261112001816_AddScheduledPayments";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -444,6 +444,10 @@ namespace OpenBudget.Migrations
                     b.Property<string>("RemoteId")
                         .IsRequired()
                         .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ScheduledError")
+                        .HasMaxLength(1000)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("StatementsEnabled")
@@ -1455,6 +1459,79 @@ namespace OpenBudget.Migrations
                     b.ToTable("removed_import_items");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.ScheduledPayment", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("AccountId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BankOrderId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CounterpartyBic")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CounterpartyIban")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CounterpartyName")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("EUR");
+
+                    b.Property<int?>("ExecutionDay")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("FetchedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly?>("FirstDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("IntervalCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("IntervalUnit")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly?>("LastDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("NextDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Purpose")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "NextDate");
+
+                    b.ToTable("scheduled_payments");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.SecurityTaxSetting", b =>
                 {
                     b.Property<int>("Id")
@@ -1985,6 +2062,17 @@ namespace OpenBudget.Migrations
                         .IsRequired();
 
                     b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.ScheduledPayment", b =>
+                {
+                    b.HasOne("OpenBudget.Models.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.StatementRead", b =>

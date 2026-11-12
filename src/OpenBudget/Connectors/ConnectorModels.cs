@@ -54,11 +54,57 @@ public sealed record RemotePosition(
     decimal? Value,
     decimal? PurchasePrice = null);
 
-/// <summary>What a refresh of one account yields. Positions are only filled for depots.</summary>
+/// <summary>
+/// What a refresh of one account yields. Positions are only filled for depots. <see cref="Scheduled"/> is the bank's
+/// complete list of the account's standing orders and future-dated transfers, or null when the connector does not
+/// report them (the stored ones stay); <see cref="ScheduledError"/> says why reading them failed (the rest of the refresh
+/// still counts).
+/// </summary>
 public sealed record AccountRefresh(
     decimal? Balance,
     IReadOnlyList<RemoteTransaction> Transactions,
-    IReadOnlyList<RemotePosition> Positions);
+    IReadOnlyList<RemotePosition> Positions,
+    IReadOnlyList<RemoteScheduledPayment>? Scheduled = null,
+    string? ScheduledError = null);
+
+/// <summary>A standing order (recurring) or a single transfer with a future execution date.</summary>
+public enum ScheduledPaymentKind
+{
+    /// <summary>A single transfer the bank executes on a future date.</summary>
+    Scheduled = 0,
+
+    /// <summary>A standing order (Dauerauftrag).</summary>
+    Standing = 1,
+}
+
+/// <summary>The time unit of a standing order's rhythm.</summary>
+public enum ScheduleUnit
+{
+    Month = 0,
+    Week = 1,
+}
+
+/// <summary>
+/// A payment order the bank holds for an account. Amounts are decimals in <see cref="Currency"/>, negative for money
+/// leaving the account. The rhythm fields are set for standing orders only: every <see cref="IntervalCount"/>
+/// <see cref="IntervalUnit"/>s on <see cref="ExecutionDay"/> (day of month 1-31, or 97-99 for "ultimo minus 2/1/0";
+/// weekday 1-7 for weeks), from <see cref="FirstDate"/> until <see cref="LastDate"/> (null: no end).
+/// </summary>
+public sealed record RemoteScheduledPayment(
+    ScheduledPaymentKind Kind,
+    string? BankOrderId,
+    DateOnly NextDate,
+    decimal Amount,
+    string Currency,
+    string? CounterpartyName,
+    string? CounterpartyIban,
+    string? CounterpartyBic,
+    string? Purpose,
+    DateOnly? FirstDate = null,
+    DateOnly? LastDate = null,
+    ScheduleUnit? IntervalUnit = null,
+    int? IntervalCount = null,
+    int? ExecutionDay = null);
 
 /// <summary>A document (usually a PDF) the bank published, for an account or (null account) for the login as a whole.</summary>
 public sealed record RemoteStatement(string Identifier, string? AccountRemoteId, DateOnly Date, string Name, byte[] Content);

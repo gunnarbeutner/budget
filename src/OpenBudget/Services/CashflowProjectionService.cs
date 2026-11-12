@@ -1,3 +1,4 @@
+using OpenBudget.Connectors;
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Models;
 
@@ -131,6 +132,110 @@ public class CashflowProjectionService
         else if (year > today.Year) result.LastActualDayOfYear = 0;
         else result.LastActualDayOfYear = today.DayOfYear;
 
+        return result;
+    }
+
+    /// <summary>
+    /// The bank's standing orders and scheduled transfers in the projection: each execution after
+    /// <paramref name="today"/> through the end of <paramref name="year"/> on the project's "In cashflow"
+    /// accounts, and per cashflow row the part of its category projection those orders already cover.
+    ///
+    /// Avoiding double counting: the category projection (budget or history) already expects the rent that a
+    /// standing order pays. So every standing order is given the category of the most recent booked transaction
+    /// it produced — same counterparty IBAN and same amount, else same counterparty name and amount, else the
+    /// same IBAN with any amount (the order's amount changed) — and the order's executions per month are
+    /// recorded against the cashflow row whose categories contain it. <see cref="CashflowCalculator.ComputeBalance"/>
+    /// takes that amount out of the row's projected month (never below zero) and books the order on its own
+    /// execution days instead. An order whose category cannot be found is only added. Single scheduled transfers
+    /// are one-offs that the category projection does not foresee, so they are only added.
+    ///
+    /// On a Shared account only orders whose category is one of the project's count, the same rule the
+    /// account's bookings follow; on an Exclusive account all of them.
+    /// </summary>
+    public async Task<ScheduledCashflow> GetScheduledCashflowAsync(
+        int projectId, int year, DateOnly today, IReadOnlyCollection<(long Id, CategoryItemType ItemType)> rowKeys)
+    {
+        var result = new ScheduledCashflow();
+        var from = today.AddDays(1);
+        var to = new DateOnly(year, 12, 31);
+        if (from > to) return result;
+        if (from.Year < year) from = new DateOnly(year, 1, 1);
+
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var project = await db.Projects.Where(p => p.Id == projectId).Select(p => new { p.SourceId }).FirstOrDefaultAsync();
+        if (project == null) return result;
+        var assignments = await db.ProjectAccountAssignments
+            .Where(a => a.ProjectId == projectId && a.InCashflow)
+            .Select(a => new { a.AccountId, a.Scope })
+            .ToListAsync();
+        if (assignments.Count == 0) return result;
+        var accountIds = assignments.Select(a => a.AccountId).ToList();
+        var orders = await db.ScheduledPayments.AsNoTracking()
+            .Where(p => p.SourceId == project.SourceId && accountIds.Contains(p.AccountId))
+            .ToListAsync();
+        if (orders.Count == 0) return result;
+
+        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        var rowByLeaf = new Dictionary<long, (long, CategoryItemType)>();
+        foreach (var (row, leaves) in CategoryHierarchyService.BuildItemToLeafCategoryIds(rowKeys, hierarchy))
+            foreach (var leaf in leaves) rowByLeaf.TryAdd(leaf, row);
+
+        HashSet<long>? projectLeaves = null;
+        if (assignments.Any(a => a.Scope == AccountScope.Shared))
+        {
+            var tracked = (await _projects.GetProjectTrackingItemsAsync(projectId)).ToTrackedKeys().ToList();
+            projectLeaves = CategoryHierarchyService.BuildItemToLeafCategoryIds(tracked, hierarchy).Values.SelectMany(s => s).ToHashSet();
+        }
+
+        var categories = await InferCategoriesAsync(db, project.SourceId, orders);
+        var scopeByAccount = assignments.ToDictionary(a => a.AccountId, a => a.Scope);
+        foreach (var order in orders)
+        {
+            categories.TryGetValue(order.Id, out var category);
+            if (scopeByAccount[order.AccountId] == AccountScope.Shared && (category == null || projectLeaves?.Contains(category.Value) != true))
+                continue;
+            var covered = order.Kind == ScheduledPaymentKind.Standing && category is { } c && rowByLeaf.TryGetValue(c, out var row) ? row : ((long, CategoryItemType)?)null;
+            foreach (var date in order.Occurrences(from, to))
+            {
+                var amount = order.Amount / 100m;
+                result.Occurrences.Add(new ScheduledOccurrence(date, amount, order.CounterpartyName ?? order.Purpose ?? string.Empty, order.Kind));
+                if (covered is { } key)
+                {
+                    if (!result.CoveredByRow.TryGetValue(key, out var months)) result.CoveredByRow[key] = months = new decimal[12];
+                    months[date.Month - 1] += amount;
+                }
+            }
+        }
+        result.Occurrences.Sort((a, b) => a.Date.CompareTo(b.Date));
+        return result;
+    }
+
+    /// <summary>Per order id: the category of the most recent booked transaction the order produced (see <see cref="GetScheduledCashflowAsync"/>).</summary>
+    private static async Task<Dictionary<long, long?>> InferCategoriesAsync(BudgetDbContext db, int sourceId, List<ScheduledPayment> orders)
+    {
+        var standing = orders.Where(o => o.Kind == ScheduledPaymentKind.Standing).ToList();
+        var result = new Dictionary<long, long?>();
+        if (standing.Count == 0) return result;
+        var ibans = standing.Where(o => o.CounterpartyIban != null)
+            .SelectMany(o => new[] { o.CounterpartyIban!, o.CounterpartyIban!.ToUpperInvariant(), AccountDisplay.FormatIban(o.CounterpartyIban)! })
+            .Distinct(StringComparer.Ordinal).ToList();
+        var amounts = standing.Select(o => o.Amount).Distinct().ToList();
+        var candidates = await db.Transactions.AsNoTracking()
+            .Where(t => t.SourceId == sourceId && t.Booked && t.CategoryId != null && t.Splitted != SplitState.Parent)
+            .Where(t => (t.CounterpartyIban != null && ibans.Contains(t.CounterpartyIban)) || amounts.Contains(t.Amount))
+            .OrderByDescending(t => t.Timestamp)
+            .Select(t => new { t.CounterpartyIban, t.Name, t.Amount, t.CategoryId })
+            .ToListAsync();
+        foreach (var order in standing)
+        {
+            var iban = order.CounterpartyIban;
+            bool SameIban(string? other) => iban != null && other != null && string.Equals(iban, other.Replace(" ", string.Empty, StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase);
+            var match = candidates.FirstOrDefault(t => t.Amount == order.Amount && SameIban(t.CounterpartyIban))
+                ?? candidates.FirstOrDefault(t => t.Amount == order.Amount && order.CounterpartyName != null
+                    && string.Equals(t.Name?.Trim(), order.CounterpartyName.Trim(), StringComparison.OrdinalIgnoreCase))
+                ?? candidates.FirstOrDefault(t => SameIban(t.CounterpartyIban));
+            result[order.Id] = match?.CategoryId;
+        }
         return result;
     }
 

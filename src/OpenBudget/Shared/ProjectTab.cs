@@ -9,6 +9,7 @@ public enum ProjectTab
     Browse,
     Budgets,
     Cashflow,
+    Scheduled,
     Portfolio,
     Documents,
 }

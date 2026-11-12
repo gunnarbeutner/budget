@@ -214,4 +214,10 @@
   <data name="View_Title" xml:space="preserve">
     <value>Cashflow</value>
   </data>
+  <data name="Balance_ScheduledIncluded" xml:space="preserve">
+    <value>Die Prognose enthält {0} Ausführungen der Daueraufträge und terminierten Überweisungen deiner Bank an ihren Terminen.</value>
+  </data>
+  <data name="Balance_ScheduledLink" xml:space="preserve">
+    <value>Geplante Zahlungen anzeigen</value>
+  </data>
 </root>

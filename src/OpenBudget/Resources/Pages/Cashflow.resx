@@ -214,4 +214,10 @@
   <data name="View_Title" xml:space="preserve">
     <value>Cashflow</value>
   </data>
+  <data name="Balance_ScheduledIncluded" xml:space="preserve">
+    <value>The projection includes {0} executions of your bank's standing orders and scheduled transfers on their dates.</value>
+  </data>
+  <data name="Balance_ScheduledLink" xml:space="preserve">
+    <value>Show scheduled payments</value>
+  </data>
 </root>

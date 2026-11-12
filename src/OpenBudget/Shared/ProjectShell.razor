@@ -11,7 +11,7 @@
 @inject IStringLocalizer<ProjectShell> L
 @implements IDisposable
 
-@* The frame of every project view (Transactions, Budget, Cashflow, Portfolio, Documents): the left
+@* The frame of every project view (Transactions, Budget, Cashflow, Scheduled, Portfolio, Documents): the left
    sidebar — the project's views on top, then the Accounts and Categories trees — and the main column, which
    the page fills with its 48px toolbar and its content. The sidebar is the only project navigation: its width
    is the shared --ob-sidebar-w (drag handle .browse-resizer, see uiBehaviors.js); below md it becomes an
@@ -36,6 +36,7 @@
             @ViewLink(ProjectTab.Browse, TransactionsUrl, "bi-list-ul", L["View_Transactions"], null, "view-transactions")
             @ViewLink(ProjectTab.Budgets, $"/projects/{ProjectId}/budgets", "bi-calendar3", L["View_Budget"], BudgetBadge, "view-budget")
             @ViewLink(ProjectTab.Cashflow, $"/projects/{ProjectId}/cashflow", "bi-graph-up", L["View_Cashflow"], null, "view-cashflow")
+            @ViewLink(ProjectTab.Scheduled, $"/projects/{ProjectId}/scheduled", "bi-calendar-check", L["View_Scheduled"], null, "view-scheduled")
             @if (HasPortfolio)
             {
                 @ViewLink(ProjectTab.Portfolio, $"/projects/{ProjectId}/portfolio", "bi-pie-chart", L["View_Portfolio"], null, "view-portfolio")

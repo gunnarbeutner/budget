@@ -71,6 +71,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<CloudConnection> CloudConnections => Set<CloudConnection>();
     public DbSet<CloudFileLink> CloudFileLinks => Set<CloudFileLink>();
     public DbSet<RemovedImportItem> RemovedImportItems => Set<RemovedImportItem>();
+    public DbSet<ScheduledPayment> ScheduledPayments => Set<ScheduledPayment>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -293,6 +294,17 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
 
         modelBuilder.Entity<Holding>()
             .HasIndex(s => new { s.SourceId, s.AccountId });
+
+        // The bank's standing orders and scheduled transfers go with their account.
+        modelBuilder.Entity<ScheduledPayment>()
+            .HasOne(p => p.Account)
+            .WithMany()
+            .HasForeignKey(p => p.AccountId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ScheduledPayment>().HasIndex(p => new { p.AccountId, p.NextDate });
+        modelBuilder.Entity<ScheduledPayment>().Property(p => p.Kind).HasConversion<int>();
+        modelBuilder.Entity<ScheduledPayment>().Property(p => p.IntervalUnit).HasConversion<int?>();
+        modelBuilder.Entity<ScheduledPayment>().Property(p => p.Currency).HasDefaultValue("EUR");
 
         // portfolio_chart hangs off accounts only; securities_key deliberately has no FK (it can
         // reference historical positions the import skips — see PortfolioChartPoint remarks).
