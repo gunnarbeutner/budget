@@ -26,7 +26,6 @@ public static class TransactionEditRules
     {
         nameof(Transaction.CategoryId),
         nameof(Transaction.CategorySetBy),
-        nameof(Transaction.CategorySetAt),
         nameof(Transaction.RuleId),
         nameof(Transaction.Note),
         nameof(Transaction.Checked),

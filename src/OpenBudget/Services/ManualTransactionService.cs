@@ -36,17 +36,14 @@ public sealed class ManualTransactionService
     private readonly SystemDbContextFactory _system;
     private readonly ChangeNotificationService _notifier;
     private readonly ChangeOrigin _origin;
-    private readonly TimeProvider _time;
 
     public ManualTransactionService(
-        IDbContextFactory<BudgetDbContext> dbFactory, SystemDbContextFactory system, ChangeNotificationService notifier, ChangeOrigin origin,
-        TimeProvider? time = null)
+        IDbContextFactory<BudgetDbContext> dbFactory, SystemDbContextFactory system, ChangeNotificationService notifier, ChangeOrigin origin)
     {
         _dbFactory = dbFactory;
         _system = system;
         _notifier = notifier;
         _origin = origin;
-        _time = time ?? TimeProvider.System;
     }
 
     /// <summary>Whether the current user may enter bookings on the account (a manual account of a source they own).</summary>
@@ -175,7 +172,7 @@ public sealed class ManualTransactionService
         Publish(row.SourceId);
     }
 
-    private void Apply(Transaction row, ManualTransactionInput input, string accountCurrency, bool amountEditable)
+    private static void Apply(Transaction row, ManualTransactionInput input, string accountCurrency, bool amountEditable)
     {
         var currency = string.IsNullOrWhiteSpace(input.Currency) ? accountCurrency : input.Currency.Trim().ToUpperInvariant();
         if (currency.Length != 3 || !currency.All(char.IsAsciiLetter)) throw new ArgumentException("The currency is a three-letter code.", nameof(input));
@@ -192,7 +189,6 @@ public sealed class ManualTransactionService
             row.CategoryId = input.CategoryId;
             row.CategorySetBy = TransactionCategorySource.Manual;
             row.RuleId = null;
-            row.CategorySetAt = input.CategoryId == null ? null : _time.GetUtcNow().ToUnixTimeSeconds();
         }
     }
 

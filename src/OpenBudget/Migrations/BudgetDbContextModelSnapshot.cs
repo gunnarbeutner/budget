@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261112001816_AddScheduledPayments";
+        public override string LatestMigrationId => "20261112045115_RemoveCategorySetAt";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -1666,10 +1666,6 @@ namespace OpenBudget.Migrations
                     b.Property<long?>("CategoryId")
                         .HasColumnType("INTEGER")
                         .HasColumnName("category_key");
-
-                    b.Property<long?>("CategorySetAt")
-                        .HasColumnType("INTEGER")
-                        .HasColumnName("category_set_at");
 
                     b.Property<string>("CategorySetBy")
                         .IsRequired()

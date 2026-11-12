@@ -121,10 +121,6 @@ public class Transaction
     [Column("rule_id")]
     public int? RuleId { get; set; }
 
-    /// <summary>Unix seconds of the last manual categorization.</summary>
-    [Column("category_set_at")]
-    public long? CategorySetAt { get; set; }
-
     /// <summary>The bank's value date (unix seconds), when the connector reports one.</summary>
     [Column("value_timestamp")]
     public long? ValueTimestamp { get; set; }

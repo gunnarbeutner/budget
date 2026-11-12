@@ -5,7 +5,7 @@ namespace OpenBudget.Services;
 
 /// <summary>One transaction's user-owned fields as they were before an edit; restoring them undoes it.</summary>
 public sealed record TransactionEditSnapshot(
-    long Id, long? CategoryId, string CategorySetBy, int? RuleId, long? CategorySetAt, string? Note, bool Checked, bool IsNew);
+    long Id, long? CategoryId, string CategorySetBy, int? RuleId, string? Note, bool Checked, bool IsNew);
 
 /// <summary>Everything needed to undo one edit (a bulk edit is one receipt = one undo step).</summary>
 public sealed record EditReceipt(IReadOnlyList<TransactionEditSnapshot> Before, int SourceId);
@@ -29,15 +29,13 @@ public sealed class TransactionEditService
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly ChangeNotificationService _notifier;
     private readonly ChangeOrigin _origin;
-    private readonly TimeProvider _time;
 
     public TransactionEditService(
-        IDbContextFactory<BudgetDbContext> dbFactory, ChangeNotificationService notifier, ChangeOrigin origin, TimeProvider? time = null)
+        IDbContextFactory<BudgetDbContext> dbFactory, ChangeNotificationService notifier, ChangeOrigin origin)
     {
         _dbFactory = dbFactory;
         _notifier = notifier;
         _origin = origin;
-        _time = time ?? TimeProvider.System;
     }
 
     /// <summary>Sets (or with null removes) the category of the given transactions; the result is marked as chosen by hand.</summary>
@@ -55,7 +53,6 @@ public sealed class TransactionEditService
             t.CategoryId = categoryId;
             t.CategorySetBy = TransactionCategorySource.Manual;
             t.RuleId = null;
-            t.CategorySetAt = _time.GetUtcNow().ToUnixTimeSeconds();
             t.IsNew = false;
             return true;
         }, ct);
@@ -151,7 +148,6 @@ public sealed class TransactionEditService
             t.CategoryId = s.CategoryId;
             t.CategorySetBy = s.CategorySetBy;
             t.RuleId = s.RuleId;
-            t.CategorySetAt = s.CategorySetAt;
             t.Note = s.Note;
             t.Checked = s.Checked;
             t.IsNew = s.IsNew;
@@ -189,7 +185,7 @@ public sealed class TransactionEditService
         var before = new List<TransactionEditSnapshot>();
         foreach (var t in editable)
         {
-            var snapshot = new TransactionEditSnapshot(t.Id, t.CategoryId, t.CategorySetBy, t.RuleId, t.CategorySetAt, t.Note, t.Checked, t.IsNew);
+            var snapshot = new TransactionEditSnapshot(t.Id, t.CategoryId, t.CategorySetBy, t.RuleId, t.Note, t.Checked, t.IsNew);
             if (apply(t)) before.Add(snapshot);
         }
         if (before.Count == 0) return new EditResult(null, 0, distinct);

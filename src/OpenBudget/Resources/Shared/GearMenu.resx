@@ -88,8 +88,5 @@
   <data name="Item_MoneyMoney" xml:space="preserve">
     <value>MoneyMoney import</value>
   </data>
-  <data name="Item_StatementDownload" xml:space="preserve">
-    <value>Statement download</value>
-  </data>
   <data name="Badge_Errors_One" xml:space="preserve"><value>1 error</value></data>
 </root>

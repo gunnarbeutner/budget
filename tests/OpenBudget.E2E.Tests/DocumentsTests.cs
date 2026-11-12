@@ -240,16 +240,6 @@ public sealed class DocumentsTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task The_gear_menu_opens_the_statement_download_settings()
-    {
-        await SeedDocumentsAsync();
-        await GoToAsync($"/projects/{Pid}/browse");
-        await Page.GetByTestId("gear-menu").Locator("summary").ClickAsync();
-        await Page.GetByTestId("gear-menu").GetByTestId("gear-statement-download").ClickAsync();
-        await Expect(Page.GetByTestId("modal-dialog")).ToContainTextAsync("Statement download");
-    }
-
-    [Test]
     public async Task The_old_account_statements_url_opens_the_documents_view_filtered_to_the_account()
     {
         await SeedDocumentsAsync();

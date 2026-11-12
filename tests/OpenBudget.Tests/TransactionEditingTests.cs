@@ -69,7 +69,6 @@ public sealed class TransactionEditingTests
         Assert.Equal(OtherLeaf, row.CategoryId);
         Assert.Equal(TransactionCategorySource.Manual, row.CategorySetBy);
         Assert.Null(row.RuleId);
-        Assert.NotNull(row.CategorySetAt);
     }
 
     [Fact]
@@ -193,10 +192,8 @@ public sealed class TransactionEditingTests
         var after11 = await LoadAsync(t, 11);
         Assert.Equal(before11.CategoryId, after11.CategoryId);
         Assert.Equal(before11.CategorySetBy, after11.CategorySetBy);
-        Assert.Equal(before11.CategorySetAt, after11.CategorySetAt);
         var tx1 = await LoadAsync(t, Tx1);
         Assert.Equal(TransactionCategorySource.Import, tx1.CategorySetBy);
-        Assert.Null(tx1.CategorySetAt);
     }
 
     [Fact]

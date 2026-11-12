@@ -31,7 +31,7 @@ public sealed class ManualAccountTests
     private static ManualTransactionService Manual(BankWorld w, string user)
     {
         var access = new AccessScopeProvider(w.T.System, new FixedCurrentUser(user), w.T.Notifier);
-        return new ManualTransactionService(new ScopedDbContextFactory(w.T.System, access), w.T.System, w.T.Notifier, new ChangeOrigin(), w.Clock);
+        return new ManualTransactionService(new ScopedDbContextFactory(w.T.System, access), w.T.System, w.T.Notifier, new ChangeOrigin());
     }
 
     [Fact]

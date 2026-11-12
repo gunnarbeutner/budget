@@ -62,15 +62,13 @@ public sealed class SplitService
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly ChangeNotificationService _notifier;
     private readonly ChangeOrigin _origin;
-    private readonly TimeProvider _time;
 
     public SplitService(
-        IDbContextFactory<BudgetDbContext> dbFactory, ChangeNotificationService notifier, ChangeOrigin origin, TimeProvider? time = null)
+        IDbContextFactory<BudgetDbContext> dbFactory, ChangeNotificationService notifier, ChangeOrigin origin)
     {
         _dbFactory = dbFactory;
         _notifier = notifier;
         _origin = origin;
-        _time = time ?? TimeProvider.System;
     }
 
     // ---- pure logic ----
@@ -168,7 +166,6 @@ public sealed class SplitService
                 .Where(t => t.SourceId == parent.SourceId && t.Id >= rangeStart)
                 .MaxAsync(t => (long?)t.Id, ct) ?? rangeStart;
 
-            var now = _time.GetUtcNow().ToUnixTimeSeconds();
             foreach (var p in parts)
             {
                 db.Transactions.Add(new Transaction
@@ -190,7 +187,6 @@ public sealed class SplitService
                     SplitParentId = parent.Id,
                     CategoryId = p.CategoryId,
                     CategorySetBy = TransactionCategorySource.Manual,
-                    CategorySetAt = p.CategoryId != null ? now : null,
                     Note = string.IsNullOrWhiteSpace(p.Note) ? null : p.Note.Trim(),
                 });
             }

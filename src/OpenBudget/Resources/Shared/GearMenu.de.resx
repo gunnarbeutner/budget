@@ -88,8 +88,5 @@
   <data name="Item_MoneyMoney" xml:space="preserve">
     <value>MoneyMoney-Import</value>
   </data>
-  <data name="Item_StatementDownload" xml:space="preserve">
-    <value>Kontoauszug-Download</value>
-  </data>
   <data name="Badge_Errors_One" xml:space="preserve"><value>1 Fehler</value></data>
 </root>
