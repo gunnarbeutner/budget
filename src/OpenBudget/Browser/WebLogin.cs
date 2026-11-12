@@ -466,16 +466,29 @@ public sealed class WebLoginSession : IAsyncDisposable
     private bool _totpRejected;
     private bool _authenticatorChosen;
 
+    // since when the code page has been waited on for the stored secret without a form to act on (still loading, say)
+    private DateTime? _totpIdleSince;
+
     private async Task<bool> HandleCodePromptAsync(Uri url, CancellationToken ct)
     {
-        if (_codePromptDisabled || _spec.CodePrompt is not { } form || !IsCodePage(url, form)) return false;
+        if (_codePromptDisabled || _spec.CodePrompt is not { } form || !IsCodePage(url, form))
+        {
+            _totpIdleSince = null;
+            return false;
+        }
         var totp = _totpRejected ? null : form.Totp;
         if (AskForCode == null && totp == null) return false;
         var settle = _totpAttempts > 0 && !_totpRejected ? form.TotpSettle : TimeSpan.FromSeconds(2);
         if (_codeSubmittedAt is { } submitted && DateTime.UtcNow - submitted < settle) return true;
-        if (totp != null && !_authenticatorChosen && form.ChooseAuthenticator.Count > 0 && !await _browser.IsVisibleAsync(form.FieldSelector))
-            return await ChooseAuthenticatorAsync(form, ct);
-        if (!await _browser.IsVisibleAsync(form.FieldSelector) || !await _browser.IsVisibleAsync(form.SubmitSelector)) return false;
+        if (totp != null && !_authenticatorChosen && form.ChooseAuthenticator.Count > 0 && !await _browser.IsVisibleAsync(form.FieldSelector)
+            && await ChooseAuthenticatorAsync(form, ct))
+        {
+            _totpIdleSince = null;
+            return true;
+        }
+        if (!await _browser.IsVisibleAsync(form.FieldSelector) || !await _browser.IsVisibleAsync(form.SubmitSelector))
+            return totp != null && KeepHiddenForSecret();
+        _totpIdleSince = null;
 
         string code;
         var fromSecret = false;
@@ -518,6 +531,17 @@ public sealed class WebLoginSession : IAsyncDisposable
         // Restore the web-login status after the shared code challenge, even when the mode was already Waiting.
         SetMode(WebLoginMode.Waiting, notify: !fromSecret);
         return true;
+    }
+
+    /// <summary>
+    /// With a stored secret the app enters the code itself, so the page stays hidden (the spec's waiting script is not
+    /// consulted) while the code form is not there yet; only after <see cref="WebLoginOptions.StuckAfter"/> without a form
+    /// to act on does the code page count as needing the user.
+    /// </summary>
+    private bool KeepHiddenForSecret()
+    {
+        _totpIdleSince ??= DateTime.UtcNow;
+        return DateTime.UtcNow - _totpIdleSince < _options.StuckAfter;
     }
 
     /// <summary>Picks the authenticator app on a page that offers several methods (once); true when something was clicked.</summary>

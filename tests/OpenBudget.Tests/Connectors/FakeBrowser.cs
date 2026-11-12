@@ -102,6 +102,12 @@ internal sealed class FakeBrowserSession : IBrowserSession
         return true;
     }
 
+    /// <summary>Answers the spec's page scripts (a waiting script, say); null: every check is ok with nothing to report.</summary>
+    public Func<FakeBrowserSession, WebLoginCheck>? OnCheck { get; set; }
+
+    public Task<WebLoginCheck> CheckAsync(string function, string argument) =>
+        Task.FromResult(OnCheck?.Invoke(this) ?? new WebLoginCheck(true, ""));
+
     public Task<bool> IsVisibleAsync(string selector)
     {
         lock (Visible) return Task.FromResult(Visible.Contains(selector));
