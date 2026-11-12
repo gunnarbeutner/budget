@@ -248,7 +248,7 @@ public sealed class DocumentReadTests
 
         Assert.Empty(await bob.GetUnassignedAsync());
         Assert.Equal(0, await bob.GetUnassignedCountAsync());
-        Assert.Empty(await bob.GetAssignTargetsAsync(true)); // a viewer of project 1 may edit none of its accounts
+        Assert.Empty(await bob.GetAssignTargetsAsync()); // a viewer of project 1 may edit none of its accounts
         await Assert.ThrowsAsync<AccessDeniedException>(() => bob.AssignAsync([noAccount, orphan, onClosed], giro));
     }
 
@@ -259,12 +259,14 @@ public sealed class DocumentReadTests
         await using var _w = w;
         var alice = Docs(w, BankWorld.Alice);
 
-        var open = await alice.GetAssignTargetsAsync(false);
-        Assert.Contains(open, t => t.ProjectId == 1 && t.AccountId == giro);
-        Assert.Contains(open, t => t.ProjectId == 2 && t.AccountId == 9101 && t.ProjectName == "Second" && t.Icon.Length > 0);
-        Assert.DoesNotContain(open, t => t.AccountId == 9102);
-        Assert.DoesNotContain(open, t => t.AccountId == 9103); // in no project
-        Assert.Contains(await alice.GetAssignTargetsAsync(true), t => t.AccountId == 9102 && t.Closed);
+        var targets = await alice.GetAssignTargetsAsync();
+        Assert.Contains(targets, t => t.ProjectId == 1 && t.AccountId == giro);
+        Assert.Contains(targets, t => t.ProjectId == 2 && t.AccountId == 9101 && t.ProjectName == "Second" && t.Icon.Length > 0 && !t.Closed);
+        Assert.DoesNotContain(targets, t => t.AccountId == 9103); // in no project
+        // Closed accounts are listed, after the open ones of their project.
+        var inFirst = targets.Where(t => t.ProjectId == 1).ToList();
+        Assert.Contains(inFirst, t => t.AccountId == 9102 && t.Closed);
+        Assert.All(inFirst.GroupBy(t => t.GroupName ?? "", StringComparer.Ordinal), g => Assert.Equal(g.OrderBy(t => t.Closed).Select(t => t.AccountId), g.Select(t => t.AccountId)));
 
         Assert.DoesNotContain(orphan, (await alice.GetDocumentsAsync(2)).Select(d => d.Id));
         var before = await alice.GetUnassignedCountAsync();

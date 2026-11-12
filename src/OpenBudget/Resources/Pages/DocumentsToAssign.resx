@@ -109,9 +109,6 @@
   <data name="Assign_Hint_One" xml:space="preserve">
     <value>1 document will be filed under the chosen account.</value>
   </data>
-  <data name="Assign_IncludeClosed" xml:space="preserve">
-    <value>Show closed accounts</value>
-  </data>
   <data name="Assign_Closed" xml:space="preserve">
     <value>closed</value>
   </data>

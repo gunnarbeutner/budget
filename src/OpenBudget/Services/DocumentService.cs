@@ -243,9 +243,10 @@ public class DocumentService
 
     /// <summary>
     /// Every account in the current user's projects that they may assign documents to (those whose transactions they
-    /// may edit), by project and then account group; closed accounts only with <paramref name="includeClosed"/>.
+    /// may edit), by project and then account group, closed accounts after the open ones of their group (old statements
+    /// usually belong to closed accounts).
     /// </summary>
-    public async Task<List<AssignTarget>> GetAssignTargetsAsync(bool includeClosed, CancellationToken ct = default)
+    public async Task<List<AssignTarget>> GetAssignTargetsAsync(CancellationToken ct = default)
     {
         var scope = await _access.GetAsync();
         if (!scope.IsAuthenticated) return [];
@@ -254,14 +255,14 @@ public class DocumentService
             from p in db.ProjectAccountAssignments
             join pr in db.Projects on p.ProjectId equals pr.Id
             join a in db.Accounts on p.AccountId equals a.Id
-            where includeClosed || !a.Closed
-            select new { pr.Id, ProjectName = pr.Name, pr.SortOrder, Account = a, GroupName = a.Group != null ? a.Group.Name : null })
+            select new { pr.Id, ProjectName = pr.Name, pr.SortOrder, Account = a, GroupName = a.Group!.Name })
             .AsNoTracking()
             .ToListAsync(ct);
         return rows
             .Where(r => scope.CanEditTransactionsOf(r.Account.SourceId, r.Account.Id))
             .OrderBy(r => r.SortOrder).ThenBy(r => r.ProjectName, StringComparer.CurrentCultureIgnoreCase).ThenBy(r => r.Id)
             .ThenBy(r => r.GroupName ?? "", StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(r => r.Account.Closed)
             .ThenBy(r => r.Account.Sort ?? long.MaxValue).ThenBy(r => r.Account.Name ?? "", StringComparer.CurrentCultureIgnoreCase)
             .Select(r => new AssignTarget(r.Id, r.ProjectName, r.Account.Id, r.Account.Name ?? "?", r.GroupName, r.Account.Icon ?? r.Account.KindIcon, r.Account.Closed))
             .ToList();

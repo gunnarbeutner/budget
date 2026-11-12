@@ -95,11 +95,6 @@
 <Modal Show="showAssign" Title="@L["Assign_Title"]" SizeClass="modal-dialog-scrollable" OnClose="CloseAssign">
     <ChildContent>
         <p class="small text-body-secondary mb-2">@L[Selected().Count == 1 ? "Assign_Hint_One" : "Assign_Hint", Selected().Count]</p>
-        <div class="form-check form-switch mb-2">
-            <input class="form-check-input" type="checkbox" id="assign-closed" data-testid="assign-closed"
-                   checked="@includeClosed" @onchange="ToggleClosedAsync" />
-            <label class="form-check-label" for="assign-closed">@L["Assign_IncludeClosed"]</label>
-        </div>
         @if (targets == null)
         {
             <div class="skeleton skeleton-line" aria-busy="true"></div>
@@ -161,7 +156,6 @@
     private bool keysBound;
 
     private bool showAssign;
-    private bool includeClosed;
     private List<AssignTarget>? targets;
     private long? assignTo;
     private int? assignProject;
@@ -283,18 +277,7 @@
         assignError = null;
         message = null;
         targets = null;
-        targets = await Docs.GetAssignTargetsAsync(includeClosed);
-    }
-
-    private async Task ToggleClosedAsync(ChangeEventArgs e)
-    {
-        includeClosed = e.Value is true;
-        targets = await Docs.GetAssignTargetsAsync(includeClosed);
-        if (!targets.Any(t => t.AccountId == assignTo && t.ProjectId == assignProject))
-        {
-            assignTo = null;
-            assignProject = null;
-        }
+        targets = await Docs.GetAssignTargetsAsync();
     }
 
     private void CloseAssign() => showAssign = false;

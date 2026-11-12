@@ -109,9 +109,6 @@
   <data name="Assign_Hint_One" xml:space="preserve">
     <value>1 Dokument wird dem gewählten Konto zugeordnet.</value>
   </data>
-  <data name="Assign_IncludeClosed" xml:space="preserve">
-    <value>Aufgelöste Konten zeigen</value>
-  </data>
   <data name="Assign_Closed" xml:space="preserve">
     <value>aufgelöst</value>
   </data>
