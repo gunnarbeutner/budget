@@ -94,12 +94,6 @@
   <data name="Note_Placeholder" xml:space="preserve">
     <value>Add a note…</value>
   </data>
-  <data name="Checked_Yes" xml:space="preserve">
-    <value>Checked</value>
-  </data>
-  <data name="Checked_No" xml:space="preserve">
-    <value>Not checked</value>
-  </data>
   <data name="Statement" xml:space="preserve">
     <value>Statement</value>
   </data>
@@ -120,9 +114,6 @@
   </data>
   <data name="Bic" xml:space="preserve">
     <value>BIC</value>
-  </data>
-  <data name="Action_Category" xml:space="preserve">
-    <value>Category</value>
   </data>
   <data name="Action_Split" xml:space="preserve">
     <value>Split</value>

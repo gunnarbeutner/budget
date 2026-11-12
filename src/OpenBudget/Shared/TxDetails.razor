@@ -69,13 +69,6 @@
         {
             <input type="text" class="form-control form-control-sm" data-testid="tx-details-note" maxlength="500" aria-label="@L["Note"]"
                    placeholder="@L["Note_Placeholder"]" value="@Row.Note" @onchange="OnNoteChanged" />
-            <button type="button" class="ob-btn" data-testid="tx-details-category-button" @onclick="OnPickCategory">
-                <i class="bi bi-tag" aria-hidden="true"></i> @L["Action_Category"]
-            </button>
-            <button type="button" class="ob-btn @(Row.IsChecked ? "active" : "")" data-testid="tx-details-checked"
-                    aria-pressed="@Row.IsChecked.ToString().ToLowerInvariant()" @onclick="() => OnToggleChecked.InvokeAsync()">
-                <i class="bi @(Row.IsChecked ? "bi-check-square-fill" : "bi-square")" aria-hidden="true"></i> @(Row.IsChecked ? L["Checked_Yes"] : L["Checked_No"])
-            </button>
         }
         @if (Row.CanEdit && PickerData != null && !Row.IsSplitRemainder)
         {
@@ -140,9 +133,7 @@
     [Parameter] public (long Id, string Name)? Statement { get; set; }
     /// <summary>Whether to list the account (the list spans several accounts).</summary>
     [Parameter] public bool ShowAccount { get; set; }
-    [Parameter] public EventCallback<MouseEventArgs> OnPickCategory { get; set; }
     [Parameter] public EventCallback<string> OnNoteSave { get; set; }
-    [Parameter] public EventCallback OnToggleChecked { get; set; }
     [Parameter] public EventCallback OnShowSimilar { get; set; }
     /// <summary>Opens the full edit form (bookings of manual accounts the user owns).</summary>
     [Parameter] public EventCallback OnEditBooking { get; set; }

@@ -501,9 +501,7 @@
                                 @if (isExpanded)
                                 {
                                     <TxDetails Row="row" Statement="expandedStatement" ShowAccount="showAccountColumn"
-                                               OnPickCategory="e => OpenPickerFromRow(row, e)"
                                                OnNoteSave="note => SetNoteForAsync(row.Id, note)"
-                                               OnToggleChecked="() => SetCheckedForAsync(row.Id, !row.IsChecked)"
                                                OnShowSimilar="() => ShowSimilarAsync(row)"
                                                OnEditBooking="() => OpenEditBookingAsync(row)"
                                                OnCreateRule="e => CreateRuleFromAsync(row, e)"
