@@ -56,6 +56,8 @@ public class BrowseAccountNode
     public decimal? PendingBalance { get; init; }
     /// <summary>The bank login that feeds this account, set only for its owner (who may start "Sync now").</summary>
     public int? SyncLoginId { get; init; }
+    /// <summary>The <see cref="BankLoginAccount"/> row linking this account to <see cref="SyncLoginId"/> (set with it, null when the bank no longer lists it).</summary>
+    public int? SyncLoginAccountId { get; init; }
     /// <summary>The bank no longer lists this account (closed).</summary>
     public bool Closed { get; init; }
 

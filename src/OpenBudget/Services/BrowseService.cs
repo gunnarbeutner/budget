@@ -357,6 +357,7 @@ public class BrowseService
                     Error = FirstNonEmpty(link?.LastError, link?.BankLogin.LastError, a.Error),
                     PendingBalance = pendingCents.TryGetValue(a.Id, out var pc) && pc != 0 ? pc / 100m : null,
                     SyncLoginId = link != null && viewerId != null && link.BankLogin.OwnerUserId == viewerId ? link.BankLoginId : null,
+                    SyncLoginAccountId = link != null && viewerId != null && link.BankLogin.OwnerUserId == viewerId && !link.Closed ? link.Id : null,
                     Closed = link?.Closed ?? false,
                     IsMoneyMoney = string.Equals(a.Provider, AccountProviders.MoneyMoney, StringComparison.Ordinal),
                     MarkedClosed = a.Closed,

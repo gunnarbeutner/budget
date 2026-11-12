@@ -109,6 +109,23 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
     }
 
     /// <summary>
+    /// "Refresh account(s)" from the sidebar: login, listing, then only the transactions of the given linked accounts
+    /// (<see cref="BankLoginAccount.Id"/>s of that login).
+    /// </summary>
+    public async Task<StartResult> RefreshAccountsAsync(string userId, int loginId, IReadOnlyCollection<int> loginAccountIds, CancellationToken ct = default)
+    {
+        if (!IsEnabled) return StartResult.Disabled;
+        if (loginAccountIds.Count == 0) return StartResult.NothingToDo;
+        await using var db = await _system.CreateDbContextAsync(ct);
+        var ids = loginAccountIds.Distinct().ToList();
+        var found = await db.BankLoginAccounts.CountAsync(
+            a => ids.Contains(a.Id) && a.BankLoginId == loginId && a.BankLogin.OwnerUserId == userId && a.LinkedAccountId != null, ct);
+        return found != ids.Count
+            ? StartResult.NotFound
+            : Launch(userId, new SyncRequest(loginId, Transactions: true, Statements: false, RefreshAccounts: ids));
+    }
+
+    /// <summary>
     /// "Sync all": transactions of every login except those set to Never (manual-only ones are included);
     /// statements only for accounts whose own schedule says they are due (manual-interval accounts use "Download now").
     /// </summary>

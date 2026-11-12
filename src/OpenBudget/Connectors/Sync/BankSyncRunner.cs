@@ -6,8 +6,12 @@ using OpenBudget.Services;
 
 namespace OpenBudget.Connectors.Sync;
 
-/// <summary>What one sync should do. Statement accounts are <see cref="BankLoginAccount.Id"/>s; null = every account with statements switched on.</summary>
-public sealed record SyncRequest(int LoginId, bool Transactions, bool Statements, IReadOnlyCollection<int>? StatementAccounts = null);
+/// <summary>
+/// What one sync should do. Statement and refresh accounts are <see cref="BankLoginAccount.Id"/>s: null = every account with
+/// statements switched on, respectively every linked account. A sync limited to some accounts leaves the login's
+/// <see cref="BankLogin.LastSyncAt"/> alone (the others were not refreshed).
+/// </summary>
+public sealed record SyncRequest(int LoginId, bool Transactions, bool Statements, IReadOnlyCollection<int>? StatementAccounts = null, IReadOnlyCollection<int>? RefreshAccounts = null);
 
 /// <summary>Where the runner reports progress and asks the user for input.</summary>
 public interface ISyncSink
@@ -206,7 +210,7 @@ public sealed class BankSyncRunner
 
             if (request.Transactions)
             {
-                try { await RefreshAccountsAsync(db, login, connector, remoteAccounts, sink, context, errors, affected, ct); }
+                try { await RefreshAccountsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct); }
                 finally { await context.CloseBrowsersAsync(); }
             }
             if (request.Statements)
@@ -258,7 +262,7 @@ public sealed class BankSyncRunner
                 session.Cookies = http.ExportCookies().ToList();
                 login.EncryptedSession = _secrets.Encrypt(JsonSerializer.Serialize(session), SessionPurpose);
             }
-            if (request.Transactions) login.LastSyncAt = attempted;
+            if (request.Transactions && request.RefreshAccounts == null) login.LastSyncAt = attempted;
             // A run that only fetched statements leaves a transaction error in place, but not a mere interruption.
             if (request.Transactions || errors.Count > 0 || login.LastError == CancelledMessage)
                 login.LastError = errors.Count == 0 ? null : Truncate(string.Join(" ", errors), 1000);
@@ -398,10 +402,12 @@ public sealed class BankSyncRunner
     }
 
     private async Task RefreshAccountsAsync(
-        BudgetDbContext db, BankLogin login, IBankConnector connector, IReadOnlyList<RemoteAccount> remote,
+        BudgetDbContext db, BankLogin login, IBankConnector connector, IReadOnlyList<RemoteAccount> remote, SyncRequest request,
         ISyncSink sink, SyncContext context, List<string> errors, HashSet<int> affected, CancellationToken ct)
     {
-        var links = login.Accounts.Where(a => a.LinkedAccountId != null && !a.Closed).ToList();
+        var links = login.Accounts
+            .Where(a => a.LinkedAccountId != null && !a.Closed && (request.RefreshAccounts == null || request.RefreshAccounts.Contains(a.Id)))
+            .ToList();
         _logger.LogInformation("Bank login {LoginId}: refreshing {Count} linked accounts.", login.Id, links.Count);
         foreach (var link in links)
         {

@@ -422,11 +422,15 @@ else
 
     private ConnectorRegistration? SelectedConnector => connectors.FirstOrDefault(c => c.ConnectorType == newConnector);
 
+    /// <summary>?edit={loginId}: opens that login's edit dialog once the list is loaded.</summary>
+    [SupplyParameterFromQuery(Name = "edit")] public int? EditLoginId { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         connectors = Bank.GetConnectors();
         newConnector = connectors.FirstOrDefault()?.ConnectorType ?? "";
         await LoadAsync();
+        if (EditLoginId is { } editId && logins?.FirstOrDefault(l => l.Id == editId) is { } toEdit) OpenEdit(toEdit);
     }
 
     protected override bool IsRelevantChange(DataChange change) =>

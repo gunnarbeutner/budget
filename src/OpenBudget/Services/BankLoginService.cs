@@ -504,6 +504,10 @@ public class BankLoginService
     public async Task<StartResult> DownloadStatementsAsync(int loginId, int loginAccountId, CancellationToken ct = default) =>
         await _coordinator.DownloadStatementsAsync(await RequireUserAsync(), loginId, loginAccountId, ct);
 
+    /// <summary>Refreshes only the given linked accounts (<see cref="BankLoginAccount.Id"/>s) of one of the user's logins.</summary>
+    public async Task<StartResult> RefreshAccountsAsync(int loginId, IReadOnlyCollection<int> loginAccountIds, CancellationToken ct = default) =>
+        await _coordinator.RefreshAccountsAsync(await RequireUserAsync(), loginId, loginAccountIds, ct);
+
     public async Task<int> SyncAllAsync(CancellationToken ct = default) =>
         await _coordinator.SyncAllAsync(await RequireUserAsync(), ct);
 

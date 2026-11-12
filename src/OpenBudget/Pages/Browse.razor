@@ -793,6 +793,7 @@
 
     protected override bool IsRelevantChange(DataChange change) => change.Area switch
     {
+        DataArea.BankSync => RefreshSyncingLoginsLater(),
         DataArea.ImportedData or DataArea.Sources => project != null && change.SourceId == project.SourceId,
         _ => change.ProjectId is null || change.ProjectId == ProjectId,
     };
@@ -847,6 +848,7 @@
         if (_loadedProjectId == ProjectId) return;
         _loadedProjectId = ProjectId;
         ResetForProjectSwitch();
+        await RefreshSyncingLoginsAsync();
         project = await ProjectService.GetProjectAsync(ProjectId);
         if (project == null) { notFound = true; return; }
         _canEditRules = (await AccessProvider.GetAsync()).CanEdit(ProjectId);

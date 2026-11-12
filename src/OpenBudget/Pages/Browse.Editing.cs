@@ -106,8 +106,67 @@ public partial class Browse
     private BrowseTreeRail? _rail;
     private SidebarStructure? _structure;
 
-    private IReadOnlyList<ContextMenuItem> NodeMenu(SidebarNode node) =>
-        _structure?.Menu(node) ?? SidebarMenus.For(node, new SidebarMenuContext(_canEditRules, _ => StructureBlock.NotOwner), RailL);
+    private IReadOnlyList<ContextMenuItem> NodeMenu(SidebarNode node)
+    {
+        var structure = _structure?.Menu(node) ?? SidebarMenus.For(node, new SidebarMenuContext(_canEditRules, _ => StructureBlock.NotOwner), RailL);
+        var bank = BankLogins.IsEnabled ? SidebarBankMenu.For(node, tree, _syncingLogins, RailL) : [];
+        if (bank.Count == 0) return structure;
+        return structure.Count == 0 ? bank : [.. bank, ContextMenuItem.Divider(), .. structure];
+    }
+
+    // ---- sidebar bank entries: Refresh account(s), Edit login data… ----
+
+    /// <summary>The viewer's bank logins with a sync in progress (their refresh entries are disabled).</summary>
+    private HashSet<int> _syncingLogins = [];
+
+    private async Task RefreshSyncingLoginsAsync()
+    {
+        try
+        {
+            _syncingLogins = (await BankLogins.GetStatusesAsync()).Where(s => s.Phase != Connectors.Sync.SyncPhase.Finished).Select(s => s.LoginId).ToHashSet();
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException)
+        {
+            _syncingLogins = [];
+        }
+    }
+
+    /// <summary>A sync's status changed: refresh the busy logins without reloading the page (never a relevant change itself).</summary>
+    private bool RefreshSyncingLoginsLater()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await RefreshSyncingLoginsAsync();
+            StateHasChanged();
+        });
+        return false;
+    }
+
+    private async Task<bool> PickBankEntryAsync(SidebarNode node, string key)
+    {
+        if (tree == null) return false;
+        switch (key)
+        {
+            case SidebarBankMenu.EditLogin:
+                if (tree.Accounts.FirstOrDefault(a => a.Id == node.Id)?.SyncLoginId is { } loginId)
+                    Navigation.NavigateTo($"banklogins?edit={loginId.ToString(CultureInfo.InvariantCulture)}");
+                return true;
+            case SidebarBankMenu.RefreshAccount:
+            case SidebarBankMenu.RefreshAccounts:
+                var busy = false;
+                foreach (var target in SidebarBankMenu.Targets(node, tree))
+                {
+                    if (_syncingLogins.Contains(target.LoginId)) { busy = true; continue; }
+                    var result = await BankLogins.RefreshAccountsAsync(target.LoginId, target.LoginAccountIds);
+                    if (result == Connectors.Sync.StartResult.Started) _syncingLogins.Add(target.LoginId);
+                    else if (result == Connectors.Sync.StartResult.AlreadyRunning) busy = true;
+                }
+                if (busy) AddToast(new ToastItem { Message = RailL["Ctx_Block_Syncing"], IsError = true });
+                return true;
+            default:
+                return false;
+        }
+    }
 
     private bool CanDragNode(SidebarNode node) => _structure?.CanDrag(node) ?? false;
 
@@ -122,6 +181,7 @@ public partial class Browse
             await OpenRulesAsync(pick.Node.Id, null);
             return;
         }
+        if (await PickBankEntryAsync(pick.Node, pick.Key)) return;
         if (_structure != null) await _structure.PickAsync(pick.Node, pick.Key);
     }
 
