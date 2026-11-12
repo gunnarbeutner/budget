@@ -395,26 +395,82 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task An_account_balance_chart_shows_a_daily_bar_across_the_month_at_full_width()
+    public async Task An_account_balance_chart_scrolls_over_the_whole_history_up_to_today()
     {
-        await Page.SetViewportSizeAsync(1440, 900);
+        await Page.SetViewportSizeAsync(1100, 900);
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.BankAccountId}");
         var chart = Page.GetByTestId("browse-chart");
+        var scroll = Page.GetByTestId("browse-chart-scroll");
         await Expect(chart).ToBeVisibleAsync();
         await Expect(Page.GetByTestId("chart-granularity").GetByRole(AriaRole.Button, new() { Name = "D" })).ToHaveClassAsync(new Regex("active"));
-        var box = await chart.BoundingBoxAsync();
+        var box = await scroll.BoundingBoxAsync();
         var main = await Page.Locator(".browse-main").BoundingBoxAsync();
         Assert.That(box!.Width, Is.GreaterThan(main!.Width * 0.8));
         Assert.That(box.Height, Is.GreaterThanOrEqualTo(170));
-        var points = await Page.EvaluateAsync<int>("() => Chart.getChart('browseChart').data.labels.length");
-        Assert.That(points, Is.EqualTo(31));
-        // One bar per day, no bottom axis with tilted labels (months are drawn along the top), a summary for screen readers.
-        Assert.That(await Page.EvaluateAsync<string>("() => Chart.getChart('browseChart').config.type"), Is.EqualTo("bar"));
-        Assert.That(await Page.EvaluateAsync<bool>("() => Chart.getChart('browseChart').options.scales.x.display"), Is.False);
-        await Expect(chart).ToHaveAttributeAsync("aria-label", new Regex("^Balance, 01.03.2026 to "));
+
+        // One bar per day from the first booking (10.03.2026) through today, nothing after today.
+        var today = DateTime.Today;
+        var labels = await Page.EvaluateAsync<string[]>("() => Chart.getChart('browseChart').data.labels");
+        Assert.That(labels.Length, Is.EqualTo((today - new DateTime(2026, 3, 10)).Days + 1));
+        Assert.That(labels[0], Is.EqualTo("10.03"));
+        Assert.That(labels[^1], Is.EqualTo(today.ToString("dd.MM", System.Globalization.CultureInfo.InvariantCulture)));
+
+        // The history is wider than the frame and scrolls; it opens on the selected March, whose bars carry the accent.
+        var geo = await scroll.EvaluateAsync<double[]>("el => [el.scrollWidth, el.clientWidth, el.scrollLeft]");
+        Assert.That(geo[0], Is.GreaterThan(geo[1] + 100));
+        var colors = await Page.EvaluateAsync<string[]>("() => Chart.getChart('browseChart').data.datasets[0].backgroundColor");
+        var accent = colors[0];
+        Assert.That(colors.Take(22), Has.All.EqualTo(accent));      // 10.–31.03.
+        Assert.That(colors.Skip(22), Has.None.EqualTo(accent));
+        var marchRight = 22 * geo[0] / labels.Length;
+        Assert.That(geo[2], Is.LessThan(marchRight));                // March is in view, not the right end
+
+        // The money scale sits beside the scroll area and stays put while scrolling.
+        await Expect(Page.Locator("#browseChartAxis")).ToBeVisibleAsync();
+        await Expect(chart).ToHaveAttributeAsync("aria-label", new Regex("^Balance, 10.03.2026 to "));
 
         // Monthly history on request, remembered in the URL.
         await Page.GetByTestId("chart-granularity").GetByRole(AriaRole.Button, new() { Name = "M" }).ClickAsync();
         await Expect(Page).ToHaveURLAsync(new Regex("g=M"));
+    }
+
+    // Set OB_CHART_SCREENSHOT_DIR to keep screenshots of the balance chart (a past month and the current one) for review.
+    [TestCase("light")]
+    [TestCase("dark")]
+    public async Task Chart_screenshot(string theme)
+    {
+        await Page.SetViewportSizeAsync(1200, 800);
+        await Page.EmulateMediaAsync(new PageEmulateMediaOptions { ColorScheme = theme == "dark" ? ColorScheme.Dark : ColorScheme.Light });
+        var dir = Environment.GetEnvironmentVariable("OB_CHART_SCREENSHOT_DIR");
+        var today = DateTime.Today;
+        await EditingSeed.AddBookingTodayAsync(Factory.Services.GetRequiredService<SystemDbContextFactory>());
+        foreach (var (name, year, month) in new[] { ("past", 2026, 3), ("current", today.Year, today.Month) })
+        {
+            await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year={year}&month={month}&sel=acct-{EditingSeed.BankAccountId}");
+            await Page.WaitForFunctionAsync("() => !!Chart.getChart('browseChart')");
+            if (string.IsNullOrEmpty(dir)) continue;
+            var frame = Page.Locator(".browse-chart-frame");
+            var box = (await frame.BoundingBoxAsync())!;
+            await Page.Mouse.MoveAsync(box.X + box.Width - 150, box.Y + box.Height / 2);
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"chart-{name}-{theme}.png") });
+        }
+    }
+
+    [Test]
+    public async Task The_current_month_opens_the_daily_chart_scrolled_to_today()
+    {
+        await Page.SetViewportSizeAsync(1100, 900);
+        await EditingSeed.AddBookingTodayAsync(Factory.Services.GetRequiredService<SystemDbContextFactory>());
+        var today = DateTime.Today;
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year={today.Year}&month={today.Month}&sel=acct-{EditingSeed.BankAccountId}");
+        var scroll = Page.GetByTestId("browse-chart-scroll");
+        await Expect(Page.GetByTestId("browse-chart")).ToBeVisibleAsync();
+        await Page.WaitForFunctionAsync("() => !!Chart.getChart('browseChart')");
+        var geo = await scroll.EvaluateAsync<double[]>("el => [el.scrollWidth, el.clientWidth, el.scrollLeft]");
+        Assert.That(geo[0], Is.GreaterThan(geo[1]));
+        Assert.That(geo[2] + geo[1], Is.EqualTo(geo[0]).Within(2));   // right end: today is the last bar
+        var colors = await Page.EvaluateAsync<string[]>("() => Chart.getChart('browseChart').data.datasets[0].backgroundColor");
+        Assert.That(colors.TakeLast(today.Day), Has.All.EqualTo(colors[^1]));
+        Assert.That(colors[^(today.Day + 1)], Is.Not.EqualTo(colors[^1]));
     }
 }

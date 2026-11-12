@@ -35,6 +35,57 @@ public class BrowseChartTests
     }
 
     [Fact]
+    public void ResolveChartWindow_daily_ends_with_the_last_day()
+    {
+        var (start, end, count, _, _) = BrowseChart.ResolveChartWindow(
+            new DateTime(2025, 12, 30), new DateTime(2026, 3, 1), "D", lastDay: new DateTime(2026, 3, 12));
+        Assert.Equal(new DateTime(2025, 12, 30), start);
+        Assert.Equal(new DateTime(2026, 3, 13), end);
+        Assert.Equal(73, count); // 30.12.2025 .. 12.03.2026, nothing after the 12th
+    }
+
+    [Fact]
+    public void Daily_balance_over_the_whole_history_highlights_only_the_selected_period()
+    {
+        var raw = new List<(DateTime, decimal)>
+        {
+            (new DateTime(2026, 1, 10), 500m),
+            (new DateTime(2026, 2, 3), -100m),
+        };
+
+        var chart = BrowseChart.BuildChartSeries(
+            earliest: new DateTime(2026, 1, 10), rightEdge: new DateTime(2026, 3, 1), granularity: "D",
+            anchorYear: 2026, fromMonth: 2, toMonth: 2,
+            requestInvertY: false, isAccountDaily: true,
+            raw: raw, currentBalanceForDaily: 400m,
+            today: new DateTime(2026, 3, 12),
+            highlight: (new DateTime(2026, 2, 1), new DateTime(2026, 3, 1)),
+            lastDay: new DateTime(2026, 3, 12));
+
+        Assert.Equal(62, chart.Bars.Length);   // 10.01. .. 12.03.
+        Assert.Equal(new DateTime(2026, 3, 12), chart.BarStarts[^1]);
+        Assert.Equal(500m, chart.Bars[0].Value);
+        Assert.Equal(400m, chart.Bars[^1].Value);
+        var highlighted = Enumerable.Range(0, chart.Bars.Length).Where(i => chart.Bars[i].IsAnchor).ToArray();
+        Assert.Equal(28, highlighted.Length);
+        Assert.Equal(new DateTime(2026, 2, 1), chart.BarStarts[highlighted[0]]);
+        Assert.Equal(new DateTime(2026, 2, 28), chart.BarStarts[highlighted[^1]]);
+    }
+
+    [Fact]
+    public void A_highlight_range_flags_every_month_it_touches()
+    {
+        var chart = BrowseChart.BuildChartSeries(
+            earliest: new DateTime(2025, 10, 1), rightEdge: new DateTime(2026, 3, 1), granularity: "M",
+            anchorYear: 2026, fromMonth: 1, toMonth: 1,
+            requestInvertY: false, isAccountDaily: false,
+            raw: [], currentBalanceForDaily: null,
+            highlight: (new DateTime(2025, 12, 15), new DateTime(2026, 2, 2)));
+
+        Assert.Equal(new[] { false, false, true, true, true, false }, chart.Bars.Select(b => b.IsAnchor).ToArray());
+    }
+
+    [Fact]
     public void Monthly_series_sums_rows_into_their_month_and_flags_the_anchor()
     {
         var raw = new List<(DateTime, decimal)>

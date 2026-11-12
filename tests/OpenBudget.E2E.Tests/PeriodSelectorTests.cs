@@ -80,7 +80,8 @@ public sealed class PeriodSelectorTests : EndToEndTestBase
         await Expect(Page.GetByText("txn-1", new() { Exact = true })).ToHaveCountAsync(0);
         await Expect(GroceriesRow).ToContainTextAsync("8,00");
         await Expect(GroceriesRow).Not.ToContainTextAsync("50,00");
-        await Page.WaitForFunctionAsync("() => Chart.getChart('browseChart')?.data.labels.length === 1");
+        // The chart keeps the whole history and highlights only February.
+        await Page.WaitForFunctionAsync("() => { const c = Chart.getChart('browseChart'); if (!c) return false; const bg = c.data.datasets[0].backgroundColor; const i = c.data.labels.findIndex(l => l.startsWith('Feb')); return i >= 0 && bg.filter(x => x === bg[i]).length === 1 && c.data.labels.length >= 2; }");
         await Expect(Page.GetByTestId("filter-count")).ToHaveCountAsync(0);   // the period is not a filter
     }
 

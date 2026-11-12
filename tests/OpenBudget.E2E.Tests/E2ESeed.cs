@@ -190,6 +190,15 @@ internal static class EditingSeed
         await db.SaveChangesAsync();
     }
 
+    /// <summary>A booking on the bank account dated today, so the current month has data.</summary>
+    public static async Task AddBookingTodayAsync(IDbContextFactory<BudgetDbContext> factory)
+    {
+        await using var db = await factory.CreateDbContextAsync();
+        var today = DateTime.Today;
+        Add(db, 120, BankAccountId, -5_00, "Example Kiosk", new DateTime(today.Year, today.Month, today.Day, 0, 0, 0, DateTimeKind.Utc), category: 202);
+        await db.SaveChangesAsync();
+    }
+
     private static void Add(BudgetDbContext db, long id, long account, long cents, string payee, DateTime date, string? purpose = null, bool isNew = false, long? category = null) =>
         db.Transactions.Add(new Transaction
         {

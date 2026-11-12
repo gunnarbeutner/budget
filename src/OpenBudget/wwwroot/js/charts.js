@@ -802,8 +802,12 @@ const zeroLinePlugin = {
 // Transactions chart: one thin bar per bucket (end-of-day / end-of-month balance for accounts,
 // the bucket's sum for categories) from the zero line, month labels along the top with thin
 // separators, a sparse money scale at the right edge, and on hover/touch a crosshair snapped to
-// the bar with a date + value label pinned to the bottom edge. Colours come from the
-// --chart-* tokens on .browse-chart-frame so light and dark theme each get their own steps.
+// the bar with a date + value label pinned to the bottom edge. Each bar gets a fixed width
+// (a few px per day, more per month), so a long history is wider than the frame and scrolls
+// horizontally inside #browseChartScroll; the money scale is drawn on #browseChartAxis beside it
+// and stays in place. The chart opens scrolled to the selected period's bars (accent colour),
+// which for the current period is the right end. Colours come from the --chart-* tokens on
+// .browse-chart-frame so light and dark theme each get their own steps.
 // A click on a bar asks Blazor (OnChartBarClicked) to move the list to that bar's month.
 window.renderBrowseChart = function(canvasId, d, dotnetRef) {
     const canvas = document.getElementById(canvasId);
@@ -824,14 +828,9 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
     // Future buckets of a balance aren't known yet and stay empty.
     const isFuture = i => d.balance && d.starts[i] > d.today;
     const values = d.values.map((v, i) => isFuture(i) ? null : v);
-    let lastReal = -1;
-    for (let i = 0; i < n; i++) if (values[i] !== null) lastReal = i;
-    const markToday = d.balance && lastReal >= 0 && (lastReal + 1 >= n ? d.starts[lastReal] <= d.today : isFuture(lastReal + 1));
-    // Daily balance bars all lie in the selected period, so only today stands out; otherwise
-    // the selected period's bars carry the accent.
+    // The selected period's bars carry the accent, the rest stay neutral.
     const colors = values.map((v, i) => {
-        if (markToday && i === lastReal) return c.accent;
-        if (!(d.balance && g === 'D') && d.anchors[i]) return c.accent;
+        if (d.anchors[i]) return c.accent;
         // On an expense chart (reversed axis) spending is the normal case; only a balance or
         // income below zero reads as negative.
         return v !== null && v < 0 && !d.invertY ? c.neg : c.bar;
@@ -928,7 +927,10 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
             if (hasBudget && d.budget[i] !== null) text += '   ' + d.budgetLabel + ' ' + window.obMoney(d.budget[i]);
             ctx.font = font;
             const w = ctx.measureText(text).width + 12, h = 18;
-            const lx = Math.max(area.left, Math.min(x - w / 2, area.right - w));
+            // Keep the label inside the visible part of a scrolled chart.
+            const visL = scroller ? Math.max(area.left, scroller.scrollLeft) : area.left;
+            const visR = scroller ? Math.min(area.right, scroller.scrollLeft + scroller.clientWidth) : area.right;
+            const lx = Math.max(visL, Math.min(x - w / 2, visR - w));
             const ly = chart.height - h;
             ctx.fillStyle = c.labelBg;
             ctx.beginPath();
@@ -940,10 +942,39 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
         }
     };
 
+    // Fixed slot per bar; the canvas is at least as wide as the frame and otherwise scrolls.
+    const scroller = canvas.closest('.browse-chart-scroll');
+    const holder = canvas.parentElement;
+    const slot = { D: 5, M: 14, Q: 28, Y: 48 }[g] || 14;
+    const viewW = scroller ? scroller.clientWidth : canvas.clientWidth;
+    const fullW = Math.max(viewW, n * slot);
+    if (holder && scroller) holder.style.width = fullW + 'px';
+    // Browsers cap a canvas at about 32k device pixels per side.
+    const dpr = Math.min(window.devicePixelRatio || 1, 32000 / Math.max(1, fullW));
+    const axisCanvas = document.getElementById(canvasId + 'Axis');
+
+    // The y scale's labels, drawn on the fixed canvas beside the scroll area.
+    const sideAxis = {
+        id: 'obSideAxis',
+        afterDraw(chart) {
+            if (!axisCanvas) return;
+            const y = chart.scales.y;
+            const w = axisCanvas.clientWidth, h = chart.height, r = window.devicePixelRatio || 1;
+            axisCanvas.width = Math.round(w * r); axisCanvas.height = Math.round(h * r);
+            axisCanvas.style.height = h + 'px';
+            const ctx = axisCanvas.getContext('2d');
+            ctx.setTransform(r, 0, 0, r, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+            ctx.font = font;
+            ctx.fillStyle = c.text; ctx.textBaseline = 'middle';
+            for (const t of y.ticks) ctx.fillText(compact(t.value), 4, y.getPixelForValue(t.value));
+        }
+    };
+
     const datasets = [{
         label: d.balance ? 'Balance' : 'Amount', data: values, backgroundColor: colors, borderWidth: 0,
-        borderRadius: n > 60 ? 0 : 2, borderSkipped: 'start',
-        categoryPercentage: 1, barPercentage: n > 120 ? 0.9 : n > 40 ? 0.8 : 0.7, maxBarThickness: 24, order: 1
+        borderRadius: g === 'D' || n > 60 ? 0 : 2, borderSkipped: 'start',
+        categoryPercentage: 1, barPercentage: g === 'D' ? 0.8 : 0.7, maxBarThickness: 24, order: 1
     }];
     // The selected category's budget per bar: a dotted line in the bars' sign, stepping between
     // bars where the budget changes. Nulls (years without a budget) leave gaps.
@@ -958,11 +989,12 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
         window.chartInstances[canvasId] = new Chart(canvas, {
             type: 'bar',
             data: { labels: d.labels, datasets },
-            plugins: [topAxis, hover],
+            plugins: [topAxis, hover, sideAxis],
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: d.noAnimate ? false : { duration: 250 },
+                devicePixelRatio: dpr,
+                animation: d.noAnimate || n > 400 ? false : { duration: 250 },
                 events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
                 layout: { padding: { top: 18, bottom: 22, left: 0, right: 0 } },
                 plugins: { legend: { display: false }, tooltip: { enabled: false } },
@@ -975,7 +1007,7 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
                         reverse: !!d.invertY,
                         border: { display: false },
                         grid: { color: c.grid, drawTicks: false },
-                        ticks: { color: c.text, font: { size: 10 }, maxTicksLimit: 3, padding: 4, callback: v => compact(v) }
+                        ticks: { display: !axisCanvas, color: c.text, font: { size: 10 }, maxTicksLimit: 3, padding: 4, callback: v => compact(v) }
                     }
                 },
                 onClick: function(_evt, _els, chart) {
@@ -985,12 +1017,28 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
                 }
             }
         });
+        if (scroller) scrollBrowseChartToPeriod(scroller, d.anchors, n, fullW);
         return true;
     } catch (error) {
         console.error('Error creating browse chart:', error);
         return false;
     }
 };
+
+// Scrolls the chart so the highlighted bars are in view: left where it is when they already are,
+// otherwise centred on them (clamped, so the current period lands at the right end); with no
+// highlighted bar, to the right end.
+function scrollBrowseChartToPeriod(scroller, anchors, n, fullW) {
+    let first = -1, last = -1;
+    for (let i = 0; i < n; i++) if (anchors[i]) { if (first < 0) first = i; last = i; }
+    const view = scroller.clientWidth, max = Math.max(0, fullW - view);
+    if (first < 0) { scroller.scrollLeft = max; return; }
+    const slot = fullW / n, l = first * slot, r = (last + 1) * slot;
+    if (scroller.dataset.obScrolled === String(n) && l >= scroller.scrollLeft && r <= scroller.scrollLeft + view) return;
+    scroller.dataset.obScrolled = String(n);
+    const target = r - l >= view ? r - view : (l + r) / 2 - view / 2;
+    scroller.scrollLeft = Math.max(0, Math.min(max, Math.round(target)));
+}
 
 // Bar-click / anchor-change scroll for the virtualized tx list. Blazor passes an approximate
 // pixel offset (newerCount * itemSize); we set the scrolling ancestor's scrollTop to that

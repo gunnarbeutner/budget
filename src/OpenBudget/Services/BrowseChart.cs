@@ -81,9 +81,11 @@ public static class BrowseChart
     /// <summary>
     /// Resolve the chart's bucket window for a granularity ("Y"/"Q"/"D", default "M"): the start,
     /// the exclusive end, the bucket count, a date→bucket-index map, and an index→label map.
+    /// A daily window ends with <paramref name="lastDay"/> when that falls inside the right-edge month,
+    /// so no empty days follow it.
     /// </summary>
     public static (DateTime Start, DateTime EndExclusive, int Count, Func<DateTime, int> BucketOf, Func<int, string> LabelOf)
-        ResolveChartWindow(DateTime earliestTx, DateTime anchorMonthStart, string granularity)
+        ResolveChartWindow(DateTime earliestTx, DateTime anchorMonthStart, string granularity, DateTime? lastDay = null)
     {
         switch (granularity)
         {
@@ -129,6 +131,8 @@ public static class BrowseChart
             {
                 var start = earliestTx.Date;
                 var end = anchorMonthStart.AddMonths(1);
+                if (lastDay is { } ld && ld.Date >= start && ld.Date.AddDays(1) < end)
+                    end = DateTime.SpecifyKind(ld.Date.AddDays(1), DateTimeKind.Utc);
                 int count = Math.Max(1, (int)(end - start).TotalDays);
                 return (DateTime.SpecifyKind(start, DateTimeKind.Utc), end, count,
                     d => (int)(d.Date - start).TotalDays,
@@ -171,6 +175,9 @@ public static class BrowseChart
     /// <paramref name="depots"/> add each depot's stored value at the end of every balance bucket
     /// (see <see cref="DepotValueAt"/>); <paramref name="raw"/> and
     /// <paramref name="currentBalanceForDaily"/> then cover only the booking-based accounts.
+    /// <paramref name="highlight"/> (a day span, end exclusive) flags every bucket overlapping it
+    /// instead of the anchor months; <paramref name="lastDay"/> ends a daily window (see
+    /// <see cref="ResolveChartWindow"/>).
     /// </summary>
     public static BrowseChartData BuildChartSeries(
         DateTime earliest, DateTime rightEdge, string granularity,
@@ -179,10 +186,12 @@ public static class BrowseChart
         IReadOnlyList<(DateTime Date, decimal Amount)> raw,
         decimal? currentBalanceForDaily,
         IReadOnlyList<DepotValueSeries>? depots = null,
-        DateTime? today = null)
+        DateTime? today = null,
+        (DateTime From, DateTime ToExclusive)? highlight = null,
+        DateTime? lastDay = null)
     {
         var (windowStart, windowEndExclusive, bucketCount, bucketOf, labelOf) =
-            ResolveChartWindow(earliest, rightEdge, granularity);
+            ResolveChartWindow(earliest, rightEdge, granularity, lastDay);
 
         var bars = new (string Label, decimal Value, bool IsAnchor)[bucketCount];
         var months = new (int Year, int Month)[bucketCount];
@@ -207,7 +216,13 @@ public static class BrowseChart
             };
             bucketEnds[i] = cursor;
         }
-        for (int m = fromMonth; m <= toMonth; m++)
+        if (highlight is { } hl)
+        {
+            for (int i = 0; i < bucketCount; i++)
+                if (starts[i] < hl.ToExclusive && bucketEnds[i] > hl.From)
+                    bars[i] = (bars[i].Label, bars[i].Value, true);
+        }
+        else for (int m = fromMonth; m <= toMonth; m++)
         {
             if (granularity == "D")
             {

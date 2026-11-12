@@ -371,8 +371,13 @@
                                 }
                             </div>
                         </div>
-                        <div id="browseChartScroll" class="browse-chart">
-                            <canvas id="browseChart" role="img" aria-label="@ChartAriaLabel" data-testid="browse-chart"></canvas>
+                        <div class="browse-chart">
+                            <div id="browseChartScroll" class="browse-chart-scroll" data-testid="browse-chart-scroll">
+                                <div class="browse-chart-canvas">
+                                    <canvas id="browseChart" role="img" aria-label="@ChartAriaLabel" data-testid="browse-chart"></canvas>
+                                </div>
+                            </div>
+                            <canvas id="browseChartAxis" class="browse-chart-axis" aria-hidden="true"></canvas>
                         </div>
                     </div>
                 </div>
@@ -1656,14 +1661,10 @@
             return;
         }
 
-        // Window spans the selected node's actual transaction history — its earliest
-        // transaction through max(anchor, its latest). A category that started in 2026 won't
-        // drag the chart back to 2020 just because the source has older rows in other
-        // categories. Anchoring on an earlier month still doesn't shrink the right edge.
+        // The window spans the selected node's whole history — its earliest booking (or depot value)
+        // through max(anchor, its latest booking); a daily window ends today. The selected period
+        // only decides which bars are highlighted, and the chart scrolls to them.
         var (fm, tm) = PeriodRange;
-        // A balance in daily mode spans exactly the shown period (month, YTD or year), one point per day,
-        // so even a single booking draws a line across the whole period.
-        var balancePeriod = IsAccountScope && SelectionAccountBalance != null && chartGranularity == "D";
         // Depots in a balance chart contribute their stored value history (portfolio_chart) instead of
         // their bookings; the remaining accounts walk back from today's balance minus the depots' value.
         var isAccountDaily = IsAccountScope && SelectionAccountBalance != null;
@@ -1685,39 +1686,34 @@
                 accounts = accounts.Where(id => !history.ContainsKey(id)).ToList();
             }
         }
-        DateTime earliest, rightEdge;
-        var range = CurrentPeriod.IsRange ? CurrentPeriod.Days : ((DateOnly From, DateOnly To)?)null;
-        if (balancePeriod)
-        {
-            earliest = range is { } br ? br.From.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc) : new DateTime(anchor.Year, fm, 1, 0, 0, 0, DateTimeKind.Utc);
-            rightEdge = range is { } bt ? new DateTime(bt.To.Year, bt.To.Month, 1, 0, 0, 0, DateTimeKind.Utc) : new DateTime(anchor.Year, tm, 1, 0, 0, 0, DateTimeKind.Utc);
-        }
-        else
-        {
-            DateTime? scopeEarliest = null, scopeLatest = null;
-            if (leaves != null || accounts is { Count: > 0 })
-                (scopeEarliest, scopeLatest) = await TransactionQueries.GetScopeDateRangeAsync(
-                    project.SourceId, leaves, accounts);
-            if (depotEarliest is { } de && (scopeEarliest == null || de < scopeEarliest)) scopeEarliest = de;
-            if (scopeEarliest == null) { chartBars = null; return; }
+        var (hlFrom, hlTo) = CurrentPeriod.Days;
+        var highlight = (From: hlFrom.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            ToExclusive: hlTo.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        DateTime? scopeEarliest = null, scopeLatest = null;
+        if (leaves != null || accounts is { Count: > 0 })
+            (scopeEarliest, scopeLatest) = await TransactionQueries.GetScopeDateRangeAsync(
+                project.SourceId, leaves, accounts);
+        if (depotEarliest is { } de && (scopeEarliest == null || de < scopeEarliest)) scopeEarliest = de;
+        if (scopeEarliest == null) { chartBars = null; return; }
 
-            var anchorDate = new DateTime(anchor.Year, anchor.Month, 1);
-            earliest = scopeEarliest.Value;
-            rightEdge = scopeLatest is { } lt && lt > anchorDate
-                ? new DateTime(lt.Year, lt.Month, 1)
-                : anchorDate;
-            // A custom range narrows the chart to the same months as the list.
-            if (range is { } r)
-            {
-                var from = new DateTime(r.From.Year, r.From.Month, 1);
-                if (from > earliest) earliest = from;
-                var to = new DateTime(r.To.Year, r.To.Month, 1);
-                if (to < rightEdge) rightEdge = to;
-            }
-            // rightEdge is a month start, earliest a day within its month
-            if (rightEdge < new DateTime(earliest.Year, earliest.Month, 1)) { chartBars = null; return; }
-        }
-        var (windowStart, windowEndExclusive, _, _, _) = BrowseChart.ResolveChartWindow(earliest, rightEdge, chartGranularity);
+        var today = Clock.Today;
+        // The chart reaches the selected period's last month, but not past today's month unless
+        // the anchor month itself lies beyond it; a daily chart always reaches today.
+        var todayMonth = new DateTime(today.Year, today.Month, 1);
+        var anchorDate = new DateTime(hlTo.Year, hlTo.Month, 1);
+        if (anchorDate > todayMonth) anchorDate = todayMonth;
+        var anchorMonth = new DateTime(anchor.Year, anchor.Month, 1);
+        if (anchorMonth > anchorDate) anchorDate = anchorMonth;
+        if (chartGranularity == "D" && todayMonth > anchorDate) anchorDate = todayMonth;
+        var earliest = scopeEarliest.Value;
+        var rightEdge = scopeLatest is { } lt && lt > anchorDate
+            ? new DateTime(lt.Year, lt.Month, 1)
+            : anchorDate;
+        if (chartGranularity == "D" && earliest > today) earliest = today;
+        // rightEdge is a month start, earliest a day within its month
+        if (rightEdge < new DateTime(earliest.Year, earliest.Month, 1)) { chartBars = null; return; }
+        DateTime? lastDay = chartGranularity == "D" ? today : null;
+        var (windowStart, windowEndExclusive, _, _, _) = BrowseChart.ResolveChartWindow(earliest, rightEdge, chartGranularity, lastDay);
 
         // For the account-D running-balance pass below we need every transaction between the
         // chart's right edge and "today" so we can back-compute the closing balance at the
@@ -1741,7 +1737,7 @@
             earliest, rightEdge, chartGranularity,
             anchor.Year, fm, tm,
             invertY, isAccountDaily,
-            raw, bookingBalance, depotSeries, Clock.Today);
+            raw, bookingBalance, depotSeries, Clock.Today, highlight, lastDay);
         chartBarMonths = chart.BarMonths;
         chartInvertY = chart.InvertY;
         chartIsBalance = isAccountDaily;
