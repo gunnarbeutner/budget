@@ -43,9 +43,13 @@ public sealed record PpValueSeries(string SecurityUuid, string SecurityName, Sor
 
 /// <summary>One portfolio as an account: positions, ledger, value history and the cash beside it.</summary>
 /// <param name="CashBalance">The balance of the portfolio's reference (cash) account; null without one.</param>
+/// <param name="CashHistory">
+/// The reference account's balance at the end of every day a transaction moved it (epoch day → balance; it starts at 0
+/// before the first); null without a reference account.
+/// </param>
 public sealed record PpPortfolioValuation(
     string Uuid, string Name, bool Retired, IReadOnlyList<PpPosition> Positions, IReadOnlyList<PpLedgerEntry> Ledger,
-    IReadOnlyList<PpValueSeries> History, double? CashBalance = null);
+    IReadOnlyList<PpValueSeries> History, double? CashBalance = null, SortedDictionary<long, double>? CashHistory = null);
 
 public sealed record PpCashAccount(string Uuid, string Name, string Currency, bool Retired, double Balance);
 
@@ -166,6 +170,13 @@ public static class PortfolioValuation
             bySec[sec] = bySec.GetValueOrDefault(sec) + delta;
         }
         var balances = new Dictionary<string, double>(StringComparer.Ordinal);
+        var cashDeltas = new Dictionary<string, SortedDictionary<long, double>>(StringComparer.Ordinal);
+        void AddCash(string acct, long day, double delta)
+        {
+            balances[acct] = balances.GetValueOrDefault(acct) + delta;
+            if (!cashDeltas.TryGetValue(acct, out var d)) cashDeltas[acct] = d = new SortedDictionary<long, double>();
+            d[day] = d.GetValueOrDefault(day) + delta;
+        }
         var accounts = client.Accounts.Where(a => Str(a.Uuid) != null).GroupBy(a => a.Uuid, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Last(), StringComparer.Ordinal);
         foreach (var t in txns)
         {
@@ -196,9 +207,10 @@ public static class PortfolioValuation
                     PType.InboundDelivery or PType.OutboundDelivery or PType.SecurityTransfer => 0,
                     _ => 0,
                 };
-                balances[acct] = balances.GetValueOrDefault(acct) + delta;
+                var day = FloorDay(t.Date?.Seconds ?? 0);
+                AddCash(acct, day, delta);
                 if (t.Type == PType.CashTransfer && Str(t.OtherAccount) is { } oacct && accounts.ContainsKey(oacct))
-                    balances[oacct] = balances.GetValueOrDefault(oacct) + amount;
+                    AddCash(oacct, day, amount);
             }
         }
 
@@ -220,9 +232,18 @@ public static class PortfolioValuation
             }
             positions = positions.OrderByDescending(x => x.Amount).ToList();
             var ledger = (ledgers.GetValueOrDefault(uuid) ?? []).OrderByDescending(e => e.Timestamp).ToList();
-            double? cashBalance = Str(p.ReferenceAccount) is { } reference && accounts.ContainsKey(reference) ? balances.GetValueOrDefault(reference) : null;
+            var reference = Str(p.ReferenceAccount) is { } r && accounts.ContainsKey(r) ? r : null;
+            double? cashBalance = reference != null ? balances.GetValueOrDefault(reference) : null;
+            SortedDictionary<long, double>? cashHistory = null;
+            if (reference != null)
+            {
+                cashHistory = new SortedDictionary<long, double>();
+                double running = 0;
+                foreach (var (day, delta) in cashDeltas.GetValueOrDefault(reference) ?? [])
+                    cashHistory[day] = running += delta;
+            }
             portfolios.Add(new PpPortfolioValuation(uuid, Str(p.Name) ?? uuid, p.IsRetired, positions, ledger,
-                History(txns, uuid, client.Securities, priceHistory, todayDay), cashBalance));
+                History(txns, uuid, client.Securities, priceHistory, todayDay), cashBalance, cashHistory));
         }
 
         var cash = accounts.Values

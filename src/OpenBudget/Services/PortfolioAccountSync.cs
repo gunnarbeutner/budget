@@ -434,6 +434,39 @@ public sealed class PortfolioAccountSync
             : (account.InitialBalance + (await db.Transactions.Where(t => t.AccountId == account.Id && t.Splitted != SplitState.Parent)
                 .SumAsync(t => (long?)t.Amount, ct) ?? 0)) / 100m;
         account.Balances = $"11:{balance.ToString("F6", CultureInfo.InvariantCulture)},3:{account.Currency ?? currency},";
+
+        if (portfolio.CashHistory is { } cashHistory)
+            await WriteCashHistoryAsync(db, account, portfolio, cashHistory, currency, takenOver, ct);
+    }
+
+    /// <summary>
+    /// The ledger's value history (<c>portfolio_chart</c> total points): the reference cash account's balance on every day
+    /// it changed, starting from a 0 point on the ledger's first day. Its bookings alone do not walk back to that balance —
+    /// deliveries are listed without moving cash, and deposits, removals and transfers move cash without a booking — so
+    /// balance charts take this history instead.
+    /// </summary>
+    private static async Task WriteCashHistoryAsync(
+        BudgetDbContext db, Account account, PpPortfolioValuation portfolio, SortedDictionary<long, double> cashHistory,
+        string currency, bool takenOver, CancellationToken ct)
+    {
+        var points = new SortedDictionary<long, double>(cashHistory);
+        if (portfolio.Ledger.Count > 0)
+        {
+            var firstDay = (long)Math.Floor(portfolio.Ledger.Min(e => e.Timestamp) / 86400.0);
+            if (points.Count == 0 || points.Keys.First() > firstDay) points[firstDay] = 0;
+        }
+        var chart = db.PortfolioChartPoints.Where(p => p.AccountId == account.Id);
+        if (takenOver)
+        {
+            if (points.Count == 0) return;
+            var from = points.Keys.First() * 86400;
+            chart = chart.Where(p => p.Timestamp >= from);
+        }
+        await chart.ExecuteDeleteAsync(ct);
+        var nextPoint = await NextIdAsync(db.PortfolioChartPoints.Where(p => p.SourceId == account.SourceId).Select(p => p.Id), account.SourceId, ct);
+        foreach (var (day, value) in points)
+            db.PortfolioChartPoints.Add(Point(++nextPoint, account, currency, day * 86400 + 43200, value, null));
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>A booking of the taken-over ledger that is this PortfolioPerformance transaction: same amount within a day, by type and purpose, else by type.</summary>

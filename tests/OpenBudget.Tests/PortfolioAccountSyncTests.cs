@@ -5,6 +5,7 @@ using OpenBudget.PortfolioPerformance.Proto;
 using OpenBudget.Services;
 using Xunit;
 using static OpenBudget.Tests.PortfolioFixture;
+using PType = OpenBudget.PortfolioPerformance.Proto.PTransaction.Types.Type;
 
 namespace OpenBudget.Tests;
 
@@ -271,5 +272,41 @@ public sealed class PortfolioAccountSyncTests : IAsyncDisposable
         client.Portfolios.Remove(client.Portfolios.Single(p => p.Uuid == "pf-a"));
         await UploadAsync(client);
         Assert.Equal(AccountProviders.Manual, (await AccountAsync(setting.DepotAccountId!.Value)).Provider);
+    }
+    [Fact]
+    public async Task The_balance_of_depot_and_ledger_follows_the_holdings_and_the_reference_cash_over_time()
+    {
+        // 3 shares delivered in on Jan 2 (no cash), one sold on Jan 6 into the reference account, the proceeds removed on Jan 8.
+        var c = new PClient { Version = 1, BaseCurrency = "EUR" };
+        var house = new PSecurity { Uuid = "sec-flat", Name = "Flat", CurrencyCode = "EUR" };
+        house.Prices.Add(new PHistoricalPrice { Date = Day(1, 2), Close = 100_00000000 });
+        house.Prices.Add(new PHistoricalPrice { Date = Day(1, 5), Close = 110_00000000 });
+        c.Securities.Add(house);
+        c.Accounts.Add(new PAccount { Uuid = "acc-1", Name = "Cash", CurrencyCode = "EUR" });
+        c.Portfolios.Add(new PPortfolio { Uuid = "pf-a", Name = "Property", ReferenceAccount = "acc-1" });
+        c.Transactions.Add(Tx("t-in", PType.InboundDelivery, "2024-01-02", 300m, "sec-flat", 3m, "pf-a"));
+        c.Transactions.Add(Tx("t-sell", PType.Sale, "2024-01-06", 110m, "sec-flat", 1m, "pf-a", account: "acc-1"));
+        c.Transactions.Add(Tx("t-out", PType.Removal, "2024-01-08", 110m, account: "acc-1"));
+        await UploadAsync(c);
+
+        var setting = await SettingAsync("pf-a");
+        var depot = await AccountAsync(setting.DepotAccountId!.Value);
+        var ledger = await AccountAsync(setting.LedgerAccountId!.Value);
+        Assert.Equal((220m, 0m), (depot.CurrentBalance, ledger.CurrentBalance));
+
+        // The ledger's history is the reference cash: 0 from its first booking, 110 after the sale, 0 after the removal.
+        var history = await _t.TransactionQueries.GetDepotValueHistoryAsync(depot.SourceId, [depot.Id, ledger.Id]);
+        Assert.Equal([(new DateTime(2024, 1, 2), 0m), (new DateTime(2024, 1, 6), 110m), (new DateTime(2024, 1, 8), 0m)], history[ledger.Id]);
+
+        // The group's daily balance as the Transactions chart builds it: both accounts take their stored history.
+        var today = new DateTime(2024, 1, 10);
+        var series = new[] { depot, ledger }.Select(a => new DepotValueSeries(history[a.Id], a.CurrentBalance!.Value)).ToList();
+        var chart = BrowseChart.BuildChartSeries(
+            earliest: new DateTime(2024, 1, 1), rightEdge: new DateTime(2024, 1, 1), granularity: "D",
+            anchorYear: 2024, fromMonth: 1, toMonth: 1,
+            requestInvertY: false, isAccountDaily: true,
+            raw: new List<(DateTime, decimal)>(), currentBalanceForDaily: 0m,
+            depots: series, today: today, lastDay: today);
+        Assert.Equal([0m, 300m, 300m, 300m, 330m, 330m, 330m, 220m, 220m, 220m], chart.Bars.Select(b => b.Value));
     }
 }

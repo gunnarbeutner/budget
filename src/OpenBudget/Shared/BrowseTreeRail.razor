@@ -10,7 +10,7 @@
    selection state and the reload pipeline; this raises OnSelectAll / OnSelectAccount /
    OnSelectCategory and reflects the current selection for highlighting. *@
 
-<div class="browse-tree" role="tree">
+<div class="browse-tree @(dragNode != null ? "dragging" : "")" role="tree">
     @{
         bool allSelected = SelectionKind == "all";
     }
