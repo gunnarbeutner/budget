@@ -64,6 +64,10 @@
     }
     else
     {
+        @if (!loading && depotIds.Count > 0)
+        {
+            <PortfolioValueChart SourceId="project.SourceId" DepotIds="depotIds" CurrentTotal="@(holdings?.TotalValue ?? 0m)" />
+        }
         @if (loading)
         {
             <div class="skeleton skeleton-block" aria-busy="true"></div>

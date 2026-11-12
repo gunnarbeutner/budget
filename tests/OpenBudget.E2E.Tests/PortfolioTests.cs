@@ -138,4 +138,31 @@ public sealed class PortfolioTests : EndToEndTestBase
         await switcher.GetByTestId("switcher-project").Filter(new() { HasText = E2ESeed.ProjectName }).ClickAsync();
         await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{Pid}/portfolio$"));
     }
+
+    [Test]
+    public async Task Positions_show_the_depots_value_history_for_the_selected_period()
+    {
+        await AddDepotAsync();
+        var today = DateTime.Today;
+        var first = today.AddYears(-4);
+        await using (var db = await Db.CreateDbContextAsync())
+        {
+            static long Noon(DateTime d) => new DateTimeOffset(d.Year, d.Month, d.Day, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
+            db.PortfolioChartPoints.Add(new PortfolioChartPoint { SourceId = E2ESeed.SourceId, AccountId = DepotId, Timestamp = Noon(first), Balance = 1000 });
+            db.PortfolioChartPoints.Add(new PortfolioChartPoint { SourceId = E2ESeed.SourceId, AccountId = DepotId, Timestamp = Noon(today.AddMonths(-6)), Balance = 1100 });
+            await db.SaveChangesAsync();
+        }
+
+        await GoToAsync($"/projects/{Pid}/portfolio");
+
+        var chart = Page.GetByTestId("portfolio-value-chart");
+        await Expect(chart.Locator("canvas")).ToBeVisibleAsync();
+        await Expect(chart).ToHaveAttributeAsync("data-start", today.AddYears(-1).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
+        // From the carried-in 1.000 € a year ago to today's 1.234,56 €.
+        await Expect(Page.GetByTestId("portfolio-value-change")).ToContainTextAsync("+234,56 €");
+
+        await Page.GetByTestId("portfolio-period-max").ClickAsync();
+        await Expect(chart).ToHaveAttributeAsync("data-start", first.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
+        await Expect(Page.GetByTestId("portfolio-period-max")).ToHaveAttributeAsync("aria-pressed", "true");
+    }
 }

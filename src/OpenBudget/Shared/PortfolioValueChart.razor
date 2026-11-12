@@ -1,0 +1,165 @@
+@using System.Globalization
+@using OpenBudget.Services
+@implements IAsyncDisposable
+@inject TransactionQueryService TransactionQueries
+@inject IJSRuntime JS
+@inject IStringLocalizer<PortfolioValueChart> L
+
+@* The Positions section's value chart: the total value of the project's depots over the selected period (their
+   stored daily history carried forward, today their current value) with the change over that period. Hidden while
+   no depot has stored history. *@
+
+@if (series is { Points.Count: > 1 } s)
+{
+    <div class="card mb-2 portfolio-value-card" data-testid="portfolio-value-chart"
+         data-start="@s.Points[0].Day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" data-points="@s.Points.Count">
+        <div class="card-body">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <h6 class="mb-0">@L["Title"]</h6>
+                <span class="small @(s.Change < 0 ? "text-danger" : "text-success")" data-testid="portfolio-value-change">
+                    @FormatSigned(s.Change)@(s.ChangeFraction is { } f ? $" ({FormatPercent(f)})" : "")
+                </span>
+                <div class="flex-grow-1"></div>
+                <div class="segmented segmented-sm" role="group" aria-label="@L["Aria_Period"]">
+                    @foreach (var (p, key, label) in Periods)
+                    {
+                        <button type="button" class="btn @(period == p ? "active" : "")" aria-pressed="@(period == p ? "true" : "false")"
+                                data-testid="@($"portfolio-period-{key}")" @onclick="() => SelectPeriodAsync(p)">@label</button>
+                    }
+                </div>
+            </div>
+            <div style="position:relative;height:220px;">
+                <canvas id="@CanvasId"></canvas>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public int SourceId { get; set; }
+    [Parameter, EditorRequired] public List<long> DepotIds { get; set; } = [];
+    [Parameter] public decimal CurrentTotal { get; set; }
+
+    private const string CanvasId = "portfolioValueChart";
+    private PortfolioValuePeriod period = PortfolioValuePeriod.OneYear;
+    private Dictionary<long, List<(DateTime Day, decimal Value)>> history = new();
+    private PortfolioValueSeries? series;
+    private List<long>? loadedDepots;
+    private decimal loadedTotal;
+    private bool renderPending;
+
+    private static readonly (PortfolioValuePeriod, string, string)[] PeriodKeys =
+    [
+        (PortfolioValuePeriod.OneYear, "1y", "Period_1Y"),
+        (PortfolioValuePeriod.ThreeYears, "3y", "Period_3Y"),
+        (PortfolioValuePeriod.FiveYears, "5y", "Period_5Y"),
+        (PortfolioValuePeriod.Max, "max", "Period_Max"),
+    ];
+
+    private IEnumerable<(PortfolioValuePeriod, string, string)> Periods =>
+        PeriodKeys.Select(p => (p.Item1, p.Item2, L[p.Item3].Value));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReferenceEquals(loadedDepots, DepotIds) && loadedTotal == CurrentTotal) return;
+        loadedDepots = DepotIds;
+        loadedTotal = CurrentTotal;
+        history = DepotIds.Count == 0 ? new() : await TransactionQueries.GetDepotValueHistoryAsync(SourceId, DepotIds);
+        Rebuild();
+    }
+
+    private void Rebuild()
+    {
+        var today = DateTime.Today;
+        series = history.Count == 0 ? null
+            : PortfolioValueHistory.Build(history, CurrentTotal, today, PortfolioValueHistory.PeriodStart(period, today));
+        renderPending = true;
+    }
+
+    private Task SelectPeriodAsync(PortfolioValuePeriod p)
+    {
+        if (p == period) return Task.CompletedTask;
+        period = p;
+        Rebuild();
+        return Task.CompletedTask;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!renderPending) return;
+        renderPending = false;
+        if (series is not { Points.Count: > 1 } s)
+        {
+            await DestroyAsync();
+            return;
+        }
+        var labels = s.Points.Select(p => p.Day.ToString("d", CultureInfo.CurrentCulture)).ToArray();
+        var data = s.Points.Select(p => p.Value).ToArray();
+        var color = ChartPalette.Templates(2)[1];
+        var label = L["Series_Label"].Value;
+        var chartData = new
+        {
+            type = "line",
+            data = new
+            {
+                labels,
+                datasets = new object[]
+                {
+                    new
+                    {
+                        label,
+                        data,
+                        borderColor = ChartPalette.WithAlpha(color, 1),
+                        backgroundColor = ChartPalette.WithAlpha(color, 0.15),
+                        borderWidth = 2,
+                        fill = true,
+                        tension = 0.1,
+                        pointRadius = 0,
+                        pointHoverRadius = 4,
+                    }
+                }
+            },
+            options = new
+            {
+                responsive = true,
+                maintainAspectRatio = false,
+                animation = false,
+                interaction = new { mode = "index", intersect = false },
+                plugins = new
+                {
+                    legend = new { display = false },
+                    tooltip = new
+                    {
+                        mode = "index",
+                        intersect = false,
+                        callbacks = new { label = new { kind = "localizedEuroLabel", label } }
+                    }
+                },
+                scales = new
+                {
+                    x = new { ticks = new { autoSkip = true, maxTicksLimit = 6, maxRotation = 0 }, grid = new { display = false } },
+                    y = new { ticks = new { callback = new { kind = "euroTicks", decimals = 0 } } }
+                }
+            }
+        };
+        try { await JS.InvokeVoidAsync("renderChart", CanvasId, chartData); }
+        catch (JSDisconnectedException) { /* circuit already gone */ }
+        catch (JSException) { /* render raced a teardown or charts.js not loaded yet */ }
+        catch (InvalidOperationException) { /* JS unreachable during prerender */ }
+    }
+
+    private static string FormatSigned(decimal v) => (v > 0 ? "+" : "") + Formatting.FormatMoneyDe(v);
+
+    private static string FormatPercent(decimal f) =>
+        (f > 0 ? "+" : f < 0 ? "−" : "") + Math.Abs(f).ToString("P1", CultureInfo.CurrentCulture);
+
+    private async Task DestroyAsync()
+    {
+        try { await JS.InvokeVoidAsync("destroyChart", CanvasId); }
+        catch (JSDisconnectedException) { /* circuit already gone */ }
+        catch (JSException) { /* render raced a teardown or charts.js not loaded yet */ }
+        catch (InvalidOperationException) { /* JS unreachable during prerender */ }
+    }
+
+    public async ValueTask DisposeAsync() => await DestroyAsync();
+}

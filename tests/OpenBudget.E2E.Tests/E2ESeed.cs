@@ -38,6 +38,7 @@ internal static class E2ESeed
     {
         await using var db = await factory.CreateDbContextAsync();
         db.Holdings.RemoveRange(db.Holdings.IgnoreQueryFilters());
+        db.PortfolioChartPoints.RemoveRange(db.PortfolioChartPoints.IgnoreQueryFilters());
         db.BankStatements.RemoveRange(db.BankStatements.IgnoreQueryFilters());
         db.BankLoginAccounts.RemoveRange(db.BankLoginAccounts.IgnoreQueryFilters());
         db.BankLogins.RemoveRange(db.BankLogins.IgnoreQueryFilters());
