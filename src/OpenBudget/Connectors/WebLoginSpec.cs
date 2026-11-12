@@ -74,7 +74,8 @@ public sealed class WebLoginSpec
     /// submitted, or while the page is shown), with <see cref="WaitingArgument"/> as its argument, for steps between the
     /// sign-in form and the landing page (a device choice, say). It returns <c>{ ok, reason }</c>: ok with an empty reason
     /// means nothing to do; ok with a reason means the script acted (the reason is logged, and a page the script had
-    /// shown is hidden again); not ok means the page needs the user (it is shown, the reason is logged); not ok with a
+    /// shown is hidden again); ok with a reason starting with "waiting:" means the bank waits for a confirmation elsewhere
+    /// (an app), so the page is hidden whichever way it was shown; not ok means the page needs the user (it is shown, the reason is logged); not ok with a
     /// reason starting with "end:" ends the sign-in as failed, the rest of the reason being the message. Reasons are logged:
     /// the script's own words with counts and the page's structure, never field values.
     /// </summary>

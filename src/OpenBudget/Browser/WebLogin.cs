@@ -549,6 +549,18 @@ public sealed class WebLoginSession : IAsyncDisposable
     private async Task<WebLoginResult?> RunWaitingScriptAsync(string script, Uri url)
     {
         var r = await _browser.CheckAsync(script, _spec.WaitingArgument);
+        if (r.Ok && r.Reason.StartsWith("waiting:", StringComparison.Ordinal))
+        {
+            // the bank waits for a confirmation elsewhere (an app): nothing to do on the page, so it is hidden
+            if (Mode == WebLoginMode.Interactive)
+            {
+                _logger.LogInformation("Web login: {Reason} on {Path}; hiding the page.", r.Reason[8..].Trim(), SafePath(url));
+                _shownByScript = false;
+                _shownBecauseStuck = false;
+                SetMode(WebLoginMode.Waiting);
+            }
+            return null;
+        }
         if (r.Ok)
         {
             if (r.Reason.Length == 0) return null;

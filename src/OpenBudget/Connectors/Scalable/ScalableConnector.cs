@@ -66,12 +66,13 @@ public sealed partial class ScalableConnector : IBankConnector
     /// <summary>
     /// Asks Scalable for a new confirmation when the previous one ran out ("Login nicht verifiziert", "Die Anfrage ist
     /// abgelaufen") by clicking its retry button, at most five times per sign-in (counted in
-    /// the tab's session storage); after that the sign-in ends.
+    /// the tab's session storage); after that the sign-in ends. While the confirmation is pending it reports "waiting:", so
+    /// the bank's page is hidden even after it was shown for the captcha.
     /// </summary>
     internal const string ExpiredConfirmationScript =
         "() => { if (!location.pathname.startsWith('/auth/mfa')) return { ok: true, reason: '' };"
         + " const t = (document.body && document.body.innerText) || '';"
-        + " if (!/abgelaufen|nicht verifiziert|expired|not verified/i.test(t)) return { ok: true, reason: '' };"
+        + " if (!/abgelaufen|nicht verifiziert|expired|not verified/i.test(t)) return { ok: true, reason: 'waiting: the confirmation in the Scalable app' };"
         + " const b = [...document.querySelectorAll('button, a, [role=button]')].find(e => /erneut versuchen|try again|retry/i.test(e.textContent || ''));"
         + " if (!b) return { ok: false, reason: 'the confirmation expired and no retry button was found' };"
         + " let n = 0; try { n = +(sessionStorage.getItem('ob-mfa-retries') || 0); } catch (e) { n = window.__obMfaRetries || 0; }"
