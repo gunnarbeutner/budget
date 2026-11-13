@@ -59,6 +59,12 @@ public sealed record AccountTerm(string Op, long Value) : IRuleNode
     public string Print() => "account_id" + Op + Value.ToString(CultureInfo.InvariantCulture);
 }
 
+/// <summary><c>account_group=N</c>: bookings of accounts in account group N or one of its sub-groups.</summary>
+public sealed record AccountGroupTerm(string Op, long Value) : IRuleNode
+{
+    public string Print() => "account_group" + Op + Value.ToString(CultureInfo.InvariantCulture);
+}
+
 /// <summary>A rule expression that cannot be parsed.</summary>
 public sealed class ParseException : Exception
 {
@@ -86,7 +92,8 @@ public sealed class ParseException : Exception
 /// <item>Fields: <c>field:value</c>, <c>field="value"</c>, <c>field!=value</c> (does not contain). Text fields:
 /// name, purpose, comment, booking_text, currency, reference, end_to_end, mandate, creditor_id, local_account (our
 /// account's IBAN), remote_account (the counterparty's IBAN), order_items (the items of a matched online order); account
-/// fields ignore spaces. <c>account_id=N</c>: our account.</item>
+/// fields ignore spaces. <c>account_id=N</c>: our account. <c>account_group=N</c>: an account in that account group or
+/// one of its sub-groups.</item>
 /// <item><c>amount</c> with <c>= == != &lt; &gt; &lt;= &gt;=</c> (or <c>:</c> for =), signed, decimal comma or point.</item>
 /// <item>Without a field a term is looked for in name, purpose, comment, note, booking text and order items.</item>
 /// </list>
@@ -236,6 +243,7 @@ public static class RuleExpression
                     var op = m.Groups["op"].Value;
                     var field = raw.Equals("amount", StringComparison.OrdinalIgnoreCase) ? "amount"
                         : raw.Equals("account_id", StringComparison.OrdinalIgnoreCase) ? "account_id"
+                        : raw.Equals("account_group", StringComparison.OrdinalIgnoreCase) ? "account_group"
                         : TextFields.FirstOrDefault(f => f.Equals(raw, StringComparison.OrdinalIgnoreCase));
                     var after = i + m.Length;
                     var quotedNext = after < s.Length && s[after] is '"' or '/';
@@ -267,7 +275,7 @@ public static class RuleExpression
 
         private static IRuleNode FieldTerm(string field, string op, string s, ref int i)
         {
-            if (field is "amount" or "account_id")
+            if (field is "amount" or "account_id" or "account_group")
             {
                 var raw = i < s.Length && s[i] == '"' ? ReadValue(s, ref i, null, op).Value : ReadWord(s, ref i);
                 if (op is ":" or "==") op = "=";
@@ -276,6 +284,12 @@ public static class RuleExpression
                     if (op is not ("=" or "!=") || !long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id))
                         throw new ParseException("account_id needs = and a number");
                     return new AccountTerm(op, id);
+                }
+                if (field == "account_group")
+                {
+                    if (op is not ("=" or "!=") || !long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var gid))
+                        throw new ParseException("account_group needs = and a number");
+                    return new AccountGroupTerm(op, gid);
                 }
                 if (!TryParseAmount(raw, out var value)) throw new ParseException("not an amount: " + raw);
                 return new AmountTerm(op, value);
@@ -348,6 +362,7 @@ public static class RuleExpression
         NotNode n => !Evaluate(n.Item, t),
         AmountTerm a => CompareAmount(t.Amount / 100m, a.Op, a.Value),
         AccountTerm a => (t.AccountId == a.Value) == (a.Op == "="),
+        AccountGroupTerm g => (t.AccountGroups?.Contains(g.Value) ?? false) == (g.Op == "="),
         TextTerm x => EvaluateText(x, t),
         _ => false,
     };

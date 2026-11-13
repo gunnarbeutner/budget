@@ -40,6 +40,17 @@ public class Category
     [Column("sort")]
     public long? Sort { get; set; }
 
+    /// <summary>
+    /// "Restrict to" an account: the category's rules and suggestions apply only to bookings of this account. Never
+    /// set together with <see cref="RestrictAccountGroupId"/>; both null = all accounts.
+    /// </summary>
+    [Column("restrict_account_id")]
+    public long? RestrictAccountId { get; set; }
+
+    /// <summary>"Restrict to" an account group: bookings of any account in this group or one of its sub-groups.</summary>
+    [Column("restrict_account_group_id")]
+    public long? RestrictAccountGroupId { get; set; }
+
     // Navigation properties
     public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
 

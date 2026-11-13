@@ -181,6 +181,37 @@ public sealed class MoneyMoneyBrowserImportTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Restrict_to_of_categories_maps_to_the_imported_account_or_group()
+    {
+        var (import, _) = await ServiceAsync();
+        var id = await UploadAsync(import, MoneyMoneyZipFixture.Build("secret"), 4096);
+        Assert.True(import.StartImport(Owner, id, "secret"));
+        var job = await WaitAsync(import);
+        Assert.True(job.Phase == MoneyMoneyImportPhase.Done, _log.All);
+        Assert.Equal(2, job.Result!.CategoriesRestricted);
+        Assert.Equal(1, job.Result.CategoryRestrictionsUnknown);
+
+        await using var db = await _t.System.CreateDbContextAsync();
+        var byName = await db.Categories.Where(c => c.OwnerUserId == Owner && c.Name != "").ToDictionaryAsync(c => c.Name!);
+        Assert.Equal(RowIds.Namespace(1, 2), byName["Cinema"].RestrictAccountId);
+        Assert.Null(byName["Cinema"].RestrictAccountGroupId);
+        Assert.Equal(RowIds.Namespace(1, 1), byName["Holiday"].RestrictAccountGroupId);
+        Assert.Null(byName["Holiday"].RestrictAccountId);
+        Assert.Null(byName["Salary"].RestrictAccountId);
+        Assert.Null(byName["Salary"].RestrictAccountGroupId);
+        Assert.Null(byName["Groceries"].RestrictAccountId);
+    }
+
+    [Theory]
+    [InlineData("A12", 'A', 12)]
+    [InlineData("G3", 'G', 3)]
+    [InlineData("X3", '?', 0)]
+    [InlineData("A", '?', 0)]
+    [InlineData("Afoo", '?', 0)]
+    public void Restriction_values_are_parsed(string value, char kind, long row) =>
+        Assert.Equal((kind, row), MoneyMoneyImportService.ParseRestriction(value));
+
+    [Fact]
     public async Task A_finished_import_shows_every_account_and_top_level_category_group_in_the_default_project()
     {
         var (import, _) = await ServiceAsync();

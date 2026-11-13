@@ -99,4 +99,8 @@
   <data name="Error_NoPermission" xml:space="preserve"><value>You may not change the rules of this project.</value></data>
   <data name="Apply_Done" xml:space="preserve"><value>{0} bookings categorized.</value></data>
   <data name="Apply_Done_One" xml:space="preserve"><value>1 booking categorized.</value></data>
+  <data name="Restrict_Label" xml:space="preserve"><value>Restrict to</value></data>
+  <data name="Restrict_All" xml:space="preserve"><value>All accounts</value></data>
+  <data name="Restrict_Note" xml:space="preserve"><value>Only for: {0}</value></data>
+  <data name="Restrict_Title" xml:space="preserve"><value>The rules of this category only apply to bookings of this account or account group</value></data>
 </root>

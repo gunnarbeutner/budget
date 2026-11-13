@@ -12,6 +12,12 @@ public sealed record RuleAccountOption(long Id, string Name, string? Iban);
 /// <summary>A category or account offered in the rule editor.</summary>
 public sealed record RuleOption<TId>(TId Id, string Name);
 
+/// <summary>A category's "Restrict to": an account, an account group or neither (all accounts).</summary>
+public sealed record CategoryRestrictionView(long? AccountId, long? AccountGroupId, string? Name, bool CanEdit);
+
+/// <summary>An entry of the "Restrict to" picker: an account group or an account, indented by <paramref name="Depth"/>.</summary>
+public sealed record RestrictionTarget(bool IsGroup, long Id, string Name, int Depth);
+
 /// <summary>Why a rule could not be saved.</summary>
 public enum RuleValidation
 {
@@ -49,7 +55,8 @@ public sealed class RuleValidationException : Exception
 /// Applying rules (the part shared by the sync pipeline and the "apply to existing" action). Only transactions without a
 /// category whose category was not chosen by hand are touched, and only on accounts OpenBudget owns (MoneyMoney-owned
 /// accounts get their categories from MoneyMoney). The rules considered are those of the projects the account is
-/// assigned to, by project order, then rule order; the first match wins.
+/// assigned to, by project order, then rule order; the first match wins. A rule of a category restricted to an account or
+/// account group only matches bookings of that account or of an account under that group.
 /// </summary>
 public static class CategoryRuleEngine
 {
@@ -73,12 +80,14 @@ public static class CategoryRuleEngine
             .OrderBy(r => r.Project.SortOrder).ThenBy(r => r.ProjectId).ThenBy(r => r.SortOrder).ThenBy(r => r.Id)
             .ToListAsync(ct);
         if (rules.Count == 0) return 0;
+        var restrictions = await CategoryRestrictions.LoadAsync(db, rules.Select(r => r.CategoryId), [accountId], ct);
+        var groups = restrictions.Groups.GroupsOf(accountId);
 
         var applied = 0;
         foreach (var t in added)
         {
             if (!IsCandidate(t)) continue;
-            if (CategoryRuleMatcher.FirstMatch(rules, RuleSubject.Of(t, account.Iban)) is not { } rule) continue;
+            if (CategoryRuleMatcher.FirstMatch(rules, RuleSubject.Of(t, account.Iban, groups), restrictions) is not { } rule) continue;
             Apply(t, rule);
             applied++;
         }
@@ -121,12 +130,13 @@ public sealed class CategoryRuleService
         if (rules.Count == 0) return [];
         var categoryIds = rules.Select(r => r.CategoryId).Distinct().ToList();
         var categories = await db.Categories.AsNoTracking().Where(c => categoryIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name, ct);
-        var accounts = await ProjectAccountsAsync(db, projectId, ct);
-        var subjects = await SubjectsAsync(db, accounts.Select(a => a.Id).ToList(), onlyCandidates: false, ct);
+        var accounts = (await ProjectAccountsAsync(db, projectId, ct)).Select(a => a.Id).ToList();
+        var restrictions = await CategoryRestrictions.LoadAsync(db, categoryIds, accounts, ct);
+        var subjects = await SubjectsAsync(db, accounts, onlyCandidates: false, restrictions.Groups, ct);
         return rules.Select(r => new CategoryRuleView(
             r,
             categories.GetValueOrDefault(r.CategoryId),
-            subjects.Count(s => CategoryRuleMatcher.Matches(r, s.Subject)))).ToList();
+            subjects.Count(s => CategoryRuleMatcher.Matches(r, s.Subject, restrictions)))).ToList();
     }
 
     /// <summary>Assignable categories of the project's source, by name.</summary>
@@ -259,9 +269,10 @@ public sealed class CategoryRuleService
     {
         if (!CategoryRuleMatcher.HasCondition(draft)) return [];
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var accounts = await ProjectAccountsAsync(db, projectId, ct);
-        var subjects = await SubjectsAsync(db, accounts.Select(a => a.Id).ToList(), onlyCandidates: false, ct);
-        return subjects.Where(s => CategoryRuleMatcher.Matches(draft, s.Subject)).Select(s => s.Row.Id).ToList();
+        var accounts = (await ProjectAccountsAsync(db, projectId, ct)).Select(a => a.Id).ToList();
+        var restrictions = await CategoryRestrictions.LoadAsync(db, [draft.CategoryId], accounts, ct);
+        var subjects = await SubjectsAsync(db, accounts, onlyCandidates: false, restrictions.Groups, ct);
+        return subjects.Where(s => CategoryRuleMatcher.Matches(draft, s.Subject, restrictions)).Select(s => s.Row.Id).ToList();
     }
 
     /// <summary>Moves a rule one place up (<paramref name="delta"/> = -1) or down (+1); renumbers the list densely.</summary>
@@ -326,10 +337,11 @@ public sealed class CategoryRuleService
             .Where(a => a.Provider != AccountProviders.MoneyMoney
                 && TransactionEditRules.Check(db.Scope, a.OwnerUserId, a.Id, a.Provider) == EditBlock.None)
             .Select(a => a.Id).ToList();
-        var subjects = await SubjectsAsync(db, accounts, onlyCandidates: true, ct);
+        var restrictions = await CategoryRestrictions.LoadAsync(db, rules.Select(r => r.CategoryId), accounts, ct);
+        var subjects = await SubjectsAsync(db, accounts, onlyCandidates: true, restrictions.Groups, ct);
         var plan = new List<(long, CategoryRule)>();
         foreach (var (t, subject) in subjects)
-            if (CategoryRuleMatcher.FirstMatch(rules, subject) is { } rule && (categoryId == null || rule.CategoryId == categoryId)) plan.Add((t.Id, rule));
+            if (CategoryRuleMatcher.FirstMatch(rules, subject, restrictions) is { } rule && (categoryId == null || rule.CategoryId == categoryId)) plan.Add((t.Id, rule));
         return plan;
     }
 
@@ -348,7 +360,7 @@ public sealed class CategoryRuleService
             .Select(a => new ProjectAccount(a.Id, a.Name ?? "", a.OwnerUserId, a.Provider, a.Iban)).ToList();
     }
 
-    private static async Task<List<(Transaction Row, RuleSubject Subject)>> SubjectsAsync(BudgetDbContext db, List<long> accountIds, bool onlyCandidates, CancellationToken ct)
+    private static async Task<List<(Transaction Row, RuleSubject Subject)>> SubjectsAsync(BudgetDbContext db, List<long> accountIds, bool onlyCandidates, AccountGroupIndex groups, CancellationToken ct)
     {
         var ibans = new Dictionary<long, string?>();
         foreach (var chunk in accountIds.Chunk(Chunk))
@@ -383,9 +395,82 @@ public sealed class CategoryRuleService
                 OrderItems = t.OrderItems,
                 CategoryId = t.CategoryId,
                 CategorySetBy = t.CategorySetBy,
-            }).ToListAsync(ct)).Select(t => (t, RuleSubject.Of(t, ibans.GetValueOrDefault(t.AccountId!.Value)))));
+            }).ToListAsync(ct)).Select(t => (t, RuleSubject.Of(t, ibans.GetValueOrDefault(t.AccountId!.Value), groups.GroupsOf(t.AccountId)))));
         }
         return result;
+    }
+
+    /// <summary>The category's "Restrict to" setting, its display name (null = all accounts) and whether the user may change it.</summary>
+    public async Task<CategoryRestrictionView> GetRestrictionAsync(long categoryId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var c = await db.Categories.AsNoTracking().Where(c => c.Id == categoryId)
+            .Select(c => new { c.OwnerUserId, c.RestrictAccountId, c.RestrictAccountGroupId }).FirstOrDefaultAsync(ct);
+        if (c == null) return new CategoryRestrictionView(null, null, null, false);
+        var canEdit = db.Scope is not { } scope || scope.Owns(c.OwnerUserId);
+        string? name = null;
+        if (c.RestrictAccountId is { } a)
+            name = await db.Accounts.AsNoTracking().IgnoreQueryFilters().Where(x => x.Id == a).Select(x => x.Name).FirstOrDefaultAsync(ct) ?? "#" + a;
+        else if (c.RestrictAccountGroupId is { } g)
+            name = await db.AccountGroups.AsNoTracking().Where(x => x.Id == g).Select(x => x.Name).FirstOrDefaultAsync(ct) ?? "#" + g;
+        return new CategoryRestrictionView(c.RestrictAccountId, c.RestrictAccountGroupId, name, canEdit);
+    }
+
+    /// <summary>The accounts and account groups of the category owner's account tree, depth first, for the "Restrict to" picker.</summary>
+    public async Task<List<RestrictionTarget>> GetRestrictionTargetsAsync(long categoryId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var ownerId = await db.Categories.AsNoTracking().Where(c => c.Id == categoryId).Select(c => c.OwnerUserId).FirstOrDefaultAsync(ct);
+        if (ownerId == null) return [];
+        var groups = (await db.AccountGroups.AsNoTracking().Where(g => g.OwnerUserId == ownerId)
+            .Select(g => new { g.Id, g.ParentGroupId, g.Name, g.Sort }).ToListAsync(ct))
+            .Select(g => new TreeItem(true, g.Id, g.ParentGroupId, g.Name ?? "", g.Sort)).ToList();
+        var accounts = (await db.Accounts.AsNoTracking().Where(a => a.OwnerUserId == ownerId)
+            .Select(a => new { a.Id, a.GroupId, a.Name, a.Sort }).ToListAsync(ct))
+            .Select(a => new TreeItem(false, a.Id, a.GroupId, a.Name ?? "", a.Sort)).ToList();
+        return RestrictionTree(groups, accounts);
+    }
+
+    private sealed record TreeItem(bool IsGroup, long Id, long? Parent, string Name, long? Sort);
+
+    private static List<RestrictionTarget> RestrictionTree(List<TreeItem> groups, List<TreeItem> accounts)
+    {
+        var groupIds = groups.Select(g => g.Id).ToHashSet();
+        var byParent = groups.Concat(accounts)
+            .ToLookup(x => x.Parent is { } p && groupIds.Contains(p) ? p : (long?)null);
+        var result = new List<RestrictionTarget>();
+        var visited = new HashSet<long>();
+        void Add(long? parent, int depth)
+        {
+            var children = byParent[parent]
+                .OrderBy(x => x.Sort == null).ThenBy(x => x.Sort).ThenBy(x => x.IsGroup ? 0 : 1)
+                .ThenBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase);
+            foreach (var x in children)
+            {
+                if (x.IsGroup && !visited.Add(x.Id)) continue;
+                result.Add(new RestrictionTarget(x.IsGroup, x.Id, x.Name, depth));
+                if (x.IsGroup) Add(x.Id, depth + 1);
+            }
+        }
+        Add(null, 0);
+        return result;
+    }
+
+    /// <summary>Sets the category's "Restrict to" (at most one of the two; both null = all accounts). Owner only.</summary>
+    public async Task SetRestrictionAsync(long categoryId, long? accountId, long? accountGroupId, CancellationToken ct = default)
+    {
+        if (accountId != null && accountGroupId != null) throw new ArgumentException("Restrict to an account or a group, not both.", nameof(accountGroupId));
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var category = await db.Categories.FirstOrDefaultAsync(c => c.Id == categoryId, ct) ?? throw new AccessDeniedException("Category not found.");
+        db.Scope?.RequireOwner(category.OwnerUserId);
+        if (accountId is { } a && !await db.Accounts.AnyAsync(x => x.Id == a && x.OwnerUserId == category.OwnerUserId, ct))
+            throw new RuleValidationException(RuleValidation.UnknownAccount);
+        if (accountGroupId is { } g && !await db.AccountGroups.AnyAsync(x => x.Id == g && x.OwnerUserId == category.OwnerUserId, ct))
+            throw new RuleValidationException(RuleValidation.UnknownAccount);
+        category.RestrictAccountId = accountId;
+        category.RestrictAccountGroupId = accountGroupId;
+        await db.SaveChangesAsync(ct);
+        _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: category.OwnerUserId), _origin.Id);
     }
 
     private void Publish(int projectId) => _notifier.Publish(new DataChange(DataArea.Projects, ProjectId: projectId), _origin.Id);

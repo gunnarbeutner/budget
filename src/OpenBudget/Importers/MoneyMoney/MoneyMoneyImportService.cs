@@ -301,6 +301,7 @@ public class MoneyMoneyImportService
             int categoryCount = takenOver
                 ? await CopyNewCategoriesAsync(src, db, ownerId, idSpace, removedCategoryIds, ct)
                 : await CopyCategoriesAsync(src, db, ownerId, idSpace, ct);
+            var (restrictedCount, unknownRestrictions) = takenOver ? (0, 0) : await CopyCategoryRestrictionsAsync(src, db, ownerId, idSpace, ct);
             // Column names only (no data): which MoneyMoney fields this upload offers for the detail mapping.
             _logger.LogInformation("MoneyMoney transactions columns: {Columns}",
                 string.Join(", ", (await ColumnsAsync(src, "transactions", ct)).Order(StringComparer.OrdinalIgnoreCase)));
@@ -364,6 +365,8 @@ public class MoneyMoneyImportService
                 TransactionsImported = txCount,
                 SecuritiesImported = securityCount,
                 PortfolioChartPointsImported = portfolioChartCount,
+                CategoriesRestricted = restrictedCount,
+                CategoryRestrictionsUnknown = unknownRestrictions,
                 FileSizeBytes = fileSize
             };
         }
@@ -723,6 +726,51 @@ public class MoneyMoneyImportService
         }, CategoryInsertParameters, ct, skipRow: r => !fresh.Contains(r.GetInt64(0)));
     }
 
+    /// <summary>
+    /// MoneyMoney's "Restrict to" of a category (<c>categories.apply_to_account</c>: <c>A&lt;accounts.rowid&gt;</c> or
+    /// <c>G&lt;account_groups.rowid&gt;</c>, empty = all accounts) onto the imported category. A target the import does
+    /// not have leaves the category unrestricted. Returns (restricted, unknown).
+    /// </summary>
+    private static async Task<(int Restricted, int Unknown)> CopyCategoryRestrictionsAsync(
+        SqliteConnection src, BudgetDbContext db, string ownerId, int idSpace, CancellationToken ct)
+    {
+        if (!await ColumnExistsAsync(src, "categories", "apply_to_account", ct)) return (0, 0);
+        var wanted = new List<(long CategoryId, string Value)>();
+        await using (var cmd = src.CreateCommand())
+        {
+            cmd.CommandText = "SELECT rowid, apply_to_account FROM categories WHERE apply_to_account IS NOT NULL AND TRIM(apply_to_account) <> ''";
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                wanted.Add((RowIds.Namespace(idSpace, r.GetInt64(0)), Convert.ToString(r.GetValue(1), CultureInfo.InvariantCulture)!.Trim()));
+        }
+        if (wanted.Count == 0) return (0, 0);
+        var accounts = (await db.Accounts.Where(a => a.OwnerUserId == ownerId).Select(a => a.Id).ToListAsync(ct)).ToHashSet();
+        var groups = (await db.AccountGroups.Where(g => g.OwnerUserId == ownerId).Select(g => g.Id).ToListAsync(ct)).ToHashSet();
+        int restricted = 0, unknown = 0;
+        foreach (var (categoryId, value) in wanted)
+        {
+            var (kind, row) = ParseRestriction(value);
+            var target = row > 0 ? RowIds.Namespace(idSpace, row) : 0;
+            long? accountId = kind == 'A' && accounts.Contains(target) ? target : null;
+            long? groupId = kind == 'G' && groups.Contains(target) ? target : null;
+            if (accountId == null && groupId == null)
+            {
+                unknown++;
+                continue;
+            }
+            restricted += await db.Categories.Where(c => c.Id == categoryId && c.OwnerUserId == ownerId).ExecuteUpdateAsync(
+                s => s.SetProperty(c => c.RestrictAccountId, accountId).SetProperty(c => c.RestrictAccountGroupId, groupId), ct);
+        }
+        return (restricted, unknown);
+    }
+
+    /// <summary>Splits <c>A12</c> / <c>G3</c> into kind and rowid; ('?', 0) when it has another shape.</summary>
+    internal static (char Kind, long RowId) ParseRestriction(string value) =>
+        value.Length >= 2 && value[0] is 'A' or 'G' or 'a' or 'g'
+        && long.TryParse(value.AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out var row) && row > 0
+            ? (char.ToUpperInvariant(value[0]), row)
+            : ('?', 0);
+
     private static async Task<int> CopyTransactionsAsync(
         SqliteConnection src, BudgetDbContext db, string ownerId, int idSpace, HashSet<long> foreignAccountIds, CancellationToken ct)
     {
@@ -1061,5 +1109,9 @@ public class ImportResult
     public int TransactionsImported { get; set; }
     public int SecuritiesImported { get; set; }
     public int PortfolioChartPointsImported { get; set; }
+    /// <summary>Categories whose "Restrict to" (MoneyMoney's apply_to_account) was taken over.</summary>
+    public int CategoriesRestricted { get; set; }
+    /// <summary>Categories restricted in MoneyMoney to an account or group the import does not have: left unrestricted.</summary>
+    public int CategoryRestrictionsUnknown { get; set; }
     public long FileSizeBytes { get; set; }
 }

@@ -14,11 +14,29 @@
 <section class="rules-bar" data-testid="rules-bar" aria-label="@L["Aria_Bar", CategoryName]">
     <div class="rules-bar-head">
         <span class="fw-semibold"><i class="bi bi-magic me-1" aria-hidden="true"></i>@L["Heading", CategoryName]</span>
+        @if (restriction?.Name is { } only)
+        {
+            <span class="small text-body-secondary" data-testid="rules-restriction-note"><i class="bi bi-funnel me-1" aria-hidden="true"></i>@L["Restrict_Note", only]</span>
+        }
         @if (previewCount is { } count)
         {
             <span class="rules-bar-preview" role="status" data-testid="rules-preview-count">@L[count == 1 ? "Preview_One" : "Preview_Many", count]</span>
         }
         <span class="flex-grow-1"></span>
+        @if (restriction != null)
+        {
+            <label class="small d-inline-flex align-items-center gap-1" title="@L["Restrict_Title"]">
+                @L["Restrict_Label"]
+                <select class="form-select form-select-sm w-auto" data-testid="rules-restrict" disabled="@(!restriction.CanEdit)"
+                        value="@RestrictionValue" @onchange="OnRestrictAsync">
+                    <option value="">@L["Restrict_All"]</option>
+                    @foreach (var target in restrictionTargets)
+                    {
+                        <option value="@((target.IsGroup ? "g:" : "a:") + target.Id.ToString(CultureInfo.InvariantCulture))">@(new string('\u00A0', target.Depth * 3) + target.Name)</option>
+                    }
+                </select>
+            </label>
+        }
         @if (applyCount > 0)
         {
             <button type="button" class="ob-btn ob-btn-sm" data-testid="rules-apply" @onclick="ApplyAsync">
@@ -187,6 +205,25 @@
     private (int, long) loadedKey;
     private int handledPrefill;
     private RowState? previewRow;
+    private CategoryRestrictionView? restriction;
+    private List<RestrictionTarget> restrictionTargets = [];
+
+    private string RestrictionValue => restriction switch
+    {
+        { AccountId: { } a } => "a:" + a.ToString(CultureInfo.InvariantCulture),
+        { AccountGroupId: { } g } => "g:" + g.ToString(CultureInfo.InvariantCulture),
+        _ => "",
+    };
+
+    private async Task OnRestrictAsync(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? "";
+        long? id = value.Length > 2 && long.TryParse(value.AsSpan(2), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+        await RuleService.SetRestrictionAsync(CategoryId, value.StartsWith("a:", StringComparison.Ordinal) ? id : null, value.StartsWith("g:", StringComparison.Ordinal) ? id : null);
+        restriction = await RuleService.GetRestrictionAsync(CategoryId);
+        await LoadAsync();
+        if (previewRow is { } row) await SchedulePreviewAsync(row, immediate: true);
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -197,6 +234,8 @@
             status = null;
             accounts = await RuleService.GetAccountsAsync(ProjectId);
             ruleAccounts = accounts.Select(a => new RuleAccount(a.Id, a.Iban)).ToList();
+            restriction = await RuleService.GetRestrictionAsync(CategoryId);
+            restrictionTargets = await RuleService.GetRestrictionTargetsAsync(CategoryId);
             await LoadAsync();
         }
         if (PrefillToken != handledPrefill)

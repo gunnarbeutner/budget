@@ -41,7 +41,8 @@ public sealed record CategorySuggestionResult(
 /// Suggests categories for uncategorized bookings of a project: the project's rules first, then a counterparty IBAN
 /// whose bookings mostly have one category, then similar categorized bookings (kNN); only what stays unsure goes to the
 /// AI, when the server has one configured and both the asking user and the booking's owner opted in. Nothing is applied
-/// and no rule is created without the user accepting it. Results are cached per booking and category tree.
+/// and no rule is created without the user accepting it. Results are cached per booking and category tree. A category
+/// restricted to an account or account group is never suggested for a booking outside it.
 /// </summary>
 public sealed partial class CategorySuggestionService
 {
@@ -84,7 +85,16 @@ public sealed partial class CategorySuggestionService
 
     private sealed record Context(
         string OwnerId, List<PromptCategory> Categories, Dictionary<long, PromptCategory> ById, string Hash,
-        Dictionary<long, Transaction> Rows, Dictionary<long, string?> AccountKinds, Dictionary<long, string?> AccountIbans, List<CategoryRule> ProjectRules);
+        Dictionary<long, Transaction> Rows, Dictionary<long, string?> AccountKinds, Dictionary<long, string?> AccountIbans, List<CategoryRule> ProjectRules,
+        CategoryRestrictions Restrictions);
+
+    private static bool Allowed(Context ctx, long? categoryId, long? accountId) =>
+        categoryId is not { } c || ctx.Restrictions.Allows(c, accountId);
+
+    private static bool Allowed(Context ctx, TxCategorySuggestion s) =>
+        ctx.Rows.TryGetValue(s.TransactionId, out var row)
+        && Allowed(ctx, s.CategoryId, row.AccountId)
+        && (s.Split == null || s.Split.All(p => Allowed(ctx, p.CategoryId, row.AccountId)));
 
     /// <summary>
     /// Suggestions for the given uncategorized bookings of the project (null: all of them). Progress reports
@@ -110,12 +120,19 @@ public sealed partial class CategorySuggestionService
         {
             if (cached.TryGetValue(t.Id, out var hit) && (hit.Source != "ai" || useAi))
             {
-                results[t.Id] = Present(ctx, hit.TransactionId, hit.CategoryId, hit.Confidence, hit.Source, hit.Rationale, hit.SplitJson);
-                continue;
+                var present = Present(ctx, hit.TransactionId, hit.CategoryId, hit.Confidence, hit.Source, hit.Rationale, hit.SplitJson);
+                if (Allowed(ctx, present))
+                {
+                    results[t.Id] = present;
+                    continue;
+                }
+                cached.Remove(t.Id);
             }
             var target = ToTarget(t);
-            var vote = RuleVote(ctx, t) ?? matching.IbanVote(target);
-            var neighbours = matching.Neighbours(target);
+            var iban = matching.IbanVote(target);
+            if (iban != null && !Allowed(ctx, iban.CategoryId, t.AccountId)) iban = null;
+            var vote = RuleVote(ctx, t) ?? iban;
+            var neighbours = matching.Neighbours(target).Where(n => Allowed(ctx, n.Booking.CategoryId, t.AccountId)).ToList();
             if (vote == null || vote.Confidence < SureEnough)
             {
                 var knn = CategoryMatching.KnnVote(neighbours);
@@ -165,6 +182,7 @@ public sealed partial class CategorySuggestionService
             }
         }
 
+        foreach (var id in results.Where(r => !Allowed(ctx, r.Value)).Select(r => r.Key).ToList()) results.Remove(id);
         await StoreAsync(results.Values.Where(r => !cached.ContainsKey(r.TransactionId)), ctx.Hash, ct);
         var rules = await RuleSuggestionsAsync(projectId, ctx, targets, results, aiRules, ct);
         var ordered = targets.Where(t => results.ContainsKey(t.Id)).Select(t => results[t.Id]).ToList();
@@ -208,6 +226,7 @@ public sealed partial class CategorySuggestionService
             foreach (var s in CategoryPrompt.ParseAnswer(response, redactor, handles))
             {
                 if (s.CategoryId == null) continue;
+                if (!ctx.Rows.TryGetValue(s.TransactionId, out var asked) || !Allowed(ctx, s.CategoryId, asked.AccountId)) continue;
                 if (results.TryGetValue(s.TransactionId, out var existing) && existing.Confidence >= s.Confidence) continue;
                 results[s.TransactionId] = Present(ctx, s.TransactionId, s.CategoryId, s.Confidence, "ai", s.Rationale);
                 if (s.RuleExpression != null) aiRules.Add((s.RuleExpression, s.CategoryId.Value));
@@ -330,8 +349,9 @@ public sealed partial class CategorySuggestionService
             .Where(t => t.OwnerUserId == ownerId && t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value) && t.Splitted != SplitState.Parent)
             .ToDictionaryAsync(t => t.Id, ct);
         var rules = await db.CategoryRules.AsNoTracking().Where(r => r.ProjectId == projectId && !r.Dismissed).OrderBy(r => r.SortOrder).ThenBy(r => r.Id).ToListAsync(ct);
+        var restrictions = await CategoryRestrictions.LoadAsync(db, categories.Select(c => c.Id), accountIds, ct);
         return new Context(ownerId, categories, categories.ToDictionary(c => c.Id), TreeHash(categories), rows,
-            accounts.ToDictionary(a => a.Id, a => (string?)a.KindLabel), accounts.ToDictionary(a => a.Id, a => a.Iban), rules);
+            accounts.ToDictionary(a => a.Id, a => (string?)a.KindLabel), accounts.ToDictionary(a => a.Id, a => a.Iban), rules, restrictions);
     }
 
     public static string TreeHash(IEnumerable<PromptCategory> categories)
@@ -342,8 +362,8 @@ public sealed partial class CategorySuggestionService
 
     private static Vote? RuleVote(Context ctx, Transaction t)
     {
-        var subject = RuleSubject.Of(t, ctx.AccountIbans.GetValueOrDefault(t.AccountId ?? 0));
-        var rule = ctx.ProjectRules.FirstOrDefault(r => ctx.ById.ContainsKey(r.CategoryId) && CategoryRuleMatcher.Matches(r, subject));
+        var subject = RuleSubject.Of(t, ctx.AccountIbans.GetValueOrDefault(t.AccountId ?? 0), ctx.Restrictions.Groups.GroupsOf(t.AccountId));
+        var rule = ctx.ProjectRules.FirstOrDefault(r => ctx.ById.ContainsKey(r.CategoryId) && CategoryRuleMatcher.Matches(r, subject, ctx.Restrictions));
         return rule == null ? null : new Vote(rule.CategoryId, rule.Enabled ? 0.95 : 0.8, "rule", rule.Name ?? rule.Expression);
     }
 

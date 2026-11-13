@@ -9,6 +9,8 @@ public sealed record RuleParts
     public string? Purpose { get; init; }
     public bool Regex { get; init; }
     public long? AccountId { get; init; }
+    /// <summary>An account group: bookings of accounts in it or its sub-groups (<c>account_group=N</c>).</summary>
+    public long? AccountGroupId { get; init; }
     public RuleAmountSign Sign { get; init; }
     public decimal? Min { get; init; }
     public decimal? Max { get; init; }
@@ -36,6 +38,7 @@ public static class RuleExpressionBuilder
             var iban = accounts.FirstOrDefault(a => a.Id == id)?.Iban;
             items.Add(string.IsNullOrWhiteSpace(iban) ? new AccountTerm("=", id) : new TextTerm("local_account", "=", TermKind.Phrase, Compact(iban)));
         }
+        if (p.AccountGroupId is { } groupId) items.Add(new AccountGroupTerm("=", groupId));
         switch (p.Sign)
         {
             case RuleAmountSign.Expense:
@@ -101,6 +104,9 @@ public static class RuleExpressionBuilder
                     break;
                 case AccountTerm { Op: "=" } id when p.AccountId == null:
                     p = p with { AccountId = id.Value };
+                    break;
+                case AccountGroupTerm { Op: "=" } g when p.AccountGroupId == null:
+                    p = p with { AccountGroupId = g.Value };
                     break;
                 case AmountTerm { Op: "<", Value: 0 }:
                     p = p with { Sign = RuleAmountSign.Expense };

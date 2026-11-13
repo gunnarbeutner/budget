@@ -204,4 +204,49 @@ public sealed class RulesTests : EndToEndTestBase
         var overflow = await Page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth > window.innerWidth + 1");
         Assert.That(overflow, Is.False);
     }
+
+    [Test]
+    public async Task A_category_restricted_to_an_account_only_categorizes_that_accounts_bookings()
+    {
+        // A second editable account with one more "Example Grocer" booking.
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var second = RowIds.Namespace(E2ESeed.IdSpace, 3);
+        await using (var db = await factory.CreateDbContextAsync())
+        {
+            db.Accounts.Add(new Account { Id = second, OwnerUserId = E2ESeed.OwnerUserId, Name = "Example Second Giro", Provider = "fake", Type = 1, Currency = "EUR", Balances = "11:10.000000,3:EUR," });
+            await db.SaveChangesAsync();
+            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = second });
+            db.Transactions.Add(new Transaction
+            {
+                Id = 130,
+                OwnerUserId = E2ESeed.OwnerUserId,
+                AccountId = second,
+                Amount = -8_00,
+                Currency = "EUR",
+                Name = "Example Grocer",
+                Timestamp = new DateTimeOffset(2026, 3, 15, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds(),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=cat-200&rules=1");
+        var bar = Page.GetByTestId("rules-bar");
+        await bar.GetByTestId("rules-restrict").SelectOptionAsync(new SelectOptionValue { Label = "Example Second Giro" });
+        await Expect(bar.GetByTestId("rules-restriction-note")).ToHaveTextAsync("Only for: Example Second Giro");
+
+        await bar.GetByTestId("rules-add").ClickAsync();
+        var payee = bar.GetByTestId("rule-payee").Last;
+        await payee.FillAsync("example grocer");
+        await Expect(bar.GetByTestId("rules-preview-count")).ToHaveTextAsync("1 booking matches");
+        await payee.PressAsync("Enter");
+        await Expect(bar.GetByTestId("rule-matches")).ToHaveTextAsync("1");
+        await bar.GetByTestId("rules-apply").ClickAsync();
+        await Expect(bar.GetByTestId("rules-status")).ToContainTextAsync("1 booking categorized");
+
+        await using var check = await factory.CreateDbContextAsync();
+        var rows = await check.Transactions.AsNoTracking().Where(t => t.Name == "Example Grocer").ToListAsync();
+        Assert.That(rows.Single(t => t.AccountId == second).CategoryId, Is.EqualTo(200));
+        Assert.That(rows.Where(t => t.AccountId != second).All(t => t.CategoryId == null), Is.True);
+        Assert.That((await check.Categories.SingleAsync(c => c.Id == 200)).RestrictAccountId, Is.EqualTo(second));
+    }
 }

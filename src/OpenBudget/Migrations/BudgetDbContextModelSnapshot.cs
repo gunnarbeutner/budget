@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261113102750_AmazonOrders";
+        public override string LatestMigrationId => "20261113111628_CategoryRestrictTo";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -900,6 +900,14 @@ namespace OpenBudget.Migrations
                         .IsRequired()
                         .HasMaxLength(450)
                         .HasColumnType("TEXT");
+
+                    b.Property<long?>("RestrictAccountGroupId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("restrict_account_group_id");
+
+                    b.Property<long?>("RestrictAccountId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("restrict_account_id");
 
                     b.Property<string>("Rules")
                         .HasColumnType("TEXT")

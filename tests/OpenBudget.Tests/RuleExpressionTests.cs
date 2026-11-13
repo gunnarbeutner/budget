@@ -139,6 +139,24 @@ public sealed class RuleExpressionTests
         Assert.True(M("market and example", Market with { Name = "market and example" }));
     }
 
+    [Theory]
+    [InlineData("account_group=3", true)]
+    [InlineData("account_group=1", true)]
+    [InlineData("account_group=4", false)]
+    [InlineData("account_group!=4", true)]
+    [InlineData("ACCOUNT_GROUP:3", true)]
+    public void Account_group_matches_the_accounts_groups_and_their_parents(string expression, bool expected) =>
+        Assert.Equal(expected, M(expression, Market with { AccountGroups = new HashSet<long> { 1, 3 } }));
+
+    [Fact]
+    public void Account_group_needs_a_number_and_prints_canonically()
+    {
+        Assert.False(M("account_group=3"));
+        Assert.False(RuleExpression.IsValid("account_group=abc"));
+        Assert.False(RuleExpression.IsValid("account_group<3"));
+        Assert.Equal("account_group=3", RuleExpression.TryParse("account_group:3", out _)!.Print());
+    }
+
     // ---- builder ----
 
     private static readonly RuleAccount[] Accounts = [new(7, "DE00 9999 8888 7777 6666 55"), new(8, null)];
@@ -151,6 +169,7 @@ public sealed class RuleExpressionTests
         { new RuleParts { Payee = "a", Purpose = "b" }, "name:\"a\" AND (purpose:\"b\" OR booking_text:\"b\")" },
         { new RuleParts { Payee = "a", AccountId = 7 }, "name:\"a\" AND local_account=\"DE00999988887777666655\"" },
         { new RuleParts { Payee = "a", AccountId = 8 }, "name:\"a\" AND account_id=8" },
+        { new RuleParts { Payee = "a", AccountGroupId = 3 }, "name:\"a\" AND account_group=3" },
         { new RuleParts { Payee = "a", Sign = RuleAmountSign.Expense, Min = 5, Max = 50 }, "name:\"a\" AND amount<0 AND amount<=-5 AND amount>=-50" },
         { new RuleParts { Payee = "a", Sign = RuleAmountSign.Income, Min = 5 }, "name:\"a\" AND amount>0 AND amount>=5" },
         { new RuleParts { Payee = "a", Min = 5, Max = 50 }, "name:\"a\" AND (amount>=5 AND amount<=50 OR amount<=-5 AND amount>=-50)" },
