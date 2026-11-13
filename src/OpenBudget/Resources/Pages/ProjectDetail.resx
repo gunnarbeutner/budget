@@ -100,4 +100,19 @@
   <data name="Button_Save" xml:space="preserve">
     <value>Save</value>
   </data>
+  <data name="Default_Toggle" xml:space="preserve">
+    <value>Use as default project for new accounts</value>
+  </data>
+  <data name="Default_Description" xml:space="preserve">
+    <value>New accounts are added to this project.</value>
+  </data>
+  <data name="Default_SharedExplanation" xml:space="preserve">
+    <value>A shared project cannot be the default, so new accounts never become visible to others by themselves.</value>
+  </data>
+  <data name="Status_Saved" xml:space="preserve">
+    <value>Saved</value>
+  </data>
+  <data name="Delete_Hint" xml:space="preserve">
+    <value>Deleting a project cannot be undone.</value>
+  </data>
 </root>

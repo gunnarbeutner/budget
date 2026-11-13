@@ -17,7 +17,7 @@
    budget (bar + percentage), the default-for-new-accounts badge and who shared it. Then "New project". The
    numbers load when the menu opens, so it costs nothing until used.
    A row's context menu (right-click, touch long-press, Shift+F10 / the context-menu key) offers Settings…
-   (ProjectSettingsDialog), Move up / Move down and Delete (DeleteProjectDialog); rows also reorder by dragging.
+   (the project's settings page), Move up / Move down and Delete (DeleteProjectDialog); rows also reorder by dragging.
    The order is each user's own, so everyone reorders every project they see; Settings… needs an editor, Delete the
    owner. Other sessions' changes reload the list. *@
 
@@ -114,7 +114,6 @@
     </div>
 </details>
 
-<ProjectSettingsDialog ProjectId="settingsFor" OnClose="() => settingsFor = null" OnSaved="OnSettingsSavedAsync" />
 <DeleteProjectDialog Target="deleteTarget" OnClose="() => deleteTarget = null" OnDeleted="OnDeletedAsync" />
 <NewProjectDialog Show="showNewProject" OnClose="() => showNewProject = false" />
 
@@ -148,7 +147,6 @@
     private double menuY;
 
     // Dialogs
-    private int? settingsFor;
     private (int Id, string Name)? deleteTarget;
     private bool showNewProject;
 
@@ -264,7 +262,7 @@
         {
             case "settings":
                 await CloseSwitcherAsync();
-                settingsFor = r.Id;
+                Navigation.NavigateTo(OpenBudget.Pages.ProjectDetail.Url(r.Id));
                 break;
             case "delete":
                 await CloseSwitcherAsync();
@@ -308,13 +306,6 @@
     {
         await CloseSwitcherAsync();
         showNewProject = true;
-    }
-
-    private async Task OnSettingsSavedAsync((int Id, string Name) saved)
-    {
-        settingsFor = null;
-        if (saved.Id == Current.ProjectId) Current.Set(saved.Id, saved.Name);
-        if (rows != null) await LoadAsync();
     }
 
     private async Task OnDeletedAsync(int id)

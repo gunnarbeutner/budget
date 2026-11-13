@@ -125,15 +125,12 @@ public sealed class ProjectSwitcherMenuTests : EndToEndTestBase
         await Row(E2ESeed.ProjectName).ClickAsync(new() { Button = MouseButton.Right });
         await Page.GetByTestId("ctx-settings").ClickAsync();
 
-        var modal = Page.GetByTestId("modal-dialog");
-        await Expect(modal).ToBeVisibleAsync();
-        await Expect(Page.Locator("[data-testid=project-selector]")).Not.ToHaveAttributeAsync("open", "");
-        await Expect(modal.GetByLabel("Name")).ToHaveValueAsync(E2ESeed.ProjectName);
-        await Expect(modal.GetByTestId("project-settings-more")).ToHaveAttributeAsync("href", $"/projects/{E2ESeed.ProjectId}/settings");
-        await modal.GetByLabel("Name").FillAsync("Example Household");
-        await modal.GetByTestId("project-settings-save").ClickAsync();
+        // Settings opens the settings page, whose name saves on its own.
+        await Expect(Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex($"/projects/{E2ESeed.ProjectId}/settings$"));
+        await Expect(Page.Locator("#project-name")).ToHaveValueAsync(E2ESeed.ProjectName);
+        await Page.Locator("#project-name").FillAsync("Example Household");
+        await Expect(Page.GetByTestId("project-general-saved")).ToHaveTextAsync("Saved");
 
-        await Expect(Page.GetByTestId("modal-dialog")).ToHaveCountAsync(0);
         await Expect(Page.Locator("[data-testid=project-selector] .project-selector-name")).ToHaveTextAsync("Example Household");
         await Expect(other.GetByTestId("switcher-project").Filter(new() { HasText = "Example Household" })).ToBeVisibleAsync();
         await Expect(other.Locator("[data-testid=project-selector] .project-selector-name")).ToHaveTextAsync("Example Household");
@@ -199,11 +196,11 @@ public sealed class ProjectSwitcherMenuTests : EndToEndTestBase
         await Expect(Page.GetByTestId("ctx-down")).ToBeDisabledAsync();
         await Expect(Row(E2ESeed.ProjectName)).ToHaveAttributeAsync("draggable", "true");
 
-        // The editor's settings dialog has name and description, but not the owner's parent / default settings.
+        // The editor's settings page has name and description, but not the owner's parent / default settings or Delete.
         await Page.GetByTestId("ctx-settings").ClickAsync();
-        var modal = Page.GetByTestId("modal-dialog");
-        await Expect(modal.GetByLabel("Name")).ToBeVisibleAsync();
-        await Expect(modal.Locator("#default-project-toggle")).ToHaveCountAsync(0);
-        await Expect(modal.Locator("#project-settings-parent")).ToHaveCountAsync(0);
+        await Expect(Page.Locator("#project-name")).ToBeVisibleAsync();
+        await Expect(Page.Locator("#default-project-toggle")).ToHaveCountAsync(0);
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Parent project" })).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("project-danger-zone")).ToHaveCountAsync(0);
     }
 }

@@ -100,4 +100,19 @@
   <data name="Button_Save" xml:space="preserve">
     <value>Speichern</value>
   </data>
+  <data name="Default_Toggle" xml:space="preserve">
+    <value>Als Standardprojekt für neue Konten verwenden</value>
+  </data>
+  <data name="Default_Description" xml:space="preserve">
+    <value>Neue Konten werden diesem Projekt zugeordnet.</value>
+  </data>
+  <data name="Default_SharedExplanation" xml:space="preserve">
+    <value>Ein geteiltes Projekt kann nicht Standard sein, damit neue Konten nie von selbst für andere sichtbar werden.</value>
+  </data>
+  <data name="Status_Saved" xml:space="preserve">
+    <value>Gespeichert</value>
+  </data>
+  <data name="Delete_Hint" xml:space="preserve">
+    <value>Das Löschen eines Projekts lässt sich nicht rückgängig machen.</value>
+  </data>
 </root>

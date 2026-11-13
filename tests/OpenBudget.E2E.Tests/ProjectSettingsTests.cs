@@ -64,15 +64,19 @@ public sealed class ProjectSettingsTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task The_general_view_renames_the_project()
+    public async Task The_general_view_saves_name_and_description_while_typing()
     {
         await GoToAsync(SettingsUrl);
-        var save = Page.GetByTestId("project-general-save");
-        await Expect(save).ToBeDisabledAsync();
+        await Expect(Page.GetByTestId("project-general-saved")).ToHaveTextAsync("");
         await Page.Locator("#project-name").FillAsync("Renamed Project");
-        await save.ClickAsync();
+        await Expect(Page.GetByTestId("project-general-saved")).ToHaveTextAsync("Saved");
         await Expect(Page.GetByTestId("page-header")).ToContainTextAsync("Renamed Project");
-        await Expect(save).ToBeDisabledAsync();
+        await Page.Locator("#project-description").FillAsync("Example description");
+        await Page.Locator("#project-name").FocusAsync();   // leaving the field saves at once
+        await Expect(Page.GetByTestId("page-header")).ToContainTextAsync("Example description");
+        await Page.ReloadAsync();
+        await Expect(Page.Locator("#project-name")).ToHaveValueAsync("Renamed Project");
+        await Expect(Page.Locator("#project-description")).ToHaveValueAsync("Example description");
     }
 
     [Test]

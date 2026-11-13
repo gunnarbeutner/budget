@@ -24,14 +24,15 @@ public sealed class DefaultProjectTests : EndToEndTestBase
         await Expect(Page.GetByTestId("switcher-project").First).ToBeVisibleAsync();
     }
 
-    /// <summary>Opens the project's Settings… dialog from the switcher's context menu.</summary>
-    private async Task OpenSettingsDialogAsync()
+    /// <summary>Opens the project's settings page from the switcher's context menu (it opens the General view).</summary>
+    private async Task OpenSettingsPageAsync()
     {
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
         await OpenSwitcherAsync();
         await Page.GetByTestId("switcher-project").Filter(new() { HasText = E2ESeed.ProjectName }).ClickAsync(new() { Button = MouseButton.Right });
         await Page.GetByTestId("ctx-settings").ClickAsync();
-        await Expect(Page.GetByTestId("modal-dialog")).ToBeVisibleAsync();
+        await Expect(Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex($"/projects/{E2ESeed.ProjectId}/settings$"));
+        await Expect(Page.GetByTestId("project-general-card")).ToBeVisibleAsync();
     }
 
     private async Task ShareDirectlyAsync()
@@ -44,26 +45,19 @@ public sealed class DefaultProjectTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task The_settings_dialog_switch_marks_the_project_as_default_and_the_switcher_shows_a_badge()
+    public async Task The_settings_page_switch_marks_the_project_as_default_and_the_switcher_shows_a_badge()
     {
-        await OpenSettingsDialogAsync();
+        await OpenSettingsPageAsync();
         await Expect(Toggle).Not.ToBeCheckedAsync();
         await Toggle.CheckAsync();
-        await Page.GetByTestId("project-settings-save").ClickAsync();
-        await Expect(Page.GetByTestId("modal-dialog")).ToHaveCountAsync(0);
 
+        await Expect(Toggle).ToBeCheckedAsync();
         await OpenSwitcherAsync();
         await Expect(Badge).ToBeVisibleAsync();
-        // The settings page has no switch.
-        await GoToAsync(SettingsUrl);
-        await Expect(Page.GetByTestId("project-general-card")).ToBeVisibleAsync();
-        await Expect(Toggle).ToHaveCountAsync(0);
 
-        await OpenSettingsDialogAsync();
+        await OpenSettingsPageAsync();
         await Expect(Toggle).ToBeCheckedAsync();
         await Toggle.UncheckAsync();
-        await Page.GetByTestId("project-settings-save").ClickAsync();
-        await Expect(Page.GetByTestId("modal-dialog")).ToHaveCountAsync(0);
         await OpenSwitcherAsync();
         await Expect(Badge).ToHaveCountAsync(0);
     }
@@ -72,7 +66,7 @@ public sealed class DefaultProjectTests : EndToEndTestBase
     public async Task A_shared_project_cannot_be_the_default_and_the_switch_explains_why()
     {
         await ShareDirectlyAsync();
-        await OpenSettingsDialogAsync();
+        await OpenSettingsPageAsync();
 
         await Expect(Toggle).ToBeDisabledAsync();
         await Expect(Page.Locator("#default-project-help")).ToContainTextAsync("shared");
@@ -81,10 +75,8 @@ public sealed class DefaultProjectTests : EndToEndTestBase
     [Test]
     public async Task Sharing_the_default_project_clears_it_and_shows_a_notice()
     {
-        await OpenSettingsDialogAsync();
+        await OpenSettingsPageAsync();
         await Toggle.CheckAsync();
-        await Page.GetByTestId("project-settings-save").ClickAsync();
-        await Expect(Page.GetByTestId("modal-dialog")).ToHaveCountAsync(0);
 
         await GoToAsync(SettingsUrl + "/sharing");
         await Page.Locator("#share-user").SelectOptionAsync(new SelectOptionValue { Label = E2ESeed.SecondUserName });
@@ -93,12 +85,10 @@ public sealed class DefaultProjectTests : EndToEndTestBase
         await Page.GetByTestId("project-settings-nav-general").ClickAsync();
         await Expect(Page.Locator("#default-cleared-notice")).ToBeVisibleAsync();
 
-        // The dialog shows it too, with the switch off and disabled; dismissing it there clears it everywhere.
-        await OpenSettingsDialogAsync();
+        // Next to it the switch is off and disabled; dismissing the notice clears it for good.
         await Expect(Toggle).Not.ToBeCheckedAsync();
         await Expect(Toggle).ToBeDisabledAsync();
-        var notice = Page.Locator("#settings-default-cleared-notice");
-        await Expect(notice).ToBeVisibleAsync();
+        var notice = Page.Locator("#default-cleared-notice");
         await notice.GetByRole(AriaRole.Button, new() { Name = "Dismiss" }).ClickAsync();
         await Expect(notice).ToHaveCountAsync(0);
 

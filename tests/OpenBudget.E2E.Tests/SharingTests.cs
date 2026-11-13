@@ -135,7 +135,7 @@ public sealed class SharingTests : EndToEndTestBase
         await Expect(Page.GetByTestId("project-settings-nav-sharing")).ToHaveCountAsync(0);
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/settings");
         await Expect(Page.GetByRole(AriaRole.Button, new() { Name = "Delete Project" })).ToHaveCountAsync(0);
-        await Expect(Page.GetByTestId("project-general-save")).ToBeVisibleAsync();
+        await Expect(Page.Locator("#project-name")).ToBeVisibleAsync();
 
         // The owner-only views lead an editor back to General.
         foreach (var view in new[] { "accounts", "sharing" })
