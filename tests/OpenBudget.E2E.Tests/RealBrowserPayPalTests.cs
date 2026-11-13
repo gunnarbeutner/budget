@@ -56,11 +56,7 @@ public sealed class RealBrowserPayPalTests
         _sessions.Clear();
         _chrome = ChromiumLocator.Find() ?? "";
         if (_chrome.Length == 0) Assert.Ignore("No Chromium found (set CHROME_PATH or run `playwright install chromium`).");
-        var port = System.Security.Cryptography.RandomNumberGenerator.GetInt32(20000, 40000);
-        _url = $"http://127.0.0.1:{port}/";
-        _site = new HttpListener();
-        _site.Prefixes.Add(_url);
-        _site.Start();
+        (_site, _url) = LocalHttpListener.Start();
         _serving = Task.Run(ServeAsync);
     }
 

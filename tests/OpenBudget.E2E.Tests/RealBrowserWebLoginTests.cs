@@ -28,11 +28,7 @@ public sealed class RealBrowserWebLoginTests
         _chrome = ChromiumLocator.Find() ?? "";
         if (_chrome.Length == 0) Assert.Ignore("No Chromium found (set CHROME_PATH or run `playwright install chromium`).");
 
-        var port = System.Security.Cryptography.RandomNumberGenerator.GetInt32(20000, 40000);
-        _listener = new HttpListener();
-        _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-        _listener.Start();
-        _baseUrl = $"http://127.0.0.1:{port}/";
+        (_listener, _baseUrl) = LocalHttpListener.Start();
         _serving = Task.Run(ServeAsync);
     }
 

@@ -53,13 +53,10 @@ public sealed class WebLoginDialogTests : EndToEndTestBase
         if (chrome == null) Assert.Ignore("No Chromium found (set CHROME_PATH or run `playwright install chromium`).");
         Environment.SetEnvironmentVariable("CHROME_PATH", chrome);
 
-        var port = System.Security.Cryptography.RandomNumberGenerator.GetInt32(40001, 60000);
-        _listener = new HttpListener();
-        _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-        _listener.Start();
+        (_listener, var baseUrl) = LocalHttpListener.Start();
         _serving = Task.Run(() => ServeAsync(_listener));
-        Environment.SetEnvironmentVariable(FakeBankConnector.WebLoginUrlVariable, $"http://127.0.0.1:{port}/login");
-        Environment.SetEnvironmentVariable(FakeBankConnector.WebLoginSuccessVariable, $"http://127.0.0.1:{port}/home");
+        Environment.SetEnvironmentVariable(FakeBankConnector.WebLoginUrlVariable, baseUrl + "login");
+        Environment.SetEnvironmentVariable(FakeBankConnector.WebLoginSuccessVariable, baseUrl + "home");
 
         await GoToAsync("/connections");
         await Page.GetByTestId("add-login-open").ClickAsync();

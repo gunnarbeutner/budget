@@ -90,8 +90,8 @@ public sealed class StickyHeaderTests : EndToEndTestBase
         var filter = Page.GetByTestId("filter-toggle");
         await Expect(filter).ToBeVisibleAsync();
 
-        await Page.EvaluateAsync("() => window.scrollTo(0, 3000)");
-        await Page.WaitForFunctionAsync("() => window.scrollY > 1000");
+        // Scrolls again on every try: the rows may still be rendering, so the page can be too short for a first scroll.
+        await Page.WaitForFunctionAsync("() => { window.scrollTo(0, 3000); return window.scrollY > 1000; }");
         await Expect(filter).ToBeInViewportAsync();
         await Expect(Page.GetByTestId("browse-toolbar").GetByTestId("browse-summary")).ToBeInViewportAsync();
         var hit = await filter.EvaluateAsync<bool>(@"b => { const r = b.getBoundingClientRect();

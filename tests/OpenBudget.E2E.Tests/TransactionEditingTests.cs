@@ -353,7 +353,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         await Expect(Page.GetByTestId("filter-count")).ToHaveTextAsync("1");
         await Page.GetByTestId("filter-direction").SelectOptionAsync("any");
 
-        await Page.GotoAsync(UncategorizedUrl);
+        await GoToAsync(UncategorizedUrl);
         await Expect(Page.GetByText(new Regex("4 transactions"))).ToBeVisibleAsync();
         await Page.GetByTestId("filter-toggle").ClickAsync();
         await Expect(Row("\u221230,00").GetByTestId("tx-new-dot")).ToBeVisibleAsync();

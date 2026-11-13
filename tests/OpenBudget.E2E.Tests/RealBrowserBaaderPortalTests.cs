@@ -46,21 +46,10 @@ public sealed class RealBrowserBaaderPortalTests
     {
         _chrome = ChromiumLocator.Find() ?? "";
         if (_chrome.Length == 0) Assert.Ignore("No Chromium found (set CHROME_PATH or run `playwright install chromium`).");
-        var port = System.Security.Cryptography.RandomNumberGenerator.GetInt32(20000, 40000);
-        _portalUrl = $"http://127.0.0.1:{port}/";
-        _storageUrl = $"http://localhost:{port + 1}/"; // another origin
-        _portal = Listen(_portalUrl);
-        _storage = Listen(_storageUrl);
+        (_portal, _portalUrl) = LocalHttpListener.Start();
+        (_storage, _storageUrl) = LocalHttpListener.Start("localhost"); // another origin
         _serving.Add(Task.Run(() => ServeAsync(_portal, HandlePortalAsync)));
         _serving.Add(Task.Run(() => ServeAsync(_storage, HandleStorageAsync)));
-    }
-
-    private static HttpListener Listen(string prefix)
-    {
-        var l = new HttpListener();
-        l.Prefixes.Add(prefix);
-        l.Start();
-        return l;
     }
 
     [TearDown]

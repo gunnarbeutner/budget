@@ -33,13 +33,9 @@ public sealed class RealBrowserIngTests
     {
         _chrome = ChromiumLocator.Find() ?? "";
         if (_chrome.Length == 0) Assert.Ignore("No Chromium found (set CHROME_PATH or run `playwright install chromium`).");
-        var port = System.Security.Cryptography.RandomNumberGenerator.GetInt32(20000, 40000);
-        _baseUrl = $"http://127.0.0.1:{port}/";
+        (_listener, _baseUrl) = LocalHttpListener.Start();
         _bank = new FakeIng(_baseUrl);
         _invoker = new HttpMessageInvoker(_bank, disposeHandler: false);
-        _listener = new HttpListener();
-        _listener.Prefixes.Add(_baseUrl);
-        _listener.Start();
         _serving = Task.Run(ServeAsync);
     }
 

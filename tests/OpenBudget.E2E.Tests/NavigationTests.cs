@@ -105,6 +105,8 @@ public sealed class NavigationTests : EndToEndTestBase
         await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/browse$"));   // nothing remembered yet: the first project
 
         await GoToAsync($"/projects/{second}/budgets");
+        // The header remembers the project from JS after its own interactive render, which can follow the layout's.
+        await Page.WaitForFunctionAsync("id => document.cookie.split('; ').includes('ob.lastProject=' + id)", second);
         await GoToAsync("/");
         await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{second}/browse$"));
         await Expect(Page.Locator("[data-testid=project-selector] .project-selector-name")).ToHaveTextAsync(SecondProjectName);
