@@ -415,7 +415,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
 
         // One bar per day from the first booking (10.03.2026) through today, nothing after today.
         var today = DateTime.Today;
-        var labels = await Page.EvaluateAsync<string[]>("() => Chart.getChart('browseChart').data.labels");
+        var labels = await Page.EvaluateAsync<string[]>("() => browseChartData('browseChart').labels");
         Assert.That(labels.Length, Is.EqualTo((today - new DateTime(2026, 3, 10)).Days + 1));
         Assert.That(labels[0], Is.EqualTo("10.03"));
         Assert.That(labels[^1], Is.EqualTo(today.ToString("dd.MM", System.Globalization.CultureInfo.InvariantCulture)));
@@ -423,7 +423,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         // The history is wider than the frame and scrolls; it opens on the selected March, whose bars carry the accent.
         var geo = await scroll.EvaluateAsync<double[]>("el => [el.scrollWidth, el.clientWidth, el.scrollLeft]");
         Assert.That(geo[0], Is.GreaterThan(geo[1] + 100));
-        var colors = await Page.EvaluateAsync<string[]>("() => Chart.getChart('browseChart').data.datasets[0].backgroundColor");
+        var colors = await Page.EvaluateAsync<string[]>("() => browseChartData('browseChart').colors");
         var accent = colors[0];
         Assert.That(colors.Take(22), Has.All.EqualTo(accent));      // 10.–31.03.
         Assert.That(colors.Skip(22), Has.None.EqualTo(accent));
@@ -474,7 +474,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         var geo = await scroll.EvaluateAsync<double[]>("el => [el.scrollWidth, el.clientWidth, el.scrollLeft]");
         Assert.That(geo[0], Is.GreaterThan(geo[1]));
         Assert.That(geo[2] + geo[1], Is.EqualTo(geo[0]).Within(2));   // right end: today is the last bar
-        var colors = await Page.EvaluateAsync<string[]>("() => Chart.getChart('browseChart').data.datasets[0].backgroundColor");
+        var colors = await Page.EvaluateAsync<string[]>("() => browseChartData('browseChart').colors");
         Assert.That(colors.TakeLast(today.Day), Has.All.EqualTo(colors[^1]));
         Assert.That(colors[^(today.Day + 1)], Is.Not.EqualTo(colors[^1]));
     }

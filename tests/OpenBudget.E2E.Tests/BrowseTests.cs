@@ -152,7 +152,7 @@ public sealed class BrowseTests : EndToEndTestBase
 
         // Groceries is budgeted 100 € a month; as an expense the line shares the bars' negative sign.
         await Page.WaitForFunctionAsync("() => Chart.getChart('browseChart')?.data.datasets.length === 2");
-        var budget = await Page.EvaluateAsync<double[]>("() => Chart.getChart('browseChart').data.datasets[1].data");
+        var budget = await Page.EvaluateAsync<double[]>("() => browseChartData('browseChart').budget");
         Assert.That(budget, Has.All.EqualTo(-100d));
         var label = await Page.EvaluateAsync<string>("() => Chart.getChart('browseChart').data.datasets[1].label");
         Assert.That(label, Is.EqualTo("Budget"));

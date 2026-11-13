@@ -66,7 +66,7 @@ public sealed class PeriodSelectorTests : EndToEndTestBase
         await GoToAsync($"/projects/{Pid}/browse?year={E2ESeed.BudgetYear}&month=2&period=year&sel=cat-200");
         await Expect(Page.GetByText(new Regex("2 transactions"))).ToBeVisibleAsync();
         await Expect(GroceriesRow).ToContainTextAsync("50,00");
-        await Page.WaitForFunctionAsync("() => Chart.getChart('browseChart')?.data.labels.length >= 2");
+        await Page.WaitForFunctionAsync("() => browseChartData('browseChart')?.labels.length >= 2");
 
         await Page.GetByTestId("period-range").ClickAsync();
         await Page.GetByTestId("period-range-from").FillAsync($"{E2ESeed.BudgetYear}-02-01");
@@ -81,7 +81,7 @@ public sealed class PeriodSelectorTests : EndToEndTestBase
         await Expect(GroceriesRow).ToContainTextAsync("8,00");
         await Expect(GroceriesRow).Not.ToContainTextAsync("50,00");
         // The chart keeps the whole history and highlights only February.
-        await Page.WaitForFunctionAsync("() => { const c = Chart.getChart('browseChart'); if (!c) return false; const bg = c.data.datasets[0].backgroundColor; const i = c.data.labels.findIndex(l => l.startsWith('Feb')); return i >= 0 && bg.filter(x => x === bg[i]).length === 1 && c.data.labels.length >= 2; }");
+        await Page.WaitForFunctionAsync("() => { const c = browseChartData('browseChart'); if (!c) return false; const bg = c.colors; const i = c.labels.findIndex(l => l.startsWith('Feb')); return i >= 0 && bg.filter(x => x === bg[i]).length === 1 && c.labels.length >= 2; }");
         await Expect(Page.GetByTestId("filter-count")).ToHaveCountAsync(0);   // the period is not a filter
     }
 

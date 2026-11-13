@@ -805,7 +805,10 @@ const zeroLinePlugin = {
 // the bar with a date + value label pinned to the bottom edge. Each bar gets a fixed width
 // (a few px per day, more per month), so a long history is wider than the frame and scrolls
 // horizontally inside #browseChartScroll; the money scale is drawn on #browseChartAxis beside it
-// and stays in place. The chart opens scrolled to the selected period's bars (accent colour),
+// and stays in place. The canvas only covers the visible window: .browse-chart-canvas spans the
+// full history to give the scroll width, and the canvas inside it sits at the scrolled-to bar and
+// holds just the bars in view (Chart.js data is that slice), redrawn once per frame while
+// scrolling. browseChartData returns the full series. The chart opens scrolled to the selected period's bars (accent colour),
 // which for the current period is the right end. Colours come from the --chart-* tokens on
 // .browse-chart-frame so light and dark theme each get their own steps.
 // A click on a bar asks Blazor (OnChartBarClicked) to move the list to that bar's month.
@@ -825,6 +828,13 @@ window.browseChartAxis = function(values) {
     const step = [1, 2, 2.5, 5, 10].map(f => f * mag).find(s => s >= raw);
     const head = span * 0.06;
     return { min: lo < 0 ? lo - head : 0, max: hi > 0 ? hi + head : 0, step };
+};
+
+// The browse chart's full series (labels, values, bar colours, budget) and the index of the first
+// bar in its drawn window.
+window.browseChartData = function(canvasId) {
+    const f = Chart.getChart(canvasId)?.$obFull;
+    return f ? { labels: f.labels, values: f.values, colors: f.colors, budget: f.budget, first: f.first() } : null;
 };
 
 window.renderBrowseChart = function(canvasId, d, dotnetRef) {
@@ -881,8 +891,9 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
             if (!x || !area) return;
             const half = n > 1 ? (x.getPixelForValue(1) - x.getPixelForValue(0)) / 2 : (area.right - area.left) / 2;
             const marks = [];
-            for (let i = 0; i < n; i++) {
-                const s = starts[i], first = i === 0;
+            const from = win.first, to = Math.min(n, win.first + win.count) - 1;
+            for (let i = from; i <= to; i++) {
+                const s = starts[i], first = i === from;
                 let text = null, major = first || s.m === 1;
                 if (g === 'D') {
                     if (first || s.day === 1) text = d.monthNames[s.m - 1] + (major ? ' ' + s.y : '');
@@ -893,7 +904,7 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
                 } else {
                     major = true; text = String(s.y);
                 }
-                if (text) marks.push({ i, text, major, px: x.getPixelForValue(i) - half });
+                if (text) marks.push({ i, text, major, px: x.getPixelForValue(i - from) - half });
             }
             ctx.save();
             ctx.font = font;
@@ -911,7 +922,7 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
             ctx.lineWidth = 1;
             // Separators at every month start (daily) or year start (coarser).
             for (const m of marks) {
-                if (m.i === 0 || (g !== 'D' && !m.major)) continue;
+                if (m.i === from || (g !== 'D' && !m.major)) continue;
                 const sx = Math.round(m.px) + 0.5;
                 ctx.beginPath(); ctx.moveTo(sx, area.top - 16); ctx.lineTo(sx, area.bottom); ctx.stroke();
             }
@@ -928,7 +939,7 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
             const e = args.event, area = chart.chartArea;
             let idx = null;
             if (e.type !== 'mouseout' && e.x >= area.left && e.x <= area.right) {
-                idx = Math.round(chart.scales.x.getValueForPixel(e.x));
+                idx = Math.round(chart.scales.x.getValueForPixel(e.x)) + win.first;
                 if (idx < 0 || idx >= n || values[idx] === null) idx = null;
             }
             if (idx !== chart.$obIdx) { chart.$obIdx = idx; args.changed = true; }
@@ -937,7 +948,7 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
             const i = chart.$obIdx;
             if (i === null || i === undefined) return;
             const ctx = chart.ctx, area = chart.chartArea;
-            const x = Math.round(chart.scales.x.getPixelForValue(i)) + 0.5;
+            const x = Math.round(chart.scales.x.getPixelForValue(i - win.first)) + 0.5;
             ctx.save();
             ctx.strokeStyle = c.text; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(x, area.top); ctx.lineTo(x, area.bottom); ctx.stroke();
@@ -946,8 +957,9 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
             ctx.font = font;
             const w = ctx.measureText(text).width + 12, h = 18;
             // Keep the label inside the visible part of a scrolled chart.
-            const visL = scroller ? Math.max(area.left, scroller.scrollLeft) : area.left;
-            const visR = scroller ? Math.min(area.right, scroller.scrollLeft + scroller.clientWidth) : area.right;
+            const off = scroller ? scroller.scrollLeft - win.left : 0;
+            const visL = scroller ? Math.max(area.left, off) : area.left;
+            const visR = scroller ? Math.min(area.right, off + scroller.clientWidth) : area.right;
             const lx = Math.max(visL, Math.min(x - w / 2, visR - w));
             const ly = chart.height - h;
             ctx.fillStyle = c.labelBg;
@@ -960,15 +972,32 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
         }
     };
 
-    // Fixed slot per bar; the canvas is at least as wide as the frame and otherwise scrolls.
+    // Fixed slot per bar; the history is at least as wide as the frame and otherwise scrolls.
+    // When it scrolls, the canvas (in .browse-chart-window) covers the bars in view plus one, and
+    // is moved and redrawn when the first visible bar changes.
     const scroller = canvas.closest('.browse-chart-scroll');
-    const holder = canvas.parentElement;
+    const winEl = canvas.parentElement;
+    const holder = scroller && winEl ? winEl.parentElement : null;
     const slot = { D: 5, M: 14, Q: 28, Y: 48 }[g] || 14;
-    const viewW = scroller ? scroller.clientWidth : canvas.clientWidth;
-    const fullW = Math.max(viewW, n * slot);
-    if (holder && scroller) holder.style.width = fullW + 'px';
-    // Browsers cap a canvas at about 32k device pixels per side.
-    const dpr = Math.min(window.devicePixelRatio || 1, 32000 / Math.max(1, fullW));
+    const win = { left: 0, first: 0, count: n, fullW: 0, scrolls: false };
+    const layoutWindow = () => {
+        const viewW = scroller ? scroller.clientWidth : canvas.clientWidth;
+        win.fullW = Math.max(viewW, n * slot);
+        win.scrolls = !!holder && n * slot > viewW;
+        win.count = win.scrolls ? Math.min(n, Math.ceil(viewW / slot) + 1) : n;
+        if (holder) holder.style.width = win.fullW + 'px';
+        if (winEl && holder) winEl.style.width = (win.scrolls ? win.count * slot : win.fullW) + 'px';
+    };
+    // Picks the first bar in view and places the window there; true when it moved.
+    const placeWindow = () => {
+        const first = win.scrolls ? Math.max(0, Math.min(n - win.count, Math.floor(scroller.scrollLeft / slot))) : 0;
+        if (first === win.first && win.placed) return false;
+        win.first = first; win.placed = true;
+        win.left = first * slot;
+        if (winEl && holder) winEl.style.transform = 'translateX(' + win.left + 'px)';
+        return true;
+    };
+    layoutWindow();
     const axisCanvas = document.getElementById(canvasId + 'Axis');
 
     // The y scale's labels, drawn on the fixed canvas beside the scroll area.
@@ -992,7 +1021,8 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
     const axis = window.browseChartAxis(values.concat(hasBudget ? d.budget : []));
 
     const datasets = [{
-        label: d.balance ? 'Balance' : 'Amount', data: values, backgroundColor: colors, borderWidth: 0,
+        label: d.balance ? 'Balance' : 'Amount', data: values.slice(win.first, win.first + win.count),
+        backgroundColor: colors.slice(win.first, win.first + win.count), borderWidth: 0,
         borderRadius: g === 'D' || n > 60 ? 0 : 2, borderSkipped: 'start',
         categoryPercentage: 1, barPercentage: g === 'D' ? 0.8 : 0.7, maxBarThickness: 24, order: 1
     }];
@@ -1000,20 +1030,21 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
     // bars where the budget changes. Nulls (years without a budget) leave gaps.
     if (hasBudget) {
         datasets.push({
-            type: 'line', label: d.budgetLabel || 'Budget', data: d.budget,
+            type: 'line', label: d.budgetLabel || 'Budget', data: d.budget.slice(win.first, win.first + win.count),
             borderColor: c.budget, backgroundColor: c.budget, borderWidth: 2, borderDash: [3, 3],
             pointRadius: 0, fill: false, stepped: 'middle', spanGaps: false, order: 0
         });
     }
+    if (scroller) scrollBrowseChartToPeriod(scroller, d.anchors, n, win.fullW);
+    placeWindow();
     try {
         window.chartInstances[canvasId] = new Chart(canvas, {
             type: 'bar',
-            data: { labels: d.labels, datasets },
+            data: { labels: d.labels.slice(win.first, win.first + win.count), datasets },
             plugins: [topAxis, hover, sideAxis],
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                devicePixelRatio: dpr,
                 animation: d.noAnimate || n > 400 ? false : { duration: 250 },
                 events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
                 layout: { padding: { top: 18, bottom: 22, left: 0, right: 0 } },
@@ -1039,7 +1070,35 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
                 }
             }
         });
-        if (scroller) scrollBrowseChartToPeriod(scroller, d.anchors, n, fullW);
+        const chart = window.chartInstances[canvasId];
+        chart.$obFull = { labels: d.labels, values, colors, budget: hasBudget ? d.budget : null, first: () => win.first };
+        // Moves the window to the scroll position and redraws it without animation.
+        const syncWindow = () => {
+            if (!placeWindow()) return;
+            const a = win.first, b = a + win.count;
+            chart.$obIdx = null;
+            chart.data.labels = d.labels.slice(a, b);
+            chart.data.datasets[0].data = values.slice(a, b);
+            chart.data.datasets[0].backgroundColor = colors.slice(a, b);
+            if (hasBudget) chart.data.datasets[1].data = d.budget.slice(a, b);
+            chart.update('none');
+        };
+        let frame = 0;
+        const onScroll = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; syncWindow(); }); };
+        const resizer = scroller && typeof ResizeObserver === 'function'
+            ? new ResizeObserver(() => { const c = win.count, w = win.fullW; layoutWindow(); if (c !== win.count || w !== win.fullW) { win.placed = false; onScroll(); } })
+            : null;
+        if (scroller) {
+            scroller.addEventListener('scroll', onScroll, { passive: true });
+            resizer?.observe(scroller);
+        }
+        const destroy = chart.destroy.bind(chart);
+        chart.destroy = () => {
+            if (frame) cancelAnimationFrame(frame);
+            scroller?.removeEventListener('scroll', onScroll);
+            resizer?.disconnect();
+            destroy();
+        };
         return true;
     } catch (error) {
         console.error('Error creating browse chart:', error);
