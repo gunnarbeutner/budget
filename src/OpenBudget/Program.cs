@@ -20,6 +20,8 @@ if (args.Length > 0 && args[0].Equals("users", StringComparison.OrdinalIgnoreCas
     return await UserCli.RunAsync(args[1..]);
 if (args.Length > 0 && args[0].Equals(DocumentsCli.Command, StringComparison.OrdinalIgnoreCase))
     return await DocumentsCli.RunAsync(args[1..]);
+if (args.Length > 0 && args[0].Equals(MoneyMoneyIconsCli.Command, StringComparison.OrdinalIgnoreCase))
+    return await MoneyMoneyIconsCli.RunAsync(args[1..]);
 
 var builder = WebApplication.CreateBuilder(args);
 

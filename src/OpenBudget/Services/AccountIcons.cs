@@ -14,7 +14,7 @@ public static class AccountIcons
         "bi-coin", "bi-credit-card", "bi-credit-card-2-front", "bi-safe", "bi-safe2", "bi-graph-up-arrow", "bi-bar-chart-line",
         "bi-pie-chart", "bi-briefcase", "bi-building", "bi-house", "bi-house-heart", "bi-car-front", "bi-airplane",
         "bi-cart", "bi-gift", "bi-heart", "bi-people", "bi-person", "bi-mortarboard", "bi-shield-check", "bi-globe",
-        "bi-star", "bi-folder",
+        "bi-star", "bi-folder", "bi-envelope",
     ];
 
     /// <summary>Whether a value is one of the offered icons.</summary>

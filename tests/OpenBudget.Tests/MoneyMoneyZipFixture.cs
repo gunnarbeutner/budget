@@ -37,8 +37,8 @@ public static class MoneyMoneyZipFixture
             conn.CreateCollation("LOCALIZED", string.CompareOrdinal);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $"""
-                CREATE TABLE accounts (name TEXT COLLATE LOCALIZED, iban TEXT, currency TEXT, type INTEGER, portfolio INTEGER, balances TEXT, sort INTEGER, refresh_tsp INTEGER, error TEXT, group_key INTEGER);
-                CREATE TABLE account_groups (name TEXT, group_key INTEGER, sort INTEGER);
+                CREATE TABLE accounts (name TEXT COLLATE LOCALIZED, iban TEXT, currency TEXT, type INTEGER, portfolio INTEGER, balances TEXT, sort INTEGER, refresh_tsp INTEGER, error TEXT, group_key INTEGER, icon TEXT);
+                CREATE TABLE account_groups (name TEXT, group_key INTEGER, sort INTEGER, icon TEXT);
                 CREATE TABLE category_groups (name TEXT, group_key INTEGER, sort INTEGER, color TEXT);
                 CREATE TABLE categories (name TEXT, type INTEGER, color TEXT, rules TEXT, group_key INTEGER, sort INTEGER, userdata BLOB, apply_to_account TEXT);
                 CREATE TABLE transactions (local_account_key INTEGER, amount REAL, currency TEXT, timestamp INTEGER, name TEXT, comment TEXT, unformatted_purpose TEXT, category_key INTEGER, checkmark INTEGER, splitted INTEGER);
@@ -51,10 +51,10 @@ public static class MoneyMoneyZipFixture
                 INSERT INTO categories (name, type, group_key, userdata, apply_to_account) VALUES ('Cinema', 1, 3, CAST('6:budget,5:100.0,14:budgetInterval,1:2,4:uuid,3:abc,' AS BLOB), 'A2');
                 INSERT INTO categories (name, type, group_key, userdata, apply_to_account) VALUES ('Holiday', 1, 3, CAST('6:budget,6:1500.0,14:budgetInterval,1:3,' AS BLOB), 'G1');
                 INSERT INTO categories (name, type, group_key, apply_to_account) VALUES ('Salary', 1, 2, 'A99');
-                INSERT INTO account_groups (name, group_key, sort) VALUES ('Example Group', 0, 1);
-                INSERT INTO account_groups (name, group_key, sort) VALUES ('Example Sub Group', 1, 1);
-                INSERT INTO accounts (name, iban, currency, type, balances) VALUES ('Example Checking', $iban, 'EUR', 1, '');
-                INSERT INTO accounts (name, currency, type, balances, group_key) VALUES ('Example Savings', 'EUR', 2, '', 2);
+                INSERT INTO account_groups (name, group_key, sort, icon) VALUES ('Example Group', 0, 1, 'AccountIcon7-5');
+                INSERT INTO account_groups (name, group_key, sort, icon) VALUES ('Example Sub Group', 1, 1, 'NotAnIcon');
+                INSERT INTO accounts (name, iban, currency, type, balances, icon) VALUES ('Example Checking', $iban, 'EUR', 1, '', 'AccountIcon5-7');
+                INSERT INTO accounts (name, currency, type, balances, group_key, icon) VALUES ('Example Savings', 'EUR', 2, '', 2, 'AccountIcon4');
                 INSERT INTO transactions (local_account_key, amount, currency, timestamp, name, category_key, checkmark, splitted) VALUES (1, -12.5, 'EUR', 1767312000, 'Example Market', 2, 0, 0);
                 INSERT INTO transactions (local_account_key, amount, currency, timestamp, name, category_key, checkmark, splitted) VALUES (1, 2000, 'EUR', 1767398400, 'Example Employer', 5, 0, 0);
                 INSERT INTO transactions (local_account_key, amount, currency, timestamp, name, category_key, checkmark, splitted) VALUES (2, 100, 'EUR', 1767484800, 'Transfer', 1, 0, 0);

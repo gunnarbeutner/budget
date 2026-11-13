@@ -152,6 +152,10 @@ public sealed class MoneyMoneyBrowserImportTests : IAsyncDisposable
             var statement = await db.BankStatements.SingleAsync();
             Assert.Equal("Statement January", statement.Name);
             Assert.Equal(RowIds.Namespace(1, 1), statement.AccountId);
+            var looks = await db.Accounts.Where(a => a.OwnerUserId == Owner).OrderBy(a => a.Name).Select(a => a.Icon + " " + a.Color).ToListAsync();
+            Assert.Equal(new[] { "bi-cash-coin #1d4ed8", " #2a7330" }, looks);
+            var groups = await db.AccountGroups.Where(g => g.OwnerUserId == Owner).OrderBy(g => g.Name).Select(g => g.Icon + " " + g.Color).ToListAsync();
+            Assert.Equal(new[] { "bi-bank #4b5563", " " }, groups);
         }
         Assert.Empty(Directory.EnumerateFileSystemEntries(staging));
     }

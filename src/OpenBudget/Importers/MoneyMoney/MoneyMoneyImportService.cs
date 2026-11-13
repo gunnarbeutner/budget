@@ -56,11 +56,11 @@ public class MoneyMoneyImportService
     // the arrays aren't reallocated on every import (CA1861); they mirror the VALUES lists below.
     private static readonly string[] AccountInsertParameters =
     {
-        "$id", "$sid", "$name", "$iban", "$currency", "$type", "$portfolio", "$balances", "$sort", "$refresh_tsp", "$error", "$group_key", "$provider", "$closed"
+        "$id", "$sid", "$name", "$iban", "$currency", "$type", "$portfolio", "$balances", "$sort", "$refresh_tsp", "$error", "$group_key", "$provider", "$closed", "$icon", "$color"
     };
     private static readonly string[] AccountGroupInsertParameters =
     {
-        "$id", "$sid", "$name", "$group_key", "$sort"
+        "$id", "$sid", "$name", "$group_key", "$sort", "$icon", "$color"
     };
     private static readonly string[] CategoryGroupInsertParameters =
     {
@@ -542,24 +542,25 @@ public class MoneyMoneyImportService
         string groupKeyExpr = hasGroupKey ? "group_key" : "NULL AS group_key";
         // MoneyMoney's refresh bit mask: 16 marks an account the user closed there.
         string closedExpr = await ColumnExistsAsync(src, "accounts", "refresh", ct) ? $"(COALESCE(refresh, 0) & {ClosedRefreshBit}) <> 0" : "0";
+        string iconExpr = await ColumnExistsAsync(src, "accounts", "icon", ct) ? "icon" : "NULL AS icon";
         string select = $"""
-            SELECT rowid, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, {groupKeyExpr}, {closedExpr}
+            SELECT rowid, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, {groupKeyExpr}, {closedExpr}, {iconExpr}
             FROM accounts
             """;
         // After a structure takeover an upload only inserts accounts it newly reports (ungrouped, unsorted: they land
         // in "Other accounts") and refreshes the MoneyMoney-owned ones' bank-side fields; name, group and order stay.
         string insert = keepStructure
             ? """
-              INSERT INTO accounts (Id, OwnerUserId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider, closed)
-              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider, $closed)
+              INSERT INTO accounts (Id, OwnerUserId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider, closed, icon, color)
+              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider, $closed, $icon, $color)
               ON CONFLICT(Id) DO UPDATE SET iban = excluded.iban, currency = excluded.currency, type = excluded.type,
                   portfolio = excluded.portfolio, balances = excluded.balances, refresh_tsp = excluded.refresh_tsp, error = excluded.error,
                   closed = accounts.closed OR excluded.closed
               WHERE accounts.provider = 'moneymoney'
               """
             : """
-              INSERT INTO accounts (Id, OwnerUserId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider, closed)
-              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider, $closed)
+              INSERT INTO accounts (Id, OwnerUserId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider, closed, icon, color)
+              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider, $closed, $icon, $color)
               """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {
@@ -582,6 +583,9 @@ public class MoneyMoneyImportService
             cmd.Parameters["$group_key"].Value = r.IsDBNull(10)
                 ? DBNull.Value
                 : NamespaceParentKey(idSpace, r.GetInt64(10));
+            var look = MoneyMoneyIcons.Parse(r.IsDBNull(12) ? null : r.GetString(12));
+            cmd.Parameters["$icon"].Value = (object?)look?.Icon ?? DBNull.Value;
+            cmd.Parameters["$color"].Value = (object?)look?.Color ?? DBNull.Value;
             if (keepStructure)
             {
                 cmd.Parameters["$sort"].Value = DBNull.Value;
@@ -602,10 +606,11 @@ public class MoneyMoneyImportService
         // account_groups landed in the exporter after the first releases; tolerate its absence
         // so a stale exporter upload still imports (accounts simply land without a parent ref).
         if (!TableExists(src, "account_groups")) return 0;
-        const string select = "SELECT rowid, name, group_key, sort FROM account_groups";
+        string iconExpr = await ColumnExistsAsync(src, "account_groups", "icon", ct) ? "icon" : "NULL AS icon";
+        string select = $"SELECT rowid, name, group_key, sort, {iconExpr} FROM account_groups";
         const string insert = """
-            INSERT INTO account_groups (Id, OwnerUserId, name, group_key, sort)
-            VALUES ($id, $sid, $name, $group_key, $sort)
+            INSERT INTO account_groups (Id, OwnerUserId, name, group_key, sort, icon, color)
+            VALUES ($id, $sid, $name, $group_key, $sort, $icon, $color)
             """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {
@@ -617,6 +622,9 @@ public class MoneyMoneyImportService
                 ? DBNull.Value
                 : NamespaceParentKey(idSpace, r.GetInt64(2));
             cmd.Parameters["$sort"].Value = r.IsDBNull(3) ? DBNull.Value : r.GetInt64(3);
+            var look = MoneyMoneyIcons.Parse(r.IsDBNull(4) ? null : r.GetString(4));
+            cmd.Parameters["$icon"].Value = (object?)look?.Icon ?? DBNull.Value;
+            cmd.Parameters["$color"].Value = (object?)look?.Color ?? DBNull.Value;
         }, AccountGroupInsertParameters, ct);
     }
 

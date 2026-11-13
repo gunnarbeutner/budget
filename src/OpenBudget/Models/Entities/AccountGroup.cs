@@ -28,11 +28,11 @@ public class AccountGroup
     [Column("sort")]
     public long? Sort { get; set; }
 
-    /// <summary>The Bootstrap icon its owner picked; null = the folder. Uploads never change it.</summary>
+    /// <summary>The Bootstrap icon its owner picked; null = the folder. Set from MoneyMoney's icon by the import; later uploads never change it.</summary>
     [Column("icon")]
     public string? Icon { get; set; }
 
-    /// <summary>The colour (hex) its owner picked for the icon; null = the default text colour. Uploads never change it.</summary>
+    /// <summary>The colour (hex) its owner picked for the icon; null = the default text colour. Set from MoneyMoney's icon by the import; later uploads never change it.</summary>
     [Column("color")]
     public string? Color { get; set; }
 

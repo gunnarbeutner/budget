@@ -94,11 +94,11 @@ public class Account
     [Column("closed")]
     public bool Closed { get; set; }
 
-    /// <summary>The Bootstrap icon its owner picked (see <c>AccountIcons</c>); null = the icon of its <see cref="Type"/>. Uploads never change it.</summary>
+    /// <summary>The Bootstrap icon its owner picked (see <c>AccountIcons</c>); null = the icon of its <see cref="Type"/>. Set from MoneyMoney's icon by the import; later uploads never change it.</summary>
     [Column("icon")]
     public string? Icon { get; set; }
 
-    /// <summary>The colour (hex) its owner picked for the icon; null = the default text colour. Uploads never change it.</summary>
+    /// <summary>The colour (hex) its owner picked for the icon; null = the default text colour. Set from MoneyMoney's icon by the import; later uploads never change it.</summary>
     [Column("color")]
     public string? Color { get; set; }
 
