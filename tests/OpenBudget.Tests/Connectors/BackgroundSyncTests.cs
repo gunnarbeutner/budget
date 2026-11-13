@@ -5,6 +5,7 @@ using OpenBudget.Connectors;
 using OpenBudget.Connectors.FakeBank;
 using OpenBudget.Connectors.Sync;
 using OpenBudget.Models;
+using OpenBudget.Services;
 using Xunit;
 
 namespace OpenBudget.Tests.Connectors;
@@ -175,7 +176,7 @@ public sealed class BackgroundSyncTests
         var first = await w.AddLoginAsync(BankWorld.Alice);
         var second = await w.AddLoginAsync(BankWorld.Alice);
         var flagged = await w.AddLoginAsync(BankWorld.Alice);
-        foreach (var id in new[] { first, second, flagged }) await w.For(BankWorld.Alice).SetBackgroundAsync(id, true);
+        await w.For(BankWorld.Alice).SetBackgroundAsync(off, false); // the others are on by default
         await using (var db = await w.T.System.CreateDbContextAsync())
         {
             await db.BankLogins.Where(l => l.Id == flagged).ExecuteUpdateAsync(s => s.SetProperty(l => l.NeedsManualSync, "TAN"));
@@ -202,27 +203,94 @@ public sealed class BackgroundSyncTests
     }
 
     [Fact]
-    public async Task Fints_banks_run_in_the_background_only_once_switched_on_for_the_bank()
+    public async Task Fints_banks_run_in_the_background_unless_an_admin_revoked_the_bank()
     {
         var registration = FinTs.FinTsTestRegistration.Create();
+        var blz = registration.FinTsBlz!;
         await using var w = await BankWorld.CreateAsync(extras: new BankWorldExtras { Registrations = [registration] });
         var view = await w.For(BankWorld.Alice).CreateLoginAsync(registration.ConnectorType, "Bank", "user", "pin");
-        await w.For(BankWorld.Alice).SetBackgroundAsync(view.Id, true);
+        Assert.True(view.BackgroundEnabled);
+        Assert.True((await w.For(BankWorld.Alice).GetLoginAsync(view.Id))!.FinTsBankAllowed);
+
+        // only an admin may revoke a bank
+        await Assert.ThrowsAsync<OpenBudget.Services.AccessDeniedException>(() => w.For(BankWorld.Alice).SetFinTsBankAsync(blz, false));
+        await using (var db = await w.T.System.CreateDbContextAsync())
+        {
+            db.FinTsBankSettings.Add(new FinTsBankSetting { Blz = blz, BackgroundEnabled = false });
+            await db.SaveChangesAsync();
+        }
         Assert.False((await w.For(BankWorld.Alice).GetLoginAsync(view.Id))!.FinTsBankAllowed);
         Assert.Equal(0, await Scheduler(w).TickAsync(default));
 
-        // only an admin may switch a bank on
-        await Assert.ThrowsAsync<OpenBudget.Services.AccessDeniedException>(() => w.For(BankWorld.Alice).SetFinTsBankAsync(registration.FinTsBlz!, true));
         await using (var db = await w.T.System.CreateDbContextAsync())
         {
-            db.FinTsBankSettings.Add(new FinTsBankSetting { Blz = registration.FinTsBlz!, BackgroundEnabled = true });
-            await db.SaveChangesAsync();
+            await db.FinTsBankSettings.ExecuteDeleteAsync();
         }
-        Assert.True((await w.For(BankWorld.Alice).GetLoginAsync(view.Id))!.FinTsBankAllowed);
         Assert.Equal(1, await Scheduler(w).TickAsync(default));
         await w.Coordinator.WhenIdleAsync(view.Id);
         // the gate stops before the first dialog: the login was never set up by a manual sync
         Assert.True(w.Coordinator.GetStatus(BankWorld.Alice, view.Id)!.NeedsUser);
+    }
+
+    [Fact]
+    public void Fints_evidence_counts_runs_without_a_tan_request_and_the_last_request()
+    {
+        var at = new DateTime(2026, 11, 13, 12, 0, 0, DateTimeKind.Utc);
+        Assert.Equal(new FinTsEvidence(0, 0, null), FinTsEvidence.From([]));
+        Assert.Equal(new FinTsEvidence(3, 3, null), FinTsEvidence.From([(at, "3076"), (at.AddHours(-1), "-"), (at.AddHours(-2), "3076, -")]));
+        Assert.Equal(new FinTsEvidence(3, 1, at.AddHours(-1)),
+            FinTsEvidence.From([(at, "3076"), (at.AddHours(-1), "0030 3955"), (at.AddHours(-2), "-, 3955")]));
+        Assert.False(FinTsEvidence.AsksForTan(null));
+        Assert.True(FinTsEvidence.AsksForTan("3076, 0030"));
+    }
+
+    [Fact]
+    public async Task Fints_evidence_spans_all_users_and_is_for_admins_only()
+    {
+        var registration = FinTs.FinTsTestRegistration.Create();
+        var blz = registration.FinTsBlz!;
+        await using var w = await BankWorld.CreateAsync(extras: new BankWorldExtras { Registrations = [registration] });
+        var alice = await w.For(BankWorld.Alice).CreateLoginAsync(registration.ConnectorType, "Bank", "user", "pin");
+        var bob = await w.For(BankWorld.Bob).CreateLoginAsync(registration.ConnectorType, "Bank", "user", "pin");
+        var now = DateTime.UtcNow;
+        await using (var db = await w.T.System.CreateDbContextAsync())
+        {
+            db.BackgroundSyncRuns.Add(new BackgroundSyncRun { BankLoginId = alice.Id, OwnerUserId = BankWorld.Alice, StartedAt = now, FinishedAt = now, FinTsCodes = "3076", Blz = blz });
+            db.BackgroundSyncRuns.Add(new BackgroundSyncRun { BankLoginId = bob.Id, OwnerUserId = BankWorld.Bob, StartedAt = now.AddHours(-1), FinishedAt = now, FinTsCodes = "0030", Blz = blz });
+            (await db.Users.SingleAsync(u => u.Id == BankWorld.Alice)).IsAdmin = true;
+            await db.SaveChangesAsync();
+        }
+        var evidence = await w.For(BankWorld.Alice).GetFinTsEvidenceAsync(blz);
+        Assert.Equal(2, evidence.Runs);
+        Assert.Equal(1, evidence.WithoutTan);
+        await Assert.ThrowsAsync<OpenBudget.Services.AccessDeniedException>(() => w.For(BankWorld.Bob).GetFinTsEvidenceAsync(blz));
+    }
+
+    [Fact]
+    public async Task Existing_full_logins_get_background_syncs_once()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        var fresh = await w.AddLoginAsync(BankWorld.Alice);
+        var invalid = await w.AddLoginAsync(BankWorld.Alice);
+        var ran = await w.AddLoginAsync(BankWorld.Alice);
+        var now = DateTime.UtcNow;
+        await using (var db = await w.T.System.CreateDbContextAsync())
+        {
+            await db.BankLogins.ExecuteUpdateAsync(s => s.SetProperty(l => l.BackgroundEnabled, false).SetProperty(l => l.BackgroundDefaulted, false));
+            await db.BankLogins.Where(l => l.Id == invalid).ExecuteUpdateAsync(s => s.SetProperty(l => l.CredentialsInvalid, true));
+            db.BackgroundSyncRuns.Add(new BackgroundSyncRun { BankLoginId = ran, OwnerUserId = BankWorld.Alice, Background = true, StartedAt = now, FinishedAt = now });
+            await db.SaveChangesAsync();
+            Assert.Equal(1, await OpenBudget.Services.BackgroundDefaults.ApplyAsync(db, w.Registry, w.Secrets));
+        }
+        Assert.True((await StoredAsync(w, fresh)).BackgroundEnabled);
+        Assert.False((await StoredAsync(w, invalid)).BackgroundEnabled);
+        Assert.False((await StoredAsync(w, ran)).BackgroundEnabled);
+
+        // the owner's later choice stays
+        await w.For(BankWorld.Alice).SetBackgroundAsync(fresh, false);
+        await using (var db = await w.T.System.CreateDbContextAsync())
+            Assert.Equal(0, await OpenBudget.Services.BackgroundDefaults.ApplyAsync(db, w.Registry, w.Secrets));
+        Assert.False((await StoredAsync(w, fresh)).BackgroundEnabled);
     }
 
     // ---- interactive and background runs of one login ----

@@ -269,7 +269,7 @@
     <value>Works only while the bank keeps the session.</value>
   </data>
   <data name="Background_BankOff" xml:space="preserve">
-    <value>Background syncs for this bank are off (admin setting).</value>
+    <value>Turned off for this bank.</value>
   </data>
   <data name="Runs_Heading" xml:space="preserve">
     <value>Background runs</value>
@@ -288,18 +288,6 @@
   </data>
   <data name="Runs_Result_Failed" xml:space="preserve">
     <value>Failed</value>
-  </data>
-  <data name="FinTsBanks_Heading" xml:space="preserve">
-    <value>FinTS banks in the background</value>
-  </data>
-  <data name="FinTsBanks_Intro" xml:space="preserve">
-    <value>Off by default. Code 3076 means the bank needed no TAN; 0030 or 3955 means it wanted one. Turn a bank on only when its connections show 3076.</value>
-  </data>
-  <data name="FinTsBanks_NoEvidence" xml:space="preserve">
-    <value>No dialogs logged yet.</value>
-  </data>
-  <data name="FinTsBanks_Evidence" xml:space="preserve">
-    <value>Logged codes</value>
   </data>
   <data name="Orders_Instruments" xml:space="preserve">
     <value>Payment methods</value>
@@ -330,5 +318,29 @@
   </data>
   <data name="CredentialField_amazon_totp" xml:space="preserve">
     <value>TOTP secret (optional)</value>
+  </data>
+  <data name="Background_BankAllowed" xml:space="preserve">
+    <value>Background syncs allowed for this bank</value>
+  </data>
+  <data name="Background_Revoke" xml:space="preserve">
+    <value>Revoke</value>
+  </data>
+  <data name="Allow_Title" xml:space="preserve">
+    <value>Allow background syncs for {0}?</value>
+  </data>
+  <data name="Allow_Consequence" xml:space="preserve">
+    <value>If the bank asks for a TAN in the background anyway, at most one push notification goes out and background syncs pause until your next manual sync.</value>
+  </data>
+  <data name="Button_Allow" xml:space="preserve">
+    <value>Allow</value>
+  </data>
+  <data name="Evidence_None" xml:space="preserve">
+    <value>No syncs recorded yet.</value>
+  </data>
+  <data name="Evidence_NoTan" xml:space="preserve">
+    <value>The bank didn't ask for a TAN in {0} of {1} recent syncs.</value>
+  </data>
+  <data name="Evidence_LastTan" xml:space="preserve">
+    <value>It last asked on {0}.</value>
   </data>
 </root>

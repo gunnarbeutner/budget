@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261113111628_CategoryRestrictTo";
+        public override string LatestMigrationId => "20261113130231_BackgroundDefaults";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -535,6 +535,9 @@ namespace OpenBudget.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("BackgroundDefaulted")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("BackgroundEnabled")

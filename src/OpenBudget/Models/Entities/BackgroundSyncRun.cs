@@ -47,7 +47,7 @@ public class BackgroundSyncRun
     public string? Blz { get; set; }
 }
 
-/// <summary>Per FinTS bank (by bank code): whether background runs may use FinTS at all. Off until an admin switches it on.</summary>
+/// <summary>Per FinTS bank (by bank code): whether background runs may use FinTS at all. Allowed without a row; an admin revokes it with an off row.</summary>
 [Table("fints_bank_settings")]
 public class FinTsBankSetting
 {

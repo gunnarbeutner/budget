@@ -167,6 +167,9 @@ await using (var budgetDb = await app.Services.GetRequiredService<SystemDbContex
     {
         if (await ZeroCompanions.FollowAsync(zeroDb, null, null, null, CancellationToken.None) > 0) await zeroDb.SaveChangesAsync();
     }
+    // Logins that can sync fully on their own sync in the background unless the owner chose otherwise (idempotent).
+    await OpenBudget.Services.BackgroundDefaults.ApplyAsync(budgetDb, app.Services.GetRequiredService<OpenBudget.Connectors.ConnectorRegistry>(),
+        app.Services.GetRequiredService<SecretsProtector>());
     // Every user owns a project to land new accounts in (idempotent).
     await UserDefaultProject.EnsureAllAsync(app.Services.GetRequiredService<SystemDbContextFactory>());
     var ruleLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("OpenBudget.Rules");

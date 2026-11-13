@@ -112,12 +112,26 @@ else
                     </div>
                     @if (login.Silent != SilentCapability.None)
                     {
+                        var bankBlocked = BankBlocked(login);
                         <div class="col-sm-6 col-md-4">
                             <div class="form-check form-switch mb-1">
-                                <input class="form-check-input" type="checkbox" role="switch" id="@($"background-{login.Id}")" data-testid="background-switch"
-                                       checked="@login.BackgroundEnabled" @onchange="e => SetBackgroundAsync(login.Id, e.Value is true)" />
+                                <input @key="(login.Id, switchVersion)" class="form-check-input" type="checkbox" role="switch" id="@($"background-{login.Id}")" data-testid="background-switch"
+                                       checked="@(login.BackgroundEnabled && !bankBlocked)" disabled="@(bankBlocked && !isAdmin)"
+                                       @onchange="e => BackgroundChangedAsync(login, e.Value is true)" />
                                 <label class="form-check-label" for="@($"background-{login.Id}")">@L["Background_Switch"]</label>
                             </div>
+                            @if (bankBlocked && !isAdmin)
+                            {
+                                <div class="small text-body-secondary" data-testid="background-bank-off">@L["Background_BankOff"]</div>
+                            }
+                            else if (isAdmin && login.FinTsBlz != null && login.FinTsBankAllowed)
+                            {
+                                <div class="small text-body-secondary" data-testid="background-bank-allowed">
+                                    @L["Background_BankAllowed"] ·
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline small text-body-secondary" data-testid="background-bank-revoke"
+                                            @onclick="() => RevokeBankAsync(login.FinTsBlz)">@L["Background_Revoke"]</button>
+                                </div>
+                            }
                         </div>
                     }
                     @if (running)
@@ -135,7 +149,7 @@ else
                     }
                 </div>
 
-                @if (login.BackgroundEnabled)
+                @if (login.BackgroundEnabled && !BankBlocked(login))
                 {
                     <div class="small mb-2" data-testid="background-status">
                         @if (login.NeedsManualSync != null)
@@ -151,10 +165,6 @@ else
                         @if (login.Silent == SilentCapability.SessionOnly)
                         {
                             <div class="text-body-secondary">@L["Background_SessionOnly"]</div>
-                        }
-                        @if (login.FinTsBlz != null && !login.FinTsBankAllowed)
-                        {
-                            <div class="text-body-secondary" data-testid="background-bank-off">@L["Background_BankOff"]</div>
                         }
                     </div>
                 }
@@ -277,37 +287,6 @@ else
     </div>
 }
 
-@if (isAdmin && finTsBanks.Count > 0)
-{
-    <div class="card mt-3" data-testid="fints-banks">
-        <div class="card-body small">
-            <h6>@L["FinTsBanks_Heading"]</h6>
-            <p class="text-body-secondary">@L["FinTsBanks_Intro"]</p>
-            @foreach (var b in finTsBanks)
-            {
-                <div class="mb-2" @key="b.Blz">
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" role="switch" id="@($"fints-bank-{b.Blz}")" data-testid="fints-bank-switch"
-                               checked="@b.BackgroundEnabled" @onchange="e => SetFinTsBankAsync(b.Blz, e.Value is true)" />
-                        <label class="form-check-label" for="@($"fints-bank-{b.Blz}")">@b.Name (@b.Blz)</label>
-                    </div>
-                    @if (b.Evidence.Count == 0)
-                    {
-                        <div class="text-body-secondary">@L["FinTsBanks_NoEvidence"]</div>
-                    }
-                    else
-                    {
-                        <div class="text-body-secondary">
-                            @L["FinTsBanks_Evidence"]:
-                            @string.Join(" · ", b.Evidence.Select(e => $"{Clock.ToLocal(e.StartedAt):yyyy-MM-dd HH:mm} {e.FinTsCodes}"))
-                        </div>
-                    }
-                </div>
-            }
-        </div>
-    </div>
-}
-
 <Modal Show="@adding" Title="@L["Add_Heading"]" SizeClass="modal-lg" OnClose="@(() => adding = false)">
     <ChildContent>
         <form class="row g-2" id="new-login-form" @onsubmit="AddLoginAsync" @onsubmit:preventDefault>
@@ -425,6 +404,17 @@ else
     </Footer>
 </Modal>
 
+<Modal Show="@(allowing != null)" Title="@(allowing != null ? L["Allow_Title", allowing.ConnectorName].Value : "")" OnClose="CancelAllow">
+    <ChildContent>
+        <p data-testid="allow-evidence">@EvidenceText(allowEvidence)</p>
+        <p class="mb-0">@L["Allow_Consequence"]</p>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="CancelAllow">@L["Button_Cancel"]</button>
+        <button type="button" class="btn btn-primary" id="allow-confirm" @onclick="AllowConfirmedAsync">@L["Button_Allow"]</button>
+    </Footer>
+</Modal>
+
 <Modal Show="@(pendingDelete != null)" Title="@(pendingDelete != null ? L["Delete_Title", pendingDelete.DisplayName].Value : "")"
        OnClose="@(() => pendingDelete = null)">
     <ChildContent>
@@ -448,7 +438,9 @@ else
     private readonly Dictionary<int, string> linkChoice = new();
     private Dictionary<int, BankSyncStatus> statuses = new();
     private readonly Dictionary<int, List<BackgroundSyncRun>> runsByLogin = new();
-    private List<FinTsBankView> finTsBanks = [];
+    private BankLoginView? allowing;
+    private FinTsEvidence? allowEvidence;
+    private int switchVersion;
     private bool isAdmin;
     private int loadCount;
 
@@ -518,7 +510,6 @@ else
         candidatesByAccount.Clear();
         runsByLogin.Clear();
         isAdmin = await Bank.IsAdminAsync();
-        finTsBanks = isAdmin ? await Bank.GetFinTsBanksAsync() : [];
         foreach (var login in logins)
         {
             if (login.BackgroundEnabled || login.FinTsBlz != null) runsByLogin[login.Id] = await Bank.GetRunsAsync(login.Id);
@@ -597,7 +588,46 @@ else
 
     private Task SetBackgroundAsync(int id, bool enabled) => RunAsync(() => Bank.SetBackgroundAsync(id, enabled));
 
-    private Task SetFinTsBankAsync(string blz, bool enabled) => RunAsync(() => Bank.SetFinTsBankAsync(blz, enabled));
+    private static bool BankBlocked(BankLoginView login) => login.FinTsBlz != null && !login.FinTsBankAllowed;
+
+    private async Task BackgroundChangedAsync(BankLoginView login, bool enabled)
+    {
+        if (!enabled || !BankBlocked(login))
+        {
+            await SetBackgroundAsync(login.Id, enabled);
+            return;
+        }
+        allowEvidence = null;
+        allowing = login;
+        await RunAsync(async () => allowEvidence = await Bank.GetFinTsEvidenceAsync(login.FinTsBlz!));
+    }
+
+    private void CancelAllow()
+    {
+        allowing = null;
+        switchVersion++; // the browser already ticked the switch: render it anew, unticked
+    }
+
+    private async Task AllowConfirmedAsync()
+    {
+        if (allowing is not { FinTsBlz: { } blz } login) return;
+        allowing = null;
+        await RunAsync(async () =>
+        {
+            await Bank.SetFinTsBankAsync(blz, true);
+            await Bank.SetBackgroundAsync(login.Id, true);
+        });
+    }
+
+    private Task RevokeBankAsync(string blz) => RunAsync(() => Bank.SetFinTsBankAsync(blz, false));
+
+    private string EvidenceText(FinTsEvidence? e)
+    {
+        if (e == null) return "…";
+        if (e.Runs == 0) return L["Evidence_None"];
+        var text = L["Evidence_NoTan", e.WithoutTan, e.Runs].Value;
+        return e.LastTanAskedAt is { } at ? text + " " + L["Evidence_LastTan", Clock.ToLocal(at).ToString("d MMM")].Value : text;
+    }
 
     private Task SetIntervalAsync(BankLoginView login, string? value) =>
         RunAsync(() => Enum.TryParse<RefreshInterval>(value, out var i)

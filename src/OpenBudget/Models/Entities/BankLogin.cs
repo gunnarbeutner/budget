@@ -66,8 +66,14 @@ public class BankLogin
     /// </summary>
     public bool CredentialsInvalid { get; set; }
 
-    /// <summary>The owner switched background syncs on: the server syncs this login by itself, without asking anything.</summary>
+    /// <summary>Background syncs are on: the server syncs this login by itself, without asking anything.</summary>
     public bool BackgroundEnabled { get; set; }
+
+    /// <summary>
+    /// The background default was settled for this login (new logins and the owner's own choice set it); logins without it
+    /// get the default once at startup (see <see cref="OpenBudget.Services.BackgroundDefaults"/>).
+    /// </summary>
+    public bool BackgroundDefaulted { get; set; }
 
     /// <summary>
     /// Why a background run stopped before a step that needs the owner (a TAN, an expired session), or null. No

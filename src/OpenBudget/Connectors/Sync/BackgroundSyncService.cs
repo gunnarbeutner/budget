@@ -85,8 +85,7 @@ public sealed class BackgroundSyncService : BackgroundService
         if (InQuietHours(TimeOnly.FromDateTime(_clock.GetLocalNow().DateTime), _options)) return 0;
 
         await using var db = await _system.CreateDbContextAsync(ct);
-        var allowedBanks = (await db.FinTsBankSettings.AsNoTracking().Where(b => b.BackgroundEnabled).Select(b => b.Blz).ToListAsync(ct))
-            .ToHashSet(StringComparer.Ordinal);
+        var revokedBanks = await OpenBudget.Services.BankLoginService.RevokedBanksAsync(db, ct);
         var candidates = await db.BankLogins.AsNoTracking().Include(l => l.Accounts)
             .Where(l => l.BackgroundEnabled && !l.CredentialsInvalid && l.NeedsManualSync == null && l.EncryptedCredentials != null)
             .OrderBy(l => l.Id)
@@ -98,7 +97,7 @@ public sealed class BackgroundSyncService : BackgroundService
         {
             if (started >= limit) break;
             if (_registry.Find(login.ConnectorType) is not { } registration || registration.Silent == SilentCapability.None) continue;
-            if (registration.FinTsBlz is { } blz && !allowedBanks.Contains(blz)) continue;
+            if (registration.FinTsBlz is { } blz && revokedBanks.Contains(blz)) continue;
             if (!IsDue(login, now.UtcDateTime, _options)) continue;
             if (_coordinator.IsBusy(login.Id)) continue;
             var statements = login.Accounts.Where(a => RefreshPolicy.StatementsDue(a, now.UtcDateTime)).Select(a => a.Id).ToList();
