@@ -74,6 +74,30 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task A_zero_amount_booking_needs_no_category()
+    {
+        await using (var db = await Factory.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
+        {
+            EditingSeed.Add(db, 130, EditingSeed.BankAccountId, 0, "Zero deposit", new DateTime(2026, 3, 20, 0, 0, 0, DateTimeKind.Utc));
+            await db.SaveChangesAsync();
+        }
+
+        await GoToAsync(UncategorizedUrl);
+        await Expect(Page.GetByText(new Regex("4 transactions"))).ToBeVisibleAsync();
+        await Expect(Row("Zero deposit")).ToHaveCountAsync(0);
+
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3");
+        var row = Row("Zero deposit");
+        await Expect(row).ToHaveClassAsync(new Regex("text-body-secondary"));
+        await Expect(row.GetByTestId("tx-category")).ToHaveCountAsync(0);
+        await Expect(Row("Example Grocer").First.GetByTestId("tx-category")).ToHaveCountAsync(1);
+        // The details still offer a category.
+        await row.ClickAsync();
+        await Expect(Page.GetByTestId("tx-details-pick-category")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("tx-details-suggest")).ToHaveCountAsync(0);
+    }
+
+    [Test]
     public async Task Row_text_can_be_selected_without_expanding_the_row()
     {
         await GoToAsync(UncategorizedUrl);

@@ -160,6 +160,11 @@ await using (var budgetDb = await app.Services.GetRequiredService<SystemDbContex
     // Every category group and category has a colour (idempotent).
     await using (var colorDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
         await CategoryColorBackfill.FillAsync(colorDb);
+    // Uncategorized zero-amount bookings take their main booking's category (idempotent).
+    await using (var zeroDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
+    {
+        if (await ZeroCompanions.FollowAsync(zeroDb, null, null, null, CancellationToken.None) > 0) await zeroDb.SaveChangesAsync();
+    }
     // Every user owns a project to land new accounts in (idempotent).
     await UserDefaultProject.EnsureAllAsync(app.Services.GetRequiredService<SystemDbContextFactory>());
     var ruleLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("OpenBudget.Rules");

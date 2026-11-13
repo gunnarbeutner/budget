@@ -199,4 +199,7 @@ public static class TransactionCategorySource
 
     /// <summary>Set by an OpenBudget rule (<see cref="Transaction.RuleId"/>).</summary>
     public const string Rule = "rule";
+
+    /// <summary>Taken from the booking a zero-amount booking belongs to (see <c>ZeroCompanions</c>).</summary>
+    public const string Follow = "follow";
 }

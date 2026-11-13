@@ -1,8 +1,10 @@
+@using Microsoft.EntityFrameworkCore
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject IStringLocalizer<TxDetails> L
 @inject ClockService Clock
 @inject OrderEnrichmentService OrderInfo
+@inject IDbContextFactory<BudgetDbContext> DbFactory
 
 @* The in-place expansion of a selected transaction: the bank's details as a flowing "Label value" list (empty ones
    skipped), the full purpose, then the note and the actions. Bank fields are plain text (never editable); category,
@@ -44,6 +46,10 @@
             @if (!string.IsNullOrEmpty(SetByText))
             {
                 <span class="ms-1" data-testid="tx-details-category-source">(@SetByText)</span>
+            }
+            @if (mainName != null)
+            {
+                <span class="ms-1 text-body-secondary" data-testid="tx-details-follows">@L["Follows", mainName]</span>
             }
         </span>
         @if (!Row.CanEdit && !string.IsNullOrEmpty(Row.Note))
@@ -92,7 +98,13 @@
             <input type="text" class="form-control form-control-sm" data-testid="tx-details-note" maxlength="500" aria-label="@L["Note"]"
                    placeholder="@L["Note_Placeholder"]" value="@Row.Note" @onchange="OnNoteChanged" />
         }
-        @if (Row.CanEdit && string.IsNullOrEmpty(Row.CategoryName) && OnSuggest.HasDelegate)
+        @if (Row.CanEdit && Row.Amount == 0 && string.IsNullOrEmpty(Row.CategoryName) && OnPickCategory.HasDelegate)
+        {
+            <button type="button" class="ob-btn" data-testid="tx-details-pick-category" @onclick="e => OnPickCategory.InvokeAsync(e)">
+                <i class="bi bi-tag" aria-hidden="true"></i> @L["Action_PickCategory"]
+            </button>
+        }
+        @if (Row.CanEdit && Row.Amount != 0 && string.IsNullOrEmpty(Row.CategoryName) && OnSuggest.HasDelegate)
         {
             <button type="button" class="ob-btn" data-testid="tx-details-suggest" disabled="@suggesting" @onclick="SuggestAsync">
                 <i class="bi bi-lightbulb" aria-hidden="true"></i> @L["Action_Suggest"]
@@ -164,6 +176,8 @@
     [Parameter] public EventCallback OnShowSimilar { get; set; }
     /// <summary>Asks for a category suggestion for this booking (shown as a chip on the row).</summary>
     [Parameter] public EventCallback OnSuggest { get; set; }
+    /// <summary>Opens the category picker; offered for zero-amount bookings, which show no category pill.</summary>
+    [Parameter] public EventCallback<MouseEventArgs> OnPickCategory { get; set; }
 
     private bool suggesting;
 
@@ -210,8 +224,19 @@
     private BookingOrders? orders;
     private long ordersFor;
 
+    private string? mainName;
+    private long mainFor;
+
     protected override async Task OnParametersSetAsync()
     {
+        if (Row.Amount == 0 && mainFor != Row.Id)
+        {
+            mainFor = Row.Id;
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var main = await ZeroCompanions.FindMainAsync(db, Row.Id, CancellationToken.None);
+            mainName = main == null ? null : main.Name ?? "";
+        }
+        else if (Row.Amount != 0) mainName = null;
         if (string.IsNullOrWhiteSpace(Row.OrderItems) || ordersFor == Row.Id) return;
         ordersFor = Row.Id;
         orders = await OrderInfo.GetOrdersAsync(Row.Id);
@@ -241,6 +266,7 @@
         {
             TransactionCategorySource.Manual => L["SetBy_Manual"],
             TransactionCategorySource.Rule => L["SetBy_RuleUnknown"],
+            TransactionCategorySource.Follow => L["SetBy_Follow"],
             _ => L["SetBy_Import"],
         };
 

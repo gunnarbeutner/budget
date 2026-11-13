@@ -58,12 +58,13 @@ public static class TransactionQueryExtensions
     /// <summary>
     /// Restrict to uncategorized transactions of a source. The source app represents "no category" by
     /// pinning the transaction to a sentinel category with an empty name rather than leaving
-    /// category_key NULL, so both shapes count. Does not exclude split parents — callers do that.
+    /// category_key NULL, so both shapes count. Bookings of exactly 0.00 (bank info lines) need no category and
+    /// never count. Does not exclude split parents — callers do that.
     /// </summary>
     public static IQueryable<Transaction> WhereUncategorized(this IQueryable<Transaction> q, BudgetDbContext db, string ownerId)
     {
-        return q.Where(t => t.CategoryId == null
-            || !db.Categories.Any(c => c.OwnerUserId == ownerId && c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)));
+        return q.Where(t => t.Amount != 0 && (t.CategoryId == null
+            || !db.Categories.Any(c => c.OwnerUserId == ownerId && c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name))));
     }
 
     /// <summary>

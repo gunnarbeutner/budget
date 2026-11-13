@@ -442,7 +442,7 @@
                                         }
                                     </div>
                                 }
-                                <div class="tx-row @(cursorId == row.Id ? "tx-cursor" : "")" data-testid="tx-row" title="@(row.IsPending ? L["Tx_PendingTitle"].Value : null)"
+                                <div class="tx-row @(cursorId == row.Id ? "tx-cursor" : "") @(row.Amount == 0 ? "text-body-secondary" : "")" data-testid="tx-row" title="@(row.IsPending ? L["Tx_PendingTitle"].Value : null)"
                                      aria-selected="@isSelected.ToString().ToLowerInvariant()"
                                      @onclick="e => OnRowClickAsync(item, e)"
                                      @oncontextmenu="e => OnRowContextAsync(item, e)" @oncontextmenu:preventDefault="true">
@@ -452,7 +452,7 @@
                                         {
                                             var hasCategory = !string.IsNullOrEmpty(row.CategoryName);
                                             var pillStyle = hasCategory ? CategoryColors.For(row.CategoryId ?? 0, row.CategoryColor).Style : null;
-                                            @if (row.CanEdit)
+                                            @if (row.CanEdit && (hasCategory || row.Amount != 0))
                                             {
                                                 <button type="button" class="cat-pill @(hasCategory ? "" : "empty")" style="@pillStyle" data-testid="tx-category"
                                                         title="@L["Tx_CategoryTitle"]" @onclick="e => OpenPickerFromRow(row, e)" @onclick:stopPropagation="true">
@@ -504,7 +504,7 @@
                                         {
                                             <div class="tx-comment" data-testid="tx-note"><i class="bi bi-sticky me-1" aria-hidden="true"></i>@row.Note</div>
                                         }
-                                        @if (showCategoryColumn && row.CanEdit && string.IsNullOrEmpty(row.CategoryName)
+                                        @if (showCategoryColumn && row.CanEdit && string.IsNullOrEmpty(row.CategoryName) && row.Amount != 0
                                              && _suggestions.TryGetValue(row.Id, out var suggestion) && suggestion.Confidence >= SuggestionChip.InlineConfidence)
                                         {
                                             <SuggestionChip Suggestion="suggestion" OnAccept="() => AcceptSuggestionAsync(row, suggestion)"
@@ -523,6 +523,7 @@
                                                OnNoteSave="note => SetNoteForAsync(row.Id, note)"
                                                OnShowSimilar="() => ShowSimilarAsync(row)"
                                                OnSuggest="() => SuggestForRowAsync(row)"
+                                               OnPickCategory="e => OpenPickerFromRow(row, e)"
                                                OnEditBooking="() => OpenEditBookingAsync(row)"
                                                OnCreateRule="e => CreateRuleFromAsync(row, e)"
                                                PickerData="pickerData" ProjectId="ProjectId"

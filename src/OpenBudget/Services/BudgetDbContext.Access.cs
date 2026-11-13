@@ -104,8 +104,33 @@ public partial class BudgetDbContext
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         if (Scope != null) await EnforceWriteAccessAsync(Scope, cancellationToken);
-        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        var touched = _followingZeros ? [] : TouchedBookings();
+        var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        if (touched.Count > 0)
+        {
+            // Zero-amount companions of new or recategorized bookings take their category along.
+            _followingZeros = true;
+            try
+            {
+                var accounts = touched.Select(t => t.AccountId).Distinct().ToList();
+                if (await ZeroCompanions.FollowAsync(this, accounts, touched.Min(t => t.Timestamp), touched.Max(t => t.Timestamp), cancellationToken) > 0)
+                    saved += await SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+            }
+            finally { _followingZeros = false; }
+        }
+        return saved;
     }
+
+    private bool _followingZeros;
+
+    /// <summary>Bookings this save adds or recategorizes (account, timestamp): their zero-amount companions may follow.</summary>
+    private List<(long AccountId, long Timestamp)> TouchedBookings() =>
+        ChangeTracker.Entries<Transaction>()
+            .Where(e => e.Entity.AccountId != null
+                && (e.State == EntityState.Added
+                    || (e.State == EntityState.Modified && e.Entity.Amount != 0 && e.Property(t => t.CategoryId).IsModified)))
+            .Select(e => (e.Entity.AccountId!.Value, e.Entity.Timestamp))
+            .ToList();
 
     /// <summary>
     /// Refuses any pending change the scope's role doesn't allow. Rules:

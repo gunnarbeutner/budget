@@ -112,6 +112,22 @@ public sealed partial class CategorySuggestionTests
     }
 
     [Fact]
+    public async Task Zero_amount_bookings_get_no_suggestion()
+    {
+        await using var t = await WorldAsync();
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            db.Transactions.Add(Row(45, "Example Market", amount: 0));
+            await db.SaveChangesAsync();
+        }
+
+        var result = await For(t, AccessWorld.Alice).Service.SuggestAsync(AccessWorld.Shared, null, useAi: false);
+
+        Assert.DoesNotContain(result.Suggestions, x => x.TransactionId == 45);
+        Assert.Contains(result.Suggestions, x => x.TransactionId == 40);
+    }
+
+    [Fact]
     public async Task With_consent_only_the_unsure_rest_goes_to_the_ai_redacted()
     {
         await using var t = await WorldAsync();

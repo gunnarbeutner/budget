@@ -172,4 +172,13 @@
   <data name="Order_ShipmentUnclear" xml:space="preserve">
     <value>Lieferung unklar</value>
   </data>
+  <data name="Follows" xml:space="preserve">
+    <value>gehört zu {0}</value>
+  </data>
+  <data name="Action_PickCategory" xml:space="preserve">
+    <value>Kategorie wählen</value>
+  </data>
+  <data name="SetBy_Follow" xml:space="preserve">
+    <value>von der zugehörigen Buchung übernommen</value>
+  </data>
 </root>

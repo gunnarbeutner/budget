@@ -571,7 +571,7 @@ public partial class Browse
         popupTargets = [.. selected];
         var single = popupTargets.Count == 1 && rowCache.TryGetValue(popupTargets[0], out var r) ? r : null;
         popupCurrentCategory = single?.CategoryId;
-        popupSuggestion = single != null && single.CategoryId == null && _suggestions.TryGetValue(single.Id, out var s) && s.Split == null ? s : null;
+        popupSuggestion = single != null && single.CategoryId == null && single.Amount != 0 && _suggestions.TryGetValue(single.Id, out var s) && s.Split == null ? s : null;
         (popupX, popupY) = (x, y);
         popup = PopupKind.Picker;
     }

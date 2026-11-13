@@ -107,7 +107,7 @@ public sealed partial class CategorySuggestionService
         if (ctx == null) return new([], [], null, 0, 0);
 
         var history = ctx.Rows.Values.Where(t => t.CategoryId is { } c && ctx.ById.ContainsKey(c)).ToList();
-        var targets = ctx.Rows.Values.Where(t => t.CategoryId is not { } c || !ctx.ById.ContainsKey(c))
+        var targets = ctx.Rows.Values.Where(t => t.Amount != 0 && (t.CategoryId is not { } c || !ctx.ById.ContainsKey(c)))
             .Where(t => transactionIds == null || transactionIds.Contains(t.Id))
             .OrderByDescending(t => t.Timestamp)
             .ToList();

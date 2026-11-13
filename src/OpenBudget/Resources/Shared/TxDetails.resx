@@ -172,4 +172,13 @@
   <data name="Order_ShipmentUnclear" xml:space="preserve">
     <value>shipment unclear</value>
   </data>
+  <data name="Follows" xml:space="preserve">
+    <value>follows {0}</value>
+  </data>
+  <data name="Action_PickCategory" xml:space="preserve">
+    <value>Choose category</value>
+  </data>
+  <data name="SetBy_Follow" xml:space="preserve">
+    <value>taken from the matching booking</value>
+  </data>
 </root>
