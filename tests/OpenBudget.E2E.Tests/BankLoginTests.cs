@@ -66,7 +66,7 @@ public sealed class BankLoginTests : EndToEndTestBase
     public async Task Add_login_answer_challenge_link_sync_switch_and_browse()
     {
         await SeedGiroAsync();
-        await GoToAsync("/banklogins");
+        await GoToAsync("/connections");
         await Page.GetByTestId("add-login-open").ClickAsync();
 
         // The real banks are offered too; pick the fake one explicitly.
@@ -120,21 +120,21 @@ public sealed class BankLoginTests : EndToEndTestBase
     [Test]
     public async Task Bank_logins_are_private_to_their_owner()
     {
-        await GoToAsync("/banklogins");
+        await GoToAsync("/connections");
         await Page.GetByTestId("add-login-open").ClickAsync();
+        // The real banks are offered too; pick the fake one explicitly (before its credential fields show).
+        await Page.Locator("#new-login-connector").SelectOptionAsync("fake");
         await Page.Locator("#new-login-username").FillAsync("demo");
         await Page.Locator("#new-login-pin").FillAsync("1234");
-        // The real banks are offered too; pick the fake one explicitly.
-        await Page.Locator("#new-login-connector").SelectOptionAsync("fake");
         await Page.Locator("#new-login-name").FillAsync("Private login");
         await Page.Locator("#new-login-add").ClickAsync();
         await Expect(Page.Locator("[data-bank-login='Private login']")).ToBeVisibleAsync();
 
         await LogoutAsync();
         await LoginAsync(E2ESeed.SecondUserName);
-        await GoToAsync("/banklogins");
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Bank logins" })).ToBeVisibleAsync();
-        await Expect(Page.GetByText("No bank logins yet.")).ToBeVisibleAsync();
+        await GoToAsync("/connections");
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Connections" })).ToBeVisibleAsync();
+        await Expect(Page.GetByText("No connections yet.")).ToBeVisibleAsync();
         await Expect(Page.Locator("[data-bank-login]")).ToHaveCountAsync(0);
     }
 }
