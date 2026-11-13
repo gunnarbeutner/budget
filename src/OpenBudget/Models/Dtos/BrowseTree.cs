@@ -29,6 +29,8 @@ public class BrowseAccountNode
     public string? Currency { get; init; }
     /// <summary>Signed net flow over the current period (incoming − outgoing).</summary>
     public decimal PeriodSum { get; init; }
+    /// <summary>The net flow over the current period per currency, the account's currency first.</summary>
+    public IReadOnlyList<CurrencyAmount> PeriodSums { get; init; } = [];
     /// <summary>
     /// True for a securities depot (imported type 7 / portfolio flag). For these,
     /// <see cref="Balance"/> reflects the holdings' market value rather than the packed cash

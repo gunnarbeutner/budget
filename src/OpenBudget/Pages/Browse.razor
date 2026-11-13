@@ -156,7 +156,7 @@
                 <div class="browse-summary" data-testid="browse-summary" role="group">
                     @if (selectionKind == "account" && SelectedAccountNode is { } acct)
                     {
-                        <span>@AnchorHeading: <span class="@(SelectionAccountPeriodSum < 0 ? "money-neg" : "")">@Formatting.FormatMoneyDe(SelectionAccountPeriodSum, SelectionAccountCurrency)</span></span>
+                        <span>@AnchorHeading: <span class="@(CurrencySums.AllNegative(acct.PeriodSums) ? "money-neg" : "")">@CurrencySums.Format(acct.PeriodSums, acct.Currency)</span></span>
                         @if (acct.PendingBalance is { } pending)
                         {
                             <span data-testid="account-pending">@L["Header_Pending"] @Formatting.FormatMoneyDe(pending, acct.Currency)</span>
@@ -218,7 +218,7 @@
             }
             @if (ToolbarAmount is { } amount)
             {
-                <span class="browse-balance @(amount.Value < 0 ? "money-neg" : "")" data-testid="browse-balance">@Formatting.FormatMoneyDe(amount.Value, amount.Currency)</span>
+                <span class="browse-balance @(CurrencySums.AllNegative(amount) ? "money-neg" : "")" data-testid="browse-balance">@CurrencySums.Format(amount, SumsBaseCurrency)</span>
                 @if (selectionKind == "all" && uncategorizedPeriod is { } up && (up.Income != 0m || up.Spent != 0m))
                 {
                     <span class="browse-balance-note" data-testid="browse-balance-uncategorized">@L["Header_InclUncategorized", Formatting.FormatMoneyDe(up.Income - up.Spent)]</span>
@@ -238,7 +238,7 @@
             @if (selected.Count > 0)
             {
                 <div class="tx-actionbar" data-testid="action-bar" role="toolbar" aria-label="@L["Bar_Aria"]">
-                    <span class="tx-actionbar-count" data-testid="action-bar-count">@L["Bar_Selected", selected.Count] · @Formatting.FormatMoneyDe(selectionSum)</span>
+                    <span class="tx-actionbar-count" data-testid="action-bar-count">@L["Bar_Selected", selected.Count] · @CurrencySums.Format(selectionSums, SumsBaseCurrency)</span>
                     <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="action-category" @onclick="e => OpenPickerFromBar(e)">
                         <i class="bi bi-tag" aria-hidden="true"></i> @L["Bar_Category"]
                     </button>
@@ -409,7 +409,7 @@
                     }
                 </div>
             }
-            else if (txTotals.Value.Count == 0)
+            else if (txTotals.Count == 0)
             {
                 <div class="text-body-secondary py-4 text-center">
                     <i class="bi bi-inbox" style="font-size: 1.6rem;" aria-hidden="true"></i>
@@ -434,7 +434,7 @@
                                         <span>@Clock.ToLocal(row.Date).ToString("dddd, dd.MM.yyyy")</span>
                                         @if (item.DayBalance is { } dayBalance)
                                         {
-                                            <span class="tx-day-balance" data-testid="tx-day-balance">@Formatting.FormatMoneyDe(dayBalance, row.Currency)</span>
+                                            <span class="tx-day-balance" data-testid="tx-day-balance">@Formatting.FormatMoneyDe(dayBalance, DayBalanceCurrency)</span>
                                         }
                                     </div>
                                 }
@@ -529,7 +529,7 @@
                 </div>
 
                 <div class="tx-footer">
-                    <span>@L["Footer_Total", txTotals.Value.Count] · @L["Footer_Sum"] @Formatting.FormatMoneyDe(txTotals.Value.Sum)</span>
+                    <span>@L["Footer_Total", txTotals.Count] · @L["Footer_Sum"] @CurrencySums.Format(txTotals.Sums, SumsBaseCurrency)</span>
                     <button type="button" class="btn btn-link btn-sm p-0" data-testid="shortcuts-open" @onclick="() => showShortcuts = true">
                         <i class="bi bi-keyboard" aria-hidden="true"></i> @L["Shortcuts_Link"]
                     </button>
@@ -600,7 +600,7 @@
     private long? anchorId;
     private long? expandedId;
     private (long Id, string Name)? expandedStatement;
-    private decimal selectionSum;
+    private IReadOnlyList<CurrencyAmount> selectionSums = [];
     private RunningBalance? runningBalance;
 
     // ---- popups ----
@@ -683,7 +683,7 @@
     // Tree + tx totals (count + sum across the active filter, refreshed on filter change).
     // The list rows themselves are streamed by <Virtualize> via LoadTxRowsAsync.
     private BrowseTree? tree;
-    private (int Count, decimal Sum)? txTotals;
+    private TransactionTotals? txTotals;
 
     /// <summary>The project's uncategorized bookings in the selected period (pending ones included), split into money
     /// out (positive) and in: "Transactions" lists them, so its figure and summary tiles count them. Null outside it.</summary>
@@ -1457,8 +1457,8 @@
             Period = new TimeRangeFilter(t.Year, t.FromMonth, t.ToMonth),
             Direction = direction,
         };
-        var spent = (await TransactionQueries.QueryTotalsAsync(Query(AmountDirection.Outgoing))).Sum;
-        var income = (await TransactionQueries.QueryTotalsAsync(Query(AmountDirection.Incoming))).Sum;
+        var spent = (await TransactionQueries.QueryTotalsAsync(Query(AmountDirection.Outgoing))).Net;
+        var income = (await TransactionQueries.QueryTotalsAsync(Query(AmountDirection.Incoming))).Net;
         return (-spent, income);
     }
 
@@ -1514,27 +1514,34 @@
 
     /// <summary>The figure next to the title: an account's balance, a depot's value, a category's period amount, the
     /// uncategorized sum. Null while loading.</summary>
-    private (decimal Value, string? Currency)? ToolbarAmount
+    private IReadOnlyList<CurrencyAmount>? ToolbarAmount
     {
         get
         {
             if (tree == null) return null;
             if (selectionKind == "account")
-                return SelectedAccountNode is { } a ? (a.Balance ?? 0m, a.Currency) : null;
+                return SelectedAccountNode is { } a ? [new CurrencyAmount(CurrencySums.Normalize(a.Currency), a.Balance ?? 0m)] : null;
             if (selectionKind == "accountgroup")
-                return SelectedGroupNode?.Sums.FirstOrDefault() is { } gs ? (gs.Amount, gs.Currency) : null;
+                return SelectedGroupNode is { Sums.Count: > 0 } g ? g.Sums : null;
             if (selectionKind == "uncategorized")
-                return txTotals is { } t ? (t.Sum, null) : null;
+                return txTotals?.Sums;
             if (selectionKind == "all")
             {
                 // The period's net of what the list shows: tracked income minus tracked spending, plus the
                 // uncategorized bookings' own signed amounts.
                 var tracked = tree.Categories.Sum(c => c.IsIncome ? c.Spent : -c.Spent);
-                return (tracked + (uncategorizedPeriod is { } u ? u.Income - u.Spent : 0m), null);
+                return [new CurrencyAmount("EUR", tracked + (uncategorizedPeriod is { } u ? u.Income - u.Spent : 0m))];
             }
-            return (SelectionIsIncome ? SelectionSpent : -SelectionSpent, null);
+            return [new CurrencyAmount("EUR", SelectionIsIncome ? SelectionSpent : -SelectionSpent)];
         }
     }
+
+    /// <summary>The currency listed first in text sums: the selected account's (or the group's single currency), else EUR.</summary>
+    private string SumsBaseCurrency => CurrencySums.Normalize(SelectedAccountNode?.Currency
+        ?? (selectionKind == "accountgroup" ? SelectedGroupNode?.Sums.FirstOrDefault()?.Currency : null));
+
+    /// <summary>The currency of the end-of-day balances: the account's own (they only count bookings in it).</summary>
+    private string DayBalanceCurrency => SumsBaseCurrency;
 
     private BrowseAccountNode? SelectedAccountNode =>
         tree != null && selectionKind == "account" && selectionId is { } aid
@@ -1555,7 +1562,6 @@
     private decimal? SelectionAccountBalance => selectionKind == "accountgroup"
         ? (SelectedGroupNode is { Sums.Count: 1 } g ? g.Sums[0].Amount : null)
         : SelectedAccountNode?.Balance;
-    private string? SelectionAccountCurrency => SelectedAccountNode?.Currency;
 
     /// <summary>A single account or an account group: the selections whose list is a ledger with balances.</summary>
     private bool IsAccountScope => selectionKind is "account" or "accountgroup";
@@ -1583,7 +1589,6 @@
         UpdateUrl();
         await ReloadTransactionsAsync();
     }
-    private decimal SelectionAccountPeriodSum => SelectedAccountNode?.PeriodSum ?? 0m;
 
     private bool SelectionIsIncome
     {

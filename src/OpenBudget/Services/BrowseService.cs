@@ -316,9 +316,11 @@ public class BrowseService
                 .Where(t => t.Splitted != 1)
                 .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
                 .WithinUtc(range)
-                .GroupBy(t => t.AccountId!.Value)
-                .Select(g => new { AccountId = g.Key, Sum = g.Sum(t => t.Amount) })
-                .ToDictionaryAsync(x => x.AccountId, x => x.Sum, ct);
+                .GroupBy(t => new { AccountId = t.AccountId!.Value, t.Currency })
+                .Select(g => new { g.Key.AccountId, g.Key.Currency, Sum = g.Sum(t => t.Amount) })
+                .ToListAsync(ct);
+            var periodSumsByAccount = accountPeriodSumsCents.GroupBy(x => x.AccountId)
+                .ToDictionary(g => g.Key, g => g.Select(x => (x.Currency, x.Sum / 100m)).ToList());
 
             // Depot accounts (type 7 / portfolio flag) report holdings market value as their
             // balance — the packed "balances" blob doesn't reflect securities. One grouped query
@@ -380,7 +382,8 @@ public class BrowseService
                     Name = a.Name ?? "",
                     Balance = balance,
                     Currency = a.Currency,
-                    PeriodSum = accountPeriodSumsCents.TryGetValue(a.Id, out var s) ? s / 100m : 0m,
+                    PeriodSum = periodSumsByAccount.TryGetValue(a.Id, out var ps) ? ps.Sum(x => x.Item2) : 0m,
+                    PeriodSums = periodSumsByAccount.TryGetValue(a.Id, out var pcs) ? CurrencySums.Group(pcs, a.Currency) : [],
                     IsPortfolio = isPortfolio,
                     IsAssigned = assignedAccountSet.Contains(a.Id),
                     Icon = a.Icon,

@@ -196,6 +196,22 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task Sums_of_bookings_in_different_currencies_are_shown_per_currency()
+    {
+        await using (var db = await Factory.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
+        {
+            (await db.Transactions.SingleAsync(t => t.Id == 103)).Currency = "USD";
+            await db.SaveChangesAsync();
+        }
+        await GoToAsync(UncategorizedUrl);
+        await Expect(Page.Locator(".tx-footer")).ToContainTextAsync("−59,50 € − 12,50 USD");
+
+        await Row("−25,00").ClickAsync();
+        await Row("−12,50").ClickAsync(new() { Modifiers = [CommandKey] });
+        await Expect(Page.GetByTestId("action-bar-count")).ToContainTextAsync("2 selected · −25,00 € − 12,50 USD");
+    }
+
+    [Test]
     public async Task The_single_row_context_menu_has_the_full_set_and_search_for_this_payee_prefills_the_search()
     {
         await GoToAsync(UncategorizedUrl);

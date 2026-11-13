@@ -142,14 +142,16 @@ public class TransactionQueryService
     /// scroll list calls Virtualize once per visible window, so footer totals (count + sum)
     /// live on a separate call that refreshes when filters change.
     /// </summary>
-    public async Task<(int Count, decimal Sum)> QueryTotalsAsync(TransactionQuery query, CancellationToken ct = default)
+    public async Task<TransactionTotals> QueryTotalsAsync(TransactionQuery query, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(query.OwnerUserId)) throw new ArgumentException("OwnerUserId is required.", nameof(query));
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var q = BuildFilteredQuery(db, query);
-        var count = await q.CountAsync(ct);
-        var sumCents = count == 0 ? 0L : await q.SumAsync(t => t.Amount, ct);
-        return (count, sumCents / 100m);
+        var perCurrency = await BuildFilteredQuery(db, query)
+            .GroupBy(t => t.Currency)
+            .Select(g => new { Currency = g.Key, Count = g.Count(), Cents = g.Sum(t => t.Amount) })
+            .ToListAsync(ct);
+        return new TransactionTotals(perCurrency.Sum(p => p.Count),
+            CurrencySums.Group(perCurrency.Select(p => (p.Currency, p.Cents / 100m))));
     }
 
     /// <summary>
@@ -297,32 +299,33 @@ public class TransactionQueryService
         return result;
     }
 
-    /// <summary>Sum (cents) of the given transactions the user can see, for the action bar's "N selected, sum".</summary>
-    public async Task<(int Count, decimal Sum)> GetSelectionTotalsAsync(IReadOnlyCollection<long> ids, CancellationToken ct = default)
+    /// <summary>Count and per-currency sums of the given transactions, for the action bar's "N selected, sum".</summary>
+    public async Task<TransactionTotals> GetSelectionTotalsAsync(IReadOnlyCollection<long> ids, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var count = 0;
-        var sum = 0L;
+        var rows = new List<(string? Currency, decimal Amount)>();
         foreach (var chunk in ids.Chunk(500))
         {
             var part = chunk;
-            var rows = await db.Transactions.Where(t => part.Contains(t.Id)).Select(t => t.Amount).ToListAsync(ct);
-            count += rows.Count;
-            sum += rows.Sum();
+            var found = await db.Transactions.Where(t => part.Contains(t.Id)).Select(t => new { t.Currency, t.Amount }).ToListAsync(ct);
+            rows.AddRange(found.Select(r => (r.Currency, r.Amount / 100m)));
         }
-        return (count, sum / 100m);
+        return new TransactionTotals(rows.Count, CurrencySums.Group(rows));
     }
 
-    /// <summary>Booked flows (UTC time, amount in euros) of an account, newest first, for the running balance.</summary>
+    /// <summary>Booked flows (UTC time, amount) of an account in the account's own currency, newest first, for the running
+    /// balance; bookings in other currencies do not move that balance.</summary>
     public async Task<List<(DateTime Date, decimal Amount)>> GetBookedFlowsAsync(long accountId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var accountCurrency = CurrencySums.Normalize(await db.Accounts.Where(a => a.Id == accountId).Select(a => a.Currency).FirstOrDefaultAsync(ct));
         var raw = await db.Transactions
             .Where(t => t.AccountId == accountId && t.Booked && t.Splitted != 1)
             .OrderByDescending(t => t.Timestamp)
-            .Select(t => new { t.Timestamp, t.Amount })
+            .Select(t => new { t.Timestamp, t.Amount, t.Currency })
             .ToListAsync(ct);
-        return raw.Select(r => (DateTimeOffset.FromUnixTimeSeconds(r.Timestamp).UtcDateTime, r.Amount / 100m)).ToList();
+        return raw.Where(r => CurrencySums.Normalize(r.Currency) == accountCurrency)
+            .Select(r => (DateTimeOffset.FromUnixTimeSeconds(r.Timestamp).UtcDateTime, r.Amount / 100m)).ToList();
     }
 
     /// <summary>

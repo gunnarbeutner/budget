@@ -265,7 +265,7 @@ public partial class Browse
         rowCache.Clear();
         cursorId = anchorId = expandedId = null;
         expandedStatement = null;
-        selectionSum = 0;
+        selectionSums = [];
         popup = PopupKind.None;
         popupTargets = [];
         _rulePickPayee = null;
@@ -319,7 +319,7 @@ public partial class Browse
 
     private async Task UpdateSelectionTotalsAsync()
     {
-        selectionSum = selected.Count == 0 ? 0m : (await TransactionQueries.GetSelectionTotalsAsync(selected)).Sum;
+        selectionSums = selected.Count == 0 ? [] : (await TransactionQueries.GetSelectionTotalsAsync(selected)).Sums;
     }
 
     // ---- filter handlers ----
@@ -442,7 +442,7 @@ public partial class Browse
         selected.Clear();
         expandedId = null;
         expandedStatement = null;
-        selectionSum = 0;
+        selectionSums = [];
         popup = PopupKind.None;
         await Task.CompletedTask;
     }

@@ -227,7 +227,8 @@ public sealed class CategorizationTests
         Assert.Equal(L(101, 100), await t.TransactionQueries.QueryIdsAsync(new TransactionQuery { OwnerUserId = Owner }));
         Assert.Equal(L(100), await t.TransactionQueries.QueryIdsAsync(new TransactionQuery { OwnerUserId = Owner }, skip: 1, take: 1));
         var totals = await t.TransactionQueries.GetSelectionTotalsAsync([100, 101]);
-        Assert.Equal((2, -20m), totals);
+        Assert.Equal(2, totals.Count);
+        Assert.Equal(-20m, Assert.Single(totals.Sums).Amount);
     }
 
     // ---- running balance ----

@@ -70,6 +70,13 @@ public enum AmountDirection
 [StructLayout(LayoutKind.Auto)]
 public readonly record struct TimeRangeFilter(int Year, int FromMonth, int ToMonth);
 
+/// <summary>How many bookings match and their sums, one per currency (base currency EUR first).</summary>
+public sealed record TransactionTotals(int Count, IReadOnlyList<CurrencyAmount> Sums)
+{
+    /// <summary>The signed net of all sums, for figures that already assume one currency (category totals).</summary>
+    public decimal Net => Sums.Sum(s => s.Amount);
+}
+
 public class TransactionPage
 {
     public IReadOnlyList<TransactionRow> Rows { get; init; } = Array.Empty<TransactionRow>();
