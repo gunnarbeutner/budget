@@ -1,5 +1,6 @@
 // Offline accuracy check of the category and budget suggestions against a COPY of a database, opened read-only.
-// Prints aggregate numbers only (no payees, amounts or IBANs; category paths in the confusion list). With --models it sends redacted bookings to the
+// Prints aggregate numbers only (no payees, amounts or IBANs; category paths in the confusion list). Per source
+// (rule-free: mandate, amount, iban, creditor, knn, ai) it prints count and accuracy. With --models it sends redacted bookings to the
 // configured OpenAI endpoint (OPENBUDGET_OPENAI_API_KEY in the environment) — only run it on data whose owners agreed.
 // --route decisions asks the Decisions API (OPENBUDGET_OPENAI_DECISIONS_MODEL, default gpt-6-luna) instead, one request
 // per booking; --route both runs the Responses models and the Decisions API on the same sample.
@@ -65,6 +66,21 @@ internal sealed record OwnerData(
 {
     public List<Transaction> Categorized { get; } = Txs.Where(t => t.CategoryId is { } c && Valid.ContainsKey(c)).ToList();
 
+    private List<PromptCategory>? _categories;
+    private CategoryEvidence? _evidence;
+
+    /// <summary>The categories as the AI sees them (handles, income, rule hints); no restrictions in the evaluation.</summary>
+    public List<PromptCategory> PromptCategories(IEnumerable<string> names)
+    {
+        if (_categories != null) return _categories;
+        var evidence = new CategoryEvidence(new Dictionary<long, Transaction>(), Accounts.Values, new Dictionary<long, PromptCategory>());
+        return _categories = CategoryEvidence.Categories(Options.Select(o => (o.Id, o.Path, IncomeCategories.Contains(o.Id))),
+            Rules.Where(r => Valid.ContainsKey(r.CategoryId)), Accounts.Keys.ToList(), (_, _) => true, a => evidence.AccountToken(a), names);
+    }
+
+    public CategoryEvidence Evidence(IEnumerable<string> names) =>
+        _evidence ??= new CategoryEvidence(Txs.ToDictionary(t => t.Id), Accounts.Values, PromptCategories(names).ToDictionary(c => c.Id));
+
     public HashSet<long> IncomeCategories { get; } = Txs.Where(t => t.CategoryId is { } c && Valid.ContainsKey(c))
         .GroupBy(t => t.CategoryId!.Value).Where(g => g.Sum(t => t.Amount) > 0).Select(g => g.Key).ToHashSet();
 }
@@ -88,6 +104,8 @@ internal static class CategoryEval
 {
     private sealed record Item(OwnerData Owner, Transaction Tx, long Truth);
 
+    private sealed record Unsure(Item Item, List<HistoryBooking> Neighbours);
+
     private sealed record Prediction(long? Category, double Confidence, string Source, List<long> Top3);
 
     public static async Task RunAsync(List<OwnerData> data, List<string> names, Args opts)
@@ -100,27 +118,19 @@ internal static class CategoryEval
         var hidden = sample.Select(s => s.Tx.Id).ToHashSet();
         Console.WriteLine($"\n== Categories: sample {sample.Count} of {pool.Count} categorized bookings in the last 2 years ({sample.GroupBy(s => s.Owner.Owner).Count()} owners)");
 
-        var matchers = data.ToDictionary(d => d.Owner, d => new CategoryMatching(d.Categorized.Where(t => !hidden.Contains(t.Id)).Select(t =>
-            new HistoryBooking(t.Id, t.CategoryId!.Value, CategoryMatching.IbanKey(t.CounterpartyIban), CategoryMatching.PayeeKey(t.Name),
-                CategoryMatching.Tokens(t.Name, Purpose(t)), t.Amount))));
+        var matchers = data.ToDictionary(d => d.Owner, d => new CategoryMatching(d.Categorized.Where(t => !hidden.Contains(t.Id))
+            .Select(t => CategoryEvidence.History(t, t.CategoryId!.Value))));
 
         var det = new Dictionary<long, Prediction>();
-        var unsure = new List<(Item Item, List<Neighbour> Neighbours)>();
+        var unsure = new List<Unsure>();
         foreach (var s in sample)
         {
             var m = matchers[s.Owner.Owner];
-            var target = new TargetBooking(s.Tx.Id, CategoryMatching.IbanKey(s.Tx.CounterpartyIban), CategoryMatching.PayeeKey(s.Tx.Name),
-                CategoryMatching.Tokens(s.Tx.Name, Purpose(s.Tx)), s.Tx.Amount);
-            var vote = m.IbanVote(target);
-            var neighbours = m.Neighbours(target);
-            if (vote == null || vote.Confidence < CategorySuggestionService.SureEnough)
-            {
-                var knn = CategoryMatching.KnnVote(neighbours);
-                if (knn != null && (vote == null || knn.Confidence > vote.Confidence)) vote = knn;
-            }
+            var target = CategoryEvidence.Target(s.Tx);
+            var vote = m.Decide(target, null, CategorySuggestionService.SureEnough, out var neighbours);
             var top3 = Top3(neighbours, vote?.CategoryId);
             det[s.Tx.Id] = vote == null ? new Prediction(null, 0, "none", top3) : new Prediction(vote.CategoryId, vote.Confidence, vote.Source, top3);
-            if (vote == null || vote.Confidence < CategorySuggestionService.SureEnough) unsure.Add((s, neighbours));
+            if (vote == null || vote.Confidence < CategorySuggestionService.SureEnough) unsure.Add(new Unsure(s, CategoryEvidence.PromptNeighbours(m, target, neighbours)));
         }
         Report("deterministic only", sample, det, null);
 
@@ -134,26 +144,24 @@ internal static class CategoryEval
             foreach (var ownerGroup in unsure.GroupBy(u => u.Item.Owner))
             {
                 var owner = ownerGroup.Key;
-                var categories = owner.Options.Select((o, i) => new PromptCategory(CategoryPrompt.Handle(i + 1), o.Id, o.Path, owner.IncomeCategories.Contains(o.Id))).ToList();
-                var byId = categories.ToDictionary(c => c.Id);
+                var categories = owner.PromptCategories(names);
                 var handles = categories.ToDictionary(c => c.Handle, StringComparer.Ordinal);
-                var examples = owner.Rules.Where(r => byId.ContainsKey(r.CategoryId)).Take(30)
-                    .Select(r => RuleExpression.TryParse(r.Expression, out _)?.Print() + " => " + byId[r.CategoryId].Handle)
-                    .Where(x => !x.Contains("account", StringComparison.Ordinal)).ToList();
-                var system = CategoryPrompt.SystemPrompt(categories, examples);
-                var txById = owner.Txs.ToDictionary(t => t.Id);
+                var system = CategoryPrompt.SystemPrompt(categories);
+                var evidence = owner.Evidence(names);
                 foreach (var batch in ownerGroup.Chunk(CategorySuggestionService.BatchSize))
                 {
                     var redactor = new AssistRedactor(names);
-                    var items = batch.Select(b => new PromptItem(redactor.Redact(Source(owner, b.Item.Tx)),
-                        b.Neighbours.Take(3).Select(n => (redactor.Redact(Source(owner, txById[n.Booking.Id])), byId[n.Booking.CategoryId].Handle)).ToList())).ToList();
+                    var items = batch.Select(b => evidence.Item(redactor, b.Item.Tx, b.Neighbours)).ToList();
                     try
                     {
                         var response = await client.CompleteAsync(new AssistRequest(CategoryPrompt.SchemaName, CategoryPrompt.Schema(), system, CategoryPrompt.UserContent(items)));
                         usage = usage with
                         {
-                            Calls = usage.Calls + 1, Input = usage.Input + response.InputTokens, Cached = usage.Cached + response.CachedTokens,
-                            Output = usage.Output + response.OutputTokens, Seconds = usage.Seconds + response.Elapsed.TotalSeconds,
+                            Calls = usage.Calls + 1,
+                            Input = usage.Input + response.InputTokens,
+                            Cached = usage.Cached + response.CachedTokens,
+                            Output = usage.Output + response.OutputTokens,
+                            Seconds = usage.Seconds + response.Elapsed.TotalSeconds,
                         };
                         foreach (var a in CategoryPrompt.ParseAnswer(response, redactor, handles))
                         {
@@ -182,7 +190,7 @@ internal static class CategoryEval
     }
 
     /// <summary>The Decisions route: one choice question per unsure booking; top-3 from the returned probabilities.</summary>
-    private static async Task DecisionsAsync(List<Item> sample, Dictionary<long, Prediction> det, List<(Item Item, List<Neighbour> Neighbours)> unsure,
+    private static async Task DecisionsAsync(List<Item> sample, Dictionary<long, Prediction> det, List<Unsure> unsure,
         List<string> names, List<OwnerData> data, HashSet<long> hidden)
     {
         var client = Ai.Decisions();
@@ -193,13 +201,11 @@ internal static class CategoryEval
         foreach (var ownerGroup in unsure.GroupBy(u => u.Item.Owner))
         {
             var owner = ownerGroup.Key;
-            var categories = owner.Options.Select((o, i) => new PromptCategory(CategoryPrompt.Handle(i + 1), o.Id, o.Path, owner.IncomeCategories.Contains(o.Id))).ToList();
-            var byId = categories.ToDictionary(c => c.Id);
+            var categories = owner.PromptCategories(names);
             var handles = categories.ToDictionary(c => c.Handle, StringComparer.Ordinal);
-            var txById = owner.Txs.ToDictionary(t => t.Id);
+            var evidence = owner.Evidence(names);
             var redactor = new AssistRedactor(names);
-            var items = ownerGroup.Select(b => new DecisionItem(b.Item.Tx.Id, new PromptItem(redactor.Redact(Source(owner, b.Item.Tx)),
-                b.Neighbours.Take(3).Select(n => (redactor.Redact(Source(owner, txById[n.Booking.Id])), byId[n.Booking.CategoryId].Handle)).ToList()), categories)).ToList();
+            var items = ownerGroup.Select(b => new DecisionItem(b.Item.Tx.Id, evidence.Item(redactor, b.Item.Tx, b.Neighbours), categories)).ToList();
             foreach (var chunk in items.Chunk(40))
             {
                 try
@@ -208,8 +214,11 @@ internal static class CategoryEval
                     {
                         usage = usage with
                         {
-                            Calls = usage.Calls + 1, Input = usage.Input + response.InputTokens, Cached = usage.Cached + response.CachedTokens,
-                            Output = usage.Output + response.OutputTokens, Seconds = usage.Seconds + response.Elapsed.TotalSeconds,
+                            Calls = usage.Calls + 1,
+                            Input = usage.Input + response.InputTokens,
+                            Cached = usage.Cached + response.CachedTokens,
+                            Output = usage.Output + response.OutputTokens,
+                            Seconds = usage.Seconds + response.Elapsed.TotalSeconds,
                         };
                         if (result == null) continue;
                         var old = preds[result.TransactionId];
@@ -235,11 +244,6 @@ internal static class CategoryEval
         RuleReport(data, sample, hidden, preds, []);
     }
 
-    private static string Purpose(Transaction t) => SepaPurpose.Get(t.Purpose, "SVWZ") ?? t.Purpose ?? "";
-
-    private static AssistBookingSource Source(OwnerData o, Transaction t) =>
-        AssistSettingsService.ToSource(t, t.AccountId is { } a && o.Accounts.TryGetValue(a, out var acc) ? acc.KindLabel : null);
-
     private static List<long> Top3(List<Neighbour> neighbours, long? first)
     {
         var ranked = neighbours.GroupBy(n => n.Booking.CategoryId).OrderByDescending(g => g.Sum(n => n.Similarity)).Select(g => g.Key).ToList();
@@ -256,7 +260,7 @@ internal static class CategoryEval
         Console.WriteLine($"  accuracy (all)      {Pct(Correct(sample), n)}  coverage {Pct(covered.Count, n)}  accuracy (covered) {Pct(Correct(covered), covered.Count)}");
         Console.WriteLine($"  top-3 (all)         {Pct(sample.Count(s => preds[s.Tx.Id].Top3.Contains(s.Truth)), n)}");
         foreach (var g in covered.GroupBy(s => preds[s.Tx.Id].Source).OrderBy(g => g.Key))
-            Console.WriteLine($"  source {g.Key,-6}       n={g.Count(),4}  accuracy {Pct(Correct(g), g.Count())}");
+            Console.WriteLine($"  source {g.Key,-8}     n={g.Count(),4}  accuracy {Pct(Correct(g), g.Count())}  sure (>= {CategorySuggestionService.SureEnough:0.00}) {Pct(g.Count(s => preds[s.Tx.Id].Confidence >= CategorySuggestionService.SureEnough), g.Count())}");
         Console.WriteLine("  calibration (confidence bucket: n, accuracy, mean confidence)");
         foreach (var (lo, hi) in new[] { (0.0, 0.5), (0.5, 0.7), (0.7, 0.8), (0.8, 0.9), (0.9, 1.01) })
         {
@@ -282,14 +286,20 @@ internal static class CategoryEval
         foreach (var g in sample.Where(s => preds[s.Tx.Id] is { Category: not null, Source: not "ai" } && !string.IsNullOrWhiteSpace(s.Tx.Name))
                      .GroupBy(s => (s.Owner, Name: s.Tx.Name!.Trim(), preds[s.Tx.Id].Category!.Value)))
             if (g.Count() >= 3 && !g.Key.Name.Contains('"')) candidates.Add((g.Key.Owner, $"name:\"{g.Key.Name}\"", g.Key.Value, "knn"));
+        var asSuggestions = sample.Where(s => preds[s.Tx.Id].Category != null).ToDictionary(s => s.Tx.Id,
+            s => new TxCategorySuggestion(s.Tx.Id, preds[s.Tx.Id].Category, null, preds[s.Tx.Id].Confidence, preds[s.Tx.Id].Source, null));
+        foreach (var owner in data)
+            foreach (var (expression, category, source) in CategorySuggestionService.KeyRuleCandidates(sample.Where(s => s.Owner == owner).Select(s => s.Tx), asSuggestions))
+                candidates.Add((owner, expression, category, source));
         var offered = 0;
         var wrongRules = 0;
         var hiddenMatched = 0;
         var hiddenWrong = 0;
         var invalid = 0;
+        var perSource = new Dictionary<string, (int Offered, int Wrong)>(StringComparer.Ordinal);
         foreach (var c in candidates.DistinctBy(c => (c.Owner.Owner, c.Expression)))
         {
-            var node = c.Expression.Contains("ACC_") || c.Expression.Contains("PERSON_") ? null : RuleExpression.TryParse(c.Expression, out _);
+            var node = c.Expression.Contains("ACC_") || c.Expression.Contains("PERSON_") || c.Expression.Contains("MANDATE_") || c.Expression.Contains("CREDITOR_") || c.Expression.Contains("OWN_") ? null : RuleExpression.TryParse(c.Expression, out _);
             if (node == null || !c.Owner.Valid.ContainsKey(c.Category)) { invalid++; continue; }
             var ibans = c.Owner.Accounts.ToDictionary(a => a.Key, a => a.Value.Iban);
             var matched = c.Owner.Txs.Where(t => RuleExpression.Evaluate(node, RuleSubject.Of(t, t.AccountId is { } a ? ibans.GetValueOrDefault(a) : null))).ToList();
@@ -304,9 +314,13 @@ internal static class CategoryEval
             var wrong = h.Count(t => t.CategoryId != c.Category);
             hiddenWrong += wrong;
             if (wrong > 0) wrongRules++;
+            var ps = perSource.GetValueOrDefault(c.Source);
+            perSource[c.Source] = (ps.Offered + 1, ps.Wrong + (wrong > 0 ? 1 : 0));
         }
         Console.WriteLine($"  rules: {candidates.Count} candidates, {invalid} invalid, {offered} offered; offered rules with a wrong hidden booking {Pct(wrongRules, offered)}; " +
             $"hidden bookings they categorize {hiddenMatched}, wrong {Pct(hiddenWrong, hiddenMatched)}");
+        foreach (var (source, (o, w)) in perSource.OrderBy(p => p.Key))
+            Console.WriteLine($"    {source,-8} rules offered {o,3}, with a wrong hidden booking {Pct(w, o)}");
     }
 
     public static string Pct(int a, int b) => b == 0 ? "  n/a" : $"{100.0 * a / b,5:0.0}%";
