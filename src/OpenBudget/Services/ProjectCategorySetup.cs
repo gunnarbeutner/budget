@@ -43,10 +43,15 @@ public static class ProjectCategorySetup
             if (booked.Count > 0 && booked.All(c => sums[c.Id].Total > 0)) incomeItems.Add((g.Id, CategoryItemType.Group));
         }
 
-        var typed = (await db.CategoryTypeAssignments.Where(t => t.ProjectId == projectId).Select(t => new { t.CategoryId, t.ItemType }).ToListAsync(ct))
-            .Select(t => (t.CategoryId, t.ItemType)).ToHashSet();
-        foreach (var (id, type) in incomeItems.Where(i => !typed.Contains(i)))
+        // One type assignment per project and id: an imported group and category can share an id, so the first
+        // suggestion for an id wins and ids that already have an assignment are left alone.
+        var typed = (await db.CategoryTypeAssignments.Where(t => t.ProjectId == projectId).Select(t => t.CategoryId).ToListAsync(ct))
+            .ToHashSet();
+        foreach (var (id, type) in incomeItems)
+        {
+            if (!typed.Add(id)) continue;
             db.CategoryTypeAssignments.Add(new CategoryTypeAssignment { ProjectId = projectId, CategoryId = id, ItemType = type, IsIncome = true });
+        }
 
         // Tracking: budgeted categories, then top-level expense groups with recent spending and no tracked category.
         var budgeted = await db.MonthlyBudgetEntries.AsNoTracking()
