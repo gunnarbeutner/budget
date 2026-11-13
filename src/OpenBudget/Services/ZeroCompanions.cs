@@ -65,7 +65,8 @@ public static class ZeroCompanions
         var lo = from - WindowSeconds;
         var hi = to + WindowSeconds;
         var zeros = await db.Transactions
-            .Where(t => t.Amount == 0 && t.AccountId != null && t.CategorySetBy != TransactionCategorySource.Manual
+            // an empty category follows even when it was cleared by hand; only a category the user chose stays
+            .Where(t => t.Amount == 0 && t.AccountId != null
                 && (t.CategoryId == null || t.CategorySetBy == TransactionCategorySource.Follow))
             .Where(t => accountIds == null || accountIds.Contains(t.AccountId!.Value))
             .Where(t => lo == null || t.Timestamp >= lo)

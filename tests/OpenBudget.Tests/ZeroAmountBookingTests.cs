@@ -119,6 +119,18 @@ public sealed class ZeroAmountBookingTests
     }
 
     [Fact]
+    public async Task A_companion_cleared_by_hand_still_follows()
+    {
+        var zero = Row(1002, 0, "Eingeloeste Exampleshop Punkte");
+        zero.CategorySetBy = TransactionCategorySource.Manual;
+        await using var t = await WorldAsync(Row(1001, -1060, "WWW.EXAMPLESHOP.DE"), zero);
+
+        await EditFor(t).SetCategoryAsync([1001], Shopping);
+
+        Assert.Equal((Shopping, TransactionCategorySource.Follow), ((await LoadAsync(t, 1002)).CategoryId, (await LoadAsync(t, 1002)).CategorySetBy));
+    }
+
+    [Fact]
     public async Task An_arriving_companion_takes_the_mains_category()
     {
         await using var t = await WorldAsync(Row(1001, -1060, "WWW.EXAMPLESHOP.DE", category: Shopping));
