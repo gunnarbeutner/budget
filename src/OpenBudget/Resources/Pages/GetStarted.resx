@@ -179,13 +179,19 @@
     <value>In Finder, right-click the MoneyMoney folder that contains Database and Statements and choose Compress.</value>
   </data>
   <data name="Step2_How4" xml:space="preserve">
-    <value>Upload the ZIP file here and enter your MoneyMoney password.</value>
+    <value>Upload the ZIP file here. If your MoneyMoney database has a password, tick the box and enter it.</value>
   </data>
   <data name="Upload_File" xml:space="preserve">
     <value>ZIP file</value>
   </data>
   <data name="Upload_Password" xml:space="preserve">
     <value>MoneyMoney password</value>
+  </data>
+  <data name="Upload_HasPassword" xml:space="preserve">
+    <value>My MoneyMoney database has a password</value>
+  </data>
+  <data name="Error_PasswordNeeded" xml:space="preserve">
+    <value>The MoneyMoney database needs a password. Tick “My MoneyMoney database has a password”, enter it and upload again.</value>
   </data>
   <data name="Upload_PasswordHint" xml:space="preserve">
     <value>The password is used once to decrypt the database on the server and is not stored. The upload is deleted after the import.</value>

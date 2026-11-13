@@ -83,8 +83,15 @@ public sealed class GetStartedTests : EndToEndTestBase
 
         var zip = new FilePayload { Name = "MoneyMoney.zip", MimeType = "application/zip", Buffer = MoneyMoneyZipFixture.Build("e2e-secret") };
 
+        // Without the password box ticked there is no password field; an encrypted database asks for it.
+        await Expect(Page.Locator("#mm-password")).ToHaveCountAsync(0);
+        await Page.Locator("#mm-zip").SetInputFilesAsync(zip);
+        await Page.GetByTestId("mm-upload").ClickAsync();
+        await Expect(Page.GetByTestId("mm-job-error")).ToContainTextAsync("needs a password");
+
         // A wrong password: a clear error, nothing imported.
         await Page.Locator("#mm-zip").SetInputFilesAsync(zip);
+        await Page.GetByTestId("mm-has-password").CheckAsync();
         await Page.Locator("#mm-password").FillAsync("not-the-password");
         await Page.GetByTestId("mm-upload").ClickAsync();
         await Expect(Page.GetByTestId("mm-job-error")).ToContainTextAsync("password does not open");

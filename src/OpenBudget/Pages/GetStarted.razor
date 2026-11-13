@@ -90,15 +90,26 @@ else
                                disabled="@uploading" @onchange="() => fileChosen = true" />
                     </div>
                     <div class="col-12 col-md-4">
-                        <label class="form-label small mb-1" for="mm-password">@L["Upload_Password"]</label>
-                        <input type="password" id="mm-password" class="form-control form-control-sm" autocomplete="off" disabled="@uploading"
-                               @bind="password" @bind:event="oninput" />
+                        <div class="form-check small mb-1">
+                            <input class="form-check-input" type="checkbox" id="mm-has-password" data-testid="mm-has-password" disabled="@uploading"
+                                   checked="@hasPassword" @onchange="e => hasPassword = e.Value is true" />
+                            <label class="form-check-label" for="mm-has-password">@L["Upload_HasPassword"]</label>
+                        </div>
+                        @if (hasPassword)
+                        {
+                            <label class="form-label small mb-1 visually-hidden" for="mm-password">@L["Upload_Password"]</label>
+                            <input type="password" id="mm-password" class="form-control form-control-sm" autocomplete="off" disabled="@uploading"
+                                   placeholder="@L["Upload_Password"]" @bind="password" @bind:event="oninput" />
+                        }
                     </div>
                     <div class="col-12 col-md-2">
                         <button type="button" class="btn btn-primary btn-sm w-100" data-testid="mm-upload" disabled="@(uploading || !fileChosen)" @onclick="UploadAsync">@L["Upload_Button"]</button>
                     </div>
                 </div>
-                <p class="small text-body-secondary mb-2">@L["Upload_PasswordHint"]</p>
+                @if (hasPassword)
+                {
+                    <p class="small text-body-secondary mb-2">@L["Upload_PasswordHint"]</p>
+                }
                 @if (uploading)
                 {
                     <div data-testid="mm-upload-progress" role="status">
@@ -257,6 +268,8 @@ else
     private ElementReference fileInput;
     private bool fileChosen;
     private string password = "";
+    private bool hasPassword;
+    private bool lastUploadHadPassword;
     private bool uploading;
     private long uploaded;
     private long uploadSize;
@@ -319,6 +332,8 @@ else
         MoneyMoneyImportPhase.Extracting => L["Job_Extracting"],
         MoneyMoneyImportPhase.Decrypting => L["Job_Decrypting"],
         MoneyMoneyImportPhase.Importing => L["Job_Importing"],
+        // Until the statement count is known (and when there are none) the import step stays on screen.
+        _ when j.Total == 0 => L["Job_Importing"],
         _ => L["Job_Statements", j.Done, j.Total],
     };
 
@@ -332,7 +347,7 @@ else
 
     private string ErrorText(MoneyMoneyImportError error) => error switch
     {
-        MoneyMoneyImportError.WrongPassword => L["Error_WrongPassword"],
+        MoneyMoneyImportError.WrongPassword => L[lastUploadHadPassword ? "Error_WrongPassword" : "Error_PasswordNeeded"],
         MoneyMoneyImportError.NoDatabase => L["Error_NoDatabase"],
         MoneyMoneyImportError.NotAZip => L["Error_NotAZip"],
         MoneyMoneyImportError.ImportFinished => L["Error_Finished"],
@@ -377,7 +392,8 @@ else
     public Task UploadDone(string uploadId) => InvokeAsync(() =>
     {
         uploading = false;
-        var secret = password;
+        var secret = hasPassword ? password : "";
+        lastUploadHadPassword = hasPassword;
         password = "";
         if (userId == null || sourceName == null || !BrowserImport.StartImport(userId, uploadId, sourceName, secret))
             uploadError = L["Error_Failed"];
