@@ -285,7 +285,14 @@ public sealed class StructureMenuTests : EndToEndTestBase
         await Expect(living.Locator("svg.browse-ribbon")).ToHaveCountAsync(1);
         await Expect(living.Locator("i.bi-folder")).ToHaveCountAsync(0);
 
-        await using var db = await Db.CreateDbContextAsync();
-        Assert.That((await db.CategoryGroups.SingleAsync(g => g.Name == "Living")).Color, Is.EqualTo(CategoryColors.Palette[4].Key));
+        // every group shows a ribbon, so wait for the saved colour itself rather than for the ribbon
+        string? saved = null;
+        for (var i = 0; i < 50 && saved != CategoryColors.Palette[4].Key; i++)
+        {
+            await using var db = await Db.CreateDbContextAsync();
+            saved = (await db.CategoryGroups.AsNoTracking().SingleAsync(g => g.Name == "Living")).Color;
+            if (saved != CategoryColors.Palette[4].Key) await Task.Delay(100);
+        }
+        Assert.That(saved, Is.EqualTo(CategoryColors.Palette[4].Key));
     }
 }
