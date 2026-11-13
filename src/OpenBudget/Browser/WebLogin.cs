@@ -640,6 +640,24 @@ public sealed class WebLoginSession : IAsyncDisposable
 
     private string? _lastWaitingReason;
 
+    // since when a "needs the user" result of the waiting script has been held back for the stored secret
+    private DateTime? _deferredSince;
+    private bool _deferLogged;
+
+    /// <summary>
+    /// With a stored secret the code form takes precedence over the waiting script: the script runs in the page and can
+    /// already see the code page while the URL this tick started with is still the sign-in page, and the code form may
+    /// load only later. So a "needs the user" result is held back for up to <see cref="WebLoginOptions.StuckAfter"/>
+    /// (on the code page: without a form to act on); after that, or once the code is rejected, the page is shown.
+    /// </summary>
+    private bool DeferForSecret()
+    {
+        if (_codePromptDisabled || _totpRejected || _spec.CodePrompt is not { Totp: not null } form) return false;
+        if (IsCodePage(_browser.Url, form)) return _totpIdleSince is not { } idle || DateTime.UtcNow - idle < _options.StuckAfter;
+        _deferredSince ??= DateTime.UtcNow;
+        return DateTime.UtcNow - _deferredSince < _options.StuckAfter;
+    }
+
     /// <summary>Runs the spec's <see cref="WebLoginSpec.WaitingScript"/> once; a result when it ended the sign-in.</summary>
     private async Task<WebLoginResult?> RunWaitingScriptAsync(string script, Uri url)
     {
@@ -658,6 +676,8 @@ public sealed class WebLoginSession : IAsyncDisposable
         }
         if (r.Ok)
         {
+            _deferredSince = null;
+            _deferLogged = false;
             if (r.Reason.Length == 0) return null;
             _logger.LogInformation("Web login: {Reason} on {Path}.", r.Reason, SafePath(url));
             if (_shownByScript && Mode == WebLoginMode.Interactive)
@@ -672,6 +692,16 @@ public sealed class WebLoginSession : IAsyncDisposable
             var message = r.Reason[4..].Trim();
             _logger.LogWarning("Web login: ended by the page's state on {Path}: {Reason}", SafePath(url), message);
             return WebLoginResult.Fail(message.Length > 0 ? message : "The sign-in did not complete.");
+        }
+        if (Mode != WebLoginMode.Interactive && DeferForSecret())
+        {
+            if (!_deferLogged)
+            {
+                _deferLogged = true;
+                _logger.LogInformation("Web login: the page needs the user ({Reason}) on {Path}, but the stored TOTP secret may answer it; keeping it hidden.",
+                    r.Reason, SafePath(url));
+            }
+            return null;
         }
         if (Mode != WebLoginMode.Interactive)
         {

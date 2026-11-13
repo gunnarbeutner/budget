@@ -269,6 +269,66 @@ public sealed class TotpTests
     }
 
     [Fact]
+    public async Task The_page_stays_hidden_when_the_security_check_fires_on_the_sign_in_url_before_the_code_page()
+    {
+        var typed = new List<string>();
+        var submitted = false;
+        var host = new FakeBrowserHost
+        {
+            User = page =>
+            {
+                page.Visible.UnionWith(["#user", "#pass", "#go"]);
+                // like PayPal: the security check already reports from the page while the URL still reads /login; the
+                // code page's URL follows, and its form only after a delay
+                page.OnCheck = p =>
+                {
+                    if (!Volatile.Read(ref submitted)) return new WebLoginCheck(true, "");
+                    if (p.Url.AbsolutePath == "/login")
+                    {
+                        _ = Task.Run(async () =>
+                        {
+                            await Task.Delay(300);
+                            p.Url = new Uri("https://bank.example/mfa");
+                            await Task.Delay(700);
+                            lock (p.Visible) p.Visible.UnionWith(["#code", "#verify"]);
+                        });
+                    }
+                    return new WebLoginCheck(p.Url.AbsolutePath == "/home", "Complete the security check.");
+                };
+                page.OnFill = (p, selector) => { if (selector == "#code") typed.Add(p.Filled[selector]); };
+                page.OnClick = (p, selector) =>
+                {
+                    if (selector == "#go")
+                    {
+                        lock (p.Visible) p.Visible.Clear();
+                        Volatile.Write(ref submitted, true);
+                    }
+                    else if (selector == "#verify") p.Url = new Uri("https://bank.example/home");
+                    return Task.CompletedTask;
+                };
+                return Task.CompletedTask;
+            },
+        };
+        var spec = new WebLoginSpec(new Uri("https://bank.example/login"), ["bank.example"], new Uri("https://bank.example/home"))
+        {
+            Autofill = new WebLoginAutofill("user", "pw", "#user", "#pass", "#go"),
+            WaitingScript = "() => ({ ok: true, reason: '' })",
+            CodePrompt = new WebLoginCodePrompt("/mfa", "#code", "#verify", "Enter the code.") { Totp = TotpSecret.Parse(Sha1Base32) },
+        };
+        var service = new WebLoginService(host,
+            new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(10), SettleDelay = TimeSpan.Zero, StuckAfter = TimeSpan.FromSeconds(5) },
+            new FixedClock(Now), NullLoggerFactory.Instance);
+        var modes = new List<WebLoginMode>();
+        await using var session = await service.StartAsync("user", spec, [], CancellationToken.None,
+            (c, _) => Task.FromResult<ChallengeAnswer?>(new ChallengeAnswer(c, "000000")));
+        session.ModeChanged += mode => { lock (modes) modes.Add(mode); };
+        var result = await session.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.True(result.Success, result.Error);
+        Assert.Equal([TotpSecret.Parse(Sha1Base32).CodeAt(Now)], typed);
+        lock (modes) Assert.DoesNotContain(WebLoginMode.Interactive, modes);
+    }
+
+    [Fact]
     public async Task A_skewed_clock_is_covered_by_the_adjacent_window()
     {
         var secret = TotpSecret.Parse(Sha1Base32);
