@@ -94,7 +94,7 @@ public sealed class AuthHttpTests : IDisposable
         using var login = await AppTestHost.LoginAsync(client, "alice");
 
         Assert.Equal(HttpStatusCode.Redirect, login.StatusCode);
-        Assert.Equal("/", login.Headers.Location!.OriginalString);
+        Assert.Equal("/get-started", login.Headers.Location!.OriginalString);   // Get started is not done yet
         var cookie = login.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("OpenBudget.Auth=", StringComparison.Ordinal));
         Assert.Contains("httponly", cookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("samesite=lax", cookie, StringComparison.OrdinalIgnoreCase);
@@ -186,7 +186,7 @@ public sealed class AuthHttpTests : IDisposable
         using var response = await client.PostAsync(new Uri("/Account/Login", UriKind.Relative), form);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/", response.Headers.Location!.OriginalString);
+        Assert.Equal("/get-started", response.Headers.Location!.OriginalString);   // the own start page, not the foreign URL
     }
 
     [Fact]

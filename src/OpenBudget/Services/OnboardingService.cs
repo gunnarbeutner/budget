@@ -18,10 +18,14 @@ public sealed record OnboardingState(int BankLogins, bool HasAccounts, UserDataS
     public bool MoneyMoneyUnfinished => Import is { LastUploadAt: not null, MoneyMoneyImportFinishedAt: null };
 
     /// <summary>
-    /// The gear menu and the settings navigation offer Get started until the user declared the MoneyMoney import
-    /// finished or hid Get started.
+    /// The gear menu and the settings navigation offer Get started (and signing in leads to it) until the user is
+    /// through with it (<see cref="IsFinished"/>).
     /// </summary>
-    public bool ShowInMenu => Import is not ({ MoneyMoneyImportFinishedAt: not null } or { GetStartedDismissedAt: not null });
+    public bool ShowInMenu => !IsFinished(Import);
+
+    /// <summary>Whether the user is through with Get started (MoneyMoney import finished, or ended with Done or hidden).</summary>
+    public static bool IsFinished(UserDataState? state) =>
+        state is { MoneyMoneyImportFinishedAt: not null } or { GetStartedDismissedAt: not null };
 }
 
 /// <summary>The state behind the Get started page and its gear-menu entry, for the signed-in user.</summary>
@@ -60,7 +64,7 @@ public sealed class OnboardingService
         return new OnboardingState(logins, hasAccounts, import, hasPortfolio, projectId);
     }
 
-    /// <summary>Hides Get started from the menus of the signed-in user (the page stays reachable by its URL).</summary>
+    /// <summary>Ends Get started for the signed-in user: it leaves the menus and signing in (the page stays reachable by its URL).</summary>
     public async Task DismissAsync(CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);

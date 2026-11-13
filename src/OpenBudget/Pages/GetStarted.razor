@@ -9,13 +9,16 @@
 @inject IJSRuntime JS
 @inject ClockService Clock
 @inject IStringLocalizer<GetStarted> L
+@inject NavigationManager Navigation
 
-@* The way into OpenBudget: (1) bank logins, (2) optionally the history from MoneyMoney, uploaded as a ZIP of its
+@* The way into OpenBudget, a wizard of four steps shown one at a time (?step=1…4; without it the MoneyMoney step
+   once a MoneyMoney import exists, else the first): (1) bank logins, (2) optionally the history from MoneyMoney, uploaded as a ZIP of its
    data folder and imported in the background (MoneyMoneyBrowserImport), (3) optionally a Portfolio Performance file,
    (4) which accounts count for the cashflow, and budgets. While a MoneyMoney import is unfinished, step 2 also
    switches its accounts to their bank connections (or keeps them as manual ones) and finishes the import. The gear
-   menu offers this page until the MoneyMoney import is finished or the user hides it (OnboardingState.ShowInMenu);
-   the URL always works. *@
+   menu offers this page, and signing in leads to it, until the MoneyMoney import is finished or the user ends it
+   with Done or hides it (OnboardingState.ShowInMenu); the URL always works. Pages a step links to get a return
+   target back to the next step (GetStartedReturn). *@
 
 <PageTitle>@L["PageTitle"]</PageTitle>
 
@@ -37,7 +40,10 @@
 }
 else
 {
+<p class="small text-body-secondary mb-2" data-testid="get-started-progress">@L["Step_Of", CurrentStep, StepCount]</p>
 <ol class="list-unstyled get-started-steps">
+    @if (CurrentStep == 1)
+    {
     <li class="card mb-3" data-testid="step-banks">
         <div class="card-body">
             <h2 class="h5 card-title">@StepMark(state.BankLogins > 0) @L["Step1_Heading"]</h2>
@@ -46,10 +52,13 @@ else
             {
                 <p class="small text-body-secondary mb-2" data-testid="step-banks-count">@L[state.BankLogins == 1 ? "Step1_Count_One" : "Step1_Count", state.BankLogins]</p>
             }
-            <a class="btn btn-primary btn-sm" href="/banklogins" data-testid="step-banks-link"><i class="bi bi-bank me-1" aria-hidden="true"></i>@L["Step1_Link"]</a>
+            <a class="btn btn-primary btn-sm" href="@($"/banklogins?return={Uri.EscapeDataString(StepUrl(2))}")" data-testid="step-banks-link"><i class="bi bi-bank me-1" aria-hidden="true"></i>@L["Step1_Link"]</a>
         </div>
     </li>
+    }
 
+    @if (CurrentStep == 2)
+    {
     <li class="card mb-3" data-testid="step-moneymoney">
         <div class="card-body">
             <h2 class="h5 card-title">@StepMark(state.MoneyMoneyImported) @L["Step2_Heading"] <span class="badge text-bg-light border fw-normal">@L["Optional"]</span></h2>
@@ -206,23 +215,29 @@ else
             }
         </div>
     </li>
+    }
 
+    @if (CurrentStep == 3)
+    {
     <li class="card mb-3" data-testid="step-portfolio">
         <div class="card-body">
             <h2 class="h5 card-title">@StepMark(state.HasPortfolioData) @L["Step3_Heading"] <span class="badge text-bg-light border fw-normal">@L["Optional"]</span></h2>
             <p class="mb-2">@L["Step3_Body"]</p>
-            <a class="btn btn-outline-primary btn-sm" href="/portfolio-performance" data-testid="step-portfolio-link"><i class="bi bi-pie-chart me-1" aria-hidden="true"></i>@L["Step3_Link"]</a>
+            <a class="btn btn-outline-primary btn-sm" href="@($"/portfolio-performance?return={Uri.EscapeDataString(StepUrl(4))}")" data-testid="step-portfolio-link"><i class="bi bi-pie-chart me-1" aria-hidden="true"></i>@L["Step3_Link"]</a>
         </div>
     </li>
+    }
 
+    @if (CurrentStep == 4)
+    {
     <li class="card mb-3" data-testid="step-cashflow">
         <div class="card-body">
             <h2 class="h5 card-title">@L["Step4_Heading"]</h2>
             <p class="mb-2">@L["Step4_Body"]</p>
             @if (state.ProjectId is { } pid)
             {
-                <a class="btn btn-outline-primary btn-sm me-1" href="@($"/projects/{pid}/settings/accounts")" data-testid="step-cashflow-accounts">@L["Step4_Accounts"]</a>
-                <a class="btn btn-outline-primary btn-sm" href="@($"/projects/{pid}/budgets")" data-testid="step-cashflow-budgets">@L["Step4_Budgets"]</a>
+                <a class="btn btn-outline-primary btn-sm me-1" href="@($"/projects/{pid}/settings/accounts?return={Uri.EscapeDataString(StepUrl(4))}")" data-testid="step-cashflow-accounts">@L["Step4_Accounts"]</a>
+                <a class="btn btn-outline-primary btn-sm" href="@($"/projects/{pid}/budgets?return={Uri.EscapeDataString(StepUrl(4))}")" data-testid="step-cashflow-budgets">@L["Step4_Budgets"]</a>
             }
             else
             {
@@ -230,7 +245,22 @@ else
             }
         </div>
     </li>
+    }
 </ol>
+<div class="d-flex flex-wrap gap-2 mb-3" data-testid="get-started-nav">
+    @if (CurrentStep > 1)
+    {
+        <a class="btn btn-outline-secondary" href="@StepUrl(CurrentStep - 1)" data-testid="get-started-back">@L["Wizard_Back"]</a>
+    }
+    @if (CurrentStep < StepCount)
+    {
+        <a class="btn btn-primary" href="@StepUrl(CurrentStep + 1)" data-testid="get-started-next">@L[StepDone(CurrentStep) ? "Wizard_Next" : "Wizard_Skip"]</a>
+    }
+    else
+    {
+        <button type="button" class="btn btn-primary" data-testid="get-started-done" @onclick="DoneAsync">@L["Wizard_Done"]</button>
+    }
+</div>
 }
 
 <AccountSwitchDialog LoginAccountIds="switchIds" OnClose="() => switchIds = null" OnSwitched="ReloadAfterDialogAsync" />
@@ -460,6 +490,30 @@ else
         if (finishKeepManual && st.MoneyMoneyAccounts.Count > 0)
             await Switcher.KeepManualAsync(st.MoneyMoneyAccounts.Select(a => a.AccountId).ToList());
         await SetFinishedAsync(st.OwnerUserId, true);
+    }
+
+    private const int StepCount = 4;
+
+    /// <summary>The step to show (?step=1…4).</summary>
+    [SupplyParameterFromQuery(Name = "step")] public int? Step { get; set; }
+
+    private int CurrentStep => Step is >= 1 and <= StepCount ? Step.Value : state?.MoneyMoneyImported == true ? 2 : 1;
+
+    private static string StepUrl(int step) => $"/get-started?step={step}";
+
+    private bool StepDone(int step) => state != null && step switch
+    {
+        1 => state.BankLogins > 0,
+        2 => state.MoneyMoneyImported,
+        3 => state.HasPortfolioData,
+        _ => false,
+    };
+
+    /// <summary>Ends Get started and opens the project.</summary>
+    private async Task DoneAsync()
+    {
+        await Onboarding.DismissAsync();
+        Navigation.NavigateTo(state?.ProjectId is { } pid ? $"/projects/{pid}/browse" : "/");
     }
 
     private async Task HideAsync()

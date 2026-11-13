@@ -179,7 +179,7 @@
     <value>Klicke im Finder mit der rechten Maustaste auf den MoneyMoney-Ordner, der Database und Statements enthält, und wähle Komprimieren.</value>
   </data>
   <data name="Step2_How4" xml:space="preserve">
-    <value>Lade die ZIP-Datei hier hoch. Hat deine MoneyMoney-Datenbank ein Passwort, setze das Häkchen und gib es ein.</value>
+    <value>Lade die ZIP-Datei hier hoch. Hat die Datenbank ein Passwort, setze das Häkchen und gib es ein.</value>
   </data>
   <data name="Upload_File" xml:space="preserve">
     <value>ZIP-Datei</value>
@@ -191,7 +191,7 @@
     <value>Meine MoneyMoney-Datenbank hat ein Passwort</value>
   </data>
   <data name="Error_PasswordNeeded" xml:space="preserve">
-    <value>Die MoneyMoney-Datenbank braucht ein Passwort. Setze das Häkchen bei „Meine MoneyMoney-Datenbank hat ein Passwort“, gib es ein und lade erneut hoch.</value>
+    <value>Die Datenbank hat ein Passwort: Häkchen setzen, Passwort eingeben und erneut hochladen.</value>
   </data>
   <data name="Upload_PasswordHint" xml:space="preserve">
     <value>Das Passwort wird einmal zum Entschlüsseln der Datenbank auf dem Server verwendet und nicht gespeichert. Der Upload wird nach dem Import gelöscht.</value>
@@ -217,17 +217,32 @@
   <data name="Job_Background" xml:space="preserve">
     <value>Der Import läuft auf dem Server weiter, auch wenn du diese Seite schließt.</value>
   </data>
+  <data name="Step_Of" xml:space="preserve">
+    <value>Schritt {0} von {1}</value>
+  </data>
+  <data name="Wizard_Back" xml:space="preserve">
+    <value>Zurück</value>
+  </data>
+  <data name="Wizard_Next" xml:space="preserve">
+    <value>Weiter</value>
+  </data>
+  <data name="Wizard_Skip" xml:space="preserve">
+    <value>Überspringen</value>
+  </data>
+  <data name="Wizard_Done" xml:space="preserve">
+    <value>Fertig</value>
+  </data>
   <data name="Hide_Button" xml:space="preserve">
     <value>Erste Schritte ausblenden</value>
   </data>
   <data name="Hide_Hint" xml:space="preserve">
-    <value>Entfernt diese Seite aus den Menüs; sie bleibt unter /get-started erreichbar.</value>
+    <value>Die Seite bleibt unter /get-started erreichbar.</value>
   </data>
   <data name="Job_Budgets" xml:space="preserve">
-    <value>{0} Kategorie-Budgets stehen im inaktiven Budget „MoneyMoney“ deines Projekts.</value>
+    <value>{0} Kategorie-Budgets stehen im inaktiven Budget „MoneyMoney“.</value>
   </data>
   <data name="Job_BudgetsSkipped" xml:space="preserve">
-    <value>{0} Kategorie-Budgets „insgesamt“ wurden nicht importiert.</value>
+    <value>{0} Budgets „insgesamt“ wurden nicht importiert.</value>
   </data>
   <data name="Job_Done" xml:space="preserve">
     <value>Importiert: {0} Konten, {1} Buchungen, {2} neue Kontoauszüge.</value>

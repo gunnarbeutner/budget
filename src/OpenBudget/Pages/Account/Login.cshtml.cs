@@ -1,3 +1,5 @@
+using OpenBudget.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -14,13 +16,16 @@ public class LoginModel : PageModel
     private readonly UserManager<AppUser> _users;
     private readonly IStringLocalizer<LoginModel> _l;
     private readonly ILogger<LoginModel> _logger;
+    private readonly SystemDbContextFactory _db;
 
-    public LoginModel(SignInManager<AppUser> signIn, UserManager<AppUser> users, IStringLocalizer<LoginModel> l, ILogger<LoginModel> logger)
+    public LoginModel(SignInManager<AppUser> signIn, UserManager<AppUser> users, IStringLocalizer<LoginModel> l, ILogger<LoginModel> logger,
+        SystemDbContextFactory db)
     {
         _signIn = signIn;
         _users = users;
         _l = l;
         _logger = logger;
+        _db = db;
     }
 
     // A string, not a Uri: it round-trips through a form field and is validated by Url.IsLocalUrl.
@@ -44,6 +49,21 @@ public class LoginModel : PageModel
     private string SafeReturnUrl() =>
         !string.IsNullOrEmpty(ReturnUrl) && Url.IsLocalUrl(ReturnUrl) ? ReturnUrl : "/";
 
+    /// <summary>
+    /// Where a sign-in leads: the requested page, else Get started while the user has not finished it, else "/".
+    /// </summary>
+    private async Task<IActionResult> SignedInRedirectAsync(AppUser user)
+    {
+        var target = SafeReturnUrl();
+        if (target == "/")
+        {
+            await using var db = await _db.CreateDbContextAsync();
+            var state = await db.UserDataStates.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == user.Id);
+            if (!OnboardingState.IsFinished(state)) target = "/get-started";
+        }
+        return LocalRedirect(target);
+    }
+
     public async Task<IActionResult> OnPostAsync()
     {
         if (string.IsNullOrWhiteSpace(UserName) || string.IsNullOrEmpty(Password))
@@ -63,7 +83,7 @@ public class LoginModel : PageModel
 
         // Lockout after repeated failures (Identity defaults); always a persistent 30-day sliding session.
         var result = await _signIn.PasswordSignInAsync(user, Password, isPersistent: true, lockoutOnFailure: true);
-        if (result.Succeeded) return LocalRedirect(SafeReturnUrl());
+        if (result.Succeeded) return await SignedInRedirectAsync(user);
 
         if (result.IsLockedOut)
         {
@@ -126,6 +146,6 @@ public class LoginModel : PageModel
         }
 
         await _signIn.SignInAsync(user, isPersistent: true, authenticationMethod: "passkey");
-        return LocalRedirect(SafeReturnUrl());
+        return await SignedInRedirectAsync(user);
     }
 }

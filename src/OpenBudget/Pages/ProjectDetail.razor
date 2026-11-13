@@ -36,6 +36,7 @@ else
 {
     <ProjectPageHeader ProjectId="@ProjectId" ProjectName="@budget.Name" />
     <PageHeader Title="@L["Heading_Settings", budget.Name]" Subtitle="@budget.Description" />
+    <GetStartedReturn />
 
     <DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 

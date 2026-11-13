@@ -91,16 +91,60 @@ public sealed class GetStartedTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task The_wizard_leads_through_the_steps_and_back_from_the_pages_it_links_to_and_Done_ends_it()
+    {
+        await GoToAsync("/get-started");
+        await Expect(Page.GetByTestId("get-started-progress")).ToContainTextAsync("Step 1 of 4");
+        await Expect(Page.GetByTestId("get-started-next")).ToHaveTextAsync("Skip");
+
+        // Adding a bank login happens on its page, which leads back to the next step.
+        await Page.GetByTestId("step-banks-link").ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex("/banklogins\\?return="));
+        await Page.GetByTestId("get-started-return").ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex("/get-started\\?step=2$"));
+        await Expect(Page.GetByTestId("step-moneymoney")).ToBeVisibleAsync();
+
+        await Page.GetByTestId("get-started-next").ClickAsync();
+        await Expect(Page.GetByTestId("step-portfolio")).ToBeVisibleAsync();
+        await Page.GetByTestId("step-portfolio-link").ClickAsync();
+        await Page.GetByTestId("get-started-return").ClickAsync();
+        await Expect(Page.GetByTestId("step-cashflow")).ToBeVisibleAsync();
+        await Page.GetByTestId("get-started-back").ClickAsync();
+        await Expect(Page.GetByTestId("step-portfolio")).ToBeVisibleAsync();
+        await Page.GetByTestId("get-started-next").ClickAsync();
+
+        // Done ends Get started: the project opens, the menus no longer offer it and signing in goes to the project.
+        await Page.GetByTestId("get-started-done").ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{E2ESeed.ProjectId}/browse$"));
+        Assert.That(await GearOffersGetStartedAsync(), Is.False);
+        await LogoutAsync();
+        await LoginAsync(E2ESeed.UserName);
+        await Expect(Page).Not.ToHaveURLAsync(new Regex("/get-started"));
+    }
+
+    [Test]
+    public async Task Signing_in_with_a_deep_link_opens_that_page_even_before_Get_started_is_done()
+    {
+        await LogoutAsync();
+        await Page.GotoAsync($"/projects/{E2ESeed.ProjectId}/budgets");
+        await Expect(Page).ToHaveURLAsync(new Regex("/Account/Login"));
+        await Page.GetByLabel("Username").FillAsync(E2ESeed.UserName);
+        await Page.GetByLabel("Password").FillAsync(E2ESeed.Password);
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Sign in", Exact = true }).ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{E2ESeed.ProjectId}/budgets$"));
+    }
+
+    [Test]
     public async Task A_new_user_is_led_there_and_imports_MoneyMoney_from_a_zip()
     {
         await LogoutAsync();
         await LoginAsync(E2ESeed.SecondUserName);
 
-        // No projects and no data: the welcome links to Get started, and the gear menu offers it.
-        await GoToAsync("/");
-        await Page.GetByTestId("welcome-get-started").ClickAsync();
+        // Signing in leads to Get started; its first step is the bank logins, the next one MoneyMoney.
         await Expect(Page).ToHaveURLAsync(new Regex("/get-started$"));
         await Expect(Page.GetByTestId("settings-nav-get-started")).ToHaveAttributeAsync("aria-current", "page");
+        await Expect(Page.GetByTestId("step-banks")).ToBeVisibleAsync();
+        await Page.GetByTestId("get-started-next").ClickAsync();
         await Expect(Page.GetByTestId("mm-instructions")).ToContainTextAsync("Show Database in Finder");
 
         var zip = new FilePayload { Name = "MoneyMoney.zip", MimeType = "application/zip", Buffer = MoneyMoneyZipFixture.Build("e2e-secret") };
@@ -109,7 +153,7 @@ public sealed class GetStartedTests : EndToEndTestBase
         await Expect(Page.Locator("#mm-password")).ToHaveCountAsync(0);
         await Page.Locator("#mm-zip").SetInputFilesAsync(zip);
         await Page.GetByTestId("mm-upload").ClickAsync();
-        await Expect(Page.GetByTestId("mm-job-error")).ToContainTextAsync("needs a password");
+        await Expect(Page.GetByTestId("mm-job-error")).ToContainTextAsync("has a password");
 
         // A wrong password: a clear error, nothing imported.
         await Page.Locator("#mm-zip").SetInputFilesAsync(zip);
