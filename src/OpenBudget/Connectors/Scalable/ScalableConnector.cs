@@ -38,7 +38,10 @@ public sealed partial class ScalableConnector : IBankConnector
         "Scalable Capital",
         "Portfolio, cash account and documents. Sign in with your email address; you confirm each sign-in in the Scalable app.",
         ctx => new ScalableConnector(ctx, options),
-        CredentialRequirement.UsernameAndSecret);
+        CredentialRequirement.UsernameAndSecret)
+    {
+        Silent = SilentCapability.SessionOnly,
+    };
 
     public string ConnectorType => TypeName;
 

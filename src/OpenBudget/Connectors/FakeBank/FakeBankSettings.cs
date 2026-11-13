@@ -47,6 +47,9 @@ public sealed class FakeBankSettings
     /// <summary>Omit bank transaction ids.</summary>
     public bool NoIds { get; private init; }
 
+    /// <summary>Ask for a code at login only while the stored session holds no earlier sign-in (a remembered session).</summary>
+    public bool Session { get; private init; }
+
     /// <summary>Offer statements (tiny PDFs).</summary>
     public bool Statements { get; private init; }
 
@@ -81,6 +84,7 @@ public sealed class FakeBankSettings
             Duplicates = Has("DUPS"),
             NoIds = Has("NOID"),
             Statements = Has("STATEMENTS"),
+            Session = Has("SESSION"),
         };
     }
 }

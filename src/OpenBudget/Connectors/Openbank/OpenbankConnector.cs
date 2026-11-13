@@ -140,7 +140,10 @@ public sealed class OpenbankConnector : IBankConnector
         "Openbank credit cards (kunden.openbankpay.com, e.g. Amazon Visa): balance, booked and pending card transactions. Sign in with your e-mail address and your 4-digit Openbank access code (Zugangscode): the app fills them in on Openbank's own sign-in page, where you confirm with the SMS code or in the Openbank app.",
         ctx => new OpenbankConnector(ctx, options),
         CredentialRequirement.UsernameAndSecret,
-        Statements: false);
+        Statements: false)
+    {
+        Silent = SilentCapability.SessionOnly,
+    };
 
     public string ConnectorType => TypeName;
 

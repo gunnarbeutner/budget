@@ -39,9 +39,15 @@ public sealed class FakeBankConnector : IBankConnector
         TypeName,
         "Example Bank (fake)",
         "A made-up bank for trying out the connector framework. Behaviour flags go after the username separated by '+': "
-        + "code, choice, approve[N], image, loginfail, syncerror, refreshcode, statementcode, pending, dups, noid, statements, web. "
+        + "code, choice, approve[N], image, loginfail, syncerror, refreshcode, statementcode, pending, dups, noid, statements, web, session. "
         + "Codes: 123456 (code), 4711 (image). Any PIN works except \"wrong\".",
-        ctx => new FakeBankConnector(ctx));
+        ctx => new FakeBankConnector(ctx))
+    {
+        Silent = SilentCapability.Full,
+    };
+
+    /// <summary>Session value of the "session" flag: set once a sign-in completed.</summary>
+    public const string SignedInKey = "fake.signedIn";
 
     public string ConnectorType => TypeName;
 
@@ -60,7 +66,7 @@ public sealed class FakeBankConnector : IBankConnector
             _stage = 0;
             _polls = 0;
             if (_settings.Choice) _loginStages.Add("choice");
-            if (_settings.Code) _loginStages.Add("code");
+            if (_settings.Code || (_settings.Session && !_session.Values.ContainsKey(SignedInKey))) _loginStages.Add("code");
             if (_settings.Approval) _loginStages.Add("approval");
             if (_settings.Image) _loginStages.Add("image");
             if (_settings.Web) _loginStages.Add("web");
@@ -99,6 +105,7 @@ public sealed class FakeBankConnector : IBankConnector
 
         if (_stage < _loginStages.Count)
             return Task.FromResult(ConnectorStep.Ask<ConnectorSession?>(LoginChallenge(_loginStages[_stage])));
+        if (_settings.Session) _session.Values[SignedInKey] = "1";
         return Task.FromResult(ConnectorStep.Done<ConnectorSession?>(_session));
     }
 

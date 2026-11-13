@@ -10,6 +10,19 @@ public enum CredentialRequirement
     None,
 }
 
+/// <summary>What a connector can do in a background run, without the owner.</summary>
+public enum SilentCapability
+{
+    /// <summary>Background syncs are not offered.</summary>
+    None,
+
+    /// <summary>Only while the bank keeps the stored session (cookies, tokens); otherwise the login needs a manual sync.</summary>
+    SessionOnly,
+
+    /// <summary>Signs in by itself (API key, stored second factor, an SCA exemption the bank grants).</summary>
+    Full,
+}
+
 /// <summary>One connector type the app can offer: its stable type string, labels and factory.</summary>
 public sealed record ConnectorRegistration(
     string ConnectorType,
@@ -21,6 +34,20 @@ public sealed record ConnectorRegistration(
 {
     /// <summary>Further credential values beyond username and secret (stored encrypted with them), shown in the login dialogs.</summary>
     public IReadOnlyList<CredentialField> ExtraCredentials { get; init; } = [];
+
+    /// <summary>What background syncs can do for this connector (<see cref="SilentFor"/> refines it per login).</summary>
+    public SilentCapability Silent { get; init; } = SilentCapability.None;
+
+    /// <summary>The capability for a login's stored credentials (a stored TOTP secret, say); null: <see cref="Silent"/>.</summary>
+    public Func<ConnectorCredentials?, SilentCapability>? SilentFor { get; init; }
+
+    /// <summary>Whether a background run may sign in on the bank's web page with the stored credentials (only with <see cref="SilentCapability.Full"/>).</summary>
+    public bool SilentWebSignIn { get; init; }
+
+    /// <summary>The German bank code of a FinTS bank: background FinTS runs are switched on per bank.</summary>
+    public string? FinTsBlz { get; init; }
+
+    public SilentCapability SilentCapabilityFor(ConnectorCredentials? credentials) => SilentFor?.Invoke(credentials) ?? Silent;
 }
 // Statements: whether the connector can fetch documents (statements) at all; false greys the switch out.
 

@@ -130,6 +130,10 @@ public sealed class PayPalConnector : IBankConnector, ISyncHistoryConsumer
         Statements: false)
     {
         ExtraCredentials = [new CredentialField(TotpKey, "TOTP secret (optional)", Normalize: NormalizeTotp)],
+        // with a stored TOTP secret the sign-in needs nobody; without, only a still valid session can be reused
+        Silent = SilentCapability.SessionOnly,
+        SilentFor = credentials => TotpSecret.TryParse(credentials?.ExtraValue(TotpKey), out _) ? SilentCapability.Full : SilentCapability.SessionOnly,
+        SilentWebSignIn = true,
     };
 
     /// <summary>A usable secret is stored as entered (trimmed); <see cref="TotpSecret.Parse"/> reads it at sign-in.</summary>

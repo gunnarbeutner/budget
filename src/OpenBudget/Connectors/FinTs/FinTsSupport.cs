@@ -15,14 +15,25 @@ public sealed record FinTsOptions(string? ProductId, string ProductVersion)
     public const string NotConfiguredMessage =
         "FinTS product registration not configured. Set the environment variable " + ProductIdVariable + " to the registered FinTS product ID.";
 
+    public const string SilentScaWindowVariable = "OPENBUDGET_FINTS_SILENT_SCA_DAYS";
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ProductId);
+
+    /// <summary>
+    /// How long after the last strong authentication a background run may still open a dialog when the bank's previous
+    /// init asked for a TAN (PSD2 allows 90 days; the default keeps a margin).
+    /// </summary>
+    public TimeSpan SilentScaWindow { get; init; } = TimeSpan.FromDays(80);
 
     /// <summary>Reads the product ID from configuration; the product version is the application's version (at most five characters on the wire).</summary>
     public static FinTsOptions FromConfiguration(IConfiguration configuration)
     {
         var version = typeof(FinTsOptions).Assembly.GetName().Version;
         var text = version == null ? "1.0" : $"{version.Major}.{version.Minor}.{Math.Max(version.Build, 0)}";
-        return new FinTsOptions(configuration[ProductIdVariable]?.Trim(), text);
+        var options = new FinTsOptions(configuration[ProductIdVariable]?.Trim(), text);
+        if (int.TryParse(configuration[SilentScaWindowVariable], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var days) && days > 0)
+            options = options with { SilentScaWindow = TimeSpan.FromDays(days) };
+        return options;
     }
 }
 
@@ -142,12 +153,22 @@ internal sealed class ChallengeCoroutine<T> : IChallengeAsker
     private TaskCompletionSource<ChallengeAnswer>? _answer;
     private ConnectorChallenge? _open;
 
-    public ChallengeCoroutine(Func<IChallengeAsker, CancellationToken, Task<T>> body) => _body = body;
+    private readonly bool _silent;
+
+    /// <summary>A coroutine over <paramref name="body"/>.</summary>
+    /// <param name="body">The protocol sequence; it asks through the <see cref="IChallengeAsker"/> it gets.</param>
+    /// <param name="silent">A background run: asking ends the body with <see cref="SilentAbortException"/> instead.</param>
+    public ChallengeCoroutine(Func<IChallengeAsker, CancellationToken, Task<T>> body, bool silent = false)
+    {
+        _body = body;
+        _silent = silent;
+    }
 
     private static TaskCompletionSource<TResult> NewSource<TResult>() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public Task<ChallengeAnswer> AskAsync(ConnectorChallenge challenge)
     {
+        if (_silent) throw new SilentAbortException(ConnectorStep.SilentReason(challenge));
         _open = challenge;
         _answer = NewSource<ChallengeAnswer>();
         _asked.TrySetResult(challenge);
@@ -178,6 +199,10 @@ internal sealed class ChallengeCoroutine<T> : IChallengeAsker
         try
         {
             return ConnectorStep.Done(await _running);
+        }
+        catch (SilentAbortException ex)
+        {
+            return ConnectorStep.NeedsUser<T>(ex.Message);
         }
         catch (FinTsException ex)
         {

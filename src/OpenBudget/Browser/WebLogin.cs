@@ -21,6 +21,25 @@ public sealed class WebLoginOptions
 
     /// <summary>The longest a browser kept after the login (<see cref="WebLoginSpec.KeepBrowser"/>) stays open.</summary>
     public TimeSpan KeptBrowserLifetime { get; set; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>The longest an unattended (background) web login may take before it counts as needing the owner.</summary>
+    public TimeSpan UnattendedTimeout { get; set; } = TimeSpan.FromMinutes(2);
+}
+
+/// <summary>How a web login runs when nobody watches (a background sync).</summary>
+public enum WebLoginUnattended
+{
+    /// <summary>The owner is there: the page is shown whenever it needs them.</summary>
+    None,
+
+    /// <summary>Only the stored session may be reused (<see cref="WebLoginSpec.ResumeUrl"/>); nothing is typed or submitted.</summary>
+    ResumeOnly,
+
+    /// <summary>
+    /// May also fill in the stored credentials (and a code from a stored TOTP secret); anything else the page wants
+    /// (a captcha, an SMS or app code, a security check, an unknown page) ends the login for the owner.
+    /// </summary>
+    SignIn,
 }
 
 /// <summary>What the owner sees of a web login.</summary>
@@ -46,6 +65,27 @@ public sealed record WebLoginResult(bool Success, string? Error, IReadOnlyList<C
     public static WebLoginResult Fail(string error) => new(false, error, []);
 
     public static WebLoginResult Rejected(string error) => new(false, error, [], CredentialsRejected: true);
+
+    /// <summary>An unattended login stopped where the page needs the owner; nothing more was submitted.</summary>
+    public bool NeedsUser { get; init; }
+
+    public static WebLoginResult ForUser(string reason) => new(false, reason, []) { NeedsUser = true };
+}
+
+/// <summary>An unattended web login reached a page that needs the owner.</summary>
+public sealed class UnattendedStopException : Exception
+{
+    public UnattendedStopException()
+    {
+    }
+
+    public UnattendedStopException(string message) : base(message)
+    {
+    }
+
+    public UnattendedStopException(string message, Exception innerException) : base(message, innerException)
+    {
+    }
 }
 
 /// <summary>Starts web logins and lets only their owner attach a viewer.</summary>
@@ -59,7 +99,7 @@ public interface IWebLoginService
     /// spec's domains) and starts watching for the success condition.
     /// </summary>
     Task<WebLoginSession> StartAsync(string ownerUserId, WebLoginSpec spec, IReadOnlyList<CookieState> seed, CancellationToken ct,
-        Func<ConnectorChallenge, CancellationToken, Task<ChallengeAnswer?>>? askForCode = null);
+        Func<ConnectorChallenge, CancellationToken, Task<ChallengeAnswer?>>? askForCode = null, WebLoginUnattended unattended = WebLoginUnattended.None);
 
     /// <summary>The open web login with this id, only if it belongs to <paramref name="userId"/>.</summary>
     WebLoginSession? Find(string sessionId, string userId);
@@ -84,7 +124,7 @@ public sealed class WebLoginService : IWebLoginService
     public bool IsAvailable => _host.IsAvailable;
 
     public async Task<WebLoginSession> StartAsync(string ownerUserId, WebLoginSpec spec, IReadOnlyList<CookieState> seed, CancellationToken ct,
-        Func<ConnectorChallenge, CancellationToken, Task<ChallengeAnswer?>>? askForCode = null)
+        Func<ConnectorChallenge, CancellationToken, Task<ChallengeAnswer?>>? askForCode = null, WebLoginUnattended unattended = WebLoginUnattended.None)
     {
         if (!_host.IsAvailable) throw new BrowserActionException("No browser is available on this server.");
         var browser = await _host.OpenSessionAsync(ct);
@@ -94,7 +134,8 @@ public sealed class WebLoginService : IWebLoginService
             _loggers.CreateLogger<WebLoginSession>(), s => _sessions.TryRemove(s.Id, out _))
         {
             Clock = _clock,
-            AskForCode = askForCode,
+            AskForCode = unattended == WebLoginUnattended.None ? askForCode : null,
+            Unattended = unattended,
         };
         _sessions[session.Id] = session;
         session.Begin(seed.Where(c => spec.Matches(c) && (c.ExpiresUtc == null || c.ExpiresUtc > now.UtcDateTime)).ToList());
@@ -134,6 +175,9 @@ public sealed class WebLoginSession : IAsyncDisposable
 
     internal Func<ConnectorChallenge, CancellationToken, Task<ChallengeAnswer?>>? AskForCode { get; init; }
 
+    /// <summary>Whether nobody watches this login (see <see cref="WebLoginUnattended"/>).</summary>
+    internal WebLoginUnattended Unattended { get; init; }
+
     /// <summary>
     /// The signed-in browser after a successful login whose spec keeps it (null otherwise, or once taken). The caller owns
     /// it from then on and must dispose it.
@@ -168,6 +212,9 @@ public sealed class WebLoginSession : IAsyncDisposable
 
     private void SetMode(WebLoginMode mode, bool notify = false)
     {
+        // nobody can act on the page: stop here, before anything more is typed or submitted
+        if (mode == WebLoginMode.Interactive && Unattended != WebLoginUnattended.None)
+            throw new UnattendedStopException("The bank's page wants something from you; sync it once yourself.");
         if (Mode == mode && !notify) return;
         Mode = mode;
         try { ModeChanged?.Invoke(mode); }
@@ -189,7 +236,7 @@ public sealed class WebLoginSession : IAsyncDisposable
         WebLoginResult result;
         try
         {
-            _cts.CancelAfter(_options.Timeout);
+            _cts.CancelAfter(Unattended == WebLoginUnattended.None ? _options.Timeout : _options.UnattendedTimeout);
             var ct = _cts.Token;
             if (_spec.ObservedRequests.Count > 0)
                 _browser.ObserveResponses(_spec.ObservedRequests, r => _logger.LogInformation(
@@ -203,11 +250,26 @@ public sealed class WebLoginSession : IAsyncDisposable
                 await EndAsync(resumed);
                 return;
             }
+            if (Unattended == WebLoginUnattended.ResumeOnly || (Unattended == WebLoginUnattended.SignIn && _spec.Autofill == null))
+            {
+                _ready.TrySetCanceled();
+                await EndAsync(WebLoginResult.ForUser("The stored session has expired; sync it once yourself."));
+                return;
+            }
             await _browser.NavigateAsync(_spec.StartUrl, ct);
             if (_spec.Autofill is { Username.Length: > 0, Password.Length: > 0 } fill)
                 await AutofillAsync(fill, ct);
             else SetMode(WebLoginMode.Interactive);
             result = await WatchAsync(ct);
+        }
+        catch (UnattendedStopException ex)
+        {
+            _logger.LogInformation(ex, "Web login: stopped unattended on {Path}: the page needs the owner.", SafePath(_browser.Url));
+            result = WebLoginResult.ForUser(ex.Message);
+        }
+        catch (OperationCanceledException) when (Unattended != WebLoginUnattended.None && !_userCancelled && _cts.IsCancellationRequested)
+        {
+            result = WebLoginResult.ForUser("The sign-in did not finish by itself; sync it once yourself.");
         }
         catch (OperationCanceledException)
         {

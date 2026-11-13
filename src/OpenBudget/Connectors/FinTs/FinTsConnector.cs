@@ -8,7 +8,7 @@ namespace OpenBudget.Connectors.FinTs;
 /// just its <see cref="FinTsBankConfig"/>. Calls that may need the user (TAN method choice, TAN, app approval)
 /// run as coroutines so the app's "call again with the answer" contract maps onto straight-line protocol code.
 /// </summary>
-public class FinTsConnector : IBankConnector
+public class FinTsConnector : IBankConnector, IBackgroundRunInfo
 {
     private readonly ConnectorContext _context;
     private readonly FinTsBankConfig _config;
@@ -39,7 +39,11 @@ public class FinTsConnector : IBankConnector
     public string ConnectorType => _config.ConnectorType;
 
     protected static ConnectorRegistration CreateRegistration(FinTsBankConfig config, Func<ConnectorContext, IBankConnector> create) =>
-        new(config.ConnectorType, config.DisplayName, config.Description, create, Statements: config.Statements);
+        new(config.ConnectorType, config.DisplayName, config.Description, create, Statements: config.Statements)
+        {
+            Silent = SilentCapability.Full,
+            FinTsBlz = config.Blz,
+        };
 
     /// <summary>A registration for any configured bank (the thin bank classes use their own).</summary>
     public static ConnectorRegistration Registration(FinTsBankConfig config, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null) =>
@@ -57,13 +61,16 @@ public class FinTsConnector : IBankConnector
         {
             if (!_options.IsConfigured)
                 return Task.FromResult(ConnectorStep.Fail<ConnectorSession?>(FinTsOptions.NotConfiguredMessage));
-            var client = new FinTsClient(_transportFactory(_context), _config, _options, credentials, storedSession, _context.Clock, _context.Logger);
+            // A background run decides before sending anything: the bank pushes a TAN request while processing the init.
+            if (_context.Silent && FinTsClient.SilentBlocker(storedSession, _options.SilentScaWindow, _context.Clock.GetUtcNow().UtcDateTime) is { } blocker)
+                return Task.FromResult(ConnectorStep.NeedsUser<ConnectorSession?>(blocker));
+            var client = new FinTsClient(_transportFactory(_context), _config, _options, credentials, storedSession, _context.Clock, _context.Logger, _context.Silent);
             _client = client;
             _login = new ChallengeCoroutine<ConnectorSession?>(async (ask, token) =>
             {
                 await client.LoginAsync(ask, token);
                 return client.Session;
-            });
+            }, _context.Silent);
         }
         return _login.ResumeAsync(answer, ct);
     }
@@ -77,7 +84,7 @@ public class FinTsConnector : IBankConnector
         if (answer == null || _refresh == null || !string.Equals(_refreshKey, account.RemoteId, StringComparison.Ordinal))
         {
             _refreshKey = account.RemoteId;
-            _refresh = new ChallengeCoroutine<AccountRefresh>((ask, token) => client.RefreshAsync(account, since, ask, token));
+            _refresh = new ChallengeCoroutine<AccountRefresh>((ask, token) => client.RefreshAsync(account, since, ask, token), _context.Silent);
         }
         return _refresh.ResumeAsync(answer, ct);
     }
@@ -89,7 +96,7 @@ public class FinTsConnector : IBankConnector
         if (answer == null || _statements == null)
         {
             _statements = new ChallengeCoroutine<IReadOnlyList<RemoteStatement>>(async (ask, token) =>
-                await client.FetchStatementsAsync(accounts, knownIdentifiers, ask, token));
+                await client.FetchStatementsAsync(accounts, knownIdentifiers, ask, token), _context.Silent);
         }
         return _statements.ResumeAsync(answer, ct);
     }
@@ -100,6 +107,13 @@ public class FinTsConnector : IBankConnector
         await _client.EndAsync(ct);
         return _client.ExportSession();
     }
+
+    public string? FinTsCodes => _client is { InitCodes.Count: > 0 } c ? string.Join(", ", c.InitCodes) : null;
+
+    public bool ScaCompleted => _client?.ScaCompleted == true;
+
+    /// <summary>After a stop in a background run the session still holds the bank's answer (TAN wanted: pause background runs).</summary>
+    public ConnectorSession? SessionAfterStop => _client?.ExportSession();
 
     private FinTsClient Client() => _client ?? throw new ConnectorException("Not logged in.");
 }

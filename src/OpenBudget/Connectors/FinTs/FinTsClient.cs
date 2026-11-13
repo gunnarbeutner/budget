@@ -19,6 +19,18 @@ internal sealed partial class FinTsClient
     public const string UpdKey = "fints.upd";
     public const string InventoryKeyPrefix = "fints.inv.";
 
+    /// <summary>When the owner last completed a strong authentication (TAN or app approval), ISO 8601 UTC.</summary>
+    public const string LastScaKey = "fints.lastSca";
+
+    /// <summary>"1" when the most recent dialog init needed no TAN (the bank granted an exemption), "0" when it asked for one.</summary>
+    public const string SilentOkKey = "fints.silentOk";
+
+    /// <summary>Set when a background run met a TAN request: no further background runs until a manual strong authentication.</summary>
+    public const string SilentBlockedKey = "fints.silentBlocked";
+
+    /// <summary>Return codes of a dialog init that tell whether the bank wanted a strong authentication.</summary>
+    private static readonly int[] ScaCodes = [3076, 30, 3955, 3956];
+
     private const string OneStep = "999";
     private const string CamtV2 = "urn:iso:std:iso:20022:tech:xsd:camt.052.001.02";
     private const int MaxPages = 50;
@@ -38,6 +50,7 @@ internal sealed partial class FinTsClient
     private readonly ConnectorSession _session;
     private readonly TimeProvider _clock;
     private readonly ILogger _logger;
+    private readonly bool _silent;
 
     private FinTsBankData _data = FinTsBankData.Empty;
     private string _systemId = "0";
@@ -48,8 +61,9 @@ internal sealed partial class FinTsClient
 
     public FinTsClient(
         IFinTsTransport transport, FinTsBankConfig config, FinTsOptions options, ConnectorCredentials credentials,
-        ConnectorSession? stored, TimeProvider clock, ILogger logger)
+        ConnectorSession? stored, TimeProvider clock, ILogger logger, bool silent = false)
     {
+        _silent = silent;
         _transport = transport;
         _config = config;
         _options = options;
@@ -70,6 +84,35 @@ internal sealed partial class FinTsClient
     }
 
     public IReadOnlyList<FinTsAccountInfo> AccountInfos => _data.Accounts;
+
+    /// <summary>The SCA-related return codes of each dialog init of this run (e.g. "3076", "0030"), oldest first.</summary>
+    public List<string> InitCodes { get; } = [];
+
+    /// <summary>Whether the owner completed a strong authentication in this run.</summary>
+    public bool ScaCompleted { get; private set; }
+
+    /// <summary>
+    /// Why a background run must not open a dialog with this stored session, or null when it may: the TAN method and
+    /// system id are settled, the bank parameters are cached, no earlier background run met a TAN request, and either
+    /// the last init needed no TAN or the last strong authentication lies within <paramref name="window"/>.
+    /// </summary>
+    public static string? SilentBlocker(ConnectorSession? session, TimeSpan window, DateTime nowUtc)
+    {
+        var v = session?.Values;
+        if (v == null || !v.TryGetValue(TanMethodKey, out var tan) || tan.Length == 0
+            || !v.TryGetValue(SystemIdKey, out var sys) || sys.Length == 0 || string.Equals(sys, "0", StringComparison.Ordinal))
+            return "The bank connection is not set up completely yet; sync it once yourself.";
+        if (!v.TryGetValue(BpdKey, out var bpd) || bpd.Length == 0 || !v.TryGetValue(UpdKey, out var upd) || upd.Length == 0)
+            return "The bank's parameters are not cached yet; sync it once yourself.";
+        if (v.ContainsKey(SilentBlockedKey))
+            return "The bank asked for a TAN in a background sync; sync it once yourself.";
+        if (string.Equals(v.GetValueOrDefault(SilentOkKey), "1", StringComparison.Ordinal)) return null;
+        if (v.TryGetValue(LastScaKey, out var text)
+            && DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var last)
+            && nowUtc - last.ToUniversalTime() < window)
+            return null;
+        return "The last TAN is too long ago; sync it once yourself.";
+    }
 
     private void LoadSession()
     {
@@ -180,7 +223,17 @@ internal sealed partial class FinTsClient
         if (synchronize) segments.Add(new FinTsSegmentBuilder("HKSYN", 3).Add("0"));
 
         var response = await SendAsync(segments, null, ct);
+        RecordInit(response);
         return response.HasError ? response : await ResolveTanAsync(response, ask, ct);
+    }
+
+    /// <summary>Notes which SCA codes the init answered with and whether it got by without a TAN.</summary>
+    private void RecordInit(FinTsResponse response)
+    {
+        var codes = ScaCodes.Where(response.Has).Select(c => c.ToString("D4", CultureInfo.InvariantCulture)).ToList();
+        InitCodes.Add(codes.Count == 0 ? "-" : string.Join(' ', codes));
+        if (response.HasError) return;
+        _session.Values[SilentOkKey] = response.Has(30) || response.Has(3955) ? "0" : "1";
     }
 
     /// <summary>
@@ -192,6 +245,8 @@ internal sealed partial class FinTsClient
         if (!_options.IsConfigured) throw new FinTsException(FinTsOptions.NotConfiguredMessage);
 
         var needSync = string.Equals(_systemId, "0", StringComparison.Ordinal);
+        if (_silent && (needSync || _tanId == null))
+            throw new SilentAbortException("The bank connection is not set up completely yet; sync it once yourself.");
         for (var attempt = 0; attempt < 5; attempt++)
         {
             // The system id is requested only once the TAN method is settled: a dialog under the one-step placeholder is just a probe.
@@ -210,6 +265,7 @@ internal sealed partial class FinTsClient
             if (wrongMethod)
             {
                 await EndAsync(ct);
+                if (_silent) throw new SilentAbortException("The bank changed the TAN methods; sync it once yourself.");
                 _tanId = await ChooseMethodAsync(allowed!, ask);
                 continue;
             }
@@ -277,7 +333,21 @@ internal sealed partial class FinTsClient
         {
             if (response.HasError) return response;
             var decoupledCode = response.Has(3955);
-            if (!decoupledCode && !response.Has(30)) return response;
+            if (!decoupledCode && !response.Has(30))
+            {
+                if (round > 0) RecordSca();
+                return response;
+            }
+            if (_silent)
+            {
+                // The bank has already sent its push or TAN; nothing more is sent (no polling, no TAN) and background
+                // runs pause until the owner completes a strong authentication in a manual sync.
+                _session.Values[SilentBlockedKey] = "1";
+                _session.Values[SilentOkKey] = "0";
+                _logger.LogInformation("FinTS: the bank asked for a TAN in a background run; ending the dialog.");
+                await EndAsync(ct);
+                throw new SilentAbortException("The bank asked for a TAN in a background sync; sync it once yourself.");
+            }
 
             var hitan = response.Of("HITAN").FirstOrDefault();
             var reference = hitan?.Element(2) ?? string.Empty;
@@ -291,6 +361,13 @@ internal sealed partial class FinTsClient
                 response = await EnterTanAsync(version, reference, text, method, ask, ct);
         }
         throw new FinTsException("The bank kept asking for further authorization.");
+    }
+
+    private void RecordSca()
+    {
+        ScaCompleted = true;
+        _session.Values[LastScaKey] = _clock.GetUtcNow().UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
+        _session.Values.Remove(SilentBlockedKey);
     }
 
     private async Task<FinTsResponse> PollApprovalAsync(int version, string reference, string bankText, FinTsTanMethod? method, IChallengeAsker ask, CancellationToken ct)

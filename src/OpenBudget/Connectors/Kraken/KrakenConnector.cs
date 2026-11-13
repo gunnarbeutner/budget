@@ -37,7 +37,10 @@ public sealed class KrakenConnector : IBankConnector
         "Kraken balances as one depot account, valued in EUR. Use a read-only API key: on kraken.com go to Settings › API › Create API key and allow only “Query Funds” and “Query Ledger Entries”. Enter the API key as username and the private key as password.",
         ctx => new KrakenConnector(ctx, options),
         CredentialRequirement.UsernameAndSecret,
-        Statements: false);
+        Statements: false)
+    {
+        Silent = SilentCapability.Full,
+    };
 
     public string ConnectorType => TypeName;
 

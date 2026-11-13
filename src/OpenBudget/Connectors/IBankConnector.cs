@@ -64,3 +64,26 @@ public interface ISyncHistoryConsumer
 
     void UseSyncHistory(SyncHistory history);
 }
+
+/// <summary>What a connector reports about a run beyond its data, for the background-run log and the background rules.</summary>
+public interface IBackgroundRunInfo
+{
+    /// <summary>The SCA-related return codes of the FinTS dialog inits (e.g. "3076", "0030"); null when there were none.</summary>
+    string? FinTsCodes { get; }
+
+    /// <summary>The owner completed a strong authentication (TAN, app approval) in this run.</summary>
+    bool ScaCompleted { get; }
+
+    /// <summary>The session to store after the run stopped for the owner (null: keep the one from before).</summary>
+    ConnectorSession? SessionAfterStop { get; }
+}
+
+/// <summary>A connector whose background runs cover only part of a login (the rest is left to manual syncs).</summary>
+public interface IBackgroundScope
+{
+    /// <summary>Whether a background run refreshes this account.</summary>
+    bool RefreshInBackground(RemoteAccount account);
+
+    /// <summary>Whether a background run fetches statements.</summary>
+    bool StatementsInBackground { get; }
+}

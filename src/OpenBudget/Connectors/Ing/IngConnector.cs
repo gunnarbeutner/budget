@@ -13,7 +13,7 @@ namespace OpenBudget.Connectors.Ing;
 /// Banking to go app, so it only runs when it is needed: once to discover web-only accounts, when a web-only account is
 /// refreshed, and when statements are fetched. A failed discovery never fails the FinTS part.
 /// </summary>
-public sealed class IngConnector : IBankConnector, IBatchedStatements
+public sealed class IngConnector : IBankConnector, IBatchedStatements, IBackgroundRunInfo, IBackgroundScope
 {
     public const string TypeName = "ing";
     internal const string WebAccountsKey = "ing.web.accounts";
@@ -55,7 +55,12 @@ public sealed class IngConnector : IBankConnector, IBatchedStatements
     }
 
     public static ConnectorRegistration Registration(FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null, Uri? webBase = null) =>
-        new(Config.ConnectorType, Config.DisplayName, Config.Description, ctx => new IngConnector(ctx, options, transportFactory, webBase), Statements: true);
+        new(Config.ConnectorType, Config.DisplayName, Config.Description, ctx => new IngConnector(ctx, options, transportFactory, webBase), Statements: true)
+        {
+            // background runs do the FinTS part only; the web banking needs an app confirmation
+            Silent = SilentCapability.Full,
+            FinTsBlz = Config.Blz,
+        };
 
     public string ConnectorType => TypeName;
 
@@ -94,7 +99,7 @@ public sealed class IngConnector : IBankConnector, IBatchedStatements
             var step = await _fints.LoginAsync(credentials, _session, answer, ct);
             if (step.Status != StepStatus.Done) return step;
             _fintsAccounts = await _fints.ListAccountsAsync(ct);
-            if (!DiscoveryDue()) return ConnectorStep.Done<ConnectorSession?>(_session);
+            if (_context.Silent || !DiscoveryDue()) return ConnectorStep.Done<ConnectorSession?>(_session);
             _webPhase = true;
             answer = null;
             _discovery = new ChallengeCoroutine<bool>(async (ask, token) =>
@@ -170,6 +175,18 @@ public sealed class IngConnector : IBankConnector, IBatchedStatements
                 .Select(w => new RemoteAccount(w.Iban, w.Name, w.Kind, w.Iban, "EUR")))
             .ToList();
     }
+
+    public string? FinTsCodes => _fints.FinTsCodes;
+
+    public bool ScaCompleted => _fints.ScaCompleted;
+
+    public ConnectorSession? SessionAfterStop => _fints.SessionAfterStop;
+
+    /// <summary>Web-only accounts and the Postbox need the web banking (an app confirmation): left to manual syncs.</summary>
+    public bool RefreshInBackground(RemoteAccount account) =>
+        !WebAccounts().Any(w => string.Equals(w.Iban, account.RemoteId, StringComparison.Ordinal));
+
+    public bool StatementsInBackground => false;
 
     public Task<ConnectorStep<AccountRefresh>> RefreshAsync(RemoteAccount account, DateOnly? since, ChallengeAnswer? answer, CancellationToken ct)
     {

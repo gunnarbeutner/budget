@@ -188,4 +188,11 @@ public sealed record ConnectorContext(IBankHttpClient Http, TimeProvider Clock, 
 {
     /// <summary>Updates the owner's current sync status during a longer bank-side operation; never include secrets.</summary>
     public Action<string>? Progress { get; init; }
+
+    /// <summary>
+    /// A background run: the connector must not ask the owner anything nor do anything that may notify them (an MFA push,
+    /// an SMS). Where such a step would come next it stops with <see cref="StepStatus.NeedsUser"/> or throws
+    /// <see cref="SilentAbortException"/> before sending anything.
+    /// </summary>
+    public bool Silent { get; init; }
 }
