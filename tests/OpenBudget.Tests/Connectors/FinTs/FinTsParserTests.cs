@@ -262,4 +262,66 @@ public sealed class FinTsParserTests
         Assert.Equal("C-8", t.Sepa?.CreditorId);
         Assert.Equal("WATER FEE 7,00 EUR MREF+M-9 CRED+C-8", t.KeyPurpose);
     }
+
+    // Purposes as banks wrap them: lines of a SEPA remittance width (35), ?2x subfields (27), and the two mixed.
+    public static TheoryData<string, int[]> WrappedPurposes => new()
+    {
+        { "Schlussrechnung + Restposten Nr. 318842 zu Vertrag 400099123, Kundennummer 61234", [35, 35] },
+        { "HUNDESTEUER A 42,10 EUR WASSERGEB. 12,50 EUR", [27] },
+        { "KANALGEBUEHR 400111-20-002 BLUMENWEG 7 NR. 12 RESTBETRAG 5,00 EUR", [27, 35] },
+    };
+
+    private static List<string> Wrap(string text, int[] widths)
+    {
+        var pieces = new List<string>();
+        var at = 0;
+        foreach (var w in widths)
+        {
+            pieces.Add(text.Substring(at, w));
+            at += w;
+        }
+        pieces.Add(text[at..]);
+        return pieces;
+    }
+
+    // Free text has no 27-character width (see Mt940_free_text_keeps_word_breaks_between_the_banks_lines).
+    public static TheoryData<string, int[]> WrappedFreeText => new()
+    {
+        { "Schlussrechnung + Restposten Nr. 318842 zu Vertrag 400099123, Kundennummer 61234", [35, 35] },
+        { "ABGABEN 400111-20-002 BLUMENWEG 7 NR. 12 RESTBETRAG 5,00 EUR UND WEITERE POSTEN AUS DEM VORJAHR 2025 GESAMT", [35, 65] },
+    };
+
+    [Theory]
+    [MemberData(nameof(WrappedFreeText))]
+    public void Mt942_free_text_lines_of_a_standard_width_run_on(string text, int[] widths)
+    {
+        var lines = Wrap(text, widths);
+        var t = Assert.Single(Mt940Parser.Parse(Mt940(string.Join("\r\n", lines)), "EUR", booked: false));
+        Assert.Equal(text, t.Purpose);
+        Assert.Equal(string.Concat(lines), t.KeyPurpose ?? t.Purpose);
+    }
+
+    [Theory]
+    [MemberData(nameof(WrappedPurposes))]
+    public void Mt942_purpose_fields_of_a_standard_width_run_on(string text, int[] widths)
+    {
+        var fields = Wrap(text, widths);
+        var info = "105?00SEPA-Lastschrift" + string.Concat(fields.Select((f, i) => "?2" + i + f)) + "?32Example Utility";
+        var t = Assert.Single(Mt940Parser.Parse(Mt940(info), "EUR", booked: false));
+        Assert.Equal(text, t.Purpose);
+    }
+
+    [Theory]
+    [MemberData(nameof(WrappedPurposes))]
+    public void Camt_pending_purpose_pieces_of_a_standard_width_run_on(string text, int[] widths)
+    {
+        var pieces = Wrap(text, widths);
+        var xml = "<Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:camt.052.001.08\"><BkToCstmrAcctRpt><Rpt><Ntry><Amt Ccy=\"EUR\">7.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>PDNG</Cd></Sts><BookgDt><Dt>2026-11-12</Dt></BookgDt><NtryDtls><TxDtls><RmtInf>"
+            + string.Concat(pieces.Select(p => "<Ustrd>" + p + "</Ustrd>"))
+            + "</RmtInf></TxDtls></NtryDtls></Ntry></Rpt></BkToCstmrAcctRpt></Document>";
+        var t = Assert.Single(CamtParser.Parse(xml, bookedDocument: false));
+        Assert.Equal(text, t.Purpose);
+        // The identity key keeps joining the pieces with a space.
+        Assert.Equal(string.Join(' ', pieces.Select(p => p.Trim())), t.KeyPurpose ?? t.Purpose);
+    }
 }

@@ -64,7 +64,7 @@ internal static class CamtParser
             var ustrd = details == null ? [] : details.Descendants().Where(e => e.Name.LocalName == "Ustrd").Select(e => e.Value).ToList();
             // The identity key reads the pieces trimmed and joined with a space, as it always has.
             var keyPurpose = string.Join(' ', ustrd.Select(v => v.Trim()).Where(v => v.Length > 0));
-            var text = Mt940Parser.JoinPieces(ustrd.Select(v => v.TrimStart()), v => v.Length >= UstrdLength).Trim();
+            var text = Mt940Parser.JoinUstrd(ustrd.Select(v => v.TrimStart()).ToList()).Trim();
             if (string.IsNullOrEmpty(keyPurpose)) text = keyPurpose = Text(entry, "AddtlNtryInf") ?? "";
             var tags = SepaPurpose.Parse(text);
             var purpose = SepaPurpose.Remittance(text);
@@ -115,7 +115,6 @@ internal static class CamtParser
     }
 
     /// <summary>The longest unstructured remittance piece (Ustrd); one of that length may end mid-word.</summary>
-    private const int UstrdLength = 140;
 
     /// <summary>SEPA details from the structured elements, else from the tags in the remittance text.</summary>
     private static SepaDetails? Sepa(XElement entry, XElement? details, Dictionary<string, string> tags)
@@ -314,25 +313,27 @@ internal static partial class Mt940Parser
             gvc.Length == 0 ? null : gvc, F(0), F(10), F(30), F(31), F(34), KeyText(runText));
     }
 
-    /// <summary>The longest line SWIFT allows in a field; a line of that length may end mid-word.</summary>
-    private const int SwiftLineLength = 65;
+    /// <summary>A ?2x subfield, a SEPA remittance line, a SWIFT line, a camt Ustrd element.</summary>
+    private const int FieldWidth = 27, RemittanceWidth = 35, SwiftWidth = 65, UstrdWidth = 140;
 
-    /// <summary>The length of a full purpose subfield (?20-?29, ?60-?63).</summary>
-    private const int PurposeFieldLength = 27;
+    /// <summary>Structured purpose subfields (?20-?29, ?60-?63); see <see cref="JoinWrapped"/>.</summary>
+    internal static string JoinPurposeFields(IEnumerable<string> fields) => JoinWrapped(fields.ToList(), FieldWidth, RemittanceWidth);
 
-    /// <summary>Purpose subfields hold up to 27 characters. A full one may end mid-word and runs on into the next; a
-    /// shorter one ended at a word break and is followed by a space.</summary>
-    internal static string JoinPurposeFields(IEnumerable<string> fields) =>
-        JoinPieces(fields, f => f.Length >= PurposeFieldLength);
+    /// <summary>Free-text :86: lines; see <see cref="JoinWrapped"/>. A 27-character line is no wrap width here: card
+    /// payments end such lines at a word break ("Datum 12.11.2026 Zeit 13:32").</summary>
+    internal static string JoinLines(IReadOnlyList<string> lines) => JoinWrapped(lines, RemittanceWidth, SwiftWidth);
 
-    /// <summary>Free-text :86: lines. A line of the block's wrap width (the SWIFT maximum, or a width several lines
-    /// share) may end mid-word and runs on into the next; a shorter one ended at a word break.</summary>
-    internal static string JoinLines(IReadOnlyList<string> lines)
+    /// <summary>camt Ustrd elements; see <see cref="JoinWrapped"/>.</summary>
+    internal static string JoinUstrd(IReadOnlyList<string> pieces) => JoinWrapped(pieces, FieldWidth, RemittanceWidth, SwiftWidth, UstrdWidth);
+
+    /// <summary>Purpose pieces as a bank wrapped them. A full piece (one of the <paramref name="widths"/>, or the width
+    /// several pieces of the block share) may end mid-word and runs on into the next; a shorter one ended at a word break.</summary>
+    private static string JoinWrapped(IReadOnlyList<string> pieces, params int[] widths)
     {
-        var inner = lines.Take(lines.Count - 1).Where(l => l.Length > 0).ToList();
-        var width = inner.Count == 0 ? SwiftLineLength : inner.Max(l => l.Length);
-        var shared = inner.Count(l => l.Length == width) >= 2;
-        return JoinPieces(lines, l => l.Length >= SwiftLineLength || (shared && l.Length == width));
+        var inner = pieces.Take(pieces.Count - 1).Where(p => p.Length > 0).ToList();
+        var width = inner.Count == 0 ? 0 : inner.Max(p => p.Length);
+        var shared = inner.Count(p => p.Length == width) >= 2;
+        return JoinPieces(pieces, p => widths.Contains(p.Length) || p.Length >= UstrdWidth || (shared && p.Length == width));
     }
 
     /// <summary>Joins pieces, with a space after one that is not <paramref name="full"/> unless either side already has whitespace.</summary>
