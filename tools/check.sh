@@ -32,7 +32,8 @@ pids=()
 names=()
 run() { # name, args...
     local name=$1; shift
-    ( dotnet test --no-build -nologo -tl:off "$@" > "$log_dir/$name.log" 2>&1 ) &
+    ( dotnet test --no-build -nologo -tl:off --logger "trx;LogFileName=$name.trx" --results-directory "$log_dir" "$@" \
+        > "$log_dir/$name.log" 2>&1 ) &
     pids+=($!)
     names+=("$name")
 }
@@ -71,6 +72,10 @@ while (( remaining > 0 && status == 0 )); do
             echo "$name ok ($(( $(date +%s) - start ))s) $summary"
         else
             echo "FAILED: $name ($(( $(date +%s) - start ))s) $summary"
+            # The trx file names the failed tests reliably; the console log is garbled by progress output.
+            if [[ -f $log_dir/$name.trx ]]; then
+                grep -oE 'testName="[^"]+"[^>]*outcome="Failed"' "$log_dir/$name.trx" | sed -E 's/testName="([^"]+)".*/  failed: \1/' || true
+            fi
             grep -E "^\s+Failed |Error Message" -A3 "$log_dir/$name.log" | head -n 40 || tail -n 40 "$log_dir/$name.log"
             status=1
             stop_all
