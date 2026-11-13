@@ -58,7 +58,7 @@ public static class BankText
     /// <summary>The transaction with its name, purpose and booking text repaired.</summary>
     public static RemoteTransaction Repair(RemoteTransaction t)
     {
-        var repaired = t with { Name = Repair(t.Name), Purpose = Repair(t.Purpose), BookingText = Repair(t.BookingText) };
+        var repaired = t with { Name = Repair(t.Name), Purpose = Repair(t.Purpose), KeyPurpose = Repair(t.KeyPurpose), BookingText = Repair(t.BookingText) };
         return repaired == t ? t : repaired;
     }
 

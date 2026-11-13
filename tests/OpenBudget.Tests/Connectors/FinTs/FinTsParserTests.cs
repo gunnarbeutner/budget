@@ -186,4 +186,26 @@ public sealed class FinTsParserTests
         Assert.Equal(data.Accounts.Select(a => a.RemoteId), again.Accounts.Select(a => a.RemoteId));
         Assert.Equal(data.BpdVersion, again.BpdVersion);
     }
+
+    [Fact]
+    public void Mt940_free_text_keeps_word_breaks_between_the_banks_lines()
+    {
+        const string mt940 = ":20:STARTUMS\r\n:25:12345678/1234567\r\n:28C:0/1\r\n:60F:C261031EUR1000,00\r\n"
+            + ":61:2611121112D4,20NMSCNONREF\r\n:86:Example Bakery GmbH Fil 313 Nuernberg\r\nDatum 12.11.2026 Zeit 13:32\r\nKaufumsatz VISA Card\r\n"
+            + ":62F:C261112EUR995,80\r\n-";
+        var t = Assert.Single(Mt940Parser.Parse(mt940, "EUR", booked: true));
+        Assert.Equal("Example Bakery GmbH Fil 313 Nuernberg Datum 12.11.2026 Zeit 13:32 Kaufumsatz VISA Card", t.Purpose);
+        // The identity key keeps reading the lines run together, so bookings stored before are recognised.
+        Assert.Equal("Example Bakery GmbH Fil 313 NuernbergDatum 12.11.2026 Zeit 13:32Kaufumsatz VISA Card", t.KeyPurpose);
+    }
+
+    [Fact]
+    public void Mt940_purpose_fields_join_with_a_space_unless_a_full_field_continues_a_word()
+    {
+        Assert.Equal("Example Bakery Fil 313 Nuernberg Datum 12.11.2026 Zeit 13:32 Kaufumsatz VISA Card",
+            Mt940Parser.JoinPurposeFields(["Example Bakery Fil 313", "Nuernberg", "Datum 12.11.2026 Zeit 13:32", "Kaufumsatz VISA Card"]));
+        // A full field followed by a lower-case letter continues a word.
+        Assert.Equal("SVWZ+Rechnung 4711 Kundennummer 0815", Mt940Parser.JoinPurposeFields(["SVWZ+Rechnung 4711 Kundennu", "mmer 0815"]));
+        Assert.Equal("Salary November", Mt940Parser.JoinPurposeFields(["Salary", "November"]));
+    }
 }

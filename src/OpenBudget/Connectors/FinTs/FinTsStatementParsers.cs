@@ -205,7 +205,7 @@ internal static partial class Mt940Parser
                     entryLine = text.Replace("\r", string.Empty, StringComparison.Ordinal).Split('\n')[0];
                     break;
                 case "86":
-                    infoLines.Add(text.Replace("\r", string.Empty, StringComparison.Ordinal).Replace("\n", string.Empty, StringComparison.Ordinal));
+                    infoLines.Add(text.Replace("\r", string.Empty, StringComparison.Ordinal));
                     break;
                 default:
                     break;
@@ -266,29 +266,75 @@ internal static partial class Mt940Parser
             i.Gvc, i.Primanota, i.ReturnReason);
         return new RemoteTransaction(signed, currency, bookingDate, valueDate, i.Name, i.Purpose, booked, bankReference,
             i.Iban ?? i.Tags.GetValueOrDefault("IBAN"), i.Bic ?? i.Tags.GetValueOrDefault("BIC"), i.BookingText,
-            sepa == new SepaDetails() ? null : sepa);
+            sepa == new SepaDetails() ? null : sepa)
+        { KeyPurpose = i.KeyPurpose == i.Purpose ? null : i.KeyPurpose };
     }
 
-    /// <summary>The parts of a :86: field: ?00 booking text, ?10 primanota, ?20-29/?60-63 purpose, ?30 BIC/BLZ, ?31 IBAN/account, ?32-33 name, ?34 return reason; the GVC precedes the first '?'.</summary>
+    /// <summary>The parts of a :86: field: ?00 booking text, ?10 primanota, ?20-29/?60-63 purpose, ?30 BIC/BLZ, ?31 IBAN/account, ?32-33 name, ?34 return reason; the GVC precedes the first '?'.
+    /// <see cref="KeyPurpose"/> is the purpose with the lines run together, as the booking's identity key has it.</summary>
     private sealed record Info86(string? Name, string? Purpose, Dictionary<string, string> Tags, string? Gvc = null, string? BookingText = null,
-        string? Primanota = null, string? Bic = null, string? Iban = null, string? ReturnReason = null);
+        string? Primanota = null, string? Bic = null, string? Iban = null, string? ReturnReason = null, string? KeyPurpose = null);
 
     private static Info86 ParseInfo(string info)
     {
         if (info.Length == 0) return new(null, null, []);
-        if (!info.Contains('?', StringComparison.Ordinal)) return new(null, info.Trim(), SepaPurpose.Parse(info));
+        if (!info.Contains('?', StringComparison.Ordinal))
+        {
+            // Free text: each of the bank's lines is a piece of its own ("… Nuernberg" / "Datum 12.11.2026 …").
+            var text = JoinWords(info.Split('\n'));
+            var run = info.Replace("\n", string.Empty, StringComparison.Ordinal);
+            return new(null, text.Trim(), SepaPurpose.Parse(run), KeyPurpose: run.Trim());
+        }
+        // Structured: the ?xx subfields carry the structure; a line break may fall anywhere inside one.
+        info = info.Replace("\n", string.Empty, StringComparison.Ordinal);
         var fields = new SortedDictionary<int, string>();
         foreach (var part in info.Split('?').Skip(1))
         {
             if (part.Length >= 2 && int.TryParse(part.AsSpan(0, 2), NumberStyles.None, CultureInfo.InvariantCulture, out var n))
                 fields[n] = fields.GetValueOrDefault(n) + part[2..];
         }
-        var purposeText = string.Concat(fields.Where(f => f.Key is (>= 20 and <= 29) or (>= 60 and <= 63)).Select(f => f.Value));
+        var purposeFields = fields.Where(f => f.Key is (>= 20 and <= 29) or (>= 60 and <= 63)).Select(f => f.Value).ToList();
+        var purposeText = JoinPurposeFields(purposeFields);
+        // Tag values (references, mandates) may span fields; they are read from the fields run together.
+        var runText = string.Concat(purposeFields);
         var name = string.Join(' ', new[] { fields.GetValueOrDefault(32), fields.GetValueOrDefault(33) }.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!.Trim()));
         var gvc = info[..info.IndexOf('?', StringComparison.Ordinal)].Trim();
         string? F(int n) => fields.GetValueOrDefault(n)?.Trim() is { Length: > 0 } v ? v : null;
-        return new(name.Length == 0 ? null : name, ExtractPurpose(purposeText), SepaPurpose.Parse(purposeText),
-            gvc.Length == 0 ? null : gvc, F(0), F(10), F(30), F(31), F(34));
+        return new(name.Length == 0 ? null : name, ExtractPurpose(purposeText), SepaPurpose.Parse(runText),
+            gvc.Length == 0 ? null : gvc, F(0), F(10), F(30), F(31), F(34), ExtractPurpose(runText));
+    }
+
+    /// <summary>Purpose subfields hold up to 27 characters. A shorter one ended at a word break; a full one may end mid-word,
+    /// which is taken to be the case when the next one starts with a lower-case letter ("Kundennu" / "mmer").</summary>
+    internal static string JoinPurposeFields(IEnumerable<string> fields)
+    {
+        var sb = new StringBuilder();
+        var previous = "";
+        foreach (var f in fields)
+        {
+            if (previous.Length is > 0 and < 27 || (previous.Length >= 27 && !(f.Length > 0 && char.IsLower(f[0])))) AppendSpaceBetween(sb, f);
+            sb.Append(f);
+            previous = f;
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>Joins text pieces with a space where neither side already has whitespace.</summary>
+    internal static string JoinWords(IEnumerable<string> pieces)
+    {
+        var sb = new StringBuilder();
+        foreach (var p in pieces)
+        {
+            if (p.Length == 0) continue;
+            AppendSpaceBetween(sb, p);
+            sb.Append(p);
+        }
+        return sb.ToString();
+    }
+
+    private static void AppendSpaceBetween(StringBuilder sb, string next)
+    {
+        if (sb.Length > 0 && next.Length > 0 && !char.IsWhiteSpace(sb[^1]) && !char.IsWhiteSpace(next[0])) sb.Append(' ');
     }
 
     private static string? ExtractPurpose(string text)

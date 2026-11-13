@@ -31,7 +31,12 @@ public sealed record RemoteTransaction(
     string? CounterpartyIban = null,
     string? CounterpartyBic = null,
     string? BookingText = null,
-    SepaDetails? Sepa = null);
+    SepaDetails? Sepa = null)
+{
+    /// <summary>The purpose as the booking's identity key reads it, when that differs from <see cref="Purpose"/>: MT940
+    /// purposes were keyed with their lines run together, and keep that key so known bookings are recognised.</summary>
+    public string? KeyPurpose { get; init; }
+}
 
 /// <summary>SEPA / bank detail fields of a booking, when the source reports them.</summary>
 public sealed record SepaDetails(
