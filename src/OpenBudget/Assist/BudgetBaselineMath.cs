@@ -18,8 +18,8 @@ public sealed record BudgetBaseline(
 /// <summary>
 /// Statistics behind "Suggest budget": per category over the last 24–36 months, single bookings far off the usual
 /// (robust z-score over 3.5 and more than five times the usual booking) are left out as outliers; payments repeating every 1, 3, 6 or 12 months from the same payee
-/// (amounts within ±10 %) or known standing orders are placed into the months they fall in; the rest is the median month,
-/// moved by a capped trend and a month-of-year seasonality shrunk towards none.
+/// (amounts within ±10 %) or known standing orders are placed into the months they fall in; the rest is the average month
+/// (outliers left out, the last 12 months weighing most) with a month-of-year seasonality shrunk towards none.
 /// </summary>
 public static class BudgetBaselineMath
 {
@@ -115,10 +115,12 @@ public static class BudgetBaselineMath
             rest[MonthIndex(b.Date) - firstIndex] += b.Amount;
         var median = Median(rest);
         var mad = Mad(rest);
-        var recent = Median(rest.Skip(Math.Max(0, months - 12)).ToList());
-        // Trend: the last 12 months against the whole window, capped at ±25 %.
-        var trend = median == 0 ? 0 : Math.Clamp((recent - median) / Math.Abs(median), -0.25m, 0.25m);
-        var level = median * (1 + (trend / 2));
+        // The average month (the median would be 0 for a category used in fewer than half of the months), mostly of the
+        // last 12 months (3:1 against the whole window); the trend is their difference, capped at ±25 %.
+        var mean = rest.Average();
+        var recent = rest.Skip(Math.Max(0, months - 12)).Average();
+        var trend = mean == 0 ? 0 : Math.Clamp((recent - mean) / Math.Abs(mean), -0.25m, 0.25m);
+        var level = (0.75m * recent) + (0.25m * mean);
 
         var season = Seasonality(rest, firstIndex);
         var monthly = new decimal[12];
@@ -131,7 +133,7 @@ public static class BudgetBaselineMath
         var periodicTotal = periodic.Sum(r => r.Amount * MonthsOf(r, year).Count());
         var total = monthly.Sum();
         var basis = total == 0 ? "none"
-            : periodicTotal > total / 2 ? "recurring"
+            : periodicTotal > 0 && periodicTotal > total / 2 ? "recurring"
             : season.Any(f => Math.Abs(f - 1) > 0.25m) ? "seasonal"
             : trend != 0 && Math.Abs(trend) >= 0.1m ? "trend"
             : "median";

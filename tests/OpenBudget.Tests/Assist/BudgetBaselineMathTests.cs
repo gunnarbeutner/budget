@@ -89,7 +89,8 @@ public sealed class BudgetBaselineMathTests
 
         Assert.Equal("seasonal", result.Basis);
         Assert.True(result.Monthly[0] > result.Monthly[6] * 1.5m);
-        Assert.InRange(result.Monthly.Sum(), 12 * 100m * 0.95m, 12 * 100m * 1.05m); // the median month times twelve, redistributed
+        // The average month (162.50 last year, 150 overall; 3:1) times twelve, redistributed.
+        Assert.InRange(result.Monthly.Sum(), 1890m, 1935m);
     }
 
     [Fact]
