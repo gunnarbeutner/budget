@@ -1,4 +1,5 @@
 @using OpenBudget.Assist
+@using OpenBudget.Services
 @inject IStringLocalizer<SuggestionChip> L
 
 @* A category suggestion on a booking row: the category with its confidence and source (the rationale as tooltip),
@@ -8,7 +9,22 @@
     <i class="bi @Icon" aria-hidden="true"></i>
     <button type="button" class="suggest-chip-name" data-testid="suggest-chip-edit" title="@L["Edit"]" @onclick="e => OnEdit.InvokeAsync(e)">@Suggestion.CategoryPath</button>
     <span class="suggest-chip-conf">@((int)Math.Round(Suggestion.Confidence * 100)) %</span>
-    <button type="button" class="suggest-chip-btn" data-testid="suggest-chip-accept" aria-label="@L["Accept"]" title="@L["Accept"]" @onclick="() => OnAccept.InvokeAsync()">
+    @if (Suggestion.Split is { } parts)
+    {
+        <span class="suggest-chip-split" data-testid="suggest-chip-split">
+            @L["Split"]:
+            @foreach (var p in parts)
+            {
+                <span class="suggest-chip-part" title="@p.Label">@p.CategoryPath @Formatting.FormatMoneyDe(p.AmountCents / 100m)</span>
+            }
+        </span>
+    }
+    @if (Suggestion.ShipmentUnclear)
+    {
+        <span class="suggest-chip-conf" data-testid="suggest-chip-unclear" title="@L["ShipmentUnclear_Title"]">@L["ShipmentUnclear"]</span>
+    }
+    <button type="button" class="suggest-chip-btn" data-testid="suggest-chip-accept" aria-label="@L["Accept"]"
+            title="@L["Accept"]" @onclick="() => OnAccept.InvokeAsync()">
         <i class="bi bi-check-lg" aria-hidden="true"></i>
     </button>
     <button type="button" class="suggest-chip-btn" data-testid="suggest-chip-reject" aria-label="@L["Reject"]" title="@L["Reject"]" @onclick="() => OnReject.InvokeAsync()">
@@ -22,11 +38,15 @@
     [Parameter] public EventCallback OnReject { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnEdit { get; set; }
 
+    /// <summary>The booking is still pending.</summary>
+
+
     private string Icon => Suggestion.Source switch
     {
         "ai" => "bi-stars",
         "iban" => "bi-bank",
         "rule" => "bi-funnel",
+        "order" => "bi-box-seam",
         _ => "bi-people",
     };
 

@@ -79,4 +79,16 @@
   <data name="Source_knn" xml:space="preserve">
     <value>Similar bookings</value>
   </data>
+  <data name="Split" xml:space="preserve">
+    <value>Split</value>
+  </data>
+  <data name="ShipmentUnclear" xml:space="preserve">
+    <value>shipment unclear</value>
+  </data>
+  <data name="ShipmentUnclear_Title" xml:space="preserve">
+    <value>The order was shipped in parts; check which items this payment covers.</value>
+  </data>
+  <data name="Source_order" xml:space="preserve">
+    <value>Order items</value>
+  </data>
 </root>

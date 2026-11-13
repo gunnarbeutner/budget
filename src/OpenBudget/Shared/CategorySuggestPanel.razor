@@ -150,7 +150,20 @@
     {
         var sure = Current.Values.Where(s => s.CategoryId != null && s.Confidence >= SureThreshold).ToList();
         var changed = 0;
-        foreach (var group in sure.GroupBy(s => s.CategoryId!.Value))
+        foreach (var split in sure.Where(s => s.Split != null).ToList())
+        {
+            try
+            {
+                await Suggestions.AcceptSplitAsync(split.TransactionId, split.Split!);
+                changed++;
+            }
+            catch (InvalidOperationException)
+            {
+                // A pending booking (or one that changed meanwhile) keeps its suggestion.
+                sure.Remove(split);
+            }
+        }
+        foreach (var group in sure.Where(s => s.Split == null).GroupBy(s => s.CategoryId!.Value))
         {
             var ids = group.Select(s => s.TransactionId).ToList();
             changed += (await Suggestions.AcceptAsync(ids, group.Key)).Changed;

@@ -7,8 +7,21 @@ using OpenBudget.Services;
 
 namespace OpenBudget.Assist;
 
-/// <summary>A category suggestion for one booking. <see cref="Source"/>: rule, iban, knn or ai.</summary>
-public sealed record TxCategorySuggestion(long TransactionId, long? CategoryId, string? CategoryPath, double Confidence, string Source, string? Rationale);
+/// <summary>
+/// A category suggestion for one booking. <see cref="Source"/>: rule, iban, knn, ai or order (from the items of an
+/// online order). With <see cref="Split"/> the booking is to be split into those parts (<see cref="CategoryId"/> is then
+/// the largest part's category).
+/// </summary>
+public sealed record TxCategorySuggestion(long TransactionId, long? CategoryId, string? CategoryPath, double Confidence, string Source, string? Rationale)
+{
+    public IReadOnlyList<SuggestedSplitPart>? Split { get; init; }
+
+    /// <summary>The order was shipped in parts and the charge could not be tied to one: the split covers the whole order.</summary>
+    public bool ShipmentUnclear { get; init; }
+}
+
+/// <summary>One part of a suggested split: signed cents, category and the items it stands for.</summary>
+public sealed record SuggestedSplitPart(long AmountCents, long CategoryId, string? CategoryPath, string Label, IReadOnlyList<long> ItemIds);
 
 /// <summary>A rule worth creating, with what it would match: <see cref="Matches"/> bookings, of which
 /// <see cref="Uncategorized"/> have no category and <see cref="ConflictIds"/> already have a different one.</summary>
@@ -30,7 +43,7 @@ public sealed record CategorySuggestionResult(
 /// AI, when the server has one configured and both the asking user and the booking's owner opted in. Nothing is applied
 /// and no rule is created without the user accepting it. Results are cached per booking and category tree.
 /// </summary>
-public sealed class CategorySuggestionService
+public sealed partial class CategorySuggestionService
 {
     /// <summary>Deterministic suggestions at least this sure are not sent to the AI.</summary>
     public const double SureEnough = 0.75;
@@ -49,12 +62,14 @@ public sealed class CategorySuggestionService
     private readonly IAssistClient _client;
     private readonly ILogger<CategorySuggestionService> _log;
     private readonly TimeProvider _clock;
+    private readonly SplitService? _splits;
 
     public CategorySuggestionService(
         IDbContextFactory<BudgetDbContext> dbFactory, SystemDbContextFactory system, CategorizationService categorization, CategoryRuleService rules,
         BudgetService budgets, TransactionEditService edits, AssistSettingsService settings, IAssistClient client,
-        ILogger<CategorySuggestionService> log, TimeProvider clock)
+        ILogger<CategorySuggestionService> log, TimeProvider clock, SplitService? splits = null)
     {
+        _splits = splits;
         _dbFactory = dbFactory;
         _system = system;
         _categorization = categorization;
@@ -95,7 +110,7 @@ public sealed class CategorySuggestionService
         {
             if (cached.TryGetValue(t.Id, out var hit) && (hit.Source != "ai" || useAi))
             {
-                results[t.Id] = Present(ctx, hit.TransactionId, hit.CategoryId, hit.Confidence, hit.Source, hit.Rationale);
+                results[t.Id] = Present(ctx, hit.TransactionId, hit.CategoryId, hit.Confidence, hit.Source, hit.Rationale, hit.SplitJson);
                 continue;
             }
             var target = ToTarget(t);
@@ -113,6 +128,23 @@ public sealed class CategorySuggestionService
         string? aiError = null;
         var sent = 0;
         var skipped = 0;
+        var orderTargets = targets.Where(t => !string.IsNullOrEmpty(t.OrderItems) && !(cached.TryGetValue(t.Id, out var c) && (c.Source != "ai" || useAi))).ToList();
+        if (orderTargets.Count > 0)
+        {
+            try
+            {
+                var (orderSent, orderSkipped) = await OrderSuggestionsAsync(ctx, orderTargets, useAi, results, ct);
+                sent += orderSent;
+                skipped += orderSkipped;
+                // Bookings with an order suggestion need no AI guess from their payee.
+                unsure.RemoveAll(u => results.TryGetValue(u.Row.Id, out var r) && r.Source == "order");
+            }
+            catch (AssistException ex)
+            {
+                aiError = ex.Message;
+                _log.LogWarning(ex, "AI item categories failed");
+            }
+        }
         var aiRules = new List<(string Expression, long CategoryId)>();
         if (useAi && _client.Enabled && unsure.Count > 0)
         {
@@ -323,8 +355,19 @@ public sealed class CategorySuggestionService
 
     private static string PurposeOnly(string? purpose) => SepaPurpose.Get(purpose, "SVWZ") ?? purpose ?? "";
 
-    private static TxCategorySuggestion Present(Context ctx, long id, long? categoryId, double confidence, string source, string? rationale) =>
-        new(id, categoryId, categoryId is { } c && ctx.ById.TryGetValue(c, out var cat) ? cat.Path : null, Math.Round(confidence, 2), source, rationale);
+    private static TxCategorySuggestion Present(Context ctx, long id, long? categoryId, double confidence, string source, string? rationale, string? splitJson = null)
+    {
+        var suggestion = new TxCategorySuggestion(id, categoryId, categoryId is { } c && ctx.ById.TryGetValue(c, out var cat) ? cat.Path : null, Math.Round(confidence, 2), source, rationale);
+        if (splitJson == null) return suggestion;
+        var stored = ReadSplit(splitJson);
+        if (stored == null) return suggestion;
+        if (stored.Parts.Any(p => !ctx.ById.ContainsKey(p.CategoryId))) return suggestion with { ShipmentUnclear = stored.Unclear };
+        return suggestion with
+        {
+            Split = stored.Parts.Count == 0 ? null : stored.Parts.Select(p => p with { CategoryPath = ctx.ById[p.CategoryId].Path }).ToList(),
+            ShipmentUnclear = stored.Unclear,
+        };
+    }
 
     private async Task<Dictionary<long, CategorySuggestion>> CachedAsync(List<long> ids, string treeHash, CancellationToken ct)
     {
@@ -353,6 +396,7 @@ public sealed class CategorySuggestionService
             Source = s.Source,
             Rationale = s.Rationale is { Length: > 300 } r ? r[..300] : s.Rationale,
             Model = s.Source == "ai" ? _client.Model : null,
+            SplitJson = s.Split == null && !s.ShipmentUnclear ? null : WriteSplit(s),
             TreeHash = treeHash,
             CreatedAt = now,
         }));

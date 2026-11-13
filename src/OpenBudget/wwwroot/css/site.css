@@ -2141,6 +2141,16 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
     white-space: nowrap;
 }
 
+.suggest-chip-split {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0 6px;
+}
+
+.suggest-chip-part {
+    white-space: nowrap;
+}
+
 .suggest-chip-btn {
     border: 0;
     padding: 0 1px;

@@ -45,7 +45,8 @@ public partial class Browse
         if (suggestion.CategoryId is not { } categoryId) return;
         try
         {
-            await CategorySuggestions.AcceptAsync([row.Id], categoryId);
+            if (suggestion.Split is { } parts) await CategorySuggestions.AcceptSplitAsync(row.Id, parts);
+            else await CategorySuggestions.AcceptAsync([row.Id], categoryId);
         }
         catch (Exception ex) when (ex is InvalidOperationException or Services.AccessDeniedException)
         {
