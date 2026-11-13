@@ -1844,8 +1844,6 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
    the day header above keeps its own background. A visually hidden label names them for screen readers. */
 .tx-item.tx-item-pending {
     background-image: repeating-linear-gradient(-45deg, var(--ob-pending-stripe, rgba(127,127,127,.10)) 0 6px, transparent 6px 14px);
-    /* anchored to the viewport, so the stripes of neighbouring pending bookings line up */
-    background-attachment: fixed;
 }
 .tx-item.tx-item-pending .tx-row:hover { background: transparent; }
 .tx-item.tx-item-pending:not(.selected):not(.expanded):hover { background-color: var(--ob-row-hover-bg); }
