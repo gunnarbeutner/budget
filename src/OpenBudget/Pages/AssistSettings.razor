@@ -1,9 +1,10 @@
 @page "/assist"
 @using OpenBudget.Assist
+@using OpenBudget.Services
 @inject AssistSettingsService Assist
 @inject IStringLocalizer<AssistSettings> L
 
-@* The per-user "Use AI suggestions" setting with a preview of exactly what is sent for one of the user's bookings.
+@* The per-user "Use AI suggestions" setting, with what is sent for the user's newest booking in plain words.
    Only reachable when the server has an AI service configured. *@
 
 <PageTitle>@L["PageTitle"]</PageTitle>
@@ -23,28 +24,31 @@ else
                checked="@optIn" @onchange="ToggleAsync" />
         <label class="form-check-label" for="assist-optin">@L["Toggle"]</label>
     </div>
-    <ul class="small text-body-secondary">
-        <li>@L["Sent"]</li>
-        <li>@L["NotSent"]</li>
-        <li>@L["Shared"]</li>
-        <li>@L["Model", Assist.Model]</li>
-    </ul>
-    <h2 class="h6 mt-4">@L["Preview_Heading"]</h2>
-    @if (preview == null)
-    {
-        <p class="small text-body-secondary">@L["Preview_None"]</p>
-    }
-    else
-    {
-        <p class="small text-body-secondary">@L["Preview_Intro"]</p>
-        <pre class="small border rounded p-2 text-wrap" data-testid="assist-preview">@preview</pre>
-    }
+    <details data-testid="assist-sent">
+        <summary>@L["Sent_Summary"]</summary>
+        @if (preview == null)
+        {
+            <p class="small text-body-secondary mt-2">@L["Preview_None"]</p>
+        }
+        else
+        {
+            <table class="table table-sm small mt-2 mb-2 w-auto" data-testid="assist-preview">
+                <tbody>
+                    <tr><th scope="row">@L["Field_Date"]</th><td>@(DateOnly.TryParseExact(preview.Date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var day) ? day.ToString("dd.MM.yyyy") : preview.Date)</td></tr>
+                    <tr><th scope="row">@L["Field_Amount"]</th><td>@Formatting.FormatMoneyDe(preview.Amount, preview.Currency)</td></tr>
+                    <tr><th scope="row">@L["Field_Payee"]</th><td>@preview.Payee</td></tr>
+                    <tr><th scope="row">@L["Field_Purpose"]</th><td>@preview.Purpose</td></tr>
+                </tbody>
+            </table>
+        }
+        <p class="small text-body-secondary">@L["NotSent"]</p>
+    </details>
 }
 </SettingsShell>
 
 @code {
     private bool optIn;
-    private string? preview;
+    private AssistBooking? preview;
 
     protected override async Task OnInitializedAsync()
     {

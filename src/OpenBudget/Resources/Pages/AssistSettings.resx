@@ -68,30 +68,30 @@
     <value>AI suggestions are not set up on this server.</value>
   </data>
   <data name="Intro" xml:space="preserve">
-    <value>Category and budget suggestions work without AI. With AI on, bookings the app is unsure about are sent to an AI service for a better guess. Nothing is changed until you accept it.</value>
+    <value>For bookings the app can't categorise on its own, it asks an AI service (OpenAI). Nothing changes until you accept a suggestion.</value>
   </data>
   <data name="Toggle" xml:space="preserve">
     <value>Use AI suggestions</value>
   </data>
-  <data name="Sent" xml:space="preserve">
-    <value>Sent: date, amount, payee, cleaned purpose, booking code, account type, your category names and rules.</value>
-  </data>
   <data name="NotSent" xml:space="preserve">
-    <value>Not sent: IBANs, BICs, references, mandate and creditor ids, card numbers, account names, balances and your names.</value>
-  </data>
-  <data name="Shared" xml:space="preserve">
-    <value>Bookings of someone else's accounts are only sent if that person turned this on too.</value>
-  </data>
-  <data name="Model" xml:space="preserve">
-    <value>Model: {0}</value>
-  </data>
-  <data name="Preview_Heading" xml:space="preserve">
-    <value>Preview</value>
-  </data>
-  <data name="Preview_Intro" xml:space="preserve">
-    <value>This is exactly what would be sent for your newest booking:</value>
+    <value>IBANs, card numbers, account names, balances and your names are never sent.</value>
   </data>
   <data name="Preview_None" xml:space="preserve">
     <value>No bookings yet.</value>
+  </data>
+  <data name="Sent_Summary" xml:space="preserve">
+    <value>What is sent?</value>
+  </data>
+  <data name="Field_Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="Field_Amount" xml:space="preserve">
+    <value>Amount</value>
+  </data>
+  <data name="Field_Payee" xml:space="preserve">
+    <value>Payee</value>
+  </data>
+  <data name="Field_Purpose" xml:space="preserve">
+    <value>Purpose</value>
   </data>
 </root>

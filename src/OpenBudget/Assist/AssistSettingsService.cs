@@ -63,7 +63,7 @@ public sealed class AssistSettingsService
     }
 
     /// <summary>The newest booking of the signed-in user exactly as it would be sent, or null without bookings.</summary>
-    public async Task<string?> PreviewAsync(CancellationToken ct = default)
+    public async Task<AssistBooking?> PreviewAsync(CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var userId = db.Scope?.UserId;
@@ -72,8 +72,7 @@ public sealed class AssistSettingsService
             .OrderByDescending(x => x.Timestamp).Include(x => x.Account).FirstOrDefaultAsync(ct);
         if (t == null) return null;
         var redactor = new AssistRedactor(await PersonNamesAsync(ct));
-        var booking = redactor.Redact(ToSource(t, t.Account?.KindLabel));
-        return CategoryPrompt.UserContent([new PromptItem(booking, [])]);
+        return redactor.Redact(ToSource(t, t.Account?.KindLabel));
     }
 
     public static AssistBookingSource ToSource(Transaction t, string? accountKind) => new(

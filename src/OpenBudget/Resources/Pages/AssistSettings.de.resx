@@ -68,30 +68,30 @@
     <value>KI-Vorschläge sind auf diesem Server nicht eingerichtet.</value>
   </data>
   <data name="Intro" xml:space="preserve">
-    <value>Kategorie- und Budgetvorschläge funktionieren auch ohne KI. Mit KI werden Buchungen, bei denen die App unsicher ist, an einen KI-Dienst geschickt. Nichts wird geändert, bevor du es übernimmst.</value>
+    <value>Für Buchungen, die die App nicht selbst zuordnen kann, fragt sie einen KI-Dienst (OpenAI). Nichts ändert sich, bis du einen Vorschlag übernimmst.</value>
   </data>
   <data name="Toggle" xml:space="preserve">
     <value>KI-Vorschläge verwenden</value>
   </data>
-  <data name="Sent" xml:space="preserve">
-    <value>Gesendet: Datum, Betrag, Empfänger, bereinigter Verwendungszweck, Buchungsschlüssel, Kontoart, deine Kategorienamen und Regeln.</value>
-  </data>
   <data name="NotSent" xml:space="preserve">
-    <value>Nicht gesendet: IBANs, BICs, Referenzen, Mandats- und Gläubiger-IDs, Kartennummern, Kontonamen, Salden und eure Namen.</value>
-  </data>
-  <data name="Shared" xml:space="preserve">
-    <value>Buchungen fremder Konten werden nur gesendet, wenn die Person das auch eingeschaltet hat.</value>
-  </data>
-  <data name="Model" xml:space="preserve">
-    <value>Modell: {0}</value>
-  </data>
-  <data name="Preview_Heading" xml:space="preserve">
-    <value>Vorschau</value>
-  </data>
-  <data name="Preview_Intro" xml:space="preserve">
-    <value>Genau das würde für deine neueste Buchung gesendet:</value>
+    <value>IBANs, Kartennummern, Kontonamen, Kontostände und eure Namen werden nie gesendet.</value>
   </data>
   <data name="Preview_None" xml:space="preserve">
     <value>Noch keine Buchungen.</value>
+  </data>
+  <data name="Sent_Summary" xml:space="preserve">
+    <value>Was wird gesendet?</value>
+  </data>
+  <data name="Field_Date" xml:space="preserve">
+    <value>Datum</value>
+  </data>
+  <data name="Field_Amount" xml:space="preserve">
+    <value>Betrag</value>
+  </data>
+  <data name="Field_Payee" xml:space="preserve">
+    <value>Empfänger</value>
+  </data>
+  <data name="Field_Purpose" xml:space="preserve">
+    <value>Verwendungszweck</value>
   </data>
 </root>
