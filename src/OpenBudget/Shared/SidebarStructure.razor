@@ -32,7 +32,7 @@
                         title="@key" aria-label="@key" data-testid="color-swatch" @onclick="() => SetColorAsync(colorNode, key)">A</button>
             }
         </div>
-        <button type="button" class="dropdown-item small" @onclick="() => SetColorAsync(colorNode, null)">@L["Color_Reset"]</button>
+        <button type="button" class="dropdown-item small" data-testid="color-reset" @onclick="() => SetColorAsync(colorNode, null)">@L[colorNode.Kind == SidebarNodeKind.CategoryGroup ? "Color_None" : "Color_Reset"]</button>
     </div>
 }
 
@@ -567,7 +567,10 @@
         _color = null;
         await RunAsync(async () =>
         {
-            if (!await CategoryColorEdits.SetColorAsync(node.Id, color)) throw new InvalidOperationException("Color not editable.");
+            var done = node.Kind == SidebarNodeKind.CategoryGroup
+                ? await CategoryColorEdits.SetGroupColorAsync(node.Id, color)
+                : await CategoryColorEdits.SetColorAsync(node.Id, color);
+            if (!done) throw new InvalidOperationException("Color not editable.");
         });
     }
 

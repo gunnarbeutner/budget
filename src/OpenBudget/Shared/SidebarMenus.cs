@@ -59,6 +59,7 @@ public static class SidebarMenus
                 items.Add(Item(NewCategory, l["Ctx_NewSubcategory"], "bi-plus-lg"));
                 break;
             case SidebarNodeKind.CategoryGroup:
+                items.Add(Item(Color, l["Ctx_Color"], "bi-palette"));
                 items.Add(Item(NewCategory, l["Ctx_NewCategory"], "bi-plus-lg"));
                 items.Add(Item(NewGroup, l["Ctx_NewGroup"], "bi-folder-plus"));
                 break;

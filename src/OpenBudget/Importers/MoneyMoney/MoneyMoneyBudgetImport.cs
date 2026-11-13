@@ -23,8 +23,8 @@ public sealed record MoneyMoneyCategoryBudget(decimal Amount, MoneyMoneyBudgetIn
 public sealed record MoneyMoneyBudgetSummary(int Imported, int SkippedTotal);
 
 /// <summary>
-/// Turns MoneyMoney's per-category budgets into one inactive OpenBudget budget named "MoneyMoney" for the current year
-/// in the owner's default project. Monthly budgets apply to every month; quarterly and yearly ones are spread evenly
+/// Turns MoneyMoney's per-category budgets into one OpenBudget budget named "MoneyMoney" for the current year
+/// in the owner's default project, active unless the project has an active budget for that year. Monthly budgets apply to every month; quarterly and yearly ones are spread evenly
 /// (rounded to cents, the remainder in December so the year adds up). "In total" budgets are skipped and counted.
 /// A year that already has a "MoneyMoney" budget in that project is left alone.
 /// </summary>
@@ -111,7 +111,9 @@ public static class MoneyMoneyBudgetImport
         if (await db.Budgets.AnyAsync(b => b.ProjectId == pid && b.Year == year && b.Name == BudgetName, ct)) return new MoneyMoneyBudgetSummary(0, skipped);
 
         var known = (await db.Categories.Where(c => c.OwnerUserId == ownerId).Select(c => c.Id).ToListAsync(ct)).ToHashSet();
-        var budgetRow = new Budget { ProjectId = pid, Year = year, Name = BudgetName, IsActive = false, CreatedAt = DateTime.UtcNow };
+        // Active unless the project already has an active budget for the year.
+        var active = !await db.Budgets.AnyAsync(b => b.ProjectId == pid && b.Year == year && b.IsActive, ct);
+        var budgetRow = new Budget { ProjectId = pid, Year = year, Name = BudgetName, IsActive = active, CreatedAt = DateTime.UtcNow };
         db.Budgets.Add(budgetRow);
         await db.SaveChangesAsync(ct);
         var imported = 0;

@@ -272,4 +272,22 @@ public sealed class StructureMenuTests : EndToEndTestBase
             Assert.That(await LabelLeftAsync(selected), Is.EqualTo(await LabelLeftAsync(sibling)).Within(0.5), selected);
         }
     }
+
+    [Test]
+    public async Task A_group_gets_a_colour_from_its_menu_and_loses_it_again()
+    {
+        await GoToAsync(BrowseUrl);
+        var living = Category("Living");
+        await OpenMenuAsync(living);
+        await Page.GetByTestId("ctx-color").ClickAsync();
+        await Page.GetByTestId("color-popover").GetByTestId("color-swatch").Nth(4).ClickAsync();
+        await Expect(living.Locator("svg.browse-ribbon")).ToHaveCountAsync(1);
+
+        await OpenMenuAsync(living);
+        await Page.GetByTestId("ctx-color").ClickAsync();
+        await Expect(Page.GetByTestId("color-reset")).ToHaveTextAsync("No colour");
+        await Page.GetByTestId("color-reset").ClickAsync();
+        await Expect(living.Locator("i.bi-folder")).ToHaveCountAsync(1);
+        await Expect(living.Locator("svg.browse-ribbon")).ToHaveCountAsync(0);
+    }
 }

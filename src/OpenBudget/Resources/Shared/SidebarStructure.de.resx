@@ -173,4 +173,5 @@
   <data name="Settings_Calibrate_Apply" xml:space="preserve">
     <value>Übernehmen</value>
   </data>
+  <data name="Color_None" xml:space="preserve"><value>Keine Farbe</value></data>
 </root>

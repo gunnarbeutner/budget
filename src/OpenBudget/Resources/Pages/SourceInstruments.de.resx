@@ -60,13 +60,13 @@
   </resheader>
   <data name="PageTitle" xml:space="preserve"><value>Instrumenten-Zuordnung</value></data>
   <data name="Heading" xml:space="preserve"><value>Instrumenten-Zuordnung</value></data>
-  <data name="Intro" xml:space="preserve"><value>Ordne jedes ISIN-lose PortfolioPerformance-Instrument (Krypto, Immobilien) der Position zu, die es darstellt, damit die rekonstruierten Lots der richtigen Position zugeordnet werden. Wertpapiere mit ISIN werden automatisch zugeordnet und hier nicht angezeigt.</value></data>
-  <data name="Col_Instrument" xml:space="preserve"><value>PortfolioPerformance-Instrument</value></data>
+  <data name="Intro" xml:space="preserve"><value>Ordne jedes ISIN-lose Portfolio Performance-Instrument (Krypto, Immobilien) der Position zu, die es darstellt, damit die rekonstruierten Lots der richtigen Position zugeordnet werden. Wertpapiere mit ISIN werden automatisch zugeordnet und hier nicht angezeigt.</value></data>
+  <data name="Col_Instrument" xml:space="preserve"><value>Portfolio Performance-Instrument</value></data>
   <data name="Col_Lots" xml:space="preserve"><value>Offene Lots</value></data>
   <data name="Col_Holding" xml:space="preserve"><value>Position</value></data>
   <data name="NotLinked" xml:space="preserve"><value>— nicht zugeordnet —</value></data>
   <data name="Lots_Summary" xml:space="preserve"><value>{0} Lots</value></data>
-  <data name="Empty" xml:space="preserve"><value>Keine ISIN-losen Instrumente mit rekonstruierten Lots. Lade zuerst eine PortfolioPerformance-Datei mit Krypto- oder Immobilien-Transaktionen hoch.</value></data>
+  <data name="Empty" xml:space="preserve"><value>Keine ISIN-losen Instrumente mit rekonstruierten Lots. Lade zuerst eine Portfolio Performance-Datei mit Krypto- oder Immobilien-Transaktionen hoch.</value></data>
   <data name="Back" xml:space="preserve">
     <value>Zurück zu Portfolio Performance</value>
   </data>

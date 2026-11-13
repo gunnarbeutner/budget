@@ -51,6 +51,12 @@ public sealed class GetStartedTests : EndToEndTestBase
         await Expect(Page.Locator("[data-testid=project-selector]")).ToHaveCountAsync(0);
         await Expect(Page.GetByTestId("settings-nav")).ToHaveCountAsync(0);
         await Expect(Page.GetByTestId("user-menu")).ToBeVisibleAsync();
+        // The user menu only signs out; the account page leads back too.
+        await Page.GetByTestId("user-menu").Locator("summary").ClickAsync();
+        await Expect(Page.GetByTestId("sign-out-link")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("user-account-link")).ToHaveCountAsync(0);
+        await Page.GotoAsync("/Account");
+        await Expect(Page).ToHaveURLAsync(new Regex("/get-started$"));
 
         // Signing in again, even with a deep link, lands in Get started.
         await LogoutAsync();
@@ -139,13 +145,13 @@ public sealed class GetStartedTests : EndToEndTestBase
         {
             release.TrySetResult();
         }
+        // Success moves on to step 2 by itself; step 1 is done, and Get started still holds.
         await Expect(Page.GetByTestId("mm-job-done")).ToBeVisibleAsync(new() { Timeout = 30_000 });
         import.AfterStatementsForTests = null;
-        await Expect(Page.GetByTestId("get-started-next")).ToBeEnabledAsync();
-        await Expect(Page.GetByTestId("get-started-next")).ToHaveTextAsync("Next");
-        await Expect(Page.GetByTestId("gear-menu")).ToHaveCountAsync(0);
-        await Page.GetByTestId("get-started-next").ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex("step=2$"));
         await Expect(Page.GetByTestId("get-started-stepper-1")).ToHaveClassAsync(new Regex("done"));
+        await Expect(Page.GetByTestId("get-started-next")).ToBeEnabledAsync();
+        await Expect(Page.GetByTestId("gear-menu")).ToHaveCountAsync(0);
         await GoToAsync("/banklogins");
         await Expect(Page).ToHaveURLAsync(new Regex("/get-started$"));
     }
@@ -158,13 +164,17 @@ public sealed class GetStartedTests : EndToEndTestBase
         await UserDefaultProject.EnsureAsync(Db, E2ESeed.SecondUserId);   // as at startup
         await LoginAsync(E2ESeed.SecondUserName);
         await Page.GetByTestId("starter-categories").ClickAsync();
-        await Expect(Page.GetByTestId("starter-done")).ToBeVisibleAsync();
+        // Done: on to step 2; the offer is gone from step 1.
+        await Expect(Page).ToHaveURLAsync(new Regex("step=2$"));
+        await Page.GetByTestId("get-started-back").ClickAsync();
+        await Expect(Page.GetByTestId("step-moneymoney")).ToBeVisibleAsync();
         await Expect(Page.GetByTestId("starter-categories")).ToHaveCountAsync(0);
         await Expect(Page.GetByTestId("get-started-next")).ToHaveTextAsync("Next");
 
         await using var db = await Db.CreateDbContextAsync();
         var groups = await db.CategoryGroups.Where(g => g.OwnerUserId == E2ESeed.SecondUserId).ToListAsync();
         Assert.That(groups, Has.Count.EqualTo(12));
+        Assert.That(await db.Categories.Where(c => c.OwnerUserId == E2ESeed.SecondUserId).Select(c => c.Color).ToListAsync(), Has.All.Not.Null);
         var income = groups.Single(g => g.Name == "Income");
         var salary = await db.Categories.SingleAsync(c => c.OwnerUserId == E2ESeed.SecondUserId && c.Name == "Salary");
         Assert.That(salary.GroupId, Is.EqualTo(income.Id));
@@ -173,6 +183,10 @@ public sealed class GetStartedTests : EndToEndTestBase
         var assigned = await db.ProjectCategoryAssignments.Where(a => a.ProjectId == project.Id).Select(a => a.CategoryId).ToListAsync();
         Assert.That(assigned, Is.SupersetOf(groups.Select(g => g.Id)));
         Assert.That(await db.CategoryTypeAssignments.AnyAsync(t => t.ProjectId == project.Id && t.CategoryId == salary.Id && t.IsIncome), Is.True);
+        var cash = await db.Accounts.SingleAsync(a => a.OwnerUserId == E2ESeed.SecondUserId);
+        Assert.That((cash.Name, cash.Type, cash.Provider), Is.EqualTo(("Cash", (long?)6, OpenBudget.Models.AccountProviders.Manual)));
+        var cashAssignment = await db.ProjectAccountAssignments.SingleAsync(a => a.ProjectId == project.Id && a.AccountId == cash.Id);
+        Assert.That(cashAssignment.InCashflow, Is.True);
     }
 
     [Test]
@@ -189,8 +203,9 @@ public sealed class GetStartedTests : EndToEndTestBase
         await Page.GetByTestId("mm-has-password").CheckAsync();
         await Page.Locator("#mm-password").FillAsync("e2e-secret");
         await Page.GetByTestId("mm-upload").ClickAsync();
-        await Expect(Page.GetByTestId("mm-job-done")).ToBeVisibleAsync(new() { Timeout = 30_000 });
-        await Page.GetByTestId("get-started-next").ClickAsync();
+        // A successful import moves on to step 2, which shows its result.
+        await Expect(Page.GetByTestId("step-banks").GetByTestId("mm-job-done")).ToBeVisibleAsync(new() { Timeout = 30_000 });
+        await Expect(Page).ToHaveURLAsync(new Regex("step=2$"));
 
         // Step 2: the bank login is added inline; its giro gets the imported account with the same IBAN suggested.
         await Page.GetByTestId("add-login-open").ClickAsync();
@@ -222,6 +237,7 @@ public sealed class GetStartedTests : EndToEndTestBase
     {
         await LogoutAsync();
         await ReopenGetStartedAsync(E2ESeed.SecondUserId);
+        await UserDefaultProject.EnsureAsync(Db, E2ESeed.SecondUserId);   // as at startup
         await LoginAsync(E2ESeed.SecondUserName);
 
         // Signing in leads to Get started; its first step is the MoneyMoney import.
@@ -247,8 +263,10 @@ public sealed class GetStartedTests : EndToEndTestBase
         await Page.Locator("#mm-zip").SetInputFilesAsync(zip);
         await Page.Locator("#mm-password").FillAsync("e2e-secret");
         await Page.GetByTestId("mm-upload").ClickAsync();
-        await Expect(Page.GetByTestId("mm-job-done")).ToContainTextAsync("2 accounts, 3 bookings, 1 new statements", new() { Timeout = 30_000 });
-        await Expect(Page.Locator("#mm-password")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("step-banks").GetByTestId("mm-job-done")).ToContainTextAsync("2 accounts, 3 bookings, 1 new statements", new() { Timeout = 30_000 });
+        await Expect(Page).ToHaveURLAsync(new Regex("step=2$"));
+        await Page.GetByTestId("mm-job-dismiss").ClickAsync();
+        await Expect(Page.GetByTestId("mm-job-done")).ToHaveCountAsync(0);
 
         await using var db = await Db.CreateDbContextAsync();
         var guest = await db.Users.SingleAsync(u => u.UserName == E2ESeed.SecondUserName);
@@ -257,8 +275,23 @@ public sealed class GetStartedTests : EndToEndTestBase
         Assert.That(await db.Accounts.CountAsync(a => a.OwnerUserId == guest.Id), Is.EqualTo(2));
         Assert.That(await db.BankStatements.CountAsync(s => s.OwnerUserId == guest.Id), Is.EqualTo(1));
 
-        // Done turns the imported accounts not linked to a bank into manual ones and finishes the one-time import.
+        // The default project gets income and tracking as the data suggests: Salary (positive bookings) is income,
+        // the budgeted categories are tracked.
+        var project = await db.Projects.SingleAsync(p => p.OwnerUserId == guest.Id && p.IsDefaultForNewAccounts);
+        var ids = await db.Categories.Where(c => c.OwnerUserId == guest.Id).ToDictionaryAsync(c => c.Name!, c => c.Id);
+        Assert.That(await db.CategoryTypeAssignments.AnyAsync(t => t.ProjectId == project.Id && t.CategoryId == ids["Salary"] && t.IsIncome), Is.True);
+        Assert.That(await db.CategoryTypeAssignments.AnyAsync(t => t.ProjectId == project.Id && t.CategoryId == ids["Groceries"] && t.IsIncome), Is.False);
+        var trackedIds = await db.ProjectTrackingItems.Where(t => t.ProjectId == project.Id && t.CategoryId != null).Select(t => t.CategoryId!.Value).ToListAsync();
+        Assert.That(trackedIds, Is.SupersetOf(new[] { ids["Groceries"], ids["Cinema"] }));
+        Assert.That((await db.Budgets.SingleAsync(b => b.ProjectId == project.Id)).IsActive, Is.True);
+
+        // Step 4 shows them, ticked.
         await Page.GetByTestId("get-started-stepper-4").Locator("a").ClickAsync();
+        var salaryRow = Page.GetByTestId("category-setup").Locator("[data-setup-row='Salary']");
+        await Expect(salaryRow.GetByTestId("setup-income")).ToBeCheckedAsync();
+        await Expect(Page.GetByTestId("category-setup").Locator("[data-setup-row='Groceries']").GetByTestId("setup-track")).ToBeCheckedAsync();
+
+        // Done turns the imported accounts not linked to a bank into manual ones and finishes the one-time import.
         await Page.GetByTestId("get-started-done").ClickAsync();
         await Expect(Page).Not.ToHaveURLAsync(new Regex("/get-started"));
         await using var after = await Db.CreateDbContextAsync();

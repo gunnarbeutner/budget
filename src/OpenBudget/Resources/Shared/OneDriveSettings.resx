@@ -113,7 +113,7 @@
     <value>Cancel</value>
   </data>
   <data name="Picker_Title" xml:space="preserve">
-    <value>Choose a PortfolioPerformance file</value>
+    <value>Choose a Portfolio Performance file</value>
   </data>
   <data name="Picker_MyFiles" xml:space="preserve">
     <value>My files</value>

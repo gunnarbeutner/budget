@@ -2,6 +2,7 @@ using System.Buffers.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
 using OpenBudget.Models;
 
@@ -15,12 +16,30 @@ public class AccountIndexModel : PageModel
     private readonly SignInManager<AppUser> _signIn;
     private readonly UserManager<AppUser> _users;
     private readonly IStringLocalizer<LoginModel> _l;
+    private readonly OpenBudget.Services.SystemDbContextFactory _db;
 
-    public AccountIndexModel(SignInManager<AppUser> signIn, UserManager<AppUser> users, IStringLocalizer<LoginModel> l)
+    public AccountIndexModel(SignInManager<AppUser> signIn, UserManager<AppUser> users, IStringLocalizer<LoginModel> l,
+        OpenBudget.Services.SystemDbContextFactory db)
     {
         _signIn = signIn;
         _users = users;
+        _db = db;
         _l = l;
+    }
+
+    /// <summary>While Get started holds the user, the account page leads there (only signing out stays open).</summary>
+    public override async Task OnPageHandlerExecutionAsync(
+        Microsoft.AspNetCore.Mvc.Filters.PageHandlerExecutingContext context, Microsoft.AspNetCore.Mvc.Filters.PageHandlerExecutionDelegate next)
+    {
+        await using var db = await _db.CreateDbContextAsync();
+        var userId = _users.GetUserId(User);
+        var state = await db.UserDataStates.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == userId);
+        if (userId != null && !OpenBudget.Services.OnboardingState.IsFinished(state))
+        {
+            context.Result = LocalRedirect("/get-started");
+            return;
+        }
+        await next();
     }
 
     public string UserName { get; private set; } = "";

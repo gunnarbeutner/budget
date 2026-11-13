@@ -10,7 +10,6 @@
 @inject ClockService Clock
 @inject IStringLocalizer<GetStarted> L
 @inject NavigationManager Navigation
-@inject BudgetEntryService Budgets
 @inject GetStartedGate Gate
 
 @* The way into OpenBudget, a wizard of four steps shown one at a time (?step=1…4, the first without it):
@@ -28,7 +27,7 @@
 
 <PageTitle>@L["PageTitle"]</PageTitle>
 
-<div class="get-started @(CurrentStep == StepCount ? "wide" : "")">
+<div class="get-started @(CurrentStep >= 3 ? "wide" : "")">
 <h1 class="h4 mb-4">@L["Heading"]</h1>
 
 @if (state == null)
@@ -55,6 +54,21 @@ else
     {
     <li class="card mb-3" data-testid="step-banks">
         <div class="card-body">
+            @if (job is { Phase: MoneyMoneyImportPhase.Done } done)
+            {
+                <div class="alert alert-success alert-dismissible py-2" data-testid="mm-job-done">
+                    @L["Job_Done", done.Result?.AccountsImported ?? 0, done.Result?.TransactionsImported ?? 0, done.Statements?.Stored ?? 0]
+                    @if (done.Budgets is { Imported: > 0 } budgets)
+                    {
+                        <span data-testid="mm-job-budgets"> @L["Job_Budgets", budgets.Imported]</span>
+                    }
+                    @if (done.Budgets is { SkippedTotal: > 0 } skipped)
+                    {
+                        <span data-testid="mm-job-budgets-skipped"> @L["Job_BudgetsSkipped", skipped.SkippedTotal]</span>
+                    }
+                    <button type="button" class="btn-close" aria-label="@L["Job_Ok"]" data-testid="mm-job-dismiss" @onclick="Dismiss"></button>
+                </div>
+            }
             <h2 class="h5 card-title">@L["Step1_Heading"]</h2>
             <p class="mb-2">@L["Step1_Body"]</p>
             @if (state.BankLogins > 0)
@@ -78,21 +92,6 @@ else
                 <div data-testid="mm-job" role="status">
                     <div class="small mb-1">@PhaseText(running)</div>
                     <div class="progress" style="height: .5rem;"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width: @(PhasePercent(running))%"></div></div>
-                </div>
-            }
-            else if (job is { Phase: MoneyMoneyImportPhase.Done } done)
-            {
-                <div class="alert alert-success py-2" data-testid="mm-job-done">
-                    @L["Job_Done", done.Result?.AccountsImported ?? 0, done.Result?.TransactionsImported ?? 0, done.Statements?.Stored ?? 0]
-                    @if (done.Budgets is { Imported: > 0 } budgets)
-                    {
-                        <span data-testid="mm-job-budgets"> @L["Job_Budgets", budgets.Imported]</span>
-                    }
-                    @if (done.Budgets is { SkippedTotal: > 0 } skipped)
-                    {
-                        <span data-testid="mm-job-budgets-skipped"> @L["Job_BudgetsSkipped", skipped.SkippedTotal]</span>
-                    }
-                    <button type="button" class="btn btn-sm btn-link" @onclick="Dismiss">@L["Job_Ok"]</button>
                 </div>
             }
             else if (state.Import is { MoneyMoneyImportFinishedAt: { } finishedAt } finishedState)
@@ -156,8 +155,9 @@ else
                 {
                     <p class="mt-3 mb-0">
                         <span class="text-body-secondary me-2">@L["Starter_Or"]</span>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="starter-categories" @onclick="CreateStarterCategoriesAsync">@L["Starter_Button"]</button>
+                        <BusyButton Class="btn btn-sm btn-outline-secondary" TestId="starter-categories" OnClick="CreateStarterCategoriesAsync">@L["Starter_Button"]</BusyButton>
                     </p>
+                    <p class="small text-body-secondary mb-0">@L["Starter_CashHint"]</p>
                 }
             }
 
@@ -189,18 +189,9 @@ else
             @if (state.ProjectId is { } pid)
             {
                 <div data-testid="step-cashflow-accounts"><ProjectAccountsPanel ProjectId="pid" ShowIntro="false" /></div>
-                @if (importedBudget is { } b)
-                {
-                    <div class="card mt-3" data-testid="step-budget">
-                        <div class="card-body d-flex flex-wrap align-items-center gap-2">
-                            <span class="flex-grow-1">@L[b.IsActive ? "Step4_BudgetActive" : "Step4_BudgetImported", b.Name, b.Year]</span>
-                            @if (!b.IsActive)
-                            {
-                                <button type="button" class="btn btn-sm btn-outline-primary" data-testid="step-budget-activate" @onclick="() => ActivateBudgetAsync(b.Id)">@L["Step4_BudgetActivate"]</button>
-                            }
-                        </div>
-                    </div>
-                }
+                <h3 class="h6 mt-4">@L["Setup_Heading"]</h3>
+                <p class="small text-body-secondary mb-2">@L["Setup_Body"]</p>
+                <div data-testid="step-category-setup"><CategorySetupPanel ProjectId="pid" /></div>
             }
             else
             {
@@ -225,7 +216,7 @@ else
     }
     else
     {
-        <button type="button" class="btn btn-primary" data-testid="get-started-done" @onclick="DoneAsync">@L["Wizard_Done"]</button>
+        <BusyButton Class="btn btn-primary" TestId="get-started-done" OnClick="DoneAsync">@L["Wizard_Done"]</BusyButton>
     }
 </div>
 }
@@ -264,9 +255,6 @@ else
     {
         job = userId == null ? null : BrowserImport.GetJob(userId);
         state = await Onboarding.GetAsync();
-        importedBudget = state.ProjectId is { } pid
-            ? (await Budgets.GetBudgetsForProjectAsync(pid)).Where(b => b.Name == MoneyMoneyBudgetImport.BudgetName).OrderByDescending(b => b.Year).FirstOrDefault()
-            : null;
     }
 
     private void OnJobChanged(string changedUser)
@@ -277,6 +265,9 @@ else
             var previous = job;
             job = BrowserImport.GetJob(changedUser);
             if (job is { Running: false } && previous is { Running: true }) await LoadAsync();
+            // A successful import moves on to the bank logins, which show its result.
+            if (job is { Phase: MoneyMoneyImportPhase.Done } && previous is { Running: true } && CurrentStep == 1)
+                Navigation.NavigateTo(StepUrl(2));
             StateHasChanged();
         });
     }
@@ -404,7 +395,6 @@ else
         _ => false,
     };
 
-    private Budget? importedBudget;
     private bool starterCreated;
 
     // The starter category tree: resource keys of each group, its categories (none = one of the group's name) and whether it is income.
@@ -428,16 +418,12 @@ else
     {
         await Onboarding.CreateStarterCategoriesAsync(StarterTree
             .Select(g => new StarterGroup(L[g.Group], g.Categories.Select(c => L[c].Value).ToList(), g.Income))
-            .ToList());
+            .ToList(), L["Starter_Cash"]);
         starterCreated = true;
         await LoadAsync();
+        Navigation.NavigateTo(StepUrl(2));
     }
 
-    private async Task ActivateBudgetAsync(int budgetId)
-    {
-        await Budgets.SetActiveBudgetAsync(budgetId);
-        await LoadAsync();
-    }
 
     /// <summary>Ends Get started and opens the project.</summary>
     private async Task DoneAsync()

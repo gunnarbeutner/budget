@@ -60,12 +60,12 @@
   </resheader>
   <data name="PageTitle" xml:space="preserve"><value>Depot mapping</value></data>
   <data name="Heading" xml:space="preserve"><value>Depot mapping</value></data>
-  <data name="Intro" xml:space="preserve"><value>Map each PortfolioPerformance depot to the account that holds the same securities, so reconstructed tax lots attach to the right positions.</value></data>
-  <data name="Col_Depot" xml:space="preserve"><value>PortfolioPerformance depot</value></data>
+  <data name="Intro" xml:space="preserve"><value>Map each Portfolio Performance depot to the account that holds the same securities, so reconstructed tax lots attach to the right positions.</value></data>
+  <data name="Col_Depot" xml:space="preserve"><value>Portfolio Performance depot</value></data>
   <data name="Col_Lots" xml:space="preserve"><value>Open lots</value></data>
   <data name="Col_MmDepot" xml:space="preserve"><value>Depot</value></data>
   <data name="NotLinked" xml:space="preserve"><value>— not linked —</value></data>
-  <data name="Empty" xml:space="preserve"><value>No PortfolioPerformance depots yet. Upload a .portfolio file first.</value></data>
+  <data name="Empty" xml:space="preserve"><value>No Portfolio Performance depots yet. Upload a .portfolio file first.</value></data>
   <data name="Lots_Summary" xml:space="preserve"><value>{0} lots · {1} securities</value></data>
   <data name="Lots_None" xml:space="preserve"><value>no lots</value></data>
   <data name="Back" xml:space="preserve">

@@ -60,23 +60,23 @@
   </resheader>
   <data name="PageTitle" xml:space="preserve"><value>Depot-Konten</value></data>
   <data name="Heading" xml:space="preserve"><value>Depot-Konten</value></data>
-  <data name="Empty" xml:space="preserve"><value>Noch keine PortfolioPerformance-Depots. Lade zuerst eine .portfolio-Datei hoch.</value></data>
-  <data name="Intro" xml:space="preserve"><value>Ein als Konto angezeigtes Depot erhält ein Depotkonto mit seinen Positionen und dem Wertverlauf sowie ein Verrechnungskonto mit Käufen, Verkäufen, Dividenden, Gebühren und Steuern. Beide werden bei jedem Upload der PortfolioPerformance-Datei neu berechnet.</value></data>
-  <data name="NoFile" xml:space="preserve"><value>Die PortfolioPerformance-Datei ist noch nicht gespeichert; die Konten erscheinen mit dem nächsten Upload.</value></data>
-  <data name="Col_Portfolio" xml:space="preserve"><value>PortfolioPerformance-Depot</value></data>
+  <data name="Empty" xml:space="preserve"><value>Noch keine Portfolio Performance-Depots. Lade zuerst eine .portfolio-Datei hoch.</value></data>
+  <data name="Intro" xml:space="preserve"><value>Ein als Konto angezeigtes Depot erhält ein Depotkonto mit seinen Positionen und dem Wertverlauf sowie ein Verrechnungskonto mit Käufen, Verkäufen, Dividenden, Gebühren und Steuern. Beide werden bei jedem Upload der Portfolio Performance-Datei neu berechnet.</value></data>
+  <data name="NoFile" xml:space="preserve"><value>Die Portfolio Performance-Datei ist noch nicht gespeichert; die Konten erscheinen mit dem nächsten Upload.</value></data>
+  <data name="Col_Portfolio" xml:space="preserve"><value>Depot</value></data>
   <data name="Col_Show" xml:space="preserve"><value>Als Konto anzeigen</value></data>
   <data name="Col_Accounts" xml:space="preserve"><value>Konten</value></data>
   <data name="Col_Project" xml:space="preserve"><value>Projekt</value></data>
   <data name="Retired" xml:space="preserve"><value>aufgelöst</value></data>
   <data name="LinkedTo" xml:space="preserve"><value>Verknüpft mit dem Depot {0}</value></data>
   <data name="Show" xml:space="preserve"><value>Anzeigen</value></data>
-  <data name="Takeover_Found" xml:space="preserve"><value>Vorhandene Konten gefunden: {0}</value></data>
+  <data name="Takeover_Found" xml:space="preserve"><value>Vorhanden: {0}</value></data>
   <data name="Takeover_Button" xml:space="preserve"><value>Übernehmen</value></data>
   <data name="Takeover_Decline" xml:space="preserve"><value>Neue Konten anlegen</value></data>
   <data name="TakenOver" xml:space="preserve"><value>übernommen</value></data>
   <data name="Released" xml:space="preserve"><value>wird nicht mehr aktualisiert</value></data>
   <data name="Pending" xml:space="preserve"><value>wird mit der nächsten Aktualisierung angelegt</value></data>
-  <data name="Project_Default" xml:space="preserve"><value>Standardprojekt für neue Konten</value></data>
+  <data name="Project_Default" xml:space="preserve"><value>Standardprojekt</value></data>
   <data name="Back" xml:space="preserve">
     <value>Zurück zu Portfolio Performance</value>
   </data>

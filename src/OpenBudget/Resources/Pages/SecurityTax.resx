@@ -69,7 +69,7 @@
   <data name="Col_Details" xml:space="preserve"><value>Details</value></data>
   <data name="Acquired_Hint" xml:space="preserve"><value>Original acquisition date — set for inherited or gifted assets (§23 EStG counts from the predecessor's purchase).</value></data>
   <data name="NoIsin" xml:space="preserve"><value>no ISIN</value></data>
-  <data name="Empty" xml:space="preserve"><value>No securities with reconstructed lots yet. Upload a PortfolioPerformance file with transactions first.</value></data>
+  <data name="Empty" xml:space="preserve"><value>No securities with reconstructed lots yet. Upload a Portfolio Performance file with transactions first.</value></data>
   <data name="Type_0" xml:space="preserve"><value>direct shares / bond fund</value></data>
   <data name="Type_1500" xml:space="preserve"><value>mixed fund</value></data>
   <data name="Type_3000" xml:space="preserve"><value>equity fund</value></data>

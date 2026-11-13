@@ -5,7 +5,10 @@
 // throttled and leaves a dead page behind once the server has dropped the circuit. Instead we:
 //   - retry only while the tab is visible (and immediately when it becomes visible again),
 //   - reload the page when the server no longer knows the circuit (Blazor.reconnect() === false),
-//   - reload after a few failed attempts while visible, so the page never stays dead.
+//   - reload after a few failed attempts while visible, so the page never stays dead,
+//   - reload when the first connection fails (the server was restarting while the page loaded),
+//   - reload a page Safari restores from its back-forward cache: its connection is gone and Blazor
+//     does not notice.
 (() => {
     const maxVisibleAttempts = 5;
     const retryDelayMs = 2000;
@@ -69,6 +72,10 @@
         };
     };
 
+    window.addEventListener('pageshow', e => {
+        if (e.persisted) location.reload();
+    });
+
     let current = null;
     Blazor.start({
         reconnectionHandler: {
@@ -80,5 +87,8 @@
                 current = null;
             },
         },
+    }).catch(() => {
+        showBanner();
+        whenVisible().then(() => sleep(retryDelayMs)).then(() => location.reload());
     });
 })();

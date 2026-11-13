@@ -1,0 +1,65 @@
+@using OpenBudget.Services
+@inject OnboardingService Onboarding
+@inject BudgetService Budgets
+@inject IStringLocalizer<OpenBudget.Pages.GetStarted> L
+
+@* Get started's "Income and spending": the project's categories with whether each is income and tracked in the budget,
+   prefilled with the suggestions; each tick saves at once (the same settings as project settings › Categories). *@
+
+@if (rows == null)
+{
+    <div class="skeleton skeleton-block" aria-busy="true"></div>
+}
+else if (rows.Count == 0)
+{
+    <p class="small text-body-secondary mb-0">@L["Setup_Empty"]</p>
+}
+else
+{
+    <table class="table table-sm align-middle mb-0" data-testid="category-setup">
+        <thead>
+            <tr>
+                <th>@L["Setup_Category"]</th>
+                <th class="text-center">@L["Setup_Income"]</th>
+                <th class="text-center">@L["Setup_Track"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in rows)
+            {
+                var r = row;
+                <tr data-setup-row="@r.Name" @key="(r.Id, r.Type)">
+                    <td style="@FormattableString.Invariant($"padding-left: {0.25 + r.Depth * 1.25:0.##}rem;")" class="@(r.Type == CategoryItemType.Group ? "fw-semibold" : "")">@r.Name</td>
+                    <td class="text-center">
+                        <input type="checkbox" class="form-check-input" aria-label="@L["Setup_Income"]" data-testid="setup-income"
+                               checked="@r.Income" @onchange="e => SetIncomeAsync(r, e.Value is true)" />
+                    </td>
+                    <td class="text-center">
+                        <input type="checkbox" class="form-check-input" aria-label="@L["Setup_Track"]" data-testid="setup-track"
+                               checked="@r.Tracked" @onchange="e => SetTrackedAsync(r, e.Value is true)" />
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter, EditorRequired] public int ProjectId { get; set; }
+
+    private List<CategorySetupRow>? rows;
+
+    protected override async Task OnParametersSetAsync() => rows = await Onboarding.GetCategorySetupAsync(ProjectId);
+
+    private async Task SetIncomeAsync(CategorySetupRow row, bool income)
+    {
+        await Budgets.SetCategoryTypeAsync(ProjectId, row.Id, row.Type, income);
+        rows = await Onboarding.GetCategorySetupAsync(ProjectId);
+    }
+
+    private async Task SetTrackedAsync(CategorySetupRow row, bool tracked)
+    {
+        await Onboarding.SetTrackedAsync(ProjectId, row.Id, row.Type, tracked);
+        rows = await Onboarding.GetCategorySetupAsync(ProjectId);
+    }
+}

@@ -2,6 +2,7 @@
 @inject NavigationManager Navigation
 @inject IStringLocalizer<UserMenu> L
 @inject OpenBudget.Auth.UserDirectory Users
+@inject OpenBudget.Services.GetStartedGate Gate
 
 @* The avatar at the right end of the top bar: only about you — who is signed in, the account page (password,
    passkeys) and sign-out; setup pages live behind the gear (GearMenu) in a small dropdown. The account and logout pages are plain server-rendered pages, not Blazor routes,
@@ -12,6 +13,8 @@
     <details class="app-menu user-menu" data-testid="user-menu">
         <summary class="app-avatar" aria-label="@L["Menu"]" title="@userName">@Initial</summary>
         <ul class="dropdown-menu dropdown-menu-end show app-menu-list">
+            @if (!captive)
+            {
             <li>
                 <a href="/Account" class="dropdown-item" data-testid="user-account-link"
                    @onclick="@(() => Navigation.NavigateTo("/Account", forceLoad: true))" @onclick:preventDefault>
@@ -20,6 +23,7 @@
                 </a>
             </li>
             <li><hr class="dropdown-divider" /></li>
+            }
             <li>
                 <a href="/Account/Logout" class="dropdown-item" data-testid="sign-out-link"
                    @onclick="@(() => Navigation.NavigateTo("/Account/Logout", forceLoad: true))" @onclick:preventDefault>
@@ -32,6 +36,8 @@
 
 @code {
     private string? userName;
+    // While Get started holds the user, the menu only signs out.
+    private bool captive;
 
     private string Initial => string.IsNullOrEmpty(userName) ? "?" : userName[..1].ToUpper(CultureInfo.CurrentCulture);
 
@@ -44,6 +50,7 @@
             if (userName != null && state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value is { } id
                 && (await Users.GetNamesAsync([id])).TryGetValue(id, out var shown) && shown.Length > 0)
                 userName = shown;   // the display name when set
+            captive = userName != null && await Gate.IsCaptiveAsync();
         }
         catch (InvalidOperationException)
         {

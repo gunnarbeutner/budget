@@ -40,4 +40,18 @@ public sealed class CategoryColorService
         _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: category.OwnerUserId), _origin.Id);
         return true;
     }
+
+    /// <summary>Sets a category group's colour (null = none: the sidebar shows a folder). Owner only; false when not found.</summary>
+    public async Task<bool> SetGroupColorAsync(long groupId, string? color, CancellationToken ct = default)
+    {
+        if (color != null && !CategoryColors.IsValid(color)) throw new ArgumentException("Not a color.", nameof(color));
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var group = await db.CategoryGroups.FirstOrDefaultAsync(g => g.Id == groupId, ct);
+        if (group == null) return false;
+        db.Scope?.RequireOwner(group.OwnerUserId);
+        group.Color = color == null ? null : CategoryColors.ToCss(color);
+        await db.SaveChangesAsync(ct);
+        _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: group.OwnerUserId), _origin.Id);
+        return true;
+    }
 }

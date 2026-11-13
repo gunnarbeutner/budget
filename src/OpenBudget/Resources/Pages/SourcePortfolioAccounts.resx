@@ -60,23 +60,23 @@
   </resheader>
   <data name="PageTitle" xml:space="preserve"><value>Portfolio accounts</value></data>
   <data name="Heading" xml:space="preserve"><value>Portfolio accounts</value></data>
-  <data name="Empty" xml:space="preserve"><value>No PortfolioPerformance portfolios yet. Upload a .portfolio file first.</value></data>
-  <data name="Intro" xml:space="preserve"><value>A portfolio shown as accounts gets a depot account with its positions and value history and a ledger account with its buys, sells, dividends, fees and taxes. Both are recomputed from every upload of the PortfolioPerformance file.</value></data>
-  <data name="NoFile" xml:space="preserve"><value>The PortfolioPerformance file is not stored yet; the accounts appear with the next upload.</value></data>
-  <data name="Col_Portfolio" xml:space="preserve"><value>PortfolioPerformance portfolio</value></data>
+  <data name="Empty" xml:space="preserve"><value>No Portfolio Performance portfolios yet. Upload a .portfolio file first.</value></data>
+  <data name="Intro" xml:space="preserve"><value>A portfolio shown as accounts gets a depot account with its positions and value history and a ledger account with its buys, sells, dividends, fees and taxes. Both are recomputed from every upload of the Portfolio Performance file.</value></data>
+  <data name="NoFile" xml:space="preserve"><value>The Portfolio Performance file is not stored yet; the accounts appear with the next upload.</value></data>
+  <data name="Col_Portfolio" xml:space="preserve"><value>Portfolio</value></data>
   <data name="Col_Show" xml:space="preserve"><value>Show as account</value></data>
   <data name="Col_Accounts" xml:space="preserve"><value>Accounts</value></data>
   <data name="Col_Project" xml:space="preserve"><value>Project</value></data>
   <data name="Retired" xml:space="preserve"><value>retired</value></data>
   <data name="LinkedTo" xml:space="preserve"><value>Linked to the depot {0}</value></data>
   <data name="Show" xml:space="preserve"><value>Show</value></data>
-  <data name="Takeover_Found" xml:space="preserve"><value>Existing accounts found: {0}</value></data>
+  <data name="Takeover_Found" xml:space="preserve"><value>Existing: {0}</value></data>
   <data name="Takeover_Button" xml:space="preserve"><value>Take over</value></data>
   <data name="Takeover_Decline" xml:space="preserve"><value>Create new accounts</value></data>
   <data name="TakenOver" xml:space="preserve"><value>taken over</value></data>
   <data name="Released" xml:space="preserve"><value>no longer updated</value></data>
   <data name="Pending" xml:space="preserve"><value>created with the next update</value></data>
-  <data name="Project_Default" xml:space="preserve"><value>Default project for new accounts</value></data>
+  <data name="Project_Default" xml:space="preserve"><value>Default project</value></data>
   <data name="Back" xml:space="preserve">
     <value>Back to Portfolio Performance</value>
   </data>

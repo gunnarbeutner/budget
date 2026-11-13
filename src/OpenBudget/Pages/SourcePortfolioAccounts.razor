@@ -82,10 +82,10 @@ else
                         @if (p.Show && p.PendingTakeover is { } candidate)
                         {
                             <div class="mb-1">@L["Takeover_Found", string.Join(", ", new[] { candidate.DepotName, candidate.LedgerName }.Where(n => n != null))]</div>
-                            <button class="btn btn-sm btn-primary me-1" disabled="@busy" data-testid="pp-takeover"
-                                    @onclick="() => TakeOverAsync(p.Uuid)">@L["Takeover_Button"]</button>
-                            <button class="btn btn-sm btn-outline-secondary" disabled="@busy" data-testid="pp-create-new"
-                                    @onclick="() => DeclineAsync(p.Uuid)">@L["Takeover_Decline"]</button>
+                            <div class="d-flex flex-wrap gap-1">
+                                <BusyButton Class="btn btn-sm btn-primary" TestId="pp-takeover" Busy="busy" OnClick="() => TakeOverAsync(p.Uuid)">@L["Takeover_Button"]</BusyButton>
+                                <BusyButton Class="btn btn-sm btn-outline-secondary" TestId="pp-create-new" Busy="busy" OnClick="() => DeclineAsync(p.Uuid)">@L["Takeover_Decline"]</BusyButton>
+                            </div>
                         }
                         else if (p.DepotAccountName != null || p.LedgerAccountName != null)
                         {

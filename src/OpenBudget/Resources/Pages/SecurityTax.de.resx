@@ -69,7 +69,7 @@
   <data name="Col_Details" xml:space="preserve"><value>Details</value></data>
   <data name="Acquired_Hint" xml:space="preserve"><value>Ursprüngliches Anschaffungsdatum — bei geerbten oder geschenkten Vermögenswerten (§23 EStG zählt ab Anschaffung des Rechtsvorgängers).</value></data>
   <data name="NoIsin" xml:space="preserve"><value>keine ISIN</value></data>
-  <data name="Empty" xml:space="preserve"><value>Noch keine Wertpapiere mit rekonstruierten Lots. Lade zuerst eine PortfolioPerformance-Datei mit Transaktionen hoch.</value></data>
+  <data name="Empty" xml:space="preserve"><value>Noch keine Wertpapiere mit rekonstruierten Lots. Lade zuerst eine Portfolio Performance-Datei mit Transaktionen hoch.</value></data>
   <data name="Type_0" xml:space="preserve"><value>Direktanlage / Rentenfonds</value></data>
   <data name="Type_1500" xml:space="preserve"><value>Mischfonds</value></data>
   <data name="Type_3000" xml:space="preserve"><value>Aktienfonds</value></data>

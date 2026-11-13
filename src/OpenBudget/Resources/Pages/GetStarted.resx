@@ -152,7 +152,7 @@
     <value>Done</value>
   </data>
   <data name="Job_Budgets" xml:space="preserve">
-    <value>{0} category budgets are in the inactive budget “MoneyMoney”.</value>
+    <value>{0} category budgets are in the budget “MoneyMoney”.</value>
   </data>
   <data name="Job_BudgetsSkipped" xml:space="preserve">
     <value>{0} budgets “in total” were not imported.</value>
@@ -198,15 +198,6 @@
   </data>
   <data name="Step4_NoProject" xml:space="preserve">
     <value>Create a project first.</value>
-  </data>
-  <data name="Step4_BudgetImported" xml:space="preserve">
-    <value>The budget “{0}” ({1}) from MoneyMoney is not active yet.</value>
-  </data>
-  <data name="Step4_BudgetActive" xml:space="preserve">
-    <value>The budget “{0}” ({1}) is active.</value>
-  </data>
-  <data name="Step4_BudgetActivate" xml:space="preserve">
-    <value>Activate</value>
   </data>
   <data name="Stepper_1" xml:space="preserve">
     <value>MoneyMoney</value>
@@ -327,5 +318,29 @@
   </data>
   <data name="Starter_Done" xml:space="preserve">
     <value>Suggested categories created.</value>
+  </data>
+  <data name="Starter_Cash" xml:space="preserve">
+    <value>Cash</value>
+  </data>
+  <data name="Starter_CashHint" xml:space="preserve">
+    <value>Also adds a Cash account.</value>
+  </data>
+  <data name="Setup_Heading" xml:space="preserve">
+    <value>Income and spending</value>
+  </data>
+  <data name="Setup_Body" xml:space="preserve">
+    <value>Mark income categories and choose what the budget tracks.</value>
+  </data>
+  <data name="Setup_Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Setup_Income" xml:space="preserve">
+    <value>Income</value>
+  </data>
+  <data name="Setup_Track" xml:space="preserve">
+    <value>Track in budget</value>
+  </data>
+  <data name="Setup_Empty" xml:space="preserve">
+    <value>No categories yet.</value>
   </data>
 </root>

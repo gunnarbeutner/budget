@@ -135,7 +135,14 @@ else
                 <h6 class="bank-accounts-heading">@L["Accounts_Heading"]</h6>
                 @if (accounts.Count == 0)
                 {
-                    <p class="text-body-secondary small">@L["Accounts_Empty"]</p>
+                    @if (running)
+                    {
+                        <p class="text-body-secondary small" data-testid="accounts-loading"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>@L["Accounts_Loading"]</p>
+                    }
+                    else
+                    {
+                        <p class="text-body-secondary small" data-testid="accounts-empty">@L["Accounts_Empty"]</p>
+                    }
                 }
                 else
                 {

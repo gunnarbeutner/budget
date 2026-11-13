@@ -245,7 +245,7 @@ public sealed class MoneyMoneyBrowserImportTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Category_budgets_become_an_inactive_MoneyMoney_budget_once()
+    public async Task Category_budgets_become_the_active_MoneyMoney_budget_once()
     {
         var (import, _) = await ServiceAsync();
         var projectId = await UserDefaultProject.EnsureAsync(_t.System, Owner);
@@ -262,7 +262,7 @@ public sealed class MoneyMoneyBrowserImportTests : IAsyncDisposable
 
         await using var db = await _t.System.CreateDbContextAsync();
         var budget = await db.Budgets.Include(b => b.MonthlyEntries).SingleAsync(b => b.ProjectId == projectId);
-        Assert.Equal((MoneyMoneyBudgetImport.BudgetName, DateTime.UtcNow.Year, false), (budget.Name, budget.Year, budget.IsActive));
+        Assert.Equal((MoneyMoneyBudgetImport.BudgetName, DateTime.UtcNow.Year, true), (budget.Name, budget.Year, budget.IsActive));
         var names = await db.Categories.ToDictionaryAsync(c => c.Id, c => c.Name);
         var byName = budget.MonthlyEntries.ToDictionary(e => names[e.CategoryId]!, StringComparer.Ordinal);
         Assert.Equal(["Cinema", "Groceries"], byName.Keys.Order(StringComparer.Ordinal));

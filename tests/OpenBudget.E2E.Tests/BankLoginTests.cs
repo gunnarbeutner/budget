@@ -76,7 +76,10 @@ public sealed class BankLoginTests : EndToEndTestBase
         await Page.Locator("#new-login-pin").FillAsync("1234");
         await Page.Locator("#new-login-add").ClickAsync();
 
-        // The first sync starts at once; its code challenge appears as a dialog.
+        // The first sync starts at once; while it runs the card shows it is loading the accounts, not that there are none.
+        await Expect(Page.Locator("[data-bank-login='My fake bank']").GetByTestId("accounts-loading")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("accounts-empty")).ToHaveCountAsync(0);
+        // Its code challenge appears as a dialog.
         await AnswerCodeChallengeAsync();
 
         var card = Page.Locator("[data-bank-login='My fake bank']");
