@@ -131,9 +131,15 @@
                         {
                             <span class="badge text-bg-secondary ms-1" data-testid="account-closed">@L["Header_Closed"]</span>
                         }
+                        @if (info.CanEnterTransactions && parts == 0)
+                        {
+                            parts++;
+                            <span data-testid="account-manual">@L["Header_Manual"]</span>
+                        }
                         @if (info.CanEnterTransactions && !info.MarkedClosed)
                         {
-                            <button type="button" class="btn btn-sm btn-outline-primary ms-2 py-0" data-testid="tx-add" @onclick="OpenAddBookingAsync">
+                            @if (parts > 0) { <span> · </span> }
+                            <button type="button" class="btn btn-link p-0 browse-sub-link" data-testid="tx-add" @onclick="OpenAddBookingAsync">
                                 <i class="bi bi-plus-lg" aria-hidden="true"></i> @L["Header_AddBooking"]
                             </button>
                         }

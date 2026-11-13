@@ -402,4 +402,5 @@
   <data name="Header_CopyIban" xml:space="preserve"><value>Copy IBAN</value></data>
   <data name="Toast_Copied" xml:space="preserve"><value>Copied</value></data>
   <data name="Toast_CopyFailed" xml:space="preserve"><value>Could not copy</value></data>
+  <data name="Header_Manual" xml:space="preserve"><value>Manual account</value></data>
 </root>

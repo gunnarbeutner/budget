@@ -115,6 +115,32 @@ public sealed class ManualAccountTests : EndToEndTestBase
     /// A manual account's initial balance is calibrated in its settings from the balance on a day; accounts the bank
     /// updates show it read-only. Set OB_INITIAL_BALANCE_SCREENSHOT_DIR to keep screenshots of the settings.
     /// </summary>
+    /// <summary>
+    /// A manual account's header: the title, then the details line ("Manual account · Add booking") below it with a gap.
+    /// Set OB_HEADER_SCREENSHOT_DIR to keep screenshots.
+    /// </summary>
+    [TestCase(1440, "light")]
+    [TestCase(1440, "dark")]
+    [TestCase(390, "light")]
+    [TestCase(390, "dark")]
+    public async Task The_manual_account_header_puts_add_booking_on_the_details_line(int width, string theme)
+    {
+        await Page.SetViewportSizeAsync(width, 800);
+        await Page.EmulateMediaAsync(new PageEmulateMediaOptions { ColorScheme = theme == "dark" ? ColorScheme.Dark : ColorScheme.Light });
+        await SeedAsync(AccountProviders.Manual);
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{Cash}");
+
+        var title = (await Page.Locator(".browse-title").BoundingBoxAsync())!;
+        var manual = (await Page.GetByTestId("account-manual").BoundingBoxAsync())!;
+        var add = (await Page.GetByTestId("tx-add").BoundingBoxAsync())!;
+        Assert.That(manual.Y, Is.GreaterThanOrEqualTo(title.Y + title.Height - 1), "details below the title");
+        Assert.That(Math.Abs(manual.X - title.X), Is.LessThan(2), "details aligned with the title");
+        Assert.That(add.X, Is.GreaterThan(manual.X + manual.Width), "Add booking after the details");
+        Assert.That(Math.Abs(add.Y + add.Height / 2 - (manual.Y + manual.Height / 2)), Is.LessThan(3), "on the same line");
+        if (Environment.GetEnvironmentVariable("OB_HEADER_SCREENSHOT_DIR") is { Length: > 0 } dir)
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"manual-header-{width}-{theme}.png") });
+    }
+
     [TestCase("light")]
     [TestCase("dark")]
     public async Task Calibrate_the_initial_balance_of_a_manual_account(string theme)
