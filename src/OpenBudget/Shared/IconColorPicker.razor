@@ -32,7 +32,6 @@
                     @onclick="() => ColorChanged.InvokeAsync(key)">A</button>
         }
     </div>
-    <button type="button" class="btn btn-link btn-sm p-0 mt-1" disabled="@(Disabled || Color == null)" @onclick="() => ColorChanged.InvokeAsync(null)">@L["Color_Reset"]</button>
 </div>
 
 @code {

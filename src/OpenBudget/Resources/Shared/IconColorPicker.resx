@@ -61,5 +61,4 @@
   <data name="Icon" xml:space="preserve"><value>Icon</value></data>
   <data name="Icon_Default" xml:space="preserve"><value>Default icon</value></data>
   <data name="Color" xml:space="preserve"><value>Colour</value></data>
-  <data name="Color_Reset" xml:space="preserve"><value>Default colour</value></data>
 </root>

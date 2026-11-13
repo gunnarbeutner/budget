@@ -153,6 +153,9 @@ await using (var budgetDb = await app.Services.GetRequiredService<SystemDbContex
     // Linked accounts are the connector's, also those linked while MoneyMoney still updated them (idempotent).
     await AccountSwitchService.SwitchLinkedMoneyMoneyAccountsAsync(app.Services.GetRequiredService<SystemDbContextFactory>(),
         app.Services.GetRequiredService<OpenBudget.Connectors.Sync.BankTransactionStore>(), DateTime.UtcNow);
+    // Every category group and category has a colour (idempotent).
+    await using (var colorDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
+        await CategoryColorBackfill.FillAsync(colorDb);
     // Every user owns a project to land new accounts in (idempotent).
     await UserDefaultProject.EnsureAllAsync(app.Services.GetRequiredService<SystemDbContextFactory>());
     var ruleLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("OpenBudget.Rules");

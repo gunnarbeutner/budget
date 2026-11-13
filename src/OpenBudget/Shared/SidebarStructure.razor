@@ -32,7 +32,6 @@
                         title="@key" aria-label="@key" data-testid="color-swatch" @onclick="() => SetColorAsync(colorNode, key)">A</button>
             }
         </div>
-        <button type="button" class="dropdown-item small" data-testid="color-reset" @onclick="() => SetColorAsync(colorNode, null)">@L[colorNode.Kind == SidebarNodeKind.CategoryGroup ? "Color_None" : "Color_Reset"]</button>
     </div>
 }
 
@@ -562,7 +561,7 @@
     public Task DropAsync((SidebarNode Dragged, SidebarNode Target, bool Into) drop) =>
         RunAsync(() => Structure.MoveToAsync(KindOf(drop.Dragged), drop.Dragged.Id, KindOf(drop.Target), drop.Target.Id, drop.Into));
 
-    private async Task SetColorAsync(SidebarNode node, string? color)
+    private async Task SetColorAsync(SidebarNode node, string color)
     {
         _color = null;
         await RunAsync(async () =>

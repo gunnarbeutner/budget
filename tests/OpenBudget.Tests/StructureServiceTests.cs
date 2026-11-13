@@ -298,4 +298,30 @@ public sealed class StructureServiceTests
         Assert.Equal((Id(10), 2L), (g.ParentGroupId!.Value, g.Sort!.Value));
         Assert.Equal(3L, (await db.Accounts.SingleAsync(a => a.Id == AccessWorld.AccountProperty)).Sort);
     }
+
+    [Fact]
+    public async Task New_groups_and_categories_get_a_colour_and_the_backfill_colours_the_rest_once()
+    {
+        await using var t = await WorldAsync();
+        var alice = For(t, AccessWorld.Alice);
+        var group = await alice.CreateCategoryGroupAsync(AccessWorld.SharedGroup, "Household");
+        var category = await alice.CreateCategoryAsync(group, "Cleaning");
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            var g = await db.CategoryGroups.SingleAsync(x => x.Id == group);
+            Assert.NotNull(g.Color);
+            Assert.Equal(g.Color, (await db.Categories.SingleAsync(c => c.Id == category)).Color);   // the group's colour
+        }
+
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            Assert.True(await CategoryColorBackfill.FillAsync(db) >= 0);
+            var sentinels = (await db.UserDataStates.Select(s => s.IdSpace).ToListAsync()).SelectMany(RowIds.SentinelIds).ToHashSet();
+            Assert.All(await db.Categories.Where(c => !sentinels.Contains(c.Id)).ToListAsync(), c => Assert.NotNull(c.Color));
+            Assert.All(await db.CategoryGroups.Where(c => !sentinels.Contains(c.Id)).ToListAsync(), c => Assert.NotNull(c.Color));
+            var before = await db.Categories.Select(c => c.Color).ToListAsync();
+            Assert.Equal(0, await CategoryColorBackfill.FillAsync(db));
+            Assert.Equal(before, await db.Categories.Select(c => c.Color).ToListAsync());
+        }
+    }
 }

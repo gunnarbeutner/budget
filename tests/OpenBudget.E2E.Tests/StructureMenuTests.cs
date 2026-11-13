@@ -274,20 +274,18 @@ public sealed class StructureMenuTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task A_group_gets_a_colour_from_its_menu_and_loses_it_again()
+    public async Task A_group_is_recoloured_from_its_menu_which_offers_no_way_to_drop_the_colour()
     {
         await GoToAsync(BrowseUrl);
         var living = Category("Living");
         await OpenMenuAsync(living);
         await Page.GetByTestId("ctx-color").ClickAsync();
+        await Expect(Page.GetByTestId("color-popover").GetByText("colour")).ToHaveCountAsync(0);
         await Page.GetByTestId("color-popover").GetByTestId("color-swatch").Nth(4).ClickAsync();
         await Expect(living.Locator("svg.browse-ribbon")).ToHaveCountAsync(1);
+        await Expect(living.Locator("i.bi-folder")).ToHaveCountAsync(0);
 
-        await OpenMenuAsync(living);
-        await Page.GetByTestId("ctx-color").ClickAsync();
-        await Expect(Page.GetByTestId("color-reset")).ToHaveTextAsync("No colour");
-        await Page.GetByTestId("color-reset").ClickAsync();
-        await Expect(living.Locator("i.bi-folder")).ToHaveCountAsync(1);
-        await Expect(living.Locator("svg.browse-ribbon")).ToHaveCountAsync(0);
+        await using var db = await Db.CreateDbContextAsync();
+        Assert.That((await db.CategoryGroups.SingleAsync(g => g.Name == "Living")).Color, Is.EqualTo(CategoryColors.Palette[4].Key));
     }
 }

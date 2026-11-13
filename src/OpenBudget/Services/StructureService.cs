@@ -200,7 +200,8 @@ public sealed class StructureService
         await RequireEditableAsync(db, group.OwnerUserId, ct);
         var id = await NextOwnIdAsync(db, group.OwnerUserId, ct);
         // Expense by default (MoneyMoney's type 1); the project decides income vs. expense itself.
-        var category = new Category { Id = id, OwnerUserId = group.OwnerUserId, Name = clean, GroupId = groupId, Type = 1 };
+        // A new category takes its group's colour, else one of the palette.
+        var category = new Category { Id = id, OwnerUserId = group.OwnerUserId, Name = clean, GroupId = groupId, Type = 1, Color = group.Color ?? CategoryColors.FallbackColor(id) };
         db.Categories.Add(category);
         var siblings = await CategorySiblingsAsync(db, group.OwnerUserId, groupId, ct);
         var at = afterId is { } after ? siblings.FindIndex(s => s.Kind == StructureItemKind.Category && s.Id == after) + 1 : siblings.Count;
@@ -229,7 +230,9 @@ public sealed class StructureService
         var parent = await db.CategoryGroups.FirstOrDefaultAsync(g => g.Id == parentGroupId, ct) ?? throw NotFound();
         await RequireEditableAsync(db, parent.OwnerUserId, ct);
         var id = await NextOwnIdAsync(db, parent.OwnerUserId, ct);
-        var group = new CategoryGroup { Id = id, OwnerUserId = parent.OwnerUserId, Name = clean, ParentGroupId = parentGroupId };
+        // A new group gets the next colour of the palette.
+        var groupCount = await db.CategoryGroups.CountAsync(g => g.OwnerUserId == parent.OwnerUserId, ct);
+        var group = new CategoryGroup { Id = id, OwnerUserId = parent.OwnerUserId, Name = clean, ParentGroupId = parentGroupId, Color = CategoryColors.Palette[groupCount % CategoryColors.Palette.Count].Key };
         db.CategoryGroups.Add(group);
         var siblings = await CategorySiblingsAsync(db, parent.OwnerUserId, parentGroupId, ct);
         siblings.Add(new Sibling(StructureItemKind.CategoryGroup, id, null, clean, v => group.Sort = v));

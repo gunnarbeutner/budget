@@ -255,6 +255,8 @@ public sealed class MoneyMoneyBrowserImport
                 // Everything imported shows in the owner's default project, with MoneyMoney's budgets.
                 await DefaultProjectAssigner.AssignImportedAsync(db, userId, ct);
                 budgets = await MoneyMoneyBudgetImport.ImportAsync(db, userId, plain, DateTime.UtcNow.Year, ct);
+                // Imported groups and categories without a colour get one.
+                await CategoryColorBackfill.FillAsync(db, userId, ct);
                 // Income vs. spending and budget tracking as suggested by the imported data.
                 if (await db.Projects.Where(p => p.OwnerUserId == userId && p.IsDefaultForNewAccounts).Select(p => (int?)p.Id).FirstOrDefaultAsync(ct) is { } projectId)
                     await ProjectCategorySetup.ApplySuggestionsAsync(db, userId, projectId, DateTime.UtcNow, ct);
