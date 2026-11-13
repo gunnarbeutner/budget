@@ -423,7 +423,7 @@
             else
             {
                 <div class="tx-list" data-testid="tx-list">
-                    <Virtualize @ref="txVirtualize" ItemsProvider="LoadTxRowsAsync" Context="item" ItemSize="@itemSize">
+                    <Virtualize @ref="txVirtualize" ItemsProvider="LoadTxRowsAsync" ItemComparer="TxListItem.ById" Context="item" ItemSize="@itemSize">
                         <ItemContent>
                             @{
                                 var row = item.Row;

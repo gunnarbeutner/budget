@@ -10,7 +10,7 @@
 # The aspnet image is Ubuntu, where chromium is only a snap stub; Debian trixie ships a real chromium package.
 # There is no Debian-tagged aspnet image for 11 preview, so the runtime is taken from the Ubuntu one (self-contained
 # under /usr/share/dotnet) and run on trixie, which has the libicu/libssl it needs.
-FROM mcr.microsoft.com/dotnet/aspnet:11.0.0-preview.3 AS dotnet-runtime
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS dotnet-runtime
 
 # ---- runtime base: Chromium (for web logins), the .NET runtime, a non-root user ----
 FROM debian:trixie-slim AS runtime-base
@@ -37,7 +37,7 @@ ENV HOME=/home/app \
     DOTNET_RUNNING_IN_CONTAINER=true
 
 # ---- build ----
-FROM mcr.microsoft.com/dotnet/sdk:11.0.100-preview.3 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 WORKDIR /src
 # Restore layer: only what decides the package set (project file, repo-wide props with the analyzer packages, SDK pin),
 # so it is cached until a dependency changes. The NuGet folder is a BuildKit cache mount: when a dependency does change,

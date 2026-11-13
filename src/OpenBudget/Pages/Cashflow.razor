@@ -1150,7 +1150,6 @@ else
         await LoadBalanceDataAsync();
         needsBalanceChartRender = hasAssignedAccounts && balanceDaily.Length > 0;
         await RenderCashflowChart();
-        StateHasChanged();
     }
 
     private void AddWhatIf()
@@ -1181,7 +1180,6 @@ else
         await LoadBalanceDataAsync();
         needsBalanceChartRender = hasAssignedAccounts && balanceDaily.Length > 0;
         await RenderCashflowChart();
-        StateHasChanged();
     }
 
     /// <summary>

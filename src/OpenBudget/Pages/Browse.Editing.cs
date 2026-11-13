@@ -328,7 +328,7 @@ public partial class Browse
     // falls back to the pointer position.
     private async Task OpenFilterPickerAsync(MouseEventArgs e)
     {
-        (popupX, popupY) = await JS.InvokeAsync<double[]?>("obFocusAnchor") is { Length: 2 } xy ? (xy[0] - 24, xy[1] + 4) : (e.ClientX, e.ClientY);
+        (popupX, popupY) = await JS.TryInvokeAsync<double[]?>("obFocusAnchor") is { Length: 2 } xy ? (xy[0] - 24, xy[1] + 4) : (e.ClientX, e.ClientY);
         popup = PopupKind.FilterPicker;
     }
 
@@ -485,7 +485,7 @@ public partial class Browse
                 if (selected.Count > 0) await ToggleCheckSelectionAsync();
                 break;
             case "/":
-                await JS.InvokeVoidAsync("obTx.focusSearch");
+                await JS.TryInvokeVoidAsync("obTx.focusSearch");
                 break;
             case "?":
                 showShortcuts = true;
@@ -754,7 +754,7 @@ public partial class Browse
                 await OpenEditBookingAsync(single);
                 break;
             case "statement" when contextStatement is { } statement:
-                await JS.InvokeVoidAsync("open", $"/statements/{statement.Id}", "_blank");
+                await JS.TryInvokeVoidAsync("open", $"/statements/{statement.Id}", "_blank");
                 break;
             default:
                 break;

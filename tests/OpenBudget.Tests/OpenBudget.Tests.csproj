@@ -15,8 +15,8 @@
     <!-- Match the main project's EF Core + Sqlite versions to silence MSB3277 reference
          conflicts and let the test project use EF Core types (DbContextOptionsBuilder,
          in-memory SqliteConnection) directly. -->
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="11.0.0-preview.3.26207.106" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="11.0.0-preview.3.26207.106" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="11.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="11.0.0" />
   </ItemGroup>
 
   <ItemGroup>

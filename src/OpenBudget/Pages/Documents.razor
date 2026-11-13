@@ -524,7 +524,6 @@
         if (viewing == null) return;
         var id = viewing.Id;
         viewing = null;
-        StateHasChanged();
         try
         {
             await JS.InvokeVoidAsync("modalA11y.deactivate");

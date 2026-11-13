@@ -37,8 +37,9 @@
            CA1848/CA1873  LoggerMessage perf micro-opt
            S6618/S6608/S2325/S3267/S3358  Sonar style/perf opinions
            CA1031         catch general Exception (intentional in top-level handlers)
-           S125           "commented-out code": false-positives on this codebase's prose comments -->
-    <NoWarn>$(NoWarn);CS1570;CS1571;CS1572;CS1573;CS1574;CS1580;CS1584;CS1587;CS1589;CS1590;CS1591;CS1592;CS1710;CS1711;CS1712;CS1723;CS1734;CA2007;MA0004;CA1515;CA1062;MA0016;CA2227;CA1002;CA1819;CA1024;CA1716;CA1003;MA0046;MA0048;MA0006;MA0051;IDE0058;S6562;CA1848;CA1873;S6618;S6608;S2325;CA1031;S3267;S3358;S125</NoWarn>
+           S125           "commented-out code": false-positives on this codebase's prose comments
+           S3881          dispose pattern: flags the component declarations Razor generates -->
+    <NoWarn>$(NoWarn);CS1570;CS1571;CS1572;CS1573;CS1574;CS1580;CS1584;CS1587;CS1589;CS1590;CS1591;CS1592;CS1710;CS1711;CS1712;CS1723;CS1734;CA2007;MA0004;CA1515;CA1062;MA0016;CA2227;CA1002;CA1819;CA1024;CA1716;CA1003;MA0046;MA0048;MA0006;MA0051;IDE0058;S6562;CA1848;CA1873;S6618;S6608;S2325;CA1031;S3267;S3358;S125;S3881</NoWarn>
   </PropertyGroup>
 
   <!-- Third-party analyzers. PrivateAssets=all keeps them out of any downstream

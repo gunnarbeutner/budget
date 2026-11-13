@@ -45,7 +45,10 @@
     {
         try
         {
+            // signing in or out reloads the page, so the state cannot change while the circuit lives
+            #pragma warning disable BL0013
             var state = await AuthState.GetAuthenticationStateAsync();
+            #pragma warning restore BL0013
             userName = state.User.Identity?.IsAuthenticated == true ? state.User.Identity.Name : null;
             if (userName != null && state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value is { } id
                 && (await Users.GetNamesAsync([id])).TryGetValue(id, out var shown) && shown.Length > 0)

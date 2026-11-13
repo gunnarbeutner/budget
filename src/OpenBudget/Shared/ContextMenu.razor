@@ -90,14 +90,14 @@
         if (placedAt != (X, Y))
         {
             placedAt = (X, Y);
-            await JS.InvokeVoidAsync("obPlaceMenu", menu, X, Y);
+            await JS.TryInvokeVoidAsync("obPlaceMenu", menu, X, Y);
         }
         // Focus once it is visible (a hidden element can't take focus).
-        if (firstRender) await JS.InvokeVoidAsync("obFocus", menu);
+        if (firstRender) await JS.TryInvokeVoidAsync("obFocus", menu);
         if (placedSub != openSub)
         {
             placedSub = openSub;
-            if (openSub != null) await JS.InvokeVoidAsync("obPlaceSubmenu", menu);
+            if (openSub != null) await JS.TryInvokeVoidAsync("obPlaceSubmenu", menu);
         }
     }
 

@@ -272,7 +272,7 @@
         }
     }
 
-    private async Task OpenMonthPicker() => await JS.InvokeVoidAsync("showPickerOn", monthInputRef);
+    private async Task OpenMonthPicker() => await JS.TryInvokeVoidAsync("showPickerOn", monthInputRef);
 
     private async Task OnHeadingKey(KeyboardEventArgs e)
     {

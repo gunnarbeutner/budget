@@ -314,7 +314,10 @@ else
         {
             generalError = ex.Message;
         }
+        // also runs from the debounce timer, outside an event handler
+        #pragma warning disable BL0012
         StateHasChanged();
+        #pragma warning restore BL0012
     }
 
     private async Task OnDefaultChanged(ChangeEventArgs e)

@@ -104,14 +104,14 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await JS.InvokeVoidAsync("obPlacePicker", panel, list, X, Y);
-        if (firstRender) await JS.InvokeVoidAsync("obFocus", input);
+        await JS.TryInvokeVoidAsync("obPlacePicker", panel, list, X, Y);
+        if (firstRender) await JS.TryInvokeVoidAsync("obFocus", input);
         if (scrollPending)
         {
             scrollPending = false;
-            await JS.InvokeVoidAsync("obScrollActive", list);
+            await JS.TryInvokeVoidAsync("obScrollActive", list);
         }
-        await JS.InvokeVoidAsync("obPickerMoreHint", list);
+        await JS.TryInvokeVoidAsync("obPickerMoreHint", list);
     }
 
     private void Rebuild()

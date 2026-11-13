@@ -33,7 +33,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender) await JS.InvokeVoidAsync("obFocus", text);
+        if (firstRender) await JS.TryInvokeVoidAsync("obFocus", text);
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)

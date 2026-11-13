@@ -13,11 +13,6 @@ namespace OpenBudget.Migrations
     [DbContext(typeof(BudgetDbContext))]
     partial class BudgetDbContextModelSnapshot : ModelSnapshot
     {
-        // If you encounter a merge conflict in the line below, it means you need to
-        // discard one of the migration branches and recreate its migrations on top of
-        // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261113130231_BackgroundDefaults";
-
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618

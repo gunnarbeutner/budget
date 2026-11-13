@@ -338,7 +338,7 @@ else
         uploading = true;
         uploaded = 0;
         selfRef ??= DotNetObjectReference.Create(this);
-        await JS.InvokeVoidAsync("obMoneyMoneyUpload.start", fileInput, selfRef);
+        await JS.TryInvokeVoidAsync("obMoneyMoneyUpload.start", fileInput, selfRef);
     }
 
     [JSInvokable]
@@ -408,7 +408,7 @@ else
     {
         if (!scrollToTop) return;
         scrollToTop = false;
-        await JS.InvokeVoidAsync("scrollTo", 0, 0);
+        await JS.TryInvokeVoidAsync("scrollTo", 0, 0);
     }
 
     private static string StepUrl(int step) => $"/get-started?step={step}";
