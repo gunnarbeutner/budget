@@ -109,4 +109,37 @@
   <data name="Source_amount" xml:space="preserve">
     <value>Gleicher Empfänger und Betrag</value>
   </data>
+  <data name="Rule_Mandate" xml:space="preserve">
+    <value>Regel: gleiches Lastschriftmandat ({0})</value>
+  </data>
+  <data name="Rule_Creditor" xml:space="preserve">
+    <value>Regel: gleicher Gläubiger ({0})</value>
+  </data>
+  <data name="Rule_PayeeAmount" xml:space="preserve">
+    <value>Regel: {0} und Betrag {1}</value>
+  </data>
+  <data name="Rule_Text" xml:space="preserve">
+    <value>Regel: {0}</value>
+  </data>
+  <data name="AcceptWithRule" xml:space="preserve">
+    <value>Übernehmen und Regel anlegen</value>
+  </data>
+  <data name="Rule_Create" xml:space="preserve">
+    <value>Anlegen</value>
+  </data>
+  <data name="Rule_Cancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="Rule_Applies" xml:space="preserve">
+    <value>Gilt für {0} weitere Buchungen.</value>
+  </data>
+  <data name="Rule_Applies_One" xml:space="preserve">
+    <value>Gilt für 1 weitere Buchung.</value>
+  </data>
+  <data name="Rule_Changes" xml:space="preserve">
+    <value>{0} Buchungen mit anderer Kategorie bleiben unverändert.</value>
+  </data>
+  <data name="Rule_Changes_One" xml:space="preserve">
+    <value>1 Buchung mit anderer Kategorie bleibt unverändert.</value>
+  </data>
 </root>

@@ -10,10 +10,13 @@
 
 <section class="suggest-bar" data-testid="suggest-bar" aria-label="@L["Aria_Bar"]">
     <div class="d-flex flex-wrap align-items-center gap-2">
-        <BusyButton Class="btn btn-sm btn-outline-primary" TestId="suggest-run" OnClick="RunAsync" Busy="busy" BusyChanged="b => busy = b">
-            <i class="bi bi-magic" aria-hidden="true"></i>
-            @(SelectedIds.Count > 0 ? L["Button_SuggestSelected", SelectedIds.Count] : L["Button_SuggestAll"])
-        </BusyButton>
+        @if (busy || (SelectedIds.Count > 0 ? Unsuggested().Count > 0 : Current.Count < ListCount))
+        {
+            <BusyButton Class="btn btn-sm btn-outline-primary" TestId="suggest-run" OnClick="RunAsync" Busy="busy" BusyChanged="b => busy = b">
+                <i class="bi bi-magic" aria-hidden="true"></i>
+                @(SelectedIds.Count > 0 ? L["Button_SuggestSelected", Unsuggested().Count] : L["Button_SuggestAll"])
+            </BusyButton>
+        }
         @if (progress is { } p && busy)
         {
             <span class="small text-body-secondary" role="status" data-testid="suggest-progress">@L["Status_Asking", p.Done, p.Total]</span>
@@ -30,10 +33,10 @@
                 <i class="bi bi-funnel" aria-hidden="true"></i> @L["Button_Rules", result.Rules.Count]
             </button>
         }
-        @if (result != null && !busy)
+        @if (result != null && !busy && Current.Count > 0)
         {
             <span class="small text-body-secondary" role="status" data-testid="suggest-summary">
-                @L["Status_Done", result.Suggestions.Count(s => s.CategoryId != null)]
+                @L[Current.Count == 1 ? "Status_Done_One" : "Status_Done", Current.Count]
                 @if (result.SkippedNoConsent > 0)
                 {
                     <span> · @L["Status_NoConsent", result.SkippedNoConsent]</span>
@@ -114,6 +117,9 @@
     /// <summary>The suggestions currently shown (owned by the list).</summary>
     [Parameter] public IReadOnlyDictionary<long, TxCategorySuggestion> Current { get; set; } = new Dictionary<long, TxCategorySuggestion>();
 
+    /// <summary>How many bookings the list shows.</summary>
+    [Parameter] public int ListCount { get; set; }
+
     [Parameter] public EventCallback<IReadOnlyList<TxCategorySuggestion>> OnSuggestions { get; set; }
 
     /// <summary>Bookings changed (accepted or a rule applied).</summary>
@@ -130,6 +136,9 @@
     private bool editError;
     private string? message;
 
+    /// <summary>The selected bookings without a suggestion yet (suggestions are cached, asking again shows nothing new).</summary>
+    private List<long> Unsuggested() => SelectedIds.Where(id => !Current.ContainsKey(id)).ToList();
+
     private int SureCount => Current.Values.Count(s => s.CategoryId != null && s.Confidence >= SureThreshold);
 
     protected override async Task OnInitializedAsync() => optIn = AssistSettings.Available && await AssistSettings.GetOptInAsync();
@@ -137,7 +146,7 @@
     private async Task RunAsync()
     {
         message = null;
-        var ids = SelectedIds.Count > 0 ? SelectedIds.ToList() : null;
+        var ids = SelectedIds.Count > 0 ? Unsuggested() : null;
         var reporter = new Progress<(int Done, int Total)>(p => { progress = p; _ = InvokeAsync(StateHasChanged); });
         result = await Suggestions.SuggestAsync(ProjectId, ids, useAi: optIn, reporter);
         rules = result.Rules.ToList();

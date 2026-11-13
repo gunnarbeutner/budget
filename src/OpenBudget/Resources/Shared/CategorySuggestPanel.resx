@@ -76,6 +76,9 @@
   <data name="Button_Rules" xml:space="preserve">
     <value>Rules ({0})</value>
   </data>
+  <data name="Status_Done_One" xml:space="preserve">
+    <value>{0} suggestion</value>
+  </data>
   <data name="Status_Done" xml:space="preserve">
     <value>{0} suggestions</value>
   </data>

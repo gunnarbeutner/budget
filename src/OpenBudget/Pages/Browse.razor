@@ -283,7 +283,7 @@
 
         @if (selectionKind == "uncategorized" && tree != null && project != null)
         {
-            <CategorySuggestPanel ProjectId="ProjectId" SelectedIds="selected" Current="_suggestions"
+            <CategorySuggestPanel ProjectId="ProjectId" SelectedIds="selected" Current="_suggestions" ListCount="txTotals?.Count ?? 0"
                                   OnSuggestions="OnSuggestions" OnApplied="OnSuggestionsAppliedAsync" />
         }
 
@@ -417,7 +417,7 @@
             {
                 <div class="text-body-secondary py-4 text-center">
                     <i class="bi bi-inbox" style="font-size: 1.6rem;" aria-hidden="true"></i>
-                    <div>@L["Empty_NoTransactions"]</div>
+                    <div data-testid="browse-empty">@(selectionKind == "uncategorized" && !HasActiveFilter ? L["Empty_AllCategorized"] : L["Empty_NoTransactions"])</div>
                 </div>
             }
             else
@@ -502,6 +502,7 @@
                                              && _suggestions.TryGetValue(row.Id, out var suggestion) && suggestion.Confidence >= SuggestionChip.InlineConfidence)
                                         {
                                             <SuggestionChip Suggestion="suggestion" OnAccept="() => AcceptSuggestionAsync(row, suggestion)"
+                                                            Rule="_suggestionRules.GetValueOrDefault(row.Id)" OnAcceptWithRule="r => AcceptWithRuleAsync(row, suggestion, r)"
                                                             OnReject="() => RejectSuggestionAsync(row)" />
                                         }
                                     </div>
@@ -516,7 +517,7 @@
                                     <TxDetails Row="row" Statement="expandedStatement" ShowAccount="showAccountColumn" Account="AccountNodeFor(row.AccountId)"
                                                OnNoteSave="note => SetNoteForAsync(row.Id, note)"
                                                OnShowSimilar="() => ShowSimilarAsync(row)"
-                                               OnSuggest="() => SuggestForRowAsync(row)"
+                                               OnSuggest="() => SuggestForRowAsync(row)" HasSuggestion="_suggestions.ContainsKey(row.Id)"
                                                OnPickCategory="e => OpenPickerFromRow(row, e)"
                                                OnEditBooking="() => OpenEditBookingAsync(row)"
                                                OnCreateRule="e => CreateRuleFromAsync(row, e)"
@@ -1403,6 +1404,7 @@
             newCount = (await TransactionQueries.QueryTotalsAsync(await BuildTransactionQueryAsync(0, 1, newOnlyOverride: true))).Count;
         }
         if (keepSelection) await PruneSelectionAsync();
+        await PruneSuggestionsAsync();
         // After an outside change the list gets a new instance (txListVersion) that loads by itself; refreshing the
         // old one would render it once more against the new row count.
         if (txVirtualize is not null && _renderedListVersion == txListVersion) await txVirtualize.RefreshDataAsync();

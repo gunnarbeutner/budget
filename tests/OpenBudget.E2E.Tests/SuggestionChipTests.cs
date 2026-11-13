@@ -99,6 +99,67 @@ public sealed class SuggestionChipTests : EndToEndTestBase
         await Expect(Row("−30,00")).ToHaveCountAsync(0);
     }
 
+    [Test]
+    public async Task Suggest_buttons_are_hidden_for_bookings_with_a_suggestion_until_it_is_dismissed()
+    {
+        await GoToAsync(UncategorizedUrl);
+        await Page.GetByTestId("suggest-run").ClickAsync();
+        var row = Row("−25,00");
+        await Expect(row.GetByTestId("suggest-chip")).ToBeVisibleAsync();
+
+        // Selecting (and expanding) the row: it has a suggestion, so neither the toolbar nor the details offer to ask again.
+        await row.Locator(".tx-name").First.ClickAsync();
+        await Expect(Page.GetByTestId("tx-details")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("tx-details-suggest")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("suggest-run")).ToHaveCountAsync(0);
+
+        await row.GetByTestId("suggest-chip-reject").ClickAsync();
+        await Expect(row.GetByTestId("suggest-chip")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("tx-details-suggest")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("suggest-run")).ToContainTextAsync("Suggest for 1 selected");
+    }
+
+    [Test]
+    public async Task A_suggestion_can_be_accepted_together_with_its_rule()
+    {
+        await GoToAsync(UncategorizedUrl);
+        await Page.GetByTestId("suggest-run").ClickAsync();
+        var chip = Row("−25,00").GetByTestId("suggest-chip");
+        await chip.GetByTestId("suggest-chip-accept-rule").ClickAsync();
+        var confirm = chip.GetByTestId("suggest-chip-rule-confirm");
+        await Expect(confirm.GetByTestId("suggest-chip-rule-text")).ToHaveTextAsync("Rule: Example Grocer");
+        await Expect(confirm.GetByTestId("suggest-chip-rule-effect")).ToContainTextAsync("Applies to 2 more bookings.");
+        await confirm.GetByTestId("suggest-chip-rule-create").ClickAsync();
+
+        // The rule categorized the other grocer bookings too.
+        await Expect(Row("−25,00")).ToHaveCountAsync(0);
+        await Expect(Row("−30,00")).ToHaveCountAsync(0);
+        await Expect(Row("−12,50")).ToHaveCountAsync(0);
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        await using var db = await factory.CreateDbContextAsync();
+        var rule = await db.CategoryRules.SingleAsync(r => r.ProjectId == E2ESeed.ProjectId);
+        Assert.That(rule.Expression, Is.EqualTo("name:\"Example Grocer\""));
+        Assert.That(rule.CategoryId, Is.EqualTo(200));
+    }
+
+    [Test]
+    public async Task Categorizing_the_last_booking_clears_the_suggestion_bar()
+    {
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        await using (var db = await factory.CreateDbContextAsync())
+            await db.Transactions.Where(t => t.Id != 102 && t.CategoryId == null).ExecuteUpdateAsync(u => u.SetProperty(t => t.CategoryId, 200L));
+        await GoToAsync(UncategorizedUrl);
+        await Page.GetByTestId("suggest-run").ClickAsync();
+        await Expect(Page.GetByTestId("suggest-summary")).ToContainTextAsync("1 suggestion");
+        await Expect(Page.GetByTestId("suggest-run")).ToHaveCountAsync(0);
+
+        await Row("−30,00").GetByTestId("suggest-chip-accept").ClickAsync();
+        await Expect(Page.GetByTestId("browse-empty")).ToHaveTextAsync("All bookings are categorized.");
+        await Expect(Page.GetByTestId("suggest-run")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("suggest-accept-sure")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("suggest-summary")).ToHaveCountAsync(0);
+    }
+
     /// <summary>Screenshots of the rows at desktop and phone width, light and dark, into $OB_SHOT_DIR.</summary>
     [Test, Explicit("Visual check; run on demand")]
     public async Task Screenshots()

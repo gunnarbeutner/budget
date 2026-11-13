@@ -43,11 +43,27 @@
                 title="@L["Accept"]" @onclick="() => OnAccept.InvokeAsync()">
             <i class="bi bi-check-lg" aria-hidden="true"></i>
         </button>
+        @if (Rule != null && Suggestion.Split == null)
+        {
+            <button type="button" class="suggest-chip-btn" data-testid="suggest-chip-accept-rule" aria-label="@L["AcceptWithRule"]"
+                    title="@L["AcceptWithRule"]" aria-expanded="@(confirmRule ? "true" : "false")" @onclick="() => confirmRule = !confirmRule">
+                <i class="bi bi-funnel" aria-hidden="true"></i>@if (showWhy) {<span> @L["AcceptWithRule"]</span>}
+            </button>
+        }
         <button type="button" class="suggest-chip-btn" data-testid="suggest-chip-reject" aria-label="@L["Reject"]"
                 title="@L["Reject"]" @onclick="() => OnReject.InvokeAsync()">
             <i class="bi bi-x-lg" aria-hidden="true"></i>
         </button>
     </span>
+    @if (confirmRule && Rule is { } rule)
+    {
+        <span class="suggest-chip-confirm" data-testid="suggest-chip-rule-confirm">
+            <span data-testid="suggest-chip-rule-text">@(DescribeRule(L, rule.Expression) ?? L["Source_rule"] + ": " + rule.Expression)</span>
+            <span data-testid="suggest-chip-rule-effect">· @RuleEffect(rule)</span>
+            <BusyButton Class="btn btn-sm btn-primary py-0" TestId="suggest-chip-rule-create" OnClick="() => OnAcceptWithRule.InvokeAsync(rule)">@L["Rule_Create"]</BusyButton>
+            <button type="button" class="btn btn-sm btn-link py-0" data-testid="suggest-chip-rule-cancel" @onclick="() => confirmRule = false">@L["Rule_Cancel"]</button>
+        </span>
+    }
 </span>
 
 @code {
@@ -57,6 +73,22 @@
     [Parameter, EditorRequired] public TxCategorySuggestion Suggestion { get; set; } = null!;
     [Parameter] public EventCallback OnAccept { get; set; }
     [Parameter] public EventCallback OnReject { get; set; }
+
+    /// <summary>The rule this suggestion could become (offerable, not in the project yet); null = none.</summary>
+    [Parameter] public RuleSuggestion? Rule { get; set; }
+
+    /// <summary>Creates <see cref="Rule"/>, applies it and accepts the suggestion.</summary>
+    [Parameter] public EventCallback<RuleSuggestion> OnAcceptWithRule { get; set; }
+
+    private bool confirmRule;
+
+    // The other bookings the rule categorizes (this one is accepted anyway) and the ones it would recategorize.
+    private string RuleEffect(RuleSuggestion r)
+    {
+        var more = Math.Max(0, r.Uncategorized - 1);
+        var text = L[more == 1 ? "Rule_Applies_One" : "Rule_Applies", more].Value;
+        return r.Conflicts == 0 ? text : text + " " + L[r.Conflicts == 1 ? "Rule_Changes_One" : "Rule_Changes", r.Conflicts].Value;
+    }
 
     // Category paths are "Group › Leaf"; the row shows the leaf, the tooltip the path.
     private static string Leaf(string? path)
@@ -81,6 +113,19 @@
         }
     }
 
+    /// <summary>
+    /// A rule in plain words ("Rule: same direct-debit mandate (…)", "Rule: Netflix and amount −12,99 €"), from its
+    /// structure (<see cref="RuleDescription"/>); null when it has another shape.
+    /// </summary>
+    public static string? DescribeRule(IStringLocalizer<SuggestionChip> l, string? expression) => RuleDescription.Of(expression) switch
+    {
+        { Shape: RuleShape.Mandate } d => l["Rule_Mandate", d.Value].Value,
+        { Shape: RuleShape.Creditor } d => l["Rule_Creditor", d.Value].Value,
+        { Shape: RuleShape.PayeeAmount, Amount: { } a } d => l["Rule_PayeeAmount", d.Value, Formatting.FormatMoneyDe(a)].Value,
+        { Shape: RuleShape.Text } d => l["Rule_Text", d.Value].Value,
+        _ => null,
+    };
+
     /// <summary>Where a suggestion came from, in words: "From 4 similar bookings", "Rule: …", "Same IBAN", "Same direct-debit mandate", "AI: …".</summary>
     public static string SourceText(IStringLocalizer<SuggestionChip> l, TxCategorySuggestion s)
     {
@@ -90,6 +135,8 @@
             case "knn":
                 var m = Regex.Match(rationale, @"^(\d+) of");
                 return m.Success ? l["Source_knn_Count", int.Parse(m.Groups[1].Value)] : l["Source_knn"];
+            case "rule" when DescribeRule(l, rationale) is { } described:
+                return described;
             case "iban" or "mandate" or "creditor" or "amount":
                 return l["Source_" + s.Source];
             case "ai" when DecisionsCategoryChooser.ReadRationale(rationale) is { } d:

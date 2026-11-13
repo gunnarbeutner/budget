@@ -295,6 +295,46 @@ public sealed partial class CategorySuggestionService
     }
 
     /// <summary>
+    /// The rule each suggestion could become, for accepting it and creating the rule in one step: a contract key rule
+    /// (<see cref="KeyRuleCandidates"/>) or, for one from similar bookings, the payee. Only offerable rules the project
+    /// does not have yet; split suggestions and ones from a rule or the AI get none. Bookings sharing a rule share the check.
+    /// </summary>
+    public async Task<Dictionary<long, RuleSuggestion>> RulesForAsync(int projectId, IReadOnlyCollection<TxCategorySuggestion> suggestions, CancellationToken ct = default)
+    {
+        var found = new Dictionary<long, RuleSuggestion>();
+        var eligible = suggestions.Where(s => s.CategoryId != null && s.Split == null).ToDictionary(s => s.TransactionId);
+        if (eligible.Count == 0) return found;
+        var ctx = await LoadAsync(projectId, ct);
+        if (ctx == null) return found;
+        var targets = eligible.Keys.Where(ctx.Rows.ContainsKey).Select(id => ctx.Rows[id]).ToList();
+        var candidates = new List<(long Id, string Expression, long CategoryId, string Source)>();
+        foreach (var t in targets)
+        {
+            var s = eligible[t.Id];
+            var one = KeyRuleCandidates([t], eligible).Select(c => (c.Expression, c.CategoryId, c.Source)).FirstOrDefault();
+            if (one.Expression == null && s.Source == "knn" && Quoted("name", t.Name?.Trim()) is { } name) one = (name, s.CategoryId!.Value, "knn");
+            if (one.Expression != null) candidates.Add((t.Id, one.Expression, one.CategoryId, one.Source));
+        }
+        var existing = ctx.ProjectRules.Select(r => RuleExpression.TryParse(r.Expression, out _)?.Print()).Where(e => e != null).ToHashSet(StringComparer.Ordinal);
+        var checks = new Dictionary<(string, long), RuleSuggestion?>();
+        foreach (var (id, candidate, categoryId, source) in candidates)
+        {
+            if (!checks.TryGetValue((candidate, categoryId), out var check))
+            {
+                var expression = candidate;
+                if (source == "amount" && expression.IndexOf(" AND amount=", StringComparison.Ordinal) is var cut and > 0
+                    && await CheckRuleAsync(projectId, expression[..cut], categoryId, source, ctx, ct) is { Conflicts: 0 } payeeOnly && Offerable(payeeOnly))
+                    expression = expression[..cut];
+                check = await CheckRuleAsync(projectId, expression, categoryId, source, ctx, ct);
+                if (check != null && (existing.Contains(check.Expression) || !Offerable(check))) check = null;
+                checks[(candidate, categoryId)] = check;
+            }
+            if (check != null) found[id] = check;
+        }
+        return found;
+    }
+
+    /// <summary>
     /// Rules for contract keys: a booking suggested from its mandate gets <c>mandate:"…"</c>, from its creditor id
     /// <c>creditor_id:"…"</c>, from its payee and recurring amount <c>name:"…" AND amount=…</c>. Whether the rule is
     /// offered is decided like any other (enough matches, hardly any conflicts).

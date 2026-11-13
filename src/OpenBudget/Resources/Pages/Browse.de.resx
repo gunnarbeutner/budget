@@ -66,6 +66,7 @@
   <data name="Chart_M" xml:space="preserve"><value>M</value></data>
   <data name="Chart_Q" xml:space="preserve"><value>Q</value></data>
   <data name="Chart_Y" xml:space="preserve"><value>J</value></data>
+  <data name="Empty_AllCategorized" xml:space="preserve"><value>Alle Buchungen sind kategorisiert.</value></data>
   <data name="Empty_NoTransactions" xml:space="preserve"><value>Keine Buchungen im aktuellen Filter.</value></data>
   <data name="Filter_AnyAccount" xml:space="preserve"><value>Alle Konten</value></data>
   <data name="Filter_Clear" xml:space="preserve"><value>Filter zurücksetzen</value></data>

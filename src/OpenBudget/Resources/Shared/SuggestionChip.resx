@@ -109,4 +109,37 @@
   <data name="Source_amount" xml:space="preserve">
     <value>Same payee and amount</value>
   </data>
+  <data name="Rule_Mandate" xml:space="preserve">
+    <value>Rule: same direct-debit mandate ({0})</value>
+  </data>
+  <data name="Rule_Creditor" xml:space="preserve">
+    <value>Rule: same creditor ({0})</value>
+  </data>
+  <data name="Rule_PayeeAmount" xml:space="preserve">
+    <value>Rule: {0} and amount {1}</value>
+  </data>
+  <data name="Rule_Text" xml:space="preserve">
+    <value>Rule: {0}</value>
+  </data>
+  <data name="AcceptWithRule" xml:space="preserve">
+    <value>Accept and create rule</value>
+  </data>
+  <data name="Rule_Create" xml:space="preserve">
+    <value>Create</value>
+  </data>
+  <data name="Rule_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Rule_Applies" xml:space="preserve">
+    <value>Applies to {0} more bookings.</value>
+  </data>
+  <data name="Rule_Applies_One" xml:space="preserve">
+    <value>Applies to 1 more booking.</value>
+  </data>
+  <data name="Rule_Changes" xml:space="preserve">
+    <value>{0} bookings with another category stay as they are.</value>
+  </data>
+  <data name="Rule_Changes_One" xml:space="preserve">
+    <value>1 booking with another category stays as it is.</value>
+  </data>
 </root>

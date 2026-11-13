@@ -104,7 +104,7 @@
                 <i class="bi bi-tag" aria-hidden="true"></i> @L["Action_PickCategory"]
             </button>
         }
-        @if (Row.CanEdit && Row.Amount != 0 && string.IsNullOrEmpty(Row.CategoryName) && OnSuggest.HasDelegate)
+        @if (Row.CanEdit && Row.Amount != 0 && string.IsNullOrEmpty(Row.CategoryName) && !HasSuggestion && OnSuggest.HasDelegate)
         {
             <button type="button" class="ob-btn" data-testid="tx-details-suggest" disabled="@suggesting" @onclick="SuggestAsync">
                 <i class="bi bi-lightbulb" aria-hidden="true"></i> @L["Action_Suggest"]
@@ -179,6 +179,9 @@
     [Parameter] public EventCallback OnShowSimilar { get; set; }
     /// <summary>Asks for a category suggestion for this booking (shown as a chip on the row).</summary>
     [Parameter] public EventCallback OnSuggest { get; set; }
+
+    /// <summary>The booking already has a suggestion (they are cached, asking again would show the same one).</summary>
+    [Parameter] public bool HasSuggestion { get; set; }
     /// <summary>Opens the category picker; offered for zero-amount bookings, which show no category pill.</summary>
     [Parameter] public EventCallback<MouseEventArgs> OnPickCategory { get; set; }
 
