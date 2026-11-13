@@ -81,7 +81,7 @@
         }
     }
 
-    /// <summary>Where a suggestion came from, in words: "From 4 similar bookings", "Rule: …", "Same IBAN", "AI: …".</summary>
+    /// <summary>Where a suggestion came from, in words: "From 4 similar bookings", "Rule: …", "Same IBAN", "Same direct-debit mandate", "AI: …".</summary>
     public static string SourceText(IStringLocalizer<SuggestionChip> l, TxCategorySuggestion s)
     {
         var rationale = s.Rationale ?? "";
@@ -90,8 +90,8 @@
             case "knn":
                 var m = Regex.Match(rationale, @"^(\d+) of");
                 return m.Success ? l["Source_knn_Count", int.Parse(m.Groups[1].Value)] : l["Source_knn"];
-            case "iban":
-                return l["Source_iban"];
+            case "iban" or "mandate" or "creditor" or "amount":
+                return l["Source_" + s.Source];
             case "ai" when DecisionsCategoryChooser.ReadRationale(rationale) is { } d:
                 var percent = d.Probability.ToString("P0", System.Globalization.CultureInfo.CurrentCulture);
                 return d.SecondPath == null ? l["Source_ai_decision_single", percent] : l["Source_ai_decision", percent, d.SecondPath];

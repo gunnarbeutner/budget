@@ -101,7 +101,8 @@ public sealed partial class CategorySuggestionTests
 
         Assert.Empty(s.Ai.Requests);
         var byTx = result.Suggestions.ToDictionary(x => x.TransactionId);
-        Assert.All(new long[] { 40, 41, 42 }, id => Assert.Equal((Groceries, "knn"), (byTx[id].CategoryId!.Value, byTx[id].Source)));
+        // Same payee, same amount: the recurring-amount vote.
+        Assert.All(new long[] { 40, 41, 42 }, id => Assert.Equal((Groceries, "amount"), (byTx[id].CategoryId!.Value, byTx[id].Source)));
         Assert.True(byTx[40].Confidence >= 0.75);
         Assert.Equal((Dining, "iban"), (byTx[43].CategoryId!.Value, byTx[43].Source));
         Assert.False(byTx.ContainsKey(44));
@@ -109,6 +110,32 @@ public sealed partial class CategorySuggestionTests
         // Three identical uncategorized bookings with one suggested category make a rule candidate.
         var rule = Assert.Single(result.Rules);
         Assert.Equal(("name:\"Example Market\"", Groceries, 6, 3, 0), (rule.Expression, rule.CategoryId, rule.Matches, rule.Uncategorized, rule.Conflicts));
+    }
+
+    [Fact]
+    public async Task A_consistent_mandate_suggests_its_category_and_a_mandate_rule()
+    {
+        await using var t = await WorldAsync();
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            static Transaction WithMandate(Transaction r)
+            {
+                r.MandateReference = "MD-EXAMPLE-7";
+                r.CreditorId = "XX00ZZZ0000009";
+                return r;
+            }
+            // The text says "Example Market" (groceries by kNN); the mandate says dining.
+            db.Transactions.AddRange(WithMandate(Row(50, "Contract Partner A", Dining, amount: -3000)), WithMandate(Row(51, "Contract Partner B", Dining, amount: -3000)));
+            db.Transactions.Add(WithMandate(Row(52, "Example Market", amount: -3000)));
+            await db.SaveChangesAsync();
+        }
+
+        var result = await For(t, AccessWorld.Alice).Service.SuggestAsync(AccessWorld.Shared, null, useAi: false);
+
+        var s = Assert.Single(result.Suggestions, x => x.TransactionId == 52);
+        Assert.Equal((Dining, "mandate"), (s.CategoryId!.Value, s.Source));
+        var rule = Assert.Single(result.Rules, r => r.Source == "mandate");
+        Assert.Equal(("mandate:\"MD-EXAMPLE-7\"", Dining, 3, 1, 0), (rule.Expression, rule.CategoryId, rule.Matches, rule.Uncategorized, rule.Conflicts));
     }
 
     [Fact]

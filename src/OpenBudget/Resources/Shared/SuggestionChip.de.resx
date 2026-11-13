@@ -100,4 +100,13 @@
   <data name="Why" xml:space="preserve">
     <value>Warum dieser Vorschlag?</value>
   </data>
+  <data name="Source_mandate" xml:space="preserve">
+    <value>Gleiches Lastschriftmandat</value>
+  </data>
+  <data name="Source_creditor" xml:space="preserve">
+    <value>Gleicher Gläubiger</value>
+  </data>
+  <data name="Source_amount" xml:space="preserve">
+    <value>Gleicher Empfänger und Betrag</value>
+  </data>
 </root>

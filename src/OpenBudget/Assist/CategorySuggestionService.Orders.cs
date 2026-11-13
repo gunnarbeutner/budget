@@ -132,7 +132,7 @@ public sealed partial class CategorySuggestionService
         Context ctx, List<(Transaction Row, SplitItem Item, List<Neighbour> Neighbours)> items, Dictionary<long, ItemEvidence> evidence,
         Dictionary<long, ItemVote> votes, CancellationToken ct)
     {
-        var system = CategoryPrompt.SystemPrompt(ctx.Categories, []);
+        var system = CategoryPrompt.SystemPrompt(ctx.Categories);
         var handles = ctx.Categories.ToDictionary(c => c.Handle, StringComparer.Ordinal);
         var names = await _settings.PersonNamesAsync(ct);
         static AssistBookingSource Source(long id, Transaction row, string title, long? line) =>
@@ -142,9 +142,9 @@ public sealed partial class CategorySuggestionService
             var redactor = new AssistRedactor(names);
             var prompt = batch.Select(b => new PromptItem(
                 redactor.Redact(Source(b.Item.Id, b.Row, b.Item.Title, b.Item.LineCents)),
-                b.Neighbours.Take(3).Where(n => evidence.ContainsKey(n.Booking.Id)).Select(n => (
+                b.Neighbours.Take(3).Where(n => evidence.ContainsKey(n.Booking.Id)).Select(n => new PromptNeighbour(
                     redactor.Redact(Source(n.Booking.Id, b.Row, evidence[n.Booking.Id].Title, evidence[n.Booking.Id].Line)),
-                    ctx.ById[n.Booking.CategoryId].Handle)).ToList())).ToList();
+                    ctx.ById[n.Booking.CategoryId].Handle, ctx.ById[n.Booking.CategoryId].Path)).ToList())).ToList();
             var response = await _client.CompleteAsync(new AssistRequest(CategoryPrompt.SchemaName, CategoryPrompt.Schema(), system, CategoryPrompt.UserContent(prompt)), ct);
             _log.LogInformation("AI categorized {Count} order items ({Input} input tokens, {Output} output)", batch.Length, response.InputTokens, response.OutputTokens);
             foreach (var s in CategoryPrompt.ParseAnswer(response, redactor, handles))

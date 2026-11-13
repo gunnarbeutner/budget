@@ -55,7 +55,7 @@ public sealed class LiveOpenAiSmokeTests(ITestOutputHelper output)
         var client = Client();
 
         var response = await client.CompleteAsync(new AssistRequest(CategoryPrompt.SchemaName, CategoryPrompt.Schema(),
-            CategoryPrompt.SystemPrompt(categories, ["name:\"Beispielmarkt\" => c1"]), CategoryPrompt.UserContent(items)));
+            CategoryPrompt.SystemPrompt(categories), CategoryPrompt.UserContent(items)));
         output.WriteLine($"model={response.Model} ms={response.Elapsed.TotalMilliseconds:0} in={response.InputTokens} cached={response.CachedTokens} out={response.OutputTokens}");
         output.WriteLine(response.Json ?? response.Refusal);
 

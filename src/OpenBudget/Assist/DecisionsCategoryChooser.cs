@@ -132,12 +132,8 @@ public sealed class DecisionsCategoryChooser(IDecisionsClient client)
     public const int Parallelism = 4;
     public const string QuestionName = "category";
 
-    public const string Instructions = """
-        Pick the category of this bank booking of a German household. Similar bookings the household already categorized
-        (similar_categorized, with their category_id) are given as evidence; they are usually right. Income categories only
-        fit money coming in (positive amount), other categories money going out (refunds excepted). Tokens like ACC_1 stand
-        for a counterparty account, PERSON_A for a household member; # stands for removed digits.
-        """;
+    public const string Instructions = "Pick the category of this bank booking of a German household. The options describe each category: "
+        + "path, income or expense, the only own accounts it is for (when limited) and the household's rules for it.\n" + CategoryPrompt.Guidance;
 
     /// <summary>The options for one booking, in the category tree's order, cut to <see cref="MaxChoices"/>.</summary>
     public static List<PromptCategory> Options(PromptItem item, IReadOnlyList<PromptCategory> allowed)
@@ -155,7 +151,7 @@ public sealed class DecisionsCategoryChooser(IDecisionsClient client)
 
     public static DecisionRequest BuildRequest(PromptItem item, IReadOnlyList<PromptCategory> options) =>
         new(CategoryPrompt.UserContent([item]),
-            [new ChoiceQuestion(QuestionName, Instructions, options.Select(c => new DecisionChoice(c.Handle, c.Income ? c.Path + " (income)" : c.Path)).ToList())]);
+            [new ChoiceQuestion(QuestionName, Instructions, options.Select(c => new DecisionChoice(c.Handle, CategoryPrompt.Describe(c))).ToList())]);
 
     /// <summary>The chosen category (null for a refusal or an unknown value) and the runner-up among the options.</summary>
     public static DecisionChoiceResult? Parse(long transactionId, DecisionResponse response, IReadOnlyDictionary<string, PromptCategory> options)

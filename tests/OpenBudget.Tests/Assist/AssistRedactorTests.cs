@@ -71,13 +71,13 @@ public sealed class AssistRedactorTests
     {
         var r = new AssistRedactor(Household);
         var source = Booking("EREF+E2E-REF-2026-0042 MREF+MANDATE-000123 CRED+DE98ZZZ09999999999 SVWZ+Beitrag 2026 Erika Mustermann");
-        var json = CategoryPrompt.UserContent([new PromptItem(r.Redact(source), [(r.Redact(source with { Id = 1 }), "c4")])]);
+        var json = CategoryPrompt.UserContent([new PromptItem(r.Redact(source), [new PromptNeighbour(r.Redact(source with { Id = 1 }), "c4", "Leisure › Clubs", SameMandate: true, SameCreditor: true, SameAmount: true)])]);
 
-        foreach (var secret in new[] { "DE89", "370400440532013000", "COBADEFF", "MANDATE", "ZZZ", "E2E-REF", "Erika", "Mustermann", "4711" })
+        foreach (var secret in new[] { "DE89", "370400440532013000", "COBADEFF", "MANDATE-000123", "ZZZ", "E2E-REF", "Erika", "Mustermann", "4711" })
             Assert.DoesNotContain(secret, json, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(
             """Bookings to categorize:""" + "\n" +
-            """[{"tx":"t1","date":"2026-03-12","amount":-45.99,"currency":"EUR","payee":"Example Market GmbH","purpose":"Beitrag 2026 PERSON_A","code":"Lastschrift GVC 105","account_type":"Giro","counterparty":"ACC_1","similar_categorized":[{"date":"2026-03-12","amount":-45.99,"currency":"EUR","payee":"Example Market GmbH","purpose":"Beitrag 2026 PERSON_A","code":"Lastschrift GVC 105","account_type":"Giro","counterparty":"ACC_1","category_id":"c4"}]}]""",
+            """[{"tx":"t1","date":"2026-03-12","amount":-45.99,"currency":"EUR","payee":"Example Market GmbH","purpose":"Beitrag 2026 PERSON_A","code":"Lastschrift GVC 105","account_type":"Giro","counterparty":"ACC_1","mandate":"MANDATE_1","creditor":"CREDITOR_1","similar_categorized":[{"date":"2026-03-12","amount":-45.99,"currency":"EUR","payee":"Example Market GmbH","purpose":"Beitrag 2026 PERSON_A","code":"Lastschrift GVC 105","account_type":"Giro","counterparty":"ACC_1","mandate":"MANDATE_1","creditor":"CREDITOR_1","category_id":"c4","category_path":"Leisure › Clubs","same_mandate":true,"same_creditor":true,"same_amount":true}]}]""",
             json);
     }
 }

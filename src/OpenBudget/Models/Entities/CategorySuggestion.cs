@@ -19,7 +19,7 @@ public class CategorySuggestion
 
     public double Confidence { get; set; }
 
-    /// <summary>"rule", "iban", "knn" or "ai".</summary>
+    /// <summary>"rule", "mandate", "amount", "iban", "creditor", "knn", "order" or "ai".</summary>
     [MaxLength(10)]
     public string Source { get; set; } = "";
 

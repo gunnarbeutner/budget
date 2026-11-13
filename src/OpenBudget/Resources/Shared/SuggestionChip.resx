@@ -100,4 +100,13 @@
   <data name="Why" xml:space="preserve">
     <value>Why this suggestion?</value>
   </data>
+  <data name="Source_mandate" xml:space="preserve">
+    <value>Same direct-debit mandate</value>
+  </data>
+  <data name="Source_creditor" xml:space="preserve">
+    <value>Same creditor</value>
+  </data>
+  <data name="Source_amount" xml:space="preserve">
+    <value>Same payee and amount</value>
+  </data>
 </root>

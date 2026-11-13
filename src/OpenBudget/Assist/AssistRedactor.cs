@@ -9,16 +9,24 @@ public sealed record AssistBookingSource(
     long Id, DateOnly Date, long AmountCents, string? Currency, string? Name, string? Purpose,
     string? BookingText = null, string? TransactionCode = null, string? AccountKind = null,
     string? CounterpartyIban = null, string? CounterpartyBic = null,
-    string? MandateReference = null, string? CreditorId = null, string? EndToEndReference = null, string? BankReference = null);
+    string? MandateReference = null, string? CreditorId = null, string? EndToEndReference = null, string? BankReference = null,
+    string? OrderItems = null, string? AccountRole = null, string? OwnAccount = null, string? Recurrence = null);
 
-/// <summary>What is sent for one booking: no account names, balances, IBANs or references.</summary>
+/// <summary>
+/// What is sent for one booking: no account names, balances, IBANs or references. <see cref="Account"/> is a stable
+/// token of the household's own account ("OWN_2"), <see cref="Mandate"/> and <see cref="Creditor"/> are per-request
+/// tokens of the SEPA mandate reference and creditor id ("MANDATE_1"), <see cref="Recurrence"/> says how often the
+/// payee and amount recur.
+/// </summary>
 public sealed record AssistBooking(
-    string Tx, string Date, decimal Amount, string Currency, string Payee, string Purpose, string Code, string AccountType, string? Counterparty);
+    string Tx, string Date, decimal Amount, string Currency, string Payee, string Purpose, string Code, string AccountType, string? Counterparty,
+    string? Account = null, string? AccountRole = null, string? Mandate = null, string? Creditor = null, string? Recurrence = null, string? OrderItems = null);
 
 /// <summary>
 /// Turns bookings into what may leave the server. Keeps the cleaned purpose text, payee, signed amount, date, booking
-/// code and account type; ids become pseudonyms ("t1", "t2", …) and a counterparty IBAN a stable token ("ACC_1"), so
-/// bookings of the same counterparty stay recognisable. IBANs, BICs, mandate and creditor ids, end-to-end references,
+/// code, account type and role, order items; ids become pseudonyms ("t1", "t2", …), a counterparty IBAN a stable token
+/// ("ACC_1"), a mandate reference "MANDATE_1" and a creditor id "CREDITOR_1", so bookings of the same counterparty or
+/// contract stay recognisable. IBANs, BICs, mandate and creditor ids, end-to-end references,
 /// card numbers, long digit runs and the household's own names (as PERSON_A, PERSON_B, …) are removed. One instance
 /// covers one request: its pseudonyms are only meaningful inside it.
 /// </summary>
@@ -27,6 +35,8 @@ public sealed partial class AssistRedactor
     private const int MaxPurpose = 160;
     private readonly List<(Regex Pattern, string Token)> _names = [];
     private readonly Dictionary<string, string> _accounts = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _mandates = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _creditors = new(StringComparer.Ordinal);
     private readonly Dictionary<long, string> _ids = new();
     private readonly Dictionary<string, long> _back = new(StringComparer.Ordinal);
 
@@ -71,9 +81,27 @@ public sealed partial class AssistRedactor
         return token;
     }
 
+    /// <summary>The token of a mandate reference in this request ("MANDATE_1"); the same reference gets the same token.</summary>
+    public string MandateToken(string mandate) => Token(_mandates, "MANDATE_", mandate);
+
+    /// <summary>The token of a creditor id in this request ("CREDITOR_1").</summary>
+    public string CreditorToken(string creditorId) => Token(_creditors, "CREDITOR_", creditorId);
+
+    private static string Token(Dictionary<string, string> map, string prefix, string value)
+    {
+        var key = Compact(value);
+        if (map.TryGetValue(key, out var token)) return token;
+        token = prefix + (map.Count + 1).ToString(CultureInfo.InvariantCulture);
+        map[key] = token;
+        return token;
+    }
+
     public AssistBooking Redact(AssistBookingSource s)
     {
-        var secrets = new[] { s.MandateReference, s.CreditorId, s.EndToEndReference, s.BankReference, s.CounterpartyBic, s.CounterpartyIban }
+        var tags = SepaPurpose.Parse(s.Purpose);
+        var mandate = CategoryMatching.SepaKey(s.MandateReference) ?? CategoryMatching.SepaKey(tags.GetValueOrDefault("MREF"));
+        var creditor = CategoryMatching.SepaKey(s.CreditorId) ?? CategoryMatching.SepaKey(tags.GetValueOrDefault("CRED"));
+        var secrets = new[] { s.MandateReference, s.CreditorId, s.EndToEndReference, s.BankReference, s.CounterpartyBic, s.CounterpartyIban, mandate, creditor }
             .Where(v => !string.IsNullOrWhiteSpace(v) && v!.Trim().Length >= 4).Select(v => v!.Trim()).ToList();
         // The counterparty gets its token before any IBAN in the texts does.
         var counterparty = string.IsNullOrWhiteSpace(s.CounterpartyIban) ? null : AccountToken(s.CounterpartyIban!);
@@ -86,7 +114,13 @@ public sealed partial class AssistRedactor
             CleanPurpose(s.Purpose, secrets),
             CleanText(string.Join(" ", new[] { s.BookingText, s.TransactionCode is { Length: > 0 } c ? "GVC " + c : null }.Where(x => !string.IsNullOrWhiteSpace(x))), secrets, 60),
             s.AccountKind ?? "",
-            counterparty);
+            counterparty,
+            s.OwnAccount,
+            s.AccountRole,
+            mandate == null ? null : MandateToken(mandate),
+            creditor == null ? null : CreditorToken(creditor),
+            s.Recurrence,
+            string.IsNullOrWhiteSpace(s.OrderItems) ? null : CleanText(s.OrderItems, secrets, 240));
     }
 
     /// <summary>The purpose without SEPA reference tags: the remittance text (SVWZ) when tagged, otherwise all text.</summary>

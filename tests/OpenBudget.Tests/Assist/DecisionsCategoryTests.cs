@@ -37,8 +37,8 @@ public sealed class DecisionsCategoryTests
         var redactor = new AssistRedactor([]);
         var booking = redactor.Redact(new AssistBookingSource(7, new DateOnly(2026, 10, 2), (long)(amount * 100), "EUR", "Example Market", "Einkauf", "Kartenzahlung", null, "Giro"));
         var neighbours = neighbourHandle == null
-            ? new List<(AssistBooking, string)>()
-            : [(redactor.Redact(new AssistBookingSource(8, new DateOnly(2026, 9, 2), -999, "EUR", "Example Market", "Einkauf", "Kartenzahlung", null, "Giro")), neighbourHandle)];
+            ? new List<PromptNeighbour>()
+            : [new PromptNeighbour(redactor.Redact(new AssistBookingSource(8, new DateOnly(2026, 9, 2), -999, "EUR", "Example Market", "Einkauf", "Kartenzahlung", null, "Giro")), neighbourHandle, "Household › Groceries")];
         return new PromptItem(booking, neighbours);
     }
 
@@ -55,7 +55,7 @@ public sealed class DecisionsCategoryTests
         Assert.Equal(("choice", "category"), ((string?)q["type"], (string?)q["name"]));
         var choices = q["choices"]!.AsArray();
         Assert.Equal(["c1", "c2", "c3"], choices.Select(c => (string?)c!["value"]));
-        Assert.Equal("Income › Salary (income)", (string?)choices[2]!["description"]);
+        Assert.Equal("Income › Salary | income", (string?)choices[2]!["description"]);
     }
 
     [Fact]

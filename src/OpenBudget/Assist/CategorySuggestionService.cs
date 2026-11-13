@@ -8,7 +8,8 @@ using OpenBudget.Services;
 namespace OpenBudget.Assist;
 
 /// <summary>
-/// A category suggestion for one booking. <see cref="Source"/>: rule, iban, knn, ai or order (from the items of an
+/// A category suggestion for one booking. <see cref="Source"/>: rule, mandate (same direct-debit mandate), amount
+/// (same payee and amount), iban, creditor (same creditor id), knn, ai or order (from the items of an
 /// online order). With <see cref="Split"/> the booking is to be split into those parts (<see cref="CategoryId"/> is then
 /// the largest part's category).
 /// </summary>
@@ -38,8 +39,9 @@ public sealed record CategorySuggestionResult(
     IReadOnlyList<TxCategorySuggestion> Suggestions, IReadOnlyList<RuleSuggestion> Rules, string? AiError, int SentToAi, int SkippedNoConsent);
 
 /// <summary>
-/// Suggests categories for uncategorized bookings of a project: the project's rules first, then a counterparty IBAN
-/// whose bookings mostly have one category, then similar categorized bookings (kNN); only what stays unsure goes to the
+/// Suggests categories for uncategorized bookings of a project: the project's rules first, then exact keys (the same
+/// direct-debit mandate, the same payee with the same recurring amount, a counterparty IBAN or creditor id whose
+/// bookings mostly have one category), then similar categorized bookings (kNN); only what stays unsure goes to the
 /// AI, when the server has one configured and both the asking user and the booking's owner opted in. Nothing is applied
 /// and no rule is created without the user accepting it. Results are cached per booking and category tree. A category
 /// restricted to an account or account group is never suggested for a booking outside it.
@@ -51,7 +53,6 @@ public sealed partial class CategorySuggestionService
     public const int BatchSize = 25;
     public const int MinRuleMatches = 2;
     public const double MaxRuleConflictShare = 0.05;
-    private const int MaxExampleRules = 30;
 
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly SystemDbContextFactory _system;
@@ -91,7 +92,7 @@ public sealed partial class CategorySuggestionService
     private sealed record Context(
         string OwnerId, List<PromptCategory> Categories, Dictionary<long, PromptCategory> ById, string Hash,
         Dictionary<long, Transaction> Rows, Dictionary<long, string?> AccountKinds, Dictionary<long, string?> AccountIbans, List<CategoryRule> ProjectRules,
-        CategoryRestrictions Restrictions);
+        CategoryRestrictions Restrictions, CategoryEvidence Evidence);
 
     private static bool Allowed(Context ctx, long? categoryId, long? accountId) =>
         categoryId is not { } c || ctx.Restrictions.Allows(c, accountId);
@@ -116,11 +117,11 @@ public sealed partial class CategorySuggestionService
             .Where(t => transactionIds == null || transactionIds.Contains(t.Id))
             .OrderByDescending(t => t.Timestamp)
             .ToList();
-        var matching = new CategoryMatching(history.Select(h => ToHistory(h, h.CategoryId!.Value)));
+        var matching = new CategoryMatching(history.Select(h => CategoryEvidence.History(h, h.CategoryId!.Value)));
 
         var cached = await CachedAsync(targets.Select(t => t.Id).ToList(), ctx.Hash, ct);
         var results = new Dictionary<long, TxCategorySuggestion>();
-        var unsure = new List<(Transaction Row, TargetBooking Target, List<Neighbour> Neighbours)>();
+        var unsure = new List<(Transaction Row, TargetBooking Target, List<HistoryBooking> Neighbours)>();
         foreach (var t in targets)
         {
             if (cached.TryGetValue(t.Id, out var hit) && (hit.Source != "ai" || useAi))
@@ -133,16 +134,11 @@ public sealed partial class CategorySuggestionService
                 }
                 cached.Remove(t.Id);
             }
-            var target = ToTarget(t);
-            var iban = matching.IbanVote(target);
-            if (iban != null && !Allowed(ctx, iban.CategoryId, t.AccountId)) iban = null;
-            var vote = RuleVote(ctx, t) ?? iban;
-            var neighbours = matching.Neighbours(target).Where(n => Allowed(ctx, n.Booking.CategoryId, t.AccountId)).ToList();
-            if (vote == null || vote.Confidence < SureEnough)
-            {
-                var knn = CategoryMatching.KnnVote(neighbours);
-                if (knn != null && (vote == null || knn.Confidence > vote.Confidence)) vote = knn;
-            }
+            var target = CategoryEvidence.Target(t);
+            bool AllowedHere(long c) => Allowed(ctx, c, t.AccountId);
+            var keyed = matching.Decide(target, AllowedHere, SureEnough, out var knnNeighbours);
+            var vote = RuleVote(ctx, t) ?? keyed;
+            var neighbours = CategoryEvidence.PromptNeighbours(matching, target, knnNeighbours, AllowedHere);
             if (vote != null) results[t.Id] = Present(ctx, t.Id, vote.CategoryId, vote.Confidence, vote.Source, vote.Rationale);
             if (vote == null || vote.Confidence < SureEnough) unsure.Add((t, target, neighbours));
         }
@@ -205,15 +201,10 @@ public sealed partial class CategorySuggestionService
     }
 
     private async Task<int> AskAiAsync(
-        Context ctx, List<(Transaction Row, TargetBooking Target, List<Neighbour> Neighbours)> items,
+        Context ctx, List<(Transaction Row, TargetBooking Target, List<HistoryBooking> Neighbours)> items,
         Dictionary<long, TxCategorySuggestion> results, List<(string, long)> aiRules, IProgress<(int, int)>? progress, CancellationToken ct)
     {
-        var examples = ctx.ProjectRules.Where(r => r.Enabled && ctx.ById.ContainsKey(r.CategoryId))
-            .Take(MaxExampleRules)
-            .Select(r => RuleExpression.TryParse(r.Expression, out _)?.Print() + " => " + ctx.ById[r.CategoryId].Handle)
-            .Where(s => !s.Contains("account_id", StringComparison.Ordinal) && !s.Contains("_account", StringComparison.Ordinal))
-            .ToList();
-        var system = CategoryPrompt.SystemPrompt(ctx.Categories, examples);
+        var system = CategoryPrompt.SystemPrompt(ctx.Categories);
         var handles = ctx.Categories.ToDictionary(c => c.Handle, StringComparer.Ordinal);
         var names = await _settings.PersonNamesAsync(ct);
         var batches = items.Chunk(BatchSize).ToList();
@@ -222,11 +213,7 @@ public sealed partial class CategorySuggestionService
         foreach (var batch in batches)
         {
             var redactor = new AssistRedactor(names);
-            var prompt = batch.Select(b => new PromptItem(
-                redactor.Redact(AssistSettingsService.ToSource(b.Row, ctx.AccountKinds.GetValueOrDefault(b.Row.AccountId ?? 0))),
-                b.Neighbours.Take(3).Select(n => (
-                    redactor.Redact(AssistSettingsService.ToSource(ctx.Rows[n.Booking.Id], ctx.AccountKinds.GetValueOrDefault(ctx.Rows[n.Booking.Id].AccountId ?? 0))),
-                    ctx.ById[n.Booking.CategoryId].Handle)).ToList())).ToList();
+            var prompt = batch.Select(b => ctx.Evidence.Item(redactor, b.Row, b.Neighbours)).ToList();
             var response = await _client.CompleteAsync(new AssistRequest(CategoryPrompt.SchemaName, CategoryPrompt.Schema(), system, CategoryPrompt.UserContent(prompt)), ct);
             _log.LogInformation("AI categorized {Count} bookings ({Input} input tokens, {Cached} cached, {Output} output, {Ms} ms)",
                 batch.Length, response.InputTokens, response.CachedTokens, response.OutputTokens, (int)response.Elapsed.TotalMilliseconds);
@@ -248,16 +235,11 @@ public sealed partial class CategorySuggestionService
     private bool UseDecisions => _options?.CategoryRoute == CategoryRoute.Decisions && _decisions is { Enabled: true };
 
     private async Task<int> AskDecisionsAsync(
-        Context ctx, List<(Transaction Row, TargetBooking Target, List<Neighbour> Neighbours)> items,
+        Context ctx, List<(Transaction Row, TargetBooking Target, List<HistoryBooking> Neighbours)> items,
         Dictionary<long, TxCategorySuggestion> results, IProgress<(int, int)>? progress, CancellationToken ct)
     {
         var redactor = new AssistRedactor(await _settings.PersonNamesAsync(ct));
-        var requests = items.Select(b => new DecisionItem(b.Row.Id,
-            new PromptItem(
-                redactor.Redact(AssistSettingsService.ToSource(b.Row, ctx.AccountKinds.GetValueOrDefault(b.Row.AccountId ?? 0))),
-                b.Neighbours.Take(3).Select(n => (
-                    redactor.Redact(AssistSettingsService.ToSource(ctx.Rows[n.Booking.Id], ctx.AccountKinds.GetValueOrDefault(ctx.Rows[n.Booking.Id].AccountId ?? 0))),
-                    ctx.ById[n.Booking.CategoryId].Handle)).ToList()),
+        var requests = items.Select(b => new DecisionItem(b.Row.Id, ctx.Evidence.Item(redactor, b.Row, b.Neighbours),
             ctx.Categories.Where(c => Allowed(ctx, c.Id, b.Row.AccountId)).ToList())).ToList();
         progress?.Report((0, items.Count));
         var answers = await new DecisionsCategoryChooser(_decisions!).ChooseAsync(requests, new SyncProgress(d => progress?.Report((d, items.Count))), ct);
@@ -294,17 +276,48 @@ public sealed partial class CategorySuggestionService
             if (g.Count() < 3 || g.Key.Name.Contains('"', StringComparison.Ordinal)) continue;
             candidates.Add(($"name:\"{g.Key.Name}\"", g.Key.Value, "knn"));
         }
+        candidates.AddRange(KeyRuleCandidates(targets, results));
         var existing = ctx.ProjectRules.Select(r => RuleExpression.TryParse(r.Expression, out _)?.Print()).Where(e => e != null).ToHashSet(StringComparer.Ordinal);
         var list = new List<RuleSuggestion>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var (expression, categoryId, source) in candidates)
+        foreach (var (candidate, categoryId, source) in candidates)
         {
+            var expression = candidate;
+            // The amount is only worth a condition when the payee alone would hit other categories.
+            if (source == "amount" && expression.IndexOf(" AND amount=", StringComparison.Ordinal) is var cut and > 0
+                && await CheckRuleAsync(projectId, expression[..cut], categoryId, source, ctx, ct) is { Conflicts: 0 } payeeOnly && Offerable(payeeOnly))
+                expression = expression[..cut];
             if (await CheckRuleAsync(projectId, expression, categoryId, source, ctx, ct) is not { } check) continue;
             if (existing.Contains(check.Expression) || !seen.Add(check.Expression)) continue;
             if (Offerable(check)) list.Add(check);
         }
         return list.OrderByDescending(r => r.Uncategorized).ToList();
     }
+
+    /// <summary>
+    /// Rules for contract keys: a booking suggested from its mandate gets <c>mandate:"…"</c>, from its creditor id
+    /// <c>creditor_id:"…"</c>, from its payee and recurring amount <c>name:"…" AND amount=…</c>. Whether the rule is
+    /// offered is decided like any other (enough matches, hardly any conflicts).
+    /// </summary>
+    public static IEnumerable<(string Expression, long CategoryId, string Source)> KeyRuleCandidates(IEnumerable<Transaction> targets, IReadOnlyDictionary<long, TxCategorySuggestion> results)
+    {
+        foreach (var t in targets)
+        {
+            if (!results.TryGetValue(t.Id, out var s) || s.CategoryId is not { } category) continue;
+            var expression = s.Source switch
+            {
+                "mandate" => Quoted("mandate", t.MandateReference?.Trim() ?? SepaPurpose.Get(t.Purpose, "MREF")),
+                "creditor" => Quoted("creditor_id", t.CreditorId?.Trim() ?? SepaPurpose.Get(t.Purpose, "CRED")),
+                "amount" when Quoted("name", t.Name?.Trim()) is { } name =>
+                    name + " AND amount=" + RuleExpression.FormatAmount(t.Amount / 100m),
+                _ => null,
+            };
+            if (expression != null) yield return (expression, category, s.Source);
+        }
+    }
+
+    private static string? Quoted(string field, string? value) =>
+        string.IsNullOrWhiteSpace(value) || value.Contains('"', StringComparison.Ordinal) ? null : field + ":\"" + value + "\"";
 
     /// <summary>A rule is offered when it matches at least two bookings and at most 5 % of them have another category.</summary>
     public static bool Offerable(RuleSuggestion r) =>
@@ -347,6 +360,8 @@ public sealed partial class CategorySuggestionService
 
     private static bool ContainsRedactionToken(string expression) =>
         expression.Contains("ACC_", StringComparison.Ordinal) || expression.Contains("PERSON_", StringComparison.Ordinal)
+        || expression.Contains("OWN_", StringComparison.Ordinal) || expression.Contains("MANDATE_", StringComparison.Ordinal)
+        || expression.Contains("CREDITOR_", StringComparison.Ordinal)
         || expression.Contains("[CARD]", StringComparison.Ordinal) || expression.Contains('#', StringComparison.Ordinal);
 
     /// <summary>Creates the rule (at the end of the project's rules) and applies it to uncategorized bookings. Returns how many got the category.</summary>
@@ -382,7 +397,6 @@ public sealed partial class CategorySuggestionService
         if (ownerId == null) return null;
         var picker = await _categorization.GetPickerDataAsync(ownerId, ct);
         var income = (await _budgets.GetIncomeItemsForProjectAsync(projectId)).Where(i => i.ItemType == CategoryItemType.Category).Select(i => i.Id).ToHashSet();
-        var categories = picker.Options.Select((o, i) => new PromptCategory(CategoryPrompt.Handle(i + 1), o.Id, o.Path, income.Contains(o.Id))).ToList();
 
         var accounts = await db.Accounts.AsNoTracking()
             .Where(a => db.ProjectAccountAssignments.Any(p => p.ProjectId == projectId && p.AccountId == a.Id))
@@ -392,9 +406,14 @@ public sealed partial class CategorySuggestionService
             .Where(t => t.OwnerUserId == ownerId && t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value) && t.Splitted != SplitState.Parent)
             .ToDictionaryAsync(t => t.Id, ct);
         var rules = await db.CategoryRules.AsNoTracking().Where(r => r.ProjectId == projectId && !r.Dismissed).OrderBy(r => r.SortOrder).ThenBy(r => r.Id).ToListAsync(ct);
-        var restrictions = await CategoryRestrictions.LoadAsync(db, categories.Select(c => c.Id), accountIds, ct);
-        return new Context(ownerId, categories, categories.ToDictionary(c => c.Id), TreeHash(categories), rows,
-            accounts.ToDictionary(a => a.Id, a => (string?)a.KindLabel), accounts.ToDictionary(a => a.Id, a => a.Iban), rules, restrictions);
+        var restrictions = await CategoryRestrictions.LoadAsync(db, picker.Options.Select(o => o.Id), accountIds, ct);
+        var tokens = new CategoryEvidence(new Dictionary<long, Transaction>(), accounts, new Dictionary<long, PromptCategory>());
+        var categories = CategoryEvidence.Categories(picker.Options.Select(o => (o.Id, o.Path, income.Contains(o.Id))),
+            rules.Where(r => picker.Options.Any(o => o.Id == r.CategoryId)), accountIds, (c, a) => restrictions.Allows(c, a), a => tokens.AccountToken(a), await _settings.PersonNamesAsync(ct));
+        var byId = categories.ToDictionary(c => c.Id);
+        return new Context(ownerId, categories, byId, TreeHash(categories), rows,
+            accounts.ToDictionary(a => a.Id, a => (string?)a.KindLabel), accounts.ToDictionary(a => a.Id, a => a.Iban), rules, restrictions,
+            new CategoryEvidence(rows, accounts, byId));
     }
 
     public static string TreeHash(IEnumerable<PromptCategory> categories)
@@ -409,14 +428,6 @@ public sealed partial class CategorySuggestionService
         var rule = ctx.ProjectRules.FirstOrDefault(r => ctx.ById.ContainsKey(r.CategoryId) && CategoryRuleMatcher.Matches(r, subject, ctx.Restrictions));
         return rule == null ? null : new Vote(rule.CategoryId, rule.Enabled ? 0.95 : 0.8, "rule", rule.Name ?? rule.Expression);
     }
-
-    private static HistoryBooking ToHistory(Transaction t, long categoryId) =>
-        new(t.Id, categoryId, CategoryMatching.IbanKey(t.CounterpartyIban), CategoryMatching.PayeeKey(t.Name), CategoryMatching.Tokens(t.Name, PurposeOnly(t.Purpose)), t.Amount);
-
-    private static TargetBooking ToTarget(Transaction t) =>
-        new(t.Id, CategoryMatching.IbanKey(t.CounterpartyIban), CategoryMatching.PayeeKey(t.Name), CategoryMatching.Tokens(t.Name, PurposeOnly(t.Purpose)), t.Amount);
-
-    private static string PurposeOnly(string? purpose) => SepaPurpose.Get(purpose, "SVWZ") ?? purpose ?? "";
 
     private static TxCategorySuggestion Present(Context ctx, long id, long? categoryId, double confidence, string source, string? rationale, string? splitJson = null)
     {
