@@ -210,6 +210,12 @@ public sealed class WebLoginSession : IAsyncDisposable
 
     public event Action<WebLoginMode>? ModeChanged;
 
+    /// <summary>
+    /// The app answers the site's security check itself from a stored TOTP secret, so a hidden wait after submitting is the
+    /// sign-in running, not the bank waiting for an approval in its app.
+    /// </summary>
+    public bool AnswersCheckItself => !_codePromptDisabled && !_totpRejected && _spec.CodePrompt?.Totp != null;
+
     private void SetMode(WebLoginMode mode, bool notify = false)
     {
         // nobody can act on the page: stop here, before anything more is typed or submitted

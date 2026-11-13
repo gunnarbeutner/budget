@@ -477,9 +477,12 @@ public sealed class BankSyncRunner
         }
         await using (session)
         {
-            void OnMode(WebLoginMode mode) => sink.ShowWebLogin(challenge, session.Id, session.ExpiresAt, mode);
+            // a stored authenticator secret answers the security check: a hidden wait is the sign-in running, not an app approval
+            WebLoginMode Shown(WebLoginMode mode) =>
+                mode == WebLoginMode.Waiting && session.AnswersCheckItself ? WebLoginMode.Starting : mode;
+            void OnMode(WebLoginMode mode) => sink.ShowWebLogin(challenge, session.Id, session.ExpiresAt, Shown(mode));
             session.ModeChanged += OnMode;
-            sink.ShowWebLogin(challenge, session.Id, session.ExpiresAt, session.Mode);
+            sink.ShowWebLogin(challenge, session.Id, session.ExpiresAt, Shown(session.Mode));
             attached.TrySetResult();
             try
             {
