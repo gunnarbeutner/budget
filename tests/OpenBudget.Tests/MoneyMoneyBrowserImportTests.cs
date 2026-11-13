@@ -214,6 +214,35 @@ public sealed class MoneyMoneyBrowserImportTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Category_budgets_become_an_inactive_MoneyMoney_budget_once()
+    {
+        _t.AddUser(Owner, "owner");
+        await _t.Db.SaveChangesAsync();
+        var (import, _) = await ServiceAsync();
+        var projectId = await UserDefaultProject.EnsureAsync(_t.System, Owner);
+
+        MoneyMoneyImportJob job = null!;
+        for (var run = 0; run < 2; run++)
+        {
+            var id = await UploadAsync(import, MoneyMoneyZipFixture.Build("secret"), 4096);
+            Assert.True(import.StartImport(Owner, id, SourceName, "secret"));
+            job = await WaitAsync(import);
+            Assert.True(job.Phase == MoneyMoneyImportPhase.Done, _log.All);
+        }
+        Assert.Equal(1, job.Budgets!.SkippedTotal);
+
+        await using var db = await _t.System.CreateDbContextAsync();
+        var budget = await db.Budgets.Include(b => b.MonthlyEntries).SingleAsync(b => b.ProjectId == projectId);
+        Assert.Equal((MoneyMoneyBudgetImport.BudgetName, DateTime.UtcNow.Year, false), (budget.Name, budget.Year, budget.IsActive));
+        var names = await db.Categories.ToDictionaryAsync(c => c.Id, c => c.Name);
+        var byName = budget.MonthlyEntries.ToDictionary(e => names[e.CategoryId]!, StringComparer.Ordinal);
+        Assert.Equal(["Cinema", "Groceries"], byName.Keys.Order(StringComparer.Ordinal));
+        Assert.All(Enumerable.Range(1, 12), m => Assert.Equal(180m, byName["Groceries"].GetMonthAmount(m)));
+        Assert.Equal(8.33m, byName["Cinema"].GetMonthAmount(1));
+        Assert.Equal(100m, Enumerable.Range(1, 12).Sum(m => byName["Cinema"].GetMonthAmount(m)));
+    }
+
+    [Fact]
     public async Task Statements_with_non_ASCII_names_match_in_either_Unicode_form_and_are_cleaned_up()
     {
         var (import, staging) = await ServiceAsync();

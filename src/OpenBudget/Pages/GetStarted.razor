@@ -60,6 +60,14 @@ else
             {
                 <div class="alert alert-success py-2" data-testid="mm-job-done">
                     @L["Job_Done", done.Result?.AccountsImported ?? 0, done.Result?.TransactionsImported ?? 0, done.Statements?.Stored ?? 0]
+                    @if (done.Budgets is { Imported: > 0 } budgets)
+                    {
+                        <span data-testid="mm-job-budgets"> @L["Job_Budgets", budgets.Imported]</span>
+                    }
+                    @if (done.Budgets is { SkippedTotal: > 0 } skipped)
+                    {
+                        <span data-testid="mm-job-budgets-skipped"> @L["Job_BudgetsSkipped", skipped.SkippedTotal]</span>
+                    }
                     <button type="button" class="btn btn-sm btn-link" @onclick="Dismiss">@L["Job_Ok"]</button>
                 </div>
             }

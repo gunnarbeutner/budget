@@ -217,6 +217,12 @@
   <data name="Job_Background" xml:space="preserve">
     <value>The import goes on on the server even if you close this page.</value>
   </data>
+  <data name="Job_Budgets" xml:space="preserve">
+    <value>{0} category budgets went into the inactive budget “MoneyMoney” of your project.</value>
+  </data>
+  <data name="Job_BudgetsSkipped" xml:space="preserve">
+    <value>{0} category budgets “in total” were not imported.</value>
+  </data>
   <data name="Job_Done" xml:space="preserve">
     <value>Imported: {0} accounts, {1} bookings, {2} new statements.</value>
   </data>

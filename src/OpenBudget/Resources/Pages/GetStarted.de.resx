@@ -217,6 +217,12 @@
   <data name="Job_Background" xml:space="preserve">
     <value>Der Import läuft auf dem Server weiter, auch wenn du diese Seite schließt.</value>
   </data>
+  <data name="Job_Budgets" xml:space="preserve">
+    <value>{0} Kategorie-Budgets stehen im inaktiven Budget „MoneyMoney“ deines Projekts.</value>
+  </data>
+  <data name="Job_BudgetsSkipped" xml:space="preserve">
+    <value>{0} Kategorie-Budgets „insgesamt“ wurden nicht importiert.</value>
+  </data>
   <data name="Job_Done" xml:space="preserve">
     <value>Importiert: {0} Konten, {1} Buchungen, {2} neue Kontoauszüge.</value>
   </data>

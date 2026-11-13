@@ -32,7 +32,8 @@ public sealed record MoneyMoneyImportJob(
     int Done = 0,
     int Total = 0,
     ImportResult? Result = null,
-    MoneyMoneyStatementSummary? Statements = null)
+    MoneyMoneyStatementSummary? Statements = null,
+    MoneyMoneyBudgetSummary? Budgets = null)
 {
     public bool Running => Phase is not (MoneyMoneyImportPhase.Done or MoneyMoneyImportPhase.Failed);
 }
@@ -249,6 +250,7 @@ public sealed class MoneyMoneyBrowserImport
                 Set(userId, new MoneyMoneyImportJob(MoneyMoneyImportPhase.Statements, Done: done, Total: total, Result: result));
             }, ct);
 
+            MoneyMoneyBudgetSummary budgets;
             // The import is one-time: its accounts, categories and their groups are OpenBudget's to edit from here on.
             await using (var db = await _system.CreateDbContextAsync(ct))
             {
@@ -256,9 +258,10 @@ public sealed class MoneyMoneyBrowserImport
                 await _takeover.TakeOverAsync(sourceId, ct);
                 // Everything imported shows in the owner's default project.
                 await DefaultProjectAssigner.AssignImportedAsync(db, sourceId, ct);
+                budgets = await MoneyMoneyBudgetImport.ImportAsync(db, sourceId, plain, DateTime.UtcNow.Year, ct);
             }
 
-            Set(userId, new MoneyMoneyImportJob(MoneyMoneyImportPhase.Done, Result: result, Statements: summary));
+            Set(userId, new MoneyMoneyImportJob(MoneyMoneyImportPhase.Done, Result: result, Statements: summary, Budgets: budgets));
             _logger.LogInformation("MoneyMoney import from the browser into source {Source}: {Transactions} transactions, {Stored} statements stored.",
                 sourceName, result.TransactionsImported, summary.Stored);
         }
