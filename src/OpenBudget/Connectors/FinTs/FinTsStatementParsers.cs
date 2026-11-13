@@ -61,8 +61,13 @@ internal static class CamtParser
             if (bookingDate == null) continue;
             var details = entry.Descendants().FirstOrDefault(e => e.Name.LocalName == "TxDtls");
             var counterparty = details == null ? null : (credit ? PartyName(details, "Dbtr") : PartyName(details, "Cdtr"));
-            var purpose = details == null ? null : string.Join(' ', details.Descendants().Where(e => e.Name.LocalName == "Ustrd").Select(e => e.Value.Trim()).Where(v => v.Length > 0));
-            if (string.IsNullOrEmpty(purpose)) purpose = Text(entry, "AddtlNtryInf");
+            var ustrd = details == null ? [] : details.Descendants().Where(e => e.Name.LocalName == "Ustrd").Select(e => e.Value).ToList();
+            // The identity key reads the pieces trimmed and joined with a space, as it always has.
+            var keyPurpose = string.Join(' ', ustrd.Select(v => v.Trim()).Where(v => v.Length > 0));
+            var text = Mt940Parser.JoinPieces(ustrd.Select(v => v.TrimStart()), v => v.Length >= UstrdLength).Trim();
+            if (string.IsNullOrEmpty(keyPurpose)) text = keyPurpose = Text(entry, "AddtlNtryInf") ?? "";
+            var tags = SepaPurpose.Parse(text);
+            var purpose = SepaPurpose.Remittance(text);
             var reference = Text(entry, "AcctSvcrRef");
             if (string.Equals(reference, "NOTPROVIDED", StringComparison.OrdinalIgnoreCase) || string.Equals(reference, "NONREF", StringComparison.OrdinalIgnoreCase)) reference = null;
 
@@ -72,13 +77,14 @@ internal static class CamtParser
                 bookingDate.Value,
                 Date(entry, "ValDt"),
                 string.IsNullOrWhiteSpace(counterparty) ? null : counterparty.Trim(),
-                string.IsNullOrWhiteSpace(purpose) ? null : purpose,
+                purpose,
                 booked,
                 reference,
                 details == null ? null : Deep(details, credit ? "DbtrAcct" : "CdtrAcct", "IBAN"),
                 details == null ? null : Deep(details, credit ? "DbtrAgt" : "CdtrAgt", "BIC") ?? Deep(details, credit ? "DbtrAgt" : "CdtrAgt", "BICFI"),
                 details == null ? null : Deep(details, "AddtlTxInf"),
-                Sepa(entry, details)));
+                Sepa(entry, details, tags))
+            { KeyPurpose = keyPurpose.Length == 0 || keyPurpose == purpose ? null : keyPurpose });
         }
         return result;
     }
@@ -108,16 +114,20 @@ internal static class CamtParser
         return XDocument.Load(reader);
     }
 
-    private static SepaDetails? Sepa(XElement entry, XElement? details)
+    /// <summary>The longest unstructured remittance piece (Ustrd); one of that length may end mid-word.</summary>
+    private const int UstrdLength = 140;
+
+    /// <summary>SEPA details from the structured elements, else from the tags in the remittance text.</summary>
+    private static SepaDetails? Sepa(XElement entry, XElement? details, Dictionary<string, string> tags)
     {
         static string? Real(string? v) => v == null || v.Equals("NOTPROVIDED", StringComparison.OrdinalIgnoreCase) ? null : v;
         var code = Deep(details ?? entry, "BkTxCd", "Prtry", "Cd") ?? Deep(entry, "BkTxCd", "Prtry", "Cd");
         var sepa = details == null
-            ? new SepaDetails(TransactionCode: code)
+            ? new SepaDetails(tags.GetValueOrDefault("EREF"), tags.GetValueOrDefault("MREF"), tags.GetValueOrDefault("CRED"), code)
             : new SepaDetails(
-                Real(Deep(details, "Refs", "EndToEndId")),
-                Real(Deep(details, "Refs", "MndtId") ?? Deep(details, "MndtRltdInf", "MndtId")),
-                Real(Deep(details, "CdtrSchmeId", "Othr", "Id") ?? Deep(details, "CdtrSchmeId", "Id")),
+                Real(Deep(details, "Refs", "EndToEndId")) ?? tags.GetValueOrDefault("EREF"),
+                Real(Deep(details, "Refs", "MndtId") ?? Deep(details, "MndtRltdInf", "MndtId")) ?? tags.GetValueOrDefault("MREF"),
+                Real(Deep(details, "CdtrSchmeId", "Othr", "Id") ?? Deep(details, "CdtrSchmeId", "Id")) ?? tags.GetValueOrDefault("CRED"),
                 code,
                 null,
                 Deep(details, "RtrInf", "Rsn", "Cd") ?? Deep(details, "RtrInf", "AddtlInf"));
@@ -280,10 +290,10 @@ internal static partial class Mt940Parser
         if (info.Length == 0) return new(null, null, []);
         if (!info.Contains('?', StringComparison.Ordinal))
         {
-            // Free text: each of the bank's lines is a piece of its own ("… Nuernberg" / "Datum 12.11.2026 …").
-            var text = JoinWords(info.Split('\n'));
+            // Free text: a line shorter than the block's line width ended at a word break ("… Nuernberg" / "Datum …").
+            var text = JoinLines(info.Split('\n'));
             var run = info.Replace("\n", string.Empty, StringComparison.Ordinal);
-            return new(null, text.Trim(), SepaPurpose.Parse(run), KeyPurpose: run.Trim());
+            return new(null, SepaPurpose.Remittance(text), SepaPurpose.Parse(run), KeyPurpose: run.Trim());
         }
         // Structured: the ?xx subfields carry the structure; a line break may fall anywhere inside one.
         info = info.Replace("\n", string.Empty, StringComparison.Ordinal);
@@ -300,48 +310,51 @@ internal static partial class Mt940Parser
         var name = string.Join(' ', new[] { fields.GetValueOrDefault(32), fields.GetValueOrDefault(33) }.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!.Trim()));
         var gvc = info[..info.IndexOf('?', StringComparison.Ordinal)].Trim();
         string? F(int n) => fields.GetValueOrDefault(n)?.Trim() is { Length: > 0 } v ? v : null;
-        return new(name.Length == 0 ? null : name, ExtractPurpose(purposeText), SepaPurpose.Parse(runText),
-            gvc.Length == 0 ? null : gvc, F(0), F(10), F(30), F(31), F(34), ExtractPurpose(runText));
+        return new(name.Length == 0 ? null : name, SepaPurpose.Remittance(purposeText), SepaPurpose.Parse(runText),
+            gvc.Length == 0 ? null : gvc, F(0), F(10), F(30), F(31), F(34), KeyText(runText));
     }
 
-    /// <summary>Purpose subfields hold up to 27 characters. A shorter one ended at a word break; a full one may end mid-word,
-    /// which is taken to be the case when the next one starts with a lower-case letter ("Kundennu" / "mmer").</summary>
-    internal static string JoinPurposeFields(IEnumerable<string> fields)
+    /// <summary>The longest line SWIFT allows in a field; a line of that length may end mid-word.</summary>
+    private const int SwiftLineLength = 65;
+
+    /// <summary>The length of a full purpose subfield (?20-?29, ?60-?63).</summary>
+    private const int PurposeFieldLength = 27;
+
+    /// <summary>Purpose subfields hold up to 27 characters. A full one may end mid-word and runs on into the next; a
+    /// shorter one ended at a word break and is followed by a space.</summary>
+    internal static string JoinPurposeFields(IEnumerable<string> fields) =>
+        JoinPieces(fields, f => f.Length >= PurposeFieldLength);
+
+    /// <summary>Free-text :86: lines. A line of the block's wrap width (the SWIFT maximum, or a width several lines
+    /// share) may end mid-word and runs on into the next; a shorter one ended at a word break.</summary>
+    internal static string JoinLines(IReadOnlyList<string> lines)
     {
-        var sb = new StringBuilder();
-        var previous = "";
-        foreach (var f in fields)
-        {
-            if (previous.Length is > 0 and < 27 || (previous.Length >= 27 && !(f.Length > 0 && char.IsLower(f[0])))) AppendSpaceBetween(sb, f);
-            sb.Append(f);
-            previous = f;
-        }
-        return sb.ToString();
+        var inner = lines.Take(lines.Count - 1).Where(l => l.Length > 0).ToList();
+        var width = inner.Count == 0 ? SwiftLineLength : inner.Max(l => l.Length);
+        var shared = inner.Count(l => l.Length == width) >= 2;
+        return JoinPieces(lines, l => l.Length >= SwiftLineLength || (shared && l.Length == width));
     }
 
-    /// <summary>Joins text pieces with a space where neither side already has whitespace.</summary>
-    internal static string JoinWords(IEnumerable<string> pieces)
+    /// <summary>Joins pieces, with a space after one that is not <paramref name="full"/> unless either side already has whitespace.</summary>
+    internal static string JoinPieces(IEnumerable<string> pieces, Func<string, bool> full)
     {
         var sb = new StringBuilder();
+        string? previous = null;
         foreach (var p in pieces)
         {
             if (p.Length == 0) continue;
-            AppendSpaceBetween(sb, p);
+            if (previous != null && !full(previous) && !char.IsWhiteSpace(sb[^1]) && !char.IsWhiteSpace(p[0])) sb.Append(' ');
             sb.Append(p);
+            previous = p;
         }
         return sb.ToString();
     }
 
-    private static void AppendSpaceBetween(StringBuilder sb, string next)
-    {
-        if (sb.Length > 0 && next.Length > 0 && !char.IsWhiteSpace(sb[^1]) && !char.IsWhiteSpace(next[0])) sb.Append(' ');
-    }
-
-    private static string? ExtractPurpose(string text)
+    /// <summary>The purpose as the booking's identity key reads it: the SVWZ+ value, else the whole text.</summary>
+    private static string? KeyText(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
         var matches = PurposeTag().Matches(text);
-        if (matches.Count == 0) return text.Trim();
         for (var i = 0; i < matches.Count; i++)
         {
             if (!string.Equals(matches[i].Groups["tag"].Value, "SVWZ", StringComparison.Ordinal)) continue;

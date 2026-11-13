@@ -28,6 +28,26 @@ public static partial class SepaPurpose
         return result;
     }
 
+    /// <summary>
+    /// The purpose proper: the SVWZ+ value when there is one, otherwise the free text before the first tag
+    /// ("GRUNDSTEUER … MREF+… CRED+…"); text that starts with a tag and has no SVWZ+ stays as it is.
+    /// </summary>
+    public static string? Remittance(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var matches = Tag().Matches(text);
+        if (matches.Count == 0) return text.Trim();
+        for (var i = 0; i < matches.Count; i++)
+        {
+            if (!string.Equals(matches[i].Groups["tag"].Value, "SVWZ", StringComparison.Ordinal)) continue;
+            var start = matches[i].Index + matches[i].Length;
+            var end = i + 1 < matches.Count ? matches[i + 1].Index : text.Length;
+            return text[start..end].Trim();
+        }
+        var before = text[..matches[0].Index].Trim();
+        return before.Length > 0 ? before : text.Trim();
+    }
+
     /// <summary>The value of one tag (e.g. "MREF"), or null.</summary>
     public static string? Get(string? text, string tag) => Parse(text).GetValueOrDefault(tag);
 }

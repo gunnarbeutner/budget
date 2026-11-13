@@ -274,6 +274,7 @@ public sealed class BankTransactionStore
 
     private static void FillMissingDetails(Transaction t, RemoteTransaction r)
     {
+        RefreshPurpose(t, r);
         t.CounterpartyIban ??= r.CounterpartyIban;
         t.CounterpartyBic ??= r.CounterpartyBic;
         t.BookingText ??= r.BookingText;
@@ -347,6 +348,18 @@ public sealed class BankTransactionStore
 
     public static long ToTimestamp(DateOnly date) =>
         new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeSeconds();
+
+    /// <summary>
+    /// A stored purpose the bank's text now reads differently (word breaks, SEPA tags split off) takes the new reading:
+    /// when the two differ only in whitespace, or the stored one is the new one followed by SEPA tags.
+    /// </summary>
+    private static void RefreshPurpose(Transaction t, RemoteTransaction r)
+    {
+        if (r.Purpose is not { Length: > 0 } purpose || t.Purpose is not { Length: > 0 } stored || stored == purpose) return;
+        if (Squash(SepaPurpose.Remittance(stored) ?? "") == Squash(purpose)) t.Purpose = purpose;
+    }
+
+    private static string Squash(string text) => string.Concat(text.Where(c => !char.IsWhiteSpace(c)));
 
     private static string Normalize(string? text) =>
         string.Join(' ', (text ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();

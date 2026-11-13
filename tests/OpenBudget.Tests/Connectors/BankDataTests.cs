@@ -348,6 +348,33 @@ public sealed class BankDataTests
     }
 
     [Fact]
+    public async Task A_known_booking_takes_the_purpose_as_it_now_reads_without_a_duplicate()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        var id = await w.AddLoginAsync(BankWorld.Alice);
+        await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false));
+        await w.LinkAllAsync(BankWorld.Alice, id);
+        var account = (await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).LinkedAccountId!.Value;
+        var store = new BankTransactionStore();
+        var day = new DateOnly(2026, 6, 1);
+        const string key = "WATER FEE 7,00 EUR WASTEFEE MREF+M-9 CRED+C-8";
+
+        async Task<List<Transaction>> ApplyAsync(string purpose)
+        {
+            await using var db = await w.T.System.CreateDbContextAsync();
+            await store.ApplyAsync(db, account, new AccountRefresh(null,
+            [
+                new RemoteTransaction(-7m, "EUR", day, day, "Example Town", purpose, true) { KeyPurpose = key },
+            ], []), day, DateTime.UtcNow, CancellationToken.None);
+            return await db.Transactions.Where(t => t.AccountId == account).OrderBy(t => t.Amount).ToListAsync();
+        }
+
+        await ApplyAsync("WATER FEE 7,00 EUR WASTE FEE MREF+M-9 CRED+C-8");
+        var rows = await ApplyAsync("WATER FEE 7,00 EUR WASTEFEE");
+        Assert.Equal("WATER FEE 7,00 EUR WASTEFEE", Assert.Single(rows).Purpose);
+    }
+
+    [Fact]
     public async Task Split_parts_are_never_adopted_as_bank_rows()
     {
         await using var w = await BankWorld.CreateAsync();

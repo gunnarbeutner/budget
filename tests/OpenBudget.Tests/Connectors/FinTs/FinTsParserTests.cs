@@ -202,10 +202,64 @@ public sealed class FinTsParserTests
     [Fact]
     public void Mt940_purpose_fields_join_with_a_space_unless_a_full_field_continues_a_word()
     {
-        Assert.Equal("Example Bakery Fil 313 Nuernberg Datum 12.11.2026 Zeit 13:32 Kaufumsatz VISA Card",
-            Mt940Parser.JoinPurposeFields(["Example Bakery Fil 313", "Nuernberg", "Datum 12.11.2026 Zeit 13:32", "Kaufumsatz VISA Card"]));
-        // A full field followed by a lower-case letter continues a word.
+        Assert.Equal("Example Bakery Fil 313 Nuernberg Datum 12.11.2026 Zeit 13:3 Kaufumsatz VISA Card",
+            Mt940Parser.JoinPurposeFields(["Example Bakery Fil 313", "Nuernberg", "Datum 12.11.2026 Zeit 13:3", "Kaufumsatz VISA Card"]));
+        // A full 27-character field runs on into the next, whatever case the next starts with.
         Assert.Equal("SVWZ+Rechnung 4711 Kundennummer 0815", Mt940Parser.JoinPurposeFields(["SVWZ+Rechnung 4711 Kundennu", "mmer 0815"]));
+        Assert.Equal("GRUNDSTEUER B 12,34 EUR WASSERGEB.", Mt940Parser.JoinPurposeFields(["GRUNDSTEUER B 12,34 EUR WAS", "SERGEB."]));
         Assert.Equal("Salary November", Mt940Parser.JoinPurposeFields(["Salary", "November"]));
+    }
+
+    [Fact]
+    public void Mt940_free_text_lines_of_the_full_width_run_on()
+    {
+        var full = new string('A', 64) + "B";
+        Assert.Equal(full + "CDE fgh", Mt940Parser.JoinLines([full, "CDE", "fgh"]));
+        // Lines wrapped at a width several of them share run on as well.
+        Assert.Equal("ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOP short tail",
+            Mt940Parser.JoinLines(["ABCDEFGHIJKLMNOPQRS", "TUVWXYZABCDEFGHIJKL", "MNOP short", "tail"]));
+    }
+
+    private static string Mt940(string info86, string entry = ":61:2611121112D12,34NDDTNONREF") =>
+        ":20:STARTUMS\r\n:25:12345678/1234567\r\n:28C:0/1\r\n:60F:C261031EUR1000,00\r\n"
+        + entry + "\r\n:86:" + info86 + "\r\n:62F:C261112EUR987,66\r\n-";
+
+    [Fact]
+    public void Mt940_pending_purpose_joins_full_fields_and_splits_off_the_sepa_tags()
+    {
+        var mt940 = Mt940("105?00SEPA-LASTSCHRIFT?20GRUNDSTEUER B 12,34 EUR WAS?21SERGEB. 5,60 EUR MREF+M-123?2245 CRED+DE00ZZZ00000012345?32EXAMPLE TOWN");
+        var t = Assert.Single(Mt940Parser.Parse(mt940, "EUR", booked: false));
+        Assert.False(t.Booked);
+        Assert.Equal("GRUNDSTEUER B 12,34 EUR WASSERGEB. 5,60 EUR", t.Purpose);
+        Assert.Equal("M-12345", t.Sepa?.MandateReference);
+        Assert.Equal("DE00ZZZ00000012345", t.Sepa?.CreditorId);
+        // The identity key reads the fields run together, tags included, as before.
+        Assert.Equal("GRUNDSTEUER B 12,34 EUR WASSERGEB. 5,60 EUR MREF+M-12345 CRED+DE00ZZZ00000012345", t.KeyPurpose);
+    }
+
+    [Fact]
+    public void Mt940_short_field_is_followed_by_a_space_and_free_text_before_tags_is_the_purpose()
+    {
+        var mt940 = Mt940("105?20GRUNDABGABEN 1234-10-001 KO?21RNACHERSTR. 5 NR. 9?22EREF+E-1 MREF+M-2 CRED+C-3?32EXAMPLE TOWN");
+        var t = Assert.Single(Mt940Parser.Parse(mt940, "EUR", booked: false));
+        Assert.Equal("GRUNDABGABEN 1234-10-001 KORNACHERSTR. 5 NR. 9", t.Purpose);
+        Assert.Equal(new SepaDetails("E-1", "M-2", "C-3", "105"), t.Sepa);
+        Assert.Equal("GRUNDABGABEN 1234-10-001 KORNACHERSTR. 5 NR. 9EREF+E-1 MREF+M-2 CRED+C-3", t.KeyPurpose);
+
+        var free = Assert.Single(Mt940Parser.Parse(Mt940("WATER FEE 7,00 EUR\r\nMREF+M-9 CRED+C-8"), "EUR", booked: false));
+        Assert.Equal("WATER FEE 7,00 EUR", free.Purpose);
+        Assert.Equal("M-9", free.Sepa?.MandateReference);
+        Assert.Equal("C-8", free.Sepa?.CreditorId);
+    }
+
+    [Fact]
+    public void Camt_pending_purpose_splits_off_the_sepa_tags_and_keeps_its_key()
+    {
+        const string xml = "<Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:camt.052.001.08\"><BkToCstmrAcctRpt><Rpt><Ntry><Amt Ccy=\"EUR\">7.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>PDNG</Cd></Sts><BookgDt><Dt>2026-11-12</Dt></BookgDt><NtryDtls><TxDtls><RmtInf><Ustrd>WATER FEE 7,00 EUR</Ustrd><Ustrd>MREF+M-9 CRED+C-8</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry></Rpt></BkToCstmrAcctRpt></Document>";
+        var t = Assert.Single(CamtParser.Parse(xml, bookedDocument: false));
+        Assert.Equal("WATER FEE 7,00 EUR", t.Purpose);
+        Assert.Equal("M-9", t.Sepa?.MandateReference);
+        Assert.Equal("C-8", t.Sepa?.CreditorId);
+        Assert.Equal("WATER FEE 7,00 EUR MREF+M-9 CRED+C-8", t.KeyPurpose);
     }
 }
