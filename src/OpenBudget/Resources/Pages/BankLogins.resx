@@ -326,6 +326,9 @@
     <value>several bookings fit</value>
   </data>
   <data name="ConnectorDescription_amazon" xml:space="preserve">
-    <value>Amazon.de orders: adds what you ordered to the matching bookings of your card or bank account, so they can be categorized per item. It creates no accounts or bookings. You sign in on Amazon's own page (captcha and code there); only the session is stored. Map each payment method to the account it is booked on.</value>
+    <value>Amazon.de orders: adds what you ordered to the matching bookings of your card or bank account, so they can be categorized per item. It creates no accounts or bookings. Sign in with your Amazon e-mail address (or phone number) and password; the app fills them in on Amazon's page, a captcha or an approval on your phone you do there. Optionally store a TOTP secret so the one-time code is entered automatically and syncs run unattended (Amazon: Login &amp; security › 2-Step Verification › add an authenticator app › "Can't scan the barcode?"). Map each payment method to the account it is booked on.</value>
+  </data>
+  <data name="CredentialField_amazon_totp" xml:space="preserve">
+    <value>TOTP secret (optional)</value>
   </data>
 </root>

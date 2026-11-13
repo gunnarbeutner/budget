@@ -385,6 +385,7 @@ public sealed class WebLoginSession : IAsyncDisposable
             }
             if (step.Verify is { } verify && !await VerifyAsync(verify, fill.ValueOf(verify.Credential), label))
                 return;
+            await TickAsync(step.Tick);
             if (!await ClickWhenReadyAsync(step.SubmitSelector, ct))
             {
                 if (!step.EnterSubmits)
@@ -402,6 +403,13 @@ public sealed class WebLoginSession : IAsyncDisposable
         _submittedAt = DateTime.UtcNow;
         _logger.LogInformation("Web login: submitted the sign-in form; waiting for the bank.");
         SetMode(WebLoginMode.Waiting);
+    }
+
+    /// <summary>Ticks the shown ones of these checkboxes (see <see cref="WebLoginStep.Tick"/>).</summary>
+    private async Task TickAsync(IReadOnlyList<string> selectors)
+    {
+        foreach (var selector in selectors)
+            if (await _browser.TickAsync(selector)) _logger.LogInformation("Web login: ticked {Selector}.", selector);
     }
 
     private void ShowPage(string reason, bool notify = false)
@@ -583,6 +591,7 @@ public sealed class WebLoginSession : IAsyncDisposable
                 code = answer?.Value?.Trim() ?? throw new BrowserActionException("The security code was not provided in time.");
             } while (code.Length != form.Length || form.Numeric && !code.All(char.IsAsciiDigit));
         }
+        if (IsCodePage(_browser.Url, form)) await TickAsync(form.Tick);
         if (!IsCodePage(_browser.Url, form) || !await _browser.FillCodeAsync(form.FieldSelector, code) || !await ClickWhenReadyAsync(form.SubmitSelector, ct))
         {
             _codePromptDisabled = true;

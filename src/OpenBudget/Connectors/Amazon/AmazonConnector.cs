@@ -32,9 +32,12 @@ public sealed class AmazonOptions
 
 /// <summary>
 /// Amazon (amazon.de) as an order source: it does not deliver bookings but enriches existing ones with what was
-/// ordered. The owner signs in on Amazon's page in the app's browser (captcha and one-time code there); the browser is
-/// kept for the sync. With stored cookies the wallet is tried first, so a session Amazon still accepts needs no
-/// sign-in; background runs only use such a session.
+/// ordered. Sign-in: Amazon's page in the app's browser, kept for the sync. The app fills the stored e-mail address (or
+/// phone number) and password and ticks "keep me signed in"; the one-time code page gets the code of a stored TOTP
+/// secret (and "don't ask on this browser" ticked), otherwise the code is asked from the user. A captcha, an approval
+/// on another device or any other page is shown to the user (see <see cref="AmazonSignIn"/>). With stored cookies the
+/// wallet is tried first, so a session Amazon still accepts needs no sign-in. Background runs sign in only with a
+/// stored TOTP secret; without one they use a still valid session.
 ///
 /// The wallet's transaction list (see <see cref="AmazonPages"/>) gives the charges and refunds with order number,
 /// payment instrument and amount; each instrument becomes an "account" the owner maps to an existing account. The
@@ -56,6 +59,7 @@ public sealed class AmazonConnector : IBankConnector, IOrderSource
     private readonly ConnectorContext _context;
     private readonly AmazonOptions _options;
     private ConnectorSession _session = new();
+    private ConnectorCredentials? _credentials;
     private IBrowserFetcher? _browser;
 
     public AmazonConnector(ConnectorContext context, AmazonOptions options)
@@ -67,14 +71,26 @@ public sealed class AmazonConnector : IBankConnector, IOrderSource
     public static ConnectorRegistration CreateRegistration(AmazonOptions options) => new(
         TypeName,
         "Amazon (order details)",
-        "Amazon.de orders: adds what you ordered to the matching bookings of your card or bank account, so they can be categorized per item. It does not create accounts or bookings. You sign in on Amazon's own page (captcha and code there); nothing is stored but the session. Map each payment method to the account it is booked on.",
+        "Amazon.de orders: adds what you ordered to the matching bookings of your card or bank account, so they can be categorized per item. It does not create accounts or bookings. Sign in with your Amazon e-mail address (or phone number) and password: the app fills them in on Amazon's own page; a captcha or an approval on your phone is done there by you. Optionally store a TOTP secret so the one-time code is entered automatically and syncs run unattended: in Amazon open Login & security › 2-Step Verification, add an authenticator app and choose \"Can't scan the barcode?\" to see the key. Map each payment method to the account it is booked on.",
         ctx => new AmazonConnector(ctx, options),
-        CredentialRequirement.None,
+        CredentialRequirement.UsernameAndSecret,
         Statements: false)
     {
+        ExtraCredentials = [new CredentialField(AmazonSignIn.TotpKey, "TOTP secret (optional)", Normalize: NormalizeTotp)],
+        // with a stored TOTP secret the sign-in needs nobody; without, only a still valid session can be reused
         Silent = SilentCapability.SessionOnly,
+        SilentFor = credentials => TotpSecret.TryParse(credentials?.ExtraValue(AmazonSignIn.TotpKey), out _) ? SilentCapability.Full : SilentCapability.SessionOnly,
+        SilentWebSignIn = true,
         OrderSource = true,
     };
+
+    /// <summary>A usable secret is stored as entered (trimmed); <see cref="TotpSecret.Parse"/> reads it at sign-in.</summary>
+    private static string NormalizeTotp(string value)
+    {
+        var trimmed = value.Trim();
+        TotpSecret.Parse(trimmed);
+        return trimmed;
+    }
 
     public string ConnectorType => TypeName;
 
@@ -82,20 +98,25 @@ public sealed class AmazonConnector : IBankConnector, IOrderSource
 
     private DateOnly Today => DateOnly.FromDateTime(_context.Clock.GetUtcNow().UtcDateTime);
 
-    internal WebLoginSpec WebLogin() => new(
+    internal WebLoginSpec WebLogin(ConnectorCredentials? credentials) => new(
         new Uri(_options.BaseUri, _options.WalletPage), [_options.BaseUri.Host], successUrlPrefix: new Uri(_options.BaseUri, _options.WalletPage))
     {
+        Autofill = AmazonSignIn.Autofill(credentials),
         SuccessCheck = SignedInCheck,
+        CodePrompt = AmazonSignIn.CodePrompt(credentials),
+        WaitingScript = AmazonSignIn.WaitingScript,
+        CredentialsError = AmazonSignIn.CredentialsError,
         KeepBrowser = true,
         ResumeUrl = new Uri(_options.BaseUri, _options.WalletPage),
-        ObservedRequests = ["/ap/signin", "/ap/mfa", "validateCaptcha"],
+        ObservedRequests = ["/ap/signin", "/ap/mfa", "/ap/cvf", "validateCaptcha"],
     };
 
-    private ConnectorChallenge AskSignIn() => ConnectorChallenge.WebLogin("Sign in on the Amazon page.", WebLogin(), WebLoginReference);
+    private ConnectorChallenge AskSignIn() => ConnectorChallenge.WebLogin("Sign in on the Amazon page.", WebLogin(_credentials), WebLoginReference);
 
     public Task<ConnectorStep<ConnectorSession?>> LoginAsync(
         ConnectorCredentials credentials, ConnectorSession? storedSession, ChallengeAnswer? answer, CancellationToken ct)
     {
+        _credentials = credentials;
         if (answer == null)
         {
             _session = storedSession ?? new ConnectorSession();

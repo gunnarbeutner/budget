@@ -396,6 +396,25 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
         }
     }
 
+    public async Task<bool> TickAsync(string selector)
+    {
+        try
+        {
+            var el = await _page.QuerySelectorAsync(selector);
+            if (el == null) return false;
+            await using (el)
+            {
+                if (await el.BoundingBoxAsync() == null) return false;
+                if (!await el.EvaluateFunctionAsync<bool>("e => !!e.checked")) await el.ClickAsync();
+            }
+            return true;
+        }
+        catch (PuppeteerException)
+        {
+            return false;
+        }
+    }
+
     public async Task<bool> IsVisibleAsync(string selector)
     {
         try

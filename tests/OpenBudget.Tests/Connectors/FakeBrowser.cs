@@ -102,6 +102,19 @@ internal sealed class FakeBrowserSession : IBrowserSession
         return true;
     }
 
+    /// <summary>Checkboxes ticked through <see cref="TickAsync"/>.</summary>
+    public HashSet<string> Ticked { get; } = new(StringComparer.Ordinal);
+
+    public Task<bool> TickAsync(string selector)
+    {
+        lock (Visible)
+        {
+            if (!Visible.Contains(selector)) return Task.FromResult(false);
+            Ticked.Add(selector);
+            return Task.FromResult(true);
+        }
+    }
+
     /// <summary>Answers the spec's page scripts (a waiting script, say); null: every check is ok with nothing to report.</summary>
     public Func<FakeBrowserSession, WebLoginCheck>? OnCheck { get; set; }
 

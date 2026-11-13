@@ -145,6 +145,9 @@ public sealed record WebLoginCodePrompt(string PathPrefix, string FieldSelector,
 
     /// <summary>How long after submitting a TOTP code the form may still show before it counts as rejected.</summary>
     public TimeSpan TotpSettle { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Checkboxes ticked (when shown) before the code is submitted, such as "don't ask again on this browser".</summary>
+    public IReadOnlyList<string> Tick { get; init; } = [];
 }
 
 /// <summary>How a sign-in page shows that it rejected the credentials (see <see cref="WebLoginSpec.CredentialsError"/>).</summary>
@@ -201,6 +204,9 @@ public sealed record WebLoginStep(IReadOnlyList<WebLoginField> Fields, string Su
 
     /// <summary>When no enabled submit button matches, pressing Enter in the last filled field submits the step instead.</summary>
     public bool EnterSubmits { get; init; }
+
+    /// <summary>Checkboxes ticked (when shown) before the step is submitted, such as "keep me signed in".</summary>
+    public IReadOnlyList<string> Tick { get; init; } = [];
 
     public WebLoginStep(string fieldSelector, WebLoginCredential credential, string submitSelector, string? waitFor = null)
         : this([new WebLoginField(fieldSelector, credential)], submitSelector, waitFor)

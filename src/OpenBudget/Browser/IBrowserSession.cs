@@ -68,6 +68,9 @@ public interface IBrowserSession : IAsyncDisposable
 
     Task<bool> IsVisibleAsync(string selector);
 
+    /// <summary>Ticks the first visible checkbox matching <paramref name="selector"/> unless it is ticked already; false when there is none.</summary>
+    Task<bool> TickAsync(string selector) => Task.FromResult(false);
+
     /// <summary>True when a visible element matching <paramref name="selector"/> contains one of <paramref name="texts"/> (case-insensitive; empty: any).</summary>
     Task<bool> HasVisibleTextAsync(string selector, IReadOnlyList<string> texts);
 
