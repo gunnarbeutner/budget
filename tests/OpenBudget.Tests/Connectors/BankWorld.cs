@@ -260,6 +260,8 @@ internal sealed class BankWorld : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        // let running sync jobs finish before the database they write to is closed
+        await Coordinator.StopAsync(CancellationToken.None);
         Coordinator.Dispose();
         await T.DisposeAsync();
         SqliteConnection.ClearAllPools();
