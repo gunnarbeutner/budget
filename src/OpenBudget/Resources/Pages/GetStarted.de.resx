@@ -58,24 +58,6 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Button_Cancel" xml:space="preserve">
-    <value>Abbrechen</value>
-  </data>
-  <data name="Switch_Heading" xml:space="preserve">
-    <value>Auf deine Bankverbindungen umstellen</value>
-  </data>
-  <data name="Switch_Progress" xml:space="preserve">
-    <value>{0} von {1} verknüpften Konten von MoneyMoney auf ihre Bankverbindung umgestellt.</value>
-  </data>
-  <data name="Switch_Unlinked" xml:space="preserve">
-    <value>{0} MoneyMoney-Konten haben keine Bankverbindung.</value>
-  </data>
-  <data name="Switch_All" xml:space="preserve">
-    <value>Alle verknüpften Konten umstellen ({0}) …</value>
-  </data>
-  <data name="Finished_Button" xml:space="preserve">
-    <value>MoneyMoney-Import abschließen</value>
-  </data>
   <data name="Finished_Badge" xml:space="preserve">
     <value>MoneyMoney-Import am {0} abgeschlossen</value>
   </data>
@@ -85,65 +67,11 @@
   <data name="Finished_Resume" xml:space="preserve">
     <value>MoneyMoney-Import fortsetzen</value>
   </data>
-  <data name="Finished_Title" xml:space="preserve">
-    <value>MoneyMoney-Import abschließen?</value>
-  </data>
-  <data name="Finished_Body" xml:space="preserve">
-    <value>Ab jetzt werden Uploads aus MoneyMoney abgelehnt; der Import war damit einmalig. Alles bisher Importierte bleibt.</value>
-  </data>
-  <data name="Finished_Warning" xml:space="preserve">
-    <value>Noch nicht umgestellt: {0}. Ohne Bankverbindung: {1}. Diese Konten werden nicht mehr aktualisiert.</value>
-  </data>
-  <data name="Finished_Reversible" xml:space="preserve">
-    <value>Der Import kann hier jederzeit fortgesetzt werden.</value>
-  </data>
-  <data name="Switch_Unlinked_One" xml:space="preserve">
-    <value>1 MoneyMoney-Konto hat keine Bankverbindung.</value>
-  </data>
-  <data name="Accounts_Summary" xml:space="preserve">
-    <value>Konten ohne Bankverbindung: {0} bei MoneyMoney, {1} manuell</value>
-  </data>
-  <data name="Accounts_SelectAll" xml:space="preserve">
-    <value>Alle auswählen</value>
-  </data>
-  <data name="Accounts_KeepManual" xml:space="preserve">
-    <value>{0} als manuelle Konten behalten…</value>
-  </data>
-  <data name="Accounts_KeepManualOne" xml:space="preserve">
-    <value>Als manuell behalten…</value>
-  </data>
-  <data name="Accounts_Bookings" xml:space="preserve">
-    <value>{0:N0} Buchungen</value>
-  </data>
-  <data name="Accounts_Last" xml:space="preserve">
-    <value>zuletzt {0}</value>
-  </data>
-  <data name="Accounts_ManualHeading" xml:space="preserve">
-    <value>Manuelle Konten (aus MoneyMoney)</value>
-  </data>
-  <data name="Accounts_Return" xml:space="preserve">
-    <value>Zurück zu MoneyMoney</value>
-  </data>
-  <data name="Return_Title" xml:space="preserve">
-    <value>Zurück zu MoneyMoney?</value>
-  </data>
-  <data name="Return_Body" xml:space="preserve">
-    <value>Der nächste MoneyMoney-Upload ersetzt Buchungen, Saldo und Bankdaten von „{0}“ durch die aus MoneyMoney.</value>
-  </data>
-  <data name="Return_Lost" xml:space="preserve">
-    <value>Zwischenzeitlich hier erfasste oder bearbeitete Buchungen (Beträge, Kategorien, Notizen, Häkchen, Aufteilungen) bleiben nicht erhalten.</value>
-  </data>
-  <data name="Finished_KeepManual" xml:space="preserve">
-    <value>Die {0} Konten ohne Bankverbindung als manuelle Konten behalten, damit ihre Buchungen bearbeitbar bleiben</value>
-  </data>
   <data name="PageTitle" xml:space="preserve">
     <value>Erste Schritte</value>
   </data>
   <data name="Heading" xml:space="preserve">
     <value>Erste Schritte</value>
-  </data>
-  <data name="Intro" xml:space="preserve">
-    <value>In vier Schritten kommt dein Geld in OpenBudget. Die optionalen Schritte können warten.</value>
   </data>
   <data name="Optional" xml:space="preserve">
     <value>optional</value>
@@ -152,10 +80,7 @@
     <value>Bank-Zugänge hinzufügen</value>
   </data>
   <data name="Step1_Body" xml:space="preserve">
-    <value>Verbinde deine Banken: OpenBudget holt Salden, Buchungen und Kontoauszüge dann selbst ab.</value>
-  </data>
-  <data name="Step1_Link" xml:space="preserve">
-    <value>Bank-Zugänge</value>
+    <value>OpenBudget ruft Salden, Buchungen und Kontoauszüge von deinen Banken ab.</value>
   </data>
   <data name="Step1_Count" xml:space="preserve">
     <value>{0} Bank-Zugänge eingerichtet.</value>
@@ -164,10 +89,10 @@
     <value>1 Bank-Zugang eingerichtet.</value>
   </data>
   <data name="Step2_Heading" xml:space="preserve">
-    <value>Verlauf aus MoneyMoney übernehmen</value>
+    <value>Aus MoneyMoney importieren</value>
   </data>
   <data name="Step2_Body" xml:space="preserve">
-    <value>Du kommst von MoneyMoney? Lade dessen Daten einmal hoch: Konten, Kategorien, alle Buchungen und die gespeicherten Kontoauszüge kommen mit.</value>
+    <value>Importiert Konten, Kategorien, Buchungen und Kontoauszüge.</value>
   </data>
   <data name="Step2_How1" xml:space="preserve">
     <value>Wähle in MoneyMoney Hilfe › Datenbank im Finder zeigen …</value>
@@ -214,9 +139,6 @@
   <data name="Job_Statements" xml:space="preserve">
     <value>Kontoauszüge werden importiert … {0} von {1}</value>
   </data>
-  <data name="Step_Of" xml:space="preserve">
-    <value>Schritt {0} von {1}</value>
-  </data>
   <data name="Wizard_Back" xml:space="preserve">
     <value>Zurück</value>
   </data>
@@ -228,12 +150,6 @@
   </data>
   <data name="Wizard_Done" xml:space="preserve">
     <value>Fertig</value>
-  </data>
-  <data name="Hide_Button" xml:space="preserve">
-    <value>Erste Schritte ausblenden</value>
-  </data>
-  <data name="Hide_Hint" xml:space="preserve">
-    <value>Die Seite bleibt unter /get-started erreichbar.</value>
   </data>
   <data name="Job_Budgets" xml:space="preserve">
     <value>{0} Kategorie-Budgets stehen im inaktiven Budget „MoneyMoney“.</value>
@@ -269,28 +185,19 @@
     <value>Die Datei ist leer oder zu groß.</value>
   </data>
   <data name="Step3_Heading" xml:space="preserve">
-    <value>Portfolio-Performance-Datei verbinden</value>
+    <value>Portfolio Performance verbinden</value>
   </data>
   <data name="Step3_Body" xml:space="preserve">
-    <value>Wertpapiere, Lots und Klassifizierungen kommen aus deiner Portfolio-Performance-Datei.</value>
-  </data>
-  <data name="Step3_Link" xml:space="preserve">
-    <value>Portfolio Performance</value>
+    <value>Importiert Wertpapiere, Lots und Klassifizierungen aus einer Portfolio-Performance-Datei.</value>
   </data>
   <data name="Step4_Heading" xml:space="preserve">
-    <value>Alltagskonten wählen und Budgets festlegen</value>
+    <value>Konten auswählen</value>
   </data>
   <data name="Step4_Body" xml:space="preserve">
-    <value>Hake „Im Cashflow“ bei den Konten an, von denen du im Alltag ausgibst, und lege dann Budgets für deine Kategorien fest.</value>
-  </data>
-  <data name="Step4_Accounts" xml:space="preserve">
-    <value>Konten</value>
-  </data>
-  <data name="Step4_Budgets" xml:space="preserve">
-    <value>Budgets</value>
+    <value>Hake „Im Cashflow“ bei den Konten an, von denen du im Alltag ausgibst.</value>
   </data>
   <data name="Step4_NoProject" xml:space="preserve">
-    <value>Lege zuerst ein Projekt an; es enthält deine Konten und Budgets.</value>
+    <value>Lege zuerst ein Projekt an.</value>
   </data>
   <data name="Step4_BudgetImported" xml:space="preserve">
     <value>Das Budget „{0}“ ({1}) aus MoneyMoney ist noch nicht aktiv.</value>
@@ -300,5 +207,125 @@
   </data>
   <data name="Step4_BudgetActivate" xml:space="preserve">
     <value>Aktivieren</value>
+  </data>
+  <data name="Stepper_1" xml:space="preserve">
+    <value>MoneyMoney</value>
+  </data>
+  <data name="Stepper_2" xml:space="preserve">
+    <value>Bank-Zugänge</value>
+  </data>
+  <data name="Stepper_3" xml:space="preserve">
+    <value>Portfolio Performance</value>
+  </data>
+  <data name="Stepper_4" xml:space="preserve">
+    <value>Konten &amp; Budget</value>
+  </data>
+  <data name="Starter_Button" xml:space="preserve">
+    <value>Mit vorgeschlagenen Kategorien beginnen</value>
+  </data>
+  <data name="Starter_Or" xml:space="preserve">
+    <value>Kein MoneyMoney?</value>
+  </data>
+  <data name="Starter_Income" xml:space="preserve">
+    <value>Einnahmen</value>
+  </data>
+  <data name="Starter_Income_Salary" xml:space="preserve">
+    <value>Gehalt</value>
+  </data>
+  <data name="Starter_Income_Interest" xml:space="preserve">
+    <value>Zinsen &amp; Dividenden</value>
+  </data>
+  <data name="Starter_Income_Refunds" xml:space="preserve">
+    <value>Erstattungen</value>
+  </data>
+  <data name="Starter_Income_OtherIncome" xml:space="preserve">
+    <value>Sonstige Einnahmen</value>
+  </data>
+  <data name="Starter_Housing" xml:space="preserve">
+    <value>Wohnen</value>
+  </data>
+  <data name="Starter_Housing_Rent" xml:space="preserve">
+    <value>Miete oder Kredit</value>
+  </data>
+  <data name="Starter_Housing_Utilities" xml:space="preserve">
+    <value>Nebenkosten &amp; Energie</value>
+  </data>
+  <data name="Starter_Housing_Internet" xml:space="preserve">
+    <value>Internet &amp; Telefon</value>
+  </data>
+  <data name="Starter_Groceries" xml:space="preserve">
+    <value>Lebensmittel</value>
+  </data>
+  <data name="Starter_Groceries_Supermarket" xml:space="preserve">
+    <value>Supermarkt</value>
+  </data>
+  <data name="Starter_Groceries_Restaurants" xml:space="preserve">
+    <value>Restaurants &amp; Lieferdienste</value>
+  </data>
+  <data name="Starter_Household" xml:space="preserve">
+    <value>Haushalt</value>
+  </data>
+  <data name="Starter_Household_Supplies" xml:space="preserve">
+    <value>Verbrauchsartikel</value>
+  </data>
+  <data name="Starter_Household_Furnishings" xml:space="preserve">
+    <value>Einrichtung</value>
+  </data>
+  <data name="Starter_Transport" xml:space="preserve">
+    <value>Mobilität</value>
+  </data>
+  <data name="Starter_Transport_Car" xml:space="preserve">
+    <value>Auto &amp; Tanken</value>
+  </data>
+  <data name="Starter_Transport_PublicTransport" xml:space="preserve">
+    <value>ÖPNV</value>
+  </data>
+  <data name="Starter_Transport_TravelCosts" xml:space="preserve">
+    <value>Fahrtkosten</value>
+  </data>
+  <data name="Starter_Insurance" xml:space="preserve">
+    <value>Versicherungen</value>
+  </data>
+  <data name="Starter_Insurance_Liability" xml:space="preserve">
+    <value>Haftpflicht</value>
+  </data>
+  <data name="Starter_Insurance_Contents" xml:space="preserve">
+    <value>Hausrat</value>
+  </data>
+  <data name="Starter_Insurance_OtherInsurance" xml:space="preserve">
+    <value>Sonstige Versicherungen</value>
+  </data>
+  <data name="Starter_Subscriptions" xml:space="preserve">
+    <value>Abos &amp; Onlinedienste</value>
+  </data>
+  <data name="Starter_Leisure" xml:space="preserve">
+    <value>Freizeit</value>
+  </data>
+  <data name="Starter_Leisure_Entertainment" xml:space="preserve">
+    <value>Unterhaltung</value>
+  </data>
+  <data name="Starter_Leisure_Hobbies" xml:space="preserve">
+    <value>Hobbys</value>
+  </data>
+  <data name="Starter_Leisure_Holidays" xml:space="preserve">
+    <value>Urlaub</value>
+  </data>
+  <data name="Starter_Gifts" xml:space="preserve">
+    <value>Geschenke</value>
+  </data>
+  <data name="Starter_Health" xml:space="preserve">
+    <value>Gesundheit</value>
+  </data>
+  <data name="Starter_Savings" xml:space="preserve">
+    <value>Rücklagen</value>
+  </data>
+  <data name="Starter_Transfers" xml:space="preserve">
+    <value>Umbuchungen</value>
+  </data>
+  <data name="Starter_Transfers_OwnAccounts" xml:space="preserve">
+    <value>Zwischen eigenen Konten</value>
+  </data>
+  <data name="Starter_Done" xml:space="preserve">
+    <value>Vorgeschlagene Kategorien angelegt.</value>
   </data>
 </root>

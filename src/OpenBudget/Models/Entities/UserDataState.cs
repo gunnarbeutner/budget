@@ -42,6 +42,6 @@ public class UserDataState
     [MaxLength(100)]
     public string? LegacyFileKeys { get; set; }
 
-    /// <summary>When the user hid Get started from the menus (the page stays reachable by its URL).</summary>
-    public DateTime? GetStartedDismissedAt { get; set; }
+    /// <summary>When the user completed Get started with Done; until then it holds them.</summary>
+    public DateTime? GetStartedCompletedAt { get; set; }
 }

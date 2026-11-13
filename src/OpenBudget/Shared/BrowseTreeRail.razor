@@ -407,114 +407,114 @@
         bool isSelected = (SelectionKind == (node.ItemType == CategoryItemType.Category ? "category" : "group"))
                           && SelectionId == node.Id;
 
-        builder.OpenElement(0, "div");
+        builder.OpenElement(1, "div");
         var sidebarNode = SidebarNodeOf(node);
-        builder.AddAttribute(1, "class", "browse-tree-row" + (isSelected ? " selected" : "") + (node.IsTracked ? " tracked" : "") + DropClass(sidebarNode));
-        builder.AddAttribute(2, "role", "treeitem");
-        builder.AddAttribute(3, "tabindex", "0");
-        builder.AddAttribute(4, "aria-selected", isSelected ? "true" : "false");
+        builder.AddAttribute(2, "class", "browse-tree-row" + (isSelected ? " selected" : "") + (node.IsTracked ? " tracked" : "") + DropClass(sidebarNode));
+        builder.AddAttribute(3, "role", "treeitem");
+        builder.AddAttribute(4, "tabindex", "0");
+        builder.AddAttribute(5, "aria-selected", isSelected ? "true" : "false");
         bool foldable = IsFoldable(node);
         bool open = !foldable || !collapsedCategories.Contains(CategoryGroupKey(node.Id));
-        if (foldable) builder.AddAttribute(80, "aria-expanded", open ? "true" : "false");
+        if (foldable) builder.AddAttribute(6, "aria-expanded", open ? "true" : "false");
         // FormattableString.Invariant: CSS lengths need a decimal point, but Razor's $""
         // interpolation defaults to CurrentCulture — German renders "1,5rem", which browsers
         // silently drop as invalid and the tree flattens.
-        builder.AddAttribute(5, "style", FormattableString.Invariant($"padding-left: {0.5 + level * 1.0:0.##}rem;"));
-        builder.AddAttribute(6, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, () => OnSelectCategory.InvokeAsync(node)));
-        builder.AddAttribute(7, "onkeydown", EventCallback.Factory.Create<KeyboardEventArgs>(this, e => OnCategoryKeydown(e, node)));
+        builder.AddAttribute(7, "style", FormattableString.Invariant($"padding-left: {0.5 + level * 1.0:0.##}rem;"));
+        builder.AddAttribute(8, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, () => OnSelectCategory.InvokeAsync(node)));
+        builder.AddAttribute(9, "onkeydown", EventCallback.Factory.Create<KeyboardEventArgs>(this, e => OnCategoryKeydown(e, node)));
         if (Draggable(sidebarNode))
         {
-            builder.AddAttribute(70, "draggable", "true");
-            builder.AddAttribute(71, "data-ob-drag", "");
-            builder.AddAttribute(72, "ondragstart", EventCallback.Factory.Create<DragEventArgs>(this, () => DragStart(sidebarNode)));
-            builder.AddAttribute(73, "ondragenter", EventCallback.Factory.Create<DragEventArgs>(this, () => DragEnter(sidebarNode)));
-            builder.AddAttribute(74, "ondragend", EventCallback.Factory.Create<DragEventArgs>(this, DragEnd));
+            builder.AddAttribute(10, "draggable", "true");
+            builder.AddAttribute(11, "data-ob-drag", "");
+            builder.AddAttribute(12, "ondragstart", EventCallback.Factory.Create<DragEventArgs>(this, () => DragStart(sidebarNode)));
+            builder.AddAttribute(13, "ondragenter", EventCallback.Factory.Create<DragEventArgs>(this, () => DragEnter(sidebarNode)));
+            builder.AddAttribute(14, "ondragend", EventCallback.Factory.Create<DragEventArgs>(this, DragEnd));
         }
         if (CanDrag != null)
         {
-            builder.AddEventPreventDefaultAttribute(75, "ondragover", true);
-            builder.AddAttribute(76, "ondrop", EventCallback.Factory.Create<DragEventArgs>(this, () => DropOn(sidebarNode)));
-            builder.AddEventPreventDefaultAttribute(77, "ondrop", true);
+            builder.AddEventPreventDefaultAttribute(15, "ondragover", true);
+            builder.AddAttribute(16, "ondrop", EventCallback.Factory.Create<DragEventArgs>(this, () => DropOn(sidebarNode)));
+            builder.AddEventPreventDefaultAttribute(17, "ondrop", true);
         }
         if (HasMenu(sidebarNode))
         {
-            builder.AddAttribute(8, "data-ob-longpress", "");
-            builder.AddAttribute(9, "data-testid", "tree-category");
-            builder.AddAttribute(25, "oncontextmenu", EventCallback.Factory.Create<MouseEventArgs>(this, e => OpenMenu(sidebarNode, e)));
-            builder.AddEventPreventDefaultAttribute(26, "oncontextmenu", true);
+            builder.AddAttribute(18, "data-ob-longpress", "");
+            builder.AddAttribute(19, "data-testid", "tree-category");
+            builder.AddAttribute(20, "oncontextmenu", EventCallback.Factory.Create<MouseEventArgs>(this, e => OpenMenu(sidebarNode, e)));
+            builder.AddEventPreventDefaultAttribute(21, "oncontextmenu", true);
         }
         else
         {
-            builder.AddAttribute(27, "data-testid", "tree-category");
+            builder.AddAttribute(22, "data-testid", "tree-category");
         }
 
-        builder.OpenElement(10, "span");
-        builder.AddAttribute(11, "class", "browse-tree-name");
+        builder.OpenElement(23, "span");
+        builder.AddAttribute(24, "class", "browse-tree-name");
         if (foldable)
         {
             // The chevron only folds the group; the rest of the row selects it.
-            builder.OpenElement(81, "button");
-            builder.AddAttribute(82, "type", "button");
-            builder.AddAttribute(83, "class", "browse-tree-chevron");
-            builder.AddAttribute(84, "tabindex", "-1");
-            builder.AddAttribute(85, "data-testid", "tree-category-group-toggle");
-            builder.AddAttribute(86, "aria-label", open ? L["Tree_Collapse"].Value : L["Tree_Expand"].Value);
-            builder.AddAttribute(87, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, () => ToggleCategoryGroupAsync(node.Id)));
-            builder.AddEventStopPropagationAttribute(88, "onclick", true);
-            builder.AddMarkupContent(89, open ? "<i class=\"bi bi-chevron-down\" aria-hidden=\"true\"></i>" : "<i class=\"bi bi-chevron-right\" aria-hidden=\"true\"></i>");
+            builder.OpenElement(25, "button");
+            builder.AddAttribute(26, "type", "button");
+            builder.AddAttribute(27, "class", "browse-tree-chevron");
+            builder.AddAttribute(28, "tabindex", "-1");
+            builder.AddAttribute(29, "data-testid", "tree-category-group-toggle");
+            builder.AddAttribute(30, "aria-label", open ? L["Tree_Collapse"].Value : L["Tree_Expand"].Value);
+            builder.AddAttribute(31, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, () => ToggleCategoryGroupAsync(node.Id)));
+            builder.AddEventStopPropagationAttribute(32, "onclick", true);
+            builder.AddMarkupContent(33, open ? "<i class=\"bi bi-chevron-down\" aria-hidden=\"true\"></i>" : "<i class=\"bi bi-chevron-right\" aria-hidden=\"true\"></i>");
             builder.CloseElement();
         }
         else
         {
-            builder.AddMarkupContent(90, "<span class=\"browse-tree-chevron-spacer\" aria-hidden=\"true\"></span>");
+            builder.AddMarkupContent(34, "<span class=\"browse-tree-chevron-spacer\" aria-hidden=\"true\"></span>");
         }
         if ((CategoryColors.ToCss(node.Color) ?? (node.ItemType == CategoryItemType.Group ? null : CategoryColors.FallbackColor(node.Id))) is { } dotColor)
         {
             // the same ribbon as the category picker, in the category's colour or, for a category without one, the palette
             // colour its pills use (a parsed hex value, safe to inline)
-            builder.AddMarkupContent(12, $"<svg class=\"browse-color-dot browse-ribbon\" viewBox=\"0 0 12 16\" aria-hidden=\"true\" style=\"fill:{dotColor};\"><path d=\"M1 1h10v14l-5-3.6L1 15z\"/></svg>");
+            builder.AddMarkupContent(35, $"<svg class=\"browse-color-dot browse-ribbon\" viewBox=\"0 0 12 16\" aria-hidden=\"true\" style=\"fill:{dotColor};\"><path d=\"M1 1h10v14l-5-3.6L1 15z\"/></svg>");
         }
         else
         {
-            builder.OpenElement(15, "i");
-            builder.AddAttribute(16, "class", node.ItemType == CategoryItemType.Group ? "bi bi-folder me-1" : "bi bi-tag me-1");
+            builder.OpenElement(36, "i");
+            builder.AddAttribute(37, "class", node.ItemType == CategoryItemType.Group ? "bi bi-folder me-1" : "bi bi-tag me-1");
             builder.CloseElement();
         }
         if (IsRenaming(sidebarNode))
         {
-            builder.AddContent(19, RenameField(sidebarNode));
+            builder.AddContent(38, RenameField(sidebarNode));
         }
         else
         {
-            builder.OpenElement(20, "span");
-            builder.AddAttribute(21, "class", "browse-tree-label");
-            builder.AddAttribute(22, "title", node.Name);
-            builder.AddContent(23, node.Name);
+            builder.OpenElement(39, "span");
+            builder.AddAttribute(40, "class", "browse-tree-label");
+            builder.AddAttribute(41, "title", node.Name);
+            builder.AddContent(42, node.Name);
             builder.CloseElement();
         }
         builder.CloseElement(); // span.browse-tree-name
 
-        builder.OpenElement(30, "span");
-        builder.AddAttribute(31, "class", "browse-tree-amount");
+        builder.OpenElement(43, "span");
+        builder.AddAttribute(44, "class", "browse-tree-amount");
         if (node.Remaining is { } remTitle)
-            builder.AddAttribute(32, "title", Formatting.FormatMoneyDe(node.IsIncome ? node.Spent : -node.Spent) + " | " + Formatting.FormatMoneyDe(remTitle));
+            builder.AddAttribute(45, "title", Formatting.FormatMoneyDe(node.IsIncome ? node.Spent : -node.Spent) + " | " + Formatting.FormatMoneyDe(remTitle));
         // Show the spent side whenever the node has any context to anchor it: either an
         // actual non-zero spent value, OR a budget pair on its right ("€0,00 | €120,00" reads
         // cleanly; a bare " | €120,00" reads as a missing value).
         bool hasBudgetContext = node.Remaining.HasValue;
         if (node.Spent != 0m || hasBudgetContext)
         {
-            builder.OpenElement(42, "span");
-            builder.AddAttribute(43, "class", node.IsIncome ? "text-success" : "text-danger");
-            builder.AddContent(44, Formatting.FormatMoneyDe(node.IsIncome ? node.Spent : -node.Spent));
+            builder.OpenElement(46, "span");
+            builder.AddAttribute(47, "class", node.IsIncome ? "text-success" : "text-danger");
+            builder.AddContent(48, Formatting.FormatMoneyDe(node.IsIncome ? node.Spent : -node.Spent));
             builder.CloseElement();
         }
         if (node.Remaining is { } rem)
         {
-            builder.AddContent(45, " | ");
-            builder.OpenElement(46, "span");
-            builder.AddAttribute(47, "class", rem < 0 ? "text-danger" : "text-success");
-            builder.AddContent(48, Formatting.FormatMoneyDe(rem));
+            builder.AddContent(49, " | ");
+            builder.OpenElement(50, "span");
+            builder.AddAttribute(51, "class", rem < 0 ? "text-danger" : "text-success");
+            builder.AddContent(52, Formatting.FormatMoneyDe(rem));
             builder.CloseElement();
         }
         builder.CloseElement(); // span.browse-tree-amount
@@ -525,7 +525,7 @@
         if (!open) return;
         foreach (var c in node.Children)
         {
-            builder.AddContent(50, RenderCategoryNode(c, level + 1));
+            builder.AddContent(53, RenderCategoryNode(c, level + 1));
         }
     };
 }

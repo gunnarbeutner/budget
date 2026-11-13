@@ -229,18 +229,6 @@
   <data name="Type_Other" xml:space="preserve">
     <value>Sonstiges</value>
   </data>
-  <data name="Switch_Awaiting" xml:space="preserve">
-    <value>Wird noch von MoneyMoney aktualisiert; Synchronisierungen bereiten nur die Umstellung vor.</value>
-  </data>
-  <data name="Button_Switch" xml:space="preserve">
-    <value>Auf Bankverbindung umstellen</value>
-  </data>
-  <data name="Switch_Done" xml:space="preserve">
-    <value>Am {0} von MoneyMoney umgestellt.</value>
-  </data>
-  <data name="Switch_DoneUndated" xml:space="preserve">
-    <value>Von MoneyMoney umgestellt.</value>
-  </data>
   <data name="Button_AddOpen" xml:space="preserve">
     <value>Bank-Zugang hinzufügen</value>
   </data>

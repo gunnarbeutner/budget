@@ -104,12 +104,6 @@
   <data name="Settings_UpdatedBy_Other" xml:space="preserve">
     <value>OpenBudget (keine MoneyMoney-Uploads).</value>
   </data>
-  <data name="Settings_Switch_Linked" xml:space="preserve">
-    <value>Mit dem Bankzugang „{0}“ verknüpft; umstellen, damit die Bankverbindung es aktualisiert.</value>
-  </data>
-  <data name="Settings_Switch_Button" xml:space="preserve">
-    <value>Auf Bankverbindung umstellen …</value>
-  </data>
   <data name="Settings_Switch_LinkFirst" xml:space="preserve">
     <value>Mit einem Bankzugang verknüpfen, um es auf eine Bankverbindung umzustellen.</value>
   </data>

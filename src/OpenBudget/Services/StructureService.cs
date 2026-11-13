@@ -261,7 +261,7 @@ public sealed class StructureService
     }
 
     // Categories and category groups share one id range per owner (the trees mix them under a parent).
-    private static async Task<long> NextOwnIdAsync(BudgetDbContext db, string ownerId, CancellationToken ct)
+    internal static async Task<long> NextOwnIdAsync(BudgetDbContext db, string ownerId, CancellationToken ct)
     {
         var floor = RowIds.Namespace(await RowIds.IdSpaceAsync(db, ownerId, ct), OwnRowBase);
         var maxCategory = await db.Categories.IgnoreQueryFilters().Where(c => c.OwnerUserId == ownerId && c.Id >= floor).MaxAsync(c => (long?)c.Id, ct);

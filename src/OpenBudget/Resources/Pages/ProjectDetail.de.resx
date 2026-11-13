@@ -107,7 +107,7 @@
     <value>Neue Konten werden diesem Projekt zugeordnet.</value>
   </data>
   <data name="Default_SharedExplanation" xml:space="preserve">
-    <value>Ein geteiltes Projekt kann nicht Standard sein, damit neue Konten nie von selbst für andere sichtbar werden.</value>
+    <value>Ein geteiltes Projekt kann nicht Standard sein.</value>
   </data>
   <data name="Status_Saved" xml:space="preserve">
     <value>Gespeichert</value>

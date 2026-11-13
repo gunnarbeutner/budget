@@ -20,7 +20,6 @@ public sealed class SettingsShellTests : EndToEndTestBase
     /// the project sidebar for project settings, the settings list for the app-level pages.
     /// </summary>
     [TestCase("/banklogins", "settings-nav")]
-    [TestCase("/get-started", "settings-nav")]
     [TestCase("/portfolio-performance", "settings-nav")]
     [TestCase("/portfolio-performance/depots", "settings-nav")]
     [TestCase("/portfolio-performance/instruments", "settings-nav")]
@@ -59,7 +58,7 @@ public sealed class SettingsShellTests : EndToEndTestBase
     public async Task Settings_pages_fit_a_phone()
     {
         await Page.SetViewportSizeAsync(390, 844);
-        foreach (var path in new[] { "/banklogins", "/get-started", "/portfolio-performance", $"/projects/{E2ESeed.ProjectId}/settings" })
+        foreach (var path in new[] { "/banklogins", "/portfolio-performance", $"/projects/{E2ESeed.ProjectId}/settings" })
         {
             await GoToAsync(path);
             await Expect(Page.GetByTestId("page-header")).ToBeVisibleAsync();

@@ -107,7 +107,7 @@
     <value>New accounts are added to this project.</value>
   </data>
   <data name="Default_SharedExplanation" xml:space="preserve">
-    <value>A shared project cannot be the default, so new accounts never become visible to others by themselves.</value>
+    <value>A shared project cannot be the default.</value>
   </data>
   <data name="Status_Saved" xml:space="preserve">
     <value>Saved</value>

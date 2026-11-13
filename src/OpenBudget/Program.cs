@@ -150,6 +150,9 @@ await using (var budgetDb = await app.Services.GetRequiredService<SystemDbContex
     await portfolioFiles.RelocateLegacyFilesAsync(budgetDb);
     // Category rules of data imported before rules were imported (idempotent).
     await OpenBudget.Importers.MoneyMoney.MoneyMoneyRuleImport.BackfillAsync(budgetDb, CancellationToken.None);
+    // Linked accounts are the connector's, also those linked while MoneyMoney still updated them (idempotent).
+    await AccountSwitchService.SwitchLinkedMoneyMoneyAccountsAsync(app.Services.GetRequiredService<SystemDbContextFactory>(),
+        app.Services.GetRequiredService<OpenBudget.Connectors.Sync.BankTransactionStore>(), DateTime.UtcNow);
     // Every user owns a project to land new accounts in (idempotent).
     await UserDefaultProject.EnsureAllAsync(app.Services.GetRequiredService<SystemDbContextFactory>());
     var ruleLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("OpenBudget.Rules");

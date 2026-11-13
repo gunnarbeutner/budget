@@ -258,4 +258,18 @@ public sealed class StructureMenuTests : EndToEndTestBase
         await Page.Keyboard.PressAsync("ArrowRight");
         await Expect(Category("Groceries")).ToBeVisibleAsync();
     }
+
+    [Test]
+    public async Task Selecting_a_category_keeps_it_indented_like_its_siblings()
+    {
+        await GoToAsync(BrowseUrl);
+        async Task<double> LabelLeftAsync(string name) =>
+            (await Category(name).Locator(".browse-tree-label").BoundingBoxAsync())!.X;
+        foreach (var (selected, sibling) in new[] { ("Groceries", "Salary"), ("Salary", "Groceries") })
+        {
+            await Category(selected).ClickAsync();
+            await Expect(Category(selected)).ToHaveAttributeAsync("aria-selected", "true");
+            Assert.That(await LabelLeftAsync(selected), Is.EqualTo(await LabelLeftAsync(sibling)).Within(0.5), selected);
+        }
+    }
 }

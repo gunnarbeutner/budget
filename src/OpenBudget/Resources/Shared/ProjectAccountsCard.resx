@@ -179,7 +179,7 @@
     <value>Counts in the Cashflow view and the project balance.</value>
   </data>
   <data name="Accounts_Intro" xml:space="preserve">
-    <value>The accounts that belong to this project.</value>
+    <value>Accounts in this project.</value>
   </data>
   <data name="Scope_Help" xml:space="preserve">
     <value>“Project categories” counts only bookings in the project's categories, “All” every booking of the account.</value>

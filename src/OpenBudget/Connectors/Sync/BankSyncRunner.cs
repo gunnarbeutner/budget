@@ -417,29 +417,15 @@ public sealed class BankSyncRunner
             {
                 var account = await db.Accounts.FirstOrDefaultAsync(a => a.Id == link.LinkedAccountId, ct);
                 var ownerOk = account != null && account.OwnerUserId == login.OwnerUserId;
-                // A linked account MoneyMoney still owns waits for its switch: the bank's report is kept for the preview.
-                var awaitingSwitch = account != null && !link.CreatedByConnector
-                    && string.Equals(account.Provider, AccountProviders.MoneyMoney, StringComparison.Ordinal);
-                if (account == null || !ownerOk || (!awaitingSwitch && !string.Equals(account.Provider, login.ConnectorType, StringComparison.Ordinal)))
+                if (account == null || !ownerOk || !string.Equals(account.Provider, login.ConnectorType, StringComparison.Ordinal))
                     throw new ConnectorException("The linked account is no longer available for this login.");
 
-                var since = awaitingSwitch ? await PendingRefresh.SinceAsync(db, account.Id, ct) : await ComputeSinceAsync(db, link, account, ct);
+                var since = await ComputeSinceAsync(db, link, account, ct);
                 var step = await DriveAsync(a => connector.RefreshAsync(remoteAccount, since, a, ct), sink, context, ct);
                 if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Refresh failed.");
 
                 var now = _clock.GetUtcNow().UtcDateTime;
                 _logger.LogInformation("Bank login {LoginId}: account link {LinkId} returned {Count} transactions.", login.Id, link.Id, step.Value!.Transactions.Count);
-                if (awaitingSwitch)
-                {
-                    link.PendingRefreshJson = PendingRefresh.Serialize(step.Value!);
-                    link.PendingRefreshAt = now;
-                    link.PendingSinceUtc = since is { } p ? p.ToDateTime(TimeOnly.MinValue) : null;
-                    link.LastError = null;
-                    affected.Add(account.OwnerUserId);
-                    await db.SaveChangesAsync(ct);
-                    continue;
-                }
-
                 // The first sync of an account brings its history: nothing of it is "new".
                 var firstSync = link.LastSuccessAt == null;
                 if (link.SyncFloorUtc == null && firstSync)

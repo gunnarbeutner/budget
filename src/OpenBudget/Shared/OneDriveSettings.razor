@@ -15,7 +15,10 @@
 {
     <section id="onedrive" class="mt-4" data-testid="onedrive-section">
         <h2 class="h5">@L["Heading"]</h2>
-        <p class="text-body-secondary small">@L["Intro"]</p>
+        @if (!FromGetStarted)
+        {
+            <p class="text-body-secondary small">@L["Intro"]</p>
+        }
 
         @if (notice is { } n)
         {

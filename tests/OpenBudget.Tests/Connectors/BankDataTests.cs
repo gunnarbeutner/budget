@@ -32,7 +32,6 @@ public sealed class BankDataTests
         await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false)); // list accounts only
         var giro = await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId);
         await w.For(BankWorld.Alice).LinkAsync(giro.Id, accountId);
-        await w.SwitchAsync(BankWorld.Alice, giro.Id);
         return (id, accountId);
     }
 
@@ -83,9 +82,6 @@ public sealed class BankDataTests
         var id = await w.AddLoginAsync(BankWorld.Alice, "demo");
         await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false));
         await w.For(BankWorld.Alice).LinkAsync((await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).Id, accountId);
-        Assert.Equal(AccountProviders.MoneyMoney, (await w.AccountAsync(accountId)).Provider);
-        Assert.True((await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).AwaitingSwitch);
-        await w.SwitchAsync(BankWorld.Alice, (await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).Id);
         Assert.Equal("fake", (await w.AccountAsync(accountId)).Provider);
 
         // A linked account is no longer offered, nor can it be linked twice.
@@ -125,7 +121,6 @@ public sealed class BankDataTests
         var id = await w.AddLoginAsync(BankWorld.Alice, "demo+statements");
         await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false));
         await w.For(BankWorld.Alice).LinkAsync((await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).Id, accountId);
-        await w.SwitchAsync(BankWorld.Alice, (await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).Id);
         Assert.True((await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, true, false))).Succeeded);
 
         var before = await w.TransactionsAsync(accountId);

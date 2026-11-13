@@ -90,7 +90,7 @@ internal sealed partial class AppTestHost : IDisposable
         if (!inGetStarted)
         {
             await using var db = await System.CreateDbContextAsync();
-            (await RowIds.StateAsync(db, user.Id)).GetStartedDismissedAt = DateTime.UtcNow;
+            (await RowIds.StateAsync(db, user.Id)).GetStartedCompletedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
         }
         return user;

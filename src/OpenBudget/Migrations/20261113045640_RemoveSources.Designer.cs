@@ -1789,7 +1789,7 @@ namespace OpenBudget.Migrations
                         .HasMaxLength(450)
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("GetStartedDismissedAt")
+                    b.Property<DateTime?>("GetStartedCompletedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("IdSpace")

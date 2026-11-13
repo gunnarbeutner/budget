@@ -32,17 +32,10 @@ public sealed class GetStartedTests : EndToEndTestBase
     private async Task ReopenGetStartedAsync(string userId = E2ESeed.OwnerUserId)
     {
         await using var db = await Db.CreateDbContextAsync();
-        (await db.UserDataStates.SingleAsync(s => s.UserId == userId)).GetStartedDismissedAt = null;
+        (await db.UserDataStates.SingleAsync(s => s.UserId == userId)).GetStartedCompletedAt = null;
         await db.SaveChangesAsync();
-    }
-
-    private async Task SetMoneyMoneyAsync(DateTime? lastUpload, DateTime? finished)
-    {
-        await using var db = await Db.CreateDbContextAsync();
-        var source = await db.UserDataStates.SingleAsync(s => s.UserId == E2ESeed.OwnerUserId);
-        source.LastUploadAt = lastUpload;
-        source.MoneyMoneyImportFinishedAt = finished;
-        await db.SaveChangesAsync();
+        // The browser import outlives a test; forget an earlier test's import result.
+        Factory.BrowserHostServices.GetRequiredService<OpenBudget.Importers.MoneyMoney.MoneyMoneyBrowserImport>().Dismiss(userId);
     }
 
     [Test]
@@ -73,11 +66,13 @@ public sealed class GetStartedTests : EndToEndTestBase
     {
         await ReopenGetStartedAsync();
         await GoToAsync("/get-started");
-        await Expect(Page.GetByTestId("get-started-progress")).ToContainTextAsync("Step 1 of 4");
+        await Expect(Page.GetByTestId("get-started-stepper-1")).ToHaveAttributeAsync("aria-current", "step");
+        await Expect(Page.GetByTestId("get-started-stepper")).ToContainTextAsync("Accounts & budget");
         await Expect(Page.GetByTestId("step-moneymoney")).ToBeVisibleAsync();
         var next = Page.GetByTestId("get-started-next");
-        await Expect(next).ToHaveTextAsync("Skip");
-        await Expect(next).ToHaveClassAsync(new Regex("btn-outline-secondary"));
+        // The seeded owner has categories, so the first step counts as done.
+        await Expect(next).ToHaveTextAsync("Next");
+        await Expect(next).ToHaveClassAsync(new Regex("btn-primary"));
 
         await next.ClickAsync();
         await Expect(Page.GetByTestId("step-banks-panel")).ToBeVisibleAsync();
@@ -100,17 +95,84 @@ public sealed class GetStartedTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task Hiding_Get_started_ends_it()
+    public async Task Each_step_starts_at_the_top_with_its_heading_in_view_and_only_Done_ends_it()
     {
         await ReopenGetStartedAsync();
+        await Page.SetViewportSizeAsync(390, 700);
         await GoToAsync("/get-started");
-        await Page.GetByTestId("get-started-hide").ClickAsync();
-        await Expect(Page.GetByTestId("get-started-hide")).ToHaveCountAsync(0);
+        var next = Page.GetByTestId("get-started-next");
+        foreach (var step in new[] { "step-banks", "step-portfolio", "step-cashflow" })
+        {
+            await Page.Mouse.WheelAsync(0, 5000);
+            await next.ClickAsync();
+            await Expect(Page.GetByTestId(step).Locator("h2").First).ToBeInViewportAsync();
+        }
+        await Expect(Page.GetByTestId("get-started-stepper-4")).ToHaveAttributeAsync("aria-current", "step");
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
-        await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{E2ESeed.ProjectId}/browse$"));
-        Assert.That(await GearOffersGetStartedAsync(), Is.False);
-        await GoToAsync("/get-started");
-        await Expect(Page.GetByTestId("step-moneymoney")).ToBeVisibleAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex("/get-started$"));
+    }
+
+    [Test]
+    public async Task While_the_import_runs_the_wizard_holds_and_Next_waits_for_it()
+    {
+        await LogoutAsync();
+        await ReopenGetStartedAsync(E2ESeed.SecondUserId);
+        await LoginAsync(E2ESeed.SecondUserName);
+        var import = Factory.BrowserHostServices.GetRequiredService<OpenBudget.Importers.MoneyMoney.MoneyMoneyBrowserImport>();
+        var release = new TaskCompletionSource();
+        import.AfterStatementsForTests = () => release.Task;
+        try
+        {
+            var zip = new FilePayload { Name = "MoneyMoney.zip", MimeType = "application/zip", Buffer = MoneyMoneyZipFixture.Build("e2e-secret") };
+            await Page.Locator("#mm-zip").SetInputFilesAsync(zip);
+            await Page.GetByTestId("mm-has-password").CheckAsync();
+            await Page.Locator("#mm-password").FillAsync("e2e-secret");
+            await Page.GetByTestId("mm-upload").ClickAsync();
+            await Expect(Page.GetByTestId("mm-job")).ToBeVisibleAsync(new() { Timeout = 30_000 });
+
+            await Expect(Page.GetByTestId("get-started-next")).ToBeDisabledAsync();
+            await Expect(Page.GetByTestId("get-started-stepper-1")).Not.ToHaveClassAsync(new Regex("done"));
+            await Expect(Page.GetByTestId("gear-menu")).ToHaveCountAsync(0);
+            await Expect(Page.GetByTestId("settings-nav")).ToHaveCountAsync(0);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+        await Expect(Page.GetByTestId("mm-job-done")).ToBeVisibleAsync(new() { Timeout = 30_000 });
+        import.AfterStatementsForTests = null;
+        await Expect(Page.GetByTestId("get-started-next")).ToBeEnabledAsync();
+        await Expect(Page.GetByTestId("get-started-next")).ToHaveTextAsync("Next");
+        await Expect(Page.GetByTestId("gear-menu")).ToHaveCountAsync(0);
+        await Page.GetByTestId("get-started-next").ClickAsync();
+        await Expect(Page.GetByTestId("get-started-stepper-1")).ToHaveClassAsync(new Regex("done"));
+        await GoToAsync("/banklogins");
+        await Expect(Page).ToHaveURLAsync(new Regex("/get-started$"));
+    }
+
+    [Test]
+    public async Task Suggested_categories_are_created_once_in_the_default_project_with_income_typed()
+    {
+        await LogoutAsync();
+        await ReopenGetStartedAsync(E2ESeed.SecondUserId);
+        await UserDefaultProject.EnsureAsync(Db, E2ESeed.SecondUserId);   // as at startup
+        await LoginAsync(E2ESeed.SecondUserName);
+        await Page.GetByTestId("starter-categories").ClickAsync();
+        await Expect(Page.GetByTestId("starter-done")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("starter-categories")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("get-started-next")).ToHaveTextAsync("Next");
+
+        await using var db = await Db.CreateDbContextAsync();
+        var groups = await db.CategoryGroups.Where(g => g.OwnerUserId == E2ESeed.SecondUserId).ToListAsync();
+        Assert.That(groups, Has.Count.EqualTo(12));
+        var income = groups.Single(g => g.Name == "Income");
+        var salary = await db.Categories.SingleAsync(c => c.OwnerUserId == E2ESeed.SecondUserId && c.Name == "Salary");
+        Assert.That(salary.GroupId, Is.EqualTo(income.Id));
+        Assert.That(await db.Categories.CountAsync(c => c.OwnerUserId == E2ESeed.SecondUserId && c.Name == "Gifts"), Is.EqualTo(1));
+        var project = await db.Projects.SingleAsync(p => p.OwnerUserId == E2ESeed.SecondUserId && p.IsDefaultForNewAccounts);
+        var assigned = await db.ProjectCategoryAssignments.Where(a => a.ProjectId == project.Id).Select(a => a.CategoryId).ToListAsync();
+        Assert.That(assigned, Is.SupersetOf(groups.Select(g => g.Id)));
+        Assert.That(await db.CategoryTypeAssignments.AnyAsync(t => t.ProjectId == project.Id && t.CategoryId == salary.Id && t.IsIncome), Is.True);
     }
 
     [Test]
@@ -152,6 +214,7 @@ public sealed class GetStartedTests : EndToEndTestBase
         var checking = await db.Accounts.SingleAsync(a => a.OwnerUserId == guest.Id && a.Name == "Example Checking");
         Assert.That(await db.Transactions.CountAsync(t => t.AccountId == checking.Id), Is.EqualTo(2));   // the imported history
         Assert.That(await db.BankLoginAccounts.AnyAsync(l => l.LinkedAccountId == checking.Id), Is.True);
+        Assert.That(checking.Provider, Is.EqualTo(OpenBudget.Connectors.FakeBank.FakeBankConnector.TypeName));   // the bank's at once
     }
 
     [Test]
@@ -194,13 +257,18 @@ public sealed class GetStartedTests : EndToEndTestBase
         Assert.That(await db.Accounts.CountAsync(a => a.OwnerUserId == guest.Id), Is.EqualTo(2));
         Assert.That(await db.BankStatements.CountAsync(s => s.OwnerUserId == guest.Id), Is.EqualTo(1));
 
-        // The import is unfinished now: its follow-up shows the accounts without bank connection.
-        await Page.GetByTestId("mm-job-done").GetByRole(AriaRole.Button).ClickAsync();
-        await Expect(Page.GetByTestId("mm-followup")).ToContainTextAsync("Example Checking");
+        // Done turns the imported accounts not linked to a bank into manual ones and finishes the one-time import.
+        await Page.GetByTestId("get-started-stepper-4").Locator("a").ClickAsync();
+        await Page.GetByTestId("get-started-done").ClickAsync();
+        await Expect(Page).Not.ToHaveURLAsync(new Regex("/get-started"));
+        await using var after = await Db.CreateDbContextAsync();
+        Assert.That(await after.Accounts.Where(a => a.OwnerUserId == guest.Id).Select(a => a.Provider).Distinct().ToListAsync(),
+            Is.EqualTo(new[] { OpenBudget.Models.AccountProviders.Manual }));
+        Assert.That((await after.UserDataStates.SingleAsync(s => s.UserId == guest.Id)).MoneyMoneyImportFinishedAt, Is.Not.Null);
     }
 
-    // Set OB_ONBOARDING_SCREENSHOT_DIR to keep screenshots of the gear menu, the Portfolio Performance page and the
-    // Get started page (with an unfinished MoneyMoney import) in both themes for review.
+    // Set OB_ONBOARDING_SCREENSHOT_DIR to keep screenshots of each Get started step at desktop and phone width in
+    // both themes for review.
     [TestCase("light")]
     [TestCase("dark")]
     public async Task Screenshot(string theme)
@@ -208,30 +276,18 @@ public sealed class GetStartedTests : EndToEndTestBase
         var dir = Environment.GetEnvironmentVariable("OB_ONBOARDING_SCREENSHOT_DIR");
         if (string.IsNullOrEmpty(dir)) Assert.Ignore("OB_ONBOARDING_SCREENSHOT_DIR not set");
         await EditingSeed.SeedAsync(Db);
-        await SetMoneyMoneyAsync(DateTime.UtcNow, null);
-        await Page.SetViewportSizeAsync(1280, 900);
+        await ReopenGetStartedAsync();
         await Page.EmulateMediaAsync(new PageEmulateMediaOptions { ColorScheme = theme == "dark" ? ColorScheme.Dark : ColorScheme.Light });
-
-        await GoToAsync("/portfolio-performance");
-        await Page.Locator("#pp-upload-file").SetInputFilesAsync(new FilePayload
+        foreach (var (width, height) in new[] { (1440, 900), (390, 844) })
         {
-            Name = "Example.portfolio",
-            MimeType = "application/octet-stream",
-            Buffer = PortfolioPerformanceSettingsTests.PortfolioFile("Example Depot"),
-        });
-        await Expect(Page.GetByTestId("pp-data-set")).ToHaveCountAsync(1);
-        await Page.WaitForTimeoutAsync(300);
-        await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"onboarding-portfolio-performance-{theme}.png") });
-
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
-        await Page.GetByTestId("gear-menu").Locator("summary").ClickAsync();
-        await Expect(Page.GetByTestId("gear-menu").GetByTestId("gear-get-started")).ToBeVisibleAsync();
-        await Page.WaitForTimeoutAsync(300);
-        await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"onboarding-gear-menu-{theme}.png") });
-
-        await GoToAsync("/get-started");
-        await Expect(Page.GetByTestId("mm-followup")).ToBeVisibleAsync();
-        await Page.WaitForTimeoutAsync(300);
-        await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"onboarding-get-started-{theme}.png"), FullPage = true });
+            await Page.SetViewportSizeAsync(width, height);
+            for (var step = 1; step <= 4; step++)
+            {
+                await GoToAsync($"/get-started?step={step}");
+                await Expect(Page.GetByTestId($"get-started-stepper-{step}")).ToHaveAttributeAsync("aria-current", "step");
+                await Page.WaitForTimeoutAsync(500);
+                await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"get-started-{step}-{width}-{theme}.png"), FullPage = true });
+            }
+        }
     }
 }

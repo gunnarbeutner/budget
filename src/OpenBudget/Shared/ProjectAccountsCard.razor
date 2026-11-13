@@ -17,7 +17,10 @@
                 <button class="btn btn-sm btn-primary" @onclick="OpenDialog">@L["Button_AddAccount"]</button>
             </div>
             <div class="card-body">
-                <p class="text-body-secondary small mb-3">@L["Accounts_Intro"]</p>
+                @if (ShowIntro)
+                {
+                    <p class="text-body-secondary small mb-3">@L["Accounts_Intro"]</p>
+                }
                 @if (Assignments == null || AllAccounts == null)
                 {
                     <p class="text-body-secondary mb-0"><em>@L["Status_LoadingEllipsis"]</em></p>
@@ -228,6 +231,9 @@
 </Modal>
 
 @code {
+    /// <summary>Whether the intro sentence shows (Get started has its own line instead).</summary>
+    [Parameter] public bool ShowIntro { get; set; } = true;
+
     // The account whose removal waits for its confirmation in the row.
     private long? pendingRemove;
 

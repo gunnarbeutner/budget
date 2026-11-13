@@ -179,7 +179,7 @@
     <value>Zählt in der Cashflow-Ansicht und im Projektsaldo.</value>
   </data>
   <data name="Accounts_Intro" xml:space="preserve">
-    <value>Die Konten, die zu diesem Projekt gehören.</value>
+    <value>Konten in diesem Projekt.</value>
   </data>
   <data name="Scope_Help" xml:space="preserve">
     <value>„Projektkategorien“ zählt nur Buchungen in den Kategorien des Projekts, „Alle“ jede Buchung des Kontos.</value>

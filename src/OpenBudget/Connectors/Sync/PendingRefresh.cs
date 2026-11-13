@@ -6,8 +6,8 @@ using OpenBudget.Services;
 namespace OpenBudget.Connectors.Sync;
 
 /// <summary>
-/// The bank's report for a linked account that MoneyMoney still owns (<see cref="BankLoginAccount.PendingRefreshJson"/>):
-/// a sync stores it instead of writing rows, the switch preview compares it with the account's rows and the switch applies it.
+/// A bank report stored for a linked account while MoneyMoney still owned it
+/// (<see cref="BankLoginAccount.PendingRefreshJson"/>); applied when such accounts are switched at startup.
 /// </summary>
 public static class PendingRefresh
 {

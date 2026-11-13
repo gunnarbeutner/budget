@@ -33,7 +33,10 @@ else if (settings.Portfolios.Count == 0)
 }
 else
 {
-    <p class="text-body-secondary">@L["Intro"]</p>
+    @if (!Embedded)
+    {
+        <p class="text-body-secondary">@L["Intro"]</p>
+    }
     @if (!settings.HasFile)
     {
         <div class="alert alert-info py-2">@L["NoFile"]</div>

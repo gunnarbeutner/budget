@@ -37,8 +37,6 @@ public sealed record BankLoginAccountView(
     bool StatementsEnabled,
     StatementsInterval StatementsInterval,
     DateTime? LastStatementAt,
-    bool AwaitingSwitch = false,
-    DateTime? PendingRefreshAt = null,
     DateTime? SwitchedAt = null);
 
 /// <summary>An owned local account a remote account could be linked to.</summary>
@@ -250,7 +248,7 @@ public class BankLoginService
         var rows = await db.BankLoginAccounts.AsNoTracking().Where(a => a.BankLoginId == loginId).OrderBy(a => a.Name).ToListAsync(ct);
         var linkedIds = rows.Where(r => r.LinkedAccountId != null).Select(r => r.LinkedAccountId!.Value).ToList();
         var linked = await db.Accounts.AsNoTracking().Where(a => linkedIds.Contains(a.Id))
-            .ToDictionaryAsync(a => a.Id, a => new { a.Name, a.Provider }, ct);
+            .ToDictionaryAsync(a => a.Id, a => new { a.Name }, ct);
         return rows.Select(r =>
         {
             var account = r.LinkedAccountId is { } l ? linked.GetValueOrDefault(l) : null;
@@ -258,8 +256,7 @@ public class BankLoginService
                 r.Id, r.BankLoginId, r.RemoteId, r.Name, r.Type, r.Iban, r.Currency, r.Closed, r.LinkedAccountId,
                 account?.Name, r.CreatedByConnector, r.LastSuccessAt, r.LastError,
                 r.StatementsEnabled, r.StatementsInterval, r.LastStatementAt,
-                AwaitingSwitch: account != null && account.Provider == AccountProviders.MoneyMoney,
-                r.PendingRefreshAt, r.SwitchedAt);
+                r.SwitchedAt);
         }).ToList();
     }
 
@@ -279,10 +276,29 @@ public class BankLoginService
         // A depot only links to a depot, and a cash account only to a non-depot account: positions and
         // transactions are stored differently, so mixing them would show nonsense on both sides.
         bool remoteIsDepot = remote.Type == RemoteAccountType.Depot;
-        return accounts.Where(a => !taken.Contains(a.Id) && IsDepot(a) == remoteIsDepot)
-            .Select(a => new LinkCandidate(a.Id, a.Name ?? "?", a.Iban, a.Provider,
-                wanted.Length > 0 && NormalizeIban(a.Iban) == wanted))
-            .ToList();
+        var eligible = accounts.Where(a => !taken.Contains(a.Id) && IsDepot(a) == remoteIsDepot).ToList();
+        // The suggestion is the account with the same IBAN; without one, the account with the same account number
+        // (an IBAN's embedded account number counts, a subaccount suffix does not, leading zeros are ignored).
+        Func<Account, bool> suggested = a => wanted.Length > 0 && NormalizeIban(a.Iban) == wanted;
+        if (!eligible.Any(suggested))
+        {
+            var number = AccountNumber(string.IsNullOrEmpty(remote.Iban) ? remote.RemoteId : remote.Iban);
+            suggested = a => number.Length > 0 && AccountNumber(a.Iban) == number;
+        }
+        return eligible.Select(a => new LinkCandidate(a.Id, a.Name ?? "?", a.Iban, a.Provider, suggested(a))).ToList();
+    }
+
+    /// <summary>
+    /// The account number in an IBAN (a German IBAN's last ten digits) or in a plain account number (without a
+    /// "-subaccount" suffix), without spaces and leading zeros; empty when there is none.
+    /// </summary>
+    public static string AccountNumber(string? value)
+    {
+        var v = NormalizeIban(value);
+        if (v.Length == 22 && v.StartsWith("DE", StringComparison.Ordinal) && v[2..].All(char.IsAsciiDigit)) v = v[^10..];
+        else if (v.IndexOf('-', StringComparison.Ordinal) is > 0 and var dash) v = v[..dash];
+        if (v.Length == 0 || !v.All(char.IsAsciiDigit)) return string.Empty;
+        return v.TrimStart('0');
     }
 
     private static bool IsDepot(Account a) => a.Portfolio == 1 || a.Type == 7;
@@ -290,9 +306,8 @@ public class BankLoginService
     public static string NormalizeIban(string? iban) => (iban ?? string.Empty).Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
 
     /// <summary>
-    /// Links a remote account to an existing local account. An account MoneyMoney owns stays MoneyMoney's until it is
-    /// switched (<see cref="AccountSwitchService"/>); syncs meanwhile only fetch the bank's rows for the switch preview.
-    /// A detached ("manual") account is the connector's right away.
+    /// Links a remote account to an existing local account, which is the connector's from then on. An account imported
+    /// from MoneyMoney keeps its bookings; the first sync matches the bank's rows from its newest booking on.
     /// </summary>
     public async Task LinkAsync(int loginAccountId, long accountId, CancellationToken ct = default)
     {
@@ -307,10 +322,10 @@ public class BankLoginService
             throw new InvalidOperationException("That account cannot be linked (not yours, already linked, or owned by another provider).");
 
         var candidate = candidates.First(c => c.AccountId == accountId);
-        if (candidate.Provider != AccountProviders.MoneyMoney && !await _accounts.SetProviderAsync(accountId, remote.BankLogin.ConnectorType, ct))
+        if (!await _accounts.SetProviderAsync(accountId, remote.BankLogin.ConnectorType, ct))
             throw new AccessDeniedException("Account not found.");
         remote.LinkedAccountId = accountId;
-        remote.SwitchedAt = null;
+        remote.SwitchedAt = candidate.Provider == AccountProviders.MoneyMoney ? DateTime.UtcNow : null;
         remote.PendingRefreshJson = null;
         remote.PendingRefreshAt = null;
         remote.PendingSinceUtc = null;

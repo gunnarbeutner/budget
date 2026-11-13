@@ -49,30 +49,6 @@ public sealed class ManualAccountTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task Keep_accounts_as_manual_in_bulk()
-    {
-        await SeedAsync();
-        await GoToAsync("/get-started");
-
-        var section = Page.GetByTestId("step-moneymoney");
-        var list = section.GetByTestId("mm-accounts");
-        await Expect(list.Locator($"[data-mm-account='{Cash}']")).ToBeVisibleAsync();
-        await section.GetByTestId("mm-select-all").CheckAsync();
-        await section.GetByTestId("mm-keep-manual").ClickAsync();
-
-        var dialog = Page.GetByTestId("keep-manual-dialog");
-        await Expect(dialog.Locator($"[data-keep-account='{Old}']")).ToBeVisibleAsync();
-        await Page.GetByTestId("keep-manual-confirm").ClickAsync();
-        await Expect(dialog).ToHaveCountAsync(0);
-
-        var manual = section.GetByTestId("manual-accounts");
-        await Expect(manual.Locator($"[data-manual-account='{Cash}']")).ToBeVisibleAsync();
-        Assert.That((await AccountAsync(Cash)).Provider, Is.EqualTo(AccountProviders.Manual));
-        Assert.That((await AccountAsync(Old)).Provider, Is.EqualTo(AccountProviders.Manual));
-
-    }
-
-    [Test]
     public async Task Closed_accounts_are_hidden_in_the_sidebar_until_shown()
     {
         await SeedAsync();

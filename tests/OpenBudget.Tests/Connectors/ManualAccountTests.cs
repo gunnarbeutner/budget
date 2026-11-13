@@ -111,7 +111,7 @@ public sealed class ManualAccountTests
 
         var switcher = w.Switcher(BankWorld.Alice);
         Assert.False((await switcher.GetAccountStateAsync(Giro))!.CanKeepManual);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => switcher.KeepManualAsync([Giro]));
+        Assert.Equal(0, await switcher.KeepManualAsync([Giro]));
         Assert.Empty(await switcher.PreviewKeepManualAsync([Giro]));
         Assert.Single(await switcher.PreviewKeepManualAsync([Giro, Savings]));
 

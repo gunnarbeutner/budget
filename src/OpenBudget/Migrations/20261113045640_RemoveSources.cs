@@ -88,16 +88,17 @@ namespace OpenBudget.Migrations
                     "StructureTakenOverAt" TEXT NULL,
                     "MoneyMoneyImportFinishedAt" TEXT NULL,
                     "LegacyFileKeys" TEXT NULL,
-                    "GetStartedDismissedAt" TEXT NULL
+                    "GetStartedCompletedAt" TEXT NULL
                 );
                 """);
             migrationBuilder.Sql("CREATE UNIQUE INDEX \"IX_user_data_states_IdSpace\" ON \"user_data_states\" (\"IdSpace\");");
+            // Users with data are set up already, so Get started counts as completed for them.
             migrationBuilder.Sql($"""
-                INSERT INTO "user_data_states" ("UserId", "IdSpace", "LastUploadAt", "LastUploadSizeBytes", "StructureTakenOverAt", "MoneyMoneyImportFinishedAt", "LegacyFileKeys")
+                INSERT INTO "user_data_states" ("UserId", "IdSpace", "LastUploadAt", "LastUploadSizeBytes", "StructureTakenOverAt", "MoneyMoneyImportFinishedAt", "LegacyFileKeys", "GetStartedCompletedAt")
                 SELECT s."OwnerUserId",
                        (SELECT p."Id" FROM "import_sources" p WHERE p."OwnerUserId" = s."OwnerUserId" ORDER BY ({data}) DESC, p."Id" LIMIT 1),
                        MAX(s."LastUploadAt"), MAX(s."LastUploadSizeBytes"), MAX(s."StructureTakenOverAt"), MAX(s."MoneyMoneyImportFinishedAt"),
-                       group_concat(s."Id", ',')
+                       group_concat(s."Id", ','), strftime('%Y-%m-%d %H:%M:%f', 'now')
                 FROM "import_sources" s
                 WHERE s."OwnerUserId" IS NOT NULL
                 GROUP BY s."OwnerUserId";

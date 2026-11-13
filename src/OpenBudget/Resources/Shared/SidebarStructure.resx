@@ -104,12 +104,6 @@
   <data name="Settings_UpdatedBy_Other" xml:space="preserve">
     <value>OpenBudget (no MoneyMoney uploads).</value>
   </data>
-  <data name="Settings_Switch_Linked" xml:space="preserve">
-    <value>Linked to the bank login "{0}"; switch it to let the bank connection update it.</value>
-  </data>
-  <data name="Settings_Switch_Button" xml:space="preserve">
-    <value>Switch to bank connection…</value>
-  </data>
   <data name="Settings_Switch_LinkFirst" xml:space="preserve">
     <value>Link it to a bank login to switch it to a bank connection.</value>
   </data>

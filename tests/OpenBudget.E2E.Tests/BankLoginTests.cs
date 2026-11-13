@@ -89,29 +89,13 @@ public sealed class BankLoginTests : EndToEndTestBase
         await card.Locator("[data-bank-account='FAKE-SAVINGS'] [data-action=create]").ClickAsync();
         await Expect(card.Locator("[data-bank-account='FAKE-SAVINGS']").GetByTestId("linked-to")).ToContainTextAsync("Example Savings");
 
-        // The linked giro is still MoneyMoney's until it is switched.
-        await Expect(giro.GetByTestId("awaiting-switch")).ToBeVisibleAsync();
-
-        // Sync now: the bank asks again; answering completes the sync, fills the new savings account and fetches the
-        // giro's bookings for the switch preview.
+        // Sync now: the bank asks again; answering completes the sync and fills both accounts. The linked giro is the
+        // connector's at once: its first sync continues the imported history from its newest booking on.
         await card.Locator("[data-action=sync-now]").ClickAsync();
         await AnswerCodeChallengeAsync();
         await Expect(card.Locator("[data-bank-account='FAKE-SAVINGS']")).ToContainTextAsync("Last sync");
         await Expect(card.GetByTestId("login-error")).ToHaveCountAsync(0);
-
-        // Switch the giro: the preview shows the cutover and how the rows are matched.
-        await giro.Locator("[data-action=switch]").ClickAsync();
-        var dialog = Page.GetByTestId("switch-dialog");
-        await Expect(dialog).ToBeVisibleAsync();
-        var row = dialog.Locator($"[data-switch-account='{GiroId}']");
-        await Expect(row).ToContainTextAsync("2026-10-03");
-        await Expect(row.Locator("[data-col=history]")).ToHaveTextAsync("1");
-        await Expect(row.Locator("[data-col=matched]")).ToHaveTextAsync("1");
-        await Expect(row.Locator("[data-col=new]")).ToHaveTextAsync("7");
-        await Expect(row.Locator("[data-col=unmatched]")).ToHaveTextAsync("0");
-        await Page.GetByTestId("switch-confirm").ClickAsync();
-        await Expect(dialog).ToHaveCountAsync(0);
-        await Expect(giro.GetByTestId("switched")).ToContainTextAsync("Switched from MoneyMoney");
+        await Expect(giro).ToContainTextAsync("Last sync");
 
         var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using (var db = await factory.CreateDbContextAsync())
@@ -119,14 +103,14 @@ public sealed class BankLoginTests : EndToEndTestBase
             var rent = await db.Transactions.AsNoTracking().SingleAsync(t => t.Id == 900002L);
             Assert.That(rent.Name, Is.EqualTo("Example Landlord"));
             Assert.That(rent.Note, Is.EqualTo("Rent note from MoneyMoney"));
-            Assert.That(await db.Transactions.CountAsync(t => t.AccountId == GiroId), Is.EqualTo(9));
+            // The imported rows and the bank's from the newest imported booking on (that day's rent matched, not doubled).
+            Assert.That(await db.Transactions.CountAsync(t => t.AccountId == GiroId), Is.EqualTo(5));
         }
 
         // The connector's transactions show up in the project's transaction browser.
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=10");
         // Connector rows are not categorized yet (that is a later phase), so they sit under "Uncategorized".
         await Page.Locator(".browse-tree-row").Filter(new() { HasText = "Uncategorized" }).First.ClickAsync();
-        await Expect(Page.GetByText("Example Employer").First).ToBeVisibleAsync();
         await Expect(Page.GetByText("Example Landlord").First).ToBeVisibleAsync();
     }
 

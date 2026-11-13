@@ -17,25 +17,6 @@ public sealed record AccountSwitchLink(
     DateTime? BankDataFetchedAt);
 
 /// <summary>
-/// What switching one linked account would do. <see cref="HistoryEnd"/> is the day of MoneyMoney's newest booking (the
-/// cutover); <see cref="HistoryRows"/> MoneyMoney rows stay as the account's history (editable from then on). The other
-/// counts are only known once a sync fetched the bank's rows (<see cref="BankDataFetchedAt"/>): bank rows that are the
-/// same booking as a MoneyMoney row (<see cref="Matched"/>, merged into one row), new bank rows, MoneyMoney rows in the
-/// compared window without a bank counterpart (kept), and MoneyMoney's pending rows the bank's replace.
-/// </summary>
-public sealed record AccountSwitchPreview(
-    AccountSwitchLink Link,
-    DateOnly? HistoryEnd,
-    DateOnly? ComparedFrom,
-    int HistoryRows,
-    DateTime? BankDataFetchedAt,
-    int Matched,
-    int NewFromBank,
-    int UnmatchedMoneyMoney,
-    int PendingReplaced,
-    decimal? BankBalance);
-
-/// <summary>
 /// The account settings' view: who updates the account, and (for the owner) its bank link and whether it can be
 /// kept as a manual account (<see cref="CanKeepManual"/>) or returned to MoneyMoney (<see cref="CanReturnToMoneyMoney"/>;
 /// refused while <see cref="ImportFinished"/>).
@@ -70,44 +51,30 @@ public sealed record SourceSwitchState(
 }
 
 /// <summary>
-/// Moves accounts from MoneyMoney to a bank connection ("switch") and back. Linking an account MoneyMoney owns only
-/// prepares it: syncs fetch the bank's rows for a preview but write nothing. The switch makes the connector the
-/// account's provider, so MoneyMoney uploads stop touching it (rows, balance, structure); MoneyMoney's rows stay as
-/// editable history; the fetched bank rows are applied with <see cref="BankTransactionStore"/> (a bank row that is the
-/// same booking as a MoneyMoney row takes that row over: the bank's texts win, category, note, check mark and splits stay;
-/// nothing it adds is marked new). Switching needs the user's structure to be OpenBudget's (otherwise uploads would
-/// still rewrite the account's name and grouping and recreate categories); it can be taken over as part of the switch.
+/// What becomes of accounts imported from MoneyMoney. Linking one to a bank login makes it the connector's at once
+/// (<see cref="BankLoginService.LinkAsync"/>); <see cref="SwitchLinkedMoneyMoneyAccountsAsync"/> does the same at
+/// startup for links that left the account MoneyMoney's. An account without a bank link can be kept as a manual account
+/// (<see cref="KeepManualAsync"/>): its imported rows stay as editable history and uploads stop touching it;
+/// <see cref="ReturnToMoneyMoneyAsync"/> undoes that. The one-time import setting refuses further uploads.
 ///
-/// Switching back returns the account to MoneyMoney: the next upload replaces its rows, balance and bank details with
-/// MoneyMoney's, so what was edited or synced in OpenBudget meanwhile (categories, notes, check marks, splits, rows the
-/// bank delivered) is not kept. The structure takeover and the one-time import setting are not undone by it.
-///
-/// An account without a bank link can instead be kept as a manual account (<see cref="KeepManualAsync"/>): the same
-/// rules apply (structure taken over, MoneyMoney's rows stay as editable history, uploads stop touching it), but nobody
-/// refreshes it; its bookings are entered by hand. <see cref="ReturnToMoneyMoneyAsync"/> undoes it like switching back.
-///
-/// Only the account's owner (who is also the bank login's owner) can switch or change the import setting.
+/// Only the account's owner can change these or the import setting.
 /// </summary>
 public sealed class AccountSwitchService
 {
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
-    private readonly SystemDbContextFactory _system;
     private readonly AccessScopeProvider _access;
-    private readonly BankTransactionStore _store;
     private readonly MoneyMoneyImportService? _importer;
     private readonly ChangeNotificationService _notifier;
     private readonly ChangeOrigin _origin;
     private readonly TimeProvider _clock;
 
     public AccountSwitchService(
-        IDbContextFactory<BudgetDbContext> dbFactory, SystemDbContextFactory system, AccessScopeProvider access, BankTransactionStore store,
+        IDbContextFactory<BudgetDbContext> dbFactory, AccessScopeProvider access,
         ChangeNotificationService notifier, ChangeOrigin origin, TimeProvider clock,
         MoneyMoneyImportService? importer = null)
     {
         _dbFactory = dbFactory;
-        _system = system;
         _access = access;
-        _store = store;
         _importer = importer;
         _notifier = notifier;
         _origin = origin;
@@ -318,93 +285,45 @@ public sealed class AccountSwitchService
         _notifier.Publish(new DataChange(DataArea.ImportState), _origin.Id);
     }
 
-    /// <summary>Previews switching the given links (bank login accounts of the current user).</summary>
-    public async Task<List<AccountSwitchPreview>> PreviewAsync(IEnumerable<int> loginAccountIds, CancellationToken ct = default)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var ids = loginAccountIds.ToList();
-        var result = new List<AccountSwitchPreview>();
-        foreach (var (link, _, row) in await LinksAsync(db, l => ids.Contains(l.Id), ct))
-        {
-            db.Scope?.RequireOwner(link.OwnerUserId);
-            var historyEnd = await PendingRefresh.NewestBookedDayAsync(db, link.AccountId, ct);
-            var booked = await db.Transactions.CountAsync(t => t.AccountId == link.AccountId && t.Booked, ct);
-            var refresh = link.Switched ? null : PendingRefresh.Deserialize(row.PendingRefreshJson);
-            DateOnly? since = row.PendingSinceUtc is { } s ? DateOnly.FromDateTime(s) : null;
-            if (refresh == null)
-            {
-                result.Add(new AccountSwitchPreview(link, historyEnd, null, booked, null, 0, 0, 0, 0, null));
-                continue;
-            }
-            var p = await BankTransactionStore.PreviewAsync(db, link.AccountId, refresh, since, ct);
-            result.Add(new AccountSwitchPreview(link, historyEnd, since, booked - p.Adopted, row.PendingRefreshAt,
-                p.Adopted, p.Inserted, p.UnmatchedLocal, p.LocalPendingReplaced, refresh.Balance));
-        }
-        return result.OrderBy(r => r.Link.AccountName, StringComparer.CurrentCultureIgnoreCase).ToList();
-    }
-
     /// <summary>
-    /// Switches the given links (those still MoneyMoney's; others are skipped). Returns how many accounts
-    /// were switched.
+    /// Makes every linked account that MoneyMoney still owns the connector's (linking does that right away; this
+    /// covers links made while MoneyMoney kept updating linked accounts). A bank report a sync stored for the account
+    /// is applied like a sync (a bank row that is the same booking as an imported row takes that row over; nothing is
+    /// marked new); without one, the first sync matches the bank's rows from the newest imported booking on. Runs at
+    /// startup; idempotent. Returns how many accounts it switched.
     /// </summary>
-    public async Task<int> SwitchAsync(IReadOnlyCollection<int> loginAccountIds, CancellationToken ct = default)
+    public static async Task<int> SwitchLinkedMoneyMoneyAccountsAsync(SystemDbContextFactory system, BankTransactionStore store, DateTime now,
+        CancellationToken ct = default)
     {
-        var scope = await _access.GetAsync();
-        var userId = scope.UserId ?? throw new AccessDeniedException("Not signed in.");
-        List<(AccountSwitchLink Link, bool Created, BankLoginAccount Row)> links;
-        await using (var db = await _dbFactory.CreateDbContextAsync(ct))
-            links = (await LinksAsync(db, l => loginAccountIds.Contains(l.Id), ct)).Where(l => !l.Created && !l.Link.Switched).ToList();
-        foreach (var ownerId in links.Select(l => l.Link.OwnerUserId).Distinct(StringComparer.Ordinal))
-            scope.RequireOwner(ownerId);
-
-        var switched = 0;
-        foreach (var (link, _, _) in links)
+        await using var db = await system.CreateDbContextAsync(ct);
+        var rows = await db.BankLoginAccounts.Include(l => l.BankLogin)
+            .Where(l => l.LinkedAccountId != null && !l.CreatedByConnector)
+            .Join(db.Accounts.Where(a => a.Provider == AccountProviders.MoneyMoney), l => l.LinkedAccountId, a => a.Id, (l, a) => new { Row = l, Account = a })
+            .ToListAsync(ct);
+        foreach (var r in rows)
         {
-            var name = link.OwnerUserId;
-            var done = _importer == null
-                ? await SwitchOneAsync(link, ct)
-                : await _importer.WithOwnerLockAsync(name, () => SwitchOneAsync(link, ct), ct);
-            if (done) switched++;
-            _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: link.OwnerUserId), _origin.Id);
+            var (row, account) = (r.Row, r.Account);
+            if (PendingRefresh.Deserialize(row.PendingRefreshJson) is { } refresh)
+            {
+                DateOnly? since = row.PendingSinceUtc is { } s ? DateOnly.FromDateTime(s) : null;
+                await store.ApplyAsync(db, account.Id, refresh, since, row.PendingRefreshAt ?? now, ct, markNew: false);
+                row.LastSuccessAt = row.PendingRefreshAt ?? now;
+                row.SyncFloorUtc = row.PendingSinceUtc;
+            }
+            else
+            {
+                row.LastSuccessAt = null;
+                row.SyncFloorUtc = null;
+            }
+            account.Provider = row.BankLogin.ConnectorType;
+            row.SwitchedAt = now;
+            row.PendingRefreshJson = null;
+            row.PendingRefreshAt = null;
+            row.PendingSinceUtc = null;
+            row.LastError = null;
+            await db.SaveChangesAsync(ct);
         }
-        if (links.Count > 0)
-        {
-            _notifier.Publish(new DataChange(DataArea.ImportState), _origin.Id);
-            _notifier.Publish(new DataChange(DataArea.BankSync, UserId: userId), _origin.Id);
-        }
-        return switched;
-    }
-
-    private async Task<bool> SwitchOneAsync(AccountSwitchLink link, CancellationToken ct)
-    {
-        // The scoped checks ran above (owned source, own login); writes of bank rows need the unrestricted context, like a sync.
-        await using var db = await _system.CreateDbContextAsync(ct);
-        var row = await db.BankLoginAccounts.Include(l => l.BankLogin).FirstAsync(l => l.Id == link.LoginAccountId, ct);
-        var account = await db.Accounts.FirstOrDefaultAsync(a => a.Id == link.AccountId, ct);
-        if (account == null || row.LinkedAccountId != account.Id || account.Provider != AccountProviders.MoneyMoney) return false;
-
-        var now = _clock.GetUtcNow().UtcDateTime;
-        if (PendingRefresh.Deserialize(row.PendingRefreshJson) is { } refresh)
-        {
-            DateOnly? since = row.PendingSinceUtc is { } s ? DateOnly.FromDateTime(s) : null;
-            await _store.ApplyAsync(db, account.Id, refresh, since, row.PendingRefreshAt ?? now, ct, markNew: false);
-            row.LastSuccessAt = row.PendingRefreshAt ?? now;
-            row.SyncFloorUtc = row.PendingSinceUtc;
-        }
-        else
-        {
-            // Nothing fetched yet: the first sync matches the bank's rows from MoneyMoney's newest booking on.
-            row.LastSuccessAt = null;
-            row.SyncFloorUtc = null;
-        }
-        account.Provider = row.BankLogin.ConnectorType;
-        row.SwitchedAt = now;
-        row.PendingRefreshJson = null;
-        row.PendingRefreshAt = null;
-        row.PendingSinceUtc = null;
-        row.LastError = null;
-        await db.SaveChangesAsync(ct);
-        return true;
+        return rows.Count;
     }
 
     /// <summary>Marks the user's MoneyMoney import finished (further imports are refused) or resumes it.</summary>

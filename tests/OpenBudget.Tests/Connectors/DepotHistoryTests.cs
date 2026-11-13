@@ -139,7 +139,7 @@ public sealed class DepotHistoryTests
     }
 
     [Fact]
-    public async Task Imported_history_of_an_earlier_day_stays_and_a_depot_awaiting_its_switch_gets_no_points()
+    public async Task Imported_history_of_an_earlier_day_stays_when_the_linked_depot_syncs()
     {
         var (w, _, id) = await SetupAsync();
         await using var _w = w;
@@ -163,10 +163,6 @@ public sealed class DepotHistoryTests
         var remote = await w.RemoteAsync(BankWorld.Alice, id, DepotBank.DepotId);
         await w.For(BankWorld.Alice).LinkAsync(remote.Id, mmDepot);
 
-        await SyncAsync(w, id);
-        Assert.Equal([earlier], (await PointsAsync(w, mmDepot)).Select(p => p.Timestamp));
-
-        await w.SwitchAsync(BankWorld.Alice, remote.Id);
         await SyncAsync(w, id);
 
         var totals = (await PointsAsync(w, mmDepot)).Where(p => p.SecurityId == null).ToList();

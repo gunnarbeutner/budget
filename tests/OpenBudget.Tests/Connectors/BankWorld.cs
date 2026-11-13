@@ -123,12 +123,8 @@ internal sealed class BankWorld : IAsyncDisposable
         var access = new AccessScopeProvider(T.System, new FixedCurrentUser(userId), T.Notifier);
         var factory = new ScopedDbContextFactory(T.System, access);
         var origin = new ChangeOrigin();
-        return new AccountSwitchService(factory, T.System, access, new BankTransactionStore(),
-            T.Notifier, origin, Clock);
+        return new AccountSwitchService(factory, access, T.Notifier, origin, Clock);
     }
-
-    /// <summary>Switches a linked account (by its bank login account id) to the bank connection, taking the structure over if needed.</summary>
-    public Task<int> SwitchAsync(string user, int loginAccountId) => Switcher(user).SwitchAsync([loginAccountId]);
 
     /// <summary>The app's service graph for a user (reads/writes through global filters and write guard).</summary>
     public UserView View(string? userId) => T.ForUser(userId);
@@ -171,7 +167,6 @@ internal sealed class BankWorld : IAsyncDisposable
             if (a.RemoteId == FakeBankConnector.GiroId && existingForGiro is { } id)
             {
                 await svc.LinkAsync(a.Id, id);
-                await SwitchAsync(user, a.Id);
             }
             else
             {

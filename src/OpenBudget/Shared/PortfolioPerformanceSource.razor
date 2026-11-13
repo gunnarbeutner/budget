@@ -13,9 +13,12 @@
 
 <section class="mt-4" data-testid="pp-upload">
     <h2 class="h5">@L["Upload_Heading"]</h2>
-    <p class="text-body-secondary small">@L["Upload_Intro"]</p>
+    @if (!FromGetStarted)
+    {
+        <p class="text-body-secondary small">@L["Upload_Intro"]</p>
+    }
     <div class="d-flex flex-wrap align-items-center gap-2">
-        <InputFile id="pp-upload-file" class="form-control w-auto" accept=".portfolio" OnChange="UploadAsync" disabled="@uploading" />
+        <InputFile id="pp-upload-file" class="form-control w-auto mw-100" accept=".portfolio" OnChange="UploadAsync" disabled="@uploading" />
         @if (uploading)
         {
             <span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span class="small">@L["Upload_Running"]</span>

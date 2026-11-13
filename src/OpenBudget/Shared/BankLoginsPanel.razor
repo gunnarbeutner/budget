@@ -23,7 +23,10 @@
     return;
 }
 
-<p class="text-body-secondary">@L["Intro"]</p>
+@if (ShowIntro)
+{
+    <p class="text-body-secondary">@L["Intro"]</p>
+}
 @if (!string.IsNullOrEmpty(message))
 {
     <div class="alert alert-info py-2" role="status" id="bank-message">@message</div>
@@ -159,19 +162,6 @@ else
                                             {
                                                 <span data-testid="linked-to"><i class="bi bi-link-45deg" aria-hidden="true"></i> @(a.LinkedAccountName ?? "?")</span>
                                                 <button class="btn btn-sm btn-outline-secondary ms-2" data-action="unlink" @onclick="() => UnlinkAsync(a.Id)">@L["Button_Unlink"]</button>
-                                                @if (a.AwaitingSwitch)
-                                                {
-                                                    <div class="small mt-1" data-testid="awaiting-switch">
-                                                        <span class="text-body-secondary">@L["Switch_Awaiting"]</span>
-                                                        <button class="btn btn-sm btn-primary ms-1" data-action="switch" @onclick="() => switchIds = [a.Id]">@L["Button_Switch"]</button>
-                                                    </div>
-                                                }
-                                                else if (!a.CreatedByConnector)
-                                                {
-                                                    <div class="small mt-1 text-body-secondary" data-testid="switched">
-                                                        <span>@(a.SwitchedAt is { } switchedAt ? L["Switch_Done", Clock.ToLocal(switchedAt).ToString("yyyy-MM-dd")] : L["Switch_DoneUndated"])</span>
-                                                    </div>
-                                                }
                                             }
                                             else if (!a.Closed)
                                             {
@@ -276,7 +266,6 @@ else
     </Footer>
 </Modal>
 
-<AccountSwitchDialog LoginAccountIds="switchIds" OnClose="() => switchIds = null" OnSwitched="SwitchedAsync" />
 
 <Modal Show="@(editing != null)" Title="@L["Edit_Title"]" OnClose="@(() => editing = null)">
     <ChildContent>
@@ -346,6 +335,9 @@ else
 
 
 @code {
+    /// <summary>Whether the intro sentence shows (Get started has its own line instead).</summary>
+    [Parameter] public bool ShowIntro { get; set; } = true;
+
     private List<BankLoginView>? logins;
     private IReadOnlyList<ConnectorRegistration> connectors = [];
     private readonly Dictionary<int, List<BankLoginAccountView>> accountsByLogin = new();
@@ -372,13 +364,6 @@ else
     private RefreshInterval editInterval;
     private string? editError;
     private BankLoginView? pendingDelete;
-    private IReadOnlyList<int>? switchIds;
-
-    private async Task SwitchedAsync(int count)
-    {
-        switchIds = null;
-        await LoadAsync();
-    }
 
     private static bool NeedsCredentials(ConnectorRegistration? c) => c == null || c.Credentials != CredentialRequirement.None;
 

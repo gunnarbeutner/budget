@@ -2027,3 +2027,66 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 
 /* Project switcher rows act as menu items: their text is not selectable. */
 .project-switcher-row { -webkit-user-select: none; user-select: none; }
+
+/* Get started: one centered column under the header, with a stepper across the top. */
+.get-started {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 1.5rem 0 3rem;
+}
+
+/* The accounts table of the last step needs more room. */
+.get-started.wide { max-width: 64rem; }
+
+.get-started-stepper {
+    display: flex;
+    gap: .5rem;
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1.5rem;
+    counter-reset: none;
+}
+
+.get-started-stepper li {
+    flex: 1 1 0;
+    min-width: 0;
+    border-top: 3px solid var(--bs-border-color);
+    padding-top: .5rem;
+}
+
+.get-started-stepper li.done { border-top-color: var(--bs-success); }
+.get-started-stepper li.current { border-top-color: var(--bs-primary); }
+
+.get-started-stepper a {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    color: var(--bs-secondary-color);
+    text-decoration: none;
+    font-size: .875rem;
+}
+
+.get-started-stepper li.current a { color: var(--bs-body-color); font-weight: 600; }
+
+.get-started-stepper-mark {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    border: 1px solid var(--bs-border-color);
+    font-size: .75rem;
+}
+
+.get-started-stepper li.current .get-started-stepper-mark { background: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
+.get-started-stepper li.done .get-started-stepper-mark { background: var(--bs-success); border-color: var(--bs-success); color: #fff; }
+
+.get-started-stepper-label { line-height: 1.2; }
+
+@media (max-width: 575.98px) {
+    /* On a phone only the current step keeps its label. */
+    .get-started-stepper li:not(.current) .get-started-stepper-label { display: none; }
+    .get-started-stepper li:not(.current) { flex: 0 0 auto; }
+}

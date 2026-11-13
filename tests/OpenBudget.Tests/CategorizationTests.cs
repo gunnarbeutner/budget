@@ -269,9 +269,14 @@ public sealed class CategorizationTests
         var giro = await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId);
         await w.For(BankWorld.Alice).LinkAsync(giro.Id, account);
         Assert.True((await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, true, false))).Succeeded);
+        // The first sync brings history; rows a later sync inserts are new.
+        await using (var db = await w.T.System.CreateDbContextAsync())
+            await db.Transactions.Where(t => t.AccountId == account && t.Booked && t.ExternalId != null && t.Name != "Old Name").ExecuteDeleteAsync();
+        Assert.True((await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, true, false))).Succeeded);
 
         var rows = await w.TransactionsAsync(account);
         Assert.NotEmpty(rows);
+        Assert.Contains(rows, r => r.Booked && r.ExternalId != null && r.Name != "Old Name");
         Assert.All(rows.Where(r => r.Booked && r.ExternalId != null && r.Name != "Old Name"), r => Assert.True(r.IsNew));
         Assert.All(rows.Where(r => !r.Booked), r => Assert.False(r.IsNew));
         Assert.All(rows.Where(r => r.Name == "Old Name"), r => Assert.False(r.IsNew));   // pre-existing MoneyMoney row stays as it was

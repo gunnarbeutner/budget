@@ -103,7 +103,6 @@
     </Footer>
 </Modal>
 
-<AccountSwitchDialog LoginAccountIds="_switchIds" OnTop="true" OnClose="() => _switchIds = null" OnSwitched="SwitchedAsync" />
 
 <KeepManualDialog AccountIds="_keepManualIds" OnTop="true" OnClose="() => _keepManualIds = null" OnDone="KeptManualAsync" />
 
@@ -212,13 +211,7 @@
                     @if (sw.Provider == OpenBudget.Models.AccountProviders.MoneyMoney)
                     {
                         <div class="small">@L["Settings_UpdatedBy_MoneyMoney"]</div>
-                        @if (sw.Link is { Switched: false } link)
-                        {
-                            <div class="small text-body-secondary">@L["Settings_Switch_Linked", link.LoginName]</div>
-                            <button type="button" class="btn btn-sm btn-primary mt-1" data-testid="account-settings-switch"
-                                    @onclick="() => _switchIds = [link.LoginAccountId]">@L["Settings_Switch_Button"]</button>
-                        }
-                        else if (sw.CanManage)
+                        @if (sw.CanManage)
                         {
                             <div class="small text-body-secondary">@L["Settings_Switch_LinkFirst"]</div>
                         }
@@ -359,7 +352,6 @@
     private string? _groupColor;
     private SettingsState? _settings;
     private AccountSwitchState? _switchState;
-    private IReadOnlyList<int>? _switchIds;
 
     private IReadOnlyList<long>? _keepManualIds;
     private bool _confirmReturn;
@@ -394,16 +386,6 @@
         await ReloadSwitchStateAsync();
     }
 
-    private async Task SwitchedAsync(int count)
-    {
-        _switchIds = null;
-        if (_settings is { } s)
-        {
-            try { _switchState = await Switcher.GetAccountStateAsync(s.Account.Id); }
-            catch (AccessDeniedException) { _switchState = null; }
-        }
-        await OnChanged.InvokeAsync(null);
-    }
     private string _settingsName = "";
     private bool _statementsOn;
     private StatementsInterval _interval;
