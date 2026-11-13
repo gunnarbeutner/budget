@@ -1,7 +1,8 @@
 namespace OpenBudget.Connectors.Amazon;
 
 /// <summary>
-/// The amazon.de sign-in flow, all its selectors in one place. The e-mail page (#ap_email, #continue) is followed by
+/// The amazon.de sign-in flow, all its selectors in one place. The e-mail page (#ap_email, or the field of the combined
+/// "sign in or create account" page, then #continue) is followed by
 /// the password page (#ap_password, "keep me signed in", #signInSubmit); some variants ask both on one page. A one-time
 /// code page (#auth-mfa-otpcode, #auth-signin-button) gets the code of a stored TOTP secret with "don't require a code
 /// on this browser" ticked, or the code is asked from the user. A captcha, an approval on another device and unknown
@@ -12,9 +13,9 @@ internal static class AmazonSignIn
     /// <summary>The optional authenticator-app secret among the login's credentials.</summary>
     internal const string TotpKey = "totp";
 
-    internal const string EmailSelector = "#ap_email";
-    internal const string ContinueSelector = "#continue";
-    internal const string PasswordSelector = "#ap_password";
+    internal const string EmailSelector = "#ap_email, #ap_email_login, form[name=signIn] input[name=email]:not([type=hidden]), form[name=signIn] input[type=email]";
+    internal const string ContinueSelector = "#continue, form[name=signIn] input[type=submit], form[name=signIn] button[type=submit]";
+    internal const string PasswordSelector = "#ap_password, form[name=signIn] input[type=password]:not(.hide)";
     internal const string SignInSelector = "#signInSubmit";
     internal const string RememberMeSelector = "input[name=rememberMe]";
     internal const string CodePath = "/ap/mfa";
@@ -37,7 +38,7 @@ internal static class AmazonSignIn
         + " if (shown('input[name=cvf_captcha_input], #auth-captcha-guess, #captchacharacters') || p.includes('validateCaptcha')) return { ok: false, reason: 'Amazon shows a captcha.' };"
         + " if (p.includes('/ap/cvf/approval') || shown('#resend-approval-link, #channelDetailsForApproval')) return { ok: false, reason: 'Amazon asks to approve the sign-in on another device.' };"
         + " if (shown('#auth-mfa-otpcode')) return { ok: false, reason: 'Amazon asks for a one-time code.' };"
-        + " if (shown('#ap_email, #ap_password') || !p.startsWith('/ap/')) return { ok: true, reason: '' };"
+        + " if (shown('#ap_email, #ap_email_login, #ap_password, form[name=signIn] input[type=email], form[name=signIn] input[type=password]:not(.hide)') || !p.startsWith('/ap/')) return { ok: true, reason: '' };"
         + " return { ok: false, reason: 'Amazon shows a sign-in page the app does not know.' }; }";
 
     internal static WebLoginAutofill? Autofill(ConnectorCredentials? credentials) =>
