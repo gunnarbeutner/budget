@@ -207,18 +207,10 @@ else
     <li class="card mb-3" data-testid="step-cashflow">
         <div class="card-body">
             <h2 class="h5 card-title">@L["Step4_Heading"]</h2>
-            <p class="mb-2">@L["Step4_Body"]</p>
             @if (state.ProjectId is { } pid)
             {
-                @if (state is { MoneyMoneyImported: false, HasCategories: true, HasAccounts: true, NonCashAccounts: 0 })
-                {
-                    @* Started fresh with only the cash account: nothing to decide here. *@
-                    <p class="mb-0" data-testid="step-summary">@L["Step4_Summary"]</p>
-                }
-                else
-                {
-                    <div data-testid="step-cashflow-accounts"><ProjectAccountsPanel ProjectId="pid" ShowIntro="false" Compact="true" /></div>
-                }
+                <p class="mb-2">@L["Step4_Body"]</p>
+                <div data-testid="step-cashflow-accounts"><ProjectAccountsPanel ProjectId="pid" ShowIntro="false" Compact="true" /></div>
                 @if (state.MoneyMoneyImported)
                 {
                     <h3 class="h6 mt-4">@L["Setup_Heading"]</h3>
@@ -391,12 +383,15 @@ else
         await LoadAsync();
     }
 
-    private const int StepCount = 4;
+    // Started fresh with only the cash account: the last step has nothing to decide, so the wizard ends after step 3.
+    private bool NothingToDecide => state is { MoneyMoneyImported: false, HasCategories: true, HasAccounts: true, NonCashAccounts: 0 };
+
+    private int StepCount => NothingToDecide ? 3 : 4;
 
     /// <summary>The step to show (?step=1…4).</summary>
     [SupplyParameterFromQuery(Name = "step")] public int? Step { get; set; }
 
-    private int CurrentStep => Step is >= 1 and <= StepCount ? Step.Value : 1;
+    private int CurrentStep => Step is { } s && s >= 1 && s <= StepCount ? s : 1;
 
     private int? renderedStep;
     private bool scrollToTop;

@@ -177,10 +177,11 @@ public sealed class GetStartedTests : EndToEndTestBase
         await Expect(Page.GetByTestId("get-started-next")).ToHaveTextAsync("Next");
         await Expect(Page.GetByTestId("start-import")).ToHaveCountAsync(0);
 
-        // Nothing to decide on the last step: a one-line summary and Done.
-        await Page.GetByTestId("get-started-stepper-4").Locator("a").ClickAsync();
-        await Expect(Page.GetByTestId("step-summary")).ToBeVisibleAsync();
-        await Expect(Page.GetByTestId("category-setup")).ToHaveCountAsync(0);
+        // Nothing to decide on the accounts step: the wizard ends with Done on step 3 and offers no step 4.
+        await Expect(Page.GetByTestId("get-started-stepper-4")).ToHaveCountAsync(0);
+        await Page.GetByTestId("get-started-stepper-3").Locator("a").ClickAsync();
+        await Expect(Page.GetByTestId("get-started-done")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("get-started-next")).ToHaveCountAsync(0);
 
         await using var db = await Db.CreateDbContextAsync();
         var groups = await db.CategoryGroups.Where(g => g.OwnerUserId == E2ESeed.SecondUserId).ToListAsync();

@@ -349,7 +349,4 @@
   <data name="Start_FreshAccount" xml:space="preserve">
     <value>Account</value>
   </data>
-  <data name="Step4_Summary" xml:space="preserve">
-    <value>Your categories and the Cash account are ready.</value>
-  </data>
 </root>
