@@ -201,8 +201,8 @@ internal static class CategoryEval
             if (b.Count == 0) continue;
             Console.WriteLine($"    [{lo:0.0},{Math.Min(hi, 1):0.0})  n={b.Count,4}  acc {Pct(Correct(b), b.Count)}  conf {b.Average(s => preds[s.Tx.Id].Confidence):0.00}");
         }
-        var sure = covered.Where(s => preds[s.Tx.Id].Confidence >= 0.8).ToList();
-        Console.WriteLine($"  'Accept all >= 0.8': {Pct(sure.Count, n)} of bookings, precision {Pct(Correct(sure), sure.Count)}");
+        var sure = covered.Where(s => preds[s.Tx.Id].Confidence >= 0.9).ToList();
+        Console.WriteLine($"  'Accept all >= 0.9': {Pct(sure.Count, n)} of bookings, precision {Pct(Correct(sure), sure.Count)}");
         // Error examples as category pairs only (no booking data).
         var errors = covered.Where(s => preds[s.Tx.Id].Category != s.Truth)
             .GroupBy(s => (Truth: s.Owner.Valid[s.Truth].Path, Pred: s.Owner.Valid.TryGetValue(preds[s.Tx.Id].Category!.Value, out var o) ? o.Path : "?"))

@@ -71,7 +71,7 @@
     <value>Frage KI … {0} von {1}</value>
   </data>
   <data name="Button_AcceptSure" xml:space="preserve">
-    <value>Alle ≥ 80 % übernehmen ({0})</value>
+    <value>Alle ≥ 90 % übernehmen ({0})</value>
   </data>
   <data name="Button_Rules" xml:space="preserve">
     <value>Regeln ({0})</value>

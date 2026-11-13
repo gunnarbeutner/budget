@@ -79,6 +79,19 @@ public sealed partial class CategorySuggestionTests
     }
 
     [Fact]
+    public void Disagreeing_neighbours_lower_the_confidence_below_bulk_accept()
+    {
+        static Neighbour N(long id, long category) =>
+            new(new HistoryBooking(id, category, null, "EXAMPLE MARKET", new HashSet<string>(StringComparer.Ordinal), -100), 1.0);
+        var agreed = CategoryMatching.KnnVote([N(1, 7), N(2, 7), N(3, 7)])!;
+        var split = CategoryMatching.KnnVote([N(1, 7), N(2, 7), N(3, 7), N(4, 8)])!;
+        Assert.Equal(1.0, agreed.Confidence);
+        Assert.Equal(7, split.CategoryId);
+        Assert.Equal(0.5625, split.Confidence, 3);
+        Assert.True(split.Confidence < Shared.CategorySuggestPanel.SureThreshold);
+    }
+
+    [Fact]
     public async Task Deterministic_suggestions_work_without_ai_and_nothing_is_sent_without_consent()
     {
         await using var t = await WorldAsync();

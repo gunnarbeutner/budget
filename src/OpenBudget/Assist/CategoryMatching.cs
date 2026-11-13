@@ -119,7 +119,7 @@ public sealed partial class CategoryMatching
         return jaccard;
     }
 
-    /// <summary>Similarity-weighted vote of the neighbours; confidence = vote share × best similarity of the winner.</summary>
+    /// <summary>Similarity-weighted vote of the neighbours; confidence = vote share × best similarity of the winner, lowered when they disagree.</summary>
     public static Vote? KnnVote(IReadOnlyList<Neighbour> neighbours)
     {
         if (neighbours.Count == 0) return null;
@@ -128,6 +128,8 @@ public sealed partial class CategoryMatching
             .Select(g => (Id: g.Key, Weight: g.Sum(n => n.Similarity), Best: g.Max(n => n.Similarity), Count: g.Count()))
             .OrderByDescending(g => g.Weight).First();
         var confidence = top.Weight / total * top.Best;
+        // When the neighbours disagree, a high vote share still meant only about two in three right in a backtest.
+        if (top.Count < neighbours.Count) confidence *= 0.75;
         // A single similar booking is weak evidence.
         if (top.Count == 1) confidence *= 0.8;
         return new Vote(top.Id, Math.Round(confidence, 3), "knn", $"{top.Count} of {neighbours.Count} similar bookings");

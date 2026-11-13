@@ -71,7 +71,7 @@
     <value>Asking AI … {0} of {1}</value>
   </data>
   <data name="Button_AcceptSure" xml:space="preserve">
-    <value>Accept all ≥ 80 % ({0})</value>
+    <value>Accept all ≥ 90 % ({0})</value>
   </data>
   <data name="Button_Rules" xml:space="preserve">
     <value>Rules ({0})</value>
