@@ -79,9 +79,6 @@
   <data name="BankReference" xml:space="preserve">
     <value>Bankreferenz</value>
   </data>
-  <data name="Account" xml:space="preserve">
-    <value>Konto</value>
-  </data>
   <data name="Category" xml:space="preserve">
     <value>Kategorie</value>
   </data>

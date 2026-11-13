@@ -490,15 +490,9 @@
                                             }
                                         </div>
                                         @{ var purpose = PurposeText.Clean(row.Purpose); }
-                                        @if (!string.IsNullOrEmpty(purpose) || (showAccountColumn && !string.IsNullOrEmpty(row.AccountName)))
+                                        @if (!string.IsNullOrEmpty(purpose))
                                         {
-                                            <div class="tx-purpose">
-                                                @if (showAccountColumn && !string.IsNullOrEmpty(row.AccountName))
-                                                {
-                                                    <span class="tx-acct" data-testid="tx-account">@row.AccountName@(string.IsNullOrEmpty(purpose) ? "" : " · ")</span>
-                                                }
-                                                @purpose
-                                            </div>
+                                            <div class="tx-purpose">@purpose</div>
                                         }
                                         @if (!string.IsNullOrEmpty(row.Note))
                                         {
@@ -519,7 +513,7 @@
                                 </div>
                                 @if (isExpanded)
                                 {
-                                    <TxDetails Row="row" Statement="expandedStatement" ShowAccount="showAccountColumn"
+                                    <TxDetails Row="row" Statement="expandedStatement" ShowAccount="showAccountColumn" Account="AccountNodeFor(row.AccountId)"
                                                OnNoteSave="note => SetNoteForAsync(row.Id, note)"
                                                OnShowSimilar="() => ShowSimilarAsync(row)"
                                                OnSuggest="() => SuggestForRowAsync(row)"
@@ -1669,6 +1663,10 @@
 
     private bool showCategoryColumn => selectionKind != "category" || _previewIds != null;
     // The account per row only matters when the list spans more than one account.
+    /// <summary>The sidebar's node for a booking's account (its icon and colour), or null when the tree lacks it.</summary>
+    private BrowseAccountNode? AccountNodeFor(long? accountId) =>
+        accountId is { } id ? tree?.Accounts.FirstOrDefault(a => a.Id == id) : null;
+
     private bool showAccountColumn => selectionKind != "account" && accountFilter == null && (tree?.Accounts.Count ?? 0) > 1;
 
 

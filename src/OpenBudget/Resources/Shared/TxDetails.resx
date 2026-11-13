@@ -79,9 +79,6 @@
   <data name="BankReference" xml:space="preserve">
     <value>Bank reference</value>
   </data>
-  <data name="Account" xml:space="preserve">
-    <value>Account</value>
-  </data>
   <data name="Category" xml:space="preserve">
     <value>Category</value>
   </data>

@@ -11,6 +11,10 @@
    note and check mark are edited here when the row is editable. *@
 
 <div class="tx-details" data-testid="tx-details" @onclick:stopPropagation="true">
+    @if (ShowAccount && !string.IsNullOrEmpty(Row.AccountName))
+    {
+        <div class="tx-details-account" data-testid="tx-details-account"><i class="bi @(Account?.DisplayIcon ?? AccountIcons.ForAccount(null, null, false)) me-1" style="@AccountIcons.TintStyle(Account?.Color)" aria-hidden="true"></i><b>@Row.AccountName</b></div>
+    }
     <div class="tx-details-facts">
         @if (!string.IsNullOrEmpty(Row.BookingText))
         {
@@ -36,10 +40,6 @@
         @foreach (var (key, value) in SepaFacts)
         {
             <span data-testid="@("tx-details-" + key)"><b>@L[key]</b>@value</span>
-        }
-        @if (ShowAccount && !string.IsNullOrEmpty(Row.AccountName))
-        {
-            <span><b>@L["Account"]</b>@Row.AccountName</span>
         }
         <span data-testid="tx-details-category">
             <b>@L["Category"]</b>@(string.IsNullOrEmpty(Row.CategoryName) ? L["NoCategory"] : Row.CategoryName)
@@ -172,6 +172,9 @@
     [Parameter] public (long Id, string Name)? Statement { get; set; }
     /// <summary>Whether to list the account (the list spans several accounts).</summary>
     [Parameter] public bool ShowAccount { get; set; }
+
+    /// <summary>The sidebar's node for the booking's account (its icon and colour), or null for the type default.</summary>
+    [Parameter] public BrowseAccountNode? Account { get; set; }
     [Parameter] public EventCallback<string> OnNoteSave { get; set; }
     [Parameter] public EventCallback OnShowSimilar { get; set; }
     /// <summary>Asks for a category suggestion for this booking (shown as a chip on the row).</summary>

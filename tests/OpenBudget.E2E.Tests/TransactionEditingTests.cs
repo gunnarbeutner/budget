@@ -129,7 +129,9 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         await Expect(details).ToContainTextAsync("Card payment 1234");
         await Expect(details).ToContainTextAsync("Lastschrift");
         await Expect(details).ToContainTextAsync("REF-101");
-        await Expect(details).ToContainTextAsync(EditingSeed.BankAccountName);
+        await Expect(details.GetByTestId("tx-details-account")).ToHaveTextAsync(EditingSeed.BankAccountName);
+        await Expect(details.GetByTestId("tx-details-account").Locator("i.bi")).ToBeVisibleAsync();
+        await Expect(Row("\u221225,00")).Not.ToContainTextAsync(EditingSeed.BankAccountName);
         await Expect(Page.GetByTestId("action-bar-count")).ToContainTextAsync("1 selected");
 
         // Selecting another row moves the expansion; clicking the expanded row again folds it.

@@ -1233,7 +1233,6 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
     text-overflow: ellipsis;
 }
 .tx-comment { font-size: 13px; color: var(--ob-muted); }
-.tx-acct { color: var(--ob-muted); font-size: 12px; }
 .tx-new-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ob-accent); flex: 0 0 auto; }
 .tx-flag {
     font-size: 11px;
@@ -1295,6 +1294,7 @@ button.cat-pill:hover { filter: brightness(0.96); }
     font-size: 13px;
     color: var(--ob-text-2);
 }
+.tx-details-account { color: var(--bs-body-color); margin-bottom: 4px; }
 .tx-details-facts { display: flex; flex-wrap: wrap; column-gap: 20px; row-gap: 4px; }
 .tx-details-facts b { color: var(--bs-body-color); font-weight: 600; margin-right: 4px; }
 .tx-details-purpose { margin-top: 6px; word-break: break-word; }

@@ -123,12 +123,18 @@ public sealed class AccountTreeTests : EndToEndTestBase
         await Expect(group).ToHaveAttributeAsync("aria-selected", "true");
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Example Bank" })).ToBeVisibleAsync();
 
-        // Bookings of both member accounts (not the Cash account of the parent group), each with its account.
+        // Bookings of both member accounts (not the Cash account of the parent group); rows name no account, the details do.
         var rows = Page.GetByTestId("tx-row");
         await Expect(rows).ToHaveCountAsync(2);
         await Expect(rows.Nth(0)).ToContainTextAsync("Example Savings Booking");
-        await Expect(rows.Nth(0).GetByTestId("tx-account")).ToContainTextAsync("E2E Savings");
         await Expect(rows.Nth(1)).ToContainTextAsync("Example Giro Booking");
+        await Expect(rows.Nth(0)).Not.ToContainTextAsync("E2E Savings");
+        await rows.Nth(0).ClickAsync();
+        var account = Page.GetByTestId("tx-details-account");
+        await Expect(account).ToHaveTextAsync("E2E Savings");
+        await Expect(account.Locator("i.bi")).ToBeVisibleAsync();
+        await rows.Nth(0).ClickAsync();
+        await Expect(account).ToHaveCountAsync(0);
 
         // The toolbar total is the tree's group sum; the day rows carry the whole group's end-of-day balance.
         await Expect(Page.GetByTestId("browse-balance")).ToHaveTextAsync("1.250,50\u00A0€");
