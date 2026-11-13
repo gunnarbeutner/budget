@@ -1,9 +1,8 @@
 # Example deployment for OpenBudget.
 #
-# Builds the image from this checkout. To run a prebuilt image instead, replace `build: .` with
-# `image: <registry>/<owner>/budget:<tag>` (the GitHub workflow publishes
-# ghcr.io/<owner>/budget:latest and :sha-<commit>). Updating is then
-# `docker compose pull && docker compose up -d`.
+# Runs the image the GitHub workflow publishes (ghcr.io/gunnarbeutner/budget: :latest from main, and
+# :sha-<commit> for a fixed version). Updating is `docker compose pull && docker compose up -d`.
+# To build from this checkout instead, replace the `image:` line with `build: .`.
 #
 # Before the first start:
 #   echo "OPENBUDGET_SECRETS_KEY=$(openssl rand -base64 32)" > .env
@@ -12,7 +11,7 @@
 # Get started page after start (see README, "Importers").
 #
 # First start: no users exist yet and every page shows only a setup message. Create the first
-# admin (it also takes over a source of the same name and that source's projects):
+# admin:
 #   docker exec openbudget dotnet OpenBudget.dll users add <username> --admin
 # See README, "Users and sharing". Keep ./data on a persistent volume: it holds the database and
 # the data-protection keys (data/keys) that keep logins valid across redeploys.
@@ -22,7 +21,7 @@
 
 services:
   app:
-    build: .
+    image: ghcr.io/gunnarbeutner/budget:latest
     container_name: openbudget
     restart: unless-stopped
     ports:
