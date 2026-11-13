@@ -64,7 +64,9 @@ dotnet run --project src/OpenBudget
 | `OPENBUDGET_ENABLE_FAKE_BANK` | `true` offers a made-up bank for trying out connectors. |
 | `OPENBUDGET_OPENAI_API_KEY` | Turns on AI suggestions (see below); without it the AI settings are hidden. Not stored in the data volume. |
 | `OPENBUDGET_OPENAI_MODEL` | Model for AI suggestions (default `gpt-6.1-terra`). |
-| `OPENBUDGET_OPENAI_BASE_URL` | Another OpenAI-compatible endpoint (default `https://api.openai.com/v1`). |
+| `OPENBUDGET_OPENAI_BASE_URL` | Another OpenAI-compatible endpoint (default `https://api.openai.com/v1`); `https://eu.api.openai.com/v1` processes requests in Europe (the project needs EU data residency or an eligible retention setting). |
+| `OPENBUDGET_OPENAI_CATEGORY_ROUTE` | `responses` (default) or `decisions`: choose booking categories with the Decisions API (faster, cheaper, probabilities instead of a rationale, no AI rule proposals). |
+| `OPENBUDGET_OPENAI_DECISIONS_MODEL` | Model for the Decisions route (default `gpt-6-luna`). |
 
 ### User commands
 
@@ -91,7 +93,8 @@ With `OPENBUDGET_OPENAI_API_KEY` set, each user can turn on AI suggestions (Sett
 previews what is sent). Only bookings the app is unsure about are sent, with date, amount, payee, cleaned purpose,
 booking code and account type, plus the category names and rules; IBANs, references, card numbers, account names,
 balances and the users' names are removed. Bookings of another user's accounts are only sent if that user opted in
-too. Requests use the Responses API with `store: false`.
+too. Requests use the Responses API with `store: false`; with `OPENBUDGET_OPENAI_CATEGORY_ROUTE=decisions` categories
+are chosen with the Decisions API instead (one request per booking), while rules and budgets stay on the Responses API.
 
 ## Bank connectors
 

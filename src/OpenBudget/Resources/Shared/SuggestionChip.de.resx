@@ -67,6 +67,12 @@
   <data name="Source_ai" xml:space="preserve">
     <value>KI</value>
   </data>
+  <data name="Source_ai_decision" xml:space="preserve">
+    <value>KI: {0} (zweite Wahl: {1})</value>
+  </data>
+  <data name="Source_ai_decision_single" xml:space="preserve">
+    <value>KI: {0}</value>
+  </data>
   <data name="Source_iban" xml:space="preserve">
     <value>Gleiche IBAN wie frühere Buchungen</value>
   </data>

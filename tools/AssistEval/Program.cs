@@ -1,8 +1,10 @@
 // Offline accuracy check of the category and budget suggestions against a COPY of a database, opened read-only.
 // Prints aggregate numbers only (no payees, amounts or IBANs; category paths in the confusion list). With --models it sends redacted bookings to the
 // configured OpenAI endpoint (OPENBUDGET_OPENAI_API_KEY in the environment) — only run it on data whose owners agreed.
+// --route decisions asks the Decisions API (OPENBUDGET_OPENAI_DECISIONS_MODEL, default gpt-6-luna) instead, one request
+// per booking; --route both runs the Responses models and the Decisions API on the same sample.
 //
-//   dotnet run --project tools/AssistEval -- --db <copy.db> [--sample 300] [--models gpt-6.1-terra,gpt-6-luna] [--budget-year 2025]
+//   dotnet run --project tools/AssistEval -- --db <copy.db> [--sample 300] [--models gpt-6.1-terra] [--route responses|decisions|both] [--budget-year 2025]
 using System.Diagnostics;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
@@ -42,14 +44,18 @@ if (opts.Sample > 0) await CategoryEval.RunAsync(data, personNames, opts);
 if (opts.BudgetYear > 0) await BudgetEval.RunAsync(data, personNames, opts);
 return 0;
 
-internal sealed record Args(string Db, int Sample, string[] Models, int BudgetYear, int Seed)
+internal sealed record Args(string Db, int Sample, string[] Models, int BudgetYear, int Seed, string Route)
 {
+    public bool Responses => Route is "responses" or "both";
+
+    public bool Decisions => Route is "decisions" or "both";
+
     public static Args Parse(string[] a)
     {
         string Get(string name, string def) => Array.IndexOf(a, name) is var i and >= 0 && i + 1 < a.Length ? a[i + 1] : def;
         return new Args(Get("--db", ""), int.Parse(Get("--sample", "300"), CultureInfo.InvariantCulture),
             Get("--models", "").Split(',', StringSplitOptions.RemoveEmptyEntries), int.Parse(Get("--budget-year", "0"), CultureInfo.InvariantCulture),
-            int.Parse(Get("--seed", "42"), CultureInfo.InvariantCulture));
+            int.Parse(Get("--seed", "42"), CultureInfo.InvariantCulture), Get("--route", "responses"));
     }
 }
 
@@ -74,6 +80,8 @@ internal static class Ai
 
     public static OpenAiAssistClient Client(string model) => new(new Factory(), AssistOptions.From(n => n == AssistOptions.ModelVariable ? model : Environment.GetEnvironmentVariable(n)),
         NullLogger<OpenAiAssistClient>.Instance);
+
+    public static OpenAiDecisionsClient Decisions() => new(new Factory(), AssistOptions.From(Environment.GetEnvironmentVariable), NullLogger<OpenAiDecisionsClient>.Instance);
 }
 
 internal static class CategoryEval
@@ -116,7 +124,7 @@ internal static class CategoryEval
         }
         Report("deterministic only", sample, det, null);
 
-        foreach (var model in opts.Models)
+        foreach (var model in opts.Responses ? opts.Models : [])
         {
             var preds = new Dictionary<long, Prediction>(det);
             var rules = new List<(OwnerData Owner, string Expression, long Category)>();
@@ -169,7 +177,62 @@ internal static class CategoryEval
             if (failures > 0) Console.WriteLine($"  failed batches: {failures}");
             RuleReport(data, sample, hidden, preds, rules);
         }
-        if (opts.Models.Length == 0) RuleReport(data, sample, hidden, det, []);
+        if (opts.Decisions) await DecisionsAsync(sample, det, unsure, names, data, hidden);
+        if (opts.Models.Length == 0 && !opts.Decisions) RuleReport(data, sample, hidden, det, []);
+    }
+
+    /// <summary>The Decisions route: one choice question per unsure booking; top-3 from the returned probabilities.</summary>
+    private static async Task DecisionsAsync(List<Item> sample, Dictionary<long, Prediction> det, List<(Item Item, List<Neighbour> Neighbours)> unsure,
+        List<string> names, List<OwnerData> data, HashSet<long> hidden)
+    {
+        var client = Ai.Decisions();
+        var preds = new Dictionary<long, Prediction>(det);
+        var usage = new Usage(0, 0, 0, 0, 0);
+        var failures = 0;
+        var wall = Stopwatch.StartNew();
+        foreach (var ownerGroup in unsure.GroupBy(u => u.Item.Owner))
+        {
+            var owner = ownerGroup.Key;
+            var categories = owner.Options.Select((o, i) => new PromptCategory(CategoryPrompt.Handle(i + 1), o.Id, o.Path, owner.IncomeCategories.Contains(o.Id))).ToList();
+            var byId = categories.ToDictionary(c => c.Id);
+            var handles = categories.ToDictionary(c => c.Handle, StringComparer.Ordinal);
+            var txById = owner.Txs.ToDictionary(t => t.Id);
+            var redactor = new AssistRedactor(names);
+            var items = ownerGroup.Select(b => new DecisionItem(b.Item.Tx.Id, new PromptItem(redactor.Redact(Source(owner, b.Item.Tx)),
+                b.Neighbours.Take(3).Select(n => (redactor.Redact(Source(owner, txById[n.Booking.Id])), byId[n.Booking.CategoryId].Handle)).ToList()), categories)).ToList();
+            foreach (var chunk in items.Chunk(40))
+            {
+                try
+                {
+                    foreach (var (result, response) in await new DecisionsCategoryChooser(client).ChooseAsync(chunk))
+                    {
+                        usage = usage with
+                        {
+                            Calls = usage.Calls + 1, Input = usage.Input + response.InputTokens, Cached = usage.Cached + response.CachedTokens,
+                            Output = usage.Output + response.OutputTokens, Seconds = usage.Seconds + response.Elapsed.TotalSeconds,
+                        };
+                        if (result == null) continue;
+                        var old = preds[result.TransactionId];
+                        if (old.Category != null && old.Confidence >= result.Probability) continue;
+                        var answer = response.Answers.FirstOrDefault();
+                        var top3 = answer?.Probabilities.OrderByDescending(p => p.Probability).Select(p => handles.TryGetValue(p.Value, out var c) ? c.Id : 0).Where(id => id != 0).Take(3).ToList()
+                            ?? [result.CategoryId];
+                        if (top3.Count == 0) top3.Add(result.CategoryId);
+                        preds[result.TransactionId] = new Prediction(result.CategoryId, result.Probability, "ai", top3);
+                    }
+                }
+                catch (AssistException ex)
+                {
+                    failures++;
+                    Console.WriteLine($"  chunk failed: {ex.Message}");
+                }
+            }
+        }
+        Report($"with decisions ({client.Model})", sample, preds, usage);
+        Console.WriteLine($"  latency: {1000 * usage.Seconds / Math.Max(1, usage.Calls):0} ms per booking (sequential), {1000 * wall.Elapsed.TotalSeconds / Math.Max(1, usage.Calls):0} ms per booking with {DecisionsCategoryChooser.Parallelism} in parallel");
+        Console.WriteLine($"  cost: {usage.Input} input tokens ≈ ${usage.Input * 0.10 / 1_000_000:0.0000} (uncached list price; output is free)");
+        if (failures > 0) Console.WriteLine($"  failed chunks: {failures}");
+        RuleReport(data, sample, hidden, preds, []);
     }
 
     private static string Purpose(Transaction t) => SepaPurpose.Get(t.Purpose, "SVWZ") ?? t.Purpose ?? "";

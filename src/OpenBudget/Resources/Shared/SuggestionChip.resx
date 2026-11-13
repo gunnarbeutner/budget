@@ -67,6 +67,12 @@
   <data name="Source_ai" xml:space="preserve">
     <value>AI</value>
   </data>
+  <data name="Source_ai_decision" xml:space="preserve">
+    <value>AI: {0} (second: {1})</value>
+  </data>
+  <data name="Source_ai_decision_single" xml:space="preserve">
+    <value>AI: {0}</value>
+  </data>
   <data name="Source_iban" xml:space="preserve">
     <value>Same IBAN as earlier bookings</value>
   </data>

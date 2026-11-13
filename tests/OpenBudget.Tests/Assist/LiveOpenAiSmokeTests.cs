@@ -66,6 +66,38 @@ public sealed class LiveOpenAiSmokeTests(ITestOutputHelper output)
     }
 
     [LiveOpenAiFact]
+    public async Task Decisions_choice_round_trip()
+    {
+        List<PromptCategory> categories =
+        [
+            new("c1", 1, "Haushalt › Lebensmittel", false),
+            new("c2", 2, "Mobilität › Tanken", false),
+            new("c3", 3, "Wohnen › Miete", false),
+            new("c4", 4, "Einnahmen › Gehalt", true),
+            new("c5", 5, "Freizeit › Streaming", false),
+        ];
+        var redactor = new AssistRedactor(["Erika Mustermann"]);
+        var items = new[]
+        {
+            (Id: 3L, Expected: 3L, Source: new AssistBookingSource(3, new DateOnly(2026, 10, 1), -95000, "EUR", "Beispiel Wohnbau GmbH", "Miete Oktober Wohnung 3", "Dauerauftrag", "152", "Giro")),
+            (Id: 4L, Expected: 4L, Source: new AssistBookingSource(4, new DateOnly(2026, 9, 30), 312345, "EUR", "Fiktiv AG", "Lohn/Gehalt 09.2026 Erika Mustermann", "Gutschrift", "153", "Giro")),
+            (Id: 2L, Expected: 2L, Source: new AssistBookingSource(2, new DateOnly(2026, 10, 3), -7810, "EUR", "Beispiel Tankstelle", "Tankstelle Musterstadt", "Kartenzahlung", null, "Giro")),
+        }.Select(x => (x.Expected, Item: new DecisionItem(x.Id, new PromptItem(redactor.Redact(x.Source), []), categories))).ToList();
+        var client = new OpenAiDecisionsClient(new Factory(), AssistOptions.From(Environment.GetEnvironmentVariable), NullLogger<OpenAiDecisionsClient>.Instance);
+
+        var answers = await new DecisionsCategoryChooser(client).ChooseAsync(items.Select(i => i.Item).ToList());
+
+        foreach (var (result, response) in answers)
+            output.WriteLine($"model={response.Model} ms={response.Elapsed.TotalMilliseconds:0} in={response.InputTokens} out={response.OutputTokens} " +
+                $"choice={result?.CategoryId} p={result?.Probability:0.00} second={result?.SecondCategoryId} p2={result?.SecondProbability:0.00}");
+        for (var i = 0; i < items.Count; i++)
+        {
+            Assert.Equal(items[i].Expected, answers[i].Result?.CategoryId);
+            Assert.InRange(answers[i].Result!.Probability, 0.0, 1.0);
+        }
+    }
+
+    [LiveOpenAiFact]
     public async Task Budget_schema_round_trip()
     {
         var redactor = new AssistRedactor([]);

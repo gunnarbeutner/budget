@@ -92,6 +92,9 @@
                 return m.Success ? l["Source_knn_Count", int.Parse(m.Groups[1].Value)] : l["Source_knn"];
             case "iban":
                 return l["Source_iban"];
+            case "ai" when DecisionsCategoryChooser.ReadRationale(rationale) is { } d:
+                var percent = d.Probability.ToString("P0", System.Globalization.CultureInfo.CurrentCulture);
+                return d.SecondPath == null ? l["Source_ai_decision_single", percent] : l["Source_ai_decision", percent, d.SecondPath];
             default:
                 var label = l["Source_" + s.Source].Value;
                 return string.IsNullOrEmpty(rationale) ? label : label + ": " + rationale;

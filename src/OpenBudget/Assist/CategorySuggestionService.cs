@@ -64,12 +64,17 @@ public sealed partial class CategorySuggestionService
     private readonly ILogger<CategorySuggestionService> _log;
     private readonly TimeProvider _clock;
     private readonly SplitService? _splits;
+    private readonly IDecisionsClient? _decisions;
+    private readonly AssistOptions? _options;
 
     public CategorySuggestionService(
         IDbContextFactory<BudgetDbContext> dbFactory, SystemDbContextFactory system, CategorizationService categorization, CategoryRuleService rules,
         BudgetService budgets, TransactionEditService edits, AssistSettingsService settings, IAssistClient client,
-        ILogger<CategorySuggestionService> log, TimeProvider clock, SplitService? splits = null)
+        ILogger<CategorySuggestionService> log, TimeProvider clock, SplitService? splits = null,
+        IDecisionsClient? decisions = null, AssistOptions? options = null)
     {
+        _decisions = decisions;
+        _options = options;
         _splits = splits;
         _dbFactory = dbFactory;
         _system = system;
@@ -172,7 +177,9 @@ public sealed partial class CategorySuggestionService
             {
                 try
                 {
-                    sent = await AskAiAsync(ctx, eligible, results, aiRules, progress, ct);
+                    sent = UseDecisions
+                        ? await AskDecisionsAsync(ctx, eligible, results, progress, ct)
+                        : await AskAiAsync(ctx, eligible, results, aiRules, progress, ct);
                 }
                 catch (AssistException ex)
                 {
@@ -235,6 +242,42 @@ public sealed partial class CategorySuggestionService
             progress?.Report((done, items.Count));
         }
         return items.Count;
+    }
+
+    /// <summary>Categories are chosen with the Decisions API (no rationale, no AI rule proposals).</summary>
+    private bool UseDecisions => _options?.CategoryRoute == CategoryRoute.Decisions && _decisions is { Enabled: true };
+
+    private async Task<int> AskDecisionsAsync(
+        Context ctx, List<(Transaction Row, TargetBooking Target, List<Neighbour> Neighbours)> items,
+        Dictionary<long, TxCategorySuggestion> results, IProgress<(int, int)>? progress, CancellationToken ct)
+    {
+        var redactor = new AssistRedactor(await _settings.PersonNamesAsync(ct));
+        var requests = items.Select(b => new DecisionItem(b.Row.Id,
+            new PromptItem(
+                redactor.Redact(AssistSettingsService.ToSource(b.Row, ctx.AccountKinds.GetValueOrDefault(b.Row.AccountId ?? 0))),
+                b.Neighbours.Take(3).Select(n => (
+                    redactor.Redact(AssistSettingsService.ToSource(ctx.Rows[n.Booking.Id], ctx.AccountKinds.GetValueOrDefault(ctx.Rows[n.Booking.Id].AccountId ?? 0))),
+                    ctx.ById[n.Booking.CategoryId].Handle)).ToList()),
+            ctx.Categories.Where(c => Allowed(ctx, c.Id, b.Row.AccountId)).ToList())).ToList();
+        progress?.Report((0, items.Count));
+        var answers = await new DecisionsCategoryChooser(_decisions!).ChooseAsync(requests, new SyncProgress(d => progress?.Report((d, items.Count))), ct);
+        _log.LogInformation("AI decided {Count} bookings ({Input} input tokens, {Cached} cached, {Ms} ms per booking)",
+            answers.Count, answers.Sum(a => a.Response.InputTokens), answers.Sum(a => a.Response.CachedTokens),
+            answers.Count == 0 ? 0 : (int)answers.Average(a => a.Response.Elapsed.TotalMilliseconds));
+        foreach (var (s, _) in answers)
+        {
+            if (s == null || !ctx.Rows.TryGetValue(s.TransactionId, out var asked) || !Allowed(ctx, s.CategoryId, asked.AccountId)) continue;
+            if (results.TryGetValue(s.TransactionId, out var existing) && existing.Confidence >= s.Probability) continue;
+            var second = s.SecondCategoryId is { } c && ctx.ById.TryGetValue(c, out var cat) ? cat.Path : null;
+            results[s.TransactionId] = Present(ctx, s.TransactionId, s.CategoryId, s.Probability, "ai", DecisionsCategoryChooser.Rationale(s.Probability, second));
+        }
+        return items.Count;
+    }
+
+    /// <summary>Reports synchronously (Progress&lt;T&gt; would post to a captured context, out of order).</summary>
+    private sealed class SyncProgress(Action<int> report) : IProgress<int>
+    {
+        public void Report(int value) => report(value);
     }
 
     // ---------------------------------------------------------------- rules
@@ -415,7 +458,7 @@ public sealed partial class CategorySuggestionService
             Confidence = s.Confidence,
             Source = s.Source,
             Rationale = s.Rationale is { Length: > 300 } r ? r[..300] : s.Rationale,
-            Model = s.Source == "ai" ? _client.Model : null,
+            Model = s.Source == "ai" ? (UseDecisions ? _decisions!.Model : _client.Model) : null,
             SplitJson = s.Split == null && !s.ShipmentUnclear ? null : WriteSplit(s),
             TreeHash = treeHash,
             CreatedAt = now,

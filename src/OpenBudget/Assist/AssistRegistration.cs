@@ -15,6 +15,7 @@ public static class AssistRegistration
         services.AddHttpClient(AssistOptions.HttpClientName, c => c.Timeout = Timeout.InfiniteTimeSpan)
             .RedactLoggedHeaders(_ => true);
         services.TryAddSingleton<IAssistClient, OpenAiAssistClient>();
+        services.TryAddSingleton<IDecisionsClient, OpenAiDecisionsClient>();
         services.AddScoped<AssistSettingsService>();
         services.AddScoped<CategorySuggestionService>();
         services.AddScoped<BudgetSuggestionService>();
