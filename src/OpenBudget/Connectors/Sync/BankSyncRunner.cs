@@ -246,7 +246,11 @@ public sealed class BankSyncRunner
                 try { await RefreshAccountsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct); }
                 finally { await context.CloseBrowsersAsync(); }
                 // New bookings may be the ones open order charges were waiting for.
-                await _orders.MatchAsync(db, login.OwnerUserId, ct);
+                try { await _orders.MatchAsync(db, login.OwnerUserId, ct); }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(ex, "Bank login {LoginId}: matching order charges failed.", login.Id);
+                }
             }
             if (request.Statements && !(request.Background && connector is IBackgroundScope { StatementsInBackground: false }))
                 await FetchStatementsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct);
