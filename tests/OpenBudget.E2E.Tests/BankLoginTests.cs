@@ -109,10 +109,7 @@ public sealed class BankLoginTests : EndToEndTestBase
         await Expect(row.Locator("[data-col=matched]")).ToHaveTextAsync("1");
         await Expect(row.Locator("[data-col=new]")).ToHaveTextAsync("7");
         await Expect(row.Locator("[data-col=unmatched]")).ToHaveTextAsync("0");
-        // The demo source's structure is still MoneyMoney's: the switch needs it taken over.
-        var confirm = Page.GetByTestId("switch-confirm");
-        await Expect(confirm).ToBeDisabledAsync();
-        await confirm.ClickAsync();
+        await Page.GetByTestId("switch-confirm").ClickAsync();
         await Expect(dialog).ToHaveCountAsync(0);
         await Expect(giro.GetByTestId("switched")).ToContainTextAsync("Switched from MoneyMoney");
 

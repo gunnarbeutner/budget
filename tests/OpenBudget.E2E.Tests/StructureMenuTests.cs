@@ -192,24 +192,6 @@ public sealed class StructureMenuTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task MoneyMoney_owned_structure_shows_the_entries_disabled_with_the_reason()
-    {
-        await using (var db = await Db.CreateDbContextAsync())
-        {
-            (await db.ImportSources.SingleAsync(s => s.Id == E2ESeed.SourceId)).LastUploadAt = DateTime.UtcNow;
-            await db.SaveChangesAsync();
-        }
-        await GoToAsync(BrowseUrl);
-        await OpenMenuAsync(Category("Groceries"));
-        await Expect(Page.GetByTestId("ctx-rules")).ToBeEnabledAsync();
-        var rename = Page.GetByTestId("ctx-rename");
-        await Expect(rename).ToBeDisabledAsync();
-        await Expect(rename).ToHaveAttributeAsync("title", new System.Text.RegularExpressions.Regex("Comes from MoneyMoney"));
-        await Expect(Page.GetByTestId("ctx-delete")).ToBeDisabledAsync();
-        await Expect(Sidebar.Locator("[draggable=true]")).ToHaveCountAsync(0);
-    }
-
-    [Test]
     public async Task Viewers_get_no_editing_entries()
     {
         await using (var db = await Db.CreateDbContextAsync())

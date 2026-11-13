@@ -148,6 +148,8 @@ await using (var budgetDb = await app.Services.GetRequiredService<SystemDbContex
     await budgetDb.Database.MigrateAsync();
     // Category rules of sources uploaded before rules were imported (idempotent).
     await OpenBudget.Importers.MoneyMoney.MoneyMoneyRuleImport.BackfillAsync(budgetDb, CancellationToken.None);
+    // Every user owns a project to land new accounts in (idempotent).
+    await UserDefaultProject.EnsureAllAsync(app.Services.GetRequiredService<SystemDbContextFactory>());
     var ruleLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("OpenBudget.Rules");
     OpenBudget.Services.RuleExpression.UnknownFieldLog = field => ruleLog.LogWarning("Rule expression uses unknown field '{Field}'; such terms never match", field);
 }

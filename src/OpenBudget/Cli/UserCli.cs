@@ -134,8 +134,11 @@ public static class UserCli
         }
 
         var claim = await UserClaims.ClaimAsync(system, user.Id, name);
+        var project = await UserDefaultProject.EnsureAsync(system, user.Id);
         await stdout.WriteLineAsync($"Created user '{name}'{(user.IsAdmin ? " (admin)" : "")}.");
         await WriteClaimAsync(stdout, claim);
+        if (project != null)
+            await stdout.WriteLineAsync($"Created project '{name}' as the default for new accounts.");
         if (generated)
             await stdout.WriteLineAsync($"Initial password (shown only once): {password}");
         return 0;

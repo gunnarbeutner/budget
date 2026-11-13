@@ -57,4 +57,36 @@ public static class DefaultProjectAssigner
         await db.SaveChangesAsync(ct);
         return fresh.Count;
     }
+
+    /// <summary>
+    /// Assigns every account and every top-level category group (directly under the hidden root) of
+    /// <paramref name="sourceId"/> to its owner's default project, skipping what is already assigned there. Used when a
+    /// MoneyMoney import finishes; running it again adds nothing. Returns the number of assignments added.
+    /// </summary>
+    public static async Task<int> AssignImportedAsync(BudgetDbContext db, int sourceId, CancellationToken ct = default)
+    {
+        var owner = await db.ImportSources.Where(s => s.Id == sourceId).Select(s => s.OwnerUserId).FirstOrDefaultAsync(ct);
+        if (string.IsNullOrEmpty(owner)) return 0;
+        var accountIds = await db.Accounts.Where(a => a.SourceId == sourceId).Select(a => a.Id).ToListAsync(ct);
+        var added = await AssignNewAccountsAsync(db, owner, accountIds, ct);
+
+        var projectId = await db.Projects.AsNoTracking()
+            .Where(p => p.OwnerUserId == owner && p.IsDefaultForNewAccounts)
+            .Select(p => (int?)p.Id)
+            .FirstOrDefaultAsync(ct);
+        if (projectId is not { } id || await IsSharedAsync(db, id, ct)) return added;
+
+        var root = SourceScope.SentinelRoot(sourceId);
+        var topLevel = await db.CategoryGroups
+            .Where(g => g.SourceId == sourceId && g.Id != root && (g.ParentGroupId == null || g.ParentGroupId == root))
+            .Select(g => g.Id).ToListAsync(ct);
+        var assigned = await db.ProjectCategoryAssignments.Where(a => a.ProjectId == id).Select(a => a.CategoryId).ToListAsync(ct);
+        foreach (var groupId in topLevel.Except(assigned))
+        {
+            db.ProjectCategoryAssignments.Add(new ProjectCategoryAssignment { ProjectId = id, CategoryId = groupId });
+            added++;
+        }
+        await db.SaveChangesAsync(ct);
+        return added;
+    }
 }

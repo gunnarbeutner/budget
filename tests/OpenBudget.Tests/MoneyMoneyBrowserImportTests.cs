@@ -189,6 +189,31 @@ public sealed class MoneyMoneyBrowserImportTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task A_finished_import_shows_every_account_and_top_level_category_group_in_the_default_project()
+    {
+        _t.AddUser(Owner, "owner");
+        await _t.Db.SaveChangesAsync();
+        var (import, _) = await ServiceAsync();
+        var projectId = await UserDefaultProject.EnsureAsync(_t.System, Owner);
+        Assert.NotNull(projectId);
+
+        for (var run = 0; run < 2; run++)   // a retried import adds nothing twice
+        {
+            var id = await UploadAsync(import, MoneyMoneyZipFixture.Build("secret"), 4096);
+            Assert.True(import.StartImport(Owner, id, SourceName, "secret"));
+            Assert.True((await WaitAsync(import)).Phase == MoneyMoneyImportPhase.Done, _log.All);
+        }
+
+        await using var db = await _t.System.CreateDbContextAsync();
+        var sourceId = await db.ImportSources.Where(s => s.Name == SourceName).Select(s => s.Id).SingleAsync();
+        var accounts = await db.Accounts.Where(a => a.SourceId == sourceId).Select(a => a.Id).OrderBy(x => x).ToListAsync();
+        Assert.Equal(accounts, await db.ProjectAccountAssignments.Where(a => a.ProjectId == projectId).Select(a => a.AccountId).OrderBy(x => x).ToListAsync());
+        var groups = await db.CategoryGroups.Where(g => g.SourceId == sourceId && g.Name != "").OrderBy(g => g.Name).Select(g => g.Id).ToListAsync();
+        Assert.Equal(2, groups.Count);
+        Assert.Equal(groups.Order(), await db.ProjectCategoryAssignments.Where(a => a.ProjectId == projectId).Select(a => a.CategoryId).OrderBy(x => x).ToListAsync());
+    }
+
+    [Fact]
     public async Task Statements_with_non_ASCII_names_match_in_either_Unicode_form_and_are_cleaned_up()
     {
         var (import, staging) = await ServiceAsync();

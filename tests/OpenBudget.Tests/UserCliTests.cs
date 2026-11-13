@@ -89,7 +89,7 @@ public sealed class UserCliTests : IDisposable
         using var login = await AppTestHost.LoginAsync(client, "alice", password);
 
         Assert.Equal(HttpStatusCode.Redirect, login.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await AppTestHost.GetAsync(client, "/")).Status);
+        Assert.Equal(HttpStatusCode.Redirect, (await AppTestHost.GetAsync(client, "/")).Status);   // to the own project
     }
 
     [Fact]
@@ -164,8 +164,8 @@ public sealed class UserCliTests : IDisposable
         await RunAsync("", "add", "alice", "--generate-password");   // nothing to claim yet
         await using (var db = await _host.System.CreateDbContextAsync())
         {
-            db.ImportSources.Add(new ImportSource { Id = 2, Name = "alice" });
-            db.Projects.Add(new Project { Id = 1, Name = "Shared", SourceId = 2 });
+            db.ImportSources.Add(new ImportSource { Id = 20, Name = "alice" });
+            db.Projects.Add(new Project { Id = 20, Name = "Shared", SourceId = 20 });
             await db.SaveChangesAsync();
         }
 
@@ -223,7 +223,7 @@ public sealed class UserCliTests : IDisposable
     {
         await RunAsync("First-Password-1\n", "add", "alice", "--password-stdin");
         using var session = await _host.LoggedInClientAsync("alice", "First-Password-1");
-        Assert.Equal(HttpStatusCode.OK, (await AppTestHost.GetAsync(session, "/")).Status);
+        Assert.Equal(HttpStatusCode.Redirect, (await AppTestHost.GetAsync(session, "/")).Status);   // to the own project
 
         var (code, _, _) = await RunAsync("Second-Password-2\n", "set-password", "alice", "--password-stdin");
 
@@ -289,5 +289,31 @@ public sealed class UserCliTests : IDisposable
         Assert.StartsWith("AQAAAA", user.PasswordHash, StringComparison.Ordinal);   // Identity v3 PBKDF2 format
         Assert.True(user.LockoutEnabled);
         Assert.NotEqual("Some-Password-3", user.PasswordHash);
+    }
+
+    [Fact]
+    public async Task A_new_user_without_claimed_data_gets_a_default_project_named_after_them()
+    {
+        var (code, output, _) = await RunAsync("Some-Password-3\n", "add", "carol", "--password-stdin");
+
+        Assert.Equal(0, code);
+        Assert.Contains("Created project 'carol'", output, StringComparison.Ordinal);
+        await using var db = await _host.System.CreateDbContextAsync();
+        var userId = await db.Users.Where(u => u.UserName == "carol").Select(u => u.Id).SingleAsync();
+        var project = await db.Projects.SingleAsync(p => p.OwnerUserId == userId);
+        Assert.Equal("carol", project.Name);
+        Assert.True(project.IsDefaultForNewAccounts);
+        Assert.Equal(userId, (await db.ImportSources.SingleAsync(s => s.Id == project.SourceId)).OwnerUserId);
+    }
+
+    [Fact]
+    public async Task A_user_who_claims_projects_gets_no_extra_one()
+    {
+        await SeedUnclaimedProdShapeAsync();
+        var (_, output, _) = await RunAsync("", "add", "bob", "--generate-password");
+
+        Assert.DoesNotContain("Created project", output, StringComparison.Ordinal);
+        await using var db = await _host.System.CreateDbContextAsync();
+        Assert.Equal(5, await db.Projects.CountAsync());
     }
 }

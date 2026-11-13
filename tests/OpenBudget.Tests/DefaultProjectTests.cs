@@ -42,6 +42,32 @@ public sealed class DefaultProjectTests
     // ---- setting and clearing ----
 
     [Fact]
+    public async Task Users_without_a_project_get_one_that_takes_their_accounts_and_later_new_ones()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        await w.ImportMoneyMoneyAsync(Snapshot(w, 1));
+        var bobsOwn = await NewProjectAsync(w, Bob, "Bob's", sourceId: 3);
+
+        Assert.Equal(2, await UserDefaultProject.EnsureAllAsync(w.T.System));   // alice and carol; bob owns one
+        Assert.Equal(0, await UserDefaultProject.EnsureAllAsync(w.T.System));
+
+        await using (var db = await w.T.System.CreateDbContextAsync())
+        {
+            var alices = await db.Projects.SingleAsync(p => p.OwnerUserId == Alice);
+            Assert.Equal(("alice", BankWorld.SourceAlice, true), (alices.Name, alices.SourceId, alices.IsDefaultForNewAccounts));
+            Assert.Equal(alices.Id, (await AssignmentsAsync(w))[Account(1)]);
+            var carols = await db.Projects.SingleAsync(p => p.OwnerUserId == Carol);
+            Assert.Equal(Carol, (await db.ImportSources.SingleAsync(s => s.Id == carols.SourceId)).OwnerUserId);
+            Assert.Equal(bobsOwn, (await db.Projects.SingleAsync(p => p.OwnerUserId == Bob)).Id);
+        }
+
+        await w.ImportMoneyMoneyAsync(Snapshot(w, 2));
+        await using var check = await w.T.System.CreateDbContextAsync();
+        var alicesId = await check.Projects.Where(p => p.OwnerUserId == Alice).Select(p => p.Id).SingleAsync();
+        Assert.Equal(alicesId, (await AssignmentsAsync(w))[Account(2)]);
+    }
+
+    [Fact]
     public async Task Default_can_be_set_and_cleared_and_only_one_per_owner_exists()
     {
         await using var w = await BankWorld.CreateAsync();

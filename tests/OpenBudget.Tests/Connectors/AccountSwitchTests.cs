@@ -155,6 +155,8 @@ public sealed class AccountSwitchTests
     {
         await using var w = await BankWorld.CreateAsync();
         var (loginId, linkId) = await LinkedAndFetchedAsync(w);
+        // The browser import hands the structure over when it finishes.
+        await new StructureTakeoverService(w.T.System, w.T.Notifier, new ChangeOrigin()).TakeOverAsync(BankWorld.SourceAlice);
         await w.SwitchAsync(BankWorld.Alice, linkId);
         var before = await w.TransactionsAsync(Giro);
         var name = (await w.AccountAsync(Giro)).Name;

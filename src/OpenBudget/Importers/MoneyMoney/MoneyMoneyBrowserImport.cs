@@ -254,6 +254,8 @@ public sealed class MoneyMoneyBrowserImport
             {
                 var sourceId = await db.ImportSources.Where(s => s.Name == sourceName).Select(s => s.Id).FirstAsync(ct);
                 await _takeover.TakeOverAsync(sourceId, ct);
+                // Everything imported shows in the owner's default project.
+                await DefaultProjectAssigner.AssignImportedAsync(db, sourceId, ct);
             }
 
             Set(userId, new MoneyMoneyImportJob(MoneyMoneyImportPhase.Done, Result: result, Statements: summary));
