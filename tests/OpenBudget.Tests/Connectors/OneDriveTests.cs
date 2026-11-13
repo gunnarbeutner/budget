@@ -515,4 +515,16 @@ public sealed class OneDriveTests
         Assert.False(w.Build(new SecretsProtector((string?)null)).IsEnabled);
         Assert.True(w.Service.IsEnabled);
     }
+
+    [Theory]
+    [InlineData("Depot.portfolio", true)]
+    [InlineData("Depot.PORTFOLIO", true)]
+    [InlineData("Depot.autosave.portfolio", false)]
+    [InlineData("Depot.backup.portfolio", false)]
+    [InlineData("Depot.backup-after-open.portfolio", false)]
+    [InlineData("Depot.backup-on-save.portfolio", false)]
+    [InlineData("Depot backup.portfolio", true)]
+    [InlineData("Notes.docx", false)]
+    public void The_picker_offers_portfolio_files_but_not_the_copies_Portfolio_Performance_writes(string name, bool offered) =>
+        Assert.Equal(offered, OneDriveService.IsPortfolioFile(name));
 }

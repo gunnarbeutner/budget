@@ -43,6 +43,19 @@ public enum ConnectOutcome
 public sealed class OneDriveService : ICloudFileReader
 {
     public const string PortfolioExtension = ".portfolio";
+
+    /// <summary>
+    /// Copies Portfolio Performance writes next to a file ("X.autosave.portfolio", "X.backup.portfolio",
+    /// "X.backup-after-open.portfolio" and other "X.backup-….portfolio" variants); the picker leaves them out.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex PortfolioCopy = new(
+        @"\.(autosave|backup(-[a-z0-9-]+)?)\.portfolio$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant
+            | System.Text.RegularExpressions.RegexOptions.ExplicitCapture,
+        TimeSpan.FromSeconds(1));
+
+    /// <summary>Whether <paramref name="name"/> is a Portfolio Performance file worth linking (not one of its automatic copies).</summary>
+    public static bool IsPortfolioFile(string name) =>
+        name.EndsWith(PortfolioExtension, StringComparison.OrdinalIgnoreCase) && !PortfolioCopy.IsMatch(name);
     private const int MaxListPages = 20;
 
     private readonly SystemDbContextFactory _system;
@@ -187,7 +200,7 @@ public sealed class OneDriveService : ICloudFileReader
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
             if (doc.RootElement.TryGetProperty("value", out var values))
                 foreach (var element in values.EnumerateArray())
-                    if (ToItem(element) is { } item && (item.IsFolder || item.Name.EndsWith(PortfolioExtension, StringComparison.OrdinalIgnoreCase)))
+                    if (ToItem(element) is { } item && (item.IsFolder || IsPortfolioFile(item.Name)))
                         items.Add(item);
             url = doc.RootElement.TryGetProperty("@odata.nextLink", out var next) ? next.GetString() : null;
         }
