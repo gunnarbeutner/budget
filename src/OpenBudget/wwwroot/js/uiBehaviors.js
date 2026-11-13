@@ -46,7 +46,9 @@ window.obNav = {
 };
 
 // Modal accessibility: move focus into the dialog, trap Tab within it while open, and restore
-// focus to the triggering element on close. The Modal component calls activate() once the dialog
+// focus to the triggering element on close. On open, focus goes to the element marked data-initial-focus, else the
+// first form field of the body, else the footer's primary button, never the close button. The Modal component calls
+// activate() once the dialog
 // renders and deactivate() when it closes or is disposed. Keeping this state here (rather than in
 // C#) avoids a DotNetObjectReference just to cycle Tab. Esc-to-close stays on the component's
 // keydown handler — this only manages focus.
@@ -67,8 +69,13 @@ window.modalA11y = (function () {
             // Remember where focus was so it can be restored when the dialog closes.
             returnFocusEl = document.activeElement;
             trapEl = modal;
-            var items = focusableIn(modal);
-            (items[0] || modal).focus();
+            var visible = function (el) { return el && el.offsetParent !== null && !el.disabled; };
+            var fields = Array.from(modal.querySelectorAll('.modal-body input:not([type=hidden]), .modal-body select, .modal-body textarea')).filter(visible);
+            var marked = modal.querySelector('[data-initial-focus]');
+            var primary = modal.querySelector('.modal-footer .btn-primary, .modal-footer .btn-danger');
+            var target = (visible(marked) && marked) || fields[0] || (visible(primary) && primary)
+                || focusableIn(modal).find(function (el) { return !el.classList.contains('btn-close'); }) || modal;
+            target.focus();
 
             keydownHandler = function (e) {
                 if (e.key !== "Tab") return;

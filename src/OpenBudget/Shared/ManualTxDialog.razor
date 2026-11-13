@@ -21,7 +21,7 @@
                 <div class="col-6">
                     <label class="form-label small mb-1" for="mtx-amount">@L["Amount"]</label>
                     <div class="input-group input-group-sm">
-                        <input id="mtx-amount" class="form-control text-end" inputmode="decimal" data-testid="manual-tx-amount"
+                        <input id="mtx-amount" class="form-control text-end" inputmode="decimal" data-testid="manual-tx-amount" data-initial-focus
                                value="@_amount" disabled="@_amountLocked" title="@(_amountLocked ? L["Amount_Split"].Value : null)"
                                @onchange="e => _amount = e.Value?.ToString() ?? string.Empty" />
                         <input class="form-control" style="max-width: 4.5rem;" maxlength="3" aria-label="@L["Currency"]" data-testid="manual-tx-currency"

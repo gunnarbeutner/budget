@@ -2090,3 +2090,9 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
     .get-started-stepper li:not(.current) .get-started-stepper-label { display: none; }
     .get-started-stepper li:not(.current) { flex: 0 0 auto; }
 }
+
+/* Buttons show their focus ring only for keyboard focus, not when focused by a click or by script. */
+.btn:focus:not(:focus-visible),
+.btn-close:focus:not(:focus-visible) {
+    box-shadow: none;
+}

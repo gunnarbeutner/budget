@@ -72,6 +72,8 @@ public sealed class ManualAccountTests : EndToEndTestBase
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{Cash}");
 
         await Page.GetByTestId("tx-add").ClickAsync();
+        // The dialog opens with the amount focused, not its close button.
+        await Expect(Page.GetByTestId("manual-tx-amount")).ToBeFocusedAsync();
         await Page.GetByTestId("manual-tx-date").FillAsync("2026-03-20");
         await Page.GetByTestId("manual-tx-amount").FillAsync("-12,34");
         await Page.GetByTestId("manual-tx-name").FillAsync("Example Kiosk");
