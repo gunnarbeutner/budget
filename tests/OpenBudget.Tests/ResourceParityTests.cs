@@ -9,7 +9,7 @@ public sealed class ResourceParityTests
     private static string ResourcesDir()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "budget.sln"))) dir = dir.Parent;
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "budget.slnx"))) dir = dir.Parent;
         Assert.NotNull(dir);
         return Path.Combine(dir.FullName, "src", "OpenBudget", "Resources");
     }

@@ -151,7 +151,7 @@ public sealed class ReadmeScreenshots
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "budget.sln"))) dir = dir.Parent;
-        return dir?.FullName ?? throw new InvalidOperationException("budget.sln not found above the test output");
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "budget.slnx"))) dir = dir.Parent;
+        return dir?.FullName ?? throw new InvalidOperationException("budget.slnx not found above the test output");
     }
 }

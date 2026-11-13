@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/OpenBudget/OpenBudget.csproj" />
+  <Project Path="tests/OpenBudget.Tests/OpenBudget.Tests.csproj" />
+</Solution>
