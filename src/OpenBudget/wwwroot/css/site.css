@@ -1890,7 +1890,10 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 }
 .settings-main { min-width: 0; min-height: 0; }
 .settings-toolbar-sub { min-width: 0; }
-.settings-page > :not(.page-toolbar):not(.modal):not(.modal-backdrop) { max-width: 72rem; }
+/* Settings use the full width; plain forms stay readable at a form's width. */
+.settings-page [data-testid=project-general-card], .settings-page [data-testid=project-default-card],
+.settings-page [data-testid=project-danger-zone] { max-width: 48rem; }
+[data-testid=accounts-card] .segmented { white-space: nowrap; }
 .settings-page .card {
     background: transparent;
     border: 0;

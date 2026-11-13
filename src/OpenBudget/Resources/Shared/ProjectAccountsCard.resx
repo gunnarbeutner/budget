@@ -64,21 +64,6 @@
   <data name="Button_AddAccount" xml:space="preserve">
     <value>Add Account</value>
   </data>
-  <data name="Accounts_Description_Before" xml:space="preserve">
-    <value>Link accounts that fund this project. Bookings: </value>
-  </data>
-  <data name="Accounts_Description_Shared" xml:space="preserve">
-    <value>Project categories</value>
-  </data>
-  <data name="Accounts_Description_Middle" xml:space="preserve">
-    <value> only counts transactions whose category is assigned to the project (use for a main account that mixes traffic). </value>
-  </data>
-  <data name="Accounts_Description_Exclusive" xml:space="preserve">
-    <value>All</value>
-  </data>
-  <data name="Accounts_Description_After" xml:space="preserve">
-    <value> counts every transaction in the account (use for dedicated accounts like a rental Mietkautionskonto). In cashflow decides whether the account counts in the Cashflow view and the project balance.</value>
-  </data>
   <data name="Status_LoadingEllipsis" xml:space="preserve">
     <value>Loading…</value>
   </data>
@@ -192,5 +177,14 @@
   </data>
   <data name="InCashflow_Help" xml:space="preserve">
     <value>Counts in the Cashflow view and the project balance.</value>
+  </data>
+  <data name="Accounts_Intro" xml:space="preserve">
+    <value>The accounts that belong to this project.</value>
+  </data>
+  <data name="Scope_Help" xml:space="preserve">
+    <value>“Project categories” counts only bookings in the project's categories, “All” every booking of the account.</value>
+  </data>
+  <data name="Remove_Confirm" xml:space="preserve">
+    <value>Remove?</value>
   </data>
 </root>

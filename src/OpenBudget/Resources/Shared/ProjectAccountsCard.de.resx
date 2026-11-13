@@ -64,21 +64,6 @@
   <data name="Button_AddAccount" xml:space="preserve">
     <value>Konto hinzufügen</value>
   </data>
-  <data name="Accounts_Description_Before" xml:space="preserve">
-    <value>Konten verknüpfen, die dieses Projekt finanzieren. Buchungen: </value>
-  </data>
-  <data name="Accounts_Description_Shared" xml:space="preserve">
-    <value>Projektkategorien</value>
-  </data>
-  <data name="Accounts_Description_Middle" xml:space="preserve">
-    <value> zählt nur Transaktionen, deren Kategorie dem Projekt zugeordnet ist (für ein Hauptkonto mit gemischtem Verkehr). </value>
-  </data>
-  <data name="Accounts_Description_Exclusive" xml:space="preserve">
-    <value>Alle</value>
-  </data>
-  <data name="Accounts_Description_After" xml:space="preserve">
-    <value> zählt jede Transaktion im Konto (für dedizierte Konten wie ein Mietkautionskonto). Im Cashflow legt fest, ob das Konto in der Cashflow-Ansicht und im Projektsaldo zählt.</value>
-  </data>
   <data name="Status_LoadingEllipsis" xml:space="preserve">
     <value>Wird geladen…</value>
   </data>
@@ -192,5 +177,14 @@
   </data>
   <data name="InCashflow_Help" xml:space="preserve">
     <value>Zählt in der Cashflow-Ansicht und im Projektsaldo.</value>
+  </data>
+  <data name="Accounts_Intro" xml:space="preserve">
+    <value>Die Konten, die zu diesem Projekt gehören.</value>
+  </data>
+  <data name="Scope_Help" xml:space="preserve">
+    <value>„Projektkategorien“ zählt nur Buchungen in den Kategorien des Projekts, „Alle“ jede Buchung des Kontos.</value>
+  </data>
+  <data name="Remove_Confirm" xml:space="preserve">
+    <value>Entfernen?</value>
   </data>
 </root>

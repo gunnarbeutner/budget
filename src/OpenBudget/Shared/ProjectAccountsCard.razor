@@ -17,9 +17,7 @@
                 <button class="btn btn-sm btn-primary" @onclick="OpenDialog">@L["Button_AddAccount"]</button>
             </div>
             <div class="card-body">
-                <p class="text-body-secondary small mb-3">
-                    @L["Accounts_Description_Before"]<strong>@L["Accounts_Description_Shared"]</strong>@L["Accounts_Description_Middle"]<strong>@L["Accounts_Description_Exclusive"]</strong>@L["Accounts_Description_After"]
-                </p>
+                <p class="text-body-secondary small mb-3">@L["Accounts_Intro"]</p>
                 @if (Assignments == null || AllAccounts == null)
                 {
                     <p class="text-body-secondary mb-0"><em>@L["Status_LoadingEllipsis"]</em></p>
@@ -31,7 +29,7 @@
                 else
                 {
                     <div class="table-responsive">
-                        <table class="table table-sm mb-0">
+                        <table class="table table-sm mb-0 text-nowrap align-middle">
                             <thead>
                                 <tr>
                                     <th>@L["Table_Account"]</th>
@@ -44,7 +42,8 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var assignment in Assignments)
+                                @* Closed accounts follow the open ones. *@
+                                @foreach (var assignment in Assignments.OrderBy(a => AllAccounts.FirstOrDefault(x => x.Id == a.AccountId)?.Closed == true))
                                 {
                                     var account = AllAccounts.FirstOrDefault(a => a.Id == assignment.AccountId);
                                     var name = account?.Name ?? L["Account_MissingName", assignment.AccountId].Value;
@@ -88,7 +87,7 @@
                                                    @onchange="e => OnInCashflowChange.InvokeAsync((assignment.AccountId, e.Value is true))" />
                                         </td>
                                         <td>
-                                            <div class="segmented" role="group">
+                                            <div class="segmented" role="group" title="@L["Scope_Help"]">
                                                 <button type="button"
                                                         class="btn @(assignment.Scope == AccountScope.Shared ? "active" : "")"
                                                         @onclick="() => OnScopeChange.InvokeAsync((assignment.AccountId, AccountScope.Shared))">
@@ -102,7 +101,20 @@
                                             </div>
                                         </td>
                                         <td class="text-end">
-                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => OnRemove.InvokeAsync(assignment.AccountId)">@L["Button_Remove"]</button>
+                                            @if (pendingRemove == assignment.AccountId)
+                                            {
+                                                <span class="small me-1">@L["Remove_Confirm"]</span>
+                                                <button type="button" class="btn btn-sm btn-link text-danger p-0 me-2" data-testid="account-remove-confirm"
+                                                        @onclick="() => RemoveAsync(assignment.AccountId)">@L["Button_Remove"]</button>
+                                                <button type="button" class="btn btn-sm btn-link p-0" @onclick="() => pendingRemove = null">@L["Button_Cancel"]</button>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="btn btn-sm btn-link text-body-secondary p-0" data-testid="account-remove"
+                                                        title="@L["Button_Remove"]" aria-label="@L["Button_Remove"]" @onclick="() => pendingRemove = assignment.AccountId">
+                                                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                                                </button>
+                                            }
                                         </td>
                                     </tr>
                                 }
@@ -216,6 +228,15 @@
 </Modal>
 
 @code {
+    // The account whose removal waits for its confirmation in the row.
+    private long? pendingRemove;
+
+    private async Task RemoveAsync(long accountId)
+    {
+        pendingRemove = null;
+        await OnRemove.InvokeAsync(accountId);
+    }
+
     /// <summary>Accounts assigned to the project; null shows a loading note.</summary>
     [Parameter] public IReadOnlyList<ProjectAccountAssignment>? Assignments { get; set; }
     /// <summary>All accounts of the project's owner (for names/balances + the picker).</summary>
