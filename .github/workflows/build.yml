@@ -125,17 +125,22 @@ jobs:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         with:
           images: ghcr.io/${{ github.repository_owner }}/budget
+          # the sha tag has the highest priority, so the image's version label is the commit (sha-…), not "latest"
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=short
+            type=sha,format=short,priority=300
           # GHCR shows the description on the package page; set it here so the repository's own
           # description (which the action would copy) can't blank it.
           labels: |
             org.opencontainers.image.title=OpenBudget
             org.opencontainers.image.description=Self-hosted personal finance app with bank sync, budgets and cashflow projections.
+            org.opencontainers.image.documentation=https://github.com/gunnarbeutner/budget#running-it
+            org.opencontainers.image.authors=Gunnar Beutner
           annotations: |
             org.opencontainers.image.title=OpenBudget
             org.opencontainers.image.description=Self-hosted personal finance app with bank sync, budgets and cashflow projections.
+            org.opencontainers.image.documentation=https://github.com/gunnarbeutner/budget#running-it
+            org.opencontainers.image.authors=Gunnar Beutner
 
       - name: Build and push
         uses: docker/build-push-action@v7
