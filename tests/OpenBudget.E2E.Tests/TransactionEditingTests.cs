@@ -74,6 +74,33 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task Pending_stripes_continue_across_neighbouring_rows_from_the_top_of_the_list()
+    {
+        await using (var db = await Factory.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
+        {
+            await db.Transactions.Where(t => t.Id == 102 || t.Id == 103 || t.Id == 104).ExecuteUpdateAsync(s => s.SetProperty(t => t.Booked, false));
+        }
+
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3");
+        var pending = Page.Locator(".tx-item.tx-item-pending");
+        await Expect(pending).ToHaveCountAsync(3);
+        // An expanded row makes the pending rows differ in height.
+        await Row("\u221212,50").ClickAsync();
+        await Expect(Page.GetByTestId("tx-details")).ToBeVisibleAsync();
+
+        // Each pending row's stripes start at the list's top: the background is shifted up by the row's offset in the list.
+        await Page.WaitForFunctionAsync(@"() => {
+            const list = document.querySelector('.tx-list').getBoundingClientRect().top;
+            const rows = [...document.querySelectorAll('.tx-item-pending')].map(r => {
+                const box = r.getBoundingClientRect(), cs = getComputedStyle(r);
+                return { offset: box.top - list, height: box.height, position: parseFloat(cs.backgroundPositionY) };
+            });
+            return rows.length === 3 && rows[0].height !== rows[1].height
+                && rows[2].offset > 0 && rows.every(r => Math.abs(r.position + r.offset) < 0.5);
+        }", null, new() { Timeout = 5000 });
+    }
+
+    [Test]
     public async Task A_zero_amount_booking_needs_no_category()
     {
         await using (var db = await Factory.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())

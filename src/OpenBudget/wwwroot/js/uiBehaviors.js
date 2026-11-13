@@ -549,3 +549,34 @@ window.obCopyText = function (text) {
     if (!navigator.clipboard) return Promise.resolve(false);
     return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return false; });
 };
+
+// Pending bookings' stripes continue from row to row: each pending row gets its offset within the transaction list as
+// --tx-row-top (see .tx-item-pending in site.css). Offsets change when Virtualize moves its window, rows expand or
+// collapse, or the list is resized (the spacers' style changes too); each change is handled once per frame.
+(function () {
+    var scheduled = false;
+    var resizes = new ResizeObserver(schedule);
+    var observed = new WeakSet();
+    function schedule() {
+        if (scheduled) return;
+        scheduled = true;
+        requestAnimationFrame(update);
+    }
+    function update() {
+        scheduled = false;
+        document.querySelectorAll(".tx-list").forEach(function (list) {
+            if (!observed.has(list)) { observed.add(list); resizes.observe(list); }
+            var top = list.getBoundingClientRect().top;
+            list.querySelectorAll(".tx-item-pending").forEach(function (row) {
+                if (!observed.has(row)) { observed.add(row); resizes.observe(row); }
+                var value = (row.getBoundingClientRect().top - top) + "px";
+                if (row.style.getPropertyValue("--tx-row-top") !== value) row.style.setProperty("--tx-row-top", value);
+            });
+        });
+    }
+    function start() {
+        new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style"] });
+        schedule();
+    }
+    if (document.body) start(); else document.addEventListener("DOMContentLoaded", start);
+})();

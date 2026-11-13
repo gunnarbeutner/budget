@@ -1841,9 +1841,15 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 @media (max-width: 767.98px) { .bank-accounts-table { table-layout: auto; } }
 
 /* Pending bookings: diagonal stripes across the whole booking, its expanded details included;
-   the day header above keeps its own background. A visually hidden label names them for screen readers. */
+   the day header above keeps its own background. A visually hidden label names them for screen readers.
+   The stripes are anchored to the top of the list's content: --tx-row-top (the row's offset in the list, kept up to
+   date by uiBehaviors.js) stretches each row's gradient up to the list's top-left corner, where a 135deg gradient
+   starts, so neighbouring pending rows continue one pattern and it scrolls with the bookings. */
 .tx-item.tx-item-pending {
-    background-image: repeating-linear-gradient(-45deg, var(--ob-pending-stripe, rgba(127,127,127,.10)) 0 6px, transparent 6px 14px);
+    background-image: repeating-linear-gradient(135deg, var(--ob-pending-stripe, rgba(127,127,127,.10)) 0 6px, transparent 6px 14px);
+    background-size: 100% calc(100% + var(--tx-row-top, 0px));
+    background-position: 0 calc(-1 * var(--tx-row-top, 0px));
+    background-repeat: no-repeat;
 }
 .tx-item.tx-item-pending .tx-row:hover { background: transparent; }
 .tx-item.tx-item-pending:not(.selected):not(.expanded):hover { background-color: var(--ob-row-hover-bg); }
