@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>AI suggestions · OpenBudget</value>
+  </data>
+  <data name="Heading" xml:space="preserve">
+    <value>AI suggestions</value>
+  </data>
+  <data name="Unavailable" xml:space="preserve">
+    <value>AI suggestions are not set up on this server.</value>
+  </data>
+  <data name="Intro" xml:space="preserve">
+    <value>Category and budget suggestions work without AI. With AI on, bookings the app is unsure about are sent to an AI service for a better guess. Nothing is changed until you accept it.</value>
+  </data>
+  <data name="Toggle" xml:space="preserve">
+    <value>Use AI suggestions</value>
+  </data>
+  <data name="Sent" xml:space="preserve">
+    <value>Sent: date, amount, payee, cleaned purpose, booking code, account type, your category names and rules.</value>
+  </data>
+  <data name="NotSent" xml:space="preserve">
+    <value>Not sent: IBANs, BICs, references, mandate and creditor ids, card numbers, account names, balances and your names.</value>
+  </data>
+  <data name="Shared" xml:space="preserve">
+    <value>Bookings of someone else's accounts are only sent if that person turned this on too.</value>
+  </data>
+  <data name="Model" xml:space="preserve">
+    <value>Model: {0}</value>
+  </data>
+  <data name="Preview_Heading" xml:space="preserve">
+    <value>Preview</value>
+  </data>
+  <data name="Preview_Intro" xml:space="preserve">
+    <value>This is exactly what would be sent for your newest booking:</value>
+  </data>
+  <data name="Preview_None" xml:space="preserve">
+    <value>No bookings yet.</value>
+  </data>
+</root>

@@ -281,6 +281,12 @@
             </div>
         }
 
+        @if (selectionKind == "uncategorized" && tree != null && project != null)
+        {
+            <CategorySuggestPanel ProjectId="ProjectId" SelectedIds="selected" Current="_suggestions"
+                                  OnSuggestions="OnSuggestions" OnApplied="OnSuggestionsAppliedAsync" />
+        }
+
         <div class="browse-head" data-testid="browse-head">
             @if (_filterOpen && tree != null)
             {
@@ -457,6 +463,11 @@
                                             {
                                                 <span class="cat-pill" style="@pillStyle" data-testid="tx-category-label" title="@row.CategoryName">@row.CategoryName</span>
                                             }
+                                            @if (row.CanEdit && !hasCategory && _suggestions.TryGetValue(row.Id, out var suggestion))
+                                            {
+                                                <SuggestionChip Suggestion="suggestion" OnAccept="() => AcceptSuggestionAsync(row, suggestion)"
+                                                                OnReject="() => RejectSuggestionAsync(row)" OnEdit="e => OpenPickerFromRow(row, e)" />
+                                            }
                                         }
                                     </div>
                                     <div class="tx-payee">
@@ -506,6 +517,7 @@
                                     <TxDetails Row="row" Statement="expandedStatement" ShowAccount="showAccountColumn"
                                                OnNoteSave="note => SetNoteForAsync(row.Id, note)"
                                                OnShowSimilar="() => ShowSimilarAsync(row)"
+                                               OnSuggest="() => SuggestForRowAsync(row)"
                                                OnEditBooking="() => OpenEditBookingAsync(row)"
                                                OnCreateRule="e => CreateRuleFromAsync(row, e)"
                                                PickerData="pickerData" ProjectId="ProjectId"

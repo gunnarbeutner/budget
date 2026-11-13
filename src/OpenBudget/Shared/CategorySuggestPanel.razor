@@ -1,0 +1,185 @@
+@using OpenBudget.Assist
+@using OpenBudget.Services
+@inject CategorySuggestionService Suggestions
+@inject AssistSettingsService AssistSettings
+@inject IStringLocalizer<CategorySuggestPanel> L
+
+@* The Uncategorized view's suggestion bar: asks for category suggestions (the selection, or every uncategorized
+   booking), accepts the sure ones in one go and lists suggested rules with what they would match. The per-row chips
+   are rendered by the list itself from the suggestions this bar reports. *@
+
+<section class="suggest-bar" data-testid="suggest-bar" aria-label="@L["Aria_Bar"]">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <BusyButton Class="btn btn-sm btn-outline-primary" TestId="suggest-run" OnClick="RunAsync" Busy="busy" BusyChanged="b => busy = b">
+            <i class="bi bi-magic" aria-hidden="true"></i>
+            @(SelectedIds.Count > 0 ? L["Button_SuggestSelected", SelectedIds.Count] : L["Button_SuggestAll"])
+        </BusyButton>
+        @if (progress is { } p && busy)
+        {
+            <span class="small text-body-secondary" role="status" data-testid="suggest-progress">@L["Status_Asking", p.Done, p.Total]</span>
+        }
+        @if (SureCount > 0)
+        {
+            <BusyButton Class="btn btn-sm btn-primary" TestId="suggest-accept-sure" OnClick="AcceptSureAsync" Busy="busy" BusyChanged="b => busy = b">
+                @L["Button_AcceptSure", SureCount]
+            </BusyButton>
+        }
+        @if (result is { Rules.Count: > 0 })
+        {
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="suggest-rules-toggle" @onclick="() => showRules = !showRules">
+                <i class="bi bi-funnel" aria-hidden="true"></i> @L["Button_Rules", result.Rules.Count]
+            </button>
+        }
+        @if (result != null && !busy)
+        {
+            <span class="small text-body-secondary" role="status" data-testid="suggest-summary">
+                @L["Status_Done", result.Suggestions.Count(s => s.CategoryId != null)]
+                @if (result.SkippedNoConsent > 0)
+                {
+                    <span> · @L["Status_NoConsent", result.SkippedNoConsent]</span>
+                }
+            </span>
+        }
+        @if (AssistSettings.Available && !optIn)
+        {
+            <a class="small ms-auto" href="/assist" data-testid="suggest-ai-link">@L["Link_TurnOnAi"]</a>
+        }
+    </div>
+    @if (result?.AiError is { } error)
+    {
+        <div class="small text-danger mt-1" role="alert" data-testid="suggest-ai-error">@L["Error_Ai", error]</div>
+    }
+    @if (message != null)
+    {
+        <div class="small text-success mt-1" role="status" data-testid="suggest-message">@message</div>
+    }
+
+    @if (showRules && result != null)
+    {
+        <div class="suggest-rules mt-2" data-testid="suggest-rules">
+            @foreach (var rule in rules)
+            {
+                var r = rule;
+                <div class="card card-body p-2 mb-2" data-testid="suggest-rule">
+                    @if (editing == r)
+                    {
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control font-monospace" aria-label="@L["Rule_Expression"]" @bind="editText" data-testid="suggest-rule-input" />
+                            <BusyButton Class="btn btn-outline-primary" OnClick="() => RecheckAsync(r)">@L["Button_Check"]</BusyButton>
+                        </div>
+                        @if (editError)
+                        {
+                            <div class="small text-danger">@L["Rule_Invalid"]</div>
+                        }
+                    }
+                    else
+                    {
+                        <code class="small" data-testid="suggest-rule-expression">@r.Expression</code>
+                    }
+                    <div class="small">→ @r.CategoryPath</div>
+                    <div class="small text-body-secondary" data-testid="suggest-rule-counts">@L["Rule_Matches", r.Matches, r.Uncategorized, r.Conflicts]</div>
+                    @if (r.Conflicts > 0)
+                    {
+                        <details class="small">
+                            <summary>@L["Rule_ShowConflicts"]</summary>
+                            <ul class="mb-0">
+                                @foreach (var c in r.ConflictLabels)
+                                {
+                                    <li>@c</li>
+                                }
+                            </ul>
+                        </details>
+                    }
+                    <div class="d-flex gap-2 mt-1">
+                        <BusyButton Class="btn btn-sm btn-primary" TestId="suggest-rule-create" OnClick="() => CreateRuleAsync(r)"
+                                    Disabled="@(!CategorySuggestionService.Offerable(r))">@L["Button_CreateRule"]</BusyButton>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => StartEdit(r)">@L["Button_Edit"]</button>
+                        <button type="button" class="btn btn-sm btn-link" data-testid="suggest-rule-dismiss" @onclick="() => rules.Remove(r)">@L["Button_Dismiss"]</button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    /// <summary>Accepting at or above this confidence in one go.</summary>
+    public const double SureThreshold = 0.8;
+
+    [Parameter, EditorRequired] public int ProjectId { get; set; }
+
+    /// <summary>The selected bookings; none = all uncategorized ones.</summary>
+    [Parameter] public IReadOnlyCollection<long> SelectedIds { get; set; } = [];
+
+    /// <summary>The suggestions currently shown (owned by the list).</summary>
+    [Parameter] public IReadOnlyDictionary<long, TxCategorySuggestion> Current { get; set; } = new Dictionary<long, TxCategorySuggestion>();
+
+    [Parameter] public EventCallback<IReadOnlyList<TxCategorySuggestion>> OnSuggestions { get; set; }
+
+    /// <summary>Bookings changed (accepted or a rule applied).</summary>
+    [Parameter] public EventCallback<IReadOnlyCollection<long>> OnApplied { get; set; }
+
+    private bool busy;
+    private bool optIn;
+    private bool showRules;
+    private (int Done, int Total)? progress;
+    private CategorySuggestionResult? result;
+    private List<RuleSuggestion> rules = [];
+    private RuleSuggestion? editing;
+    private string editText = "";
+    private bool editError;
+    private string? message;
+
+    private int SureCount => Current.Values.Count(s => s.CategoryId != null && s.Confidence >= SureThreshold);
+
+    protected override async Task OnInitializedAsync() => optIn = AssistSettings.Available && await AssistSettings.GetOptInAsync();
+
+    private async Task RunAsync()
+    {
+        message = null;
+        var ids = SelectedIds.Count > 0 ? SelectedIds.ToList() : null;
+        var reporter = new Progress<(int Done, int Total)>(p => { progress = p; _ = InvokeAsync(StateHasChanged); });
+        result = await Suggestions.SuggestAsync(ProjectId, ids, useAi: optIn, reporter);
+        rules = result.Rules.ToList();
+        showRules = rules.Count > 0;
+        progress = null;
+        await OnSuggestions.InvokeAsync(result.Suggestions);
+    }
+
+    private async Task AcceptSureAsync()
+    {
+        var sure = Current.Values.Where(s => s.CategoryId != null && s.Confidence >= SureThreshold).ToList();
+        var changed = 0;
+        foreach (var group in sure.GroupBy(s => s.CategoryId!.Value))
+        {
+            var ids = group.Select(s => s.TransactionId).ToList();
+            changed += (await Suggestions.AcceptAsync(ids, group.Key)).Changed;
+        }
+        message = L["Status_Accepted", changed];
+        await OnApplied.InvokeAsync(sure.Select(s => s.TransactionId).ToList());
+    }
+
+    private async Task CreateRuleAsync(RuleSuggestion rule)
+    {
+        var applied = await Suggestions.CreateRuleAndApplyAsync(ProjectId, rule);
+        rules.Remove(rule);
+        message = L["Status_RuleCreated", applied];
+        await OnApplied.InvokeAsync([]);
+    }
+
+    private void StartEdit(RuleSuggestion rule)
+    {
+        editing = rule;
+        editText = rule.Expression;
+        editError = false;
+    }
+
+    private async Task RecheckAsync(RuleSuggestion rule)
+    {
+        var check = await Suggestions.CheckRuleAsync(ProjectId, editText, rule.CategoryId, rule.Source);
+        editError = check == null;
+        if (check == null) return;
+        rules[rules.IndexOf(rule)] = check;
+        editing = null;
+    }
+}

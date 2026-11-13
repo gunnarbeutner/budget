@@ -2,6 +2,7 @@
 @inject CurrentProjectState Current
 @inject OnboardingService Onboarding
 @inject BankLoginService BankLogins
+@inject OpenBudget.Assist.AssistSettingsService Assist
 @inject IStringLocalizer<SettingsNav> L
 
 @* The left list of the app-level settings pages (bank logins, import, profile and passkeys), headed by the way
@@ -22,11 +23,15 @@
     }
     @Item("portfolio-performance", "/portfolio-performance", "bi-pie-chart", L["Item_PortfolioPerformance"])
     @Item("documents", "/documents/assign", "bi-folder-symlink", L["Item_Documents"])
+    @if (Assist.Available)
+    {
+        @Item("assist", "/assist", "bi-stars", L["Item_Assist"])
+    }
     @Item("account", "/Account", "bi-person", L["Item_Account"], forceLoad: true)
 </nav>
 
 @code {
-    /// <summary>The highlighted section: "banklogins", "get-started", "portfolio-performance", "documents" or "account".</summary>
+    /// <summary>The highlighted section: "banklogins", "get-started", "portfolio-performance", "documents", "assist" or "account".</summary>
     [Parameter] public string? Active { get; set; }
 
     private bool showGetStarted;

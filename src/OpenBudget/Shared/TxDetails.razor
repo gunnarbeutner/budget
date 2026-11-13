@@ -70,6 +70,12 @@
             <input type="text" class="form-control form-control-sm" data-testid="tx-details-note" maxlength="500" aria-label="@L["Note"]"
                    placeholder="@L["Note_Placeholder"]" value="@Row.Note" @onchange="OnNoteChanged" />
         }
+        @if (Row.CanEdit && string.IsNullOrEmpty(Row.CategoryName) && OnSuggest.HasDelegate)
+        {
+            <button type="button" class="ob-btn" data-testid="tx-details-suggest" disabled="@suggesting" @onclick="SuggestAsync">
+                <i class="bi bi-lightbulb" aria-hidden="true"></i> @L["Action_Suggest"]
+            </button>
+        }
         @if (Row.CanEdit && PickerData != null && !Row.IsSplitRemainder)
         {
             <button type="button" class="ob-btn @(panel == Panel.Split ? "active" : "")" data-testid="tx-details-split"
@@ -135,6 +141,23 @@
     [Parameter] public bool ShowAccount { get; set; }
     [Parameter] public EventCallback<string> OnNoteSave { get; set; }
     [Parameter] public EventCallback OnShowSimilar { get; set; }
+    /// <summary>Asks for a category suggestion for this booking (shown as a chip on the row).</summary>
+    [Parameter] public EventCallback OnSuggest { get; set; }
+
+    private bool suggesting;
+
+    private async Task SuggestAsync()
+    {
+        suggesting = true;
+        try
+        {
+            await OnSuggest.InvokeAsync();
+        }
+        finally
+        {
+            suggesting = false;
+        }
+    }
     /// <summary>Opens the full edit form (bookings of manual accounts the user owns).</summary>
     [Parameter] public EventCallback OnEditBooking { get; set; }
     /// <summary>"Create rule from this…": opens the rules bar of the category with a draft for the payee (the page asks for a category when there is none).</summary>

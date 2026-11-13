@@ -1,0 +1,34 @@
+@using OpenBudget.Assist
+@inject IStringLocalizer<SuggestionChip> L
+
+@* A category suggestion on a booking row: the category with its confidence and source (the rationale as tooltip),
+   accept, reject, or pick another category. *@
+
+<span class="suggest-chip" data-testid="suggest-chip" title="@Title" @onclick:stopPropagation="true">
+    <i class="bi @Icon" aria-hidden="true"></i>
+    <button type="button" class="suggest-chip-name" data-testid="suggest-chip-edit" title="@L["Edit"]" @onclick="e => OnEdit.InvokeAsync(e)">@Suggestion.CategoryPath</button>
+    <span class="suggest-chip-conf">@((int)Math.Round(Suggestion.Confidence * 100)) %</span>
+    <button type="button" class="suggest-chip-btn" data-testid="suggest-chip-accept" aria-label="@L["Accept"]" title="@L["Accept"]" @onclick="() => OnAccept.InvokeAsync()">
+        <i class="bi bi-check-lg" aria-hidden="true"></i>
+    </button>
+    <button type="button" class="suggest-chip-btn" data-testid="suggest-chip-reject" aria-label="@L["Reject"]" title="@L["Reject"]" @onclick="() => OnReject.InvokeAsync()">
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
+    </button>
+</span>
+
+@code {
+    [Parameter, EditorRequired] public TxCategorySuggestion Suggestion { get; set; } = null!;
+    [Parameter] public EventCallback OnAccept { get; set; }
+    [Parameter] public EventCallback OnReject { get; set; }
+    [Parameter] public EventCallback<MouseEventArgs> OnEdit { get; set; }
+
+    private string Icon => Suggestion.Source switch
+    {
+        "ai" => "bi-stars",
+        "iban" => "bi-bank",
+        "rule" => "bi-funnel",
+        _ => "bi-people",
+    };
+
+    private string Title => L["Source_" + Suggestion.Source] + (string.IsNullOrEmpty(Suggestion.Rationale) ? "" : ": " + Suggestion.Rationale);
+}

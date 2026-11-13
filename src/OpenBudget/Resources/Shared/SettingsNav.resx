@@ -88,4 +88,7 @@
   <data name="Badge_NeedsYou" xml:space="preserve">
     <value>A bank login needs you</value>
   </data>
+  <data name="Item_Assist" xml:space="preserve">
+    <value>AI suggestions</value>
+  </data>
 </root>

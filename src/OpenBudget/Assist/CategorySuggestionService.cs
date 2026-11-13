@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -14,6 +15,9 @@ public sealed record TxCategorySuggestion(long TransactionId, long? CategoryId, 
 public sealed record RuleSuggestion(string Expression, long CategoryId, string CategoryPath, int Matches, int Uncategorized, IReadOnlyList<long> ConflictIds, string Source)
 {
     public int Conflicts => ConflictIds.Count;
+
+    /// <summary>The conflicting bookings for display: date, payee, amount and their current category.</summary>
+    public IReadOnlyList<string> ConflictLabels { get; init; } = [];
 }
 
 /// <summary>What a suggestion run produced. <see cref="AiError"/> says why the AI part failed (the rest still counts).</summary>
@@ -240,7 +244,11 @@ public sealed class CategorySuggestionService
             if (c is not { } cid || !ctx.ById.ContainsKey(cid)) uncategorized++;
             else if (cid != categoryId) conflicts.Add(id);
         }
-        return new RuleSuggestion(canonical, categoryId, category.Path, ids.Count, uncategorized, conflicts, source);
+        return new RuleSuggestion(canonical, categoryId, category.Path, ids.Count, uncategorized, conflicts, source)
+        {
+            ConflictLabels = conflicts.Take(20).Select(id => ctx.Rows[id]).Select(r => string.Create(CultureInfo.CurrentCulture,
+                $"{r.Date:dd.MM.yyyy} · {r.Name} · {Formatting.FormatMoneyDe(r.Amount / 100m)} · {ctx.ById[r.CategoryId!.Value].Path}")).ToList(),
+        };
     }
 
     private static bool ContainsRedactionToken(string expression) =>

@@ -1,0 +1,61 @@
+@page "/assist"
+@using OpenBudget.Assist
+@inject AssistSettingsService Assist
+@inject IStringLocalizer<AssistSettings> L
+
+@* The per-user "Use AI suggestions" setting with a preview of exactly what is sent for one of the user's bookings.
+   Only reachable when the server has an AI service configured. *@
+
+<PageTitle>@L["PageTitle"]</PageTitle>
+
+<SettingsShell Active="assist">
+<PageHeader Title="@L["Heading"]" />
+
+@if (!Assist.Available)
+{
+    <p class="text-body-secondary" data-testid="assist-unavailable">@L["Unavailable"]</p>
+}
+else
+{
+    <p class="text-body-secondary">@L["Intro"]</p>
+    <div class="form-check form-switch mb-3">
+        <input class="form-check-input" type="checkbox" role="switch" id="assist-optin" data-testid="assist-optin"
+               checked="@optIn" @onchange="ToggleAsync" />
+        <label class="form-check-label" for="assist-optin">@L["Toggle"]</label>
+    </div>
+    <ul class="small text-body-secondary">
+        <li>@L["Sent"]</li>
+        <li>@L["NotSent"]</li>
+        <li>@L["Shared"]</li>
+        <li>@L["Model", Assist.Model]</li>
+    </ul>
+    <h2 class="h6 mt-4">@L["Preview_Heading"]</h2>
+    @if (preview == null)
+    {
+        <p class="small text-body-secondary">@L["Preview_None"]</p>
+    }
+    else
+    {
+        <p class="small text-body-secondary">@L["Preview_Intro"]</p>
+        <pre class="small border rounded p-2 text-wrap" data-testid="assist-preview">@preview</pre>
+    }
+}
+</SettingsShell>
+
+@code {
+    private bool optIn;
+    private string? preview;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Assist.Available) return;
+        optIn = await Assist.GetOptInAsync();
+        preview = await Assist.PreviewAsync();
+    }
+
+    private async Task ToggleAsync(ChangeEventArgs e)
+    {
+        optIn = e.Value is true;
+        await Assist.SetOptInAsync(optIn);
+    }
+}

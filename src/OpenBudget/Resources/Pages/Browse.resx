@@ -403,4 +403,7 @@
   <data name="Toast_Copied" xml:space="preserve"><value>Copied</value></data>
   <data name="Toast_CopyFailed" xml:space="preserve"><value>Could not copy</value></data>
   <data name="Header_Manual" xml:space="preserve"><value>Manual account</value></data>
+  <data name="Suggest_None" xml:space="preserve">
+    <value>No suggestion for this booking.</value>
+  </data>
 </root>

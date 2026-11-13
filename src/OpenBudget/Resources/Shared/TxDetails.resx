@@ -166,4 +166,7 @@
   <data name="Action_Offset" xml:space="preserve">
     <value>Offsetting entry</value>
   </data>
+  <data name="Action_Suggest" xml:space="preserve">
+    <value>Suggest category</value>
+  </data>
 </root>
