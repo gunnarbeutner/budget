@@ -3,15 +3,19 @@ namespace OpenBudget.Connectors.Amazon;
 /// <summary>A charge to place: the account its instrument is mapped to, the wallet's day and the signed cents.</summary>
 public sealed record ChargeToMatch(long Id, long AccountId, DateOnly Date, long Cents);
 
-/// <summary>A booking that may be a charge's; <see cref="ShopLike"/>: payee or purpose names the shop.</summary>
-public sealed record BookingToMatch(long Id, long AccountId, DateOnly Date, long Cents, bool ShopLike);
+/// <summary>
+/// A booking that may be a charge's; <see cref="ShopLike"/>: payee or purpose names the shop; <see cref="Pending"/>: not
+/// booked yet, so its date is the bank's expected booking day.
+/// </summary>
+public sealed record BookingToMatch(long Id, long AccountId, DateOnly Date, long Cents, bool ShopLike, bool Pending = false);
 
 /// <summary>Which charge got which booking, and which charges had several equally good bookings.</summary>
 public sealed record MatchOutcome(IReadOnlyDictionary<long, long> Matches, IReadOnlySet<long> Ambiguous);
 
 /// <summary>
 /// Pairs wallet charges with bookings: same account, exactly the same signed amount, booked from two days before to
-/// five days after the wallet's day, each booking used once. Bookings that name the shop are preferred over others.
+/// five days after the wallet's day (a pending booking, dated with the bank's expected booking day, up to fourteen days
+/// after), each booking used once. Bookings that name the shop are preferred over others.
 /// A charge is matched only when exactly one booking fits and that booking fits no other open charge; placing one
 /// charge can settle another, so this repeats until nothing changes. The rest is ambiguous (several fit) or unmatched.
 /// </summary>
@@ -19,6 +23,7 @@ public static class AmazonMatcher
 {
     public const int DaysBefore = 2;
     public const int DaysAfter = 5;
+    public const int PendingDaysAfter = 14;
 
     public static MatchOutcome Match(IReadOnlyList<ChargeToMatch> charges, IReadOnlyList<BookingToMatch> bookings, IReadOnlySet<long>? taken = null)
     {
@@ -27,7 +32,7 @@ public static class AmazonMatcher
         foreach (var c in charges)
         {
             var fit = bookings.Where(b => b.AccountId == c.AccountId && b.Cents == c.Cents
-                && b.Date >= c.Date.AddDays(-DaysBefore) && b.Date <= c.Date.AddDays(DaysAfter)).ToList();
+                && b.Date >= c.Date.AddDays(-DaysBefore) && b.Date <= c.Date.AddDays(b.Pending ? PendingDaysAfter : DaysAfter)).ToList();
             if (fit.Any(b => b.ShopLike)) fit = fit.Where(b => b.ShopLike).ToList();
             candidates[c.Id] = fit;
         }

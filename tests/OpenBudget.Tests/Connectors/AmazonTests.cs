@@ -156,6 +156,9 @@ public sealed class AmazonTests
         Assert.Equal(10, AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day.AddDays(-2), -1060, false)]).Matches[1]);
         Assert.Equal(10, AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day.AddDays(5), -1060, false)]).Matches[1]);
         Assert.Empty(AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day.AddDays(6), -1060, false)]).Matches);
+        // a pending booking carries the bank's expected booking day, often a week or more later
+        Assert.Equal(10, AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day.AddDays(9), -1060, false, Pending: true)]).Matches[1]);
+        Assert.Empty(AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day.AddDays(15), -1060, false, Pending: true)]).Matches);
         Assert.Empty(AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day.AddDays(-3), -1060, false)]).Matches);
         Assert.Empty(AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day, -1061, false)]).Matches);
         Assert.Empty(AmazonMatcher.Match(charges, [new BookingToMatch(10, 8, Day, -1060, false)]).Matches); // another account

@@ -122,19 +122,19 @@ public sealed class AmazonOrderStore
         if (open.Count > 0)
         {
             var min = new DateTimeOffset(open.Min(c => c.Date).AddDays(-AmazonMatcher.DaysBefore - 1), TimeSpan.Zero).ToUnixTimeSeconds();
-            var max = new DateTimeOffset(open.Max(c => c.Date).AddDays(AmazonMatcher.DaysAfter + 2), TimeSpan.Zero).ToUnixTimeSeconds();
+            var max = new DateTimeOffset(open.Max(c => c.Date).AddDays(AmazonMatcher.PendingDaysAfter + 2), TimeSpan.Zero).ToUnixTimeSeconds();
             var accounts = open.Select(c => AccountOf(c)!.Value).Distinct().ToList();
             var rows = await db.Transactions.AsNoTracking()
                 .Where(t => t.OwnerUserId == ownerUserId && t.AccountId != null && accounts.Contains(t.AccountId.Value)
                     && t.Timestamp >= min && t.Timestamp <= max && t.Splitted != SplitState.Child)
-                .Select(t => new { t.Id, t.AccountId, t.Timestamp, t.Amount, t.SplitOriginalAmount, t.Name, t.Purpose })
+                .Select(t => new { t.Id, t.AccountId, t.Timestamp, t.Amount, t.SplitOriginalAmount, t.Name, t.Purpose, t.Booked })
                 .ToListAsync(ct);
             foreach (var r in rows)
             {
                 var cents = r.SplitOriginalAmount ?? r.Amount;
                 bookingRows[r.Id] = (r.AccountId!.Value, cents);
                 bookings.Add(new BookingToMatch(r.Id, r.AccountId!.Value, DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(r.Timestamp).UtcDateTime),
-                    cents, AmazonMatcher.IsShopLike(r.Name, r.Purpose)));
+                    cents, AmazonMatcher.IsShopLike(r.Name, r.Purpose), Pending: !r.Booked));
             }
         }
 
