@@ -17,8 +17,27 @@ public sealed record BankLoginView(
     string? LastError,
     bool CredentialsInvalid,
     string? Username,
-    IReadOnlyList<string>? StoredExtraCredentials = null);
+    IReadOnlyList<string>? StoredExtraCredentials = null)
+{
+    /// <summary>What background syncs can do for this login (None: the switch is not offered).</summary>
+    public SilentCapability Silent { get; init; }
+
+    public bool BackgroundEnabled { get; init; }
+
+    /// <summary>Why a background run stopped for the owner (a manual sync clears it), or null.</summary>
+    public string? NeedsManualSync { get; init; }
+
+    public DateTime? LastBackgroundSyncAt { get; init; }
+
+    /// <summary>The bank code of a FinTS login, and whether background runs are allowed for that bank.</summary>
+    public string? FinTsBlz { get; init; }
+
+    public bool FinTsBankAllowed { get; init; }
+}
 // StoredExtraCredentials: keys of the extra credential values that are stored (the values themselves never leave the server).
+
+/// <summary>A FinTS bank of the user's logins with its background setting and the logged dialog-init codes.</summary>
+public sealed record FinTsBankView(string Blz, string Name, bool BackgroundEnabled, IReadOnlyList<BackgroundSyncRun> Evidence);
 
 public sealed record BankLoginAccountView(
     int Id,
@@ -102,23 +121,104 @@ public class BankLoginService
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var logins = await db.BankLogins.AsNoTracking().OrderBy(l => l.DisplayName).ThenBy(l => l.Id).ToListAsync(ct);
-        return logins.Select(ToView).ToList();
+        var allowed = await AllowedBanksAsync(db, ct);
+        return logins.Select(l => ToView(l, allowed)).ToList();
     }
+
+    private static async Task<HashSet<string>> AllowedBanksAsync(BudgetDbContext db, CancellationToken ct) =>
+        (await db.FinTsBankSettings.AsNoTracking().Where(b => b.BackgroundEnabled).Select(b => b.Blz).ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
 
     public async Task<BankLoginView?> GetLoginAsync(int id, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var login = await db.BankLogins.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id, ct);
-        return login == null ? null : ToView(login);
+        return login == null ? null : ToView(login, await AllowedBanksAsync(db, ct));
     }
 
-    private BankLoginView ToView(BankLogin l)
+    private BankLoginView ToView(BankLogin l, HashSet<string> allowedBanks)
     {
         var registration = _registry.Find(l.ConnectorType);
         var credentials = BankSyncRunner.DecodeCredentials(_secrets, l.EncryptedCredentials);
         return new BankLoginView(l.Id, l.ConnectorType, registration?.DisplayName ?? l.ConnectorType, registration != null,
             l.DisplayName, l.RefreshInterval, l.LastSyncAt, l.LastError, l.CredentialsInvalid, credentials?.Username,
-            credentials?.Extra.Where(e => e.Value.Length > 0).Select(e => e.Key).ToList() ?? []);
+            credentials?.Extra.Where(e => e.Value.Length > 0).Select(e => e.Key).ToList() ?? [])
+        {
+            Silent = registration?.SilentCapabilityFor(credentials) ?? SilentCapability.None,
+            BackgroundEnabled = l.BackgroundEnabled,
+            NeedsManualSync = l.NeedsManualSync,
+            LastBackgroundSyncAt = l.LastBackgroundSyncAt,
+            FinTsBlz = registration?.FinTsBlz,
+            FinTsBankAllowed = registration?.FinTsBlz is { } blz && allowedBanks.Contains(blz),
+        };
+    }
+
+    // ---- Background syncs ----
+
+    /// <summary>Switches background syncs of the user's login on or off.</summary>
+    public async Task SetBackgroundAsync(int id, bool enabled, CancellationToken ct = default)
+    {
+        var userId = await RequireUserAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var login = await db.BankLogins.FirstOrDefaultAsync(l => l.Id == id, ct) ?? throw new AccessDeniedException("Bank login not found.");
+        if (enabled && _registry.Find(login.ConnectorType)?.Silent is null or SilentCapability.None)
+            throw new InvalidOperationException("This bank cannot be synced in the background.");
+        login.BackgroundEnabled = enabled;
+        login.BackgroundFailures = 0;
+        login.NextBackgroundAttemptAt = null;
+        await db.SaveChangesAsync(ct);
+        Changed(userId);
+    }
+
+    /// <summary>The most recent entries of the login's sync log (background runs and FinTS dialog outcomes), newest first.</summary>
+    public async Task<List<BackgroundSyncRun>> GetRunsAsync(int loginId, int count = 20, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await db.BackgroundSyncRuns.AsNoTracking().Where(r => r.BankLoginId == loginId)
+            .OrderByDescending(r => r.StartedAt).ThenByDescending(r => r.Id).Take(count).ToListAsync(ct);
+    }
+
+    /// <summary>Whether any of the user's logins waits for a manual sync after a background run stopped.</summary>
+    public async Task<bool> AnyNeedsManualSyncAsync(CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await db.BankLogins.AnyAsync(l => l.BackgroundEnabled && l.NeedsManualSync != null, ct);
+    }
+
+    /// <summary>Whether the signed-in user may change the per-bank FinTS background setting.</summary>
+    public async Task<bool> IsAdminAsync() => (await _access.GetAsync()).IsAdmin;
+
+    /// <summary>The FinTS banks of the user's logins with their background setting and the latest logged dialog-init codes.</summary>
+    public async Task<List<FinTsBankView>> GetFinTsBanksAsync(CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var types = await db.BankLogins.AsNoTracking().Select(l => l.ConnectorType).Distinct().ToListAsync(ct);
+        var allowed = await AllowedBanksAsync(db, ct);
+        var result = new List<FinTsBankView>();
+        foreach (var r in types.Select(_registry.Find).Where(r => r?.FinTsBlz != null).DistinctBy(r => r!.FinTsBlz))
+        {
+            var blz = r!.FinTsBlz!;
+            var evidence = await db.BackgroundSyncRuns.AsNoTracking().Where(x => x.Blz == blz && x.FinTsCodes != null)
+                .OrderByDescending(x => x.StartedAt).Take(10).ToListAsync(ct);
+            result.Add(new FinTsBankView(blz, r.DisplayName, allowed.Contains(blz), evidence));
+        }
+        return result;
+    }
+
+    /// <summary>Allows or forbids background FinTS runs for a bank (admins only).</summary>
+    public async Task SetFinTsBankAsync(string blz, bool enabled, CancellationToken ct = default)
+    {
+        var userId = await RequireUserAsync();
+        if (!await IsAdminAsync()) throw new AccessDeniedException("Only an admin can change this.");
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var row = await db.FinTsBankSettings.FirstOrDefaultAsync(b => b.Blz == blz, ct);
+        if (row == null)
+        {
+            row = new FinTsBankSetting { Blz = blz };
+            db.FinTsBankSettings.Add(row);
+        }
+        row.BackgroundEnabled = enabled;
+        await db.SaveChangesAsync(ct);
+        Changed(userId);
     }
 
     public async Task<BankLoginView> CreateLoginAsync(
@@ -152,7 +252,7 @@ public class BankLoginService
         db.BankLogins.Add(login);
         await db.SaveChangesAsync(ct);
         Changed(userId);
-        return ToView(login);
+        return ToView(login, []);
     }
 
     /// <summary>

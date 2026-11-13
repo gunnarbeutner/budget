@@ -68,6 +68,10 @@ else
                                 @(status.Phase == SyncPhase.Running ? L["Status_Syncing"] : status.Phase == SyncPhase.WaitingForApproval ? L["Status_WaitingApproval"] : L["Status_WaitingInput"])
                             </span>
                         }
+                        else if (login is { BackgroundEnabled: true, NeedsManualSync: not null })
+                        {
+                            <span class="badge rounded-pill bank-pill-warn" data-testid="login-status">@L["Status_NeedsYou"]</span>
+                        }
                         else if (login.CredentialsInvalid)
                         {
                             <span class="badge rounded-pill bank-pill-error" data-testid="login-status">@L["Status_ReenterCredentials"]</span>
@@ -106,6 +110,16 @@ else
                             }
                         </select>
                     </div>
+                    @if (login.Silent != SilentCapability.None)
+                    {
+                        <div class="col-sm-6 col-md-4">
+                            <div class="form-check form-switch mb-1">
+                                <input class="form-check-input" type="checkbox" role="switch" id="@($"background-{login.Id}")" data-testid="background-switch"
+                                       checked="@login.BackgroundEnabled" @onchange="e => SetBackgroundAsync(login.Id, e.Value is true)" />
+                                <label class="form-check-label" for="@($"background-{login.Id}")">@L["Background_Switch"]</label>
+                            </div>
+                        </div>
+                    }
                     @if (running)
                     {
                         <div class="col-sm-6 col-md-8">
@@ -120,6 +134,50 @@ else
                         </div>
                     }
                 </div>
+
+                @if (login.BackgroundEnabled)
+                {
+                    <div class="small mb-2" data-testid="background-status">
+                        @if (login.NeedsManualSync != null)
+                        {
+                            <div class="alert alert-warning py-2 mb-0" role="status">
+                                <strong>@L["Background_NeedsYou"]</strong> <span class="text-body-secondary">@login.NeedsManualSync</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <span class="text-body-secondary">@L["Background_Last"]: @(login.LastBackgroundSyncAt is { } bg ? Clock.ToLocal(bg).ToString("yyyy-MM-dd HH:mm") : L["Never"].Value)</span>
+                        }
+                        @if (login.Silent == SilentCapability.SessionOnly)
+                        {
+                            <div class="text-body-secondary">@L["Background_SessionOnly"]</div>
+                        }
+                        @if (login.FinTsBlz != null && !login.FinTsBankAllowed)
+                        {
+                            <div class="text-body-secondary" data-testid="background-bank-off">@L["Background_BankOff"]</div>
+                        }
+                    </div>
+                }
+                @if (runsByLogin.GetValueOrDefault(login.Id) is { Count: > 0 } runs)
+                {
+                    <details class="small mb-2" data-testid="background-runs">
+                        <summary>@L["Runs_Heading"]</summary>
+                        <table class="table table-sm mb-0 mt-1">
+                            <tbody>
+                                @foreach (var r in runs)
+                                {
+                                    <tr>
+                                        <td class="text-nowrap">@Clock.ToLocal(r.StartedAt).ToString("yyyy-MM-dd HH:mm")</td>
+                                        <td>@(r.Background ? L["Runs_Background"] : L["Runs_Manual"])</td>
+                                        <td>@L[$"Runs_Result_{r.Result}"]</td>
+                                        <td class="text-body-secondary">@r.Reason</td>
+                                        <td class="text-body-secondary">@(r.FinTsCodes is { } codes ? "FinTS " + codes : "")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </details>
+                }
 
                 @if (!running && !string.IsNullOrEmpty(login.LastError))
                 {
@@ -209,6 +267,37 @@ else
             </div>
         </div>
     }
+    </div>
+}
+
+@if (isAdmin && finTsBanks.Count > 0)
+{
+    <div class="card mt-3" data-testid="fints-banks">
+        <div class="card-body small">
+            <h6>@L["FinTsBanks_Heading"]</h6>
+            <p class="text-body-secondary">@L["FinTsBanks_Intro"]</p>
+            @foreach (var b in finTsBanks)
+            {
+                <div class="mb-2" @key="b.Blz">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="@($"fints-bank-{b.Blz}")" data-testid="fints-bank-switch"
+                               checked="@b.BackgroundEnabled" @onchange="e => SetFinTsBankAsync(b.Blz, e.Value is true)" />
+                        <label class="form-check-label" for="@($"fints-bank-{b.Blz}")">@b.Name (@b.Blz)</label>
+                    </div>
+                    @if (b.Evidence.Count == 0)
+                    {
+                        <div class="text-body-secondary">@L["FinTsBanks_NoEvidence"]</div>
+                    }
+                    else
+                    {
+                        <div class="text-body-secondary">
+                            @L["FinTsBanks_Evidence"]:
+                            @string.Join(" · ", b.Evidence.Select(e => $"{Clock.ToLocal(e.StartedAt):yyyy-MM-dd HH:mm} {e.FinTsCodes}"))
+                        </div>
+                    }
+                </div>
+            }
+        </div>
     </div>
 }
 
@@ -351,6 +440,9 @@ else
     private readonly Dictionary<int, List<LinkCandidate>> candidatesByAccount = new();
     private readonly Dictionary<int, string> linkChoice = new();
     private Dictionary<int, BankSyncStatus> statuses = new();
+    private readonly Dictionary<int, List<BackgroundSyncRun>> runsByLogin = new();
+    private List<FinTsBankView> finTsBanks = [];
+    private bool isAdmin;
 
     private string newConnector = "";
     private string newName = "";
@@ -415,8 +507,12 @@ else
         statuses = (await Bank.GetStatusesAsync()).ToDictionary(s => s.LoginId);
         accountsByLogin.Clear();
         candidatesByAccount.Clear();
+        runsByLogin.Clear();
+        isAdmin = await Bank.IsAdminAsync();
+        finTsBanks = isAdmin ? await Bank.GetFinTsBanksAsync() : [];
         foreach (var login in logins)
         {
+            if (login.BackgroundEnabled || login.FinTsBlz != null) runsByLogin[login.Id] = await Bank.GetRunsAsync(login.Id);
             var accounts = await Bank.GetAccountsAsync(login.Id);
             accountsByLogin[login.Id] = accounts;
             foreach (var a in accounts.Where(a => a.LinkedAccountId == null && !a.Closed))
@@ -488,6 +584,10 @@ else
         await LoadAsync();
     }
 
+
+    private Task SetBackgroundAsync(int id, bool enabled) => RunAsync(() => Bank.SetBackgroundAsync(id, enabled));
+
+    private Task SetFinTsBankAsync(string blz, bool enabled) => RunAsync(() => Bank.SetFinTsBankAsync(blz, enabled));
 
     private Task SetIntervalAsync(BankLoginView login, string? value) =>
         RunAsync(() => Enum.TryParse<RefreshInterval>(value, out var i)

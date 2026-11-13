@@ -85,4 +85,7 @@
   <data name="Item_GetStarted" xml:space="preserve">
     <value>Get started</value>
   </data>
+  <data name="Badge_NeedsYou" xml:space="preserve">
+    <value>A bank login needs you</value>
+  </data>
 </root>

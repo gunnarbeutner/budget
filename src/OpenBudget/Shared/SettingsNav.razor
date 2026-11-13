@@ -1,6 +1,7 @@
 @using OpenBudget.Services
 @inject CurrentProjectState Current
 @inject OnboardingService Onboarding
+@inject BankLoginService BankLogins
 @inject IStringLocalizer<SettingsNav> L
 
 @* The left list of the app-level settings pages (bank logins, import, profile and passkeys), headed by the way
@@ -14,7 +15,7 @@
         <span class="text-truncate">@BackLabel</span>
     </a>
     <div class="settings-nav-heading">@L["Heading"]</div>
-    @Item("banklogins", "/banklogins", "bi-bank", L["Item_BankLogins"])
+    @Item("banklogins", "/banklogins", "bi-bank", L["Item_BankLogins"], badge: needsYou ? L["Badge_NeedsYou"].Value : null)
     @if (showGetStarted || Active == "get-started")
     {
         @Item("get-started", "/get-started", "bi-signpost-2", L["Item_GetStarted"])
@@ -29,19 +30,28 @@
     [Parameter] public string? Active { get; set; }
 
     private bool showGetStarted;
+    private bool needsYou;
 
-    protected override async Task OnInitializedAsync() => showGetStarted = (await Onboarding.GetAsync()).ShowInMenu;
+    protected override async Task OnInitializedAsync()
+    {
+        showGetStarted = (await Onboarding.GetAsync()).ShowInMenu;
+        needsYou = BankLogins.IsEnabled && await BankLogins.AnyNeedsManualSyncAsync();
+    }
 
     private string BackHref => Current.ProjectId is { } id ? $"/projects/{id}/browse" : "/";
     private string BackLabel => Current.ProjectName is { Length: > 0 } name ? L["Back_Project", name] : L["Back_Projects"];
 
-    private RenderFragment Item(string key, string href, string icon, string label, bool forceLoad = false) => __builder =>
+    private RenderFragment Item(string key, string href, string icon, string label, bool forceLoad = false, string? badge = null) => __builder =>
     {
         var active = Active == key;
         <a class="shell-view @(active ? "active" : "")" href="@href" aria-current="@(active ? "page" : null)"
            data-testid="@($"settings-nav-{key}")" target="@(forceLoad ? "_top" : null)">
             <i class="bi @icon" aria-hidden="true"></i>
             <span class="shell-view-label">@label</span>
+            @if (badge != null)
+            {
+                <span class="badge rounded-pill text-bg-warning ms-auto" title="@badge" data-testid="banklogins-needs-you"><i class="bi bi-exclamation" aria-hidden="true"></i><span class="visually-hidden">@badge</span></span>
+            }
         </a>
     };
 }

@@ -253,4 +253,52 @@
   <data name="Accounts_Loading" xml:space="preserve">
     <value>Konten werden geladen …</value>
   </data>
+  <data name="Status_NeedsYou" xml:space="preserve">
+    <value>Braucht dich</value>
+  </data>
+  <data name="Background_Switch" xml:space="preserve">
+    <value>Im Hintergrund synchronisieren</value>
+  </data>
+  <data name="Background_NeedsYou" xml:space="preserve">
+    <value>Braucht dich: öffnen und synchronisieren.</value>
+  </data>
+  <data name="Background_Last" xml:space="preserve">
+    <value>Letzte Hintergrund-Synchronisierung</value>
+  </data>
+  <data name="Background_SessionOnly" xml:space="preserve">
+    <value>Klappt nur, solange die Bank die Sitzung behält.</value>
+  </data>
+  <data name="Background_BankOff" xml:space="preserve">
+    <value>Hintergrund-Synchronisierung ist für diese Bank aus (Admin-Einstellung).</value>
+  </data>
+  <data name="Runs_Heading" xml:space="preserve">
+    <value>Läufe im Hintergrund</value>
+  </data>
+  <data name="Runs_Background" xml:space="preserve">
+    <value>Hintergrund</value>
+  </data>
+  <data name="Runs_Manual" xml:space="preserve">
+    <value>Von Hand</value>
+  </data>
+  <data name="Runs_Result_Done" xml:space="preserve">
+    <value>Fertig</value>
+  </data>
+  <data name="Runs_Result_NeedsUser" xml:space="preserve">
+    <value>Braucht dich</value>
+  </data>
+  <data name="Runs_Result_Failed" xml:space="preserve">
+    <value>Fehlgeschlagen</value>
+  </data>
+  <data name="FinTsBanks_Heading" xml:space="preserve">
+    <value>FinTS-Banken im Hintergrund</value>
+  </data>
+  <data name="FinTsBanks_Intro" xml:space="preserve">
+    <value>Standardmäßig aus. Code 3076 heißt: die Bank brauchte keine TAN; 0030 oder 3955: sie wollte eine. Schalte eine Bank nur ein, wenn ihre Logins 3076 zeigen.</value>
+  </data>
+  <data name="FinTsBanks_NoEvidence" xml:space="preserve">
+    <value>Noch keine Dialoge protokolliert.</value>
+  </data>
+  <data name="FinTsBanks_Evidence" xml:space="preserve">
+    <value>Protokollierte Codes</value>
+  </data>
 </root>
