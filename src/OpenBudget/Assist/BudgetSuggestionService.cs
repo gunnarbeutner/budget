@@ -126,6 +126,17 @@ public sealed class BudgetSuggestionService
         List<BudgetSuggestionRow> rows, CancellationToken ct)
     {
         var redactor = new AssistRedactor(await _settings.PersonNamesAsync(ct));
+        var (request, handles) = BuildRequest(year, computed.Select(c => (c.Input, c.Baseline, (IReadOnlyDictionary<long, Transaction>)c.Rows)).ToList(), redactor);
+        var response = await _client.CompleteAsync(request, ct);
+        _log.LogInformation("AI budget suggestion for {Count} rows ({Input} input tokens, {Output} output, {Ms} ms)",
+            computed.Count, response.InputTokens, response.OutputTokens, (int)response.Elapsed.TotalMilliseconds);
+        return Merge(response, redactor, handles, rows);
+    }
+
+    /// <summary>The request for a set of rows (redacted) and which handle ("c1") stands for which row.</summary>
+    public static (AssistRequest Request, Dictionary<string, int> Handles) BuildRequest(
+        int year, IReadOnlyList<(BudgetSuggestionInput Input, BudgetBaseline Baseline, IReadOnlyDictionary<long, Transaction> Rows)> computed, AssistRedactor redactor)
+    {
         var handles = new Dictionary<string, int>(StringComparer.Ordinal);
         var items = new JsonArray();
         for (var i = 0; i < computed.Count; i++)
@@ -163,10 +174,7 @@ public sealed class BudgetSuggestionService
             explanation: one or two short sentences in German for the household, no amounts of single bookings.
             Tokens like PERSON_A stand for household members, ACC_1 for an account, # for removed digits.
             """;
-        var response = await _client.CompleteAsync(new AssistRequest(SchemaName, Schema(), system, "Categories:\n" + items.ToJsonString(CategoryPrompt.Json)), ct);
-        _log.LogInformation("AI budget suggestion for {Count} rows ({Input} input tokens, {Output} output, {Ms} ms)",
-            computed.Count, response.InputTokens, response.OutputTokens, (int)response.Elapsed.TotalMilliseconds);
-        return Merge(response, redactor, handles, rows);
+        return (new AssistRequest(SchemaName, Schema(), system, "Categories:\n" + items.ToJsonString(CategoryPrompt.Json)), handles);
     }
 
     /// <summary>Applies the model's answer onto the baseline rows (see the class summary for what is checked).</summary>
