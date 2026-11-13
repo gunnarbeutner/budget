@@ -194,7 +194,7 @@
     <value>The database has a password: tick the box, enter it and upload again.</value>
   </data>
   <data name="Upload_PasswordHint" xml:space="preserve">
-    <value>The password is used once to decrypt the database on the server and is not stored. The upload is deleted after the import.</value>
+    <value>Not stored.</value>
   </data>
   <data name="Upload_Button" xml:space="preserve">
     <value>Upload and import</value>
@@ -213,9 +213,6 @@
   </data>
   <data name="Job_Statements" xml:space="preserve">
     <value>Importing statements… {0} of {1}</value>
-  </data>
-  <data name="Job_Background" xml:space="preserve">
-    <value>The import goes on on the server even if you close this page.</value>
   </data>
   <data name="Step_Of" xml:space="preserve">
     <value>Step {0} of {1}</value>
@@ -294,5 +291,14 @@
   </data>
   <data name="Step4_NoProject" xml:space="preserve">
     <value>Create a project first; it holds your accounts and budgets.</value>
+  </data>
+  <data name="Step4_BudgetImported" xml:space="preserve">
+    <value>The budget “{0}” ({1}) from MoneyMoney is not active yet.</value>
+  </data>
+  <data name="Step4_BudgetActive" xml:space="preserve">
+    <value>The budget “{0}” ({1}) is active.</value>
+  </data>
+  <data name="Step4_BudgetActivate" xml:space="preserve">
+    <value>Activate</value>
   </data>
 </root>

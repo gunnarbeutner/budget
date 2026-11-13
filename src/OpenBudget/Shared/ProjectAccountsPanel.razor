@@ -1,0 +1,69 @@
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject BudgetService BudgetService
+@inject ProjectService ProjectService
+
+@* The accounts of a project with their scope and whether they count for the cashflow, editable (owner only; the
+   service enforces it). Shown by the Accounts view of the project's settings and inline in Get started. *@
+
+<ProjectAccountsCard Assignments="accountAssignments"
+                     AllAccounts="allAccounts"
+                     AllAccountGroups="allAccountGroups"
+                     OnAdd="AddAccounts"
+                     OnRemove="RemoveAccount"
+                     OnScopeChange="OnScopeChange"
+                     OnInCashflowChange="OnInCashflowChange" />
+
+@code {
+    [Parameter, EditorRequired] public int ProjectId { get; set; }
+
+    private List<ProjectAccountAssignment>? accountAssignments;
+    private List<Account>? allAccounts;
+    private List<AccountGroup>? allAccountGroups;
+    private int loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedFor == ProjectId) return;
+        loadedFor = ProjectId;
+        allAccounts = null;
+        allAccountGroups = null;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        accountAssignments = await BudgetService.GetProjectAccountAssignmentsAsync(ProjectId);
+        if (allAccounts == null || allAccountGroups == null)
+        {
+            var owner = await ProjectService.GetOwnerIdForProjectAsync(ProjectId) ?? string.Empty;
+            allAccounts ??= await BudgetService.GetAllAccountsAsync(owner);
+            allAccountGroups ??= await BudgetService.GetAllAccountGroupsAsync(owner);
+        }
+    }
+
+    private async Task AddAccounts((IReadOnlyList<long> AccountIds, AccountScope Scope) req)
+    {
+        if (req.AccountIds.Count == 0) return;
+        await BudgetService.AssignAccountsToProjectAsync(ProjectId, req.AccountIds, req.Scope);
+        await LoadAsync();
+    }
+
+    private async Task OnScopeChange((long AccountId, AccountScope Scope) req)
+    {
+        await BudgetService.SetAccountScopeAsync(ProjectId, req.AccountId, req.Scope);
+        await LoadAsync();
+    }
+
+    private async Task OnInCashflowChange((long AccountId, bool InCashflow) req)
+    {
+        await BudgetService.SetAccountInCashflowAsync(ProjectId, req.AccountId, req.InCashflow);
+        await LoadAsync();
+    }
+
+    private async Task RemoveAccount(long accountId)
+    {
+        await BudgetService.RemoveAccountFromProjectAsync(ProjectId, accountId);
+        await LoadAsync();
+    }
+}

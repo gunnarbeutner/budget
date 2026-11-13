@@ -28,7 +28,7 @@
         }
         else if (connection == null)
         {
-            <a class="btn btn-primary" href="@OneDriveOptions.ConnectPath" target="_top" data-testid="onedrive-connect">
+            <a class="btn btn-primary" href="@ConnectHref" target="_top" data-testid="onedrive-connect">
                 <i class="bi bi-microsoft" aria-hidden="true"></i> @L["Connect"]
             </a>
         }
@@ -45,7 +45,7 @@
             {
                 <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2 py-2" role="alert" data-testid="onedrive-reconnect-needed">
                     <span>@(connection.LastError ?? L["ReconnectNeeded"].Value)</span>
-                    <a class="btn btn-sm btn-warning" href="@OneDriveOptions.ConnectPath" target="_top" data-testid="onedrive-reconnect">@L["Reconnect"]</a>
+                    <a class="btn btn-sm btn-warning" href="@ConnectHref" target="_top" data-testid="onedrive-reconnect">@L["Reconnect"]</a>
                 </div>
             }
 
@@ -166,6 +166,11 @@
 }
 
 @code {
+    /// <summary>Shown inside Get started: the Microsoft sign-in returns there instead of to the settings page.</summary>
+    [Parameter] public bool FromGetStarted { get; set; }
+
+    private string ConnectHref => FromGetStarted ? $"{OneDriveOptions.ConnectPath}?return={OneDriveRegistration.GetStartedReturn}" : OneDriveOptions.ConnectPath;
+
     private sealed record Crumb(string Name, CloudFolder Folder);
     private sealed record Notice(bool Ok, string Text);
 

@@ -79,13 +79,20 @@ internal sealed partial class AppTestHost : IDisposable
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task<AppUser> AddUserAsync(string name, bool admin = false, string password = Password)
+    /// <summary>Adds a user; unless <paramref name="inGetStarted"/>, one who is through with Get started.</summary>
+    public async Task<AppUser> AddUserAsync(string name, bool admin = false, string password = Password, bool inGetStarted = false)
     {
         await using var scope = Services.CreateAsyncScope();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
         var user = new AppUser { UserName = name, IsAdmin = admin };
         var result = await users.CreateAsync(user, password);
         if (!result.Succeeded) throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Description)));
+        if (!inGetStarted)
+        {
+            await using var db = await System.CreateDbContextAsync();
+            (await RowIds.StateAsync(db, user.Id)).GetStartedDismissedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
         return user;
     }
 
@@ -137,8 +144,8 @@ internal sealed partial class AppTestHost : IDisposable
         var bob = await AddUserAsync("bob");
 
         await using var db = await System.CreateDbContextAsync();
-        db.UserDataStates.Add(new UserDataState { UserId = alice.Id, IdSpace = AccessWorld.SourceAlice });
-        db.UserDataStates.Add(new UserDataState { UserId = bob.Id, IdSpace = AccessWorld.SourceBob });
+        (await db.UserDataStates.SingleAsync(s => s.UserId == alice.Id)).IdSpace = AccessWorld.SourceAlice;
+        (await db.UserDataStates.SingleAsync(s => s.UserId == bob.Id)).IdSpace = AccessWorld.SourceBob;
         foreach (var (source, group, leaf) in new[]
                  {
                      (alice.Id, AccessWorld.SharedGroup, AccessWorld.SharedLeaf),

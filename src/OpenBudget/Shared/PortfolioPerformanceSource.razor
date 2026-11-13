@@ -1,0 +1,68 @@
+@using OpenBudget.Connectors.OneDrive
+@using OpenBudget.Services
+@inject PortfolioPerformanceImportService PpImporter
+@inject CloudFileStaging Staging
+@inject AccessScopeProvider Access
+@inject ILogger<PortfolioPerformanceSource> Logger
+@inject IStringLocalizer<OpenBudget.Pages.PortfolioPerformanceSettings> L
+
+@* Where the user's Portfolio Performance data comes from: a linked OneDrive file (read on the server) or a one-off
+   upload. Shown by the Portfolio Performance settings page and inline in Get started. *@
+
+<OneDriveSettings FromGetStarted="FromGetStarted" />
+
+<section class="mt-4" data-testid="pp-upload">
+    <h2 class="h5">@L["Upload_Heading"]</h2>
+    <p class="text-body-secondary small">@L["Upload_Intro"]</p>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <InputFile id="pp-upload-file" class="form-control w-auto" accept=".portfolio" OnChange="UploadAsync" disabled="@uploading" />
+        @if (uploading)
+        {
+            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span class="small">@L["Upload_Running"]</span>
+        }
+    </div>
+    @if (uploadMessage is { } m)
+    {
+        <div class="alert @(m.Ok ? "alert-success" : "alert-warning") py-2 mt-2" role="status" data-testid="pp-upload-result">@m.Text</div>
+    }
+</section>
+
+
+@code {
+    /// <summary>Shown inside Get started: the OneDrive sign-in returns there.</summary>
+    [Parameter] public bool FromGetStarted { get; set; }
+    /// <summary>Raised after a file was imported.</summary>
+    [Parameter] public EventCallback OnImported { get; set; }
+
+    private sealed record Message(bool Ok, string Text);
+
+    private bool uploading;
+    private Message? uploadMessage;
+
+    private async Task UploadAsync(InputFileChangeEventArgs e)
+    {
+        uploadMessage = null;
+        uploading = true;
+        try
+        {
+            var userId = (await Access.GetAsync()).UserId ?? throw new AccessDeniedException("Not signed in.");
+            await using var stream = PortfolioPerformanceUpload.OpenBrowserFile(e.File);
+            var result = await PortfolioPerformanceUpload.ImportAsync(PpImporter, userId, stream, Staging.Directory, CancellationToken.None);
+            uploadMessage = new Message(true, L["Upload_Done", result.RowsImported].Value);
+            await OnImported.InvokeAsync();
+        }
+        catch (InvalidDataException ex)
+        {
+            uploadMessage = new Message(false, ex.Message == PortfolioPerformanceUpload.NotAPortfolioFile ? L["Upload_NotPortfolio"].Value : ex.Message);
+        }
+        catch (IOException ex)
+        {
+            Logger.LogWarning(ex, "Portfolio Performance upload failed.");
+            uploadMessage = new Message(false, L["Upload_Failed"].Value);
+        }
+        finally
+        {
+            uploading = false;
+        }
+    }
+}

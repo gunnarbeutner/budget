@@ -8,6 +8,12 @@ public static class OneDriveRegistration
     /// <summary>The settings page that hosts the OneDrive section; the sign-in returns there with ?onedrive=&lt;outcome&gt;.</summary>
     public const string SettingsPath = "/portfolio-performance";
 
+    /// <summary>The "return" value of the connect URL that brings the sign-in back to Get started's Portfolio Performance step.</summary>
+    public const string GetStartedReturn = "get-started";
+
+    private const string GetStartedPath = "/get-started?step=3";
+    private const string ReturnCookie = "OpenBudget.OneDriveReturn";
+
     /// <summary>Registers the OneDrive connection, reader, change detection and the PortfolioPerformance consumer.</summary>
     public static IServiceCollection AddOneDrive(this IServiceCollection services, string contentRoot)
     {
@@ -24,7 +30,7 @@ public static class OneDriveRegistration
 
     /// <summary>
     /// GET /connect/onedrive starts the Microsoft sign-in of the signed-in user; GET /connect/onedrive/callback
-    /// completes it and returns to the settings page. Both need a signed-in OpenBudget user (fallback policy).
+    /// completes it and returns to the settings page (or to Get started when the sign-in started there). Both need a signed-in OpenBudget user (fallback policy).
     /// </summary>
     public static void MapOneDriveEndpoints(this IEndpointRouteBuilder app)
     {
@@ -32,6 +38,11 @@ public static class OneDriveRegistration
         {
             if (!oneDrive.IsEnabled || http.User.FindFirstValue(ClaimTypes.NameIdentifier) is not { Length: > 0 } userId)
                 return Results.NotFound();
+            // Where the callback leads back to (only Get started or the settings page).
+            if (http.Request.Query["return"] == GetStartedReturn)
+                http.Response.Cookies.Append(ReturnCookie, GetStartedReturn, new CookieOptions { HttpOnly = true, Secure = http.Request.IsHttps, SameSite = SameSiteMode.Lax, MaxAge = TimeSpan.FromMinutes(30) });
+            else
+                http.Response.Cookies.Delete(ReturnCookie);
             return Results.Redirect(oneDrive.BeginConnect(userId, RedirectUri(http.Request)).AbsoluteUri);
         });
 
@@ -41,7 +52,11 @@ public static class OneDriveRegistration
                 return Results.NotFound();
             var q = http.Request.Query;
             var outcome = await oneDrive.CompleteConnectAsync(userId, q["state"], q["code"], q["error"], ct);
-            return Results.Redirect($"{SettingsPath}?onedrive={OutcomeName(outcome)}#onedrive");
+            var toGetStarted = http.Request.Cookies[ReturnCookie] == GetStartedReturn;
+            http.Response.Cookies.Delete(ReturnCookie);
+            return Results.Redirect(toGetStarted
+                ? $"{GetStartedPath}&onedrive={OutcomeName(outcome)}"
+                : $"{SettingsPath}?onedrive={OutcomeName(outcome)}#onedrive");
         });
     }
 

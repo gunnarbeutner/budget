@@ -54,14 +54,9 @@ public class LoginModel : PageModel
     /// </summary>
     private async Task<IActionResult> SignedInRedirectAsync(AppUser user)
     {
-        var target = SafeReturnUrl();
-        if (target == "/")
-        {
-            await using var db = await _db.CreateDbContextAsync();
-            var state = await db.UserDataStates.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == user.Id);
-            if (!OnboardingState.IsFinished(state)) target = "/get-started";
-        }
-        return LocalRedirect(target);
+        await using var db = await _db.CreateDbContextAsync();
+        var state = await db.UserDataStates.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == user.Id);
+        return LocalRedirect(OnboardingState.IsFinished(state) ? SafeReturnUrl() : "/get-started");
     }
 
     public async Task<IActionResult> OnPostAsync()

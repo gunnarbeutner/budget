@@ -194,7 +194,7 @@
     <value>Die Datenbank hat ein Passwort: Häkchen setzen, Passwort eingeben und erneut hochladen.</value>
   </data>
   <data name="Upload_PasswordHint" xml:space="preserve">
-    <value>Das Passwort wird einmal zum Entschlüsseln der Datenbank auf dem Server verwendet und nicht gespeichert. Der Upload wird nach dem Import gelöscht.</value>
+    <value>Wird nicht gespeichert.</value>
   </data>
   <data name="Upload_Button" xml:space="preserve">
     <value>Hochladen und importieren</value>
@@ -213,9 +213,6 @@
   </data>
   <data name="Job_Statements" xml:space="preserve">
     <value>Kontoauszüge werden importiert … {0} von {1}</value>
-  </data>
-  <data name="Job_Background" xml:space="preserve">
-    <value>Der Import läuft auf dem Server weiter, auch wenn du diese Seite schließt.</value>
   </data>
   <data name="Step_Of" xml:space="preserve">
     <value>Schritt {0} von {1}</value>
@@ -294,5 +291,14 @@
   </data>
   <data name="Step4_NoProject" xml:space="preserve">
     <value>Lege zuerst ein Projekt an; es enthält deine Konten und Budgets.</value>
+  </data>
+  <data name="Step4_BudgetImported" xml:space="preserve">
+    <value>Das Budget „{0}“ ({1}) aus MoneyMoney ist noch nicht aktiv.</value>
+  </data>
+  <data name="Step4_BudgetActive" xml:space="preserve">
+    <value>Das Budget „{0}“ ({1}) ist aktiv.</value>
+  </data>
+  <data name="Step4_BudgetActivate" xml:space="preserve">
+    <value>Aktivieren</value>
   </data>
 </root>

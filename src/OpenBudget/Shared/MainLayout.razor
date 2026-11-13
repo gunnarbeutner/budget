@@ -1,16 +1,21 @@
 @inherits LayoutComponentBase
 @inject IStringLocalizer<MainLayout> L
 @inject IJSRuntime JS
+@inject OpenBudget.Services.GetStartedGate GetStarted
 
 <PageTitle>OpenBudget</PageTitle>
 
 @* App chrome: one 44px top bar for every page — wordmark, the project switcher (which replaced the start page),
    the period selector of the views that have one (PeriodNav renders into the outlet; on phones it takes a second
    row), the search field of the views with a transaction list (rendered into its outlet), the bank-sync status, the gear (project settings and data sources) and the account menu. There are no tabs:
-   a project's views live in its sidebar (ProjectShell). Page toolbars (filters, actions) follow in the body. *@
+   a project's views live in its sidebar (ProjectShell). Page toolbars (filters, actions) follow in the body. While
+   the user is held in Get started (GetStartedGate) only the wordmark, the sync status and the account menu show. *@
 <header class="app-topbar d-print-none" data-testid="app-topbar">
     <a href="/" class="app-wordmark">OpenBudget</a>
-    <ProjectSwitcher />
+    @if (!GetStarted.Captive)
+    {
+        <ProjectSwitcher />
+    }
     <div class="app-topbar-period" data-testid="topbar-period">
         <SectionOutlet SectionName="@PeriodNav.SectionName" />
     </div>
@@ -20,7 +25,10 @@
     </div>
     <BankSyncHost />
     <CloudFileSyncHost />
-    <GearMenu />
+    @if (!GetStarted.Captive)
+    {
+        <GearMenu />
+    }
     <UserMenu />
 </header>
 

@@ -38,7 +38,6 @@ else
 {
     <ProjectPageHeader ProjectId="@ProjectId" ProjectName="@budget.Name" />
     <PageHeader Title="@L["Heading_Settings", budget.Name]" Subtitle="@budget.Description" />
-    <GetStartedReturn />
 
     <DataChangeBanner Pending="ExternalChangePending" OnReload="ApplyPendingChangeAsync" />
 
@@ -114,13 +113,7 @@ else
                     break;
 
                 case AccountsSection:
-                    <ProjectAccountsCard Assignments="accountAssignments"
-                                         AllAccounts="allAccounts"
-                                         AllAccountGroups="allAccountGroups"
-                                         OnAdd="AddAccounts"
-                                         OnRemove="RemoveAccount"
-                                         OnScopeChange="OnScopeChange"
-                                         OnInCashflowChange="OnInCashflowChange" />
+                    <ProjectAccountsPanel ProjectId="ProjectId" />
                     break;
 
                 case CategoriesSection:
@@ -204,10 +197,6 @@ else
     private List<CategoryTypeAssignment> categoryTypeAssignments = new();
     private bool isLoadingCategoryTypes = false;
 
-    // Account assignments
-    private List<ProjectAccountAssignment>? accountAssignments;
-    private List<Account>? allAccounts;
-    private List<AccountGroup>? allAccountGroups;
 
     // Parent project picker. eligibleParents = top-level projects of the same owner
     // (cycle-prevention; only single-level hierarchies). hasOwnChildren disables the
@@ -234,11 +223,6 @@ else
             Navigation.NavigateTo(Url(ProjectId), replace: true);
             return;
         }
-        if (_loadedProjectId != ProjectId)
-        {
-            allAccounts = null;
-            allAccountGroups = null;
-        }
         _loadedProjectId = ProjectId;
         loadedSection = section;
         // Clear the budget so the skeleton shows while the view loads; the load methods below overwrite the rest
@@ -260,9 +244,6 @@ else
                     await LoadParentPickerAsync();
                     defaultState = await ProjectService.GetDefaultStateAsync(ProjectId);
                 }
-                break;
-            case AccountsSection:
-                await LoadAccountAssignments();
                 break;
             case CategoriesSection:
                 await LoadTrackingItems();
@@ -400,44 +381,6 @@ else
         {
             parentSaveError = ex.Message;
         }
-    }
-
-    private async Task LoadAccountAssignments()
-    {
-        accountAssignments = await BudgetService.GetProjectAccountAssignmentsAsync(ProjectId);
-        if (allAccounts == null && budget != null)
-        {
-            allAccounts = await BudgetService.GetAllAccountsAsync(budget.OwnerUserId);
-        }
-        if (allAccountGroups == null && budget != null)
-        {
-            allAccountGroups = await BudgetService.GetAllAccountGroupsAsync(budget.OwnerUserId);
-        }
-    }
-
-    private async Task AddAccounts((IReadOnlyList<long> AccountIds, AccountScope Scope) req)
-    {
-        if (req.AccountIds.Count == 0) return;
-        await BudgetService.AssignAccountsToProjectAsync(ProjectId, req.AccountIds, req.Scope);
-        await LoadAccountAssignments();
-    }
-
-    private async Task OnScopeChange((long AccountId, AccountScope Scope) req)
-    {
-        await BudgetService.SetAccountScopeAsync(ProjectId, req.AccountId, req.Scope);
-        await LoadAccountAssignments();
-    }
-
-    private async Task OnInCashflowChange((long AccountId, bool InCashflow) req)
-    {
-        await BudgetService.SetAccountInCashflowAsync(ProjectId, req.AccountId, req.InCashflow);
-        await LoadAccountAssignments();
-    }
-
-    private async Task RemoveAccount(long accountId)
-    {
-        await BudgetService.RemoveAccountFromProjectAsync(ProjectId, accountId);
-        await LoadAccountAssignments();
     }
 
     private async Task LoadBudget()

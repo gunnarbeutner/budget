@@ -20,8 +20,9 @@ public sealed class RequireProjectRoleAttribute : Attribute
 }
 
 /// <summary>
-/// The router's route view, with the access check built in: before a page renders, the project /
-/// budget named in the URL must be within the current user's scope and role. Otherwise the
+/// The router's route view, with the access check built in: a user who has not finished Get started is sent there
+/// (<see cref="GetStartedGate"/>); otherwise, before a page renders, the project / budget named in the URL must be
+/// within the current user's scope and role. Otherwise the
 /// not-found page is shown (HTTP 404 when prerendering) — identical to a URL that doesn't exist, so
 /// the existence of other users' projects is never revealed. Nothing is rendered until the check
 /// has completed, so no page code (and no data loading) runs for an out-of-scope URL.
@@ -45,9 +46,22 @@ public sealed class AccessRouteView : ComponentBase
     [Inject]
     private IHttpContextAccessor HttpContextAccessor { get; set; } = default!;
 
+    [Inject]
+    private GetStartedGate GetStarted { get; set; } = default!;
+
+    [Inject]
+    private NavigationManager Navigation { get; set; } = default!;
+
     protected override async Task OnParametersSetAsync()
     {
         _allowed = null;
+        // Until the user is through with Get started, it is the only page that opens.
+        // (Asked on every page: the layout reads the answer to hide the navigation.)
+        if ((await Access.GetAsync()).IsAuthenticated && await GetStarted.IsCaptiveAsync() && RouteData.PageType != typeof(Pages.GetStarted))
+        {
+            Navigation.NavigateTo("/get-started", replace: true);
+            return;
+        }
         _allowed = await IsAllowedAsync();
         if (_allowed == false && HttpContextAccessor.HttpContext is { Response.HasStarted: false } http)
             http.Response.StatusCode = StatusCodes.Status404NotFound;

@@ -14,6 +14,7 @@ internal static class E2ESeed
     public const string OwnerUserId = "u-e2e";      // the login every test uses; owns the baseline world
     public const string SecondUserId = "u-guest";
     public const int IdSpace = 1;                    // the owner's id space: seeded ids equal their rowids
+    public const int SecondIdSpace = 3;
     public const int ProjectId = 1;
     public const string ProjectName = "E2E Demo Project";
     public const int BudgetYear = 2026;
@@ -71,7 +72,9 @@ internal static class E2ESeed
     {
         await using var db = await factory.CreateDbContextAsync();
 
-        db.UserDataStates.Add(new UserDataState { UserId = ownerUserId, IdSpace = IdSpace });
+        // Both users are through with Get started; its tests open it again.
+        db.UserDataStates.Add(new UserDataState { UserId = ownerUserId, IdSpace = IdSpace, GetStartedDismissedAt = Fixed });
+        db.UserDataStates.Add(new UserDataState { UserId = SecondUserId, IdSpace = SecondIdSpace, GetStartedDismissedAt = Fixed });
 
         // Category.Type is MoneyMoney's raw type code; the app classifies income/expense per-project
         // via CategoryTypeAssignment (below), not via this column.

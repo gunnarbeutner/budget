@@ -14,7 +14,7 @@ namespace OpenBudget.E2E.Tests;
 [TestFixture]
 public sealed class SharedProjectCategorizingTests : EndToEndTestBase
 {
-    private const int GuestSourceId = 3;
+    private const int GuestSourceId = E2ESeed.SecondIdSpace;
     private const int GuestProjectId = 60;
     private const string GuestProjectName = "Guest Household";
     private const string GuestCategory = "Guest Hobbies";
@@ -26,7 +26,6 @@ public sealed class SharedProjectCategorizingTests : EndToEndTestBase
         await EditingSeed.SeedAsync(factory);
         await using var db = await factory.CreateDbContextAsync();
         var guest = await db.Users.SingleAsync(u => u.UserName == E2ESeed.SecondUserName);
-        db.UserDataStates.Add(new UserDataState { UserId = guest.Id, IdSpace = GuestSourceId });
         db.CategoryGroups.Add(new CategoryGroup { Id = 300, OwnerUserId = guest.Id, Name = "Guest Things" });
         db.Categories.Add(new Category { Id = 310, OwnerUserId = guest.Id, Name = GuestCategory, GroupId = 300, Type = 1 });
         db.Projects.Add(new Project { Id = GuestProjectId, Name = GuestProjectName, OwnerUserId = guest.Id, SortOrder = 0, CreatedAt = DateTime.UtcNow });

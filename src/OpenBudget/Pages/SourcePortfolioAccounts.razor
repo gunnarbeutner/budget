@@ -5,16 +5,19 @@
 @inject IStringLocalizer<SourcePortfolioAccounts> L
 
 @* Which PortfolioPerformance portfolios of the user show as accounts (a depot with positions and value history plus a
-   ledger with the transactions), the project they belong to, and taking over accounts that already exist. *@
+   ledger with the transactions), the project they belong to, and taking over accounts that already exist (such as
+   the ones a MoneyMoney import brought). Also shown inline in Get started's Portfolio Performance step. *@
 
+<SettingsShell Active="portfolio-performance" Bare="@Embedded">
+@if (!Embedded)
+{
 <PageTitle>@L["PageTitle"]</PageTitle>
-
-<SettingsShell Active="portfolio-performance">
 <PageHeader Title="@L["Heading"]">
     <Actions>
         <a class="ob-btn" href="/portfolio-performance"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a>
     </Actions>
 </PageHeader>
+}
 
 @if (loading)
 {
@@ -123,6 +126,8 @@ else
 @code {
     /// <summary>Whose data to show (the Portfolio view passes its project's owner); the signed-in user when not set.</summary>
     [Parameter] public string OwnerUserId { get; set; } = string.Empty;
+    /// <summary>Shown inside Get started (no page title, header or back link).</summary>
+    [Parameter] public bool Embedded { get; set; }
 
     private PortfolioAccountSettings? settings;
     private bool loading = true;

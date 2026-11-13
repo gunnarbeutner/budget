@@ -28,7 +28,7 @@ public static class MoneyMoneyZipFixture
     public static byte[] Pdf(string text) => Encoding.ASCII.GetBytes($"%PDF-1.4\n% {text}\n%%EOF\n");
 
     /// <summary>The plain MoneyMoney database (unencrypted), written to <paramref name="path"/>.</summary>
-    public static void WritePlainDatabase(string path, bool unicodeStatements = false)
+    public static void WritePlainDatabase(string path, bool unicodeStatements = false, string? checkingIban = null)
     {
         using (var conn = new SqliteConnection($"Data Source={path};Pooling=False"))
         {
@@ -49,7 +49,7 @@ public static class MoneyMoneyZipFixture
                 INSERT INTO categories (name, type, group_key, userdata) VALUES ('Groceries', 1, 2, CAST('14:showInDiagrams,1:1,6:budget,5:180.0,14:budgetInterval,1:0,' AS BLOB));
                 INSERT INTO categories (name, type, group_key, userdata) VALUES ('Cinema', 1, 3, CAST('6:budget,5:100.0,14:budgetInterval,1:2,4:uuid,3:abc,' AS BLOB));
                 INSERT INTO categories (name, type, group_key, userdata) VALUES ('Holiday', 1, 3, CAST('6:budget,6:1500.0,14:budgetInterval,1:3,' AS BLOB));
-                INSERT INTO accounts (name, currency, type, balances) VALUES ('Example Checking', 'EUR', 1, '');
+                INSERT INTO accounts (name, iban, currency, type, balances) VALUES ('Example Checking', $iban, 'EUR', 1, '');
                 INSERT INTO accounts (name, currency, type, balances) VALUES ('Example Savings', 'EUR', 2, '');
                 INSERT INTO transactions (local_account_key, amount, currency, timestamp, name, category_key, checkmark, splitted) VALUES (1, -12.5, 'EUR', 1767312000, 'Example Market', 2, 0, 0);
                 INSERT INTO transactions (local_account_key, amount, currency, timestamp, name, category_key, checkmark, splitted) VALUES (1, 2000, 'EUR', 1767398400, 'Example Employer', 1, 0, 0);
@@ -57,6 +57,7 @@ public static class MoneyMoneyZipFixture
                 INSERT INTO statements (account_key, name, directory, filename, created_tsp, deleted) VALUES (1, 'Statement January', '{Bank}', '{StatementFile}', 1769904000, 0);
                 INSERT INTO statements (account_key, name, directory, filename, created_tsp, deleted) VALUES (1, 'Deleted statement', '{Bank}', 'gone.pdf', 1769904000, 1);
                 """;
+            cmd.Parameters.AddWithValue("$iban", (object?)checkingIban ?? DBNull.Value);
             cmd.ExecuteNonQuery();
             if (unicodeStatements)
             {
@@ -76,7 +77,7 @@ public static class MoneyMoneyZipFixture
     /// The ZIP bytes, the database encrypted with <paramref name="password"/>; <paramref name="unicodeStatements"/> adds
     /// two statements with non-ASCII bank and file names, spelled differently (NFC/NFD) in the table and the ZIP.
     /// </summary>
-    public static byte[] Build(string password, string? workDirectory = null, bool unicodeStatements = false)
+    public static byte[] Build(string password, string? workDirectory = null, bool unicodeStatements = false, string? checkingIban = null)
     {
         var dir = workDirectory ?? Path.Combine(Path.GetTempPath(), $"ob-mm-zip-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dir);
@@ -84,7 +85,7 @@ public static class MoneyMoneyZipFixture
         {
             var plain = Path.Combine(dir, "plain.sqlite");
             var encrypted = Path.Combine(dir, "MoneyMoney.sqlite");
-            WritePlainDatabase(plain, unicodeStatements);
+            WritePlainDatabase(plain, unicodeStatements, checkingIban);
             MoneyMoneyCipher.Encrypt(plain, encrypted, password);
             using var zip = new MemoryStream();
             using (var archive = new ZipArchive(zip, ZipArchiveMode.Create, leaveOpen: true))

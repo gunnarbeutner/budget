@@ -9,8 +9,8 @@ using OpenBudget.Tests;
 namespace OpenBudget.E2E.Tests;
 
 /// <summary>
-/// The Get started page: that the gear menu offers it until the MoneyMoney import is finished or the user hides it, that
-/// its URL always works, and the MoneyMoney step's upload in the browser (a synthetic ZIP of MoneyMoney's data folder)
+/// The Get started wizard: that it holds the user until it is done, brings each step inline, links bank accounts to
+/// the imported ones, and the MoneyMoney step's upload in the browser (a synthetic ZIP of MoneyMoney's data folder)
 /// without, with a wrong and then with the right password, imported as the user's data.
 /// </summary>
 [TestFixture]
@@ -28,6 +28,14 @@ public sealed class GetStartedTests : EndToEndTestBase
         return shown;
     }
 
+    /// <summary>Puts the signed-in owner back into Get started (the baseline world has it done).</summary>
+    private async Task ReopenGetStartedAsync(string userId = E2ESeed.OwnerUserId)
+    {
+        await using var db = await Db.CreateDbContextAsync();
+        (await db.UserDataStates.SingleAsync(s => s.UserId == userId)).GetStartedDismissedAt = null;
+        await db.SaveChangesAsync();
+    }
+
     private async Task SetMoneyMoneyAsync(DateTime? lastUpload, DateTime? finished)
     {
         await using var db = await Db.CreateDbContextAsync();
@@ -38,113 +46,123 @@ public sealed class GetStartedTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task The_gear_menu_offers_it_until_the_MoneyMoney_import_is_finished_or_it_is_hidden()
+    public async Task Until_Get_started_is_done_every_page_leads_there_and_the_navigation_is_hidden()
     {
-        // Data from a bank login and accounts do not end Get started: MoneyMoney may still come.
-        await EditingSeed.SeedAsync(Db);
-        await using (var db = await Db.CreateDbContextAsync())
+        await ReopenGetStartedAsync();
+        foreach (var url in new[] { "/", $"/projects/{E2ESeed.ProjectId}/settings/categories", "/banklogins", "/portfolio-performance" })
         {
-            db.BankLogins.Add(new Models.BankLogin { OwnerUserId = E2ESeed.OwnerUserId, ConnectorType = "fake", DisplayName = "Example Bank", RefreshInterval = Models.RefreshInterval.Never });
-            await db.SaveChangesAsync();
+            await GoToAsync(url);
+            await Expect(Page).ToHaveURLAsync(new Regex("/get-started$"));
         }
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
-        Assert.That(await GearOffersGetStartedAsync(), Is.True);
+        await Expect(Page.GetByTestId("gear-menu")).ToHaveCountAsync(0);
+        await Expect(Page.Locator("[data-testid=project-selector]")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("settings-nav")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("user-menu")).ToBeVisibleAsync();
 
-        // An unfinished MoneyMoney import: offered, with its follow-up on the page.
-        await SetMoneyMoneyAsync(DateTime.UtcNow, null);
-        await GoToAsync("/get-started");
-        await Expect(Page.GetByTestId("mm-followup")).ToBeVisibleAsync();
-
-        // Finished: no longer offered, and the step says so.
-        await SetMoneyMoneyAsync(DateTime.UtcNow, DateTime.UtcNow);
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
-        Assert.That(await GearOffersGetStartedAsync(), Is.False);
-        await GoToAsync("/get-started");
-        await Expect(Page.GetByTestId("import-finished")).ToBeVisibleAsync();
-        await Expect(Page.GetByTestId("mm-followup")).ToHaveCountAsync(0);
-    }
-
-    [Test]
-    public async Task Hiding_Get_started_removes_it_from_the_menus_but_the_page_still_opens()
-    {
-        await using (var db = await Db.CreateDbContextAsync())
-        {
-            db.BankLogins.Add(new Models.BankLogin { OwnerUserId = E2ESeed.OwnerUserId, ConnectorType = "fake", DisplayName = "Example Bank", RefreshInterval = Models.RefreshInterval.Never });
-            await db.SaveChangesAsync();
-        }
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
-        Assert.That(await GearOffersGetStartedAsync(), Is.True);
-
-        await GoToAsync("/banklogins");
-        await Expect(Page.GetByTestId("settings-nav-get-started")).ToBeVisibleAsync();
-        await GoToAsync("/get-started");
-        await Page.GetByTestId("get-started-hide").ClickAsync();
-        await Expect(Page.GetByTestId("get-started-hide")).ToHaveCountAsync(0);
-
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
-        Assert.That(await GearOffersGetStartedAsync(), Is.False);
-        await GoToAsync("/banklogins");
-        await Expect(Page.GetByTestId("settings-nav-banklogins")).ToBeVisibleAsync();
-        await Expect(Page.GetByTestId("settings-nav-get-started")).ToHaveCountAsync(0);
-        await GoToAsync("/get-started");
-        await Expect(Page.GetByTestId("step-banks")).ToBeVisibleAsync();
-    }
-
-    [Test]
-    public async Task The_wizard_leads_through_the_steps_and_back_from_the_pages_it_links_to_and_Done_ends_it()
-    {
-        await GoToAsync("/get-started");
-        await Expect(Page.GetByTestId("get-started-progress")).ToContainTextAsync("Step 1 of 4");
-        await Expect(Page.GetByTestId("get-started-next")).ToHaveTextAsync("Skip");
-
-        // Adding a bank login happens on its page, which leads back to the next step.
-        await Page.GetByTestId("step-banks-link").ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex("/banklogins\\?return="));
-        await Page.GetByTestId("get-started-return").ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex("/get-started\\?step=2$"));
-        await Expect(Page.GetByTestId("step-moneymoney")).ToBeVisibleAsync();
-
-        await Page.GetByTestId("get-started-next").ClickAsync();
-        await Expect(Page.GetByTestId("step-portfolio")).ToBeVisibleAsync();
-        await Page.GetByTestId("step-portfolio-link").ClickAsync();
-        await Page.GetByTestId("get-started-return").ClickAsync();
-        await Expect(Page.GetByTestId("step-cashflow")).ToBeVisibleAsync();
-        await Page.GetByTestId("get-started-back").ClickAsync();
-        await Expect(Page.GetByTestId("step-portfolio")).ToBeVisibleAsync();
-        await Page.GetByTestId("get-started-next").ClickAsync();
-
-        // Done ends Get started: the project opens, the menus no longer offer it and signing in goes to the project.
-        await Page.GetByTestId("get-started-done").ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{E2ESeed.ProjectId}/browse$"));
-        Assert.That(await GearOffersGetStartedAsync(), Is.False);
-        await LogoutAsync();
-        await LoginAsync(E2ESeed.UserName);
-        await Expect(Page).Not.ToHaveURLAsync(new Regex("/get-started"));
-    }
-
-    [Test]
-    public async Task Signing_in_with_a_deep_link_opens_that_page_even_before_Get_started_is_done()
-    {
+        // Signing in again, even with a deep link, lands in Get started.
         await LogoutAsync();
         await Page.GotoAsync($"/projects/{E2ESeed.ProjectId}/budgets");
-        await Expect(Page).ToHaveURLAsync(new Regex("/Account/Login"));
         await Page.GetByLabel("Username").FillAsync(E2ESeed.UserName);
         await Page.GetByLabel("Password").FillAsync(E2ESeed.Password);
         await Page.GetByRole(AriaRole.Button, new() { Name = "Sign in", Exact = true }).ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{E2ESeed.ProjectId}/budgets$"));
+        await Expect(Page).ToHaveURLAsync(new Regex("/get-started$"));
+    }
+
+    [Test]
+    public async Task The_wizard_brings_each_step_inline_and_Done_opens_the_app()
+    {
+        await ReopenGetStartedAsync();
+        await GoToAsync("/get-started");
+        await Expect(Page.GetByTestId("get-started-progress")).ToContainTextAsync("Step 1 of 4");
+        await Expect(Page.GetByTestId("step-moneymoney")).ToBeVisibleAsync();
+        var next = Page.GetByTestId("get-started-next");
+        await Expect(next).ToHaveTextAsync("Skip");
+        await Expect(next).ToHaveClassAsync(new Regex("btn-outline-secondary"));
+
+        await next.ClickAsync();
+        await Expect(Page.GetByTestId("step-banks-panel")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("add-login-open")).ToBeVisibleAsync();
+        await next.ClickAsync();
+        await Expect(Page.GetByTestId("pp-upload")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("onedrive-connect")).ToHaveAttributeAsync("href", "/connect/onedrive?return=get-started");
+        await next.ClickAsync();
+        await Expect(Page.GetByTestId("step-cashflow-accounts")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("accounts-card")).ToBeVisibleAsync();
+        await Page.GetByTestId("get-started-back").ClickAsync();
+        await Expect(Page.GetByTestId("pp-upload")).ToBeVisibleAsync();
+        await next.ClickAsync();
+
+        await Page.GetByTestId("get-started-done").ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{E2ESeed.ProjectId}/browse$"));
+        Assert.That(await GearOffersGetStartedAsync(), Is.False);
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/settings/categories");
+        await Expect(Page).ToHaveURLAsync(new Regex("/settings/categories$"));
+    }
+
+    [Test]
+    public async Task Hiding_Get_started_ends_it()
+    {
+        await ReopenGetStartedAsync();
+        await GoToAsync("/get-started");
+        await Page.GetByTestId("get-started-hide").ClickAsync();
+        await Expect(Page.GetByTestId("get-started-hide")).ToHaveCountAsync(0);
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
+        await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{E2ESeed.ProjectId}/browse$"));
+        Assert.That(await GearOffersGetStartedAsync(), Is.False);
+        await GoToAsync("/get-started");
+        await Expect(Page.GetByTestId("step-moneymoney")).ToBeVisibleAsync();
+    }
+
+    [Test]
+    public async Task An_imported_account_is_suggested_for_the_bank_account_with_its_IBAN_and_keeps_its_history()
+    {
+        await LogoutAsync();
+        await ReopenGetStartedAsync(E2ESeed.SecondUserId);
+        await LoginAsync(E2ESeed.SecondUserName);
+        await Expect(Page).ToHaveURLAsync(new Regex("/get-started$"));
+
+        var buffer = MoneyMoneyZipFixture.Build("e2e-secret", checkingIban: OpenBudget.Connectors.FakeBank.FakeBankConnector.GiroIban);
+        var zip = new FilePayload { Name = "MoneyMoney.zip", MimeType = "application/zip", Buffer = buffer };
+        await Page.Locator("#mm-zip").SetInputFilesAsync(zip);
+        await Page.GetByTestId("mm-has-password").CheckAsync();
+        await Page.Locator("#mm-password").FillAsync("e2e-secret");
+        await Page.GetByTestId("mm-upload").ClickAsync();
+        await Expect(Page.GetByTestId("mm-job-done")).ToBeVisibleAsync(new() { Timeout = 30_000 });
+        await Page.GetByTestId("get-started-next").ClickAsync();
+
+        // Step 2: the bank login is added inline; its giro gets the imported account with the same IBAN suggested.
+        await Page.GetByTestId("add-login-open").ClickAsync();
+        await Page.Locator("#new-login-connector").SelectOptionAsync("fake");
+        await Page.Locator("#new-login-name").FillAsync("My fake bank");
+        await Page.Locator("#new-login-username").FillAsync("demo+code");
+        await Page.Locator("#new-login-pin").FillAsync("1234");
+        await Page.Locator("#new-login-add").ClickAsync();
+        var challenge = Page.Locator("form#bank-challenge-form #bank-challenge-input");
+        await challenge.FillAsync("123456");
+        await challenge.PressAsync("Enter");
+
+        var giro = Page.Locator("[data-bank-login='My fake bank'] [data-bank-account='FAKE-GIRO']");
+        await Expect(giro.Locator("select option[selected]")).ToContainTextAsync("Example Checking");
+        await giro.Locator("[data-action=link]").ClickAsync();
+        await Expect(giro.GetByTestId("linked-to")).ToContainTextAsync("Example Checking");
+
+        await using var db = await Db.CreateDbContextAsync();
+        var guest = await db.Users.SingleAsync(u => u.UserName == E2ESeed.SecondUserName);
+        Assert.That(await db.Accounts.CountAsync(a => a.OwnerUserId == guest.Id), Is.EqualTo(2));   // no second account
+        var checking = await db.Accounts.SingleAsync(a => a.OwnerUserId == guest.Id && a.Name == "Example Checking");
+        Assert.That(await db.Transactions.CountAsync(t => t.AccountId == checking.Id), Is.EqualTo(2));   // the imported history
+        Assert.That(await db.BankLoginAccounts.AnyAsync(l => l.LinkedAccountId == checking.Id), Is.True);
     }
 
     [Test]
     public async Task A_new_user_is_led_there_and_imports_MoneyMoney_from_a_zip()
     {
         await LogoutAsync();
+        await ReopenGetStartedAsync(E2ESeed.SecondUserId);
         await LoginAsync(E2ESeed.SecondUserName);
 
-        // Signing in leads to Get started; its first step is the bank logins, the next one MoneyMoney.
+        // Signing in leads to Get started; its first step is the MoneyMoney import.
         await Expect(Page).ToHaveURLAsync(new Regex("/get-started$"));
-        await Expect(Page.GetByTestId("settings-nav-get-started")).ToHaveAttributeAsync("aria-current", "page");
-        await Expect(Page.GetByTestId("step-banks")).ToBeVisibleAsync();
-        await Page.GetByTestId("get-started-next").ClickAsync();
         await Expect(Page.GetByTestId("mm-instructions")).ToContainTextAsync("Show Database in Finder");
 
         var zip = new FilePayload { Name = "MoneyMoney.zip", MimeType = "application/zip", Buffer = MoneyMoneyZipFixture.Build("e2e-secret") };

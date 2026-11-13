@@ -51,6 +51,7 @@ builder.Services.AddScoped<ProjectTimeState>();
 builder.Services.AddScoped<CurrentProjectState>();
 builder.Services.AddScoped<SharingService>();
 builder.Services.AddScoped<OnboardingService>();
+builder.Services.AddScoped<GetStartedGate>();
 builder.Services.AddScoped<AccountSwitchService>();
 builder.Services.AddScoped<CategoryColorService>();
 builder.Services.AddScoped<StructureService>();
