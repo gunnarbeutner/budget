@@ -82,85 +82,107 @@ else
 
     @if (CurrentStep == 1)
     {
-    <li class="card mb-3" data-testid="step-moneymoney">
-        <div class="card-body">
-            <h2 class="h5 card-title">@L["Step2_Heading"] <span class="badge text-bg-light border fw-normal">@L["Optional"]</span></h2>
-            <p class="mb-2">@L["Step2_Body"]</p>
-
-            @if (job is { Running: true } running)
+    <li class="mb-3" data-testid="step-moneymoney">
+        <h2 class="h5 mb-3">@L["Start_Heading"]</h2>
+        <div class="row g-3">
+            @if (ShowImportCard)
             {
-                <div data-testid="mm-job" role="status">
-                    <div class="small mb-1">@PhaseText(running)</div>
-                    <div class="progress" style="height: .5rem;"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width: @(PhasePercent(running))%"></div></div>
+            <div class="col-12 @(ShowFreshCard ? "col-md-6" : "")">
+            <div class="card h-100" data-testid="start-import">
+                <div class="card-body">
+                    <h3 class="h6 card-title">@L["Start_ImportHeading"]</h3>
+                    <p class="small text-body-secondary mb-2">@L["Start_ImportBody"]</p>
+                    @if (job is { Running: true } running)
+                    {
+                        <div data-testid="mm-job" role="status">
+                            <div class="small mb-1">@PhaseText(running)</div>
+                            <div class="progress" style="height: .5rem;"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width: @(PhasePercent(running))%"></div></div>
+                        </div>
+                    }
+                    else if (state.Import is { MoneyMoneyImportFinishedAt: { } finishedAt } finishedState)
+                    {
+                        <p class="mb-0">
+                            <span class="badge text-bg-secondary me-2" data-testid="import-finished">@L["Finished_Badge", Clock.ToLocal(finishedAt).ToString("yyyy-MM-dd")]</span>
+                            <span class="small text-body-secondary me-2">@L["Finished_Hint"]</span>
+                            <button class="btn btn-sm btn-outline-secondary" data-testid="import-resume" @onclick="() => SetFinishedAsync(finishedState.UserId, false)">@L["Finished_Resume"]</button>
+                        </p>
+                    }
+                    else
+                    {
+                        @if (job is { Phase: MoneyMoneyImportPhase.Failed } failed)
+                        {
+                            <div class="alert alert-warning py-2" role="alert" data-testid="mm-job-error">@ErrorText(failed.Error)</div>
+                        }
+                        <ol class="small mb-2 ps-3" data-testid="mm-instructions">
+                            <li>@L["Step2_How1"]</li>
+                            <li>@L["Step2_How2"]</li>
+                            <li>@L["Step2_How3"]</li>
+                        </ol>
+                        <div class="mb-2">
+                            <label class="form-label small mb-1" for="mm-zip">@L["Upload_File"]</label>
+                            <input type="file" id="mm-zip" class="form-control form-control-sm" accept=".zip,application/zip" @ref="fileInput"
+                                   disabled="@uploading" @onchange="() => fileChosen = true" />
+                        </div>
+                        <div class="form-check small mb-2">
+                            <input class="form-check-input" type="checkbox" id="mm-has-password" data-testid="mm-has-password" disabled="@uploading"
+                                   checked="@hasPassword" @onchange="e => hasPassword = e.Value is true" />
+                            <label class="form-check-label" for="mm-has-password">@L["Upload_HasPassword"]</label>
+                        </div>
+                        @if (hasPassword)
+                        {
+                            <div class="mb-2">
+                                <label class="form-label small mb-1 visually-hidden" for="mm-password">@L["Upload_Password"]</label>
+                                <input type="password" id="mm-password" class="form-control form-control-sm" autocomplete="off" disabled="@uploading"
+                                       placeholder="@L["Upload_Password"]" @bind="password" @bind:event="oninput" />
+                                <p class="small text-body-secondary mb-0 mt-1">@L["Upload_PasswordHint"]</p>
+                            </div>
+                        }
+                        <button type="button" class="btn btn-primary" data-testid="mm-upload" disabled="@(uploading || !fileChosen)" @onclick="UploadAsync">@L["Upload_Button"]</button>
+                        @if (uploading)
+                        {
+                            <div class="mt-2" data-testid="mm-upload-progress" role="status">
+                                <div class="small mb-1">@L["Upload_Progress", FormatMb(uploaded), FormatMb(uploadSize)]</div>
+                                <div class="progress" style="height: .5rem;"><div class="progress-bar" style="width: @(uploadSize > 0 ? uploaded * 100 / uploadSize : 0)%"></div></div>
+                            </div>
+                        }
+                        @if (uploadError != null)
+                        {
+                            <div class="alert alert-warning py-2 mt-2 mb-0" role="alert" data-testid="mm-upload-error">@uploadError</div>
+                        }
+                    }
                 </div>
+            </div>
+            </div>
             }
-            else if (state.Import is { MoneyMoneyImportFinishedAt: { } finishedAt } finishedState)
+            @if (ShowFreshCard)
             {
-                <p class="mb-0">
-                    <span class="badge text-bg-secondary me-2" data-testid="import-finished">@L["Finished_Badge", Clock.ToLocal(finishedAt).ToString("yyyy-MM-dd")]</span>
-                    <span class="small text-body-secondary me-2">@L["Finished_Hint"]</span>
-                    <button class="btn btn-sm btn-outline-secondary" data-testid="import-resume" @onclick="() => SetFinishedAsync(finishedState.UserId, false)">@L["Finished_Resume"]</button>
-                </p>
+            <div class="col-12 @(ShowImportCard ? "col-md-6" : "")">
+            <div class="card h-100" data-testid="start-fresh">
+                <div class="card-body">
+                    <h3 class="h6 card-title">@L["Start_FreshHeading"]</h3>
+                    <p class="small text-body-secondary mb-2">@L["Start_FreshBody"]</p>
+                    <details class="small mb-3" data-testid="start-fresh-included">
+                        <summary>@L["Start_FreshIncluded"]</summary>
+                        <ul class="list-unstyled mt-2 mb-0">
+                            @foreach (var g in StarterTree)
+                            {
+                                <li><span class="fw-semibold">@L[g.Group]</span>@(g.Categories.Length > 0 ? " · " + string.Join(", ", g.Categories.Select(c => L[c].Value)) : "")</li>
+                            }
+                            <li><span class="fw-semibold">@L["Start_FreshAccount"]</span> · @L["Starter_Cash"]</li>
+                        </ul>
+                    </details>
+                    @if (state.HasCategories)
+                    {
+                        <p class="mb-0 text-body-secondary" data-testid="starter-done">@L["Starter_Done"]</p>
+                    }
+                    else
+                    {
+                        <BusyButton Class="btn btn-outline-primary" TestId="starter-categories" OnClick="CreateStarterCategoriesAsync">@L["Starter_Button"]</BusyButton>
+                    }
+                </div>
+            </div>
+            </div>
             }
-            else
-            {
-                @if (job is { Phase: MoneyMoneyImportPhase.Failed } failed)
-                {
-                    <div class="alert alert-warning py-2" role="alert" data-testid="mm-job-error">@ErrorText(failed.Error)</div>
-                }
-                <ol class="small mb-2" data-testid="mm-instructions">
-                    <li>@L["Step2_How1"]</li>
-                    <li>@L["Step2_How2"]</li>
-                    <li>@L["Step2_How3"]</li>
-                    <li>@L["Step2_How4"]</li>
-                </ol>
-                <div class="mb-2">
-                    <label class="form-label small mb-1" for="mm-zip">@L["Upload_File"]</label>
-                    <input type="file" id="mm-zip" class="form-control form-control-sm" accept=".zip,application/zip" @ref="fileInput"
-                           disabled="@uploading" @onchange="() => fileChosen = true" />
-                </div>
-                <div class="form-check small mb-2">
-                    <input class="form-check-input" type="checkbox" id="mm-has-password" data-testid="mm-has-password" disabled="@uploading"
-                           checked="@hasPassword" @onchange="e => hasPassword = e.Value is true" />
-                    <label class="form-check-label" for="mm-has-password">@L["Upload_HasPassword"]</label>
-                </div>
-                @if (hasPassword)
-                {
-                    <div class="mb-2">
-                        <label class="form-label small mb-1 visually-hidden" for="mm-password">@L["Upload_Password"]</label>
-                        <input type="password" id="mm-password" class="form-control form-control-sm" autocomplete="off" disabled="@uploading"
-                               placeholder="@L["Upload_Password"]" @bind="password" @bind:event="oninput" />
-                        <p class="small text-body-secondary mb-0 mt-1">@L["Upload_PasswordHint"]</p>
-                    </div>
-                }
-                <div class="mb-2">
-                    <button type="button" class="btn btn-primary" data-testid="mm-upload" disabled="@(uploading || !fileChosen)" @onclick="UploadAsync">@L["Upload_Button"]</button>
-                </div>
-                @if (uploading)
-                {
-                    <div data-testid="mm-upload-progress" role="status">
-                        <div class="small mb-1">@L["Upload_Progress", FormatMb(uploaded), FormatMb(uploadSize)]</div>
-                        <div class="progress" style="height: .5rem;"><div class="progress-bar" style="width: @(uploadSize > 0 ? uploaded * 100 / uploadSize : 0)%"></div></div>
-                    </div>
-                }
-                @if (uploadError != null)
-                {
-                    <div class="alert alert-warning py-2" role="alert" data-testid="mm-upload-error">@uploadError</div>
-                }
-                @if (starterCreated)
-                {
-                    <p class="mt-3 mb-0 text-body-secondary" data-testid="starter-done">@L["Starter_Done"]</p>
-                }
-                else if (!state.HasCategories && !state.MoneyMoneyImported && !uploading && job is not { Running: true })
-                {
-                    <p class="mt-3 mb-0">
-                        <span class="text-body-secondary me-2">@L["Starter_Or"]</span>
-                        <BusyButton Class="btn btn-sm btn-outline-secondary" TestId="starter-categories" OnClick="CreateStarterCategoriesAsync">@L["Starter_Button"]</BusyButton>
-                    </p>
-                    <p class="small text-body-secondary mb-0">@L["Starter_CashHint"]</p>
-                }
-            }
-
         </div>
     </li>
     }
@@ -188,10 +210,21 @@ else
             <p class="mb-2">@L["Step4_Body"]</p>
             @if (state.ProjectId is { } pid)
             {
-                <div data-testid="step-cashflow-accounts"><ProjectAccountsPanel ProjectId="pid" ShowIntro="false" /></div>
-                <h3 class="h6 mt-4">@L["Setup_Heading"]</h3>
-                <p class="small text-body-secondary mb-2">@L["Setup_Body"]</p>
-                <div data-testid="step-category-setup"><CategorySetupPanel ProjectId="pid" /></div>
+                @if (state is { MoneyMoneyImported: false, HasCategories: true, HasAccounts: true, NonCashAccounts: 0 })
+                {
+                    @* Started fresh with only the cash account: nothing to decide here. *@
+                    <p class="mb-0" data-testid="step-summary">@L["Step4_Summary"]</p>
+                }
+                else
+                {
+                    <div data-testid="step-cashflow-accounts"><ProjectAccountsPanel ProjectId="pid" ShowIntro="false" Compact="true" /></div>
+                }
+                @if (state.MoneyMoneyImported)
+                {
+                    <h3 class="h6 mt-4">@L["Setup_Heading"]</h3>
+                    <p class="small text-body-secondary mb-2">@L["Setup_Body"]</p>
+                    <div data-testid="step-category-setup"><CategorySetupPanel ProjectId="pid" /></div>
+                }
             }
             else
             {
@@ -210,11 +243,11 @@ else
     {
         <button type="button" class="btn btn-outline-secondary" disabled data-testid="get-started-next">@L["Wizard_Next"]</button>
     }
-    else if (CurrentStep < StepCount)
+    else if (CurrentStep < StepCount && (CurrentStep != 1 || StepDone(1)))
     {
         <a class="btn @(StepDone(CurrentStep) ? "btn-primary" : "btn-outline-secondary")" href="@StepUrl(CurrentStep + 1)" data-testid="get-started-next">@L[StepDone(CurrentStep) ? "Wizard_Next" : "Wizard_Skip"]</a>
     }
-    else
+    else if (CurrentStep == StepCount)
     {
         <BusyButton Class="btn btn-primary" TestId="get-started-done" OnClick="DoneAsync">@L["Wizard_Done"]</BusyButton>
     }
@@ -386,6 +419,11 @@ else
 
     private bool ImportRunning => job is { Running: true } || uploading;
 
+    // Step 1 offers both ways to start; once one is under way the other one goes.
+    private bool ImportStarted => uploading || job != null || state is { MoneyMoneyImported: true };
+    private bool ShowImportCard => ImportStarted || state is not { HasCategories: true };
+    private bool ShowFreshCard => !ImportStarted;
+
     /// <summary>Whether a step has what it brings; the MoneyMoney step only once its import succeeded.</summary>
     private bool StepDone(int step) => state != null && step switch
     {
@@ -395,7 +433,6 @@ else
         _ => false,
     };
 
-    private bool starterCreated;
 
     // The starter category tree: resource keys of each group, its categories (none = one of the group's name) and whether it is income.
     private static readonly (string Group, string[] Categories, bool Income)[] StarterTree =
@@ -417,9 +454,8 @@ else
     private async Task CreateStarterCategoriesAsync()
     {
         await Onboarding.CreateStarterCategoriesAsync(StarterTree
-            .Select(g => new StarterGroup(L[g.Group], g.Categories.Select(c => L[c].Value).ToList(), g.Income))
+            .Select(g => new StarterGroup(L[g.Group], g.Categories.Select(c => L[c].Value).ToList(), g.Income, Tracked: g.Group != "Starter_Transfers"))
             .ToList(), L["Starter_Cash"]);
-        starterCreated = true;
         await LoadAsync();
         Navigation.NavigateTo(StepUrl(2));
     }

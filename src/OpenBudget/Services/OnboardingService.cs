@@ -10,7 +10,8 @@ namespace OpenBudget.Services;
 /// <param name="HasPortfolioData">Whether they hold Portfolio Performance data.</param>
 /// <param name="ProjectId">The project the last step's links open (the current one, else their first).</param>
 /// <param name="HasCategories">Whether they own any category.</param>
-public sealed record OnboardingState(int BankLogins, bool HasAccounts, UserDataState? Import, bool HasPortfolioData, int? ProjectId, bool HasCategories = false)
+/// <param name="NonCashAccounts">How many accounts they see besides cash accounts.</param>
+public sealed record OnboardingState(int BankLogins, bool HasAccounts, UserDataState? Import, bool HasPortfolioData, int? ProjectId, bool HasCategories = false, int NonCashAccounts = 0)
 {
     /// <summary>Whether a MoneyMoney import delivered data.</summary>
     public bool MoneyMoneyImported => Import is { LastUploadAt: not null };
@@ -29,7 +30,7 @@ public sealed record OnboardingState(int BankLogins, bool HasAccounts, UserDataS
 }
 
 /// <summary>A starter category group: its name, its categories (none = one category of the group's name) and whether it is income.</summary>
-public sealed record StarterGroup(string Name, IReadOnlyList<string> Categories, bool Income = false);
+public sealed record StarterGroup(string Name, IReadOnlyList<string> Categories, bool Income = false, bool Tracked = true);
 
 /// <summary>The state behind the Get started page and its gear-menu entry, for the signed-in user.</summary>
 public sealed class OnboardingService
@@ -56,6 +57,7 @@ public sealed class OnboardingService
         if (db.Scope is not { IsAuthenticated: true, UserId: { } userId } scope) return new OnboardingState(0, false, null, false, null);
         var logins = await db.BankLogins.CountAsync(l => l.OwnerUserId == userId, ct);
         var hasAccounts = await db.Accounts.AnyAsync(ct);
+        var accountCount = await db.Accounts.CountAsync(a => a.Type == null || a.Type != 6, ct);
         var hasPortfolio = await db.PpPortfolios.AnyAsync(p => p.OwnerUserId == userId, ct);
         var import = await db.UserDataStates.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == userId, ct);
         var hasCategories = await db.Categories.AnyAsync(c => c.OwnerUserId == userId, ct);
@@ -65,7 +67,7 @@ public sealed class OnboardingService
             var projects = await _projects.GetProjectsAsync();
             projectId = projects.FirstOrDefault(p => scope.IsOwner(p.Id))?.Id ?? projects.FirstOrDefault()?.Id;
         }
-        return new OnboardingState(logins, hasAccounts, import, hasPortfolio, projectId, hasCategories);
+        return new OnboardingState(logins, hasAccounts, import, hasPortfolio, projectId, hasCategories, accountCount);
     }
 
     /// <summary>Completes Get started for the signed-in user: it leaves the menus and signing in no longer leads to it.</summary>
@@ -81,7 +83,7 @@ public sealed class OnboardingService
 
     /// <summary>
     /// Creates a starter category tree for the signed-in user, who owns no category yet (otherwise nothing happens):
-    /// each group at the top level with its categories (categories coloured from the palette), assigned to the user's default project like imported groups,
+    /// each group at the top level with its categories (each group and its categories in its own colour), assigned to the user's default project like imported groups,
     /// income groups typed as income and the other groups tracked in its budget, and a manual cash account named <paramref name="cashAccountName"/>.
     /// Returns whether it created them.
     /// </summary>
@@ -102,10 +104,10 @@ public sealed class OnboardingService
         {
             var g = groups[gi];
             var groupId = next++;
-            // The categories of each group share a colour of the palette; groups stay uncoloured.
-            var color = CategoryColors.Palette[gi % CategoryColors.Palette.Count].Key;
-            db.CategoryGroups.Add(new CategoryGroup { Id = groupId, OwnerUserId = userId, Name = g.Name, ParentGroupId = parent, Sort = gi });
-            if (g.Income) incomeGroups.Add(groupId); else expenseGroups.Add(groupId);
+            // Each group and its categories share one colour, a different one per group.
+            var color = StarterColor(gi);
+            db.CategoryGroups.Add(new CategoryGroup { Id = groupId, OwnerUserId = userId, Name = g.Name, ParentGroupId = parent, Sort = gi, Color = color });
+            if (g.Income) incomeGroups.Add(groupId); else if (g.Tracked) expenseGroups.Add(groupId);
             var names = g.Categories.Count > 0 ? g.Categories : [g.Name];
             for (var ci = 0; ci < names.Count; ci++)
             {
@@ -134,7 +136,7 @@ public sealed class OnboardingService
                 db.CategoryTypeAssignments.Add(new CategoryTypeAssignment { ProjectId = pid, CategoryId = id, ItemType = CategoryItemType.Group, IsIncome = true });
             foreach (var id in incomeCategories)
                 db.CategoryTypeAssignments.Add(new CategoryTypeAssignment { ProjectId = pid, CategoryId = id, ItemType = CategoryItemType.Category, IsIncome = true });
-            // Every expense group is tracked in the budget (without amounts).
+            // The expense groups are tracked in the budget (without amounts), transfers not.
             foreach (var id in expenseGroups)
                 db.ProjectTrackingItems.Add(new ProjectTrackingItem { ProjectId = pid, CategoryGroupId = id });
             await db.SaveChangesAsync(ct);
@@ -143,6 +145,12 @@ public sealed class OnboardingService
         _notifier.Publish(new DataChange(DataArea.Projects), _origin.Id);
         return true;
     }
+
+    /// <summary>The palette's colours plus a brown, so twelve starter groups each get their own.</summary>
+    public static readonly IReadOnlyList<string> StarterColors = [.. CategoryColors.Palette.Select(p => p.Key), "#7a4b1e"];
+
+    /// <summary>The colour of the starter group at <paramref name="index"/> (and of its categories).</summary>
+    public static string StarterColor(int index) => StarterColors[index % StarterColors.Count];
 
     /// <summary>The owner's category tree for a project with whether each item is income and tracked in its budget.</summary>
     public async Task<List<CategorySetupRow>> GetCategorySetupAsync(int projectId, CancellationToken ct = default)

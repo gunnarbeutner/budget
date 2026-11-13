@@ -88,23 +88,14 @@
   <data name="Step1_Count_One" xml:space="preserve">
     <value>1 bank login set up.</value>
   </data>
-  <data name="Step2_Heading" xml:space="preserve">
-    <value>Import from MoneyMoney</value>
-  </data>
-  <data name="Step2_Body" xml:space="preserve">
-    <value>Imports accounts, categories, bookings and statements.</value>
-  </data>
   <data name="Step2_How1" xml:space="preserve">
-    <value>In MoneyMoney, choose Help › Show Database in Finder…</value>
+    <value>In MoneyMoney, choose Help › Show Database in Finder.</value>
   </data>
   <data name="Step2_How2" xml:space="preserve">
     <value>Quit MoneyMoney.</value>
   </data>
   <data name="Step2_How3" xml:space="preserve">
-    <value>In Finder, right-click the MoneyMoney folder that contains Database and Statements and choose Compress.</value>
-  </data>
-  <data name="Step2_How4" xml:space="preserve">
-    <value>Upload the ZIP file here. If the database has a password, tick the box and enter it.</value>
+    <value>Compress the MoneyMoney folder in Finder.</value>
   </data>
   <data name="Upload_File" xml:space="preserve">
     <value>ZIP file</value>
@@ -113,7 +104,7 @@
     <value>MoneyMoney password</value>
   </data>
   <data name="Upload_HasPassword" xml:space="preserve">
-    <value>My MoneyMoney database has a password</value>
+    <value>Database has a password</value>
   </data>
   <data name="Error_PasswordNeeded" xml:space="preserve">
     <value>The database has a password: tick the box, enter it and upload again.</value>
@@ -200,7 +191,7 @@
     <value>Create a project first.</value>
   </data>
   <data name="Stepper_1" xml:space="preserve">
-    <value>MoneyMoney</value>
+    <value>Start</value>
   </data>
   <data name="Stepper_2" xml:space="preserve">
     <value>Bank logins</value>
@@ -212,10 +203,7 @@
     <value>Accounts &amp; budget</value>
   </data>
   <data name="Starter_Button" xml:space="preserve">
-    <value>Start with suggested categories</value>
-  </data>
-  <data name="Starter_Or" xml:space="preserve">
-    <value>Not using MoneyMoney?</value>
+    <value>Start fresh</value>
   </data>
   <data name="Starter_Income" xml:space="preserve">
     <value>Income</value>
@@ -322,9 +310,6 @@
   <data name="Starter_Cash" xml:space="preserve">
     <value>Cash</value>
   </data>
-  <data name="Starter_CashHint" xml:space="preserve">
-    <value>Also adds a Cash account.</value>
-  </data>
   <data name="Setup_Heading" xml:space="preserve">
     <value>Income and spending</value>
   </data>
@@ -342,5 +327,29 @@
   </data>
   <data name="Setup_Empty" xml:space="preserve">
     <value>No categories yet.</value>
+  </data>
+  <data name="Start_Heading" xml:space="preserve">
+    <value>How do you want to start?</value>
+  </data>
+  <data name="Start_ImportHeading" xml:space="preserve">
+    <value>Import from MoneyMoney</value>
+  </data>
+  <data name="Start_ImportBody" xml:space="preserve">
+    <value>Accounts, categories, bookings, budgets and statements.</value>
+  </data>
+  <data name="Start_FreshHeading" xml:space="preserve">
+    <value>Start fresh</value>
+  </data>
+  <data name="Start_FreshBody" xml:space="preserve">
+    <value>Suggested categories and a cash account. You can change them later.</value>
+  </data>
+  <data name="Start_FreshIncluded" xml:space="preserve">
+    <value>What's included</value>
+  </data>
+  <data name="Start_FreshAccount" xml:space="preserve">
+    <value>Account</value>
+  </data>
+  <data name="Step4_Summary" xml:space="preserve">
+    <value>Your categories and the Cash account are ready.</value>
   </data>
 </root>

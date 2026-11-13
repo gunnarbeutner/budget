@@ -88,23 +88,14 @@
   <data name="Step1_Count_One" xml:space="preserve">
     <value>1 Bank-Zugang eingerichtet.</value>
   </data>
-  <data name="Step2_Heading" xml:space="preserve">
-    <value>Aus MoneyMoney importieren</value>
-  </data>
-  <data name="Step2_Body" xml:space="preserve">
-    <value>Importiert Konten, Kategorien, Buchungen und Kontoauszüge.</value>
-  </data>
   <data name="Step2_How1" xml:space="preserve">
-    <value>Wähle in MoneyMoney Hilfe › Datenbank im Finder zeigen …</value>
+    <value>Wähle in MoneyMoney Hilfe › Datenbank im Finder zeigen.</value>
   </data>
   <data name="Step2_How2" xml:space="preserve">
     <value>Beende MoneyMoney.</value>
   </data>
   <data name="Step2_How3" xml:space="preserve">
-    <value>Klicke im Finder mit der rechten Maustaste auf den MoneyMoney-Ordner, der Database und Statements enthält, und wähle Komprimieren.</value>
-  </data>
-  <data name="Step2_How4" xml:space="preserve">
-    <value>Lade die ZIP-Datei hier hoch. Hat die Datenbank ein Passwort, setze das Häkchen und gib es ein.</value>
+    <value>Komprimiere den MoneyMoney-Ordner im Finder.</value>
   </data>
   <data name="Upload_File" xml:space="preserve">
     <value>ZIP-Datei</value>
@@ -113,7 +104,7 @@
     <value>MoneyMoney-Passwort</value>
   </data>
   <data name="Upload_HasPassword" xml:space="preserve">
-    <value>Meine MoneyMoney-Datenbank hat ein Passwort</value>
+    <value>Datenbank hat ein Passwort</value>
   </data>
   <data name="Error_PasswordNeeded" xml:space="preserve">
     <value>Die Datenbank hat ein Passwort: Häkchen setzen, Passwort eingeben und erneut hochladen.</value>
@@ -200,7 +191,7 @@
     <value>Lege zuerst ein Projekt an.</value>
   </data>
   <data name="Stepper_1" xml:space="preserve">
-    <value>MoneyMoney</value>
+    <value>Start</value>
   </data>
   <data name="Stepper_2" xml:space="preserve">
     <value>Bank-Zugänge</value>
@@ -212,10 +203,7 @@
     <value>Konten &amp; Budget</value>
   </data>
   <data name="Starter_Button" xml:space="preserve">
-    <value>Mit vorgeschlagenen Kategorien beginnen</value>
-  </data>
-  <data name="Starter_Or" xml:space="preserve">
-    <value>Kein MoneyMoney?</value>
+    <value>Neu beginnen</value>
   </data>
   <data name="Starter_Income" xml:space="preserve">
     <value>Einnahmen</value>
@@ -322,9 +310,6 @@
   <data name="Starter_Cash" xml:space="preserve">
     <value>Bargeld</value>
   </data>
-  <data name="Starter_CashHint" xml:space="preserve">
-    <value>Legt auch ein Konto „Bargeld“ an.</value>
-  </data>
   <data name="Setup_Heading" xml:space="preserve">
     <value>Einnahmen und Ausgaben</value>
   </data>
@@ -342,5 +327,29 @@
   </data>
   <data name="Setup_Empty" xml:space="preserve">
     <value>Noch keine Kategorien.</value>
+  </data>
+  <data name="Start_Heading" xml:space="preserve">
+    <value>Wie möchtest du beginnen?</value>
+  </data>
+  <data name="Start_ImportHeading" xml:space="preserve">
+    <value>Aus MoneyMoney importieren</value>
+  </data>
+  <data name="Start_ImportBody" xml:space="preserve">
+    <value>Konten, Kategorien, Buchungen, Budgets und Kontoauszüge.</value>
+  </data>
+  <data name="Start_FreshHeading" xml:space="preserve">
+    <value>Neu beginnen</value>
+  </data>
+  <data name="Start_FreshBody" xml:space="preserve">
+    <value>Vorgeschlagene Kategorien und ein Bargeldkonto. Du kannst sie später ändern.</value>
+  </data>
+  <data name="Start_FreshIncluded" xml:space="preserve">
+    <value>Was enthalten ist</value>
+  </data>
+  <data name="Start_FreshAccount" xml:space="preserve">
+    <value>Konto</value>
+  </data>
+  <data name="Step4_Summary" xml:space="preserve">
+    <value>Deine Kategorien und das Bargeldkonto sind bereit.</value>
   </data>
 </root>

@@ -13,13 +13,17 @@
                      OnRemove="RemoveAccount"
                      OnScopeChange="OnScopeChange"
                      OnInCashflowChange="OnInCashflowChange"
-                     ShowIntro="ShowIntro" />
+                     ShowIntro="ShowIntro"
+                     Compact="Compact" />
 
 @code {
     [Parameter, EditorRequired] public int ProjectId { get; set; }
 
     /// <summary>Whether the card's intro sentence shows.</summary>
     [Parameter] public bool ShowIntro { get; set; } = true;
+
+    /// <summary>The short table of Get started.</summary>
+    [Parameter] public bool Compact { get; set; }
 
     private List<ProjectAccountAssignment>? accountAssignments;
     private List<Account>? allAccounts;

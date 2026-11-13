@@ -14,7 +14,10 @@
         <div class="card" data-testid="accounts-card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">@L["Accounts_Heading"]</h5>
-                <button class="btn btn-sm btn-primary" @onclick="OpenDialog">@L["Button_AddAccount"]</button>
+                @if (!Compact)
+                {
+                    <button class="btn btn-sm btn-primary" @onclick="OpenDialog">@L["Button_AddAccount"]</button>
+                }
             </div>
             <div class="card-body">
                 @if (ShowIntro)
@@ -32,16 +35,19 @@
                 else
                 {
                     <div class="table-responsive">
-                        <table class="table table-sm mb-0 text-nowrap align-middle">
+                        <table class="table table-sm mb-0 align-middle @(Compact ? "" : "text-nowrap")">
                             <thead>
                                 <tr>
                                     <th>@L["Table_Account"]</th>
-                                    <th>@L["Table_Kind"]</th>
-                                    <th class="text-end">@L["Table_CurrentBalance"]</th>
-                                    <th>@L["Table_LastRefresh"]</th>
+                                    @if (!Compact) { <th>@L["Table_Kind"]</th> }
+                                    <th class="text-end">@L[Compact ? "Table_Balance" : "Table_CurrentBalance"]</th>
+                                    @if (!Compact) { <th>@L["Table_LastRefresh"]</th> }
                                     <th>@L["Table_InCashflow"]</th>
-                                    <th>@L["Table_Scope"]</th>
-                                    <th class="text-end"></th>
+                                    @if (!Compact)
+                                    {
+                                        <th>@L["Table_Scope"]</th>
+                                        <th class="text-end"></th>
+                                    }
                                 </tr>
                             </thead>
                             <tbody>
@@ -59,13 +65,15 @@
                                     <tr @key="assignment.AccountId">
                                         <td>
                                             @name
-                                            @if (account != null && account.Provider != AccountProviders.MoneyMoney)
+                                            @if (!Compact && account != null && account.Provider != AccountProviders.MoneyMoney)
                                             {
                                                 <a href="@($"/accounts/{account.Id}/statements")" class="small ms-2" title="@L["Statements_Link"]"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> @L["Statements_Link"]</a>
                                             }
                                         </td>
-                                        <td><span class="badge bg-secondary">@kind</span></td>
-                                        <td class="text-end">@(balance.HasValue ? Formatting.FormatMoneyDe(balance.Value, currency) : L["Dash"].Value)</td>
+                                        @if (!Compact) { <td><span class="badge bg-secondary">@kind</span></td> }
+                                        <td class="text-end text-nowrap">@(balance.HasValue ? Formatting.FormatMoneyDe(balance.Value, currency) : L["Dash"].Value)</td>
+                                        @if (!Compact)
+                                        {
                                         <td>
                                             @if (refreshAge.HasValue)
                                             {
@@ -83,12 +91,15 @@
                                                 <span class="badge bg-danger ms-1" title="@refreshError">@L["Refresh_Error"]</span>
                                             }
                                         </td>
+                                        }
                                         <td>
                                             <input type="checkbox" class="form-check-input" data-testid="in-cashflow"
                                                    aria-label="@L["Table_InCashflow"]" title="@L["InCashflow_Help"]"
                                                    checked="@assignment.InCashflow"
                                                    @onchange="e => OnInCashflowChange.InvokeAsync((assignment.AccountId, e.Value is true))" />
                                         </td>
+                                        @if (!Compact)
+                                        {
                                         <td>
                                             <div class="segmented" role="group" title="@L["Scope_Help"]">
                                                 <button type="button"
@@ -119,6 +130,7 @@
                                                 </button>
                                             }
                                         </td>
+                                        }
                                     </tr>
                                 }
                             </tbody>
@@ -231,6 +243,9 @@
 </Modal>
 
 @code {
+    /// <summary>Only account, balance and "in cashflow" (Get started); settings show everything.</summary>
+    [Parameter] public bool Compact { get; set; }
+
     /// <summary>Whether the intro sentence shows (Get started has its own line instead).</summary>
     [Parameter] public bool ShowIntro { get; set; } = true;
 

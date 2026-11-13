@@ -187,4 +187,7 @@
   <data name="Remove_Confirm" xml:space="preserve">
     <value>Entfernen?</value>
   </data>
+  <data name="Table_Balance" xml:space="preserve">
+    <value>Saldo</value>
+  </data>
 </root>

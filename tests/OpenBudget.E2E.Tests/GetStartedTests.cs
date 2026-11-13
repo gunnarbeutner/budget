@@ -137,6 +137,7 @@ public sealed class GetStartedTests : EndToEndTestBase
             await Expect(Page.GetByTestId("mm-job")).ToBeVisibleAsync(new() { Timeout = 30_000 });
 
             await Expect(Page.GetByTestId("get-started-next")).ToBeDisabledAsync();
+            await Expect(Page.GetByTestId("start-fresh")).ToHaveCountAsync(0);
             await Expect(Page.GetByTestId("get-started-stepper-1")).Not.ToHaveClassAsync(new Regex("done"));
             await Expect(Page.GetByTestId("gear-menu")).ToHaveCountAsync(0);
             await Expect(Page.GetByTestId("settings-nav")).ToHaveCountAsync(0);
@@ -163,6 +164,10 @@ public sealed class GetStartedTests : EndToEndTestBase
         await ReopenGetStartedAsync(E2ESeed.SecondUserId);
         await UserDefaultProject.EnsureAsync(Db, E2ESeed.SecondUserId);   // as at startup
         await LoginAsync(E2ESeed.SecondUserName);
+        // Two ways to start, side by side; no Skip on this step.
+        await Expect(Page.GetByTestId("start-import")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("start-fresh")).ToContainTextAsync("Start fresh");
+        await Expect(Page.GetByTestId("get-started-next")).ToHaveCountAsync(0);
         await Page.GetByTestId("starter-categories").ClickAsync();
         // Done: on to step 2; the offer is gone from step 1.
         await Expect(Page).ToHaveURLAsync(new Regex("step=2$"));
@@ -170,10 +175,17 @@ public sealed class GetStartedTests : EndToEndTestBase
         await Expect(Page.GetByTestId("step-moneymoney")).ToBeVisibleAsync();
         await Expect(Page.GetByTestId("starter-categories")).ToHaveCountAsync(0);
         await Expect(Page.GetByTestId("get-started-next")).ToHaveTextAsync("Next");
+        await Expect(Page.GetByTestId("start-import")).ToHaveCountAsync(0);
+
+        // Nothing to decide on the last step: a one-line summary and Done.
+        await Page.GetByTestId("get-started-stepper-4").Locator("a").ClickAsync();
+        await Expect(Page.GetByTestId("step-summary")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("category-setup")).ToHaveCountAsync(0);
 
         await using var db = await Db.CreateDbContextAsync();
         var groups = await db.CategoryGroups.Where(g => g.OwnerUserId == E2ESeed.SecondUserId).ToListAsync();
         Assert.That(groups, Has.Count.EqualTo(12));
+        Assert.That(groups.Select(g => g.Color).Distinct(StringComparer.Ordinal).Count(), Is.EqualTo(12));
         Assert.That(await db.Categories.Where(c => c.OwnerUserId == E2ESeed.SecondUserId).Select(c => c.Color).ToListAsync(), Has.All.Not.Null);
         var income = groups.Single(g => g.Name == "Income");
         var salary = await db.Categories.SingleAsync(c => c.OwnerUserId == E2ESeed.SecondUserId && c.Name == "Salary");
@@ -187,6 +199,10 @@ public sealed class GetStartedTests : EndToEndTestBase
         Assert.That((cash.Name, cash.Type, cash.Provider), Is.EqualTo(("Cash", (long?)6, OpenBudget.Models.AccountProviders.Manual)));
         var cashAssignment = await db.ProjectAccountAssignments.SingleAsync(a => a.ProjectId == project.Id && a.AccountId == cash.Id);
         Assert.That(cashAssignment.InCashflow, Is.True);
+        // Every expense group is tracked in the budget; Income and Transfers are not.
+        var trackedGroups = await db.ProjectTrackingItems.Where(t => t.ProjectId == project.Id && t.CategoryGroupId != null).Select(t => t.CategoryGroupId!.Value).ToListAsync();
+        Assert.That(trackedGroups, Has.Count.EqualTo(10));
+        Assert.That(trackedGroups, Does.Not.Contain(groups.Single(g => g.Name == "Transfers").Id));
     }
 
     [Test]
@@ -321,6 +337,19 @@ public sealed class GetStartedTests : EndToEndTestBase
                 await Page.WaitForTimeoutAsync(500);
                 await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"get-started-{step}-{width}-{theme}.png"), FullPage = true });
             }
+        }
+
+        // Step 1 as a new user sees it: both ways to start.
+        await LogoutAsync();
+        await ReopenGetStartedAsync(E2ESeed.SecondUserId);
+        await LoginAsync(E2ESeed.SecondUserName);
+        foreach (var (width, height) in new[] { (1440, 900), (390, 844) })
+        {
+            await Page.SetViewportSizeAsync(width, height);
+            await GoToAsync("/get-started");
+            await Expect(Page.GetByTestId("start-fresh")).ToBeVisibleAsync();
+            await Page.WaitForTimeoutAsync(500);
+            await Page.ScreenshotAsync(new() { Path = Path.Combine(dir, $"get-started-new-{width}-{theme}.png"), FullPage = true });
         }
     }
 }
