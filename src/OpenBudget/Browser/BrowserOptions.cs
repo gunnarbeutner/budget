@@ -9,6 +9,9 @@ public sealed class BrowserOptions
     /// <summary>How many web logins may be open at once (each is one browser context with one page).</summary>
     public int MaxConcurrentSessions { get; set; } = 3;
 
+    /// <summary>How long a web login waits for one of the <see cref="MaxConcurrentSessions"/> slots before it fails.</summary>
+    public TimeSpan SlotWait { get; set; } = TimeSpan.FromMinutes(10);
+
     /// <summary>Initial browser window size; frames and input use the native page's actual viewport.</summary>
     public int ViewportWidth { get; set; } = 1280;
 

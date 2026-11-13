@@ -63,7 +63,8 @@ public sealed class BrowserService : IBrowserHost, IAsyncDisposable
     public async Task<IBrowserSession> OpenSessionAsync(CancellationToken ct)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (!await _slots.WaitAsync(TimeSpan.Zero, ct))
+        // web logins beyond the limit queue for a slot: a sync of several banks opens more of them at once
+        if (!await _slots.WaitAsync(Options.SlotWait, ct))
             throw new BrowserActionException("Too many web logins are open at the moment; try again in a few minutes.");
         try
         {
