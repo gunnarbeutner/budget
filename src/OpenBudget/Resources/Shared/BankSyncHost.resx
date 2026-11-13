@@ -86,13 +86,13 @@
     <value>That answer was not accepted.</value>
   </data>
   <data name="WebLoginHint" xml:space="preserve">
-    <value>Sign in on the bank&#8217;s page below, including any confirmation it asks for. The sync continues by itself as soon as you are signed in.</value>
+    <value>Sign in below, including any confirmation that is asked for. The sync continues by itself once you are signed in.</value>
   </data>
   <data name="SigningIn" xml:space="preserve">
     <value>Signing in…</value>
   </data>
   <data name="ShowBrowser" xml:space="preserve">
-    <value>Show the bank's page</value>
+    <value>Show the sign-in page</value>
   </data>
   <data name="SyncedAt" xml:space="preserve">
     <value>Synced {0}</value>
