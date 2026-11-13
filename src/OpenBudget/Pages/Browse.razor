@@ -77,7 +77,8 @@
     </Rail>
     <ChildContent>
         <div class="page-toolbar browse-toolbar" data-testid="browse-toolbar">
-            <div class="browse-ident">
+            <div class="browse-ident" data-testid="browse-ident" data-ob-longpress="@(selectionKind == "account" ? "" : null)"
+                 @oncontextmenu="OnHeaderContext" @oncontextmenu:preventDefault="@(selectionKind == "account")">
                 <h1 class="browse-title">
                     <button type="button" class="browse-title-btn" @onclick="ToggleRail" title="@L["Aria_ToggleTree"]"
                             aria-expanded="@railOpen.ToString().ToLowerInvariant()">
@@ -96,7 +97,8 @@
                         @if (AccountDisplay.FormatIban(info.Iban) is { } ibanText)
                         {
                             @if (parts++ > 0) { <span> · </span> }
-                            <span data-testid="account-iban">@ibanText</span>
+                            <button type="button" class="browse-iban-btn" data-testid="account-iban" title="@L["Header_CopyIban"]"
+                                    @onclick="() => CopyAsync(AccountDisplay.CompactIban(info.Iban))">@ibanText</button>
                         }
                         @if (info.LastUpdatedUtc != null || info.Error != null)
                         {

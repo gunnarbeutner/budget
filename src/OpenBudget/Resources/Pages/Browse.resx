@@ -398,4 +398,11 @@
   <data name="Heading_Range" xml:space="preserve">
     <value>{0} – {1}</value>
   </data>
+  <data name="Ctx_Copy" xml:space="preserve"><value>Copy</value></data>
+  <data name="Ctx_CopyBankDetails" xml:space="preserve"><value>Bank details</value></data>
+  <data name="Ctx_CopyIban" xml:space="preserve"><value>IBAN</value></data>
+  <data name="Ctx_CopyBalance" xml:space="preserve"><value>Balance</value></data>
+  <data name="Header_CopyIban" xml:space="preserve"><value>Copy IBAN</value></data>
+  <data name="Toast_Copied" xml:space="preserve"><value>Copied</value></data>
+  <data name="Toast_CopyFailed" xml:space="preserve"><value>Could not copy</value></data>
 </root>

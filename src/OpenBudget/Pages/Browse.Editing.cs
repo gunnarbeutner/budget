@@ -643,6 +643,43 @@ public partial class Browse
         popup = PopupKind.Context;
     }
 
+    /// <summary>The account header's menu: copy the bank details, the IBAN or the balance (entries without a value are left out).</summary>
+    private void OnHeaderContext(MouseEventArgs e)
+    {
+        if (selectionKind != "account" || SelectedAccountNode == null) return;
+        var items = new List<ContextMenuItem> { new("copy-heading", L["Ctx_Copy"], Disabled: true) };
+        if (HeaderCopyText("copy-bank-details") != null) items.Add(new("copy-bank-details", L["Ctx_CopyBankDetails"], "bi-bank"));
+        if (HeaderCopyText("copy-iban") != null) items.Add(new("copy-iban", L["Ctx_CopyIban"], "bi-credit-card-2-front"));
+        if (HeaderCopyText("copy-balance") != null) items.Add(new("copy-balance", L["Ctx_CopyBalance"], "bi-cash"));
+        if (items.Count == 1) return;
+        contextItems = items;
+        (popupX, popupY) = (e.ClientX, e.ClientY);
+        popup = PopupKind.Context;
+    }
+
+    private string? HeaderCopyText(string key)
+    {
+        if (SelectedAccountNode is not { } a) return null;
+        return key switch
+        {
+            "copy-bank-details" => AccountDisplay.BankDetailsText(null, a.Iban, null, a.Institution),
+            "copy-iban" => AccountDisplay.CompactIban(a.Iban),
+            "copy-balance" => a.Balance is { } b ? Formatting.FormatMoneyDe(b, CurrencySums.Normalize(a.Currency)) : null,
+            _ => null,
+        };
+    }
+
+    /// <summary>Puts <paramref name="text"/> on the clipboard and confirms with a short toast.</summary>
+    private async Task CopyAsync(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("obCopyText", text); }
+        catch (JSDisconnectedException) { return; }
+        catch (JSException) { ok = false; }
+        AddToast(new ToastItem { Message = ok ? L["Toast_Copied"] : L["Toast_CopyFailed"], IsError = !ok });
+    }
+
     private List<ContextMenuItem> BuildContextItems()
     {
         var blocked = BlockedReason(selected);
@@ -690,6 +727,9 @@ public partial class Browse
         var single = selected.Count == 1 && rowCache.TryGetValue(selected.First(), out var r) ? r : null;
         switch (key)
         {
+            case "copy-bank-details" or "copy-iban" or "copy-balance":
+                await CopyAsync(HeaderCopyText(key));
+                break;
             case "category":
                 await OpenPickerAsync(at.popupX, at.popupY);
                 break;

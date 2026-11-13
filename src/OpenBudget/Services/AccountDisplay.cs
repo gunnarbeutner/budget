@@ -5,6 +5,18 @@ namespace OpenBudget.Services;
 /// <summary>Pure display helpers for the account header (IBAN, "last updated").</summary>
 public static class AccountDisplay
 {
+    /// <summary>IBAN without spaces, upper case; null/blank gives null.</summary>
+    public static string? CompactIban(string? iban) =>
+        string.IsNullOrWhiteSpace(iban) ? null : new string(iban.Where(c => !char.IsWhiteSpace(c)).ToArray()).ToUpperInvariant();
+
+    /// <summary>An account's bank details to paste elsewhere, one per line: holder, IBAN in groups of four, BIC, bank.
+    /// Lines without a value are left out; nothing at all gives null.</summary>
+    public static string? BankDetailsText(string? holder, string? iban, string? bic, string? bank)
+    {
+        var lines = new[] { holder?.Trim(), FormatIban(iban), bic?.Trim(), bank?.Trim() }.Where(l => !string.IsNullOrEmpty(l)).ToList();
+        return lines.Count == 0 ? null : string.Join("\n", lines);
+    }
+
     /// <summary>IBAN in groups of four ("DE00 1234 ..."); null/blank gives null. Non-IBAN text is only regrouped.</summary>
     public static string? FormatIban(string? iban)
     {

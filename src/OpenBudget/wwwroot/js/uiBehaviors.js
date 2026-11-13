@@ -543,3 +543,9 @@ window.obPickerMoreHint = function (list) {
     new MutationObserver(attach).observe(document.documentElement, { childList: true, subtree: true });
     attach();
 })();
+
+// Copies text to the clipboard; resolves to whether it worked.
+window.obCopyText = function (text) {
+    if (!navigator.clipboard) return Promise.resolve(false);
+    return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return false; });
+};

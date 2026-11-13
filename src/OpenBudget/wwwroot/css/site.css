@@ -1424,6 +1424,8 @@ button.cat-pill:hover { filter: brightness(0.96); }
     cursor: default;
 }
 .browse-sub-btn { font-size: 11px; line-height: 1; vertical-align: baseline; }
+.browse-iban-btn { background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: copy; }
+.browse-iban-btn:hover { text-decoration: underline; }
 .tx-actionbar { font-size: 13px; padding: 6px 10px; }
 .tx-actionbar .btn-sm { font-size: 13px; padding: 2px 8px; }
 .tx-item.selected .tx-row.tx-cursor { outline: none; }

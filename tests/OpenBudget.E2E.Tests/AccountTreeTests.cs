@@ -158,4 +158,43 @@ public sealed class AccountTreeTests : EndToEndTestBase
         await Expect(Page.GetByTestId("account-last-updated")).ToContainTextAsync("Last updated:");
         await Expect(Page.GetByTestId("account-last-updated")).ToContainTextAsync("Today");
     }
+
+    [Test]
+    public async Task The_account_header_copies_bank_details_iban_and_balance()
+    {
+        await Page.Context.GrantPermissionsAsync(["clipboard-read", "clipboard-write"], new() { Origin = Factory.BaseUrl.TrimEnd('/') });
+        await SeedAccountsAsync();
+        await GoToAsync(BrowseUrl);
+        await Page.GetByTestId("tree-account").Filter(new() { HasText = "E2E Giro" }).ClickAsync();
+        await Expect(Page.GetByTestId("account-iban")).ToBeVisibleAsync();
+        async Task<string> Clipboard(string expected)
+        {
+            var text = "";
+            for (var i = 0; i < 50 && !text.Contains(expected, StringComparison.Ordinal); i++)
+            {
+                text = await Page.EvaluateAsync<string>("() => navigator.clipboard.readText()");
+                if (!text.Contains(expected, StringComparison.Ordinal)) await Task.Delay(100);
+            }
+            return text;
+        }
+
+        await Page.GetByTestId("browse-ident").ClickAsync(new() { Button = MouseButton.Right });
+        var menu = Page.GetByTestId("context-menu");
+        await Expect(menu.GetByTestId("ctx-copy-heading")).ToBeDisabledAsync();
+        await menu.GetByTestId("ctx-copy-balance").ClickAsync();
+        await Expect(Page.GetByTestId("toast").First).ToContainTextAsync("Copied");
+        Assert.That(await Clipboard("1.000,00"), Is.EqualTo("1.000,00\u00A0€"));
+
+        await Page.GetByTestId("browse-ident").ClickAsync(new() { Button = MouseButton.Right });
+        await menu.GetByTestId("ctx-copy-bank-details").ClickAsync();
+        Assert.That(await Clipboard("DE00 1234"), Does.StartWith("DE00 1234 5678 0123 4567 89"));
+
+        await Page.GetByTestId("browse-ident").ClickAsync(new() { Button = MouseButton.Right });
+        await menu.GetByTestId("ctx-copy-iban").ClickAsync();
+        Assert.That(await Clipboard("DE0012345678"), Is.EqualTo("DE00123456780123456789"));
+
+        await Page.EvaluateAsync("() => navigator.clipboard.writeText('')");
+        await Page.GetByTestId("account-iban").ClickAsync();
+        Assert.That(await Clipboard("DE0012345678"), Is.EqualTo("DE00123456780123456789"));
+    }
 }

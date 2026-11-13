@@ -113,4 +113,17 @@ public class AccountDisplayTests
         Assert.Equal(new DateTime(2026, 11, 1, 8, 0, 0, DateTimeKind.Utc), sharee.LastUpdatedUtc);
         Assert.Equal(-28.95m, sharee.PendingBalance);
     }
+
+    [Fact]
+    public void Bank_details_list_only_the_lines_with_values()
+    {
+        Assert.Equal("Example Holder\nDE00 1234 5678 0123 4567 89\nEXAMPDEFFXXX\nExample Bank",
+            AccountDisplay.BankDetailsText("Example Holder", "de00123456780123456789", "EXAMPDEFFXXX", "Example Bank"));
+        Assert.Equal("DE00 1234 5678 0123 4567 89\nExample Bank", AccountDisplay.BankDetailsText(null, "DE00123456780123456789", " ", "Example Bank"));
+        Assert.Null(AccountDisplay.BankDetailsText(null, null, null, null));
+    }
+
+    [Fact]
+    public void Compact_iban_drops_the_spaces() =>
+        Assert.Equal("DE00123456780123456789", AccountDisplay.CompactIban("de00 1234 5678 0123 4567 89"));
 }
