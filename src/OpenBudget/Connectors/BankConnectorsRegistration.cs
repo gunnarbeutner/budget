@@ -1,5 +1,6 @@
 using OpenBudget.Auth;
 using OpenBudget.Browser;
+using OpenBudget.Connectors.Amazon;
 using OpenBudget.Connectors.FakeBank;
 using OpenBudget.Connectors.FinTs;
 using OpenBudget.Connectors.Openbank;
@@ -37,6 +38,7 @@ public static class BankConnectorsRegistration
                 ScalableConnector.CreateRegistration(new ScalableOptions()),
                 OpenbankConnector.CreateRegistration(new OpenbankOptions()),
                 PayPalConnector.CreateRegistration(new PayPalOptions()),
+                AmazonConnector.CreateRegistration(new AmazonOptions()),
                 KrakenConnector.CreateRegistration(new KrakenOptions()),
                 IngConnector.Registration(fints),
                 BaaderConnector.Registration(fints),
@@ -63,6 +65,7 @@ public static class BankConnectorsRegistration
         services.AddSingleton(new BankSyncOptions());
         services.AddSingleton<BankStatementStore>();
         services.AddSingleton<BankTransactionStore>();
+        services.AddSingleton<AmazonOrderStore>();
         services.AddSingleton<BankSyncRunner>();
         services.AddSingleton<BankSyncCoordinator>();
         services.AddHostedService(sp => sp.GetRequiredService<BankSyncCoordinator>());

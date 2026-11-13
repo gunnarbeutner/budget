@@ -26,6 +26,9 @@ public class CategorySuggestion
     [MaxLength(300)]
     public string? Rationale { get; set; }
 
+    /// <summary>A suggested split (JSON list of parts: amount in cents, category, label), or null for a single category.</summary>
+    public string? SplitJson { get; set; }
+
     [MaxLength(80)]
     public string? Model { get; set; }
 

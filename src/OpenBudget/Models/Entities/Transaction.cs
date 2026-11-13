@@ -173,6 +173,13 @@ public class Transaction
     [Column("split_check")]
     public bool SplitCheck { get; set; }
 
+    /// <summary>
+    /// The items of the online order(s) this booking paid ("USB-C charger; Laundry detergent ×2"), filled in by an order
+    /// source such as Amazon; searched and matched by rules like the purpose.
+    /// </summary>
+    [Column("order_items")]
+    public string? OrderItems { get; set; }
+
     [NotMapped]
     public DateTime Date => DateTimeOffset.FromUnixTimeSeconds(Timestamp).DateTime;
 

@@ -131,6 +131,12 @@ public class BankLoginAccount
     /// <summary>The local <see cref="Account"/> this remote account feeds, or null while unlinked.</summary>
     public long? LinkedAccountId { get; set; }
 
+    /// <summary>
+    /// For an enrichment source (Amazon): the existing local account whose bookings this payment instrument is matched
+    /// against. The account keeps its own source; null: not mapped (the instrument's charges are skipped).
+    /// </summary>
+    public long? EnrichAccountId { get; set; }
+
     /// <summary>True when the local account was created for this remote account (rather than an existing one taken over).</summary>
     public bool CreatedByConnector { get; set; }
 

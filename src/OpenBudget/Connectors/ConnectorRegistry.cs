@@ -44,6 +44,9 @@ public sealed record ConnectorRegistration(
     /// <summary>Whether a background run may sign in on the bank's web page with the stored credentials (only with <see cref="SilentCapability.Full"/>).</summary>
     public bool SilentWebSignIn { get; init; }
 
+    /// <summary>An order source (<see cref="IOrderSource"/>): its accounts are payment instruments mapped to existing accounts.</summary>
+    public bool OrderSource { get; init; }
+
     /// <summary>The German bank code of a FinTS bank: background FinTS runs are switched on per bank.</summary>
     public string? FinTsBlz { get; init; }
 

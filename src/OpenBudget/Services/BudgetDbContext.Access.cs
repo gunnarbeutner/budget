@@ -73,6 +73,10 @@ public partial class BudgetDbContext
         modelBuilder.Entity<BankStatement>().HasQueryFilter(s =>
             ScopeUnrestricted || s.OwnerUserId == ScopeUserId
             || (s.AccountId.HasValue && (ScopeSharedAccountIds.Contains(s.AccountId.Value))));
+        // Orders and charges of an order source are personal, like the login they came from.
+        modelBuilder.Entity<AmazonOrder>().HasQueryFilter(o => ScopeUnrestricted || o.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<AmazonOrderItem>().HasQueryFilter(i => ScopeUnrestricted || i.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<AmazonCharge>().HasQueryFilter(c => ScopeUnrestricted || c.OwnerUserId == ScopeUserId);
         // Read marks and the order of the project list are personal.
         modelBuilder.Entity<UserProjectOrder>().HasQueryFilter(o => ScopeUnrestricted || o.UserId == ScopeUserId);
         modelBuilder.Entity<StatementRead>().HasQueryFilter(r => ScopeUnrestricted || r.UserId == ScopeUserId);

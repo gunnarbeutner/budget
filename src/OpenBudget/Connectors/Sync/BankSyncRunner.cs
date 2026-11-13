@@ -58,6 +58,7 @@ public sealed class BankSyncRunner
     private readonly ILogger<BankSyncRunner> _logger;
     private readonly Func<BankHttpClient> _httpFactory;
     private readonly IWebLoginService? _webLogins;
+    private readonly AmazonOrderStore _orders;
 
     /// <summary>The login-wide state a challenge may need: whose browser to open and which cookie jar to fill.</summary>
     private sealed record SyncContext(string OwnerUserId, BankHttpClient Http)
@@ -116,8 +117,9 @@ public sealed class BankSyncRunner
     public BankSyncRunner(
         SystemDbContextFactory system, ConnectorRegistry registry, SecretsProtector secrets,
         BankTransactionStore transactions, BankStatementStore statements, TimeProvider clock, ILoggerFactory loggers,
-        Func<BankHttpClient>? httpFactory = null, IWebLoginService? webLogins = null)
+        Func<BankHttpClient>? httpFactory = null, IWebLoginService? webLogins = null, AmazonOrderStore? orders = null)
     {
+        _orders = orders ?? new AmazonOrderStore();
         _webLogins = webLogins;
         _httpFactory = httpFactory ?? (() => new BankHttpClient());
         _system = system;
@@ -234,10 +236,17 @@ public sealed class BankSyncRunner
             }
             await db.SaveChangesAsync(ct);
 
-            if (request.Transactions)
+            if (request.Transactions && connector is IOrderSource orderSource)
+            {
+                try { await FetchOrdersAsync(db, login, orderSource, sink, context, affected, ct); }
+                finally { await context.CloseBrowsersAsync(); }
+            }
+            else if (request.Transactions)
             {
                 try { await RefreshAccountsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct); }
                 finally { await context.CloseBrowsersAsync(); }
+                // New bookings may be the ones open order charges were waiting for.
+                await _orders.MatchAsync(db, login.OwnerUserId, ct);
             }
             if (request.Statements && !(request.Background && connector is IBackgroundScope { StatementsInBackground: false }))
                 await FetchStatementsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct);
@@ -621,6 +630,28 @@ public sealed class BankSyncRunner
             await db.SaveChangesAsync(ct);
         }
     }
+
+    /// <summary>An order source: reads charges and new orders, stores them, lists the instruments and matches the charges.</summary>
+    private async Task FetchOrdersAsync(
+        BudgetDbContext db, BankLogin login, IOrderSource source, ISyncSink sink, SyncContext context, HashSet<string> affected, CancellationToken ct)
+    {
+        var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
+        var since = await AmazonOrderStore.SinceAsync(db, login.Id, today, OrderHistoryYears, ct);
+        var known = await AmazonOrderStore.KnownOrdersAsync(db, login.Id, ct);
+        var step = await DriveAsync(a => source.FetchOrdersAsync(since, known, a, ct), sink, context, ct);
+        if (step.Status == StepStatus.NeedsUser) throw new SilentAbortException(step.FailureReason ?? DefaultNeedsUser);
+        if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Reading the orders failed.");
+        var result = step.Value!;
+        UpsertAccounts(login, result.Instruments);
+        await db.SaveChangesAsync(ct);
+        sink.Report("Matching orders");
+        await _orders.ApplyAsync(db, login, result, _clock.GetUtcNow().UtcDateTime, ct);
+        _logger.LogInformation("Bank login {LoginId}: {Charges} charges and {Orders} order details stored.", login.Id, result.Charges.Count, result.Orders.Count);
+        affected.Add(login.OwnerUserId);
+    }
+
+    /// <summary>How far back the first sync of an order source reads.</summary>
+    public int OrderHistoryYears { get; init; } = 2;
 
     /// <summary>The login's linked accounts as a <see cref="SyncHistory"/> (see there).</summary>
     internal static async Task<SyncHistory> SyncHistoryAsync(BudgetDbContext db, BankLogin login, string connectorType, int overlapDays, CancellationToken ct)

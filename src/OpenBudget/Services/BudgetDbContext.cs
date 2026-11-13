@@ -75,6 +75,9 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<ScheduledPayment> ScheduledPayments => Set<ScheduledPayment>();
     public DbSet<CategorySuggestion> CategorySuggestions => Set<CategorySuggestion>();
     public DbSet<CancelledReservation> CancelledReservations => Set<CancelledReservation>();
+    public DbSet<AmazonOrder> AmazonOrders => Set<AmazonOrder>();
+    public DbSet<AmazonOrderItem> AmazonOrderItems => Set<AmazonOrderItem>();
+    public DbSet<AmazonCharge> AmazonCharges => Set<AmazonCharge>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -348,6 +351,15 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<PpSecurityLink>()
             .HasIndex(l => new { l.OwnerUserId, l.PpSecurityUuid })
             .IsUnique();
+
+        // Orders and charges of an order source (Amazon) go with their bank login.
+        modelBuilder.Entity<AmazonOrder>().HasOne<BankLogin>().WithMany().HasForeignKey(o => o.BankLoginId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<AmazonOrder>().HasIndex(o => new { o.BankLoginId, o.OrderId }).IsUnique();
+        modelBuilder.Entity<AmazonOrderItem>().HasOne(i => i.Order).WithMany(o => o.Items).HasForeignKey(i => i.AmazonOrderId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<AmazonCharge>().HasOne<BankLogin>().WithMany().HasForeignKey(c => c.BankLoginId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<AmazonCharge>().HasIndex(c => new { c.BankLoginId, c.ChargeKey }).IsUnique();
+        modelBuilder.Entity<AmazonCharge>().HasIndex(c => c.TransactionId);
+        modelBuilder.Entity<AmazonCharge>().Property(c => c.State).HasConversion<int>();
 
         ConfigureAccessFilters(modelBuilder);
     }

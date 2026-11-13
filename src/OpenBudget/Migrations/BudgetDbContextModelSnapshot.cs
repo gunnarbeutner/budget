@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261113102614_PendingEditsCarryOver";
+        public override string LatestMigrationId => "20261113102750_AmazonOrders";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -267,6 +267,148 @@ namespace OpenBudget.Migrations
                     b.ToTable("account_groups");
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.AmazonCharge", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("AmountCents")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BankLoginId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ChargeKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Instrument")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("InstrumentId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OrderId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("State")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("TransactionId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TransactionId");
+
+                    b.HasIndex("BankLoginId", "ChargeKey")
+                        .IsUnique();
+
+                    b.ToTable("amazon_charges");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.AmazonOrder", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BankLoginId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DetailsFetchedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("OrderDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OrderId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("TotalCents")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BankLoginId", "OrderId")
+                        .IsUnique();
+
+                    b.ToTable("amazon_orders");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.AmazonOrderItem", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("AmazonOrderId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Asin")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("CategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("PriceCents")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Shipment")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AmazonOrderId");
+
+                    b.ToTable("amazon_order_items");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.AppUser", b =>
                 {
                     b.Property<string>("Id")
@@ -476,6 +618,9 @@ namespace OpenBudget.Migrations
                     b.Property<string>("Currency")
                         .HasMaxLength(10)
                         .HasColumnType("TEXT");
+
+                    b.Property<long?>("EnrichAccountId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Iban")
                         .HasMaxLength(50)
@@ -886,6 +1031,9 @@ namespace OpenBudget.Migrations
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SplitJson")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("TreeHash")
@@ -1877,6 +2025,10 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("note");
 
+                    b.Property<string>("OrderItems")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("order_items");
+
                     b.Property<string>("OwnerUserId")
                         .IsRequired()
                         .HasMaxLength(450)
@@ -2063,6 +2215,35 @@ namespace OpenBudget.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ParentGroup");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.AmazonCharge", b =>
+                {
+                    b.HasOne("OpenBudget.Models.BankLogin", null)
+                        .WithMany()
+                        .HasForeignKey("BankLoginId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.AmazonOrder", b =>
+                {
+                    b.HasOne("OpenBudget.Models.BankLogin", null)
+                        .WithMany()
+                        .HasForeignKey("BankLoginId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.AmazonOrderItem", b =>
+                {
+                    b.HasOne("OpenBudget.Models.AmazonOrder", "Order")
+                        .WithMany("Items")
+                        .HasForeignKey("AmazonOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Order");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.BackgroundSyncRun", b =>
@@ -2334,6 +2515,11 @@ namespace OpenBudget.Migrations
                     b.Navigation("Accounts");
 
                     b.Navigation("SubGroups");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.AmazonOrder", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.BankLogin", b =>
