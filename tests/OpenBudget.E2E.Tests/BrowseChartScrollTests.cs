@@ -13,8 +13,8 @@ public sealed class BrowseChartScrollTests : EndToEndTestBase
 {
     // About eleven years of fictional daily balances, the selected period at the right end.
     private const string RenderLongHistory = """
-        () => {
-            const n = 4000, starts = [], labels = [], values = [], anchors = [];
+        ({ n, base, noAnimate }) => {
+            const starts = [], labels = [], values = [], anchors = [];
             const t0 = Date.UTC(2015, 7, 1);
             const p = x => String(x).padStart(2, '0');
             for (let i = 0; i < n; i++) {
@@ -22,12 +22,12 @@ public sealed class BrowseChartScrollTests : EndToEndTestBase
                 const y = dt.getUTCFullYear(), m = dt.getUTCMonth() + 1, d = dt.getUTCDate();
                 starts.push(y + '-' + p(m) + '-' + p(d));
                 labels.push(p(d) + '.' + p(m));
-                values.push(2000 + 1500 * Math.sin(i / 45) + (i % 30) * 20);
+                values.push(base + 1500 * Math.sin(i / 45) + (i % 30) * 20);
                 anchors.push(i >= n - 30);
             }
             const data = { granularity: 'D', values, starts, labels, anchors, balance: true, today: starts[n - 1],
                 monthNames: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
-                invertY: false, budget: null, budgetLabel: 'Budget', noAnimate: true };
+                invertY: false, budget: null, budgetLabel: 'Budget', noAnimate };
             return window.renderBrowseChart('browseChart', data, null);
         }
         """;
@@ -36,16 +36,56 @@ public sealed class BrowseChartScrollTests : EndToEndTestBase
     public async Task SeedEditingWorld() =>
         await EditingSeed.SeedAsync(Factory.Services.GetRequiredService<SystemDbContextFactory>());
 
+    private async Task<bool> RenderAsync(int n, double baseValue, bool noAnimate) =>
+        await Page.EvaluateAsync<bool>(RenderLongHistory, new { n, @base = baseValue, noAnimate });
+
     private async Task OpenLongHistoryAsync()
     {
         await Page.SetViewportSizeAsync(1100, 900);
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.BankAccountId}");
         await Page.WaitForFunctionAsync("() => !!Chart.getChart('browseChart')");
-        Assert.That(await Page.EvaluateAsync<bool>(RenderLongHistory), Is.True);
+        Assert.That(await RenderAsync(4000, 2000, true), Is.True);
     }
 
     private Task<double> CanvasWidthAsync() =>
         Page.EvaluateAsync<double>("() => document.getElementById('browseChart').getBoundingClientRect().width");
+
+    // Without any scrolling, the drawn window starts at the left edge of the frame and holds the
+    // full series' values for its bars, also when the series is replaced right after the first render.
+    [TestCase(4000, false)]
+    [TestCase(380, false)]
+    [TestCase(4000, true)]
+    public async Task The_first_draw_shows_the_full_series_in_the_visible_window(int n, bool replaced)
+    {
+        await OpenLongHistoryAsync();
+        if (replaced) Assert.That(await RenderAsync(n, 3000, false), Is.True);
+        Assert.That(await RenderAsync(n, 1_500_000, false), Is.True);
+        await Page.EvaluateAsync("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))");
+        await Page.WaitForTimeoutAsync(400);
+        var problems = await Page.EvaluateAsync<string[]>("""
+            () => {
+                const c = Chart.getChart('browseChart'), full = browseChartData('browseChart');
+                const meta = c.getDatasetMeta(0), area = c.chartArea, y = c.scales.y, out = [];
+                const r = c.canvas.getBoundingClientRect(), s = document.getElementById('browseChartScroll').getBoundingClientRect();
+                const data = c.data.datasets[0].data;
+                if (data.length !== c.data.labels.length) out.push('labels/data length');
+                for (let k = 0; k < data.length; k++) {
+                    if (data[k] !== full.values[full.first + k]) { out.push('value ' + k); break; }
+                }
+                let leftBars = 0;
+                for (const bar of meta.data) {
+                    const x = r.left + bar.x;
+                    if (x >= s.left && x <= s.left + s.width / 2) {
+                        leftBars++;
+                        if (Math.abs(bar.y - y.getPixelForValue(full.values[full.first + meta.data.indexOf(bar)])) > 1) { out.push('height at ' + bar.x); break; }
+                    }
+                }
+                if (leftBars < 20) out.push('left bars ' + leftBars);
+                return out;
+            }
+            """);
+        Assert.That(problems, Is.Empty);
+    }
 
     [Test]
     public async Task A_long_daily_history_draws_only_the_visible_window()

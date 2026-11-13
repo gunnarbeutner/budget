@@ -1045,7 +1045,7 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: d.noAnimate || n > 400 ? false : { duration: 250 },
+                animation: d.noAnimate || n > 400 || win.scrolls ? false : { duration: 250 },
                 events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
                 layout: { padding: { top: 18, bottom: 22, left: 0, right: 0 } },
                 plugins: { legend: { display: false }, tooltip: { enabled: false } },
@@ -1072,9 +1072,10 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
         });
         const chart = window.chartInstances[canvasId];
         chart.$obFull = { labels: d.labels, values, colors, budget: hasBudget ? d.budget : null, first: () => win.first };
-        // Moves the window to the scroll position and redraws it without animation.
-        const syncWindow = () => {
-            if (!placeWindow()) return;
+        // Moves the window to the scroll position and redraws it without animation; forced, it
+        // also redraws when the window stays where it is.
+        const syncWindow = (force) => {
+            if (!placeWindow() && !force) return;
             const a = win.first, b = a + win.count;
             chart.$obIdx = null;
             chart.data.labels = d.labels.slice(a, b);
@@ -1084,13 +1085,21 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
             chart.update('none');
         };
         let frame = 0;
-        const onScroll = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; syncWindow(); }); };
+        let forced = false;
+        const schedule = (force) => {
+            forced = forced || !!force;
+            if (!frame) frame = requestAnimationFrame(() => { frame = 0; const f = forced; forced = false; syncWindow(f); });
+        };
+        const onScroll = () => schedule(false);
+        // Each size report (the first one comes once the frame is laid out) re-measures the
+        // window and redraws it from the full series at the current scroll position.
         const resizer = scroller && typeof ResizeObserver === 'function'
-            ? new ResizeObserver(() => { const c = win.count, w = win.fullW; layoutWindow(); if (c !== win.count || w !== win.fullW) { win.placed = false; onScroll(); } })
+            ? new ResizeObserver(() => { layoutWindow(); schedule(true); })
             : null;
         if (scroller) {
             scroller.addEventListener('scroll', onScroll, { passive: true });
             resizer?.observe(scroller);
+            schedule(true);
         }
         const destroy = chart.destroy.bind(chart);
         chart.destroy = () => {
