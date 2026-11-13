@@ -9,9 +9,12 @@ namespace OpenBudget.Connectors.Sync;
 /// <summary>
 /// What one sync should do. Statement and refresh accounts are <see cref="BankLoginAccount.Id"/>s: null = every account with
 /// statements switched on, respectively every linked account. A sync limited to some accounts leaves the login's
-/// <see cref="BankLogin.LastSyncAt"/> alone (the others were not refreshed).
+/// <see cref="BankLogin.LastSyncAt"/> alone (the others were not refreshed). A <paramref name="Background"/> run is silent: it
+/// never asks the owner anything and stops where a step would need them (see <see cref="ConnectorContext.Silent"/>).
 /// </summary>
-public sealed record SyncRequest(int LoginId, bool Transactions, bool Statements, IReadOnlyCollection<int>? StatementAccounts = null, IReadOnlyCollection<int>? RefreshAccounts = null);
+public sealed record SyncRequest(
+    int LoginId, bool Transactions, bool Statements, IReadOnlyCollection<int>? StatementAccounts = null, IReadOnlyCollection<int>? RefreshAccounts = null,
+    bool Background = false);
 
 /// <summary>Where the runner reports progress and asks the user for input.</summary>
 public interface ISyncSink
@@ -31,7 +34,8 @@ public interface ISyncSink
     }
 }
 
-public sealed record SyncOutcome(bool Success, string? Error, IReadOnlyCollection<string> AffectedOwnerIds);
+/// <summary>The result of one sync; <see cref="NeedsUser"/>: a background run stopped for the owner (<see cref="Error"/> says why).</summary>
+public sealed record SyncOutcome(bool Success, string? Error, IReadOnlyCollection<string> AffectedOwnerIds, bool NeedsUser = false);
 
 /// <summary>
 /// Runs one sync of one bank login: login (with challenges), list accounts, refresh linked accounts,
@@ -58,6 +62,12 @@ public sealed class BankSyncRunner
     /// <summary>The login-wide state a challenge may need: whose browser to open and which cookie jar to fill.</summary>
     private sealed record SyncContext(string OwnerUserId, BankHttpClient Http)
     {
+        /// <summary>A background run (nothing is asked, nothing shown).</summary>
+        public bool Silent { get; init; }
+
+        /// <summary>How a web login may run in a background run (null: it is not tried at all).</summary>
+        public WebLoginUnattended? Unattended { get; set; }
+
         public bool CookiesChanged { get; set; }
 
         public string? UserAgent { get; set; }
@@ -156,7 +166,9 @@ public sealed class BankSyncRunner
         bool credentialsInvalid = false;
         IBankConnector? connector = null;
         using var http = _httpFactory();
-        var context = new SyncContext(login.OwnerUserId, http);
+        var context = new SyncContext(login.OwnerUserId, http) { Silent = request.Background };
+        string? needsUser = null;
+        string? blz = null;
 
         try
         {
@@ -169,6 +181,15 @@ public sealed class BankSyncRunner
             }
             var registration = _registry.Find(login.ConnectorType)
                 ?? throw new ConnectorException($"The connector '{login.ConnectorType}' is not available.");
+            blz = registration.FinTsBlz;
+            if (request.Background)
+            {
+                var capability = registration.SilentCapabilityFor(credentials);
+                if (capability == SilentCapability.None) throw new SilentAbortException("This bank cannot be synced in the background.");
+                context.Unattended = capability == SilentCapability.Full && registration.SilentWebSignIn
+                    ? WebLoginUnattended.SignIn
+                    : WebLoginUnattended.ResumeOnly;
+            }
 
             if (_secrets.TryDecrypt(login.EncryptedSession, SessionPurpose, out var sessionJson))
             {
@@ -182,10 +203,15 @@ public sealed class BankSyncRunner
                 context.UserAgent = userAgent;
             }
 
-            connector = registration.Create(new ConnectorContext(http, _clock, _loggers.CreateLogger(registration.ConnectorType)) { Progress = sink.Report });
+            connector = registration.Create(new ConnectorContext(http, _clock, _loggers.CreateLogger(registration.ConnectorType))
+            {
+                Progress = sink.Report,
+                Silent = request.Background,
+            });
 
             sink.Report("Logging in");
             var loginStep = await DriveAsync(a => connector.LoginAsync(credentials, stored, a, ct), sink, context, ct);
+            if (loginStep.Status == StepStatus.NeedsUser) throw new SilentAbortException(loginStep.FailureReason ?? DefaultNeedsUser);
             if (loginStep.Status != StepStatus.Done)
             {
                 credentialsInvalid = loginStep.CredentialsRejected;
@@ -213,8 +239,13 @@ public sealed class BankSyncRunner
                 try { await RefreshAccountsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct); }
                 finally { await context.CloseBrowsersAsync(); }
             }
-            if (request.Statements)
+            if (request.Statements && !(request.Background && connector is IBackgroundScope { StatementsInBackground: false }))
                 await FetchStatementsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct);
+        }
+        catch (SilentAbortException ex)
+        {
+            _logger.LogInformation(ex, "Background sync of bank login {LoginId} stopped: it needs the owner ({Reason}).", login.Id, ex.Message);
+            needsUser = ex.Message;
         }
         catch (ConnectorException ex)
         {
@@ -236,31 +267,115 @@ public sealed class BankSyncRunner
         {
             await context.CloseBrowsersAsync();
             ConnectorSession? finalSession = null;
-            if (connector != null && loggedIn)
+            if (needsUser != null)
+            {
+                // the session from before stays, unless the connector has something to remember (FinTS: the bank wanted a TAN)
+                finalSession = (connector as IBackgroundRunInfo)?.SessionAfterStop;
+                finalSession?.UserAgent ??= stored?.UserAgent;
+            }
+            else if (connector != null && loggedIn)
             {
                 try { finalSession = await connector.LogoutAsync(CancellationToken.None); }
                 catch (Exception ex) { _logger.LogWarning(ex, "Logout of bank login {LoginId} failed.", login.Id); }
             }
-            finalSession ??= context.CookiesChanged ? stored ?? new ConnectorSession() : null;
-            finalSession?.UserAgent = context.UserAgent;
-            await FinishAsync(db, login, request, finalSession, http, errors, credentialsInvalid, attempted);
+            if (needsUser == null)
+            {
+                finalSession ??= context.CookiesChanged ? stored ?? new ConnectorSession() : null;
+                finalSession?.UserAgent = context.UserAgent;
+            }
+            var info = connector as IBackgroundRunInfo;
+            await FinishAsync(db, login, request, finalSession, http, errors, credentialsInvalid, attempted, needsUser, info?.ScaCompleted == true);
+            await LogRunAsync(db, login, request, attempted, errors, needsUser, info?.FinTsCodes, blz);
         }
 
+        if (needsUser != null)
+            return new SyncOutcome(false, needsUser, affected, NeedsUser: true);
         if (errors.Count == 0) _logger.LogInformation("Sync of bank login {LoginId} finished.", login.Id);
         else _logger.LogWarning("Sync of bank login {LoginId} finished with errors: {Errors}", login.Id, string.Join(" ", errors));
         return new SyncOutcome(errors.Count == 0, errors.Count == 0 ? null : string.Join(" ", errors), affected);
     }
 
+    /// <summary>The background-run backoff after <paramref name="failures"/> failed runs in a row: 1 h, 2 h, 4 h ... at most 24 h.</summary>
+    public static TimeSpan BackgroundBackoff(int failures) =>
+        TimeSpan.FromHours(Math.Min(24, Math.Pow(2, Math.Max(0, failures - 1))));
+
+    /// <summary>Entries kept per login in the sync log.</summary>
+    internal const int RunLogSize = 100;
+
+    /// <summary>Logs background runs, and every run that opened a FinTS dialog (its SCA codes are the evidence for the per-bank setting).</summary>
+    private async Task LogRunAsync(
+        BudgetDbContext db, BankLogin login, SyncRequest request, DateTime started, List<string> errors, string? needsUser, string? finTsCodes, string? blz)
+    {
+        if (!request.Background && finTsCodes == null) return;
+        try
+        {
+            db.BackgroundSyncRuns.Add(new BackgroundSyncRun
+            {
+                BankLoginId = login.Id,
+                OwnerUserId = login.OwnerUserId,
+                Background = request.Background,
+                StartedAt = started,
+                FinishedAt = _clock.GetUtcNow().UtcDateTime,
+                Result = needsUser != null ? SyncRunResult.NeedsUser : errors.Count == 0 ? SyncRunResult.Done : SyncRunResult.Failed,
+                Reason = needsUser ?? (errors.Count == 0 ? null : Truncate(string.Join(" ", errors), 500)),
+                FinTsCodes = finTsCodes == null ? null : Truncate(finTsCodes, 200),
+                Blz = finTsCodes == null ? null : blz,
+            });
+            await db.SaveChangesAsync(CancellationToken.None);
+            var old = await db.BackgroundSyncRuns.Where(r => r.BankLoginId == login.Id)
+                .OrderByDescending(r => r.StartedAt).ThenByDescending(r => r.Id).Skip(RunLogSize).Select(r => r.Id).ToListAsync(CancellationToken.None);
+            if (old.Count > 0) await db.BackgroundSyncRuns.Where(r => old.Contains(r.Id)).ExecuteDeleteAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not log the sync of bank login {LoginId}.", login.Id);
+        }
+    }
+
     private async Task FinishAsync(
         BudgetDbContext db, BankLogin login, SyncRequest request, ConnectorSession? session, BankHttpClient http,
-        List<string> errors, bool credentialsInvalid, DateTime attempted)
+        List<string> errors, bool credentialsInvalid, DateTime attempted, string? needsUser, bool scaCompleted)
     {
         try
         {
             if (session != null && _secrets.IsConfigured)
             {
-                session.Cookies = http.ExportCookies().ToList();
+                // after a stop the jar may hold half-done sign-in cookies: the stored ones stay
+                if (needsUser == null) session.Cookies = http.ExportCookies().ToList();
                 login.EncryptedSession = _secrets.Encrypt(JsonSerializer.Serialize(session), SessionPurpose);
+            }
+            var now = _clock.GetUtcNow().UtcDateTime;
+            if (needsUser != null)
+            {
+                // the login waits for a manual sync; its schedule and last result stay as they were
+                login.NeedsManualSync = Truncate(needsUser, 500);
+                login.NeedsManualSince ??= now;
+                await db.SaveChangesAsync(CancellationToken.None);
+                return;
+            }
+            if (request.Background)
+            {
+                if (errors.Count == 0)
+                {
+                    login.LastBackgroundSyncAt = now;
+                    login.BackgroundFailures = 0;
+                    login.NextBackgroundAttemptAt = null;
+                }
+                else
+                {
+                    login.BackgroundFailures++;
+                    login.NextBackgroundAttemptAt = now + BackgroundBackoff(login.BackgroundFailures);
+                }
+                // a rejected password is never retried in the background
+                if (credentialsInvalid) login.BackgroundEnabled = false;
+            }
+            else if (errors.Count == 0 || scaCompleted)
+            {
+                // the owner was there: whatever a background run stopped at is done
+                login.NeedsManualSync = null;
+                login.NeedsManualSince = null;
+                login.BackgroundFailures = 0;
+                login.NextBackgroundAttemptAt = null;
             }
             if (request.Transactions && request.RefreshAccounts == null) login.LastSyncAt = attempted;
             // A run that only fetched statements leaves a transaction error in place, but not a mere interruption.
@@ -275,6 +390,8 @@ public sealed class BankSyncRunner
         }
     }
 
+    private const string DefaultNeedsUser = "The bank wants something from you; sync it once yourself.";
+
     internal const string CancelledMessage = "The sync was cancelled.";
 
     private static string Truncate(string text, int max) => text.Length <= max ? text : text[..max];
@@ -287,6 +404,17 @@ public sealed class BankSyncRunner
         {
             var step = await call(answer);
             if (step.Status != StepStatus.Challenge) return step;
+            if (context.Silent)
+            {
+                // nobody is there to answer: nothing is shown or asked, only a stored session may be reused
+                if (step.Challenge!.Kind != ChallengeKind.WebLogin || context.Unattended == null)
+                    return ConnectorStep.NeedsUser<T>(ConnectorStep.SilentReason(step.Challenge!));
+                var (silentAnswer, silentRejected, silentStop) = await RunUnattendedWebLoginAsync(step.Challenge, context, ct);
+                if (silentRejected != null) return ConnectorStep.Fail<T>(silentRejected, credentialsRejected: true);
+                if (silentStop != null) return ConnectorStep.NeedsUser<T>(silentStop);
+                answer = silentAnswer;
+                continue;
+            }
             if (step.Challenge!.Kind == ChallengeKind.WebLogin)
             {
                 var (webAnswer, rejected) = await RunWebLoginAsync(step.Challenge, sink, context, ct);
@@ -374,6 +502,43 @@ public sealed class BankSyncRunner
         return (new ChallengeAnswer(challenge, null), null);
     }
 
+    /// <summary>
+    /// A web login in a background run: in a browser nobody sees, reusing the stored session (and, where allowed, the
+    /// stored credentials and TOTP secret). Anything the page wants beyond that stops it.
+    /// </summary>
+    /// <returns>The answer; or the bank's rejection of the credentials; or why it stopped for the owner.</returns>
+    private async Task<(ChallengeAnswer? Answer, string? Rejected, string? Stop)> RunUnattendedWebLoginAsync(
+        ConnectorChallenge challenge, SyncContext context, CancellationToken ct)
+    {
+        var spec = challenge.WebLoginSpec!;
+        var mode = context.Unattended!.Value;
+        const string expired = "The stored session has expired; sync it once yourself.";
+        if (mode == WebLoginUnattended.ResumeOnly && spec.ResumeUrl == null) return (null, null, expired);
+        if (_webLogins is not { IsAvailable: true }) return (null, null, "No browser is available on this server for the background sync.");
+        WebLoginSession session;
+        try
+        {
+            session = await _webLogins.StartAsync(context.OwnerUserId, spec, context.Http.ExportCookies(), ct, askForCode: null, unattended: mode);
+        }
+        catch (BrowserActionException ex)
+        {
+            return (null, null, ex.Message);
+        }
+        await using (session)
+        {
+            var result = await session.Completion.WaitAsync(ct);
+            if (result.Success) context.ApplyWebLoginResult(spec, result);
+            if (result.CredentialsRejected) return (null, result.Error ?? "The bank rejected the credentials.", null);
+            if (!result.Success) return (null, null, result.NeedsUser ? result.Error ?? expired : result.Error ?? "The web login failed.");
+            if (session.TakeBrowser() is { } kept)
+            {
+                context.Keep(kept, spec);
+                return (new ChallengeAnswer(challenge, null) { Browser = kept }, null, null);
+            }
+        }
+        return (new ChallengeAnswer(challenge, null), null, null);
+    }
+
     /// <summary>Updates the login's accounts; returns the linked, previously open ones the bank no longer lists.</summary>
     private static List<BankLoginAccount> UpsertAccounts(BankLogin login, IReadOnlyList<RemoteAccount> remote)
     {
@@ -407,6 +572,8 @@ public sealed class BankSyncRunner
     {
         var links = login.Accounts
             .Where(a => a.LinkedAccountId != null && !a.Closed && (request.RefreshAccounts == null || request.RefreshAccounts.Contains(a.Id)))
+            .Where(a => !request.Background || connector is not IBackgroundScope scope
+                || scope.RefreshInBackground(remote.First(r => string.Equals(r.RemoteId, a.RemoteId, StringComparison.Ordinal))))
             .ToList();
         _logger.LogInformation("Bank login {LoginId}: refreshing {Count} linked accounts.", login.Id, links.Count);
         foreach (var link in links)
@@ -422,6 +589,7 @@ public sealed class BankSyncRunner
 
                 var since = await ComputeSinceAsync(db, link, account, ct);
                 var step = await DriveAsync(a => connector.RefreshAsync(remoteAccount, since, a, ct), sink, context, ct);
+                if (step.Status == StepStatus.NeedsUser) throw new SilentAbortException(step.FailureReason ?? DefaultNeedsUser);
                 if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Refresh failed.");
 
                 var now = _clock.GetUtcNow().UtcDateTime;
@@ -445,7 +613,7 @@ public sealed class BankSyncRunner
                 _logger.LogWarning(ex, "Refreshing account link {LinkId} of bank login {LoginId} failed: {Error}", link.Id, login.Id, ex.Message);
                 await RecordAccountErrorAsync(db, link, ex.Message, errors, ct);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not (OperationCanceledException or SilentAbortException))
             {
                 _logger.LogError(ex, "Refreshing account link {LinkId} of bank login {LoginId} failed.", link.Id, login.Id);
                 await RecordAccountErrorAsync(db, link, "Unexpected error; see the server log.", errors, ct);
@@ -522,6 +690,7 @@ public sealed class BankSyncRunner
             for (var batch = 0; batch < 200; batch++)
             {
                 var step = await DriveAsync(a => connector.FetchStatementsAsync(remoteTargets, known, a, ct), sink, context, ct);
+                if (step.Status == StepStatus.NeedsUser) throw new SilentAbortException(step.FailureReason ?? DefaultNeedsUser);
                 if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Fetching statements failed.");
 
                 foreach (var statement in step.Value!)

@@ -65,6 +65,8 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<BankStatement> BankStatements => Set<BankStatement>();
     public DbSet<StatementRead> StatementReads => Set<StatementRead>();
     public DbSet<BankStatementAlias> BankStatementAliases => Set<BankStatementAlias>();
+    public DbSet<BackgroundSyncRun> BackgroundSyncRuns => Set<BackgroundSyncRun>();
+    public DbSet<FinTsBankSetting> FinTsBankSettings => Set<FinTsBankSetting>();
     public DbSet<UserProjectOrder> UserProjectOrders => Set<UserProjectOrder>();
     public DbSet<CategoryRule> CategoryRules => Set<CategoryRule>();
     public DbSet<CloudConnection> CloudConnections => Set<CloudConnection>();
@@ -210,6 +212,10 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<BankStatement>().HasIndex(s => s.AccountId);
         modelBuilder.Entity<BankStatement>().HasIndex(s => new { s.OwnerUserId, s.Sha256 });
         modelBuilder.Entity<BankStatementAlias>().HasIndex(a => new { a.BankLoginId, a.Identifier }).IsUnique();
+        modelBuilder.Entity<BackgroundSyncRun>().HasIndex(r => new { r.BankLoginId, r.StartedAt });
+        modelBuilder.Entity<BackgroundSyncRun>().HasIndex(r => new { r.Blz, r.StartedAt });
+        modelBuilder.Entity<BackgroundSyncRun>().Property(r => r.Result).HasConversion<int>();
+        modelBuilder.Entity<BackgroundSyncRun>().HasOne<BankLogin>().WithMany().HasForeignKey(r => r.BankLoginId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<BankStatementAlias>().HasIndex(a => a.StatementId);
         modelBuilder.Entity<BankStatementAlias>().HasOne<BankStatement>().WithMany().HasForeignKey(a => a.StatementId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<UserProjectOrder>().HasIndex(o => new { o.UserId, o.ProjectId }).IsUnique();

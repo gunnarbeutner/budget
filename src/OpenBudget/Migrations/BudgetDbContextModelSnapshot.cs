@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261113045640_RemoveSources";
+        public override string LatestMigrationId => "20261113084849_BackgroundSyncs";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -342,10 +342,63 @@ namespace OpenBudget.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("OpenBudget.Models.BackgroundSyncRun", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Background")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BankLoginId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Blz")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FinTsCodes")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("FinishedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Result")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BankLoginId", "StartedAt");
+
+                    b.HasIndex("Blz", "StartedAt");
+
+                    b.ToTable("background_sync_runs");
+                });
+
             modelBuilder.Entity("OpenBudget.Models.BankLogin", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("BackgroundEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BackgroundFailures")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("ConnectorType")
@@ -370,11 +423,24 @@ namespace OpenBudget.Migrations
                     b.Property<string>("EncryptedSession")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("LastBackgroundSyncAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("LastError")
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("LastSyncAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("NeedsManualSince")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NeedsManualSync")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("NextBackgroundAttemptAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("OwnerUserId")
@@ -888,6 +954,20 @@ namespace OpenBudget.Migrations
                         .IsUnique();
 
                     b.ToTable("cloud_file_links");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.FinTsBankSetting", b =>
+                {
+                    b.Property<string>("Blz")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("BackgroundEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Blz");
+
+                    b.ToTable("fints_bank_settings");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Holding", b =>
@@ -1902,6 +1982,15 @@ namespace OpenBudget.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ParentGroup");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.BackgroundSyncRun", b =>
+                {
+                    b.HasOne("OpenBudget.Models.BankLogin", null)
+                        .WithMany()
+                        .HasForeignKey("BankLoginId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("OpenBudget.Models.BankLoginAccount", b =>

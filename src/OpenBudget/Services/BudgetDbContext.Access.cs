@@ -65,6 +65,7 @@ public partial class BudgetDbContext
         // Bank logins are strictly personal. Statements follow their account (shared viewers may read them); account-less ones are owner-only.
         modelBuilder.Entity<BankLogin>().HasQueryFilter(b => ScopeUnrestricted || b.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<CloudConnection>().HasQueryFilter(c => ScopeUnrestricted || c.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<BackgroundSyncRun>().HasQueryFilter(r => ScopeUnrestricted || r.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<CloudFileLink>().HasQueryFilter(f => ScopeUnrestricted || f.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<BankLoginAccount>().HasQueryFilter(a => ScopeUnrestricted || a.BankLogin.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<BankStatement>().HasQueryFilter(s =>
@@ -198,6 +199,9 @@ public partial class BudgetDbContext
                     break;
                 case BankLoginAccount remote:
                     loginAccountLogins.Add(remote.BankLoginId);
+                    break;
+                case FinTsBankSetting:
+                    if (!scope.IsAdmin) throw new AccessDeniedException("Only an admin can change the background setting of a bank.");
                     break;
 
                 default:

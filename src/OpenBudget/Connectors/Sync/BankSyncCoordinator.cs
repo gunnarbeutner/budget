@@ -18,6 +18,9 @@ public sealed class BankSyncOptions
     /// user (an app confirmation): banks that need none finish within a few seconds.
     /// </summary>
     public TimeSpan ApprovalHintAfter { get; set; } = TimeSpan.FromSeconds(4);
+
+    /// <summary>How many background runs may run at once (one per bank code at most, whatever this says).</summary>
+    public int BackgroundConcurrency { get; set; } = 2;
 }
 
 public enum SyncPhase
@@ -42,7 +45,10 @@ public sealed record BankSyncStatus(
     Guid ChallengeId,
     DateTime? ChallengeExpiresAt,
     string? WebLoginSessionId = null,
-    WebLoginMode WebLoginMode = WebLoginMode.Interactive);
+    WebLoginMode WebLoginMode = WebLoginMode.Interactive,
+    bool Background = false,
+    bool NeedsUser = false);
+// Background: a silent run started by the server (it never asks anything); NeedsUser: it stopped for the owner.
 
 public enum StartResult
 {
@@ -58,7 +64,9 @@ public enum StartResult
 /// navigation (or closing the tab) does not kill them. Every entry point takes the acting user id and
 /// only ever touches that user's logins. Progress, challenges and results are published through
 /// <see cref="ChangeNotificationService"/> as user-scoped <see cref="DataArea.BankSync"/> changes.
-/// There is deliberately no timer: syncs start only when the owner asks or has OpenBudget open.
+/// Background runs (<see cref="BackgroundSyncService"/>) go through <see cref="LaunchBackground"/>: they wait for a free slot
+/// (<see cref="BankSyncOptions.BackgroundConcurrency"/>, one per bank code), and an interactive start replaces one that
+/// still waits.
 /// </summary>
 public sealed class BankSyncCoordinator : IHostedService, IDisposable
 {
@@ -72,6 +80,16 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
     private readonly Lock _lock = new();
     private readonly Dictionary<int, Job> _jobs = [];
     private readonly CancellationTokenSource _shutdown = new();
+    private SemaphoreSlim? _backgroundSlots;
+    private readonly HashSet<string> _busyBanks = new(StringComparer.Ordinal);
+
+    private SemaphoreSlim BackgroundSlots
+    {
+        get
+        {
+            lock (_lock) return _backgroundSlots ??= new SemaphoreSlim(Math.Max(1, _options.BackgroundConcurrency));
+        }
+    }
 
     public BankSyncCoordinator(
         SystemDbContextFactory system, BankSyncRunner runner, SecretsProtector secrets, ChangeNotificationService notifier,
@@ -176,19 +194,42 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
         return await db.BankLogins.AsNoTracking().Include(l => l.Accounts).Where(l => l.OwnerUserId == userId).ToListAsync(ct);
     }
 
-    private StartResult Launch(string userId, SyncRequest request)
+    private StartResult Launch(string userId, SyncRequest request, string? bank = null)
     {
         Job job;
+        Job? replaced = null;
         lock (_lock)
         {
             if (_jobs.TryGetValue(request.LoginId, out var existing) && existing.Status.Phase != SyncPhase.Finished)
-                return StartResult.AlreadyRunning;
-            job = new Job(this, userId, request, _clock.GetUtcNow().UtcDateTime);
+            {
+                // a background run that only waits for its slot gives way to the owner's own sync
+                if (request.Background || !existing.Background || !existing.Queued) return StartResult.AlreadyRunning;
+                replaced = existing;
+            }
+            job = new Job(this, userId, request, _clock.GetUtcNow().UtcDateTime, bank);
+            if (replaced != null) job.Predecessor = replaced;
             _jobs[request.LoginId] = job;
         }
+        replaced?.Cancel();
         Publish(userId);
         job.Task = Task.Run(() => job.RunAsync(_shutdown.Token));
         return StartResult.Started;
+    }
+
+    /// <summary>
+    /// Starts a background run of the owner's login (see <see cref="SyncRequest.Background"/>). It waits for a free
+    /// background slot and for other background runs at the same bank (<paramref name="bank"/>, a bank code) to end.
+    /// </summary>
+    public StartResult LaunchBackground(string userId, SyncRequest request, string? bank)
+    {
+        if (!IsEnabled) return StartResult.Disabled;
+        return Launch(userId, request with { Background = true }, bank);
+    }
+
+    /// <summary>Whether a sync of this login is running or waiting.</summary>
+    public bool IsBusy(int loginId)
+    {
+        lock (_lock) return _jobs.TryGetValue(loginId, out var j) && j.Status.Phase != SyncPhase.Finished;
     }
 
     // ---- Observing and answering ----
@@ -242,25 +283,79 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
 
     private void Publish(string userId) => _notifier.Publish(new DataChange(DataArea.BankSync, UserId: userId));
 
-    public void Dispose() => _shutdown.Dispose();
+    public void Dispose()
+    {
+        _shutdown.Dispose();
+        _backgroundSlots?.Dispose();
+    }
+
+    /// <summary>Waits for a background slot and the bank's turn; the returned handle frees both.</summary>
+    private async Task<IDisposable> AcquireBackgroundAsync(string? bank, CancellationToken ct)
+    {
+        await BackgroundSlots.WaitAsync(ct);
+        try
+        {
+            while (bank != null)
+            {
+                lock (_lock)
+                {
+                    if (_busyBanks.Add(bank)) break;
+                }
+                await Task.Delay(TimeSpan.FromSeconds(1), _clock, ct);
+            }
+        }
+        catch
+        {
+            BackgroundSlots.Release();
+            throw;
+        }
+        return new BackgroundTurn(this, bank);
+    }
+
+    private sealed class BackgroundTurn(BankSyncCoordinator owner, string? bank) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+            if (bank != null)
+            {
+                lock (owner._lock) owner._busyBanks.Remove(bank);
+            }
+            owner.BackgroundSlots.Release();
+        }
+    }
 
     private sealed class Job : ISyncSink, IDisposable
     {
         private readonly BankSyncCoordinator _owner;
         private readonly SyncRequest _request;
+        private readonly string? _bank;
         private readonly CancellationTokenSource _cts = new();
         private TaskCompletionSource<string?>? _answer;
         private BankSyncStatus _status;
 
-        public Job(BankSyncCoordinator owner, string userId, SyncRequest request, DateTime started)
+        public Job(BankSyncCoordinator owner, string userId, SyncRequest request, DateTime started, string? bank)
         {
             _owner = owner;
             _request = request;
+            _bank = bank;
             UserId = userId;
-            _status = new BankSyncStatus(request.LoginId, userId, SyncPhase.Running, null, started, null, null, null, null, Guid.Empty, null);
+            Queued = request.Background;
+            _status = new BankSyncStatus(request.LoginId, userId, SyncPhase.Running, null, started, null, null, null, null, Guid.Empty, null,
+                Background: request.Background);
         }
 
         public string UserId { get; }
+
+        public bool Background => _request.Background;
+
+        /// <summary>A background run still waiting for its slot (nothing has been sent to the bank).</summary>
+        public bool Queued { get; private set; }
+
+        /// <summary>The waiting background run this job replaced; it ends before this one starts.</summary>
+        public Job? Predecessor { get; set; }
 
         public Task? Task { get; set; }
 
@@ -345,8 +440,26 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(shutdown, _cts.Token);
             SyncOutcome outcome;
+            IDisposable? turn = null;
             try
             {
+                if (Predecessor?.Task is { } before)
+                {
+                    try { await before; }
+                    catch (Exception ex) { _owner._logger.LogDebug(ex, "A replaced background run ended with an error."); }
+                }
+                if (_request.Background)
+                {
+                    try { turn = await _owner.AcquireBackgroundAsync(_bank, linked.Token); }
+                    catch (OperationCanceledException)
+                    {
+                        // replaced by the owner's own sync, or shutting down, before anything was sent
+                        lock (_owner._lock) Queued = false;
+                        Finish(new SyncOutcome(false, BankSyncRunner.CancelledMessage, []));
+                        return;
+                    }
+                    lock (_owner._lock) Queued = false;
+                }
                 outcome = await _owner._runner.RunAsync(_request, this, linked.Token);
             }
             catch (Exception ex)
@@ -354,7 +467,15 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
                 _owner._logger.LogError(ex, "Sync job for bank login {LoginId} crashed.", _request.LoginId);
                 outcome = new SyncOutcome(false, "Unexpected error while syncing; see the server log.", []);
             }
+            finally
+            {
+                turn?.Dispose();
+            }
+            Finish(outcome);
+        }
 
+        private void Finish(SyncOutcome outcome)
+        {
             var finished = _owner._clock.GetUtcNow().UtcDateTime;
             Update(s => s with
             {
@@ -366,6 +487,7 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
                 ChallengeExpiresAt = null,
                 WebLoginSessionId = null,
                 Message = null,
+                NeedsUser = outcome.NeedsUser,
             });
             foreach (var ownerId in outcome.AffectedOwnerIds)
                 _owner._notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: ownerId));
@@ -380,7 +502,7 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
             {
                 tcs = _answer;
                 challenge = _status.Challenge;
-                if (tcs == null || challenge == null || _status.ChallengeId != challengeId || challenge.Kind is ChallengeKind.Approval or ChallengeKind.WebLogin) return false;
+                if (_request.Background || tcs == null || challenge == null || _status.ChallengeId != challengeId || challenge.Kind is ChallengeKind.Approval or ChallengeKind.WebLogin) return false;
             }
             if (challenge.Kind == ChallengeKind.Choice && !challenge.Options.Any(o => string.Equals(o.Id, value, StringComparison.Ordinal))) return false;
             if (challenge.Kind is ChallengeKind.Code or ChallengeKind.Image && string.IsNullOrWhiteSpace(value)) return false;
@@ -389,6 +511,8 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
 
         public async Task<ChallengeAnswer?> AskAsync(ConnectorChallenge challenge, CancellationToken ct)
         {
+            // a background run never offers anything to answer (the runner stops before asking)
+            if (_request.Background) return null;
             var now = _owner._clock.GetUtcNow().UtcDateTime;
             var keep = _status.Challenge != null && _status.Challenge.IsSameQuestion(challenge);
             var expires = keep ? _status.ChallengeExpiresAt!.Value : now + _owner._options.ChallengeTimeout;

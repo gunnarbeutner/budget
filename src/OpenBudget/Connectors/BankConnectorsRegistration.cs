@@ -66,6 +66,12 @@ public static class BankConnectorsRegistration
         services.AddSingleton<BankSyncRunner>();
         services.AddSingleton<BankSyncCoordinator>();
         services.AddHostedService(sp => sp.GetRequiredService<BankSyncCoordinator>());
+        services.AddSingleton(sp => new BackgroundSyncOptions
+        {
+            Enabled = !string.Equals(sp.GetRequiredService<IConfiguration>()[BackgroundSyncOptions.EnabledVariable], "false", StringComparison.OrdinalIgnoreCase),
+        });
+        services.AddSingleton<BackgroundSyncService>();
+        services.AddHostedService(sp => sp.GetRequiredService<BackgroundSyncService>());
         services.AddScoped<BankLoginService>();
         return services;
     }

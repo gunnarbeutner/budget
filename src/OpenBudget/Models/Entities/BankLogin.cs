@@ -66,6 +66,28 @@ public class BankLogin
     /// </summary>
     public bool CredentialsInvalid { get; set; }
 
+    /// <summary>The owner switched background syncs on: the server syncs this login by itself, without asking anything.</summary>
+    public bool BackgroundEnabled { get; set; }
+
+    /// <summary>
+    /// Why a background run stopped before a step that needs the owner (a TAN, an expired session), or null. No
+    /// background runs happen while it is set; the next successful manual sync clears it.
+    /// </summary>
+    [MaxLength(500)]
+    public string? NeedsManualSync { get; set; }
+
+    /// <summary>When <see cref="NeedsManualSync"/> was set.</summary>
+    public DateTime? NeedsManualSince { get; set; }
+
+    /// <summary>When the most recent background run finished successfully.</summary>
+    public DateTime? LastBackgroundSyncAt { get; set; }
+
+    /// <summary>After a failed background run: not before this time again (the wait grows with each failure).</summary>
+    public DateTime? NextBackgroundAttemptAt { get; set; }
+
+    /// <summary>Background runs that failed in a row (drives <see cref="NextBackgroundAttemptAt"/>).</summary>
+    public int BackgroundFailures { get; set; }
+
     public ICollection<BankLoginAccount> Accounts { get; set; } = new List<BankLoginAccount>();
 }
 
