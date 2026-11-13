@@ -64,7 +64,7 @@ internal static class DemoSeed
         }
 
         await using var db = await factory.CreateDbContextAsync();
-        db.UserDataStates.Add(new UserDataState { UserId = owner, IdSpace = IdSpace, LastUploadAt = new DateTime(2026, 11, 10, 6, 0, 0, DateTimeKind.Utc) });
+        db.UserDataStates.Add(new UserDataState { UserId = owner, IdSpace = IdSpace, LastUploadAt = new DateTime(2026, 11, 10, 6, 0, 0, DateTimeKind.Utc), GetStartedCompletedAt = Created });
 
         // ---- categories ----
         Group(db, GLiving, "Living", "#4e9a06");

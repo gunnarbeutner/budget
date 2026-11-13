@@ -71,6 +71,28 @@ public sealed class ReadmeScreenshots
         await Go(phone, Browse);
         await Shot(phone, "transactions-phone");
         await phone.Context.CloseAsync();
+
+        // Get started, as a user who has not finished it sees it.
+        await SetGetStartedCompletedAsync(null);
+        try
+        {
+            var start = await NewPageAsync(1440, 900, dark: false);
+            await Go(start, "/get-started");
+            await Shot(start, "get-started");
+            await start.Context.CloseAsync();
+        }
+        finally
+        {
+            await SetGetStartedCompletedAsync(DateTime.UtcNow);
+        }
+    }
+
+    private async Task SetGetStartedCompletedAsync(DateTime? at)
+    {
+        var system = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<OpenBudget.Services.SystemDbContextFactory>(_factory.Services);
+        await using var db = await system.CreateDbContextAsync();
+        foreach (var state in db.UserDataStates) state.GetStartedCompletedAt = at;
+        await db.SaveChangesAsync();
     }
 
     private async Task<IPage> NewPageAsync(int width, int height, bool dark, bool mobile = false)
@@ -81,7 +103,7 @@ public sealed class ReadmeScreenshots
             Locale = "en-US",
             TimezoneId = "Europe/Berlin",
             ViewportSize = new() { Width = width, Height = height },
-            DeviceScaleFactor = 1,
+            DeviceScaleFactor = mobile ? 3 : 2,
             IsMobile = mobile,
             HasTouch = mobile,
             ColorScheme = dark ? ColorScheme.Dark : ColorScheme.Light,
@@ -104,6 +126,7 @@ public sealed class ReadmeScreenshots
     private static async Task Shot(IPage page, string name)
     {
         // Hide the caret and any toast so repeated runs give the same picture.
+        await page.Mouse.MoveAsync(0, 0);
         await page.AddStyleTagAsync(new() { Content = "*{caret-color:transparent!important} .toast,.blazor-error-ui{display:none!important}" });
         var file = Path.Combine(OutDir, name + ".png");
         await page.ScreenshotAsync(new() { Path = file });
