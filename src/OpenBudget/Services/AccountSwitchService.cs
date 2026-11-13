@@ -213,7 +213,7 @@ public sealed class AccountSwitchService
         foreach (var a in accounts) scope.RequireOwner(a.OwnerUserId);
         var todo = accounts.Where(a => a.Provider == AccountProviders.MoneyMoney && a.Type != GroupType && !linked.Contains(a.Id)).ToList();
         if (todo.Count == 0 && accounts.Any(a => linked.Contains(a.Id) && a.Provider == AccountProviders.MoneyMoney))
-            throw new InvalidOperationException("An account linked to a bank login is switched to that login; unlink it first to keep it as a manual account.");
+            throw new InvalidOperationException("An account linked to a connection is switched to that connection; unlink it first to keep it as a manual account.");
 
         var changed = 0;
         foreach (var group in todo.GroupBy(a => a.OwnerUserId, StringComparer.Ordinal))

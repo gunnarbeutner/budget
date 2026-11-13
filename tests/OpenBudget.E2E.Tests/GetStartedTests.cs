@@ -42,7 +42,7 @@ public sealed class GetStartedTests : EndToEndTestBase
     public async Task Until_Get_started_is_done_every_page_leads_there_and_the_navigation_is_hidden()
     {
         await ReopenGetStartedAsync();
-        foreach (var url in new[] { "/", $"/projects/{E2ESeed.ProjectId}/settings/categories", "/banklogins", "/portfolio-performance" })
+        foreach (var url in new[] { "/", $"/projects/{E2ESeed.ProjectId}/settings/categories", "/connections", "/portfolio-performance" })
         {
             await GoToAsync(url);
             await Expect(Page).ToHaveURLAsync(new Regex("/get-started$"));
@@ -153,7 +153,7 @@ public sealed class GetStartedTests : EndToEndTestBase
         await Expect(Page.GetByTestId("get-started-stepper-1")).ToHaveClassAsync(new Regex("done"));
         await Expect(Page.GetByTestId("get-started-next")).ToBeEnabledAsync();
         await Expect(Page.GetByTestId("gear-menu")).ToHaveCountAsync(0);
-        await GoToAsync("/banklogins");
+        await GoToAsync("/connections");
         await Expect(Page).ToHaveURLAsync(new Regex("/get-started$"));
     }
 

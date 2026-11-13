@@ -65,7 +65,7 @@
     <value>These accounts leave MoneyMoney without a bank connection: from now on their bookings are entered by hand in OpenBudget.</value>
   </data>
   <data name="Nothing" xml:space="preserve">
-    <value>None of these accounts can be kept as a manual account (already changed, linked to a bank login, or not yours).</value>
+    <value>None of these accounts can be kept as a manual account (already changed, linked to a connection, or not yours).</value>
   </data>
   <data name="Bookings" xml:space="preserve">
     <value>{0:N0} bookings</value>

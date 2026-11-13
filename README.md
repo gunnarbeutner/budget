@@ -12,7 +12,7 @@ and forward-looking balance projections.
   <img src="docs/screenshots/transactions-phone.png" alt="Transactions on a phone" width="170">
 </p>
 <p>
-  <img src="docs/screenshots/get-started.png" alt="Get started: import, bank logins, Portfolio Performance, accounts" width="720">
+  <img src="docs/screenshots/get-started.png" alt="Get started: import, connections, Portfolio Performance, accounts" width="720">
 </p>
 
 More screenshots, including dark mode, are in [`docs/screenshots/`](docs/screenshots/). All data shown is a
@@ -56,7 +56,7 @@ dotnet run --project src/OpenBudget
 
 | Variable | Purpose |
 | --- | --- |
-| `OPENBUDGET_SECRETS_KEY` | Base64 256-bit key encrypting bank credentials and sessions. Required for bank logins. Not stored in the data volume; keep it safe and keep using the same value, or stored credentials must be re-entered. |
+| `OPENBUDGET_SECRETS_KEY` | Base64 256-bit key encrypting bank credentials and sessions. Required for connections. Not stored in the data volume; keep it safe and keep using the same value, or stored credentials must be re-entered. |
 | `OPENBUDGET_FINTS_PRODUCT_ID` | FinTS product ID registered with the [Deutsche Kreditwirtschaft](https://www.fints.org/de/hersteller/produktregistrierung). Required for FinTS banks. |
 | `OPENBUDGET_RP_ID` | Pins the passkey relying-party id (default: the request host). Changing it invalidates registered passkeys. |
 | `CHROME_PATH` | Chromium for web logins outside Docker (the image ships one). |
@@ -95,7 +95,7 @@ too. Requests use the Responses API with `store: false`.
 
 ## Bank connectors
 
-Bank logins belong to one user and sync only while that user has OpenBudget open (there is no background fetching).
+Connections (Settings → Connections) belong to one user and sync only while that user has OpenBudget open (there is no background fetching).
 TANs, app approvals and captchas are answered in a dialog. Accounts imported from MoneyMoney can be switched to
 the bank connection, which then becomes the account's source of truth.
 
@@ -112,7 +112,7 @@ yourself. The Docker image includes Chromium and Xvfb.
 
 ## Importers
 
-**Get started** (gear menu) leads a new user through bank logins, the optional imports and the first settings.
+**Get started** (gear menu) leads a new user through connections, the optional imports and the first settings.
 
 - **MoneyMoney** — a one-time move of the history: in MoneyMoney choose Help › Show Database in Finder…, quit
   MoneyMoney, compress the folder that contains `Database` and `Statements`, and upload the ZIP with the MoneyMoney

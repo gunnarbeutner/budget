@@ -12,7 +12,7 @@ public sealed class BackgroundSyncTests : EndToEndTestBase
     [Test]
     public async Task Switch_on_background_syncs_see_needs_you_and_clear_it_with_a_manual_sync()
     {
-        await GoToAsync("/banklogins");
+        await GoToAsync("/connections");
         await Page.GetByTestId("add-login-open").ClickAsync();
         await Page.Locator("#new-login-connector").SelectOptionAsync("fake");
         await Page.Locator("#new-login-name").FillAsync("Background bank");
@@ -38,7 +38,7 @@ public sealed class BackgroundSyncTests : EndToEndTestBase
             await db.BankLogins.Where(l => l.DisplayName == "Background bank")
                 .ExecuteUpdateAsync(s => s.SetProperty(l => l.NeedsManualSync, "The bank wants a TAN or code.").SetProperty(l => l.NeedsManualSince, DateTime.UtcNow));
         }
-        await GoToAsync("/banklogins");
+        await GoToAsync("/connections");
         await Expect(card.GetByTestId("login-status")).ToHaveTextAsync("Needs you");
         await Expect(card.GetByTestId("background-status")).ToContainTextAsync("The bank wants a TAN or code.");
         await Expect(Page.GetByTestId("banklogins-needs-you")).ToBeVisibleAsync();
@@ -46,7 +46,7 @@ public sealed class BackgroundSyncTests : EndToEndTestBase
         // the owner's own sync (the session is remembered) clears it
         await card.Locator("[data-action=sync-now]").ClickAsync();
         await Expect(card.GetByTestId("background-status")).ToContainTextAsync("Last background sync");
-        await GoToAsync("/banklogins");
+        await GoToAsync("/connections");
         await Expect(Page.GetByTestId("banklogins-needs-you")).ToHaveCountAsync(0);
         await Expect(card.GetByTestId("background-switch")).ToBeCheckedAsync();
     }

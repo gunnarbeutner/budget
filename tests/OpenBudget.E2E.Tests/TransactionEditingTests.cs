@@ -158,7 +158,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
 
         // The account itself carries one read-only notice in the toolbar instead of a lock per row.
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.MoneyMoneyAccountId}");
-        await Expect(Page.GetByTestId("browse-readonly")).ToHaveAttributeAsync("title", "Categorized in MoneyMoney until this account switches to a bank connector");
+        await Expect(Page.GetByTestId("browse-readonly")).ToHaveAttributeAsync("title", "Categorized in MoneyMoney until this account switches to a connection");
         await Expect(Page.GetByTestId("tx-check")).ToBeDisabledAsync();
     }
 
@@ -359,7 +359,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         var bakery = Row("\u22124,50");
         var check = bakery.GetByTestId("tx-check");
         await Expect(check).ToBeDisabledAsync();
-        await Expect(check).ToHaveAttributeAsync("title", "Categorized in MoneyMoney until this account switches to a bank connector");
+        await Expect(check).ToHaveAttributeAsync("title", "Categorized in MoneyMoney until this account switches to a connection");
         await Expect(bakery.GetByTestId("tx-category")).ToHaveCountAsync(0);          // no inline picker button
 
         await bakery.ClickAsync();
@@ -376,7 +376,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
 
         // The account itself carries one read-only notice in the toolbar instead of a lock per row.
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.MoneyMoneyAccountId}");
-        await Expect(Page.GetByTestId("browse-readonly")).ToHaveAttributeAsync("title", "Categorized in MoneyMoney until this account switches to a bank connector");
+        await Expect(Page.GetByTestId("browse-readonly")).ToHaveAttributeAsync("title", "Categorized in MoneyMoney until this account switches to a connection");
         await Expect(Page.GetByTestId("tx-check")).ToBeDisabledAsync();
     }
 

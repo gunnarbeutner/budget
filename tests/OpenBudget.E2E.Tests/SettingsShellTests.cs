@@ -19,7 +19,7 @@ public sealed class SettingsShellTests : EndToEndTestBase
     /// Every settings page opens with the compact toolbar header (no home icon) inside a frame with navigation:
     /// the project sidebar for project settings, the settings list for the app-level pages.
     /// </summary>
-    [TestCase("/banklogins", "settings-nav")]
+    [TestCase("/connections", "settings-nav")]
     [TestCase("/portfolio-performance", "settings-nav")]
     [TestCase("/portfolio-performance/depots", "settings-nav")]
     [TestCase("/portfolio-performance/instruments", "settings-nav")]
@@ -40,12 +40,20 @@ public sealed class SettingsShellTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task The_former_bank_logins_address_leads_to_connections()
+    {
+        await GoToAsync("/banklogins?edit=0");
+        await Expect(Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/connections\\?edit=0$"));
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Connections" })).ToBeVisibleAsync();
+    }
+
+    [Test]
     public async Task Settings_list_highlights_the_page_and_leads_back_to_the_project()
     {
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
         await Page.GetByTestId("gear-menu").Locator("summary").ClickAsync();
         await Page.GetByTestId("gear-menu").GetByTestId("gear-bank-logins").ClickAsync();
-        await Expect(Page.GetByTestId("settings-nav-banklogins")).ToHaveAttributeAsync("aria-current", "page");
+        await Expect(Page.GetByTestId("settings-nav-connections")).ToHaveAttributeAsync("aria-current", "page");
         await Page.GetByTestId("settings-nav-portfolio-performance").ClickAsync();
         await Expect(Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/portfolio-performance$"));
         await Expect(Page.GetByTestId("settings-nav-portfolio-performance")).ToHaveAttributeAsync("aria-current", "page");
@@ -58,7 +66,7 @@ public sealed class SettingsShellTests : EndToEndTestBase
     public async Task Settings_pages_fit_a_phone()
     {
         await Page.SetViewportSizeAsync(390, 844);
-        foreach (var path in new[] { "/banklogins", "/portfolio-performance", $"/projects/{E2ESeed.ProjectId}/settings" })
+        foreach (var path in new[] { "/connections", "/portfolio-performance", $"/projects/{E2ESeed.ProjectId}/settings" })
         {
             await GoToAsync(path);
             await Expect(Page.GetByTestId("page-header")).ToBeVisibleAsync();
@@ -78,7 +86,7 @@ public sealed class SettingsShellTests : EndToEndTestBase
         var tag = Environment.GetEnvironmentVariable("OB_SETTINGS_SCREENSHOT_TAG") ?? "after";
         await Page.SetViewportSizeAsync(1280, 860);
         await Page.EmulateMediaAsync(new PageEmulateMediaOptions { ColorScheme = theme == "dark" ? ColorScheme.Dark : ColorScheme.Light });
-        foreach (var (name, path) in new[] { ("banklogins", "/banklogins"), ("project", $"/projects/{E2ESeed.ProjectId}/settings") })
+        foreach (var (name, path) in new[] { ("connections", "/connections"), ("project", $"/projects/{E2ESeed.ProjectId}/settings") })
         {
             await GoToAsync(path);
             await Page.WaitForTimeoutAsync(500);

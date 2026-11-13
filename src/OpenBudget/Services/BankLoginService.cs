@@ -115,7 +115,7 @@ public class BankLoginService
 
     private void RequireEnabled()
     {
-        if (!IsEnabled) throw new InvalidOperationException("Bank logins are disabled: the secrets key is not configured.");
+        if (!IsEnabled) throw new InvalidOperationException("Connections are disabled: the secrets key is not configured.");
     }
 
     // ---- Logins ----
@@ -163,7 +163,7 @@ public class BankLoginService
     {
         var userId = await RequireUserAsync();
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var login = await db.BankLogins.FirstOrDefaultAsync(l => l.Id == id, ct) ?? throw new AccessDeniedException("Bank login not found.");
+        var login = await db.BankLogins.FirstOrDefaultAsync(l => l.Id == id, ct) ?? throw new AccessDeniedException("Connection not found.");
         if (enabled && _registry.Find(login.ConnectorType)?.Silent is null or SilentCapability.None)
             throw new InvalidOperationException("This bank cannot be synced in the background.");
         login.BackgroundEnabled = enabled;
@@ -270,7 +270,7 @@ public class BankLoginService
     {
         var userId = await RequireUserAsync();
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var login = await db.BankLogins.FirstOrDefaultAsync(l => l.Id == id, ct) ?? throw new AccessDeniedException("Bank login not found.");
+        var login = await db.BankLogins.FirstOrDefaultAsync(l => l.Id == id, ct) ?? throw new AccessDeniedException("Connection not found.");
         if (!string.IsNullOrWhiteSpace(displayName)) login.DisplayName = displayName.Trim();
         login.RefreshInterval = interval;
         var registration = _registry.Find(login.ConnectorType);
@@ -329,7 +329,7 @@ public class BankLoginService
         _coordinator.Cancel(userId, id);
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var login = await db.BankLogins.Include(l => l.Accounts).FirstOrDefaultAsync(l => l.Id == id, ct)
-            ?? throw new AccessDeniedException("Bank login not found.");
+            ?? throw new AccessDeniedException("Connection not found.");
 
         foreach (var link in login.Accounts.Where(a => a.LinkedAccountId != null))
             await _accounts.SetProviderAsync(link.LinkedAccountId!.Value, link.CreatedByConnector ? AccountProviders.Manual : AccountProviders.MoneyMoney, ct);

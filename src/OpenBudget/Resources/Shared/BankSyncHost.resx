@@ -98,7 +98,7 @@
     <value>Synced {0}</value>
   </data>
   <data name="SyncAllTitle" xml:space="preserve">
-    <value>Last bank sync — click to sync all bank logins now</value>
+    <value>Last sync — click to sync all connections now</value>
   </data>
   <data name="WaitingApprovalBank" xml:space="preserve">
     <value>Please approve the sign-in in the {0} app.</value>

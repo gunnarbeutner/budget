@@ -87,16 +87,16 @@ public sealed class BankHttpTests : IDisposable
         }
 
         using var aliceClient = await _host.LoggedInClientAsync("alice");
-        var (aliceStatus, aliceBody) = await AppTestHost.GetAsync(aliceClient, "/banklogins");
+        var (aliceStatus, aliceBody) = await AppTestHost.GetAsync(aliceClient, "/connections");
         Assert.Equal(HttpStatusCode.OK, aliceStatus);
         Assert.Contains("AliceOnlyLogin", aliceBody, StringComparison.Ordinal);
-        Assert.Contains("Add bank login", aliceBody, StringComparison.Ordinal);
+        Assert.Contains("Add connection", aliceBody, StringComparison.Ordinal);
 
         using var bob = await _host.LoggedInClientAsync("bob");
-        var (bobStatus, bobBody) = await AppTestHost.GetAsync(bob, "/banklogins");
+        var (bobStatus, bobBody) = await AppTestHost.GetAsync(bob, "/connections");
         Assert.Equal(HttpStatusCode.OK, bobStatus);
         Assert.DoesNotContain("AliceOnlyLogin", bobBody, StringComparison.Ordinal);
-        Assert.Contains("No bank logins yet.", bobBody, StringComparison.Ordinal);
+        Assert.Contains("No connections yet.", bobBody, StringComparison.Ordinal);
     }
 
     private static async Task<HttpResponseMessage> PostZipAsync(HttpClient client, params long[] ids)
@@ -182,10 +182,10 @@ public sealed class BankHttpWithoutKeyTests : IDisposable
     {
         await _host.AddUserAsync("alice");
         using var client = await _host.LoggedInClientAsync("alice");
-        var (status, body) = await AppTestHost.GetAsync(client, "/banklogins");
+        var (status, body) = await AppTestHost.GetAsync(client, "/connections");
         Assert.Equal(HttpStatusCode.OK, status);
         Assert.Contains("OPENBUDGET_SECRETS_KEY", body, StringComparison.Ordinal);
-        Assert.Contains("Bank logins are disabled", body, StringComparison.Ordinal);
+        Assert.Contains("Connections are disabled", body, StringComparison.Ordinal);
         Assert.DoesNotContain("Add a bank login", body, StringComparison.Ordinal);
 
         // The rest of the app is unaffected.

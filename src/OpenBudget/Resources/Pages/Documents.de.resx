@@ -149,7 +149,7 @@
     <value>Konten durchsuchen</value>
   </data>
   <data name="Settings_OwnerOnly" xml:space="preserve">
-    <value>Nur der Inhaber des Bankzugangs kann das ändern.</value>
+    <value>Nur der Inhaber der Verbindung kann das ändern.</value>
   </data>
   <data name="Settings_LastStatement" xml:space="preserve">
     <value>Letzter Auszug {0}</value>
@@ -188,7 +188,7 @@
     <value>Nur manuell</value>
   </data>
   <data name="Download_Running" xml:space="preserve">
-    <value>Für diesen Bankzugang läuft schon eine Synchronisierung.</value>
+    <value>Für diese Verbindung läuft schon eine Synchronisierung.</value>
   </data>
   <data name="Download_NotStarted" xml:space="preserve">
     <value>Es wurde nichts gestartet.</value>

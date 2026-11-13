@@ -116,7 +116,7 @@ public partial class Browse
         {
             case SidebarBankMenu.EditLogin:
                 if (tree.Accounts.FirstOrDefault(a => a.Id == node.Id)?.SyncLoginId is { } loginId)
-                    Navigation.NavigateTo($"banklogins?edit={loginId.ToString(CultureInfo.InvariantCulture)}");
+                    Navigation.NavigateTo($"connections?edit={loginId.ToString(CultureInfo.InvariantCulture)}");
                 return true;
             case SidebarBankMenu.RefreshAccount:
             case SidebarBankMenu.RefreshAccounts:

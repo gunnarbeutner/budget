@@ -158,7 +158,7 @@ public sealed class NavigationTests : EndToEndTestBase
 
         await gear.Locator("summary").ClickAsync();
         await gear.GetByTestId("gear-bank-logins").ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex(".*/banklogins$"));
+        await Expect(Page).ToHaveURLAsync(new Regex(".*/connections$"));
 
         await gear.Locator("summary").ClickAsync();
         await gear.GetByTestId("gear-portfolio-performance").ClickAsync();
@@ -166,7 +166,7 @@ public sealed class NavigationTests : EndToEndTestBase
 
         // The account menu is about the user only now.
         await Page.GetByTestId("user-menu").Locator("summary").ClickAsync();
-        await Expect(Page.GetByTestId("user-menu").GetByText("Bank logins")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("user-menu").GetByText("Connections")).ToHaveCountAsync(0);
         await Expect(Page.GetByTestId("sign-out-link")).ToBeVisibleAsync();
     }
 

@@ -71,7 +71,7 @@
     <value>Back to projects</value>
   </data>
   <data name="Item_BankLogins" xml:space="preserve">
-    <value>Bank logins</value>
+    <value>Connections</value>
   </data>
   <data name="Item_Account" xml:space="preserve">
     <value>Profile and passkeys</value>
@@ -86,7 +86,7 @@
     <value>Get started</value>
   </data>
   <data name="Badge_NeedsYou" xml:space="preserve">
-    <value>A bank login needs you</value>
+    <value>A connection needs you</value>
   </data>
   <data name="Item_Assist" xml:space="preserve">
     <value>AI suggestions</value>

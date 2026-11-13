@@ -59,13 +59,13 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="PageTitle" xml:space="preserve">
-    <value>Bank-Zugänge - OpenBudget</value>
+    <value>Verbindungen - OpenBudget</value>
   </data>
   <data name="Heading" xml:space="preserve">
-    <value>Bank-Zugänge</value>
+    <value>Verbindungen</value>
   </data>
   <data name="Disabled_Title" xml:space="preserve">
-    <value>Bank-Zugänge sind deaktiviert.</value>
+    <value>Verbindungen sind deaktiviert.</value>
   </data>
   <data name="Disabled_Body_Before" xml:space="preserve">
     <value> Der Geheimnis-Schlüssel ist nicht konfiguriert. Setze die Umgebungsvariable </value>
@@ -74,10 +74,10 @@
     <value> auf einen Base64-codierten 256-Bit-Schlüssel (siehe README) und starte neu.</value>
   </data>
   <data name="Intro" xml:space="preserve">
-    <value>Verbinde deine Bankkonten direkt. Zugänge sind nur für dich sichtbar; Zugangsdaten werden verschlüsselt gespeichert. Abgleiche laufen nur, solange du OpenBudget geöffnet hast.</value>
+    <value>Verbinde deine Banken und Dienste direkt. Verbindungen sind nur für dich sichtbar; Zugangsdaten werden verschlüsselt gespeichert. Abgleiche laufen nur, solange du OpenBudget geöffnet hast.</value>
   </data>
   <data name="Add_Heading" xml:space="preserve">
-    <value>Bank-Zugang hinzufügen</value>
+    <value>Verbindung hinzufügen</value>
   </data>
   <data name="Field_Connector" xml:space="preserve">
     <value>Bank</value>
@@ -98,10 +98,10 @@
     <value>Aktualisierung</value>
   </data>
   <data name="Button_Add" xml:space="preserve">
-    <value>Zugang hinzufügen</value>
+    <value>Verbindung hinzufügen</value>
   </data>
   <data name="Empty" xml:space="preserve">
-    <value>Noch keine Bank-Zugänge.</value>
+    <value>Noch keine Verbindungen.</value>
   </data>
   <data name="Status_Syncing" xml:space="preserve">
     <value>Gleiche ab</value>
@@ -140,7 +140,7 @@
     <value>Die Bank wartet auf dich - siehe Dialog.</value>
   </data>
   <data name="Error_Credentials" xml:space="preserve">
-    <value>Die gespeicherten Zugangsdaten wurden abgelehnt oder sind nicht lesbar; bitte den Zugang bearbeiten und neu eingeben.</value>
+    <value>Die gespeicherten Zugangsdaten wurden abgelehnt oder sind nicht lesbar; bitte die Verbindung bearbeiten und neu eingeben.</value>
   </data>
   <data name="Error_ConnectorMissing" xml:space="preserve">
     <value>Der Konnektor "{0}" ist in dieser Installation nicht verfügbar.</value>
@@ -185,16 +185,16 @@
     <value>Neues Konto anlegen</value>
   </data>
   <data name="Edit_Title" xml:space="preserve">
-    <value>Bank-Zugang bearbeiten</value>
+    <value>Verbindung bearbeiten</value>
   </data>
   <data name="Delete_Title" xml:space="preserve">
     <value>{0} löschen?</value>
   </data>
   <data name="Delete_Body" xml:space="preserve">
-    <value>Dies entfernt die gespeicherten Zugangsdaten, die Sitzung und heruntergeladene Kontoauszüge. Bereits importierte Konten und Umsätze bleiben erhalten: von MoneyMoney übernommene Konten gehen an MoneyMoney zurück (der nächste Upload füllt sie neu), für diesen Zugang angelegte Konten bleiben bestehen, werden aber nicht mehr aktualisiert.</value>
+    <value>Dies entfernt die gespeicherten Zugangsdaten, die Sitzung und heruntergeladene Kontoauszüge. Bereits importierte Konten und Umsätze bleiben erhalten: von MoneyMoney übernommene Konten gehen an MoneyMoney zurück (der nächste Upload füllt sie neu), für diese Verbindung angelegte Konten bleiben bestehen, werden aber nicht mehr aktualisiert.</value>
   </data>
   <data name="Message_AlreadyRunning" xml:space="preserve">
-    <value>Für diesen Zugang läuft bereits ein Abgleich.</value>
+    <value>Für diese Verbindung läuft bereits ein Abgleich.</value>
   </data>
   <data name="Interval_EveryTwoHours" xml:space="preserve">
     <value>Alle zwei Stunden</value>
@@ -230,7 +230,7 @@
     <value>Sonstiges</value>
   </data>
   <data name="Button_AddOpen" xml:space="preserve">
-    <value>Bank-Zugang hinzufügen</value>
+    <value>Verbindung hinzufügen</value>
   </data>
   <data name="Pill_Ok" xml:space="preserve">
     <value>OK</value>
@@ -293,7 +293,7 @@
     <value>FinTS-Banken im Hintergrund</value>
   </data>
   <data name="FinTsBanks_Intro" xml:space="preserve">
-    <value>Standardmäßig aus. Code 3076 heißt: die Bank brauchte keine TAN; 0030 oder 3955: sie wollte eine. Schalte eine Bank nur ein, wenn ihre Logins 3076 zeigen.</value>
+    <value>Standardmäßig aus. Code 3076 heißt: die Bank brauchte keine TAN; 0030 oder 3955: sie wollte eine. Schalte eine Bank nur ein, wenn ihre Verbindungen 3076 zeigen.</value>
   </data>
   <data name="FinTsBanks_NoEvidence" xml:space="preserve">
     <value>Noch keine Dialoge protokolliert.</value>

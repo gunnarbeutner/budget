@@ -75,15 +75,15 @@
   <data name="Settings_Title" xml:space="preserve"><value>Account settings</value></data>
   <data name="GroupSettings_Title" xml:space="preserve"><value>Settings of “{0}”</value></data>
   <data name="Settings_Name" xml:space="preserve"><value>Name</value></data>
-  <data name="Settings_Bank" xml:space="preserve"><value>Bank login</value></data>
+  <data name="Settings_Bank" xml:space="preserve"><value>Connection</value></data>
   <data name="Settings_Bank_MoneyMoney" xml:space="preserve"><value>Refreshed by MoneyMoney</value></data>
-  <data name="Settings_Bank_None" xml:space="preserve"><value>Not linked to a bank login</value></data>
-  <data name="Settings_Bank_Manage" xml:space="preserve"><value>Manage bank logins</value></data>
+  <data name="Settings_Bank_None" xml:space="preserve"><value>Not linked to a connection</value></data>
+  <data name="Settings_Bank_Manage" xml:space="preserve"><value>Manage connections</value></data>
   <data name="Settings_Statements" xml:space="preserve"><value>Statements</value></data>
   <data name="Settings_Statements_Download" xml:space="preserve"><value>Download statements</value></data>
   <data name="Settings_Statements_Interval" xml:space="preserve"><value>How often</value></data>
-  <data name="Settings_Statements_NotYours" xml:space="preserve"><value>Only the bank login's owner can change this.</value></data>
-  <data name="Settings_Statements_Unavailable" xml:space="preserve"><value>Statement download needs a bank login that offers statements.</value></data>
+  <data name="Settings_Statements_NotYours" xml:space="preserve"><value>Only the connection's owner can change this.</value></data>
+  <data name="Settings_Statements_Unavailable" xml:space="preserve"><value>Statement download needs a connection that offers statements.</value></data>
   <data name="Interval_Monthly" xml:space="preserve"><value>Monthly</value></data>
   <data name="Interval_Weekly" xml:space="preserve"><value>Weekly</value></data>
   <data name="Interval_Daily" xml:space="preserve"><value>Daily</value></data>
@@ -104,7 +104,7 @@
     <value>OpenBudget (no MoneyMoney uploads).</value>
   </data>
   <data name="Settings_Switch_LinkFirst" xml:space="preserve">
-    <value>Link it to a bank login to switch it to a bank connection.</value>
+    <value>Link it to a connection to switch it over.</value>
   </data>
   <data name="Settings_Switched_On" xml:space="preserve">
     <value>Switched from MoneyMoney on {0}.</value>

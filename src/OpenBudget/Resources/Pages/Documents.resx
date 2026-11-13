@@ -149,7 +149,7 @@
     <value>Search accounts</value>
   </data>
   <data name="Settings_OwnerOnly" xml:space="preserve">
-    <value>Only the bank login's owner can change this.</value>
+    <value>Only the connection's owner can change this.</value>
   </data>
   <data name="Settings_LastStatement" xml:space="preserve">
     <value>Last statement {0}</value>
@@ -188,7 +188,7 @@
     <value>Only manually</value>
   </data>
   <data name="Download_Running" xml:space="preserve">
-    <value>A sync of this bank login is already running.</value>
+    <value>A sync of this connection is already running.</value>
   </data>
   <data name="Download_NotStarted" xml:space="preserve">
     <value>Nothing was started.</value>

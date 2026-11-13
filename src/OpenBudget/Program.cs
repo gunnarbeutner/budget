@@ -209,6 +209,9 @@ app.MapFallbackToPage("/_Host");
 app.MapWebLoginEndpoints();
 app.MapOneDriveEndpoints();
 
+// The connections page's former address keeps working.
+app.MapGet("/banklogins", (HttpContext ctx) => Results.Redirect("/connections" + ctx.Request.QueryString.Value, permanent: true)).AllowAnonymous();
+
 app.MapGet("/healthz", () => Results.Ok("healthy")).AllowAnonymous();
 
 // The browser's chunked MoneyMoney upload lives in the Importers module.

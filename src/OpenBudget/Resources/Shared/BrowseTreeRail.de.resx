@@ -102,7 +102,7 @@
   <data name="Ctx_RefreshAccount" xml:space="preserve"><value>Konto aktualisieren</value></data>
   <data name="Ctx_RefreshAccounts" xml:space="preserve"><value>Konten aktualisieren</value></data>
   <data name="Ctx_EditLogin" xml:space="preserve"><value>Zugangsdaten bearbeiten…</value></data>
-  <data name="Ctx_Block_Syncing" xml:space="preserve"><value>Dieser Bankzugang wird bereits synchronisiert</value></data>
+  <data name="Ctx_Block_Syncing" xml:space="preserve"><value>Diese Verbindung wird bereits synchronisiert</value></data>
   <data name="Ctx_Block_NotListed" xml:space="preserve"><value>Die Bank führt dieses Konto nicht mehr</value></data>
-  <data name="Ctx_Block_NoLinked" xml:space="preserve"><value>Kein Konto dieser Gruppe ist mit einem deiner Bankzugänge verbunden</value></data>
+  <data name="Ctx_Block_NoLinked" xml:space="preserve"><value>Kein Konto dieser Gruppe ist mit einer deiner Verbindungen verknüpft</value></data>
 </root>

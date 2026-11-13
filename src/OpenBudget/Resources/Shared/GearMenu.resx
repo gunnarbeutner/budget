@@ -71,7 +71,7 @@
     <value>Data</value>
   </data>
   <data name="Item_BankLogins" xml:space="preserve">
-    <value>Bank logins</value>
+    <value>Connections</value>
   </data>
   <data name="Badge_Errors" xml:space="preserve">
     <value>{0} errors</value>
@@ -84,6 +84,6 @@
     <value>Get started</value>
   </data>
   <data name="Aria_Menu" xml:space="preserve">
-    <value>Settings: project, bank logins, Portfolio Performance</value>
+    <value>Settings: project, connections, Portfolio Performance</value>
   </data>
 </root>

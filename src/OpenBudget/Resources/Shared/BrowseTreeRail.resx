@@ -102,7 +102,7 @@
   <data name="Ctx_RefreshAccount" xml:space="preserve"><value>Refresh account</value></data>
   <data name="Ctx_RefreshAccounts" xml:space="preserve"><value>Refresh accounts</value></data>
   <data name="Ctx_EditLogin" xml:space="preserve"><value>Edit login data…</value></data>
-  <data name="Ctx_Block_Syncing" xml:space="preserve"><value>This bank login is already being synced</value></data>
+  <data name="Ctx_Block_Syncing" xml:space="preserve"><value>This connection is already being synced</value></data>
   <data name="Ctx_Block_NotListed" xml:space="preserve"><value>The bank no longer lists this account</value></data>
-  <data name="Ctx_Block_NoLinked" xml:space="preserve"><value>No account in this group is linked to one of your bank logins</value></data>
+  <data name="Ctx_Block_NoLinked" xml:space="preserve"><value>No account in this group is linked to one of your connections</value></data>
 </root>

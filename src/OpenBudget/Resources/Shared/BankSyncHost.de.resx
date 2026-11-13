@@ -98,7 +98,7 @@
     <value>Synchronisiert {0}</value>
   </data>
   <data name="SyncAllTitle" xml:space="preserve">
-    <value>Letzte Banksynchronisation – klicken, um alle Bankzugänge jetzt zu synchronisieren</value>
+    <value>Letzte Synchronisation – klicken, um alle Verbindungen jetzt zu synchronisieren</value>
   </data>
   <data name="WaitingApprovalBank" xml:space="preserve">
     <value>Bitte bestätige die Anmeldung in der App von {0}.</value>

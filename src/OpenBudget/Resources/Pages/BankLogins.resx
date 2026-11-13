@@ -59,13 +59,13 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="PageTitle" xml:space="preserve">
-    <value>Bank logins - OpenBudget</value>
+    <value>Connections - OpenBudget</value>
   </data>
   <data name="Heading" xml:space="preserve">
-    <value>Bank logins</value>
+    <value>Connections</value>
   </data>
   <data name="Disabled_Title" xml:space="preserve">
-    <value>Bank logins are disabled.</value>
+    <value>Connections are disabled.</value>
   </data>
   <data name="Disabled_Body_Before" xml:space="preserve">
     <value> The secrets key is not configured. Set the environment variable </value>
@@ -74,10 +74,10 @@
     <value> to a base64-encoded 256-bit key (see the README) and restart.</value>
   </data>
   <data name="Intro" xml:space="preserve">
-    <value>Connect your bank accounts directly. Logins are private to you; credentials are stored encrypted. Syncs only run while you have OpenBudget open.</value>
+    <value>Connect your banks and services directly. Connections are private to you; credentials are stored encrypted. Syncs only run while you have OpenBudget open.</value>
   </data>
   <data name="Add_Heading" xml:space="preserve">
-    <value>Add a bank login</value>
+    <value>Add a connection</value>
   </data>
   <data name="Field_Connector" xml:space="preserve">
     <value>Bank</value>
@@ -98,10 +98,10 @@
     <value>Refresh</value>
   </data>
   <data name="Button_Add" xml:space="preserve">
-    <value>Add login</value>
+    <value>Add connection</value>
   </data>
   <data name="Empty" xml:space="preserve">
-    <value>No bank logins yet.</value>
+    <value>No connections yet.</value>
   </data>
   <data name="Status_Syncing" xml:space="preserve">
     <value>Syncing</value>
@@ -140,7 +140,7 @@
     <value>The bank is waiting for you - see the dialog.</value>
   </data>
   <data name="Error_Credentials" xml:space="preserve">
-    <value>The stored credentials were rejected or cannot be read; please edit the login and enter them again.</value>
+    <value>The stored credentials were rejected or cannot be read; please edit the connection and enter them again.</value>
   </data>
   <data name="Error_ConnectorMissing" xml:space="preserve">
     <value>The connector "{0}" is not available in this installation.</value>
@@ -185,16 +185,16 @@
     <value>Create new account</value>
   </data>
   <data name="Edit_Title" xml:space="preserve">
-    <value>Edit bank login</value>
+    <value>Edit connection</value>
   </data>
   <data name="Delete_Title" xml:space="preserve">
     <value>Delete {0}?</value>
   </data>
   <data name="Delete_Body" xml:space="preserve">
-    <value>This removes the stored credentials, session and downloaded statements. Accounts and transactions already imported are kept: accounts taken over from MoneyMoney return to MoneyMoney (its next upload refills them), accounts created for this login stay as they are but are no longer refreshed.</value>
+    <value>This removes the stored credentials, session and downloaded statements. Accounts and transactions already imported are kept: accounts taken over from MoneyMoney return to MoneyMoney (its next upload refills them), accounts created for this connection stay as they are but are no longer refreshed.</value>
   </data>
   <data name="Message_AlreadyRunning" xml:space="preserve">
-    <value>A sync is already running for this login.</value>
+    <value>A sync is already running for this connection.</value>
   </data>
   <data name="Interval_EveryTwoHours" xml:space="preserve">
     <value>Every two hours</value>
@@ -230,7 +230,7 @@
     <value>Other</value>
   </data>
   <data name="Button_AddOpen" xml:space="preserve">
-    <value>Add bank login</value>
+    <value>Add connection</value>
   </data>
   <data name="Pill_Ok" xml:space="preserve">
     <value>OK</value>
@@ -293,7 +293,7 @@
     <value>FinTS banks in the background</value>
   </data>
   <data name="FinTsBanks_Intro" xml:space="preserve">
-    <value>Off by default. Code 3076 means the bank needed no TAN; 0030 or 3955 means it wanted one. Turn a bank on only when its logins show 3076.</value>
+    <value>Off by default. Code 3076 means the bank needed no TAN; 0030 or 3955 means it wanted one. Turn a bank on only when its connections show 3076.</value>
   </data>
   <data name="FinTsBanks_NoEvidence" xml:space="preserve">
     <value>No dialogs logged yet.</value>

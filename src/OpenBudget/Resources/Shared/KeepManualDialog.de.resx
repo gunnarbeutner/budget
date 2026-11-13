@@ -65,7 +65,7 @@
     <value>Diese Konten verlassen MoneyMoney ohne Bankverbindung: Ihre Buchungen werden ab jetzt in OpenBudget von Hand erfasst.</value>
   </data>
   <data name="Nothing" xml:space="preserve">
-    <value>Keines dieser Konten kann als manuelles Konto behalten werden (bereits umgestellt, mit einem Bankzugang verknüpft oder nicht deins).</value>
+    <value>Keines dieser Konten kann als manuelles Konto behalten werden (bereits umgestellt, mit einer Verbindung verknüpft oder nicht deins).</value>
   </data>
   <data name="Bookings" xml:space="preserve">
     <value>{0:N0} Buchungen</value>

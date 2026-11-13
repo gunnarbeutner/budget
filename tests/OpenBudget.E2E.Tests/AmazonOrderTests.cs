@@ -47,7 +47,7 @@ public sealed class AmazonOrderTests : EndToEndTestBase
     [Test]
     public async Task Mapping_the_card_puts_the_order_items_on_the_booking()
     {
-        await GoToAsync("/banklogins");
+        await GoToAsync("/connections");
         var card = Page.Locator("[data-bank-login='My Amazon']");
         await Expect(card.GetByTestId("open-charges")).ToContainTextAsync("1");
         await Expect(card.GetByTestId("instrument-points")).ToBeVisibleAsync();

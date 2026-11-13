@@ -61,7 +61,7 @@ public sealed class WebLoginDialogTests : EndToEndTestBase
         Environment.SetEnvironmentVariable(FakeBankConnector.WebLoginUrlVariable, $"http://127.0.0.1:{port}/login");
         Environment.SetEnvironmentVariable(FakeBankConnector.WebLoginSuccessVariable, $"http://127.0.0.1:{port}/home");
 
-        await GoToAsync("/banklogins");
+        await GoToAsync("/connections");
         await Page.GetByTestId("add-login-open").ClickAsync();
         // The real banks are offered too; pick the fake one explicitly.
         await Page.Locator("#new-login-connector").SelectOptionAsync("fake");

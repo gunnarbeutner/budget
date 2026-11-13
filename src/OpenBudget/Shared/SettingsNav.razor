@@ -16,7 +16,7 @@
         <span class="text-truncate">@BackLabel</span>
     </a>
     <div class="settings-nav-heading">@L["Heading"]</div>
-    @Item("banklogins", "/banklogins", "bi-bank", L["Item_BankLogins"], badge: needsYou ? L["Badge_NeedsYou"].Value : null)
+    @Item("connections", "/connections", "bi-bank", L["Item_BankLogins"], badge: needsYou ? L["Badge_NeedsYou"].Value : null)
     @if (showGetStarted || Active == "get-started")
     {
         @Item("get-started", "/get-started", "bi-signpost-2", L["Item_GetStarted"])
@@ -31,7 +31,7 @@
 </nav>
 
 @code {
-    /// <summary>The highlighted section: "banklogins", "get-started", "portfolio-performance", "documents", "assist" or "account".</summary>
+    /// <summary>The highlighted section: "connections", "get-started", "portfolio-performance", "documents", "assist" or "account".</summary>
     [Parameter] public string? Active { get; set; }
 
     private bool showGetStarted;

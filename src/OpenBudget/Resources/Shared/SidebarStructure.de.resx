@@ -75,15 +75,15 @@
   <data name="Settings_Title" xml:space="preserve"><value>Kontoeinstellungen</value></data>
   <data name="GroupSettings_Title" xml:space="preserve"><value>Einstellungen von „{0}“</value></data>
   <data name="Settings_Name" xml:space="preserve"><value>Name</value></data>
-  <data name="Settings_Bank" xml:space="preserve"><value>Bankzugang</value></data>
+  <data name="Settings_Bank" xml:space="preserve"><value>Verbindung</value></data>
   <data name="Settings_Bank_MoneyMoney" xml:space="preserve"><value>Wird von MoneyMoney aktualisiert</value></data>
-  <data name="Settings_Bank_None" xml:space="preserve"><value>Mit keinem Bankzugang verknüpft</value></data>
-  <data name="Settings_Bank_Manage" xml:space="preserve"><value>Bankzugänge verwalten</value></data>
+  <data name="Settings_Bank_None" xml:space="preserve"><value>Mit keiner Verbindung verknüpft</value></data>
+  <data name="Settings_Bank_Manage" xml:space="preserve"><value>Verbindungen verwalten</value></data>
   <data name="Settings_Statements" xml:space="preserve"><value>Kontoauszüge</value></data>
   <data name="Settings_Statements_Download" xml:space="preserve"><value>Kontoauszüge herunterladen</value></data>
   <data name="Settings_Statements_Interval" xml:space="preserve"><value>Wie oft</value></data>
-  <data name="Settings_Statements_NotYours" xml:space="preserve"><value>Nur der Eigentümer des Bankzugangs kann das ändern.</value></data>
-  <data name="Settings_Statements_Unavailable" xml:space="preserve"><value>Der Abruf von Kontoauszügen braucht einen Bankzugang, der Kontoauszüge anbietet.</value></data>
+  <data name="Settings_Statements_NotYours" xml:space="preserve"><value>Nur der Eigentümer der Verbindung kann das ändern.</value></data>
+  <data name="Settings_Statements_Unavailable" xml:space="preserve"><value>Der Abruf von Kontoauszügen braucht eine Verbindung, die Kontoauszüge anbietet.</value></data>
   <data name="Interval_Monthly" xml:space="preserve"><value>Monatlich</value></data>
   <data name="Interval_Weekly" xml:space="preserve"><value>Wöchentlich</value></data>
   <data name="Interval_Daily" xml:space="preserve"><value>Täglich</value></data>
@@ -104,7 +104,7 @@
     <value>OpenBudget (keine MoneyMoney-Uploads).</value>
   </data>
   <data name="Settings_Switch_LinkFirst" xml:space="preserve">
-    <value>Mit einem Bankzugang verknüpfen, um es auf eine Bankverbindung umzustellen.</value>
+    <value>Mit einer Verbindung verknüpfen, um es umzustellen.</value>
   </data>
   <data name="Settings_Switched_On" xml:space="preserve">
     <value>Am {0} von MoneyMoney umgestellt.</value>

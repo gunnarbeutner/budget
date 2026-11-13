@@ -77,16 +77,16 @@
     <value>optional</value>
   </data>
   <data name="Step1_Heading" xml:space="preserve">
-    <value>Bank-Zugänge hinzufügen</value>
+    <value>Banken und Dienste verbinden</value>
   </data>
   <data name="Step1_Body" xml:space="preserve">
     <value>OpenBudget ruft Salden, Buchungen und Kontoauszüge von deinen Banken ab.</value>
   </data>
   <data name="Step1_Count" xml:space="preserve">
-    <value>{0} Bank-Zugänge eingerichtet.</value>
+    <value>{0} Verbindungen eingerichtet.</value>
   </data>
   <data name="Step1_Count_One" xml:space="preserve">
-    <value>1 Bank-Zugang eingerichtet.</value>
+    <value>1 Verbindung eingerichtet.</value>
   </data>
   <data name="Step2_How1" xml:space="preserve">
     <value>Wähle in MoneyMoney Hilfe › Datenbank im Finder zeigen.</value>
@@ -194,7 +194,7 @@
     <value>Start</value>
   </data>
   <data name="Stepper_2" xml:space="preserve">
-    <value>Bank-Zugänge</value>
+    <value>Verbindungen</value>
   </data>
   <data name="Stepper_3" xml:space="preserve">
     <value>Portfolio Performance</value>
