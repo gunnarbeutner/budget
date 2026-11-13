@@ -47,6 +47,10 @@ jobs:
         # system libraries the runner image doesn't ship with.
         run: pwsh tests/OpenBudget.E2E.Tests/bin/Debug/net11.0/playwright.ps1 install --with-deps chromium
 
+      - name: Allow Chromium's sandbox
+        # Ubuntu's AppArmor blocks the unprivileged user namespaces the server-side login browser's sandbox needs.
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Run E2E tests
         run: dotnet test tests/OpenBudget.E2E.Tests/OpenBudget.E2E.Tests.csproj --no-build --verbosity minimal
 
