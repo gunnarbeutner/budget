@@ -166,4 +166,10 @@
   <data name="Action_Suggest" xml:space="preserve">
     <value>Kategorie vorschlagen</value>
   </data>
+  <data name="Order" xml:space="preserve">
+    <value>Bestellung</value>
+  </data>
+  <data name="Order_ShipmentUnclear" xml:space="preserve">
+    <value>Lieferung unklar</value>
+  </data>
 </root>

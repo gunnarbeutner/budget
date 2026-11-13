@@ -2,6 +2,7 @@
 @using OpenBudget.Services
 @inject IStringLocalizer<TxDetails> L
 @inject ClockService Clock
+@inject OrderEnrichmentService OrderInfo
 
 @* The in-place expansion of a selected transaction: the bank's details as a flowing "Label value" list (empty ones
    skipped), the full purpose, then the note and the actions. Bank fields are plain text (never editable); category,
@@ -62,6 +63,26 @@
     @if (!string.IsNullOrWhiteSpace(Row.Purpose))
     {
         <div class="tx-details-purpose"><b class="text-body">@L["Purpose"]</b> @Row.Purpose</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Row.OrderItems))
+    {
+        <div class="tx-details-purpose" data-testid="tx-details-order">
+            <b class="text-body">@L["Order"]</b>
+            @if (orders != null)
+            {
+                @foreach (var o in orders.Orders)
+                {
+                    <a href="@o.Url" target="_blank" rel="noopener" class="me-1" data-testid="tx-details-order-link">@o.OrderId</a>
+                }
+                <span>: </span>
+            }
+            <span data-testid="tx-details-order-items">@Row.OrderItems</span>
+            @if (orders?.Unclear == true)
+            {
+                <span class="text-body-secondary"> (@L["Order_ShipmentUnclear"])</span>
+            }
+        </div>
     }
 
     <div class="tx-details-actions">
@@ -183,6 +204,16 @@
         // A different row (or the same row after a reload turned it into a part) starts without an open panel.
         if (shownRowId != Row.Id) panel = Panel.None;
         shownRowId = Row.Id;
+    }
+
+    private BookingOrders? orders;
+    private long ordersFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Row.OrderItems) || ordersFor == Row.Id) return;
+        ordersFor = Row.Id;
+        orders = await OrderInfo.GetOrdersAsync(Row.Id);
     }
 
     private void Toggle(Panel p)

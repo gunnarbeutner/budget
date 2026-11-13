@@ -1,0 +1,119 @@
+@using OpenBudget.Services
+@inject OrderEnrichmentService Orders
+@inject IStringLocalizer<OpenBudget.Pages.BankLogins> L
+@inject ClockService Clock
+
+@* An order source's part of its login card (Amazon): each payment method with the account it is booked on, and the
+   charges that found no booking yet. *@
+
+<h6 class="bank-accounts-heading">@L["Orders_Instruments"]</h6>
+@if (instruments == null)
+{
+    <div class="skeleton skeleton-line mb-2" style="width: 40%;"></div>
+}
+else if (instruments.Count == 0)
+{
+    <p class="text-body-secondary small" data-testid="instruments-empty">@L["Orders_NoInstruments"]</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-2 bank-accounts-table">
+            <tbody>
+                @foreach (var i in instruments)
+                {
+                    var instrument = i;
+                    <tr data-instrument="@i.Name" @key="i.Id">
+                        <td>
+                            <strong>@i.Name</strong>
+                            <div class="small text-body-secondary">@L["Orders_Matched", i.Matched, i.Charges]</div>
+                        </td>
+                        <td>
+                            @if (i.IsPoints)
+                            {
+                                <span class="small text-body-secondary" data-testid="instrument-points">@L["Orders_PointsSkipped"]</span>
+                            }
+                            else
+                            {
+                                <select class="form-select form-select-sm w-auto" aria-label="@L["Orders_MapTo", i.Name]" data-testid="instrument-map"
+                                        @onchange="e => MapAsync(instrument, e.Value?.ToString())">
+                                    <option value="" selected="@(i.AccountId == null)">@L["Orders_NotMapped"]</option>
+                                    @foreach (var c in candidates.GetValueOrDefault(i.Id) ?? [])
+                                    {
+                                        <option value="@c.AccountId" selected="@(i.AccountId == c.AccountId)">@c.Name@(c.Suggested && i.AccountId == null ? " ★" : "")</option>
+                                    }
+                                </select>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+@if (openCount > 0)
+{
+    <details class="small" data-testid="open-charges">
+        <summary>@L["Orders_Open", openCount]</summary>
+        <ul class="mb-0 mt-1">
+            @foreach (var c in open)
+            {
+                <li>
+                    @Clock.ToLocal(c.Date).ToString("dd.MM.yyyy") · @Formatting.FormatMoneyDe(c.AmountCents / 100m) · @c.Instrument ·
+                    <a href="@c.OrderUrl" target="_blank" rel="noopener">@c.OrderId</a>
+                    @if (c.Ambiguous)
+                    {
+                        <span class="text-body-secondary"> · @L["Orders_Ambiguous"]</span>
+                    }
+                </li>
+            }
+        </ul>
+    </details>
+}
+@if (error != null)
+{
+    <div class="text-danger small" role="alert">@error</div>
+}
+
+@code {
+    [Parameter, EditorRequired] public int LoginId { get; set; }
+
+    /// <summary>Bumped by the card when the login changed (a sync finished): reloads.</summary>
+    [Parameter] public int Version { get; set; }
+
+    private List<InstrumentView>? instruments;
+    private readonly Dictionary<int, List<InstrumentCandidate>> candidates = new();
+    private List<OpenChargeView> open = [];
+    private int openCount;
+    private string? error;
+    private int loadedVersion = -1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedVersion == Version) return;
+        loadedVersion = Version;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        instruments = await Orders.GetInstrumentsAsync(LoginId);
+        candidates.Clear();
+        foreach (var i in instruments.Where(i => !i.IsPoints)) candidates[i.Id] = await Orders.GetCandidatesAsync(i.Id);
+        (openCount, open) = await Orders.GetOpenChargesAsync(LoginId);
+    }
+
+    private async Task MapAsync(InstrumentView instrument, string? value)
+    {
+        error = null;
+        try
+        {
+            await Orders.MapAsync(instrument.Id, long.TryParse(value, out var id) ? id : null);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or AccessDeniedException)
+        {
+            error = ex.Message;
+        }
+        await LoadAsync();
+    }
+}

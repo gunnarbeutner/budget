@@ -33,6 +33,9 @@ public sealed record BankLoginView(
     public string? FinTsBlz { get; init; }
 
     public bool FinTsBankAllowed { get; init; }
+
+    /// <summary>An order source (Amazon): its accounts are payment methods mapped to existing accounts.</summary>
+    public bool OrderSource { get; init; }
 }
 // StoredExtraCredentials: keys of the extra credential values that are stored (the values themselves never leave the server).
 
@@ -149,6 +152,7 @@ public class BankLoginService
             LastBackgroundSyncAt = l.LastBackgroundSyncAt,
             FinTsBlz = registration?.FinTsBlz,
             FinTsBankAllowed = registration?.FinTsBlz is { } blz && allowedBanks.Contains(blz),
+            OrderSource = registration?.OrderSource == true,
         };
     }
 

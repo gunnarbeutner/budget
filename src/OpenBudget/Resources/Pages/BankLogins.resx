@@ -301,4 +301,31 @@
   <data name="FinTsBanks_Evidence" xml:space="preserve">
     <value>Logged codes</value>
   </data>
+  <data name="Orders_Instruments" xml:space="preserve">
+    <value>Payment methods</value>
+  </data>
+  <data name="Orders_NoInstruments" xml:space="preserve">
+    <value>None yet. Sync to read Amazon's payments.</value>
+  </data>
+  <data name="Orders_Matched" xml:space="preserve">
+    <value>{0} of {1} payments matched</value>
+  </data>
+  <data name="Orders_PointsSkipped" xml:space="preserve">
+    <value>Points and gift cards: skipped</value>
+  </data>
+  <data name="Orders_MapTo" xml:space="preserve">
+    <value>Account for {0}</value>
+  </data>
+  <data name="Orders_NotMapped" xml:space="preserve">
+    <value>Not mapped</value>
+  </data>
+  <data name="Orders_Open" xml:space="preserve">
+    <value>{0} payments without a booking</value>
+  </data>
+  <data name="Orders_Ambiguous" xml:space="preserve">
+    <value>several bookings fit</value>
+  </data>
+  <data name="ConnectorDescription_amazon" xml:space="preserve">
+    <value>Amazon.de orders: adds what you ordered to the matching bookings of your card or bank account, so they can be categorized per item. It creates no accounts or bookings. You sign in on Amazon's own page (captcha and code there); only the session is stored. Map each payment method to the account it is booked on.</value>
+  </data>
 </root>

@@ -301,4 +301,31 @@
   <data name="FinTsBanks_Evidence" xml:space="preserve">
     <value>Protokollierte Codes</value>
   </data>
+  <data name="Orders_Instruments" xml:space="preserve">
+    <value>Zahlungsarten</value>
+  </data>
+  <data name="Orders_NoInstruments" xml:space="preserve">
+    <value>Noch keine. Synchronisiere, um die Amazon-Zahlungen zu lesen.</value>
+  </data>
+  <data name="Orders_Matched" xml:space="preserve">
+    <value>{0} von {1} Zahlungen zugeordnet</value>
+  </data>
+  <data name="Orders_PointsSkipped" xml:space="preserve">
+    <value>Punkte und Gutscheine: übersprungen</value>
+  </data>
+  <data name="Orders_MapTo" xml:space="preserve">
+    <value>Konto für {0}</value>
+  </data>
+  <data name="Orders_NotMapped" xml:space="preserve">
+    <value>Nicht zugeordnet</value>
+  </data>
+  <data name="Orders_Open" xml:space="preserve">
+    <value>{0} Zahlungen ohne Buchung</value>
+  </data>
+  <data name="Orders_Ambiguous" xml:space="preserve">
+    <value>mehrere Buchungen passen</value>
+  </data>
+  <data name="ConnectorDescription_amazon" xml:space="preserve">
+    <value>Amazon.de-Bestellungen: ergänzt die passenden Buchungen deiner Karte oder deines Kontos um die bestellten Artikel, damit du sie pro Artikel kategorisieren kannst. Es legt keine Konten oder Buchungen an. Du meldest dich auf Amazons eigener Seite an (Captcha und Code dort); gespeichert wird nur die Sitzung. Ordne jede Zahlungsart dem Konto zu, auf dem sie gebucht wird.</value>
+  </data>
 </root>

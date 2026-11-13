@@ -190,6 +190,12 @@ else
                     <div class="alert alert-warning py-2">@L["Error_ConnectorMissing", login.ConnectorType]</div>
                 }
 
+                @if (login.OrderSource)
+                {
+                    <OrderSourceSection LoginId="login.Id" Version="loadCount" />
+                }
+                else
+                {
                 <h6 class="bank-accounts-heading">@L["Accounts_Heading"]</h6>
                 @if (accounts.Count == 0)
                 {
@@ -262,6 +268,7 @@ else
                             </tbody>
                         </table>
                     </div>
+                }
                 }
 
             </div>
@@ -443,6 +450,7 @@ else
     private readonly Dictionary<int, List<BackgroundSyncRun>> runsByLogin = new();
     private List<FinTsBankView> finTsBanks = [];
     private bool isAdmin;
+    private int loadCount;
 
     private string newConnector = "";
     private string newName = "";
@@ -503,6 +511,7 @@ else
     private async Task LoadAsync()
     {
         if (!Bank.IsEnabled) return;
+        loadCount++;
         logins = await Bank.GetLoginsAsync();
         statuses = (await Bank.GetStatusesAsync()).ToDictionary(s => s.LoginId);
         accountsByLogin.Clear();
@@ -515,6 +524,7 @@ else
             if (login.BackgroundEnabled || login.FinTsBlz != null) runsByLogin[login.Id] = await Bank.GetRunsAsync(login.Id);
             var accounts = await Bank.GetAccountsAsync(login.Id);
             accountsByLogin[login.Id] = accounts;
+            if (login.OrderSource) continue;
             foreach (var a in accounts.Where(a => a.LinkedAccountId == null && !a.Closed))
                 candidatesByAccount[a.Id] = await Bank.GetLinkCandidatesAsync(a.Id);
         }
