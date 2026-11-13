@@ -44,4 +44,7 @@ public class UserDataState
 
     /// <summary>When the user completed Get started with Done; until then it holds them.</summary>
     public DateTime? GetStartedCompletedAt { get; set; }
+
+    /// <summary>The user allows their bookings to be sent to the AI service for suggestions (off by default).</summary>
+    public bool UseAiSuggestions { get; set; }
 }

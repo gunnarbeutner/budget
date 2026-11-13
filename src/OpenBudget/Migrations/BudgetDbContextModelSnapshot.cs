@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261113084849_BackgroundSyncs";
+        public override string LatestMigrationId => "20261113090733_AssistSuggestions";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -824,6 +824,43 @@ namespace OpenBudget.Migrations
                     b.HasIndex("ProjectId", "SortOrder");
 
                     b.ToTable("category_rules");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.CategorySuggestion", b =>
+                {
+                    b.Property<long>("TransactionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("CategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("Confidence")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Rationale")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TreeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("TransactionId");
+
+                    b.ToTable("category_suggestions");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.CategoryTypeAssignment", b =>
@@ -1892,6 +1929,9 @@ namespace OpenBudget.Migrations
 
                     b.Property<DateTime?>("StructureTakenOverAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("UseAiSuggestions")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("UserId");
 

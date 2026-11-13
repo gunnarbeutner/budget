@@ -73,6 +73,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<CloudFileLink> CloudFileLinks => Set<CloudFileLink>();
     public DbSet<RemovedImportItem> RemovedImportItems => Set<RemovedImportItem>();
     public DbSet<ScheduledPayment> ScheduledPayments => Set<ScheduledPayment>();
+    public DbSet<CategorySuggestion> CategorySuggestions => Set<CategorySuggestion>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

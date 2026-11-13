@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using OpenBudget.Assist;
 using OpenBudget.Auth;
 using OpenBudget.Browser;
 using OpenBudget.Cli;
@@ -60,6 +61,7 @@ builder.Services.AddScoped<ManualTransactionService>();
 builder.Services.AddScoped<SplitService>();
 builder.Services.AddScoped<CategoryRuleService>();
 builder.Services.AddScoped<CategorizationService>();
+builder.Services.AddAssist(builder.Configuration);
 // Per-circuit holder for the browser's timezone (seeded from the tz cookie by App.razor) so all
 // pages render dates/times and "current period" decisions in the user's zone, not the server's.
 builder.Services.AddScoped<ClockService>();
