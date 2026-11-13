@@ -68,14 +68,15 @@
     @if (!string.IsNullOrWhiteSpace(Row.OrderItems))
     {
         <div class="tx-details-purpose" data-testid="tx-details-order">
-            <b class="text-body">@L["Order"]</b>
+            <b class="text-body me-1">@L["Order"]</b>
             @if (orders != null)
             {
-                @foreach (var o in orders.Orders)
+                @for (var i = 0; i < orders.Orders.Count; i++)
                 {
-                    <a href="@o.Url" target="_blank" rel="noopener" class="me-1" data-testid="tx-details-order-link">@o.OrderId</a>
+                    var o = orders.Orders[i];
+                    <a href="@o.Url" target="_blank" rel="noopener" data-testid="tx-details-order-link">@o.OrderId</a>@(i < orders.Orders.Count - 1 ? ", " : "")
                 }
-                <span>: </span>
+                <span class="me-1">:</span>
             }
             <span data-testid="tx-details-order-items">@Row.OrderItems</span>
             @if (orders?.Unclear == true)
