@@ -557,7 +557,7 @@ public sealed class WebLoginSession : IAsyncDisposable
             return true;
         }
         if (!await _browser.IsVisibleAsync(form.FieldSelector) || !await _browser.IsVisibleAsync(form.SubmitSelector))
-            return totp != null && KeepHiddenForSecret();
+            return KeepHiddenForCode();
         _totpIdleSince = null;
 
         string code;
@@ -605,11 +605,11 @@ public sealed class WebLoginSession : IAsyncDisposable
     }
 
     /// <summary>
-    /// With a stored secret the app enters the code itself, so the page stays hidden (the spec's waiting script is not
-    /// consulted) while the code form is not there yet; only after <see cref="WebLoginOptions.StuckAfter"/> without a form
-    /// to act on does the code page count as needing the user.
+    /// With a stored secret or a code prompt handler the app enters the code itself, so the page stays hidden (the spec's
+    /// waiting script is not consulted) while the code form is not there yet; only after
+    /// <see cref="WebLoginOptions.StuckAfter"/> without a form to act on does the code page count as needing the user.
     /// </summary>
-    private bool KeepHiddenForSecret()
+    private bool KeepHiddenForCode()
     {
         _totpIdleSince ??= DateTime.UtcNow;
         return DateTime.UtcNow - _totpIdleSince < _options.StuckAfter;
@@ -640,19 +640,20 @@ public sealed class WebLoginSession : IAsyncDisposable
 
     private string? _lastWaitingReason;
 
-    // since when a "needs the user" result of the waiting script has been held back for the stored secret
+    // since when a "needs the user" result of the waiting script has been held back for the code form
     private DateTime? _deferredSince;
     private bool _deferLogged;
 
     /// <summary>
-    /// With a stored secret the code form takes precedence over the waiting script: the script runs in the page and can
+    /// When the app can answer the code form (a stored secret or a code prompt handler), it takes precedence over the waiting script: the script runs in the page and can
     /// already see the code page while the URL this tick started with is still the sign-in page, and the code form may
     /// load only later. So a "needs the user" result is held back for up to <see cref="WebLoginOptions.StuckAfter"/>
-    /// (on the code page: without a form to act on); after that, or once the code is rejected, the page is shown.
+    /// (on the code page: without a form to act on); after that, or once the code path failed, the page is shown.
     /// </summary>
-    private bool DeferForSecret()
+    private bool DeferForCode()
     {
-        if (_codePromptDisabled || _totpRejected || _spec.CodePrompt is not { Totp: not null } form) return false;
+        if (_codePromptDisabled || _spec.CodePrompt is not { } form) return false;
+        if (AskForCode == null && (_totpRejected || form.Totp == null)) return false;
         if (IsCodePage(_browser.Url, form)) return _totpIdleSince is not { } idle || DateTime.UtcNow - idle < _options.StuckAfter;
         _deferredSince ??= DateTime.UtcNow;
         return DateTime.UtcNow - _deferredSince < _options.StuckAfter;
@@ -693,12 +694,12 @@ public sealed class WebLoginSession : IAsyncDisposable
             _logger.LogWarning("Web login: ended by the page's state on {Path}: {Reason}", SafePath(url), message);
             return WebLoginResult.Fail(message.Length > 0 ? message : "The sign-in did not complete.");
         }
-        if (Mode != WebLoginMode.Interactive && DeferForSecret())
+        if (Mode != WebLoginMode.Interactive && DeferForCode())
         {
             if (!_deferLogged)
             {
                 _deferLogged = true;
-                _logger.LogInformation("Web login: the page needs the user ({Reason}) on {Path}, but the stored TOTP secret may answer it; keeping it hidden.",
+                _logger.LogInformation("Web login: the page needs the user ({Reason}) on {Path}, but the app may answer its code form; keeping it hidden.",
                     r.Reason, SafePath(url));
             }
             return null;

@@ -130,7 +130,10 @@ public sealed class RealBrowserPayPalTests
             var fields = _splitMfa
                 ? string.Concat(Enumerable.Range(0, 6).Select(i => $"<input name=code{i} inputmode=numeric maxlength=1 oninput='this.nextElementSibling?.focus()'>"))
                 : "<input name=code autocomplete=one-time-code maxlength=6>";
-            await HtmlAsync(ctx, "<html><body><form method=post>" + fields + "<button type=submit>Verify</button></form></body></html>");
+            // the form is added by the page's script a while after the page loaded, as on a slow machine
+            var codeForm = "<form method=post>" + fields + "<button type=submit>Verify</button></form>";
+            await HtmlAsync(ctx, "<html><body><script>setTimeout(() => document.body.insertAdjacentHTML('beforeend', "
+                + JsonSerializer.Serialize(codeForm) + "), 1500)</script></body></html>");
             return;
         }
         if (!SignedIn(request))
