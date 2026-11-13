@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using NUnit.Framework;
+using OpenBudget.Connectors;
+using OpenBudget.Connectors.Sync;
 using OpenBudget.Models;
 using OpenBudget.Services;
 
@@ -71,6 +73,41 @@ public sealed class SplitTests : EndToEndTestBase
         rows = await RowsAsync();
         Assert.That(rows.Any(t => t.SplitParentId == 101), Is.False);
         Assert.That(rows.Single(t => t.Id == 101).Splitted, Is.EqualTo(SplitState.Normal));
+    }
+
+    [Test]
+    public async Task A_split_pending_booking_keeps_its_split_when_booked_at_another_amount()
+    {
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        var day = new DateOnly(2026, 3, 20);
+        async Task SyncAsync(RemoteTransaction row)
+        {
+            await using var db = await factory.CreateDbContextAsync();
+            await new BankTransactionStore().ApplyAsync(db, EditingSeed.BankAccountId, new AccountRefresh(null, [row], []), day, DateTime.UtcNow, CancellationToken.None);
+        }
+        await SyncAsync(new(-40m, "EUR", day, null, "Example Hardware", "Card payment", false));
+
+        await GoToAsync(GiroUrl);
+        await Row("−40,00").ClickAsync();
+        await Page.GetByTestId("tx-details-split").ClickAsync();
+        var editor = Page.GetByTestId("split-editor");
+        await editor.GetByTestId("split-amount").Nth(0).FillAsync("32");
+        await editor.GetByTestId("split-category").Nth(0).SelectOptionAsync("202");
+        await editor.GetByTestId("split-assign-rest").Nth(1).ClickAsync();
+        await editor.GetByTestId("split-save").ClickAsync();
+        await Expect(Row("−32,00")).ToContainTextAsync("Split");
+
+        // The bank books it a day later at 44.00.
+        await SyncAsync(new(-44m, "EUR", day.AddDays(1), null, "Example Hardware", "Card payment", true, BankTransactionId: "E2E-1"));
+        await GoToAsync(GiroUrl);
+        await Expect(Row("−35,20")).ToContainTextAsync("Split changed");
+        await Expect(Row("−8,80")).ToBeVisibleAsync();
+        var rows = await RowsAsync();
+        var parent = rows.Single(t => t.ExternalId == "id:E2E-1");
+        Assert.That(parent.SplitCheck, Is.True);
+        var parts = rows.Where(t => t.SplitParentId == parent.Id).OrderBy(t => t.Id).ToList();
+        Assert.That(parts.Select(p => p.Amount), Is.EqualTo(new long[] { -35_20, -8_80 }));
+        Assert.That(parts[0].CategoryId, Is.EqualTo(202));
     }
 
     [Test]

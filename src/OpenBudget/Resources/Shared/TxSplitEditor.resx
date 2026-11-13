@@ -103,9 +103,6 @@
   <data name="Error_Denied" xml:space="preserve">
     <value>You may not change this booking.</value>
   </data>
-  <data name="Error_Pending" xml:space="preserve">
-    <value>Pending bookings cannot be split yet.</value>
-  </data>
   <data name="Error_Invalid" xml:space="preserve">
     <value>The parts must add up to the booking, and each part needs an amount.</value>
   </data>

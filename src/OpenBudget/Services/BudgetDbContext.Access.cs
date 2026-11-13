@@ -55,6 +55,8 @@ public partial class BudgetDbContext
             || (t.AccountId.HasValue && ScopeSharedAccountIds.Contains(t.AccountId.Value)));
         modelBuilder.Entity<Holding>().HasQueryFilter(h =>
             ScopeUnrestricted || h.OwnerUserId == ScopeUserId || ScopeSharedAccountIds.Contains(h.AccountId));
+        modelBuilder.Entity<CancelledReservation>().HasQueryFilter(r =>
+            ScopeUnrestricted || r.OwnerUserId == ScopeUserId || ScopeSharedAccountIds.Contains(r.AccountId));
         modelBuilder.Entity<ScheduledPayment>().HasQueryFilter(p =>
             ScopeUnrestricted || p.OwnerUserId == ScopeUserId || ScopeSharedAccountIds.Contains(p.AccountId));
         modelBuilder.Entity<PortfolioChartPoint>().HasQueryFilter(p =>
@@ -199,6 +201,11 @@ public partial class BudgetDbContext
                     break;
                 case BankLoginAccount remote:
                     loginAccountLogins.Add(remote.BankLoginId);
+                    break;
+                case CancelledReservation reservation:
+                    // Dismissing is reviewing: whoever may edit the account's bookings.
+                    if (entry.State != EntityState.Deleted || !scope.CanEditTransactionsOf(reservation.OwnerUserId, reservation.AccountId))
+                        throw new AccessDeniedException("Not allowed to dismiss this.");
                     break;
                 case FinTsBankSetting:
                     if (!scope.IsAdmin) throw new AccessDeniedException("Only an admin can change the background setting of a bank.");

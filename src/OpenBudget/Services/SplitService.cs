@@ -40,7 +40,6 @@ public sealed class SplitException : InvalidOperationException
 public enum SplitProblem
 {
     NotFound,
-    Pending,
     IsSplit,
     Invalid,
 }
@@ -54,8 +53,8 @@ public enum SplitProblem
 ///
 /// Everything goes through the user-scoped context: only rows the user may edit are touched (see
 /// <see cref="TransactionEditRules"/>), so MoneyMoney-owned accounts cannot be split (their next upload would replace the
-/// rows and lose the parts). Pending bookings are rebuilt on every sync, so they are
-/// excluded too.
+/// rows and lose the parts). Pending bookings can be split too: the sync moves the split to the booking that replaces
+/// them (see <see cref="PendingCarryOver"/>).
 /// </summary>
 public sealed class SplitService
 {
@@ -140,7 +139,6 @@ public sealed class SplitService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var parent = await LoadParentAsync(db, id, ct);
         await RequireEditableAsync(db, [parent], ct);
-        if (!parent.Booked) throw new SplitException(SplitProblem.Pending);
         if (parent.Splitted is SplitState.Remainder) throw new SplitException(SplitProblem.Invalid);
         var total = parent.SplitOriginalAmount ?? parent.Amount;
         if (Validate(total, parts) != SplitError.None) throw new SplitException(SplitProblem.Invalid);
@@ -196,6 +194,7 @@ public sealed class SplitService
                 parent.SplitOriginalAmount = parent.Amount;
             }
             parent.IsNew = false;
+            parent.SplitCheck = false;
             await db.SaveChangesAsync(ct);
         }
         finally
@@ -216,6 +215,7 @@ public sealed class SplitService
         db.Transactions.RemoveRange(parts);
         parent.Splitted = SplitState.Normal;
         parent.SplitOriginalAmount = null;
+        parent.SplitCheck = false;
         await db.SaveChangesAsync(ct);
         Publish(parent.OwnerUserId);
     }

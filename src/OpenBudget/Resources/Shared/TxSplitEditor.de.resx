@@ -103,9 +103,6 @@
   <data name="Error_Denied" xml:space="preserve">
     <value>Du darfst diese Buchung nicht ändern.</value>
   </data>
-  <data name="Error_Pending" xml:space="preserve">
-    <value>Vorgemerkte Buchungen können noch nicht aufgeteilt werden.</value>
-  </data>
   <data name="Error_Invalid" xml:space="preserve">
     <value>Die Teile müssen die Buchung ergeben, und jeder Teil braucht einen Betrag.</value>
   </data>

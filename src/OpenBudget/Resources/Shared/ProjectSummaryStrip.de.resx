@@ -106,6 +106,12 @@
   <data name="Review_Uncategorized" xml:space="preserve">
     <value>{0} ohne Kategorie</value>
   </data>
+  <data name="Review_Cancelled" xml:space="preserve">
+    <value>Vormerkung entfallen: {0} {1}, deine Kategorie/dein Split wurde nicht übernommen</value>
+  </data>
+  <data name="Review_Dismiss" xml:space="preserve">
+    <value>Ausblenden</value>
+  </data>
   <data name="Freshness_RefreshErrors_One" xml:space="preserve">
     <value>{0} Konto mit Aktualisierungsfehlern:</value>
   </data>

@@ -3,6 +3,7 @@
 @inject BudgetService BudgetService
 @inject FreshnessService FreshnessService
 @inject ClockService Clock
+@inject CancelledReservationService CancelledReservations
 @inject IStringLocalizer<ProjectSummaryStrip> L
 
 @* The four tiles above Transactions when it shows the whole project: spent of budget, income, the worst category
@@ -81,7 +82,7 @@
         <div class="summary-tile" data-testid="tile-review">
             <span class="summary-label">@L["Review_Label"]</span>
             <span class="summary-value">
-                @if (NewCount == 0 && UncategorizedCount == 0)
+                @if (NewCount == 0 && UncategorizedCount == 0 && cancelled.Count == 0)
                 {
                     <span class="status-success">@L["Review_None"]</span>
                 }
@@ -98,6 +99,16 @@
                     @PickLink("uncategorized", "?sel=uncategorized", L["Review_Uncategorized", UncategorizedCount], "summary-link")
                 }
             </span>
+            @foreach (var c in cancelled)
+            {
+                <span class="summary-note summary-warning" data-testid="summary-cancelled">
+                    @L["Review_Cancelled", c.Name ?? "", Formatting.FormatMoneyDe(c.Amount, c.Currency ?? "EUR")]
+                    <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" data-testid="summary-cancelled-dismiss"
+                            title="@L["Review_Dismiss"]" aria-label="@L["Review_Dismiss"]" @onclick="() => DismissAsync(c.Id)">
+                        <i class="bi bi-x-lg" aria-hidden="true"></i>
+                    </button>
+                </span>
+            }
             @foreach (var w in warnings)
             {
                 <a class="summary-note summary-warning text-truncate" href="/banklogins" title="@w" data-testid="summary-warning">
@@ -138,6 +149,7 @@
 
     private ProjectSpendingSummary? summary;
     private List<string> warnings = [];
+    private List<CancelledReservationView> cancelled = [];
     private (int, int, int, int, int)? loadedKey;
 
     protected override async Task OnParametersSetAsync()
@@ -150,7 +162,15 @@
         // Accounts whose refresh failed (fixed under Bank logins); the tile counts uncategorized bookings itself.
         var freshness = (await FreshnessService.GetDataFreshnessAsync()).ToDictionary(f => f.OwnerUserId);
         warnings = ProjectStatus.BuildAlert(s, freshness, null, L) is { } alert ? alert.Lines : [];
+        cancelled = await CancelledReservations.ListAsync(ProjectId);
         summary = s;
+    }
+
+    private async Task DismissAsync(int id)
+    {
+        try { await CancelledReservations.DismissAsync(id); }
+        catch (AccessDeniedException) { return; }
+        cancelled = cancelled.Where(c => c.Id != id).ToList();
     }
 
     private RenderFragment PickLink(string key, string query, string text, string css) => __builder =>

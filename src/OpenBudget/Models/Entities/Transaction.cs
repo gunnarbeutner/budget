@@ -166,6 +166,13 @@ public class Transaction
     [Column("return_reason")]
     public string? ReturnReason { get; set; }
 
+    /// <summary>
+    /// Set on a split parent and its parts when a bank sync carried the split over from a pending booking whose amount
+    /// changed, so the parts were scaled; cleared when the user saves or removes the split.
+    /// </summary>
+    [Column("split_check")]
+    public bool SplitCheck { get; set; }
+
     [NotMapped]
     public DateTime Date => DateTimeOffset.FromUnixTimeSeconds(Timestamp).DateTime;
 

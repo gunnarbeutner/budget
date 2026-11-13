@@ -174,7 +174,7 @@ public sealed class SplitTests
     }
 
     [Fact]
-    public async Task Splits_that_dont_add_up_or_hit_moneymoney_or_pending_rows_are_refused()
+    public async Task Splits_that_dont_add_up_or_hit_moneymoney_rows_are_refused_and_pending_rows_can_be_split()
     {
         await using var t = await WorldAsync();
         var svc = For(t, AccessWorld.Alice);
@@ -188,9 +188,9 @@ public sealed class SplitTests
             (await db.Transactions.SingleAsync(x => x.Id == Tx1)).Booked = false;
             await db.SaveChangesAsync();
         }
-        var ex = await Assert.ThrowsAsync<SplitException>(() => svc.SplitAsync(Tx1, SixtyForty));
-        Assert.Equal(SplitProblem.Pending, ex.Problem);
-        Assert.Equal(100m, await SpentAsync(t));
+        await svc.SplitAsync(Tx1, SixtyForty);
+        var info = await svc.GetSplitAsync(Tx1);
+        Assert.Equal(2, info!.Parts.Count);
     }
 
     [Fact]

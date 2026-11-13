@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261113090733_AssistSuggestions";
+        public override string LatestMigrationId => "20261113102614_PendingEditsCarryOver";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -696,6 +696,41 @@ namespace OpenBudget.Migrations
                         .IsUnique();
 
                     b.ToTable("budget_contribution_splits");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.CancelledReservation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("AccountId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.ToTable("cancelled_reservations");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Category", b =>
@@ -1862,6 +1897,12 @@ namespace OpenBudget.Migrations
                     b.Property<int?>("RuleId")
                         .HasColumnType("INTEGER")
                         .HasColumnName("rule_id");
+
+                    b.Property<bool>("SplitCheck")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false)
+                        .HasColumnName("split_check");
 
                     b.Property<long?>("SplitOriginalAmount")
                         .HasColumnType("INTEGER")

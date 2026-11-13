@@ -59,6 +59,7 @@ builder.Services.AddScoped<StructureService>();
 builder.Services.AddScoped<TransactionEditService>();
 builder.Services.AddScoped<ManualTransactionService>();
 builder.Services.AddScoped<SplitService>();
+builder.Services.AddScoped<CancelledReservationService>();
 builder.Services.AddScoped<CategoryRuleService>();
 builder.Services.AddScoped<CategorizationService>();
 builder.Services.AddAssist(builder.Configuration);

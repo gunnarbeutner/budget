@@ -116,6 +116,9 @@ public class TransactionRow
     /// <summary>True while the booking is only reserved ("vorgemerkt") and not yet booked.</summary>
     public bool IsPending { get; init; }
 
+    /// <summary>A split carried over from a pending booking whose amount changed; see <see cref="Transaction.SplitCheck"/>.</summary>
+    public bool SplitCheck { get; init; }
+
     public string OwnerUserId { get; init; } = string.Empty;
 
     /// <summary>OpenBudget's own note (MoneyMoney's comment for MoneyMoney-owned rows).</summary>

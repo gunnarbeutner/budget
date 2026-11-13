@@ -136,9 +136,6 @@
   <data name="Action_EditSplit" xml:space="preserve">
     <value>Edit split</value>
   </data>
-  <data name="Pending_NotYet" xml:space="preserve">
-    <value>Available once the booking is booked</value>
-  </data>
   <data name="Error_Denied" xml:space="preserve">
     <value>You may not change this booking.</value>
   </data>

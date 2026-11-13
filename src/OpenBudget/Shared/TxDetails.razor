@@ -78,8 +78,7 @@
         }
         @if (Row.CanEdit && PickerData != null && !Row.IsSplitRemainder)
         {
-            <button type="button" class="ob-btn @(panel == Panel.Split ? "active" : "")" data-testid="tx-details-split"
-                    disabled="@Row.IsPending" title="@(Row.IsPending ? L["Pending_NotYet"].Value : null)" @onclick="() => Toggle(Panel.Split)">
+            <button type="button" class="ob-btn @(panel == Panel.Split ? "active" : "")" data-testid="tx-details-split" @onclick="() => Toggle(Panel.Split)">
                 <i class="bi bi-scissors" aria-hidden="true"></i> @(Row.IsSplitChild ? L["Action_EditSplit"] : L["Action_Split"])
             </button>
         }

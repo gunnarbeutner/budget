@@ -152,9 +152,9 @@
         {
             error = L["Error_Denied"];
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
-            error = ex is SplitException { Problem: SplitProblem.Pending } ? L["Error_Pending"] : L["Error_Invalid"];
+            error = L["Error_Invalid"];
         }
         finally
         {

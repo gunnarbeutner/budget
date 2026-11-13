@@ -21,7 +21,9 @@ public sealed record ApplyPreview(int Adopted, int Inserted, int AlreadyKnown, i
 /// <summary>
 /// Writes what a connector reported into an account: deduplicated, so a sync can be repeated at will.
 ///
-/// Rules: pending rows are deleted and re-created on every sync (only booked rows stay). A booked
+/// Rules: pending rows are deleted and re-created on every sync (only booked rows stay); what the user set on a pending
+/// row moves to the new row that is the same booking (see <see cref="PendingCarryOver"/>), and an edited reservation the
+/// bank no longer reports becomes a <see cref="CancelledReservation"/>. A booked
 /// booking is recognised by its bank transaction id; without one, by a stable hash of
 /// date + amount + name + purpose plus an occurrence counter, so identical same-day bookings are kept
 /// as separate rows (counts are matched, never collapsed). Rows that predate the connector (MoneyMoney
@@ -92,7 +94,10 @@ public sealed class BankTransactionStore
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
-        // Pending rows are only ever a snapshot: drop them all, re-add what the bank reports now.
+        // Pending rows are only ever a snapshot: drop them all, re-add what the bank reports now. The user's edits of
+        // them are kept aside and moved to the new rows below.
+        var pendingEdits = PendingCarryOver.Snapshot(await db.Transactions.AsNoTracking()
+            .Where(t => t.AccountId == accountId && !t.Booked).ToListAsync(ct));
         await db.Transactions.Where(t => t.AccountId == accountId && !t.Booked).ExecuteDeleteAsync(ct);
 
         var lowerBound = LowerBound(since);
@@ -138,8 +143,11 @@ public sealed class BankTransactionStore
             }
         }
 
-        // Categorisation rules of the account's projects categorise what arrived (new rows have no category yet;
-        // adopted rows keep theirs).
+        if (pendingEdits.Count > 0)
+            CarryOverPendingEdits(db, account, pendingEdits, added, () => ++nextId, nowUtc);
+
+        // Categorisation rules of the account's projects categorise what arrived (new rows have no category yet, or
+        // one the user chose on the pending booking; adopted rows keep theirs).
         await CategoryRuleEngine.ApplyToNewAsync(db, accountId, added, ct);
 
         if (refresh.Positions.Count > 0 || account.Type == 7)
@@ -149,10 +157,36 @@ public sealed class BankTransactionStore
             account.Balances = $"11:{balance.ToString("F6", CultureInfo.InvariantCulture)},3:{account.Currency ?? "EUR"},";
         account.RefreshTimestamp = new DateTimeOffset(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc)).ToUnixTimeSeconds();
         account.Error = null;
+        var expired = nowUtc - CancelledReservation.Lifetime;
+        await db.CancelledReservations.Where(r => r.AccountId == accountId && r.CreatedAt < expired).ExecuteDeleteAsync(ct);
 
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return new ApplyResult(inserted, adopted, pending, known);
+    }
+
+    private static void CarryOverPendingEdits(
+        BudgetDbContext db, Account account, List<PendingEdit> edits, List<Transaction> added, Func<long> nextId, DateTime nowUtc)
+    {
+        var candidates = added.Select(t => new CarryCandidate(t.Amount, t.Timestamp, t.Name, t.BankReference, t.EndToEndReference)).ToList();
+        var match = PendingCarryOver.Match(edits, candidates);
+        for (var i = 0; i < edits.Count; i++)
+        {
+            if (match[i] is { } c)
+            {
+                db.Transactions.AddRange(PendingCarryOver.Apply(edits[i], added[c], nextId));
+                continue;
+            }
+            db.CancelledReservations.Add(new CancelledReservation
+            {
+                OwnerUserId = account.OwnerUserId,
+                AccountId = account.Id,
+                Name = edits[i].Name is { Length: > 200 } n ? n[..200] : edits[i].Name,
+                Amount = edits[i].Cents,
+                Currency = edits[i].Currency,
+                CreatedAt = nowUtc,
+            });
+        }
     }
 
     /// <summary>One bank row and what happens to it: stored before (<see cref="Known"/>), adopts a local row, or is new.</summary>

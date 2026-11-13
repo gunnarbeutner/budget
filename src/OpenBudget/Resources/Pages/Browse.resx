@@ -87,6 +87,8 @@
   <data name="PageTitle_WithProject" xml:space="preserve"><value>Browse — {0}</value></data>
   <data name="Tx_SplitChild" xml:space="preserve"><value>Split</value></data>
   <data name="Tx_SplitChildTitle" xml:space="preserve"><value>One leg of a split transaction.</value></data>
+  <data name="Tx_SplitCheck" xml:space="preserve"><value>Split changed – check</value></data>
+  <data name="Tx_SplitCheckTitle" xml:space="preserve"><value>The booked amount differs from the pending one; the split parts were scaled to it. Saving or removing the split clears this.</value></data>
   <data name="Tx_Pending" xml:space="preserve"><value>Pending</value></data>
   <data name="Tx_PendingTitle" xml:space="preserve"><value>Booking is still pending (not yet booked by the bank).</value></data>
   <data name="Tx_SplitRemainder" xml:space="preserve"><value>Split remainder</value></data>

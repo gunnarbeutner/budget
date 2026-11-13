@@ -71,7 +71,8 @@ public class TransactionQueryService
                 t.TransactionCode,
                 t.Primanota,
                 t.ReturnReason,
-                t.SplitParentId
+                t.SplitParentId,
+                t.SplitCheck
             })
             .ToListAsync(ct);
 
@@ -126,7 +127,8 @@ public class TransactionQueryService
             IsSplitChild = r.Splitted == SplitState.Child,
             SplitParentId = r.Splitted == SplitState.Child ? r.SplitParentId : null,
             IsSplitRemainder = r.Splitted == SplitState.Remainder,
-            IsPending = !r.Booked
+            IsPending = !r.Booked,
+            SplitCheck = r.SplitCheck
         }).ToList();
 
         return new TransactionPage

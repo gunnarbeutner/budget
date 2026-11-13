@@ -33,6 +33,7 @@ public static class TransactionEditRules
         // Splits (SplitService keeps them consistent).
         nameof(Transaction.Splitted),
         nameof(Transaction.SplitOriginalAmount),
+        nameof(Transaction.SplitCheck),
     };
 
     /// <summary>

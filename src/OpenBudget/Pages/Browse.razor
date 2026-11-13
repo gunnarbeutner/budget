@@ -489,6 +489,10 @@
                                             {
                                                 <span class="tx-flag" title="@L["Tx_SplitChildTitle"]">@L["Tx_SplitChild"]</span>
                                             }
+                                            @if (row.SplitCheck)
+                                            {
+                                                <span class="tx-flag" data-testid="tx-split-check" title="@L["Tx_SplitCheckTitle"]">@L["Tx_SplitCheck"]</span>
+                                            }
                                         </div>
                                         @{ var purpose = PurposeText.Clean(row.Purpose); }
                                         @if (!string.IsNullOrEmpty(purpose) || (showAccountColumn && !string.IsNullOrEmpty(row.AccountName)))

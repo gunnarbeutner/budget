@@ -74,6 +74,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<RemovedImportItem> RemovedImportItems => Set<RemovedImportItem>();
     public DbSet<ScheduledPayment> ScheduledPayments => Set<ScheduledPayment>();
     public DbSet<CategorySuggestion> CategorySuggestions => Set<CategorySuggestion>();
+    public DbSet<CancelledReservation> CancelledReservations => Set<CancelledReservation>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -185,6 +186,8 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         // Raw-SQL inserts (the MoneyMoney bulk import) rely on database-side defaults for these.
         modelBuilder.Entity<Transaction>().Property(t => t.Checked).HasDefaultValue(false);
         modelBuilder.Entity<Transaction>().Property(t => t.IsNew).HasDefaultValue(false);
+        modelBuilder.Entity<Transaction>().Property(t => t.SplitCheck).HasDefaultValue(false);
+        modelBuilder.Entity<CancelledReservation>().HasIndex(r => r.AccountId);
         modelBuilder.Entity<Account>().Property(a => a.InitialBalance).HasDefaultValue(0L);
 
         modelBuilder.Entity<Account>()
