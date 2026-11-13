@@ -166,4 +166,7 @@
   <data name="Modal_RepredictHint" xml:space="preserve">
     <value>Dies überschreibt deine Eingaben. Speichern ist zum Rückgängigmachen nicht nötig — navigiere einfach weg, ohne zu speichern.</value>
   </data>
+  <data name="Button_Suggest" xml:space="preserve">
+    <value>Budget vorschlagen</value>
+  </data>
 </root>

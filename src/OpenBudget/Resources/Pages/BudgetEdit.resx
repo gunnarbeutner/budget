@@ -166,4 +166,7 @@
   <data name="Modal_RepredictHint" xml:space="preserve">
     <value>This overwrites what you've typed. Save isn't required to undo — just navigate away without saving.</value>
   </data>
+  <data name="Button_Suggest" xml:space="preserve">
+    <value>Suggest budget</value>
+  </data>
 </root>

@@ -93,6 +93,17 @@ public sealed class BudgetBaselineMathTests
     }
 
     [Fact]
+    public void An_edited_year_total_scales_the_months_and_keeps_their_shape()
+    {
+        decimal[] months = [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 700];
+        var scaled = BudgetBaselineMath.ScaleTo(months, 900);
+        Assert.Equal(900m, scaled.Sum());
+        Assert.Equal(50m, scaled[0]);
+        Assert.Equal(350m, scaled[11]);
+        Assert.Equal(1000m, BudgetBaselineMath.ScaleTo(new decimal[12], 1000).Sum());
+    }
+
+    [Fact]
     public void No_bookings_no_budget()
     {
         var result = BudgetBaselineMath.Compute([], [], 2026, AsOf);

@@ -87,6 +87,9 @@
                 <button class="btn btn-sm btn-outline-primary" @onclick="ShowAddTrackedDialog">@L["Picker_AddTrackedItem"]</button>
             }
             <button class="btn btn-sm btn-outline-secondary" @onclick="ShowRepredictDialog" disabled="@(editingEntries.Count == 0)">@L["Button_Repredict"]</button>
+            <button class="btn btn-sm btn-outline-primary" data-testid="budget-suggest" @onclick="ShowSuggestDialog" disabled="@(editingEntries.Count == 0)">
+                <i class="bi bi-lightbulb" aria-hidden="true"></i> @L["Button_Suggest"]
+            </button>
         </div>
     </div>
     <div class="card-body p-0">
@@ -274,6 +277,9 @@
         <button class="btn btn-primary" @onclick="Repredict">@L["Button_Repredict"]</button>
     </Footer>
 </Modal>
+
+<BudgetSuggestDialog Show="showSuggestDialog" ProjectId="budget.ProjectId" Year="budget.Year" Rows="SuggestRows()"
+                     Current="editingEntries" OnClose="() => showSuggestDialog = false" OnApply="ApplySuggestions" />
 
 <Modal Show="@showAddTrackedDialog" Title="@L["Picker_AddTrackedItem"]" SizeClass="modal-lg" OnClose="@HideAddTrackedDialog">
     <ChildContent>
@@ -718,6 +724,27 @@
     }
 
     private void ShowRepredictDialog() => showRepredictDialog = true;
+
+    private bool showSuggestDialog;
+    private List<OpenBudget.Assist.BudgetSuggestionInput>? suggestRows;
+
+    private void ShowSuggestDialog()
+    {
+        suggestRows = editingEntries.Keys.Where(k => !IsAutoSummed(k) && !IsVirtual(k))
+            .Select(k => new OpenBudget.Assist.BudgetSuggestionInput(k, categoryFullPaths.GetValueOrDefault(k) ?? categoryNames.GetValueOrDefault(k, ""), incomeKeys.Contains(k)))
+            .ToList();
+        showSuggestDialog = true;
+    }
+
+    private List<OpenBudget.Assist.BudgetSuggestionInput> SuggestRows() => suggestRows ?? [];
+
+    /// <summary>Puts the accepted suggestions into the editor; saving stays with the user.</summary>
+    private void ApplySuggestions(Dictionary<(long Id, CategoryItemType ItemType), decimal[]> months)
+    {
+        foreach (var (key, values) in months) editingEntries[key] = values;
+        showSuggestDialog = false;
+        OnMonthsChanged();
+    }
     private void HideRepredictDialog() => showRepredictDialog = false;
 
     private async Task Repredict()

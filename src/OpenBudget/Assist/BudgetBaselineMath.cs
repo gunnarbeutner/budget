@@ -17,7 +17,7 @@ public sealed record BudgetBaseline(
 
 /// <summary>
 /// Statistics behind "Suggest budget": per category over the last 24–36 months, single bookings far off the usual
-/// (robust z-score over 3.5) are left out as outliers; payments repeating every 1, 3, 6 or 12 months from the same payee
+/// (robust z-score over 3.5 and more than five times the usual booking) are left out as outliers; payments repeating every 1, 3, 6 or 12 months from the same payee
 /// (amounts within ±10 %) or known standing orders are placed into the months they fall in; the rest is the median month,
 /// moved by a capped trend and a month-of-year seasonality shrunk towards none.
 /// </summary>
@@ -40,9 +40,9 @@ public static class BudgetBaselineMath
         return Median(values.Select(v => Math.Abs(v - m)).ToList());
     }
 
-    /// <summary>0.6745 (x − median) / MAD; 0 when MAD is 0.</summary>
+    /// <summary>0.6745 (x − median) / MAD. With a MAD of 0 (most values equal) any other value is infinitely far off.</summary>
     public static double RobustZ(decimal x, decimal median, decimal mad) =>
-        mad == 0 ? 0 : 0.6745 * (double)((x - median) / mad);
+        mad == 0 ? (x == median ? 0 : Math.Sign(x - median) * double.PositiveInfinity) : 0.6745 * (double)((x - median) / mad);
 
     private static int MonthIndex(DateOnly d) => (d.Year * 12) + d.Month - 1;
 
@@ -106,7 +106,7 @@ public static class BudgetBaselineMath
         var medSize = Median(sizes);
         var madSize = Mad(sizes);
         var outliers = bookings
-            .Where(b => !recurringIds.Contains(b.Id) && RobustZ(b.Amount, medSize, madSize) > OutlierZ && b.Amount > 3 * Math.Max(medSize, 1))
+            .Where(b => !recurringIds.Contains(b.Id) && RobustZ(b.Amount, medSize, madSize) > OutlierZ && b.Amount > 5 * Math.Max(medSize, 1))
             .ToList();
         var outlierIds = outliers.Select(o => o.Id).ToHashSet();
 
@@ -136,6 +136,22 @@ public static class BudgetBaselineMath
             : trend != 0 && Math.Abs(trend) >= 0.1m ? "trend"
             : "median";
         return new BudgetBaseline(monthly, basis, outliers, recurring, months, median, mad, trend);
+    }
+
+    /// <summary>
+    /// The months scaled to a new year total (whole currency units, the rounding remainder in the last non-zero month);
+    /// spread evenly when all months are zero.
+    /// </summary>
+    public static decimal[] ScaleTo(IReadOnlyList<decimal> months, decimal total)
+    {
+        var sum = months.Sum();
+        if (sum == total) return months.ToArray();
+        var result = sum == 0
+            ? Enumerable.Repeat(Math.Floor(total / 12), 12).ToArray()
+            : months.Select(m => Math.Round(m * total / sum, 0, MidpointRounding.AwayFromZero)).ToArray();
+        var last = Array.FindLastIndex(result, m => m != 0);
+        result[last < 0 ? 11 : last] += total - result.Sum();
+        return result;
     }
 
     /// <summary>The month indexes (0–11) of <paramref name="year"/> a periodic payment falls in.</summary>

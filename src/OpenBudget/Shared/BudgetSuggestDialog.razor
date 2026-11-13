@@ -1,0 +1,147 @@
+@using OpenBudget.Assist
+@using OpenBudget.Services
+@inject BudgetSuggestionService Suggestions
+@inject AssistSettingsService AssistSettings
+@inject IStringLocalizer<BudgetSuggestDialog> L
+
+@* "Suggest budget": per row the current amounts, the statistical baseline and the suggestion (editable year total),
+   with how it was computed and which unusual bookings were left out. Accepted rows go into the editor; nothing is
+   saved until the budget is saved. *@
+
+<Modal Show="Show" Title="@L["Title"]" SizeClass="modal-xl" OnClose="() => OnClose.InvokeAsync()">
+    <ChildContent>
+        @if (result == null)
+        {
+            <div class="skeleton skeleton-block" aria-busy="true" data-testid="budget-suggest-loading"></div>
+        }
+        else
+        {
+            @if (result.AiError is { } error)
+            {
+                <div class="small text-danger mb-2" role="alert">@L["Error_Ai", error]</div>
+            }
+            <p class="small text-body-secondary">@L[result.AiUsed ? "Intro_Ai" : "Intro"]</p>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle" data-testid="budget-suggest-table">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" class="form-check-input" aria-label="@L["SelectAll"]" checked="@(accepted.Count == result.Rows.Count)" @onchange="ToggleAll" /></th>
+                            <th>@L["Col_Category"]</th>
+                            <th class="text-end">@L["Col_Current"]</th>
+                            <th class="text-end">@L["Col_Baseline"]</th>
+                            <th class="text-end">@L["Col_Suggestion"]</th>
+                            <th>@L["Col_Basis"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in result.Rows)
+                        {
+                            var r = row;
+                            <tr data-testid="budget-suggest-row">
+                                <td><input type="checkbox" class="form-check-input" aria-label="@r.Name" checked="@accepted.Contains(r.Key)" @onchange="e => Toggle(r.Key, e)" /></td>
+                                <td>
+                                    <div>@r.Name</div>
+                                    @foreach (var o in r.Outliers)
+                                    {
+                                        <div class="small text-body-secondary" data-testid="budget-suggest-outlier">
+                                            @L[o.Excluded ? "Outlier_Excluded" : "Outlier_Kept", Formatting.FormatMoneyDe(o.Amount), o.Payee ?? "", o.Date.ToString("MM/yyyy", System.Globalization.CultureInfo.InvariantCulture), L["Kind_" + o.Kind]]
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(r.Explanation))
+                                    {
+                                        <div class="small fst-italic">@r.Explanation</div>
+                                    }
+                                    @if (r.Flagged)
+                                    {
+                                        <div class="small text-warning-emphasis" data-testid="budget-suggest-flag">@L["Flag_Deviation"]</div>
+                                    }
+                                </td>
+                                <td class="text-end">@Formatting.FormatMoneyDe(Current.GetValueOrDefault(r.Key)?.Sum() ?? 0m)</td>
+                                <td class="text-end">@Formatting.FormatMoneyDe(r.Baseline.Sum())</td>
+                                <td class="text-end" style="width: 9rem;">
+                                    <input type="number" class="form-control form-control-sm text-end" step="1" aria-label="@L["Col_Suggestion"]"
+                                           value="@totals[r.Key].ToString("0", System.Globalization.CultureInfo.InvariantCulture)"
+                                           @onchange="e => SetTotal(r.Key, e)" data-testid="budget-suggest-total" />
+                                </td>
+                                <td><span class="badge text-bg-light" title="@L["MonthsOfData", r.MonthsOfData]">@L["Basis_" + r.Basis]</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-secondary" @onclick="() => OnClose.InvokeAsync()">@L["Button_Cancel"]</button>
+        <button class="btn btn-primary" data-testid="budget-suggest-apply" disabled="@(result == null || accepted.Count == 0)" @onclick="ApplyAsync">@L["Button_Apply", accepted.Count]</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter, EditorRequired] public int ProjectId { get; set; }
+    [Parameter, EditorRequired] public int Year { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<BudgetSuggestionInput> Rows { get; set; } = [];
+    [Parameter] public IReadOnlyDictionary<(long Id, CategoryItemType ItemType), decimal[]> Current { get; set; } = new Dictionary<(long, CategoryItemType), decimal[]>();
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>The accepted rows' 12 months.</summary>
+    [Parameter] public EventCallback<Dictionary<(long Id, CategoryItemType ItemType), decimal[]>> OnApply { get; set; }
+
+    private BudgetSuggestionResult? result;
+    private readonly HashSet<(long, CategoryItemType)> accepted = [];
+    private readonly Dictionary<(long, CategoryItemType), decimal> totals = [];
+    private bool wasShown;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Show && !wasShown)
+        {
+            wasShown = true;
+            result = null;
+            var useAi = AssistSettings.Available && await AssistSettings.GetOptInAsync();
+            result = await Suggestions.SuggestAsync(ProjectId, Year, Rows, useAi);
+            accepted.Clear();
+            totals.Clear();
+            foreach (var r in result.Rows)
+            {
+                totals[r.Key] = r.Suggested.Sum();
+                if (r.Basis != "none") accepted.Add(r.Key);
+            }
+        }
+        else if (!Show)
+        {
+            wasShown = false;
+        }
+    }
+
+    private void Toggle((long, CategoryItemType) key, ChangeEventArgs e)
+    {
+        if (e.Value is true) accepted.Add(key);
+        else accepted.Remove(key);
+    }
+
+    private void ToggleAll(ChangeEventArgs e)
+    {
+        accepted.Clear();
+        if (e.Value is true && result != null)
+            foreach (var r in result.Rows) accepted.Add(r.Key);
+    }
+
+    private void SetTotal((long, CategoryItemType) key, ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= 0)
+        {
+            totals[key] = v;
+            accepted.Add(key);
+        }
+    }
+
+    private async Task ApplyAsync()
+    {
+        if (result == null) return;
+        var months = result.Rows.Where(r => accepted.Contains(r.Key))
+            .ToDictionary(r => r.Key, r => BudgetBaselineMath.ScaleTo(r.Suggested, totals[r.Key]));
+        await OnApply.InvokeAsync(months);
+    }
+}

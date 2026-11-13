@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Title" xml:space="preserve">
+    <value>Suggest budget</value>
+  </data>
+  <data name="Error_Ai" xml:space="preserve">
+    <value>AI not available: {0}</value>
+  </data>
+  <data name="Intro" xml:space="preserve">
+    <value>From your bookings of the last up to three years. Unusual single bookings are left out.</value>
+  </data>
+  <data name="Intro_Ai" xml:space="preserve">
+    <value>From your bookings of the last up to three years, checked by AI. Unusual single bookings are left out unless they repeat.</value>
+  </data>
+  <data name="SelectAll" xml:space="preserve">
+    <value>Select all</value>
+  </data>
+  <data name="Col_Category" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Col_Current" xml:space="preserve">
+    <value>Now</value>
+  </data>
+  <data name="Col_Baseline" xml:space="preserve">
+    <value>Baseline</value>
+  </data>
+  <data name="Col_Suggestion" xml:space="preserve">
+    <value>Suggestion</value>
+  </data>
+  <data name="Col_Basis" xml:space="preserve">
+    <value>Based on</value>
+  </data>
+  <data name="Outlier_Excluded" xml:space="preserve">
+    <value>excluded: {0} {1} {2}, {3}</value>
+  </data>
+  <data name="Outlier_Kept" xml:space="preserve">
+    <value>kept: {0} {1} {2}, {3}</value>
+  </data>
+  <data name="Kind_one_off" xml:space="preserve">
+    <value>one-off</value>
+  </data>
+  <data name="Kind_recurring" xml:space="preserve">
+    <value>recurring</value>
+  </data>
+  <data name="Kind_refund" xml:space="preserve">
+    <value>refund</value>
+  </data>
+  <data name="Flag_Deviation" xml:space="preserve">
+    <value>More than 30 % away from the baseline.</value>
+  </data>
+  <data name="MonthsOfData" xml:space="preserve">
+    <value>{0} months of data</value>
+  </data>
+  <data name="Basis_median" xml:space="preserve">
+    <value>usual month</value>
+  </data>
+  <data name="Basis_seasonal" xml:space="preserve">
+    <value>seasonal</value>
+  </data>
+  <data name="Basis_recurring" xml:space="preserve">
+    <value>recurring</value>
+  </data>
+  <data name="Basis_trend" xml:space="preserve">
+    <value>trend</value>
+  </data>
+  <data name="Basis_none" xml:space="preserve">
+    <value>no data</value>
+  </data>
+  <data name="Button_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Button_Apply" xml:space="preserve">
+    <value>Use {0} rows</value>
+  </data>
+</root>
