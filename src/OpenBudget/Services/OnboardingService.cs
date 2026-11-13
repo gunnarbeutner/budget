@@ -17,8 +17,11 @@ public sealed record OnboardingState(int BankLogins, bool HasAccounts, UserDataS
     /// <summary>A MoneyMoney import that delivered data and was not declared finished.</summary>
     public bool MoneyMoneyUnfinished => Import is { LastUploadAt: not null, MoneyMoneyImportFinishedAt: null };
 
-    /// <summary>The gear menu offers Get started while the user has no data yet or an unfinished MoneyMoney import.</summary>
-    public bool ShowInMenu => (BankLogins == 0 && !HasAccounts) || MoneyMoneyUnfinished;
+    /// <summary>
+    /// The gear menu and the settings navigation offer Get started until the user declared the MoneyMoney import
+    /// finished or hid Get started.
+    /// </summary>
+    public bool ShowInMenu => Import is not ({ MoneyMoneyImportFinishedAt: not null } or { GetStartedDismissedAt: not null });
 }
 
 /// <summary>The state behind the Get started page and its gear-menu entry, for the signed-in user.</summary>
@@ -27,12 +30,17 @@ public sealed class OnboardingService
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly ProjectService _projects;
     private readonly CurrentProjectState _current;
+    private readonly ChangeNotificationService _notifier;
+    private readonly ChangeOrigin _origin;
 
-    public OnboardingService(IDbContextFactory<BudgetDbContext> dbFactory, ProjectService projects, CurrentProjectState current)
+    public OnboardingService(IDbContextFactory<BudgetDbContext> dbFactory, ProjectService projects, CurrentProjectState current,
+        ChangeNotificationService notifier, ChangeOrigin origin)
     {
         _dbFactory = dbFactory;
         _projects = projects;
         _current = current;
+        _notifier = notifier;
+        _origin = origin;
     }
 
     public async Task<OnboardingState> GetAsync(CancellationToken ct = default)
@@ -52,4 +60,14 @@ public sealed class OnboardingService
         return new OnboardingState(logins, hasAccounts, import, hasPortfolio, projectId);
     }
 
+    /// <summary>Hides Get started from the menus of the signed-in user (the page stays reachable by its URL).</summary>
+    public async Task DismissAsync(CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        if (db.Scope is not { UserId: { } userId }) throw new AccessDeniedException("Not signed in.");
+        var state = await RowIds.StateAsync(db, userId, ct);
+        state.GetStartedDismissedAt ??= DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        _notifier.Publish(new DataChange(DataArea.ImportState, UserId: userId), _origin.Id);
+    }
 }

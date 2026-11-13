@@ -14,7 +14,8 @@
    data folder and imported in the background (MoneyMoneyBrowserImport), (3) optionally a Portfolio Performance file,
    (4) which accounts count for the cashflow, and budgets. While a MoneyMoney import is unfinished, step 2 also
    switches its accounts to their bank connections (or keeps them as manual ones) and finishes the import. The gear
-   menu offers this page only while it is useful (OnboardingState.ShowInMenu); the URL always works. *@
+   menu offers this page until the MoneyMoney import is finished or the user hides it (OnboardingState.ShowInMenu);
+   the URL always works. *@
 
 <PageTitle>@L["PageTitle"]</PageTitle>
 
@@ -22,6 +23,13 @@
 <PageHeader Title="@L["Heading"]" />
 
 <p class="text-body-secondary">@L["Intro"]</p>
+@if (state is { ShowInMenu: true })
+{
+    <p class="small mb-3">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="get-started-hide" @onclick="HideAsync">@L["Hide_Button"]</button>
+        <span class="text-body-secondary ms-2">@L["Hide_Hint"]</span>
+    </p>
+}
 
 @if (state == null)
 {
@@ -454,6 +462,11 @@ else
         await SetFinishedAsync(st.OwnerUserId, true);
     }
 
+    private async Task HideAsync()
+    {
+        await Onboarding.DismissAsync();
+        await LoadAsync();
+    }
 
     private async Task SetFinishedAsync(string ownerId, bool finished)
     {

@@ -217,6 +217,12 @@
   <data name="Job_Background" xml:space="preserve">
     <value>The import goes on on the server even if you close this page.</value>
   </data>
+  <data name="Hide_Button" xml:space="preserve">
+    <value>Hide Get started</value>
+  </data>
+  <data name="Hide_Hint" xml:space="preserve">
+    <value>Removes this page from the menus; it stays reachable at /get-started.</value>
+  </data>
   <data name="Job_Budgets" xml:space="preserve">
     <value>{0} category budgets went into the inactive budget “MoneyMoney” of your project.</value>
   </data>

@@ -217,6 +217,12 @@
   <data name="Job_Background" xml:space="preserve">
     <value>Der Import läuft auf dem Server weiter, auch wenn du diese Seite schließt.</value>
   </data>
+  <data name="Hide_Button" xml:space="preserve">
+    <value>Erste Schritte ausblenden</value>
+  </data>
+  <data name="Hide_Hint" xml:space="preserve">
+    <value>Entfernt diese Seite aus den Menüs; sie bleibt unter /get-started erreichbar.</value>
+  </data>
   <data name="Job_Budgets" xml:space="preserve">
     <value>{0} Kategorie-Budgets stehen im inaktiven Budget „MoneyMoney“ deines Projekts.</value>
   </data>

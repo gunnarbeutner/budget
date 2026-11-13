@@ -38,24 +38,20 @@ public sealed class GetStartedTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task The_gear_menu_offers_it_only_without_data_or_with_an_unfinished_MoneyMoney_import()
+    public async Task The_gear_menu_offers_it_until_the_MoneyMoney_import_is_finished_or_it_is_hidden()
     {
-        // Without any account or bank login: offered.
+        // Data from a bank login and accounts do not end Get started: MoneyMoney may still come.
+        await EditingSeed.SeedAsync(Db);
+        await using (var db = await Db.CreateDbContextAsync())
+        {
+            db.BankLogins.Add(new Models.BankLogin { OwnerUserId = E2ESeed.OwnerUserId, ConnectorType = "fake", DisplayName = "Example Bank", RefreshInterval = Models.RefreshInterval.Never });
+            await db.SaveChangesAsync();
+        }
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
         Assert.That(await GearOffersGetStartedAsync(), Is.True);
-
-        // The owner has accounts and no MoneyMoney data: not offered, but the page still opens by URL.
-        await EditingSeed.SeedAsync(Db);
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
-        Assert.That(await GearOffersGetStartedAsync(), Is.False);
-        await GoToAsync("/get-started");
-        await Expect(Page.GetByTestId("step-banks")).ToBeVisibleAsync();
-        await Expect(Page.GetByTestId("mm-followup")).ToHaveCountAsync(0);
 
         // An unfinished MoneyMoney import: offered, with its follow-up on the page.
         await SetMoneyMoneyAsync(DateTime.UtcNow, null);
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
-        Assert.That(await GearOffersGetStartedAsync(), Is.True);
         await GoToAsync("/get-started");
         await Expect(Page.GetByTestId("mm-followup")).ToBeVisibleAsync();
 
@@ -66,6 +62,32 @@ public sealed class GetStartedTests : EndToEndTestBase
         await GoToAsync("/get-started");
         await Expect(Page.GetByTestId("import-finished")).ToBeVisibleAsync();
         await Expect(Page.GetByTestId("mm-followup")).ToHaveCountAsync(0);
+    }
+
+    [Test]
+    public async Task Hiding_Get_started_removes_it_from_the_menus_but_the_page_still_opens()
+    {
+        await using (var db = await Db.CreateDbContextAsync())
+        {
+            db.BankLogins.Add(new Models.BankLogin { OwnerUserId = E2ESeed.OwnerUserId, ConnectorType = "fake", DisplayName = "Example Bank", RefreshInterval = Models.RefreshInterval.Never });
+            await db.SaveChangesAsync();
+        }
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
+        Assert.That(await GearOffersGetStartedAsync(), Is.True);
+
+        await GoToAsync("/banklogins");
+        await Expect(Page.GetByTestId("settings-nav-get-started")).ToBeVisibleAsync();
+        await GoToAsync("/get-started");
+        await Page.GetByTestId("get-started-hide").ClickAsync();
+        await Expect(Page.GetByTestId("get-started-hide")).ToHaveCountAsync(0);
+
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
+        Assert.That(await GearOffersGetStartedAsync(), Is.False);
+        await GoToAsync("/banklogins");
+        await Expect(Page.GetByTestId("settings-nav-banklogins")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("settings-nav-get-started")).ToHaveCountAsync(0);
+        await GoToAsync("/get-started");
+        await Expect(Page.GetByTestId("step-banks")).ToBeVisibleAsync();
     }
 
     [Test]
