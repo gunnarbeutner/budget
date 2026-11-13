@@ -83,7 +83,7 @@
     <value>Als Standardprojekt für neue Konten verwenden</value>
   </data>
   <data name="Default_Description" xml:space="preserve">
-    <value>Konten, die neu in Ihren Quellen auftauchen (ein neues Konto in einem MoneyMoney-Upload oder ein von einem Bank-Connector angelegtes), werden automatisch diesem Projekt zugeordnet. Bestehende Zuordnungen werden nie verändert. Nur eines Ihrer Projekte kann das Standardprojekt sein.</value>
+    <value>Konten, die neu in Ihren Daten auftauchen (ein neues Konto in einem MoneyMoney-Upload oder ein von einem Bank-Connector angelegtes), werden automatisch diesem Projekt zugeordnet. Bestehende Zuordnungen werden nie verändert. Nur eines Ihrer Projekte kann das Standardprojekt sein.</value>
   </data>
   <data name="Default_SharedExplanation" xml:space="preserve">
     <value>Dieses Projekt ist geteilt (selbst oder über sein übergeordnetes Projekt) und kann daher nicht das Standardprojekt sein: Ein neues Konto darf nie automatisch für die Personen sichtbar werden, mit denen das Projekt geteilt ist. Beenden Sie das Teilen, um es als Standardprojekt zu verwenden.</value>

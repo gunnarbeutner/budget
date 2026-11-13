@@ -10,7 +10,7 @@ namespace OpenBudget.Models;
 /// can appear in several classifications of the same taxonomy (e.g. a World ETF split across
 /// regions), so this is one row per (security, classification) assignment.
 ///
-/// App-native derived data — not namespaced like the imported tables. Scoped by <see cref="SourceId"/>
+/// App-native derived data — not namespaced like the imported tables. Scoped by <see cref="OwnerUserId"/>
 /// and replaced wholesale on each PortfolioPerformance upload for that source.
 /// </summary>
 [Table("pp_security_taxonomy")]
@@ -19,7 +19,10 @@ public class SecurityTaxonomy
     [Key]
     public int Id { get; set; }
 
-    public int SourceId { get; set; }
+    /// <summary>The owning user (AppUser.Id).</summary>
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
 
     /// <summary>ISIN of the security, or empty when it has none; the join key to <see cref="Holding.Isin"/>.</summary>
     public string Isin { get; set; } = "";

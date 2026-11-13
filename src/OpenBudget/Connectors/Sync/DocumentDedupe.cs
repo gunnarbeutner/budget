@@ -56,7 +56,7 @@ public static class DocumentDedupe
                     line += $"; account {AccountLabel(withAccount.AccountId)} carried over";
                     ownerCarried++;
                     survivor.AccountId = withAccount.AccountId;
-                    survivor.SourceId = withAccount.SourceId;
+                    survivor.OwnerUserId = withAccount.OwnerUserId;
                     survivor.Institution = null;
                 }
                 lines.Add(line);

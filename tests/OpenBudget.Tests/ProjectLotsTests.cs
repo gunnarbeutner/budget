@@ -15,12 +15,12 @@ public class ProjectLotsTests
         t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 5, AccountId = 100 });
         t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 5, AccountId = 200 });
         // Only depot 100 is mapped to a PP depot; pp-B is deliberately unlinked.
-        t.Db.PpPortfolioLinks.Add(new PpPortfolioLink { SourceId = 1, PpPortfolioUuid = "pp-A", AccountId = 100 });
+        t.Db.PpPortfolioLinks.Add(new PpPortfolioLink { OwnerUserId = TestDb.DefaultOwner, PpPortfolioUuid = "pp-A", AccountId = 100 });
         t.Db.PpLots.AddRange(
-            new PpLot { SourceId = 1, PortfolioUuid = "pp-A", Isin = "X", Acquired = new DateOnly(2020, 1, 1), Shares = 10m, Cost = 1000m },
-            new PpLot { SourceId = 1, PortfolioUuid = "pp-A", Isin = "X", Acquired = new DateOnly(2021, 1, 1), Shares = 5m, Cost = 600m },
-            new PpLot { SourceId = 1, PortfolioUuid = "pp-A", Isin = "Y", Acquired = new DateOnly(2019, 1, 1), Shares = 3m, Cost = 300m },
-            new PpLot { SourceId = 1, PortfolioUuid = "pp-B", Isin = "X", Acquired = new DateOnly(2018, 1, 1), Shares = 99m, Cost = 9m });
+            new PpLot { OwnerUserId = TestDb.DefaultOwner, PortfolioUuid = "pp-A", Isin = "X", Acquired = new DateOnly(2020, 1, 1), Shares = 10m, Cost = 1000m },
+            new PpLot { OwnerUserId = TestDb.DefaultOwner, PortfolioUuid = "pp-A", Isin = "X", Acquired = new DateOnly(2021, 1, 1), Shares = 5m, Cost = 600m },
+            new PpLot { OwnerUserId = TestDb.DefaultOwner, PortfolioUuid = "pp-A", Isin = "Y", Acquired = new DateOnly(2019, 1, 1), Shares = 3m, Cost = 300m },
+            new PpLot { OwnerUserId = TestDb.DefaultOwner, PortfolioUuid = "pp-B", Isin = "X", Acquired = new DateOnly(2018, 1, 1), Shares = 99m, Cost = 9m });
         await t.Db.SaveChangesAsync();
 
         var lots = await t.Portfolio.GetProjectLotsAsync(5);
@@ -38,7 +38,7 @@ public class ProjectLotsTests
         t.AddProject(6);
         var depot = t.AddAccount(300, "Depot"); depot.Portfolio = 1;
         t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 6, AccountId = 300 });
-        t.Db.PpLots.Add(new PpLot { SourceId = 1, PortfolioUuid = "pp-Z", Isin = "X", Acquired = new DateOnly(2020, 1, 1), Shares = 1m, Cost = 1m });
+        t.Db.PpLots.Add(new PpLot { OwnerUserId = TestDb.DefaultOwner, PortfolioUuid = "pp-Z", Isin = "X", Acquired = new DateOnly(2020, 1, 1), Shares = 1m, Cost = 1m });
         await t.Db.SaveChangesAsync();
 
         Assert.Empty(await t.Portfolio.GetProjectLotsAsync(6));

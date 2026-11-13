@@ -19,10 +19,11 @@ public partial class BudgetDbContext
             .OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<ProjectShare>().HasIndex(s => new { s.ProjectId, s.UserId }).IsUnique();
         modelBuilder.Entity<ProjectShare>().Property(s => s.Role).HasConversion<int>();
+        // The column stays nullable: a project whose user was removed keeps its data but has no owner.
+        modelBuilder.Entity<Project>().Property(p => p.OwnerUserId).IsRequired(false);
         modelBuilder.Entity<Project>().HasIndex(p => p.OwnerUserId);
         modelBuilder.Entity<Project>().HasIndex(p => p.OwnerUserId, "IX_projects_OwnerUserId_Default")
             .IsUnique().HasFilter("IsDefaultForNewAccounts = 1");
-        modelBuilder.Entity<ImportSource>().HasIndex(s => s.OwnerUserId);
 
         // Projects and everything hanging off them.
         modelBuilder.Entity<Project>().HasQueryFilter(p => ScopeUnrestricted || ScopeVisibleProjectIds.Contains(p.Id));
@@ -37,29 +38,29 @@ public partial class BudgetDbContext
         modelBuilder.Entity<MonthlyBudgetEntry>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleProjectIds.Contains(e.Budget.ProjectId));
         modelBuilder.Entity<BudgetContributionSplit>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleProjectIds.Contains(e.Budget.ProjectId));
 
-        // Sources, and the category tree (names/hierarchy) of every source that has a visible project.
-        modelBuilder.Entity<ImportSource>().HasQueryFilter(s => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(s.Id));
-        modelBuilder.Entity<Category>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
-        modelBuilder.Entity<CategoryGroup>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
-        modelBuilder.Entity<AccountGroup>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
-        modelBuilder.Entity<RemovedImportItem>().HasQueryFilter(e => ScopeUnrestricted || ScopeOwnedSourceIds.Contains(e.SourceId));
-        modelBuilder.Entity<RemovedImportItem>().HasIndex(e => new { e.SourceId, e.Kind, e.ItemId }).IsUnique();
+        // The user's own data, and the category tree (names/hierarchy) of the owner of every visible project.
+        modelBuilder.Entity<UserDataState>().HasQueryFilter(s => ScopeUnrestricted || s.UserId == ScopeUserId);
+        modelBuilder.Entity<Category>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleOwnerIds.Contains(e.OwnerUserId));
+        modelBuilder.Entity<CategoryGroup>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleOwnerIds.Contains(e.OwnerUserId));
+        modelBuilder.Entity<AccountGroup>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleOwnerIds.Contains(e.OwnerUserId));
+        modelBuilder.Entity<RemovedImportItem>().HasQueryFilter(e => ScopeUnrestricted || e.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<RemovedImportItem>().HasIndex(e => new { e.OwnerUserId, e.Kind, e.ItemId }).IsUnique();
 
         // Accounts and what hangs off them: all of an owned source, otherwise ONLY the accounts
         // assigned to a project shared with the user.
         modelBuilder.Entity<Account>().HasQueryFilter(a =>
-            ScopeUnrestricted || ScopeOwnedSourceIds.Contains(a.SourceId) || ScopeSharedAccountIds.Contains(a.Id));
+            ScopeUnrestricted || a.OwnerUserId == ScopeUserId || ScopeSharedAccountIds.Contains(a.Id));
         modelBuilder.Entity<Transaction>().HasQueryFilter(t =>
-            ScopeUnrestricted || ScopeOwnedSourceIds.Contains(t.SourceId)
+            ScopeUnrestricted || t.OwnerUserId == ScopeUserId
             || (t.AccountId.HasValue && ScopeSharedAccountIds.Contains(t.AccountId.Value)));
         modelBuilder.Entity<Holding>().HasQueryFilter(h =>
-            ScopeUnrestricted || ScopeOwnedSourceIds.Contains(h.SourceId) || ScopeSharedAccountIds.Contains(h.AccountId));
+            ScopeUnrestricted || h.OwnerUserId == ScopeUserId || ScopeSharedAccountIds.Contains(h.AccountId));
         modelBuilder.Entity<ScheduledPayment>().HasQueryFilter(p =>
-            ScopeUnrestricted || ScopeOwnedSourceIds.Contains(p.SourceId) || ScopeSharedAccountIds.Contains(p.AccountId));
+            ScopeUnrestricted || p.OwnerUserId == ScopeUserId || ScopeSharedAccountIds.Contains(p.AccountId));
         modelBuilder.Entity<PortfolioChartPoint>().HasQueryFilter(p =>
-            ScopeUnrestricted || ScopeOwnedSourceIds.Contains(p.SourceId) || ScopeSharedAccountIds.Contains(p.AccountId));
+            ScopeUnrestricted || p.OwnerUserId == ScopeUserId || ScopeSharedAccountIds.Contains(p.AccountId));
         modelBuilder.Entity<PpPortfolioLink>().HasQueryFilter(l =>
-            ScopeUnrestricted || ScopeOwnedSourceIds.Contains(l.SourceId) || ScopeSharedAccountIds.Contains(l.AccountId));
+            ScopeUnrestricted || l.OwnerUserId == ScopeUserId || ScopeSharedAccountIds.Contains(l.AccountId));
 
         // Bank logins are strictly personal. Statements follow their account (shared viewers may read them); account-less ones are owner-only.
         modelBuilder.Entity<BankLogin>().HasQueryFilter(b => ScopeUnrestricted || b.OwnerUserId == ScopeUserId);
@@ -68,20 +69,20 @@ public partial class BudgetDbContext
         modelBuilder.Entity<BankLoginAccount>().HasQueryFilter(a => ScopeUnrestricted || a.BankLogin.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<BankStatement>().HasQueryFilter(s =>
             ScopeUnrestricted || s.OwnerUserId == ScopeUserId
-            || (s.AccountId.HasValue && (ScopeSharedAccountIds.Contains(s.AccountId.Value) || (s.SourceId.HasValue && ScopeOwnedSourceIds.Contains(s.SourceId.Value)))));
+            || (s.AccountId.HasValue && (ScopeSharedAccountIds.Contains(s.AccountId.Value))));
         // Read marks and the order of the project list are personal.
         modelBuilder.Entity<UserProjectOrder>().HasQueryFilter(o => ScopeUnrestricted || o.UserId == ScopeUserId);
         modelBuilder.Entity<StatementRead>().HasQueryFilter(r => ScopeUnrestricted || r.UserId == ScopeUserId);
 
         // PortfolioPerformance data feeds the project-scoped rebalance view, so it follows the
-        // source's visibility; the owner-only mapping/tax pages are guarded separately.
-        modelBuilder.Entity<SecurityTaxonomy>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
-        modelBuilder.Entity<PpSecurity>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
-        modelBuilder.Entity<PpPortfolio>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
-        modelBuilder.Entity<PpPortfolioSetting>().HasQueryFilter(e => ScopeUnrestricted || ScopeOwnedSourceIds.Contains(e.SourceId));
-        modelBuilder.Entity<PpLot>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
-        modelBuilder.Entity<SecurityTaxSetting>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
-        modelBuilder.Entity<PpSecurityLink>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleSourceIds.Contains(e.SourceId));
+        // visibility of its owner's data; the owner-only mapping/tax pages are guarded separately.
+        modelBuilder.Entity<SecurityTaxonomy>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleOwnerIds.Contains(e.OwnerUserId));
+        modelBuilder.Entity<PpSecurity>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleOwnerIds.Contains(e.OwnerUserId));
+        modelBuilder.Entity<PpPortfolio>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleOwnerIds.Contains(e.OwnerUserId));
+        modelBuilder.Entity<PpPortfolioSetting>().HasQueryFilter(e => ScopeUnrestricted || e.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<PpLot>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleOwnerIds.Contains(e.OwnerUserId));
+        modelBuilder.Entity<SecurityTaxSetting>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleOwnerIds.Contains(e.OwnerUserId));
+        modelBuilder.Entity<PpSecurityLink>().HasQueryFilter(e => ScopeUnrestricted || ScopeVisibleOwnerIds.Contains(e.OwnerUserId));
     }
 
     // ---- Write-side access control ----
@@ -105,11 +106,11 @@ public partial class BudgetDbContext
     /// <item>budgets, budget entries/splits, category assignments, tracking items, income/expense
     /// types, project name/description: Editor or Owner of the project;</item>
     /// <item>account assignments, shares, parent, delete, creating projects: project Owner
-    /// (and the source must be owned);</item>
-    /// <item>a transaction's category, note, check mark and new marker (and nothing else of it): the source Owner or an
+    /// ;</item>
+    /// <item>a transaction's category, note, check mark and new marker (and nothing else of it): the owner or an
     /// Editor of a project the account is in - and only while the account is not owned by MoneyMoney;</item>
     /// <item>a user's own project-list order: that user, for projects they can see;</item>
-    /// <item>sources and everything imported or configured per source: source Owner.</item>
+    /// <item>everything imported or configured per user: that user.</item>
     /// </list>
     /// </summary>
     private async Task EnforceWriteAccessAsync(AccessScope scope, CancellationToken ct)
@@ -117,7 +118,7 @@ public partial class BudgetDbContext
         var budgetEntries = new List<int>();
         var loginAccountLogins = new List<int>();
         var readStatements = new List<long>();
-        var editedTransactions = new List<(int SourceId, long? AccountId)>();
+        var editedTransactions = new List<(string OwnerUserId, long? AccountId)>();
 
         foreach (var entry in ChangeTracker.Entries().ToList())
         {
@@ -161,8 +162,9 @@ public partial class BudgetDbContext
                     budgetEntries.Add(s.BudgetId);
                     break;
 
-                case ImportSource source:
-                    EnforceSourceWrite(scope, entry, source);
+                case UserDataState state:
+                    if (!scope.IsAuthenticated || state.UserId != scope.UserId)
+                        throw new AccessDeniedException("A user's data state belongs to that user.");
                     break;
 
                 case Transaction transaction:
@@ -199,9 +201,9 @@ public partial class BudgetDbContext
                     break;
 
                 default:
-                    // Imported/per-source rows (accounts, transactions, mappings, ...) carry a SourceId.
-                    if (entry.Metadata.FindProperty("SourceId") != null)
-                        scope.RequireSourceOwner((int)entry.Property("SourceId").CurrentValue!);
+                    // Imported and per-user rows (accounts, transactions, mappings, ...) carry their owner.
+                    if (entry.Metadata.FindProperty("OwnerUserId") != null)
+                        scope.RequireOwner((string?)entry.Property("OwnerUserId").CurrentValue);
                     else if (entry.Entity is AppUser)
                         throw new AccessDeniedException("Users are managed through the CLI only.");
                     break;
@@ -214,10 +216,10 @@ public partial class BudgetDbContext
         {
             var accountIds = editedTransactions.Where(e => e.AccountId.HasValue).Select(e => e.AccountId!.Value).Distinct().ToList();
             var providers = await Set<Account>().AsNoTracking().Where(a => accountIds.Contains(a.Id)).Select(a => new { a.Id, a.Provider }).ToDictionaryAsync(a => a.Id, a => a.Provider, ct);
-            foreach (var (sourceId, accountId) in editedTransactions)
+            foreach (var (ownerId, accountId) in editedTransactions)
             {
                 string? provider = accountId is { } id && providers.TryGetValue(id, out var p) ? p : null;
-                var block = TransactionEditRules.Check(scope, sourceId, accountId, provider);
+                var block = TransactionEditRules.Check(scope, ownerId, accountId, provider);
                 if (block == EditBlock.MoneyMoney)
                     throw new AccessDeniedException("Transactions of accounts still owned by MoneyMoney are read-only.");
                 if (block == EditBlock.NoPermission)
@@ -272,13 +274,13 @@ public partial class BudgetDbContext
 
     /// <summary>
     /// Changing only user-owned fields (category, note, check mark, new marker) of an existing transaction is allowed to
-    /// the source's owner and to editors of a project the account is assigned to (provider rule: see the caller);
-    /// everything else on a transaction is refused for a changed bank field, and creating or deleting is the source owner's alone
+    /// the owner and to editors of a project the account is assigned to (provider rule: see the caller);
+    /// everything else on a transaction is refused for a changed bank field, and creating or deleting is the owner's alone
     /// (except split parts, see <see cref="TransactionEditRules.IsOwnSplitPart"/>, which follow the edit rights).
     /// </summary>
     private static void EnforceTransactionWrite(
         AccessScope scope, Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, Transaction transaction,
-        List<(int SourceId, long? AccountId)> edited)
+        List<(string OwnerUserId, long? AccountId)> edited)
     {
         var onlyEditable = entry.State == EntityState.Modified
             && entry.Properties.Where(p => p.IsModified).All(p => TransactionEditRules.EditableProperties.Contains(p.Metadata.Name));
@@ -287,15 +289,15 @@ public partial class BudgetDbContext
         if (!onlyEditable)
         {
             // Bank fields (amount, date, payee, purpose, ...) are never edited through a user's context; only the
-            // import and the connectors (system contexts) write them. Creating/deleting rows stays the source owner's.
+            // import and the connectors (system contexts) write them. Creating/deleting rows stays the owner's.
             if (entry.State == EntityState.Modified)
                 throw new AccessDeniedException("The bank's fields of a transaction cannot be changed.");
-            scope.RequireSourceOwner(transaction.SourceId);
+            scope.RequireOwner(transaction.OwnerUserId);
             return;
         }
-        if (!scope.CanEditTransactionsOf(transaction.SourceId, transaction.AccountId))
+        if (!scope.CanEditTransactionsOf(transaction.OwnerUserId, transaction.AccountId))
             throw new AccessDeniedException("Not allowed to edit these transactions.");
-        edited.Add((transaction.SourceId, transaction.AccountId));
+        edited.Add((transaction.OwnerUserId, transaction.AccountId));
     }
 
     private static void EnforceProjectWrite(AccessScope scope, Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, Project project)
@@ -304,7 +306,6 @@ public partial class BudgetDbContext
         {
             if (!scope.IsAuthenticated || project.OwnerUserId != scope.UserId)
                 throw new AccessDeniedException("A new project must be owned by the creating user.");
-            scope.RequireSourceOwner(project.SourceId);
             if (project.ParentProjectId is { } parent) scope.RequireRole(parent, ProjectRole.Owner);
             return;
         }
@@ -315,12 +316,12 @@ public partial class BudgetDbContext
             return;
         }
 
-        // Modified: editors may rename / re-describe; everything else (parent, order, source, owner) is owner-only.
+        // Modified: editors may rename / re-describe; everything else (parent, order, owner) is owner-only.
         var changed = entry.Properties.Where(p => p.IsModified).Select(p => p.Metadata.Name).ToList();
         var editorOnly = changed.TrueForAll(n => n is nameof(Project.Name) or nameof(Project.Description));
         scope.RequireRole(project.Id, editorOnly ? ProjectRole.Editor : ProjectRole.Owner);
-        if (changed.Contains(nameof(Project.OwnerUserId), StringComparer.Ordinal) || changed.Contains(nameof(Project.SourceId), StringComparer.Ordinal))
-            throw new AccessDeniedException("Project ownership and source cannot be changed here.");
+        if (changed.Contains(nameof(Project.OwnerUserId), StringComparer.Ordinal))
+            throw new AccessDeniedException("Project ownership cannot be changed here.");
         if (changed.Contains(nameof(Project.ParentProjectId), StringComparer.Ordinal) && project.ParentProjectId is { } newParent)
             scope.RequireRole(newParent, ProjectRole.Owner);
     }
@@ -334,16 +335,4 @@ public partial class BudgetDbContext
             throw new AccessDeniedException("Bank login ownership cannot be changed.");
     }
 
-    private static void EnforceSourceWrite(AccessScope scope, Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, ImportSource source)
-    {
-        if (entry.State == EntityState.Added)
-        {
-            if (!scope.IsAuthenticated || source.OwnerUserId != scope.UserId)
-                throw new AccessDeniedException("A new source must be owned by the creating user.");
-            return;
-        }
-        scope.RequireSourceOwner(source.Id);
-        if (entry.State == EntityState.Modified && entry.Property(nameof(ImportSource.OwnerUserId)).IsModified)
-            throw new AccessDeniedException("Source ownership can only be changed through the CLI.");
-    }
 }

@@ -3,7 +3,6 @@
 @using OpenBudget.Connectors.OneDrive
 @using OpenBudget.Services
 @using Microsoft.EntityFrameworkCore
-@inject SourceService SourceService
 @inject PortfolioPerformanceImportService PpImporter
 @inject CloudFileStaging Staging
 @inject IDbContextFactory<BudgetDbContext> DbFactory
@@ -11,9 +10,7 @@
 @inject IStringLocalizer<PortfolioPerformanceSettings> L
 
 @* Everything Portfolio Performance: the file the data comes from (a linked OneDrive file, read on the server, or a
-   one-off upload), then per data set its portfolio accounts, depot and instrument mapping and tax settings. Data sets
-   are labelled by the project that shows them (see SourceService.GetLabelsAsync), never by the internal source name;
-   with a single one there is no label at all. *@
+   one-off upload), then the user's portfolio accounts, depot and instrument mapping and tax settings. *@
 
 <PageTitle>@L["PageTitle"]</PageTitle>
 
@@ -42,61 +39,49 @@
 
 <section class="mt-4" data-testid="pp-data">
     <h2 class="h5">@L["Data_Heading"]</h2>
-    @if (sets == null)
+    @if (portfolios == null)
     {
         <div class="skeleton skeleton-line" style="width: 50%;"></div>
     }
-    else if (sets.Count == 0)
+    else if (portfolios == 0)
     {
         <p class="text-body-secondary small" data-testid="pp-no-data">@L["Data_None"]</p>
     }
     else
     {
-        @foreach (var set in sets)
-        {
-            <div class="card mb-2" data-testid="pp-data-set" data-source-id="@set.SourceId">
-                <div class="card-body py-2">
-                    @if (sets.Count > 1)
-                    {
-                        <h3 class="h6 card-title" data-testid="pp-data-label">@set.Label</h3>
-                    }
-                    <p class="small text-body-secondary mb-2">@L["Data_Portfolios", set.Portfolios]</p>
-                    <div class="d-flex flex-wrap gap-1">
-                        <a class="btn btn-sm btn-outline-secondary" href="@($"/portfolio-performance/{set.SourceId}/portfolios")" data-testid="pp-portfolio-accounts">@L["Button_PortfolioAccounts"]</a>
-                        <a class="btn btn-sm btn-outline-secondary" href="@($"/portfolio-performance/{set.SourceId}/depots")" data-testid="pp-depots">@L["Button_Depots"]</a>
-                        <a class="btn btn-sm btn-outline-secondary" href="@($"/portfolio-performance/{set.SourceId}/instruments")" data-testid="pp-instruments">@L["Button_Instruments"]</a>
-                        <a class="btn btn-sm btn-outline-secondary" href="@($"/portfolio-performance/{set.SourceId}/tax")" data-testid="pp-tax">@L["Button_Tax"]</a>
-                    </div>
+        <div class="card mb-2" data-testid="pp-data-set">
+            <div class="card-body py-2">
+                <p class="small text-body-secondary mb-2">@L["Data_Portfolios", portfolios]</p>
+                <div class="d-flex flex-wrap gap-1">
+                    <a class="btn btn-sm btn-outline-secondary" href="/portfolio-performance/portfolios" data-testid="pp-portfolio-accounts">@L["Button_PortfolioAccounts"]</a>
+                    <a class="btn btn-sm btn-outline-secondary" href="/portfolio-performance/depots" data-testid="pp-depots">@L["Button_Depots"]</a>
+                    <a class="btn btn-sm btn-outline-secondary" href="/portfolio-performance/instruments" data-testid="pp-instruments">@L["Button_Instruments"]</a>
+                    <a class="btn btn-sm btn-outline-secondary" href="/portfolio-performance/tax" data-testid="pp-tax">@L["Button_Tax"]</a>
                 </div>
             </div>
-        }
+        </div>
     }
 </section>
 </SettingsShell>
 
 @code {
-    private sealed record DataSet(int SourceId, string Label, int Portfolios);
     private sealed record Message(bool Ok, string Text);
 
-    private List<DataSet>? sets;
+    private int? portfolios;
     private bool uploading;
     private Message? uploadMessage;
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
-    protected override bool IsRelevantChange(DataChange change) => change.Area is DataArea.Sources or DataArea.ImportedData or DataArea.Projects;
+    protected override bool IsRelevantChange(DataChange change) => change.Area is DataArea.ImportState or DataArea.ImportedData or DataArea.Projects;
 
     protected override Task ReloadAfterChangeAsync() => LoadAsync();
 
     private async Task LoadAsync()
     {
-        var owned = (await SourceService.GetOwnedSourcesAsync()).Select(s => s.Id).ToList();
+        var userId = (await Access.GetAsync()).UserId;
         await using var db = await DbFactory.CreateDbContextAsync();
-        var counts = await db.PpPortfolios.Where(p => owned.Contains(p.SourceId))
-            .GroupBy(p => p.SourceId).Select(g => new { g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.Key, x => x.Count);
-        var labels = await SourceService.GetLabelsAsync(counts.Keys.ToList());
-        sets = counts.OrderBy(c => c.Key).Select(c => new DataSet(c.Key, labels.GetValueOrDefault(c.Key, ""), c.Value)).ToList();
+        portfolios = await db.PpPortfolios.CountAsync(p => p.OwnerUserId == userId);
     }
 
     private async Task UploadAsync(InputFileChangeEventArgs e)
@@ -105,9 +90,9 @@
         uploading = true;
         try
         {
-            var source = await SourceService.EnsureOwnSourceAsync();
+            var userId = (await Access.GetAsync()).UserId ?? throw new AccessDeniedException("Not signed in.");
             await using var stream = PortfolioPerformanceUpload.OpenBrowserFile(e.File);
-            var result = await PortfolioPerformanceUpload.ImportAsync(PpImporter, source.Name, stream, Staging.Directory, CancellationToken.None);
+            var result = await PortfolioPerformanceUpload.ImportAsync(PpImporter, userId, stream, Staging.Directory, CancellationToken.None);
             uploadMessage = new Message(true, L["Upload_Done", result.RowsImported].Value);
             await LoadAsync();
         }

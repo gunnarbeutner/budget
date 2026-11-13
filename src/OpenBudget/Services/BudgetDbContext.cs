@@ -6,8 +6,7 @@ namespace OpenBudget.Services;
 
 /// <summary>
 /// Single DbContext for everything: app-native rows (projects, budgets, assignments) and the
-/// imported data. IDs from the source app are namespaced at import time
-/// via <see cref="SourceScope.Namespace"/> so multiple sources coexist without collision. Also
+/// imported data. Imported rows are numbered in their owner's id space (see <see cref="RowIds"/>). Also
 /// hosts the ASP.NET Core Identity tables (users, passkeys) so there is a single migration history.
 ///
 /// ACCESS CONTROL lives here. When <see cref="Scope"/> is set (every context the application
@@ -31,8 +30,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     private bool ScopeUnrestricted => Scope == null;
     private int[] ScopeVisibleProjectIds => Scope?.VisibleProjectIds ?? [];
     private int[] ScopeOwnedProjectIds => Scope?.OwnedProjectIds ?? [];
-    private int[] ScopeOwnedSourceIds => Scope?.OwnedSourceIds ?? [];
-    private int[] ScopeVisibleSourceIds => Scope?.VisibleSourceIds ?? [];
+    private string[] ScopeVisibleOwnerIds => Scope?.VisibleOwnerIds ?? [];
     private long[] ScopeSharedAccountIds => Scope?.SharedAccountIds ?? [];
     private string ScopeUserId => Scope?.UserId ?? string.Empty;
 
@@ -46,7 +44,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<BudgetContributionSplit> BudgetContributionSplits => Set<BudgetContributionSplit>();
     public DbSet<ProjectAccountAssignment> ProjectAccountAssignments => Set<ProjectAccountAssignment>();
 
-    public DbSet<ImportSource> ImportSources => Set<ImportSource>();
+    public DbSet<UserDataState> UserDataStates => Set<UserDataState>();
     public DbSet<Transaction> Transactions => Set<Transaction>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<CategoryGroup> CategoryGroups => Set<CategoryGroup>();
@@ -143,15 +141,6 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
             .HasDefaultValue(true)
             .ValueGeneratedNever(); // EF always writes the value; the default serves raw inserts.
 
-        // Source binding: every Project belongs to exactly one ImportSource. OnDelete is
-        // Restrict so a source with attached projects can't be silently deleted; the UI surfaces
-        // the blockers and asks the user to clean up first.
-        modelBuilder.Entity<Project>()
-            .HasOne(p => p.Source)
-            .WithMany(s => s.Projects)
-            .HasForeignKey(p => p.SourceId)
-            .OnDelete(DeleteBehavior.Restrict);
-
         // Self-referencing parent/child. SetNull on parent delete so children survive as
         // top-level projects rather than getting cascade-removed with the parent.
         modelBuilder.Entity<Project>()
@@ -162,19 +151,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<Project>()
             .HasIndex(p => p.ParentProjectId);
 
-        modelBuilder.Entity<ImportSource>()
-            .HasIndex(s => s.Name)
-            .IsUnique();
-
-        // Seed source 1 so identity namespacing is always available; the upload endpoint
-        // creates additional sources on demand. "Legacy" in the name predates multi-source
-        // support and is kept only because changing it would churn schema migrations.
-        modelBuilder.Entity<ImportSource>().HasData(new ImportSource
-        {
-            Id = SourceScope.LegacySourceId,
-            Name = SourceScope.LegacySourceName,
-            CreatedAt = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc)
-        });
+        modelBuilder.Entity<UserDataState>().HasIndex(s => s.IdSpace).IsUnique();
 
         // Imported-data mappings: the column names match the source app native schema for the columns
         // we copy verbatim during import (so the entity classes can stay close to the source's
@@ -212,11 +189,11 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
             .HasDefaultValue(AccountProviders.MoneyMoney);
 
         modelBuilder.Entity<Transaction>()
-            .HasIndex(t => new { t.SourceId, t.Timestamp });
+            .HasIndex(t => new { t.OwnerUserId, t.Timestamp });
         modelBuilder.Entity<Transaction>()
-            .HasIndex(t => new { t.SourceId, t.CategoryId, t.Timestamp });
+            .HasIndex(t => new { t.OwnerUserId, t.CategoryId, t.Timestamp });
         modelBuilder.Entity<Transaction>()
-            .HasIndex(t => new { t.SourceId, t.AccountId });
+            .HasIndex(t => new { t.OwnerUserId, t.AccountId });
 
         // Bank connectors (see BudgetDbContext.Access for who can see them).
         modelBuilder.Entity<BankLogin>().HasIndex(b => b.OwnerUserId);
@@ -259,7 +236,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<CategoryGroup>()
-            .HasIndex(cg => cg.SourceId);
+            .HasIndex(cg => cg.OwnerUserId);
 
         modelBuilder.Entity<Category>()
             .HasOne(c => c.Group)
@@ -268,10 +245,10 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<Category>()
-            .HasIndex(c => new { c.SourceId, c.GroupId });
+            .HasIndex(c => new { c.OwnerUserId, c.GroupId });
 
         modelBuilder.Entity<Account>()
-            .HasIndex(a => a.SourceId);
+            .HasIndex(a => a.OwnerUserId);
 
         modelBuilder.Entity<Account>()
             .HasOne(a => a.Group)
@@ -286,7 +263,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<AccountGroup>()
-            .HasIndex(ag => ag.SourceId);
+            .HasIndex(ag => ag.OwnerUserId);
 
         // Holdings belong to an account; Restrict mirrors how transactions hang off accounts so a
         // referenced account can't be deleted out from under its securities mid-import.
@@ -297,7 +274,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<Holding>()
-            .HasIndex(s => new { s.SourceId, s.AccountId });
+            .HasIndex(s => new { s.OwnerUserId, s.AccountId });
 
         // The bank's standing orders and scheduled transfers go with their account.
         modelBuilder.Entity<ScheduledPayment>()
@@ -319,47 +296,47 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<PortfolioChartPoint>()
-            .HasIndex(p => new { p.SourceId, p.AccountId, p.Timestamp });
+            .HasIndex(p => new { p.OwnerUserId, p.AccountId, p.Timestamp });
 
         // PortfolioPerformance taxonomy, joined to holdings by ISIN or PP security uuid. App-native (not namespaced);
         // scoped + indexed by source, and by source+taxonomy for the per-taxonomy lookups.
         modelBuilder.Entity<SecurityTaxonomy>()
-            .HasIndex(t => new { t.SourceId, t.Isin });
+            .HasIndex(t => new { t.OwnerUserId, t.Isin });
         modelBuilder.Entity<SecurityTaxonomy>()
-            .HasIndex(t => new { t.SourceId, t.TaxonomyId });
+            .HasIndex(t => new { t.OwnerUserId, t.TaxonomyId });
         modelBuilder.Entity<SecurityTaxonomy>()
             .Property(t => t.SecurityUuid).HasDefaultValue("");
 
-        // PortfolioPerformance security catalogue. App-native (not namespaced); scoped by source
-        // and looked up by source+ISIN to merge against held securities.
+        // PortfolioPerformance security catalogue. App-native (not namespaced); scoped by owner
+        // and looked up by owner+ISIN to merge against held securities.
         modelBuilder.Entity<PpSecurity>()
-            .HasIndex(s => new { s.SourceId, s.Isin });
+            .HasIndex(s => new { s.OwnerUserId, s.Isin });
 
-        // PortfolioPerformance depots + reconstructed FIFO lots. Scoped by source; lots are read by
-        // source (then grouped by ISIN/depot in memory for the tax engine).
+        // PortfolioPerformance depots + reconstructed FIFO lots. Scoped by owner; lots are read by
+        // owner (then grouped by ISIN/depot in memory for the tax engine).
         modelBuilder.Entity<PpPortfolio>()
-            .HasIndex(p => p.SourceId);
+            .HasIndex(p => p.OwnerUserId);
         modelBuilder.Entity<PpLot>()
-            .HasIndex(l => new { l.SourceId, l.Isin });
+            .HasIndex(l => new { l.OwnerUserId, l.Isin });
 
         // Depot mapping is user config (not rebuilt on upload); one link per PP depot per source.
         modelBuilder.Entity<PpPortfolioLink>()
-            .HasIndex(l => new { l.SourceId, l.PpPortfolioUuid })
+            .HasIndex(l => new { l.OwnerUserId, l.PpPortfolioUuid })
             .IsUnique();
 
         // How each PP portfolio shows as accounts (user config); one row per portfolio per source.
         modelBuilder.Entity<PpPortfolioSetting>()
-            .HasIndex(s => new { s.SourceId, s.PpPortfolioUuid })
+            .HasIndex(s => new { s.OwnerUserId, s.PpPortfolioUuid })
             .IsUnique();
 
         // Per-instrument tax overrides (user config); one row per instrument (uuid) per source.
         modelBuilder.Entity<SecurityTaxSetting>()
-            .HasIndex(s => new { s.SourceId, s.SecurityUuid })
+            .HasIndex(s => new { s.OwnerUserId, s.SecurityUuid })
             .IsUnique();
 
         // Instrument mapping (user config); one link per ISIN-less PP instrument per source.
         modelBuilder.Entity<PpSecurityLink>()
-            .HasIndex(l => new { l.SourceId, l.PpSecurityUuid })
+            .HasIndex(l => new { l.OwnerUserId, l.PpSecurityUuid })
             .IsUnique();
 
         ConfigureAccessFilters(modelBuilder);

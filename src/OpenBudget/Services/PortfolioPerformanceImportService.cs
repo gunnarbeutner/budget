@@ -7,12 +7,11 @@ namespace OpenBudget.Services;
 /// <summary>
 /// Imports security taxonomy data from an uploaded PortfolioPerformance ".portfolio" file into
 /// <c>pp_security_taxonomy</c> for an existing source, keeps the file as the source's current one and recomputes the
-/// source's portfolio accounts from it (<see cref="PortfolioAccountSync"/>). Parsing lives in
-/// <see cref="PortfolioPerformanceFile"/>; this owns the replace-for-source transaction and the
-/// per-source serialization (singleton, like the other importers).
+/// user's portfolio accounts from it (<see cref="PortfolioAccountSync"/>). Parsing lives in
+/// <see cref="PortfolioPerformanceFile"/>; this owns the replace-for-user transaction and the
+/// per-user serialization (singleton, like the other importers).
 ///
-/// The taxonomy supplements imported holdings (joined by ISIN or PP security uuid), so the source must already exist
-/// — a PortfolioPerformance upload for an unknown source throws <see cref="KeyNotFoundException"/>.
+/// The taxonomy supplements imported holdings (joined by ISIN or PP security uuid); an import for an unknown user throws <see cref="KeyNotFoundException"/>.
 /// </summary>
 public class PortfolioPerformanceImportService
 {
@@ -21,7 +20,7 @@ public class PortfolioPerformanceImportService
     private readonly ILogger<PortfolioPerformanceImportService> _logger;
     private readonly UploadedPortfolioFileSource? _files;
     private readonly PortfolioAccountSync? _accounts;
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _perSourceLocks = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _perOwnerLocks = new(StringComparer.Ordinal);
 
     public PortfolioPerformanceImportService(
         IDbContextFactory<BudgetDbContext> dbFactory,
@@ -37,16 +36,14 @@ public class PortfolioPerformanceImportService
         _accounts = accounts;
     }
 
-    public async Task<PpImportResult> ImportFromFileAsync(string sourceName, string portfolioFilePath, CancellationToken ct)
+    /// <summary>Imports the PortfolioPerformance file at <paramref name="portfolioFilePath"/> as data of <paramref name="ownerUserId"/> (a user id).</summary>
+    public async Task<PpImportResult> ImportFromFileAsync(string ownerUserId, string portfolioFilePath, CancellationToken ct)
     {
-        if (!SourceData.IsValidSlug(sourceName))
-            throw new ArgumentException($"Source name '{sourceName}' is not a valid slug.", nameof(sourceName));
-
-        var sem = _perSourceLocks.GetOrAdd(sourceName, _ => new SemaphoreSlim(1, 1));
+        var sem = _perOwnerLocks.GetOrAdd(ownerUserId, _ => new SemaphoreSlim(1, 1));
         await sem.WaitAsync(ct);
         try
         {
-            return await ImportInternalAsync(sourceName, portfolioFilePath, ct);
+            return await ImportInternalAsync(ownerUserId, portfolioFilePath, ct);
         }
         finally
         {
@@ -54,13 +51,12 @@ public class PortfolioPerformanceImportService
         }
     }
 
-    private async Task<PpImportResult> ImportInternalAsync(string sourceName, string portfolioFilePath, CancellationToken ct)
+    private async Task<PpImportResult> ImportInternalAsync(string ownerUserId, string portfolioFilePath, CancellationToken ct)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
 
-        var source = await db.ImportSources.FirstOrDefaultAsync(s => s.Name == sourceName, ct)
-            ?? throw new KeyNotFoundException($"Unknown source '{sourceName}'. Import its imported data before uploading PortfolioPerformance taxonomy.");
-        int sourceId = source.Id;
+        if (!await db.Users.AnyAsync(u => u.Id == ownerUserId, ct)) throw new KeyNotFoundException("Unknown user.");
+        string ownerId = ownerUserId;
 
         // Parse outside the transaction — it's CPU/IO over the file, no DB work. InvalidDataException
         // (wrong format / not a PPPBV1 file) propagates to the caller for a 400.
@@ -71,7 +67,7 @@ public class PortfolioPerformanceImportService
             var openLots = FifoLedger.BuildOpenLots(client)
                 .Select(l => new PpLot
                 {
-                    SourceId = sourceId,
+                    OwnerUserId = ownerId,
                     PortfolioUuid = l.PortfolioUuid,
                     SecurityUuid = l.SecurityUuid,
                     Isin = l.Isin,
@@ -81,17 +77,17 @@ public class PortfolioPerformanceImportService
                     Currency = l.Currency
                 })
                 .ToList();
-            return (PortfolioPerformanceFile.Flatten(client, sourceId),
-                    PortfolioPerformanceFile.ExtractSecurities(client, sourceId),
-                    PortfolioPerformanceFile.ExtractPortfolios(client, sourceId),
+            return (PortfolioPerformanceFile.Flatten(client, ownerId),
+                    PortfolioPerformanceFile.ExtractSecurities(client, ownerId),
+                    PortfolioPerformanceFile.ExtractPortfolios(client, ownerId),
                     openLots);
         }, ct);
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_security_taxonomy WHERE SourceId = {0}", new object[] { sourceId }, ct);
-        await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_security WHERE SourceId = {0}", new object[] { sourceId }, ct);
-        await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_lot WHERE SourceId = {0}", new object[] { sourceId }, ct);
-        await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_portfolio WHERE SourceId = {0}", new object[] { sourceId }, ct);
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_security_taxonomy WHERE OwnerUserId = {0}", new object[] { ownerId }, ct);
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_security WHERE OwnerUserId = {0}", new object[] { ownerId }, ct);
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_lot WHERE OwnerUserId = {0}", new object[] { ownerId }, ct);
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM pp_portfolio WHERE OwnerUserId = {0}", new object[] { ownerId }, ct);
         db.SecurityTaxonomies.AddRange(rows);
         db.PpSecurities.AddRange(securities);
         db.PpPortfolios.AddRange(portfolios);
@@ -103,30 +99,29 @@ public class PortfolioPerformanceImportService
         int distinctTaxonomies = rows.Select(r => r.TaxonomyName).Distinct(StringComparer.Ordinal).Count();
 
         _logger.LogInformation(
-            "Imported PortfolioPerformance data for source '{Source}' (id={SourceId}): {Rows} taxonomy rows, {Isins} classified securities, {Taxonomies} taxonomies, {Portfolios} depots, {Lots} open lots",
-            sourceName, sourceId, rows.Count, distinctIsins, distinctTaxonomies, portfolios.Count, lots.Count);
+            "Imported PortfolioPerformance data of user {OwnerUserId}: {Rows} taxonomy rows, {Isins} classified securities, {Taxonomies} taxonomies, {Portfolios} depots, {Lots} open lots",
+            ownerId, rows.Count, distinctIsins, distinctTaxonomies, portfolios.Count, lots.Count);
 
         // The Browse holdings view reads taxonomy alongside imported data, so signal the same area.
-        _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: sourceId));
+        _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: ownerId));
 
-        // The file becomes the source's current one; the portfolio accounts are recomputed from it.
-        if (_files != null) await _files.StoreAsync(sourceId, portfolioFilePath, ct);
+        // The file becomes the user's current one; the portfolio accounts are recomputed from it.
+        if (_files != null) await _files.StoreAsync(ownerId, portfolioFilePath, ct);
         if (_accounts != null)
         {
             try
             {
-                await _accounts.SyncAsync(sourceId, ct);
+                await _accounts.SyncAsync(ownerId, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogError(ex, "Recomputing the PortfolioPerformance accounts of source '{Source}' failed.", sourceName);
+                _logger.LogError(ex, "Recomputing the PortfolioPerformance accounts of user {OwnerUserId} failed.", ownerId);
             }
         }
 
         return new PpImportResult
         {
-            SourceId = sourceId,
-            SourceName = sourceName,
+            OwnerUserId = ownerId,
             RowsImported = rows.Count,
             SecuritiesClassified = distinctIsins,
             TaxonomiesImported = distinctTaxonomies,
@@ -138,8 +133,7 @@ public class PortfolioPerformanceImportService
 
 public class PpImportResult
 {
-    public int SourceId { get; set; }
-    public string SourceName { get; set; } = string.Empty;
+    public string OwnerUserId { get; set; } = string.Empty;
     public int RowsImported { get; set; }
     public int SecuritiesClassified { get; set; }
     public int TaxonomiesImported { get; set; }

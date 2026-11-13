@@ -1,5 +1,4 @@
-@page "/portfolio-performance/{SourceId:int}/tax"
-@attribute [RequireSourceOwner]
+@page "/portfolio-performance/tax"
 @inherits DataChangeAwareComponent
 @using System.Globalization
 @using OpenBudget.Models
@@ -8,15 +7,14 @@
 @inject ProjectService ProjectService
 @inject PortfolioService PortfolioService
 @inject NavigationManager Navigation
-@inject SourceService SourceService
 @inject IStringLocalizer<SecurityTax> L
 
 <SettingsShell Active="portfolio-performance" Bare="@Embedded">
 @if (!Embedded)
 {
-<PageTitle>@(sourceName != null ? L["PageTitle_WithSource", sourceName] : L["PageTitle"])</PageTitle>
+<PageTitle>@L["PageTitle"]</PageTitle>
 
-<PageHeader Title="@L["Heading"]" Subtitle="@sourceName">
+<PageHeader Title="@L["Heading"]">
     <Actions>
         <a class="ob-btn" href="/portfolio-performance"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a>
     </Actions>
@@ -26,10 +24,6 @@
 @if (loading)
 {
     <div class="skeleton skeleton-block" aria-busy="true"></div>
-}
-else if (notFound)
-{
-    <div class="alert alert-warning">@L["NotFound"]</div>
 }
 else if (rows.Count == 0)
 {
@@ -94,15 +88,16 @@ else
 
 @code {
 
-    [Parameter] public int SourceId { get; set; }
+    /// <summary>Whose data to show (the Portfolio view passes its project's owner); the signed-in user when not set.</summary>
+    [Parameter] public string OwnerUserId { get; set; } = string.Empty;
     /// <summary>Shown inside the Portfolio view (no page title, header or back link, no redirect).</summary>
     [Parameter] public bool Embedded { get; set; }
 
-    // The source-level page moved into the Portfolio view of a project that uses the source; it stays here only
-    // when no project on the source has a depot (reached from the Sources page).
+    // The page moved into the Portfolio view of a project with the user's depots; it stays here only when no project
+    // of theirs has a depot.
     private async Task<bool> RedirectToPortfolioAsync(string tab)
     {
-        if (Embedded || await PortfolioService.FindPortfolioProjectAsync(SourceId) is not { } pid) return false;
+        if (Embedded || await PortfolioService.FindPortfolioProjectAsync(OwnerUserId) is not { } pid) return false;
         Navigation.NavigateTo($"/projects/{pid}/portfolio?tab={tab}", replace: true);
         return true;
     }
@@ -111,19 +106,18 @@ else
     private static readonly int[] TeilfreistellungOptions = { 0, 1500, 3000, 6000, 8000 };
 
     private List<SecurityTaxRow> rows = new();
-    private string? sourceName;
     private bool loading = true;
-    private bool notFound;
-    private int _loadedSourceId = -1;
+    private string? _loadedOwnerId;
 
     protected override bool IsRelevantChange(DataChange change) =>
-        change.Area is DataArea.ImportedData or DataArea.Sources && (change.SourceId == null || change.SourceId == SourceId);
+        change.Area is DataArea.ImportedData or DataArea.ImportState && (change.OwnerUserId == null || change.OwnerUserId == OwnerUserId);
     protected override Task ReloadAfterChangeAsync() => LoadAsync();
 
     protected override async Task OnParametersSetAsync()
     {
-        if (_loadedSourceId == SourceId) return;
-        _loadedSourceId = SourceId;
+        if (OwnerUserId.Length == 0) OwnerUserId = (await Access.GetAsync()).UserId ?? string.Empty;
+        if (OwnerUserId.Length == 0 || _loadedOwnerId == OwnerUserId) return;
+        _loadedOwnerId = OwnerUserId;
         if (await RedirectToPortfolioAsync("tax")) return;
         await LoadAsync();
     }
@@ -131,32 +125,28 @@ else
     private async Task LoadAsync()
     {
         loading = true;
-        var sources = await ProjectService.GetAllSourcesAsync();
-        var source = sources.FirstOrDefault(s => s.Id == SourceId);
-        if (source == null) { notFound = true; loading = false; return; }
-        sourceName = (await SourceService.GetLabelsAsync([source.Id])).GetValueOrDefault(source.Id);
-        rows = await TaxService.GetSettingsAsync(SourceId);
+        rows = await TaxService.GetSettingsAsync(OwnerUserId);
         loading = false;
     }
 
     private async Task OnKindChanged(SecurityTaxRow r, object? value)
     {
         if (!int.TryParse(value?.ToString(), out var kind)) return;
-        await TaxService.SetAsync(SourceId, r.Uuid, kind, r.TeilfreistellungBp, r.AcquiredOverride);
-        rows = await TaxService.GetSettingsAsync(SourceId);
+        await TaxService.SetAsync(OwnerUserId, r.Uuid, kind, r.TeilfreistellungBp, r.AcquiredOverride);
+        rows = await TaxService.GetSettingsAsync(OwnerUserId);
     }
 
     private async Task OnTeilfreistellungChanged(SecurityTaxRow r, object? value)
     {
         if (!int.TryParse(value?.ToString(), out var bp)) return;
-        await TaxService.SetAsync(SourceId, r.Uuid, r.Kind, bp, r.AcquiredOverride);
-        rows = await TaxService.GetSettingsAsync(SourceId);
+        await TaxService.SetAsync(OwnerUserId, r.Uuid, r.Kind, bp, r.AcquiredOverride);
+        rows = await TaxService.GetSettingsAsync(OwnerUserId);
     }
 
     private async Task OnAcquiredChanged(SecurityTaxRow r, object? value)
     {
         DateOnly? date = DateOnly.TryParse(value?.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
-        await TaxService.SetAsync(SourceId, r.Uuid, r.Kind, r.TeilfreistellungBp, date);
-        rows = await TaxService.GetSettingsAsync(SourceId);
+        await TaxService.SetAsync(OwnerUserId, r.Uuid, r.Kind, r.TeilfreistellungBp, date);
+        rows = await TaxService.GetSettingsAsync(OwnerUserId);
     }
 }

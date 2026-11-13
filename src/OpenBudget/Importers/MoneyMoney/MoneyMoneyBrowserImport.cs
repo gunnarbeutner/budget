@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
-using Microsoft.EntityFrameworkCore;
 using OpenBudget.Services;
 
 namespace OpenBudget.Importers.MoneyMoney;
@@ -211,23 +210,25 @@ public sealed class MoneyMoneyBrowserImport
     }
 
     /// <summary>
-    /// Imports the complete upload into <paramref name="sourceName"/> in the background. False when the upload is
+    /// Imports the complete upload as data of <paramref name="userId"/> in the background. False when the upload is
     /// unknown or incomplete, or the user's previous job still runs.
     /// </summary>
-    public bool StartImport(string userId, string uploadId, string sourceName, string? password)
+    public bool StartImport(string userId, string uploadId, string? password)
     {
         if (!_uploads.TryGetValue(uploadId, out var upload) || upload.UserId != userId || upload.Received != upload.Size) return false;
         if (_jobs.TryGetValue(userId, out var running) && running.Running) return false;
         if (!_uploads.TryRemove(uploadId, out _)) return false;
         Set(userId, new MoneyMoneyImportJob(MoneyMoneyImportPhase.Extracting));
-        _ = Task.Run(() => RunAsync(userId, upload.Path, sourceName, password), CancellationToken.None);
+        _ = Task.Run(() => RunAsync(userId, upload.Path, password), CancellationToken.None);
         return true;
     }
 
-    private async Task RunAsync(string userId, string zipPath, string sourceName, string? password)
+    private async Task RunAsync(string userId, string zipPath, string? password)
     {
         var workDir = zipPath[..^".zip".Length];
         var ct = _stopping;
+        // The final state is published only after the temporary files are gone.
+        MoneyMoneyImportJob? outcome = null;
         try
         {
             var folder = MoneyMoneyArchive.Extract(zipPath, workDir);
@@ -239,11 +240,11 @@ public sealed class MoneyMoneyBrowserImport
             TryDelete(folder.DatabasePath);
 
             Set(userId, new MoneyMoneyImportJob(MoneyMoneyImportPhase.Importing));
-            var result = await _importer.ImportFromFileAsync(sourceName, plain, ct);
+            var result = await _importer.ImportFromFileAsync(userId, plain, ct);
 
             Set(userId, new MoneyMoneyImportJob(MoneyMoneyImportPhase.Statements, Result: result));
             var lastReport = DateTime.MinValue;
-            var summary = await _statements.ImportFolderAsync(sourceName, plain, folder.StatementsDirectory, (done, total) =>
+            var summary = await _statements.ImportFolderAsync(userId, plain, folder.StatementsDirectory, (done, total) =>
             {
                 if (done < total && DateTime.UtcNow - lastReport < TimeSpan.FromMilliseconds(500)) return;
                 lastReport = DateTime.UtcNow;
@@ -254,49 +255,49 @@ public sealed class MoneyMoneyBrowserImport
             // The import is one-time: its accounts, categories and their groups are OpenBudget's to edit from here on.
             await using (var db = await _system.CreateDbContextAsync(ct))
             {
-                var sourceId = await db.ImportSources.Where(s => s.Name == sourceName).Select(s => s.Id).FirstAsync(ct);
-                await _takeover.TakeOverAsync(sourceId, ct);
+                var ownerId = userId;
+                await _takeover.TakeOverAsync(ownerId, ct);
                 // Everything imported shows in the owner's default project.
-                await DefaultProjectAssigner.AssignImportedAsync(db, sourceId, ct);
-                budgets = await MoneyMoneyBudgetImport.ImportAsync(db, sourceId, plain, DateTime.UtcNow.Year, ct);
+                await DefaultProjectAssigner.AssignImportedAsync(db, ownerId, ct);
+                budgets = await MoneyMoneyBudgetImport.ImportAsync(db, ownerId, plain, DateTime.UtcNow.Year, ct);
             }
 
-            Set(userId, new MoneyMoneyImportJob(MoneyMoneyImportPhase.Done, Result: result, Statements: summary, Budgets: budgets));
-            _logger.LogInformation("MoneyMoney import from the browser into source {Source}: {Transactions} transactions, {Stored} statements stored.",
-                sourceName, result.TransactionsImported, summary.Stored);
+            outcome = new MoneyMoneyImportJob(MoneyMoneyImportPhase.Done, Result: result, Statements: summary, Budgets: budgets);
+            _logger.LogInformation("MoneyMoney import from the browser for user {User}: {Transactions} transactions, {Stored} statements stored.",
+                userId, result.TransactionsImported, summary.Stored);
         }
         catch (MoneyMoneyWrongPasswordException)
         {
-            Fail(userId, MoneyMoneyImportError.WrongPassword);
+            outcome = Failed(MoneyMoneyImportError.WrongPassword);
         }
         catch (InvalidDataException ex) when (ex.Message == MoneyMoneyArchive.NoDatabase)
         {
-            Fail(userId, MoneyMoneyImportError.NoDatabase);
+            outcome = Failed(MoneyMoneyImportError.NoDatabase);
         }
         catch (InvalidDataException ex) when (ex.Message == MoneyMoneyArchive.NotAZip)
         {
-            Fail(userId, MoneyMoneyImportError.NotAZip);
+            outcome = Failed(MoneyMoneyImportError.NotAZip);
         }
         catch (MoneyMoneyImportFinishedException)
         {
-            Fail(userId, MoneyMoneyImportError.ImportFinished);
+            outcome = Failed(MoneyMoneyImportError.ImportFinished);
         }
 #pragma warning disable CA1031 // a background job: every failure is reported to the user and logged, never thrown
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            _logger.LogError(ex, "MoneyMoney import from the browser into source {Source} failed.", sourceName);
-            Fail(userId, MoneyMoneyImportError.Failed);
+            _logger.LogError(ex, "MoneyMoney import from the browser for user {User} failed.", userId);
+            outcome = Failed(MoneyMoneyImportError.Failed);
         }
         finally
         {
             TryDelete(zipPath);
             TryDeleteDirectory(workDir);
+            if (outcome != null) Set(userId, outcome);
         }
     }
 
-    private void Fail(string userId, MoneyMoneyImportError error) =>
-        Set(userId, new MoneyMoneyImportJob(MoneyMoneyImportPhase.Failed, error));
+    private static MoneyMoneyImportJob Failed(MoneyMoneyImportError error) => new(MoneyMoneyImportPhase.Failed, error);
 
     private void Set(string userId, MoneyMoneyImportJob job)
     {

@@ -31,13 +31,13 @@ public interface ISyncSink
     }
 }
 
-public sealed record SyncOutcome(bool Success, string? Error, IReadOnlyCollection<int> AffectedSourceIds);
+public sealed record SyncOutcome(bool Success, string? Error, IReadOnlyCollection<string> AffectedOwnerIds);
 
 /// <summary>
 /// Runs one sync of one bank login: login (with challenges), list accounts, refresh linked accounts,
 /// fetch statements, log out and persist the session. Uses an unrestricted context (a sync runs in
 /// the background, outside any circuit) and therefore re-checks that every account it writes to
-/// lives in a source owned by the login's owner.
+/// belongs to the login's owner.
 /// </summary>
 public sealed class BankSyncRunner
 {
@@ -144,7 +144,7 @@ public sealed class BankSyncRunner
 
     public async Task<SyncOutcome> RunAsync(SyncRequest request, ISyncSink sink, CancellationToken ct)
     {
-        var affected = new HashSet<int>();
+        var affected = new HashSet<string>(StringComparer.Ordinal);
         await using var db = await _system.CreateDbContextAsync(ct);
         var login = await db.BankLogins.Include(l => l.Accounts).FirstOrDefaultAsync(l => l.Id == request.LoginId, ct);
         if (login == null) return new SyncOutcome(false, "Bank login not found.", affected);
@@ -403,7 +403,7 @@ public sealed class BankSyncRunner
 
     private async Task RefreshAccountsAsync(
         BudgetDbContext db, BankLogin login, IBankConnector connector, IReadOnlyList<RemoteAccount> remote, SyncRequest request,
-        ISyncSink sink, SyncContext context, List<string> errors, HashSet<int> affected, CancellationToken ct)
+        ISyncSink sink, SyncContext context, List<string> errors, HashSet<string> affected, CancellationToken ct)
     {
         var links = login.Accounts
             .Where(a => a.LinkedAccountId != null && !a.Closed && (request.RefreshAccounts == null || request.RefreshAccounts.Contains(a.Id)))
@@ -416,7 +416,7 @@ public sealed class BankSyncRunner
             try
             {
                 var account = await db.Accounts.FirstOrDefaultAsync(a => a.Id == link.LinkedAccountId, ct);
-                var ownerOk = account != null && await db.ImportSources.AnyAsync(s => s.Id == account.SourceId && s.OwnerUserId == login.OwnerUserId, ct);
+                var ownerOk = account != null && account.OwnerUserId == login.OwnerUserId;
                 // A linked account MoneyMoney still owns waits for its switch: the bank's report is kept for the preview.
                 var awaitingSwitch = account != null && !link.CreatedByConnector
                     && string.Equals(account.Provider, AccountProviders.MoneyMoney, StringComparison.Ordinal);
@@ -435,7 +435,7 @@ public sealed class BankSyncRunner
                     link.PendingRefreshAt = now;
                     link.PendingSinceUtc = since is { } p ? p.ToDateTime(TimeOnly.MinValue) : null;
                     link.LastError = null;
-                    affected.Add(account.SourceId);
+                    affected.Add(account.OwnerUserId);
                     await db.SaveChangesAsync(ct);
                     continue;
                 }
@@ -452,7 +452,7 @@ public sealed class BankSyncRunner
                     _logger.LogWarning("Bank login {LoginId}: account link {LinkId}: standing orders not read: {Error}", login.Id, link.Id, link.ScheduledError);
                 link.LastSuccessAt = now;
                 link.LastError = null;
-                affected.Add(account.SourceId);
+                affected.Add(account.OwnerUserId);
             }
             catch (ConnectorException ex)
             {
@@ -513,7 +513,7 @@ public sealed class BankSyncRunner
 
     private async Task FetchStatementsAsync(
         BudgetDbContext db, BankLogin login, IBankConnector connector, IReadOnlyList<RemoteAccount> remote, SyncRequest request,
-        ISyncSink sink, SyncContext context, List<string> errors, HashSet<int> affected, CancellationToken ct)
+        ISyncSink sink, SyncContext context, List<string> errors, HashSet<string> affected, CancellationToken ct)
     {
         var targets = login.Accounts
             .Where(a => a.StatementsEnabled && !a.Closed && a.LinkedAccountId != null
@@ -547,9 +547,9 @@ public sealed class BankSyncRunner
                         var target = targets.FirstOrDefault(t => string.Equals(t.RemoteId, statement.AccountRemoteId, StringComparison.Ordinal));
                         if (target == null) continue; // an account whose statements are off: not wanted
                         account = await db.Accounts.FirstAsync(a => a.Id == target.LinkedAccountId, ct);
-                        if (!await db.ImportSources.AnyAsync(s => s.Id == account.SourceId && s.OwnerUserId == login.OwnerUserId, ct)) continue;
+                        if (account.OwnerUserId != login.OwnerUserId) continue;
                         target.LastStatementAt = now;
-                        affected.Add(account.SourceId);
+                        affected.Add(account.OwnerUserId);
                     }
                     await _statements.StoreAsync(db, login, account, statement, ct);
                     known.Add(statement.Identifier);

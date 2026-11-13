@@ -57,7 +57,7 @@ public class ProjectBudgetSumConsistencyTests
         // Budget view: its table over the same summary.
         var table = BudgetTableModel.Build(
             await t.Spending.GetSpendingSummaryAsync(1, 2026, 11, 11),
-            await t.Hierarchy.GetAllCategoriesWithChildCountsAsync(1));
+            await t.Hierarchy.GetAllCategoriesWithChildCountsAsync(TestDb.DefaultOwner));
 
         Assert.Equal(240m, switcher.TotalSpent);
         Assert.Equal(500m, switcher.TotalBudget);

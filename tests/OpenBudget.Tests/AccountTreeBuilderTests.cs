@@ -105,9 +105,9 @@ public class AccountTreeBuilderTests
         await using var t = await AccessWorld.BuildAsync();
         var group = AccessWorld.Id(AccessWorld.SourceAlice, 500);
         var other = AccessWorld.Id(AccessWorld.SourceAlice, 501);
-        t.Db.AccountGroups.Add(new AccountGroup { Id = group, SourceId = AccessWorld.SourceAlice, Name = "Alice banks" });
-        t.Db.AccountGroups.Add(new AccountGroup { Id = other, SourceId = AccessWorld.SourceAlice, Name = "Alice private bank", ParentGroupId = group });
-        foreach (var acc in t.Db.Accounts.Where(a => a.SourceId == AccessWorld.SourceAlice))
+        t.Db.AccountGroups.Add(new AccountGroup { Id = group, OwnerUserId = AccessWorld.Alice, Name = "Alice banks" });
+        t.Db.AccountGroups.Add(new AccountGroup { Id = other, OwnerUserId = AccessWorld.Alice, Name = "Alice private bank", ParentGroupId = group });
+        foreach (var acc in t.Db.Accounts.Where(a => a.OwnerUserId == AccessWorld.Alice))
         {
             acc.GroupId = acc.Id == AccessWorld.AccountWp ? group : other;
             acc.Balances = "11:100.000000,3:EUR,";

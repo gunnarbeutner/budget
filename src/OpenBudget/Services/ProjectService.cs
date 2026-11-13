@@ -4,7 +4,7 @@ using OpenBudget.Models;
 namespace OpenBudget.Services;
 
 /// <summary>
-/// Project / source CRUD + per-project tracking-item and account-balance reads. Carved out
+/// Project CRUD + per-project tracking-item and account-balance reads. Carved out
 /// of BudgetService as part of the god-class split — no hierarchy or spending math here,
 /// just the records that describe what a project is and which accounts / categories it owns.
 /// </summary>
@@ -68,12 +68,11 @@ public class ProjectService
             .FirstOrDefaultAsync(b => b.Id == projectId);
     }
 
-    public async Task<Project> CreateProjectAsync(string name, int sourceId, string? description = null)
+    /// <summary>Creates a project owned by the signed-in user.</summary>
+    public async Task<Project> CreateProjectAsync(string name, string? description = null)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        // A user can only create projects on sources they own (the context's write guard enforces it
-        // too); the new project is owned by the creator.
-        db.Scope?.RequireSourceOwner(sourceId);
+        if (db.Scope is { IsAuthenticated: false }) throw new AccessDeniedException("Not signed in.");
         var maxSortOrder = await db.Projects.AnyAsync()
             ? await db.Projects.MaxAsync(p => p.SortOrder)
             : -1;
@@ -84,8 +83,7 @@ public class ProjectService
             Description = description,
             CreatedAt = DateTime.UtcNow,
             SortOrder = maxSortOrder + 1,
-            SourceId = sourceId,
-            OwnerUserId = db.Scope?.UserId
+            OwnerUserId = db.Scope?.UserId ?? string.Empty
         };
 
         db.Projects.Add(project);
@@ -235,7 +233,7 @@ public class ProjectService
         var parent = await db.Projects.FirstOrDefaultAsync(p => p.Id == parentId.Value)
             ?? throw new ArgumentException("Parent project not found", nameof(parentId));
 
-        if (parent.SourceId != project.SourceId)
+        if (parent.OwnerUserId != project.OwnerUserId)
             throw new InvalidOperationException(
                 "Parent and child must share the same import source.");
         if (parent.ParentProjectId != null)
@@ -349,29 +347,16 @@ public class ProjectService
     }
 
     /// <summary>
-    /// Resolve the SourceId for a project. Single FK lookup; callers that already loaded the
-    /// project should pass <c>project.SourceId</c> directly instead.
+    /// Resolve the OwnerUserId for a project. Single FK lookup; callers that already loaded the
+    /// project should pass <c>project.OwnerUserId</c> directly instead.
     /// </summary>
-    public async Task<int> GetSourceIdForProjectAsync(int projectId)
+    public async Task<string?> GetOwnerIdForProjectAsync(int projectId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.Projects
             .Where(p => p.Id == projectId)
-            .Select(p => p.SourceId)
+            .Select(p => p.OwnerUserId)
             .FirstOrDefaultAsync();
-    }
-
-    /// <summary>
-    /// Import sources visible to the current user (owned ones plus the sources of shared projects),
-    /// ordered by name. Only owned sources may be picked for new projects; see <c>SourceService</c>.
-    /// </summary>
-    public async Task<List<ImportSource>> GetAllSourcesAsync()
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.ImportSources
-            .AsNoTracking()
-            .OrderBy(s => s.Name)
-            .ToListAsync();
     }
 
     public async Task<List<ProjectTrackingItem>> GetProjectTrackingItemsAsync(int projectId)
@@ -426,7 +411,7 @@ public class ProjectService
         var assignments = await db.ProjectAccountAssignments.AsNoTracking().ToListAsync();
         if (assignments.Count == 0) return new Dictionary<int, ProjectBalanceSummary>();
 
-        // AccountIds are namespaced globally unique across sources, so a single Contains() query
+        // AccountIds are unique across users, so a single Contains() query
         // resolves accounts for every project regardless of source.
         var accountIds = assignments.Select(a => a.AccountId).Distinct().ToList();
         var accounts = await db.Accounts

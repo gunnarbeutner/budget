@@ -16,20 +16,20 @@ namespace OpenBudget.E2E.Tests;
 public sealed class PortfolioTests : EndToEndTestBase
 {
     private static int Pid => E2ESeed.ProjectId;
-    private static readonly long DepotId = SourceScope.Namespace(E2ESeed.SourceId, 7);
+    private static readonly long DepotId = RowIds.Namespace(E2ESeed.IdSpace, 7);
 
     private SystemDbContextFactory Db => Factory.Services.GetRequiredService<SystemDbContextFactory>();
 
     private async Task AddDepotAsync()
     {
         await using var db = await Db.CreateDbContextAsync();
-        db.Accounts.Add(new Account { Id = DepotId, SourceId = E2ESeed.SourceId, Name = "Example Depot", Type = 7, Currency = "EUR" });
+        db.Accounts.Add(new Account { Id = DepotId, OwnerUserId = E2ESeed.OwnerUserId, Name = "Example Depot", Type = 7, Currency = "EUR" });
         await db.SaveChangesAsync();
         db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = Pid, AccountId = DepotId });
         db.Holdings.Add(new Holding
         {
             Id = 1,
-            SourceId = E2ESeed.SourceId,
+            OwnerUserId = E2ESeed.OwnerUserId,
             AccountId = DepotId,
             Name = "Example World Fund",
             Isin = "XX0000000001",
@@ -46,7 +46,7 @@ public sealed class PortfolioTests : EndToEndTestBase
     {
         await using var db = await Db.CreateDbContextAsync();
         var first = await db.Projects.SingleAsync(p => p.Id == Pid);
-        var second = new Project { Name = "Second Example Project", SourceId = first.SourceId, OwnerUserId = first.OwnerUserId, SortOrder = first.SortOrder + 1 };
+        var second = new Project { Name = "Second Example Project", OwnerUserId = first.OwnerUserId, SortOrder = first.SortOrder + 1 };
         db.Projects.Add(second);
         await db.SaveChangesAsync();
         return second.Id;
@@ -72,7 +72,7 @@ public sealed class PortfolioTests : EndToEndTestBase
 
         await Tab("tax").ClickAsync();
         await Expect(Page).ToHaveURLAsync(new Regex(@"/portfolio\?tab=tax$"));
-        await Expect(Page.GetByTestId("portfolio-tax-note")).ToContainTextAsync("legacy");
+        await Expect(Page.GetByTestId("portfolio-tax-note")).ToContainTextAsync("owner");
         await Expect(Page.GetByText("No securities with reconstructed lots")).ToBeVisibleAsync();
     }
 
@@ -87,20 +87,20 @@ public sealed class PortfolioTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task Source_depot_and_tax_pages_lead_to_the_portfolio_of_a_project_using_the_source()
+    public async Task Depot_and_tax_pages_lead_to_the_portfolio_of_a_project_with_a_depot()
     {
+        // Without a project showing a depot the pages stay on the Portfolio Performance settings.
+        await GoToAsync("/portfolio-performance/depots");
+        await Expect(Page).ToHaveURLAsync(new Regex("/portfolio-performance/depots$"));
+        await Expect(Page.GetByTestId("settings-nav-portfolio-performance")).ToHaveAttributeAsync("aria-current", "page");
+
         await AddDepotAsync();
 
-        await GoToAsync($"/sources/{E2ESeed.SourceId}/tax");
+        await GoToAsync("/portfolio-performance/tax");
         await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{Pid}/portfolio\\?tab=tax$"));
 
-        await GoToAsync($"/sources/{E2ESeed.SourceId}/depots");
+        await GoToAsync("/portfolio-performance/depots");
         await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{Pid}/portfolio\\?tab=positions$"));
-
-        // A source without such a project keeps its own page on the Portfolio Performance settings (old links redirect there).
-        await GoToAsync($"/sources/{E2ESeed.SpareSourceId}/depots");
-        await Expect(Page).ToHaveURLAsync(new Regex($"/portfolio-performance/{E2ESeed.SpareSourceId}/depots$"));
-        await Expect(Page.GetByTestId("settings-nav-portfolio-performance")).ToHaveAttributeAsync("aria-current", "page");
     }
 
     [Test]
@@ -149,8 +149,8 @@ public sealed class PortfolioTests : EndToEndTestBase
         await using (var db = await Db.CreateDbContextAsync())
         {
             static long Noon(DateTime d) => new DateTimeOffset(d.Year, d.Month, d.Day, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
-            db.PortfolioChartPoints.Add(new PortfolioChartPoint { SourceId = E2ESeed.SourceId, AccountId = DepotId, Timestamp = Noon(first), Balance = 1000 });
-            db.PortfolioChartPoints.Add(new PortfolioChartPoint { SourceId = E2ESeed.SourceId, AccountId = DepotId, Timestamp = Noon(today.AddMonths(-6)), Balance = 1100 });
+            db.PortfolioChartPoints.Add(new PortfolioChartPoint { OwnerUserId = E2ESeed.OwnerUserId, AccountId = DepotId, Timestamp = Noon(first), Balance = 1000 });
+            db.PortfolioChartPoints.Add(new PortfolioChartPoint { OwnerUserId = E2ESeed.OwnerUserId, AccountId = DepotId, Timestamp = Noon(today.AddMonths(-6)), Balance = 1100 });
             await db.SaveChangesAsync();
         }
 

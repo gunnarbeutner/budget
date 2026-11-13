@@ -60,8 +60,8 @@ public sealed class CategoryRuleTests
         await using var db = await t.System.CreateDbContextAsync();
         foreach (var id in new[] { AccessWorld.AccountWp, AccessWorld.AccountPrivate, AccessWorld.AccountBob })
             (await db.Accounts.SingleAsync(a => a.Id == id)).Provider = "fake";
-        db.Categories.Add(new Category { Id = Groceries, SourceId = AccessWorld.SourceAlice, Name = "Groceries", GroupId = AccessWorld.SharedGroup, Type = 1 });
-        db.Categories.Add(new Category { Id = Dining, SourceId = AccessWorld.SourceAlice, Name = "Dining", GroupId = AccessWorld.SharedGroup, Type = 1 });
+        db.Categories.Add(new Category { Id = Groceries, OwnerUserId = AccessWorld.Alice, Name = "Groceries", GroupId = AccessWorld.SharedGroup, Type = 1 });
+        db.Categories.Add(new Category { Id = Dining, OwnerUserId = AccessWorld.Alice, Name = "Dining", GroupId = AccessWorld.SharedGroup, Type = 1 });
         db.Transactions.Add(Row(20, AccessWorld.AccountWp, "Example Market"));
         db.Transactions.Add(Row(21, AccessWorld.AccountWp, "Example Market"));
         // Set aside by hand: removed the category on purpose.
@@ -84,7 +84,7 @@ public sealed class CategoryRuleTests
     private static Transaction Row(long id, long account, string payee) => new()
     {
         Id = id,
-        SourceId = AccessWorld.SourceAlice,
+        OwnerUserId = AccessWorld.Alice,
         AccountId = account,
         Amount = -1250,
         Name = payee,

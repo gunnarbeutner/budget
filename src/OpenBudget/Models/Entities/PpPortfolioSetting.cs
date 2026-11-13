@@ -14,8 +14,10 @@ public class PpPortfolioSetting
     [Key]
     public int Id { get; set; }
 
-    /// <summary>The source the PortfolioPerformance file is uploaded to.</summary>
-    public int SourceId { get; set; }
+    /// <summary>The owning user (AppUser.Id).</summary>
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
 
     [MaxLength(100)]
     public string PpPortfolioUuid { get; set; } = "";

@@ -46,7 +46,7 @@ public static class PortfolioPerformanceFile
     /// carrying the security's uuid and its ISIN (empty when it has none). Assignments to accounts
     /// or portfolios are skipped.
     /// </summary>
-    public static List<SecurityTaxonomy> Flatten(PClient client, int sourceId)
+    public static List<SecurityTaxonomy> Flatten(PClient client, string ownerId)
     {
         // uuid → ISIN ("" when none) for every security. Indexer (not ToDictionary) so a duplicate
         // uuid — never seen in practice — degrades to last-wins instead of throwing mid-import.
@@ -72,7 +72,7 @@ public static class PortfolioPerformanceFile
                     if (!uuidToIsin.TryGetValue(assignment.InvestmentVehicle, out var isin)) continue;
                     rows.Add(new SecurityTaxonomy
                     {
-                        SourceId = sourceId,
+                        OwnerUserId = ownerId,
                         Isin = isin,
                         SecurityUuid = assignment.InvestmentVehicle,
                         TaxonomyId = taxonomy.Id,
@@ -93,7 +93,7 @@ public static class PortfolioPerformanceFile
     /// uuid — including the ISIN-less instruments (crypto, real estate) that join to the source app by a
     /// manual mapping rather than by ISIN. A security with neither uuid nor a usable name is skipped.
     /// </summary>
-    public static List<PpSecurity> ExtractSecurities(PClient client, int sourceId)
+    public static List<PpSecurity> ExtractSecurities(PClient client, string ownerId)
     {
         var byUuid = new Dictionary<string, PpSecurity>(StringComparer.Ordinal);
         foreach (var s in client.Securities)
@@ -103,7 +103,7 @@ public static class PortfolioPerformanceFile
             decimal? price = s.Latest is { Close: > 0 } latest ? latest.Close / 100_000_000m : null;
             byUuid[s.Uuid] = new PpSecurity
             {
-                SourceId = sourceId,
+                OwnerUserId = ownerId,
                 Uuid = s.Uuid,
                 Isin = s.Isin ?? "",
                 Name = string.IsNullOrEmpty(s.Name) ? (string.IsNullOrEmpty(s.Isin) ? s.Uuid : s.Isin) : s.Name,
@@ -118,12 +118,12 @@ public static class PortfolioPerformanceFile
 
     /// <summary>
     /// The depots (portfolios) catalogued in the file, as <see cref="PpPortfolio"/> rows for the
-    /// given source — the candidates a user maps to their imported depot accounts.
+    /// given owner — the candidates a user maps to their imported depot accounts.
     /// </summary>
-    public static List<PpPortfolio> ExtractPortfolios(PClient client, int sourceId) =>
+    public static List<PpPortfolio> ExtractPortfolios(PClient client, string ownerId) =>
         client.Portfolios
             .Where(p => !string.IsNullOrEmpty(p.Uuid))
-            .Select(p => new PpPortfolio { SourceId = sourceId, Uuid = p.Uuid, Name = string.IsNullOrEmpty(p.Name) ? p.Uuid : p.Name, IsRetired = p.IsRetired })
+            .Select(p => new PpPortfolio { OwnerUserId = ownerId, Uuid = p.Uuid, Name = string.IsNullOrEmpty(p.Name) ? p.Uuid : p.Name, IsRetired = p.IsRetired })
             .ToList();
 
     /// <summary>

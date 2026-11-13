@@ -22,8 +22,8 @@ public sealed class ManualAccountTests
         new(2, 25, Day(10, 1), "Interest", "Q3"),
     ];
 
-    private static long Giro => SourceScope.Namespace(BankWorld.SourceAlice, 1);
-    private static long Savings => SourceScope.Namespace(BankWorld.SourceAlice, 2);
+    private static long Giro => RowIds.Namespace(BankWorld.SourceAlice, 1);
+    private static long Savings => RowIds.Namespace(BankWorld.SourceAlice, 2);
 
     private static string Snapshot(BankWorld w, IEnumerable<BankWorld.MmTx>? txs = null) =>
         w.BuildSnapshot([("Old Giro", null), ("Old Savings", null)], txs ?? History);
@@ -41,7 +41,7 @@ public sealed class ManualAccountTests
         await w.ImportMoneyMoneyAsync(Snapshot(w));
         var switcher = w.Switcher(BankWorld.Alice);
 
-        var state = await switcher.GetSourceStateAsync(BankWorld.SourceAlice);
+        var state = await switcher.GetSourceStateAsync(BankWorld.Alice);
         Assert.Equal(2, state.MoneyMoneyAccountsWithoutLink);
         Assert.Equal(2, state.MoneyMoneyAccounts.Single(a => a.AccountId == Giro).Bookings);
         Assert.True((await switcher.GetAccountStateAsync(Giro))!.CanKeepManual);
@@ -49,7 +49,7 @@ public sealed class ManualAccountTests
         Assert.Equal(2, await switcher.KeepManualAsync([Giro, Savings]));
         Assert.Equal(AccountProviders.Manual, (await w.AccountAsync(Giro)).Provider);
 
-        state = await switcher.GetSourceStateAsync(BankWorld.SourceAlice);
+        state = await switcher.GetSourceStateAsync(BankWorld.Alice);
         Assert.Equal(0, state.MoneyMoneyAccountsWithoutLink);
         Assert.Equal(2, state.ManualAccounts.Count);
         Assert.True((await switcher.GetAccountStateAsync(Giro))!.CanReturnToMoneyMoney);
@@ -67,15 +67,15 @@ public sealed class ManualAccountTests
         await w.ImportMoneyMoneyAsync(Snapshot(w));
         await using (var db = await w.T.System.CreateDbContextAsync())
         {
-            var top = new AccountGroup { Id = SourceScope.Namespace(BankWorld.SourceAlice, 900), SourceId = BankWorld.SourceAlice, Name = "Savings" };
-            var sub = new AccountGroup { Id = SourceScope.Namespace(BankWorld.SourceAlice, 901), SourceId = BankWorld.SourceAlice, Name = "Old", ParentGroupId = top.Id };
+            var top = new AccountGroup { Id = RowIds.Namespace(BankWorld.SourceAlice, 900), OwnerUserId = BankWorld.Alice, Name = "Savings" };
+            var sub = new AccountGroup { Id = RowIds.Namespace(BankWorld.SourceAlice, 901), OwnerUserId = BankWorld.Alice, Name = "Old", ParentGroupId = top.Id };
             db.AccountGroups.AddRange(top, sub);
             await db.SaveChangesAsync();
             (await db.Accounts.FindAsync(Savings))!.GroupId = sub.Id;
             await db.SaveChangesAsync();
         }
 
-        var state = await w.Switcher(BankWorld.Alice).GetSourceStateAsync(BankWorld.SourceAlice);
+        var state = await w.Switcher(BankWorld.Alice).GetSourceStateAsync(BankWorld.Alice);
         Assert.Equal(["Savings › Old:Old Savings", ":Old Giro"], state.MoneyMoneyAccounts.Select(a => $"{a.GroupPath}:{a.Name}"));
     }
 
@@ -88,9 +88,9 @@ public sealed class ManualAccountTests
         await switcher.KeepManualAsync([Giro]);
         await Manual(w, BankWorld.Alice).AddAsync(Giro, new ManualTransactionInput(new DateOnly(2026, 11, 2), -5m, null, "Kiosk", null, null, null));
 
-        await switcher.SetImportFinishedAsync(BankWorld.SourceAlice, true);
+        await switcher.SetImportFinishedAsync(BankWorld.Alice, true);
         await Assert.ThrowsAsync<InvalidOperationException>(() => switcher.ReturnToMoneyMoneyAsync(Giro));
-        await switcher.SetImportFinishedAsync(BankWorld.SourceAlice, false);
+        await switcher.SetImportFinishedAsync(BankWorld.Alice, false);
 
         await switcher.ReturnToMoneyMoneyAsync(Giro);
         Assert.Equal(AccountProviders.MoneyMoney, (await w.AccountAsync(Giro)).Provider);
@@ -125,7 +125,7 @@ public sealed class ManualAccountTests
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
         var switcher = w.Switcher(BankWorld.Alice);
-        await switcher.SetImportFinishedAsync(BankWorld.SourceAlice, true);
+        await switcher.SetImportFinishedAsync(BankWorld.Alice, true);
 
         Assert.Equal(2, (await w.TransactionsAsync(Giro)).Count);
         var row = (await w.TransactionsAsync(Giro))[0];
@@ -147,7 +147,7 @@ public sealed class ManualAccountTests
         var switcher = w.Switcher(BankWorld.Alice);
 
         Assert.Equal(1, await switcher.SetClosedAsync([Savings], true));
-        var state = await switcher.GetSourceStateAsync(BankWorld.SourceAlice);
+        var state = await switcher.GetSourceStateAsync(BankWorld.Alice);
         Assert.Equal(1, state.MoneyMoneyAccountsWithoutLink);
         Assert.Equal(Savings, Assert.Single(state.ClosedAccounts).AccountId);
         Assert.True((await switcher.GetAccountStateAsync(Savings))!.Closed);
@@ -173,10 +173,10 @@ public sealed class ManualAccountTests
         var manual = Manual(w, BankWorld.Alice);
         Assert.Equal(10m, (await w.AccountAsync(Giro)).CurrentBalance);
 
-        var category = SourceScope.Namespace(BankWorld.SourceAlice, 50);
+        var category = RowIds.Namespace(BankWorld.SourceAlice, 50);
         await using (var db = await w.T.System.CreateDbContextAsync())
         {
-            db.Categories.Add(new Category { Id = category, SourceId = BankWorld.SourceAlice, Name = "Food" });
+            db.Categories.Add(new Category { Id = category, OwnerUserId = BankWorld.Alice, Name = "Food" });
             await db.SaveChangesAsync();
         }
 
@@ -188,7 +188,7 @@ public sealed class ManualAccountTests
         Assert.Equal(TransactionCategorySource.Manual, added.CategorySetBy);
         Assert.False(added.IsNew);
         Assert.Null(added.ExternalId);
-        Assert.True(id >= SourceScope.Namespace(BankWorld.SourceAlice, BankTransactionStore.ConnectorRowBase));
+        Assert.True(id >= RowIds.Namespace(BankWorld.SourceAlice, BankTransactionStore.ConnectorRowBase));
         Assert.Equal(-2.34m, (await w.AccountAsync(Giro)).CurrentBalance);
 
         // A history row from MoneyMoney: amount, date and payee are editable.
@@ -216,12 +216,12 @@ public sealed class ManualAccountTests
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
         await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro]);
-        var category = SourceScope.Namespace(BankWorld.SourceAlice, 51);
+        var category = RowIds.Namespace(BankWorld.SourceAlice, 51);
         int projectId;
         await using (var db = await w.T.System.CreateDbContextAsync())
         {
-            db.Categories.Add(new Category { Id = category, SourceId = BankWorld.SourceAlice, Name = "Own transfer" });
-            var project = new Project { Name = "Household", SourceId = BankWorld.SourceAlice, OwnerUserId = BankWorld.Alice };
+            db.Categories.Add(new Category { Id = category, OwnerUserId = BankWorld.Alice, Name = "Own transfer" });
+            var project = new Project { Name = "Household", OwnerUserId = BankWorld.Alice };
             db.Projects.Add(project);
             await db.SaveChangesAsync();
             projectId = project.Id;

@@ -26,16 +26,16 @@ public sealed class SharedProjectCategorizingTests : EndToEndTestBase
         await EditingSeed.SeedAsync(factory);
         await using var db = await factory.CreateDbContextAsync();
         var guest = await db.Users.SingleAsync(u => u.UserName == E2ESeed.SecondUserName);
-        db.ImportSources.Add(new ImportSource { Id = GuestSourceId, Name = "guest-source", CreatedAt = DateTime.UtcNow, OwnerUserId = guest.Id, UploadToken = "e2e-token-guest" });
-        db.CategoryGroups.Add(new CategoryGroup { Id = 300, SourceId = GuestSourceId, Name = "Guest Things" });
-        db.Categories.Add(new Category { Id = 310, SourceId = GuestSourceId, Name = GuestCategory, GroupId = 300, Type = 1 });
-        db.Projects.Add(new Project { Id = GuestProjectId, Name = GuestProjectName, SourceId = GuestSourceId, OwnerUserId = guest.Id, SortOrder = 0, CreatedAt = DateTime.UtcNow });
-        var account = SourceScope.Namespace(GuestSourceId, 1);
-        db.Accounts.Add(new Account { Id = account, SourceId = GuestSourceId, Name = "Guest Checking", Provider = "fake", Type = 1, Currency = "EUR", Balances = "11:100.000000,3:EUR," });
+        db.UserDataStates.Add(new UserDataState { UserId = guest.Id, IdSpace = GuestSourceId });
+        db.CategoryGroups.Add(new CategoryGroup { Id = 300, OwnerUserId = guest.Id, Name = "Guest Things" });
+        db.Categories.Add(new Category { Id = 310, OwnerUserId = guest.Id, Name = GuestCategory, GroupId = 300, Type = 1 });
+        db.Projects.Add(new Project { Id = GuestProjectId, Name = GuestProjectName, OwnerUserId = guest.Id, SortOrder = 0, CreatedAt = DateTime.UtcNow });
+        var account = RowIds.Namespace(GuestSourceId, 1);
+        db.Accounts.Add(new Account { Id = account, OwnerUserId = guest.Id, Name = "Guest Checking", Provider = "fake", Type = 1, Currency = "EUR", Balances = "11:100.000000,3:EUR," });
         db.Transactions.Add(new Transaction
         {
-            Id = SourceScope.Namespace(GuestSourceId, 500),
-            SourceId = GuestSourceId,
+            Id = RowIds.Namespace(GuestSourceId, 500),
+            OwnerUserId = guest.Id,
             AccountId = account,
             Amount = -7_00,
             Currency = "EUR",

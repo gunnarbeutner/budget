@@ -23,14 +23,14 @@ public sealed class BankHttpTests : IDisposable
         try { Directory.Delete(_statements, recursive: true); } catch { /* best-effort */ }
     }
 
-    private async Task<long> AddStatementAsync(long? accountId, int? sourceId, string owner, string name, DateTime? date = null, string? content = null)
+    private async Task<long> AddStatementAsync(long? accountId, string owner, string name, DateTime? date = null, string? content = null)
     {
         var relative = Path.Combine("x", $"{Guid.NewGuid():N}.pdf");
         var full = Path.Combine(_statements, relative);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
         await File.WriteAllBytesAsync(full, Encoding.ASCII.GetBytes(content ?? "%PDF-1.4\n%%EOF\n"));
         await using var db = await _host.System.CreateDbContextAsync();
-        var row = new BankStatement { BankLoginId = 1, OwnerUserId = owner, AccountId = accountId, SourceId = sourceId, Identifier = $"{name}-{Guid.NewGuid():N}", Name = name, FilePath = relative.Replace('\\', '/'), Date = date ?? DateTime.UtcNow };
+        var row = new BankStatement { BankLoginId = 1, OwnerUserId = owner, AccountId = accountId, Identifier = $"{name}-{Guid.NewGuid():N}", Name = name, FilePath = relative.Replace('\\', '/'), Date = date ?? DateTime.UtcNow };
         db.BankStatements.Add(row);
         await db.SaveChangesAsync();
         return row.Id;
@@ -41,9 +41,9 @@ public sealed class BankHttpTests : IDisposable
     {
         await _host.SeedWorldAsync(ProjectRole.Viewer);
         var alice = await DbUserIdAsync("alice");
-        var shared = await AddStatementAsync(AccessWorld.AccountWp, AccessWorld.SourceAlice, alice, "shared-account");
-        var priv = await AddStatementAsync(AccessWorld.AccountPrivate, AccessWorld.SourceAlice, alice, "private-account");
-        var loose = await AddStatementAsync(null, null, alice, "tax-certificate");
+        var shared = await AddStatementAsync(AccessWorld.AccountWp, alice, "shared-account");
+        var priv = await AddStatementAsync(AccessWorld.AccountPrivate, alice, "private-account");
+        var loose = await AddStatementAsync(null, alice, "tax-certificate");
 
         using var aliceClient = await _host.LoggedInClientAsync("alice");
         foreach (var id in new[] { shared, priv, loose })
@@ -127,9 +127,9 @@ public sealed class BankHttpTests : IDisposable
         await _host.SeedWorldAsync(ProjectRole.Viewer);
         var alice = await DbUserIdAsync("alice");
         var jan = new DateTime(2026, 1, 31, 0, 0, 0, DateTimeKind.Utc);
-        var a = await AddStatementAsync(AccessWorld.AccountWp, AccessWorld.SourceAlice, alice, "Statement 01/2026", jan, "%PDF-A");
-        var b = await AddStatementAsync(AccessWorld.AccountWp, AccessWorld.SourceAlice, alice, "Statement 01/2026", jan, "%PDF-B");
-        var c = await AddStatementAsync(AccessWorld.AccountPrivate, AccessWorld.SourceAlice, alice, "Cost: info?", new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc), "%PDF-C");
+        var a = await AddStatementAsync(AccessWorld.AccountWp, alice, "Statement 01/2026", jan, "%PDF-A");
+        var b = await AddStatementAsync(AccessWorld.AccountWp, alice, "Statement 01/2026", jan, "%PDF-B");
+        var c = await AddStatementAsync(AccessWorld.AccountPrivate, alice, "Cost: info?", new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc), "%PDF-C");
 
         using var client = await _host.LoggedInClientAsync("alice");
         using var response = await PostZipAsync(client, a, b, c);
@@ -146,9 +146,9 @@ public sealed class BankHttpTests : IDisposable
     {
         await _host.SeedWorldAsync(ProjectRole.Viewer);
         var alice = await DbUserIdAsync("alice");
-        var shared = await AddStatementAsync(AccessWorld.AccountWp, AccessWorld.SourceAlice, alice, "shared-account");
-        var priv = await AddStatementAsync(AccessWorld.AccountPrivate, AccessWorld.SourceAlice, alice, "private-account");
-        var loose = await AddStatementAsync(null, null, alice, "tax-certificate");
+        var shared = await AddStatementAsync(AccessWorld.AccountWp, alice, "shared-account");
+        var priv = await AddStatementAsync(AccessWorld.AccountPrivate, alice, "private-account");
+        var loose = await AddStatementAsync(null, alice, "tax-certificate");
 
         using var bob = await _host.LoggedInClientAsync("bob");
         using (var response = await PostZipAsync(bob, shared, priv, loose, 99999))

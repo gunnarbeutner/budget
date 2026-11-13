@@ -9,9 +9,9 @@ using OpenBudget.Tests;
 namespace OpenBudget.E2E.Tests;
 
 /// <summary>
-/// The Get started page: when the gear menu offers it (no data yet, or an unfinished MoneyMoney import), that its URL
-/// always works, and the MoneyMoney step's upload in the browser (a synthetic ZIP of MoneyMoney's data folder) with a
-/// wrong and then the right password, imported into a source the upload creates for the user.
+/// The Get started page: that the gear menu offers it until the MoneyMoney import is finished or the user hides it, that
+/// its URL always works, and the MoneyMoney step's upload in the browser (a synthetic ZIP of MoneyMoney's data folder)
+/// without, with a wrong and then with the right password, imported as the user's data.
 /// </summary>
 [TestFixture]
 public sealed class GetStartedTests : EndToEndTestBase
@@ -31,7 +31,7 @@ public sealed class GetStartedTests : EndToEndTestBase
     private async Task SetMoneyMoneyAsync(DateTime? lastUpload, DateTime? finished)
     {
         await using var db = await Db.CreateDbContextAsync();
-        var source = await db.ImportSources.SingleAsync(s => s.Id == E2ESeed.SourceId);
+        var source = await db.UserDataStates.SingleAsync(s => s.UserId == E2ESeed.OwnerUserId);
         source.LastUploadAt = lastUpload;
         source.MoneyMoneyImportFinishedAt = finished;
         await db.SaveChangesAsync();
@@ -105,9 +105,9 @@ public sealed class GetStartedTests : EndToEndTestBase
 
         await using var db = await Db.CreateDbContextAsync();
         var guest = await db.Users.SingleAsync(u => u.UserName == E2ESeed.SecondUserName);
-        var source = await db.ImportSources.SingleAsync(s => s.OwnerUserId == guest.Id);
+        var source = await db.UserDataStates.SingleAsync(s => s.UserId == guest.Id);
         Assert.That(source.LastUploadAt, Is.Not.Null);
-        Assert.That(await db.Accounts.CountAsync(a => a.SourceId == source.Id), Is.EqualTo(2));
+        Assert.That(await db.Accounts.CountAsync(a => a.OwnerUserId == guest.Id), Is.EqualTo(2));
         Assert.That(await db.BankStatements.CountAsync(s => s.OwnerUserId == guest.Id), Is.EqualTo(1));
 
         // The import is unfinished now: its follow-up shows the accounts without bank connection.

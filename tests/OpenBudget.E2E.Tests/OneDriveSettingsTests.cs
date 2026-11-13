@@ -87,7 +87,6 @@ public sealed class OneDriveSettingsTests : EndToEndTestBase
         await Expect(picker.Locator("[data-picker-item='Notes.docx']")).ToHaveCountAsync(0);
         await picker.Locator("[data-picker-item='Finance']").ClickAsync();
         await picker.Locator("[data-picker-item='Depot.portfolio']").ClickAsync();
-        await Page.Locator("#onedrive-target").SelectOptionAsync(E2ESeed.SpareSourceName);
         await Page.GetByTestId("picker-link").ClickAsync();
 
         var row = section.Locator("[data-onedrive-file='My files/Finance/Depot.portfolio']");
@@ -96,7 +95,7 @@ public sealed class OneDriveSettingsTests : EndToEndTestBase
         await Expect(row.GetByTestId("onedrive-file-error")).ToHaveCountAsync(0);
         var system = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using (var db = await system.CreateDbContextAsync())
-            Assert.That(await db.SecurityTaxonomies.CountAsync(t => t.SourceId == E2ESeed.SpareSourceId), Is.EqualTo(1));
+            Assert.That(await db.SecurityTaxonomies.CountAsync(t => t.OwnerUserId == E2ESeed.OwnerUserId), Is.EqualTo(1));
 
         // Consent revoked at Microsoft: the next check asks for a reconnect.
         Microsoft.RejectRefresh = true;

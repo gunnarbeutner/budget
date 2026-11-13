@@ -28,7 +28,7 @@ public sealed class ProjectManagementTests
         => (await t.Projects.GetProjectsAsync()).Select(p => p.Id).ToArray();
 
     private static async Task<int> NewProjectAsync(BankWorld w, string user, string name)
-        => (await w.View(user).Projects.CreateProjectAsync(name, user == Alice ? BankWorld.SourceAlice : 3)).Id;
+        => (await w.View(user).Projects.CreateProjectAsync(name)).Id;
 
     private static async Task<Project?> LoadAsync(BankWorld w, int projectId)
     {

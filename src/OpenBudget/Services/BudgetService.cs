@@ -12,6 +12,13 @@ public class BudgetService
     private readonly ChangeNotificationService _notifier;
     private readonly ChangeOrigin _origin;
 
+    /// <summary>The hidden root category group of <paramref name="ownerId"/>'s data (0 when there is none).</summary>
+    public async Task<long> GetSentinelRootAsync(string ownerId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await RowIds.SentinelRootAsync(db, ownerId);
+    }
+
     public BudgetService(
         IDbContextFactory<BudgetDbContext> dbFactory,
         CategoryHierarchyService hierarchy,
@@ -78,7 +85,7 @@ public class BudgetService
                 storedAmounts[key] = new decimal[12];
         }
 
-        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.OwnerUserId);
         var effective = BudgetEntryService.ComputeEffectiveAmounts(storedAmounts, allCategoriesWithCounts);
 
         var budgetAmounts = effective.Effective.ToDictionary(
@@ -94,17 +101,17 @@ public class BudgetService
         // numbers include any tracked sub-cat under it). That's what we want for per-row display.
         // Aggregate totals (MonthIncome/MonthExpenses) come from a separate leaf-union pass so
         // they don't double-count across overlapping rows.
-        var ieBatch = await GetMonthlyIncomeAndExpenseBatchAsync(trackedKeys, year, project.SourceId, projectId);
+        var ieBatch = await GetMonthlyIncomeAndExpenseBatchAsync(trackedKeys, year, project.OwnerUserId, projectId);
         var incomeItemsSet = await GetIncomeItemsForProjectAsync(projectId);
 
         var groupNameLookup = allCategoriesWithCounts
             .Where(c => c.ItemType == CategoryItemType.Group)
             .ToDictionary(c => c.Id, c => c.CategoryGroup.Name ?? "Unknown");
-        var leafCategoryNameLookup = (await db.Categories.AsNoTracking().Where(c => c.SourceId == project.SourceId).ToListAsync())
+        var leafCategoryNameLookup = (await db.Categories.AsNoTracking().Where(c => c.OwnerUserId == project.OwnerUserId).ToListAsync())
             .ToDictionary(c => c.Id, c => c.Name ?? "Unknown");
 
         var (monthIncome, monthExpenses) = await AggregateIncomeExpenseForRangeAsync(
-            trackedKeys, year, fromMonth, toMonth, project.SourceId, projectId);
+            trackedKeys, year, fromMonth, toMonth, project.OwnerUserId, projectId);
 
         // When a tracked parent has tracked descendants, both rows would otherwise display
         // the same money — the parent's per-row Spent is the leaf union, which already
@@ -184,7 +191,7 @@ public class BudgetService
         return new ProjectSpendingSummary
         {
             ProjectId = projectId,
-            SourceId = project.SourceId,
+            OwnerUserId = project.OwnerUserId,
             ProjectName = project.Name,
             Year = year,
             FromMonth = fromMonth,
@@ -208,13 +215,13 @@ public class BudgetService
     /// (when the budget year has no transactions yet) and stays stable mid-year.
     /// </summary>
     public async Task<HashSet<long>> GetLeafCategoriesWithRecentTransactionsAsync(
-        IEnumerable<long> ancestorGroupIds, int sourceId, DateTime? endUtc = null)
+        IEnumerable<long> ancestorGroupIds, string ownerId, DateTime? endUtc = null)
     {
         var ancestorList = ancestorGroupIds.Distinct().ToList();
         if (ancestorList.Count == 0) return new HashSet<long>();
 
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(ownerId);
         var candidateLeaves = new HashSet<long>();
         foreach (var groupId in ancestorList)
         {
@@ -230,7 +237,7 @@ public class BudgetService
 
         var leafList = candidateLeaves.ToList();
         var hits = await db.Transactions
-            .Where(t => t.SourceId == sourceId)
+            .Where(t => t.OwnerUserId == ownerId)
             .CountedAsFlow()
             .Where(t => t.CategoryId.HasValue && leafList.Contains(t.CategoryId.Value))
             .WithinUtc(range)
@@ -255,10 +262,10 @@ public class BudgetService
         ResolveLeavesAndIncomeAsync(
             BudgetDbContext db,
             IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
-            int sourceId,
+            string ownerId,
             int? projectId)
     {
-        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(ownerId);
         var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
 
@@ -283,7 +290,7 @@ public class BudgetService
         else
         {
             var types = await db.Categories
-                .Where(c => c.SourceId == sourceId && allLeafIds.Contains(c.Id))
+                .Where(c => c.OwnerUserId == ownerId && allLeafIds.Contains(c.Id))
                 .Select(c => new { c.Id, c.Type })
                 .ToListAsync();
             leafIsIncome = types.ToDictionary(c => c.Id, c => c.Type == 2);
@@ -300,12 +307,12 @@ public class BudgetService
     /// </summary>
     private async Task<(decimal Income, decimal Expense)> AggregateIncomeExpenseForRangeAsync(
         List<(long Id, CategoryItemType ItemType)> items,
-        int year, int fromMonth, int toMonth, int sourceId, int? projectId)
+        int year, int fromMonth, int toMonth, string ownerId, int? projectId)
     {
         if (items.Count == 0) return (0m, 0m);
 
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var (_, allLeafIds, leafIsIncome) = await ResolveLeavesAndIncomeAsync(db, items, sourceId, projectId);
+        var (_, allLeafIds, leafIsIncome) = await ResolveLeavesAndIncomeAsync(db, items, ownerId, projectId);
         if (allLeafIds.Count == 0) return (0m, 0m);
 
         var range = TimeRange.Between(
@@ -313,7 +320,7 @@ public class BudgetService
             new DateTime(year, toMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1));
 
         var raw = await db.Transactions
-            .Where(t => t.SourceId == sourceId)
+            .Where(t => t.OwnerUserId == ownerId)
             .CountedAsFlow()
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .WithinUtc(range)
@@ -361,8 +368,8 @@ public class BudgetService
             ta => (ta.CategoryId, ta.ItemType),
             ta => ta.IsIncome);
 
-        var sourceId = await _projects.GetSourceIdForProjectAsync(projectId);
-        var allCategories = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var ownerId = await _projects.GetOwnerIdForProjectAsync(projectId);
+        var allCategories = await _hierarchy.GetAllCategoriesWithChildCountsAsync(ownerId);
 
         foreach (var item in allCategories)
         {
@@ -485,7 +492,7 @@ public class BudgetService
         GetMonthlyIncomeAndExpenseBatchAsync(
             IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
             int year,
-            int sourceId,
+            string ownerId,
             int? projectId)
     {
         var result = new Dictionary<(long, CategoryItemType), (decimal[], decimal[])>();
@@ -495,11 +502,11 @@ public class BudgetService
         if (items.Count == 0) return result;
 
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var (itemToLeafIds, allLeafIds, leafIsIncome) = await ResolveLeavesAndIncomeAsync(db, items, sourceId, projectId);
+        var (itemToLeafIds, allLeafIds, leafIsIncome) = await ResolveLeavesAndIncomeAsync(db, items, ownerId, projectId);
         if (allLeafIds.Count == 0) return result;
 
         var raw = await db.Transactions
-            .Where(t => t.SourceId == sourceId)
+            .Where(t => t.OwnerUserId == ownerId)
             .CountedAsFlow()
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .WithinUtc(TimeRange.Year(year))
@@ -546,7 +553,7 @@ public class BudgetService
     public async Task<Dictionary<(long Id, CategoryItemType ItemType), decimal>>
         GetMonthlyIncomePerItemAsync(
             IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
-            int sourceId,
+            string ownerId,
             int? projectId,
             int year,
             int month)
@@ -556,11 +563,11 @@ public class BudgetService
         if (items.Count == 0) return result;
 
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var (itemToLeafIds, allLeafIds, leafIsIncome) = await ResolveLeavesAndIncomeAsync(db, items, sourceId, projectId);
+        var (itemToLeafIds, allLeafIds, leafIsIncome) = await ResolveLeavesAndIncomeAsync(db, items, ownerId, projectId);
         if (allLeafIds.Count == 0) return result;
 
         var raw = await db.Transactions
-            .Where(t => t.SourceId == sourceId)
+            .Where(t => t.OwnerUserId == ownerId)
             .CountedAsFlow()
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .WithinUtc(TimeRange.Month(year, month))
@@ -593,14 +600,14 @@ public class BudgetService
     /// newest first. Min/max of the timestamp column rather than a DISTINCT year scan — gap
     /// years (rare) are still returned for UI continuity.
     /// </summary>
-    public async Task<List<int>> GetYearsWithTransactionsAsync(int sourceId)
+    public async Task<List<int>> GetYearsWithTransactionsAsync(string ownerId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         var minTs = await db.Transactions
-            .Where(t => t.SourceId == sourceId)
+            .Where(t => t.OwnerUserId == ownerId)
             .MinAsync(t => (long?)t.Timestamp);
         var maxTs = await db.Transactions
-            .Where(t => t.SourceId == sourceId)
+            .Where(t => t.OwnerUserId == ownerId)
             .MaxAsync(t => (long?)t.Timestamp);
         return YearsBetween(minTs, maxTs);
     }
@@ -619,17 +626,17 @@ public class BudgetService
         var trackedKeys = project.TrackingItems.ToTrackedKeys().ToList();
         if (trackedKeys.Count == 0) return new List<int>();
 
-        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.OwnerUserId);
         var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(trackedKeys, allCategoriesWithCounts);
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
         if (allLeafIds.Count == 0) return new List<int>();
 
         var minTs = await db.Transactions
-            .Where(t => t.SourceId == project.SourceId)
+            .Where(t => t.OwnerUserId == project.OwnerUserId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .MinAsync(t => (long?)t.Timestamp);
         var maxTs = await db.Transactions
-            .Where(t => t.SourceId == project.SourceId)
+            .Where(t => t.OwnerUserId == project.OwnerUserId)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .MaxAsync(t => (long?)t.Timestamp);
         return YearsBetween(minTs, maxTs);
@@ -652,13 +659,13 @@ public class BudgetService
         var trackedKeys = project.TrackingItems.ToTrackedKeys().ToList();
         if (trackedKeys.Count == 0) return (null, null);
 
-        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.OwnerUserId);
         var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(trackedKeys, allCategoriesWithCounts);
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
         if (allLeafIds.Count == 0) return (null, null);
 
         var bounds = await db.Transactions
-            .Where(t => t.SourceId == project.SourceId)
+            .Where(t => t.OwnerUserId == project.OwnerUserId)
             .Where(t => t.Splitted != 1)
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .GroupBy(_ => 1)
@@ -688,15 +695,15 @@ public class BudgetService
     #region Project Account Assignments
 
     /// <summary>
-    /// Returns all imported accounts for a source ordered by imported sort field, then name.
+    /// Returns all imported accounts of an owner ordered by imported sort field, then name.
     /// Used by the project Accounts card and the assignment picker.
     /// </summary>
-    public async Task<List<Account>> GetAllAccountsAsync(int sourceId)
+    public async Task<List<Account>> GetAllAccountsAsync(string ownerId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.Accounts
             .AsNoTracking()
-            .Where(a => a.SourceId == sourceId)
+            .Where(a => a.OwnerUserId == ownerId)
             .OrderBy(a => a.Sort)
             .ThenBy(a => a.Name)
             .ToListAsync();
@@ -706,12 +713,12 @@ public class BudgetService
     /// Returns the imported account groups for a source, ordered by sort then name. The
     /// Add-Account picker turns this list (plus the accounts) into a tree.
     /// </summary>
-    public async Task<List<AccountGroup>> GetAllAccountGroupsAsync(int sourceId)
+    public async Task<List<AccountGroup>> GetAllAccountGroupsAsync(string ownerId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.AccountGroups
             .AsNoTracking()
-            .Where(g => g.SourceId == sourceId)
+            .Where(g => g.OwnerUserId == ownerId)
             .OrderBy(g => g.Sort)
             .ThenBy(g => g.Name)
             .ToListAsync();

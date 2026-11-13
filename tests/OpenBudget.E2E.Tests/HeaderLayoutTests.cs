@@ -118,14 +118,14 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
     [TestCase(390, 844, 260)]
     public async Task Toolbar_and_summary_stack_for_a_busy_account(int width, int height, int sidebar)
     {
-        var accountId = SourceScope.Namespace(E2ESeed.SourceId, 77);
+        var accountId = RowIds.Namespace(E2ESeed.IdSpace, 77);
         var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using (var db = await factory.CreateDbContextAsync())
         {
             db.Accounts.Add(new Account
             {
                 Id = accountId,
-                SourceId = E2ESeed.SourceId,
+                OwnerUserId = E2ESeed.OwnerUserId,
                 Name = "Busy Giro",
                 Iban = "DE89370400440532013000",
                 Type = 1,
@@ -140,7 +140,7 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
                 db.Transactions.Add(new Transaction
                 {
                     Id = 7000 + i,
-                    SourceId = E2ESeed.SourceId,
+                    OwnerUserId = E2ESeed.OwnerUserId,
                     AccountId = accountId,
                     Amount = -(100 + i),
                     CategoryId = 200,

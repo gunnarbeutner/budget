@@ -36,7 +36,7 @@
 }
 
 @code {
-    [Parameter, EditorRequired] public int SourceId { get; set; }
+    [Parameter, EditorRequired] public string OwnerUserId { get; set; }
     [Parameter, EditorRequired] public List<long> DepotIds { get; set; } = [];
     [Parameter] public decimal CurrentTotal { get; set; }
 
@@ -64,7 +64,7 @@
         if (ReferenceEquals(loadedDepots, DepotIds) && loadedTotal == CurrentTotal) return;
         loadedDepots = DepotIds;
         loadedTotal = CurrentTotal;
-        history = DepotIds.Count == 0 ? new() : await TransactionQueries.GetDepotValueHistoryAsync(SourceId, DepotIds);
+        history = DepotIds.Count == 0 ? new() : await TransactionQueries.GetDepotValueHistoryAsync(OwnerUserId, DepotIds);
         Rebuild();
     }
 

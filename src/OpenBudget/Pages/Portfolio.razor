@@ -10,8 +10,8 @@
 @inject IStringLocalizer<Portfolio> L
 
 @* The Portfolio view of a project with depots: Positions (the holdings of the project's depot accounts, and for the
-   source's owner the links between PortfolioPerformance and MoneyMoney depots and instruments), Rebalance and Tax
-   (the source's tax settings per security). The sections are a segmented control in the toolbar and in the URL
+   owner the links between PortfolioPerformance and MoneyMoney depots and instruments), Rebalance and Tax
+   (the owner's tax settings per security). The sections are a segmented control in the toolbar and in the URL
    (?tab=). *@
 
 <PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
@@ -52,10 +52,10 @@
     }
     else if (tab == "tax")
     {
-        <p class="text-body-secondary small" data-testid="portfolio-tax-note">@L["Tax_Scope", sourceName ?? ""]</p>
-        @if (ownsSource)
+        <p class="text-body-secondary small" data-testid="portfolio-tax-note">@L["Tax_Scope"]</p>
+        @if (ownsData)
         {
-            <SecurityTax SourceId="project.SourceId" Embedded="true" />
+            <SecurityTax OwnerUserId="@project.OwnerUserId" Embedded="true" />
         }
         else
         {
@@ -66,7 +66,7 @@
     {
         @if (!loading && depotIds.Count > 0)
         {
-            <PortfolioValueChart SourceId="project.SourceId" DepotIds="depotIds" CurrentTotal="@(holdings?.TotalValue ?? 0m)" />
+            <PortfolioValueChart OwnerUserId="@project.OwnerUserId" DepotIds="depotIds" CurrentTotal="@(holdings?.TotalValue ?? 0m)" />
         }
         @if (loading)
         {
@@ -83,15 +83,15 @@
         {
             <HoldingsCard Holdings="holdings" />
         }
-        @if (ownsSource)
+        @if (ownsData)
         {
             <details class="portfolio-links mt-4" data-testid="portfolio-links">
                 <summary class="fw-semibold">@L["Links_Heading"]</summary>
                 <p class="text-body-secondary small mt-2">@L["Links_Intro"]</p>
                 <h2 class="h6 mt-3">@L["Links_Depots"]</h2>
-                <SourceDepots SourceId="project.SourceId" Embedded="true" AccountIds="depotIds" />
+                <SourceDepots OwnerUserId="@project.OwnerUserId" Embedded="true" AccountIds="depotIds" />
                 <h2 class="h6 mt-3">@L["Links_Instruments"]</h2>
-                <SourceInstruments SourceId="project.SourceId" Embedded="true" />
+                <SourceInstruments OwnerUserId="@project.OwnerUserId" Embedded="true" />
             </details>
         }
     }
@@ -101,10 +101,9 @@
     [Parameter] public int ProjectId { get; set; }
 
     private Project? project;
-    private string? sourceName;
     private bool notFound;
     private bool loading = true;
-    private bool ownsSource;
+    private bool ownsData;
     private string tab = "positions";
     private AccountHoldings? holdings;
     private List<long> depotIds = [];
@@ -146,8 +145,8 @@
     }
 
     protected override bool IsRelevantChange(DataChange change) =>
-        change.Area is DataArea.ImportedData or DataArea.Sources or DataArea.Projects
-        && (change.SourceId == null || change.SourceId == project?.SourceId);
+        change.Area is DataArea.ImportedData or DataArea.ImportState or DataArea.Projects
+        && (change.OwnerUserId == null || change.OwnerUserId == project?.OwnerUserId);
 
     protected override Task ReloadAfterChangeAsync() => LoadAsync();
 
@@ -158,8 +157,7 @@
         project = await ProjectService.GetProjectAsync(ProjectId);
         if (project == null) { notFound = true; return; }
         var scope = await AccessProvider.GetAsync();
-        ownsSource = scope.OwnsSource(project.SourceId);
-        sourceName = (await ProjectService.GetAllSourcesAsync()).FirstOrDefault(s => s.Id == project.SourceId)?.Name;
+        ownsData = scope.Owns(project.OwnerUserId);
         holdings = await PortfolioService.GetProjectHoldingsAsync(ProjectId);
         depotIds = await PortfolioService.GetProjectDepotIdsAsync(ProjectId);
         loading = false;

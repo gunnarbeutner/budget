@@ -20,10 +20,10 @@ public class AccountService
     {
         if (string.IsNullOrWhiteSpace(provider)) throw new ArgumentException("Provider is required.", nameof(provider));
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        // ExecuteUpdate bypasses the context's write guard, so check ownership of the account's source.
-        var sourceId = await db.Accounts.Where(a => a.Id == accountId).Select(a => (int?)a.SourceId).FirstOrDefaultAsync(ct);
-        if (sourceId is not { } ownerSource) return false;
-        db.Scope?.RequireSourceOwner(ownerSource);
+        // ExecuteUpdate bypasses the context's write guard, so check ownership of the account.
+        var ownerId = await db.Accounts.Where(a => a.Id == accountId).Select(a => a.OwnerUserId).FirstOrDefaultAsync(ct);
+        if (ownerId == null) return false;
+        db.Scope?.RequireOwner(ownerId);
         var rows = await db.Accounts
             .Where(a => a.Id == accountId)
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.Provider, provider), ct);

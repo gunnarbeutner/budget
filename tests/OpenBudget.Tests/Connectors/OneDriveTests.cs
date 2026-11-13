@@ -19,7 +19,6 @@ internal sealed class OneDriveWorld : IAsyncDisposable
 {
     public const string Alice = "u-alice";
     public const string Bob = "u-bob";
-    public const string AliceSource = "alice-src";
     public static readonly Uri Callback = new("https://budget.example.org/connect/onedrive/callback");
 
     private readonly string _staging = Path.Combine(Path.GetTempPath(), $"ob-onedrive-{Guid.NewGuid():N}");
@@ -33,7 +32,7 @@ internal sealed class OneDriveWorld : IAsyncDisposable
         Service = Build(Secrets);
         PortfolioFiles = new UploadedPortfolioFileSource(Path.Combine(_staging, "pp"));
         var importer = new PortfolioPerformanceImportService(t.System, t.Notifier, NullLogger<PortfolioPerformanceImportService>.Instance, PortfolioFiles);
-        Consumer = new PortfolioPerformanceCloudFileConsumer(t.System, importer, new CloudFileStaging(_staging));
+        Consumer = new PortfolioPerformanceCloudFileConsumer(importer, new CloudFileStaging(_staging));
         Coordinator = new CloudFileSyncCoordinator(t.System, Service, Service, [Consumer], Options, Clock, t.Notifier, Loggers.CreateLogger<CloudFileSyncCoordinator>());
     }
 
@@ -59,8 +58,8 @@ internal sealed class OneDriveWorld : IAsyncDisposable
         var t = new TestDb();
         t.AddUser(Alice, "alice");
         t.AddUser(Bob, "bob");
-        t.Db.ImportSources.Add(new ImportSource { Id = 2, Name = AliceSource, OwnerUserId = Alice, UploadToken = "tok-a" });
-        t.Db.ImportSources.Add(new ImportSource { Id = 3, Name = "bob-src", OwnerUserId = Bob, UploadToken = "tok-b" });
+        t.AddIdSpace(Alice, 2);
+        t.AddIdSpace(Bob, 3);
         await t.Db.SaveChangesAsync();
         return new OneDriveWorld(t);
     }
@@ -280,7 +279,7 @@ public sealed class OneDriveTests
         await using var w = await OneDriveWorld.CreateAsync();
         w.Fake.Add(new() { Drive = FakeMicrosoftCloud.MyDrive, Id = "f1", ParentId = "root", Name = "Depot.portfolio", Content = OneDriveWorld.PortfolioFile() });
         await w.ConnectAsync(Alice);
-        var linkId = await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "My files/Depot.portfolio", OneDriveWorld.AliceSource);
+        var linkId = await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "My files/Depot.portfolio");
 
         w.Fake.RejectRefresh = true;
         w.Fake.RevokeAccessTokens();
@@ -352,12 +351,12 @@ public sealed class OneDriveTests
     // ---- Reading and change detection ----
 
     [Fact]
-    public async Task Linked_file_is_imported_into_the_source_and_unchanged_versions_are_not_downloaded()
+    public async Task Linked_file_is_imported_for_its_owner_and_unchanged_versions_are_not_downloaded()
     {
         await using var w = await OneDriveWorld.CreateAsync();
         w.Fake.Add(new() { Drive = FakeMicrosoftCloud.MyDrive, Id = "f1", ParentId = "root", Name = "Depot.portfolio", Content = OneDriveWorld.PortfolioFile("Germany") });
         await w.ConnectAsync(Alice);
-        var linkId = await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "My files/Depot.portfolio", OneDriveWorld.AliceSource);
+        var linkId = await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "My files/Depot.portfolio");
 
         await w.Coordinator.CheckNowAsync(Alice);
         Assert.Equal(1, w.Fake.Downloads);
@@ -365,9 +364,9 @@ public sealed class OneDriveTests
         Assert.Null(link.LastError);
         Assert.NotNull(link.LastImportedAt);
         Assert.Equal("\"c:{f1},1\"", link.LastCTag);
-        Assert.Equal("Germany", (await w.T.Db.SecurityTaxonomies.AsNoTracking().SingleAsync(t => t.SourceId == 2)).ClassificationName);
+        Assert.Equal("Germany", (await w.T.Db.SecurityTaxonomies.AsNoTracking().SingleAsync(t => t.OwnerUserId == Alice)).ClassificationName);
         // Like an upload, the file becomes the source's current file for the IPortfolioFileSource seam.
-        await using (var stored = await w.PortfolioFiles.OpenLatestAsync(2))
+        await using (var stored = await w.PortfolioFiles.OpenLatestAsync(Alice))
             Assert.NotNull(stored);
 
         // Unchanged: checked, not downloaded.
@@ -378,7 +377,7 @@ public sealed class OneDriveTests
         w.Fake.Update(FakeMicrosoftCloud.MyDrive, "f1", OneDriveWorld.PortfolioFile("France"));
         await w.Coordinator.CheckNowAsync(Alice);
         Assert.Equal(2, w.Fake.Downloads);
-        Assert.Equal("France", (await w.T.Db.SecurityTaxonomies.AsNoTracking().SingleAsync(t => t.SourceId == 2)).ClassificationName);
+        Assert.Equal("France", (await w.T.Db.SecurityTaxonomies.AsNoTracking().SingleAsync(t => t.OwnerUserId == Alice)).ClassificationName);
     }
 
     [Fact]
@@ -387,7 +386,7 @@ public sealed class OneDriveTests
         await using var w = await OneDriveWorld.CreateAsync();
         w.Fake.Add(new() { Drive = FakeMicrosoftCloud.MyDrive, Id = "f1", ParentId = "root", Name = "Depot.portfolio", Content = [1, 2, 3] });
         await w.ConnectAsync(Alice);
-        var linkId = await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "", null);
+        var linkId = await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "");
         var reader = w.Service;
 
         var first = await reader.ReadAsync(Alice, linkId, null, default);
@@ -408,7 +407,7 @@ public sealed class OneDriveTests
         await using var w = await OneDriveWorld.CreateAsync();
         w.Fake.Add(new() { Drive = FakeMicrosoftCloud.MyDrive, Id = "f1", ParentId = "root", Name = "Depot.portfolio", Content = "not a zip"u8.ToArray() });
         await w.ConnectAsync(Alice);
-        var linkId = await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "Depot.portfolio", OneDriveWorld.AliceSource);
+        var linkId = await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "Depot.portfolio");
 
         await w.Coordinator.CheckNowAsync(Alice);
         Assert.Equal(PortfolioPerformanceUpload.NotAPortfolioFile, (await w.LinkRowAsync(linkId)).LastError);
@@ -428,7 +427,7 @@ public sealed class OneDriveTests
         await using var w = await OneDriveWorld.CreateAsync();
         w.Fake.Add(new() { Drive = FakeMicrosoftCloud.MyDrive, Id = "f1", ParentId = "root", Name = "Depot.portfolio", Content = OneDriveWorld.PortfolioFile() });
         await w.ConnectAsync(Alice);
-        await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "Depot.portfolio", OneDriveWorld.AliceSource);
+        await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "Depot.portfolio");
 
         Assert.True(w.Coordinator.StartDue(Alice));
         await w.Coordinator.WhenIdleAsync(Alice);
@@ -447,19 +446,18 @@ public sealed class OneDriveTests
     // ---- Access scoping and disconnect ----
 
     [Fact]
-    public async Task Users_reach_only_their_own_connection_links_and_sources()
+    public async Task Users_reach_only_their_own_connection_and_links()
     {
         await using var w = await OneDriveWorld.CreateAsync();
         w.Fake.Add(new() { Drive = FakeMicrosoftCloud.MyDrive, Id = "f1", ParentId = "root", Name = "Depot.portfolio", Content = [1] });
         await w.ConnectAsync(Alice);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "x", "bob-src"));
-        var linkId = await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "x", OneDriveWorld.AliceSource);
+        var linkId = await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "x");
 
         Assert.Empty(await w.Service.GetLinkedFilesAsync(Bob));
         Assert.False(await w.Service.UnlinkFileAsync(Bob, linkId));
         await Assert.ThrowsAsync<KeyNotFoundException>(() => w.Service.ReadAsync(Bob, linkId, null, default));
-        await Assert.ThrowsAsync<CloudException>(() => w.Service.LinkFileAsync(Bob, FakeMicrosoftCloud.MyDrive, "f1", "x", null));
+        await Assert.ThrowsAsync<CloudException>(() => w.Service.LinkFileAsync(Bob, FakeMicrosoftCloud.MyDrive, "f1", "x"));
 
         // The user-scoped context of another user sees neither row and cannot write them.
         await using var bobDb = await w.T.ForUser(Bob).Factory.CreateDbContextAsync();
@@ -476,7 +474,7 @@ public sealed class OneDriveTests
         w.Fake.Add(new() { Drive = FakeMicrosoftCloud.MyDrive, Id = "f1", ParentId = "root", Name = "Depot.portfolio", Content = [1] });
         await w.ConnectAsync(Alice);
         await w.ConnectAsync(Bob);
-        await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "x", null);
+        await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "x");
 
         await w.Service.DisconnectAsync(Alice);
 
@@ -492,7 +490,7 @@ public sealed class OneDriveTests
         await using var w = await OneDriveWorld.CreateAsync();
         w.Fake.Add(new() { Drive = FakeMicrosoftCloud.MyDrive, Id = "f1", ParentId = "root", Name = "Depot.portfolio", Content = "broken"u8.ToArray() });
         await w.ConnectAsync(Alice);
-        await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "x", OneDriveWorld.AliceSource);
+        await w.Service.LinkFileAsync(Alice, FakeMicrosoftCloud.MyDrive, "f1", "x");
         w.Fake.RevokeAccessTokens();
         await w.Coordinator.CheckNowAsync(Alice);
         var (code, state, _) = w.Fake.Authorize(w.Service.BeginConnect(Alice, OneDriveWorld.Callback));

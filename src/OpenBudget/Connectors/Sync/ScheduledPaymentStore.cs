@@ -19,7 +19,7 @@ public static class ScheduledPaymentStore
         {
             db.ScheduledPayments.Add(new ScheduledPayment
             {
-                SourceId = account.SourceId,
+                OwnerUserId = account.OwnerUserId,
                 AccountId = account.Id,
                 Kind = r.Kind,
                 BankOrderId = Clip(r.BankOrderId, 100),

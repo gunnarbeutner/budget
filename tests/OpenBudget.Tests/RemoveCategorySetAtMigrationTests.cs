@@ -22,6 +22,7 @@ public sealed class RemoveCategorySetAtMigrationTests
         await migrator.MigrateAsync("20261112001816_AddScheduledPayments");
 
         await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = ON");
+        await db.Database.ExecuteSqlRawAsync("UPDATE import_sources SET OwnerUserId = 'u-owner' WHERE Id = 1");
         await db.Database.ExecuteSqlRawAsync("INSERT INTO accounts (Id, SourceId, Iban, provider) VALUES (5, 1, NULL, 'fake')");
         await db.Database.ExecuteSqlRawAsync("INSERT INTO categories (Id, SourceId, name) VALUES (10, 1, 'Food'), (11, 1, 'Rent')");
         await db.Database.ExecuteSqlRawAsync(

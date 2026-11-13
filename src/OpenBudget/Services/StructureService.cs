@@ -4,10 +4,10 @@ using OpenBudget.Models;
 
 namespace OpenBudget.Services;
 
-/// <summary>Why the structure of a source cannot be changed by the current user (null = it can).</summary>
+/// <summary>Why the structure of a user's data cannot be changed by the current user (null = it can).</summary>
 public enum StructureBlock
 {
-    /// <summary>Only the source's owner edits accounts, categories and their groups (an editor of a shared project cannot).</summary>
+    /// <summary>Only the owner edits accounts, categories and their groups (an editor of a shared project cannot).</summary>
     NotOwner,
 }
 
@@ -17,15 +17,15 @@ public sealed record AccountDeleteInfo(long AccountId, string Name, int Bookings
 /// <summary>A group in "Move to group…" (indented by <paramref name="Depth"/>).</summary>
 public sealed record StructureGroupOption(long Id, string Name, int Depth);
 
-/// <summary>Edit permissions for a project's sidebar: the category tree's source and each account's source.</summary>
-public sealed record StructureEditInfo(int ProjectSourceId, IReadOnlyDictionary<long, int> AccountSources, IReadOnlyDictionary<int, StructureBlock?> Blocks)
+/// <summary>Edit permissions for a project's sidebar: the category tree's owner and each account's owner.</summary>
+public sealed record StructureEditInfo(string ProjectOwnerId, IReadOnlyDictionary<long, string> AccountOwners, IReadOnlyDictionary<string, StructureBlock?> Blocks)
 {
-    public StructureBlock? CategoryBlock => Blocks.GetValueOrDefault(ProjectSourceId, StructureBlock.NotOwner);
+    public StructureBlock? CategoryBlock => Blocks.GetValueOrDefault(ProjectOwnerId, StructureBlock.NotOwner);
 
-    public int? SourceOfAccount(long accountId) => AccountSources.TryGetValue(accountId, out var s) ? s : null;
+    public string? OwnerOfAccount(long accountId) => AccountOwners.TryGetValue(accountId, out var s) ? s : null;
 
     public StructureBlock? AccountBlock(long accountId) =>
-        SourceOfAccount(accountId) is { } s ? Blocks.GetValueOrDefault(s, StructureBlock.NotOwner) : StructureBlock.NotOwner;
+        OwnerOfAccount(accountId) is { } s ? Blocks.GetValueOrDefault(s, StructureBlock.NotOwner) : StructureBlock.NotOwner;
 }
 
 /// <summary>The kinds of rows in the two sidebar trees that can be moved.</summary>
@@ -40,7 +40,7 @@ public enum StructureItemKind
 /// <summary>
 /// Structure editing from the sidebar: rename, create, move/reorder and delete categories, category groups, accounts and
 /// account groups. Only the source's owner may. Simple edits go through the
-/// user-scoped context (whose SaveChanges guard requires the source owner as well); the cascades of a delete (bookings,
+/// user-scoped context (whose SaveChanges guard requires the owner as well); the cascades of a delete (bookings,
 /// statements, project rows of every project of the source, other users' bank-login links) run on the system context
 /// after the same checks, so nothing is left dangling behind the read filters.
 /// <para>
@@ -72,58 +72,58 @@ public sealed class StructureService
 
     // ---- Permission ----
 
-    /// <summary>Why the current user cannot edit the structure of <paramref name="sourceId"/>, or null when they can.</summary>
-    public async Task<StructureBlock?> GetBlockAsync(int sourceId, CancellationToken ct = default)
+    /// <summary>Why the current user cannot edit the structure of <paramref name="ownerId"/>, or null when they can.</summary>
+    public async Task<StructureBlock?> GetBlockAsync(string ownerId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        return await BlockAsync(db, sourceId, ct);
+        return await BlockAsync(db, ownerId, ct);
     }
 
-    private static async Task<StructureBlock?> BlockAsync(BudgetDbContext db, int sourceId, CancellationToken ct)
+    private static async Task<StructureBlock?> BlockAsync(BudgetDbContext db, string ownerId, CancellationToken ct)
     {
-        if (db.Scope is { } scope && !scope.OwnsSource(sourceId)) return StructureBlock.NotOwner;
-        return await db.ImportSources.AnyAsync(s => s.Id == sourceId, ct) ? null : StructureBlock.NotOwner;
+        if (db.Scope is { } scope && !scope.Owns(ownerId)) return StructureBlock.NotOwner;
+        return await db.Users.AnyAsync(u => u.Id == ownerId, ct) ? null : StructureBlock.NotOwner;
     }
 
     /// <summary>
-    /// What the sidebar of a project needs to build its menus: the block of the project's source (the category tree) and,
-    /// per account, its source and that source's block (accounts of a project may live in several sources).
+    /// What the sidebar of a project needs to build its menus: the block of the project owner's data (the category tree)
+    /// and, per account, its owner and that owner's block (accounts of a project may belong to several users).
     /// </summary>
-    public async Task<StructureEditInfo> GetEditInfoAsync(int projectSourceId, IReadOnlyCollection<long> accountIds, CancellationToken ct = default)
+    public async Task<StructureEditInfo> GetEditInfoAsync(string projectOwnerId, IReadOnlyCollection<long> accountIds, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var sources = await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.SourceId, ct);
-        // Account groups too (ids are namespaced by source, so a group and an account sharing an id share the source).
-        var groupSources = sources.Values.Distinct().ToList();
-        foreach (var g in await db.AccountGroups.AsNoTracking().Where(g => groupSources.Contains(g.SourceId)).Select(g => new { g.Id, g.SourceId }).ToListAsync(ct))
-            sources.TryAdd(g.Id, g.SourceId);
-        var blocks = new Dictionary<int, StructureBlock?> { [projectSourceId] = await BlockAsync(db, projectSourceId, ct) };
-        foreach (var s in sources.Values.Distinct().Where(s => !blocks.ContainsKey(s)))
+        var sources = await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.OwnerUserId, ct);
+        // Account groups too: a group belongs to the owner of the accounts it is listed with.
+        var groupSources = sources.Values.Distinct(StringComparer.Ordinal).ToList();
+        foreach (var g in await db.AccountGroups.AsNoTracking().Where(g => groupSources.Contains(g.OwnerUserId)).Select(g => new { g.Id, g.OwnerUserId }).ToListAsync(ct))
+            sources.TryAdd(g.Id, g.OwnerUserId);
+        var blocks = new Dictionary<string, StructureBlock?>(StringComparer.Ordinal) { [projectOwnerId] = await BlockAsync(db, projectOwnerId, ct) };
+        foreach (var s in sources.Values.Distinct(StringComparer.Ordinal).Where(s => !blocks.ContainsKey(s)))
             blocks[s] = await BlockAsync(db, s, ct);
-        return new StructureEditInfo(projectSourceId, sources, blocks);
+        return new StructureEditInfo(projectOwnerId, sources, blocks);
     }
 
     /// <summary>The groups of a tree in a source, depth first in display order, for "Move to group…".</summary>
-    public async Task<List<StructureGroupOption>> ListGroupsAsync(bool categories, int sourceId, CancellationToken ct = default)
+    public async Task<List<StructureGroupOption>> ListGroupsAsync(bool categories, string ownerId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var result = new List<StructureGroupOption>();
         async Task WalkAsync(long? parent, int depth)
         {
-            var siblings = categories ? await CategorySiblingsAsync(db, sourceId, parent, ct) : await AccountSiblingsAsync(db, sourceId, parent, ct);
+            var siblings = categories ? await CategorySiblingsAsync(db, ownerId, parent, ct) : await AccountSiblingsAsync(db, ownerId, parent, ct);
             foreach (var g in siblings.Where(s => s.Kind is StructureItemKind.CategoryGroup or StructureItemKind.AccountGroup))
             {
                 result.Add(new StructureGroupOption(g.Id, g.Name, depth));
                 await WalkAsync(g.Id, depth + 1);
             }
         }
-        await WalkAsync(categories ? await CategoryRootAsync(db, sourceId, ct) : null, 0);
+        await WalkAsync(categories ? await CategoryRootAsync(db, ownerId, ct) : null, 0);
         return result;
     }
 
-    private static async Task RequireEditableAsync(BudgetDbContext db, int sourceId, CancellationToken ct)
+    private static async Task RequireEditableAsync(BudgetDbContext db, string ownerId, CancellationToken ct)
     {
-        var block = await BlockAsync(db, sourceId, ct);
+        var block = await BlockAsync(db, ownerId, ct);
         if (block == StructureBlock.NotOwner) throw new AccessDeniedException("Only the source's owner can change its structure.");
     }
 
@@ -134,9 +134,9 @@ public sealed class StructureService
         return n.Length > 200 ? n[..200] : n;
     }
 
-    private void Changed(int sourceId, bool projects = false)
+    private void Changed(string ownerId, bool projects = false)
     {
-        _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: sourceId), _origin.Id);
+        _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: ownerId), _origin.Id);
         if (projects) _notifier.Publish(new DataChange(DataArea.Projects), _origin.Id);
     }
 
@@ -146,8 +146,8 @@ public sealed class StructureService
     {
         var clean = CleanName(name);
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var (sourceId, _) = await LocateAsync(db, kind, id, ct);
-        await RequireEditableAsync(db, sourceId, ct);
+        var (ownerId, _) = await LocateAsync(db, kind, id, ct);
+        await RequireEditableAsync(db, ownerId, ct);
         await (kind switch
         {
             StructureItemKind.Category => db.Categories.Where(x => x.Id == id).ForEachAsync(x => x.Name = clean, ct),
@@ -157,14 +157,14 @@ public sealed class StructureService
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         });
         await db.SaveChangesAsync(ct);
-        Changed(sourceId);
+        Changed(ownerId);
     }
 
     // ---- Icon and colour ----
 
     /// <summary>
     /// Sets the icon and colour of an account or account group (null = its default icon / the default colour). Only the
-    /// source's owner may; unlike the other structure edits this also works while MoneyMoney owns the structure, since
+    /// owner may; unlike the other structure edits this also works while MoneyMoney owns the structure, since
     /// uploads keep both.
     /// </summary>
     public async Task SetAppearanceAsync(StructureItemKind kind, long id, string? icon, string? color, CancellationToken ct = default)
@@ -173,8 +173,8 @@ public sealed class StructureService
         if (color != null && !CategoryColors.IsValid(color)) throw new ArgumentException("Not a color.", nameof(color));
         var css = color == null ? null : CategoryColors.ToCss(color);
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var (sourceId, _) = await LocateAsync(db, kind, id, ct);
-        if (await BlockAsync(db, sourceId, ct) == StructureBlock.NotOwner)
+        var (ownerId, _) = await LocateAsync(db, kind, id, ct);
+        if (await BlockAsync(db, ownerId, ct) == StructureBlock.NotOwner)
             throw new AccessDeniedException("Only the source's owner can change its structure.");
         await (kind switch
         {
@@ -184,7 +184,7 @@ public sealed class StructureService
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         });
         await db.SaveChangesAsync(ct);
-        Changed(sourceId);
+        Changed(ownerId);
     }
 
     private static KeyNotFoundException NotFound() => new("Not found.");
@@ -197,18 +197,18 @@ public sealed class StructureService
         var clean = CleanName(name);
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var group = await db.CategoryGroups.FirstOrDefaultAsync(g => g.Id == groupId, ct) ?? throw NotFound();
-        await RequireEditableAsync(db, group.SourceId, ct);
-        var id = await NextOwnIdAsync(db, group.SourceId, ct);
+        await RequireEditableAsync(db, group.OwnerUserId, ct);
+        var id = await NextOwnIdAsync(db, group.OwnerUserId, ct);
         // Expense by default (MoneyMoney's type 1); the project decides income vs. expense itself.
-        var category = new Category { Id = id, SourceId = group.SourceId, Name = clean, GroupId = groupId, Type = 1 };
+        var category = new Category { Id = id, OwnerUserId = group.OwnerUserId, Name = clean, GroupId = groupId, Type = 1 };
         db.Categories.Add(category);
-        var siblings = await CategorySiblingsAsync(db, group.SourceId, groupId, ct);
+        var siblings = await CategorySiblingsAsync(db, group.OwnerUserId, groupId, ct);
         var at = afterId is { } after ? siblings.FindIndex(s => s.Kind == StructureItemKind.Category && s.Id == after) + 1 : siblings.Count;
         if (at <= 0) at = siblings.Count;
         siblings.Insert(at, new Sibling(StructureItemKind.Category, id, null, clean, v => category.Sort = v));
         Renumber(siblings);
         await db.SaveChangesAsync(ct);
-        Changed(group.SourceId);
+        Changed(group.OwnerUserId);
         return id;
     }
 
@@ -227,15 +227,15 @@ public sealed class StructureService
         var clean = CleanName(name);
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var parent = await db.CategoryGroups.FirstOrDefaultAsync(g => g.Id == parentGroupId, ct) ?? throw NotFound();
-        await RequireEditableAsync(db, parent.SourceId, ct);
-        var id = await NextOwnIdAsync(db, parent.SourceId, ct);
-        var group = new CategoryGroup { Id = id, SourceId = parent.SourceId, Name = clean, ParentGroupId = parentGroupId };
+        await RequireEditableAsync(db, parent.OwnerUserId, ct);
+        var id = await NextOwnIdAsync(db, parent.OwnerUserId, ct);
+        var group = new CategoryGroup { Id = id, OwnerUserId = parent.OwnerUserId, Name = clean, ParentGroupId = parentGroupId };
         db.CategoryGroups.Add(group);
-        var siblings = await CategorySiblingsAsync(db, parent.SourceId, parentGroupId, ct);
+        var siblings = await CategorySiblingsAsync(db, parent.OwnerUserId, parentGroupId, ct);
         siblings.Add(new Sibling(StructureItemKind.CategoryGroup, id, null, clean, v => group.Sort = v));
         Renumber(siblings);
         await db.SaveChangesAsync(ct);
-        Changed(parent.SourceId);
+        Changed(parent.OwnerUserId);
         return id;
     }
 
@@ -245,27 +245,27 @@ public sealed class StructureService
         var clean = CleanName(name);
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var sibling = await db.AccountGroups.FirstOrDefaultAsync(g => g.Id == siblingGroupId, ct) ?? throw NotFound();
-        await RequireEditableAsync(db, sibling.SourceId, ct);
-        var maxId = await db.AccountGroups.IgnoreQueryFilters().Where(g => g.SourceId == sibling.SourceId).MaxAsync(g => (long?)g.Id, ct);
-        var floor = SourceScope.Namespace(sibling.SourceId, OwnRowBase);
+        await RequireEditableAsync(db, sibling.OwnerUserId, ct);
+        var maxId = await db.AccountGroups.IgnoreQueryFilters().Where(g => g.OwnerUserId == sibling.OwnerUserId).MaxAsync(g => (long?)g.Id, ct);
+        var floor = RowIds.Namespace(await RowIds.IdSpaceAsync(db, sibling.OwnerUserId, ct), OwnRowBase);
         var id = maxId is { } m && m >= floor ? m + 1 : floor;
-        var group = new AccountGroup { Id = id, SourceId = sibling.SourceId, Name = clean, ParentGroupId = sibling.ParentGroupId };
+        var group = new AccountGroup { Id = id, OwnerUserId = sibling.OwnerUserId, Name = clean, ParentGroupId = sibling.ParentGroupId };
         db.AccountGroups.Add(group);
-        var siblings = await AccountSiblingsAsync(db, sibling.SourceId, sibling.ParentGroupId, ct);
+        var siblings = await AccountSiblingsAsync(db, sibling.OwnerUserId, sibling.ParentGroupId, ct);
         var at = siblings.FindIndex(s => s.Kind == StructureItemKind.AccountGroup && s.Id == siblingGroupId) + 1;
         siblings.Insert(at <= 0 ? siblings.Count : at, new Sibling(StructureItemKind.AccountGroup, id, null, clean, v => group.Sort = v));
         Renumber(siblings);
         await db.SaveChangesAsync(ct);
-        Changed(sibling.SourceId);
+        Changed(sibling.OwnerUserId);
         return id;
     }
 
-    // Categories and category groups share one id range per source (the trees mix them under a parent).
-    private static async Task<long> NextOwnIdAsync(BudgetDbContext db, int sourceId, CancellationToken ct)
+    // Categories and category groups share one id range per owner (the trees mix them under a parent).
+    private static async Task<long> NextOwnIdAsync(BudgetDbContext db, string ownerId, CancellationToken ct)
     {
-        var floor = SourceScope.Namespace(sourceId, OwnRowBase);
-        var maxCategory = await db.Categories.IgnoreQueryFilters().Where(c => c.SourceId == sourceId && c.Id >= floor).MaxAsync(c => (long?)c.Id, ct);
-        var maxGroup = await db.CategoryGroups.IgnoreQueryFilters().Where(g => g.SourceId == sourceId && g.Id >= floor).MaxAsync(g => (long?)g.Id, ct);
+        var floor = RowIds.Namespace(await RowIds.IdSpaceAsync(db, ownerId, ct), OwnRowBase);
+        var maxCategory = await db.Categories.IgnoreQueryFilters().Where(c => c.OwnerUserId == ownerId && c.Id >= floor).MaxAsync(c => (long?)c.Id, ct);
+        var maxGroup = await db.CategoryGroups.IgnoreQueryFilters().Where(g => g.OwnerUserId == ownerId && g.Id >= floor).MaxAsync(g => (long?)g.Id, ct);
         var max = Math.Max(maxCategory ?? floor - 1, maxGroup ?? floor - 1);
         return max + 1;
     }
@@ -274,14 +274,14 @@ public sealed class StructureService
 
     /// <summary>
     /// Moves an item under <paramref name="parentGroupId"/> (a group of the same tree; null = the top level of the accounts
-    /// tree, or the source's root group for categories) at position <paramref name="index"/> among its new siblings.
+    /// tree, or the owner's root group for categories) at position <paramref name="index"/> among its new siblings.
     /// </summary>
     public async Task MoveAsync(StructureItemKind kind, long id, long? parentGroupId, int index, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var sourceId = await MoveCoreAsync(db, kind, id, parentGroupId, index, ct);
+        var ownerId = await MoveCoreAsync(db, kind, id, parentGroupId, index, ct);
         await db.SaveChangesAsync(ct);
-        Changed(sourceId);
+        Changed(ownerId);
     }
 
     /// <summary>
@@ -292,10 +292,10 @@ public sealed class StructureService
     {
         if (IsCategoryTree(kind) != IsCategoryTree(targetKind) || (kind == targetKind && id == targetId)) return;
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        int sourceId;
+        string ownerId;
         if (into)
         {
-            sourceId = await MoveCoreAsync(db, kind, id, targetId, int.MaxValue, ct);
+            ownerId = await MoveCoreAsync(db, kind, id, targetId, int.MaxValue, ct);
         }
         else
         {
@@ -303,26 +303,26 @@ public sealed class StructureService
             var siblings = await SiblingsAsync(db, targetKind, targetSource, parent, ct);
             siblings.RemoveAll(s => s.Kind == kind && s.Id == id);
             var index = siblings.FindIndex(s => s.Kind == targetKind && s.Id == targetId);
-            sourceId = await MoveCoreAsync(db, kind, id, parent, index, ct);
+            ownerId = await MoveCoreAsync(db, kind, id, parent, index, ct);
         }
         await db.SaveChangesAsync(ct);
-        Changed(sourceId);
+        Changed(ownerId);
     }
 
     /// <summary>Moves an item one place up (<paramref name="delta"/> = -1) or down (+1) among its siblings; false at the edge.</summary>
     public async Task<bool> MoveStepAsync(StructureItemKind kind, long id, int delta, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var (sourceId, parent) = await LocateAsync(db, kind, id, ct);
-        await RequireEditableAsync(db, sourceId, ct);
-        var siblings = await SiblingsAsync(db, kind, sourceId, parent, ct);
+        var (ownerId, parent) = await LocateAsync(db, kind, id, ct);
+        await RequireEditableAsync(db, ownerId, ct);
+        var siblings = await SiblingsAsync(db, kind, ownerId, parent, ct);
         var at = siblings.FindIndex(s => s.Kind == kind && s.Id == id);
         var to = at + Math.Sign(delta);
         if (at < 0 || to < 0 || to >= siblings.Count) return false;
         (siblings[at], siblings[to]) = (siblings[to], siblings[at]);
         Renumber(siblings);
         await db.SaveChangesAsync(ct);
-        Changed(sourceId);
+        Changed(ownerId);
         return true;
     }
 
@@ -330,47 +330,47 @@ public sealed class StructureService
     public async Task<(int Index, int Count)> PositionAsync(StructureItemKind kind, long id, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var (sourceId, parent) = await LocateAsync(db, kind, id, ct);
-        var siblings = await SiblingsAsync(db, kind, sourceId, parent, ct);
+        var (ownerId, parent) = await LocateAsync(db, kind, id, ct);
+        var siblings = await SiblingsAsync(db, kind, ownerId, parent, ct);
         return (siblings.FindIndex(s => s.Kind == kind && s.Id == id), siblings.Count);
     }
 
     private static bool IsCategoryTree(StructureItemKind kind) => kind is StructureItemKind.Category or StructureItemKind.CategoryGroup;
 
-    private static async Task<int> MoveCoreAsync(BudgetDbContext db, StructureItemKind kind, long id, long? parentGroupId, int index, CancellationToken ct)
+    private static async Task<string> MoveCoreAsync(BudgetDbContext db, StructureItemKind kind, long id, long? parentGroupId, int index, CancellationToken ct)
     {
-        var (sourceId, oldParent) = await LocateAsync(db, kind, id, ct);
-        await RequireEditableAsync(db, sourceId, ct);
+        var (ownerId, oldParent) = await LocateAsync(db, kind, id, ct);
+        await RequireEditableAsync(db, ownerId, ct);
         if (IsCategoryTree(kind))
         {
-            parentGroupId ??= await CategoryRootAsync(db, sourceId, ct);
+            parentGroupId ??= await CategoryRootAsync(db, ownerId, ct);
             if (parentGroupId is { } cp)
             {
                 var target = await db.CategoryGroups.FirstOrDefaultAsync(g => g.Id == cp, ct);
-                if (target == null || target.SourceId != sourceId) throw new ArgumentException("Unknown group.", nameof(parentGroupId));
-                if (kind == StructureItemKind.CategoryGroup && await IsSelfOrBelowAsync(db.CategoryGroups.Where(g => g.SourceId == sourceId).Select(g => new { g.Id, g.ParentGroupId }).ToDictionaryAsync(g => g.Id, g => g.ParentGroupId, ct), id, cp))
+                if (target == null || target.OwnerUserId != ownerId) throw new ArgumentException("Unknown group.", nameof(parentGroupId));
+                if (kind == StructureItemKind.CategoryGroup && await IsSelfOrBelowAsync(db.CategoryGroups.Where(g => g.OwnerUserId == ownerId).Select(g => new { g.Id, g.ParentGroupId }).ToDictionaryAsync(g => g.Id, g => g.ParentGroupId, ct), id, cp))
                     throw new ArgumentException("A group cannot move into itself.", nameof(parentGroupId));
             }
         }
         else if (parentGroupId is { } pg)
         {
             var target = await db.AccountGroups.FirstOrDefaultAsync(g => g.Id == pg, ct);
-            if (target == null || target.SourceId != sourceId) throw new ArgumentException("Unknown group.", nameof(parentGroupId));
-            if (kind == StructureItemKind.AccountGroup && await IsSelfOrBelowAsync(db.AccountGroups.Where(g => g.SourceId == sourceId).Select(g => new { g.Id, g.ParentGroupId }).ToDictionaryAsync(g => g.Id, g => g.ParentGroupId, ct), id, pg))
+            if (target == null || target.OwnerUserId != ownerId) throw new ArgumentException("Unknown group.", nameof(parentGroupId));
+            if (kind == StructureItemKind.AccountGroup && await IsSelfOrBelowAsync(db.AccountGroups.Where(g => g.OwnerUserId == ownerId).Select(g => new { g.Id, g.ParentGroupId }).ToDictionaryAsync(g => g.Id, g => g.ParentGroupId, ct), id, pg))
                 throw new ArgumentException("A group cannot move into itself.", nameof(parentGroupId));
         }
 
         // Close the gap in the old place, then insert into the new one.
-        var old = await SiblingsAsync(db, kind, sourceId, oldParent, ct);
+        var old = await SiblingsAsync(db, kind, ownerId, oldParent, ct);
         var moving = old.Find(s => s.Kind == kind && s.Id == id)!;
         old.Remove(moving);
         Renumber(old);
-        var siblings = await SiblingsAsync(db, kind, sourceId, parentGroupId, ct);
+        var siblings = await SiblingsAsync(db, kind, ownerId, parentGroupId, ct);
         siblings.RemoveAll(s => s.Kind == kind && s.Id == id);
         siblings.Insert(Math.Clamp(index, 0, siblings.Count), moving);
         Renumber(siblings);
         await SetParentAsync(db, kind, id, parentGroupId, ct);
-        return sourceId;
+        return ownerId;
     }
 
     private static async Task<bool> IsSelfOrBelowAsync(Task<Dictionary<long, long?>> parentsTask, long groupId, long candidate)
@@ -396,27 +396,27 @@ public sealed class StructureService
         });
     }
 
-    private static async Task<(int SourceId, long? Parent)> LocateAsync(BudgetDbContext db, StructureItemKind kind, long id, CancellationToken ct)
+    private static async Task<(string OwnerUserId, long? Parent)> LocateAsync(BudgetDbContext db, StructureItemKind kind, long id, CancellationToken ct)
     {
         var found = kind switch
         {
-            StructureItemKind.Category => await db.Categories.Where(x => x.Id == id).Select(x => new { x.SourceId, Parent = x.GroupId }).FirstOrDefaultAsync(ct),
-            StructureItemKind.CategoryGroup => await db.CategoryGroups.Where(x => x.Id == id).Select(x => new { x.SourceId, Parent = x.ParentGroupId }).FirstOrDefaultAsync(ct),
-            StructureItemKind.Account => await db.Accounts.Where(x => x.Id == id).Select(x => new { x.SourceId, Parent = x.GroupId }).FirstOrDefaultAsync(ct),
-            StructureItemKind.AccountGroup => await db.AccountGroups.Where(x => x.Id == id).Select(x => new { x.SourceId, Parent = x.ParentGroupId }).FirstOrDefaultAsync(ct),
+            StructureItemKind.Category => await db.Categories.Where(x => x.Id == id).Select(x => new { x.OwnerUserId, Parent = x.GroupId }).FirstOrDefaultAsync(ct),
+            StructureItemKind.CategoryGroup => await db.CategoryGroups.Where(x => x.Id == id).Select(x => new { x.OwnerUserId, Parent = x.ParentGroupId }).FirstOrDefaultAsync(ct),
+            StructureItemKind.Account => await db.Accounts.Where(x => x.Id == id).Select(x => new { x.OwnerUserId, Parent = x.GroupId }).FirstOrDefaultAsync(ct),
+            StructureItemKind.AccountGroup => await db.AccountGroups.Where(x => x.Id == id).Select(x => new { x.OwnerUserId, Parent = x.ParentGroupId }).FirstOrDefaultAsync(ct),
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         } ?? throw NotFound();
         if (IsCategoryTree(kind))
-            return (found.SourceId, found.Parent ?? await CategoryRootAsync(db, found.SourceId, ct));
+            return (found.OwnerUserId, found.Parent ?? await CategoryRootAsync(db, found.OwnerUserId, ct));
         // An account whose group is unknown sits at the top level ("Other accounts").
-        if (found.Parent is { } p && !await db.AccountGroups.AnyAsync(g => g.Id == p, ct)) return (found.SourceId, null);
-        return (found.SourceId, found.Parent);
+        if (found.Parent is { } p && !await db.AccountGroups.AnyAsync(g => g.Id == p, ct)) return (found.OwnerUserId, null);
+        return (found.OwnerUserId, found.Parent);
     }
 
     // MoneyMoney's hidden root group (rowid 1) parents the top level of the category tree.
-    private static async Task<long?> CategoryRootAsync(BudgetDbContext db, int sourceId, CancellationToken ct)
+    private static async Task<long?> CategoryRootAsync(BudgetDbContext db, string ownerId, CancellationToken ct)
     {
-        var root = SourceScope.SentinelRoot(sourceId);
+        var root = await RowIds.SentinelRootAsync(db, ownerId, ct);
         return await db.CategoryGroups.AnyAsync(g => g.Id == root, ct) ? root : null;
     }
 
@@ -427,8 +427,8 @@ public sealed class StructureService
         for (var i = 0; i < siblings.Count; i++) siblings[i].SetSort(i);
     }
 
-    private static Task<List<Sibling>> SiblingsAsync(BudgetDbContext db, StructureItemKind kind, int sourceId, long? parent, CancellationToken ct) =>
-        IsCategoryTree(kind) ? CategorySiblingsAsync(db, sourceId, parent, ct) : AccountSiblingsAsync(db, sourceId, parent, ct);
+    private static Task<List<Sibling>> SiblingsAsync(BudgetDbContext db, StructureItemKind kind, string ownerId, long? parent, CancellationToken ct) =>
+        IsCategoryTree(kind) ? CategorySiblingsAsync(db, ownerId, parent, ct) : AccountSiblingsAsync(db, ownerId, parent, ct);
 
     // Display order of the sidebar: sort (unset last), groups before items at an equal sort, then name.
     private static List<Sibling> Ordered(IEnumerable<Sibling> items) =>
@@ -438,22 +438,22 @@ public sealed class StructureService
             .ThenBy(s => s.Id)
             .ToList();
 
-    private static async Task<List<Sibling>> CategorySiblingsAsync(BudgetDbContext db, int sourceId, long? parent, CancellationToken ct)
+    private static async Task<List<Sibling>> CategorySiblingsAsync(BudgetDbContext db, string ownerId, long? parent, CancellationToken ct)
     {
-        var sentinels = SourceScope.SentinelIds(sourceId).ToList();
-        var groups = await db.CategoryGroups.Where(g => g.SourceId == sourceId && g.ParentGroupId == parent && !sentinels.Contains(g.Id)).ToListAsync(ct);
-        var categories = await db.Categories.Where(c => c.SourceId == sourceId && c.GroupId == parent && !sentinels.Contains(c.Id)).ToListAsync(ct);
+        var sentinels = (await RowIds.SentinelIdsAsync(db, ownerId, ct)).ToList();
+        var groups = await db.CategoryGroups.Where(g => g.OwnerUserId == ownerId && g.ParentGroupId == parent && !sentinels.Contains(g.Id)).ToListAsync(ct);
+        var categories = await db.Categories.Where(c => c.OwnerUserId == ownerId && c.GroupId == parent && !sentinels.Contains(c.Id)).ToListAsync(ct);
         return Ordered(groups.Select(g => new Sibling(StructureItemKind.CategoryGroup, g.Id, g.Sort, g.Name ?? "", v => g.Sort = v))
             .Concat(categories.Select(c => new Sibling(StructureItemKind.Category, c.Id, c.Sort, c.Name ?? "", v => c.Sort = v))));
     }
 
-    private static async Task<List<Sibling>> AccountSiblingsAsync(BudgetDbContext db, int sourceId, long? parent, CancellationToken ct)
+    private static async Task<List<Sibling>> AccountSiblingsAsync(BudgetDbContext db, string ownerId, long? parent, CancellationToken ct)
     {
-        var allGroups = await db.AccountGroups.Where(g => g.SourceId == sourceId).ToListAsync(ct);
+        var allGroups = await db.AccountGroups.Where(g => g.OwnerUserId == ownerId).ToListAsync(ct);
         var known = allGroups.Select(g => g.Id).ToHashSet();
         long? Effective(long? p) => p is { } x && known.Contains(x) ? x : null;
         var groups = allGroups.Where(g => g.Id != parent && Effective(g.ParentGroupId) == parent);
-        var accounts = (await db.Accounts.Where(a => a.SourceId == sourceId).ToListAsync(ct)).Where(a => Effective(a.GroupId) == parent);
+        var accounts = (await db.Accounts.Where(a => a.OwnerUserId == ownerId).ToListAsync(ct)).Where(a => Effective(a.GroupId) == parent);
         return Ordered(groups.Select(g => new Sibling(StructureItemKind.AccountGroup, g.Id, g.Sort, g.Name ?? "", v => g.Sort = v))
             .Concat(accounts.Select(a => new Sibling(StructureItemKind.Account, a.Id, a.Sort, a.Name ?? "", v => a.Sort = v))));
     }
@@ -466,35 +466,35 @@ public sealed class StructureService
     /// </summary>
     public async Task DeleteCategoryAsync(long id, CancellationToken ct = default)
     {
-        int sourceId;
+        string ownerId;
         await using (var db = await _dbFactory.CreateDbContextAsync(ct))
         {
             var category = await db.Categories.FirstOrDefaultAsync(c => c.Id == id, ct) ?? throw NotFound();
-            sourceId = category.SourceId;
-            await RequireEditableAsync(db, sourceId, ct);
+            ownerId = category.OwnerUserId;
+            await RequireEditableAsync(db, ownerId, ct);
         }
 
         await using var sys = await _system.CreateDbContextAsync(ct);
         await using var tx = await sys.Database.BeginTransactionAsync(ct);
-        await sys.Transactions.Where(t => t.SourceId == sourceId && t.CategoryId == id)
+        await sys.Transactions.Where(t => t.OwnerUserId == ownerId && t.CategoryId == id)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.CategoryId, (long?)null).SetProperty(t => t.RuleId, (int?)null), ct);
-        var projects = sys.Projects.Where(p => p.SourceId == sourceId).Select(p => p.Id);
+        var projects = sys.Projects.Where(p => p.OwnerUserId == ownerId).Select(p => p.Id);
         var rules = sys.CategoryRules.Where(r => r.CategoryId == id && projects.Contains(r.ProjectId));
         var ruleIds = await rules.Select(r => r.Id).ToListAsync(ct);
         if (ruleIds.Count > 0)
-            await sys.Transactions.Where(t => t.SourceId == sourceId && t.RuleId != null && ruleIds.Contains(t.RuleId.Value))
+            await sys.Transactions.Where(t => t.OwnerUserId == ownerId && t.RuleId != null && ruleIds.Contains(t.RuleId.Value))
                 .ExecuteUpdateAsync(s => s.SetProperty(t => t.RuleId, (int?)null), ct);
         await rules.ExecuteDeleteAsync(ct);
-        await DeleteProjectRowsAsync(sys, sourceId, id, CategoryItemType.Category, ct);
+        await DeleteProjectRowsAsync(sys, ownerId, id, CategoryItemType.Category, ct);
         await sys.Categories.Where(c => c.Id == id).ExecuteDeleteAsync(ct);
-        await TombstoneAsync(sys, sourceId, RemovedImportItem.CategoryKind, id, ct);
+        await TombstoneAsync(sys, ownerId, RemovedImportItem.CategoryKind, id, ct);
         await tx.CommitAsync(ct);
-        Changed(sourceId, projects: true);
+        Changed(ownerId, projects: true);
     }
 
-    private static async Task DeleteProjectRowsAsync(BudgetDbContext sys, int sourceId, long id, CategoryItemType type, CancellationToken ct)
+    private static async Task DeleteProjectRowsAsync(BudgetDbContext sys, string ownerId, long id, CategoryItemType type, CancellationToken ct)
     {
-        var projects = sys.Projects.Where(p => p.SourceId == sourceId).Select(p => p.Id);
+        var projects = sys.Projects.Where(p => p.OwnerUserId == ownerId).Select(p => p.Id);
         await sys.MonthlyBudgetEntries.Where(e => e.CategoryId == id && e.ItemType == type && projects.Contains(e.Budget.ProjectId)).ExecuteDeleteAsync(ct);
         await sys.BudgetContributionSplits.Where(e => e.CategoryId == id && e.ItemType == type && projects.Contains(e.Budget.ProjectId)).ExecuteDeleteAsync(ct);
         await sys.CategoryTypeAssignments.Where(e => e.CategoryId == id && e.ItemType == type && projects.Contains(e.ProjectId)).ExecuteDeleteAsync(ct);
@@ -509,10 +509,10 @@ public sealed class StructureService
         }
     }
 
-    private static async Task TombstoneAsync(BudgetDbContext sys, int sourceId, string kind, long id, CancellationToken ct)
+    private static async Task TombstoneAsync(BudgetDbContext sys, string ownerId, string kind, long id, CancellationToken ct)
     {
-        if (await sys.RemovedImportItems.AnyAsync(r => r.SourceId == sourceId && r.Kind == kind && r.ItemId == id, ct)) return;
-        sys.RemovedImportItems.Add(new RemovedImportItem { SourceId = sourceId, Kind = kind, ItemId = id });
+        if (await sys.RemovedImportItems.AnyAsync(r => r.OwnerUserId == ownerId && r.Kind == kind && r.ItemId == id, ct)) return;
+        sys.RemovedImportItems.Add(new RemovedImportItem { OwnerUserId = ownerId, Kind = kind, ItemId = id });
         await sys.SaveChangesAsync(ct);
     }
 
@@ -526,22 +526,22 @@ public sealed class StructureService
     /// <summary>Deletes an empty category group (refused while it has categories or sub-groups).</summary>
     public async Task DeleteCategoryGroupAsync(long id, CancellationToken ct = default)
     {
-        int sourceId;
+        string ownerId;
         await using (var db = await _dbFactory.CreateDbContextAsync(ct))
         {
             var group = await db.CategoryGroups.FirstOrDefaultAsync(g => g.Id == id, ct) ?? throw NotFound();
-            sourceId = group.SourceId;
-            await RequireEditableAsync(db, sourceId, ct);
-            if (SourceScope.SentinelIds(sourceId).Contains(id)) throw new InvalidOperationException("The root group cannot be deleted.");
+            ownerId = group.OwnerUserId;
+            await RequireEditableAsync(db, ownerId, ct);
+            if ((await RowIds.SentinelIdsAsync(db, ownerId, ct)).Contains(id)) throw new InvalidOperationException("The root group cannot be deleted.");
         }
         await using var sys = await _system.CreateDbContextAsync(ct);
         if (await sys.Categories.AnyAsync(c => c.GroupId == id, ct) || await sys.CategoryGroups.AnyAsync(g => g.ParentGroupId == id, ct))
             throw new InvalidOperationException("Only an empty group can be deleted.");
         await using var tx = await sys.Database.BeginTransactionAsync(ct);
-        await DeleteProjectRowsAsync(sys, sourceId, id, CategoryItemType.Group, ct);
+        await DeleteProjectRowsAsync(sys, ownerId, id, CategoryItemType.Group, ct);
         await sys.CategoryGroups.Where(g => g.Id == id).ExecuteDeleteAsync(ct);
         await tx.CommitAsync(ct);
-        Changed(sourceId, projects: true);
+        Changed(ownerId, projects: true);
     }
 
     /// <summary>Deletes an account group; its accounts and sub-groups move up one level, to where the group was.</summary>
@@ -549,10 +549,10 @@ public sealed class StructureService
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var group = await db.AccountGroups.FirstOrDefaultAsync(g => g.Id == id, ct) ?? throw NotFound();
-        await RequireEditableAsync(db, group.SourceId, ct);
+        await RequireEditableAsync(db, group.OwnerUserId, ct);
         var (_, parent) = await LocateAsync(db, StructureItemKind.AccountGroup, id, ct);
-        var children = await AccountSiblingsAsync(db, group.SourceId, id, ct);
-        var siblings = await AccountSiblingsAsync(db, group.SourceId, parent, ct);
+        var children = await AccountSiblingsAsync(db, group.OwnerUserId, id, ct);
+        var siblings = await AccountSiblingsAsync(db, group.OwnerUserId, parent, ct);
         var at = siblings.FindIndex(s => s.Kind == StructureItemKind.AccountGroup && s.Id == id);
         siblings.RemoveAt(at);
         siblings.InsertRange(at, children);
@@ -560,7 +560,7 @@ public sealed class StructureService
         foreach (var child in children) await SetParentAsync(db, child.Kind, child.Id, parent, ct);
         db.AccountGroups.Remove(group);
         await db.SaveChangesAsync(ct);
-        Changed(group.SourceId);
+        Changed(group.OwnerUserId);
     }
 
     /// <summary>The account's name and how many bookings and statements deleting it removes; null when not visible.</summary>
@@ -570,7 +570,7 @@ public sealed class StructureService
         var account = await db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
         if (account == null) return null;
         await using var sys = await _system.CreateDbContextAsync(ct);
-        var bookings = await sys.Transactions.CountAsync(t => t.SourceId == account.SourceId && t.AccountId == id && t.Splitted != SplitState.Child, ct);
+        var bookings = await sys.Transactions.CountAsync(t => t.OwnerUserId == account.OwnerUserId && t.AccountId == id && t.Splitted != SplitState.Child, ct);
         var statements = await sys.BankStatements.CountAsync(s => s.AccountId == id, ct);
         return new AccountDeleteInfo(id, account.Name ?? "", bookings, statements);
     }
@@ -581,12 +581,12 @@ public sealed class StructureService
     /// </summary>
     public async Task DeleteAccountAsync(long id, string confirmName, CancellationToken ct = default)
     {
-        int sourceId;
+        string ownerId;
         await using (var db = await _dbFactory.CreateDbContextAsync(ct))
         {
             var account = await db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct) ?? throw NotFound();
-            sourceId = account.SourceId;
-            await RequireEditableAsync(db, sourceId, ct);
+            ownerId = account.OwnerUserId;
+            await RequireEditableAsync(db, ownerId, ct);
             if (!string.Equals(account.Name ?? "", confirmName, StringComparison.Ordinal))
                 throw new ArgumentException("The confirmation does not match the account's name.", nameof(confirmName));
         }
@@ -595,7 +595,7 @@ public sealed class StructureService
         await using (var sys = await _system.CreateDbContextAsync(ct))
         {
             await using var tx = await sys.Database.BeginTransactionAsync(ct);
-            var bookings = sys.Transactions.Where(t => t.SourceId == sourceId && t.AccountId == id);
+            var bookings = sys.Transactions.Where(t => t.OwnerUserId == ownerId && t.AccountId == id);
             await bookings.ExecuteDeleteAsync(ct);
             await sys.Holdings.Where(h => h.AccountId == id).ExecuteDeleteAsync(ct);
             await sys.PortfolioChartPoints.Where(p => p.AccountId == id).ExecuteDeleteAsync(ct);
@@ -612,13 +612,13 @@ public sealed class StructureService
             await sys.StatementReads.Where(r => statements.Select(s => s.Id).Contains(r.StatementId)).ExecuteDeleteAsync(ct);
             await statements.ExecuteDeleteAsync(ct);
             await sys.Accounts.Where(a => a.Id == id).ExecuteDeleteAsync(ct);
-            await TombstoneAsync(sys, sourceId, RemovedImportItem.AccountKind, id, ct);
+            await TombstoneAsync(sys, ownerId, RemovedImportItem.AccountKind, id, ct);
             await tx.CommitAsync(ct);
         }
         if (_statementStore != null)
         {
             foreach (var f in files) _statementStore.DeleteFile(f);
         }
-        Changed(sourceId, projects: true);
+        Changed(ownerId, projects: true);
     }
 }

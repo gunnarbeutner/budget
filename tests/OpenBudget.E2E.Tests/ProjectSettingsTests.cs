@@ -134,12 +134,12 @@ public sealed class ProjectSettingsTests : EndToEndTestBase
     {
         var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
-        db.AccountGroups.Add(new AccountGroup { Id = 20, SourceId = E2ESeed.SourceId, Name = "Example Bank", Sort = 1 });
-        db.AccountGroups.Add(new AccountGroup { Id = 21, SourceId = E2ESeed.SourceId, Name = "Another Bank", Sort = 2 });
+        db.AccountGroups.Add(new AccountGroup { Id = 20, OwnerUserId = E2ESeed.OwnerUserId, Name = "Example Bank", Sort = 1 });
+        db.AccountGroups.Add(new AccountGroup { Id = 21, OwnerUserId = E2ESeed.OwnerUserId, Name = "Another Bank", Sort = 2 });
         void Add(long id, string name, long group, int sort) => db.Accounts.Add(new Account
         {
             Id = id,
-            SourceId = E2ESeed.SourceId,
+            OwnerUserId = E2ESeed.OwnerUserId,
             Name = name,
             Currency = "EUR",
             Type = 1,

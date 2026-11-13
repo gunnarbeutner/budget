@@ -321,8 +321,8 @@
 
 @code {
     [Parameter, EditorRequired] public int ProjectId { get; set; }
-    // The project's source (its category tree), looked up once per project.
-    private int SourceId;
+    // The project's owner (whose category tree it shows), looked up once per project.
+    private string OwnerUserId = string.Empty;
     private int _sourceFor;
     [Parameter] public BrowseTree? Tree { get; set; }
     /// <summary>Where the rail's last context menu opened (for the colour popover).</summary>
@@ -417,10 +417,10 @@
             _canEditProject = (await AccessProvider.GetAsync()).CanEdit(ProjectId);
             if (_canEditProject && _sourceFor != ProjectId)
             {
-                SourceId = (await Projects.GetProjectAsync(ProjectId))?.SourceId ?? 0;
+                OwnerUserId = (await Projects.GetProjectAsync(ProjectId))?.OwnerUserId ?? string.Empty;
                 _sourceFor = ProjectId;
             }
-            _info = _canEditProject ? await Structure.GetEditInfoAsync(SourceId, Tree.Accounts.Select(a => a.Id).ToList()) : null;
+            _info = _canEditProject ? await Structure.GetEditInfoAsync(OwnerUserId, Tree.Accounts.Select(a => a.Id).ToList()) : null;
         }
         catch (Exception ex) when (ex is InvalidOperationException or AccessDeniedException)
         {
@@ -495,8 +495,8 @@
                 _moveNode = node;
                 _moveGroups = null;
                 StateHasChanged();
-                var sourceId = node.Kind is SidebarNodeKind.Category or SidebarNodeKind.CategoryGroup ? SourceId : _info?.SourceOfAccount(node.Id) ?? SourceId;
-                _moveGroups = await Structure.ListGroupsAsync(node.Kind is SidebarNodeKind.Category or SidebarNodeKind.CategoryGroup, sourceId);
+                var ownerId = node.Kind is SidebarNodeKind.Category or SidebarNodeKind.CategoryGroup ? OwnerUserId : _info?.OwnerOfAccount(node.Id) ?? OwnerUserId;
+                _moveGroups = await Structure.ListGroupsAsync(node.Kind is SidebarNodeKind.Category or SidebarNodeKind.CategoryGroup, ownerId);
                 return true;
             case SidebarMenus.MoveUp:
             case SidebarMenus.MoveDown:

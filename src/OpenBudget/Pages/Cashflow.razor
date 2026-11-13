@@ -340,7 +340,7 @@ else
     private int selectedBudgetId = 0;
     private bool isLoading = false;
     private string? projectName;
-    private int projectSourceId = SourceScope.LegacySourceId;
+    private string projectOwnerId = string.Empty;
     private bool notFound = false;
 
     private List<CategoryCashflow> incomeCategories = new();
@@ -467,7 +467,7 @@ else
     protected override bool AutoReloadOnChange => false;
     protected override bool IsRelevantChange(DataChange change) => change.Area switch
     {
-        DataArea.ImportedData or DataArea.Sources => change.SourceId == projectSourceId,
+        DataArea.ImportedData or DataArea.ImportState => change.OwnerUserId == projectOwnerId,
         _ => change.ProjectId is null || change.ProjectId == ProjectId,
     };
     // New bookings from an import or a bank sync only change the numbers: recompute in place, keeping the year,
@@ -587,7 +587,7 @@ else
         }
 
         projectName = project.Name;
-        projectSourceId = project.SourceId;
+        projectOwnerId = project.OwnerUserId;
 
         // Overlay URL-provided state before the year clamp / budget defaulting runs, so a
         // shared link reproducing a specific year + budget + projection mode + floor wins
@@ -843,7 +843,7 @@ else
         if (projecting)
         {
             var projItems = slices.SelectMany(s => s.ProjectionItems).Distinct().ToList();
-            cachedHistograms = await CashflowProjectionService.GetCategoryDayOfMonthWeightsAsync(projItems, projectSourceId);
+            cachedHistograms = await CashflowProjectionService.GetCategoryDayOfMonthWeightsAsync(projItems, projectOwnerId);
         }
         var rowKeys = incomeCategories.Concat(expenseCategories).Where(c => c.IsAggregateRow)
             .Select(c => (c.CategoryId, c.ItemType)).Distinct().ToList();
@@ -887,7 +887,7 @@ else
         };
 
         var trackingItems = await ProjectService.GetProjectTrackingItemsAsync(project.Id);
-        var hierarchyForSlice = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        var hierarchyForSlice = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(project.OwnerUserId);
 
         // Pre-load budget amounts so we can auto-include descendants of tracked groups that
         // hold their own non-zero budget entry. Without this, a sub-cat-level budget (e.g.
@@ -944,7 +944,7 @@ else
         var aggregateKeys = sliceTree.Where(n => !n.HasChildren).Select(n => n.Key).ToHashSet();
 
         var batch = await BudgetService.GetMonthlyIncomeAndExpenseBatchAsync(
-            slice.ProjectionItems, selectedYear, project.SourceId, project.Id);
+            slice.ProjectionItems, selectedYear, project.OwnerUserId, project.Id);
 
         HashSet<(long, CategoryItemType)>? incomeItems = null;
         if (firstProjectedMonth <= 12 && budgetIdOverride > 0)
@@ -959,7 +959,7 @@ else
         if (isSelectedProject && projecting && incomeProjectionMode == "recent")
         {
             recentIncomePerItem = await BudgetService.GetMonthlyIncomePerItemAsync(
-                slice.ProjectionItems, project.SourceId, project.Id,
+                slice.ProjectionItems, project.OwnerUserId, project.Id,
                 recentIncomeSourceMonth.Year, recentIncomeSourceMonth.Month);
         }
 

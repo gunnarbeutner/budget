@@ -59,7 +59,6 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="PageTitle" xml:space="preserve"><value>Instrumenten-Zuordnung</value></data>
-  <data name="PageTitle_WithSource" xml:space="preserve"><value>Instrumenten-Zuordnung — {0}</value></data>
   <data name="Heading" xml:space="preserve"><value>Instrumenten-Zuordnung</value></data>
   <data name="Intro" xml:space="preserve"><value>Ordne jedes ISIN-lose PortfolioPerformance-Instrument (Krypto, Immobilien) der Position zu, die es darstellt, damit die rekonstruierten Lots der richtigen Position zugeordnet werden. Wertpapiere mit ISIN werden automatisch zugeordnet und hier nicht angezeigt.</value></data>
   <data name="Col_Instrument" xml:space="preserve"><value>PortfolioPerformance-Instrument</value></data>
@@ -67,11 +66,8 @@
   <data name="Col_Holding" xml:space="preserve"><value>Position</value></data>
   <data name="NotLinked" xml:space="preserve"><value>— nicht zugeordnet —</value></data>
   <data name="Lots_Summary" xml:space="preserve"><value>{0} Lots</value></data>
-  <data name="Empty" xml:space="preserve"><value>Keine ISIN-losen Instrumente mit rekonstruierten Lots für diese Quelle. Lade zuerst eine PortfolioPerformance-Datei mit Krypto- oder Immobilien-Transaktionen hoch.</value></data>
+  <data name="Empty" xml:space="preserve"><value>Keine ISIN-losen Instrumente mit rekonstruierten Lots. Lade zuerst eine PortfolioPerformance-Datei mit Krypto- oder Immobilien-Transaktionen hoch.</value></data>
   <data name="Back" xml:space="preserve">
     <value>Zurück zu Portfolio Performance</value>
-  </data>
-  <data name="NotFound" xml:space="preserve">
-    <value>Nicht gefunden.</value>
   </data>
 </root>

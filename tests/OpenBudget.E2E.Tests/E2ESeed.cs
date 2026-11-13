@@ -11,9 +11,9 @@ namespace OpenBudget.E2E.Tests;
 internal static class E2ESeed
 {
     // Stable identifiers the tests assert against.
-    public const int SourceId = 1;            // referenced by the demo project (delete blocked)
-    public const int SpareSourceId = 2;       // unreferenced (delete allowed)
-    public const string SpareSourceName = "spare";
+    public const string OwnerUserId = "u-e2e";      // the login every test uses; owns the baseline world
+    public const string SecondUserId = "u-guest";
+    public const int IdSpace = 1;                    // the owner's id space: seeded ids equal their rowids
     public const int ProjectId = 1;
     public const string ProjectName = "E2E Demo Project";
     public const int BudgetYear = 2026;
@@ -60,7 +60,10 @@ internal static class E2ESeed
         db.CategoryGroups.RemoveRange(db.CategoryGroups.IgnoreQueryFilters());
         db.Accounts.RemoveRange(db.Accounts.IgnoreQueryFilters());
         db.AccountGroups.RemoveRange(db.AccountGroups.IgnoreQueryFilters());
-        db.ImportSources.RemoveRange(db.ImportSources.IgnoreQueryFilters());
+        db.UserDataStates.RemoveRange(db.UserDataStates.IgnoreQueryFilters());
+        db.PpPortfolioSettings.RemoveRange(db.PpPortfolioSettings.IgnoreQueryFilters());
+        db.PpPortfolios.RemoveRange(db.PpPortfolios.IgnoreQueryFilters());
+        db.SecurityTaxonomies.RemoveRange(db.SecurityTaxonomies.IgnoreQueryFilters());
         await db.SaveChangesAsync();
     }
 
@@ -68,21 +71,19 @@ internal static class E2ESeed
     {
         await using var db = await factory.CreateDbContextAsync();
 
-        db.ImportSources.Add(new ImportSource { Id = SourceId, Name = "legacy", CreatedAt = Fixed, OwnerUserId = ownerUserId, UploadToken = "e2e-token-legacy" });
-        db.ImportSources.Add(new ImportSource { Id = SpareSourceId, Name = SpareSourceName, CreatedAt = Fixed, OwnerUserId = ownerUserId, UploadToken = "e2e-token-spare" });
+        db.UserDataStates.Add(new UserDataState { UserId = ownerUserId, IdSpace = IdSpace });
 
-        // Category.Type is the source's raw type code; the app classifies income/expense per-project
+        // Category.Type is MoneyMoney's raw type code; the app classifies income/expense per-project
         // via CategoryTypeAssignment (below), not via this column.
-        db.CategoryGroups.Add(new CategoryGroup { Id = GroupId, SourceId = SourceId, Name = "Living" });
-        db.Categories.Add(new Category { Id = ExpenseCategoryId, SourceId = SourceId, Name = "Groceries", GroupId = GroupId, Type = 1 });
-        db.Categories.Add(new Category { Id = IncomeCategoryId, SourceId = SourceId, Name = "Salary", GroupId = GroupId, Type = 1 });
+        db.CategoryGroups.Add(new CategoryGroup { Id = GroupId, OwnerUserId = ownerUserId, Name = "Living" });
+        db.Categories.Add(new Category { Id = ExpenseCategoryId, OwnerUserId = ownerUserId, Name = "Groceries", GroupId = GroupId, Type = 1 });
+        db.Categories.Add(new Category { Id = IncomeCategoryId, OwnerUserId = ownerUserId, Name = "Salary", GroupId = GroupId, Type = 1 });
 
         db.Projects.Add(new Project
         {
             Id = ProjectId,
             Name = ProjectName,
             Description = "Seeded by the E2E suite",
-            SourceId = SourceId,
             OwnerUserId = ownerUserId,
             SortOrder = 0,
             CreatedAt = Fixed,
@@ -141,7 +142,7 @@ internal static class E2ESeed
         db.Transactions.Add(new Transaction
         {
             Id = id,
-            SourceId = SourceId,
+            OwnerUserId = OwnerUserId,
             CategoryId = categoryId,
             Amount = amountCents,
             Timestamp = ((DateTimeOffset)date).ToUnixTimeSeconds(),
@@ -160,24 +161,24 @@ internal static class EditingSeed
     public const string MoneyMoneyAccountName = "Example MoneyMoney Account";
     public const string EnergyCategory = "Energy";
 
-    public static readonly long BankAccountId = SourceScope.Namespace(E2ESeed.SourceId, 1);
-    public static readonly long MoneyMoneyAccountId = SourceScope.Namespace(E2ESeed.SourceId, 2);
+    public static readonly long BankAccountId = RowIds.Namespace(E2ESeed.IdSpace, 1);
+    public static readonly long MoneyMoneyAccountId = RowIds.Namespace(E2ESeed.IdSpace, 2);
 
     public static async Task SeedAsync(IDbContextFactory<BudgetDbContext> factory)
     {
         await using var db = await factory.CreateDbContextAsync();
-        db.Categories.Add(new Category { Id = 202, SourceId = E2ESeed.SourceId, Name = EnergyCategory, GroupId = 100, Type = 1 });
+        db.Categories.Add(new Category { Id = 202, OwnerUserId = E2ESeed.OwnerUserId, Name = EnergyCategory, GroupId = 100, Type = 1 });
         db.Accounts.Add(new Account
         {
             Id = BankAccountId,
-            SourceId = E2ESeed.SourceId,
+            OwnerUserId = E2ESeed.OwnerUserId,
             Name = BankAccountName,
             Provider = "fake",
             Type = 1,
             Currency = "EUR",
             Balances = "11:1000.000000,3:EUR,",
         });
-        db.Accounts.Add(new Account { Id = MoneyMoneyAccountId, SourceId = E2ESeed.SourceId, Name = MoneyMoneyAccountName, Type = 1, Currency = "EUR", Balances = "11:50.000000,3:EUR," });
+        db.Accounts.Add(new Account { Id = MoneyMoneyAccountId, OwnerUserId = E2ESeed.OwnerUserId, Name = MoneyMoneyAccountName, Type = 1, Currency = "EUR", Balances = "11:50.000000,3:EUR," });
         await db.SaveChangesAsync();
         db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = BankAccountId });
         db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = MoneyMoneyAccountId });
@@ -203,7 +204,7 @@ internal static class EditingSeed
         db.Transactions.Add(new Transaction
         {
             Id = id,
-            SourceId = E2ESeed.SourceId,
+            OwnerUserId = E2ESeed.OwnerUserId,
             AccountId = account,
             Amount = cents,
             Currency = "EUR",

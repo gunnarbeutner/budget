@@ -22,7 +22,7 @@ public sealed class BankDataTests
     {
         var snapshot = w.BuildSnapshot([("MM Giro", "DE00 0000 0000 0000 0000 01"), ("MM Other", null)], txs);
         await w.ImportMoneyMoneyAsync(snapshot);
-        return SourceScope.Namespace(BankWorld.SourceAlice, 1);
+        return RowIds.Namespace(BankWorld.SourceAlice, 1);
     }
 
     private static async Task<(int LoginId, long AccountId)> LinkedGiroAsync(BankWorld w, string username, params BankWorld.MmTx[] mm)
@@ -60,7 +60,7 @@ public sealed class BankDataTests
         await using var w = await BankWorld.CreateAsync();
         var snapshot = w.BuildSnapshot([("MM Giro", "DE00 0000 0000 0000 0000 01"), ("MM Depot", null)], [], depots: ["MM Depot"]);
         await w.ImportMoneyMoneyAsync(snapshot);
-        long mmGiro = SourceScope.Namespace(BankWorld.SourceAlice, 1), mmDepot = SourceScope.Namespace(BankWorld.SourceAlice, 2);
+        long mmGiro = RowIds.Namespace(BankWorld.SourceAlice, 1), mmDepot = RowIds.Namespace(BankWorld.SourceAlice, 2);
         var id = await w.AddLoginAsync(BankWorld.Alice);
         await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false));
         var svc = w.For(BankWorld.Alice);
@@ -102,13 +102,13 @@ public sealed class BankDataTests
     public async Task Bobs_account_cannot_be_linked_by_alice()
     {
         await using var w = await BankWorld.CreateAsync();
-        w.T.Db.Accounts.Add(new Account { Id = SourceScope.Namespace(3, 1), SourceId = 3, Name = "Bob Giro" });
+        w.T.Db.Accounts.Add(new Account { Id = RowIds.Namespace(3, 1), OwnerUserId = BankWorld.Bob, Name = "Bob Giro" });
         await w.T.Db.SaveChangesAsync();
         var id = await w.AddLoginAsync(BankWorld.Alice);
         await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false));
         var giro = await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => w.For(BankWorld.Alice).LinkAsync(giro.Id, SourceScope.Namespace(3, 1)));
-        Assert.Equal(AccountProviders.MoneyMoney, (await w.AccountAsync(SourceScope.Namespace(3, 1))).Provider);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => w.For(BankWorld.Alice).LinkAsync(giro.Id, RowIds.Namespace(3, 1)));
+        Assert.Equal(AccountProviders.MoneyMoney, (await w.AccountAsync(RowIds.Namespace(3, 1))).Provider);
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public sealed class BankDataTests
             Mm(2, -5, new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc), "Other Shop", "Other purchase"),
         ]);
         await w.ImportMoneyMoneyAsync(snapshot);
-        var accountId = SourceScope.Namespace(BankWorld.SourceAlice, 1);
+        var accountId = RowIds.Namespace(BankWorld.SourceAlice, 1);
         var id = await w.AddLoginAsync(BankWorld.Alice, "demo+statements");
         await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false));
         await w.For(BankWorld.Alice).LinkAsync((await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).Id, accountId);
@@ -143,7 +143,7 @@ public sealed class BankDataTests
         Assert.Equal(balanceBefore, account.Balances);
         Assert.NotNull(account.RefreshTimestamp);
         // The other (MoneyMoney-owned) account was re-imported as usual.
-        Assert.Single(await w.TransactionsAsync(SourceScope.Namespace(BankWorld.SourceAlice, 2)));
+        Assert.Single(await w.TransactionsAsync(RowIds.Namespace(BankWorld.SourceAlice, 2)));
 
         // After unlinking, the next upload refills the account from MoneyMoney alone.
         await w.For(BankWorld.Alice).UnlinkAsync((await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).Id);
@@ -166,11 +166,10 @@ public sealed class BankDataTests
         var account = await w.AccountAsync(giro.LinkedAccountId!.Value);
         await using (var db = await w.T.System.CreateDbContextAsync())
         {
-            var source = await db.ImportSources.SingleAsync(s => s.Id == account.SourceId);
-            Assert.Equal(BankWorld.AliceSourceName, source.Name);
-            Assert.Equal(1, await db.ImportSources.CountAsync(s => s.OwnerUserId == BankWorld.Alice));
+            Assert.Equal(BankWorld.Alice, account.OwnerUserId);
+            Assert.True(RowIds.Namespace(BankWorld.SourceAlice, BankTransactionStore.ConnectorRowBase) < account.Id);
         }
-        Assert.Equal(account.SourceId, (await w.AccountAsync((await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.DepotId)).LinkedAccountId!.Value)).SourceId);
+        Assert.Equal(account.OwnerUserId, (await w.AccountAsync((await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.DepotId)).LinkedAccountId!.Value)).OwnerUserId);
         Assert.Equal("fake", account.Provider);
         Assert.Equal("DE00000000000000000001", account.Iban);
         Assert.Equal(1, account.Type);
@@ -204,8 +203,8 @@ public sealed class BankDataTests
         var giro = (await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).LinkedAccountId!.Value;
 
         var query = w.View(BankWorld.Alice).TransactionQueries;
-        var sourceId = (await w.AccountAsync(giro)).SourceId;
-        var result = await query.QueryAsync(new TransactionQuery { SourceId = sourceId });
+        var ownerId = (await w.AccountAsync(giro)).OwnerUserId;
+        var result = await query.QueryAsync(new TransactionQuery { OwnerUserId = ownerId });
         // 41 giro + 10 savings bookings, all counted, none treated as split parents.
         Assert.Equal(51, result.TotalCount);
         var expected = (await w.TransactionsAsync(giro)).Sum(t => t.Amount) / 100m
@@ -369,11 +368,11 @@ public sealed class BankDataTests
             await store.ApplyAsync(db, account, new AccountRefresh(null, [new(-7m, "EUR", day, day, "Example Market", "Weekly shop", true)], []), day, DateTime.UtcNow, CancellationToken.None);
             var parent = await db.Transactions.SingleAsync(t => t.AccountId == account);
             parent.Splitted = SplitState.Parent;
-            partId = SourceScope.Namespace(parent.SourceId, BankTransactionStore.ConnectorRowBase + 1000);
+            partId = RowIds.Namespace(BankWorld.SourceAlice, BankTransactionStore.ConnectorRowBase + 1000);
             db.Transactions.Add(new Transaction
             {
                 Id = partId,
-                SourceId = parent.SourceId,
+                OwnerUserId = parent.OwnerUserId,
                 AccountId = account,
                 Amount = -350,
                 Timestamp = parent.Timestamp,
@@ -569,7 +568,7 @@ public sealed class BankDataTests
 
         // Share a project that uses the giro account (and only it) with bob as viewer.
         var giroAccount = await w.AccountAsync(giro.LinkedAccountId!.Value);
-        w.T.Db.Projects.Add(new Project { Id = 1, Name = "Shared", SourceId = giroAccount.SourceId, OwnerUserId = BankWorld.Alice, CreatedAt = DateTime.UtcNow });
+        w.T.Db.Projects.Add(new Project { Id = 1, Name = "Shared", OwnerUserId = BankWorld.Alice, CreatedAt = DateTime.UtcNow });
         w.T.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 1, AccountId = giroAccount.Id, Scope = AccountScope.Exclusive });
         w.T.Db.ProjectShares.Add(new ProjectShare { ProjectId = 1, UserId = BankWorld.Bob, Role = ProjectRole.Viewer });
         await w.T.Db.SaveChangesAsync();
@@ -606,8 +605,7 @@ public sealed class BankDataTests
         await w.LinkAllAsync(BankWorld.Alice, id);
         await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, true, false));
         var giro = (await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).LinkedAccountId!.Value;
-        var account = await w.AccountAsync(giro);
-        w.T.Db.Projects.Add(new Project { Id = 1, Name = "Shared", SourceId = account.SourceId, OwnerUserId = BankWorld.Alice, CreatedAt = DateTime.UtcNow });
+        w.T.Db.Projects.Add(new Project { Id = 1, Name = "Shared", OwnerUserId = BankWorld.Alice, CreatedAt = DateTime.UtcNow });
         w.T.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 1, AccountId = giro, Scope = AccountScope.Exclusive });
         w.T.Db.ProjectShares.Add(new ProjectShare { ProjectId = 1, UserId = BankWorld.Bob, Role = ProjectRole.Viewer });
         await w.T.Db.SaveChangesAsync();

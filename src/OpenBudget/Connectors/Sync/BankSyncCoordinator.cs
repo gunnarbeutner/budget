@@ -367,8 +367,8 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
                 WebLoginSessionId = null,
                 Message = null,
             });
-            foreach (var sourceId in outcome.AffectedSourceIds)
-                _owner._notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: sourceId));
+            foreach (var ownerId in outcome.AffectedOwnerIds)
+                _owner._notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: ownerId));
             Dispose();
         }
 

@@ -7,23 +7,23 @@ namespace OpenBudget.Importers.MoneyMoney;
 /// <summary>
 /// Turns MoneyMoney's category rules (the <c>categories.rules</c> text, a MoneyMoney search expression, which is the
 /// syntax OpenBudget's rules use) into ordinary <see cref="CategoryRule"/>s: one rule per category with a non-empty
-/// rule, in every project of the source, appended in category order (group order, then category order). Idempotent:
+/// rule, in every project of the owner, appended in category order (group order, then category order). Idempotent:
 /// a rule already imported for (project, category) is updated while the user has not edited it
 /// (<see cref="CategoryRule.Expression"/> still equals <see cref="CategoryRule.ImportedExpression"/>) and left alone
 /// otherwise; a category whose MoneyMoney rule became empty loses its untouched imported rule. Runs after every upload
-/// and once at startup (backfill for sources uploaded before rules were imported).
+/// and once at startup (backfill for data imported before rules were imported).
 /// </summary>
 public static class MoneyMoneyRuleImport
 {
     public const string Origin = "moneymoney";
 
     /// <summary>Returns how many rules were created, updated or removed.</summary>
-    public static async Task<int> SyncAsync(BudgetDbContext db, int sourceId, CancellationToken ct)
+    public static async Task<int> SyncAsync(BudgetDbContext db, string ownerId, CancellationToken ct)
     {
-        var projects = await db.Projects.Where(p => p.SourceId == sourceId).Select(p => p.Id).ToListAsync(ct);
+        var projects = await db.Projects.Where(p => p.OwnerUserId == ownerId).Select(p => p.Id).ToListAsync(ct);
         if (projects.Count == 0) return 0;
-        var groups = await db.CategoryGroups.AsNoTracking().Where(g => g.SourceId == sourceId).ToDictionaryAsync(g => g.Id, ct);
-        var categories = (await db.Categories.AsNoTracking().Where(c => c.SourceId == sourceId).ToListAsync(ct))
+        var groups = await db.CategoryGroups.AsNoTracking().Where(g => g.OwnerUserId == ownerId).ToDictionaryAsync(g => g.Id, ct);
+        var categories = (await db.Categories.AsNoTracking().Where(c => c.OwnerUserId == ownerId).ToListAsync(ct))
             .OrderBy(c => GroupPath(c.GroupId, groups), Comparer<List<long>>.Create(ComparePaths))
             .ThenBy(c => c.Sort ?? long.MaxValue).ThenBy(c => c.Id).ToList();
         var wanted = categories
@@ -72,10 +72,10 @@ public static class MoneyMoneyRuleImport
         return changes;
     }
 
-    /// <summary>Startup backfill: every MoneyMoney source that has category rules.</summary>
+    /// <summary>Startup backfill: every owner whose MoneyMoney categories have rules.</summary>
     public static async Task<int> BackfillAsync(BudgetDbContext db, CancellationToken ct)
     {
-        var sources = await db.Categories.Where(c => c.Rules != null && c.Rules != "").Select(c => c.SourceId).Distinct().ToListAsync(ct);
+        var sources = await db.Categories.Where(c => c.Rules != null && c.Rules != "").Select(c => c.OwnerUserId).Distinct().ToListAsync(ct);
         var total = 0;
         foreach (var s in sources) total += await SyncAsync(db, s, ct);
         return total;

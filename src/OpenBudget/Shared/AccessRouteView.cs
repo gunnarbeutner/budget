@@ -19,15 +19,9 @@ public sealed class RequireProjectRoleAttribute : Attribute
     public ProjectRole Role { get; }
 }
 
-/// <summary>Marks a page whose <c>{SourceId}</c> route parameter must be a source the user owns.</summary>
-[AttributeUsage(AttributeTargets.Class)]
-public sealed class RequireSourceOwnerAttribute : Attribute
-{
-}
-
 /// <summary>
 /// The router's route view, with the access check built in: before a page renders, the project /
-/// budget / source named in the URL must be within the current user's scope and role. Otherwise the
+/// budget named in the URL must be within the current user's scope and role. Otherwise the
 /// not-found page is shown (HTTP 404 when prerendering) — identical to a URL that doesn't exist, so
 /// the existence of other users' projects is never revealed. Nothing is rendered until the check
 /// has completed, so no page code (and no data loading) runs for an out-of-scope URL.
@@ -80,9 +74,6 @@ public sealed class AccessRouteView : ComponentBase
                 .FirstOrDefaultAsync();
             return owningProject is { } pid && scope.RoleFor(pid) >= RequiredRole(pageType);
         }
-
-        if (TryGetInt(values, "SourceId", out var sourceId))
-            return scope.OwnsSource(sourceId);
 
         return true;
     }

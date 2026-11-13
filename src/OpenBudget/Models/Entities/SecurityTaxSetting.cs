@@ -15,7 +15,10 @@ public class SecurityTaxSetting
     [Key]
     public int Id { get; set; }
 
-    public int SourceId { get; set; }
+    /// <summary>The owning user (AppUser.Id).</summary>
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
 
     /// <summary>PortfolioPerformance security uuid this setting applies to.</summary>
     public string SecurityUuid { get; set; } = "";

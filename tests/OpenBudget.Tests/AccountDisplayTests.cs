@@ -94,7 +94,7 @@ public class AccountDisplayTests
             LastSuccessAt = success,
             LastError = "Bank unreachable",
         });
-        t.Db.Transactions.Add(new Transaction { Id = 900, SourceId = AccessWorld.SourceAlice, AccountId = acc.Id, Amount = -2895, Booked = false, Timestamp = 1, Name = "Pending shop" });
+        t.Db.Transactions.Add(new Transaction { Id = 900, OwnerUserId = AccessWorld.Alice, AccountId = acc.Id, Amount = -2895, Booked = false, Timestamp = 1, Name = "Pending shop" });
         await t.Db.SaveChangesAsync();
 
         var owner = (await t.ForUser(AccessWorld.Alice).Browse.GetTreeAsync(AccessWorld.Shared, 2026, 3, 3))!.Accounts.Single(a => a.Id == acc.Id);

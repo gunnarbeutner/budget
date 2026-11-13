@@ -32,7 +32,7 @@ public sealed class AccountSwitchTests
         Mm(-5, Day(10, 25), "Reserved", "Card", booked: 0),
     ];
 
-    private static long Giro => SourceScope.Namespace(BankWorld.SourceAlice, 1);
+    private static long Giro => RowIds.Namespace(BankWorld.SourceAlice, 1);
 
     private static string Snapshot(BankWorld w) =>
         w.BuildSnapshot([("MM Giro", "DE00 0000 0000 0000 0000 01"), ("MM Other", null)], History);
@@ -85,7 +85,7 @@ public sealed class AccountSwitchTests
         long rentId, groceryId, childId, category;
         await using (var db = await w.T.System.CreateDbContextAsync())
         {
-            category = (await db.Categories.FirstAsync(c => c.SourceId == BankWorld.SourceAlice)).Id;
+            category = (await db.Categories.FirstAsync(c => c.OwnerUserId == BankWorld.Alice)).Id;
             var rent = await db.Transactions.SingleAsync(t => t.AccountId == Giro && t.Purpose == "MIETE OKTOBER");
             rent.Note = "October rent";
             rent.Checked = true;
@@ -96,11 +96,11 @@ public sealed class AccountSwitchTests
             grocery.Splitted = SplitState.Parent;
             grocery.SplitOriginalAmount = grocery.Amount;
             groceryId = grocery.Id;
-            childId = SourceScope.Namespace(BankWorld.SourceAlice, 500);
+            childId = RowIds.Namespace(BankWorld.SourceAlice, 500);
             db.Transactions.Add(new Transaction
             {
                 Id = childId,
-                SourceId = BankWorld.SourceAlice,
+                OwnerUserId = BankWorld.Alice,
                 AccountId = Giro,
                 Amount = grocery.Amount,
                 Timestamp = grocery.Timestamp,
@@ -147,7 +147,7 @@ public sealed class AccountSwitchTests
         Assert.NotNull(link.LastSuccessAt);
 
         // The switched account's rows are editable now.
-        Assert.Equal(EditBlock.None, TransactionEditRules.Check(null, BankWorld.SourceAlice, Giro, account.Provider));
+        Assert.Equal(EditBlock.None, TransactionEditRules.Check(null, BankWorld.Alice, Giro, account.Provider));
     }
 
     [Fact]
@@ -156,7 +156,7 @@ public sealed class AccountSwitchTests
         await using var w = await BankWorld.CreateAsync();
         var (loginId, linkId) = await LinkedAndFetchedAsync(w);
         // The browser import hands the structure over when it finishes.
-        await new StructureTakeoverService(w.T.System, w.T.Notifier, new ChangeOrigin()).TakeOverAsync(BankWorld.SourceAlice);
+        await new StructureTakeoverService(w.T.System, w.T.Notifier, new ChangeOrigin()).TakeOverAsync(BankWorld.Alice);
         await w.SwitchAsync(BankWorld.Alice, linkId);
         var before = await w.TransactionsAsync(Giro);
         var name = (await w.AccountAsync(Giro)).Name;
@@ -220,8 +220,8 @@ public sealed class AccountSwitchTests
         // Bob sees neither the link nor the source: nothing happens.
         Assert.Equal(0, await w.Switcher(BankWorld.Bob).SwitchAsync([linkId]));
         Assert.Empty(await w.Switcher(BankWorld.Bob).PreviewAsync([linkId]));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => w.Switcher(BankWorld.Bob).GetSourceStateAsync(BankWorld.SourceAlice));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => w.Switcher(BankWorld.Bob).SetImportFinishedAsync(BankWorld.SourceAlice, true));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => w.Switcher(BankWorld.Bob).GetSourceStateAsync(BankWorld.Alice));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => w.Switcher(BankWorld.Bob).SetImportFinishedAsync(BankWorld.Alice, true));
 
         Assert.Equal(1, await w.Switcher(BankWorld.Alice).SwitchAsync([linkId]));
     }
@@ -234,15 +234,15 @@ public sealed class AccountSwitchTests
         var switcher = w.Switcher(BankWorld.Alice);
         await switcher.SwitchAsync([linkId]);
 
-        var state = await switcher.GetSourceStateAsync(BankWorld.SourceAlice);
+        var state = await switcher.GetSourceStateAsync(BankWorld.Alice);
         Assert.True(Assert.Single(state.Links).Switched);
         Assert.Null(state.ImportFinishedAt);
 
-        await switcher.SetImportFinishedAsync(BankWorld.SourceAlice, true);
-        Assert.NotNull((await switcher.GetSourceStateAsync(BankWorld.SourceAlice)).ImportFinishedAt);
+        await switcher.SetImportFinishedAsync(BankWorld.Alice, true);
+        Assert.NotNull((await switcher.GetSourceStateAsync(BankWorld.Alice)).ImportFinishedAt);
         await Assert.ThrowsAsync<MoneyMoneyImportFinishedException>(() => w.ImportMoneyMoneyAsync(Snapshot(w)));
 
-        await switcher.SetImportFinishedAsync(BankWorld.SourceAlice, false);
+        await switcher.SetImportFinishedAsync(BankWorld.Alice, false);
         await w.ImportMoneyMoneyAsync(Snapshot(w));
     }
 }

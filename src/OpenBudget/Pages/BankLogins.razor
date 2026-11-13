@@ -183,7 +183,7 @@ else
                                                         <option value="">@L["Link_Choose"]</option>
                                                         @foreach (var c in candidates)
                                                         {
-                                                            <option value="@c.AccountId" selected="@(ChosenCandidate(a.Id, candidates) == c.AccountId.ToString())">@c.Name@(candidates.Select(x => x.SourceName).Distinct(StringComparer.Ordinal).Skip(1).Any() ? $" ({c.SourceName})" : "")@(c.SuggestedFor ? " ★" : "")</option>
+                                                            <option value="@c.AccountId" selected="@(ChosenCandidate(a.Id, candidates) == c.AccountId.ToString())">@c.Name@(c.SuggestedFor ? " ★" : "")</option>
                                                         }
                                                     </select>
                                                     <button class="btn btn-sm btn-outline-primary" data-action="link"
@@ -414,7 +414,7 @@ else
     }
 
     protected override bool IsRelevantChange(DataChange change) =>
-        change.Area is DataArea.BankSync or DataArea.Sources or DataArea.ImportedData;
+        change.Area is DataArea.BankSync or DataArea.ImportState or DataArea.ImportedData;
 
     protected override Task ReloadAfterChangeAsync() => LoadAsync();
 

@@ -22,6 +22,7 @@ public sealed class RuleExpressionsMigrationTests
         await migrator.MigrateAsync("20261110155619_AddRemovedImportItems");
 
         await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = OFF");
+        await db.Database.ExecuteSqlRawAsync("UPDATE import_sources SET OwnerUserId = 'u-owner' WHERE Id = 1");
         await db.Database.ExecuteSqlRawAsync("INSERT INTO accounts (Id, SourceId, Iban, provider) VALUES (5, 1, 'DE00 1111 2222 3333 4444 00', 'fake'), (6, 1, NULL, 'fake')");
         await db.Database.ExecuteSqlRawAsync(
             """

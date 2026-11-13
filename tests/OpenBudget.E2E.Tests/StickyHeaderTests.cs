@@ -19,13 +19,13 @@ public sealed class StickyHeaderTests : EndToEndTestBase
     [SetUp]
     public async Task SeedBusyAccount()
     {
-        _accountId = SourceScope.Namespace(E2ESeed.SourceId, 78);
+        _accountId = RowIds.Namespace(E2ESeed.IdSpace, 78);
         var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         db.Accounts.Add(new Account
         {
             Id = _accountId,
-            SourceId = E2ESeed.SourceId,
+            OwnerUserId = E2ESeed.OwnerUserId,
             Name = "Long Giro",
             Type = 1,
             Currency = "EUR",
@@ -40,7 +40,7 @@ public sealed class StickyHeaderTests : EndToEndTestBase
             db.Transactions.Add(new Transaction
             {
                 Id = 7500 + i,
-                SourceId = E2ESeed.SourceId,
+                OwnerUserId = E2ESeed.OwnerUserId,
                 AccountId = _accountId,
                 Amount = -(250 + i),
                 CategoryId = 200,

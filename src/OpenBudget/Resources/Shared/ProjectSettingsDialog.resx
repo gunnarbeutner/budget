@@ -83,7 +83,7 @@
     <value>Use as default project for new accounts</value>
   </data>
   <data name="Default_Description" xml:space="preserve">
-    <value>Accounts that newly appear in your sources (a new account in a MoneyMoney upload, or one created by a bank connector) are assigned to this project automatically. Existing assignments are never changed. Only one of your projects can be the default.</value>
+    <value>Accounts that newly appear in your data (a new account in a MoneyMoney upload, or one created by a bank connector) are assigned to this project automatically. Existing assignments are never changed. Only one of your projects can be the default.</value>
   </data>
   <data name="Default_SharedExplanation" xml:space="preserve">
     <value>This project is shared (itself or through its parent project), so it cannot be the default: a new account must never become visible to the people it is shared with automatically. Stop sharing it to use it as the default.</value>

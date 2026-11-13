@@ -27,8 +27,8 @@ public sealed class ProjectSummaryTests : EndToEndTestBase
     {
         await using var db = await Db.CreateDbContextAsync();
         var date = ((DateTimeOffset)new DateTime(E2ESeed.BudgetYear, 1, 20, 0, 0, 0, DateTimeKind.Utc)).ToUnixTimeSeconds();
-        db.Transactions.Add(new Transaction { Id = 50, SourceId = E2ESeed.SourceId, CategoryId = 200, Amount = -80_00, Timestamp = date, Name = "Example Market", IsNew = true });
-        db.Transactions.Add(new Transaction { Id = 51, SourceId = E2ESeed.SourceId, CategoryId = null, Amount = -9_99, Timestamp = date, Name = "Example Kiosk" });
+        db.Transactions.Add(new Transaction { Id = 50, OwnerUserId = E2ESeed.OwnerUserId, CategoryId = 200, Amount = -80_00, Timestamp = date, Name = "Example Market", IsNew = true });
+        db.Transactions.Add(new Transaction { Id = 51, OwnerUserId = E2ESeed.OwnerUserId, CategoryId = null, Amount = -9_99, Timestamp = date, Name = "Example Kiosk" });
         await db.SaveChangesAsync();
     }
 

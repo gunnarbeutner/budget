@@ -7,7 +7,7 @@ namespace OpenBudget.Services;
 /// Read-only reporting on how stale the imported imported data is — surfaced at the top of
 /// the dashboard so projections built on stale numbers don't silently mislead. Split out from
 /// BudgetService since it shares nothing with budgets / projects / cashflow beyond the
-/// DbContext and a sourceId.
+/// DbContext and a ownerId.
 /// </summary>
 public class FreshnessService
 {
@@ -19,36 +19,33 @@ public class FreshnessService
     }
 
     /// <summary>
-    /// Returns when each registered import source was last imported (LastUploadAt) plus the
-    /// account-refresh snapshot for each source. The dashboard uses this to flag stale data;
-    /// projection numbers built on stale data silently lie, so a visible indicator matters.
+    /// Returns, per owner of an account the user sees, when their MoneyMoney data was last imported (LastUploadAt)
+    /// plus the account-refresh snapshot. The dashboard uses this to flag stale data; projection numbers built on
+    /// stale data silently lie, so a visible indicator matters.
     /// </summary>
     public async Task<List<DataFreshness>> GetDataFreshnessAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var sources = await db.ImportSources
-            .AsNoTracking()
-            .OrderBy(s => s.Name)
-            .ToListAsync();
-
         var accountsBySource = (await db.Accounts
-            .Select(a => new { a.SourceId, a.Id, a.Name, a.RefreshTimestamp, a.Error })
+            .Select(a => new { a.OwnerUserId, a.Id, a.Name, a.RefreshTimestamp, a.Error })
             .ToListAsync())
-            .GroupBy(a => a.SourceId)
+            .GroupBy(a => a.OwnerUserId, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.Select(a => new AccountFreshness
             {
                 AccountId = a.Id,
                 Name = a.Name,
                 RefreshTimestamp = a.RefreshTimestamp,
                 Error = a.Error
-            }).ToList());
+            }).ToList(), StringComparer.Ordinal);
 
-        return sources.Select(s => new DataFreshness
+        var owners = accountsBySource.Keys.Order(StringComparer.Ordinal).ToList();
+        var uploads = await db.UserDataStates.IgnoreQueryFilters().AsNoTracking().Where(s => owners.Contains(s.UserId))
+            .ToDictionaryAsync(s => s.UserId, s => s.LastUploadAt, StringComparer.Ordinal);
+        return owners.Select(o => new DataFreshness
         {
-            SourceId = s.Id,
-            SourceName = s.Name,
-            DbUploadedUtc = s.LastUploadAt,
-            Accounts = accountsBySource.TryGetValue(s.Id, out var list) ? list : new List<AccountFreshness>()
+            OwnerUserId = o,
+            DbUploadedUtc = uploads.GetValueOrDefault(o),
+            Accounts = accountsBySource[o]
         }).ToList();
     }
 
@@ -64,23 +61,23 @@ public class FreshnessService
     /// — their real categories live on the child rows — so they're excluded to match
     /// the source's own "Uncategorized" view.
     /// </summary>
-    public async Task<Dictionary<int, UncategorizedSummary>> GetUncategorizedTransactionSummaryAsync()
+    public async Task<Dictionary<string, UncategorizedSummary>> GetUncategorizedTransactionSummaryAsync()
     {
-        // Group per source so the dashboard can render a banner per source. Two queries (count
-        // and sum) per source — fine even at a dozen sources.
+        // Grouped per owner of the visible transactions so the dashboard can render a banner per owner. Two queries
+        // (count and sum) per owner.
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var sourceIds = await db.ImportSources.Select(s => s.Id).ToListAsync();
-        var result = new Dictionary<int, UncategorizedSummary>();
-        foreach (var sourceId in sourceIds)
+        var ownerIds = await db.Transactions.Select(t => t.OwnerUserId).Distinct().ToListAsync();
+        var result = new Dictionary<string, UncategorizedSummary>(StringComparer.Ordinal);
+        foreach (var ownerId in ownerIds)
         {
             var query = db.Transactions
-                .Where(t => t.SourceId == sourceId)
+                .Where(t => t.OwnerUserId == ownerId)
                 .CountedAsFlow()
-                .WhereUncategorized(db, sourceId);
+                .WhereUncategorized(db, ownerId);
 
             var count = await query.CountAsync();
             var absSumCents = count == 0 ? 0L : await query.SumAsync(t => Math.Abs(t.Amount));
-            result[sourceId] = new UncategorizedSummary { SourceId = sourceId, Count = count, AbsoluteAmount = absSumCents / 100m };
+            result[ownerId] = new UncategorizedSummary { OwnerUserId = ownerId, Count = count, AbsoluteAmount = absSumCents / 100m };
         }
         return result;
     }

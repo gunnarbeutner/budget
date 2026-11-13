@@ -14,7 +14,7 @@ public class BudgetTableTests
     private static async Task<(ProjectSpendingSummary Summary, BudgetTableModel Table)> BuildAsync(TestDb t, int from, int to, int? budgetId = null)
     {
         var summary = await t.Spending.GetSpendingSummaryAsync(1, 2026, from, to, budgetId);
-        var hierarchy = await t.Hierarchy.GetAllCategoriesWithChildCountsAsync(1);
+        var hierarchy = await t.Hierarchy.GetAllCategoriesWithChildCountsAsync(TestDb.DefaultOwner);
         return (summary, BudgetTableModel.Build(summary, hierarchy));
     }
 

@@ -98,7 +98,7 @@
     <value>Links to Portfolio Performance</value>
   </data>
   <data name="Links_Intro" xml:space="preserve">
-    <value>Which Portfolio Performance depot and security belongs to which MoneyMoney depot and holding. Depots are shown for this project's depot accounts; securities for the whole data source.</value>
+    <value>Which Portfolio Performance depot and security belongs to which MoneyMoney depot and holding. Depots are shown for this project's depot accounts; securities for all of the owner's data.</value>
   </data>
   <data name="Links_Depots" xml:space="preserve">
     <value>Depots</value>
@@ -107,9 +107,9 @@
     <value>Securities</value>
   </data>
   <data name="Tax_Scope" xml:space="preserve">
-    <value>Tax settings apply to all projects of the data source “{0}”.</value>
+    <value>Tax settings apply to all projects of the portfolio's owner.</value>
   </data>
   <data name="Tax_OwnerOnly" xml:space="preserve">
-    <value>Only the owner of the data source can see and change its tax settings.</value>
+    <value>Only the depot's owner can see and change its tax settings.</value>
   </data>
 </root>

@@ -22,10 +22,10 @@ public sealed class DefaultProjectTests
     private static string Snapshot(BankWorld w, int accounts) =>
         w.BuildSnapshot(Enumerable.Range(1, accounts).Select(i => ($"Example Account {i}", (string?)null)), []);
 
-    private static long Account(int row) => SourceScope.Namespace(BankWorld.SourceAlice, row);
+    private static long Account(int row) => RowIds.Namespace(BankWorld.SourceAlice, row);
 
-    private static async Task<int> NewProjectAsync(BankWorld w, string user, string name, int sourceId = BankWorld.SourceAlice)
-        => (await w.View(user).Projects.CreateProjectAsync(name, sourceId)).Id;
+    private static async Task<int> NewProjectAsync(BankWorld w, string user, string name)
+        => (await w.View(user).Projects.CreateProjectAsync(name)).Id;
 
     private static async Task<Dictionary<long, int>> AssignmentsAsync(BankWorld w)
     {
@@ -46,18 +46,18 @@ public sealed class DefaultProjectTests
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w, 1));
-        var bobsOwn = await NewProjectAsync(w, Bob, "Bob's", sourceId: 3);
+        var bobsOwn = await NewProjectAsync(w, Bob, "Bob's");
 
-        Assert.Equal(2, await UserDefaultProject.EnsureAllAsync(w.T.System));   // alice and carol; bob owns one
+        Assert.Equal(3, await UserDefaultProject.EnsureAllAsync(w.T.System));   // alice, carol and the default user; bob owns one
         Assert.Equal(0, await UserDefaultProject.EnsureAllAsync(w.T.System));
 
         await using (var db = await w.T.System.CreateDbContextAsync())
         {
             var alices = await db.Projects.SingleAsync(p => p.OwnerUserId == Alice);
-            Assert.Equal(("alice", BankWorld.SourceAlice, true), (alices.Name, alices.SourceId, alices.IsDefaultForNewAccounts));
+            Assert.Equal(("alice", true), (alices.Name, alices.IsDefaultForNewAccounts));
             Assert.Equal(alices.Id, (await AssignmentsAsync(w))[Account(1)]);
             var carols = await db.Projects.SingleAsync(p => p.OwnerUserId == Carol);
-            Assert.Equal(Carol, (await db.ImportSources.SingleAsync(s => s.Id == carols.SourceId)).OwnerUserId);
+            Assert.Equal("carol", carols.Name);
             Assert.Equal(bobsOwn, (await db.Projects.SingleAsync(p => p.OwnerUserId == Bob)).Id);
         }
 
@@ -93,7 +93,7 @@ public sealed class DefaultProjectTests
     {
         await using var w = await BankWorld.CreateAsync();
         var a = await NewProjectAsync(w, Alice, "Household");
-        var b = await NewProjectAsync(w, Bob, "Budget", sourceId: 3);
+        var b = await NewProjectAsync(w, Bob, "Budget");
         await w.View(Alice).Projects.SetDefaultForNewAccountsAsync(a, true);
         await w.View(Bob).Projects.SetDefaultForNewAccountsAsync(b, true);
         Assert.True((await LoadAsync(w, a)).IsDefaultForNewAccounts);
@@ -249,7 +249,7 @@ public sealed class DefaultProjectTests
     public async Task Another_users_default_does_not_receive_the_accounts()
     {
         await using var w = await BankWorld.CreateAsync();
-        var b = await NewProjectAsync(w, Bob, "Budget", sourceId: 3);
+        var b = await NewProjectAsync(w, Bob, "Budget");
         await w.View(Bob).Projects.SetDefaultForNewAccountsAsync(b, true);
         await w.ImportMoneyMoneyAsync(Snapshot(w, 2));   // alice's source
         Assert.Empty(await AssignmentsAsync(w));
@@ -272,16 +272,11 @@ public sealed class DefaultProjectTests
     }
 
     [Fact]
-    public async Task A_connector_created_account_goes_into_the_source_of_the_default_project()
+    public async Task A_connector_created_account_belongs_to_its_user_and_goes_into_the_default_project()
     {
         await using var w = await BankWorld.CreateAsync();
-        await using (var db = await w.T.System.CreateDbContextAsync())
-        {
-            db.ImportSources.Add(new ImportSource { Id = 4, Name = "alice-other", OwnerUserId = Alice, UploadToken = "tok-a2" });
-            await db.SaveChangesAsync();
-        }
         await NewProjectAsync(w, Alice, "First");
-        var def = await NewProjectAsync(w, Alice, "Household", sourceId: 4);
+        var def = await NewProjectAsync(w, Alice, "Household");
         await w.View(Alice).Projects.SetDefaultForNewAccountsAsync(def, true);
         var id = await w.AddLoginAsync(Alice, "demo");
         await w.SyncAsync(Alice, id, new SyncRequest(id, false, false));
@@ -290,15 +285,13 @@ public sealed class DefaultProjectTests
         var created = await w.For(Alice).CreateAccountAsync(depot.Id);
 
         var account = await w.AccountAsync(created);
-        Assert.Equal(4, account.SourceId);
+        Assert.Equal(Alice, account.OwnerUserId);
         Assert.Equal(FakeBankConnector.TypeName, account.Provider);
         Assert.Equal(def, (await AssignmentsAsync(w))[created]);
-        await using var check = await w.T.System.CreateDbContextAsync();
-        Assert.False(await check.ImportSources.AnyAsync(s => s.Name.StartsWith("bank-")));
     }
 
     [Fact]
-    public async Task A_connector_created_account_gets_a_new_source_only_when_the_owner_has_none()
+    public async Task A_connector_created_account_of_a_new_user_starts_their_id_space()
     {
         await using var w = await BankWorld.CreateAsync();
         var id = await w.AddLoginAsync(Carol, "demo");
@@ -307,11 +300,11 @@ public sealed class DefaultProjectTests
 
         var created = await w.For(Carol).CreateAccountAsync(savings.Id);
 
-        var sourceId = (await w.AccountAsync(created)).SourceId;
+        var account = await w.AccountAsync(created);
+        Assert.Equal(Carol, account.OwnerUserId);
         await using var db = await w.T.System.CreateDbContextAsync();
-        var source = await db.ImportSources.SingleAsync(s => s.Id == sourceId);
-        Assert.Equal($"bank-{id}", source.Name);
-        Assert.Equal(Carol, source.OwnerUserId);
+        var space = (await db.UserDataStates.SingleAsync(s => s.UserId == Carol)).IdSpace;
+        Assert.Equal(RowIds.Namespace(space, BankTransactionStore.ConnectorRowBase + 1), account.Id);
     }
 
     [Fact]

@@ -27,7 +27,7 @@ public sealed class NavigationTests : EndToEndTestBase
     {
         await using var db = await Db.CreateDbContextAsync();
         var first = await db.Projects.SingleAsync(p => p.Id == E2ESeed.ProjectId);
-        var second = new Project { Name = SecondProjectName, SourceId = first.SourceId, OwnerUserId = first.OwnerUserId, SortOrder = first.SortOrder + 1 };
+        var second = new Project { Name = SecondProjectName, OwnerUserId = first.OwnerUserId, SortOrder = first.SortOrder + 1 };
         db.Projects.Add(second);
         await db.SaveChangesAsync();
         return second.Id;
@@ -70,8 +70,8 @@ public sealed class NavigationTests : EndToEndTestBase
     {
         await using (var db = await Db.CreateDbContextAsync())
         {
-            var depotId = SourceScope.Namespace(E2ESeed.SourceId, 7);
-            db.Accounts.Add(new Account { Id = depotId, SourceId = E2ESeed.SourceId, Name = "Example Depot", Type = 7, Currency = "EUR" });
+            var depotId = RowIds.Namespace(E2ESeed.IdSpace, 7);
+            db.Accounts.Add(new Account { Id = depotId, OwnerUserId = E2ESeed.OwnerUserId, Name = "Example Depot", Type = 7, Currency = "EUR" });
             await db.SaveChangesAsync();
             db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = Pid, AccountId = depotId });
             await db.SaveChangesAsync();

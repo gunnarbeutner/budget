@@ -60,7 +60,7 @@ public class BrowseService
         if (project == null) return null;
 
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.OwnerUserId);
         var trackedKeys = project.TrackingItems.ToTrackedKeys().ToList();
         var trackedSet = trackedKeys.ToHashSet();
         var incomeItems = await _budgets.GetIncomeItemsForProjectAsync(projectId);
@@ -174,7 +174,7 @@ public class BrowseService
         if (allLeafIds.Count > 0)
         {
             var raw = await db.Transactions
-                .Where(t => t.SourceId == project.SourceId)
+                .Where(t => t.OwnerUserId == project.OwnerUserId)
                 .CountedAsFlow()
                 .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
                 .WithinUtc(range)
@@ -291,7 +291,7 @@ public class BrowseService
         if (allLeafIds.Count > 0)
         {
             var matchingAccountIds = await db.Transactions
-                .Where(t => t.SourceId == project.SourceId)
+                .Where(t => t.OwnerUserId == project.OwnerUserId)
                 .Where(t => t.Splitted != 1)
                 .Where(t => t.AccountId.HasValue && t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
                 .Select(t => t.AccountId!.Value)
@@ -312,7 +312,7 @@ public class BrowseService
 
             // Per-account net flow over the period — one query covering all linked accounts.
             var accountPeriodSumsCents = await db.Transactions
-                .Where(t => t.SourceId == project.SourceId)
+                .Where(t => t.OwnerUserId == project.OwnerUserId)
                 .Where(t => t.Splitted != 1)
                 .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
                 .WithinUtc(range)
@@ -375,7 +375,7 @@ public class BrowseService
                     IsMoneyMoney = string.Equals(a.Provider, AccountProviders.MoneyMoney, StringComparison.Ordinal),
                     MarkedClosed = a.Closed,
                     CanEnterTransactions = string.Equals(a.Provider, AccountProviders.Manual, StringComparison.Ordinal)
-                        && (db.Scope == null || db.Scope.OwnsSource(a.SourceId)),
+                        && (db.Scope == null || db.Scope.Owns(a.OwnerUserId)),
                     Id = a.Id,
                     Name = a.Name ?? "",
                     Balance = balance,
@@ -391,28 +391,28 @@ public class BrowseService
 
         var groupSources = accountNodes.Count == 0
             ? []
-            : await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id)).Select(a => a.SourceId).Distinct().ToListAsync(ct);
+            : await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id)).Select(a => a.OwnerUserId).Distinct().ToListAsync(ct);
         var accountGroups = new List<AccountGroupInfo>();
         if (groupSources.Count > 0)
         {
-            var rows = await db.AccountGroups.AsNoTracking().Where(g => groupSources.Contains(g.SourceId)).ToListAsync(ct);
-            // Groups that are empty in their source (e.g. just created in the sidebar) still show, so they can be filled.
-            var filled = (await db.Accounts.AsNoTracking().Where(a => groupSources.Contains(a.SourceId) && a.GroupId != null).Select(a => a.GroupId!.Value).Distinct().ToListAsync(ct))
+            var rows = await db.AccountGroups.AsNoTracking().Where(g => groupSources.Contains(g.OwnerUserId)).ToListAsync(ct);
+            // Groups without any account (e.g. just created in the sidebar) still show, so they can be filled.
+            var filled = (await db.Accounts.AsNoTracking().Where(a => groupSources.Contains(a.OwnerUserId) && a.GroupId != null).Select(a => a.GroupId!.Value).Distinct().ToListAsync(ct))
                 .Concat(rows.Where(g => g.ParentGroupId != null).Select(g => g.ParentGroupId!.Value)).ToHashSet();
             // Only the owner sees every account of a source, so only for them "no accounts visible" means empty.
             var scope = _access == null ? null : await _access.GetAsync();
             accountGroups.AddRange(rows.Select(g => new AccountGroupInfo(g.Id, g.ParentGroupId, g.Name ?? "", g.Sort,
-                !filled.Contains(g.Id) && (scope == null || scope.OwnsSource(g.SourceId)), g.Icon, g.Color)));
+                !filled.Contains(g.Id) && (scope == null || scope.Owns(g.OwnerUserId)), g.Icon, g.Color)));
         }
 
-        // only the project's own accounts (another project's account of the same source is that project's to-do);
-        // a project without assigned accounts covers its whole source
+        // only the project's own accounts (another project's account of the same owner is that project's to-do);
+        // a project without assigned accounts covers all of its owner's
         var projectAccountIds = db.ProjectAccountAssignments.Where(p => p.ProjectId == project.Id).Select(p => (long?)p.AccountId);
         var hasAssignments = await projectAccountIds.AnyAsync(ct);
         var uncategorizedCount = await db.Transactions
-            .Where(t => t.SourceId == project.SourceId && (!hasAssignments || projectAccountIds.Contains(t.AccountId)))
+            .Where(t => t.OwnerUserId == project.OwnerUserId && (!hasAssignments || projectAccountIds.Contains(t.AccountId)))
             .CountedAsFlow()
-            .WhereUncategorized(db, project.SourceId)
+            .WhereUncategorized(db, project.OwnerUserId)
             .CountAsync(ct);
 
         return new BrowseTree

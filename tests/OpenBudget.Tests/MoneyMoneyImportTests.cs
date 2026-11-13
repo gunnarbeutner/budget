@@ -14,7 +14,7 @@ namespace OpenBudget.Tests;
 /// </summary>
 public sealed class MoneyMoneyImportTests : IDisposable
 {
-    private const string SourceName = "test";
+    private const string SourceName = TestDb.DefaultOwner;
     private readonly List<string> _files = new();
 
     public void Dispose()
@@ -111,7 +111,7 @@ public sealed class MoneyMoneyImportTests : IDisposable
         Assert.Equal(-10000, tx.SplitOriginalAmount);
         Assert.Null(tx.CategoryId);
 
-        var uncategorized = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId, UncategorizedOnly = true });
+        var uncategorized = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = result.OwnerUserId, UncategorizedOnly = true });
         Assert.Equal(-100m, uncategorized.TotalSum);
         Assert.Equal(1, uncategorized.TotalCount);
     }
@@ -126,13 +126,13 @@ public sealed class MoneyMoneyImportTests : IDisposable
             new Row(1, -30.00, Splitted: 2, SplitKey: 1),
         }));
 
-        var all = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId });
+        var all = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = result.OwnerUserId });
         Assert.Equal(-100m, all.TotalSum); // nothing disappears: 30 child + 70 remainder
-        var uncategorized = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId, UncategorizedOnly = true });
+        var uncategorized = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = result.OwnerUserId, UncategorizedOnly = true });
         Assert.Equal(-70m, uncategorized.TotalSum);
         var rows = await TransactionsAsync(t);
         var child = rows.Single(r => r.Splitted == SplitState.Child);
-        Assert.Equal(SourceScope.Namespace(result.SourceId, 1), child.SplitParentId);
+        Assert.Equal(RowIds.Namespace(1, 1), child.SplitParentId);
         Assert.Contains(all.Rows, r => r.IsSplitRemainder);
     }
 
@@ -148,11 +148,11 @@ public sealed class MoneyMoneyImportTests : IDisposable
         }));
 
         var rows = await TransactionsAsync(t);
-        Assert.Equal(SplitState.Parent, rows.Single(r => r.Id == SourceScope.Namespace(result.SourceId, 1)).Splitted);
-        var all = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId });
+        Assert.Equal(SplitState.Parent, rows.Single(r => r.Id == RowIds.Namespace(1, 1)).Splitted);
+        var all = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = result.OwnerUserId });
         Assert.Equal(-100m, all.TotalSum);
         Assert.Equal(2, all.TotalCount);
-        var uncategorized = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId, UncategorizedOnly = true });
+        var uncategorized = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = result.OwnerUserId, UncategorizedOnly = true });
         Assert.Equal(0, uncategorized.TotalCount);
     }
 
@@ -167,9 +167,9 @@ public sealed class MoneyMoneyImportTests : IDisposable
             new Row(1, -50.00, Splitted: 2, SplitKey: 1),
         }));
 
-        var uncategorized = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId, UncategorizedOnly = true });
+        var uncategorized = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = result.OwnerUserId, UncategorizedOnly = true });
         Assert.Equal(10m, uncategorized.TotalSum); // -100 - (-110)
-        var all = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId });
+        var all = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = result.OwnerUserId });
         Assert.Equal(-100m, all.TotalSum);
     }
 
@@ -186,17 +186,17 @@ public sealed class MoneyMoneyImportTests : IDisposable
         }));
 
         var rows = await TransactionsAsync(t);
-        Assert.Equal(SplitState.Parent, rows.Single(r => r.Id == SourceScope.Namespace(result.SourceId, 1)).Splitted);
+        Assert.Equal(SplitState.Parent, rows.Single(r => r.Id == RowIds.Namespace(1, 1)).Splitted);
         var children = rows.Where(r => r.Splitted == SplitState.Child).ToList();
         Assert.Equal(2, children.Count);
-        Assert.All(children, c => Assert.Equal(SourceScope.Namespace(result.SourceId, 1), c.SplitParentId));
-        var dangling = rows.Single(r => r.Id == SourceScope.Namespace(result.SourceId, 4));
+        Assert.All(children, c => Assert.Equal(RowIds.Namespace(1, 1), c.SplitParentId));
+        var dangling = rows.Single(r => r.Id == RowIds.Namespace(1, 4));
         Assert.Equal(SplitState.Normal, dangling.Splitted);
         Assert.Null(dangling.SplitParentId);
 
-        var all = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId });
+        var all = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = result.OwnerUserId });
         Assert.Equal(-735m, all.TotalSum);
-        var uncategorized = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId, UncategorizedOnly = true });
+        var uncategorized = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = result.OwnerUserId, UncategorizedOnly = true });
         Assert.Equal(0, uncategorized.TotalCount);
     }
 
@@ -214,10 +214,10 @@ public sealed class MoneyMoneyImportTests : IDisposable
 
         var remainder = (await TransactionsAsync(t)).Single(r => r.Splitted == SplitState.Remainder);
         Assert.Equal(MoneyMath.EurosToCents(expectedRemainder), remainder.Amount);
-        Assert.Equal(SourceScope.Namespace(result.SourceId, 2), remainder.CategoryId);
-        var uncategorized = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId, UncategorizedOnly = true });
+        Assert.Equal(RowIds.Namespace(1, 2), remainder.CategoryId);
+        var uncategorized = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = result.OwnerUserId, UncategorizedOnly = true });
         Assert.Equal(0, uncategorized.TotalCount);
-        var all = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId });
+        var all = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = result.OwnerUserId });
         Assert.Equal(-100m, all.TotalSum);
     }
 
@@ -233,7 +233,7 @@ public sealed class MoneyMoneyImportTests : IDisposable
 
         var rows = await TransactionsAsync(t);
         Assert.Equal(SplitState.Parent, rows[0].Splitted);
-        var all = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId });
+        var all = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = result.OwnerUserId });
         Assert.Equal(-100m, all.TotalSum);
     }
 
@@ -248,7 +248,7 @@ public sealed class MoneyMoneyImportTests : IDisposable
         Assert.True(rows[0].Booked);
         Assert.False(rows[1].Booked);
 
-        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = result.SourceId });
+        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = result.OwnerUserId });
         Assert.Equal(-3m, page.TotalSum); // pending rows count toward totals
         Assert.Single(page.Rows, r => r.IsPending);
 
@@ -260,16 +260,16 @@ public sealed class MoneyMoneyImportTests : IDisposable
     public async Task Newest_booked_date_ignores_pending_rows()
     {
         await using var t = new TestDb();
-        var result = await ImportAsync(t, BuildSnapshot(new[]
+        await ImportAsync(t, BuildSnapshot(new[]
         {
             new Row(1, -1, Ts: 1_000_000),
             new Row(1, -2, Ts: 2_000_000),
             new Row(1, -3, Ts: 3_000_000, Booked: 0),
         }));
-        var accountId = SourceScope.Namespace(result.SourceId, 1);
+        var accountId = RowIds.Namespace(1, 1);
 
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(2_000_000).UtcDateTime, await t.Accounts.GetNewestBookedDateAsync(accountId));
-        Assert.Null(await t.Accounts.GetNewestBookedDateAsync(SourceScope.Namespace(result.SourceId, 2)));
+        Assert.Null(await t.Accounts.GetNewestBookedDateAsync(RowIds.Namespace(1, 2)));
     }
 
     // ---- per-account provider ----
@@ -279,14 +279,14 @@ public sealed class MoneyMoneyImportTests : IDisposable
     {
         await using var t = new TestDb();
         var first = await ImportAsync(t, BuildSnapshot(new[] { new Row(1, -1), new Row(2, -2) }));
-        var acct1 = SourceScope.Namespace(first.SourceId, 1);
-        var acct2 = SourceScope.Namespace(first.SourceId, 2);
+        var acct1 = RowIds.Namespace(1, 1);
+        var acct2 = RowIds.Namespace(1, 2);
 
         // Hand account 2 over to a native connector and give it a transaction of its own.
         Assert.True(await t.Accounts.SetProviderAsync(acct2, "native"));
         await using (var db = await t.Factory.CreateDbContextAsync())
         {
-            db.Transactions.Add(new Transaction { Id = 9_999, SourceId = first.SourceId, AccountId = acct2, Amount = -777, Timestamp = 1 });
+            db.Transactions.Add(new Transaction { Id = 9_999, OwnerUserId = first.OwnerUserId, AccountId = acct2, Amount = -777, Timestamp = 1 });
             await db.SaveChangesAsync();
         }
 
@@ -296,7 +296,7 @@ public sealed class MoneyMoneyImportTests : IDisposable
         var rows = await TransactionsAsync(t);
         // Account 1 was replaced (-1 -> -5); account 2 keeps everything it had (the earlier
         // MoneyMoney row -2 and the native one) and ignores the snapshot's new rows -6 / -7.
-        Assert.Equal(new long[] { -777, -500, -200 }, rows.Select(r => r.Amount).ToArray());
+        Assert.Equal(new long[] { -777, -500, -200 }, rows.Select(r => r.Amount).OrderBy(a => a).ToArray());
         Assert.Single(rows, r => r.AccountId == acct2 && r.Id == 9_999);
 
         await using var check = await t.Factory.CreateDbContextAsync();
@@ -334,7 +334,7 @@ public sealed class MoneyMoneyImportTests : IDisposable
         Assert.Empty(await RulesAsync(t)); // no project yet
         await using (var db = await t.Factory.CreateDbContextAsync())
         {
-            db.Projects.Add(new Project { Name = "Household", SourceId = result.SourceId });
+            db.Projects.Add(new Project { Name = "Household", OwnerUserId = result.OwnerUserId });
             await db.SaveChangesAsync();
         }
 
@@ -342,7 +342,7 @@ public sealed class MoneyMoneyImportTests : IDisposable
         var rule = Assert.Single(await RulesAsync(t));
         Assert.Equal(first, rule.Expression);
         Assert.Equal(MoneyMoneyRuleImport.Origin, rule.ImportOrigin);
-        Assert.Equal(SourceScope.Namespace(result.SourceId, 2), rule.CategoryId);
+        Assert.Equal(RowIds.Namespace(1, 2), rule.CategoryId);
 
         // Same again: no duplicate. Changed upstream: updated in place.
         await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: first));
@@ -368,7 +368,7 @@ public sealed class MoneyMoneyImportTests : IDisposable
         var result = await ImportAsync(t, BuildSnapshot([new Row(1, -1)]));
         await using (var db = await t.Factory.CreateDbContextAsync())
         {
-            db.Projects.Add(new Project { Name = "Household", SourceId = result.SourceId });
+            db.Projects.Add(new Project { Name = "Household", OwnerUserId = result.OwnerUserId });
             await db.SaveChangesAsync();
         }
         await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: "bakery"));
@@ -407,14 +407,14 @@ public sealed class MoneyMoneyImportTests : IDisposable
             return path;
         }
         var first = await ImportAsync(t, Snapshot());
-        var account = SourceScope.Namespace(first.SourceId, 1);
-        var group = SourceScope.Namespace(first.SourceId, 1);
+        var account = RowIds.Namespace(1, 1);
+        var group = RowIds.Namespace(1, 1);
         await using (var db = await t.Factory.CreateDbContextAsync())
         {
             await db.Accounts.Where(a => a.Id == account).ExecuteUpdateAsync(s => s.SetProperty(a => a.Icon, "bi-wallet2").SetProperty(a => a.Color, "#2b5797"));
             await db.AccountGroups.Where(g => g.Id == group).ExecuteUpdateAsync(s => s.SetProperty(g => g.Icon, "bi-safe").SetProperty(g => g.Color, "#1f6b35"));
             if (takenOver)
-                await db.ImportSources.Where(s => s.Id == first.SourceId).ExecuteUpdateAsync(s => s.SetProperty(x => x.StructureTakenOverAt, DateTime.UtcNow));
+                await db.UserDataStates.Where(s => s.UserId == first.OwnerUserId).ExecuteUpdateAsync(s => s.SetProperty(x => x.StructureTakenOverAt, DateTime.UtcNow));
         }
 
         await ImportAsync(t, Snapshot());
@@ -425,7 +425,7 @@ public sealed class MoneyMoneyImportTests : IDisposable
         var g = await check.AccountGroups.SingleAsync(x => x.Id == group);
         Assert.Equal(("bi-safe", "#1f6b35"), (g.Icon, g.Color));
         // The other account keeps its default.
-        Assert.Null((await check.Accounts.SingleAsync(x => x.Id == SourceScope.Namespace(first.SourceId, 2))).Icon);
+        Assert.Null((await check.Accounts.SingleAsync(x => x.Id == RowIds.Namespace(1, 2))).Icon);
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA2100", Justification = "Test-only constant SQL.")]
@@ -484,7 +484,7 @@ public sealed class MoneyMoneyImportTests : IDisposable
         Assert.Null(tagged.ValueTimestamp);
         Assert.Null(tagged.CounterpartyIban);
 
-        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = rows[0].SourceId });
+        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = rows[0].OwnerUserId });
         Assert.Contains(page.Rows, r => r.MandateReference == "M-42" && r.TransactionCode == "105" && r.ReturnReason == "MD06");
     }
 

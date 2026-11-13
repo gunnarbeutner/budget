@@ -796,7 +796,7 @@
     protected override bool IsRelevantChange(DataChange change) => change.Area switch
     {
         DataArea.BankSync => RefreshSyncingLoginsLater(),
-        DataArea.ImportedData or DataArea.Sources => project != null && change.SourceId == project.SourceId,
+        DataArea.ImportedData or DataArea.ImportState => project != null && change.OwnerUserId == project.OwnerUserId,
         _ => change.ProjectId is null || change.ProjectId == ProjectId,
     };
     protected override async Task ReloadAfterChangeAsync()
@@ -1209,12 +1209,12 @@
     private async Task<TransactionQuery> BuildTransactionQueryAsync(int skip = 0, int take = 50, bool newOnlyOverride = false) =>
         _previewIds != null
             // Live preview of a draft rule: exactly the bookings it matches, across the project.
-            ? new TransactionQuery { SourceId = project!.SourceId, OnlyIds = _previewIds, Skip = skip, Take = take }
+            ? new TransactionQuery { OwnerUserId = project!.OwnerUserId, OnlyIds = _previewIds, Skip = skip, Take = take }
             : await BuildFilteredTransactionQueryAsync(skip, take, newOnlyOverride);
 
     private async Task<TransactionQuery> BuildFilteredTransactionQueryAsync(int skip, int take, bool newOnlyOverride) => new()
     {
-        SourceId = project!.SourceId,
+        OwnerUserId = project!.OwnerUserId,
         UncategorizedOnly = selectionKind == "uncategorized",
         // "Transactions" lists the tracked categories' bookings plus the uncategorized ones (pending rows mostly are) of the
         // project's accounts, scoped like the Uncategorized entry.
@@ -1365,7 +1365,7 @@
     private async Task ReloadTransactionsAsync(bool keepSelection = false)
     {
         if (project == null || tree == null) return;
-        pickerData ??= await Categorization.GetPickerDataAsync(project.SourceId);
+        pickerData ??= await Categorization.GetPickerDataAsync(project.OwnerUserId);
         runningBalance = null;
         if (!keepSelection) ResetSelectionState();
 
@@ -1421,7 +1421,7 @@
         if (selectionKind == "category" && selectionId is { } cid) return new[] { cid };
         if (selectionKind == "group" && selectionId is { } gid)
         {
-            var hier = await Hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+            var hier = await Hierarchy.GetAllCategoriesWithChildCountsAsync(project.OwnerUserId);
             var map = CategoryHierarchyService.BuildItemToLeafCategoryIds(
                 new[] { (gid, CategoryItemType.Group) }, hier);
             return map.TryGetValue((gid, CategoryItemType.Group), out var leaves) ? leaves.ToList() : null;
@@ -1430,11 +1430,11 @@
         {
             // "All transactions" still means "all transactions in this project's scope" —
             // expand every tracked item to its leaf categories. Without this the query falls
-            // through to "any transaction in the source", which surfaces categories the
+            // through to "any transaction of the owner", which surfaces categories the
             // project doesn't track.
             var trackedKeys = project.TrackingItems.ToTrackedKeys().ToList();
             if (trackedKeys.Count == 0) return Array.Empty<long>();
-            var hier = await Hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+            var hier = await Hierarchy.GetAllCategoriesWithChildCountsAsync(project.OwnerUserId);
             var map = CategoryHierarchyService.BuildItemToLeafCategoryIds(trackedKeys, hier);
             var union = map.Values.SelectMany(s => s).Distinct().ToList();
             return union;
@@ -1449,7 +1449,7 @@
     {
         TransactionQuery Query(AmountDirection direction) => new()
         {
-            SourceId = project!.SourceId,
+            OwnerUserId = project!.OwnerUserId,
             UncategorizedOnly = true,
             AccountIds = ProjectAccountIds(),
             Period = new TimeRangeFilter(t.Year, t.FromMonth, t.ToMonth),
@@ -1726,7 +1726,7 @@
         DateTime? depotEarliest = null;
         if (isAccountDaily && accounts != null)
         {
-            var history = await TransactionQueries.GetDepotValueHistoryAsync(project.SourceId, accounts);
+            var history = await TransactionQueries.GetDepotValueHistoryAsync(project.OwnerUserId, accounts);
             if (history.Count > 0)
             {
                 foreach (var (id, points) in history)
@@ -1745,7 +1745,7 @@
         DateTime? scopeEarliest = null, scopeLatest = null;
         if (leaves != null || accounts is { Count: > 0 })
             (scopeEarliest, scopeLatest) = await TransactionQueries.GetScopeDateRangeAsync(
-                project.SourceId, leaves, accounts);
+                project.OwnerUserId, leaves, accounts);
         if (depotEarliest is { } de && (scopeEarliest == null || de < scopeEarliest)) scopeEarliest = de;
         if (scopeEarliest == null) { chartBars = null; return; }
 
@@ -1781,7 +1781,7 @@
             if (tomorrow > queryEndExclusive) queryEndExclusive = tomorrow;
         }
         var raw = await TransactionQueries.GetRawByDateRangeAsync(
-            project.SourceId, leaves, accounts, windowStart, queryEndExclusive);
+            project.OwnerUserId, leaves, accounts, windowStart, queryEndExclusive);
 
         // Bucketing, anchor-period highlighting, and the account-daily running-balance back-walk
         // all live in BrowseChart.BuildChartSeries (pure + unit-tested); the page just feeds it
@@ -1805,7 +1805,7 @@
         var itemType = selectionKind == "group" ? CategoryItemType.Group : CategoryItemType.Category;
         var budgets = (await BudgetEntries.GetBudgetsForProjectAsync(project.Id)).Where(b => b.IsActive).ToList();
         if (budgets.Count == 0) return null;
-        var hierarchy = await Hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        var hierarchy = await Hierarchy.GetAllCategoriesWithChildCountsAsync(project.OwnerUserId);
         // signed like the bars: income budgets positive, expense budgets negative, a group netting both
         var incomeItems = await BudgetService.GetIncomeItemsForProjectAsync(project.Id);
         var byYear = new Dictionary<int, decimal[]>();

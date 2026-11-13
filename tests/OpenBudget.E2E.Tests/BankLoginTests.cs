@@ -23,7 +23,7 @@ public sealed class BankLoginTests : EndToEndTestBase
         db.Accounts.Add(new Account
         {
             Id = GiroId,
-            SourceId = E2ESeed.SourceId,
+            OwnerUserId = E2ESeed.OwnerUserId,
             Name = "E2E Giro",
             Iban = "DE00 0000 0000 0000 0000 01",
             Currency = "EUR",
@@ -36,7 +36,7 @@ public sealed class BankLoginTests : EndToEndTestBase
             db.Transactions.Add(new Transaction
             {
                 Id = id,
-                SourceId = E2ESeed.SourceId,
+                OwnerUserId = E2ESeed.OwnerUserId,
                 AccountId = GiroId,
                 Amount = -80000,
                 Currency = "EUR",

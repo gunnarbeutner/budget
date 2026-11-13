@@ -130,9 +130,6 @@
   <data name="Picker_Empty" xml:space="preserve">
     <value>Hier gibt es keine Ordner oder .portfolio-Dateien.</value>
   </data>
-  <data name="Picker_NoTarget" xml:space="preserve">
-    <value>(nicht importieren)</value>
-  </data>
   <data name="Picker_Link" xml:space="preserve">
     <value>Verknüpfen</value>
   </data>
@@ -147,15 +144,6 @@
   </data>
   <data name="Outcome_Failed" xml:space="preserve">
     <value>Die Verbindung mit Microsoft ist fehlgeschlagen; siehe Server-Log.</value>
-  </data>
-  <data name="Table_Source" xml:space="preserve">
-    <value>Importiert in</value>
-  </data>
-  <data name="Picker_Target" xml:space="preserve">
-    <value>Importieren</value>
-  </data>
-  <data name="Picker_Import" xml:space="preserve">
-    <value>In OpenBudget importieren</value>
   </data>
   <data name="Intro" xml:space="preserve">
     <value>Verbinde dein Microsoft-Konto, damit der Server Portfolio-Performance-Dateien aus OneDrive (oder mit dir geteilte Dateien) liest, auch wenn dein Computer aus ist. Neue Versionen werden importiert, während OpenBudget geöffnet ist.</value>

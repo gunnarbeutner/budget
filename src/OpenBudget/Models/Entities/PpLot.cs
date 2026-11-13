@@ -8,7 +8,7 @@ namespace OpenBudget.Models;
 /// PortfolioPerformance upload and persisted for the tax engine. Carries the German-tax essentials:
 /// the acquisition date (§23 Spekulationsfrist) and the remaining FIFO cost basis. Keyed to a
 /// <see cref="PpPortfolio"/> depot via <see cref="PortfolioUuid"/>. App-native; scoped by
-/// <see cref="SourceId"/> and rebuilt wholesale on each upload.
+/// <see cref="OwnerUserId"/> and rebuilt wholesale on each upload.
 /// </summary>
 [Table("pp_lot")]
 public class PpLot
@@ -16,7 +16,10 @@ public class PpLot
     [Key]
     public int Id { get; set; }
 
-    public int SourceId { get; set; }
+    /// <summary>The owning user (AppUser.Id).</summary>
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
 
     /// <summary>The PortfolioPerformance depot holding this lot (a <see cref="PpPortfolio.Uuid"/>).</summary>
     public string PortfolioUuid { get; set; } = "";

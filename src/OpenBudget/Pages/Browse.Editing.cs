@@ -233,7 +233,7 @@ public partial class Browse
             await OpenRulesAsync(category, row.Name.Trim());
             return;
         }
-        pickerData ??= await Categorization.GetPickerDataAsync(project.SourceId);
+        pickerData ??= await Categorization.GetPickerDataAsync(project.OwnerUserId);
         _rulePickPayee = row.Name.Trim();
         popupTargets = [];
         popupCurrentCategory = null;
@@ -579,7 +579,7 @@ public partial class Browse
     {
         if (project == null || selected.Count == 0) return;
         if (BlockedReason(selected) is { } reason) { AddToast(new ToastItem { Message = reason, IsError = true }); return; }
-        pickerData ??= await Categorization.GetPickerDataAsync(project.SourceId);
+        pickerData ??= await Categorization.GetPickerDataAsync(project.OwnerUserId);
         popupTargets = [.. selected];
         var single = popupTargets.Count == 1 && rowCache.TryGetValue(popupTargets[0], out var r) ? r : null;
         popupCurrentCategory = single?.CategoryId;
@@ -740,7 +740,7 @@ public partial class Browse
     private async Task OpenAddBookingAsync()
     {
         if (project == null) return;
-        pickerData ??= await Categorization.GetPickerDataAsync(project.SourceId);
+        pickerData ??= await Categorization.GetPickerDataAsync(project.OwnerUserId);
         _manualTxRow = null;
         _manualTxOpen = true;
     }
@@ -749,7 +749,7 @@ public partial class Browse
     {
         if (project == null) return;
         popup = PopupKind.None;
-        pickerData ??= await Categorization.GetPickerDataAsync(project.SourceId);
+        pickerData ??= await Categorization.GetPickerDataAsync(project.OwnerUserId);
         _manualTxRow = row;
         _manualTxOpen = true;
     }
@@ -856,7 +856,7 @@ public partial class Browse
             async (toast, _) =>
             {
                 if (!offerSimilar || categoryId == null || string.IsNullOrWhiteSpace(payee)) return;
-                var similar = await Categorization.FindSimilarUncategorizedAsync(project.SourceId, payee, ids);
+                var similar = await Categorization.FindSimilarUncategorizedAsync(project.OwnerUserId, payee, ids);
                 if (similar.Count > 0)
                     toast.Actions.Add(new ToastAction(L["Toast_AlsoSimilar", similar.Count], () => CategorizeAsync(similar, categoryId, offerSimilar: false), "toast-similar"));
             });

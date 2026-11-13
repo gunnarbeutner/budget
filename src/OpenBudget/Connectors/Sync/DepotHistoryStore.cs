@@ -38,9 +38,10 @@ public static class DepotHistoryStore
         {
             await db.PortfolioChartPoints.Where(p => p.AccountId == account.Id && p.Timestamp >= ts - 43200 && p.Timestamp < ts + 43200)
                 .ExecuteDeleteAsync(ct);
-            var lo = SourceScope.Namespace(account.SourceId, BankTransactionStore.ConnectorRowBase);
-            var hi = SourceScope.Namespace(account.SourceId + 1, 0);
-            var next = (await db.PortfolioChartPoints.Where(p => p.SourceId == account.SourceId && p.Id >= lo && p.Id < hi)
+            var space = await RowIds.IdSpaceAsync(db, account.OwnerUserId, ct);
+            var lo = RowIds.Namespace(space, BankTransactionStore.ConnectorRowBase);
+            var hi = RowIds.Namespace(space + 1, 0);
+            var next = (await db.PortfolioChartPoints.Where(p => p.OwnerUserId == account.OwnerUserId && p.Id >= lo && p.Id < hi)
                 .MaxAsync(p => (long?)p.Id, ct)) ?? lo;
             foreach (var h in inCurrency)
                 db.PortfolioChartPoints.Add(Point(++next, account, currency, ts, h.Amount!.Value, h.Id));
@@ -56,7 +57,7 @@ public static class DepotHistoryStore
     private static PortfolioChartPoint Point(long id, Account account, string currency, long ts, double value, long? securityId) => new()
     {
         Id = id,
-        SourceId = account.SourceId,
+        OwnerUserId = account.OwnerUserId,
         AccountId = account.Id,
         Currency = currency,
         Timestamp = ts,

@@ -9,7 +9,7 @@ namespace OpenBudget.Models;
 public class ProjectSpendingSummary
 {
     public int ProjectId { get; set; }
-    public int SourceId { get; set; }
+    public string OwnerUserId { get; set; } = string.Empty;
     public string ProjectName { get; set; } = string.Empty;
     public int Year { get; set; }
     public int FromMonth { get; set; }

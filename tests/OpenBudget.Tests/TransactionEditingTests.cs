@@ -27,8 +27,8 @@ public sealed class TransactionEditingTests
         {
             foreach (var id in new[] { AccessWorld.AccountWp, AccessWorld.AccountPrivate, AccessWorld.AccountBob })
                 (await db.Accounts.SingleAsync(a => a.Id == id)).Provider = "fake";
-            db.Categories.Add(new Category { Id = OtherLeaf, SourceId = AccessWorld.SourceAlice, Name = "Other leaf", GroupId = AccessWorld.SharedGroup, Type = 1 });
-            db.Categories.Add(new Category { Id = AccessWorld.Id(AccessWorld.SourceAlice, 202), SourceId = AccessWorld.SourceAlice, Name = "", GroupId = AccessWorld.SharedGroup, Type = 1 });
+            db.Categories.Add(new Category { Id = OtherLeaf, OwnerUserId = AccessWorld.Alice, Name = "Other leaf", GroupId = AccessWorld.SharedGroup, Type = 1 });
+            db.Categories.Add(new Category { Id = AccessWorld.Id(AccessWorld.SourceAlice, 202), OwnerUserId = AccessWorld.Alice, Name = "", GroupId = AccessWorld.SharedGroup, Type = 1 });
             // Two more rows of the same payee on the shared account, one already by hand.
             db.Transactions.Add(Row(10, AccessWorld.AccountWp, -500, "Payee Shared"));
             db.Transactions.Add(Row(11, AccessWorld.AccountWp, -600, "Payee Shared"));
@@ -40,7 +40,7 @@ public sealed class TransactionEditingTests
     private static Transaction Row(long id, long account, long cents, string payee) => new()
     {
         Id = id,
-        SourceId = AccessWorld.SourceAlice,
+        OwnerUserId = AccessWorld.Alice,
         AccountId = account,
         Amount = cents,
         Name = payee,
@@ -251,7 +251,7 @@ public sealed class TransactionEditingTests
         await using var t = await WorldAsync();
         var edit = EditFor(t, AccessWorld.Alice);
         await edit.SetCheckedAsync([10], true);
-        var query = new TransactionQuery { SourceId = AccessWorld.SourceAlice, AccountIds = [AccessWorld.AccountWp], Take = 1 };
+        var query = new TransactionQuery { OwnerUserId = AccessWorld.Alice, AccountIds = [AccessWorld.AccountWp], Take = 1 };
 
         var result = await edit.MarkAllCheckedAsync(query);
 
@@ -380,11 +380,11 @@ public sealed class TransactionEditingTests
     public async Task Rows_report_why_they_are_not_editable()
     {
         await using var t = await WorldAsync(ProjectRole.Viewer);
-        var page = await t.ForUser(AccessWorld.Bob).TransactionQueries.QueryAsync(new TransactionQuery { SourceId = AccessWorld.SourceAlice });
+        var page = await t.ForUser(AccessWorld.Bob).TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = AccessWorld.Alice });
         Assert.Equal(EditBlock.NoPermission, page.Rows.First(r => r.Id == Tx1).EditBlock);
         Assert.Equal(EditBlock.MoneyMoney, page.Rows.First(r => r.Id == Tx3).EditBlock);
 
-        var owner = await t.ForUser(AccessWorld.Alice).TransactionQueries.QueryAsync(new TransactionQuery { SourceId = AccessWorld.SourceAlice });
+        var owner = await t.ForUser(AccessWorld.Alice).TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = AccessWorld.Alice });
         Assert.Equal(EditBlock.None, owner.Rows.First(r => r.Id == Tx1).EditBlock);
         Assert.True(owner.Rows.First(r => r.Id == Tx1).CanEdit);
         Assert.Equal(EditBlock.MoneyMoney, owner.Rows.First(r => r.Id == Tx3).EditBlock);

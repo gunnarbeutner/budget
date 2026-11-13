@@ -13,7 +13,7 @@ public sealed record PortfolioTakeoverCandidate(long? DepotAccountId, string? De
 }
 
 /// <summary>
-/// Shows the PortfolioPerformance portfolios of a source as accounts, recomputed from the source's current file
+/// Shows the PortfolioPerformance portfolios of a user as accounts, recomputed from the user's current file
 /// (<see cref="IPortfolioFileSource"/>) on every upload and settings change:
 /// <list type="bullet">
 /// <item>a depot account per shown portfolio, with its positions (<see cref="PortfolioValuation"/>) and a daily value
@@ -23,8 +23,8 @@ public sealed record PortfolioTakeoverCandidate(long? DepotAccountId, string? De
 /// (<see cref="Transaction.ExternalId"/> "pp:&lt;uuid&gt;[:fee|:tax]"), so categories, notes and check marks survive;
 /// rows whose transaction was deleted in PortfolioPerformance disappear.</item>
 /// </list>
-/// New accounts live in a source of their own ("&lt;source&gt;-pp", owned by the source's owner), apart from the
-/// accounts a MoneyMoney upload replaces. A portfolio whose accounts already exist under the same name (made by the
+/// New accounts belong to the user and are numbered in the connector half of their id space (<see cref="RowIds"/>),
+/// apart from the accounts a MoneyMoney import replaces. A portfolio whose accounts already exist under the same name (made by the
 /// earlier MoneyMoney extension) is not given new accounts until the owner takes those over or declines; taken-over
 /// accounts keep their history: bookings that match a PortfolioPerformance transaction are adopted, others (e.g.
 /// funding transfers) stay, and value history before the first PortfolioPerformance day is kept.
@@ -42,7 +42,7 @@ public sealed class PortfolioAccountSync
     private readonly ChangeNotificationService _notifier;
     private readonly TimeProvider _clock;
     private readonly ILogger<PortfolioAccountSync> _logger;
-    private readonly ConcurrentDictionary<int, SemaphoreSlim> _locks = new();
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new(StringComparer.Ordinal);
 
     public PortfolioAccountSync(
         SystemDbContextFactory dbFactory, IPortfolioFileSource files, ChangeNotificationService notifier,
@@ -64,9 +64,8 @@ public sealed class PortfolioAccountSync
     {
         if (string.IsNullOrEmpty(ownerUserId)) return new PortfolioTakeoverCandidate(null, null, null, null);
         var ledgerName = portfolioName + LedgerSuffix;
-        var owned = db.ImportSources.IgnoreQueryFilters().Where(s => s.OwnerUserId == ownerUserId).Select(s => s.Id);
         var accounts = await db.Accounts.IgnoreQueryFilters().AsNoTracking()
-            .Where(a => owned.Contains(a.SourceId) && a.Provider == AccountProviders.MoneyMoney && (a.Name == portfolioName || a.Name == ledgerName))
+            .Where(a => a.OwnerUserId == ownerUserId && a.Provider == AccountProviders.MoneyMoney && (a.Name == portfolioName || a.Name == ledgerName))
             .OrderBy(a => a.Id)
             .ToListAsync(ct);
         var depot = accounts.FirstOrDefault(a => a.Name == portfolioName && (a.Portfolio == 1 || a.Type == 7));
@@ -74,14 +73,14 @@ public sealed class PortfolioAccountSync
         return new PortfolioTakeoverCandidate(depot?.Id, depot?.Name, ledger?.Id, ledger?.Name);
     }
 
-    /// <summary>Recomputes every portfolio account of the source from its current file. Does nothing without a file.</summary>
-    public async Task SyncAsync(int sourceId, CancellationToken ct = default)
+    /// <summary>Recomputes every portfolio account of the user from their current file. Does nothing without a file.</summary>
+    public async Task SyncAsync(string ownerId, CancellationToken ct = default)
     {
-        var gate = _locks.GetOrAdd(sourceId, _ => new SemaphoreSlim(1, 1));
+        var gate = _locks.GetOrAdd(ownerId, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(ct);
         try
         {
-            await SyncCoreAsync(sourceId, ct);
+            await SyncCoreAsync(ownerId, ct);
         }
         finally
         {
@@ -89,10 +88,10 @@ public sealed class PortfolioAccountSync
         }
     }
 
-    private async Task SyncCoreAsync(int sourceId, CancellationToken ct)
+    private async Task SyncCoreAsync(string ownerId, CancellationToken ct)
     {
         PpValuation valuation;
-        await using (var file = await _files.OpenLatestAsync(sourceId, ct))
+        await using (var file = await _files.OpenLatestAsync(ownerId, ct))
         {
             if (file == null) return;
             var client = PortfolioPerformanceFile.ReadClient(file);
@@ -101,13 +100,10 @@ public sealed class PortfolioAccountSync
         }
 
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var source = await db.ImportSources.FirstOrDefaultAsync(s => s.Id == sourceId, ct);
-        if (source == null) return;
-
-        var settings = await db.PpPortfolioSettings.Where(s => s.SourceId == sourceId).ToListAsync(ct);
-        var linked = (await db.PpPortfolioLinks.Where(l => l.SourceId == sourceId).Select(l => l.PpPortfolioUuid).ToListAsync(ct))
+        var settings = await db.PpPortfolioSettings.Where(s => s.OwnerUserId == ownerId).ToListAsync(ct);
+        var linked = (await db.PpPortfolioLinks.Where(l => l.OwnerUserId == ownerId).Select(l => l.PpPortfolioUuid).ToListAsync(ct))
             .ToHashSet(StringComparer.Ordinal);
-        var touchedSources = new HashSet<int>();
+        var touched = false;
         var nowSeconds = _clock.GetUtcNow().ToUnixTimeSeconds();
 
         foreach (var portfolio in valuation.Portfolios)
@@ -116,13 +112,13 @@ public sealed class PortfolioAccountSync
             var show = setting?.ShowAsAccount ?? DefaultShow(linked.Contains(portfolio.Uuid), portfolio.Retired);
             if (!show)
             {
-                if (setting != null) await ReleaseAsync(db, setting, touchedSources, removeCreated: true, ct);
+                if (setting != null) await ReleaseAsync(db, setting, removeCreated: true, ct);
                 continue;
             }
 
             if (setting == null)
             {
-                setting = new PpPortfolioSetting { SourceId = sourceId, PpPortfolioUuid = portfolio.Uuid };
+                setting = new PpPortfolioSetting { OwnerUserId = ownerId, PpPortfolioUuid = portfolio.Uuid };
                 db.PpPortfolioSettings.Add(setting);
                 settings.Add(setting);
             }
@@ -132,7 +128,7 @@ public sealed class PortfolioAccountSync
             if (setting.LedgerAccountId is { } l && !await db.Accounts.AnyAsync(a => a.Id == l, ct)) setting.LedgerAccountId = null;
 
             if (setting.DepotAccountId == null && setting.LedgerAccountId == null && !setting.TakeoverDeclined
-                && (await FindTakeoverCandidateAsync(db, source.OwnerUserId, portfolio.Name, ct)).Any)
+                && (await FindTakeoverCandidateAsync(db, ownerId, portfolio.Name, ct)).Any)
             {
                 // Waits for the owner to take the existing accounts over or decline.
                 continue;
@@ -141,18 +137,18 @@ public sealed class PortfolioAccountSync
             var created = new List<long>();
             if (setting.DepotAccountId == null)
             {
-                var account = await CreateAccountAsync(db, source, portfolio.Name, valuation.BaseCurrency, depot: true, ct);
+                var account = await CreateAccountAsync(db, ownerId, portfolio.Name, valuation.BaseCurrency, depot: true, ct);
                 setting.DepotAccountId = account.Id;
                 created.Add(account.Id);
             }
             if (setting.LedgerAccountId == null)
             {
-                var account = await CreateAccountAsync(db, source, portfolio.Name + LedgerSuffix, valuation.BaseCurrency, depot: false, ct);
+                var account = await CreateAccountAsync(db, ownerId, portfolio.Name + LedgerSuffix, valuation.BaseCurrency, depot: false, ct);
                 setting.LedgerAccountId = account.Id;
                 created.Add(account.Id);
             }
             await db.SaveChangesAsync(ct);
-            if (created.Count > 0) await AssignProjectAsync(db, source.OwnerUserId, setting.ProjectId, created, ct);
+            if (created.Count > 0) await AssignProjectAsync(db, ownerId, setting.ProjectId, created, ct);
 
             var depotAccount = await db.Accounts.FirstAsync(a => a.Id == setting.DepotAccountId, ct);
             var ledgerAccount = await db.Accounts.FirstAsync(a => a.Id == setting.LedgerAccountId, ct);
@@ -177,33 +173,32 @@ public sealed class PortfolioAccountSync
             {
                 BankTransactionStore.Gate.Release();
             }
-            touchedSources.Add(depotAccount.SourceId);
-            touchedSources.Add(ledgerAccount.SourceId);
+            touched = true;
         }
 
         // Portfolios deleted in PortfolioPerformance: their accounts stop being updated.
         var present = valuation.Portfolios.Select(p => p.Uuid).ToHashSet(StringComparer.Ordinal);
         foreach (var gone in settings.Where(s => !present.Contains(s.PpPortfolioUuid)))
-            await ReleaseAsync(db, gone, touchedSources, removeCreated: false, ct);
+            await ReleaseAsync(db, gone, removeCreated: false, ct);
 
+        touched |= db.ChangeTracker.HasChanges();
         await db.SaveChangesAsync(ct);
-        _logger.LogInformation("PortfolioPerformance accounts of source {SourceId} recomputed ({Portfolios} portfolios)", sourceId, valuation.Portfolios.Count);
-        foreach (var s in touchedSources) _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: s));
+        _logger.LogInformation("PortfolioPerformance accounts of user {OwnerUserId} recomputed ({Portfolios} portfolios)", ownerId, valuation.Portfolios.Count);
+        if (touched) _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: ownerId));
     }
 
     /// <summary>
-    /// Releases a portfolio's accounts: one taken over from MoneyMoney (it lives in the portfolio's own source) returns to
-    /// MoneyMoney with its data. One this sync created (in the "-pp" source) is removed with its bookings, positions and
+    /// Releases a portfolio's accounts: ones taken over from MoneyMoney (<see cref="PpPortfolioSetting.TakenOver"/>) return
+    /// to MoneyMoney with their data. Ones this sync created are removed with its bookings, positions and
     /// value history when the owner switched the portfolio off (<paramref name="removeCreated"/>; it is created afresh if
     /// the portfolio is shown again), and stays as a manual account when the portfolio disappeared from the file.
     /// </summary>
-    private static async Task ReleaseAsync(BudgetDbContext db, PpPortfolioSetting setting, HashSet<int> touched, bool removeCreated, CancellationToken ct)
+    private static async Task ReleaseAsync(BudgetDbContext db, PpPortfolioSetting setting, bool removeCreated, CancellationToken ct)
     {
         var ids = new[] { setting.DepotAccountId, setting.LedgerAccountId }.OfType<long>().ToList();
         foreach (var account in await db.Accounts.Where(a => ids.Contains(a.Id) && a.Provider == AccountProviders.PortfolioPerformance).ToListAsync(ct))
         {
-            touched.Add(account.SourceId);
-            if (account.SourceId == setting.SourceId)
+            if (setting.TakenOver)
             {
                 account.Provider = AccountProviders.MoneyMoney;
                 continue;
@@ -233,15 +228,12 @@ public sealed class PortfolioAccountSync
             .ExecuteUpdateAsync(u => u.SetProperty(l => l.LinkedAccountId, (long?)null), ct);
     }
 
-    private static async Task<Account> CreateAccountAsync(BudgetDbContext db, ImportSource source, string name, string currency, bool depot, CancellationToken ct)
+    private static async Task<Account> CreateAccountAsync(BudgetDbContext db, string ownerId, string name, string currency, bool depot, CancellationToken ct)
     {
-        var target = await AccountsSourceAsync(db, source, ct);
-        var maxId = await db.Accounts.Where(a => a.SourceId == target.Id).MaxAsync(a => (long?)a.Id, ct);
-        var tracked = db.Accounts.Local.Where(a => a.SourceId == target.Id).Max(a => (long?)a.Id);
         var account = new Account
         {
-            Id = Math.Max(maxId ?? 0, tracked ?? 0) is > 0 and var m ? m + 1 : SourceScope.Namespace(target.Id, 1),
-            SourceId = target.Id,
+            Id = await RowIds.NextConnectorAccountIdAsync(db, ownerId, ct),
+            OwnerUserId = ownerId,
             Name = name,
             Currency = currency,
             Type = depot ? 7 : 0,
@@ -251,27 +243,6 @@ public sealed class PortfolioAccountSync
         };
         db.Accounts.Add(account);
         return account;
-    }
-
-    /// <summary>The owner's source for created portfolio accounts ("&lt;source&gt;-pp", or the next free variant).</summary>
-    private static async Task<ImportSource> AccountsSourceAsync(BudgetDbContext db, ImportSource source, CancellationToken ct)
-    {
-        var baseName = $"{source.Name}-pp";
-        for (var attempt = 1; attempt <= 20; attempt++)
-        {
-            var name = attempt == 1 ? baseName : $"{baseName}-{attempt}";
-            var existing = db.ImportSources.Local.FirstOrDefault(s => s.Name == name)
-                ?? await db.ImportSources.FirstOrDefaultAsync(s => s.Name == name, ct);
-            if (existing == null)
-            {
-                var created = new ImportSource { Name = name, OwnerUserId = source.OwnerUserId };
-                db.ImportSources.Add(created);
-                await db.SaveChangesAsync(ct);
-                return created;
-            }
-            if (existing.OwnerUserId == source.OwnerUserId) return existing;
-        }
-        throw new InvalidOperationException($"No free source name for the portfolio accounts of '{source.Name}'.");
     }
 
     /// <summary>New accounts land in the chosen project, or else in the owner's default project for new accounts.</summary>
@@ -287,10 +258,11 @@ public sealed class PortfolioAccountSync
         await DefaultProjectAssigner.AssignNewAccountsAsync(db, ownerUserId, accountIds, ct);
     }
 
-    private static async Task<long> NextIdAsync(IQueryable<long> ids, int sourceId, CancellationToken ct)
+    private static async Task<long> NextIdAsync(BudgetDbContext db, IQueryable<long> ids, string ownerId, CancellationToken ct)
     {
-        var lo = SourceScope.Namespace(sourceId, BankTransactionStore.ConnectorRowBase);
-        var hi = SourceScope.Namespace(sourceId + 1, 0);
+        var space = await RowIds.IdSpaceAsync(db, ownerId, ct);
+        var lo = RowIds.Namespace(space, BankTransactionStore.ConnectorRowBase);
+        var hi = RowIds.Namespace(space + 1, 0);
         return (await ids.Where(i => i >= lo && i < hi).MaxAsync(i => (long?)i, ct)) ?? lo;
     }
 
@@ -298,7 +270,7 @@ public sealed class PortfolioAccountSync
         BudgetDbContext db, Account account, PpPortfolioValuation portfolio, string baseCurrency, bool takenOver, CancellationToken ct)
     {
         await db.Holdings.Where(h => h.AccountId == account.Id).ExecuteDeleteAsync(ct);
-        var nextHolding = await NextIdAsync(db.Holdings.Where(h => h.SourceId == account.SourceId).Select(h => h.Id), account.SourceId, ct);
+        var nextHolding = await NextIdAsync(db, db.Holdings.Where(h => h.OwnerUserId == account.OwnerUserId).Select(h => h.Id), account.OwnerUserId, ct);
         var holdingBySecurity = new Dictionary<string, long>(StringComparer.Ordinal);
         foreach (var p in portfolio.Positions)
         {
@@ -308,7 +280,7 @@ public sealed class PortfolioAccountSync
             db.Holdings.Add(new Holding
             {
                 Id = id,
-                SourceId = account.SourceId,
+                OwnerUserId = account.OwnerUserId,
                 AccountId = account.Id,
                 Name = p.Security.Name,
                 Isin = p.Security.Isin,
@@ -337,7 +309,7 @@ public sealed class PortfolioAccountSync
             chart = chart.Where(p => p.Timestamp >= from);
         }
         await chart.ExecuteDeleteAsync(ct);
-        var nextPoint = await NextIdAsync(db.PortfolioChartPoints.Where(p => p.SourceId == account.SourceId).Select(p => p.Id), account.SourceId, ct);
+        var nextPoint = await NextIdAsync(db, db.PortfolioChartPoints.Where(p => p.OwnerUserId == account.OwnerUserId).Select(p => p.Id), account.OwnerUserId, ct);
         foreach (var day in days)
         {
             var ts = day * 86400 + 43200;  // noon UTC
@@ -356,7 +328,7 @@ public sealed class PortfolioAccountSync
     private static PortfolioChartPoint Point(long id, Account account, string currency, long ts, double value, long? securityId) => new()
     {
         Id = id,
-        SourceId = account.SourceId,
+        OwnerUserId = account.OwnerUserId,
         AccountId = account.Id,
         Currency = currency,
         Timestamp = ts,
@@ -372,7 +344,7 @@ public sealed class PortfolioAccountSync
             .GroupBy(t => t.ExternalId!, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
         // Bookings of a taken-over ledger from before (no external id); split parts are OpenBudget's own and stay.
         var legacy = takenOver ? existing.Where(t => t.ExternalId == null && t.Splitted != SplitState.Child).ToList() : [];
-        var nextId = await NextIdAsync(db.Transactions.Where(t => t.SourceId == account.SourceId).Select(t => t.Id), account.SourceId, ct);
+        var nextId = await NextIdAsync(db, db.Transactions.Where(t => t.OwnerUserId == account.OwnerUserId).Select(t => t.Id), account.OwnerUserId, ct);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var added = new List<Transaction>();
 
@@ -396,7 +368,7 @@ public sealed class PortfolioAccountSync
                 row = new Transaction
                 {
                     Id = ++nextId,
-                    SourceId = account.SourceId,
+                    OwnerUserId = account.OwnerUserId,
                     AccountId = account.Id,
                     ExternalId = externalId,
                     Splitted = 0,
@@ -463,7 +435,7 @@ public sealed class PortfolioAccountSync
             chart = chart.Where(p => p.Timestamp >= from);
         }
         await chart.ExecuteDeleteAsync(ct);
-        var nextPoint = await NextIdAsync(db.PortfolioChartPoints.Where(p => p.SourceId == account.SourceId).Select(p => p.Id), account.SourceId, ct);
+        var nextPoint = await NextIdAsync(db, db.PortfolioChartPoints.Where(p => p.OwnerUserId == account.OwnerUserId).Select(p => p.Id), account.OwnerUserId, ct);
         foreach (var (day, value) in points)
             db.PortfolioChartPoints.Add(Point(++nextPoint, account, currency, day * 86400 + 43200, value, null));
         await db.SaveChangesAsync(ct);

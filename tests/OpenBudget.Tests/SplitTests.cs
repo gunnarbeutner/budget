@@ -32,11 +32,11 @@ public sealed class SplitTests
         await using var db = await t.System.CreateDbContextAsync();
         foreach (var id in new[] { AccessWorld.AccountWp, AccessWorld.AccountPrivate })
             (await db.Accounts.SingleAsync(a => a.Id == id)).Provider = "fake";
-        db.CategoryGroups.Add(new CategoryGroup { Id = UntrackedGroup, SourceId = AccessWorld.SourceAlice, Name = "Untracked" });
-        db.Categories.Add(new Category { Id = UntrackedLeaf, SourceId = AccessWorld.SourceAlice, Name = "Other leaf", GroupId = UntrackedGroup, Type = 1 });
-        db.Accounts.Add(new Account { Id = AccountSavings, SourceId = AccessWorld.SourceAlice, Name = "Example Savings", Provider = "fake" });
-        db.Accounts.Add(new Account { Id = AccountMm, SourceId = AccessWorld.SourceAlice, Name = "Old Giro" });
-        db.Accounts.Add(new Account { Id = AccountOther, SourceId = AccessWorld.SourceAlice, Name = "Unassigned", Provider = "fake" });
+        db.CategoryGroups.Add(new CategoryGroup { Id = UntrackedGroup, OwnerUserId = AccessWorld.Alice, Name = "Untracked" });
+        db.Categories.Add(new Category { Id = UntrackedLeaf, OwnerUserId = AccessWorld.Alice, Name = "Other leaf", GroupId = UntrackedGroup, Type = 1 });
+        db.Accounts.Add(new Account { Id = AccountSavings, OwnerUserId = AccessWorld.Alice, Name = "Example Savings", Provider = "fake" });
+        db.Accounts.Add(new Account { Id = AccountMm, OwnerUserId = AccessWorld.Alice, Name = "Old Giro" });
+        db.Accounts.Add(new Account { Id = AccountOther, OwnerUserId = AccessWorld.Alice, Name = "Unassigned", Provider = "fake" });
         db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = AccessWorld.Shared, AccountId = AccountSavings, Scope = AccountScope.Exclusive });
         db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = AccessWorld.Shared, AccountId = AccountMm, Scope = AccountScope.Exclusive });
         // Bookings on other accounts around Tx1 (-100.00 on 10 March).
@@ -53,7 +53,7 @@ public sealed class SplitTests
     private static Transaction Row(long id, long account, long cents, DateTime date) => new()
     {
         Id = id,
-        SourceId = AccessWorld.SourceAlice,
+        OwnerUserId = AccessWorld.Alice,
         AccountId = account,
         Amount = cents,
         Name = "Example Transfer",
@@ -68,7 +68,7 @@ public sealed class SplitTests
     private static async Task<decimal> CashflowExpensesAsync(TestDb t)
     {
         var batch = await t.Spending.GetMonthlyIncomeAndExpenseBatchAsync(
-            [(AccessWorld.SharedGroup, CategoryItemType.Group)], 2026, AccessWorld.SourceAlice, AccessWorld.Shared);
+            [(AccessWorld.SharedGroup, CategoryItemType.Group)], 2026, AccessWorld.Alice, AccessWorld.Shared);
         return batch[(AccessWorld.SharedGroup, CategoryItemType.Group)].Expenses[2] - OtherRows;
     }
 
@@ -133,7 +133,7 @@ public sealed class SplitTests
         // The list shows the parts, not the booking; the account's total is unchanged.
         var page = await t.TransactionQueries.QueryAsync(new TransactionQuery
         {
-            SourceId = AccessWorld.SourceAlice,
+            OwnerUserId = AccessWorld.Alice,
             AccountIds = [AccessWorld.AccountWp],
             Skip = 0,
             Take = 50,
@@ -237,7 +237,7 @@ public sealed class SplitTests
         }
         var page = await t.TransactionQueries.QueryAsync(new TransactionQuery
         {
-            SourceId = AccessWorld.SourceAlice,
+            OwnerUserId = AccessWorld.Alice,
             AccountIds = [AccountSavings],
             UncategorizedOnly = true,
             Skip = 0,
@@ -277,7 +277,7 @@ public sealed class SplitTests
         db.Transactions.Add(new Transaction
         {
             Id = 9001,
-            SourceId = AccessWorld.SourceAlice,
+            OwnerUserId = AccessWorld.Alice,
             AccountId = AccessWorld.AccountWp,
             Amount = -1,
             Name = "Example Market",
@@ -288,7 +288,7 @@ public sealed class SplitTests
         db2.Transactions.Add(new Transaction
         {
             Id = 9002,
-            SourceId = AccessWorld.SourceAlice,
+            OwnerUserId = AccessWorld.Alice,
             AccountId = AccessWorld.AccountProperty,
             Amount = -1,
             Splitted = SplitState.Child,

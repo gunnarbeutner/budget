@@ -14,10 +14,10 @@ public class BrowseTree
     public int FromMonth { get; init; }
     public int ToMonth { get; init; }
     public List<BrowseAccountNode> Accounts { get; init; } = new();
-    /// <summary>Account groups of the sources behind <see cref="Accounts"/> (visible ones only); the rail prunes the empty ones.</summary>
+    /// <summary>Account groups of the owners of <see cref="Accounts"/> (visible ones only); the rail prunes the empty ones.</summary>
     public List<AccountGroupInfo> AccountGroups { get; init; } = new();
     public List<BrowseCategoryNode> Categories { get; init; } = new();
-    /// <summary>All-time count of the source's uncategorized transactions (split parents excluded).</summary>
+    /// <summary>All-time count of the owner's uncategorized transactions (split parents excluded).</summary>
     public int UncategorizedCount { get; init; }
 }
 
@@ -67,7 +67,7 @@ public class BrowseAccountNode
     /// <summary>Its owner marked it closed in OpenBudget (the sidebar hides it by default).</summary>
     public bool MarkedClosed { get; init; }
 
-    /// <summary>A manual account of a source the viewer owns: bookings are entered, edited and deleted by hand.</summary>
+    /// <summary>A manual account the viewer owns: bookings are entered, edited and deleted by hand.</summary>
     public bool CanEnterTransactions { get; init; }
 
     /// <summary>The icon its owner picked, or null (the type's icon shows; see <see cref="DisplayIcon"/>).</summary>

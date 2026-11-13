@@ -16,7 +16,10 @@ public class PpPortfolioLink
     [Key]
     public int Id { get; set; }
 
-    public int SourceId { get; set; }
+    /// <summary>The owning user (AppUser.Id).</summary>
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
 
     /// <summary>The PortfolioPerformance depot being mapped (<see cref="PpPortfolio.Uuid"/>).</summary>
     public string PpPortfolioUuid { get; set; } = "";

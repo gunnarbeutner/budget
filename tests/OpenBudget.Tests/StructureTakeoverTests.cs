@@ -15,7 +15,7 @@ namespace OpenBudget.Tests;
 /// </summary>
 public sealed class StructureTakeoverTests : IDisposable
 {
-    private const string SourceName = "alice";
+    private const string SourceName = AccessWorld.Alice;
     private readonly List<string> _files = [];
 
     public void Dispose()
@@ -87,7 +87,7 @@ public sealed class StructureTakeoverTests : IDisposable
         var t = new TestDb();
         t.AddUser(AccessWorld.Alice, "alice", admin: true);
         t.AddUser(AccessWorld.Bob, "bob");
-        t.Db.ImportSources.Add(new ImportSource { Id = AccessWorld.SourceAlice, Name = SourceName, OwnerUserId = AccessWorld.Alice, UploadToken = "t" });
+        t.AddIdSpace(AccessWorld.Alice, AccessWorld.SourceAlice);
         await t.Db.SaveChangesAsync();
         return t;
     }
@@ -100,7 +100,7 @@ public sealed class StructureTakeoverTests : IDisposable
     private static StructureTakeoverService Takeover(TestDb t) =>
         new(t.System, t.Notifier, new ChangeOrigin(), Importer(t));
 
-    private static long Id(long rowid) => SourceScope.Namespace(AccessWorld.SourceAlice, rowid);
+    private static long Id(long rowid) => RowIds.Namespace(AccessWorld.SourceAlice, rowid);
 
     private static readonly Acct[] TwoAccounts = [new("Giro", 1, 7), new("Savings", 1, 3)];
     private static readonly Cat[] TwoCategories = [new("Groceries", 2, null), new("Rent", 2, 1)];
@@ -111,12 +111,12 @@ public sealed class StructureTakeoverTests : IDisposable
         await using var t = await WorldAsync();
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
 
-        var result = await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
+        var result = await Takeover(t).TakeOverAsync(AccessWorld.Alice);
 
         Assert.NotNull(result);
         Assert.Equal(2, result.Accounts);
         await using var db = await t.Factory.CreateDbContextAsync();
-        Assert.NotNull((await db.ImportSources.SingleAsync(s => s.Id == AccessWorld.SourceAlice)).StructureTakenOverAt);
+        Assert.NotNull((await db.UserDataStates.SingleAsync(s => s.UserId == AccessWorld.Alice)).StructureTakenOverAt);
         // Savings (sort 3) precedes Giro (sort 7); explicit consecutive positions now.
         Assert.Equal(0, (await db.Accounts.SingleAsync(a => a.Name == "Savings")).Sort);
         Assert.Equal(1, (await db.Accounts.SingleAsync(a => a.Name == "Giro")).Sort);
@@ -133,13 +133,13 @@ public sealed class StructureTakeoverTests : IDisposable
         var rent = Id(3);   // sentinel = rowid 1, Groceries = 2, Rent = 3
         var colors = new CategoryColorService(t.ForUser(AccessWorld.Alice).Factory, t.Notifier, new ChangeOrigin());
 
-        await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
-        Assert.True(await colors.CanEditAsync(AccessWorld.SourceAlice));
+        await Takeover(t).TakeOverAsync(AccessWorld.Alice);
+        Assert.True(await colors.CanEditAsync(AccessWorld.Alice));
         Assert.True(await colors.SetColorAsync(rent, "#2B5797"));
         await Assert.ThrowsAsync<ArgumentException>(() => colors.SetColorAsync(rent, "blue"));
 
         var bob = new CategoryColorService(t.ForUser(AccessWorld.Bob).Factory, t.Notifier, new ChangeOrigin());
-        Assert.False(await bob.CanEditAsync(AccessWorld.SourceAlice));
+        Assert.False(await bob.CanEditAsync(AccessWorld.Alice));
 
         await using (var db = await t.Factory.CreateDbContextAsync())
             Assert.Equal("#2b5797", (await db.Categories.SingleAsync(c => c.Id == rent)).Color);
@@ -156,7 +156,7 @@ public sealed class StructureTakeoverTests : IDisposable
         await using var t = await WorldAsync();
         Tx[] bookings = [new Tx(1, 2, -5), new Tx(2, 3, -6)];
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, bookings));
-        await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
+        await Takeover(t).TakeOverAsync(AccessWorld.Alice);
         var structure = new StructureService(t.ForUser(AccessWorld.Alice).Factory, t.System, t.Notifier, new ChangeOrigin());
 
         await structure.DeleteAccountAsync(Id(2), "Savings");
@@ -178,8 +178,8 @@ public sealed class StructureTakeoverTests : IDisposable
         await using var t = await WorldAsync();
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
         var service = Takeover(t);
-        Assert.NotNull(await service.TakeOverAsync(AccessWorld.SourceAlice));
-        Assert.Null(await service.TakeOverAsync(AccessWorld.SourceAlice));
+        Assert.NotNull(await service.TakeOverAsync(AccessWorld.Alice));
+        Assert.Null(await service.TakeOverAsync(AccessWorld.Alice));
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public sealed class StructureTakeoverTests : IDisposable
     {
         await using var t = await WorldAsync();
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, [new Tx(1, 2, -5, "first")]));
-        await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
+        await Takeover(t).TakeOverAsync(AccessWorld.Alice);
 
         // MoneyMoney now renames, regroups and reorders everything and drops a category - none of that may arrive.
         var changed = Snapshot(
@@ -226,7 +226,7 @@ public sealed class StructureTakeoverTests : IDisposable
         await using (var before = await t.Factory.CreateDbContextAsync())
         {
             var idsBefore = Ids(before);
-            await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
+            await Takeover(t).TakeOverAsync(AccessWorld.Alice);
             await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
             await using var after = await t.Factory.CreateDbContextAsync();
             Assert.Equal(idsBefore.Order(), Ids(after).Order());
@@ -237,12 +237,12 @@ public sealed class StructureTakeoverTests : IDisposable
     public async Task New_accounts_land_ungrouped_and_in_the_default_project_and_new_categories_in_the_new_group()
     {
         await using var t = await WorldAsync();
-        var project = t.AddProject(1, "Main", AccessWorld.SourceAlice);
+        var project = t.AddProject(1, "Main", AccessWorld.Alice);
         project.OwnerUserId = AccessWorld.Alice;
         project.IsDefaultForNewAccounts = true;
         await t.Db.SaveChangesAsync();
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
-        await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
+        await Takeover(t).TakeOverAsync(AccessWorld.Alice);
 
         var next = Snapshot(
             [.. TwoAccounts, new("Brand new", 1, 1)],
@@ -276,7 +276,7 @@ public sealed class StructureTakeoverTests : IDisposable
     {
         await using var t = await WorldAsync();
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, [new Tx(1, 2, -5), new Tx(2, 2, -6)]));
-        await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
+        await Takeover(t).TakeOverAsync(AccessWorld.Alice);
 
         // Upload without the "Savings" account (rowid 2) and without its transaction.
         await ImportAsync(t, Snapshot([TwoAccounts[0]], TwoCategories, [new Tx(1, 2, -5)]));
@@ -310,7 +310,7 @@ public sealed class StructureTakeoverTests : IDisposable
             giro.Balances = "11:42.000000,3:EUR,";
             await db.SaveChangesAsync();
         }
-        await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
+        await Takeover(t).TakeOverAsync(AccessWorld.Alice);
 
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, [new Tx(1, 2, -99)]));
 

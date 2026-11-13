@@ -41,10 +41,10 @@ public class CashflowProjectionService
         await using var db = await _dbFactory.CreateDbContextAsync();
         var project = await db.Projects
             .Where(p => p.Id == projectId)
-            .Select(p => new { p.Id, p.SourceId })
+            .Select(p => new { p.Id, p.OwnerUserId })
             .FirstOrDefaultAsync();
         if (project == null) return new ProjectDailyDeltaResult { DailyDelta = Array.Empty<decimal>() };
-        var sourceId = project.SourceId;
+        var ownerId = project.OwnerUserId;
 
         // Only accounts marked "In cashflow" move the projected cash trajectory. The filter
         // cascades to accountIds / currentBalance / the YTD + per-day transaction sums below.
@@ -65,7 +65,7 @@ public class CashflowProjectionService
         var sharedIds = assignments.Where(a => a.Scope == AccountScope.Shared).Select(a => a.AccountId).ToHashSet();
 
         var accounts = await db.Accounts
-            .Where(a => a.SourceId == sourceId && accountIds.Contains(a.Id))
+            .Where(a => a.OwnerUserId == ownerId && accountIds.Contains(a.Id))
             .ToListAsync();
         decimal currentBalance = accounts.Sum(a => a.CurrentBalance ?? 0m);
 
@@ -75,7 +75,7 @@ public class CashflowProjectionService
         {
             var trackingItems = await _projects.GetProjectTrackingItemsAsync(projectId);
             var items = trackingItems.ToTrackedKeys().ToList();
-            var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+            var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(ownerId);
             var itemToLeaf = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
             projectLeafCategoryIds = itemToLeaf.Values.SelectMany(s => s).ToHashSet();
         }
@@ -95,7 +95,7 @@ public class CashflowProjectionService
         if (clampedEnd > yearRange.StartTs)
         {
             ytdSumAllScopes = (await db.Transactions
-                .Where(t => t.SourceId == sourceId)
+                .Where(t => t.OwnerUserId == ownerId)
                 .Where(t => t.Splitted != SplitState.Parent)
                 .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
                 .WithinUtc(ytdRange)
@@ -106,7 +106,7 @@ public class CashflowProjectionService
         result.StartingBalance = currentBalance - ytdSumAllScopes;
 
         var yearTxns = await db.Transactions
-            .Where(t => t.SourceId == sourceId)
+            .Where(t => t.OwnerUserId == ownerId)
             .Where(t => t.Splitted != SplitState.Parent)
             .Where(t => t.AccountId.HasValue && accountIds.Contains(t.AccountId.Value))
             .WithinUtc(ytdRange)
@@ -162,7 +162,7 @@ public class CashflowProjectionService
         if (from.Year < year) from = new DateOnly(year, 1, 1);
 
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var project = await db.Projects.Where(p => p.Id == projectId).Select(p => new { p.SourceId }).FirstOrDefaultAsync();
+        var project = await db.Projects.Where(p => p.Id == projectId).Select(p => new { p.OwnerUserId }).FirstOrDefaultAsync();
         if (project == null) return result;
         var assignments = await db.ProjectAccountAssignments
             .Where(a => a.ProjectId == projectId && a.InCashflow)
@@ -171,11 +171,11 @@ public class CashflowProjectionService
         if (assignments.Count == 0) return result;
         var accountIds = assignments.Select(a => a.AccountId).ToList();
         var orders = await db.ScheduledPayments.AsNoTracking()
-            .Where(p => p.SourceId == project.SourceId && accountIds.Contains(p.AccountId))
+            .Where(p => p.OwnerUserId == project.OwnerUserId && accountIds.Contains(p.AccountId))
             .ToListAsync();
         if (orders.Count == 0) return result;
 
-        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.SourceId);
+        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.OwnerUserId);
         var rowByLeaf = new Dictionary<long, (long, CategoryItemType)>();
         foreach (var (row, leaves) in CategoryHierarchyService.BuildItemToLeafCategoryIds(rowKeys, hierarchy))
             foreach (var leaf in leaves) rowByLeaf.TryAdd(leaf, row);
@@ -187,7 +187,7 @@ public class CashflowProjectionService
             projectLeaves = CategoryHierarchyService.BuildItemToLeafCategoryIds(tracked, hierarchy).Values.SelectMany(s => s).ToHashSet();
         }
 
-        var categories = await InferCategoriesAsync(db, project.SourceId, orders);
+        var categories = await InferCategoriesAsync(db, project.OwnerUserId, orders);
         var scopeByAccount = assignments.ToDictionary(a => a.AccountId, a => a.Scope);
         foreach (var order in orders)
         {
@@ -211,7 +211,7 @@ public class CashflowProjectionService
     }
 
     /// <summary>Per order id: the category of the most recent booked transaction the order produced (see <see cref="GetScheduledCashflowAsync"/>).</summary>
-    private static async Task<Dictionary<long, long?>> InferCategoriesAsync(BudgetDbContext db, int sourceId, List<ScheduledPayment> orders)
+    private static async Task<Dictionary<long, long?>> InferCategoriesAsync(BudgetDbContext db, string ownerId, List<ScheduledPayment> orders)
     {
         var standing = orders.Where(o => o.Kind == ScheduledPaymentKind.Standing).ToList();
         var result = new Dictionary<long, long?>();
@@ -221,7 +221,7 @@ public class CashflowProjectionService
             .Distinct(StringComparer.Ordinal).ToList();
         var amounts = standing.Select(o => o.Amount).Distinct().ToList();
         var candidates = await db.Transactions.AsNoTracking()
-            .Where(t => t.SourceId == sourceId && t.Booked && t.CategoryId != null && t.Splitted != SplitState.Parent)
+            .Where(t => t.OwnerUserId == ownerId && t.Booked && t.CategoryId != null && t.Splitted != SplitState.Parent)
             .Where(t => (t.CounterpartyIban != null && ibans.Contains(t.CounterpartyIban)) || amounts.Contains(t.Amount))
             .OrderByDescending(t => t.Timestamp)
             .Select(t => new { t.CounterpartyIban, t.Name, t.Amount, t.CategoryId })
@@ -251,14 +251,14 @@ public class CashflowProjectionService
     public async Task<Dictionary<(long Id, CategoryItemType ItemType), DayOfMonthDistribution>>
         GetCategoryDayOfMonthWeightsAsync(
             IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
-            int sourceId)
+            string ownerId)
     {
         const int MinSampleSize = 3;
 
         var result = new Dictionary<(long, CategoryItemType), DayOfMonthDistribution>();
         if (items.Count == 0) return result;
 
-        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(ownerId);
         var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
 
         var allLeafIds = itemToLeafIds.Values.SelectMany(s => s).Distinct().ToList();
@@ -277,7 +277,7 @@ public class CashflowProjectionService
         // computed in-memory per item without further round trips.
         await using var db = await _dbFactory.CreateDbContextAsync();
         var allTxns = await db.Transactions
-            .Where(t => t.SourceId == sourceId)
+            .Where(t => t.OwnerUserId == ownerId)
             .CountedAsFlow()
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .Select(t => new { CategoryId = t.CategoryId!.Value, t.Amount, t.Timestamp })

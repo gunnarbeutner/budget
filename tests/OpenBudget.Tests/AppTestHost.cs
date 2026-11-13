@@ -137,31 +137,31 @@ internal sealed partial class AppTestHost : IDisposable
         var bob = await AddUserAsync("bob");
 
         await using var db = await System.CreateDbContextAsync();
-        db.ImportSources.Add(new ImportSource { Id = AccessWorld.SourceAlice, Name = "alice", OwnerUserId = alice.Id, UploadToken = "tok-alice" });
-        db.ImportSources.Add(new ImportSource { Id = AccessWorld.SourceBob, Name = "bob", OwnerUserId = bob.Id, UploadToken = "tok-bob" });
+        db.UserDataStates.Add(new UserDataState { UserId = alice.Id, IdSpace = AccessWorld.SourceAlice });
+        db.UserDataStates.Add(new UserDataState { UserId = bob.Id, IdSpace = AccessWorld.SourceBob });
         foreach (var (source, group, leaf) in new[]
                  {
-                     (AccessWorld.SourceAlice, AccessWorld.SharedGroup, AccessWorld.SharedLeaf),
-                     (AccessWorld.SourceBob, AccessWorld.Id(AccessWorld.SourceBob, 100), AccessWorld.Id(AccessWorld.SourceBob, 200)),
+                     (alice.Id, AccessWorld.SharedGroup, AccessWorld.SharedLeaf),
+                     (bob.Id, AccessWorld.Id(AccessWorld.SourceBob, 100), AccessWorld.Id(AccessWorld.SourceBob, 200)),
                  })
         {
-            db.CategoryGroups.Add(new CategoryGroup { Id = group, SourceId = source, Name = $"Group{source}" });
-            db.Categories.Add(new Category { Id = leaf, SourceId = source, Name = $"Leaf{source}", GroupId = group, Type = 1 });
+            db.CategoryGroups.Add(new CategoryGroup { Id = group, OwnerUserId = source, Name = $"Group{group}" });
+            db.Categories.Add(new Category { Id = leaf, OwnerUserId = source, Name = $"Leaf{leaf}", GroupId = group, Type = 1 });
         }
         foreach (var (id, name, source) in new[]
                  {
-                     (AccessWorld.AccountWp, "Giro Shared", AccessWorld.SourceAlice),
-                     (AccessWorld.AccountPrivate, "Giro Private", AccessWorld.SourceAlice),
-                     (AccessWorld.AccountProperty, "Property Account", AccessWorld.SourceAlice),
-                     (AccessWorld.AccountBob, "Bob Giro", AccessWorld.SourceBob),
+                     (AccessWorld.AccountWp, "Giro Shared", alice.Id),
+                     (AccessWorld.AccountPrivate, "Giro Private", alice.Id),
+                     (AccessWorld.AccountProperty, "Property Account", alice.Id),
+                     (AccessWorld.AccountBob, "Bob Giro", bob.Id),
                  })
-            db.Accounts.Add(new Account { Id = id, Name = name, SourceId = source });
+            db.Accounts.Add(new Account { Id = id, Name = name, OwnerUserId = source });
 
         var created = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        db.Projects.Add(new Project { Id = AccessWorld.Shared, Name = "Shared", SourceId = AccessWorld.SourceAlice, OwnerUserId = alice.Id, CreatedAt = created });
-        db.Projects.Add(new Project { Id = AccessWorld.Private, Name = "Alice Private", SourceId = AccessWorld.SourceAlice, OwnerUserId = alice.Id, CreatedAt = created });
-        db.Projects.Add(new Project { Id = AccessWorld.Property, Name = "Property", SourceId = AccessWorld.SourceAlice, OwnerUserId = alice.Id, ParentProjectId = AccessWorld.Shared, CreatedAt = created });
-        db.Projects.Add(new Project { Id = AccessWorld.BobProject, Name = "Bob Private", SourceId = AccessWorld.SourceBob, OwnerUserId = bob.Id, CreatedAt = created });
+        db.Projects.Add(new Project { Id = AccessWorld.Shared, Name = "Shared", OwnerUserId = alice.Id, CreatedAt = created });
+        db.Projects.Add(new Project { Id = AccessWorld.Private, Name = "Alice Private", OwnerUserId = alice.Id, CreatedAt = created });
+        db.Projects.Add(new Project { Id = AccessWorld.Property, Name = "Property", OwnerUserId = alice.Id, ParentProjectId = AccessWorld.Shared, CreatedAt = created });
+        db.Projects.Add(new Project { Id = AccessWorld.BobProject, Name = "Bob Private", OwnerUserId = bob.Id, CreatedAt = created });
         foreach (var p in new[] { AccessWorld.Shared, AccessWorld.Private, AccessWorld.Property })
         {
             db.ProjectTrackingItems.Add(new ProjectTrackingItem { ProjectId = p, CategoryGroupId = AccessWorld.SharedGroup });
@@ -175,12 +175,12 @@ internal sealed partial class AppTestHost : IDisposable
         var march = new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
         foreach (var (id, account, source, leaf, cents, payee) in new[]
                  {
-                     (1L, AccessWorld.AccountWp, AccessWorld.SourceAlice, AccessWorld.SharedLeaf, AccessWorld.SharedCents, "Payee Shared"),
-                     (2L, AccessWorld.AccountPrivate, AccessWorld.SourceAlice, AccessWorld.SharedLeaf, AccessWorld.PrivateCents, "Payee Private"),
-                     (3L, AccessWorld.AccountProperty, AccessWorld.SourceAlice, AccessWorld.SharedLeaf, AccessWorld.PropertyCents, "Payee Property"),
-                     (4L, AccessWorld.AccountBob, AccessWorld.SourceBob, AccessWorld.Id(AccessWorld.SourceBob, 200), -700L, "Payee Bob"),
+                     (1L, AccessWorld.AccountWp, alice.Id, AccessWorld.SharedLeaf, AccessWorld.SharedCents, "Payee Shared"),
+                     (2L, AccessWorld.AccountPrivate, alice.Id, AccessWorld.SharedLeaf, AccessWorld.PrivateCents, "Payee Private"),
+                     (3L, AccessWorld.AccountProperty, alice.Id, AccessWorld.SharedLeaf, AccessWorld.PropertyCents, "Payee Property"),
+                     (4L, AccessWorld.AccountBob, bob.Id, AccessWorld.Id(AccessWorld.SourceBob, 200), -700L, "Payee Bob"),
                  })
-            db.Transactions.Add(new Transaction { Id = id, SourceId = source, AccountId = account, CategoryId = leaf, Amount = cents, Timestamp = march, Name = payee });
+            db.Transactions.Add(new Transaction { Id = id, OwnerUserId = source, AccountId = account, CategoryId = leaf, Amount = cents, Timestamp = march, Name = payee });
 
         await db.SaveChangesAsync();
         foreach (var p in new[] { AccessWorld.Shared, AccessWorld.Private })

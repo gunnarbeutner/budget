@@ -87,7 +87,7 @@ public sealed class BankTransactionStore
         BudgetDbContext db, long accountId, AccountRefresh refresh, DateOnly? since, DateTime nowUtc, bool markNew, CancellationToken ct)
     {
         var account = await db.Accounts.FirstAsync(a => a.Id == accountId, ct);
-        var sourceId = account.SourceId;
+        var ownerId = account.OwnerUserId;
         var remote = refresh.Transactions.Where(t => since == null || t.BookingDate >= since).ToList();
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -100,9 +100,10 @@ public sealed class BankTransactionStore
             .Where(t => t.AccountId == accountId && t.Booked && t.Timestamp >= lowerBound)
             .ToListAsync(ct);
 
+        var connectorFloor = RowIds.Namespace(await RowIds.IdSpaceAsync(db, ownerId, ct), ConnectorRowBase);
         var nextId = (await db.Transactions
-            .Where(t => t.SourceId == sourceId && t.Id >= SourceScope.Namespace(sourceId, ConnectorRowBase))
-            .MaxAsync(t => (long?)t.Id, ct)) ?? SourceScope.Namespace(sourceId, ConnectorRowBase);
+            .Where(t => t.OwnerUserId == ownerId && t.Id >= connectorFloor)
+            .MaxAsync(t => (long?)t.Id, ct)) ?? connectorFloor;
 
         int inserted = 0, adopted = 0, pending = 0, known = 0;
         var added = new List<Transaction>();
@@ -112,7 +113,7 @@ public sealed class BankTransactionStore
             var r = p.Remote;
             if (!r.Booked)
             {
-                var pendingRow = NewRow(++nextId, sourceId, accountId, r, p.Cents, p.Timestamp, externalId: null, isNew: false);
+                var pendingRow = NewRow(++nextId, ownerId, accountId, r, p.Cents, p.Timestamp, externalId: null, isNew: false);
                 db.Transactions.Add(pendingRow);
                 added.Add(pendingRow);
                 pending++;
@@ -130,7 +131,7 @@ public sealed class BankTransactionStore
             }
             else
             {
-                var row = NewRow(++nextId, sourceId, accountId, r, p.Cents, p.Timestamp, p.ExternalId, isNew: markNew);
+                var row = NewRow(++nextId, ownerId, accountId, r, p.Cents, p.Timestamp, p.ExternalId, isNew: markNew);
                 db.Transactions.Add(row);
                 added.Add(row);
                 inserted++;
@@ -251,10 +252,10 @@ public sealed class BankTransactionStore
         t.ReturnReason ??= sepa.ReturnReason;
     }
 
-    private static Transaction NewRow(long id, int sourceId, long accountId, RemoteTransaction r, long cents, long ts, string? externalId, bool isNew) => new()
+    private static Transaction NewRow(long id, string ownerId, long accountId, RemoteTransaction r, long cents, long ts, string? externalId, bool isNew) => new()
     {
         Id = id,
-        SourceId = sourceId,
+        OwnerUserId = ownerId,
         AccountId = accountId,
         Amount = cents,
         Currency = r.Currency,
@@ -284,14 +285,14 @@ public sealed class BankTransactionStore
     private static async Task ReplaceHoldingsAsync(BudgetDbContext db, Account account, IReadOnlyList<RemotePosition> positions, CancellationToken ct)
     {
         await db.Holdings.Where(h => h.AccountId == account.Id).ExecuteDeleteAsync(ct);
-        var baseId = SourceScope.Namespace(account.SourceId, ConnectorRowBase);
-        var next = (await db.Holdings.Where(h => h.SourceId == account.SourceId && h.Id >= baseId).MaxAsync(h => (long?)h.Id, ct)) ?? baseId;
+        var baseId = RowIds.Namespace(await RowIds.IdSpaceAsync(db, account.OwnerUserId, ct), ConnectorRowBase);
+        var next = (await db.Holdings.Where(h => h.OwnerUserId == account.OwnerUserId && h.Id >= baseId).MaxAsync(h => (long?)h.Id, ct)) ?? baseId;
         foreach (var p in positions)
         {
             db.Holdings.Add(new Holding
             {
                 Id = ++next,
-                SourceId = account.SourceId,
+                OwnerUserId = account.OwnerUserId,
                 AccountId = account.Id,
                 Name = p.Name,
                 Isin = p.Isin,

@@ -42,7 +42,7 @@ public sealed class AuthStateCurrentUser : ICurrentUser
 
 /// <summary>
 /// Computes (and caches, per circuit/request) the <see cref="AccessScope"/> of the current user.
-/// The cache is dropped whenever a Projects/Sources change is published, so shares, assignments
+/// The cache is dropped whenever a Projects/ImportState change is published, so shares, assignments
 /// and ownership changes take effect immediately. The user's existence is re-verified on every
 /// recompute, so a removed user loses all access at once even if their cookie is still valid.
 /// </summary>
@@ -52,7 +52,7 @@ public sealed class AccessScopeProvider : IDisposable
     private readonly ICurrentUser _currentUser;
     private readonly ChangeNotificationService _notifier;
     // A cached scope is also dropped after this long, which bounds staleness for changes made by
-    // other processes (CLI claims, user removal) that publish no in-process notification.
+    // other processes (user removal) that publish no in-process notification.
     private static readonly TimeSpan MaxAge = TimeSpan.FromSeconds(30);
 
     private Task<AccessScope>? _cached;
@@ -97,7 +97,7 @@ public sealed class AccessScopeProvider : IDisposable
 
     private void OnChanged(DataChange change, Guid? origin)
     {
-        if (change.Area is DataArea.Projects or DataArea.Sources) _cached = null;
+        if (change.Area is DataArea.Projects or DataArea.ImportState) _cached = null;
     }
 
     private async Task<AccessScope> ComputeCoreAsync()
@@ -122,12 +122,8 @@ public sealed class AccessScopeProvider : IDisposable
             .FirstOrDefaultAsync(ct);
         if (user == null) return AccessScope.Anonymous;
 
-        var ownedSources = await db.ImportSources.AsNoTracking()
-            .Where(s => s.OwnerUserId == userId)
-            .Select(s => s.Id)
-            .ToArrayAsync(ct);
         var projects = await db.Projects.AsNoTracking()
-            .Select(p => new { p.Id, p.OwnerUserId, p.ParentProjectId, p.SourceId })
+            .Select(p => new { p.Id, p.OwnerUserId, p.ParentProjectId })
             .ToListAsync(ct);
         var shares = await db.ProjectShares.AsNoTracking()
             .Where(s => s.UserId == userId)
@@ -149,10 +145,10 @@ public sealed class AccessScopeProvider : IDisposable
             if (!roles.TryGetValue(p.Id, out var own) || inherited > own) roles[p.Id] = inherited;
         }
 
-        var sourceById = projects.ToDictionary(p => p.Id, p => p.SourceId);
-        var visibleSources = ownedSources
-            .Concat(roles.Keys.Select(id => sourceById[id]))
-            .Distinct()
+        var ownerById = projects.ToDictionary(p => p.Id, p => p.OwnerUserId);
+        var visibleOwners = roles.Keys.Select(id => ownerById[id]).OfType<string>()
+            .Append(userId)
+            .Distinct(StringComparer.Ordinal)
             .ToArray();
 
         var sharedProjectIds = roles.Where(kv => kv.Value is ProjectRole.Viewer or ProjectRole.Editor)
@@ -173,6 +169,6 @@ public sealed class AccessScopeProvider : IDisposable
                 .Distinct()
                 .ToArrayAsync(ct);
 
-        return new AccessScope(userId, user.IsAdmin, roles, ownedSources, visibleSources, sharedAccounts, editableAccounts);
+        return new AccessScope(userId, user.IsAdmin, roles, visibleOwners, sharedAccounts, editableAccounts);
     }
 }

@@ -12,7 +12,7 @@ public sealed record SplitPartInput(long AmountCents, long? CategoryId, string? 
 public sealed record SplitPartView(long Id, long AmountCents, long? CategoryId, string? CategoryName, string? Note);
 
 /// <summary>The split of one booking: its total and its parts (empty when it is not split).</summary>
-public sealed record SplitInfo(long ParentId, int SourceId, long TotalCents, string? Currency, IReadOnlyList<SplitPartView> Parts);
+public sealed record SplitInfo(long ParentId, string OwnerUserId, long TotalCents, string? Currency, IReadOnlyList<SplitPartView> Parts);
 
 /// <summary>Why a split cannot be saved.</summary>
 public enum SplitError
@@ -128,7 +128,7 @@ public sealed class SplitService
                      select new SplitPartView(t.Id, t.Amount, t.CategoryId, t.Category != null ? t.Category.Name : null, t.Note))
                 .ToListAsync(ct)
             : [];
-        return new SplitInfo(parent.Id, parent.SourceId, parent.SplitOriginalAmount ?? parent.Amount, parent.Currency, parts);
+        return new SplitInfo(parent.Id, parent.OwnerUserId, parent.SplitOriginalAmount ?? parent.Amount, parent.Currency, parts);
     }
 
     /// <summary>
@@ -149,7 +149,7 @@ public sealed class SplitService
         if (categoryIds.Count > 0)
         {
             var valid = await db.Categories.AsNoTracking()
-                .Where(c => categoryIds.Contains(c.Id) && c.SourceId == parent.SourceId && c.Name != null && c.Name != "")
+                .Where(c => categoryIds.Contains(c.Id) && c.OwnerUserId == parent.OwnerUserId && c.Name != null && c.Name != "")
                 .CountAsync(ct);
             if (valid != categoryIds.Count) throw new InvalidOperationException("Unknown category.");
         }
@@ -160,10 +160,10 @@ public sealed class SplitService
             var old = await db.Transactions.Where(t => t.SplitParentId == parent.Id && t.Splitted == SplitState.Child).ToListAsync(ct);
             db.Transactions.RemoveRange(old);
 
-            // Ids are allocated over the whole source (not just what this user sees), in the connector range.
-            var rangeStart = SourceScope.Namespace(parent.SourceId, BankTransactionStore.ConnectorRowBase);
+            // Ids are allocated over all of the owner's rows (not just what this user sees), in the connector range.
+            var rangeStart = RowIds.Namespace((await RowIds.PeekStateAsync(db, parent.OwnerUserId, ct)).IdSpace, BankTransactionStore.ConnectorRowBase);
             var nextId = await db.Transactions.IgnoreQueryFilters()
-                .Where(t => t.SourceId == parent.SourceId && t.Id >= rangeStart)
+                .Where(t => t.OwnerUserId == parent.OwnerUserId && t.Id >= rangeStart)
                 .MaxAsync(t => (long?)t.Id, ct) ?? rangeStart;
 
             foreach (var p in parts)
@@ -171,7 +171,7 @@ public sealed class SplitService
                 db.Transactions.Add(new Transaction
                 {
                     Id = ++nextId,
-                    SourceId = parent.SourceId,
+                    OwnerUserId = parent.OwnerUserId,
                     AccountId = parent.AccountId,
                     Amount = p.AmountCents,
                     Currency = parent.Currency,
@@ -202,7 +202,7 @@ public sealed class SplitService
         {
             BankTransactionStore.Gate.Release();
         }
-        Publish(parent.SourceId);
+        Publish(parent.OwnerUserId);
     }
 
     /// <summary>Removes the split: the parts go away and the booking counts as one again (keeping its own category).</summary>
@@ -217,7 +217,7 @@ public sealed class SplitService
         parent.Splitted = SplitState.Normal;
         parent.SplitOriginalAmount = null;
         await db.SaveChangesAsync(ct);
-        Publish(parent.SourceId);
+        Publish(parent.OwnerUserId);
     }
 
     // ---- helpers ----
@@ -241,7 +241,7 @@ public sealed class SplitService
             .ToDictionaryAsync(a => a.Id, a => a.Provider, ct);
         foreach (var r in rows)
         {
-            var block = TransactionEditRules.Check(db.Scope, r.SourceId, r.AccountId,
+            var block = TransactionEditRules.Check(db.Scope, r.OwnerUserId, r.AccountId,
                 r.AccountId is { } aid && providers.TryGetValue(aid, out var p) ? p : null);
             if (block != EditBlock.None)
                 throw new AccessDeniedException(block == EditBlock.MoneyMoney
@@ -250,5 +250,5 @@ public sealed class SplitService
         }
     }
 
-    private void Publish(int sourceId) => _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: sourceId), _origin.Id);
+    private void Publish(string ownerId) => _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: ownerId), _origin.Id);
 }

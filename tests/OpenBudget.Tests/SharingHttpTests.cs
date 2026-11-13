@@ -155,17 +155,14 @@ public sealed class SharingHttpTests : IDisposable
     }
 
     [Fact]
-    public async Task Source_pages_are_owner_only()
+    public async Task Portfolio_and_get_started_pages_show_only_the_users_own_data()
     {
         await _host.SeedWorldAsync(ProjectRole.Editor);
         using var bob = await _host.LoggedInClientAsync("bob");
 
-        await AssertNotFoundAsync(bob, "/portfolio-performance/2/depots", "/portfolio-performance/2/instruments", "/portfolio-performance/2/tax");
-        Assert.Equal(HttpStatusCode.OK, (await GetAsync(bob, "/portfolio-performance/3/depots")).Status);   // her own source
-        Assert.Equal("/portfolio-performance/3/depots", await RedirectTargetAsync(bob, "/sources/3/depots"));   // old links
+        Assert.Equal(HttpStatusCode.OK, (await GetAsync(bob, "/portfolio-performance/depots")).Status);
 
         // Get started shows nothing of alice's data.
-        Assert.Equal("/get-started", await RedirectTargetAsync(bob, "/sources"));
         var (_, start) = await GetAsync(bob, "/get-started");
         Assert.DoesNotContain("tok-alice", start, StringComparison.Ordinal);
         Assert.DoesNotContain(">alice<", start, StringComparison.Ordinal);
@@ -190,9 +187,9 @@ public sealed class SharingHttpTests : IDisposable
         await _host.SeedWorldAsync(bobOnWp: null);
         using var alice = await _host.LoggedInClientAsync("alice");   // the admin
 
-        await AssertNotFoundAsync(alice, "/projects/4/overview", "/projects/4/browse", "/projects/4/settings", "/sources/3/depots");
-        var (_, sources) = await GetAsync(alice, "/sources");
-        Assert.DoesNotContain("tok-bob", sources, StringComparison.Ordinal);
+        await AssertNotFoundAsync(alice, "/projects/4/overview", "/projects/4/browse", "/projects/4/settings");
+        var (_, start) = await GetAsync(alice, "/get-started");
+        Assert.DoesNotContain("Bob Giro", start, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -201,13 +198,12 @@ public sealed class SharingHttpTests : IDisposable
         await _host.AddUserAsync("alice", admin: true);
         await using (var db = await _host.System.CreateDbContextAsync())
         {
-            db.ImportSources.Add(new ImportSource { Id = 7, Name = "orphan" });
-            db.Projects.Add(new Project { Id = 7, Name = "Orphan Project", SourceId = 7 });
+            db.Projects.Add(new Project { Id = 7, Name = "Orphan Project", OwnerUserId = null! });
             await db.SaveChangesAsync();
         }
         using var alice = await _host.LoggedInClientAsync("alice");
 
-        await AssertNotFoundAsync(alice, "/projects/7/overview", "/sources/7/depots");
+        await AssertNotFoundAsync(alice, "/projects/7/overview");
         // Without a project of her own, "/" (and the old /projects/manage) show the first-run welcome.
         var (status, home) = await GetAsync(alice, "/projects/manage");
         Assert.Equal(HttpStatusCode.OK, status);

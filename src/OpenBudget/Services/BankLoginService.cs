@@ -42,7 +42,7 @@ public sealed record BankLoginAccountView(
     DateTime? SwitchedAt = null);
 
 /// <summary>An owned local account a remote account could be linked to.</summary>
-public sealed record LinkCandidate(long AccountId, string Name, string? Iban, string SourceName, string Provider, bool SuggestedFor);
+public sealed record LinkCandidate(long AccountId, string Name, string? Iban, string Provider, bool SuggestedFor);
 
 public sealed record StatementView(long Id, long? AccountId, string? AccountName, DateTime Date, string Name, long SizeBytes);
 
@@ -56,7 +56,6 @@ public class BankLoginService
 {
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly AccessScopeProvider _access;
-    private readonly SourceService _sources;
     private readonly AccountService _accounts;
     private readonly BankSyncCoordinator _coordinator;
     private readonly ConnectorRegistry _registry;
@@ -66,13 +65,12 @@ public class BankLoginService
     private readonly ChangeOrigin _origin;
 
     public BankLoginService(
-        IDbContextFactory<BudgetDbContext> dbFactory, AccessScopeProvider access, SourceService sources, AccountService accounts,
+        IDbContextFactory<BudgetDbContext> dbFactory, AccessScopeProvider access, AccountService accounts,
         BankSyncCoordinator coordinator, ConnectorRegistry registry, SecretsProtector secrets, BankStatementStore statementStore,
         ChangeNotificationService notifier, ChangeOrigin origin)
     {
         _dbFactory = dbFactory;
         _access = access;
-        _sources = sources;
         _accounts = accounts;
         _coordinator = coordinator;
         _registry = registry;
@@ -241,7 +239,7 @@ public class BankLoginService
         await db.SaveChangesAsync(ct);
         foreach (var s in statements) _statementStore.DeleteFile(s.FilePath);
         Changed(userId);
-        _notifier.Publish(new DataChange(DataArea.Sources), _origin.Id);
+        _notifier.Publish(new DataChange(DataArea.ImportState), _origin.Id);
     }
 
     // ---- Remote accounts and links ----
@@ -265,25 +263,24 @@ public class BankLoginService
         }).ToList();
     }
 
-    /// <summary>Owned accounts of the user's own sources that a remote account may be linked to (MoneyMoney or detached ones not yet linked).</summary>
+    /// <summary>The user's own accounts that a remote account may be linked to (MoneyMoney or detached ones not yet linked).</summary>
     public async Task<List<LinkCandidate>> GetLinkCandidatesAsync(int loginAccountId, CancellationToken ct = default)
     {
         var scope = await _access.GetAsync();
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var remote = await db.BankLoginAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == loginAccountId, ct);
         if (remote == null) return [];
-        var owned = scope.OwnedSourceIds;
+        var owner = scope.UserId;
         var taken = await db.BankLoginAccounts.AsNoTracking().Where(a => a.LinkedAccountId != null).Select(a => a.LinkedAccountId!.Value).ToListAsync(ct);
-        var sourceNames = await db.ImportSources.AsNoTracking().Where(s => owned.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
         var accounts = await db.Accounts.AsNoTracking()
-            .Where(a => owned.Contains(a.SourceId) && (a.Provider == AccountProviders.MoneyMoney || a.Provider == AccountProviders.Manual) && a.Type != 8 && !a.Closed)
+            .Where(a => a.OwnerUserId == owner && (a.Provider == AccountProviders.MoneyMoney || a.Provider == AccountProviders.Manual) && a.Type != 8 && !a.Closed)
             .OrderBy(a => a.Name).ToListAsync(ct);
         var wanted = NormalizeIban(remote.Iban);
         // A depot only links to a depot, and a cash account only to a non-depot account: positions and
         // transactions are stored differently, so mixing them would show nonsense on both sides.
         bool remoteIsDepot = remote.Type == RemoteAccountType.Depot;
         return accounts.Where(a => !taken.Contains(a.Id) && IsDepot(a) == remoteIsDepot)
-            .Select(a => new LinkCandidate(a.Id, a.Name ?? "?", a.Iban, sourceNames.GetValueOrDefault(a.SourceId, "?"), a.Provider,
+            .Select(a => new LinkCandidate(a.Id, a.Name ?? "?", a.Iban, a.Provider,
                 wanted.Length > 0 && NormalizeIban(a.Iban) == wanted))
             .ToList();
     }
@@ -327,9 +324,9 @@ public class BankLoginService
     }
 
     /// <summary>
-    /// Creates a new local account for a remote one in the user's own source (see <see cref="TargetSourceAsync"/>),
-    /// synced by the login's connector and assigned to the default project for new accounts. A MoneyMoney upload
-    /// into that source leaves it alone, as it only replaces MoneyMoney's accounts.
+    /// Creates a new local account of the user for a remote one, synced by the login's connector and assigned to the
+    /// default project for new accounts. A MoneyMoney import leaves it alone, as it only replaces MoneyMoney's accounts.
+    /// Its id comes from the connector half of the user's id space (see <see cref="RowIds"/>).
     /// </summary>
     public async Task<long> CreateAccountAsync(int loginAccountId, CancellationToken ct = default)
     {
@@ -341,15 +338,11 @@ public class BankLoginService
         if (remote.LinkedAccountId != null) throw new InvalidOperationException("Already linked; unlink it first.");
         var login = remote.BankLogin;
 
-        var source = await TargetSourceAsync(db, userId, login.Id, ct);
-
-        // The scope snapshot must know the new source before an account may be written into it.
         await using var writeDb = await _dbFactory.CreateDbContextAsync(ct);
-        var maxId = await writeDb.Accounts.Where(a => a.SourceId == source.Id).MaxAsync(a => (long?)a.Id, ct);
         var account = new Account
         {
-            Id = maxId is { } m ? m + 1 : SourceScope.Namespace(source.Id, 1),
-            SourceId = source.Id,
+            Id = await RowIds.NextConnectorAccountIdAsync(writeDb, userId, ct),
+            OwnerUserId = userId,
             Name = remote.Name,
             Iban = remote.Iban,
             Currency = remote.Currency,
@@ -378,40 +371,8 @@ public class BankLoginService
         if (await DefaultProjectAssigner.AssignNewAccountsAsync(writeDb, userId, [account.Id], ct) > 0)
             _notifier.Publish(new DataChange(DataArea.Projects), _origin.Id);
         Changed(userId);
-        _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: source.Id), _origin.Id);
+        _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: userId), _origin.Id);
         return account.Id;
-    }
-
-    /// <summary>
-    /// The source a connector-created account goes into: that of the user's default project for new accounts, else of
-    /// their first own project, else their first owned source. Only a user without any source gets a new one ("bank-&lt;login id&gt;").
-    /// </summary>
-    private async Task<ImportSource> TargetSourceAsync(BudgetDbContext db, string userId, int loginId, CancellationToken ct)
-    {
-        var owned = await _sources.GetOwnedSourcesAsync(ct: ct);
-        if (owned.Count == 0) return await CreateSourceWithFallbackAsync($"bank-{loginId}", ct);
-        var ownedIds = owned.Select(s => s.Id).ToList();
-        var projectSourceId = await db.Projects.AsNoTracking()
-            .Where(p => p.OwnerUserId == userId && ownedIds.Contains(p.SourceId))
-            .OrderByDescending(p => p.IsDefaultForNewAccounts).ThenBy(p => p.ParentProjectId != null).ThenBy(p => p.SortOrder).ThenBy(p => p.Id)
-            .Select(p => (int?)p.SourceId).FirstOrDefaultAsync(ct);
-        return owned.FirstOrDefault(s => s.Id == projectSourceId) ?? owned.OrderBy(s => s.Id).First();
-    }
-
-    private async Task<ImportSource> CreateSourceWithFallbackAsync(string name, CancellationToken ct)
-    {
-        var attempt = 0;
-        while (true)
-        {
-            try
-            {
-                return await _sources.CreateSourceAsync(attempt == 0 ? name : $"{name}-{attempt + 1}", ct);
-            }
-            catch (InvalidOperationException) when (attempt++ < 5)
-            {
-                // name taken by someone else's source: try the next suffix
-            }
-        }
     }
 
     /// <summary>Unlinks: a taken-over account returns to MoneyMoney, a connector-created one becomes "manual". Data stays.</summary>
@@ -557,7 +518,7 @@ public class BankLoginService
     private async Task PublishAccountSourceAsync(long accountId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        var source = await db.Accounts.AsNoTracking().Where(a => a.Id == accountId).Select(a => (int?)a.SourceId).FirstOrDefaultAsync();
-        if (source is { } s) _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: s), _origin.Id);
+        var source = await db.Accounts.AsNoTracking().Where(a => a.Id == accountId).Select(a => a.OwnerUserId).FirstOrDefaultAsync();
+        if (source is { } s) _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: s), _origin.Id);
     }
 }

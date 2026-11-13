@@ -48,8 +48,7 @@ public static class CloudProviders
 
 /// <summary>
 /// A file in the user's cloud storage that OpenBudget reads server-side, identified by drive and item id (both
-/// stable across renames and moves). <see cref="TargetSourceName"/> names the source whose PortfolioPerformance
-/// data the file updates.
+/// stable across renames and moves). The file is a PortfolioPerformance file whose data it updates for its owner.
 /// </summary>
 [Table("cloud_file_links")]
 public class CloudFileLink
@@ -76,10 +75,6 @@ public class CloudFileLink
     /// <summary>Path shown to the user when the file was picked (informational; the ids are authoritative).</summary>
     [MaxLength(1000)]
     public string DisplayPath { get; set; } = string.Empty;
-
-    /// <summary>The source the file's contents are imported into (null: read only, nothing imported).</summary>
-    [MaxLength(100)]
-    public string? TargetSourceName { get; set; }
 
     /// <summary>Content tag of the last processed version; an unchanged tag skips the download.</summary>
     [MaxLength(200)]

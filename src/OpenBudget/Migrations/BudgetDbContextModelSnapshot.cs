@@ -16,7 +16,7 @@ namespace OpenBudget.Migrations
         // If you encounter a merge conflict in the line below, it means you need to
         // discard one of the migration branches and recreate its migrations on top of
         // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-        public override string LatestMigrationId => "20261112155916_StatementAliases";
+        public override string LatestMigrationId => "20261113045640_RemoveSources";
 
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
@@ -190,6 +190,11 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("name");
 
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<long?>("Portfolio")
                         .HasColumnType("INTEGER")
                         .HasColumnName("portfolio");
@@ -209,9 +214,6 @@ namespace OpenBudget.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("sort");
 
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
-
                     b.Property<long?>("Type")
                         .HasColumnType("INTEGER")
                         .HasColumnName("type");
@@ -220,7 +222,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("GroupId");
 
-                    b.HasIndex("SourceId");
+                    b.HasIndex("OwnerUserId");
 
                     b.ToTable("accounts");
                 });
@@ -243,6 +245,11 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("name");
 
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<long?>("ParentGroupId")
                         .HasColumnType("INTEGER")
                         .HasColumnName("group_key");
@@ -251,14 +258,11 @@ namespace OpenBudget.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("sort");
 
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("ParentGroupId");
+                    b.HasIndex("OwnerUserId");
 
-                    b.HasIndex("SourceId");
+                    b.HasIndex("ParentGroupId");
 
                     b.ToTable("account_groups");
                 });
@@ -523,9 +527,6 @@ namespace OpenBudget.Migrations
                     b.Property<long>("SizeBytes")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int?>("SourceId")
-                        .HasColumnType("INTEGER");
-
                     b.HasKey("Id");
 
                     b.HasIndex("AccountId");
@@ -649,6 +650,11 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("name");
 
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Rules")
                         .HasColumnType("TEXT")
                         .HasColumnName("rules");
@@ -656,9 +662,6 @@ namespace OpenBudget.Migrations
                     b.Property<long?>("Sort")
                         .HasColumnType("INTEGER")
                         .HasColumnName("sort");
-
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
 
                     b.Property<long?>("Type")
                         .HasColumnType("INTEGER")
@@ -668,7 +671,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("GroupId");
 
-                    b.HasIndex("SourceId", "GroupId");
+                    b.HasIndex("OwnerUserId", "GroupId");
 
                     b.ToTable("categories");
                 });
@@ -687,6 +690,11 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("name");
 
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<long?>("ParentGroupId")
                         .HasColumnType("INTEGER")
                         .HasColumnName("group_key");
@@ -695,14 +703,11 @@ namespace OpenBudget.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("sort");
 
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("ParentGroupId");
+                    b.HasIndex("OwnerUserId");
 
-                    b.HasIndex("SourceId");
+                    b.HasIndex("ParentGroupId");
 
                     b.ToTable("category_groups");
                 });
@@ -875,10 +880,6 @@ namespace OpenBudget.Migrations
                     b.Property<DateTime?>("RemoteModifiedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("TargetSourceName")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
                     b.HasKey("Id");
 
                     b.HasIndex("OwnerUserId");
@@ -919,6 +920,11 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("name");
 
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PpSecurityUuid")
                         .HasColumnType("TEXT")
                         .HasColumnName("pp_security_uuid");
@@ -939,9 +945,6 @@ namespace OpenBudget.Migrations
                         .HasColumnType("REAL")
                         .HasColumnName("quantity");
 
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("Symbol")
                         .HasColumnType("TEXT")
                         .HasColumnName("symbol");
@@ -954,61 +957,9 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("AccountId");
 
-                    b.HasIndex("SourceId", "AccountId");
+                    b.HasIndex("OwnerUserId", "AccountId");
 
                     b.ToTable("holdings");
-                });
-
-            modelBuilder.Entity("OpenBudget.Models.ImportSource", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("LastUploadAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<long?>("LastUploadSizeBytes")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime?>("MoneyMoneyImportFinishedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("OwnerUserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("StructureTakenOverAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("UploadToken")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.HasIndex("OwnerUserId");
-
-                    b.ToTable("import_sources");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            CreatedAt = new DateTime(2020, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Name = "default"
-                        });
                 });
 
             modelBuilder.Entity("OpenBudget.Models.MonthlyBudgetEntry", b =>
@@ -1087,12 +1038,14 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("currency");
 
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<long?>("SecurityId")
                         .HasColumnType("INTEGER")
                         .HasColumnName("securities_key");
-
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
 
                     b.Property<long>("Timestamp")
                         .HasColumnType("INTEGER")
@@ -1102,7 +1055,7 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("AccountId");
 
-                    b.HasIndex("SourceId", "AccountId", "Timestamp");
+                    b.HasIndex("OwnerUserId", "AccountId", "Timestamp");
 
                     b.ToTable("portfolio_chart");
                 });
@@ -1127,6 +1080,11 @@ namespace OpenBudget.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PortfolioUuid")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -1138,12 +1096,9 @@ namespace OpenBudget.Migrations
                     b.Property<decimal>("Shares")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("SourceId", "Isin");
+                    b.HasIndex("OwnerUserId", "Isin");
 
                     b.ToTable("pp_lot");
                 });
@@ -1161,8 +1116,10 @@ namespace OpenBudget.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Uuid")
                         .IsRequired()
@@ -1170,7 +1127,7 @@ namespace OpenBudget.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SourceId");
+                    b.HasIndex("OwnerUserId");
 
                     b.ToTable("pp_portfolio");
                 });
@@ -1184,16 +1141,18 @@ namespace OpenBudget.Migrations
                     b.Property<long>("AccountId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PpPortfolioUuid")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("SourceId", "PpPortfolioUuid")
+                    b.HasIndex("OwnerUserId", "PpPortfolioUuid")
                         .IsUnique();
 
                     b.ToTable("pp_portfolio_link");
@@ -1211,6 +1170,11 @@ namespace OpenBudget.Migrations
                     b.Property<long?>("LedgerAccountId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PpPortfolioUuid")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1222,9 +1186,6 @@ namespace OpenBudget.Migrations
                     b.Property<bool?>("ShowAsAccount")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
-
                     b.Property<bool>("TakenOver")
                         .HasColumnType("INTEGER");
 
@@ -1233,7 +1194,7 @@ namespace OpenBudget.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SourceId", "PpPortfolioUuid")
+                    b.HasIndex("OwnerUserId", "PpPortfolioUuid")
                         .IsUnique();
 
                     b.ToTable("pp_portfolio_settings");
@@ -1256,11 +1217,13 @@ namespace OpenBudget.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<decimal?>("Price")
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
+                    b.Property<decimal?>("Price")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("TickerSymbol")
                         .HasColumnType("TEXT");
@@ -1274,7 +1237,7 @@ namespace OpenBudget.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SourceId", "Isin");
+                    b.HasIndex("OwnerUserId", "Isin");
 
                     b.ToTable("pp_security");
                 });
@@ -1289,16 +1252,18 @@ namespace OpenBudget.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PpSecurityUuid")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("SourceId", "PpSecurityUuid")
+                    b.HasIndex("OwnerUserId", "PpSecurityUuid")
                         .IsUnique();
 
                     b.ToTable("pp_security_link");
@@ -1337,16 +1302,11 @@ namespace OpenBudget.Migrations
                     b.Property<int>("SortOrder")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
-
                     b.HasKey("Id");
 
                     b.HasIndex("OwnerUserId");
 
                     b.HasIndex("ParentProjectId");
-
-                    b.HasIndex("SourceId");
 
                     b.HasIndex(new[] { "OwnerUserId" }, "IX_projects_OwnerUserId_Default")
                         .IsUnique()
@@ -1472,15 +1432,17 @@ namespace OpenBudget.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("RemovedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("SourceId", "Kind", "ItemId")
+                    b.HasIndex("OwnerUserId", "Kind", "ItemId")
                         .IsUnique();
 
                     b.ToTable("removed_import_items");
@@ -1545,12 +1507,14 @@ namespace OpenBudget.Migrations
                     b.Property<DateOnly>("NextDate")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Purpose")
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
-
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -1571,19 +1535,21 @@ namespace OpenBudget.Migrations
                     b.Property<int>("Kind")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("SecurityUuid")
                         .IsRequired()
                         .HasColumnType("TEXT");
-
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
 
                     b.Property<int>("TeilfreistellungBp")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SourceId", "SecurityUuid")
+                    b.HasIndex("OwnerUserId", "SecurityUuid")
                         .IsUnique();
 
                     b.ToTable("security_tax_setting");
@@ -1611,14 +1577,16 @@ namespace OpenBudget.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("SecurityUuid")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT")
                         .HasDefaultValue("");
-
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
 
                     b.Property<string>("TaxonomyId")
                         .IsRequired()
@@ -1633,9 +1601,9 @@ namespace OpenBudget.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SourceId", "Isin");
+                    b.HasIndex("OwnerUserId", "Isin");
 
-                    b.HasIndex("SourceId", "TaxonomyId");
+                    b.HasIndex("OwnerUserId", "TaxonomyId");
 
                     b.ToTable("pp_security_taxonomy");
                 });
@@ -1757,6 +1725,11 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("note");
 
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Primanota")
                         .HasColumnType("TEXT")
                         .HasColumnName("primanota");
@@ -1772,9 +1745,6 @@ namespace OpenBudget.Migrations
                     b.Property<int?>("RuleId")
                         .HasColumnType("INTEGER")
                         .HasColumnName("rule_id");
-
-                    b.Property<int>("SourceId")
-                        .HasColumnType("INTEGER");
 
                     b.Property<long?>("SplitOriginalAmount")
                         .HasColumnType("INTEGER")
@@ -1806,13 +1776,49 @@ namespace OpenBudget.Migrations
 
                     b.HasIndex("CategoryId");
 
-                    b.HasIndex("SourceId", "AccountId");
+                    b.HasIndex("OwnerUserId", "AccountId");
 
-                    b.HasIndex("SourceId", "Timestamp");
+                    b.HasIndex("OwnerUserId", "Timestamp");
 
-                    b.HasIndex("SourceId", "CategoryId", "Timestamp");
+                    b.HasIndex("OwnerUserId", "CategoryId", "Timestamp");
 
                     b.ToTable("transactions");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.UserDataState", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("GetStartedDismissedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("IdSpace")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastUploadAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LastUploadSizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("LegacyFileKeys")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("MoneyMoneyImportFinishedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("StructureTakenOverAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("IdSpace")
+                        .IsUnique();
+
+                    b.ToTable("user_data_states");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.UserProjectOrder", b =>
@@ -2033,15 +2039,7 @@ namespace OpenBudget.Migrations
                         .HasForeignKey("ParentProjectId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("OpenBudget.Models.ImportSource", "Source")
-                        .WithMany("Projects")
-                        .HasForeignKey("SourceId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.Navigation("Parent");
-
-                    b.Navigation("Source");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.ProjectAccountAssignment", b =>
@@ -2193,11 +2191,6 @@ namespace OpenBudget.Migrations
             modelBuilder.Entity("OpenBudget.Models.CloudConnection", b =>
                 {
                     b.Navigation("Files");
-                });
-
-            modelBuilder.Entity("OpenBudget.Models.ImportSource", b =>
-                {
-                    b.Navigation("Projects");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.Project", b =>

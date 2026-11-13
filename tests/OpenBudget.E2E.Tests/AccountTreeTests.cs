@@ -20,13 +20,13 @@ public sealed class AccountTreeTests : EndToEndTestBase
     {
         var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
-        db.AccountGroups.Add(new AccountGroup { Id = BanksGroup, SourceId = E2ESeed.SourceId, Name = "Banks", Sort = 1 });
-        db.AccountGroups.Add(new AccountGroup { Id = ExampleBankGroup, SourceId = E2ESeed.SourceId, Name = "Example Bank", ParentGroupId = BanksGroup, Sort = 1 });
+        db.AccountGroups.Add(new AccountGroup { Id = BanksGroup, OwnerUserId = E2ESeed.OwnerUserId, Name = "Banks", Sort = 1 });
+        db.AccountGroups.Add(new AccountGroup { Id = ExampleBankGroup, OwnerUserId = E2ESeed.OwnerUserId, Name = "Example Bank", ParentGroupId = BanksGroup, Sort = 1 });
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         db.Accounts.Add(new Account
         {
             Id = GiroId,
-            SourceId = E2ESeed.SourceId,
+            OwnerUserId = E2ESeed.OwnerUserId,
             Name = "E2E Giro",
             Iban = "DE00123456780123456789",
             Currency = "EUR",
@@ -39,7 +39,7 @@ public sealed class AccountTreeTests : EndToEndTestBase
         db.Accounts.Add(new Account
         {
             Id = SavingsId,
-            SourceId = E2ESeed.SourceId,
+            OwnerUserId = E2ESeed.OwnerUserId,
             Name = "E2E Savings",
             Currency = "EUR",
             Type = 2,
@@ -50,7 +50,7 @@ public sealed class AccountTreeTests : EndToEndTestBase
         db.Accounts.Add(new Account
         {
             Id = CashId,
-            SourceId = E2ESeed.SourceId,
+            OwnerUserId = E2ESeed.OwnerUserId,
             Name = "E2E Cash",
             Currency = "EUR",
             Type = 6,
@@ -95,7 +95,7 @@ public sealed class AccountTreeTests : EndToEndTestBase
         void Add(long id, long account, long cents, int day, string name) => db.Transactions.Add(new Transaction
         {
             Id = id,
-            SourceId = E2ESeed.SourceId,
+            OwnerUserId = E2ESeed.OwnerUserId,
             AccountId = account,
             Amount = cents,
             Currency = "EUR",

@@ -15,9 +15,9 @@ public sealed class ScheduledPaymentTests
 {
     private const string LandlordIban = "DE00000000000000000099";
 
-    private static ScheduledPayment Rent(long accountId, int sourceId = 1, long cents = -85000) => new()
+    private static ScheduledPayment Rent(long accountId, string ownerId = TestDb.DefaultOwner, long cents = -85000) => new()
     {
-        SourceId = sourceId,
+        OwnerUserId = ownerId,
         AccountId = accountId,
         Kind = ScheduledPaymentKind.Standing,
         BankOrderId = "SO-1",
@@ -70,11 +70,11 @@ public sealed class ScheduledPaymentTests
     public async Task Orders_follow_the_visibility_of_their_account()
     {
         await using var t = await AccessWorld.BuildAsync(ProjectRole.Viewer);
-        var stale = Rent(AccessWorld.AccountWp, AccessWorld.SourceAlice);
+        var stale = Rent(AccessWorld.AccountWp, AccessWorld.Alice);
         stale.NextDate = new DateOnly(2026, 10, 1); // stored by a sync six weeks ago
         t.Db.ScheduledPayments.Add(stale);
-        t.Db.ScheduledPayments.Add(Rent(AccessWorld.AccountPrivate, AccessWorld.SourceAlice, -1000));
-        t.Db.ScheduledPayments.Add(Rent(AccessWorld.AccountBob, AccessWorld.SourceBob, -700));
+        t.Db.ScheduledPayments.Add(Rent(AccessWorld.AccountPrivate, AccessWorld.Alice, -1000));
+        t.Db.ScheduledPayments.Add(Rent(AccessWorld.AccountBob, AccessWorld.Bob, -700));
         await t.Db.SaveChangesAsync();
         var today = new DateOnly(2026, 11, 12);
 
@@ -102,7 +102,7 @@ public sealed class ScheduledPaymentTests
     {
         await using var t = await AccessWorld.BuildAsync(ProjectRole.Editor);
         await using var db = await t.ForUser(AccessWorld.Bob).Factory.CreateDbContextAsync();
-        db.ScheduledPayments.Add(Rent(AccessWorld.AccountWp, AccessWorld.SourceAlice));
+        db.ScheduledPayments.Add(Rent(AccessWorld.AccountWp, AccessWorld.Alice));
         await Assert.ThrowsAsync<AccessDeniedException>(() => db.SaveChangesAsync());
     }
 
@@ -125,7 +125,7 @@ public sealed class ScheduledPaymentTests
         t.Db.Transactions.Add(new Transaction
         {
             Id = 1,
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             AccountId = 10,
             CategoryId = RentLeaf,
             Amount = -85000,
@@ -136,7 +136,7 @@ public sealed class ScheduledPaymentTests
         t.Db.Transactions.Add(new Transaction
         {
             Id = 2,
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             AccountId = 10,
             CategoryId = Other,
             Amount = -85000,
@@ -146,7 +146,7 @@ public sealed class ScheduledPaymentTests
         t.Db.ScheduledPayments.Add(Rent(10));
         t.Db.ScheduledPayments.Add(new ScheduledPayment
         {
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             AccountId = 10,
             Kind = ScheduledPaymentKind.Scheduled,
             NextDate = new DateOnly(2027, 3, 10),

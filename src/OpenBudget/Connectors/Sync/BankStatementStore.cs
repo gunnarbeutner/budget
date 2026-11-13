@@ -44,7 +44,6 @@ public sealed class BankStatementStore
                 OwnerUserId = ownerUserId,
                 BankLoginId = loginId,
                 AccountId = account?.Id,
-                SourceId = account?.SourceId,
                 Identifier = statement.Identifier,
                 Date = DateTime.SpecifyKind(statement.Date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc),
                 Name = statement.Name,
@@ -84,7 +83,7 @@ public sealed class BankStatementStore
         if (account != null && existing.AccountId == null)
         {
             existing.AccountId = account.Id;
-            existing.SourceId = account.SourceId;
+            existing.OwnerUserId = account.OwnerUserId;
             existing.Institution = null;
         }
         if (loginId is { } login)

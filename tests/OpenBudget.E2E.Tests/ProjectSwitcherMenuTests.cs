@@ -25,8 +25,8 @@ public sealed class ProjectSwitcherMenuTests : EndToEndTestBase
     {
         await using var db = await Db.CreateDbContextAsync();
         var first = await db.Projects.SingleAsync(p => p.Id == E2ESeed.ProjectId);
-        var second = new Project { Name = Second, SourceId = first.SourceId, OwnerUserId = first.OwnerUserId, SortOrder = first.SortOrder + 1, CreatedAt = DateTime.UtcNow };
-        var third = new Project { Name = Third, SourceId = first.SourceId, OwnerUserId = first.OwnerUserId, SortOrder = first.SortOrder + 2, CreatedAt = DateTime.UtcNow };
+        var second = new Project { Name = Second, OwnerUserId = first.OwnerUserId, SortOrder = first.SortOrder + 1, CreatedAt = DateTime.UtcNow };
+        var third = new Project { Name = Third, OwnerUserId = first.OwnerUserId, SortOrder = first.SortOrder + 2, CreatedAt = DateTime.UtcNow };
         db.Projects.AddRange(second, third);
         await db.SaveChangesAsync();
         return (second.Id, third.Id);

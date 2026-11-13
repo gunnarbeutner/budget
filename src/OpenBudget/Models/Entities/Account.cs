@@ -7,7 +7,7 @@ namespace OpenBudget.Models;
 
 /// <summary>
 /// imported account imported into our DB. <see cref="Id"/> is namespaced via
-/// <c>SourceScope.Namespace(SourceId, rowid)</c> to avoid collisions across sources.
+/// <c>RowIds.Namespace(idSpace, rowid)</c> in its owner's id space to avoid collisions between users.
 /// </summary>
 [Table("accounts")]
 public class Account
@@ -15,7 +15,10 @@ public class Account
     [Key]
     public long Id { get; set; }
 
-    public int SourceId { get; set; }
+    /// <summary>The owning user (AppUser.Id).</summary>
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
 
     [Column("name")]
     public string? Name { get; set; }

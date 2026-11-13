@@ -8,11 +8,11 @@ namespace OpenBudget.Services;
 public sealed record StructureTakeoverResult(int AccountGroups, int Accounts, int CategoryGroups, int Categories);
 
 /// <summary>
-/// Hands a source's structure to OpenBudget once its MoneyMoney import from the browser finished. The structure
+/// Hands a user's structure to OpenBudget once their MoneyMoney import from the browser finished. The structure
 /// (account groups and accounts' names/grouping/order, category groups and categories with names, colors, MoneyMoney's
 /// rule text, order) already lives in OpenBudget's own rows - the import writes it there - so the takeover freezes it:
 /// it gives every sibling an explicit sort position (MoneyMoney leaves some empty and relies on name order) and marks the
-/// source via <see cref="ImportSource.StructureTakenOverAt"/>. The MoneyMoney import checks that mark and from then on only
+/// user via <see cref="UserDataState.StructureTakenOverAt"/>. The MoneyMoney import checks that mark and from then on only
 /// refreshes transactions and balances of MoneyMoney-owned accounts; ids stay stable, so projects, budgets and tracking
 /// keep working.
 /// </summary>
@@ -33,41 +33,33 @@ public sealed class StructureTakeoverService
     }
 
     /// <summary>
-    /// Takes the structure of the source over (null when it already was). Runs on the context the factory gives; the
+    /// Takes the structure of the user's data over (null when it already was). Runs on the context the factory gives; the
     /// browser import passes the system factory.
     /// </summary>
-    public async Task<StructureTakeoverResult?> TakeOverAsync(int sourceId, CancellationToken ct = default)
+    public async Task<StructureTakeoverResult?> TakeOverAsync(string ownerId, CancellationToken ct = default)
     {
-        string name;
-        await using (var probe = await _dbFactory.CreateDbContextAsync(ct))
-        {
-            name = await probe.ImportSources.Where(s => s.Id == sourceId).Select(s => s.Name).FirstOrDefaultAsync(ct)
-                ?? throw new AccessDeniedException("Source not found.");
-        }
-
         // An upload in flight must finish first, otherwise it could replace the structure we are freezing.
         var result = _importer == null
-            ? await TakeOverCoreAsync(sourceId, ct)
-            : await _importer.WithSourceLockAsync(name, () => TakeOverCoreAsync(sourceId, ct), ct);
+            ? await TakeOverCoreAsync(ownerId, ct)
+            : await _importer.WithOwnerLockAsync(ownerId, () => TakeOverCoreAsync(ownerId, ct), ct);
         if (result != null)
         {
-            _notifier.Publish(new DataChange(DataArea.Sources, SourceId: sourceId), _origin.Id);
-            _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: sourceId), _origin.Id);
+            _notifier.Publish(new DataChange(DataArea.ImportState, OwnerUserId: ownerId), _origin.Id);
+            _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: ownerId), _origin.Id);
         }
         return result;
     }
 
-    private async Task<StructureTakeoverResult?> TakeOverCoreAsync(int sourceId, CancellationToken ct)
+    private async Task<StructureTakeoverResult?> TakeOverCoreAsync(string ownerId, CancellationToken ct)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var source = await db.ImportSources.FirstOrDefaultAsync(s => s.Id == sourceId, ct)
-            ?? throw new AccessDeniedException("Source not found.");
+        var source = await RowIds.StateAsync(db, ownerId, ct);
         if (source.StructureTakenOverAt != null) return null;
 
-        var accountGroups = await db.AccountGroups.Where(g => g.SourceId == sourceId).ToListAsync(ct);
-        var accounts = await db.Accounts.Where(a => a.SourceId == sourceId).ToListAsync(ct);
-        var categoryGroups = await db.CategoryGroups.Where(g => g.SourceId == sourceId).ToListAsync(ct);
-        var categories = await db.Categories.Where(c => c.SourceId == sourceId).ToListAsync(ct);
+        var accountGroups = await db.AccountGroups.Where(g => g.OwnerUserId == ownerId).ToListAsync(ct);
+        var accounts = await db.Accounts.Where(a => a.OwnerUserId == ownerId).ToListAsync(ct);
+        var categoryGroups = await db.CategoryGroups.Where(g => g.OwnerUserId == ownerId).ToListAsync(ct);
+        var categories = await db.Categories.Where(c => c.OwnerUserId == ownerId).ToListAsync(ct);
 
         // Account tree: groups and accounts are siblings under a group; accounts without a (known) group stay ungrouped.
         var knownAccountGroups = accountGroups.Select(g => g.Id).ToHashSet();

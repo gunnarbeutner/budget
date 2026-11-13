@@ -4,8 +4,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// imported transaction imported into our DB. <see cref="Id"/> encodes the source via
-/// <c>SourceScope.Namespace(SourceId, rowid)</c>; <see cref="SourceId"/> is duplicated as a
+/// imported transaction imported into our DB. <see cref="Id"/> lies in the owner's id space via
+/// <c>RowIds.Namespace(OwnerUserId, rowid)</c>; <see cref="OwnerUserId"/> is duplicated as a
 /// real column for indexed filtering.
 /// </summary>
 [Table("transactions")]
@@ -14,7 +14,10 @@ public class Transaction
     [Key]
     public long Id { get; set; }
 
-    public int SourceId { get; set; }
+    /// <summary>The owning user (AppUser.Id).</summary>
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
 
     [Column("local_account_key")]
     public long? AccountId { get; set; }

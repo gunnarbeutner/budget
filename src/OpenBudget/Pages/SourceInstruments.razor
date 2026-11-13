@@ -1,5 +1,4 @@
-@page "/portfolio-performance/{SourceId:int}/instruments"
-@attribute [RequireSourceOwner]
+@page "/portfolio-performance/instruments"
 @inherits DataChangeAwareComponent
 @using OpenBudget.Models
 @using OpenBudget.Services
@@ -7,15 +6,14 @@
 @inject ProjectService ProjectService
 @inject PortfolioService PortfolioService
 @inject NavigationManager Navigation
-@inject SourceService SourceService
 @inject IStringLocalizer<SourceInstruments> L
 
 <SettingsShell Active="portfolio-performance" Bare="@Embedded">
 @if (!Embedded)
 {
-<PageTitle>@(sourceName != null ? L["PageTitle_WithSource", sourceName] : L["PageTitle"])</PageTitle>
+<PageTitle>@L["PageTitle"]</PageTitle>
 
-<PageHeader Title="@L["Heading"]" Subtitle="@sourceName">
+<PageHeader Title="@L["Heading"]">
     <Actions>
         <a class="ob-btn" href="/portfolio-performance"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a>
     </Actions>
@@ -25,10 +23,6 @@
 @if (loading)
 {
     <div class="skeleton skeleton-block" aria-busy="true"></div>
-}
-else if (notFound)
-{
-    <div class="alert alert-warning">@L["NotFound"]</div>
 }
 else if (mapping.Instruments.Count == 0)
 {
@@ -72,33 +66,33 @@ else
 
 @code {
 
-    [Parameter] public int SourceId { get; set; }
+    /// <summary>Whose data to show (the Portfolio view passes its project's owner); the signed-in user when not set.</summary>
+    [Parameter] public string OwnerUserId { get; set; } = string.Empty;
     /// <summary>Shown inside the Portfolio view (no page title, header or back link, no redirect).</summary>
     [Parameter] public bool Embedded { get; set; }
 
-    // The source-level page moved into the Portfolio view of a project that uses the source; it stays here only
-    // when no project on the source has a depot (reached from the Sources page).
+    // The page moved into the Portfolio view of a project with the user's depots; it stays here only when no project
+    // of theirs has a depot.
     private async Task<bool> RedirectToPortfolioAsync(string tab)
     {
-        if (Embedded || await PortfolioService.FindPortfolioProjectAsync(SourceId) is not { } pid) return false;
+        if (Embedded || await PortfolioService.FindPortfolioProjectAsync(OwnerUserId) is not { } pid) return false;
         Navigation.NavigateTo($"/projects/{pid}/portfolio?tab={tab}", replace: true);
         return true;
     }
 
     private InstrumentMapping mapping = new();
-    private string? sourceName;
     private bool loading = true;
-    private bool notFound;
-    private int _loadedSourceId = -1;
+    private string? _loadedOwnerId;
 
     protected override bool IsRelevantChange(DataChange change) =>
-        change.Area is DataArea.ImportedData or DataArea.Sources && (change.SourceId == null || change.SourceId == SourceId);
+        change.Area is DataArea.ImportedData or DataArea.ImportState && (change.OwnerUserId == null || change.OwnerUserId == OwnerUserId);
     protected override Task ReloadAfterChangeAsync() => LoadAsync();
 
     protected override async Task OnParametersSetAsync()
     {
-        if (_loadedSourceId == SourceId) return;
-        _loadedSourceId = SourceId;
+        if (OwnerUserId.Length == 0) OwnerUserId = (await Access.GetAsync()).UserId ?? string.Empty;
+        if (OwnerUserId.Length == 0 || _loadedOwnerId == OwnerUserId) return;
+        _loadedOwnerId = OwnerUserId;
         if (await RedirectToPortfolioAsync("positions")) return;
         await LoadAsync();
     }
@@ -106,17 +100,13 @@ else
     private async Task LoadAsync()
     {
         loading = true;
-        var sources = await ProjectService.GetAllSourcesAsync();
-        var source = sources.FirstOrDefault(s => s.Id == SourceId);
-        if (source == null) { notFound = true; loading = false; return; }
-        sourceName = (await SourceService.GetLabelsAsync([source.Id])).GetValueOrDefault(source.Id);
-        mapping = await Mapping.GetAsync(SourceId);
+        mapping = await Mapping.GetAsync(OwnerUserId);
         loading = false;
     }
 
     private async Task OnLinkChanged(string ppUuid, object? value)
     {
-        await Mapping.SaveLinkAsync(SourceId, ppUuid, value?.ToString());
-        mapping = await Mapping.GetAsync(SourceId);
+        await Mapping.SaveLinkAsync(OwnerUserId, ppUuid, value?.ToString());
+        mapping = await Mapping.GetAsync(OwnerUserId);
     }
 }

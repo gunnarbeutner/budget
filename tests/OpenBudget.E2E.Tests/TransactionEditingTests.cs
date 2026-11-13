@@ -58,12 +58,12 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         // the sync also removed a row (a pending booking that went away): the list shrinks under the open view
         await using (var db = await Factory.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
         {
-            var gone = await db.Transactions.Where(t => t.SourceId == E2ESeed.SourceId && t.CategoryId == null).OrderBy(t => t.Id).FirstAsync();
+            var gone = await db.Transactions.Where(t => t.OwnerUserId == E2ESeed.OwnerUserId && t.CategoryId == null).OrderBy(t => t.Id).FirstAsync();
             db.Transactions.Remove(gone);
             await db.SaveChangesAsync();
         }
         var notifications = Factory.BrowserHostServices.GetRequiredService<ChangeNotificationService>();
-        for (var i = 0; i < 4; i++) notifications.Publish(new DataChange(DataArea.ImportedData, SourceId: E2ESeed.SourceId));
+        for (var i = 0; i < 4; i++) notifications.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: E2ESeed.OwnerUserId));
         await Page.WaitForTimeoutAsync(1500);
 
         Assert.That(await Page.EvaluateAsync<bool>("() => window.__sk"), Is.False, "the list was replaced by the loading skeleton");

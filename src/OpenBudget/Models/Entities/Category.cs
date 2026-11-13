@@ -5,7 +5,7 @@ namespace OpenBudget.Models;
 
 /// <summary>
 /// imported category imported into our DB. <see cref="Id"/> is namespaced via
-/// <c>SourceScope.Namespace(SourceId, rowid)</c>; <see cref="GroupId"/> uses the same
+/// <c>RowIds.Namespace(OwnerUserId, rowid)</c>; <see cref="GroupId"/> uses the same
 /// namespacing so it resolves into <see cref="CategoryGroup"/> within the same source.
 /// </summary>
 [Table("categories")]
@@ -14,7 +14,10 @@ public class Category
     [Key]
     public long Id { get; set; }
 
-    public int SourceId { get; set; }
+    /// <summary>The owning user (AppUser.Id).</summary>
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
 
     [Column("name")]
     public string? Name { get; set; }

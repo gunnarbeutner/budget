@@ -365,7 +365,7 @@
     // let the user reload (discarding edits) on their terms.
     protected override bool AutoReloadOnChange => false;
     protected override bool IsRelevantChange(DataChange change) =>
-        change.Area is DataArea.ImportedData or DataArea.Sources
+        change.Area is DataArea.ImportedData or DataArea.ImportState
         || change.ProjectId is null || change.ProjectId == budget?.ProjectId;
     protected override Task ReloadAfterChangeAsync()
     {
@@ -466,13 +466,13 @@
 
     private async Task LoadHierarchyLookups()
     {
-        var sourceId = budget?.Project?.SourceId ?? SourceScope.LegacySourceId;
-        hierarchy = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var ownerId = budget?.Project?.OwnerUserId ?? string.Empty;
+        hierarchy = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(ownerId);
         groupById = hierarchy
             .Where(c => c.ItemType == CategoryItemType.Group)
             .ToDictionary(c => c.Id, c => c.CategoryGroup);
 
-        var categories = await CategoryHierarchyService.GetAllCategoriesAsync(sourceId);
+        var categories = await CategoryHierarchyService.GetAllCategoriesAsync(ownerId);
         categoryById = categories.ToDictionary(c => c.Id, c => c);
     }
 
@@ -724,13 +724,13 @@
     {
         if (budget == null) { showRepredictDialog = false; return; }
 
-        var sourceId = budget.Project?.SourceId ?? SourceScope.LegacySourceId;
+        var ownerId = budget.Project?.OwnerUserId ?? string.Empty;
         foreach (var key in editingEntries.Keys.ToList())
         {
             var isIncome = incomeKeys.Contains(key);
             var predicted = key.ItemType == CategoryItemType.Group
-                ? await BudgetPredictionService.PredictMonthlySpendingForCategoryAsync(key.Id, budget.Year, sourceId, isIncome)
-                : await BudgetPredictionService.PredictMonthlySpendingForLeafCategoryAsync(key.Id, budget.Year, sourceId, isIncome);
+                ? await BudgetPredictionService.PredictMonthlySpendingForCategoryAsync(key.Id, budget.Year, ownerId, isIncome)
+                : await BudgetPredictionService.PredictMonthlySpendingForLeafCategoryAsync(key.Id, budget.Year, ownerId, isIncome);
             editingEntries[key] = predicted.Select(p => Math.Round(p, 2)).ToArray();
         }
         showRepredictDialog = false;

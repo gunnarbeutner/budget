@@ -58,7 +58,7 @@ public class AccessScopeTests
         Assert.Equal(new[] { "Bob Private" }, Names(await bob.Projects.GetProjectsAsync()));
         await using var db = await bob.Factory.CreateDbContextAsync();
         Assert.Equal(new[] { AccessWorld.AccountBob }, await db.Accounts.Select(a => a.Id).ToArrayAsync());
-        Assert.Empty(await db.Categories.Where(c => c.SourceId == AccessWorld.SourceAlice).ToListAsync());
+        Assert.Empty(await db.Categories.Where(c => c.OwnerUserId == AccessWorld.Alice).ToListAsync());
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class AccessScopeTests
 
         var page = await bob.TransactionQueries.QueryAsync(new TransactionQuery
         {
-            SourceId = AccessWorld.SourceAlice,
+            OwnerUserId = AccessWorld.Alice,
             Take = 50,
             Period = new TimeRangeFilter(2026, 1, 12),
         });
@@ -151,7 +151,7 @@ public class AccessScopeTests
         await using var db = await nobody.Factory.CreateDbContextAsync();
         Assert.Empty(await db.Accounts.ToListAsync());
         Assert.Empty(await db.Transactions.ToListAsync());
-        Assert.Empty(await db.ImportSources.ToListAsync());
+        Assert.Empty(await db.UserDataStates.ToListAsync());
     }
 
     [Fact]
@@ -165,18 +165,18 @@ public class AccessScopeTests
     }
 
     [Fact]
-    public async Task Unowned_sources_and_projects_are_invisible_even_to_admins()
+    public async Task Unowned_projects_and_data_are_invisible_even_to_admins()
     {
         await using var t = await AccessWorld.BuildAsync(bobOnWp: null);
-        t.Db.ImportSources.Add(new ImportSource { Id = 9, Name = "orphan" });
-        t.AddProject(9, "Orphan", sourceId: 9);
+        t.AddProject(9, "Orphan").OwnerUserId = null!;
+        t.AddAccount(AccessWorld.Id(9, 1), "Orphan account", "u-removed");
         await t.Db.SaveChangesAsync();
 
         var admin = t.ForUser(AccessWorld.Alice);   // alice is admin
 
         Assert.DoesNotContain("Orphan", Names(await admin.Projects.GetProjectsAsync()));
         await using var db = await admin.Factory.CreateDbContextAsync();
-        Assert.DoesNotContain(await db.ImportSources.ToListAsync(), s => s.Name == "orphan");
+        Assert.DoesNotContain(await db.Accounts.ToListAsync(), a => a.Name == "Orphan account");
     }
 
     // ---- Writes ----
@@ -360,74 +360,47 @@ public class AccessScopeTests
     }
 
     [Fact]
-    public async Task Creating_a_project_requires_owning_the_source_and_makes_the_creator_owner()
+    public async Task Creating_a_project_makes_the_creator_owner_and_needs_a_signed_in_user()
     {
         await using var t = await AccessWorld.BuildAsync();
         var bob = t.ForUser(AccessWorld.Bob);
 
-        var mine = await bob.Projects.CreateProjectAsync("Holiday", AccessWorld.SourceBob);
+        var mine = await bob.Projects.CreateProjectAsync("Holiday");
         Assert.Equal(AccessWorld.Bob, mine.OwnerUserId);
-        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Projects.CreateProjectAsync("Sneaky", AccessWorld.SourceAlice));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => t.ForUser(null).Projects.CreateProjectAsync("Sneaky"));
     }
 
-    // ---- Sources (owner-only) ----
+    // ---- Portfolio settings (owner-only) ----
 
     [Fact]
-    public async Task Source_pages_are_owner_only()
+    public async Task Portfolio_settings_are_owner_only()
     {
         await using var t = await AccessWorld.BuildAsync();
         var bob = t.ForUser(AccessWorld.Bob);
 
-        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Sources.DeleteSourceAsync(AccessWorld.SourceAlice));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.DepotMapping.GetAsync(AccessWorld.SourceAlice));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.DepotMapping.SaveLinkAsync(AccessWorld.SourceAlice, "x", null));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.InstrumentMapping.GetAsync(AccessWorld.SourceAlice));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.SecurityTax.GetSettingsAsync(AccessWorld.SourceAlice));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.SecurityTax.SetAsync(AccessWorld.SourceAlice, "uuid", 0, 0, null));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.DepotMapping.GetAsync(AccessWorld.Alice));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.DepotMapping.SaveLinkAsync(AccessWorld.Alice, "x", null));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.InstrumentMapping.GetAsync(AccessWorld.Alice));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.SecurityTax.GetSettingsAsync(AccessWorld.Alice));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => bob.SecurityTax.SetAsync(AccessWorld.Alice, "uuid", 0, 0, null));
         await Assert.ThrowsAsync<AccessDeniedException>(() => bob.Accounts.SetProviderAsync(AccessWorld.AccountWp, "x"));
-
-        var owned = await bob.Sources.GetOwnedSourcesAsync();
-        Assert.Equal(new[] { "bob" }, owned.Select(s => s.Name).ToArray());
-    }
-
-    [Fact]
-    public async Task Owner_can_create_a_source()
-    {
-        await using var t = await AccessWorld.BuildAsync();
-        var bob = t.ForUser(AccessWorld.Bob);
-
-        var created = await bob.Sources.CreateSourceAsync("holiday");
-        Assert.Equal(AccessWorld.Bob, created.OwnerUserId);
-        await Assert.ThrowsAsync<ArgumentException>(() => bob.Sources.CreateSourceAsync("Not A Slug"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => bob.Sources.CreateSourceAsync("alice"));   // taken
-    }
-
-    [Fact]
-    public async Task Deleting_an_owned_source_wipes_its_data()
-    {
-        await using var t = await AccessWorld.BuildAsync(bobOnWp: null);
-        var bob = t.ForUser(AccessWorld.Bob);
-        var created = await bob.Sources.CreateSourceAsync("temp");
-        Assert.True(await bob.Sources.DeleteSourceAsync(created.Id));
-        // A source that still has projects is refused.
-        Assert.False(await bob.Sources.DeleteSourceAsync(AccessWorld.SourceBob));
     }
 
     // ---- Freshness / upload time ----
 
     [Fact]
-    public async Task Viewer_sees_the_last_upload_time_but_only_visible_accounts_of_the_source()
+    public async Task Viewer_sees_the_last_upload_time_but_only_visible_accounts_of_the_owner()
     {
         await using var t = await AccessWorld.BuildAsync(ProjectRole.Viewer);
         var stamp = new DateTime(2026, 3, 11, 8, 0, 0, DateTimeKind.Utc);
         await using (var db = await t.System.CreateDbContextAsync())
         {
-            (await db.ImportSources.SingleAsync(s => s.Id == AccessWorld.SourceAlice)).LastUploadAt = stamp;
+            (await db.UserDataStates.SingleAsync(s => s.UserId == AccessWorld.Alice)).LastUploadAt = stamp;
             await db.SaveChangesAsync();
         }
 
         var freshness = await t.ForUser(AccessWorld.Bob).Freshness.GetDataFreshnessAsync();
-        var source = freshness.Single(f => f.SourceId == AccessWorld.SourceAlice);
+        var source = freshness.Single(f => f.OwnerUserId == AccessWorld.Alice);
 
         Assert.Equal(stamp, source.DbUploadedUtc);
         Assert.DoesNotContain(source.Accounts, a => a.AccountId == AccessWorld.AccountPrivate);
@@ -443,9 +416,9 @@ public class AccessScopeTests
         var scope = await t.ForUser(AccessWorld.Bob).Access.GetAsync();
 
         Assert.True(scope.IsChangeVisible(new DataChange(DataArea.Budgets, ProjectId: AccessWorld.Shared)));
-        Assert.True(scope.IsChangeVisible(new DataChange(DataArea.ImportedData, SourceId: AccessWorld.SourceAlice)));
+        Assert.True(scope.IsChangeVisible(new DataChange(DataArea.ImportedData, OwnerUserId: AccessWorld.Alice)));
         Assert.False(scope.IsChangeVisible(new DataChange(DataArea.Budgets, ProjectId: AccessWorld.Private)));
-        Assert.False(scope.IsChangeVisible(new DataChange(DataArea.ImportedData, SourceId: 99)));
+        Assert.False(scope.IsChangeVisible(new DataChange(DataArea.ImportedData, OwnerUserId: TestDb.DefaultOwner)));
         Assert.True(scope.IsChangeVisible(new DataChange(DataArea.Projects)));   // unscoped, id-less structural change
     }
 

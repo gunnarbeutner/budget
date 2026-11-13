@@ -145,14 +145,14 @@ public sealed class DepotHistoryTests
         await using var _w = w;
         var snapshot = w.BuildSnapshot([("MM Depot", null)], [], depots: ["MM Depot"]);
         await w.ImportMoneyMoneyAsync(snapshot);
-        var mmDepot = SourceScope.Namespace(BankWorld.SourceAlice, 1);
+        var mmDepot = RowIds.Namespace(BankWorld.SourceAlice, 1);
         var earlier = Noon(Day1.AddDays(-30));
         await using (var db = await w.T.System.CreateDbContextAsync())
         {
             db.PortfolioChartPoints.Add(new PortfolioChartPoint
             {
-                Id = SourceScope.Namespace(BankWorld.SourceAlice, 1),
-                SourceId = BankWorld.SourceAlice,
+                Id = RowIds.Namespace(BankWorld.SourceAlice, 1),
+                OwnerUserId = BankWorld.Alice,
                 AccountId = mmDepot,
                 Currency = "EUR",
                 Timestamp = earlier,
@@ -183,7 +183,7 @@ public sealed class DepotHistoryTests
         var refresh = new AccountRefresh(500m, [], [new RemotePosition("Example Equity Fund", null, null, null, 1m, 500m, "EUR", 500m)]);
         foreach (var (provider, n) in new[] { (AccountProviders.PortfolioPerformance, 50L), (AccountProviders.MoneyMoney, 51L) })
         {
-            var account = new Account { Id = SourceScope.Namespace(BankWorld.SourceAlice, n), SourceId = BankWorld.SourceAlice, Name = provider, Type = 7, Portfolio = 1, Currency = "EUR", Provider = provider };
+            var account = new Account { Id = RowIds.Namespace(BankWorld.SourceAlice, n), OwnerUserId = BankWorld.Alice, Name = provider, Type = 7, Portfolio = 1, Currency = "EUR", Provider = provider };
             db.Accounts.Add(account);
             await db.SaveChangesAsync();
             await DepotHistoryStore.RecordAsync(db, account, refresh, DateOnly.FromDateTime(Day1), CancellationToken.None);

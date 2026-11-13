@@ -14,7 +14,7 @@ namespace OpenBudget.E2E.Tests;
 [TestFixture]
 public sealed class RowContextMenuTests : EndToEndTestBase
 {
-    private static readonly long CashId = SourceScope.Namespace(E2ESeed.SourceId, 7);
+    private static readonly long CashId = RowIds.Namespace(E2ESeed.IdSpace, 7);
     private const string CashName = "Example Cash";
 
     private static string GiroUrl => $"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.BankAccountId}";
@@ -29,7 +29,7 @@ public sealed class RowContextMenuTests : EndToEndTestBase
         db.Accounts.Add(new Account
         {
             Id = CashId,
-            SourceId = E2ESeed.SourceId,
+            OwnerUserId = E2ESeed.OwnerUserId,
             Name = CashName,
             Currency = "EUR",
             Type = 6,

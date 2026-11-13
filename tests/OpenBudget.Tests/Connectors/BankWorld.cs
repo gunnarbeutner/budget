@@ -41,7 +41,7 @@ internal sealed class TestClock : TimeProvider
 }
 
 /// <summary>
-/// Users alice, bob and carol; alice owns source "alice-src" (id 2), bob "bob-src" (id 3). A coordinator,
+/// Users alice, bob and carol; alice has id space 2, bob id space 3. A coordinator,
 /// secrets key, fake-bank registry and statement directory are wired over the shared in-memory database.
 /// </summary>
 internal sealed class BankWorld : IAsyncDisposable
@@ -50,7 +50,6 @@ internal sealed class BankWorld : IAsyncDisposable
     public const string Bob = "u-bob";
     public const string Carol = "u-carol";
     public const int SourceAlice = 2;
-    public const string AliceSourceName = "alice-src";
 
     private readonly List<string> _files = [];
     private readonly BankWorldExtras _extras;
@@ -92,8 +91,8 @@ internal sealed class BankWorld : IAsyncDisposable
         t.AddUser(Alice, "alice");
         t.AddUser(Bob, "bob");
         t.AddUser(Carol, "carol");
-        t.Db.ImportSources.Add(new ImportSource { Id = SourceAlice, Name = AliceSourceName, OwnerUserId = Alice, UploadToken = "tok-a" });
-        t.Db.ImportSources.Add(new ImportSource { Id = 3, Name = "bob-src", OwnerUserId = Bob, UploadToken = "tok-b" });
+        t.AddIdSpace(Alice, SourceAlice);
+        t.AddIdSpace(Bob, 3);
         await t.Db.SaveChangesAsync();
         var options = new BankSyncOptions { ChallengeTimeout = challengeTimeout ?? TimeSpan.FromSeconds(30), DefaultPollInterval = TimeSpan.FromMilliseconds(20) };
         var clock = new TestClock();
@@ -114,7 +113,7 @@ internal sealed class BankWorld : IAsyncDisposable
         var access = new AccessScopeProvider(T.System, new FixedCurrentUser(userId), T.Notifier);
         var factory = new ScopedDbContextFactory(T.System, access);
         var origin = new ChangeOrigin();
-        return new BankLoginService(factory, access, new SourceService(factory, T.Notifier, origin), new AccountService(factory),
+        return new BankLoginService(factory, access, new AccountService(factory),
             Coordinator, Registry, Secrets, StatementStore, T.Notifier, origin);
     }
 
@@ -262,7 +261,7 @@ internal sealed class BankWorld : IAsyncDisposable
 
     public Task<ImportResult> ImportMoneyMoneyAsync(string snapshot) =>
         new MoneyMoneyImportService(T.Factory, T.Notifier, NullLogger<MoneyMoneyImportService>.Instance)
-            .ImportFromFileAsync(AliceSourceName, snapshot, CancellationToken.None);
+            .ImportFromFileAsync(Alice, snapshot, CancellationToken.None);
 
     public async ValueTask DisposeAsync()
     {

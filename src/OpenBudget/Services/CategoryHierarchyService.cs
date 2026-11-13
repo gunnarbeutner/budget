@@ -18,10 +18,10 @@ public sealed class CategoryHierarchyService : IDisposable
 
     // Per-instance cache of GetAllCategoriesWithChildCountsAsync results. The hierarchy was
     // being fetched ~5× per dashboard render before this. The service is scoped per Blazor
-    // circuit, but the cache must be invalidated when another session imports/deletes a source
+    // circuit, but the cache must be invalidated when another session imports data
     // (see OnDataChanged) — that notification fires on the *publishing* circuit's thread, so a
     // ConcurrentDictionary is used rather than a plain one to make clear-vs-read race-safe.
-    private readonly ConcurrentDictionary<int, List<CategoryGroupWithChildCount>> _hierarchyBySourceId = new();
+    private readonly ConcurrentDictionary<string, List<CategoryGroupWithChildCount>> _hierarchyByOwner = new(StringComparer.Ordinal);
 
     public CategoryHierarchyService(IDbContextFactory<BudgetDbContext> dbFactory, ChangeNotificationService notifier)
     {
@@ -30,14 +30,14 @@ public sealed class CategoryHierarchyService : IDisposable
         _notifier.Changed += OnDataChanged;
     }
 
-    // A imported import or source deletion in any session changes the category hierarchy, so
+    // An import in any session changes the category hierarchy, so
     // drop the cache; the next read for that circuit refetches the current structure.
     // origin is unused: a cache invalidation should happen regardless of which circuit triggered
-    // the change (and Imported-data/Sources changes originate from the API import, with no circuit).
+    // the change (and imported-data/import-state changes originate from the API import, with no circuit).
     private void OnDataChanged(DataChange change, Guid? origin)
     {
-        if (change.Area is DataArea.ImportedData or DataArea.Sources)
-            _hierarchyBySourceId.Clear();
+        if (change.Area is DataArea.ImportedData or DataArea.ImportState)
+            _hierarchyByOwner.Clear();
     }
 
     public void Dispose()
@@ -47,38 +47,38 @@ public sealed class CategoryHierarchyService : IDisposable
     }
 
     /// <summary>All leaf categories (categories) for a source, name-ordered.</summary>
-    public async Task<List<Category>> GetAllCategoriesAsync(int sourceId)
+    public async Task<List<Category>> GetAllCategoriesAsync(string ownerId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         return await db.Categories
             .AsNoTracking()
-            .Where(c => c.SourceId == sourceId)
+            .Where(c => c.OwnerUserId == ownerId)
             .OrderBy(c => c.Name)
             .ToListAsync();
     }
 
     /// <summary>
     /// Unified hierarchy: groups + leaf categories tagged via <see cref="CategoryGroupWithChildCount.ItemType"/>,
-    /// with each entry's parent and direct-child counts. The source's sentinel rowid-0/1
+    /// with each entry's parent and direct-child counts. MoneyMoney's sentinel rowid-0/1
     /// "Umbuchungen" root is filtered out so it doesn't pollute selection trees.
     /// </summary>
-    public async Task<List<CategoryGroupWithChildCount>> GetAllCategoriesWithChildCountsAsync(int sourceId)
+    public async Task<List<CategoryGroupWithChildCount>> GetAllCategoriesWithChildCountsAsync(string? ownerId)
     {
-        if (_hierarchyBySourceId.TryGetValue(sourceId, out var cached)) return cached;
-
-        var sentinelRoot = SourceScope.SentinelRoot(sourceId);
+        if (ownerId == null) return [];
+        if (_hierarchyByOwner.TryGetValue(ownerId, out var cached)) return cached;
 
         await using var db = await _dbFactory.CreateDbContextAsync();
+        var sentinelRoot = await RowIds.SentinelRootAsync(db, ownerId);
 
         var allCategoryGroups = await db.CategoryGroups
             .AsNoTracking()
-            .Where(cg => cg.SourceId == sourceId)
+            .Where(cg => cg.OwnerUserId == ownerId)
             .OrderBy(cg => cg.Name)
             .ToListAsync();
 
         var allCategories = await db.Categories
             .AsNoTracking()
-            .Where(c => c.SourceId == sourceId)
+            .Where(c => c.OwnerUserId == ownerId)
             .OrderBy(c => c.Name)
             .ToListAsync();
 
@@ -86,7 +86,7 @@ public sealed class CategoryHierarchyService : IDisposable
 
         foreach (var categoryGroup in allCategoryGroups)
         {
-            // Skip the source's sentinel root category group (no name, holds "Umbuchungen").
+            // Skip MoneyMoney's sentinel root category group (no name, holds "Umbuchungen").
             if (categoryGroup.Id == sentinelRoot && string.IsNullOrEmpty(categoryGroup.Name))
                 continue;
 
@@ -121,13 +121,12 @@ public sealed class CategoryHierarchyService : IDisposable
             });
         }
 
-        _hierarchyBySourceId[sourceId] = result;
+        _hierarchyByOwner[ownerId] = result;
         return result;
     }
 
     /// <summary>
-    /// Single category-group lookup by namespaced ID. The ID is unique across sources because
-    /// of namespacing, so no source filter is needed at the boundary.
+    /// Single category-group lookup by ID. IDs are unique across users (their id spaces), so no owner filter is needed at the boundary.
     /// </summary>
     public async Task<CategoryGroup?> GetCategoryWithSubCategoriesAsync(long categoryGroupId)
     {

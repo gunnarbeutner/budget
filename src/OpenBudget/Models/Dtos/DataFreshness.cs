@@ -2,9 +2,8 @@ namespace OpenBudget.Models;
 
 public class DataFreshness
 {
-    public int SourceId { get; set; }
-    public string SourceName { get; set; } = string.Empty;
-    /// <summary>When this source was last uploaded via the upload endpoint. Null when nothing has been imported yet.</summary>
+    public string OwnerUserId { get; set; } = string.Empty;
+    /// <summary>When the owner's MoneyMoney data was last imported. Null when nothing has been imported yet.</summary>
     public DateTime? DbUploadedUtc { get; set; }
     public List<AccountFreshness> Accounts { get; set; } = new();
 

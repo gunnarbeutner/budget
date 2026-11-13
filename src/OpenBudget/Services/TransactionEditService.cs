@@ -8,7 +8,7 @@ public sealed record TransactionEditSnapshot(
     long Id, long? CategoryId, string CategorySetBy, int? RuleId, string? Note, bool Checked, bool IsNew);
 
 /// <summary>Everything needed to undo one edit (a bulk edit is one receipt = one undo step).</summary>
-public sealed record EditReceipt(IReadOnlyList<TransactionEditSnapshot> Before, int SourceId);
+public sealed record EditReceipt(IReadOnlyList<TransactionEditSnapshot> Before, string OwnerUserId);
 
 /// <summary>
 /// Outcome of an edit. <see cref="Changed"/> rows were written, <see cref="Skipped"/> ones were left alone
@@ -43,10 +43,10 @@ public sealed class TransactionEditService
         EditAsync(ids, validate: async (db, rows) =>
         {
             if (categoryId is not { } id) return;
-            var category = await db.Categories.AsNoTracking().Where(c => c.Id == id).Select(c => new { c.SourceId, c.Name }).FirstOrDefaultAsync(ct)
+            var category = await db.Categories.AsNoTracking().Where(c => c.Id == id).Select(c => new { c.OwnerUserId, c.Name }).FirstOrDefaultAsync(ct)
                 ?? throw new InvalidOperationException("Unknown category.");
             if (string.IsNullOrEmpty(category.Name)) throw new InvalidOperationException("That category cannot be assigned.");
-            if (rows.Any(r => r.SourceId != category.SourceId)) throw new InvalidOperationException("The category belongs to another source.");
+            if (rows.Any(r => r.OwnerUserId != category.OwnerUserId)) throw new InvalidOperationException("The category belongs to another source.");
         }, apply: t =>
         {
             if (t.CategoryId == categoryId && t.CategorySetBy == TransactionCategorySource.Manual) return false;
@@ -100,13 +100,13 @@ public sealed class TransactionEditService
     public async Task MarkViewedAsync(IReadOnlyCollection<long> ids, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var sources = new HashSet<int>();
+        var sources = new HashSet<string>(StringComparer.Ordinal);
         foreach (var chunk in ids.Chunk(Chunk))
         {
             var part = chunk;
             var rows = await db.Transactions.Where(t => part.Contains(t.Id) && t.IsNew).ToListAsync(ct);
             var editable = await EditableAsync(db, rows, ct);
-            foreach (var t in editable) { t.IsNew = false; sources.Add(t.SourceId); }
+            foreach (var t in editable) { t.IsNew = false; sources.Add(t.OwnerUserId); }
         }
         if (db.ChangeTracker.HasChanges())
         {
@@ -155,7 +155,7 @@ public sealed class TransactionEditService
         if (editable.Count > 0)
         {
             await db.SaveChangesAsync(ct);
-            Publish(receipt.SourceId);
+            Publish(receipt.OwnerUserId);
         }
         return editable.Count;
     }
@@ -191,9 +191,9 @@ public sealed class TransactionEditService
         if (before.Count == 0) return new EditResult(null, 0, distinct);
 
         await db.SaveChangesAsync(ct);
-        var sourceId = editable[0].SourceId;
-        foreach (var s in editable.Select(t => t.SourceId).Distinct()) Publish(s);
-        return new EditResult(new EditReceipt(before, sourceId), before.Count, distinct - before.Count);
+        var ownerId = editable[0].OwnerUserId;
+        foreach (var s in editable.Select(t => t.OwnerUserId).Distinct(StringComparer.Ordinal)) Publish(s);
+        return new EditResult(new EditReceipt(before, ownerId), before.Count, distinct - before.Count);
     }
 
     /// <summary>The subset of <paramref name="rows"/> the current user may edit (provider rule + role).</summary>
@@ -208,10 +208,10 @@ public sealed class TransactionEditService
                 providers[a.Id] = a.Provider;
         }
         return rows
-            .Where(r => TransactionEditRules.Check(db.Scope, r.SourceId, r.AccountId,
+            .Where(r => TransactionEditRules.Check(db.Scope, r.OwnerUserId, r.AccountId,
                 r.AccountId is { } id && providers.TryGetValue(id, out var p) ? p : null) == EditBlock.None)
             .ToList();
     }
 
-    private void Publish(int sourceId) => _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: sourceId), _origin.Id);
+    private void Publish(string ownerId) => _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: ownerId), _origin.Id);
 }

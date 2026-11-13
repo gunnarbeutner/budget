@@ -5,7 +5,7 @@ namespace OpenBudget.Models;
 
 /// <summary>
 /// One point in the source's <c>portfolio_chart</c>: the value of a single security within a
-/// depot at a point in time. <see cref="Id"/> is namespaced via <c>SourceScope.Namespace</c>
+/// depot at a point in time. <see cref="Id"/> is namespaced via <c>RowIds.Namespace</c>
 /// from the source rowid.
 ///
 /// <see cref="SecurityId"/> intentionally has no FK to <see cref="Holding"/>: the chart spans
@@ -18,7 +18,10 @@ public class PortfolioChartPoint
     [Key]
     public long Id { get; set; }
 
-    public int SourceId { get; set; }
+    /// <summary>The owning user (AppUser.Id).</summary>
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
 
     /// <summary>Source <c>portfolio_chart.account_key</c>, namespaced to <see cref="Account.Id"/>.</summary>
     [Column("account_key")]

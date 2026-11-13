@@ -32,20 +32,20 @@ public class PortfolioService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var holdings = await db.Holdings
             .AsNoTracking()
-            .Where(h => h.SourceId == project.SourceId && h.AccountId == accountId)
+            .Where(h => h.OwnerUserId == project.OwnerUserId && h.AccountId == accountId)
             .ToListAsync(ct);
         if (holdings.Count == 0) return null;
 
-        return await BuildAsync(db, project.SourceId, holdings, accountId, merge: false, ct);
+        return await BuildAsync(db, project.OwnerUserId ?? string.Empty, holdings, accountId, merge: false, ct);
     }
 
     /// <summary>
-    /// The first project (in the user's order) on <paramref name="sourceId"/> that has a depot account assigned — the
-    /// Portfolio view the source's depot / instrument / tax pages send the user to. Null when there is none.
+    /// The first project (in the user's order) on <paramref name="ownerId"/> that has a depot account assigned — the
+    /// Portfolio view the owner's depot / instrument / tax pages send the user to. Null when there is none.
     /// </summary>
-    public async Task<int?> FindPortfolioProjectAsync(int sourceId, CancellationToken ct = default)
+    public async Task<int?> FindPortfolioProjectAsync(string ownerId, CancellationToken ct = default)
     {
-        var projects = (await _projects.GetProjectsAsync()).Where(p => p.SourceId == sourceId).ToList();
+        var projects = (await _projects.GetProjectsAsync()).Where(p => p.OwnerUserId == ownerId).ToList();
         if (projects.Count == 0) return null;
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var ids = projects.Select(p => p.Id).ToList();
@@ -73,11 +73,11 @@ public class PortfolioService
 
         var holdings = await db.Holdings
             .AsNoTracking()
-            .Where(h => h.SourceId == project.SourceId && depotIds.Contains(h.AccountId))
+            .Where(h => h.OwnerUserId == project.OwnerUserId && depotIds.Contains(h.AccountId))
             .ToListAsync(ct);
         if (holdings.Count == 0) return null;
 
-        return await BuildAsync(db, project.SourceId, holdings, accountId: 0, merge: true, ct);
+        return await BuildAsync(db, project.OwnerUserId ?? string.Empty, holdings, accountId: 0, merge: true, ct);
     }
 
     /// <summary>The depot (portfolio) accounts assigned to a project.</summary>
@@ -110,7 +110,7 @@ public class PortfolioService
         if (project == null) return result;
 
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var rows = await LoadTaxonomyRowsAsync(db, project.SourceId, taxonomyKeys, taxonomyName, ct);
+        var rows = await LoadTaxonomyRowsAsync(db, project.OwnerUserId ?? string.Empty, taxonomyKeys, taxonomyName, ct);
 
         foreach (var g in rows.GroupBy(TaxonomyKeyOf, StringComparer.Ordinal))
         {
@@ -127,7 +127,7 @@ public class PortfolioService
     }
 
     /// <summary>
-    /// Catalogued PortfolioPerformance securities for the project's source that aren't already in
+    /// Catalogued PortfolioPerformance securities of the project's owner that aren't already in
     /// <paramref name="excludeIsins"/> (i.e. not currently held), ordered by name — the candidates a
     /// user can add to a rebalance to plan buying into a position they don't yet own.
     /// </summary>
@@ -141,7 +141,7 @@ public class PortfolioService
         var exclude = new HashSet<string>(excludeIsins, StringComparer.Ordinal);
         var rows = await db.PpSecurities
             .AsNoTracking()
-            .Where(s => s.SourceId == project.SourceId && s.Isin != "")   // adding non-held is ISIN-keyed
+            .Where(s => s.OwnerUserId == project.OwnerUserId && s.Isin != "")   // adding non-held is ISIN-keyed
             .OrderBy(s => s.Name)
             .ToListAsync(ct);
 
@@ -174,12 +174,12 @@ public class PortfolioService
 
         // The PP depots linked to those imported depots.
         var ppUuids = await db.PpPortfolioLinks
-            .Where(l => l.SourceId == project.SourceId && depotIds.Contains(l.AccountId))
+            .Where(l => l.OwnerUserId == project.OwnerUserId && depotIds.Contains(l.AccountId))
             .Select(l => l.PpPortfolioUuid).ToListAsync(ct);
         if (ppUuids.Count == 0) return empty;
 
         var lots = await db.PpLots.AsNoTracking()
-            .Where(l => l.SourceId == project.SourceId && l.Isin != "" && ppUuids.Contains(l.PortfolioUuid))
+            .Where(l => l.OwnerUserId == project.OwnerUserId && l.Isin != "" && ppUuids.Contains(l.PortfolioUuid))
             .ToListAsync(ct);
 
         return lots
@@ -210,7 +210,7 @@ public class PortfolioService
         var empty = new Dictionary<string, TaxProfile>(StringComparer.Ordinal);
         var project = await _projects.GetProjectAsync(projectId);
         if (project == null) return empty;
-        int sourceId = project.SourceId;
+        string ownerId = project.OwnerUserId ?? string.Empty;
 
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var assignedIds = await db.ProjectAccountAssignments
@@ -221,19 +221,19 @@ public class PortfolioService
             .Select(a => a.Id).ToListAsync(ct);
         if (depotIds.Count == 0) return empty;
         var ppUuids = await db.PpPortfolioLinks
-            .Where(l => l.SourceId == sourceId && depotIds.Contains(l.AccountId))
+            .Where(l => l.OwnerUserId == ownerId && depotIds.Contains(l.AccountId))
             .Select(l => l.PpPortfolioUuid).ToListAsync(ct);
         if (ppUuids.Count == 0) return empty;
 
         var lots = await db.PpLots.AsNoTracking()
-            .Where(l => l.SourceId == sourceId && ppUuids.Contains(l.PortfolioUuid)).ToListAsync(ct);
+            .Where(l => l.OwnerUserId == ownerId && ppUuids.Contains(l.PortfolioUuid)).ToListAsync(ct);
         if (lots.Count == 0) return empty;
 
         var instrumentLinks = await db.PpSecurityLinks.AsNoTracking()
-            .Where(l => l.SourceId == sourceId)
+            .Where(l => l.OwnerUserId == ownerId)
             .ToDictionaryAsync(l => l.PpSecurityUuid, l => l.MmHoldingKey, ct);
         var settings = await db.SecurityTaxSettings.AsNoTracking()
-            .Where(s => s.SourceId == sourceId).ToDictionaryAsync(s => s.SecurityUuid, ct);
+            .Where(s => s.OwnerUserId == ownerId).ToDictionaryAsync(s => s.SecurityUuid, ct);
 
         // Group lots under the rebalance position they belong to.
         var byKey = new Dictionary<string, List<OpenLot>>(StringComparer.Ordinal);
@@ -298,14 +298,14 @@ public class PortfolioService
     }
 
     private static async Task<AccountHoldings> BuildAsync(
-        BudgetDbContext db, int sourceId, List<Holding> holdings, long accountId, bool merge, CancellationToken ct)
+        BudgetDbContext db, string ownerId, List<Holding> holdings, long accountId, bool merge, CancellationToken ct)
     {
         // Total drives both the per-row share and the allocation fractions. A depot can briefly
         // total zero (all dust / a fresh empty position), so guard the divisions.
         decimal total = holdings.Sum(h => (decimal)(h.Amount ?? 0));
         var currency = holdings.FirstOrDefault(h => !string.IsNullOrEmpty(h.AmountCurrency))?.AmountCurrency ?? "EUR";
 
-        var linkedUuids = await LinkedSecurityUuidsAsync(db, sourceId, ct);
+        var linkedUuids = await LinkedSecurityUuidsAsync(db, ownerId, ct);
         string? TaxKey(Holding h) => TaxonomyKeyOf(h, linkedUuids);
         var rows = merge ? BuildMergedRows(holdings, total, TaxKey) : BuildRows(holdings, total, TaxKey);
 
@@ -324,7 +324,7 @@ public class PortfolioService
             .OrderByDescending(s => s.Value)
             .ToList();
 
-        var taxonomies = await BuildLookThroughAsync(db, sourceId, holdings, total, TaxKey, ct);
+        var taxonomies = await BuildLookThroughAsync(db, ownerId, holdings, total, TaxKey, ct);
 
         return new AccountHoldings
         {
@@ -360,11 +360,11 @@ public class PortfolioService
     internal static string TaxonomyKeyOf(SecurityTaxonomy t) =>
         !string.IsNullOrEmpty(t.Isin) ? "isin:" + t.Isin : "uuid:" + t.SecurityUuid;
 
-    // Holding key → PP security uuid from the source's manual instrument links.
-    private static async Task<Dictionary<string, string>> LinkedSecurityUuidsAsync(BudgetDbContext db, int sourceId, CancellationToken ct)
+    // Holding key → PP security uuid from the owner's manual instrument links.
+    private static async Task<Dictionary<string, string>> LinkedSecurityUuidsAsync(BudgetDbContext db, string ownerId, CancellationToken ct)
     {
         var links = await db.PpSecurityLinks.AsNoTracking()
-            .Where(l => l.SourceId == sourceId)
+            .Where(l => l.OwnerUserId == ownerId)
             .Select(l => new { l.MmHoldingKey, l.PpSecurityUuid })
             .ToListAsync(ct);
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -372,16 +372,16 @@ public class PortfolioService
         return result;
     }
 
-    // Taxonomy rows of a source for the given taxonomy keys, optionally limited to one taxonomy.
+    // Taxonomy rows of an owner for the given taxonomy keys, optionally limited to one taxonomy.
     private static async Task<List<SecurityTaxonomy>> LoadTaxonomyRowsAsync(
-        BudgetDbContext db, int sourceId, IEnumerable<string> taxonomyKeys, string? taxonomyName, CancellationToken ct)
+        BudgetDbContext db, string ownerId, IEnumerable<string> taxonomyKeys, string? taxonomyName, CancellationToken ct)
     {
         var keys = taxonomyKeys.ToHashSet(StringComparer.Ordinal);
         var isins = keys.Where(k => k.StartsWith("isin:", StringComparison.Ordinal)).Select(k => k[5..]).ToList();
         var uuids = keys.Where(k => k.StartsWith("uuid:", StringComparison.Ordinal)).Select(k => k[5..]).ToList();
         if (isins.Count == 0 && uuids.Count == 0) return new List<SecurityTaxonomy>();
         var query = db.SecurityTaxonomies.AsNoTracking()
-            .Where(t => t.SourceId == sourceId && (isins.Contains(t.Isin) || (t.Isin == "" && uuids.Contains(t.SecurityUuid))));
+            .Where(t => t.OwnerUserId == ownerId && (isins.Contains(t.Isin) || (t.Isin == "" && uuids.Contains(t.SecurityUuid))));
         if (taxonomyName != null) query = query.Where(t => t.TaxonomyName == taxonomyName);
         var rows = await query.ToListAsync(ct);
         return rows.Where(t => keys.Contains(TaxonomyKeyOf(t))).ToList();
@@ -457,7 +457,7 @@ public class PortfolioService
     /// account total. Returns only taxonomies that classify at least some value.
     /// </summary>
     private static async Task<List<TaxonomyLookThrough>> BuildLookThroughAsync(
-        BudgetDbContext db, int sourceId, List<Holding> holdings, decimal total, Func<Holding, string?> taxKey, CancellationToken ct)
+        BudgetDbContext db, string ownerId, List<Holding> holdings, decimal total, Func<Holding, string?> taxKey, CancellationToken ct)
     {
         // Value per taxonomy key within this account (same ETF held twice would sum).
         var valueByKey = new Dictionary<string, decimal>(StringComparer.Ordinal);
@@ -469,7 +469,7 @@ public class PortfolioService
         }
         if (valueByKey.Count == 0) return new List<TaxonomyLookThrough>();
 
-        var taxRows = await LoadTaxonomyRowsAsync(db, sourceId, valueByKey.Keys, taxonomyName: null, ct);
+        var taxRows = await LoadTaxonomyRowsAsync(db, ownerId, valueByKey.Keys, taxonomyName: null, ct);
         if (taxRows.Count == 0) return new List<TaxonomyLookThrough>();
 
         var result = new List<TaxonomyLookThrough>();

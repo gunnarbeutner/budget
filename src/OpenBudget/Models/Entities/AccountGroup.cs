@@ -6,7 +6,7 @@ namespace OpenBudget.Models;
 /// <summary>
 /// imported account group imported into our DB. Mirrors how <see cref="CategoryGroup"/>
 /// stores its tree: <see cref="Id"/> and <see cref="ParentGroupId"/> are namespaced via
-/// <c>SourceScope.Namespace</c> so multiple sources can coexist.
+/// <c>RowIds.Namespace</c> in its owner's id space.
 /// </summary>
 [Table("account_groups")]
 public class AccountGroup
@@ -14,7 +14,10 @@ public class AccountGroup
     [Key]
     public long Id { get; set; }
 
-    public int SourceId { get; set; }
+    /// <summary>The owning user (AppUser.Id).</summary>
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
 
     [Column("name")]
     public string? Name { get; set; }

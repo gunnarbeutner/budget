@@ -30,7 +30,7 @@ public interface ICloudFileReader
 }
 
 /// <summary>A linked file as handed to a <see cref="ICloudFileConsumer"/>.</summary>
-public sealed record CloudFileLinkInfo(int Id, string OwnerUserId, string DisplayPath, string? TargetSourceName);
+public sealed record CloudFileLinkInfo(int Id, string OwnerUserId, string DisplayPath);
 
 /// <summary>
 /// Receives each new version of a linked cloud file found by <see cref="CloudFileSyncCoordinator"/>. All registered

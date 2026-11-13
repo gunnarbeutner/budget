@@ -4,7 +4,7 @@ namespace OpenBudget.Services;
 
 /// <summary>
 /// The data areas a change can touch. Subscribers filter on this (plus the optional
-/// project/source scope on <see cref="DataChange"/>) to decide whether a change is theirs to
+/// project/owner scope on <see cref="DataChange"/>) to decide whether a change is theirs to
 /// care about.
 /// </summary>
 public enum DataArea
@@ -17,9 +17,9 @@ public enum DataArea
     Budgets,
     /// <summary>Project tracking-item rows specifically (a finer signal than Projects).</summary>
     TrackingItems,
-    /// <summary>import source registrations (add / delete).</summary>
-    Sources,
-    /// <summary>Imported imported transactions/categories/accounts for a source.</summary>
+    /// <summary>A user's import state (MoneyMoney import progress, Get started).</summary>
+    ImportState,
+    /// <summary>Imported transactions/categories/accounts of a user.</summary>
     ImportedData,
     /// <summary>A bank login's sync progress, challenge or settings changed (carries the owner's user id).</summary>
     BankSync,
@@ -28,13 +28,13 @@ public enum DataArea
 }
 
 /// <summary>
-/// A single change committed somewhere in the app. <see cref="ProjectId"/> / <see cref="SourceId"/>
-/// are set when the change is scoped to one project or source so subscribers can ignore changes
+/// A single change committed somewhere in the app. <see cref="ProjectId"/> / <see cref="OwnerUserId"/>
+/// are set when the change is scoped to one project or owner so subscribers can ignore changes
 /// to data they aren't showing; null means "applies broadly within this area". <see cref="UserId"/>
 /// restricts a change to one user's sessions (bank sync progress is personal).
 /// </summary>
 [StructLayout(LayoutKind.Auto)]
-public readonly record struct DataChange(DataArea Area, int? ProjectId = null, int? SourceId = null, string? UserId = null);
+public readonly record struct DataChange(DataArea Area, int? ProjectId = null, string? OwnerUserId = null, string? UserId = null);
 
 /// <summary>
 /// Per-circuit identity stamped onto the changes a circuit publishes. A component compares an

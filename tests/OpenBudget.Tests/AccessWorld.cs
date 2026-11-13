@@ -4,8 +4,8 @@ using OpenBudget.Services;
 namespace OpenBudget.Tests;
 
 /// <summary>
-/// A two-user world mirroring prod: user "alice" owns source 2 with four projects (Shared, a private
-/// one, and a property sub-project of Shared), user "bob" owns source 3 with one project. Each project
+/// A two-user world mirroring prod: user "alice" (id space 2) owns four projects (Shared, a private
+/// one, and a property sub-project of Shared), user "bob" (id space 3) one project. Each project
 /// has its own account, and every account has one March-2026 expense in the same tracked category.
 /// </summary>
 internal static class AccessWorld
@@ -21,7 +21,7 @@ internal static class AccessWorld
     public const int Property = 3;      // sub-project of Shared
     public const int BobProject = 4;
 
-    public static long Id(int source, int row) => SourceScope.Namespace(source, row);
+    public static long Id(int source, int row) => RowIds.Namespace(source, row);
 
     public static long SharedGroup => Id(SourceAlice, 100);
     public static long SharedLeaf => Id(SourceAlice, 200);
@@ -39,24 +39,24 @@ internal static class AccessWorld
         var t = new TestDb();
         t.AddUser(Alice, "alice", admin: true);
         t.AddUser(Bob, "bob");
-        t.Db.ImportSources.Add(new ImportSource { Id = SourceAlice, Name = "alice", OwnerUserId = Alice, UploadToken = "tok-alice" });
-        t.Db.ImportSources.Add(new ImportSource { Id = SourceBob, Name = "bob", OwnerUserId = Bob, UploadToken = "tok-bob" });
+        t.AddIdSpace(Alice, SourceAlice);
+        t.AddIdSpace(Bob, SourceBob);
 
-        foreach (var (source, group, leaf) in new[] { (SourceAlice, SharedGroup, SharedLeaf), (SourceBob, Id(SourceBob, 100), Id(SourceBob, 200)) })
+        foreach (var (owner, source, group, leaf) in new[] { (Alice, SourceAlice, SharedGroup, SharedLeaf), (Bob, SourceBob, Id(SourceBob, 100), Id(SourceBob, 200)) })
         {
-            t.Db.CategoryGroups.Add(new CategoryGroup { Id = group, SourceId = source, Name = $"Group{source}" });
-            t.Db.Categories.Add(new Category { Id = leaf, SourceId = source, Name = $"Leaf{source}", GroupId = group, Type = 1 });
+            t.Db.CategoryGroups.Add(new CategoryGroup { Id = group, OwnerUserId = owner, Name = $"Group{source}" });
+            t.Db.Categories.Add(new Category { Id = leaf, OwnerUserId = owner, Name = $"Leaf{source}", GroupId = group, Type = 1 });
         }
 
-        t.AddAccount(AccountWp, "Giro Shared", SourceAlice);
-        t.AddAccount(AccountPrivate, "Giro Private", SourceAlice);
-        t.AddAccount(AccountProperty, "Property Account", SourceAlice);
-        t.AddAccount(AccountBob, "Bob Giro", SourceBob);
+        t.AddAccount(AccountWp, "Giro Shared", Alice);
+        t.AddAccount(AccountPrivate, "Giro Private", Alice);
+        t.AddAccount(AccountProperty, "Property Account", Alice);
+        t.AddAccount(AccountBob, "Bob Giro", Bob);
 
-        var shared = t.AddProject(Shared, "Shared", SourceAlice); shared.OwnerUserId = Alice;
-        var priv = t.AddProject(Private, "Alice Private", SourceAlice); priv.OwnerUserId = Alice;
-        var prop = t.AddProject(Property, "Property", SourceAlice); prop.OwnerUserId = Alice; prop.ParentProjectId = Shared;
-        var bob = t.AddProject(BobProject, "Bob Private", SourceBob); bob.OwnerUserId = Bob;
+        var shared = t.AddProject(Shared, "Shared", Alice); shared.OwnerUserId = Alice;
+        var priv = t.AddProject(Private, "Alice Private", Alice); priv.OwnerUserId = Alice;
+        var prop = t.AddProject(Property, "Property", Alice); prop.OwnerUserId = Alice; prop.ParentProjectId = Shared;
+        var bob = t.AddProject(BobProject, "Bob Private", Bob); bob.OwnerUserId = Bob;
 
         foreach (var p in new[] { Shared, Private, Property })
         {
@@ -72,10 +72,10 @@ internal static class AccessWorld
         t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = BobProject, AccountId = AccountBob, Scope = AccountScope.Exclusive });
 
         var march = new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc);
-        t.AddTransaction(1, SharedLeaf, SharedCents, march, SourceAlice, AccountWp, "Payee Shared");
-        t.AddTransaction(2, SharedLeaf, PrivateCents, march, SourceAlice, AccountPrivate, "Payee Private");
-        t.AddTransaction(3, SharedLeaf, PropertyCents, march, SourceAlice, AccountProperty, "Payee Property");
-        t.AddTransaction(4, Id(SourceBob, 200), -700, march, SourceBob, AccountBob, "Payee Bob");
+        t.AddTransaction(1, SharedLeaf, SharedCents, march, Alice, AccountWp, "Payee Shared");
+        t.AddTransaction(2, SharedLeaf, PrivateCents, march, Alice, AccountPrivate, "Payee Private");
+        t.AddTransaction(3, SharedLeaf, PropertyCents, march, Alice, AccountProperty, "Payee Property");
+        t.AddTransaction(4, Id(SourceBob, 200), -700, march, Bob, AccountBob, "Payee Bob");
 
         t.AddBudget(Shared, 2026, (SharedGroup, CategoryItemType.Group, 100m));
         t.AddBudget(Private, 2026, (SharedGroup, CategoryItemType.Group, 100m));

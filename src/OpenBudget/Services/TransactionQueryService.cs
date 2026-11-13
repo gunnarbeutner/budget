@@ -26,7 +26,7 @@ public class TransactionQueryService
 
     public async Task<TransactionPage> QueryAsync(TransactionQuery query, CancellationToken ct = default)
     {
-        if (query.SourceId <= 0) throw new ArgumentException("SourceId is required.", nameof(query));
+        if (string.IsNullOrEmpty(query.OwnerUserId)) throw new ArgumentException("OwnerUserId is required.", nameof(query));
         if (query.Skip < 0) throw new ArgumentOutOfRangeException(nameof(query), "Skip must be >= 0.");
         if (query.Take <= 0) throw new ArgumentOutOfRangeException(nameof(query), "Take must be > 0.");
 
@@ -44,7 +44,7 @@ public class TransactionQueryService
             .Select(t => new
             {
                 t.Id,
-                t.SourceId,
+                t.OwnerUserId,
                 t.Timestamp,
                 t.Name,
                 t.Comment,
@@ -100,11 +100,11 @@ public class TransactionQueryService
             AccountId = r.AccountId,
             AccountName = r.AccountId.HasValue && accts.TryGetValue(r.AccountId.Value, out var acct) ? acct.Name : null,
             AccountProvider = r.AccountId.HasValue && accts.TryGetValue(r.AccountId.Value, out var prov) ? prov.Provider : null,
-            EditBlock = TransactionEditRules.Check(db.Scope, r.SourceId, r.AccountId,
+            EditBlock = TransactionEditRules.Check(db.Scope, r.OwnerUserId, r.AccountId,
                 r.AccountId.HasValue && accts.TryGetValue(r.AccountId.Value, out var p2) ? p2.Provider : null),
             CanEditBooking = r.AccountId.HasValue && accts.TryGetValue(r.AccountId.Value, out var p3) && p3.Provider == AccountProviders.Manual
-                && (db.Scope == null || db.Scope.OwnsSource(r.SourceId)),
-            SourceId = r.SourceId,
+                && (db.Scope == null || db.Scope.Owns(r.OwnerUserId)),
+            OwnerUserId = r.OwnerUserId,
             Note = r.Note,
             IsChecked = r.Checked,
             IsNew = r.IsNew,
@@ -144,7 +144,7 @@ public class TransactionQueryService
     /// </summary>
     public async Task<(int Count, decimal Sum)> QueryTotalsAsync(TransactionQuery query, CancellationToken ct = default)
     {
-        if (query.SourceId <= 0) throw new ArgumentException("SourceId is required.", nameof(query));
+        if (string.IsNullOrEmpty(query.OwnerUserId)) throw new ArgumentException("OwnerUserId is required.", nameof(query));
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var q = BuildFilteredQuery(db, query);
         var count = await q.CountAsync(ct);
@@ -159,7 +159,7 @@ public class TransactionQueryService
     /// </summary>
     public async Task<int> CountNewerThanAsync(TransactionQuery query, DateTime endExclusiveUtc, CancellationToken ct = default)
     {
-        if (query.SourceId <= 0) throw new ArgumentException("SourceId is required.", nameof(query));
+        if (string.IsNullOrEmpty(query.OwnerUserId)) throw new ArgumentException("OwnerUserId is required.", nameof(query));
         var unixSeconds = new DateTimeOffset(DateTime.SpecifyKind(endExclusiveUtc, DateTimeKind.Utc)).ToUnixTimeSeconds();
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         return await BuildFilteredQuery(db, query)
@@ -170,7 +170,7 @@ public class TransactionQueryService
     internal static IQueryable<Transaction> BuildFilteredQuery(BudgetDbContext db, TransactionQuery query)
     {
         var baseQuery = db.Transactions
-            .Where(t => t.SourceId == query.SourceId)
+            .Where(t => t.OwnerUserId == query.OwnerUserId)
             .Where(t => t.Splitted != 1);
 
         if (query.OnlyIds is { } onlyIds)
@@ -189,17 +189,17 @@ public class TransactionQueryService
 
         if (query.UncategorizedOnly)
         {
-            baseQuery = baseQuery.WhereUncategorized(db, query.SourceId);
+            baseQuery = baseQuery.WhereUncategorized(db, query.OwnerUserId);
         }
         else if (query.IncludeUncategorized && query.CategoryLeafIds is { } trackedLeaves)
         {
-            var sourceId = query.SourceId;
+            var ownerId = query.OwnerUserId;
             var leafList = trackedLeaves.ToList();
             var uncatAccounts = query.UncategorizedAccountIds is { Count: > 0 } ua ? ua.ToList() : null;
             baseQuery = baseQuery.Where(t =>
                 (t.CategoryId.HasValue && leafList.Contains(t.CategoryId.Value))
                 || ((t.CategoryId == null
-                        || !db.Categories.Any(c => c.SourceId == sourceId && c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)))
+                        || !db.Categories.Any(c => c.OwnerUserId == ownerId && c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)))
                     && (uncatAccounts == null || (t.AccountId.HasValue && uncatAccounts.Contains(t.AccountId.Value)))));
         }
         else if (query.CategoryLeafIds is { Count: > 0 } leafIds)
@@ -272,7 +272,7 @@ public class TransactionQueryService
     /// </summary>
     public async Task<List<long>> QueryIdsAsync(TransactionQuery query, int skip = 0, int take = 50_000, CancellationToken ct = default)
     {
-        if (query.SourceId <= 0) throw new ArgumentException("SourceId is required.", nameof(query));
+        if (string.IsNullOrEmpty(query.OwnerUserId)) throw new ArgumentException("OwnerUserId is required.", nameof(query));
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         return await BuildFilteredQuery(db, query)
             .OrderByDescending(t => t.Timestamp)
@@ -346,18 +346,18 @@ public class TransactionQueryService
     /// Earliest and latest transaction timestamps within a scope (source + optional leaf
     /// categories and/or account ids), as UTC. The browse chart uses this so its x-axis
     /// spans only the selected node's actual history — a category that started in 2026 won't
-    /// drag the chart back to 2020 just because the source has older rows in other
+    /// drag the chart back to 2020 just because the owner has older rows in other
     /// categories. Either value may be null when the scope has no transactions.
     /// </summary>
     public async Task<(DateTime? Earliest, DateTime? Latest)> GetScopeDateRangeAsync(
-        int sourceId,
+        string ownerId,
         IReadOnlyCollection<long>? leafIds,
         IReadOnlyCollection<long>? accountIds,
         CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var q = db.Transactions
-            .Where(t => t.SourceId == sourceId)
+            .Where(t => t.OwnerUserId == ownerId)
             .Where(t => t.Splitted != 1);
         if (leafIds is { Count: > 0 })
         {
@@ -380,19 +380,19 @@ public class TransactionQueryService
 
     /// <summary>
     /// The earliest and latest transaction months as (year, month) tuples, for bounding the month
-    /// navigator (<see cref="Anchoring"/> / PeriodNav). Pass a <paramref name="sourceId"/> to scope
-    /// to one source (Browse); pass null for the whole DB (the dashboard, which spans every
+    /// navigator (<see cref="Anchoring"/> / PeriodNav). Pass a <paramref name="ownerId"/> to scope
+    /// to one owner (Browse); pass null for the whole DB (the dashboard, which spans every
     /// source). Both values are null when no transactions match — the caller then falls back to the
     /// current month. The max may be in the future (e.g. the source's pending, future-dated rows),
     /// which is intentional: it lets navigation reach those months. Split parents are excluded.
     /// </summary>
     public async Task<((int Year, int Month)? Min, (int Year, int Month)? Max)> GetMonthBoundsAsync(
-        int? sourceId,
+        string? ownerId,
         CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var q = db.Transactions.Where(t => t.Splitted != 1);
-        if (sourceId is { } sid) q = q.Where(t => t.SourceId == sid);
+        if (ownerId is { } sid) q = q.Where(t => t.OwnerUserId == sid);
         var bounds = await q
             .GroupBy(_ => 1)
             .Select(g => new { Min = g.Min(t => (long?)t.Timestamp), Max = g.Max(t => (long?)t.Timestamp) })
@@ -409,12 +409,12 @@ public class TransactionQueryService
 
     /// <summary>
     /// Bulk (timestamp, amount-in-euros) pairs across an arbitrary UTC range, scoped to the
-    /// given source and either leaf-category set, account set, or both (AND when both are
+    /// given owner and either leaf-category set, account set, or both (AND when both are
     /// supplied). Used for chart-style queries (trailing history, account net-flow series)
     /// that don't fit into a single calendar-year window. Always excludes split parents.
     /// </summary>
     public async Task<List<(DateTime Date, decimal Amount)>> GetRawByDateRangeAsync(
-        int sourceId,
+        string ownerId,
         IReadOnlyCollection<long>? leafIds,
         IReadOnlyCollection<long>? accountIds,
         DateTime startUtc,
@@ -428,7 +428,7 @@ public class TransactionQueryService
         var range = TimeRange.Between(startUtc, endExclusiveUtc);
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var q = db.Transactions
-            .Where(t => t.SourceId == sourceId)
+            .Where(t => t.OwnerUserId == ownerId)
             .Where(t => t.Splitted != 1)
             .WithinUtc(range);
 
@@ -458,7 +458,7 @@ public class TransactionQueryService
     /// are absent from the result. One grouped query across all accounts.
     /// </summary>
     public async Task<Dictionary<long, List<(DateTime Day, decimal Value)>>> GetDepotValueHistoryAsync(
-        int sourceId,
+        string ownerId,
         IReadOnlyCollection<long> accountIds,
         CancellationToken ct = default)
     {
@@ -467,7 +467,7 @@ public class TransactionQueryService
         var acctList = accountIds.ToList();
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var rows = await db.PortfolioChartPoints
-            .Where(p => p.SourceId == sourceId && acctList.Contains(p.AccountId))
+            .Where(p => p.OwnerUserId == ownerId && acctList.Contains(p.AccountId))
             .GroupBy(p => new { p.AccountId, p.Timestamp })
             .Select(g => new
             {

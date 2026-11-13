@@ -20,11 +20,11 @@ public sealed class CategoryColorService
     }
 
     /// <summary>Whether the current user may recolor categories of this source.</summary>
-    public async Task<bool> CanEditAsync(int sourceId, CancellationToken ct = default)
+    public async Task<bool> CanEditAsync(string ownerId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        if (db.Scope is { } scope && !scope.OwnsSource(sourceId)) return false;
-        return await db.ImportSources.AnyAsync(s => s.Id == sourceId, ct);
+        if (db.Scope is { } scope && !scope.Owns(ownerId)) return false;
+        return true;
     }
 
     /// <summary>Sets (or with null clears) the color; returns false when the category is unknown or not editable.</summary>
@@ -34,11 +34,10 @@ public sealed class CategoryColorService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var category = await db.Categories.FirstOrDefaultAsync(c => c.Id == categoryId, ct);
         if (category == null) return false;
-        db.Scope?.RequireSourceOwner(category.SourceId);
-        if (!await db.ImportSources.AnyAsync(s => s.Id == category.SourceId, ct)) return false;
+        db.Scope?.RequireOwner(category.OwnerUserId);
         category.Color = color == null ? null : CategoryColors.ToCss(color);
         await db.SaveChangesAsync(ct);
-        _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: category.SourceId), _origin.Id);
+        _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: category.OwnerUserId), _origin.Id);
         return true;
     }
 }

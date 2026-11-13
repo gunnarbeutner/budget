@@ -107,9 +107,9 @@
     <value>Wertpapiere</value>
   </data>
   <data name="Tax_Scope" xml:space="preserve">
-    <value>Die Steuereinstellungen gelten für alle Projekte der Datenquelle „{0}“.</value>
+    <value>Die Steuereinstellungen gelten für alle Projekte der Person, der das Depot gehört.</value>
   </data>
   <data name="Tax_OwnerOnly" xml:space="preserve">
-    <value>Nur der Eigentümer der Datenquelle kann die Steuereinstellungen sehen und ändern.</value>
+    <value>Nur die Person, der das Depot gehört, kann die Steuereinstellungen sehen und ändern.</value>
   </data>
 </root>

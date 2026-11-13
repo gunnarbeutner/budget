@@ -14,8 +14,8 @@ public sealed class StructureServiceTests
     private static async Task<TestDb> WorldAsync(bool takenOver = true)
     {
         var t = await AccessWorld.BuildAsync();
-        // MoneyMoney uploaded to the source.
-        var source = await t.Db.ImportSources.SingleAsync(s => s.Id == AccessWorld.SourceAlice);
+        // Alice imported from MoneyMoney.
+        var source = await t.Db.UserDataStates.SingleAsync(s => s.UserId == AccessWorld.Alice);
         source.LastUploadAt = DateTime.UtcNow;
         if (takenOver) source.StructureTakenOverAt = DateTime.UtcNow;
         await t.Db.SaveChangesAsync();
@@ -31,10 +31,10 @@ public sealed class StructureServiceTests
     public async Task Only_the_owner_may_edit_also_a_source_whose_structure_was_never_marked_taken_over()
     {
         await using var t = await WorldAsync(takenOver: false);
-        Assert.Null(await For(t, AccessWorld.Alice).GetBlockAsync(AccessWorld.SourceAlice));
+        Assert.Null(await For(t, AccessWorld.Alice).GetBlockAsync(AccessWorld.Alice));
         // Bob edits the shared project but does not own the source.
         var bob = For(t, AccessWorld.Bob);
-        Assert.Equal(StructureBlock.NotOwner, await bob.GetBlockAsync(AccessWorld.SourceAlice));
+        Assert.Equal(StructureBlock.NotOwner, await bob.GetBlockAsync(AccessWorld.Alice));
         await Assert.ThrowsAsync<AccessDeniedException>(() => bob.RenameAsync(StructureItemKind.Account, AccessWorld.AccountWp, "Mine"));
         await Assert.ThrowsAsync<AccessDeniedException>(() => bob.DeleteCategoryAsync(AccessWorld.SharedLeaf));
         await Assert.ThrowsAsync<AccessDeniedException>(() => bob.DeleteAccountAsync(AccessWorld.AccountWp, "Giro Shared"));
@@ -52,7 +52,7 @@ public sealed class StructureServiceTests
         t.TrackCategory(AccessWorld.Shared, AccessWorld.SharedLeaf);
         t.Db.CategoryRules.Add(new CategoryRule { ProjectId = AccessWorld.Shared, CategoryId = AccessWorld.SharedLeaf, Expression = "name:\"Example Market\"" });
         var other = Id(201);
-        t.AddLeaf(other, AccessWorld.SharedGroup, "Other", sourceId: AccessWorld.SourceAlice);
+        t.AddLeaf(other, AccessWorld.SharedGroup, "Other", ownerId: AccessWorld.Alice);
         t.Db.CategoryRules.Add(new CategoryRule { ProjectId = AccessWorld.Shared, CategoryId = other, Expression = "Example Shop" });
         t.AddBudget(AccessWorld.Private, 2026, (AccessWorld.SharedLeaf, CategoryItemType.Category, 10m));
         await t.Db.SaveChangesAsync();
@@ -61,13 +61,13 @@ public sealed class StructureServiceTests
 
         await using var db = await t.System.CreateDbContextAsync();
         Assert.False(await db.Categories.AnyAsync(c => c.Id == AccessWorld.SharedLeaf));
-        Assert.Equal(3, await db.Transactions.CountAsync(x => x.SourceId == AccessWorld.SourceAlice && x.CategoryId == null));
+        Assert.Equal(3, await db.Transactions.CountAsync(x => x.OwnerUserId == AccessWorld.Alice && x.CategoryId == null));
         Assert.Equal(["Example Shop"], await db.CategoryRules.Select(r => r.Expression).ToListAsync());
         Assert.False(await db.ProjectTrackingItems.AnyAsync(i => i.CategoryId == AccessWorld.SharedLeaf));
         Assert.False(await db.MonthlyBudgetEntries.AnyAsync(e => e.CategoryId == AccessWorld.SharedLeaf && e.ItemType == CategoryItemType.Category));
         Assert.True(await db.RemovedImportItems.AnyAsync(r => r.ItemId == AccessWorld.SharedLeaf && r.Kind == RemovedImportItem.CategoryKind));
-        // Bob's source is untouched.
-        Assert.NotNull((await db.Transactions.SingleAsync(x => x.SourceId == AccessWorld.SourceBob)).CategoryId);
+        // Bob's data is untouched.
+        Assert.NotNull((await db.Transactions.SingleAsync(x => x.OwnerUserId == AccessWorld.Bob)).CategoryId);
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public sealed class StructureServiceTests
         t.Db.BankLogins.Add(login);
         await t.Db.SaveChangesAsync();
         t.Db.BankLoginAccounts.Add(new BankLoginAccount { BankLoginId = login.Id, RemoteId = "R1", Name = "Giro", LinkedAccountId = AccessWorld.AccountWp, StatementsEnabled = true });
-        t.Db.BankStatements.Add(new BankStatement { BankLoginId = login.Id, OwnerUserId = AccessWorld.Alice, AccountId = AccessWorld.AccountWp, SourceId = AccessWorld.SourceAlice, Identifier = "s1", Name = "Statement 1", FilePath = "x/s1.pdf" });
+        t.Db.BankStatements.Add(new BankStatement { BankLoginId = login.Id, OwnerUserId = AccessWorld.Alice, AccountId = AccessWorld.AccountWp, Identifier = "s1", Name = "Statement 1", FilePath = "x/s1.pdf" });
         t.Db.CategoryRules.Add(new CategoryRule { ProjectId = AccessWorld.Shared, CategoryId = AccessWorld.SharedLeaf, Expression = "market AND account_id=" + AccessWorld.AccountWp });
         await t.Db.SaveChangesAsync();
         var alice = For(t, AccessWorld.Alice);
@@ -98,14 +98,14 @@ public sealed class StructureServiceTests
         var link = await db.BankLoginAccounts.SingleAsync();
         Assert.Null(link.LinkedAccountId);
         Assert.False(link.StatementsEnabled);
-        Assert.Equal(2, await db.Transactions.CountAsync(x => x.SourceId == AccessWorld.SourceAlice));
+        Assert.Equal(2, await db.Transactions.CountAsync(x => x.OwnerUserId == AccessWorld.Alice));
     }
 
     private static async Task AccountGroupsAsync(TestDb t)
     {
         // Banks (10) > Savings box (11) > Giro Private; Giro Shared and Property Account directly in Banks.
-        t.Db.AccountGroups.Add(new AccountGroup { Id = Id(10), SourceId = AccessWorld.SourceAlice, Name = "Banks", Sort = 0 });
-        t.Db.AccountGroups.Add(new AccountGroup { Id = Id(11), SourceId = AccessWorld.SourceAlice, Name = "Savings box", ParentGroupId = Id(10), Sort = 1 });
+        t.Db.AccountGroups.Add(new AccountGroup { Id = Id(10), OwnerUserId = AccessWorld.Alice, Name = "Banks", Sort = 0 });
+        t.Db.AccountGroups.Add(new AccountGroup { Id = Id(11), OwnerUserId = AccessWorld.Alice, Name = "Savings box", ParentGroupId = Id(10), Sort = 1 });
         await t.Db.SaveChangesAsync();
         foreach (var (id, group, sort) in new[] { (AccessWorld.AccountWp, 10, 0L), (AccessWorld.AccountProperty, 10, 2L), (AccessWorld.AccountPrivate, 11, 0L) })
         {
@@ -119,7 +119,7 @@ public sealed class StructureServiceTests
     private static async Task<List<(long Id, long? Group, long? Sort)>> AccountsAsync(TestDb t)
     {
         await using var db = await t.System.CreateDbContextAsync();
-        return (await db.Accounts.Where(a => a.SourceId == AccessWorld.SourceAlice).OrderBy(a => a.Sort).Select(a => new { a.Id, a.GroupId, a.Sort }).ToListAsync())
+        return (await db.Accounts.Where(a => a.OwnerUserId == AccessWorld.Alice).OrderBy(a => a.Sort).Select(a => new { a.Id, a.GroupId, a.Sort }).ToListAsync())
             .Select(a => (a.Id, a.GroupId, a.Sort)).ToList();
     }
 
@@ -233,7 +233,7 @@ public sealed class StructureServiceTests
         var market = await alice.CreateCategoryAsync(AccessWorld.SharedGroup, "Example Market");
         var first = await alice.CreateCategoryAsync(AccessWorld.SharedGroup, "Example Shop", afterId: AccessWorld.SharedLeaf);
         Assert.NotEqual(market, first);
-        Assert.True(market >= SourceScope.Namespace(AccessWorld.SourceAlice, StructureService.OwnRowBase));
+        Assert.True(market >= RowIds.Namespace(AccessWorld.SourceAlice, StructureService.OwnRowBase));
         await using (var db = await t.System.CreateDbContextAsync())
         {
             var order = await db.Categories.Where(c => c.GroupId == AccessWorld.SharedGroup).OrderBy(c => c.Sort).Select(c => c.Name).ToListAsync();
@@ -260,8 +260,8 @@ public sealed class StructureServiceTests
     public async Task A_source_moneymoney_never_uploaded_to_is_editable_right_away()
     {
         await using var t = await AccessWorld.BuildAsync();
-        Assert.Null(await For(t, AccessWorld.Alice).GetBlockAsync(AccessWorld.SourceAlice));
-        var info = await For(t, AccessWorld.Bob).GetEditInfoAsync(AccessWorld.SourceAlice, [AccessWorld.AccountWp, AccessWorld.AccountBob]);
+        Assert.Null(await For(t, AccessWorld.Alice).GetBlockAsync(AccessWorld.Alice));
+        var info = await For(t, AccessWorld.Bob).GetEditInfoAsync(AccessWorld.Alice, [AccessWorld.AccountWp, AccessWorld.AccountBob]);
         Assert.Equal(StructureBlock.NotOwner, info.CategoryBlock);
         Assert.Equal(StructureBlock.NotOwner, info.AccountBlock(AccessWorld.AccountWp));
         Assert.Null(info.AccountBlock(AccessWorld.AccountBob));
@@ -281,7 +281,7 @@ public sealed class StructureServiceTests
         await alice.MoveToAsync(StructureItemKind.Account, AccessWorld.AccountProperty, StructureItemKind.AccountGroup, Id(11), into: true);
         var accounts = await AccountsAsync(t);
         Assert.Equal((Id(11), 1L), accounts.Where(a => a.Id == AccessWorld.AccountProperty).Select(a => (a.Group!.Value, a.Sort!.Value)).Single());
-        Assert.Equal(["Savings box", "Banks"], (await alice.ListGroupsAsync(false, AccessWorld.SourceAlice)).Select(g => g.Name).Reverse());
+        Assert.Equal(["Savings box", "Banks"], (await alice.ListGroupsAsync(false, AccessWorld.Alice)).Select(g => g.Name).Reverse());
 
         // A category dropped on an account is ignored.
         await alice.MoveToAsync(StructureItemKind.Category, AccessWorld.SharedLeaf, StructureItemKind.Account, AccessWorld.AccountWp, into: false);

@@ -26,7 +26,7 @@ public sealed class PeriodSelectorTests : EndToEndTestBase
         db.Transactions.Add(new Transaction
         {
             Id = 70,
-            SourceId = E2ESeed.SourceId,
+            OwnerUserId = E2ESeed.OwnerUserId,
             CategoryId = 200,
             Amount = -8_00,
             Timestamp = ((DateTimeOffset)date).ToUnixTimeSeconds(),

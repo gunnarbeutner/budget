@@ -235,6 +235,30 @@ public class BrowseServiceTests
     }
 
     [Fact]
+    public async Task Unassigned_accounts_of_the_owner_with_tracked_bookings_are_offered_including_portfolio_ones()
+    {
+        await using var t = new TestDb();
+        t.AddProject(1);
+        t.AddGroup(100);
+        t.AddLeaf(101, parent: 100);
+        t.TrackGroup(1, 100);
+        t.AssignGroup(1, 100);
+        var giro = t.AddAccount(500, "Giro");
+        var ledger = t.AddAccount(RowIds.Namespace(1, OpenBudget.Connectors.Sync.BankTransactionStore.ConnectorRowBase + 1), "Example Portfolio (Verrechnung)");
+        ledger.Provider = AccountProviders.PortfolioPerformance;
+        t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 1, AccountId = 500, Scope = AccountScope.Shared });
+        t.AddTransaction(1, 101, -1000, new DateTime(2026, 3, 1), accountId: giro.Id);
+        t.AddTransaction(2, 101, -2500, new DateTime(2026, 3, 2), accountId: ledger.Id);
+        await t.Db.SaveChangesAsync();
+
+        var tree = await t.Browse.GetTreeAsync(1, 2026, 1, 12);
+
+        var offered = Assert.Single(tree!.Accounts, a => !a.IsAssigned);
+        Assert.Equal(ledger.Id, offered.Id);
+        Assert.Contains(tree.Accounts, a => a.Id == 500 && a.IsAssigned);
+    }
+
+    [Fact]
     public async Task Returns_null_for_unknown_project()
     {
         await using var t = new TestDb();

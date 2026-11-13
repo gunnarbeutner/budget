@@ -18,16 +18,16 @@ public class TransactionQueryServiceTests
         await using var t = new TestDb();
         t.AddGroup(100);
         t.AddLeaf(101, parent: 100);
-        t.Db.Categories.Add(new Category { Id = 1, SourceId = 1, Name = "" }); // the source's sentinel
+        t.Db.Categories.Add(new Category { Id = 1, OwnerUserId = TestDb.DefaultOwner, Name = "" }); // the source's sentinel
         t.AddTransaction(id: 1, categoryId: 101, amountCents: -1000, date: new DateTime(2026, 5, 1));
         t.AddTransaction(id: 2, categoryId: 1, amountCents: -2000, date: new DateTime(2026, 5, 2));
         t.AddTransaction(id: 3, categoryId: 1, amountCents: -4000, date: new DateTime(2026, 5, 3), splitted: 1);
-        t.AddTransaction(id: 4, categoryId: 101, amountCents: -8000, date: new DateTime(2026, 5, 4), sourceId: 2);
+        t.AddTransaction(id: 4, categoryId: 101, amountCents: -8000, date: new DateTime(2026, 5, 4), ownerId: TestDb.DefaultOwner);
         await t.Db.SaveChangesAsync();
-        t.Db.Transactions.Add(new Transaction { Id = 5, SourceId = 1, CategoryId = null, Amount = -500, Timestamp = 1 });
+        t.Db.Transactions.Add(new Transaction { Id = 5, OwnerUserId = TestDb.DefaultOwner, CategoryId = null, Amount = -500, Timestamp = 1 });
         await t.Db.SaveChangesAsync();
 
-        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = 1, UncategorizedOnly = true });
+        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = TestDb.DefaultOwner, UncategorizedOnly = true });
 
         Assert.Equal(new long[] { 2, 5 }, page.Rows.Select(r => r.Id).OrderBy(i => i).ToArray());
         Assert.Equal(-25m, page.TotalSum);
@@ -42,18 +42,18 @@ public class TransactionQueryServiceTests
         t.AddLeaf(102, parent: 100); // not tracked
         t.AddAccount(7);
         t.AddAccount(8);
-        t.Db.Categories.Add(new Category { Id = 1, SourceId = 1, Name = "" });
+        t.Db.Categories.Add(new Category { Id = 1, OwnerUserId = TestDb.DefaultOwner, Name = "" });
         t.AddTransaction(id: 1, categoryId: 101, amountCents: -1000, date: new DateTime(2026, 5, 1), accountId: 7);
         t.AddTransaction(id: 2, categoryId: 102, amountCents: -2000, date: new DateTime(2026, 5, 2), accountId: 7);
         t.AddTransaction(id: 3, categoryId: 1, amountCents: -4000, date: new DateTime(2026, 5, 3), accountId: 7);
         t.AddTransaction(id: 4, categoryId: 1, amountCents: -8000, date: new DateTime(2026, 5, 4), accountId: 8);
         await t.Db.SaveChangesAsync();
-        t.Db.Transactions.Add(new Transaction { Id = 5, SourceId = 1, AccountId = 7, CategoryId = null, Amount = -500, Timestamp = 1, Booked = false });
+        t.Db.Transactions.Add(new Transaction { Id = 5, OwnerUserId = TestDb.DefaultOwner, AccountId = 7, CategoryId = null, Amount = -500, Timestamp = 1, Booked = false });
         await t.Db.SaveChangesAsync();
 
         var scoped = await t.TransactionQueries.QueryAsync(new TransactionQuery
         {
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             CategoryLeafIds = new[] { 101L },
             IncludeUncategorized = true,
             UncategorizedAccountIds = new[] { 7L },
@@ -65,7 +65,7 @@ public class TransactionQueryServiceTests
         // No assigned accounts: the whole source's uncategorized rows; no tracked categories: only those.
         var whole = await t.TransactionQueries.QueryAsync(new TransactionQuery
         {
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             CategoryLeafIds = Array.Empty<long>(),
             IncludeUncategorized = true,
         });
@@ -86,7 +86,7 @@ public class TransactionQueryServiceTests
 
         var page = await t.TransactionQueries.QueryAsync(new TransactionQuery
         {
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             CategoryLeafIds = new[] { 101L },
         });
 
@@ -117,14 +117,14 @@ public class TransactionQueryServiceTests
         t.AddTransaction(id: 3, categoryId: 201, amountCents: -9000, date: new DateTime(2026, 4, 2));
         await t.Db.SaveChangesAsync();
 
-        var hierarchy = await t.Hierarchy.GetAllCategoriesWithChildCountsAsync(1);
+        var hierarchy = await t.Hierarchy.GetAllCategoriesWithChildCountsAsync(TestDb.DefaultOwner);
         var leafMap = OpenBudget.Services.CategoryHierarchyService.BuildItemToLeafCategoryIds(
             new[] { (100L, CategoryItemType.Group) }, hierarchy);
         var leafIds = leafMap[(100L, CategoryItemType.Group)].ToList();
 
         var page = await t.TransactionQueries.QueryAsync(new TransactionQuery
         {
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             CategoryLeafIds = leafIds,
         });
         Assert.Equal(2, page.TotalCount);
@@ -151,7 +151,7 @@ public class TransactionQueryServiceTests
 
         var page = await t.TransactionQueries.QueryAsync(new TransactionQuery
         {
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             AccountIds = new[] { 500L },
         });
 
@@ -176,7 +176,7 @@ public class TransactionQueryServiceTests
 
         var page = await t.TransactionQueries.QueryAsync(new TransactionQuery
         {
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             CategoryLeafIds = new[] { 101L },
             AccountIds = new[] { 500L },
         });
@@ -199,7 +199,7 @@ public class TransactionQueryServiceTests
 
         var page = await t.TransactionQueries.QueryAsync(new TransactionQuery
         {
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             Period = new TimeRangeFilter(2026, 3, 3),
         });
         Assert.Equal(new[] { 3L, 2L }, page.Rows.Select(r => r.Id).ToArray());
@@ -220,13 +220,13 @@ public class TransactionQueryServiceTests
 
         var page0 = await t.TransactionQueries.QueryAsync(new TransactionQuery
         {
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             Skip = 0,
             Take = 5,
         });
         var page1 = await t.TransactionQueries.QueryAsync(new TransactionQuery
         {
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             Skip = 5,
             Take = 5,
         });
@@ -256,7 +256,7 @@ public class TransactionQueryServiceTests
 
         var page = await t.TransactionQueries.QueryAsync(new TransactionQuery
         {
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             SearchText = "rewe",
         });
         Assert.Equal(2, page.TotalCount);
@@ -288,7 +288,7 @@ public class TransactionQueryServiceTests
         t.AddTransaction(id: 7, categoryId: 101, amountCents: -22950, date: new DateTime(2026, 5, 7), name: "Shop");
         await t.Db.SaveChangesAsync();
 
-        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = 1, SearchText = text });
+        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = TestDb.DefaultOwner, SearchText = text });
         Assert.Equal(expected, page.Rows.Select(r => r.Id).OrderBy(x => x).ToArray());
     }
 
@@ -339,7 +339,7 @@ public class TransactionQueryServiceTests
 
         var page = await t.TransactionQueries.QueryAsync(new TransactionQuery
         {
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             MinAbsAmount = 50m,
             MaxAbsAmount = 200m,
         });
@@ -349,20 +349,18 @@ public class TransactionQueryServiceTests
     }
 
     [Fact]
-    public async Task Source_filter_excludes_other_sources()
+    public async Task Owner_filter_excludes_other_users_data()
     {
         await using var t = new TestDb();
-        // Add a second source
-        t.Db.ImportSources.Add(new ImportSource { Id = 2, Name = "second", CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc) });
         t.AddGroup(100);
         t.AddLeaf(101, parent: 100);
-        t.AddGroup(200, sourceId: 2);
-        t.AddLeaf(201, parent: 200, sourceId: 2);
-        t.AddTransaction(id: 1, categoryId: 101, amountCents: -100, date: new DateTime(2026, 5, 1), sourceId: 1);
-        t.AddTransaction(id: 2, categoryId: 201, amountCents: -200, date: new DateTime(2026, 5, 2), sourceId: 2);
+        t.AddGroup(200, ownerId: "u-other");
+        t.AddLeaf(201, parent: 200, ownerId: "u-other");
+        t.AddTransaction(id: 1, categoryId: 101, amountCents: -100, date: new DateTime(2026, 5, 1), ownerId: TestDb.DefaultOwner);
+        t.AddTransaction(id: 2, categoryId: 201, amountCents: -200, date: new DateTime(2026, 5, 2), ownerId: "u-other");
         await t.Db.SaveChangesAsync();
 
-        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = 1 });
+        var page = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = TestDb.DefaultOwner });
         Assert.Single(page.Rows);
         Assert.Equal(1L, page.Rows[0].Id);
     }

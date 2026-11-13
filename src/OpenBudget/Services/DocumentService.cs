@@ -16,7 +16,7 @@ public sealed record DocumentItem(long Id, long? AccountId, string AccountName, 
 public sealed record AssignableAccount(long Id, string Name);
 
 /// <summary>An account in the cross-project "Documents to assign" picker, listed under each project that holds it.</summary>
-/// <param name="GroupName">The account group it sits in within its source (null: none).</param>
+/// <param name="GroupName">The account group it sits in (null: none).</param>
 public sealed record AssignTarget(int ProjectId, string ProjectName, long AccountId, string Name, string? GroupName, string Icon, bool Closed);
 
 /// <summary>Why an account cannot download statements (null: it can).</summary>
@@ -162,10 +162,10 @@ public class DocumentService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var accounts = await db.Accounts.AsNoTracking()
             .Where(a => db.ProjectAccountAssignments.Any(p => p.ProjectId == projectId && p.AccountId == a.Id))
-            .Select(a => new { a.Id, a.SourceId, a.Name })
+            .Select(a => new { a.Id, a.OwnerUserId, a.Name })
             .ToListAsync(ct);
         return accounts
-            .Where(a => scope.CanEditTransactionsOf(a.SourceId, a.Id))
+            .Where(a => scope.CanEditTransactionsOf(a.OwnerUserId, a.Id))
             .Select(a => new AssignableAccount(a.Id, a.Name ?? "?"))
             .OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
@@ -181,14 +181,14 @@ public class DocumentService
         if (!scope.IsAuthenticated || statementIds.Count == 0) return 0;
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var account = await db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == accountId, ct);
-        if (account == null || !scope.CanEditTransactionsOf(account.SourceId, account.Id))
+        if (account == null || !scope.CanEditTransactionsOf(account.OwnerUserId, account.Id))
             throw new AccessDeniedException("Documents can only be assigned to accounts you may edit.");
         var ids = statementIds.Distinct().ToList();
         var rows = await db.BankStatements.Where(s => ids.Contains(s.Id) && s.OwnerUserId == scope.UserId).ToListAsync(ct);
         foreach (var row in rows)
         {
             row.AccountId = account.Id;
-            row.SourceId = account.SourceId;
+            row.OwnerUserId = account.OwnerUserId;
         }
         if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
         return rows.Count;
@@ -259,7 +259,7 @@ public class DocumentService
             .AsNoTracking()
             .ToListAsync(ct);
         return rows
-            .Where(r => scope.CanEditTransactionsOf(r.Account.SourceId, r.Account.Id))
+            .Where(r => scope.CanEditTransactionsOf(r.Account.OwnerUserId, r.Account.Id))
             .OrderBy(r => r.SortOrder).ThenBy(r => r.ProjectName, StringComparer.CurrentCultureIgnoreCase).ThenBy(r => r.Id)
             .ThenBy(r => r.GroupName ?? "", StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(r => r.Account.Closed)

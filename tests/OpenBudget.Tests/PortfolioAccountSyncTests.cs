@@ -1,3 +1,4 @@
+using OpenBudget.Connectors.Sync;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenBudget.Models;
@@ -15,8 +16,8 @@ namespace OpenBudget.Tests;
 /// </summary>
 public sealed class PortfolioAccountSyncTests : IAsyncDisposable
 {
-    private const string Owner = "u-owner";
-    private const int Source = SourceScope.LegacySourceId;
+    private const string Owner = TestDb.DefaultOwner;
+    private const string Source = Owner;
 
     private readonly TestDb _t = new();
     private readonly string _dir = Path.Combine(Path.GetTempPath(), $"ob-pp-{Guid.NewGuid():N}");
@@ -29,9 +30,6 @@ public sealed class PortfolioAccountSyncTests : IAsyncDisposable
         _files = new UploadedPortfolioFileSource(Path.Combine(_dir, "files"));
         _sync = new PortfolioAccountSync(_t.System, _files, _t.Notifier, new FixedClock(), NullLogger<PortfolioAccountSync>.Instance);
         _import = new PortfolioPerformanceImportService(_t.System, _t.Notifier, NullLogger<PortfolioPerformanceImportService>.Instance, _files, _sync);
-        _t.AddUser(Owner, "owner");
-        _t.Db.ImportSources.Single(s => s.Id == Source).OwnerUserId = Owner;
-        _t.Db.SaveChanges();
     }
 
     public async ValueTask DisposeAsync()
@@ -52,7 +50,7 @@ public sealed class PortfolioAccountSyncTests : IAsyncDisposable
         Directory.CreateDirectory(_dir);
         var path = Path.Combine(_dir, $"{Guid.NewGuid():N}.portfolio");
         await File.WriteAllBytesAsync(path, Pack(client));
-        await _import.ImportFromFileAsync(SourceScope.LegacySourceName, path, CancellationToken.None);
+        await _import.ImportFromFileAsync(Owner, path, CancellationToken.None);
     }
 
     private async Task<PpPortfolioSetting> SettingAsync(string uuid)
@@ -78,7 +76,7 @@ public sealed class PortfolioAccountSyncTests : IAsyncDisposable
     {
         // Broker is linked to a bank depot (off by default), Old is retired (off by default).
         _t.AddAccount(500, "Bank depot").Portfolio = 1;
-        _t.Db.PpPortfolioLinks.Add(new PpPortfolioLink { SourceId = Source, PpPortfolioUuid = "pf-b", AccountId = 500 });
+        _t.Db.PpPortfolioLinks.Add(new PpPortfolioLink { OwnerUserId = Source, PpPortfolioUuid = "pf-b", AccountId = 500 });
         var project = _t.AddProject(7, "Household");
         project.OwnerUserId = Owner;
         project.IsDefaultForNewAccounts = true;
@@ -92,9 +90,8 @@ public sealed class PortfolioAccountSyncTests : IAsyncDisposable
         var depot = await AccountAsync(setting.DepotAccountId!.Value);
         var ledger = await AccountAsync(setting.LedgerAccountId!.Value);
 
-        var ppSource = await db.ImportSources.SingleAsync(s => s.Id == depot.SourceId);
-        Assert.Equal("default-pp", ppSource.Name);
-        Assert.Equal(Owner, ppSource.OwnerUserId);
+        Assert.Equal(Owner, depot.OwnerUserId);
+        Assert.True(depot.Id > RowIds.Namespace(1, BankTransactionStore.ConnectorRowBase));
         Assert.Equal(("Vault", 7L, 1L, AccountProviders.PortfolioPerformance), (depot.Name, depot.Type!.Value, depot.Portfolio!.Value, depot.Provider));
         Assert.Equal(("Vault (Verrechnung)", AccountProviders.PortfolioPerformance), (ledger.Name, ledger.Provider));
         Assert.Equal(1020m, depot.CurrentBalance);
@@ -210,11 +207,11 @@ public sealed class PortfolioAccountSyncTests : IAsyncDisposable
         _t.AddGroup(9000);
         _t.AddLeaf(9001, 9000, "Investments");
         var buyTs = new DateTimeOffset(2024, 1, 2, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
-        _t.Db.Transactions.Add(new Transaction { Id = 100, SourceId = Source, AccountId = 11, Amount = -50000, Timestamp = buyTs, Name = "Kauf", Purpose = "Kauf: Gold (10)", CategoryId = 9001 });
-        _t.Db.Transactions.Add(new Transaction { Id = 101, SourceId = Source, AccountId = 11, Amount = 100000, Timestamp = buyTs - 86400, Name = "Transfer from giro" });
-        _t.Db.PortfolioChartPoints.Add(new PortfolioChartPoint { Id = 200, SourceId = Source, AccountId = 10, Timestamp = Day(12, 1) - 366 * 86400 + 43200, Balance = 42 });
-        _t.Db.PortfolioChartPoints.Add(new PortfolioChartPoint { Id = 201, SourceId = Source, AccountId = 10, Timestamp = Day(1, 5) * 86400 + 43200, Balance = 1 });
-        _t.Db.Holdings.Add(new Holding { Id = 300, SourceId = Source, AccountId = 10, Name = "Gold", Quantity = 9 });
+        _t.Db.Transactions.Add(new Transaction { Id = 100, OwnerUserId = Source, AccountId = 11, Amount = -50000, Timestamp = buyTs, Name = "Kauf", Purpose = "Kauf: Gold (10)", CategoryId = 9001 });
+        _t.Db.Transactions.Add(new Transaction { Id = 101, OwnerUserId = Source, AccountId = 11, Amount = 100000, Timestamp = buyTs - 86400, Name = "Transfer from giro" });
+        _t.Db.PortfolioChartPoints.Add(new PortfolioChartPoint { Id = 200, OwnerUserId = Source, AccountId = 10, Timestamp = Day(12, 1) - 366 * 86400 + 43200, Balance = 42 });
+        _t.Db.PortfolioChartPoints.Add(new PortfolioChartPoint { Id = 201, OwnerUserId = Source, AccountId = 10, Timestamp = Day(1, 5) * 86400 + 43200, Balance = 1 });
+        _t.Db.Holdings.Add(new Holding { Id = 300, OwnerUserId = Source, AccountId = 10, Name = "Gold", Quantity = 9 });
         await _t.Db.SaveChangesAsync();
 
         await UploadAsync(Client());
@@ -295,7 +292,7 @@ public sealed class PortfolioAccountSyncTests : IAsyncDisposable
         Assert.Equal((220m, 0m), (depot.CurrentBalance, ledger.CurrentBalance));
 
         // The ledger's history is the reference cash: 0 from its first booking, 110 after the sale, 0 after the removal.
-        var history = await _t.TransactionQueries.GetDepotValueHistoryAsync(depot.SourceId, [depot.Id, ledger.Id]);
+        var history = await _t.TransactionQueries.GetDepotValueHistoryAsync(depot.OwnerUserId, [depot.Id, ledger.Id]);
         Assert.Equal([(new DateTime(2024, 1, 2), 0m), (new DateTime(2024, 1, 6), 110m), (new DateTime(2024, 1, 8), 0m)], history[ledger.Id]);
 
         // The group's daily balance as the Transactions chart builds it: both accounts take their stored history.

@@ -56,8 +56,8 @@ public static class ProjectStatus
     /// </summary>
     public static (string Severity, List<string> Lines)? BuildAlert(
         ProjectSpendingSummary summary,
-        IReadOnlyDictionary<int, DataFreshness> freshnessBySourceId,
-        IReadOnlyDictionary<int, UncategorizedSummary>? uncategorized,
+        IReadOnlyDictionary<string, DataFreshness> freshnessByOwner,
+        IReadOnlyDictionary<string, UncategorizedSummary>? uncategorized,
         IStringLocalizer L,
         DateTime nowUtc,
         TimeZoneInfo zone)
@@ -65,8 +65,8 @@ public static class ProjectStatus
         var lines = new List<string>();
         string severity = "secondary";
 
-        // Freshness: stale upload or per-account refresh errors for the project's source.
-        if (freshnessBySourceId.TryGetValue(summary.SourceId, out var f))
+        // Freshness: stale upload or per-account refresh errors for the project owner's data.
+        if (freshnessByOwner.TryGetValue(summary.OwnerUserId, out var f))
         {
             var age = f.DbUploadedUtc.HasValue ? nowUtc - f.DbUploadedUtc.Value : (TimeSpan?)null;
             var freshSev = age switch
@@ -95,8 +95,8 @@ public static class ProjectStatus
             }
         }
 
-        // Uncategorized transactions in this project's source: roll into numbers that may undercount.
-        if (uncategorized != null && uncategorized.TryGetValue(summary.SourceId, out var u) && u.Count > 0)
+        // Uncategorized transactions of this project's owner: roll into numbers that may undercount.
+        if (uncategorized != null && uncategorized.TryGetValue(summary.OwnerUserId, out var u) && u.Count > 0)
         {
             var key = u.Count == 1 ? "Uncategorized_One" : "Uncategorized_Other";
             lines.Add(L[key, u.Count, Formatting.FormatMoneyDe(u.AbsoluteAmount)].Value);

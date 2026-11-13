@@ -278,8 +278,8 @@ public class BudgetEntryService
         IReadOnlyCollection<(long Id, CategoryItemType ItemType, decimal[] Months)> entries)
     {
         var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == budget.ProjectId);
-        var sourceId = project?.SourceId ?? SourceScope.LegacySourceId;
-        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var ownerId = project?.OwnerUserId ?? string.Empty;
+        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(ownerId);
         var normalized = NormalizeBudgetEntries(entries, hierarchy);
 
         var existing = await db.MonthlyBudgetEntries
@@ -447,8 +447,8 @@ public class BudgetEntryService
                 e.Month7, e.Month8, e.Month9, e.Month10, e.Month11, e.Month12
             });
 
-        var sourceId = budget.Project?.SourceId ?? SourceScope.LegacySourceId;
-        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var ownerId = budget.Project?.OwnerUserId ?? string.Empty;
+        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(ownerId);
         return ComputeEffectiveAmounts(stored, hierarchy);
     }
 

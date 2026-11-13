@@ -50,7 +50,6 @@ builder.Services.AddScoped<InstrumentMappingService>();
 builder.Services.AddScoped<ProjectTimeState>();
 builder.Services.AddScoped<CurrentProjectState>();
 builder.Services.AddScoped<SharingService>();
-builder.Services.AddScoped<SourceService>();
 builder.Services.AddScoped<OnboardingService>();
 builder.Services.AddScoped<AccountSwitchService>();
 builder.Services.AddScoped<CategoryColorService>();
@@ -101,7 +100,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 // Configure database paths. Everything lives in budgets.db — the imported data is
-// imported into the same store under namespaced IDs (see SourceScope) via the upload
+// imported into the same store under namespaced IDs (see RowIds) via the upload
 // endpoint below.
 var dataDir = OpenBudgetPaths.DataDir(builder.Environment.ContentRootPath);
 var budgetDbPath = OpenBudgetPaths.DatabasePath(builder.Environment.ContentRootPath);
@@ -132,7 +131,7 @@ builder.Services.AddOpenBudgetAuth(builder.Environment, builder.Environment.Cont
 builder.Services.AddBankConnectors(builder.Environment, builder.Environment.ContentRootPath);
 builder.Services.AddOneDrive(builder.Environment.ContentRootPath);
 
-// PortfolioPerformance portfolios as accounts: recomputed from each source's current file, which is the uploaded one.
+// PortfolioPerformance portfolios as accounts: recomputed from each user's current file, which is the uploaded one.
 var portfolioFiles = new UploadedPortfolioFileSource(Path.Combine(dataDir, "portfolioperformance"));
 builder.Services.AddSingleton(portfolioFiles);
 builder.Services.AddSingleton<IPortfolioFileSource>(portfolioFiles);
@@ -146,7 +145,9 @@ var app = builder.Build();
 await using (var budgetDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
 {
     await budgetDb.Database.MigrateAsync();
-    // Category rules of sources uploaded before rules were imported (idempotent).
+    // PortfolioPerformance files still stored under a former per-data-set number move to their owner (idempotent).
+    await portfolioFiles.RelocateLegacyFilesAsync(budgetDb);
+    // Category rules of data imported before rules were imported (idempotent).
     await OpenBudget.Importers.MoneyMoney.MoneyMoneyRuleImport.BackfillAsync(budgetDb, CancellationToken.None);
     // Every user owns a project to land new accounts in (idempotent).
     await UserDefaultProject.EnsureAllAsync(app.Services.GetRequiredService<SystemDbContextFactory>());

@@ -6,7 +6,7 @@ namespace OpenBudget.Models;
 /// <summary>
 /// A PortfolioPerformance depot (its "portfolio"), catalogued from an uploaded ".portfolio" file so
 /// it can be mapped to a imported depot account — the link that lets per-depot FIFO lots
-/// (<see cref="PpLot"/>) attach to a project's holdings. App-native; scoped by <see cref="SourceId"/>
+/// (<see cref="PpLot"/>) attach to a project's holdings. App-native; scoped by <see cref="OwnerUserId"/>
 /// and replaced wholesale on each upload.
 /// </summary>
 [Table("pp_portfolio")]
@@ -15,7 +15,10 @@ public class PpPortfolio
     [Key]
     public int Id { get; set; }
 
-    public int SourceId { get; set; }
+    /// <summary>The owning user (AppUser.Id).</summary>
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
 
     /// <summary>PortfolioPerformance portfolio UUID — the key <see cref="PpLot.PortfolioUuid"/>
     /// references and the depot link maps to a imported account.</summary>

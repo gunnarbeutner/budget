@@ -13,30 +13,31 @@ namespace OpenBudget.Tests;
 public sealed class CategorizationTests
 {
     private const int Source = 2;
+    private const string Owner = "u-alice";
 
     private static long[] L(params long[] values) => values;
 
-    private static long Id(long row) => SourceScope.Namespace(Source, row);
+    private static long Id(long row) => RowIds.Namespace(Source, row);
 
     private static (List<CategoryGroup> Groups, List<Category> Categories) Tree()
     {
         // Hidden unnamed root (sentinel), "Haushalt" > { Lebensmittel, Strom }, "Freizeit" > { Reisen }, an empty group "Leer", a root-level category.
         List<CategoryGroup> groups =
         [
-            new() { Id = SourceScope.SentinelRoot(Source), SourceId = Source, Name = "" },
-            new() { Id = Id(10), SourceId = Source, Name = "Haushalt", ParentGroupId = SourceScope.SentinelRoot(Source), Sort = 1 },
-            new() { Id = Id(11), SourceId = Source, Name = "Freizeit", ParentGroupId = SourceScope.SentinelRoot(Source), Sort = 2 },
-            new() { Id = Id(12), SourceId = Source, Name = "Leer", ParentGroupId = SourceScope.SentinelRoot(Source), Sort = 3 },
-            new() { Id = Id(13), SourceId = Source, Name = "Nested empty", ParentGroupId = Id(12) },
+            new() { Id = RowIds.SentinelRoot(Source), OwnerUserId = Owner, Name = "" },
+            new() { Id = Id(10), OwnerUserId = Owner, Name = "Haushalt", ParentGroupId = RowIds.SentinelRoot(Source), Sort = 1 },
+            new() { Id = Id(11), OwnerUserId = Owner, Name = "Freizeit", ParentGroupId = RowIds.SentinelRoot(Source), Sort = 2 },
+            new() { Id = Id(12), OwnerUserId = Owner, Name = "Leer", ParentGroupId = RowIds.SentinelRoot(Source), Sort = 3 },
+            new() { Id = Id(13), OwnerUserId = Owner, Name = "Nested empty", ParentGroupId = Id(12) },
         ];
         List<Category> cats =
         [
-            new() { Id = Id(100), SourceId = Source, Name = "Strom", GroupId = Id(10), Sort = 2 },
-            new() { Id = Id(101), SourceId = Source, Name = "Lebensmittel", GroupId = Id(10), Sort = 1 },
-            new() { Id = Id(102), SourceId = Source, Name = "Reisen", GroupId = Id(11) },
-            new() { Id = Id(103), SourceId = Source, Name = "Café & Bäckerei", GroupId = Id(11), Sort = 0 },
-            new() { Id = Id(104), SourceId = Source, Name = "", GroupId = Id(10) },
-            new() { Id = Id(105), SourceId = Source, Name = "Loose", GroupId = null },
+            new() { Id = Id(100), OwnerUserId = Owner, Name = "Strom", GroupId = Id(10), Sort = 2 },
+            new() { Id = Id(101), OwnerUserId = Owner, Name = "Lebensmittel", GroupId = Id(10), Sort = 1 },
+            new() { Id = Id(102), OwnerUserId = Owner, Name = "Reisen", GroupId = Id(11) },
+            new() { Id = Id(103), OwnerUserId = Owner, Name = "Café & Bäckerei", GroupId = Id(11), Sort = 0 },
+            new() { Id = Id(104), OwnerUserId = Owner, Name = "", GroupId = Id(10) },
+            new() { Id = Id(105), OwnerUserId = Owner, Name = "Loose", GroupId = null },
         ];
         return (groups, cats);
     }
@@ -90,7 +91,7 @@ public sealed class CategorizationTests
     public void Search_ranks_name_hits_before_path_only_hits_and_empty_means_everything()
     {
         var (groups, cats) = Tree();
-        cats.Add(new Category { Id = Id(106), SourceId = Source, Name = "Haushaltsgeld", GroupId = Id(11) });
+        cats.Add(new Category { Id = Id(106), OwnerUserId = Owner, Name = "Haushaltsgeld", GroupId = Id(11) });
         var options = CategoryPickerLogic.Build(groups, cats, Source).Options;
 
         var hits = CategoryPickerLogic.Search(options, "haushalt");
@@ -112,13 +113,13 @@ public sealed class CategorizationTests
     {
         var t = new TestDb();
         t.AddUser("u-alice", "alice");
-        t.Db.ImportSources.Add(new ImportSource { Id = Source, Name = "alice", OwnerUserId = "u-alice" });
+        t.AddIdSpace("u-alice", Source);
         var (groups, cats) = Tree();
         t.Db.CategoryGroups.AddRange(groups);
         await t.Db.SaveChangesAsync();
         t.Db.Categories.AddRange(cats);
-        t.Db.Accounts.Add(new Account { Id = Id(1), SourceId = Source, Name = "Bank", Provider = "fake" });
-        t.Db.Accounts.Add(new Account { Id = Id(2), SourceId = Source, Name = "MM", Provider = AccountProviders.MoneyMoney });
+        t.Db.Accounts.Add(new Account { Id = Id(1), OwnerUserId = Owner, Name = "Bank", Provider = "fake" });
+        t.Db.Accounts.Add(new Account { Id = Id(2), OwnerUserId = Owner, Name = "MM", Provider = AccountProviders.MoneyMoney });
         await t.Db.SaveChangesAsync();
         return t;
     }
@@ -127,7 +128,7 @@ public sealed class CategorizationTests
         t.Db.Transactions.Add(new Transaction
         {
             Id = id,
-            SourceId = Source,
+            OwnerUserId = Owner,
             AccountId = account,
             Name = payee,
             CategoryId = category,
@@ -149,7 +150,7 @@ public sealed class CategorizationTests
         AddTx(t, 105, Id(1), "Example Shop", Id(104), 6);                // sentinel category counts as uncategorized
         await t.Db.SaveChangesAsync();
 
-        var ids = await new CategorizationService(t.Factory).FindSimilarUncategorizedAsync(Source, "Example Shop", [100]);
+        var ids = await new CategorizationService(t.Factory).FindSimilarUncategorizedAsync(Owner, "Example Shop", [100]);
 
         Assert.Equal(L(101, 105), ids.Order());
     }
@@ -163,9 +164,9 @@ public sealed class CategorizationTests
         await t.Db.SaveChangesAsync();
 
         var asBob = new CategorizationService(t.ForUser("u-bob").Factory);
-        Assert.Empty(await asBob.FindSimilarUncategorizedAsync(Source, "Example Shop", []));
+        Assert.Empty(await asBob.FindSimilarUncategorizedAsync(Owner, "Example Shop", []));
         var asAlice = new CategorizationService(t.ForUser("u-alice").Factory);
-        Assert.Single(await asAlice.FindSimilarUncategorizedAsync(Source, "Example Shop", []));
+        Assert.Single(await asAlice.FindSimilarUncategorizedAsync(Owner, "Example Shop", []));
     }
 
     // ---- list filters ----
@@ -188,19 +189,19 @@ public sealed class CategorizationTests
         }
         async Task<long[]> Ids(TransactionQuery q) =>
             (await t.TransactionQueries.QueryAsync(q)).Rows.Select(r => r.Id).Order().ToArray();
-        var baseQuery = new TransactionQuery { SourceId = Source, Take = 100 };
+        var baseQuery = new TransactionQuery { OwnerUserId = Owner, Take = 100 };
 
-        Assert.Equal(L(100), await Ids(new TransactionQuery { SourceId = Source, Take = 100, Checked = true }));
-        Assert.Equal(L(101, 102), await Ids(new TransactionQuery { SourceId = Source, Take = 100, Checked = false }));
-        Assert.Equal(L(101), await Ids(new TransactionQuery { SourceId = Source, Take = 100, Direction = AmountDirection.Incoming }));
-        Assert.Equal(L(100, 102), await Ids(new TransactionQuery { SourceId = Source, Take = 100, Direction = AmountDirection.Outgoing }));
-        Assert.Equal(L(102), await Ids(new TransactionQuery { SourceId = Source, Take = 100, NewOnly = true }));
-        Assert.Equal(L(100, 102), await Ids(new TransactionQuery { SourceId = Source, Take = 100, PayeeEquals = "EXAMPLE SHOP" }));
+        Assert.Equal(L(100), await Ids(new TransactionQuery { OwnerUserId = Owner, Take = 100, Checked = true }));
+        Assert.Equal(L(101, 102), await Ids(new TransactionQuery { OwnerUserId = Owner, Take = 100, Checked = false }));
+        Assert.Equal(L(101), await Ids(new TransactionQuery { OwnerUserId = Owner, Take = 100, Direction = AmountDirection.Incoming }));
+        Assert.Equal(L(100, 102), await Ids(new TransactionQuery { OwnerUserId = Owner, Take = 100, Direction = AmountDirection.Outgoing }));
+        Assert.Equal(L(102), await Ids(new TransactionQuery { OwnerUserId = Owner, Take = 100, NewOnly = true }));
+        Assert.Equal(L(100, 102), await Ids(new TransactionQuery { OwnerUserId = Owner, Take = 100, PayeeEquals = "EXAMPLE SHOP" }));
         Assert.Equal(
             L(102),
             await Ids(new TransactionQuery
             {
-                SourceId = Source,
+                OwnerUserId = Owner,
                 Take = 100,
                 FromUtc = new DateTime(2026, 5, 10, 0, 0, 0, DateTimeKind.Utc),
                 ToUtcExclusive = new DateTime(2026, 5, 21, 0, 0, 0, DateTimeKind.Utc),
@@ -221,10 +222,10 @@ public sealed class CategorizationTests
             await db.SaveChangesAsync();
         }
 
-        var found = await t.TransactionQueries.QueryAsync(new TransactionQuery { SourceId = Source, SearchText = "employer" });
+        var found = await t.TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = Owner, SearchText = "employer" });
         Assert.Equal(100, Assert.Single(found.Rows).Id);
-        Assert.Equal(L(101, 100), await t.TransactionQueries.QueryIdsAsync(new TransactionQuery { SourceId = Source }));
-        Assert.Equal(L(100), await t.TransactionQueries.QueryIdsAsync(new TransactionQuery { SourceId = Source }, skip: 1, take: 1));
+        Assert.Equal(L(101, 100), await t.TransactionQueries.QueryIdsAsync(new TransactionQuery { OwnerUserId = Owner }));
+        Assert.Equal(L(100), await t.TransactionQueries.QueryIdsAsync(new TransactionQuery { OwnerUserId = Owner }, skip: 1, take: 1));
         var totals = await t.TransactionQueries.GetSelectionTotalsAsync([100, 101]);
         Assert.Equal((2, -20m), totals);
     }
@@ -262,7 +263,7 @@ public sealed class CategorizationTests
         await using var w = await BankWorld.CreateAsync();
         var snapshot = w.BuildSnapshot([("MM Giro", "DE00 0000 0000 0000 0000 01")], [new BankWorld.MmTx(1, -52.10, new DateTime(2026, 11, 2, 0, 0, 0, DateTimeKind.Utc), "Old Name", "Old purpose")]);
         await w.ImportMoneyMoneyAsync(snapshot);
-        var account = SourceScope.Namespace(BankWorld.SourceAlice, 1);
+        var account = RowIds.Namespace(BankWorld.SourceAlice, 1);
         var id = await w.AddLoginAsync(BankWorld.Alice, "demo+pending");
         await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false));
         var giro = await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId);

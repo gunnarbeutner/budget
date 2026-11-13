@@ -16,8 +16,8 @@ namespace OpenBudget.Tests;
 /// </summary>
 public sealed class MoneyMoneyStatementImportTests : IAsyncDisposable
 {
-    private const string SourceName = "mm";
-    private const string Owner = "owner-1";
+    private const string Owner = TestDb.DefaultOwner;
+    private const string SourceName = Owner;
     private readonly string _dir = Path.Combine(Path.GetTempPath(), $"ob-mm-statements-{Guid.NewGuid():N}");
     private readonly TestDb _t = new();
     private readonly BankStatementStore _store;
@@ -63,12 +63,8 @@ public sealed class MoneyMoneyStatementImportTests : IAsyncDisposable
                 """;
             await cmd.ExecuteNonQueryAsync();
         }
-        var result = await _importer.ImportFromFileAsync(SourceName, path, CancellationToken.None);
-        await using var db = await _t.System.CreateDbContextAsync();
-        var source = await db.ImportSources.SingleAsync(s => s.Id == result.SourceId);
-        source.OwnerUserId = Owner;
-        await db.SaveChangesAsync();
-        return result.SourceId;
+        await _importer.ImportFromFileAsync(SourceName, path, CancellationToken.None);
+        return 1;   // the default owner's id space
     }
 
     private async Task<List<BankStatement>> DocumentsAsync()
@@ -80,7 +76,7 @@ public sealed class MoneyMoneyStatementImportTests : IAsyncDisposable
     [Fact]
     public async Task Statement_is_stored_under_the_namespaced_account_with_a_content_identifier()
     {
-        var sourceId = await ImportSnapshotAsync();
+        var ownerId = await ImportSnapshotAsync();
         var pdf = Pdf("one");
 
         var outcome = await _statements.StoreAsync(SourceName, 2, new DateOnly(2026, 3, 31), "Monthly statement", pdf, CancellationToken.None);
@@ -88,8 +84,7 @@ public sealed class MoneyMoneyStatementImportTests : IAsyncDisposable
         Assert.Equal(MoneyMoneyStatementOutcome.Stored, outcome);
         var doc = Assert.Single(await DocumentsAsync());
         var hash = BankStatementStore.HashOf(pdf);
-        Assert.Equal(SourceScope.Namespace(sourceId, 2), doc.AccountId);
-        Assert.Equal(sourceId, doc.SourceId);
+        Assert.Equal(RowIds.Namespace(ownerId, 2), doc.AccountId);
         Assert.Null(doc.BankLoginId);
         Assert.Equal(Owner, doc.OwnerUserId);
         Assert.Equal("mm:" + hash, doc.Identifier);
@@ -117,14 +112,14 @@ public sealed class MoneyMoneyStatementImportTests : IAsyncDisposable
     [Fact]
     public async Task Document_a_bank_connector_already_downloaded_is_not_imported_again()
     {
-        var sourceId = await ImportSnapshotAsync();
+        var ownerId = await ImportSnapshotAsync();
         var pdf = Pdf("from the bank");
         await using (var db = await _t.System.CreateDbContextAsync())
         {
             var login = new BankLogin { OwnerUserId = Owner, ConnectorType = "test", DisplayName = "Bank" };
             db.BankLogins.Add(login);
             await db.SaveChangesAsync();
-            var account = await db.Accounts.SingleAsync(a => a.Id == SourceScope.Namespace(sourceId, 1));
+            var account = await db.Accounts.SingleAsync(a => a.Id == RowIds.Namespace(ownerId, 1));
             await _store.StoreAsync(db, login, account, new OpenBudget.Connectors.RemoteStatement("bank-doc-1", "r1", new DateOnly(2026, 2, 28), "Statement", pdf), CancellationToken.None);
         }
 
@@ -148,7 +143,6 @@ public sealed class MoneyMoneyStatementImportTests : IAsyncDisposable
 
         var doc = Assert.Single(await DocumentsAsync());
         Assert.Null(doc.AccountId);
-        Assert.Null(doc.SourceId);
         Assert.Null(doc.BankLoginId);
         Assert.Equal(Owner, doc.OwnerUserId);
         Assert.Equal("Example Bank", doc.Institution);
@@ -169,11 +163,11 @@ public sealed class MoneyMoneyStatementImportTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Documents_of_an_unknown_source_are_skipped()
+    public async Task Documents_of_an_unknown_user_are_skipped()
     {
         var pdf = Pdf("nowhere");
-        Assert.Empty(await _statements.WantedAsync("unknown-source", [new MoneyMoneyStatementRef(1, BankStatementStore.HashOf(pdf))], CancellationToken.None));
-        Assert.Equal(MoneyMoneyStatementOutcome.NoAccount, await _statements.StoreAsync("unknown-source", 1, new DateOnly(2026, 1, 1), "X", pdf, CancellationToken.None, "Example Bank"));
+        Assert.Empty(await _statements.WantedAsync("u-unknown", [new MoneyMoneyStatementRef(1, BankStatementStore.HashOf(pdf))], CancellationToken.None));
+        Assert.Equal(MoneyMoneyStatementOutcome.NoAccount, await _statements.StoreAsync("u-unknown", 1, new DateOnly(2026, 1, 1), "X", pdf, CancellationToken.None, "Example Bank"));
         Assert.Empty(await DocumentsAsync());
     }
 }

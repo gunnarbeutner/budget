@@ -84,18 +84,18 @@ public class DepotBalanceChartTests
         t.AddTransaction(2, 2, 100000, new DateTime(2026, 2, 15), accountId: 11);
         // A total row on one day, per-security rows only on another (summed for that day).
         t.Db.PortfolioChartPoints.AddRange(
-            new PortfolioChartPoint { Id = 1, SourceId = 1, AccountId = 10, Timestamp = Noon(new DateTime(2025, 6, 15)), Balance = 1000.0 },
-            new PortfolioChartPoint { Id = 2, SourceId = 1, AccountId = 10, Timestamp = Noon(new DateTime(2025, 6, 15)), Balance = 999.0, SecurityId = 5 },
-            new PortfolioChartPoint { Id = 3, SourceId = 1, AccountId = 10, Timestamp = Noon(new DateTime(2025, 12, 1)), Balance = 700.0, SecurityId = 5 },
-            new PortfolioChartPoint { Id = 4, SourceId = 1, AccountId = 10, Timestamp = Noon(new DateTime(2025, 12, 1)), Balance = 500.0, SecurityId = 6 });
+            new PortfolioChartPoint { Id = 1, OwnerUserId = TestDb.DefaultOwner, AccountId = 10, Timestamp = Noon(new DateTime(2025, 6, 15)), Balance = 1000.0 },
+            new PortfolioChartPoint { Id = 2, OwnerUserId = TestDb.DefaultOwner, AccountId = 10, Timestamp = Noon(new DateTime(2025, 6, 15)), Balance = 999.0, SecurityId = 5 },
+            new PortfolioChartPoint { Id = 3, OwnerUserId = TestDb.DefaultOwner, AccountId = 10, Timestamp = Noon(new DateTime(2025, 12, 1)), Balance = 700.0, SecurityId = 5 },
+            new PortfolioChartPoint { Id = 4, OwnerUserId = TestDb.DefaultOwner, AccountId = 10, Timestamp = Noon(new DateTime(2025, 12, 1)), Balance = 500.0, SecurityId = 6 });
         await t.Db.SaveChangesAsync();
 
-        var history = await t.TransactionQueries.GetDepotValueHistoryAsync(1, new long[] { 10, 11 });
+        var history = await t.TransactionQueries.GetDepotValueHistoryAsync(TestDb.DefaultOwner, new long[] { 10, 11 });
         Assert.Equal(new[] { 10L }, history.Keys);
         Assert.Equal(new[] { (new DateTime(2025, 6, 15), 1000m), (new DateTime(2025, 12, 1), 1200m) }, history[10]);
 
         var raw = await t.TransactionQueries.GetRawByDateRangeAsync(
-            1, null, new long[] { 11 }, new DateTime(2025, 6, 1), new DateTime(2026, 4, 1));
+            TestDb.DefaultOwner, null, new long[] { 11 }, new DateTime(2025, 6, 1), new DateTime(2026, 4, 1));
         var chart = BrowseChart.BuildChartSeries(
             earliest: new DateTime(2025, 6, 15), rightEdge: new DateTime(2026, 3, 1), granularity: "M",
             anchorYear: 2026, fromMonth: 3, toMonth: 3,

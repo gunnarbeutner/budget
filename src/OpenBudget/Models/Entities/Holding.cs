@@ -5,7 +5,7 @@ namespace OpenBudget.Models;
 
 /// <summary>
 /// A single portfolio holding (one security in one depot account) imported from the source's
-/// <c>securities</c> table. <see cref="Id"/> is namespaced via <c>SourceScope.Namespace</c> like
+/// <c>securities</c> table. <see cref="Id"/> is namespaced via <c>RowIds.Namespace</c> like
 /// every imported row. Only live positions are imported — the source app keeps sold/closed holdings
 /// with <c>deleted=1</c>, which the import filters out.
 ///
@@ -19,7 +19,10 @@ public class Holding
     [Key]
     public long Id { get; set; }
 
-    public int SourceId { get; set; }
+    /// <summary>The owning user (AppUser.Id).</summary>
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
 
     /// <summary>Source <c>securities.account_key</c>, namespaced to <see cref="Account.Id"/>.</summary>
     [Column("account_key")]

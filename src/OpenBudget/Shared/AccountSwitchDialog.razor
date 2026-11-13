@@ -6,7 +6,7 @@
 
 @* Switching linked accounts from MoneyMoney to their bank connection, with a per-account preview of what happens to the
    rows. Opened from Bank logins, an account's settings and the Import page (all linked accounts of a source). The
-   service enforces that only the source owner switches. *@
+   service enforces that only the owner switches. *@
 
 <Modal Show="@(LoginAccountIds != null)" Title="@L["Title"]" OnClose="CloseAsync" SizeClass="modal-xl" CloseOnBackdropClick="false" OnTop="OnTop">
     <ChildContent>
@@ -41,7 +41,7 @@
                                 <tr data-switch-account="@p.Link.AccountId">
                                     <td>
                                         <strong>@p.Link.AccountName</strong>
-                                        <div class="small text-body-secondary">@p.Link.LoginName · @p.Link.SourceName</div>
+                                        <div class="small text-body-secondary">@p.Link.LoginName</div>
                                         @if (p.Link.Switched)
                                         {
                                             <span class="badge text-bg-success">@L["Already"]</span>

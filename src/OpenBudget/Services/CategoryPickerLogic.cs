@@ -11,7 +11,7 @@ public sealed record CategoryOption(long Id, string Name, string Path, string? C
 /// <see cref="Color"/> is the category's own color (leaves only; null = palette by id).
 public sealed record CategoryPickerRow(bool IsGroup, int Depth, long Id, string Name, string Path, string? Color = null);
 
-/// <summary>The categories of one source ready for the picker: a flat list (for search and lookup) and the tree rows.</summary>
+/// <summary>The categories of one owner ready for the picker: a flat list (for search and lookup) and the tree rows.</summary>
 public sealed class CategoryPickerData
 {
     public IReadOnlyList<CategoryOption> Options { get; init; } = [];
@@ -26,13 +26,12 @@ public static class CategoryPickerLogic
 {
     public const string PathSeparator = " › ";
 
-    public static CategoryPickerData Build(IReadOnlyCollection<CategoryGroup> groups, IReadOnlyCollection<Category> categories, int sourceId)
+    public static CategoryPickerData Build(IReadOnlyCollection<CategoryGroup> groups, IReadOnlyCollection<Category> categories, long sentinelRoot)
     {
-        var sentinelRoot = SourceScope.SentinelRoot(sourceId);
         var groupById = groups.GroupBy(g => g.Id).ToDictionary(g => g.Key, g => g.First());
         bool IsKnown(long? id) => id is { } v && groupById.ContainsKey(v);
 
-        // Hidden: the source's unnamed sentinel root. Its children are shown at the top level without a prefix.
+        // Hidden: MoneyMoney's unnamed sentinel root. Its children are shown at the top level without a prefix.
         bool IsHidden(CategoryGroup g) => string.IsNullOrEmpty(g.Name) && (g.Id == sentinelRoot || !IsKnown(g.ParentGroupId));
 
         var leaves = categories.Where(c => !string.IsNullOrEmpty(c.Name)).ToList();

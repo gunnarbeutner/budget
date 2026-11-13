@@ -123,7 +123,7 @@ public sealed class CloudFileSyncCoordinator : IDisposable
             content = await _reader.ReadAsync(userId, link.Id, link.LastError == null ? link.LastCTag : null, ct);
             if (content.Changed)
             {
-                var info = new CloudFileLinkInfo(link.Id, link.OwnerUserId, link.DisplayPath, link.TargetSourceName);
+                var info = new CloudFileLinkInfo(link.Id, link.OwnerUserId, link.DisplayPath);
                 foreach (var consumer in _consumers) await consumer.ConsumeAsync(info, content, ct);
             }
         }

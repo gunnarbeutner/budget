@@ -37,17 +37,17 @@ public static class TransactionEditRules
 
     /// <summary>
     /// A split part OpenBudget creates: a child row pointing at its parent, never a bank row. Editors may add and remove
-    /// these (splitting is categorisation); every other row is created and deleted only by the source owner or a connector.
+    /// these (splitting is categorisation); every other row is created and deleted only by the owner or a connector.
     /// </summary>
     public static bool IsOwnSplitPart(Transaction t) =>
         t.Splitted == SplitState.Child && t.SplitParentId != null && t.ExternalId == null;
 
     /// <summary>Null scope = trusted system context. <paramref name="accountProvider"/> is null for transactions without an account.</summary>
-    public static EditBlock Check(AccessScope? scope, int sourceId, long? accountId, string? accountProvider)
+    public static EditBlock Check(AccessScope? scope, string ownerId, long? accountId, string? accountProvider)
     {
         if (accountProvider == null || string.Equals(accountProvider, AccountProviders.MoneyMoney, StringComparison.Ordinal))
             return EditBlock.MoneyMoney;
-        if (scope != null && !scope.CanEditTransactionsOf(sourceId, accountId)) return EditBlock.NoPermission;
+        if (scope != null && !scope.CanEditTransactionsOf(ownerId, accountId)) return EditBlock.NoPermission;
         return EditBlock.None;
     }
 }

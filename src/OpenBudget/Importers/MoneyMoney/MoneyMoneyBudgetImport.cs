@@ -81,9 +81,10 @@ public static class MoneyMoneyBudgetImport
         return months;
     }
 
-    /// <summary>Imports the budgets of the MoneyMoney database at <paramref name="sqlitePath"/> into <paramref name="sourceId"/>'s owner's default project.</summary>
-    public static async Task<MoneyMoneyBudgetSummary> ImportAsync(BudgetDbContext db, int sourceId, string sqlitePath, int year, CancellationToken ct)
+    /// <summary>Imports the budgets of the MoneyMoney database at <paramref name="sqlitePath"/> into the default project of <paramref name="ownerId"/>.</summary>
+    public static async Task<MoneyMoneyBudgetSummary> ImportAsync(BudgetDbContext db, string ownerId, string sqlitePath, int year, CancellationToken ct)
     {
+        var idSpace = await RowIds.IdSpaceAsync(db, ownerId, ct);
         var budgets = new List<(long CategoryId, MoneyMoneyCategoryBudget Budget)>();
         await using (var src = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = sqlitePath, Mode = SqliteOpenMode.ReadOnly }.ToString()))
         {
@@ -97,20 +98,19 @@ public static class MoneyMoneyBudgetImport
             while (await r.ReadAsync(ct))
             {
                 var blob = r.GetValue(1) switch { byte[] b => b, string s => Encoding.UTF8.GetBytes(s), _ => null };
-                if (Parse(blob) is { } budget) budgets.Add((SourceScope.Namespace(sourceId, r.GetInt64(0)), budget));
+                if (Parse(blob) is { } budget) budgets.Add((RowIds.Namespace(idSpace, r.GetInt64(0)), budget));
             }
         }
         var skipped = budgets.Count(b => b.Budget.Interval == MoneyMoneyBudgetInterval.Total);
         var usable = budgets.Where(b => b.Budget.Interval != MoneyMoneyBudgetInterval.Total).ToList();
         if (usable.Count == 0) return new MoneyMoneyBudgetSummary(0, skipped);
 
-        var owner = await db.ImportSources.Where(s => s.Id == sourceId).Select(s => s.OwnerUserId).FirstOrDefaultAsync(ct);
-        var projectId = await db.Projects.Where(p => p.OwnerUserId == owner && owner != null && p.IsDefaultForNewAccounts)
+        var projectId = await db.Projects.Where(p => p.OwnerUserId == ownerId && p.IsDefaultForNewAccounts)
             .Select(p => (int?)p.Id).FirstOrDefaultAsync(ct);
         if (projectId is not { } pid) return new MoneyMoneyBudgetSummary(0, skipped);
         if (await db.Budgets.AnyAsync(b => b.ProjectId == pid && b.Year == year && b.Name == BudgetName, ct)) return new MoneyMoneyBudgetSummary(0, skipped);
 
-        var known = (await db.Categories.Where(c => c.SourceId == sourceId).Select(c => c.Id).ToListAsync(ct)).ToHashSet();
+        var known = (await db.Categories.Where(c => c.OwnerUserId == ownerId).Select(c => c.Id).ToListAsync(ct)).ToHashSet();
         var budgetRow = new Budget { ProjectId = pid, Year = year, Name = BudgetName, IsActive = false, CreatedAt = DateTime.UtcNow };
         db.Budgets.Add(budgetRow);
         await db.SaveChangesAsync(ct);

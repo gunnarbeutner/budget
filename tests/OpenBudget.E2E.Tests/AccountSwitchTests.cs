@@ -22,12 +22,12 @@ public sealed class AccountSwitchTests : EndToEndTestBase
     {
         await using var db = await Db.CreateDbContextAsync();
         var owner = await db.Users.SingleAsync(u => u.UserName == E2ESeed.UserName);
-        (await db.ImportSources.SingleAsync(s => s.Id == E2ESeed.SourceId)).LastUploadAt = DateTime.UtcNow;
-        db.Accounts.Add(new Account { Id = GiroId, SourceId = E2ESeed.SourceId, Name = "E2E Giro", Currency = "EUR", Type = 1 });
+        (await db.UserDataStates.SingleAsync(s => s.UserId == E2ESeed.OwnerUserId)).LastUploadAt = DateTime.UtcNow;
+        db.Accounts.Add(new Account { Id = GiroId, OwnerUserId = E2ESeed.OwnerUserId, Name = "E2E Giro", Currency = "EUR", Type = 1 });
         db.Transactions.Add(new Transaction
         {
             Id = 900001,
-            SourceId = E2ESeed.SourceId,
+            OwnerUserId = E2ESeed.OwnerUserId,
             AccountId = GiroId,
             Amount = -80000,
             Currency = "EUR",
@@ -67,7 +67,7 @@ public sealed class AccountSwitchTests : EndToEndTestBase
         await Page.GetByTestId("import-finish-confirm").ClickAsync();
         await Expect(section.GetByTestId("import-finished")).ToBeVisibleAsync();
         await using (var db = await Db.CreateDbContextAsync())
-            Assert.That((await db.ImportSources.AsNoTracking().SingleAsync(s => s.Id == E2ESeed.SourceId)).MoneyMoneyImportFinishedAt, Is.Not.Null);
+            Assert.That((await db.UserDataStates.AsNoTracking().SingleAsync(s => s.UserId == E2ESeed.OwnerUserId)).MoneyMoneyImportFinishedAt, Is.Not.Null);
 
         await section.GetByTestId("import-resume").ClickAsync();
         await Expect(section.GetByTestId("import-finish")).ToBeVisibleAsync();

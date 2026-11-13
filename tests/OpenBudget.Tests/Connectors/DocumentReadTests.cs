@@ -29,7 +29,7 @@ public sealed class DocumentReadTests
         await w.SyncAsync(BankWorld.Alice, id);
 
         var account = await w.AccountAsync(giro.LinkedAccountId!.Value);
-        w.T.Db.Projects.Add(new Project { Id = 1, Name = "Shared", SourceId = account.SourceId, OwnerUserId = BankWorld.Alice, CreatedAt = DateTime.UtcNow });
+        w.T.Db.Projects.Add(new Project { Id = 1, Name = "Shared", OwnerUserId = BankWorld.Alice, CreatedAt = DateTime.UtcNow });
         w.T.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 1, AccountId = account.Id, Scope = AccountScope.Exclusive });
         w.T.Db.ProjectShares.Add(new ProjectShare { ProjectId = 1, UserId = BankWorld.Bob, Role = ProjectRole.Viewer });
         await w.T.Db.SaveChangesAsync();
@@ -133,8 +133,8 @@ public sealed class DocumentReadTests
     {
         var (w, _, giro) = await SetupAsync();
         await using var _w = w;
-        w.T.Db.Accounts.Add(new Account { Id = 9001, SourceId = BankWorld.SourceAlice, Name = "Cash box", Provider = AccountProviders.Manual });
-        w.T.Db.Accounts.Add(new Account { Id = 9002, SourceId = BankWorld.SourceAlice, Name = "Imported", Provider = AccountProviders.MoneyMoney });
+        w.T.Db.Accounts.Add(new Account { Id = 9001, OwnerUserId = BankWorld.Alice, Name = "Cash box", Provider = AccountProviders.Manual });
+        w.T.Db.Accounts.Add(new Account { Id = 9002, OwnerUserId = BankWorld.Alice, Name = "Imported", Provider = AccountProviders.MoneyMoney });
         w.T.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 1, AccountId = 9001 });
         w.T.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 1, AccountId = 9002 });
         await w.T.Db.SaveChangesAsync();
@@ -205,10 +205,10 @@ public sealed class DocumentReadTests
     private static async Task<(BankWorld World, long Giro, long NoAccount, long Orphan, long OnClosed, long OnGiro)> SetupUnassignedAsync()
     {
         var (w, _, giro) = await SetupAsync();
-        w.T.Db.Accounts.Add(new Account { Id = 9101, SourceId = BankWorld.SourceAlice, Name = "Depot", Provider = AccountProviders.Manual });
-        w.T.Db.Accounts.Add(new Account { Id = 9102, SourceId = BankWorld.SourceAlice, Name = "Old savings", Provider = AccountProviders.Manual, Closed = true });
-        w.T.Db.Accounts.Add(new Account { Id = 9103, SourceId = BankWorld.SourceAlice, Name = "Orphan", Provider = AccountProviders.Manual });
-        w.T.Db.Projects.Add(new Project { Id = 2, Name = "Second", SourceId = BankWorld.SourceAlice, OwnerUserId = BankWorld.Alice, CreatedAt = DateTime.UtcNow });
+        w.T.Db.Accounts.Add(new Account { Id = 9101, OwnerUserId = BankWorld.Alice, Name = "Depot", Provider = AccountProviders.Manual });
+        w.T.Db.Accounts.Add(new Account { Id = 9102, OwnerUserId = BankWorld.Alice, Name = "Old savings", Provider = AccountProviders.Manual, Closed = true });
+        w.T.Db.Accounts.Add(new Account { Id = 9103, OwnerUserId = BankWorld.Alice, Name = "Orphan", Provider = AccountProviders.Manual });
+        w.T.Db.Projects.Add(new Project { Id = 2, Name = "Second", OwnerUserId = BankWorld.Alice, CreatedAt = DateTime.UtcNow });
         w.T.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 2, AccountId = 9101 });
         w.T.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 1, AccountId = 9102 });
         await w.T.Db.SaveChangesAsync();

@@ -441,7 +441,7 @@ else
     private int selectedYear;
     private bool categoriesExpanded = false;
     private string? projectName;
-    private int projectSourceId = SourceScope.LegacySourceId;
+    private string projectOwnerId = string.Empty;
     private bool notFound = false;
 
     // Variance tree: groups the user has expanded. When a group is expanded, the variance
@@ -557,7 +557,7 @@ else
         if (selectedProjectId <= 0 || allCategories == null) return;
         var (from, to) = PeriodRange;
         var summary = await BudgetService.GetSpendingSummaryAsync(selectedProjectId, anchor.Year, from, to, selectedCompareBudgetId);
-        table = BudgetTableModel.Build(summary, allCategories, SourceScope.SentinelRoot(projectSourceId));
+        table = BudgetTableModel.Build(summary, allCategories, await BudgetService.GetSentinelRootAsync(projectOwnerId));
     }
 
     private async Task OnPeriodChanged((int Year, int Month, string Period) next) =>
@@ -625,7 +625,7 @@ else
     protected override bool AutoReloadOnChange => false;
     protected override bool IsRelevantChange(DataChange change) => change.Area switch
     {
-        DataArea.ImportedData or DataArea.Sources => change.SourceId == projectSourceId,
+        DataArea.ImportedData or DataArea.ImportState => change.OwnerUserId == projectOwnerId,
         _ => change.ProjectId is null || change.ProjectId == ProjectId,
     };
     // New bookings from an import or a bank sync only change the numbers: reload them in place, keeping the
@@ -729,20 +729,20 @@ else
         }
 
         projectName = project.Name;
-        projectSourceId = project.SourceId;
+        projectOwnerId = project.OwnerUserId;
 
         // Load all category groups (including sub-categories), not just root ones
-        var allCategoryGroups = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(projectSourceId);
+        var allCategoryGroups = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(projectOwnerId);
 
-        // Filter out the hidden root category (per-source rowid 1) and organize hierarchically
-        var sentinelRoot = SourceScope.SentinelRoot(projectSourceId);
+        // Filter out the hidden root category (MoneyMoney's rowid 1) and organize hierarchically
+        var sentinelRoot = await BudgetService.GetSentinelRootAsync(projectOwnerId);
         allCategories = allCategoryGroups
             .Where(c => c.CategoryGroup.Id != sentinelRoot)
             .OrderBy(c => c.CategoryGroup.Name)
             .ToList();
 
         // Load all actual categories
-        allActualCategories = await CategoryHierarchyService.GetAllCategoriesAsync(projectSourceId);
+        allActualCategories = await CategoryHierarchyService.GetAllCategoriesAsync(projectOwnerId);
 
         // Populate the year picker from the years the project's tracked categories actually
         // have transactions in. Default to the current year, or the closest available if the
@@ -810,7 +810,7 @@ else
         if (groupIds.Count > 0)
         {
             var allRecentLeaves = await BudgetService.GetLeafCategoriesWithRecentTransactionsAsync(
-                groupIds, projectSourceId);
+                groupIds, projectOwnerId);
             foreach (var groupId in groupIds)
             {
                 var descendants = CategoryGroupWithChildCount.CollectDescendants(
@@ -1154,7 +1154,7 @@ else
                           && budgetedDescendantsByGroup.ContainsKey(k)))
             .ToHashSet();
 
-        var trendBatch = await BudgetPredictionService.GetMonthlySpendingBatchAsync(batchKeys, selectedYear, projectSourceId);
+        var trendBatch = await BudgetPredictionService.GetMonthlySpendingBatchAsync(batchKeys, selectedYear, projectOwnerId);
 
         // Two leaf categories can share the same name (e.g. "Reparaturen" sits under both
         // "Umlagefähig" and "Nicht umlagefähig"). The downstream dictionaries are keyed by

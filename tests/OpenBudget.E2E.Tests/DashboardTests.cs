@@ -47,6 +47,9 @@ public sealed class DashboardTests : EndToEndTestBase
         var modal = Page.GetByTestId("modal-dialog");
         await Expect(modal.GetByTestId("new-project-create")).ToBeDisabledAsync();
         await Expect(modal.GetByLabel("Name")).ToBeEditableAsync();
+        // The project belongs to its creator: there is nothing to pick its data from.
+        await Expect(modal.GetByText("Data from")).ToHaveCountAsync(0);
+        await Expect(modal.Locator("select")).ToHaveCountAsync(0);
         await modal.GetByLabel("Name").FillAsync("Vacation Fund");
         await Expect(modal.GetByTestId("new-project-create")).ToBeEnabledAsync();
         await modal.GetByTestId("new-project-create").ClickAsync();

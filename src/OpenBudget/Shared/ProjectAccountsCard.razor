@@ -218,7 +218,7 @@
 @code {
     /// <summary>Accounts assigned to the project; null shows a loading note.</summary>
     [Parameter] public IReadOnlyList<ProjectAccountAssignment>? Assignments { get; set; }
-    /// <summary>All accounts in the project's source (for names/balances + the picker).</summary>
+    /// <summary>All accounts of the project's owner (for names/balances + the picker).</summary>
     [Parameter] public List<Account>? AllAccounts { get; set; }
     /// <summary>Account-group hierarchy for the Add picker.</summary>
     [Parameter] public List<AccountGroup>? AllAccountGroups { get; set; }

@@ -44,7 +44,7 @@ public class InCashflowTests
         t.Db.Holdings.Add(new Holding
         {
             Id = 1000,
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             AccountId = 20,
             Quantity = 1,
             Amount = 5000,

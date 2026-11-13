@@ -5,9 +5,8 @@ namespace OpenBudget.Services;
 
 /// <summary>
 /// Gives every user a project of their own: a user who owns no project gets one named after them (display name, else
-/// username), on the source holding their MoneyMoney data, else their oldest source, else a new source. It is their
-/// default project for new accounts, so the MoneyMoney import and bank-login accounts land in it; accounts of their
-/// sources that no project shows yet are assigned to it right away. Idempotent: users who own a project are skipped.
+/// username). It is their default project for new accounts, so the MoneyMoney import and bank-login accounts land in
+/// it; their accounts that no project shows yet are assigned to it right away. Idempotent: users who own a project are skipped.
 /// </summary>
 public static class UserDefaultProject
 {
@@ -19,30 +18,19 @@ public static class UserDefaultProject
         var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
         if (user == null) return null;
 
-        var source = await db.ImportSources.Where(s => s.OwnerUserId == userId)
-            .OrderBy(s => s.LastUploadAt == null).ThenBy(s => s.Id).FirstOrDefaultAsync(ct);
-        if (source == null)
-        {
-            source = new ImportSource { Name = await FreeSourceNameAsync(db, ct), OwnerUserId = userId };
-            db.ImportSources.Add(source);
-            await db.SaveChangesAsync(ct);
-        }
-
         var maxSort = await db.Projects.MaxAsync(p => (int?)p.SortOrder, ct) ?? -1;
         var project = new Project
         {
             Name = AppUser.ShownName(user.DisplayName, user.UserName),
             CreatedAt = DateTime.UtcNow,
             SortOrder = maxSort + 1,
-            SourceId = source.Id,
             OwnerUserId = userId,
             IsDefaultForNewAccounts = true,
         };
         db.Projects.Add(project);
         await db.SaveChangesAsync(ct);
 
-        var ownedSources = await db.ImportSources.Where(s => s.OwnerUserId == userId).Select(s => s.Id).ToListAsync(ct);
-        var accounts = await db.Accounts.Where(a => ownedSources.Contains(a.SourceId))
+        var accounts = await db.Accounts.Where(a => a.OwnerUserId == userId)
             .Select(a => a.Id).ToListAsync(ct);
         await DefaultProjectAssigner.AssignNewAccountsAsync(db, userId, accounts, ct);
         return project.Id;
@@ -60,12 +48,4 @@ public static class UserDefaultProject
         return created;
     }
 
-    private static async Task<string> FreeSourceNameAsync(BudgetDbContext db, CancellationToken ct)
-    {
-        while (true)
-        {
-            var name = "data-" + Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(4));
-            if (!await db.ImportSources.AnyAsync(s => s.Name == name, ct)) return name;
-        }
-    }
 }

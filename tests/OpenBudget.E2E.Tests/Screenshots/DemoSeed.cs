@@ -23,16 +23,17 @@ internal static class DemoSeed
 {
     public const string UserName = "demo";
     public const string Password = "Demo-Passw0rd!";
-    public const int SourceId = 1;
+    public const string OwnerUserId = "u-demo";
+    private const int IdSpace = 1;
     public const int HouseholdId = 1, SharedFlatId = 2, RentalFlatId = 3;
     public const int Year = 2026;
 
-    public static readonly long GiroId = SourceScope.Namespace(SourceId, 1);
-    public static readonly long CardId = SourceScope.Namespace(SourceId, 2);
-    public static readonly long SavingsId = SourceScope.Namespace(SourceId, 3);
-    public static readonly long DepotId = SourceScope.Namespace(SourceId, 4);
-    public static readonly long SharedId = SourceScope.Namespace(SourceId, 5);
-    public static readonly long RentalId = SourceScope.Namespace(SourceId, 6);
+    public static readonly long GiroId = RowIds.Namespace(IdSpace, 1);
+    public static readonly long CardId = RowIds.Namespace(IdSpace, 2);
+    public static readonly long SavingsId = RowIds.Namespace(IdSpace, 3);
+    public static readonly long DepotId = RowIds.Namespace(IdSpace, 4);
+    public static readonly long SharedId = RowIds.Namespace(IdSpace, 5);
+    public static readonly long RentalId = RowIds.Namespace(IdSpace, 6);
 
     // Category ids (leaf categories) and groups.
     private const long GLiving = 100, GHome = 101, GMobility = 102, GLeisure = 103, GIncome = 104, GShared = 105, GRental = 106, GTransfers = 107;
@@ -56,14 +57,14 @@ internal static class DemoSeed
         await using (var scope = services.CreateAsyncScope())
         {
             var users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
-            var user = new AppUser { UserName = UserName };
+            var user = new AppUser { Id = OwnerUserId, UserName = UserName };
             var result = await users.CreateAsync(user, Password);
             if (!result.Succeeded) throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Description)));
             owner = user.Id;
         }
 
         await using var db = await factory.CreateDbContextAsync();
-        db.ImportSources.Add(new ImportSource { Id = SourceId, Name = "Household data", CreatedAt = Created, OwnerUserId = owner, UploadToken = "demo-token", LastUploadAt = new DateTime(2026, 11, 10, 6, 0, 0, DateTimeKind.Utc) });
+        db.UserDataStates.Add(new UserDataState { UserId = owner, IdSpace = IdSpace, LastUploadAt = new DateTime(2026, 11, 10, 6, 0, 0, DateTimeKind.Utc) });
 
         // ---- categories ----
         Group(db, GLiving, "Living", "#4e9a06");
@@ -84,13 +85,13 @@ internal static class DemoSeed
         Cat(db, OwnTransfer, "Own transfer", GTransfers);
 
         // ---- accounts ----
-        db.AccountGroups.Add(new AccountGroup { Id = 1, SourceId = SourceId, Name = "Example Bank", Sort = 1 });
-        db.AccountGroups.Add(new AccountGroup { Id = 2, SourceId = SourceId, Name = "Savings & investments", Sort = 2 });
-        db.AccountGroups.Add(new AccountGroup { Id = 3, SourceId = SourceId, Name = "Flats", Sort = 3 });
+        db.AccountGroups.Add(new AccountGroup { Id = 1, OwnerUserId = OwnerUserId, Name = "Example Bank", Sort = 1 });
+        db.AccountGroups.Add(new AccountGroup { Id = 2, OwnerUserId = OwnerUserId, Name = "Savings & investments", Sort = 2 });
+        db.AccountGroups.Add(new AccountGroup { Id = 3, OwnerUserId = OwnerUserId, Name = "Flats", Sort = 3 });
         Acct(db, GiroId, "Giro account", 1, 1, "DE02 1001 0010 0000 0000 01", 3_412.18m, 1);
         Acct(db, CardId, "Credit card", 3, 1, null, -386.40m, 2);
         Acct(db, SavingsId, "Daily savings", 2, 2, "DE02 1001 0010 0000 0000 02", 14_250.00m, 3);
-        db.Accounts.Add(new Account { Id = DepotId, SourceId = SourceId, Name = "Example Depot", Type = 7, Currency = "EUR", GroupId = 2, Sort = 4, Provider = "fake" });
+        db.Accounts.Add(new Account { Id = DepotId, OwnerUserId = OwnerUserId, Name = "Example Depot", Type = 7, Currency = "EUR", GroupId = 2, Sort = 4, Provider = "fake" });
         Acct(db, SharedId, "Shared flat account", 1, 3, "DE02 1001 0010 0000 0000 03", 1_204.55m, 5);
         Acct(db, RentalId, "Rental flat account", 1, 3, "DE02 1001 0010 0000 0000 04", 6_870.20m, 6);
         await db.SaveChangesAsync();
@@ -230,16 +231,16 @@ internal static class DemoSeed
     // ---- helpers ----
 
     private static void Group(BudgetDbContext db, long id, string name, string color) =>
-        db.CategoryGroups.Add(new CategoryGroup { Id = id, SourceId = SourceId, Name = name, Color = color, Sort = id });
+        db.CategoryGroups.Add(new CategoryGroup { Id = id, OwnerUserId = OwnerUserId, Name = name, Color = color, Sort = id });
 
     private static void Cat(BudgetDbContext db, long id, string name, long group) =>
-        db.Categories.Add(new Category { Id = id, SourceId = SourceId, Name = name, GroupId = group, Type = 1, Sort = id });
+        db.Categories.Add(new Category { Id = id, OwnerUserId = OwnerUserId, Name = name, GroupId = group, Type = 1, Sort = id });
 
     private static void Acct(BudgetDbContext db, long id, string name, long type, long group, string? iban, decimal balance, long sort) =>
         db.Accounts.Add(new Account
         {
             Id = id,
-            SourceId = SourceId,
+            OwnerUserId = OwnerUserId,
             Name = name,
             Type = type,
             GroupId = group,
@@ -255,7 +256,7 @@ internal static class DemoSeed
         db.Holdings.Add(new Holding
         {
             Id = id,
-            SourceId = SourceId,
+            OwnerUserId = OwnerUserId,
             AccountId = DepotId,
             Name = name,
             Isin = isin,
@@ -269,7 +270,7 @@ internal static class DemoSeed
 
     private static void Project(BudgetDbContext db, string owner, int id, string name, string description, int sort, long[] accounts, long[] groups, long[] income)
     {
-        db.Projects.Add(new Project { Id = id, Name = name, Description = description, SourceId = SourceId, OwnerUserId = owner, SortOrder = sort, CreatedAt = Created, IsDefaultForNewAccounts = id == HouseholdId });
+        db.Projects.Add(new Project { Id = id, Name = name, Description = description, OwnerUserId = owner, SortOrder = sort, CreatedAt = Created, IsDefaultForNewAccounts = id == HouseholdId });
         foreach (var a in accounts) db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = id, AccountId = a });
         foreach (var g in groups)
         {
@@ -307,7 +308,7 @@ internal static class DemoSeed
             db.Transactions.Add(new Transaction
             {
                 Id = id,
-                SourceId = SourceId,
+                OwnerUserId = OwnerUserId,
                 AccountId = account,
                 Amount = cents,
                 Currency = "EUR",

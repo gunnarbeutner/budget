@@ -14,16 +14,16 @@ public class ProjectTaxProfilesTests
         var depot = t.AddAccount(100, "Depot"); depot.Portfolio = 1;
         t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 7, AccountId = 100 });
         // Depot link: PP depot "pp-d" → imported depot 100.
-        t.Db.PpPortfolioLinks.Add(new PpPortfolioLink { SourceId = 1, PpPortfolioUuid = "pp-d", AccountId = 100 });
+        t.Db.PpPortfolioLinks.Add(new PpPortfolioLink { OwnerUserId = TestDb.DefaultOwner, PpPortfolioUuid = "pp-d", AccountId = 100 });
         // Instrument link: ISIN-less gold uuid → the imported holding key.
-        t.Db.PpSecurityLinks.Add(new PpSecurityLink { SourceId = 1, PpSecurityUuid = "gold", MmHoldingKey = "sym:XAU" });
+        t.Db.PpSecurityLinks.Add(new PpSecurityLink { OwnerUserId = TestDb.DefaultOwner, PpSecurityUuid = "gold", MmHoldingKey = "sym:XAU" });
         // Reclassify the gold explicitly (default would also be gold §23).
-        t.Db.SecurityTaxSettings.Add(new SecurityTaxSetting { SourceId = 1, SecurityUuid = "gold", Kind = (int)InstrumentTaxKind.MovableSection23, TeilfreistellungBp = 0 });
+        t.Db.SecurityTaxSettings.Add(new SecurityTaxSetting { OwnerUserId = TestDb.DefaultOwner, SecurityUuid = "gold", Kind = (int)InstrumentTaxKind.MovableSection23, TeilfreistellungBp = 0 });
         t.Db.PpLots.AddRange(
-            new PpLot { SourceId = 1, PortfolioUuid = "pp-d", SecurityUuid = "etf", Isin = "IE00X", Acquired = new DateOnly(2020, 1, 1), Shares = 10m, Cost = 1000m },
-            new PpLot { SourceId = 1, PortfolioUuid = "pp-d", SecurityUuid = "gold", Isin = "", Acquired = new DateOnly(2023, 1, 1), Shares = 1m, Cost = 20000m },
+            new PpLot { OwnerUserId = TestDb.DefaultOwner, PortfolioUuid = "pp-d", SecurityUuid = "etf", Isin = "IE00X", Acquired = new DateOnly(2020, 1, 1), Shares = 10m, Cost = 1000m },
+            new PpLot { OwnerUserId = TestDb.DefaultOwner, PortfolioUuid = "pp-d", SecurityUuid = "gold", Isin = "", Acquired = new DateOnly(2023, 1, 1), Shares = 1m, Cost = 20000m },
             // An ISIN-less lot with no instrument mapping must be dropped.
-            new PpLot { SourceId = 1, PortfolioUuid = "pp-d", SecurityUuid = "ghost", Isin = "", Acquired = new DateOnly(2023, 1, 1), Shares = 1m, Cost = 1m });
+            new PpLot { OwnerUserId = TestDb.DefaultOwner, PortfolioUuid = "pp-d", SecurityUuid = "ghost", Isin = "", Acquired = new DateOnly(2023, 1, 1), Shares = 1m, Cost = 1m });
         await t.Db.SaveChangesAsync();
 
         var profiles = await t.Portfolio.GetProjectTaxProfilesAsync(7);
@@ -47,11 +47,11 @@ public class ProjectTaxProfilesTests
         t.AddProject(8);
         var depot = t.AddAccount(200, "Immobilien"); depot.Portfolio = 1;
         t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 8, AccountId = 200 });
-        t.Db.PpPortfolioLinks.Add(new PpPortfolioLink { SourceId = 1, PpPortfolioUuid = "pp-immo", AccountId = 200 });
-        t.Db.PpSecurityLinks.Add(new PpSecurityLink { SourceId = 1, PpSecurityUuid = "haus", MmHoldingKey = "name:Musterstraße 1" });
+        t.Db.PpPortfolioLinks.Add(new PpPortfolioLink { OwnerUserId = TestDb.DefaultOwner, PpPortfolioUuid = "pp-immo", AccountId = 200 });
+        t.Db.PpSecurityLinks.Add(new PpSecurityLink { OwnerUserId = TestDb.DefaultOwner, PpSecurityUuid = "haus", MmHoldingKey = "name:Musterstraße 1" });
         // Real estate, §23 10-year, originally bought 2008 though inherited (lot dated) in 2021.
-        t.Db.SecurityTaxSettings.Add(new SecurityTaxSetting { SourceId = 1, SecurityUuid = "haus", Kind = (int)InstrumentTaxKind.RealEstateSection23, AcquiredOverride = new DateOnly(2008, 1, 1) });
-        t.Db.PpLots.Add(new PpLot { SourceId = 1, PortfolioUuid = "pp-immo", SecurityUuid = "haus", Isin = "", Acquired = new DateOnly(2021, 6, 1), Shares = 1m, Cost = 300000m });
+        t.Db.SecurityTaxSettings.Add(new SecurityTaxSetting { OwnerUserId = TestDb.DefaultOwner, SecurityUuid = "haus", Kind = (int)InstrumentTaxKind.RealEstateSection23, AcquiredOverride = new DateOnly(2008, 1, 1) });
+        t.Db.PpLots.Add(new PpLot { OwnerUserId = TestDb.DefaultOwner, PortfolioUuid = "pp-immo", SecurityUuid = "haus", Isin = "", Acquired = new DateOnly(2021, 6, 1), Shares = 1m, Cost = 300000m });
         await t.Db.SaveChangesAsync();
 
         var profile = (await t.Portfolio.GetProjectTaxProfilesAsync(8))["name:Musterstraße 1"];

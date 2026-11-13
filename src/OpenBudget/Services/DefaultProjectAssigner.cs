@@ -60,14 +60,13 @@ public static class DefaultProjectAssigner
 
     /// <summary>
     /// Assigns every account and every top-level category group (directly under the hidden root) of
-    /// <paramref name="sourceId"/> to its owner's default project, skipping what is already assigned there. Used when a
+    /// <paramref name="ownerId"/> to that user's default project, skipping what is already assigned there. Used when a
     /// MoneyMoney import finishes; running it again adds nothing. Returns the number of assignments added.
     /// </summary>
-    public static async Task<int> AssignImportedAsync(BudgetDbContext db, int sourceId, CancellationToken ct = default)
+    public static async Task<int> AssignImportedAsync(BudgetDbContext db, string ownerId, CancellationToken ct = default)
     {
-        var owner = await db.ImportSources.Where(s => s.Id == sourceId).Select(s => s.OwnerUserId).FirstOrDefaultAsync(ct);
-        if (string.IsNullOrEmpty(owner)) return 0;
-        var accountIds = await db.Accounts.Where(a => a.SourceId == sourceId).Select(a => a.Id).ToListAsync(ct);
+        var owner = ownerId;
+        var accountIds = await db.Accounts.Where(a => a.OwnerUserId == ownerId).Select(a => a.Id).ToListAsync(ct);
         var added = await AssignNewAccountsAsync(db, owner, accountIds, ct);
 
         var projectId = await db.Projects.AsNoTracking()
@@ -76,9 +75,9 @@ public static class DefaultProjectAssigner
             .FirstOrDefaultAsync(ct);
         if (projectId is not { } id || await IsSharedAsync(db, id, ct)) return added;
 
-        var root = SourceScope.SentinelRoot(sourceId);
+        var root = RowIds.SentinelRoot(await RowIds.IdSpaceAsync(db, ownerId, ct));
         var topLevel = await db.CategoryGroups
-            .Where(g => g.SourceId == sourceId && g.Id != root && (g.ParentGroupId == null || g.ParentGroupId == root))
+            .Where(g => g.OwnerUserId == ownerId && g.Id != root && (g.ParentGroupId == null || g.ParentGroupId == root))
             .Select(g => g.Id).ToListAsync(ct);
         var assigned = await db.ProjectCategoryAssignments.Where(a => a.ProjectId == id).Select(a => a.CategoryId).ToListAsync(ct);
         foreach (var groupId in topLevel.Except(assigned))

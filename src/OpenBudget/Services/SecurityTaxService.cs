@@ -23,20 +23,20 @@ public class SecurityTaxService
     public static InstrumentTaxKind DefaultKind(string isin) =>
         string.IsNullOrEmpty(isin) ? InstrumentTaxKind.MovableSection23 : InstrumentTaxKind.Security;
 
-    public async Task<List<SecurityTaxRow>> GetSettingsAsync(int sourceId, CancellationToken ct = default)
+    public async Task<List<SecurityTaxRow>> GetSettingsAsync(string ownerId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         // Mapping / tax configuration is owner-only (the source's owner; refused for everyone else).
-        db.Scope?.RequireSourceOwner(sourceId);
+        db.Scope?.RequireOwner(ownerId);
         var lotUuids = await db.PpLots.AsNoTracking()
-            .Where(l => l.SourceId == sourceId).Select(l => l.SecurityUuid).Distinct().ToListAsync(ct);
+            .Where(l => l.OwnerUserId == ownerId).Select(l => l.SecurityUuid).Distinct().ToListAsync(ct);
         if (lotUuids.Count == 0) return new List<SecurityTaxRow>();
 
         var secs = await db.PpSecurities.AsNoTracking()
-            .Where(s => s.SourceId == sourceId && lotUuids.Contains(s.Uuid))
+            .Where(s => s.OwnerUserId == ownerId && lotUuids.Contains(s.Uuid))
             .ToDictionaryAsync(s => s.Uuid, ct);
         var overrides = await db.SecurityTaxSettings.AsNoTracking()
-            .Where(s => s.SourceId == sourceId)
+            .Where(s => s.OwnerUserId == ownerId)
             .ToDictionaryAsync(s => s.SecurityUuid, ct);
 
         return lotUuids
@@ -59,15 +59,15 @@ public class SecurityTaxService
             .ToList();
     }
 
-    public async Task SetAsync(int sourceId, string uuid, int kind, int teilfreistellungBp, DateOnly? acquiredOverride, CancellationToken ct = default)
+    public async Task SetAsync(string ownerId, string uuid, int kind, int teilfreistellungBp, DateOnly? acquiredOverride, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         // Mapping / tax configuration is owner-only (the source's owner; refused for everyone else).
-        db.Scope?.RequireSourceOwner(sourceId);
+        db.Scope?.RequireOwner(ownerId);
         var existing = await db.SecurityTaxSettings
-            .FirstOrDefaultAsync(s => s.SourceId == sourceId && s.SecurityUuid == uuid, ct);
+            .FirstOrDefaultAsync(s => s.OwnerUserId == ownerId && s.SecurityUuid == uuid, ct);
         if (existing is null)
-            db.SecurityTaxSettings.Add(new SecurityTaxSetting { SourceId = sourceId, SecurityUuid = uuid, Kind = kind, TeilfreistellungBp = teilfreistellungBp, AcquiredOverride = acquiredOverride });
+            db.SecurityTaxSettings.Add(new SecurityTaxSetting { OwnerUserId = ownerId, SecurityUuid = uuid, Kind = kind, TeilfreistellungBp = teilfreistellungBp, AcquiredOverride = acquiredOverride });
         else
         {
             existing.Kind = kind;

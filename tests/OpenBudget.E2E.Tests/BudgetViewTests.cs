@@ -100,10 +100,10 @@ public sealed class BudgetViewTests : EndToEndTestBase
         await using (var db = await services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
         {
             var date = ((DateTimeOffset)new DateTime(E2ESeed.BudgetYear, 1, 20, 0, 0, 0, DateTimeKind.Utc)).ToUnixTimeSeconds();
-            db.Transactions.Add(new Transaction { Id = 60, SourceId = E2ESeed.SourceId, CategoryId = 200, Amount = -8_00, Timestamp = date, Name = "Example Market" });
+            db.Transactions.Add(new Transaction { Id = 60, OwnerUserId = E2ESeed.OwnerUserId, CategoryId = 200, Amount = -8_00, Timestamp = date, Name = "Example Market" });
             await db.SaveChangesAsync();
         }
-        Factory.BrowserHostServices.GetRequiredService<ChangeNotificationService>().Publish(new DataChange(DataArea.ImportedData, SourceId: E2ESeed.SourceId));
+        Factory.BrowserHostServices.GetRequiredService<ChangeNotificationService>().Publish(new DataChange(DataArea.ImportedData, OwnerUserId: E2ESeed.OwnerUserId));
 
         await Expect(row).ToContainTextAsync("50,00 €");
         await Expect(Page.GetByText("changed in another session")).ToHaveCountAsync(0);

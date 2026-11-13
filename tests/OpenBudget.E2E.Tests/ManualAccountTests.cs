@@ -14,8 +14,8 @@ namespace OpenBudget.E2E.Tests;
 [TestFixture]
 public sealed class ManualAccountTests : EndToEndTestBase
 {
-    private static readonly long Cash = SourceScope.Namespace(E2ESeed.SourceId, 5);
-    private static readonly long Old = SourceScope.Namespace(E2ESeed.SourceId, 6);
+    private static readonly long Cash = RowIds.Namespace(E2ESeed.IdSpace, 5);
+    private static readonly long Old = RowIds.Namespace(E2ESeed.IdSpace, 6);
 
     private SystemDbContextFactory Db => Factory.Services.GetRequiredService<SystemDbContextFactory>();
 
@@ -23,16 +23,16 @@ public sealed class ManualAccountTests : EndToEndTestBase
     private async Task SeedAsync(string provider = AccountProviders.MoneyMoney)
     {
         await using var db = await Db.CreateDbContextAsync();
-        (await db.ImportSources.SingleAsync(s => s.Id == E2ESeed.SourceId)).LastUploadAt = DateTime.UtcNow;
-        db.Accounts.Add(new Account { Id = Cash, SourceId = E2ESeed.SourceId, Name = "Example Cash", Currency = "EUR", Type = 6, Provider = provider, Balances = "11:100.000000,3:EUR," });
-        db.Accounts.Add(new Account { Id = Old, SourceId = E2ESeed.SourceId, Name = "Example Old Savings", Currency = "EUR", Type = 2, Balances = "11:0.000000,3:EUR," });
+        (await db.UserDataStates.SingleAsync(s => s.UserId == E2ESeed.OwnerUserId)).LastUploadAt = DateTime.UtcNow;
+        db.Accounts.Add(new Account { Id = Cash, OwnerUserId = E2ESeed.OwnerUserId, Name = "Example Cash", Currency = "EUR", Type = 6, Provider = provider, Balances = "11:100.000000,3:EUR," });
+        db.Accounts.Add(new Account { Id = Old, OwnerUserId = E2ESeed.OwnerUserId, Name = "Example Old Savings", Currency = "EUR", Type = 2, Balances = "11:0.000000,3:EUR," });
         await db.SaveChangesAsync();
         db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = Cash });
         db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = Old });
         db.Transactions.Add(new Transaction
         {
             Id = 910001,
-            SourceId = E2ESeed.SourceId,
+            OwnerUserId = E2ESeed.OwnerUserId,
             AccountId = Cash,
             Amount = -2000,
             Currency = "EUR",

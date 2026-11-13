@@ -4,7 +4,6 @@
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject OnboardingService Onboarding
-@inject SourceService SourceService
 @inject AccountSwitchService Switcher
 @inject MoneyMoneyBrowserImport BrowserImport
 @inject IJSRuntime JS
@@ -45,7 +44,7 @@ else
 
     <li class="card mb-3" data-testid="step-moneymoney">
         <div class="card-body">
-            <h2 class="h5 card-title">@StepMark(state.MoneyMoneySource?.LastUploadAt != null) @L["Step2_Heading"] <span class="badge text-bg-light border fw-normal">@L["Optional"]</span></h2>
+            <h2 class="h5 card-title">@StepMark(state.MoneyMoneyImported) @L["Step2_Heading"] <span class="badge text-bg-light border fw-normal">@L["Optional"]</span></h2>
             <p class="mb-2">@L["Step2_Body"]</p>
 
             @if (job is { Running: true } running)
@@ -71,12 +70,12 @@ else
                     <button type="button" class="btn btn-sm btn-link" @onclick="Dismiss">@L["Job_Ok"]</button>
                 </div>
             }
-            else if (state.MoneyMoneySource is { MoneyMoneyImportFinishedAt: { } finishedAt } finishedSource)
+            else if (state.Import is { MoneyMoneyImportFinishedAt: { } finishedAt } finishedState)
             {
                 <p class="mb-0">
                     <span class="badge text-bg-secondary me-2" data-testid="import-finished">@L["Finished_Badge", Clock.ToLocal(finishedAt).ToString("yyyy-MM-dd")]</span>
                     <span class="small text-body-secondary me-2">@L["Finished_Hint"]</span>
-                    <button class="btn btn-sm btn-outline-secondary" data-testid="import-resume" @onclick="() => SetFinishedAsync(finishedSource.Id, false)">@L["Finished_Resume"]</button>
+                    <button class="btn btn-sm btn-outline-secondary" data-testid="import-resume" @onclick="() => SetFinishedAsync(finishedState.UserId, false)">@L["Finished_Resume"]</button>
                 </p>
             }
             else
@@ -135,7 +134,7 @@ else
             {
                 var pending = st.Links.Where(l => !l.Switched).ToList();
                 <hr />
-                <div data-source-switch data-testid="mm-followup">
+                <div data-import-switch data-testid="mm-followup">
                     <h3 class="h6">@L["Switch_Heading"]</h3>
                     <p class="small mb-2" data-testid="switch-progress">@L["Switch_Progress", st.Links.Count - pending.Count, st.Links.Count]
                         @if (st.MoneyMoneyAccountsWithoutLink > 0)
@@ -282,7 +281,6 @@ else
     private long uploaded;
     private long uploadSize;
     private string? uploadError;
-    private string? sourceName;
     private DotNetObjectReference<GetStarted>? selfRef;
 
     private IReadOnlyList<int>? switchIds;
@@ -300,7 +298,7 @@ else
     }
 
     protected override bool IsRelevantChange(DataChange change) =>
-        change.Area is DataArea.Sources or DataArea.ImportedData or DataArea.Projects or DataArea.BankSync;
+        change.Area is DataArea.ImportState or DataArea.ImportedData or DataArea.Projects or DataArea.BankSync;
 
     protected override Task ReloadAfterChangeAsync() => LoadAsync();
 
@@ -308,7 +306,7 @@ else
     {
         job = userId == null ? null : BrowserImport.GetJob(userId);
         state = await Onboarding.GetAsync();
-        switchState = state.MoneyMoneySource is { } s ? await Switcher.GetSourceStateAsync(s.Id) : null;
+        switchState = state.MoneyMoneyImported && userId != null ? await Switcher.GetSourceStateAsync(userId) : null;
     }
 
     private void OnJobChanged(string changedUser)
@@ -367,13 +365,11 @@ else
     private async Task UploadAsync()
     {
         uploadError = null;
-        var source = await SourceService.EnsureOwnSourceAsync(preferMoneyMoney: true);
-        if (source.MoneyMoneyImportFinishedAt != null)
+        if (state?.Import is { MoneyMoneyImportFinishedAt: not null })
         {
             uploadError = L["Error_Finished"];
             return;
         }
-        sourceName = source.Name;
         uploading = true;
         uploaded = 0;
         selfRef ??= DotNetObjectReference.Create(this);
@@ -403,7 +399,7 @@ else
         var secret = hasPassword ? password : "";
         lastUploadHadPassword = hasPassword;
         password = "";
-        if (userId == null || sourceName == null || !BrowserImport.StartImport(userId, uploadId, sourceName, secret))
+        if (userId == null || !BrowserImport.StartImport(userId, uploadId, secret))
             uploadError = L["Error_Failed"];
         job = userId == null ? null : BrowserImport.GetJob(userId);
         StateHasChanged();
@@ -455,12 +451,13 @@ else
         pendingFinish = null;
         if (finishKeepManual && st.MoneyMoneyAccounts.Count > 0)
             await Switcher.KeepManualAsync(st.MoneyMoneyAccounts.Select(a => a.AccountId).ToList());
-        await SetFinishedAsync(st.SourceId, true);
+        await SetFinishedAsync(st.OwnerUserId, true);
     }
 
-    private async Task SetFinishedAsync(int sourceId, bool finished)
+
+    private async Task SetFinishedAsync(string ownerId, bool finished)
     {
-        await Switcher.SetImportFinishedAsync(sourceId, finished);
+        await Switcher.SetImportFinishedAsync(ownerId, finished);
         await LoadAsync();
     }
 

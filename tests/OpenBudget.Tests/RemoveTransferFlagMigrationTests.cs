@@ -22,6 +22,7 @@ public sealed class RemoveTransferFlagMigrationTests
         await migrator.MigrateAsync("20261111233728_UserDisplayName");
 
         await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = ON");
+        await db.Database.ExecuteSqlRawAsync("UPDATE import_sources SET OwnerUserId = 'u-owner' WHERE Id = 1");
         await db.Database.ExecuteSqlRawAsync("INSERT INTO accounts (Id, SourceId, Iban, provider) VALUES (5, 1, NULL, 'fake')");
         await db.Database.ExecuteSqlRawAsync(
             "INSERT INTO categories (Id, SourceId, name, show_in_charts) VALUES (10, 1, 'Food', 1), (11, 1, 'Transfers', 0)");

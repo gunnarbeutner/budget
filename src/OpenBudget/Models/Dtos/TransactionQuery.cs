@@ -4,8 +4,8 @@ using OpenBudget.Services;
 namespace OpenBudget.Models;
 
 /// <summary>
-/// Filter for the per-project transaction browser. SourceId is required (every project is
-/// bound to exactly one import source); CategoryLeafIds / AccountIds compose with AND
+/// Filter for the per-project transaction browser. OwnerUserId is required (every project is
+/// bound to exactly one owner); CategoryLeafIds / AccountIds compose with AND
 /// when both are set, so a "category X on account Y" filter works. Period bounds the window;
 /// null means unrestricted. AmountMin/Max compare against the absolute value of the
 /// transaction amount in euros — a single number on the UI side means "transactions of at
@@ -13,7 +13,7 @@ namespace OpenBudget.Models;
 /// </summary>
 public class TransactionQuery
 {
-    public int SourceId { get; init; }
+    public string OwnerUserId { get; init; } = string.Empty;
     public IReadOnlyCollection<long>? CategoryLeafIds { get; init; }
     public IReadOnlyCollection<long>? AccountIds { get; init; }
     /// <summary>
@@ -109,7 +109,7 @@ public class TransactionRow
     /// <summary>True while the booking is only reserved ("vorgemerkt") and not yet booked.</summary>
     public bool IsPending { get; init; }
 
-    public int SourceId { get; init; }
+    public string OwnerUserId { get; init; } = string.Empty;
 
     /// <summary>OpenBudget's own note (MoneyMoney's comment for MoneyMoney-owned rows).</summary>
     public string? Note { get; init; }
@@ -131,7 +131,7 @@ public class TransactionRow
 
     public bool CanEdit => EditBlock == EditBlock.None;
 
-    /// <summary>The whole booking (amount, date, payee, ...) may be edited or deleted: a manual account of a source the user owns.</summary>
+    /// <summary>The whole booking (amount, date, payee, ...) may be edited or deleted: a manual account the user owns.</summary>
     public bool CanEditBooking { get; init; }
 
     public DateTime? ValueDate { get; init; }

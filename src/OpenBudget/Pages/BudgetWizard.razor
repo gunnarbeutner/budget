@@ -295,7 +295,7 @@ else if (step == 3)
     // The wizard holds unsaved selections/predictions, so banner rather than auto-reload.
     protected override bool AutoReloadOnChange => false;
     protected override bool IsRelevantChange(DataChange change) =>
-        change.Area is DataArea.ImportedData or DataArea.Sources
+        change.Area is DataArea.ImportedData or DataArea.ImportState
         || change.ProjectId is null || change.ProjectId == ProjectId;
     protected override Task ReloadAfterChangeAsync()
     {
@@ -311,15 +311,15 @@ else if (step == 3)
 
         await Task.Delay(100); // Allow UI to update
 
-        var sourceIdForPredict = await ProjectService.GetSourceIdForProjectAsync(selectedProjectId);
+        var ownerIdForPredict = await ProjectService.GetOwnerIdForProjectAsync(selectedProjectId) ?? string.Empty;
         incomeKeys = await BudgetService.GetIncomeItemsForProjectAsync(selectedProjectId);
 
         // Load the hierarchy once so we can look up parent names without per-item DB calls.
-        var allCategoryItems = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(sourceIdForPredict);
+        var allCategoryItems = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(ownerIdForPredict);
         var groupById = allCategoryItems
             .Where(c => c.ItemType == CategoryItemType.Group)
             .ToDictionary(c => c.Id, c => c.CategoryGroup);
-        var categoryById = (await CategoryHierarchyService.GetAllCategoriesAsync(sourceIdForPredict))
+        var categoryById = (await CategoryHierarchyService.GetAllCategoriesAsync(ownerIdForPredict))
             .ToDictionary(c => c.Id, c => c);
 
         predictions = new Dictionary<(long Id, CategoryItemType ItemType), decimal[]>();
@@ -345,7 +345,7 @@ else if (step == 3)
                     var key = (item.CategoryGroupId.Value, CategoryItemType.Group);
                     var isIncome = incomeKeys.Contains(key);
                     var monthlyPredictions = await BudgetPredictionService.PredictMonthlySpendingForCategoryAsync(
-                        item.CategoryGroupId.Value, selectedYear, sourceIdForPredict, isIncome);
+                        item.CategoryGroupId.Value, selectedYear, ownerIdForPredict, isIncome);
                     predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
                 }
                 else if (item.CategoryId.HasValue)
@@ -354,7 +354,7 @@ else if (step == 3)
                     var key = (item.CategoryId.Value, CategoryItemType.Category);
                     var isIncome = incomeKeys.Contains(key);
                     var monthlyPredictions = await BudgetPredictionService.PredictMonthlySpendingForLeafCategoryAsync(
-                        item.CategoryId.Value, selectedYear, sourceIdForPredict, isIncome);
+                        item.CategoryId.Value, selectedYear, ownerIdForPredict, isIncome);
                     predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
                 }
             }

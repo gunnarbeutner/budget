@@ -56,7 +56,7 @@ public abstract class DataChangeAwareComponent : ComponentBase, IDisposable
 
             // Ignore changes outside this user's scope (notifications carry only ids, but a
             // component must not even react to other users' data). The provider has already
-            // dropped its cache for Projects/Sources changes, so this reads the fresh scope.
+            // dropped its cache for Projects/ImportState changes, so this reads the fresh scope.
             AccessScope current;
             try { current = await Access.GetAsync(); }
             catch (Exception) { return; }

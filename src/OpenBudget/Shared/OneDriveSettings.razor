@@ -3,7 +3,6 @@
 @using OpenBudget.Services
 @inject OneDriveService OneDrive
 @inject CloudFileSyncCoordinator CloudFiles
-@inject SourceService Sources
 @inject NavigationManager Navigation
 @inject ClockService Clock
 @inject IStringLocalizer<OneDriveSettings> L
@@ -57,7 +56,6 @@
                         <thead>
                             <tr>
                                 <th>@L["Table_File"]</th>
-                                <th>@L["Table_Source"]</th>
                                 <th class="d-none d-md-table-cell">@L["Table_Checked"]</th>
                                 <th>@L["Table_Imported"]</th>
                                 <th></th>
@@ -74,7 +72,6 @@
                                             <div class="text-danger small" data-testid="onedrive-file-error">@err</div>
                                         }
                                     </td>
-                                    <td>@(f.TargetSourceName is { } target ? sourceLabels.GetValueOrDefault(target, "✓") : "—")</td>
                                     <td class="d-none d-md-table-cell">@Format(f.LastCheckedAt)</td>
                                     <td data-testid="onedrive-file-imported">@Format(f.LastImportedAt)</td>
                                     <td class="text-end text-nowrap">
@@ -151,21 +148,6 @@
                         }
                     </div>
                 }
-                @if (selected != null)
-                {
-                    <label class="form-label small mb-1" for="onedrive-target">@L["Picker_Target"]</label>
-                    <select id="onedrive-target" class="form-select form-select-sm" @bind="targetSource">
-                        <option value="">@L["Picker_NoTarget"]</option>
-                        @foreach (var s in ownedSources)
-                        {
-                            <option value="@s.Name">@(ownedSources.Count == 1 ? L["Picker_Import"].Value : s.Label)</option>
-                        }
-                        @if (ownedSources.Count == 0)
-                        {
-                            <option value="@NewSourceValue">@L["Picker_Import"]</option>
-                        }
-                    </select>
-                }
             </div>
         </ChildContent>
         <Footer>
@@ -201,14 +183,6 @@
     private IReadOnlyList<CloudItem>? items;
     private CloudItem? selected;
     private string? pickerError;
-    private string targetSource = "";
-    private sealed record SourceOption(string Name, string Label);
-
-    /// <summary>The target option offered to a user without a source yet: linking creates their source.</summary>
-    private const string NewSourceValue = "+new";
-
-    private List<SourceOption> ownedSources = [];
-    private Dictionary<string, string> sourceLabels = new(StringComparer.Ordinal);
     private bool linking;
 
     protected override async Task OnInitializedAsync()
@@ -239,18 +213,7 @@
         if (userId == null) return;
         connection = await OneDrive.GetConnectionAsync(userId);
         files = connection == null ? [] : await OneDrive.GetLinkedFilesAsync(userId);
-        await LoadSourcesAsync();
         loaded = true;
-    }
-
-    /// <summary>The user's sources with the labels they read instead of the internal names.</summary>
-    private async Task LoadSourcesAsync()
-    {
-        var owned = await Sources.GetOwnedSourcesAsync();
-        var labels = await Sources.GetLabelsAsync(owned.Select(s => s.Id).ToList());
-        ownedSources = owned.Select(s => new SourceOption(s.Name, labels.GetValueOrDefault(s.Id) is { Length: > 0 } l ? l : L["Picker_Import"].Value))
-            .OrderBy(s => s.Label, StringComparer.CurrentCulture).ToList();
-        sourceLabels = ownedSources.ToDictionary(s => s.Name, s => ownedSources.Count == 1 ? "✓" : s.Label, StringComparer.Ordinal);
     }
 
     private string Format(DateTime? utc) => utc is { } t ? Clock.ToLocal(t).ToString("yyyy-MM-dd HH:mm") : L["Never"].Value;
@@ -284,8 +247,6 @@
 
     private async Task OpenPickerAsync()
     {
-        await LoadSourcesAsync();
-        targetSource = ownedSources.Count switch { 0 => NewSourceValue, 1 => ownedSources[0].Name, _ => "" };
         pickerOpen = true;
         await OpenRootAsync(false);
     }
@@ -342,8 +303,7 @@
         try
         {
             var path = string.Join("/", trail.Select(c => c.Name).Append(selected.Name));
-            var target = targetSource == NewSourceValue ? (await Sources.EnsureOwnSourceAsync()).Name : targetSource;
-            var id = await OneDrive.LinkFileAsync(userId, selected.DriveId, selected.ItemId, path, target.Length > 0 ? target : null);
+            var id = await OneDrive.LinkFileAsync(userId, selected.DriveId, selected.ItemId, path);
             pickerOpen = false;
             await LoadAsync();
             // Read the new file right away.

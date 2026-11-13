@@ -20,25 +20,25 @@ public class BudgetPredictionService
     }
 
     /// <summary>Monthly spending (or income) for an individual leaf category over the last N months.</summary>
-    public Task<List<MonthlySpending>> GetMonthlySpendingForCategoryAsync(long categoryId, int sourceId, int months = 12, bool isIncome = false)
-        => ComputeMonthlyHistoryAsync(sourceId, new[] { categoryId }, months, isIncome);
+    public Task<List<MonthlySpending>> GetMonthlySpendingForCategoryAsync(long categoryId, string ownerId, int months = 12, bool isIncome = false)
+        => ComputeMonthlyHistoryAsync(ownerId, new[] { categoryId }, months, isIncome);
 
     /// <summary>
     /// Monthly spending (or income) for a category group over the last N months, summing over
     /// every descendant leaf category.
     /// </summary>
-    public async Task<List<MonthlySpending>> GetMonthlySpendingAsync(long categoryGroupId, int sourceId, int months = 12, bool isIncome = false)
+    public async Task<List<MonthlySpending>> GetMonthlySpendingAsync(long categoryGroupId, string ownerId, int months = 12, bool isIncome = false)
     {
         // Resolve the group's descendant leaves from the cached hierarchy rather than walking
         // sub-groups with a query per level.
-        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(ownerId);
         var key = (categoryGroupId, CategoryItemType.Group);
         var leafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(new[] { key }, hierarchy)[key];
 
         if (leafIds.Count == 0)
             return new List<MonthlySpending>();
 
-        return await ComputeMonthlyHistoryAsync(sourceId, leafIds.ToList(), months, isIncome);
+        return await ComputeMonthlyHistoryAsync(ownerId, leafIds.ToList(), months, isIncome);
     }
 
     /// <summary>
@@ -50,14 +50,14 @@ public class BudgetPredictionService
     /// canonical "actual" the Budget view shows.
     /// </summary>
     private async Task<List<MonthlySpending>> ComputeMonthlyHistoryAsync(
-        int sourceId, IReadOnlyList<long> leafIds, int months, bool isIncome)
+        string ownerId, IReadOnlyList<long> leafIds, int months, bool isIncome)
     {
         var now = DateTimeOffset.UtcNow;
         var startDate = new DateTimeOffset(new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc)).AddMonths(-(months - 1));
 
         await using var db = await _dbFactory.CreateDbContextAsync();
         var query = db.Transactions
-            .Where(t => t.SourceId == sourceId)
+            .Where(t => t.OwnerUserId == ownerId)
             .CountedAsFlow()
             .Where(t => t.CategoryId.HasValue && leafIds.Contains(t.CategoryId.Value))
             .WithinUtc(TimeRange.Between(startDate, startDate.AddMonths(months)));
@@ -91,7 +91,7 @@ public class BudgetPredictionService
         GetMonthlySpendingBatchAsync(
             IReadOnlyCollection<(long Id, CategoryItemType ItemType)> items,
             int year,
-            int sourceId,
+            string ownerId,
             bool isIncome = false)
     {
         const int months = 12;
@@ -103,7 +103,7 @@ public class BudgetPredictionService
 
         var startDate = new DateTimeOffset(new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc));
 
-        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var allCategoriesWithCounts = await _hierarchy.GetAllCategoriesWithChildCountsAsync(ownerId);
         var itemToLeafIds = CategoryHierarchyService.BuildItemToLeafCategoryIds(items, allCategoriesWithCounts);
 
         foreach (var item in items)
@@ -122,7 +122,7 @@ public class BudgetPredictionService
 
         await using var db = await _dbFactory.CreateDbContextAsync();
         var rawQuery = db.Transactions
-            .Where(t => t.SourceId == sourceId)
+            .Where(t => t.OwnerUserId == ownerId)
             .CountedAsFlow()
             .Where(t => t.CategoryId.HasValue && allLeafIds.Contains(t.CategoryId.Value))
             .WithinUtc(TimeRange.Between(startDate, startDate.AddMonths(months)));
@@ -164,10 +164,10 @@ public class BudgetPredictionService
     /// calendar year. Used as the prediction for already-elapsed target years where seasonal
     /// scaling against today's level would be nonsensical.
     /// </summary>
-    private async Task<decimal[]> GetYearActualsAsync((long Id, CategoryItemType ItemType) key, int year, int sourceId, bool isIncome = false)
+    private async Task<decimal[]> GetYearActualsAsync((long Id, CategoryItemType ItemType) key, int year, string ownerId, bool isIncome = false)
     {
         var result = new decimal[12];
-        var batch = await GetMonthlySpendingBatchAsync(new[] { key }, year, sourceId, isIncome);
+        var batch = await GetMonthlySpendingBatchAsync(new[] { key }, year, ownerId, isIncome);
         if (batch.TryGetValue(key, out var trend))
         {
             for (int i = 0; i < 12 && i < trend.Count; i++)
@@ -181,15 +181,15 @@ public class BudgetPredictionService
     /// same algorithm as <see cref="PredictMonthlySpendingForCategoryAsync"/> but driven by
     /// per-leaf history instead of summing a group's descendants.
     /// </summary>
-    public async Task<decimal[]> PredictMonthlySpendingForLeafCategoryAsync(long categoryId, int targetYear, int sourceId, bool isIncome = false)
+    public async Task<decimal[]> PredictMonthlySpendingForLeafCategoryAsync(long categoryId, int targetYear, string ownerId, bool isIncome = false)
     {
         var predictions = new decimal[12];
 
         // For a completely elapsed year, just use that year's own actuals — no scaling needed.
         if (targetYear < DateTime.UtcNow.Year)
-            return await GetYearActualsAsync((categoryId, CategoryItemType.Category), targetYear, sourceId, isIncome);
+            return await GetYearActualsAsync((categoryId, CategoryItemType.Category), targetYear, ownerId, isIncome);
 
-        var monthlyData = await GetMonthlySpendingForCategoryAsync(categoryId, sourceId, 24, isIncome);
+        var monthlyData = await GetMonthlySpendingForCategoryAsync(categoryId, ownerId, 24, isIncome);
 
         if (monthlyData.Count == 0)
             return predictions;
@@ -242,14 +242,14 @@ public class BudgetPredictionService
     /// previous calendar year's monthly distribution to the most-recent-12-months total. Falls
     /// back to a flat distribution when the previous year is incomplete or zero.
     /// </summary>
-    public async Task<decimal[]> PredictMonthlySpendingForCategoryAsync(long categoryGroupId, int targetYear, int sourceId, bool isIncome = false)
+    public async Task<decimal[]> PredictMonthlySpendingForCategoryAsync(long categoryGroupId, int targetYear, string ownerId, bool isIncome = false)
     {
         var predictions = new decimal[12];
 
         if (targetYear < DateTime.UtcNow.Year)
-            return await GetYearActualsAsync((categoryGroupId, CategoryItemType.Group), targetYear, sourceId, isIncome);
+            return await GetYearActualsAsync((categoryGroupId, CategoryItemType.Group), targetYear, ownerId, isIncome);
 
-        var monthlyData = await GetMonthlySpendingAsync(categoryGroupId, sourceId, 24, isIncome);
+        var monthlyData = await GetMonthlySpendingAsync(categoryGroupId, ownerId, 24, isIncome);
 
         if (monthlyData.Count == 0)
             return predictions;

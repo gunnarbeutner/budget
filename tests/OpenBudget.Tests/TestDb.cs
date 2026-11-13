@@ -6,13 +6,16 @@ using OpenBudget.Services;
 namespace OpenBudget.Tests;
 
 /// <summary>
-/// Spins up a fresh in-memory SQLite DB per test, wires the schema via Database.EnsureCreated
-/// (which honors the HasData seed for source 1), and constructs the live service graph the
+/// Spins up a fresh in-memory SQLite DB per test, wires the schema via Database.EnsureCreated, gives
+/// <see cref="DefaultOwner"/> id space 1 (ids equal rowids), and constructs the live service graph the
 /// dashboard uses. Each instance is its own isolated world; tests don't need to clean up
 /// after themselves.
 /// </summary>
 internal sealed class TestDb : IAsyncDisposable
 {
+    /// <summary>Owner of the rows the seed helpers add unless told otherwise (user "default", id space 1).</summary>
+    public const string DefaultOwner = "u-default";
+
     public SqliteConnection Connection { get; }
     public IDbContextFactory<BudgetDbContext> Factory { get; }
     public AccountService Accounts { get; }
@@ -41,6 +44,9 @@ internal sealed class TestDb : IAsyncDisposable
             .Options;
         Db = new BudgetDbContext(options);
         Db.Database.EnsureCreated();
+        Db.Users.Add(new AppUser { Id = DefaultOwner, UserName = "default", NormalizedUserName = "DEFAULT" });
+        Db.UserDataStates.Add(new UserDataState { UserId = DefaultOwner, IdSpace = 1 });
+        Db.SaveChanges();
 
         // Production services take an IDbContextFactory (one short-lived context per operation).
         // In tests every context shares this single open :memory: connection, so they all see the
@@ -101,28 +107,28 @@ internal sealed class TestDb : IAsyncDisposable
     // ---- Seed helpers ----
 
     /// <summary>Add a category group with optional parent and an explicit Id.</summary>
-    public CategoryGroup AddGroup(long id, long? parent = null, string name = "G", int sourceId = 1)
+    public CategoryGroup AddGroup(long id, long? parent = null, string name = "G", string ownerId = DefaultOwner)
     {
-        var g = new CategoryGroup { Id = id, SourceId = sourceId, Name = $"{name}{id}", ParentGroupId = parent };
+        var g = new CategoryGroup { Id = id, OwnerUserId = ownerId, Name = $"{name}{id}", ParentGroupId = parent };
         Db.CategoryGroups.Add(g);
         return g;
     }
 
     /// <summary>Add a leaf category. Type = 1 (default expense) unless overridden.</summary>
-    public Category AddLeaf(long id, long parent, string name = "C", long? type = 1, int sourceId = 1)
+    public Category AddLeaf(long id, long parent, string name = "C", long? type = 1, string ownerId = DefaultOwner)
     {
-        var c = new Category { Id = id, SourceId = sourceId, Name = $"{name}{id}", GroupId = parent, Type = type };
+        var c = new Category { Id = id, OwnerUserId = ownerId, Name = $"{name}{id}", GroupId = parent, Type = type };
         Db.Categories.Add(c);
         return c;
     }
 
-    public Project AddProject(int id, string name = "P", int sourceId = 1)
+    public Project AddProject(int id, string name = "P", string ownerId = DefaultOwner)
     {
         var p = new Project
         {
             Id = id,
             Name = name,
-            SourceId = sourceId,
+            OwnerUserId = ownerId,
             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
         };
         Db.Projects.Add(p);
@@ -198,13 +204,13 @@ internal sealed class TestDb : IAsyncDisposable
     /// Negative cents = expense, positive cents = income — same convention as the source app.
     /// </summary>
     public void AddTransaction(
-        long id, long categoryId, long amountCents, DateTime date, int sourceId = 1,
+        long id, long categoryId, long amountCents, DateTime date, string ownerId = DefaultOwner,
         long? accountId = null, string? name = null, string? comment = null, long? splitted = null)
     {
         Db.Transactions.Add(new Transaction
         {
             Id = id,
-            SourceId = sourceId,
+            OwnerUserId = ownerId,
             CategoryId = categoryId,
             AccountId = accountId,
             Amount = amountCents,
@@ -216,9 +222,9 @@ internal sealed class TestDb : IAsyncDisposable
     }
 
     /// <summary>Add a imported account with a known Id + name.</summary>
-    public Account AddAccount(long id, string name = "Acct", int sourceId = 1)
+    public Account AddAccount(long id, string name = "Acct", string ownerId = DefaultOwner)
     {
-        var a = new Account { Id = id, SourceId = sourceId, Name = name };
+        var a = new Account { Id = id, OwnerUserId = ownerId, Name = name };
         Db.Accounts.Add(a);
         return a;
     }
@@ -257,7 +263,6 @@ internal sealed class UserView
         InstrumentMapping = new InstrumentMappingService(Factory);
         Accounts = new AccountService(Factory);
         Sharing = new SharingService(Factory, t.System, Notifier, origin);
-        Sources = new SourceService(Factory, Notifier, origin);
     }
 
     public ChangeNotificationService Notifier { get; }
@@ -277,5 +282,11 @@ internal sealed class UserView
     public InstrumentMappingService InstrumentMapping { get; }
     public AccountService Accounts { get; }
     public SharingService Sharing { get; }
-    public SourceService Sources { get; }
+}
+
+internal static class TestDbExtensions
+{
+    /// <summary>Gives <paramref name="userId"/> the id space <paramref name="idSpace"/> (rows of theirs are numbered in it).</summary>
+    public static void AddIdSpace(this TestDb t, string userId, int idSpace) =>
+        t.Db.UserDataStates.Add(new UserDataState { UserId = userId, IdSpace = idSpace });
 }

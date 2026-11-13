@@ -23,7 +23,7 @@ public sealed class SharingTests : EndToEndTestBase
         var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
         var owner = await db.Users.SingleAsync(u => u.UserName == E2ESeed.UserName);
-        db.Projects.Add(new Project { Id = 50, Name = HiddenProject, SourceId = E2ESeed.SourceId, OwnerUserId = owner.Id, SortOrder = 5, CreatedAt = DateTime.UtcNow });
+        db.Projects.Add(new Project { Id = 50, Name = HiddenProject, OwnerUserId = owner.Id, SortOrder = 5, CreatedAt = DateTime.UtcNow });
         await db.SaveChangesAsync();
     }
 

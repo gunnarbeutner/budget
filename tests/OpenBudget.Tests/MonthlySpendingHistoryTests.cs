@@ -30,7 +30,7 @@ public class MonthlySpendingHistoryTests
         t.AddTransaction(id: 2, categoryId: 101, amountCents: -2000, date: threeAgo);
         await t.Db.SaveChangesAsync();
 
-        var result = await t.Predictions.GetMonthlySpendingForCategoryAsync(101, sourceId: 1, months: 12);
+        var result = await t.Predictions.GetMonthlySpendingForCategoryAsync(101, ownerId: TestDb.DefaultOwner, months: 12);
 
         Assert.Equal(12, result.Count);
         Assert.Equal(50m, result.Single(m => m.Year == thisMonth.Year && m.Month == thisMonth.Month).Amount);
@@ -53,7 +53,7 @@ public class MonthlySpendingHistoryTests
         t.AddTransaction(id: 2, categoryId: 101, amountCents: 3000, date: thisMonth);   // refund €30
         await t.Db.SaveChangesAsync();
 
-        var result = await t.Predictions.GetMonthlySpendingForCategoryAsync(101, sourceId: 1, months: 12);
+        var result = await t.Predictions.GetMonthlySpendingForCategoryAsync(101, ownerId: TestDb.DefaultOwner, months: 12);
 
         Assert.Equal(70m, result.Single(m => m.Year == thisMonth.Year && m.Month == thisMonth.Month).Amount);
         Assert.Equal(70m, result.Sum(m => m.Amount));
@@ -73,7 +73,7 @@ public class MonthlySpendingHistoryTests
         t.AddTransaction(id: 2, categoryId: 101, amountCents: -3000, date: thisMonth); // correction -€30
         await t.Db.SaveChangesAsync();
 
-        var result = await t.Predictions.GetMonthlySpendingForCategoryAsync(101, sourceId: 1, months: 12, isIncome: true);
+        var result = await t.Predictions.GetMonthlySpendingForCategoryAsync(101, ownerId: TestDb.DefaultOwner, months: 12, isIncome: true);
 
         Assert.Equal(50m, result.Single(m => m.Year == thisMonth.Year && m.Month == thisMonth.Month).Amount);
         Assert.Equal(50m, result.Sum(m => m.Amount));
@@ -93,7 +93,7 @@ public class MonthlySpendingHistoryTests
         t.AddTransaction(id: 2, categoryId: 201, amountCents: -2500, date: thisMonth);
         await t.Db.SaveChangesAsync();
 
-        var result = await t.Predictions.GetMonthlySpendingAsync(100, sourceId: 1, months: 12);
+        var result = await t.Predictions.GetMonthlySpendingAsync(100, ownerId: TestDb.DefaultOwner, months: 12);
 
         Assert.Equal(55m, result.Single(m => m.Year == thisMonth.Year && m.Month == thisMonth.Month).Amount);
     }
@@ -114,7 +114,7 @@ public class MonthlySpendingHistoryTests
         await t.Db.SaveChangesAsync();
 
         var batch = await t.Predictions.GetMonthlySpendingBatchAsync(
-            new[] { (101L, CategoryItemType.Category) }, year: 2026, sourceId: 1);
+            new[] { (101L, CategoryItemType.Category) }, year: 2026, ownerId: TestDb.DefaultOwner);
 
         var trend = batch[(101L, CategoryItemType.Category)];
         Assert.Equal(111.04m, trend.Single(m => m.Month == 4).Amount);
@@ -129,7 +129,7 @@ public class MonthlySpendingHistoryTests
         t.AddProject(1);
         await t.Db.SaveChangesAsync();
 
-        var result = await t.Predictions.GetMonthlySpendingAsync(100, sourceId: 1, months: 12);
+        var result = await t.Predictions.GetMonthlySpendingAsync(100, ownerId: TestDb.DefaultOwner, months: 12);
 
         Assert.Empty(result);
     }

@@ -55,8 +55,8 @@ public sealed class PortfolioPerformanceSettingsTests : EndToEndTestBase
         await Expect(Page.GetByTestId("pp-data")).Not.ToContainTextAsync("legacy");
 
         await set.GetByTestId("pp-portfolio-accounts").ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex("/portfolio-performance/\\d+/portfolios$"));
-        await Expect(Page.GetByText("Example Depot")).ToBeVisibleAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex("/portfolio-performance/portfolios$"));
+        await Expect(Page.GetByText("Example Depot", new() { Exact = true })).ToBeVisibleAsync();
         await Expect(Page.GetByTestId("page-header")).Not.ToContainTextAsync("legacy");
     }
 

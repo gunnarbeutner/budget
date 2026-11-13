@@ -59,9 +59,8 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="PageTitle" xml:space="preserve"><value>Depot-Konten</value></data>
-  <data name="PageTitle_WithSource" xml:space="preserve"><value>Depot-Konten — {0}</value></data>
   <data name="Heading" xml:space="preserve"><value>Depot-Konten</value></data>
-  <data name="Empty" xml:space="preserve"><value>Keine PortfolioPerformance-Depots für diese Quelle. Lade zuerst eine .portfolio-Datei hoch.</value></data>
+  <data name="Empty" xml:space="preserve"><value>Noch keine PortfolioPerformance-Depots. Lade zuerst eine .portfolio-Datei hoch.</value></data>
   <data name="Intro" xml:space="preserve"><value>Ein als Konto angezeigtes Depot erhält ein Depotkonto mit seinen Positionen und dem Wertverlauf sowie ein Verrechnungskonto mit Käufen, Verkäufen, Dividenden, Gebühren und Steuern. Beide werden bei jedem Upload der PortfolioPerformance-Datei neu berechnet.</value></data>
   <data name="NoFile" xml:space="preserve"><value>Die PortfolioPerformance-Datei ist noch nicht gespeichert; die Konten erscheinen mit dem nächsten Upload.</value></data>
   <data name="Col_Portfolio" xml:space="preserve"><value>PortfolioPerformance-Depot</value></data>

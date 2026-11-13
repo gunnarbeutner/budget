@@ -126,7 +126,7 @@
     <value>Zurück zu MoneyMoney</value>
   </data>
   <data name="Settings_Return_Finished" xml:space="preserve">
-    <value>Der MoneyMoney-Import dieser Quelle ist abgeschlossen; nimm ihn zuerst auf der Import-Seite wieder auf.</value>
+    <value>Der MoneyMoney-Import ist abgeschlossen; nimm ihn zuerst auf der Import-Seite wieder auf.</value>
   </data>
   <data name="Return_Title" xml:space="preserve">
     <value>Zurück zu MoneyMoney?</value>

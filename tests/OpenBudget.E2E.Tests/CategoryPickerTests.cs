@@ -23,14 +23,14 @@ public sealed class CategoryPickerTests : EndToEndTestBase
         var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await EditingSeed.SeedAsync(factory);
         await using var db = await factory.CreateDbContextAsync();
-        var source = E2ESeed.SourceId;
-        db.CategoryGroups.Add(new CategoryGroup { Id = 110, SourceId = source, Name = "Personal" });
-        db.CategoryGroups.Add(new CategoryGroup { Id = 111, SourceId = source, Name = "Travel", ParentGroupId = 110 });
-        db.CategoryGroups.Add(new CategoryGroup { Id = 112, SourceId = source, Name = "Gifts", ParentGroupId = 110 });
-        db.Categories.Add(new Category { Id = 210, SourceId = source, Name = "Fuel", GroupId = 111, Type = 1, Color = "#d9480f" });
-        db.Categories.Add(new Category { Id = 211, SourceId = source, Name = "Train", GroupId = 111, Type = 1, Color = "#1971c2" });
-        db.Categories.Add(new Category { Id = 212, SourceId = source, Name = "Birthday", GroupId = 112, Type = 1, Color = "#c2255c" });
-        db.Categories.Add(new Category { Id = 213, SourceId = source, Name = "Hobbies", GroupId = 110, Type = 1, Color = "#2f9e44" });
+        var source = E2ESeed.OwnerUserId;
+        db.CategoryGroups.Add(new CategoryGroup { Id = 110, OwnerUserId = source, Name = "Personal" });
+        db.CategoryGroups.Add(new CategoryGroup { Id = 111, OwnerUserId = source, Name = "Travel", ParentGroupId = 110 });
+        db.CategoryGroups.Add(new CategoryGroup { Id = 112, OwnerUserId = source, Name = "Gifts", ParentGroupId = 110 });
+        db.Categories.Add(new Category { Id = 210, OwnerUserId = source, Name = "Fuel", GroupId = 111, Type = 1, Color = "#d9480f" });
+        db.Categories.Add(new Category { Id = 211, OwnerUserId = source, Name = "Train", GroupId = 111, Type = 1, Color = "#1971c2" });
+        db.Categories.Add(new Category { Id = 212, OwnerUserId = source, Name = "Birthday", GroupId = 112, Type = 1, Color = "#c2255c" });
+        db.Categories.Add(new Category { Id = 213, OwnerUserId = source, Name = "Hobbies", GroupId = 110, Type = 1, Color = "#2f9e44" });
         await db.SaveChangesAsync();
     }
 

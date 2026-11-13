@@ -493,10 +493,10 @@ public sealed class DocumentsTests : EndToEndTestBase
         await using (var db = await Db.CreateDbContextAsync())
         {
             var first = await db.Projects.SingleAsync(p => p.Id == Pid);
-            var project = new Project { Name = "Second Example Project", SourceId = first.SourceId, OwnerUserId = first.OwnerUserId, SortOrder = first.SortOrder + 1 };
+            var project = new Project { Name = "Second Example Project", OwnerUserId = first.OwnerUserId, SortOrder = first.SortOrder + 1 };
             db.Projects.Add(project);
-            db.Accounts.Add(new Account { Id = retiredId, SourceId = E2ESeed.SourceId, Name = "Retired account", Type = 1, Currency = "EUR" });
-            db.Accounts.Add(new Account { Id = holidayId, SourceId = E2ESeed.SourceId, Name = "Holiday account", Type = 1, Currency = "EUR" });
+            db.Accounts.Add(new Account { Id = retiredId, OwnerUserId = E2ESeed.OwnerUserId, Name = "Retired account", Type = 1, Currency = "EUR" });
+            db.Accounts.Add(new Account { Id = holidayId, OwnerUserId = E2ESeed.OwnerUserId, Name = "Holiday account", Type = 1, Currency = "EUR" });
             await db.SaveChangesAsync();
             second = project.Id;
             db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = second, AccountId = holidayId });

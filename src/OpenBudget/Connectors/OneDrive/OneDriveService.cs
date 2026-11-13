@@ -12,7 +12,7 @@ namespace OpenBudget.Connectors.OneDrive;
 public sealed record CloudConnectionView(string? AccountName, DateTime ConnectedAt, bool NeedsReconnect, string? LastError);
 
 public sealed record CloudFileLinkView(
-    int Id, string DisplayPath, string? TargetSourceName, DateTime? LastCheckedAt, DateTime? LastImportedAt,
+    int Id, string DisplayPath, DateTime? LastCheckedAt, DateTime? LastImportedAt,
     DateTime? RemoteModifiedAt, string? LastError);
 
 /// <summary>A folder to list in the picker: the user's drive root, "Shared with me", or a folder in some drive.</summary>
@@ -216,22 +216,20 @@ public sealed class OneDriveService : ICloudFileReader
     {
         await using var db = await _system.CreateDbContextAsync(ct);
         var links = await db.CloudFileLinks.AsNoTracking().Where(f => f.OwnerUserId == userId).OrderBy(f => f.DisplayPath).ToListAsync(ct);
-        return links.Select(f => new CloudFileLinkView(f.Id, f.DisplayPath, f.TargetSourceName, f.LastCheckedAt, f.LastImportedAt, f.RemoteModifiedAt, f.LastError)).ToList();
+        return links.Select(f => new CloudFileLinkView(f.Id, f.DisplayPath, f.LastCheckedAt, f.LastImportedAt, f.RemoteModifiedAt, f.LastError)).ToList();
     }
 
     /// <summary>
     /// Links a file of the user's drive (or one shared with them) for server-side reading. The target source, when
     /// given, must be one the user owns. Linking the same file again updates its path and target.
     /// </summary>
-    public async Task<int> LinkFileAsync(string userId, string driveId, string itemId, string displayPath, string? targetSourceName, CancellationToken ct = default)
+    public async Task<int> LinkFileAsync(string userId, string driveId, string itemId, string displayPath, CancellationToken ct = default)
     {
         RequireEnabled();
         if (string.IsNullOrWhiteSpace(driveId) || string.IsNullOrWhiteSpace(itemId)) throw new ArgumentException("A file is required.", nameof(itemId));
         await using var db = await _system.CreateDbContextAsync(ct);
         var connection = await db.CloudConnections.FirstOrDefaultAsync(c => c.OwnerUserId == userId && c.Provider == CloudProviders.OneDrive, ct)
             ?? throw new CloudException("Connect to Microsoft first.");
-        if (targetSourceName != null && !await db.ImportSources.AnyAsync(s => s.Name == targetSourceName && s.OwnerUserId == userId, ct))
-            throw new ArgumentException("Unknown source.", nameof(targetSourceName));
 
         // The file must exist and be readable with the user's access.
         var metadata = await GetItemMetadataAsync(userId, driveId, itemId, ct);
@@ -243,7 +241,6 @@ public sealed class OneDriveService : ICloudFileReader
             db.CloudFileLinks.Add(link);
         }
         link.DisplayPath = Truncate(string.IsNullOrWhiteSpace(displayPath) ? metadata.Name : displayPath.Trim(), 1000)!;
-        link.TargetSourceName = targetSourceName;
         link.LastCTag = null;
         link.LastETag = null;
         link.LastError = null;

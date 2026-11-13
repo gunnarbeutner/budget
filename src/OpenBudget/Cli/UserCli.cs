@@ -20,15 +20,12 @@ public static class UserCli
           users add <name> [--admin] [--password-stdin | --generate-password]
               Create a user. The initial password is prompted for on a terminal, read from stdin
               with --password-stdin, or generated and printed once (the default without a terminal,
-              e.g. plain `docker exec`). A source whose name equals <name> and that has no owner yet
-              is assigned to the new user together with its unowned projects.
+              e.g. plain `docker exec`). The new user gets a project named after them.
           users list
           users set-password <name> [--password-stdin | --generate-password]
           users remove <name> [--yes]
-              Deletes the login. Its sources/projects stay but become unowned (invisible to everyone
-              until a user with the same name claims them again); its shares are deleted.
-          users claim <name>
-              Re-run the "claim same-named unowned source and its projects" step for an existing user.
+              Deletes the login. Its data and projects stay but become unowned (invisible to
+              everyone); its shares are deleted.
 
         Usernames: lowercase letters, digits and hyphens.
         """;
@@ -81,14 +78,12 @@ public static class UserCli
             case "ADD":
             case "SET-PASSWORD":
             case "REMOVE":
-            case "CLAIM":
                 if (positional.Count != 1)
                 {
                     await stderr.WriteLineAsync($"users {args[0]} needs exactly one <name>.");
                     return 2;
                 }
-                // Usernames are lowercase slugs (they must equal source names); normalising input to
-                // that form is not a case-insensitive comparison, so CA1308 doesn't apply.
+                // Usernames are lowercase slugs; normalising input to that form is not a case-insensitive comparison, so CA1308 doesn't apply.
 #pragma warning disable CA1308
                 var name = positional[0].Trim().ToLowerInvariant();
 #pragma warning restore CA1308
@@ -96,8 +91,7 @@ public static class UserCli
                 {
                     "ADD" => await AddAsync(users, system, name, flags, stdin, stdout, stderr, readSecret),
                     "SET-PASSWORD" => await SetPasswordAsync(users, name, flags, stdin, stdout, stderr, readSecret),
-                    "REMOVE" => await RemoveAsync(users, system, name, flags, stdin, stdout, stderr, readSecret != null),
-                    _ => await ClaimAsync(users, system, name, stdout, stderr),
+                    _ => await RemoveAsync(users, system, name, flags, stdin, stdout, stderr, readSecret != null),
                 };
 
             default:
@@ -133,10 +127,8 @@ public static class UserCli
             return 1;
         }
 
-        var claim = await UserClaims.ClaimAsync(system, user.Id, name);
         var project = await UserDefaultProject.EnsureAsync(system, user.Id);
         await stdout.WriteLineAsync($"Created user '{name}'{(user.IsAdmin ? " (admin)" : "")}.");
-        await WriteClaimAsync(stdout, claim);
         if (project != null)
             await stdout.WriteLineAsync($"Created project '{name}' as the default for new accounts.");
         if (generated)
@@ -209,17 +201,14 @@ public static class UserCli
             if (!string.Equals(answer?.Trim(), "y", StringComparison.OrdinalIgnoreCase)) return 1;
         }
 
-        int sources, projects;
+        int projects;
         await using (var db = await system.CreateDbContextAsync())
         {
             await using var tx = await db.Database.BeginTransactionAsync();
-            // Ownership is released, never reassigned: the data stays but is visible to nobody
-            // until a user with the matching name claims it again. Shares cascade with the user.
-            var ownedSources = await db.ImportSources.Where(s => s.OwnerUserId == user.Id).ToListAsync();
+            // The data stays but is visible to nobody: its owner id matches no user any more, and projects
+            // become unowned. Shares cascade with the user.
             var ownedProjects = await db.Projects.Where(p => p.OwnerUserId == user.Id).ToListAsync();
-            foreach (var s in ownedSources) s.OwnerUserId = null;
-            foreach (var p in ownedProjects) p.OwnerUserId = null;
-            sources = ownedSources.Count;
+            foreach (var p in ownedProjects) p.OwnerUserId = null!;
             projects = ownedProjects.Count;
             await db.SaveChangesAsync();
             // Delete the user's dependent rows explicitly: the app's SQLite connections don't
@@ -239,19 +228,7 @@ public static class UserCli
             await stderr.WriteLineAsync("Could not remove user: " + string.Join("; ", deleted.Errors.Select(e => e.Description)));
             return 1;
         }
-        await stdout.WriteLineAsync($"Removed user '{name}'. {sources} source(s) and {projects} project(s) are now unowned (invisible until re-claimed).");
-        return 0;
-    }
-
-    private static async Task<int> ClaimAsync(UserManager<AppUser> users, SystemDbContextFactory system, string name, TextWriter stdout, TextWriter stderr)
-    {
-        var user = await users.FindByNameAsync(name);
-        if (user == null)
-        {
-            await stderr.WriteLineAsync($"No such user '{name}'.");
-            return 1;
-        }
-        await WriteClaimAsync(stdout, await UserClaims.ClaimAsync(system, user.Id, name));
+        await stdout.WriteLineAsync($"Removed user '{name}'. Their data and {projects} project(s) are now unowned (invisible to everyone).");
         return 0;
     }
 
@@ -259,10 +236,10 @@ public static class UserCli
     {
         await using var db = await system.CreateDbContextAsync();
         var rows = await users.Users.AsNoTracking().OrderBy(u => u.UserName).ToListAsync();
-        var sourceCounts = await db.ImportSources.Where(s => s.OwnerUserId != null)
-            .GroupBy(s => s.OwnerUserId!).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N, StringComparer.Ordinal);
+        var accountCounts = await db.Accounts
+            .GroupBy(a => a.OwnerUserId).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N, StringComparer.Ordinal);
         var projectCounts = await db.Projects.Where(p => p.OwnerUserId != null)
-            .GroupBy(p => p.OwnerUserId!).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N, StringComparer.Ordinal);
+            .GroupBy(p => p.OwnerUserId).Select(g => new { Id = g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Id, x => x.N, StringComparer.Ordinal);
         var passkeyCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var u in rows) passkeyCounts[u.Id] = (await users.GetPasskeysAsync(u)).Count;
 
@@ -271,19 +248,14 @@ public static class UserCli
             await stdout.WriteLineAsync("No users yet.");
             return 0;
         }
-        await stdout.WriteLineAsync("NAME            ROLE   SOURCES  PROJECTS  PASSKEYS");
+        await stdout.WriteLineAsync("NAME            ROLE   ACCOUNTS  PROJECTS  PASSKEYS");
         foreach (var u in rows)
         {
             await stdout.WriteLineAsync(
-                $"{u.UserName,-15} {(u.IsAdmin ? "admin" : "user"),-6} {sourceCounts.GetValueOrDefault(u.Id),7}  {projectCounts.GetValueOrDefault(u.Id),8}  {passkeyCounts[u.Id],8}");
+                $"{u.UserName,-15} {(u.IsAdmin ? "admin" : "user"),-6} {accountCounts.GetValueOrDefault(u.Id),8}  {projectCounts.GetValueOrDefault(u.Id),8}  {passkeyCounts[u.Id],8}");
         }
         return 0;
     }
-
-    private static Task WriteClaimAsync(TextWriter stdout, ClaimResult claim) =>
-        claim.Sources.Count == 0
-            ? stdout.WriteLineAsync("No unowned source with this name to claim.")
-            : stdout.WriteLineAsync($"Claimed source '{string.Join("', '", claim.Sources)}' and {claim.Projects} project(s).");
 
     private static async Task<(string? Password, bool Generated)> ResolvePasswordAsync(
         HashSet<string> flags, TextReader stdin, TextWriter stderr, Func<string, string?>? readSecret)

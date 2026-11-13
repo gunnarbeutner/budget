@@ -26,12 +26,12 @@ public enum MoneyMoneyStatementOutcome
     /// <summary>The owner already has a document with the same content (from a bank connector or an earlier upload).</summary>
     Duplicate,
 
-    /// <summary>The source is unknown or has no owner yet.</summary>
+    /// <summary>The user is unknown.</summary>
     NoAccount,
 }
 
 /// <summary>
-/// Imports the statement PDFs MoneyMoney stored into the documents (<c>bank_statements</c>) of the source's
+/// Imports the statement PDFs MoneyMoney stored into the documents (<c>bank_statements</c>) of the importing user's
 /// accounts. Documents of accounts OpenBudget does not know (e.g. accounts removed in MoneyMoney) are kept
 /// without an account, labelled with MoneyMoney's bank folder, for the owner to assign later. A document is kept
 /// once per owner and content: one a bank connector already downloaded is not imported again, and repeated
@@ -56,11 +56,11 @@ public sealed class MoneyMoneyStatementImport
     }
 
     /// <summary>The hashes of <paramref name="statements"/> the server still needs (content not stored for the owner yet).</summary>
-    public async Task<List<string>> WantedAsync(string sourceName, IReadOnlyCollection<MoneyMoneyStatementRef> statements, CancellationToken ct)
+    public async Task<List<string>> WantedAsync(string ownerUserId, IReadOnlyCollection<MoneyMoneyStatementRef> statements, CancellationToken ct)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var source = await db.ImportSources.AsNoTracking().FirstOrDefaultAsync(s => s.Name == sourceName, ct);
-        if (source?.OwnerUserId is not { } owner) return [];
+        var owner = ownerUserId;
+        if (!await db.Users.AnyAsync(u => u.Id == owner, ct)) return [];
         var stored = (await db.BankStatements.AsNoTracking().Where(s => s.OwnerUserId == owner).Select(s => s.Sha256).ToListAsync(ct))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         return statements
@@ -74,14 +74,15 @@ public sealed class MoneyMoneyStatementImport
     /// Stores one statement under the account MoneyMoney filed it with (or, when that account is not in OpenBudget,
     /// without an account, labelled <paramref name="bank"/>), unless the owner already has its content.
     /// </summary>
-    public Task<MoneyMoneyStatementOutcome> StoreAsync(string sourceName, long accountKey, DateOnly date, string name, byte[] content, CancellationToken ct, string? bank = null) =>
-        _importer.WithSourceLockAsync(sourceName, async () =>
+    public Task<MoneyMoneyStatementOutcome> StoreAsync(string ownerUserId, long accountKey, DateOnly date, string name, byte[] content, CancellationToken ct, string? bank = null) =>
+        _importer.WithOwnerLockAsync(ownerUserId, async () =>
         {
             await using var db = await _dbFactory.CreateDbContextAsync(ct);
-            var source = await db.ImportSources.AsNoTracking().FirstOrDefaultAsync(s => s.Name == sourceName, ct);
-            if (source?.OwnerUserId is not { } owner) return MoneyMoneyStatementOutcome.NoAccount;
-            var accountId = SourceScope.Namespace(source.Id, accountKey);
-            var account = await db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == accountId && a.SourceId == source.Id, ct);
+            var owner = ownerUserId;
+            if (!await db.Users.AnyAsync(u => u.Id == owner, ct)) return MoneyMoneyStatementOutcome.NoAccount;
+            var idSpace = await RowIds.IdSpaceAsync(db, owner, ct);
+            var accountId = RowIds.Namespace(idSpace, accountKey);
+            var account = await db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == accountId && a.OwnerUserId == owner, ct);
 
             var hash = BankStatementStore.HashOf(content);
             if (await db.BankStatements.AnyAsync(s => s.OwnerUserId == owner && s.Sha256 == hash, ct))
@@ -94,7 +95,7 @@ public sealed class MoneyMoneyStatementImport
 
             var title = string.IsNullOrWhiteSpace(name) ? date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : name.Trim();
             if (title.Length > 300) title = title[..300];
-            await _store.StoreAsync(db, owner, null, "moneymoney-" + source.Id.ToString(CultureInfo.InvariantCulture), account,
+            await _store.StoreAsync(db, owner, null, "moneymoney-" + idSpace.ToString(CultureInfo.InvariantCulture), account,
                 new RemoteStatement(IdentifierPrefix + hash, null, date, title, content), ct,
                 account == null ? Label(bank) : null);
             _notifier.Publish(new DataChange(DataArea.BankSync, UserId: owner));
@@ -107,7 +108,7 @@ public sealed class MoneyMoneyStatementImport
     /// <see cref="StoreAsync"/>. Files that are missing, outside the folder or not PDFs are skipped.
     /// <paramref name="progress"/> gets (done, total) after each statement.
     /// </summary>
-    public async Task<MoneyMoneyStatementSummary> ImportFolderAsync(string sourceName, string plainDatabasePath, string statementsRoot,
+    public async Task<MoneyMoneyStatementSummary> ImportFolderAsync(string ownerUserId, string plainDatabasePath, string statementsRoot,
         Action<int, int>? progress, CancellationToken ct)
     {
         var rows = await ReadStatementRowsAsync(plainDatabasePath, ct);
@@ -128,7 +129,7 @@ public sealed class MoneyMoneyStatementImport
             var hash = Convert.ToHexStringLower(await System.Security.Cryptography.SHA256.HashDataAsync(stream, ct));
             files.Add((row, path, hash));
         }
-        var wanted = (await WantedAsync(sourceName, files.Select(f => new MoneyMoneyStatementRef(f.Row.AccountKey, f.Sha256)).ToList(), ct))
+        var wanted = (await WantedAsync(ownerUserId, files.Select(f => new MoneyMoneyStatementRef(f.Row.AccountKey, f.Sha256)).ToList(), ct))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         int stored = 0, duplicates = 0, done = 0;
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -142,7 +143,7 @@ public sealed class MoneyMoneyStatementImport
                 {
                     var date = DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(row.CreatedTimestamp).UtcDateTime);
                     var name = string.IsNullOrWhiteSpace(row.Name) ? Path.GetFileNameWithoutExtension(row.Filename) : row.Name;
-                    var outcome = await StoreAsync(sourceName, row.AccountKey, date, name, content, ct, row.Directory);
+                    var outcome = await StoreAsync(ownerUserId, row.AccountKey, date, name, content, ct, row.Directory);
                     if (outcome == MoneyMoneyStatementOutcome.Stored) stored++;
                     else if (outcome == MoneyMoneyStatementOutcome.Duplicate) duplicates++;
                 }

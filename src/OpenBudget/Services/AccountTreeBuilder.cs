@@ -3,7 +3,7 @@ using OpenBudget.Models;
 namespace OpenBudget.Services;
 
 /// <summary>An account group as the rail needs it (imported from MoneyMoney's account groups).</summary>
-/// <param name="KeepEmpty">Show the group even without visible accounts (it is empty in its source: just created, waiting to be filled).</param>
+/// <param name="KeepEmpty">Show the group even without visible accounts (it has no accounts at all: just created, waiting to be filled).</param>
 /// <param name="Icon">The icon its owner picked (null = the folder).</param>
 /// <param name="Color">The colour (hex) of its icon, or null.</param>
 public sealed record AccountGroupInfo(long Id, long? ParentId, string Name, long? Sort, bool KeepEmpty = false, string? Icon = null, string? Color = null);

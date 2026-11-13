@@ -157,11 +157,11 @@
         var s = await BudgetService.GetSpendingSummaryAsync(ProjectId, Year, FromMonth, ToMonth);
         // The Overview page's warnings, minus the uncategorized line (the tile counts those itself). A refresh
         // error is fixed under Bank logins, stale data on Get started.
-        var freshness = (await FreshnessService.GetDataFreshnessAsync()).ToDictionary(f => f.SourceId);
+        var freshness = (await FreshnessService.GetDataFreshnessAsync()).ToDictionary(f => f.OwnerUserId);
         var list = new List<Warning>();
         if (ProjectStatus.BuildAlert(s, freshness, null, L, Clock.UtcNow, Clock.Zone) is { } alert)
         {
-            var hasErrors = freshness.TryGetValue(s.SourceId, out var f) && f.AccountsWithErrors.Any();
+            var hasErrors = freshness.TryGetValue(s.OwnerUserId, out var f) && f.AccountsWithErrors.Any();
             for (var i = 0; i < alert.Lines.Count; i++)
             {
                 var isError = hasErrors && i == alert.Lines.Count - 1;

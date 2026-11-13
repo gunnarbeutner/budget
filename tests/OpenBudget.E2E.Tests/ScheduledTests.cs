@@ -31,8 +31,8 @@ public sealed class ScheduledTests : EndToEndTestBase
     {
         await EditingSeed.SeedAsync(Db);
         await using var db = await Db.CreateDbContextAsync();
-        var outside = SourceScope.Namespace(E2ESeed.SourceId, 9);
-        db.Accounts.Add(new Account { Id = outside, SourceId = E2ESeed.SourceId, Name = "Outside Account", Type = 1, Currency = "EUR" });
+        var outside = RowIds.Namespace(E2ESeed.IdSpace, 9);
+        db.Accounts.Add(new Account { Id = outside, OwnerUserId = E2ESeed.OwnerUserId, Name = "Outside Account", Type = 1, Currency = "EUR" });
         await db.SaveChangesAsync();
         var next = Today.AddDays(5);
         db.ScheduledPayments.AddRange(
@@ -46,7 +46,7 @@ public sealed class ScheduledTests : EndToEndTestBase
     private static ScheduledPayment Order(long account, ScheduledPaymentKind kind, DateOnly next, long cents, string name, string purpose,
         int? monthDay = null, int interval = 1, DateOnly? last = null) => new()
         {
-            SourceId = E2ESeed.SourceId,
+            OwnerUserId = E2ESeed.OwnerUserId,
             AccountId = account,
             Kind = kind,
             NextDate = next,

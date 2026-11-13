@@ -1,18 +1,16 @@
-@page "/portfolio-performance/{SourceId:int}/portfolios"
-@attribute [RequireSourceOwner]
+@page "/portfolio-performance/portfolios"
 @inherits DataChangeAwareComponent
 @using OpenBudget.Services
 @inject PortfolioAccountSettingsService Settings
-@inject SourceService SourceService
 @inject IStringLocalizer<SourcePortfolioAccounts> L
 
-@* Which PortfolioPerformance portfolios of a source show as accounts (a depot with positions and value history plus a
+@* Which PortfolioPerformance portfolios of the user show as accounts (a depot with positions and value history plus a
    ledger with the transactions), the project they belong to, and taking over accounts that already exist. *@
 
-<PageTitle>@(settings != null ? L["PageTitle_WithSource", label ?? ""] : L["PageTitle"])</PageTitle>
+<PageTitle>@L["PageTitle"]</PageTitle>
 
 <SettingsShell Active="portfolio-performance">
-<PageHeader Title="@L["Heading"]" Subtitle="@label">
+<PageHeader Title="@L["Heading"]">
     <Actions>
         <a class="ob-btn" href="/portfolio-performance"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>@L["Back"]</a>
     </Actions>
@@ -123,42 +121,42 @@ else
 </SettingsShell>
 
 @code {
-    [Parameter] public int SourceId { get; set; }
+    /// <summary>Whose data to show (the Portfolio view passes its project's owner); the signed-in user when not set.</summary>
+    [Parameter] public string OwnerUserId { get; set; } = string.Empty;
 
     private PortfolioAccountSettings? settings;
-    private string? label;
     private bool loading = true;
     private bool busy;
     private string? error;
-    private int _loadedSourceId = -1;
+    private string? _loadedOwnerId;
 
     protected override bool IsRelevantChange(DataChange change) =>
-        change.Area is DataArea.ImportedData or DataArea.Sources or DataArea.Projects;
+        change.Area is DataArea.ImportedData or DataArea.ImportState or DataArea.Projects;
     protected override Task ReloadAfterChangeAsync() => LoadAsync();
 
     protected override async Task OnParametersSetAsync()
     {
-        if (_loadedSourceId == SourceId) return;
-        _loadedSourceId = SourceId;
+        if (OwnerUserId.Length == 0) OwnerUserId = (await Access.GetAsync()).UserId ?? string.Empty;
+        if (OwnerUserId.Length == 0 || _loadedOwnerId == OwnerUserId) return;
+        _loadedOwnerId = OwnerUserId;
         await LoadAsync();
     }
 
     private async Task LoadAsync()
     {
-        settings = await Settings.GetAsync(SourceId);
-        label = settings == null ? null : (await SourceService.GetLabelsAsync([SourceId])).GetValueOrDefault(SourceId);
+        settings = await Settings.GetAsync(OwnerUserId);
         loading = false;
     }
 
-    private Task SetShowAsync(string uuid, bool show) => RunAsync(() => Settings.SetShowAsync(SourceId, uuid, show));
+    private Task SetShowAsync(string uuid, bool show) => RunAsync(() => Settings.SetShowAsync(OwnerUserId, uuid, show));
 
     private Task SetProjectAsync(string uuid, object? value) =>
-        RunAsync(() => Settings.SetProjectAsync(SourceId, uuid,
+        RunAsync(() => Settings.SetProjectAsync(OwnerUserId, uuid,
             int.TryParse(value?.ToString(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var id) ? id : null));
 
-    private Task TakeOverAsync(string uuid) => RunAsync(() => Settings.TakeOverAsync(SourceId, uuid));
+    private Task TakeOverAsync(string uuid) => RunAsync(() => Settings.TakeOverAsync(OwnerUserId, uuid));
 
-    private Task DeclineAsync(string uuid) => RunAsync(() => Settings.DeclineTakeoverAsync(SourceId, uuid));
+    private Task DeclineAsync(string uuid) => RunAsync(() => Settings.DeclineTakeoverAsync(OwnerUserId, uuid));
 
     private async Task RunAsync(Func<Task> action)
     {

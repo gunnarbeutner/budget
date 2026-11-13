@@ -126,9 +126,9 @@
             if (children.Count > 0) childNames = string.Join(", ", children.Select(c => c.Name));
             else
             {
-                // A parent must be one of your own top-level projects on the same source (single-level hierarchy).
+                // A parent must be one of your own top-level projects (single-level hierarchy).
                 eligibleParents = (await ProjectService.GetProjectsAsync())
-                    .Where(x => x.Id != id && x.SourceId == p.SourceId && x.ParentProjectId == null && scope.IsOwner(x.Id))
+                    .Where(x => x.Id != id && x.OwnerUserId == p.OwnerUserId && x.ParentProjectId == null && scope.IsOwner(x.Id))
                     .OrderBy(x => x.Name)
                     .ToList();
             }

@@ -17,7 +17,7 @@ namespace OpenBudget.E2E.Tests;
 public sealed class StructureMenuTests : EndToEndTestBase
 {
     private static string BrowseUrl => $"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3";
-    private static readonly long BanksGroupId = SourceScope.Namespace(E2ESeed.SourceId, 7);
+    private static readonly long BanksGroupId = RowIds.Namespace(E2ESeed.IdSpace, 7);
 
     [SetUp]
     public async Task SeedEditingWorld() =>
@@ -38,7 +38,7 @@ public sealed class StructureMenuTests : EndToEndTestBase
     private async Task GroupGiroInBanksAsync()
     {
         await using var db = await Db.CreateDbContextAsync();
-        db.AccountGroups.Add(new AccountGroup { Id = BanksGroupId, SourceId = E2ESeed.SourceId, Name = "Banks", Sort = 0 });
+        db.AccountGroups.Add(new AccountGroup { Id = BanksGroupId, OwnerUserId = E2ESeed.OwnerUserId, Name = "Banks", Sort = 0 });
         await db.SaveChangesAsync();
         var giro = await db.Accounts.SingleAsync(a => a.Id == EditingSeed.BankAccountId);
         giro.GroupId = BanksGroupId;

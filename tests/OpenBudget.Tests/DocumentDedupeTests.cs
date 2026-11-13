@@ -40,8 +40,7 @@ public sealed class DocumentDedupeTests : IAsyncDisposable
         await using var db = await _t.System.CreateDbContextAsync();
         if (await db.Accounts.FirstOrDefaultAsync(a => a.Id == Giro) is { } existing) return existing;
         db.Users.Add(new AppUser { Id = Owner, UserName = "owner" });
-        db.ImportSources.Add(new ImportSource { Id = 2, Name = "src", OwnerUserId = Owner });
-        var account = new Account { Id = Giro, SourceId = 2, Name = "Giro" };
+        var account = new Account { Id = Giro, OwnerUserId = Owner, Name = "Giro" };
         db.Accounts.Add(account);
         await db.SaveChangesAsync();
         return account;
@@ -128,16 +127,15 @@ public sealed class DocumentDedupeTests : IAsyncDisposable
     /// <summary>Rows stored before ingest folded copies: two sets for the owner, one notice resent on another date, another owner's copy.</summary>
     private async Task<(long BankCopy, long ImportCopy, long First, long Second)> SeedDuplicatesAsync()
     {
-        var giro = await GiroAsync();
+        await GiroAsync();
         Directory.CreateDirectory(_dir);
         await using var db = await _t.System.CreateDbContextAsync();
         var date = DateTime.SpecifyKind(Day.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
-        BankStatement Row(string owner, int? login, long? account, string identifier, string sha, DateTime when, string file) => new()
+        static BankStatement Row(string owner, int? login, long? account, string identifier, string sha, DateTime when, string file) => new()
         {
             OwnerUserId = owner,
             BankLoginId = login,
             AccountId = account,
-            SourceId = account == null ? null : giro.SourceId,
             Identifier = identifier,
             Sha256 = sha,
             Date = when,

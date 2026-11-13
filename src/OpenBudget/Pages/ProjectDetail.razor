@@ -190,8 +190,8 @@ else
     private List<Account>? allAccounts;
     private List<AccountGroup>? allAccountGroups;
 
-    // Parent project picker. eligibleParents = top-level projects in the same source
-    // source (cycle-prevention; only single-level hierarchies). hasOwnChildren disables the
+    // Parent project picker. eligibleParents = top-level projects of the same owner
+    // (cycle-prevention; only single-level hierarchies). hasOwnChildren disables the
     // picker — projects that already act as parents can't themselves become children yet.
     private List<Project>? eligibleParents;
     private bool hasOwnChildren = false;
@@ -292,7 +292,7 @@ else
     protected override bool AutoReloadOnChange => false;
     protected override bool IsRelevantChange(DataChange change) => change.Area switch
     {
-        DataArea.ImportedData or DataArea.Sources => budget != null && change.SourceId == budget.SourceId,
+        DataArea.ImportedData or DataArea.ImportState => budget != null && change.OwnerUserId == budget.OwnerUserId,
         _ => change.ProjectId is null || change.ProjectId == ProjectId,
     };
     protected override Task ReloadAfterChangeAsync()
@@ -317,7 +317,7 @@ else
         var all = await ProjectService.GetProjectsAsync();
         eligibleParents = all
             .Where(p => p.Id != ProjectId)
-            .Where(p => p.SourceId == budget.SourceId)
+            .Where(p => p.OwnerUserId == budget.OwnerUserId)
             .Where(p => AccessProvider.Last.IsOwner(p.Id))   // a parent must be one of your own projects
             .Where(p => p.ParentProjectId == null)   // only top-level parents (single-level hierarchy)
             .OrderBy(p => p.Name)
@@ -344,11 +344,11 @@ else
         accountAssignments = await BudgetService.GetProjectAccountAssignmentsAsync(ProjectId);
         if (allAccounts == null && budget != null)
         {
-            allAccounts = await BudgetService.GetAllAccountsAsync(budget.SourceId);
+            allAccounts = await BudgetService.GetAllAccountsAsync(budget.OwnerUserId);
         }
         if (allAccountGroups == null && budget != null)
         {
-            allAccountGroups = await BudgetService.GetAllAccountGroupsAsync(budget.SourceId);
+            allAccountGroups = await BudgetService.GetAllAccountGroupsAsync(budget.OwnerUserId);
         }
     }
 
@@ -399,8 +399,8 @@ else
     // Raised by ProjectCategoryAssignmentsCard when its Add dialog opens; load the picker data.
     private async Task LoadAvailableCategoriesAsync()
     {
-        var sourceId = budget?.SourceId ?? SourceScope.LegacySourceId;
-        availableCategoriesWithCounts = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(sourceId);
+        var ownerId = budget?.OwnerUserId ?? string.Empty;
+        availableCategoriesWithCounts = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(ownerId);
     }
 
     private async Task AddCategory(long categoryId)
@@ -432,7 +432,7 @@ else
     {
         var project = await ProjectService.GetProjectAsync(ProjectId);
         trackingItems = project?.TrackingItems.ToList() ?? new List<ProjectTrackingItem>();
-        var sourceId = project?.SourceId ?? SourceScope.LegacySourceId;
+        var ownerId = project?.OwnerUserId ?? string.Empty;
 
         // Load names for tracking items. Fetch the leaf-category list at most once instead of
         // re-querying the whole list per leaf-category tracking item (was an N+1).
@@ -449,7 +449,7 @@ else
             }
             else if (item.CategoryId.HasValue)
             {
-                leafCategories ??= await CategoryHierarchyService.GetAllCategoriesAsync(sourceId);
+                leafCategories ??= await CategoryHierarchyService.GetAllCategoriesAsync(ownerId);
                 var category = leafCategories.FirstOrDefault(c => c.Id == item.CategoryId.Value);
                 if (category != null)
                 {
@@ -463,9 +463,10 @@ else
     // tree renders (filtered to the project's assigned groups + their descendants).
     private async Task LoadTrackingCategoriesAsync()
     {
-        var sourceId = budget?.SourceId ?? SourceScope.LegacySourceId;
-        var allCategoryGroups = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(sourceId);
-        allActualCategories = await CategoryHierarchyService.GetAllCategoriesAsync(sourceId);
+        var ownerId = budget?.OwnerUserId ?? string.Empty;
+        var allCategoryGroups = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(ownerId);
+        allActualCategories = await CategoryHierarchyService.GetAllCategoriesAsync(ownerId);
+        var sentinelRootOfOwner = await BudgetService.GetSentinelRootAsync(ownerId);
 
         if (budget != null)
         {
@@ -477,7 +478,7 @@ else
             }
 
             allAvailableCategories = allCategoryGroups
-                .Where(c => c.CategoryGroup.Id != SourceScope.SentinelRoot(sourceId) && projectCategoryGroupIds.Contains(c.CategoryGroup.Id))
+                .Where(c => c.CategoryGroup.Id != sentinelRootOfOwner && projectCategoryGroupIds.Contains(c.CategoryGroup.Id))
                 .ToList();
         }
     }
@@ -501,7 +502,7 @@ else
         var assignedCategoryIds = budget.CategoryAssignments.Select(ca => ca.CategoryId).ToHashSet();
 
         // Load all categories
-        var allCategories = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(budget.SourceId);
+        var allCategories = await CategoryHierarchyService.GetAllCategoriesWithChildCountsAsync(budget.OwnerUserId);
 
         // Build complete set: assigned categories + their ancestors + all descendants
         // Use HashSet of actual items to avoid ID collision issues
@@ -539,7 +540,7 @@ else
             }
         }
 
-        var sentinelRoot = SourceScope.SentinelRoot(budget.SourceId);
+        var sentinelRoot = await BudgetService.GetSentinelRootAsync(budget.OwnerUserId);
         var filteredCategories = projectCategoryItems
             .Where(c => c.Id != sentinelRoot)
             .ToList();

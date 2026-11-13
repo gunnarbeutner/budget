@@ -30,7 +30,7 @@ public sealed record OffsetTarget(long AccountId, string Name, string Icon, stri
 /// account, so all its fields - also those of the history MoneyMoney delivered (amount, date, payee, purpose) - are the
 /// user's. Only the source's owner may do this. Rows entered by hand have no bank identity (<see cref="Transaction.ExternalId"/>
 /// null, like MoneyMoney's rows, so a bank connection linked later can take them over), are never marked new, and get
-/// ids in the connector half of the source's id space so MoneyMoney's rowids never collide with them.
+/// ids in the connector half of the owner's id space so MoneyMoney's rowids never collide with them.
 ///
 /// The account's stored balance follows every change: it moves by the difference of the amounts in the account's
 /// currency (rows in another currency leave it alone). Split bookings keep their amount (their parts must add up);
@@ -52,12 +52,12 @@ public sealed class ManualTransactionService
         _origin = origin;
     }
 
-    /// <summary>Whether the current user may enter bookings on the account (a manual account of a source they own).</summary>
+    /// <summary>Whether the current user may enter bookings on the account (a manual account they own).</summary>
     public async Task<bool> CanEnterAsync(long accountId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var account = await db.Accounts.AsNoTracking().Where(a => a.Id == accountId).Select(a => new { a.SourceId, a.Provider }).FirstOrDefaultAsync(ct);
-        return account != null && account.Provider == AccountProviders.Manual && (db.Scope == null || db.Scope.OwnsSource(account.SourceId));
+        var account = await db.Accounts.AsNoTracking().Where(a => a.Id == accountId).Select(a => new { a.OwnerUserId, a.Provider }).FirstOrDefaultAsync(ct);
+        return account != null && account.Provider == AccountProviders.Manual && (db.Scope == null || db.Scope.Owns(account.OwnerUserId));
     }
 
     /// <summary>
@@ -75,7 +75,7 @@ public sealed class ManualTransactionService
         var lockReason = account.Portfolio == 1 || account.Type == 7 || account.Provider == AccountProviders.PortfolioPerformance
             ? InitialBalanceLock.Portfolio
             : account.Provider != AccountProviders.Manual ? InitialBalanceLock.Bank
-            : db.Scope != null && !db.Scope.OwnsSource(account.SourceId) ? InitialBalanceLock.NotOwner
+            : db.Scope != null && !db.Scope.Owns(account.OwnerUserId) ? InitialBalanceLock.NotOwner
             : InitialBalanceLock.None;
         return new InitialBalanceState(account.InitialBalance, account.CurrentBalance ?? 0m,
             string.IsNullOrWhiteSpace(account.Currency) ? "EUR" : account.Currency, lockReason);
@@ -110,23 +110,24 @@ public sealed class ManualTransactionService
         account.InitialBalance = cents;
         account.Balances = BalanceBlob((account.CurrentBalance ?? 0m) + delta / 100m, state.Currency);
         await db.SaveChangesAsync(ct);
-        Publish(account.SourceId);
+        Publish(account.OwnerUserId);
     }
 
     /// <summary>Adds a booking to a manual account; returns its id.</summary>
     public async Task<long> AddAsync(long accountId, ManualTransactionInput input, CancellationToken ct = default)
     {
-        var (sourceId, accountCurrency) = await RequireManualAccountAsync(accountId, ct);
+        var (ownerId, accountCurrency) = await RequireManualAccountAsync(accountId, ct);
         await using var db = await _system.CreateDbContextAsync(ct);
-        await ValidateCategoryAsync(db, sourceId, input.CategoryId, ct);
+        await ValidateCategoryAsync(db, ownerId, input.CategoryId, ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        var floor = SourceScope.Namespace(sourceId, BankTransactionStore.ConnectorRowBase);
-        var next = SourceScope.Namespace(sourceId + 1, 0);
+        var space = await RowIds.IdSpaceAsync(db, ownerId, ct);
+        var floor = RowIds.Namespace(space, BankTransactionStore.ConnectorRowBase);
+        var next = RowIds.Namespace(space + 1, 0);
         var maxId = await db.Transactions.Where(t => t.Id >= floor && t.Id < next).MaxAsync(t => (long?)t.Id, ct) ?? floor;
         var row = new Transaction
         {
             Id = maxId + 1,
-            SourceId = sourceId,
+            OwnerUserId = ownerId,
             AccountId = accountId,
             Splitted = SplitState.Normal,
             IsNew = false,
@@ -138,7 +139,7 @@ public sealed class ManualTransactionService
         await AdjustBalanceAsync(db, accountId, accountCurrency, 0, null, row.Amount, row.Currency, ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
-        Publish(sourceId);
+        Publish(ownerId);
         return row.Id;
     }
 
@@ -154,7 +155,7 @@ public sealed class ManualTransactionService
             .Where(a => accountIds.Contains(a.Id) && a.Provider == AccountProviders.Manual && !a.Closed && a.Id != exceptAccountId)
             .ToListAsync(ct);
         return accounts
-            .Where(a => db.Scope == null || db.Scope.OwnsSource(a.SourceId))
+            .Where(a => db.Scope == null || db.Scope.Owns(a.OwnerUserId))
             .OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
             .Select(a => new OffsetTarget(a.Id, a.Name ?? "", a.Icon ?? a.KindIcon, a.Color))
             .ToList();
@@ -180,15 +181,15 @@ public sealed class ManualTransactionService
             if (source.CategoryId is { } cid)
                 categoryName = await db.Categories.AsNoTracking().Where(c => c.Id == cid).Select(c => c.Name).FirstOrDefaultAsync(ct);
         }
-        var (sourceId, _) = await RequireManualAccountAsync(accountId, ct);
+        var (ownerId, _) = await RequireManualAccountAsync(accountId, ct);
         long? categoryId = null;
         if (source.CategoryId is { } sourceCategory && !string.IsNullOrEmpty(categoryName))
         {
             await using var sys = await _system.CreateDbContextAsync(ct);
-            categoryId = source.SourceId == sourceId
+            categoryId = source.OwnerUserId == ownerId
                 ? sourceCategory
                 : await sys.Categories.AsNoTracking()
-                    .Where(c => c.SourceId == sourceId && c.Name == categoryName)
+                    .Where(c => c.OwnerUserId == ownerId && c.Name == categoryName)
                     .OrderBy(c => c.Id).Select(c => (long?)c.Id).FirstOrDefaultAsync(ct);
         }
         var date = DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(source.Timestamp).UtcDateTime);
@@ -201,7 +202,7 @@ public sealed class ManualTransactionService
     {
         var (row0, accountCurrency) = await RequireManualRowAsync(transactionId, ct);
         await using var db = await _system.CreateDbContextAsync(ct);
-        await ValidateCategoryAsync(db, row0.SourceId, input.CategoryId, ct);
+        await ValidateCategoryAsync(db, row0.OwnerUserId, input.CategoryId, ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var row = await db.Transactions.FirstAsync(t => t.Id == transactionId, ct);
         var (oldAmount, oldCurrency) = (row.Amount, row.Currency);
@@ -212,7 +213,7 @@ public sealed class ManualTransactionService
         await AdjustBalanceAsync(db, row.AccountId!.Value, accountCurrency, oldAmount, oldCurrency, row.Amount, row.Currency, ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
-        Publish(row.SourceId);
+        Publish(row.OwnerUserId);
     }
 
     /// <summary>Deletes a booking of a manual account.</summary>
@@ -228,7 +229,7 @@ public sealed class ManualTransactionService
         await AdjustBalanceAsync(db, row.AccountId!.Value, accountCurrency, row.Amount, row.Currency, 0, null, ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
-        Publish(row.SourceId);
+        Publish(row.OwnerUserId);
     }
 
     private static void Apply(Transaction row, ManualTransactionInput input, string accountCurrency, bool amountEditable)
@@ -270,15 +271,15 @@ public sealed class ManualTransactionService
     public static string BalanceBlob(decimal balance, string currency) =>
         $"11:{balance.ToString("F6", CultureInfo.InvariantCulture)},3:{currency},";
 
-    private async Task<(int SourceId, string Currency)> RequireManualAccountAsync(long accountId, CancellationToken ct)
+    private async Task<(string OwnerUserId, string Currency)> RequireManualAccountAsync(long accountId, CancellationToken ct)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var account = await db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == accountId, ct)
             ?? throw new AccessDeniedException("Account not found.");
-        db.Scope?.RequireSourceOwner(account.SourceId);
+        db.Scope?.RequireOwner(account.OwnerUserId);
         if (account.Provider != AccountProviders.Manual)
             throw new InvalidOperationException("Bookings are entered by hand only on manual accounts.");
-        return (account.SourceId, string.IsNullOrWhiteSpace(account.Currency) ? "EUR" : account.Currency);
+        return (account.OwnerUserId, string.IsNullOrWhiteSpace(account.Currency) ? "EUR" : account.Currency);
     }
 
     private async Task<(Transaction Row, string Currency)> RequireManualRowAsync(long transactionId, CancellationToken ct)
@@ -291,14 +292,14 @@ public sealed class ManualTransactionService
         return (row, currency);
     }
 
-    private static async Task ValidateCategoryAsync(BudgetDbContext db, int sourceId, long? categoryId, CancellationToken ct)
+    private static async Task ValidateCategoryAsync(BudgetDbContext db, string ownerId, long? categoryId, CancellationToken ct)
     {
         if (categoryId is not { } id) return;
-        var category = await db.Categories.AsNoTracking().Where(c => c.Id == id).Select(c => new { c.SourceId, c.Name }).FirstOrDefaultAsync(ct)
+        var category = await db.Categories.AsNoTracking().Where(c => c.Id == id).Select(c => new { c.OwnerUserId, c.Name }).FirstOrDefaultAsync(ct)
             ?? throw new InvalidOperationException("Unknown category.");
-        if (category.SourceId != sourceId) throw new InvalidOperationException("The category belongs to another source.");
+        if (category.OwnerUserId != ownerId) throw new InvalidOperationException("The category belongs to another source.");
         if (string.IsNullOrEmpty(category.Name)) throw new InvalidOperationException("That category cannot be assigned.");
     }
 
-    private void Publish(int sourceId) => _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: sourceId), _origin.Id);
+    private void Publish(string ownerId) => _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: ownerId), _origin.Id);
 }

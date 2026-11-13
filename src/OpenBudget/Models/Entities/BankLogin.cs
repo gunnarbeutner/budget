@@ -169,13 +169,10 @@ public class BankStatement
     [Key]
     public long Id { get; set; }
 
-    /// <summary>The source of <see cref="AccountId"/>; null for documents that belong to no account.</summary>
-    public int? SourceId { get; set; }
-
     /// <summary>The login that downloaded the document, or null for documents imported from MoneyMoney.</summary>
     public int? BankLoginId { get; set; }
 
-    /// <summary>The login's (or the import source's) owner; always sees the document, even without an account.</summary>
+    /// <summary>The login's (or the importing user's) owner; always sees the document, even without an account.</summary>
     [Required]
     [MaxLength(450)]
     public string OwnerUserId { get; set; } = string.Empty;

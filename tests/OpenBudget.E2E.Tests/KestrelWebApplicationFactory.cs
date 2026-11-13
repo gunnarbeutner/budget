@@ -107,16 +107,16 @@ public sealed class KestrelWebApplicationFactory : WebApplicationFactory<Program
         await E2ESeed.ResetAsync(factory);
         Microsoft.Reset();
         // The login every test uses (owns the baseline world) and a second user to share with.
-        var owner = await CreateUserAsync(E2ESeed.UserName, E2ESeed.Password);
-        await CreateUserAsync(E2ESeed.SecondUserName, E2ESeed.Password);
+        var owner = await CreateUserAsync(E2ESeed.OwnerUserId, E2ESeed.UserName, E2ESeed.Password);
+        await CreateUserAsync(E2ESeed.SecondUserId, E2ESeed.SecondUserName, E2ESeed.Password);
         await E2ESeed.SeedBaselineAsync(factory, owner);
     }
 
-    private async Task<string> CreateUserAsync(string name, string password)
+    private async Task<string> CreateUserAsync(string id, string name, string password)
     {
         await using var scope = Services.CreateAsyncScope();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
-        var user = new AppUser { UserName = name };
+        var user = new AppUser { Id = id, UserName = name };
         var result = await users.CreateAsync(user, password);
         if (!result.Succeeded) throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Description)));
         return user.Id;

@@ -1,9 +1,9 @@
 namespace OpenBudget.Services;
 
 /// <summary>
-/// The shared path of a PortfolioPerformance file into a source: staged to a temp file under the upload directory,
+/// The shared path of a PortfolioPerformance file into a user's data: staged to a temp file under the upload directory,
 /// checked to be a ".portfolio" ZIP, then imported by <see cref="PortfolioPerformanceImportService"/>. Used by the
-/// upload endpoint (POST /api/portfolioperformance/{source}) and by linked cloud files.
+/// browser upload and by linked cloud files.
 /// </summary>
 public static class PortfolioPerformanceUpload
 {
@@ -20,13 +20,13 @@ public static class PortfolioPerformanceUpload
 
     /// <summary>
     /// Copies <paramref name="content"/> to a temp file, verifies the ZIP magic and imports it. Throws
-    /// <see cref="InvalidDataException"/> for a wrong format and <see cref="KeyNotFoundException"/> for an unknown source.
+    /// <see cref="InvalidDataException"/> for a wrong format and <see cref="KeyNotFoundException"/> for an unknown user.
     /// </summary>
     public static async Task<PpImportResult> ImportAsync(
-        PortfolioPerformanceImportService importer, string sourceName, Stream content, string stagingDir, CancellationToken ct)
+        PortfolioPerformanceImportService importer, string ownerUserId, Stream content, string stagingDir, CancellationToken ct)
     {
         Directory.CreateDirectory(stagingDir);
-        var tempPath = Path.Combine(stagingDir, $"{sourceName}-{Guid.NewGuid():N}.portfolio");
+        var tempPath = Path.Combine(stagingDir, $"{ownerUserId}-{Guid.NewGuid():N}.portfolio");
         try
         {
             await using (var tempStream = File.Create(tempPath))
@@ -43,7 +43,7 @@ public static class PortfolioPerformanceUpload
                     throw new InvalidDataException(NotAPortfolioFile);
             }
 
-            return await importer.ImportFromFileAsync(sourceName, tempPath, ct);
+            return await importer.ImportFromFileAsync(ownerUserId, tempPath, ct);
         }
         finally
         {

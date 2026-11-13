@@ -27,23 +27,15 @@ public class Project
     public int SortOrder { get; set; }
 
     /// <summary>
-    /// import source this project draws categories and accounts from. Set at creation
-    /// and immutable — re-binding would invalidate every category/account assignment.
-    /// </summary>
-    public int SourceId { get; set; } = 1;
-
-    public ImportSource? Source { get; set; }
-
-    /// <summary>
     /// Owning user (AppUser.Id). Null only for legacy rows not yet claimed through the CLI; an
     /// unowned project is invisible to everyone. Deliberately no database FK (see the migration).
     /// </summary>
     [MaxLength(450)]
-    public string? OwnerUserId { get; set; }
+    public string OwnerUserId { get; set; } = string.Empty;
 
     /// <summary>
     /// The owner's default project for new accounts: accounts that newly appear in one of the owner's
-    /// sources (MoneyMoney upload, connector-created) are assigned to it. At most one per owner, only
+    /// data (MoneyMoney import, connector-created) are assigned to it. At most one per owner, only
     /// ever set on a project that is not shared (not itself and not through its parent) — sharing it
     /// clears the flag, so a new account can never become visible to a sharee automatically.
     /// </summary>
@@ -61,7 +53,7 @@ public class Project
     /// Optional parent project. When set, the Cashflow page rolls this project's tracked
     /// flows into the parent's chart and per-category breakdown — but each project keeps
     /// its own budgets and budget editor scope. Parent and child must share the same
-    /// SourceId; cycles and self-parenting are rejected at the service layer. Currently
+    /// owner; cycles and self-parenting are rejected at the service layer. Currently
     /// only single-level hierarchies are supported (a parent cannot itself have a parent).
     /// </summary>
     public int? ParentProjectId { get; set; }

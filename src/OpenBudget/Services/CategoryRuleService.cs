@@ -64,12 +64,12 @@ public static class CategoryRuleEngine
     public static async Task<int> ApplyToNewAsync(BudgetDbContext db, long accountId, IReadOnlyCollection<Transaction> added, CancellationToken ct)
     {
         if (added.Count == 0) return 0;
-        var account = await db.Accounts.AsNoTracking().Where(a => a.Id == accountId).Select(a => new { a.SourceId, a.Provider, a.Iban }).FirstOrDefaultAsync(ct);
+        var account = await db.Accounts.AsNoTracking().Where(a => a.Id == accountId).Select(a => new { a.OwnerUserId, a.Provider, a.Iban }).FirstOrDefaultAsync(ct);
         if (account == null || account.Provider == AccountProviders.MoneyMoney) return 0;
 
         var rules = await db.CategoryRules.AsNoTracking()
             .Where(r => r.Enabled && !r.Dismissed && db.ProjectAccountAssignments.Any(a => a.AccountId == accountId && a.ProjectId == r.ProjectId))
-            .Where(r => db.Categories.Any(c => c.Id == r.CategoryId && c.SourceId == account.SourceId))
+            .Where(r => db.Categories.Any(c => c.Id == r.CategoryId && c.OwnerUserId == account.OwnerUserId))
             .OrderBy(r => r.Project.SortOrder).ThenBy(r => r.ProjectId).ThenBy(r => r.SortOrder).ThenBy(r => r.Id)
             .ToListAsync(ct);
         if (rules.Count == 0) return 0;
@@ -133,10 +133,10 @@ public sealed class CategoryRuleService
     public async Task<List<RuleOption<long>>> GetCategoriesAsync(int projectId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var sourceId = await db.Projects.AsNoTracking().Where(p => p.Id == projectId).Select(p => (int?)p.SourceId).FirstOrDefaultAsync(ct);
-        if (sourceId == null) return [];
+        var ownerId = await db.Projects.AsNoTracking().Where(p => p.Id == projectId).Select(p => p.OwnerUserId).FirstOrDefaultAsync(ct);
+        if (ownerId == null) return [];
         var rows = await db.Categories.AsNoTracking()
-            .Where(c => c.SourceId == sourceId && c.Name != null && c.Name != "")
+            .Where(c => c.OwnerUserId == ownerId && c.Name != null && c.Name != "")
             .Select(c => new { c.Id, c.Name }).ToListAsync(ct);
         return rows.OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase).Select(c => new RuleOption<long>(c.Id, c.Name!)).ToList();
     }
@@ -152,11 +152,11 @@ public sealed class CategoryRuleService
     public async Task<int> SaveAsync(CategoryRule input, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var sourceId = await db.Projects.AsNoTracking().Where(p => p.Id == input.ProjectId).Select(p => (int?)p.SourceId).FirstOrDefaultAsync(ct)
+        var ownerId = await db.Projects.AsNoTracking().Where(p => p.Id == input.ProjectId).Select(p => p.OwnerUserId).FirstOrDefaultAsync(ct)
             ?? throw new AccessDeniedException("Project not found.");
         var problem = Validate(input);
         if (problem == RuleValidation.Ok
-            && !await db.Categories.AnyAsync(c => c.Id == input.CategoryId && c.SourceId == sourceId && c.Name != null && c.Name != "", ct))
+            && !await db.Categories.AnyAsync(c => c.Id == input.CategoryId && c.OwnerUserId == ownerId && c.Name != null && c.Name != "", ct))
             problem = RuleValidation.NoCategory;
         if (problem == RuleValidation.Ok && input.Expression.Contains("account_id", StringComparison.Ordinal))
         {
@@ -294,7 +294,7 @@ public sealed class CategoryRuleService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var plan = await PlanAsync(db, projectId, categoryId, ct);
         if (plan.Count == 0) return 0;
-        var sources = new HashSet<int>();
+        var sources = new HashSet<string>(StringComparer.Ordinal);
         foreach (var chunk in plan.Chunk(Chunk))
         {
             var ids = chunk.Select(p => p.TransactionId).ToList();
@@ -303,28 +303,28 @@ public sealed class CategoryRuleService
             {
                 if (!rows.TryGetValue(id, out var t) || !CategoryRuleEngine.IsCandidate(t)) continue;
                 CategoryRuleEngine.Apply(t, rule);
-                sources.Add(t.SourceId);
+                sources.Add(t.OwnerUserId);
             }
         }
         var changed = db.ChangeTracker.Entries<Transaction>().Count(e => e.State == EntityState.Modified);
         await db.SaveChangesAsync(ct);
-        foreach (var s in sources) _notifier.Publish(new DataChange(DataArea.ImportedData, SourceId: s), _origin.Id);
+        foreach (var s in sources) _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: s), _origin.Id);
         return changed;
     }
 
     /// <summary>(transaction, rule) pairs for every candidate the user may edit that one of the project's rules matches.</summary>
     private static async Task<List<(long TransactionId, CategoryRule Rule)>> PlanAsync(BudgetDbContext db, int projectId, long? categoryId, CancellationToken ct)
     {
-        var sourceId = await db.Projects.AsNoTracking().Where(p => p.Id == projectId).Select(p => (int?)p.SourceId).FirstOrDefaultAsync(ct);
-        if (sourceId == null) return [];
+        var ownerId = await db.Projects.AsNoTracking().Where(p => p.Id == projectId).Select(p => p.OwnerUserId).FirstOrDefaultAsync(ct);
+        if (ownerId == null) return [];
         var rules = (await OrderedRulesAsync(db, projectId, ct)).Where(r => r.Enabled).ToList();
         if (rules.Count == 0) return [];
-        var validCategories = (await db.Categories.AsNoTracking().Where(c => c.SourceId == sourceId).Select(c => c.Id).ToListAsync(ct)).ToHashSet();
+        var validCategories = (await db.Categories.AsNoTracking().Where(c => c.OwnerUserId == ownerId).Select(c => c.Id).ToListAsync(ct)).ToHashSet();
         rules = rules.Where(r => validCategories.Contains(r.CategoryId)).ToList();
 
         var accounts = (await ProjectAccountsAsync(db, projectId, ct))
             .Where(a => a.Provider != AccountProviders.MoneyMoney
-                && TransactionEditRules.Check(db.Scope, a.SourceId, a.Id, a.Provider) == EditBlock.None)
+                && TransactionEditRules.Check(db.Scope, a.OwnerUserId, a.Id, a.Provider) == EditBlock.None)
             .Select(a => a.Id).ToList();
         var subjects = await SubjectsAsync(db, accounts, onlyCandidates: true, ct);
         var plan = new List<(long, CategoryRule)>();
@@ -336,16 +336,16 @@ public sealed class CategoryRuleService
     private static Task<List<CategoryRule>> OrderedRulesAsync(BudgetDbContext db, int projectId, CancellationToken ct) =>
         db.CategoryRules.AsNoTracking().Where(r => r.ProjectId == projectId && !r.Dismissed).OrderBy(r => r.SortOrder).ThenBy(r => r.Id).ToListAsync(ct);
 
-    private sealed record ProjectAccount(long Id, string Name, int SourceId, string Provider, string? Iban);
+    private sealed record ProjectAccount(long Id, string Name, string OwnerUserId, string Provider, string? Iban);
 
     private static async Task<List<ProjectAccount>> ProjectAccountsAsync(BudgetDbContext db, int projectId, CancellationToken ct)
     {
         var rows = await db.Accounts.AsNoTracking()
             .Where(a => db.ProjectAccountAssignments.Any(p => p.ProjectId == projectId && p.AccountId == a.Id))
-            .Select(a => new { a.Id, a.Name, a.SourceId, a.Provider, a.Iban })
+            .Select(a => new { a.Id, a.Name, a.OwnerUserId, a.Provider, a.Iban })
             .ToListAsync(ct);
         return rows.OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase)
-            .Select(a => new ProjectAccount(a.Id, a.Name ?? "", a.SourceId, a.Provider, a.Iban)).ToList();
+            .Select(a => new ProjectAccount(a.Id, a.Name ?? "", a.OwnerUserId, a.Provider, a.Iban)).ToList();
     }
 
     private static async Task<List<(Transaction Row, RuleSubject Subject)>> SubjectsAsync(BudgetDbContext db, List<long> accountIds, bool onlyCandidates, CancellationToken ct)
@@ -366,7 +366,7 @@ public sealed class CategoryRuleService
             result.AddRange((await q.Select(t => new Transaction
             {
                 Id = t.Id,
-                SourceId = t.SourceId,
+                OwnerUserId = t.OwnerUserId,
                 AccountId = t.AccountId,
                 Amount = t.Amount,
                 Name = t.Name,

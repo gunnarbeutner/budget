@@ -16,7 +16,10 @@ public class RemovedImportItem
     [Key]
     public int Id { get; set; }
 
-    public int SourceId { get; set; }
+    /// <summary>The owning user (AppUser.Id).</summary>
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
 
     /// <summary><see cref="AccountKind"/> or <see cref="CategoryKind"/>.</summary>
     [MaxLength(20)]

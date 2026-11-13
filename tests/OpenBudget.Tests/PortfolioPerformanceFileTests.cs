@@ -61,7 +61,7 @@ public class PortfolioPerformanceFileTests
     [Fact]
     public void Flatten_keeps_security_assignments_with_root_excluded_paths()
     {
-        var rows = PortfolioPerformanceFile.Flatten(SampleClient(), sourceId: 7);
+        var rows = PortfolioPerformanceFile.Flatten(SampleClient(), ownerId: TestDb.DefaultOwner);
 
         // "ghost" isn't a security, so only the ETF and the gold assignments survive.
         Assert.Equal(2, rows.Count);
@@ -71,7 +71,7 @@ public class PortfolioPerformanceFileTests
         Assert.Equal(5000, gold.WeightBp);
 
         var row = rows.Single(r => r.SecurityUuid == "sec-etf");
-        Assert.Equal(7, row.SourceId);
+        Assert.Equal(TestDb.DefaultOwner, row.OwnerUserId);
         Assert.Equal("IE000WORLD0", row.Isin);
         Assert.Equal("Regions", row.TaxonomyName);
         Assert.Equal("Germany", row.ClassificationName);
@@ -82,11 +82,11 @@ public class PortfolioPerformanceFileTests
     [Fact]
     public void ExtractSecurities_catalogues_every_uuid_bearing_security_isin_or_not()
     {
-        var securities = PortfolioPerformanceFile.ExtractSecurities(SampleClient(), sourceId: 7);
+        var securities = PortfolioPerformanceFile.ExtractSecurities(SampleClient(), ownerId: TestDb.DefaultOwner);
 
         Assert.Equal(2, securities.Count);
         var etf = securities.Single(s => s.Uuid == "sec-etf");
-        Assert.Equal(7, etf.SourceId);
+        Assert.Equal(TestDb.DefaultOwner, etf.OwnerUserId);
         Assert.Equal("IE000WORLD0", etf.Isin);
         Assert.Equal("World ETF", etf.Name);
         // The ISIN-less gold is catalogued too, with an empty ISIN — it maps to the source app by hand.
@@ -102,7 +102,7 @@ public class PortfolioPerformanceFileTests
         client.Securities.Add(new PSecurity { Uuid = "u1", Isin = "IE00NONAME0" });  // no Name → ISIN
         client.Securities.Add(new PSecurity { Uuid = "u2" });                        // no Name, no ISIN → uuid
 
-        var got = PortfolioPerformanceFile.ExtractSecurities(client, sourceId: 1);
+        var got = PortfolioPerformanceFile.ExtractSecurities(client, ownerId: TestDb.DefaultOwner);
         Assert.Equal("IE00NONAME0", got.Single(s => s.Uuid == "u1").Name);
         Assert.Equal("u2", got.Single(s => s.Uuid == "u2").Name);
     }
@@ -121,7 +121,7 @@ public class PortfolioPerformanceFileTests
         });
         client.Securities.Add(new PSecurity { Uuid = "np", Isin = "IE00Y", Name = "No price" }); // no latest quote
 
-        var got = PortfolioPerformanceFile.ExtractSecurities(client, sourceId: 1);
+        var got = PortfolioPerformanceFile.ExtractSecurities(client, ownerId: TestDb.DefaultOwner);
 
         var etf = got.Single(s => s.Uuid == "etf");
         Assert.Equal(95.12m, etf.Price);
@@ -138,10 +138,10 @@ public class PortfolioPerformanceFileTests
         client.Portfolios.Add(new PPortfolio { Uuid = "p1", Name = "Example-Depot" });
         client.Portfolios.Add(new PPortfolio { Uuid = "p2", Name = "" });
 
-        var got = PortfolioPerformanceFile.ExtractPortfolios(client, sourceId: 3);
+        var got = PortfolioPerformanceFile.ExtractPortfolios(client, ownerId: TestDb.DefaultOwner);
 
         Assert.Equal(2, got.Count);
-        Assert.All(got, p => Assert.Equal(3, p.SourceId));
+        Assert.All(got, p => Assert.Equal(TestDb.DefaultOwner, p.OwnerUserId));
         Assert.Equal("Example-Depot", got.Single(p => p.Uuid == "p1").Name);
         Assert.Equal("p2", got.Single(p => p.Uuid == "p2").Name);   // blank name → uuid
     }

@@ -18,7 +18,7 @@ public class CombinedHoldingsTests
         t.Db.Holdings.Add(new Holding
         {
             Id = _nextId++,
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             AccountId = accountId,
             Name = name,
             Isin = isin,
@@ -78,7 +78,7 @@ public class CombinedHoldingsTests
         AddHolding(t, 20, null, "XAU", "Gold", quantity: 1, amount: 700, purchasePerUnit: null);
         t.Db.SecurityTaxonomies.Add(new SecurityTaxonomy
         {
-            SourceId = 1,
+            OwnerUserId = TestDb.DefaultOwner,
             Isin = "IE000EQ0",
             TaxonomyId = "t1",
             TaxonomyName = "Regions",
@@ -101,7 +101,7 @@ public class CombinedHoldingsTests
 
     private static SecurityTaxonomy Tax(string isin, string taxonomy, string cls, int bp) => new()
     {
-        SourceId = 1,
+        OwnerUserId = TestDb.DefaultOwner,
         Isin = isin,
         TaxonomyId = taxonomy,
         TaxonomyName = taxonomy,
@@ -170,7 +170,7 @@ public class CombinedHoldingsTests
         AddHolding(t, 20, null, "ZZX", "Unknown Thing", quantity: 1, amount: 400, purchasePerUnit: null);
         var list = t.Db.ChangeTracker.Entries<Holding>().Select(e => e.Entity).ToList();
         list.Single(h => h.Symbol == "ZZQ-EUR").PpSecurityUuid = "pp-token";
-        t.Db.PpSecurityLinks.Add(new PpSecurityLink { SourceId = 1, PpSecurityUuid = "pp-house", MmHoldingKey = "name:Sample House" });
+        t.Db.PpSecurityLinks.Add(new PpSecurityLink { OwnerUserId = TestDb.DefaultOwner, PpSecurityUuid = "pp-house", MmHoldingKey = "name:Sample House" });
         t.Db.SecurityTaxonomies.AddRange(
             Tax("IE000EQ0", "Asset Classes", "Equity", 10000),
             UuidTax("pp-token", "Asset Classes", "Alternatives", 10000),

@@ -60,10 +60,10 @@ public static class TransactionQueryExtensions
     /// pinning the transaction to a sentinel category with an empty name rather than leaving
     /// category_key NULL, so both shapes count. Does not exclude split parents — callers do that.
     /// </summary>
-    public static IQueryable<Transaction> WhereUncategorized(this IQueryable<Transaction> q, BudgetDbContext db, int sourceId)
+    public static IQueryable<Transaction> WhereUncategorized(this IQueryable<Transaction> q, BudgetDbContext db, string ownerId)
     {
         return q.Where(t => t.CategoryId == null
-            || !db.Categories.Any(c => c.SourceId == sourceId && c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)));
+            || !db.Categories.Any(c => c.OwnerUserId == ownerId && c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)));
     }
 
     /// <summary>
