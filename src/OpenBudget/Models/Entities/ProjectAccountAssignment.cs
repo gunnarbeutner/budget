@@ -24,11 +24,11 @@ public static class AccountAssignmentDefaults
     public const AccountScope Scope = AccountScope.Shared;
 
     /// <summary>
-    /// Only cash accounts (giro, savings, credit card, cash) count in the Cashflow view by default.
-    /// Depots, PortfolioPerformance accounts, loans and other or unknown types start outside it.
+    /// Only open cash accounts (giro, savings, credit card, cash) count in the Cashflow view by default.
+    /// Closed accounts, depots, PortfolioPerformance accounts, loans and other or unknown types start outside it.
     /// </summary>
     public static bool InCashflow(Account account) =>
-        !IsInvestment(account) && account.Type is 1 or 2 or 3 or 6;
+        !account.Closed && !IsInvestment(account) && account.Type is 1 or 2 or 3 or 6;
 
     public static bool IsInvestment(Account account) =>
         account.Provider == AccountProviders.PortfolioPerformance || account.Portfolio is 1 || account.Type == 7;

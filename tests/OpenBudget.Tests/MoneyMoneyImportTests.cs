@@ -526,10 +526,16 @@ public sealed class MoneyMoneyImportTests : IDisposable
             INSERT INTO accounts (name, currency, type, balances, refresh) VALUES ('Closed account', 'EUR', 1, '', 19);
             INSERT INTO accounts (name, currency, type, balances, refresh) VALUES ('Offline account', 'EUR', 6, '', 0);
             """);
+        var project = t.AddProject(1, "Default");
+        project.IsDefaultForNewAccounts = true;
+        await t.Db.SaveChangesAsync();
         await ImportAsync(t, path);
         await using var db = await t.Factory.CreateDbContextAsync();
         var closed = await db.Accounts.IgnoreQueryFilters().OrderBy(a => a.Id).Select(a => new { a.Name, a.Closed }).ToListAsync();
         Assert.Equal(["Open account:False", "Closed account:True", "Offline account:False"], closed.Select(a => $"{a.Name}:{a.Closed}"));
+        // All of them land in the default project, but a closed account never counts for the cashflow.
+        var assigned = await db.ProjectAccountAssignments.OrderBy(a => a.AccountId).Select(a => a.InCashflow).ToListAsync();
+        Assert.Equal([true, false, true], assigned);
     }
 
     [Fact]
