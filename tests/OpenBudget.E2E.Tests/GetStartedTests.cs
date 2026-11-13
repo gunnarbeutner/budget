@@ -136,7 +136,7 @@ public sealed class GetStartedTests : EndToEndTestBase
             await Page.GetByTestId("mm-upload").ClickAsync();
             await Expect(Page.GetByTestId("mm-job")).ToBeVisibleAsync(new() { Timeout = 30_000 });
 
-            await Expect(Page.GetByTestId("get-started-next")).ToBeDisabledAsync();
+            await Expect(Page.GetByTestId("get-started-next")).ToHaveCountAsync(0);
             await Expect(Page.GetByTestId("start-fresh")).ToHaveCountAsync(0);
             await Expect(Page.GetByTestId("get-started-stepper-1")).Not.ToHaveClassAsync(new Regex("done"));
             await Expect(Page.GetByTestId("gear-menu")).ToHaveCountAsync(0);

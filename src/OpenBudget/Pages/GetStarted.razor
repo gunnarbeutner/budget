@@ -231,7 +231,8 @@ else
     {
         <a class="btn btn-outline-secondary" href="@StepUrl(CurrentStep - 1)" data-testid="get-started-back">@L["Wizard_Back"]</a>
     }
-    @if (CurrentStep < StepCount && ImportRunning)
+    @* Step 1 moves on by itself once a way to start is done, so it offers Next only when revisited afterwards. *@
+    @if (CurrentStep < StepCount && ImportRunning && CurrentStep != 1)
     {
         <button type="button" class="btn btn-outline-secondary" disabled data-testid="get-started-next">@L["Wizard_Next"]</button>
     }
