@@ -5,11 +5,10 @@ using OpenBudget.Models;
 
 namespace OpenBudget.Services;
 
-/// <summary>A booking as the manual entry form edits it. <see cref="Currency"/> null means the account's currency.</summary>
+/// <summary>A booking as the manual entry form edits it. A new booking takes the account's currency; an edited one keeps its own.</summary>
 public sealed record ManualTransactionInput(
     DateOnly Date,
     decimal Amount,
-    string? Currency,
     string? Name,
     string? Purpose,
     long? CategoryId,
@@ -19,8 +18,12 @@ public sealed record ManualTransactionInput(
 /// <summary>Why an account's initial balance cannot be edited; <see cref="None"/> when it can.</summary>
 public enum InitialBalanceLock { None, Bank, Portfolio, NotOwner }
 
-/// <summary>An account's initial balance (cents), its stored current balance and whether the user may change it.</summary>
-public sealed record InitialBalanceState(long Cents, decimal CurrentBalance, string Currency, InitialBalanceLock Lock);
+/// <summary>An account's initial balance (cents), its stored current balance, its currency and whether the user may change
+/// them. The currency of an editable account can change only while it has no bookings (<see cref="HasBookings"/>).</summary>
+public sealed record InitialBalanceState(long Cents, decimal CurrentBalance, string Currency, InitialBalanceLock Lock, bool HasBookings = false)
+{
+    public bool CurrencyEditable => Lock == InitialBalanceLock.None && !HasBookings;
+}
 
 /// <summary>A manual account an offsetting entry can be booked on.</summary>
 public sealed record OffsetTarget(long AccountId, string Name, string Icon, string? Color);
@@ -77,8 +80,9 @@ public sealed class ManualTransactionService
             : account.Provider != AccountProviders.Manual ? InitialBalanceLock.Bank
             : db.Scope != null && !db.Scope.Owns(account.OwnerUserId) ? InitialBalanceLock.NotOwner
             : InitialBalanceLock.None;
+        var hasBookings = await db.Transactions.AnyAsync(t => t.AccountId == accountId, ct);
         return new InitialBalanceState(account.InitialBalance, account.CurrentBalance ?? 0m,
-            string.IsNullOrWhiteSpace(account.Currency) ? "EUR" : account.Currency, lockReason);
+            string.IsNullOrWhiteSpace(account.Currency) ? "EUR" : account.Currency, lockReason, hasBookings);
     }
 
     /// <summary>
@@ -109,6 +113,27 @@ public sealed class ManualTransactionService
         if (delta == 0) return;
         account.InitialBalance = cents;
         account.Balances = BalanceBlob((account.CurrentBalance ?? 0m) + delta / 100m, state.Currency);
+        await db.SaveChangesAsync(ct);
+        Publish(account.OwnerUserId);
+    }
+
+    /// <summary>
+    /// Sets a manual account's currency (an ISO code such as "EUR"). Only while the account has no bookings, which all
+    /// carry the account's currency; only the source's owner may do this.
+    /// </summary>
+    public async Task SetCurrencyAsync(long accountId, string currency, CancellationToken ct = default)
+    {
+        var code = (currency ?? "").Trim().ToUpperInvariant();
+        if (code.Length != 3 || !code.All(char.IsAsciiLetter)) throw new ArgumentException("The currency is a three-letter code.", nameof(currency));
+        var state = await GetInitialBalanceAsync(accountId, ct) ?? throw new AccessDeniedException("Account not found.");
+        if (state.Lock == InitialBalanceLock.NotOwner) throw new AccessDeniedException("Only the owner edits this account.");
+        if (state.Lock != InitialBalanceLock.None) throw new InvalidOperationException("The currency is editable only on manual accounts.");
+        if (code == state.Currency) return;
+        if (state.HasBookings) throw new InvalidOperationException("The currency is editable only while the account has no bookings.");
+        await using var db = await _system.CreateDbContextAsync(ct);
+        var account = await db.Accounts.FirstAsync(a => a.Id == accountId, ct);
+        account.Currency = code;
+        account.Balances = BalanceBlob(account.CurrentBalance ?? 0m, code);
         await db.SaveChangesAsync(ct);
         Publish(account.OwnerUserId);
     }
@@ -194,7 +219,7 @@ public sealed class ManualTransactionService
         }
         var date = DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(source.Timestamp).UtcDateTime);
         return await AddAsync(accountId, new ManualTransactionInput(
-            date, -source.Amount / 100m, source.Currency, source.Name, source.Purpose, categoryId, note), ct);
+            date, -source.Amount / 100m, source.Name, source.Purpose, categoryId, note), ct);
     }
 
     /// <summary>Changes a booking of a manual account (also one MoneyMoney delivered).</summary>
@@ -234,10 +259,8 @@ public sealed class ManualTransactionService
 
     private static void Apply(Transaction row, ManualTransactionInput input, string accountCurrency, bool amountEditable)
     {
-        var currency = string.IsNullOrWhiteSpace(input.Currency) ? accountCurrency : input.Currency.Trim().ToUpperInvariant();
-        if (currency.Length != 3 || !currency.All(char.IsAsciiLetter)) throw new ArgumentException("The currency is a three-letter code.", nameof(input));
         if (amountEditable) row.Amount = BankTransactionStore.ToCents(input.Amount);
-        row.Currency = currency;
+        row.Currency ??= accountCurrency;
         row.Timestamp = BankTransactionStore.ToTimestamp(input.Date);
         row.Name = Clean(input.Name);
         row.Purpose = Clean(input.Purpose);

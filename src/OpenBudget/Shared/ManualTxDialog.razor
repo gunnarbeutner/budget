@@ -24,8 +24,7 @@
                         <input id="mtx-amount" class="form-control text-end" inputmode="decimal" data-testid="manual-tx-amount" data-initial-focus
                                value="@_amount" disabled="@_amountLocked" title="@(_amountLocked ? L["Amount_Split"].Value : null)"
                                @onchange="e => _amount = e.Value?.ToString() ?? string.Empty" />
-                        <input class="form-control" style="max-width: 4.5rem;" maxlength="3" aria-label="@L["Currency"]" data-testid="manual-tx-currency"
-                               value="@_currency" @onchange="e => _currency = e.Value?.ToString() ?? string.Empty" />
+                        <span class="input-group-text" data-testid="manual-tx-currency">@CurrencySymbol(_currency)</span>
                     </div>
                 </div>
                 <div class="col-12">
@@ -83,7 +82,7 @@
     /// <summary>The account a new booking goes to.</summary>
     [Parameter] public long AccountId { get; set; }
 
-    /// <summary>The account's currency (the default for new bookings).</summary>
+    /// <summary>The account's currency, which new bookings take.</summary>
     [Parameter] public string? AccountCurrency { get; set; }
 
     /// <summary>The booking being edited; null adds a new one.</summary>
@@ -100,6 +99,8 @@
     private DateOnly _date;
     private string _amount = "";
     private string _currency = "";
+
+    private static string CurrencySymbol(string currency) => currency == "EUR" ? "€" : currency;
     private string? _name, _purpose, _note;
     private long? _categoryId;
     private bool _booked = true;
@@ -118,7 +119,7 @@
             {
                 _date = DateOnly.FromDateTime(Clock.ToLocal(r.Date));
                 _amount = r.Amount.ToString("0.00", CultureInfo.CurrentCulture);
-                _currency = r.Currency ?? AccountCurrency ?? "EUR";
+                _currency = CurrencySums.Normalize(r.Currency ?? AccountCurrency);
                 (_name, _purpose, _note, _categoryId, _booked) = (r.Name, r.Purpose, r.Note, r.CategoryId, !r.IsPending);
                 _amountLocked = r.IsSplitChild || r.IsSplitRemainder || r.SplitParentId != null;
             }
@@ -126,7 +127,7 @@
             {
                 _date = DateOnly.FromDateTime(Clock.Today);
                 _amount = "";
-                _currency = AccountCurrency ?? "EUR";
+                _currency = CurrencySums.Normalize(AccountCurrency);
                 (_name, _purpose, _note, _categoryId, _booked) = (null, null, null, null, true);
                 _amountLocked = false;
             }
@@ -163,7 +164,7 @@
             _error = L["Error_Amount"];
             return;
         }
-        var input = new ManualTransactionInput(_date, amount, _currency, _name, _purpose, _categoryId, _note, _booked);
+        var input = new ManualTransactionInput(_date, amount, _name, _purpose, _categoryId, _note, _booked);
         await RunAsync(async () =>
         {
             if (Row is { } r) await Manual.UpdateAsync(r.Id, input);

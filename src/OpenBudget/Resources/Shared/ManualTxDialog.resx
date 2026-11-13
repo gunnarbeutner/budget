@@ -73,9 +73,6 @@
   <data name="Amount_Split" xml:space="preserve">
     <value>The amount of a split booking stays; remove the split to change it.</value>
   </data>
-  <data name="Currency" xml:space="preserve">
-    <value>Currency</value>
-  </data>
   <data name="Name" xml:space="preserve">
     <value>Payee / payer</value>
   </data>

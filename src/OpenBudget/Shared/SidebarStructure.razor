@@ -158,7 +158,10 @@
                     <div class="input-group" style="max-width: 20rem;">
                         <input id="account-settings-initial-amount" class="form-control text-end" inputmode="decimal" data-testid="account-settings-initial-amount"
                                value="@_initialText" disabled="@(!editable)" @onchange="e => _initialText = e.Value?.ToString() ?? string.Empty" />
-                        <span class="input-group-text">@CurrencySymbol(ib.Currency)</span>
+                        <input class="form-control text-uppercase" style="max-width: 4.5rem;" maxlength="3" aria-label="@L["Settings_Currency"]"
+                               data-testid="account-settings-currency" value="@_currencyText" disabled="@(!ib.CurrencyEditable)"
+                               title="@(editable && !ib.CurrencyEditable ? L["Settings_Currency_Locked"].Value : null)"
+                               @onchange="e => _currencyText = e.Value?.ToString() ?? string.Empty" />
                         @if (editable)
                         {
                             <button type="button" class="btn btn-outline-secondary" data-testid="account-settings-calibrate"
@@ -172,6 +175,10 @@
                         InitialBalanceLock.NotOwner => "Settings_Initial_NotOwner",
                         _ => "Settings_Initial_Hint",
                     }]</div>
+                    @if (editable && !ib.CurrencyEditable)
+                    {
+                        <div class="form-text" data-testid="account-settings-currency-hint">@L["Settings_Currency_Locked"]</div>
+                    }
                     @if (_calibrating && editable)
                     {
                         <div class="border rounded p-2 mt-2" data-testid="account-settings-calibration">
@@ -649,6 +656,7 @@
         try { _initial = await ManualTx.GetInitialBalanceAsync(node.Id); }
         catch (AccessDeniedException) { _initial = null; }
         _initialText = _initial is { } ib ? FormatAmount(ib.Cents / 100m) : "";
+        _currencyText = _initial?.Currency ?? "";
         _calibrating = false;
         _calFlows = null;
         _calText = "";
@@ -659,6 +667,7 @@
 
     private InitialBalanceState? _initial;
     private string _initialText = "";
+    private string _currencyText = "";
     private bool _calibrating;
     private DateOnly _calDate;
     private string _calText = "";
@@ -738,6 +747,16 @@
                 {
                     _error = L["Settings_Initial_Invalid"];
                     return;
+                }
+                if (ib.CurrencyEditable && !string.Equals(_currencyText.Trim(), ib.Currency, StringComparison.OrdinalIgnoreCase))
+                {
+                    var code = _currencyText.Trim();
+                    if (code.Length != 3 || !code.All(char.IsAsciiLetter))
+                    {
+                        _error = L["Settings_Currency_Invalid"];
+                        return;
+                    }
+                    await ManualTx.SetCurrencyAsync(s.Account.Id, code);
                 }
                 var cents = (long)Math.Round(initial * 100m, MidpointRounding.AwayFromZero);
                 if (cents != ib.Cents) await ManualTx.SetInitialBalanceAsync(s.Account.Id, cents);

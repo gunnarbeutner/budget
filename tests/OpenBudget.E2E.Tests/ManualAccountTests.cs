@@ -74,6 +74,9 @@ public sealed class ManualAccountTests : EndToEndTestBase
         await Page.GetByTestId("tx-add").ClickAsync();
         // The dialog opens with the amount focused, not its close button.
         await Expect(Page.GetByTestId("manual-tx-amount")).ToBeFocusedAsync();
+        // The booking takes the account's currency; the form only shows it.
+        await Expect(Page.GetByTestId("manual-tx-currency")).ToHaveTextAsync("€");
+        await Expect(Page.Locator("input[data-testid='manual-tx-currency']")).ToHaveCountAsync(0);
         await Page.GetByTestId("manual-tx-date").FillAsync("2026-03-20");
         await Page.GetByTestId("manual-tx-amount").FillAsync("-12,34");
         await Page.GetByTestId("manual-tx-name").FillAsync("Example Kiosk");
@@ -127,6 +130,10 @@ public sealed class ManualAccountTests : EndToEndTestBase
         await sidebar.GetByTestId("tree-account").Filter(new() { HasText = "Example Cash" }).First.ClickAsync(new() { Button = MouseButton.Right });
         await Page.GetByTestId("ctx-settings").ClickAsync();
         await Expect(dialog.GetByTestId("account-settings-initial-amount")).ToHaveValueAsync("0,00");
+        // The account has bookings, so its currency stays.
+        await Expect(dialog.GetByTestId("account-settings-currency")).ToHaveValueAsync("EUR");
+        await Expect(dialog.GetByTestId("account-settings-currency")).ToBeDisabledAsync();
+        await Expect(dialog.GetByTestId("account-settings-currency-hint")).ToBeVisibleAsync();
         await dialog.GetByTestId("account-settings-calibrate").ClickAsync();
         // At the end of 4 March the account held 120 (100 now, the -20 of 5 March not yet booked); 150 then means +30.
         await dialog.GetByTestId("account-settings-cal-date").FillAsync("2026-03-04");

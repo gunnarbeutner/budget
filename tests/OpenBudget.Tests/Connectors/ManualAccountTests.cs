@@ -86,7 +86,7 @@ public sealed class ManualAccountTests
         await w.ImportMoneyMoneyAsync(Snapshot(w));
         var switcher = w.Switcher(BankWorld.Alice);
         await switcher.KeepManualAsync([Giro]);
-        await Manual(w, BankWorld.Alice).AddAsync(Giro, new ManualTransactionInput(new DateOnly(2026, 11, 2), -5m, null, "Kiosk", null, null, null));
+        await Manual(w, BankWorld.Alice).AddAsync(Giro, new ManualTransactionInput(new DateOnly(2026, 11, 2), -5m, "Kiosk", null, null, null));
 
         await switcher.SetImportFinishedAsync(BankWorld.Alice, true);
         await Assert.ThrowsAsync<InvalidOperationException>(() => switcher.ReturnToMoneyMoneyAsync(Giro));
@@ -180,7 +180,7 @@ public sealed class ManualAccountTests
             await db.SaveChangesAsync();
         }
 
-        var id = await manual.AddAsync(Giro, new ManualTransactionInput(new DateOnly(2026, 11, 5), -12.34m, null, "Bakery", "Bread", category, "breakfast"));
+        var id = await manual.AddAsync(Giro, new ManualTransactionInput(new DateOnly(2026, 11, 5), -12.34m, "Bakery", "Bread", category, "breakfast"));
         var added = (await w.TransactionsAsync(Giro)).Single(t => t.Id == id);
         Assert.Equal(-1234, added.Amount);
         Assert.Equal("EUR", added.Currency);
@@ -193,21 +193,21 @@ public sealed class ManualAccountTests
 
         // A history row from MoneyMoney: amount, date and payee are editable.
         var rent = (await w.TransactionsAsync(Giro)).Single(t => t.Name == "LANDLORD");
-        await manual.UpdateAsync(rent.Id, new ManualTransactionInput(new DateOnly(2026, 9, 4), -750m, null, "Landlord", "Rent", null, null));
+        await manual.UpdateAsync(rent.Id, new ManualTransactionInput(new DateOnly(2026, 9, 4), -750m, "Landlord", "Rent", null, null));
         rent = (await w.TransactionsAsync(Giro)).Single(t => t.Id == rent.Id);
         Assert.Equal(-75000, rent.Amount);
         Assert.Equal("Landlord", rent.Name);
         Assert.Equal(BankTransactionStore.ToTimestamp(new DateOnly(2026, 9, 4)), rent.Timestamp);
         Assert.Equal(47.66m, (await w.AccountAsync(Giro)).CurrentBalance);
 
-        // Another currency leaves the balance alone.
-        await manual.UpdateAsync(id, new ManualTransactionInput(new DateOnly(2026, 11, 5), -12.34m, "usd", "Bakery", null, null, null));
-        Assert.Equal("USD", (await w.TransactionsAsync(Giro)).Single(t => t.Id == id).Currency);
-        Assert.Equal(60m, (await w.AccountAsync(Giro)).CurrentBalance);
+        // An edited booking keeps its currency.
+        await manual.UpdateAsync(id, new ManualTransactionInput(new DateOnly(2026, 11, 5), -12.34m, "Bakery", null, null, null));
+        Assert.Equal("EUR", (await w.TransactionsAsync(Giro)).Single(t => t.Id == id).Currency);
+        Assert.Equal(47.66m, (await w.AccountAsync(Giro)).CurrentBalance);
 
         await manual.DeleteAsync(rent.Id);
         Assert.DoesNotContain(await w.TransactionsAsync(Giro), t => t.Id == rent.Id);
-        Assert.Equal(810m, (await w.AccountAsync(Giro)).CurrentBalance);
+        Assert.Equal(797.66m, (await w.AccountAsync(Giro)).CurrentBalance);
     }
 
     [Fact]
@@ -265,7 +265,7 @@ public sealed class ManualAccountTests
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
         await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro]);
-        var input = new ManualTransactionInput(new DateOnly(2026, 11, 5), -1m, null, "X", null, null, null);
+        var input = new ManualTransactionInput(new DateOnly(2026, 11, 5), -1m, "X", null, null, null);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => Manual(w, BankWorld.Alice).AddAsync(Savings, input));
         await Assert.ThrowsAsync<AccessDeniedException>(() => Manual(w, BankWorld.Bob).AddAsync(Giro, input));
@@ -296,6 +296,37 @@ public sealed class ManualAccountTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => alice.SetInitialBalanceAsync(Savings, 100));
         await Assert.ThrowsAsync<AccessDeniedException>(() => Manual(w, BankWorld.Bob).SetInitialBalanceAsync(Giro, 0));
         Assert.Equal(after.InitialBalance, (await w.AccountAsync(Giro)).InitialBalance);
+    }
+
+    [Fact]
+    public async Task The_currency_of_a_manual_account_changes_only_while_it_has_no_bookings()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        await w.ImportMoneyMoneyAsync(Snapshot(w));
+        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro]);
+        var alice = Manual(w, BankWorld.Alice);
+
+        var state = (await alice.GetInitialBalanceAsync(Giro))!;
+        Assert.True(state.HasBookings);
+        Assert.False(state.CurrencyEditable);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => alice.SetCurrencyAsync(Giro, "USD"));
+
+        await using (var db = await w.T.System.CreateDbContextAsync())
+        {
+            db.Transactions.RemoveRange(db.Transactions.Where(t => t.AccountId == Giro));
+            await db.SaveChangesAsync();
+        }
+        Assert.True((await alice.GetInitialBalanceAsync(Giro))!.CurrencyEditable);
+        await Assert.ThrowsAsync<ArgumentException>(() => alice.SetCurrencyAsync(Giro, "US"));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => Manual(w, BankWorld.Bob).SetCurrencyAsync(Giro, "USD"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => alice.SetCurrencyAsync(Savings, "USD"));
+        await alice.SetCurrencyAsync(Giro, "usd");
+        Assert.Equal("USD", (await w.AccountAsync(Giro)).Currency);
+
+        // New bookings take the account's currency.
+        var id = await alice.AddAsync(Giro, new ManualTransactionInput(new DateOnly(2026, 11, 5), -3m, "Kiosk", null, null, null));
+        Assert.Equal("USD", (await w.TransactionsAsync(Giro)).Single(t => t.Id == id).Currency);
+        Assert.False((await alice.GetInitialBalanceAsync(Giro))!.CurrencyEditable);
     }
 
     [Fact]

@@ -151,6 +151,15 @@
   <data name="Settings_Initial_NotOwner" xml:space="preserve">
     <value>Only the account's owner can change the initial balance.</value>
   </data>
+  <data name="Settings_Currency" xml:space="preserve">
+    <value>Currency</value>
+  </data>
+  <data name="Settings_Currency_Locked" xml:space="preserve">
+    <value>The currency can only change while the account has no bookings.</value>
+  </data>
+  <data name="Settings_Currency_Invalid" xml:space="preserve">
+    <value>Enter a three-letter currency code such as EUR.</value>
+  </data>
   <data name="Settings_Initial_Invalid" xml:space="preserve">
     <value>Enter an amount such as -484,53.</value>
   </data>

@@ -151,6 +151,15 @@
   <data name="Settings_Initial_NotOwner" xml:space="preserve">
     <value>Nur der Inhaber des Kontos kann den Anfangssaldo ändern.</value>
   </data>
+  <data name="Settings_Currency" xml:space="preserve">
+    <value>Währung</value>
+  </data>
+  <data name="Settings_Currency_Locked" xml:space="preserve">
+    <value>Die Währung lässt sich nur ändern, solange das Konto keine Buchungen hat.</value>
+  </data>
+  <data name="Settings_Currency_Invalid" xml:space="preserve">
+    <value>Bitte einen Währungscode wie EUR eingeben.</value>
+  </data>
   <data name="Settings_Initial_Invalid" xml:space="preserve">
     <value>Bitte einen Betrag wie -484,53 eingeben.</value>
   </data>

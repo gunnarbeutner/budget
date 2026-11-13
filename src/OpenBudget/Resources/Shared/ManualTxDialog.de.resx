@@ -73,9 +73,6 @@
   <data name="Amount_Split" xml:space="preserve">
     <value>Der Betrag einer aufgeteilten Buchung bleibt; hebe die Aufteilung auf, um ihn zu ändern.</value>
   </data>
-  <data name="Currency" xml:space="preserve">
-    <value>Währung</value>
-  </data>
   <data name="Name" xml:space="preserve">
     <value>Empfänger / Auftraggeber</value>
   </data>
