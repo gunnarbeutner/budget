@@ -392,17 +392,9 @@ public class AccessScopeTests
     public async Task Viewer_sees_the_last_upload_time_but_only_visible_accounts_of_the_owner()
     {
         await using var t = await AccessWorld.BuildAsync(ProjectRole.Viewer);
-        var stamp = new DateTime(2026, 3, 11, 8, 0, 0, DateTimeKind.Utc);
-        await using (var db = await t.System.CreateDbContextAsync())
-        {
-            (await db.UserDataStates.SingleAsync(s => s.UserId == AccessWorld.Alice)).LastUploadAt = stamp;
-            await db.SaveChangesAsync();
-        }
-
         var freshness = await t.ForUser(AccessWorld.Bob).Freshness.GetDataFreshnessAsync();
         var source = freshness.Single(f => f.OwnerUserId == AccessWorld.Alice);
 
-        Assert.Equal(stamp, source.DbUploadedUtc);
         Assert.DoesNotContain(source.Accounts, a => a.AccountId == AccessWorld.AccountPrivate);
         Assert.Equal(2, source.Accounts.Count);
     }

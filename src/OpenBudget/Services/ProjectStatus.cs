@@ -8,8 +8,8 @@ namespace OpenBudget.Services;
 /// the sidebar's budget badge and the Transactions summary strip, so they can never drift on thresholds or wording.
 ///
 /// The alert builder follows the same convention as <see cref="Formatting.FormatRelativeAge"/>:
-/// the caller passes its own <see cref="IStringLocalizer"/>, and the freshness / uncategorized
-/// keys (Freshness_Uploaded, Freshness_Unknown, Freshness_RefreshErrors_One/_Other,
+/// the caller passes its own <see cref="IStringLocalizer"/>, and the refresh-error / uncategorized
+/// keys (Freshness_RefreshErrors_One/_Other,
 /// Uncategorized_One/_Other, plus the RelativeAge_* set) must exist on that page's resx.
 /// </summary>
 public static class ProjectStatus
@@ -58,34 +58,14 @@ public static class ProjectStatus
         ProjectSpendingSummary summary,
         IReadOnlyDictionary<string, DataFreshness> freshnessByOwner,
         IReadOnlyDictionary<string, UncategorizedSummary>? uncategorized,
-        IStringLocalizer L,
-        DateTime nowUtc,
-        TimeZoneInfo zone)
+        IStringLocalizer L)
     {
         var lines = new List<string>();
         string severity = "secondary";
 
-        // Freshness: stale upload or per-account refresh errors for the project owner's data.
+        // Accounts of the project owner whose refresh failed.
         if (freshnessByOwner.TryGetValue(summary.OwnerUserId, out var f))
         {
-            var age = f.DbUploadedUtc.HasValue ? nowUtc - f.DbUploadedUtc.Value : (TimeSpan?)null;
-            var freshSev = age switch
-            {
-                null => "warning",
-                { TotalDays: > 7 } => "danger",
-                { TotalHours: > 36 } => "warning",
-                _ => null
-            };
-            if (freshSev != null)
-            {
-                string ageLabel = age.HasValue ? Formatting.FormatRelativeAge(age.Value, L) : L["Freshness_Unknown"];
-                var uploadedExtra = f.DbUploadedUtc.HasValue
-                    ? $" ({TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(f.DbUploadedUtc.Value, DateTimeKind.Utc), zone):yyyy-MM-dd HH:mm})"
-                    : "";
-                lines.Add($"{L["Freshness_Uploaded"]} {ageLabel}{uploadedExtra}.");
-                severity = freshSev;
-            }
-
             var errorAccounts = f.AccountsWithErrors.ToList();
             if (errorAccounts.Count > 0)
             {

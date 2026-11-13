@@ -106,15 +106,6 @@
   <data name="Review_Uncategorized" xml:space="preserve">
     <value>{0} ohne Kategorie</value>
   </data>
-  <data name="Review_DataFresh" xml:space="preserve">
-    <value>Daten sind aktuell</value>
-  </data>
-  <data name="Freshness_Uploaded" xml:space="preserve">
-    <value>Daten hochgeladen</value>
-  </data>
-  <data name="Freshness_Unknown" xml:space="preserve">
-    <value>unbekannt</value>
-  </data>
   <data name="Freshness_RefreshErrors_One" xml:space="preserve">
     <value>{0} Konto mit Aktualisierungsfehlern:</value>
   </data>

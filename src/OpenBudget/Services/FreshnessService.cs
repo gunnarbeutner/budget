@@ -19,9 +19,8 @@ public class FreshnessService
     }
 
     /// <summary>
-    /// Returns, per owner of an account the user sees, when their MoneyMoney data was last imported (LastUploadAt)
-    /// plus the account-refresh snapshot. The dashboard uses this to flag stale data; projection numbers built on
-    /// stale data silently lie, so a visible indicator matters.
+    /// Returns, per owner of an account the user sees, the account-refresh snapshot. The summary uses it to flag
+    /// accounts whose refresh failed.
     /// </summary>
     public async Task<List<DataFreshness>> GetDataFreshnessAsync()
     {
@@ -39,12 +38,9 @@ public class FreshnessService
             }).ToList(), StringComparer.Ordinal);
 
         var owners = accountsBySource.Keys.Order(StringComparer.Ordinal).ToList();
-        var uploads = await db.UserDataStates.IgnoreQueryFilters().AsNoTracking().Where(s => owners.Contains(s.UserId))
-            .ToDictionaryAsync(s => s.UserId, s => s.LastUploadAt, StringComparer.Ordinal);
         return owners.Select(o => new DataFreshness
         {
             OwnerUserId = o,
-            DbUploadedUtc = uploads.GetValueOrDefault(o),
             Accounts = accountsBySource[o]
         }).ToList();
     }
