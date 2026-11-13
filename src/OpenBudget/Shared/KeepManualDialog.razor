@@ -36,15 +36,6 @@
                     <li>@L["Rule_Entry"]</li>
                     <li>@L["Rule_Return"]</li>
                 </ul>
-                @if (NeedsTakeover)
-                {
-                    <div class="form-check mt-2">
-                        <input class="form-check-input" type="checkbox" id="keep-manual-takeover" data-testid="keep-manual-takeover"
-                               checked="@_takeOver" @onchange="e => _takeOver = e.Value is true" />
-                        <label class="form-check-label" for="keep-manual-takeover">@L["Takeover"]</label>
-                        <div class="form-text">@L["Takeover_Hint"]</div>
-                    </div>
-                }
             }
             @if (_error != null)
             {
@@ -73,12 +64,10 @@
 
     private IReadOnlyList<long>? _loadedFor;
     private List<KeepManualPreview>? _previews;
-    private bool _takeOver;
     private bool _busy;
     private string? _error;
 
-    private bool NeedsTakeover => _previews?.Any(p => !p.StructureTakenOver) == true;
-    private bool CanConfirm => !_busy && _previews?.Count > 0 && (!NeedsTakeover || _takeOver);
+    private bool CanConfirm => !_busy && _previews?.Count > 0;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -86,7 +75,6 @@
         _loadedFor = AccountIds;
         _previews = null;
         _error = null;
-        _takeOver = false;
         if (AccountIds == null) return;
         try
         {
@@ -109,7 +97,7 @@
         _error = null;
         try
         {
-            var count = await Switcher.KeepManualAsync(_previews.Select(p => p.Account.AccountId).ToList(), _takeOver);
+            var count = await Switcher.KeepManualAsync(_previews.Select(p => p.Account.AccountId).ToList());
             await OnDone.InvokeAsync(count);
         }
         catch (Exception ex) when (ex is AccessDeniedException or InvalidOperationException)

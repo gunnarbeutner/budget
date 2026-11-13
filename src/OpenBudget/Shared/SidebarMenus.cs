@@ -45,7 +45,6 @@ public static class SidebarMenus
         var block = ctx.StructureBlock(node);
         string? reason = block switch
         {
-            StructureBlock.MoneyMoney => l["Ctx_Block_MoneyMoney"].Value,
             StructureBlock.NotOwner => l["Ctx_Block_NotOwner"].Value,
             _ => null,
         };

@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
+using Microsoft.EntityFrameworkCore;
+using OpenBudget.Services;
 
 namespace OpenBudget.Importers.MoneyMoney;
 
@@ -65,6 +67,8 @@ public sealed class MoneyMoneyBrowserImport
     private readonly string _directory;
     private readonly MoneyMoneyImportService _importer;
     private readonly MoneyMoneyStatementImport _statements;
+    private readonly StructureTakeoverService _takeover;
+    private readonly SystemDbContextFactory _system;
     private readonly ILogger<MoneyMoneyBrowserImport> _logger;
     private readonly CancellationToken _stopping;
     private readonly ConcurrentDictionary<string, Upload> _uploads = new(StringComparer.Ordinal);
@@ -74,8 +78,10 @@ public sealed class MoneyMoneyBrowserImport
     public event Action<string>? Changed;
 
     public MoneyMoneyBrowserImport(MoneyMoneyStaging staging, MoneyMoneyImportService importer, MoneyMoneyStatementImport statements,
-        ILogger<MoneyMoneyBrowserImport> logger, IHostApplicationLifetime lifetime)
+        SystemDbContextFactory system, ChangeNotificationService notifier, ILogger<MoneyMoneyBrowserImport> logger, IHostApplicationLifetime lifetime)
     {
+        _system = system;
+        _takeover = new StructureTakeoverService(system, notifier, new ChangeOrigin(), importer);
         _directory = staging.Directory;
         _importer = importer;
         _statements = statements;
@@ -242,6 +248,13 @@ public sealed class MoneyMoneyBrowserImport
                 lastReport = DateTime.UtcNow;
                 Set(userId, new MoneyMoneyImportJob(MoneyMoneyImportPhase.Statements, Done: done, Total: total, Result: result));
             }, ct);
+
+            // The import is one-time: its accounts, categories and their groups are OpenBudget's to edit from here on.
+            await using (var db = await _system.CreateDbContextAsync(ct))
+            {
+                var sourceId = await db.ImportSources.Where(s => s.Name == sourceName).Select(s => s.Id).FirstAsync(ct);
+                await _takeover.TakeOverAsync(sourceId, ct);
+            }
 
             Set(userId, new MoneyMoneyImportJob(MoneyMoneyImportPhase.Done, Result: result, Statements: summary));
             _logger.LogInformation("MoneyMoney import from the browser into source {Source}: {Transactions} transactions, {Stored} statements stored.",

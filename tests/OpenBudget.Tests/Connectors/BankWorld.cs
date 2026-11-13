@@ -125,11 +125,11 @@ internal sealed class BankWorld : IAsyncDisposable
         var factory = new ScopedDbContextFactory(T.System, access);
         var origin = new ChangeOrigin();
         return new AccountSwitchService(factory, T.System, access, new BankTransactionStore(),
-            new StructureTakeoverService(factory, T.Notifier, origin), T.Notifier, origin, Clock);
+            T.Notifier, origin, Clock);
     }
 
     /// <summary>Switches a linked account (by its bank login account id) to the bank connection, taking the structure over if needed.</summary>
-    public Task<int> SwitchAsync(string user, int loginAccountId) => Switcher(user).SwitchAsync([loginAccountId], takeOverStructure: true);
+    public Task<int> SwitchAsync(string user, int loginAccountId) => Switcher(user).SwitchAsync([loginAccountId]);
 
     /// <summary>The app's service graph for a user (reads/writes through global filters and write guard).</summary>
     public UserView View(string? userId) => T.ForUser(userId);

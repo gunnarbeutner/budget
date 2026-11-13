@@ -52,7 +52,6 @@ builder.Services.AddScoped<CurrentProjectState>();
 builder.Services.AddScoped<SharingService>();
 builder.Services.AddScoped<SourceService>();
 builder.Services.AddScoped<OnboardingService>();
-builder.Services.AddScoped<StructureTakeoverService>();
 builder.Services.AddScoped<AccountSwitchService>();
 builder.Services.AddScoped<CategoryColorService>();
 builder.Services.AddScoped<StructureService>();

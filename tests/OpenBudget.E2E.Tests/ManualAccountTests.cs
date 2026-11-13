@@ -62,7 +62,6 @@ public sealed class ManualAccountTests : EndToEndTestBase
 
         var dialog = Page.GetByTestId("keep-manual-dialog");
         await Expect(dialog.Locator($"[data-keep-account='{Old}']")).ToBeVisibleAsync();
-        await Page.GetByTestId("keep-manual-takeover").CheckAsync();
         await Page.GetByTestId("keep-manual-confirm").ClickAsync();
         await Expect(dialog).ToHaveCountAsync(0);
 

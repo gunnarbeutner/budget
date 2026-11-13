@@ -112,7 +112,6 @@ public sealed class BankLoginTests : EndToEndTestBase
         // The demo source's structure is still MoneyMoney's: the switch needs it taken over.
         var confirm = Page.GetByTestId("switch-confirm");
         await Expect(confirm).ToBeDisabledAsync();
-        await Page.GetByTestId("switch-takeover").CheckAsync();
         await confirm.ClickAsync();
         await Expect(dialog).ToHaveCountAsync(0);
         await Expect(giro.GetByTestId("switched")).ToContainTextAsync("Switched from MoneyMoney");

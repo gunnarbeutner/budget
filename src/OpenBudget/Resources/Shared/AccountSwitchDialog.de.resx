@@ -124,12 +124,6 @@
   <data name="Rule_New" xml:space="preserve">
     <value>Durch die Umstellung hinzugefügte Buchungen werden nicht als neu markiert, nur die mit späteren Synchronisierungen eintreffenden.</value>
   </data>
-  <data name="Takeover" xml:space="preserve">
-    <value>Auch die Struktur aus MoneyMoney übernehmen (Kontogruppen, Kontonamen, Kategorien)</value>
-  </data>
-  <data name="Takeover_Hint" xml:space="preserve">
-    <value>Erforderlich: Sonst würden MoneyMoney-Uploads die Konten weiterhin umbenennen und umgruppieren und die Kategorien ihrer Buchungen ersetzen.</value>
-  </data>
   <data name="Cancel" xml:space="preserve">
     <value>Abbrechen</value>
   </data>

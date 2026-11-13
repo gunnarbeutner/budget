@@ -85,12 +85,6 @@
   <data name="Rule_Return" xml:space="preserve">
     <value>Ein Konto kann später zu MoneyMoney zurückkehren; der nächste Upload ersetzt dann, was hier geändert wurde.</value>
   </data>
-  <data name="Takeover" xml:space="preserve">
-    <value>Auch die Struktur aus MoneyMoney übernehmen (Kontogruppen, Kontonamen, Kategorien)</value>
-  </data>
-  <data name="Takeover_Hint" xml:space="preserve">
-    <value>Erforderlich: Sonst würden MoneyMoney-Uploads die Konten weiterhin umbenennen und umgruppieren und die Kategorien ihrer Buchungen ersetzen.</value>
-  </data>
   <data name="Cancel" xml:space="preserve">
     <value>Abbrechen</value>
   </data>

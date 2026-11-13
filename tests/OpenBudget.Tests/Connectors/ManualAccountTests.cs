@@ -46,8 +46,7 @@ public sealed class ManualAccountTests
         Assert.Equal(2, state.MoneyMoneyAccounts.Single(a => a.AccountId == Giro).Bookings);
         Assert.True((await switcher.GetAccountStateAsync(Giro))!.CanKeepManual);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => switcher.KeepManualAsync([Giro], takeOverStructure: false));
-        Assert.Equal(2, await switcher.KeepManualAsync([Giro, Savings], takeOverStructure: true));
+        Assert.Equal(2, await switcher.KeepManualAsync([Giro, Savings]));
         Assert.Equal(AccountProviders.Manual, (await w.AccountAsync(Giro)).Provider);
 
         state = await switcher.GetSourceStateAsync(BankWorld.SourceAlice);
@@ -86,7 +85,7 @@ public sealed class ManualAccountTests
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
         var switcher = w.Switcher(BankWorld.Alice);
-        await switcher.KeepManualAsync([Giro], takeOverStructure: true);
+        await switcher.KeepManualAsync([Giro]);
         await Manual(w, BankWorld.Alice).AddAsync(Giro, new ManualTransactionInput(new DateOnly(2026, 11, 2), -5m, null, "Kiosk", null, null, null));
 
         await switcher.SetImportFinishedAsync(BankWorld.SourceAlice, true);
@@ -112,11 +111,11 @@ public sealed class ManualAccountTests
 
         var switcher = w.Switcher(BankWorld.Alice);
         Assert.False((await switcher.GetAccountStateAsync(Giro))!.CanKeepManual);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => switcher.KeepManualAsync([Giro], takeOverStructure: true));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => switcher.KeepManualAsync([Giro]));
         Assert.Empty(await switcher.PreviewKeepManualAsync([Giro]));
         Assert.Single(await switcher.PreviewKeepManualAsync([Giro, Savings]));
 
-        await Assert.ThrowsAsync<AccessDeniedException>(() => w.Switcher(BankWorld.Bob).KeepManualAsync([Savings], takeOverStructure: true));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => w.Switcher(BankWorld.Bob).KeepManualAsync([Savings]));
         Assert.Equal(AccountProviders.MoneyMoney, (await w.AccountAsync(Savings)).Provider);
     }
 
@@ -136,7 +135,7 @@ public sealed class ManualAccountTests
         await Assert.ThrowsAsync<AccessDeniedException>(() => edits.SetNoteAsync([row.Id], "note"));
 
         // Keeping them as manual accounts still works after finishing and makes them editable.
-        await switcher.KeepManualAsync([Giro], takeOverStructure: true);
+        await switcher.KeepManualAsync([Giro]);
         await edits.SetNoteAsync([row.Id], "note");
     }
 
@@ -170,7 +169,7 @@ public sealed class ManualAccountTests
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
-        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro], takeOverStructure: true);
+        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro]);
         var manual = Manual(w, BankWorld.Alice);
         Assert.Equal(10m, (await w.AccountAsync(Giro)).CurrentBalance);
 
@@ -216,7 +215,7 @@ public sealed class ManualAccountTests
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
-        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro], takeOverStructure: true);
+        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro]);
         var category = SourceScope.Namespace(BankWorld.SourceAlice, 51);
         int projectId;
         await using (var db = await w.T.System.CreateDbContextAsync())
@@ -265,7 +264,7 @@ public sealed class ManualAccountTests
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
-        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro], takeOverStructure: true);
+        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro]);
         var input = new ManualTransactionInput(new DateOnly(2026, 11, 5), -1m, null, "X", null, null, null);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => Manual(w, BankWorld.Alice).AddAsync(Savings, input));
@@ -281,7 +280,7 @@ public sealed class ManualAccountTests
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
-        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro], takeOverStructure: true);
+        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro]);
         var alice = Manual(w, BankWorld.Alice);
         var before = await w.AccountAsync(Giro);
 

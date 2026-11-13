@@ -84,7 +84,6 @@
   <data name="Ctx_MoveDown" xml:space="preserve"><value>Move down</value></data>
   <data name="Ctx_Delete" xml:space="preserve"><value>Delete…</value></data>
   <data name="Ctx_DeleteAccount" xml:space="preserve"><value>Delete account…</value></data>
-  <data name="Ctx_Block_MoneyMoney" xml:space="preserve"><value>Comes from MoneyMoney – take over the structure under Sources to edit it here</value></data>
   <data name="Ctx_Block_NotOwner" xml:space="preserve"><value>Only the owner of this data can change accounts and categories</value></data>
   <data name="Ctx_Block_NotEmpty" xml:space="preserve"><value>Only empty groups can be deleted – move or delete what is inside first</value></data>
   <data name="Tree_RenameLabel" xml:space="preserve"><value>New name</value></data>

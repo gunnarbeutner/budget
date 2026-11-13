@@ -14,7 +14,7 @@ public sealed class StructureServiceTests
     private static async Task<TestDb> WorldAsync(bool takenOver = true)
     {
         var t = await AccessWorld.BuildAsync();
-        // MoneyMoney uploaded to the source; until the takeover it owns the structure.
+        // MoneyMoney uploaded to the source.
         var source = await t.Db.ImportSources.SingleAsync(s => s.Id == AccessWorld.SourceAlice);
         source.LastUploadAt = DateTime.UtcNow;
         if (takenOver) source.StructureTakenOverAt = DateTime.UtcNow;
@@ -28,14 +28,9 @@ public sealed class StructureServiceTests
     private static long Id(int row) => AccessWorld.Id(AccessWorld.SourceAlice, row);
 
     [Fact]
-    public async Task Only_the_owner_after_the_takeover_may_edit()
+    public async Task Only_the_owner_may_edit_also_a_source_whose_structure_was_never_marked_taken_over()
     {
-        await using var before = await WorldAsync(takenOver: false);
-        Assert.Equal(StructureBlock.MoneyMoney, await For(before, AccessWorld.Alice).GetBlockAsync(AccessWorld.SourceAlice));
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            For(before, AccessWorld.Alice).RenameAsync(StructureItemKind.Category, AccessWorld.SharedLeaf, "Example Market"));
-
-        await using var t = await WorldAsync();
+        await using var t = await WorldAsync(takenOver: false);
         Assert.Null(await For(t, AccessWorld.Alice).GetBlockAsync(AccessWorld.SourceAlice));
         // Bob edits the shared project but does not own the source.
         var bob = For(t, AccessWorld.Bob);
@@ -129,7 +124,7 @@ public sealed class StructureServiceTests
     }
 
     [Fact]
-    public async Task The_owner_sets_icon_and_colour_of_accounts_and_groups_even_while_MoneyMoney_owns_the_structure()
+    public async Task The_owner_sets_icon_and_colour_of_accounts_and_groups()
     {
         await using var t = await WorldAsync(takenOver: false);
         await AccountGroupsAsync(t);

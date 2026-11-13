@@ -61,27 +61,6 @@
   <data name="Button_Cancel" xml:space="preserve">
     <value>Abbrechen</value>
   </data>
-  <data name="Takeover_Button" xml:space="preserve">
-    <value>Struktur aus MoneyMoney übernehmen</value>
-  </data>
-  <data name="Takeover_Done" xml:space="preserve">
-    <value>Struktur gehört OpenBudget seit {0}</value>
-  </data>
-  <data name="Takeover_DoneTitle" xml:space="preserve">
-    <value>Uploads liefern weiterhin Umsätze und Salden der MoneyMoney-Konten, ändern aber keine Namen, Gruppen, Reihenfolge oder Kategorien mehr.</value>
-  </data>
-  <data name="Takeover_Title" xml:space="preserve">
-    <value>Struktur aus MoneyMoney übernehmen</value>
-  </data>
-  <data name="Takeover_Body" xml:space="preserve">
-    <value>OpenBudget übernimmt die Kontogruppen, Konten und den Kategorienbaum aus MoneyMoney mit Namen, Verschachtelung, Reihenfolge und Farben. Das lässt sich nicht rückgängig machen.</value>
-  </data>
-  <data name="Takeover_Body2" xml:space="preserve">
-    <value>Danach liefern MoneyMoney-Uploads weiterhin Umsätze und Salden der MoneyMoney-Konten, überschreiben die Struktur aber nicht mehr. Neue Konten landen in 'Weitere Konten', neue Kategorien in der Gruppe 'New categories'.</value>
-  </data>
-  <data name="Takeover_Confirm" xml:space="preserve">
-    <value>Übernehmen</value>
-  </data>
   <data name="Switch_Heading" xml:space="preserve">
     <value>Auf deine Bankverbindungen umstellen</value>
   </data>
@@ -155,7 +134,7 @@
     <value>Zwischenzeitlich hier erfasste oder bearbeitete Buchungen (Beträge, Kategorien, Notizen, Häkchen, Aufteilungen) bleiben nicht erhalten.</value>
   </data>
   <data name="Finished_KeepManual" xml:space="preserve">
-    <value>Die {0} Konten ohne Bankverbindung als manuelle Konten behalten, damit ihre Buchungen bearbeitbar bleiben (übernimmt die Struktur)</value>
+    <value>Die {0} Konten ohne Bankverbindung als manuelle Konten behalten, damit ihre Buchungen bearbeitbar bleiben</value>
   </data>
   <data name="PageTitle" xml:space="preserve">
     <value>Erste Schritte</value>

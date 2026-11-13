@@ -8,7 +8,7 @@ namespace OpenBudget.Services;
 public sealed record StructureTakeoverResult(int AccountGroups, int Accounts, int CategoryGroups, int Categories);
 
 /// <summary>
-/// The one-time "Take over structure from MoneyMoney" action (owner-only, per source). The structure
+/// Hands a source's structure to OpenBudget once its MoneyMoney import from the browser finished. The structure
 /// (account groups and accounts' names/grouping/order, category groups and categories with names, colors, MoneyMoney's
 /// rule text, order) already lives in OpenBudget's own rows - the import writes it there - so the takeover freezes it:
 /// it gives every sibling an explicit sort position (MoneyMoney leaves some empty and relies on name order) and marks the
@@ -33,15 +33,14 @@ public sealed class StructureTakeoverService
     }
 
     /// <summary>
-    /// Takes the structure of an owned source over. Refused for anyone but the source's owner, and when it was already taken
-    /// over (returns null in that case).
+    /// Takes the structure of the source over (null when it already was). Runs on the context the factory gives; the
+    /// browser import passes the system factory.
     /// </summary>
     public async Task<StructureTakeoverResult?> TakeOverAsync(int sourceId, CancellationToken ct = default)
     {
         string name;
         await using (var probe = await _dbFactory.CreateDbContextAsync(ct))
         {
-            probe.Scope?.RequireSourceOwner(sourceId);
             name = await probe.ImportSources.Where(s => s.Id == sourceId).Select(s => s.Name).FirstOrDefaultAsync(ct)
                 ?? throw new AccessDeniedException("Source not found.");
         }
@@ -61,7 +60,6 @@ public sealed class StructureTakeoverService
     private async Task<StructureTakeoverResult?> TakeOverCoreAsync(int sourceId, CancellationToken ct)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        db.Scope?.RequireSourceOwner(sourceId);
         var source = await db.ImportSources.FirstOrDefaultAsync(s => s.Id == sourceId, ct)
             ?? throw new AccessDeniedException("Source not found.");
         if (source.StructureTakenOverAt != null) return null;

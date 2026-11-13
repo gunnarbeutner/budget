@@ -9,7 +9,7 @@ using Xunit;
 namespace OpenBudget.Tests;
 
 /// <summary>
-/// The one-time structure takeover: afterwards MoneyMoney uploads keep delivering transactions and balances but never
+/// The structure takeover at the end of a browser MoneyMoney import: afterwards MoneyMoney uploads keep delivering transactions and balances but never
 /// touch account/category names, groups or order; ids stay stable; new accounts and categories land in the
 /// catch-all places.
 /// </summary>
@@ -97,8 +97,8 @@ public sealed class StructureTakeoverTests : IDisposable
 
     private static Task<ImportResult> ImportAsync(TestDb t, string path) => Importer(t).ImportFromFileAsync(SourceName, path, CancellationToken.None);
 
-    private static StructureTakeoverService TakeoverFor(TestDb t, string? user) =>
-        new(t.ForUser(user).Factory, t.Notifier, new ChangeOrigin(), Importer(t));
+    private static StructureTakeoverService Takeover(TestDb t) =>
+        new(t.System, t.Notifier, new ChangeOrigin(), Importer(t));
 
     private static long Id(long rowid) => SourceScope.Namespace(AccessWorld.SourceAlice, rowid);
 
@@ -111,7 +111,7 @@ public sealed class StructureTakeoverTests : IDisposable
         await using var t = await WorldAsync();
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
 
-        var result = await TakeoverFor(t, AccessWorld.Alice).TakeOverAsync(AccessWorld.SourceAlice);
+        var result = await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
 
         Assert.NotNull(result);
         Assert.Equal(2, result.Accounts);
@@ -126,17 +126,14 @@ public sealed class StructureTakeoverTests : IDisposable
     }
 
     [Fact]
-    public async Task Category_colors_are_editable_by_the_owner_only_after_the_takeover()
+    public async Task Category_colors_are_editable_by_the_owner_and_kept_after_the_takeover()
     {
         await using var t = await WorldAsync();
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
         var rent = Id(3);   // sentinel = rowid 1, Groceries = 2, Rent = 3
         var colors = new CategoryColorService(t.ForUser(AccessWorld.Alice).Factory, t.Notifier, new ChangeOrigin());
 
-        Assert.False(await colors.CanEditAsync(AccessWorld.SourceAlice));
-        Assert.False(await colors.SetColorAsync(rent, "#2b5797"));   // MoneyMoney still owns the structure
-
-        await TakeoverFor(t, AccessWorld.Alice).TakeOverAsync(AccessWorld.SourceAlice);
+        await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
         Assert.True(await colors.CanEditAsync(AccessWorld.SourceAlice));
         Assert.True(await colors.SetColorAsync(rent, "#2B5797"));
         await Assert.ThrowsAsync<ArgumentException>(() => colors.SetColorAsync(rent, "blue"));
@@ -159,7 +156,7 @@ public sealed class StructureTakeoverTests : IDisposable
         await using var t = await WorldAsync();
         Tx[] bookings = [new Tx(1, 2, -5), new Tx(2, 3, -6)];
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, bookings));
-        await TakeoverFor(t, AccessWorld.Alice).TakeOverAsync(AccessWorld.SourceAlice);
+        await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
         var structure = new StructureService(t.ForUser(AccessWorld.Alice).Factory, t.System, t.Notifier, new ChangeOrigin());
 
         await structure.DeleteAccountAsync(Id(2), "Savings");
@@ -180,22 +177,9 @@ public sealed class StructureTakeoverTests : IDisposable
     {
         await using var t = await WorldAsync();
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
-        var service = TakeoverFor(t, AccessWorld.Alice);
+        var service = Takeover(t);
         Assert.NotNull(await service.TakeOverAsync(AccessWorld.SourceAlice));
         Assert.Null(await service.TakeOverAsync(AccessWorld.SourceAlice));
-    }
-
-    [Fact]
-    public async Task Only_the_owner_may_take_over()
-    {
-        await using var t = await WorldAsync();
-        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
-
-        await Assert.ThrowsAsync<AccessDeniedException>(() => TakeoverFor(t, AccessWorld.Bob).TakeOverAsync(AccessWorld.SourceAlice));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => TakeoverFor(t, null).TakeOverAsync(AccessWorld.SourceAlice));
-
-        await using var db = await t.Factory.CreateDbContextAsync();
-        Assert.Null((await db.ImportSources.SingleAsync(s => s.Id == AccessWorld.SourceAlice)).StructureTakenOverAt);
     }
 
     [Fact]
@@ -203,7 +187,7 @@ public sealed class StructureTakeoverTests : IDisposable
     {
         await using var t = await WorldAsync();
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, [new Tx(1, 2, -5, "first")]));
-        await TakeoverFor(t, AccessWorld.Alice).TakeOverAsync(AccessWorld.SourceAlice);
+        await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
 
         // MoneyMoney now renames, regroups and reorders everything and drops a category - none of that may arrive.
         var changed = Snapshot(
@@ -242,7 +226,7 @@ public sealed class StructureTakeoverTests : IDisposable
         await using (var before = await t.Factory.CreateDbContextAsync())
         {
             var idsBefore = Ids(before);
-            await TakeoverFor(t, AccessWorld.Alice).TakeOverAsync(AccessWorld.SourceAlice);
+            await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
             await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
             await using var after = await t.Factory.CreateDbContextAsync();
             Assert.Equal(idsBefore.Order(), Ids(after).Order());
@@ -258,7 +242,7 @@ public sealed class StructureTakeoverTests : IDisposable
         project.IsDefaultForNewAccounts = true;
         await t.Db.SaveChangesAsync();
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
-        await TakeoverFor(t, AccessWorld.Alice).TakeOverAsync(AccessWorld.SourceAlice);
+        await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
 
         var next = Snapshot(
             [.. TwoAccounts, new("Brand new", 1, 1)],
@@ -292,7 +276,7 @@ public sealed class StructureTakeoverTests : IDisposable
     {
         await using var t = await WorldAsync();
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, [new Tx(1, 2, -5), new Tx(2, 2, -6)]));
-        await TakeoverFor(t, AccessWorld.Alice).TakeOverAsync(AccessWorld.SourceAlice);
+        await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
 
         // Upload without the "Savings" account (rowid 2) and without its transaction.
         await ImportAsync(t, Snapshot([TwoAccounts[0]], TwoCategories, [new Tx(1, 2, -5)]));
@@ -326,7 +310,7 @@ public sealed class StructureTakeoverTests : IDisposable
             giro.Balances = "11:42.000000,3:EUR,";
             await db.SaveChangesAsync();
         }
-        await TakeoverFor(t, AccessWorld.Alice).TakeOverAsync(AccessWorld.SourceAlice);
+        await Takeover(t).TakeOverAsync(AccessWorld.SourceAlice);
 
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, [new Tx(1, 2, -99)]));
 

@@ -34,8 +34,7 @@ public sealed record AccountSwitchPreview(
     int NewFromBank,
     int UnmatchedMoneyMoney,
     int PendingReplaced,
-    decimal? BankBalance,
-    bool StructureTakenOver);
+    decimal? BankBalance);
 
 /// <summary>
 /// The account settings' view: who updates the account, and (for the source owner) its bank link and whether it can be
@@ -46,8 +45,8 @@ public sealed record AccountSwitchState(
     string Provider, bool CanManage, AccountSwitchLink? Link, bool CanKeepManual = false, bool CanReturnToMoneyMoney = false, bool ImportFinished = false,
     bool Closed = false);
 
-/// <summary>An account about to be kept as a manual account, with whether its source's structure is OpenBudget's already.</summary>
-public sealed record KeepManualPreview(SourceAccountItem Account, string SourceName, bool StructureTakenOver);
+/// <summary>An account about to be kept as a manual account.</summary>
+public sealed record KeepManualPreview(SourceAccountItem Account, string SourceName);
 
 /// <summary>An account of a MoneyMoney source without a bank link, as the switch overview lists it.</summary>
 /// <param name="GroupPath">The account's groups from the top down, joined with " › " (null when ungrouped).</param>
@@ -58,7 +57,6 @@ public sealed record SourceAccountItem(long AccountId, string Name, int Bookings
 public sealed record SourceSwitchState(
     int SourceId,
     string SourceName,
-    bool StructureTakenOver,
     DateTime? ImportFinishedAt,
     IReadOnlyList<AccountSwitchLink> Links,
     int MoneyMoneyAccountsWithoutLink)
@@ -98,7 +96,6 @@ public sealed class AccountSwitchService
     private readonly SystemDbContextFactory _system;
     private readonly AccessScopeProvider _access;
     private readonly BankTransactionStore _store;
-    private readonly StructureTakeoverService _takeover;
     private readonly MoneyMoneyImportService? _importer;
     private readonly ChangeNotificationService _notifier;
     private readonly ChangeOrigin _origin;
@@ -106,14 +103,13 @@ public sealed class AccountSwitchService
 
     public AccountSwitchService(
         IDbContextFactory<BudgetDbContext> dbFactory, SystemDbContextFactory system, AccessScopeProvider access, BankTransactionStore store,
-        StructureTakeoverService takeover, ChangeNotificationService notifier, ChangeOrigin origin, TimeProvider clock,
+        ChangeNotificationService notifier, ChangeOrigin origin, TimeProvider clock,
         MoneyMoneyImportService? importer = null)
     {
         _dbFactory = dbFactory;
         _system = system;
         _access = access;
         _store = store;
-        _takeover = takeover;
         _importer = importer;
         _notifier = notifier;
         _origin = origin;
@@ -159,7 +155,7 @@ public sealed class AccountSwitchService
         var moneyMoney = candidates.Where(a => a.Provider == AccountProviders.MoneyMoney).ToList();
         var manual = candidates.Where(a => IsKeptManual(a, source)).ToList();
         var items = await ItemsAsync(db, [.. moneyMoney, .. manual, .. closed], ct);
-        return new SourceSwitchState(sourceId, source.Name, source.StructureTakenOverAt != null, source.MoneyMoneyImportFinishedAt, links, moneyMoney.Count)
+        return new SourceSwitchState(sourceId, source.Name, source.MoneyMoneyImportFinishedAt, links, moneyMoney.Count)
         {
             MoneyMoneyAccounts = ByGroup(moneyMoney.Select(a => items[a.Id])),
             ManualAccounts = ByGroup(manual.Select(a => items[a.Id])),
@@ -231,15 +227,14 @@ public sealed class AccountSwitchService
         var sourceIds = accounts.Select(a => a.SourceId).Distinct().ToList();
         var sources = await db.ImportSources.AsNoTracking().Where(s => sourceIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, ct);
         var items = await ItemsAsync(db, accounts, ct);
-        return accounts.Select(a => new KeepManualPreview(items[a.Id], sources[a.SourceId].Name, sources[a.SourceId].StructureTakenOverAt != null)).ToList();
+        return accounts.Select(a => new KeepManualPreview(items[a.Id], sources[a.SourceId].Name)).ToList();
     }
 
     /// <summary>
     /// Keeps the given accounts (still MoneyMoney's, without a bank link; others are skipped) as manual accounts: MoneyMoney
-    /// uploads stop touching them and their rows become editable history. Refused while the structure of an affected
-    /// source is MoneyMoney's unless <paramref name="takeOverStructure"/> takes it over first. Returns how many changed.
+    /// uploads stop touching them and their rows become editable history. Returns how many changed.
     /// </summary>
-    public async Task<int> KeepManualAsync(IReadOnlyCollection<long> accountIds, bool takeOverStructure, CancellationToken ct = default)
+    public async Task<int> KeepManualAsync(IReadOnlyCollection<long> accountIds, CancellationToken ct = default)
     {
         var scope = await _access.GetAsync();
         if (scope.UserId == null) throw new AccessDeniedException("Not signed in.");
@@ -257,16 +252,6 @@ public sealed class AccountSwitchService
         var todo = accounts.Where(a => a.Provider == AccountProviders.MoneyMoney && a.Type != GroupType && !linked.Contains(a.Id)).ToList();
         if (todo.Count == 0 && accounts.Any(a => linked.Contains(a.Id) && a.Provider == AccountProviders.MoneyMoney))
             throw new InvalidOperationException("An account linked to a bank login is switched to that login; unlink it first to keep it as a manual account.");
-
-        foreach (var sourceId in todo.Select(a => a.SourceId).Distinct())
-        {
-            await using var db = await _dbFactory.CreateDbContextAsync(ct);
-            var source = await db.ImportSources.AsNoTracking().FirstAsync(s => s.Id == sourceId, ct);
-            if (source.StructureTakenOverAt != null) continue;
-            if (!takeOverStructure)
-                throw new InvalidOperationException($"The structure of source '{source.Name}' is still MoneyMoney's; take it over to keep its accounts as manual accounts.");
-            await _takeover.TakeOverAsync(sourceId, ct);
-        }
 
         var changed = 0;
         foreach (var group in todo.GroupBy(a => a.SourceId))
@@ -350,28 +335,26 @@ public sealed class AccountSwitchService
         {
             db.Scope?.RequireSourceOwner(link.SourceId);
             var historyEnd = await PendingRefresh.NewestBookedDayAsync(db, link.AccountId, ct);
-            var takenOver = await db.ImportSources.AnyAsync(x => x.Id == link.SourceId && x.StructureTakenOverAt != null, ct);
             var booked = await db.Transactions.CountAsync(t => t.AccountId == link.AccountId && t.Booked, ct);
             var refresh = link.Switched ? null : PendingRefresh.Deserialize(row.PendingRefreshJson);
             DateOnly? since = row.PendingSinceUtc is { } s ? DateOnly.FromDateTime(s) : null;
             if (refresh == null)
             {
-                result.Add(new AccountSwitchPreview(link, historyEnd, null, booked, null, 0, 0, 0, 0, null, takenOver));
+                result.Add(new AccountSwitchPreview(link, historyEnd, null, booked, null, 0, 0, 0, 0, null));
                 continue;
             }
             var p = await BankTransactionStore.PreviewAsync(db, link.AccountId, refresh, since, ct);
             result.Add(new AccountSwitchPreview(link, historyEnd, since, booked - p.Adopted, row.PendingRefreshAt,
-                p.Adopted, p.Inserted, p.UnmatchedLocal, p.LocalPendingReplaced, refresh.Balance, takenOver));
+                p.Adopted, p.Inserted, p.UnmatchedLocal, p.LocalPendingReplaced, refresh.Balance));
         }
         return result.OrderBy(r => r.Link.SourceName, StringComparer.Ordinal).ThenBy(r => r.Link.AccountName, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
 
     /// <summary>
-    /// Switches the given links (those still MoneyMoney's; others are skipped). Refused while the structure of an
-    /// affected source is MoneyMoney's unless <paramref name="takeOverStructure"/> takes it over first. Returns how many
-    /// accounts were switched.
+    /// Switches the given links (those still MoneyMoney's; others are skipped). Returns how many accounts
+    /// were switched.
     /// </summary>
-    public async Task<int> SwitchAsync(IReadOnlyCollection<int> loginAccountIds, bool takeOverStructure, CancellationToken ct = default)
+    public async Task<int> SwitchAsync(IReadOnlyCollection<int> loginAccountIds, CancellationToken ct = default)
     {
         var scope = await _access.GetAsync();
         var userId = scope.UserId ?? throw new AccessDeniedException("Not signed in.");
@@ -379,15 +362,7 @@ public sealed class AccountSwitchService
         await using (var db = await _dbFactory.CreateDbContextAsync(ct))
             links = (await LinksAsync(db, l => loginAccountIds.Contains(l.Id), ct)).Where(l => !l.Created && !l.Link.Switched).ToList();
         foreach (var sourceId in links.Select(l => l.Link.SourceId).Distinct())
-        {
             scope.RequireSourceOwner(sourceId);
-            await using var db = await _dbFactory.CreateDbContextAsync(ct);
-            var source = await db.ImportSources.AsNoTracking().FirstAsync(s => s.Id == sourceId, ct);
-            if (source.StructureTakenOverAt != null) continue;
-            if (!takeOverStructure)
-                throw new InvalidOperationException($"The structure of source '{source.Name}' is still MoneyMoney's; take it over to switch its accounts.");
-            await _takeover.TakeOverAsync(sourceId, ct);
-        }
 
         var switched = 0;
         foreach (var (link, _, _) in links)

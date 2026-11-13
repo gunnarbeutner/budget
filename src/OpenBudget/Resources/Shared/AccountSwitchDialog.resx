@@ -124,12 +124,6 @@
   <data name="Rule_New" xml:space="preserve">
     <value>Bookings added by the switch are not marked new; only those arriving with later syncs are.</value>
   </data>
-  <data name="Takeover" xml:space="preserve">
-    <value>Also take over the structure from MoneyMoney (account groups, account names, categories)</value>
-  </data>
-  <data name="Takeover_Hint" xml:space="preserve">
-    <value>Required: otherwise MoneyMoney uploads would still rename and regroup the accounts and replace the categories their bookings use.</value>
-  </data>
   <data name="Cancel" xml:space="preserve">
     <value>Cancel</value>
   </data>

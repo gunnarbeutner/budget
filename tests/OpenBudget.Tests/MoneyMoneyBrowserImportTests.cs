@@ -101,7 +101,7 @@ public sealed class MoneyMoneyBrowserImportTests : IAsyncDisposable
         var importer = new MoneyMoneyImportService(_t.System, _t.Notifier, NullLogger<MoneyMoneyImportService>.Instance);
         var statements = new MoneyMoneyStatementImport(_t.System, store, importer, _t.Notifier);
         var staging = Path.Combine(_dir, "staging");
-        return (new MoneyMoneyBrowserImport(new MoneyMoneyStaging(staging), importer, statements,
+        return (new MoneyMoneyBrowserImport(new MoneyMoneyStaging(staging), importer, statements, _t.System, _t.Notifier,
             new Logger<MoneyMoneyBrowserImport>(_log), new Lifetime()), staging);
     }
 
@@ -162,6 +162,30 @@ public sealed class MoneyMoneyBrowserImportTests : IAsyncDisposable
             Assert.Equal(SourceScope.Namespace(source.Id, 1), statement.AccountId);
         }
         Assert.Empty(Directory.EnumerateFileSystemEntries(staging));
+    }
+
+    [Fact]
+    public async Task A_finished_import_hands_the_structure_to_OpenBudget()
+    {
+        var (import, _) = await ServiceAsync();
+        var id = await UploadAsync(import, MoneyMoneyZipFixture.Build("secret"), 4096);
+        Assert.True(import.StartImport(Owner, id, SourceName, "secret"));
+        Assert.True((await WaitAsync(import)).Phase == MoneyMoneyImportPhase.Done, _log.All);
+
+        int sourceId;
+        long accountId;
+        await using (var db = await _t.System.CreateDbContextAsync())
+        {
+            var source = await db.ImportSources.SingleAsync(s => s.Name == SourceName);
+            Assert.NotNull(source.StructureTakenOverAt);
+            sourceId = source.Id;
+            accountId = await db.Accounts.Where(a => a.SourceId == sourceId && a.Name == "Example Checking").Select(a => a.Id).SingleAsync();
+        }
+        var structure = new StructureService(_t.System, _t.System, _t.Notifier, new ChangeOrigin());
+        Assert.Null(await structure.GetBlockAsync(sourceId));
+        await structure.RenameAsync(StructureItemKind.Account, accountId, "Everyday account");
+        await using (var db = await _t.System.CreateDbContextAsync())
+            Assert.Equal("Everyday account", await db.Accounts.Where(a => a.Id == accountId).Select(a => a.Name).SingleAsync());
     }
 
     [Fact]

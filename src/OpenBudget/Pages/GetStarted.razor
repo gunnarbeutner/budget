@@ -5,7 +5,6 @@
 @using OpenBudget.Services
 @inject OnboardingService Onboarding
 @inject SourceService SourceService
-@inject StructureTakeoverService Takeover
 @inject AccountSwitchService Switcher
 @inject MoneyMoneyBrowserImport BrowserImport
 @inject IJSRuntime JS
@@ -129,16 +128,6 @@ else
                     {
                         <button class="btn btn-sm btn-primary me-2" data-testid="switch-all" @onclick="() => switchIds = pending.Select(l => l.LoginAccountId).ToList()">@L["Switch_All", pending.Count]</button>
                     }
-                    @if (state.MoneyMoneySource is { StructureTakenOverAt: null } src)
-                    {
-                        <button class="btn btn-sm btn-outline-secondary me-2" data-testid="structure-takeover" @onclick="() => pendingTakeover = src">@L["Takeover_Button"]</button>
-                    }
-                    else if (state.MoneyMoneySource?.StructureTakenOverAt is { } takenAt)
-                    {
-                        <span class="badge text-bg-light border me-1" data-testid="structure-owned" title="@L["Takeover_DoneTitle"]">
-                            <i class="bi bi-check2" aria-hidden="true"></i> @L["Takeover_Done", Clock.ToLocal(takenAt).ToString("yyyy-MM-dd")]
-                        </span>
-                    }
                     @if (st.MoneyMoneyAccounts.Count > 0 || st.ManualAccounts.Count > 0)
                     {
                         var picked = st.MoneyMoneyAccounts.Where(a => checkedAccounts.Contains(a.AccountId)).Select(a => a.AccountId).ToList();
@@ -257,16 +246,6 @@ else
     </Footer>
 </Modal>
 
-<Modal Show="@(pendingTakeover != null)" Title="@L["Takeover_Title"]" OnClose="@(() => pendingTakeover = null)">
-    <ChildContent>
-        <p>@L["Takeover_Body"]</p>
-        <p class="small text-body-secondary mb-0">@L["Takeover_Body2"]</p>
-    </ChildContent>
-    <Footer>
-        <button type="button" class="btn btn-secondary" @onclick="() => pendingTakeover = null">@L["Button_Cancel"]</button>
-        <button type="button" class="btn btn-primary" data-testid="structure-takeover-confirm" @onclick="TakeoverConfirmedAsync">@L["Takeover_Confirm"]</button>
-    </Footer>
-</Modal>
 </SettingsShell>
 
 @code {
@@ -289,7 +268,6 @@ else
     private IReadOnlyList<long>? keepManualIds;
     private SourceAccountItem? pendingReturn;
     private SourceSwitchState? pendingFinish;
-    private ImportSource? pendingTakeover;
     private bool finishKeepManual = true;
     private readonly HashSet<long> checkedAccounts = new();
 
@@ -452,21 +430,13 @@ else
         if (pendingFinish is not { } st) return;
         pendingFinish = null;
         if (finishKeepManual && st.MoneyMoneyAccounts.Count > 0)
-            await Switcher.KeepManualAsync(st.MoneyMoneyAccounts.Select(a => a.AccountId).ToList(), takeOverStructure: true);
+            await Switcher.KeepManualAsync(st.MoneyMoneyAccounts.Select(a => a.AccountId).ToList());
         await SetFinishedAsync(st.SourceId, true);
     }
 
     private async Task SetFinishedAsync(int sourceId, bool finished)
     {
         await Switcher.SetImportFinishedAsync(sourceId, finished);
-        await LoadAsync();
-    }
-
-    private async Task TakeoverConfirmedAsync()
-    {
-        if (pendingTakeover is not { } s) return;
-        pendingTakeover = null;
-        await Takeover.TakeOverAsync(s.Id);
         await LoadAsync();
     }
 

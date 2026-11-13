@@ -9,8 +9,6 @@ public enum StructureBlock
 {
     /// <summary>Only the source's owner edits accounts, categories and their groups (an editor of a shared project cannot).</summary>
     NotOwner,
-    /// <summary>MoneyMoney still owns the structure: every upload rewrites it until the owner takes it over (Sources).</summary>
-    MoneyMoney,
 }
 
 /// <summary>What deleting an account takes with it, for the confirmation dialog.</summary>
@@ -41,8 +39,7 @@ public enum StructureItemKind
 
 /// <summary>
 /// Structure editing from the sidebar: rename, create, move/reorder and delete categories, category groups, accounts and
-/// account groups. Only the source's owner may, and only after the structure was taken over from MoneyMoney
-/// (<see cref="ImportSource.StructureTakenOverAt"/>); before that each upload rewrites it. Simple edits go through the
+/// account groups. Only the source's owner may. Simple edits go through the
 /// user-scoped context (whose SaveChanges guard requires the source owner as well); the cascades of a delete (bookings,
 /// statements, project rows of every project of the source, other users' bank-login links) run on the system context
 /// after the same checks, so nothing is left dangling behind the read filters.
@@ -82,12 +79,10 @@ public sealed class StructureService
         return await BlockAsync(db, sourceId, ct);
     }
 
-    // A source MoneyMoney never uploaded to (e.g. a bank connector's) has an OpenBudget-owned structure from the start.
     private static async Task<StructureBlock?> BlockAsync(BudgetDbContext db, int sourceId, CancellationToken ct)
     {
         if (db.Scope is { } scope && !scope.OwnsSource(sourceId)) return StructureBlock.NotOwner;
-        var ours = await db.ImportSources.AnyAsync(s => s.Id == sourceId && (s.StructureTakenOverAt != null || s.LastUploadAt == null), ct);
-        return ours ? null : StructureBlock.MoneyMoney;
+        return await db.ImportSources.AnyAsync(s => s.Id == sourceId, ct) ? null : StructureBlock.NotOwner;
     }
 
     /// <summary>
@@ -130,7 +125,6 @@ public sealed class StructureService
     {
         var block = await BlockAsync(db, sourceId, ct);
         if (block == StructureBlock.NotOwner) throw new AccessDeniedException("Only the source's owner can change its structure.");
-        if (block == StructureBlock.MoneyMoney) throw new InvalidOperationException("MoneyMoney still owns this structure; take it over first.");
     }
 
     private static string CleanName(string name)

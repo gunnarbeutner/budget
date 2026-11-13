@@ -56,7 +56,6 @@ public sealed class AccountSwitchTests : EndToEndTestBase
         var dialog = Page.GetByTestId("switch-dialog");
         await Expect(dialog.Locator($"[data-switch-account='{GiroId}']")).ToContainTextAsync("2026-10-03");
         await Expect(dialog.GetByTestId("switch-not-fetched")).ToBeVisibleAsync();
-        await Page.GetByTestId("switch-takeover").CheckAsync();
         await Page.GetByTestId("switch-confirm").ClickAsync();
         await Expect(dialog).ToHaveCountAsync(0);
         await Expect(section.GetByTestId("switch-progress")).ToContainTextAsync("1 of 1");

@@ -210,23 +210,18 @@ public sealed class AccountSwitchTests
     }
 
     [Fact]
-    public async Task The_switch_needs_the_structure_taken_over_and_only_the_owner_may_switch()
+    public async Task Only_the_owner_may_switch()
     {
         await using var w = await BankWorld.CreateAsync();
         var (_, linkId) = await LinkedAndFetchedAsync(w);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => w.Switcher(BankWorld.Alice).SwitchAsync([linkId], takeOverStructure: false));
-        Assert.Equal(AccountProviders.MoneyMoney, (await w.AccountAsync(Giro)).Provider);
-
         // Bob sees neither the link nor the source: nothing happens.
-        Assert.Equal(0, await w.Switcher(BankWorld.Bob).SwitchAsync([linkId], takeOverStructure: true));
+        Assert.Equal(0, await w.Switcher(BankWorld.Bob).SwitchAsync([linkId]));
         Assert.Empty(await w.Switcher(BankWorld.Bob).PreviewAsync([linkId]));
         await Assert.ThrowsAsync<AccessDeniedException>(() => w.Switcher(BankWorld.Bob).GetSourceStateAsync(BankWorld.SourceAlice));
         await Assert.ThrowsAsync<AccessDeniedException>(() => w.Switcher(BankWorld.Bob).SetImportFinishedAsync(BankWorld.SourceAlice, true));
 
-        Assert.Equal(1, await w.Switcher(BankWorld.Alice).SwitchAsync([linkId], takeOverStructure: true));
-        await using var db = await w.T.System.CreateDbContextAsync();
-        Assert.NotNull((await db.ImportSources.SingleAsync(s => s.Id == BankWorld.SourceAlice)).StructureTakenOverAt);
+        Assert.Equal(1, await w.Switcher(BankWorld.Alice).SwitchAsync([linkId]));
     }
 
     [Fact]
@@ -235,7 +230,7 @@ public sealed class AccountSwitchTests
         await using var w = await BankWorld.CreateAsync();
         var (_, linkId) = await LinkedAndFetchedAsync(w);
         var switcher = w.Switcher(BankWorld.Alice);
-        await switcher.SwitchAsync([linkId], takeOverStructure: true);
+        await switcher.SwitchAsync([linkId]);
 
         var state = await switcher.GetSourceStateAsync(BankWorld.SourceAlice);
         Assert.True(Assert.Single(state.Links).Switched);
