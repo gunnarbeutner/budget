@@ -38,27 +38,15 @@ public partial class Browse
 
     private DateOnly ToLocalDay(DateTime utc) => DateOnly.FromDateTime(Clock.ToLocal(utc));
 
-    // ---- toolbar: filter panel, documents ----
+    // ---- toolbar: filter panel ----
 
     private bool _filterOpen;
-    private int _statementCount;
 
     /// <summary>How many of the panel's filters are set (search has its own field and is not counted).</summary>
     private int ActiveFilterCount =>
         (accountFilter.HasValue ? 1 : 0) + (amountMin.HasValue ? 1 : 0) + (amountMax.HasValue ? 1 : 0)
         + (checkedFilter != "any" ? 1 : 0) + (directionFilter != "any" ? 1 : 0)
         + (newOnly ? 1 : 0) + (categoryFilter.HasValue ? 1 : 0);
-
-    private async Task LoadToolbarExtrasAsync()
-    {
-        _statementCount = 0;
-        if (SelectedAccountNode is { } account)
-        {
-            try { _statementCount = (await BankLogins.GetAccountStatementsAsync(account.Id)).Count; }
-            catch (AccessDeniedException) { _statementCount = 0; }
-            catch (InvalidOperationException) { _statementCount = 0; }
-        }
-    }
 
     private async Task ShowSimilarAsync(TransactionRow row)
     {

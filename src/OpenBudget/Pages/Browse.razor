@@ -180,16 +180,6 @@
                             <span class="ob-badge" data-testid="filter-count">@ActiveFilterCount</span>
                         }
                     </button>
-                    @if (selectionKind == "account" && SelectedAccountNode is { } docAccount && (_statementCount > 0 || docAccount.SyncLoginId != null))
-                    {
-                        <a class="btn btn-sm btn-link p-0 text-decoration-none" href="@($"/projects/{ProjectId}/documents?account={docAccount.Id}")" data-testid="account-documents" title="@L["Documents"]">
-                            <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i><span class="browse-action-label"> @L["Documents"]</span>
-                            @if (_statementCount > 0)
-                            {
-                                <span class="ob-badge">@_statementCount</span>
-                            }
-                        </a>
-                    }
                     @if (ShowSummaryStrip)
                     {
                         <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" data-testid="summary-toggle" title="@L["Summary_Button"]"
@@ -1391,7 +1381,6 @@
         {
             newCount = (await TransactionQueries.QueryTotalsAsync(await BuildTransactionQueryAsync(0, 1, newOnlyOverride: true))).Count;
         }
-        await LoadToolbarExtrasAsync();
         if (keepSelection) await PruneSelectionAsync();
         // After an outside change the list gets a new instance (txListVersion) that loads by itself; refreshing the
         // old one would render it once more against the new row count.

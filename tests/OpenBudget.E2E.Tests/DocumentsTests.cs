@@ -249,16 +249,6 @@ public sealed class DocumentsTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task The_transactions_documents_button_opens_the_view_for_the_selected_account()
-    {
-        await SeedDocumentsAsync();
-        await GoToAsync($"/projects/{Pid}/browse?sel=acct-{EditingSeed.BankAccountId}");
-        await Page.GetByTestId("account-documents").ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex($@"/projects/{Pid}/documents\?account={EditingSeed.BankAccountId}$"));
-        await Expect(Cards).ToHaveCountAsync(3);
-    }
-
-    [Test]
     public async Task A_viewer_of_the_shared_project_sees_the_account_statements_but_not_the_owners_login_documents()
     {
         await SeedDocumentsAsync();

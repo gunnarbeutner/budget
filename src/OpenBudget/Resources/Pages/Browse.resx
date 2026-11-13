@@ -328,9 +328,6 @@
   <data name="Filter_Button" xml:space="preserve">
     <value>Filter</value>
   </data>
-  <data name="Documents" xml:space="preserve">
-    <value>Documents</value>
-  </data>
   <data name="Filter_AmountMin" xml:space="preserve">
     <value>Minimum amount</value>
   </data>
