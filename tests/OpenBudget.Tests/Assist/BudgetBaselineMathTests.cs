@@ -28,7 +28,7 @@ public sealed class BudgetBaselineMathTests
     public void A_steady_category_gets_its_median_month_and_a_one_off_purchase_is_left_out()
     {
         var bookings = Months(2023, 36).SelectMany(m => new[] { B(m.Year, m.Month, 100m), B(m.Year, m.Month, 120m, day: 20) }).ToList();
-        var oneOff = B(2025, 3, 1890m, "EXAMPLE FURNITURE");
+        var oneOff = B(2025, 3, 2890m, "EXAMPLE FURNITURE");
         bookings.Add(oneOff);
 
         var result = BudgetBaselineMath.Compute(bookings, [], 2026, AsOf);
@@ -50,7 +50,7 @@ public sealed class BudgetBaselineMathTests
         Assert.Empty(result.Outliers);
         var yearly = Assert.Single(result.Recurring, r => r.IntervalMonths == 12);
         Assert.Equal("EXAMPLE INSURANCE", yearly.PayeeKey);
-        Assert.Equal(50m + 610m, result.Monthly[3]);
+        Assert.Equal(50m + 620m, result.Monthly[3]); // last year's amount
         Assert.Equal(50m, result.Monthly[4]);
     }
 
@@ -89,8 +89,8 @@ public sealed class BudgetBaselineMathTests
 
         Assert.Equal("seasonal", result.Basis);
         Assert.True(result.Monthly[0] > result.Monthly[6] * 1.5m);
-        // The average month (162.50 last year, 150 overall; 3:1) times twelve, redistributed.
-        Assert.InRange(result.Monthly.Sum(), 1890m, 1935m);
+        // Last year's total (9 × 100 + 3 × 350), redistributed by the month pattern.
+        Assert.InRange(result.Monthly.Sum(), 1945m, 1955m);
     }
 
     [Fact]

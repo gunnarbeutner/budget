@@ -27,7 +27,7 @@ public sealed partial class BudgetSuggestionTests
             var month = new DateTime(2024, 1, 10).AddMonths(i);
             t.AddTransaction(id++, Leaf, -20000, month, name: "Example Market");
         }
-        t.AddTransaction(id, Leaf, -189000, new DateTime(2025, 3, 2), name: "Example Furniture");
+        t.AddTransaction(id, Leaf, -289000, new DateTime(2025, 3, 2), name: "Example Furniture");
         await t.Db.SaveChangesAsync();
         return t;
     }
@@ -52,7 +52,7 @@ public sealed partial class BudgetSuggestionTests
         var row = Assert.Single(result.Rows);
         Assert.All(row.Suggested, m => Assert.Equal(200m, m));
         var outlier = Assert.Single(row.Outliers);
-        Assert.Equal((1890m, "one_off", true), (outlier.Amount, outlier.Kind, outlier.Excluded));
+        Assert.Equal((2890m, "one_off", true), (outlier.Amount, outlier.Kind, outlier.Excluded));
         Assert.False(result.AiUsed);
     }
 

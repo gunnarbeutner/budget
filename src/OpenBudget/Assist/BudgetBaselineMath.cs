@@ -16,10 +16,11 @@ public sealed record BudgetBaseline(
     int MonthsOfData, decimal Median, decimal Mad, decimal Trend);
 
 /// <summary>
-/// Statistics behind "Suggest budget": per category over the last 24–36 months, single bookings far off the usual
-/// (robust z-score over 3.5 and more than five times the usual booking) are left out as outliers; payments repeating every 1, 3, 6 or 12 months from the same payee
-/// (amounts within ±10 %) or known standing orders are placed into the months they fall in; the rest is the average month
-/// (outliers left out, the last 12 months weighing most) with a month-of-year seasonality shrunk towards none.
+/// Statistics behind "Suggest budget": per category, last year's total (the 12 months before the cut-off) without clear
+/// one-offs (a single booking of its payee, robust z-score over 3.5 and ten times the usual booking). Payments
+/// repeating every 3, 6 or 12 months from the same payee (amounts within ±10 %) stay in their calendar month, standing
+/// orders the bank holds land where they are due; the rest is spread by the category's month pattern over up to 36
+/// months when that is clearly seasonal, otherwise evenly.
 /// </summary>
 public static class BudgetBaselineMath
 {
@@ -101,12 +102,14 @@ public static class BudgetBaselineMath
         var periodicIds = periodic.SelectMany(r => r.BookingIds).ToHashSet();
         var recurringIds = recurring.SelectMany(r => r.BookingIds).ToHashSet();
 
-        // Outliers: single bookings far above the usual size (recurring payments excepted).
+        // Clear one-offs: a single booking of its payee, far above the usual size (robust z over 3.5 and ten times the
+        // median booking). Anything less clear stays in, as leaving it out made a backtest worse.
         var sizes = bookings.Select(b => b.Amount).ToList();
         var medSize = Median(sizes);
         var madSize = Mad(sizes);
         var outliers = bookings
-            .Where(b => !recurringIds.Contains(b.Id) && RobustZ(b.Amount, medSize, madSize) > OutlierZ && b.Amount > 5 * Math.Max(medSize, 1))
+            .Where(b => !recurringIds.Contains(b.Id) && RobustZ(b.Amount, medSize, madSize) > OutlierZ && b.Amount > 10 * Math.Max(medSize, 1)
+                && bookings.Count(o => o.PayeeKey == b.PayeeKey) == 1)
             .ToList();
         var outlierIds = outliers.Select(o => o.Id).ToHashSet();
 
@@ -115,19 +118,31 @@ public static class BudgetBaselineMath
             rest[MonthIndex(b.Date) - firstIndex] += b.Amount;
         var median = Median(rest);
         var mad = Mad(rest);
-        // The average month (the median would be 0 for a category used in fewer than half of the months), mostly of the
-        // last 12 months (3:1 against the whole window); the trend is their difference, capped at ±25 %.
+        // Last year's total (without clear one-offs and periodic payments) as the level; the longer window only gives
+        // the trend shown and the month pattern.
         var mean = rest.Average();
         var recent = rest.Skip(Math.Max(0, months - 12)).Average();
         var trend = mean == 0 ? 0 : Math.Clamp((recent - mean) / Math.Abs(mean), -0.25m, 0.25m);
-        var level = (0.75m * recent) + (0.25m * mean);
+        var level = recent;
 
+        // Spread by the category's own month pattern only when it is clearly seasonal, otherwise evenly.
         var season = Seasonality(rest, firstIndex);
+        if (months < 24 || !season.Any(f => Math.Abs(f - 1) > 0.25m)) season = Enumerable.Repeat(1m, 12).ToArray();
         var monthly = new decimal[12];
         for (var m = 0; m < 12; m++) monthly[m] = level * season[m];
+        // A payment the bank holds as a standing order lands where it is due; other periodic payments of the last 12
+        // months come back in their calendar month at last year's amount (one that stopped earlier does not).
+        var lastYear = bookings.Where(b => MonthIndex(b.Date) >= endIndex - 12).ToList();
         foreach (var r in periodic)
-            foreach (var m in MonthsOf(r, year))
-                monthly[m] += r.Amount;
+        {
+            if (schedules.Any(s => s.PayeeKey == r.PayeeKey && s.IntervalMonths == r.IntervalMonths))
+            {
+                foreach (var m in MonthsOf(r, year)) monthly[m] += r.Amount;
+                continue;
+            }
+            var ids = r.BookingIds.ToHashSet();
+            foreach (var b in lastYear.Where(b => ids.Contains(b.Id))) monthly[b.Date.Month - 1] += b.Amount;
+        }
         for (var m = 0; m < 12; m++) monthly[m] = Math.Round(monthly[m], 0, MidpointRounding.AwayFromZero);
 
         var periodicTotal = periodic.Sum(r => r.Amount * MonthsOf(r, year).Count());
