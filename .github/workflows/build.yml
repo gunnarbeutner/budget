@@ -119,6 +119,10 @@ jobs:
       - name: Compute image tags
         id: meta
         uses: docker/metadata-action@v6
+        env:
+          # The pushed image is an index (image + provenance attestation); GHCR reads the description
+          # from the index's annotations, so annotate the index as well as the manifest.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         with:
           images: ghcr.io/${{ github.repository_owner }}/budget
           tags: |
@@ -129,6 +133,9 @@ jobs:
           labels: |
             org.opencontainers.image.title=OpenBudget
             org.opencontainers.image.description=Self-hosted personal finance app with bank sync, budgets and cashflow projections.
+          annotations: |
+            org.opencontainers.image.title=OpenBudget
+            org.opencontainers.image.description=Self-hosted personal finance app with bank sync, budgets and cashflow projections.
 
       - name: Build and push
         uses: docker/build-push-action@v7
@@ -137,5 +144,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
