@@ -12,8 +12,7 @@ public sealed record ManualTransactionInput(
     string? Name,
     string? Purpose,
     long? CategoryId,
-    string? Note,
-    bool Booked = true);
+    string? Note);
 
 /// <summary>Why an account's initial balance cannot be edited; <see cref="None"/> when it can.</summary>
 public enum InitialBalanceLock { None, Bank, Portfolio, NotOwner }
@@ -219,7 +218,7 @@ public sealed class ManualTransactionService
         }
         var date = DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(source.Timestamp).UtcDateTime);
         return await AddAsync(accountId, new ManualTransactionInput(
-            date, -source.Amount / 100m, source.Name, source.Purpose, categoryId, note), ct);
+            date, -source.Amount / 100m, string.IsNullOrWhiteSpace(source.Name) ? source.Purpose ?? "\u2014" : source.Name, source.Purpose, categoryId, note), ct);
     }
 
     /// <summary>Changes a booking of a manual account (also one MoneyMoney delivered).</summary>
@@ -259,13 +258,14 @@ public sealed class ManualTransactionService
 
     private static void Apply(Transaction row, ManualTransactionInput input, string accountCurrency, bool amountEditable)
     {
+        if (string.IsNullOrWhiteSpace(input.Name)) throw new ArgumentException("A booking needs a payee or payer.", nameof(input));
         if (amountEditable) row.Amount = BankTransactionStore.ToCents(input.Amount);
         row.Currency ??= accountCurrency;
         row.Timestamp = BankTransactionStore.ToTimestamp(input.Date);
         row.Name = Clean(input.Name);
         row.Purpose = Clean(input.Purpose);
         row.Note = Clean(input.Note);
-        row.Booked = input.Booked;
+        row.Booked = true;
         row.IsNew = false;
         if (row.CategoryId != input.CategoryId)
         {

@@ -88,9 +88,6 @@
   <data name="Note" xml:space="preserve">
     <value>Note</value>
   </data>
-  <data name="Booked" xml:space="preserve">
-    <value>Booked (clear while only reserved)</value>
-  </data>
   <data name="Delete" xml:space="preserve">
     <value>Delete</value>
   </data>
@@ -114,5 +111,8 @@
   </data>
   <data name="Saved_Deleted" xml:space="preserve">
     <value>Booking deleted.</value>
+  </data>
+  <data name="Error_Name" xml:space="preserve">
+    <value>Enter a payee or payer.</value>
   </data>
 </root>

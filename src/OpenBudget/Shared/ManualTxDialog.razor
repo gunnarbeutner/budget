@@ -29,7 +29,12 @@
                 </div>
                 <div class="col-12">
                     <label class="form-label small mb-1" for="mtx-name">@L["Name"]</label>
-                    <input id="mtx-name" class="form-control form-control-sm" data-testid="manual-tx-name" value="@_name" @onchange="e => _name = e.Value?.ToString()" />
+                    <input id="mtx-name" class="form-control form-control-sm @(NameMissing && _nameTouched ? "is-invalid" : "")" data-testid="manual-tx-name" required
+                           aria-required="true" value="@_name" @oninput="e => _name = e.Value?.ToString()" @onblur="() => _nameTouched = true" />
+                    @if (NameMissing && _nameTouched)
+                    {
+                        <div class="invalid-feedback" data-testid="manual-tx-name-error">@L["Error_Name"]</div>
+                    }
                 </div>
                 <div class="col-12">
                     <label class="form-label small mb-1" for="mtx-purpose">@L["Purpose"]</label>
@@ -50,13 +55,6 @@
                     <label class="form-label small mb-1" for="mtx-note">@L["Note"]</label>
                     <input id="mtx-note" class="form-control form-control-sm" data-testid="manual-tx-note" value="@_note" @onchange="e => _note = e.Value?.ToString()" />
                 </div>
-                <div class="col-12">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="mtx-booked" data-testid="manual-tx-booked"
-                               checked="@_booked" @onchange="e => _booked = e.Value is true" />
-                        <label class="form-check-label small" for="mtx-booked">@L["Booked"]</label>
-                    </div>
-                </div>
             </div>
             @if (_error != null)
             {
@@ -71,7 +69,7 @@
             <button type="button" class="btn btn-outline-danger me-auto" data-testid="manual-tx-delete" disabled="@_busy" @onclick="DeleteAsync">@(_confirmDelete ? L["Delete_Confirm"] : L["Delete"])</button>
         }
         <button type="button" class="btn btn-secondary" @onclick="CloseAsync">@L["Cancel"]</button>
-        <button type="button" class="btn btn-primary" data-testid="manual-tx-save" disabled="@_busy" @onclick="SaveAsync">@L["Save"]</button>
+        <button type="button" class="btn btn-primary" data-testid="manual-tx-save" disabled="@(_busy || NameMissing)" @onclick="SaveAsync">@L["Save"]</button>
     </Footer>
 </Modal>
 
@@ -103,7 +101,9 @@
     private static string CurrencySymbol(string currency) => currency == "EUR" ? "€" : currency;
     private string? _name, _purpose, _note;
     private long? _categoryId;
-    private bool _booked = true;
+    private bool _nameTouched;
+
+    private bool NameMissing => string.IsNullOrWhiteSpace(_name);
     private bool _amountLocked;
     private bool _busy;
     private bool _confirmDelete;
@@ -115,12 +115,13 @@
         {
             _error = null;
             _confirmDelete = false;
+            _nameTouched = false;
             if (Row is { } r)
             {
                 _date = DateOnly.FromDateTime(Clock.ToLocal(r.Date));
                 _amount = r.Amount.ToString("0.00", CultureInfo.CurrentCulture);
                 _currency = CurrencySums.Normalize(r.Currency ?? AccountCurrency);
-                (_name, _purpose, _note, _categoryId, _booked) = (r.Name, r.Purpose, r.Note, r.CategoryId, !r.IsPending);
+                (_name, _purpose, _note, _categoryId) = (r.Name, r.Purpose, r.Note, r.CategoryId);
                 _amountLocked = r.IsSplitChild || r.IsSplitRemainder || r.SplitParentId != null;
             }
             else
@@ -128,7 +129,7 @@
                 _date = DateOnly.FromDateTime(Clock.Today);
                 _amount = "";
                 _currency = CurrencySums.Normalize(AccountCurrency);
-                (_name, _purpose, _note, _categoryId, _booked) = (null, null, null, null, true);
+                (_name, _purpose, _note, _categoryId) = (null, null, null, null);
                 _amountLocked = false;
             }
         }
@@ -159,12 +160,17 @@
     private async Task SaveAsync()
     {
         if (_busy) return;
+        if (NameMissing)
+        {
+            _nameTouched = true;
+            return;
+        }
         if (!TryParseAmount(_amount, out var amount))
         {
             _error = L["Error_Amount"];
             return;
         }
-        var input = new ManualTransactionInput(_date, amount, _name, _purpose, _categoryId, _note, _booked);
+        var input = new ManualTransactionInput(_date, amount, _name, _purpose, _categoryId, _note);
         await RunAsync(async () =>
         {
             if (Row is { } r) await Manual.UpdateAsync(r.Id, input);

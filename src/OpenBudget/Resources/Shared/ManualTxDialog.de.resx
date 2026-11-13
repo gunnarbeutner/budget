@@ -88,9 +88,6 @@
   <data name="Note" xml:space="preserve">
     <value>Notiz</value>
   </data>
-  <data name="Booked" xml:space="preserve">
-    <value>Gebucht (abwählen, solange nur vorgemerkt)</value>
-  </data>
   <data name="Delete" xml:space="preserve">
     <value>Löschen</value>
   </data>
@@ -114,5 +111,8 @@
   </data>
   <data name="Saved_Deleted" xml:space="preserve">
     <value>Buchung gelöscht.</value>
+  </data>
+  <data name="Error_Name" xml:space="preserve">
+    <value>Bitte einen Empfänger oder Auftraggeber eingeben.</value>
   </data>
 </root>

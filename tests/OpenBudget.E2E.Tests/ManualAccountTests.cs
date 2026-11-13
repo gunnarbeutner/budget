@@ -77,6 +77,12 @@ public sealed class ManualAccountTests : EndToEndTestBase
         // The booking takes the account's currency; the form only shows it.
         await Expect(Page.GetByTestId("manual-tx-currency")).ToHaveTextAsync("€");
         await Expect(Page.Locator("input[data-testid='manual-tx-currency']")).ToHaveCountAsync(0);
+        // A payee is required: Save waits for it.
+        await Expect(Page.GetByTestId("manual-tx-booked")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("manual-tx-save")).ToBeDisabledAsync();
+        await Page.GetByTestId("manual-tx-name").FocusAsync();
+        await Page.GetByTestId("manual-tx-date").FocusAsync();
+        await Expect(Page.GetByTestId("manual-tx-name-error")).ToBeVisibleAsync();
         await Page.GetByTestId("manual-tx-date").FillAsync("2026-03-20");
         await Page.GetByTestId("manual-tx-amount").FillAsync("-12,34");
         await Page.GetByTestId("manual-tx-name").FillAsync("Example Kiosk");

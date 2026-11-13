@@ -299,6 +299,27 @@ public sealed class ManualAccountTests
     }
 
     [Fact]
+    public async Task A_manual_booking_needs_a_payee_and_is_always_booked()
+    {
+        await using var w = await BankWorld.CreateAsync();
+        await w.ImportMoneyMoneyAsync(Snapshot(w));
+        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro]);
+        var alice = Manual(w, BankWorld.Alice);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => alice.AddAsync(Giro, new ManualTransactionInput(new DateOnly(2026, 11, 5), -3m, "  ", null, null, null)));
+        var id = await alice.AddAsync(Giro, new ManualTransactionInput(new DateOnly(2026, 11, 5), -3m, "Kiosk", null, null, null));
+        await Assert.ThrowsAsync<ArgumentException>(() => alice.UpdateAsync(id, new ManualTransactionInput(new DateOnly(2026, 11, 5), -3m, null, null, null, null)));
+
+        await using (var db = await w.T.System.CreateDbContextAsync())
+        {
+            db.Transactions.Single(t => t.Id == id).Booked = false;
+            await db.SaveChangesAsync();
+        }
+        await alice.UpdateAsync(id, new ManualTransactionInput(new DateOnly(2026, 11, 5), -3m, "Kiosk", null, null, null));
+        Assert.True((await w.TransactionsAsync(Giro)).Single(t => t.Id == id).Booked);
+    }
+
+    [Fact]
     public async Task The_currency_of_a_manual_account_changes_only_while_it_has_no_bookings()
     {
         await using var w = await BankWorld.CreateAsync();
