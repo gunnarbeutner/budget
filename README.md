@@ -11,9 +11,6 @@ and forward-looking balance projections.
   <img src="docs/screenshots/budget.png" alt="Monthly budget with categories over plan" width="540">
   <img src="docs/screenshots/transactions-phone.png" alt="Transactions on a phone" width="170">
 </p>
-<p>
-  <img src="docs/screenshots/get-started.png" alt="Get started: import, connections, Portfolio Performance, accounts" width="720">
-</p>
 
 More screenshots, including dark mode, are in [`docs/screenshots/`](docs/screenshots/). All data shown is a
 fictional demo household.

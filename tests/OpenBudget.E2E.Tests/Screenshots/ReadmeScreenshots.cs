@@ -71,28 +71,6 @@ public sealed class ReadmeScreenshots
         await Go(phone, Browse);
         await Shot(phone, "transactions-phone");
         await phone.Context.CloseAsync();
-
-        // Get started, as a user who has not finished it sees it.
-        await SetGetStartedCompletedAsync(null);
-        try
-        {
-            var start = await NewPageAsync(1440, 900, dark: false);
-            await Go(start, "/get-started");
-            await Shot(start, "get-started");
-            await start.Context.CloseAsync();
-        }
-        finally
-        {
-            await SetGetStartedCompletedAsync(DateTime.UtcNow);
-        }
-    }
-
-    private async Task SetGetStartedCompletedAsync(DateTime? at)
-    {
-        var system = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<OpenBudget.Services.SystemDbContextFactory>(_factory.Services);
-        await using var db = await system.CreateDbContextAsync();
-        foreach (var state in db.UserDataStates) state.GetStartedCompletedAt = at;
-        await db.SaveChangesAsync();
     }
 
     private async Task<IPage> NewPageAsync(int width, int height, bool dark, bool mobile = false)
