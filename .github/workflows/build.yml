@@ -52,7 +52,8 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: Run E2E tests
-        run: dotnet test tests/OpenBudget.E2E.Tests/OpenBudget.E2E.Tests.csproj --no-build --verbosity minimal
+        # Two fixture workers for the runner's two cores; the default six starve the app hosts and browsers.
+        run: dotnet test tests/OpenBudget.E2E.Tests/OpenBudget.E2E.Tests.csproj --no-build --verbosity minimal -- NUnit.NumberOfTestWorkers=2
 
   lint:
     # Static analysis gate. The Roslyn/Sonar/Meziantou analyzers themselves run as part of the
