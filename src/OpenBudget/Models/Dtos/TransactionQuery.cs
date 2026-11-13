@@ -96,6 +96,9 @@ public class TransactionRow
     /// processor like "PayPal".
     /// </summary>
     public string? Purpose { get; init; }
+
+    /// <summary>The items of the online order(s) this booking paid, when an order source matched it.</summary>
+    public string? OrderItems { get; init; }
     public long? CategoryId { get; init; }
     public string? CategoryName { get; init; }
 

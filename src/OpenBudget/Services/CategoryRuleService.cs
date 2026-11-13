@@ -380,6 +380,7 @@ public sealed class CategoryRuleService
                 EndToEndReference = t.EndToEndReference,
                 MandateReference = t.MandateReference,
                 CreditorId = t.CreditorId,
+                OrderItems = t.OrderItems,
                 CategoryId = t.CategoryId,
                 CategorySetBy = t.CategorySetBy,
             }).ToListAsync(ct)).Select(t => (t, RuleSubject.Of(t, ibans.GetValueOrDefault(t.AccountId!.Value)))));

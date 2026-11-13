@@ -85,9 +85,10 @@ public sealed class ParseException : Exception
 /// next to each other are AND-ed; parentheses group.</item>
 /// <item>Fields: <c>field:value</c>, <c>field="value"</c>, <c>field!=value</c> (does not contain). Text fields:
 /// name, purpose, comment, booking_text, currency, reference, end_to_end, mandate, creditor_id, local_account (our
-/// account's IBAN), remote_account (the counterparty's IBAN); account fields ignore spaces. <c>account_id=N</c>: our account.</item>
+/// account's IBAN), remote_account (the counterparty's IBAN), order_items (the items of a matched online order); account
+/// fields ignore spaces. <c>account_id=N</c>: our account.</item>
 /// <item><c>amount</c> with <c>= == != &lt; &gt; &lt;= &gt;=</c> (or <c>:</c> for =), signed, decimal comma or point.</item>
-/// <item>Without a field a term is looked for in name, purpose, comment, note and booking text.</item>
+/// <item>Without a field a term is looked for in name, purpose, comment, note, booking text and order items.</item>
 /// </list>
 /// <c>end_to_end</c>, <c>mandate</c> and <c>creditor_id</c> look at the stored SEPA end-to-end reference, mandate
 /// reference and creditor id; for a booking without the field they fall back to the purpose (where SEPA puts EREF /
@@ -97,7 +98,7 @@ public sealed class ParseException : Exception
 public static class RuleExpression
 {
     public static readonly IReadOnlyList<string> TextFields =
-        ["name", "purpose", "comment", "booking_text", "currency", "reference", "end_to_end", "mandate", "creditor_id", "local_account", "remote_account"];
+        ["name", "purpose", "comment", "booking_text", "currency", "reference", "end_to_end", "mandate", "creditor_id", "local_account", "remote_account", "order_items"];
 
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly ConcurrentDictionary<string, IRuleNode?> Cache = new(StringComparer.Ordinal);
@@ -372,7 +373,7 @@ public static class RuleExpression
         var account = x.Field is "local_account" or "remote_account";
         IEnumerable<string?> haystacks = x.Field switch
         {
-            null => [t.Name, t.Purpose, t.Comment, t.Note, t.BookingText],
+            null => [t.Name, t.Purpose, t.Comment, t.Note, t.BookingText, t.OrderItems],
             "name" => [t.Name],
             "purpose" => [t.Purpose],
             "comment" => [t.Comment, t.Note],
@@ -385,6 +386,7 @@ public static class RuleExpression
             "creditor_id" => [OrPurpose(t.CreditorId, t)],
             "local_account" => [t.LocalAccount],
             "remote_account" => [t.CounterpartyIban],
+            "order_items" => [t.OrderItems],
             _ => [],
         };
         var found = haystacks.Any(h => TextMatches(x, h, account));

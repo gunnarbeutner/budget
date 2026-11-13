@@ -72,7 +72,8 @@ public class TransactionQueryService
                 t.Primanota,
                 t.ReturnReason,
                 t.SplitParentId,
-                t.SplitCheck
+                t.SplitCheck,
+                t.OrderItems
             })
             .ToListAsync(ct);
 
@@ -95,6 +96,7 @@ public class TransactionQueryService
             Name = r.Name,
             Comment = r.Comment,
             Purpose = r.Purpose,
+            OrderItems = r.OrderItems,
             CategoryId = r.CategoryId,
             CategoryName = r.CategoryId.HasValue && cats.TryGetValue(r.CategoryId.Value, out var cat) ? cat.Name : null,
             CategoryColor = r.CategoryId.HasValue && cats.TryGetValue(r.CategoryId.Value, out var catColor) ? catColor.Color : null,
@@ -220,7 +222,7 @@ public class TransactionQueryService
 
         if (!string.IsNullOrWhiteSpace(query.SearchText))
         {
-            // Text matches name, comment, note or purpose; a text that reads as an amount (AmountSearch) also matches
+            // Text matches name, comment, note, purpose or order items; a text that reads as an amount (AmountSearch) also matches
             // bookings of exactly that amount, in either direction unless the text carries a sign.
             var needle = query.SearchText.Trim();
             var amount = AmountSearch.TryParse(needle);
@@ -233,6 +235,7 @@ public class TransactionQueryService
                 || (t.Comment != null && EF.Functions.Like(t.Comment, $"%{needle}%"))
                 || (t.Note != null && EF.Functions.Like(t.Note, $"%{needle}%"))
                 || (t.Purpose != null && EF.Functions.Like(t.Purpose, $"%{needle}%"))
+                || (t.OrderItems != null && EF.Functions.Like(t.OrderItems, $"%{needle}%"))
                 || (hasAmount && ((sign >= 0 && t.Amount == cents) || (sign <= 0 && t.Amount == negCents))));
         }
 
