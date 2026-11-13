@@ -57,6 +57,8 @@ RUN --mount=type=cache,id=openbudget-nuget,target=/root/.nuget/packages \
 
 # ---- final ----
 FROM runtime-base AS final
+LABEL org.opencontainers.image.title="OpenBudget" \
+      org.opencontainers.image.description="Self-hosted personal finance app with bank sync, budgets and cashflow projections."
 EXPOSE 8080
 WORKDIR /app
 VOLUME ["/app/data"]

@@ -124,6 +124,11 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
+          # GHCR shows the description on the package page; set it here so the repository's own
+          # description (which the action would copy) can't blank it.
+          labels: |
+            org.opencontainers.image.title=OpenBudget
+            org.opencontainers.image.description=Self-hosted personal finance app with bank sync, budgets and cashflow projections.
 
       - name: Build and push
         uses: docker/build-push-action@v5
