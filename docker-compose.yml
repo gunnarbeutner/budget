@@ -35,3 +35,7 @@ services:
       # OPENBUDGET_ENABLE_FAKE_BANK: "true"   # offers a made-up bank for trying the connector flow
       # Optional: pin the passkey relying-party id (defaults to the request host).
       # OPENBUDGET_RP_ID: budget.example.org
+      # Optional AI suggestions (see README, "Suggestions"); each user still opts in. Not stored in ./data.
+      # OPENBUDGET_OPENAI_API_KEY: ${OPENBUDGET_OPENAI_API_KEY:-}
+      # OPENBUDGET_OPENAI_MODEL: gpt-6.1-terra
+      # OPENBUDGET_OPENAI_BASE_URL: https://api.openai.com/v1

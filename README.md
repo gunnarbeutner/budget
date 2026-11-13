@@ -62,6 +62,9 @@ dotnet run --project src/OpenBudget
 | `CHROME_PATH` | Chromium for web logins outside Docker (the image ships one). |
 | `OPENBUDGET_ONEDRIVE_CLIENT_ID`, `_SECRET`, `_TENANT` | Entra ID app registration for reading PortfolioPerformance files from OneDrive; the feature is hidden without them. |
 | `OPENBUDGET_ENABLE_FAKE_BANK` | `true` offers a made-up bank for trying out connectors. |
+| `OPENBUDGET_OPENAI_API_KEY` | Turns on AI suggestions (see below); without it the AI settings are hidden. Not stored in the data volume. |
+| `OPENBUDGET_OPENAI_MODEL` | Model for AI suggestions (default `gpt-6.1-terra`). |
+| `OPENBUDGET_OPENAI_BASE_URL` | Another OpenAI-compatible endpoint (default `https://api.openai.com/v1`). |
 
 ### User commands
 
@@ -75,6 +78,20 @@ docker exec openbudget dotnet OpenBudget.dll users claim <name>
 
 A new user takes over an unowned source of the same name and its projects; `users claim` repeats that for an
 existing user. `--admin` grants no access to other users' data.
+
+## Suggestions
+
+"Suggest categories" in Uncategorized proposes a category per booking from the project's rules, earlier bookings
+with the same counterparty IBAN and similar categorized bookings, and offers rules for recurring patterns (with how
+many bookings they match and how many already have another category). "Suggest budget" in the budget editor proposes
+monthly amounts from the last up to three years, leaving out unusual one-off bookings and placing recurring payments
+in their months. Nothing is applied until accepted.
+
+With `OPENBUDGET_OPENAI_API_KEY` set, each user can turn on AI suggestions (Settings → AI suggestions, which also
+previews what is sent). Only bookings the app is unsure about are sent, with date, amount, payee, cleaned purpose,
+booking code and account type, plus the category names and rules; IBANs, references, card numbers, account names,
+balances and the users' names are removed. Bookings of another user's accounts are only sent if that user opted in
+too. Requests use the Responses API with `store: false`.
 
 ## Bank connectors
 
