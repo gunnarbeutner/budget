@@ -44,6 +44,9 @@ public sealed class MoneyMoneyStatementImport
 
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly BankStatementStore _store;
+
+    /// <summary>Where the imported statement files are stored.</summary>
+    public BankStatementStore Store => _store;
     private readonly MoneyMoneyImportService _importer;
     private readonly ChangeNotificationService _notifier;
 

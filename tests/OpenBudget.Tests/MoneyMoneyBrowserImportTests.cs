@@ -204,6 +204,47 @@ public sealed class MoneyMoneyBrowserImportTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task A_first_import_that_fails_late_leaves_nothing_behind_and_can_be_retried()
+    {
+        var (import, _) = await ServiceAsync();
+        var projectId = await UserDefaultProject.EnsureAsync(_t.System, Owner);
+        import.AfterStatementsForTests = () => throw new IOException("Simulated storage failure");
+
+        var id = await UploadAsync(import, MoneyMoneyZipFixture.Build("secret"), 4096);
+        Assert.True(import.StartImport(Owner, id, "secret"));
+        var failed = await WaitAsync(import);
+        Assert.Equal((MoneyMoneyImportPhase.Failed, MoneyMoneyImportError.Failed), (failed.Phase, failed.Error));
+
+        await using (var db = await _t.System.CreateDbContextAsync())
+        {
+            Assert.False(await db.Accounts.AnyAsync(a => a.OwnerUserId == Owner));
+            Assert.False(await db.AccountGroups.AnyAsync(g => g.OwnerUserId == Owner));
+            Assert.False(await db.Categories.AnyAsync(c => c.OwnerUserId == Owner));
+            Assert.False(await db.CategoryGroups.AnyAsync(g => g.OwnerUserId == Owner));
+            Assert.False(await db.Transactions.AnyAsync(t => t.OwnerUserId == Owner));
+            Assert.False(await db.BankStatements.AnyAsync());
+            Assert.False(await db.Budgets.AnyAsync(b => b.ProjectId == projectId));
+            Assert.False(await db.ProjectAccountAssignments.AnyAsync(a => a.ProjectId == projectId));
+            Assert.False(await db.ProjectCategoryAssignments.AnyAsync(a => a.ProjectId == projectId));
+            Assert.False(await db.CategoryRules.AnyAsync(r => r.ProjectId == projectId));
+            var state = await db.UserDataStates.SingleAsync(s => s.UserId == Owner);
+            Assert.Equal((null, null), (state.LastUploadAt, state.StructureTakenOverAt));
+        }
+        var statements = Path.Combine(_dir, "statements");
+        Assert.True(!Directory.Exists(statements) || !Directory.EnumerateFiles(statements, "*", SearchOption.AllDirectories).Any());
+
+        import.AfterStatementsForTests = null;
+        id = await UploadAsync(import, MoneyMoneyZipFixture.Build("secret"), 4096);
+        Assert.True(import.StartImport(Owner, id, "secret"));
+        var done = await WaitAsync(import);
+        Assert.True(done.Phase == MoneyMoneyImportPhase.Done, _log.All);
+        Assert.Equal(1, done.Statements!.Stored);
+        await using var check = await _t.System.CreateDbContextAsync();
+        Assert.Equal(2, await check.Accounts.CountAsync(a => a.OwnerUserId == Owner));
+        Assert.Single(await check.Budgets.Where(b => b.ProjectId == projectId).ToListAsync());
+    }
+
+    [Fact]
     public async Task Category_budgets_become_an_inactive_MoneyMoney_budget_once()
     {
         var (import, _) = await ServiceAsync();

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
+using Microsoft.EntityFrameworkCore;
 using OpenBudget.Services;
 
 namespace OpenBudget.Importers.MoneyMoney;
@@ -69,6 +70,7 @@ public sealed class MoneyMoneyBrowserImport
     private readonly MoneyMoneyStatementImport _statements;
     private readonly StructureTakeoverService _takeover;
     private readonly SystemDbContextFactory _system;
+    private readonly ChangeNotificationService _notifier;
     private readonly ILogger<MoneyMoneyBrowserImport> _logger;
     private readonly CancellationToken _stopping;
     private readonly ConcurrentDictionary<string, Upload> _uploads = new(StringComparer.Ordinal);
@@ -81,6 +83,7 @@ public sealed class MoneyMoneyBrowserImport
         SystemDbContextFactory system, ChangeNotificationService notifier, ILogger<MoneyMoneyBrowserImport> logger, IHostApplicationLifetime lifetime)
     {
         _system = system;
+        _notifier = notifier;
         _takeover = new StructureTakeoverService(system, notifier, new ChangeOrigin(), importer);
         _directory = staging.Directory;
         _importer = importer;
@@ -229,6 +232,8 @@ public sealed class MoneyMoneyBrowserImport
         var ct = _stopping;
         // The final state is published only after the temporary files are gone.
         MoneyMoneyImportJob? outcome = null;
+        // A first import that fails is undone completely, so it can simply be tried again.
+        var first = await IsFirstImportAsync(userId, ct);
         try
         {
             var folder = MoneyMoneyArchive.Extract(zipPath, workDir);
@@ -242,6 +247,16 @@ public sealed class MoneyMoneyBrowserImport
             Set(userId, new MoneyMoneyImportJob(MoneyMoneyImportPhase.Importing));
             var result = await _importer.ImportFromFileAsync(userId, plain, ct);
 
+            MoneyMoneyBudgetSummary budgets;
+            // The import is one-time: its accounts, categories and their groups are OpenBudget's to edit from here on.
+            await using (var db = await _system.CreateDbContextAsync(ct))
+            {
+                await _takeover.TakeOverAsync(userId, ct);
+                // Everything imported shows in the owner's default project, with MoneyMoney's budgets.
+                await DefaultProjectAssigner.AssignImportedAsync(db, userId, ct);
+                budgets = await MoneyMoneyBudgetImport.ImportAsync(db, userId, plain, DateTime.UtcNow.Year, ct);
+            }
+
             Set(userId, new MoneyMoneyImportJob(MoneyMoneyImportPhase.Statements, Result: result));
             var lastReport = DateTime.MinValue;
             var summary = await _statements.ImportFolderAsync(userId, plain, folder.StatementsDirectory, (done, total) =>
@@ -250,17 +265,7 @@ public sealed class MoneyMoneyBrowserImport
                 lastReport = DateTime.UtcNow;
                 Set(userId, new MoneyMoneyImportJob(MoneyMoneyImportPhase.Statements, Done: done, Total: total, Result: result));
             }, ct);
-
-            MoneyMoneyBudgetSummary budgets;
-            // The import is one-time: its accounts, categories and their groups are OpenBudget's to edit from here on.
-            await using (var db = await _system.CreateDbContextAsync(ct))
-            {
-                var ownerId = userId;
-                await _takeover.TakeOverAsync(ownerId, ct);
-                // Everything imported shows in the owner's default project.
-                await DefaultProjectAssigner.AssignImportedAsync(db, ownerId, ct);
-                budgets = await MoneyMoneyBudgetImport.ImportAsync(db, ownerId, plain, DateTime.UtcNow.Year, ct);
-            }
+            if (AfterStatementsForTests is { } hook) await hook();
 
             outcome = new MoneyMoneyImportJob(MoneyMoneyImportPhase.Done, Result: result, Statements: summary, Budgets: budgets);
             _logger.LogInformation("MoneyMoney import from the browser for user {User}: {Transactions} transactions, {Stored} statements stored.",
@@ -291,6 +296,8 @@ public sealed class MoneyMoneyBrowserImport
         }
         finally
         {
+            if (outcome is { Phase: MoneyMoneyImportPhase.Failed, Error: not MoneyMoneyImportError.ImportFinished } && first)
+                await UndoAsync(userId);
             TryDelete(zipPath);
             TryDeleteDirectory(workDir);
             if (outcome != null) Set(userId, outcome);
@@ -298,6 +305,37 @@ public sealed class MoneyMoneyBrowserImport
     }
 
     private static MoneyMoneyImportJob Failed(MoneyMoneyImportError error) => new(MoneyMoneyImportPhase.Failed, error);
+
+    /// <summary>Runs after the statements step of an import; tests use it to make an import fail late.</summary>
+    internal Func<Task>? AfterStatementsForTests { get; set; }
+
+    private async Task<bool> IsFirstImportAsync(string userId, CancellationToken ct)
+    {
+        await using var db = await _system.CreateDbContextAsync(ct);
+        return await db.UserDataStates.AsNoTracking().Where(s => s.UserId == userId).Select(s => s.LastUploadAt).FirstOrDefaultAsync(ct) == null;
+    }
+
+    private async Task UndoAsync(string userId)
+    {
+        try
+        {
+            await _importer.WithOwnerLockAsync(userId, async () =>
+            {
+                await using var db = await _system.CreateDbContextAsync(CancellationToken.None);
+                await MoneyMoneyImportCleanup.RemoveAsync(db, _statements.Store, userId, CancellationToken.None);
+                return true;
+            }, CancellationToken.None);
+            _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: userId));
+            _notifier.Publish(new DataChange(DataArea.ImportState, OwnerUserId: userId));
+            _notifier.Publish(new DataChange(DataArea.Projects));
+        }
+#pragma warning disable CA1031 // the import already failed; a failing undo is logged and the user is told the import failed
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _logger.LogError(ex, "Undoing the failed MoneyMoney import of user {User} failed.", userId);
+        }
+    }
 
     private void Set(string userId, MoneyMoneyImportJob job)
     {
