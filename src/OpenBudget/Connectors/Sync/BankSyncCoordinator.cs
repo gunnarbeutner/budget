@@ -274,7 +274,8 @@ public sealed class BankSyncCoordinator : IHostedService, IDisposable
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        await _shutdown.CancelAsync();
+        try { await _shutdown.CancelAsync(); }
+        catch (ObjectDisposedException) { return; } // the container already disposed it: nothing runs any more
         List<Task> running;
         lock (_lock) running = _jobs.Values.Select(j => j.Task).Where(t => t != null).Select(t => t!).ToList();
         try { await Task.WhenAll(running).WaitAsync(TimeSpan.FromSeconds(10), cancellationToken); }
