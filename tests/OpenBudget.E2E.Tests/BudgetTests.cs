@@ -31,11 +31,12 @@ public sealed class BudgetTests : EndToEndTestBase
         await nameField.FillAsync("E2E Wizard Budget");
         await nameField.BlurAsync();
 
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Next: Generate Predictions" }).ClickAsync();
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Next: Suggest amounts" }).ClickAsync();
 
-        // Step 2: the prediction table renders with a Save button.
-        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Step 2: Review Predicted Budget" }))
+        // Step 2: the suggested amounts with their basis per category, and a Save button.
+        await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Step 2: Review the budget" }))
             .ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("budget-suggest-basis").First).ToBeVisibleAsync();
         await Page.GetByRole(AriaRole.Button, new() { Name = "Save Budget" }).ClickAsync();
 
         // Step 3: success screen.

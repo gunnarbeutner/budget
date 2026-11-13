@@ -41,20 +41,7 @@
                                 <td><input type="checkbox" class="form-check-input" aria-label="@r.Name" checked="@accepted.Contains(r.Key)" @onchange="e => Toggle(r.Key, e)" /></td>
                                 <td>
                                     <div>@r.Name</div>
-                                    @foreach (var o in r.Outliers)
-                                    {
-                                        <div class="small text-body-secondary" data-testid="budget-suggest-outlier">
-                                            @L[o.Excluded ? "Outlier_Excluded" : "Outlier_Kept", Formatting.FormatMoneyDe(o.Amount), o.Payee ?? "", o.Date.ToString("MM/yyyy", System.Globalization.CultureInfo.InvariantCulture), L["Kind_" + o.Kind]]
-                                        </div>
-                                    }
-                                    @if (!string.IsNullOrEmpty(r.Explanation))
-                                    {
-                                        <div class="small fst-italic">@r.Explanation</div>
-                                    }
-                                    @if (r.Flagged)
-                                    {
-                                        <div class="small text-warning-emphasis" data-testid="budget-suggest-flag">@L["Flag_Deviation"]</div>
-                                    }
+                                    <BudgetSuggestionNotes Row="r" />
                                 </td>
                                 <td class="text-end">@Formatting.FormatMoneyDe(Current.GetValueOrDefault(r.Key)?.Sum() ?? 0m)</td>
                                 <td class="text-end">@Formatting.FormatMoneyDe(r.Baseline.Sum())</td>

@@ -98,10 +98,10 @@
     <value>Quelle</value>
   </data>
   <data name="Form_SourcePredict" xml:space="preserve">
-    <value>Aus Historie prognostizieren</value>
+    <value>Aus der Historie vorschlagen</value>
   </data>
   <data name="Form_SourcePredictHelp" xml:space="preserve">
-    <value>Erzeugt monatliche Beträge für jede getrackte Kategorie mit saisonal angepasster Historie.</value>
+    <value>Nimmt die Ausgaben des Vorjahres je Kategorie, lässt jährliche und vierteljährliche Zahlungen in ihren Monaten und lässt einmalige Käufe weg.</value>
   </data>
   <data name="Form_SourceClone" xml:space="preserve">
     <value>Bestehendes Budget klonen</value>
@@ -116,7 +116,7 @@
     <value> (aktiv)</value>
   </data>
   <data name="Button_NextGenerate" xml:space="preserve">
-    <value>Weiter: Prognosen erstellen</value>
+    <value>Weiter: Beträge vorschlagen</value>
   </data>
   <data name="Button_NextClone" xml:space="preserve">
     <value>Weiter: Budget klonen</value>
@@ -125,16 +125,16 @@
     <value>Abbrechen</value>
   </data>
   <data name="Step_Two_Title" xml:space="preserve">
-    <value>Schritt 2: Prognostiziertes Budget prüfen</value>
+    <value>Schritt 2: Budget prüfen</value>
   </data>
   <data name="Status_GeneratingShort" xml:space="preserve">
-    <value>Prognosen werden erstellt...</value>
+    <value>Beträge werden vorgeschlagen…</value>
   </data>
   <data name="Status_GeneratingLong" xml:space="preserve">
-    <value>Historische Daten werden analysiert und Prognosen erstellt...</value>
+    <value>Deine Buchungen werden ausgewertet und Beträge vorgeschlagen…</value>
   </data>
   <data name="Predictions_Intro" xml:space="preserve">
-    <value>Budgetprognosen basieren auf historischen Ausgabendaten des Vorjahres und nutzen monatsgleiche Muster zur saisonalen Anpassung. Du kannst die prognostizierten Beträge vor dem Speichern anpassen.</value>
+    <value>Unter jeder Kategorie: worauf die Beträge beruhen und welche einmaligen Buchungen weggelassen wurden. Passe die Beträge vor dem Speichern an.</value>
   </data>
   <data name="Table_Category" xml:space="preserve">
     <value>Kategorie</value>
@@ -177,5 +177,8 @@
   </data>
   <data name="Button_CreateAnother" xml:space="preserve">
     <value>Weiteres Budget erstellen</value>
+  </data>
+  <data name="Error_Ai" xml:space="preserve">
+    <value>KI nicht verfügbar: {0}</value>
   </data>
 </root>

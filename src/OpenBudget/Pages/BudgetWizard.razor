@@ -8,7 +8,8 @@
 @inject BudgetService BudgetService
 @inject ProjectService ProjectService
 @inject BudgetEntryService BudgetEntryService
-@inject BudgetPredictionService BudgetPredictionService
+@inject OpenBudget.Assist.BudgetSuggestionService BudgetSuggestions
+@inject OpenBudget.Assist.AssistSettingsService AssistSettings
 @inject CategoryHierarchyService CategoryHierarchyService
 @inject NavigationManager Navigation
 @inject IStringLocalizer<BudgetWizard> L
@@ -126,6 +127,10 @@ else if (step == 2)
                 <p class="text-body-secondary">
                     @L["Predictions_Intro"]
                 </p>
+                @if (suggestionError is { } aiError)
+                {
+                    <div class="small text-danger mb-2" role="alert">@L["Error_Ai", aiError]</div>
+                }
 
                 var sortedPredictions = predictions
                     .OrderBy(p => categoryNames.GetValueOrDefault(p.Key, L["Category_Unknown"]))
@@ -157,7 +162,13 @@ else if (step == 2)
                                 @foreach (var (key, amounts) in wizIncomeRows)
                                 {
                                     <tr @key="key">
-                                        <td>@categoryNames.GetValueOrDefault(key, L["Category_Unknown"])</td>
+                                        <td>
+                                            <div>@categoryNames.GetValueOrDefault(key, L["Category_Unknown"])</div>
+                                            @if (suggestionRows.TryGetValue(key, out var suggestionRow))
+                                            {
+                                                <BudgetSuggestionNotes Row="suggestionRow" ShowBasis="true" />
+                                            }
+                                        </td>
                                         @for (int m = 0; m < 12; m++)
                                         {
                                             var idx = m;
@@ -189,7 +200,13 @@ else if (step == 2)
                                 @foreach (var (key, amounts) in wizExpenseRows)
                                 {
                                     <tr @key="key">
-                                        <td>@categoryNames.GetValueOrDefault(key, L["Category_Unknown"])</td>
+                                        <td>
+                                            <div>@categoryNames.GetValueOrDefault(key, L["Category_Unknown"])</div>
+                                            @if (suggestionRows.TryGetValue(key, out var suggestionRow))
+                                            {
+                                                <BudgetSuggestionNotes Row="suggestionRow" ShowBasis="true" />
+                                            }
+                                        </td>
                                         @for (int m = 0; m < 12; m++)
                                         {
                                             var idx = m;
@@ -267,8 +284,10 @@ else if (step == 3)
     private Dictionary<(long Id, CategoryItemType ItemType), decimal[]>? predictions;
     private Dictionary<(long Id, CategoryItemType ItemType), string>? categoryNames;
     private HashSet<(long Id, CategoryItemType ItemType)> incomeKeys = new();
+    private Dictionary<(long Id, CategoryItemType ItemType), OpenBudget.Assist.BudgetSuggestionRow> suggestionRows = new();
+    private string? suggestionError;
 
-    // Source of step-2 numbers: "predict" (seasonal forecast from history) or "clone"
+    // Source of step-2 numbers: "predict" (the budget suggestion from history) or "clone"
     // (copy an existing budget's monthly amounts so the user only tweaks deltas).
     private string sourceMode = "predict";
     private int sourceBudgetId = 0;
@@ -323,6 +342,9 @@ else if (step == 3)
             .ToDictionary(c => c.Id, c => c);
 
         predictions = new Dictionary<(long Id, CategoryItemType ItemType), decimal[]>();
+        suggestionRows = new();
+        suggestionError = null;
+        var suggestKeys = new List<(long Id, CategoryItemType ItemType)>();
 
         if (sourceMode == "clone" && sourceBudgetId > 0)
         {
@@ -335,29 +357,14 @@ else if (step == 3)
         }
         else
         {
-            // Predict from history per tracking item (default behaviour).
+            // Suggest from history per tracking item; filled in once the names are known.
             var trackingItems = await ProjectService.GetProjectTrackingItemsAsync(selectedProjectId);
             foreach (var item in trackingItems)
             {
-                if (item.CategoryGroupId.HasValue)
-                {
-                    if (!groupById.ContainsKey(item.CategoryGroupId.Value)) continue;
-                    var key = (item.CategoryGroupId.Value, CategoryItemType.Group);
-                    var isIncome = incomeKeys.Contains(key);
-                    var monthlyPredictions = await BudgetPredictionService.PredictMonthlySpendingForCategoryAsync(
-                        item.CategoryGroupId.Value, selectedYear, ownerIdForPredict, isIncome);
-                    predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
-                }
-                else if (item.CategoryId.HasValue)
-                {
-                    if (!categoryById.ContainsKey(item.CategoryId.Value)) continue;
-                    var key = (item.CategoryId.Value, CategoryItemType.Category);
-                    var isIncome = incomeKeys.Contains(key);
-                    var monthlyPredictions = await BudgetPredictionService.PredictMonthlySpendingForLeafCategoryAsync(
-                        item.CategoryId.Value, selectedYear, ownerIdForPredict, isIncome);
-                    predictions[key] = monthlyPredictions.Select(p => Math.Round(p, 2)).ToArray();
-                }
+                if (item.CategoryGroupId is { } gid && groupById.ContainsKey(gid)) suggestKeys.Add((gid, CategoryItemType.Group));
+                else if (item.CategoryId is { } cid && categoryById.ContainsKey(cid)) suggestKeys.Add((cid, CategoryItemType.Category));
             }
+            foreach (var key in suggestKeys) predictions[key] = new decimal[12];
         }
 
         // Build display names from whatever ended up in predictions (handles both paths,
@@ -398,6 +405,21 @@ else if (step == 3)
             key => parentGroupByKey.TryGetValue(key, out var pg)
                 && pg.HasValue && rowGroupIds.Contains(pg.Value));
 
+        if (suggestKeys.Count > 0)
+        {
+            var inputs = suggestKeys
+                .Select(k => new OpenBudget.Assist.BudgetSuggestionInput(k, categoryNames.GetValueOrDefault(k, L["Category_Unknown"]), incomeKeys.Contains(k)))
+                .ToList();
+            var useAi = AssistSettings.Available && await AssistSettings.GetOptInAsync();
+            var result = await BudgetSuggestions.SuggestAsync(selectedProjectId, selectedYear, inputs, useAi);
+            suggestionError = result.AiError;
+            foreach (var row in result.Rows)
+            {
+                predictions[row.Key] = row.Suggested.Select(p => Math.Round(p, 2)).ToArray();
+                suggestionRows[row.Key] = row;
+            }
+        }
+
         isGenerating = false;
     }
 
@@ -425,6 +447,8 @@ else if (step == 3)
         notes = "";
         predictions = null;
         categoryNames = null;
+        suggestionRows = new();
+        suggestionError = null;
         sourceMode = "predict";
         sourceBudgetId = 0;
     }

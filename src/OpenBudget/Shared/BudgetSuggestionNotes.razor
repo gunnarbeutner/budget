@@ -1,0 +1,30 @@
+@using OpenBudget.Assist
+@using OpenBudget.Services
+@inject IStringLocalizer<BudgetSuggestDialog> L
+
+@* How a budget suggestion for one row came about: the unusual bookings (left out or kept), the AI's explanation, a
+   deviation flag and, with ShowBasis, the basis. Shared by the "Suggest budget" dialog and the budget wizard. *@
+
+@foreach (var o in Row.Outliers)
+{
+    <div class="small text-body-secondary" data-testid="budget-suggest-outlier">
+        @L[o.Excluded ? "Outlier_Excluded" : "Outlier_Kept", Formatting.FormatMoneyDe(o.Amount), o.Payee ?? "", o.Date.ToString("MM/yyyy", System.Globalization.CultureInfo.InvariantCulture), L["Kind_" + o.Kind]]
+    </div>
+}
+@if (!string.IsNullOrEmpty(Row.Explanation))
+{
+    <div class="small fst-italic">@Row.Explanation</div>
+}
+@if (Row.Flagged)
+{
+    <div class="small text-warning-emphasis" data-testid="budget-suggest-flag">@L["Flag_Deviation"]</div>
+}
+@if (ShowBasis)
+{
+    <div><span class="badge text-bg-light" data-testid="budget-suggest-basis" title="@L["MonthsOfData", Row.MonthsOfData]">@L["Basis_" + Row.Basis]</span></div>
+}
+
+@code {
+    [Parameter, EditorRequired] public BudgetSuggestionRow Row { get; set; } = null!;
+    [Parameter] public bool ShowBasis { get; set; }
+}
