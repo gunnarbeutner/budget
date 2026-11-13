@@ -70,4 +70,7 @@
   <data name="NoMatch" xml:space="preserve">
     <value>Keine passende Kategorie.</value>
   </data>
+  <data name="Suggested" xml:space="preserve">
+    <value>Vorschlag</value>
+  </data>
 </root>

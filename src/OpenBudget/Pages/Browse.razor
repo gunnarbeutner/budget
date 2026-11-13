@@ -463,11 +463,6 @@
                                             {
                                                 <span class="cat-pill" style="@pillStyle" data-testid="tx-category-label" title="@row.CategoryName">@row.CategoryName</span>
                                             }
-                                            @if (row.CanEdit && !hasCategory && _suggestions.TryGetValue(row.Id, out var suggestion))
-                                            {
-                                                <SuggestionChip Suggestion="suggestion" OnAccept="() => AcceptSuggestionAsync(row, suggestion)"
-                                                                OnReject="() => RejectSuggestionAsync(row)" OnEdit="e => OpenPickerFromRow(row, e)" />
-                                            }
                                         }
                                     </div>
                                     <div class="tx-payee">
@@ -508,6 +503,12 @@
                                         @if (!string.IsNullOrEmpty(row.Note))
                                         {
                                             <div class="tx-comment" data-testid="tx-note"><i class="bi bi-sticky me-1" aria-hidden="true"></i>@row.Note</div>
+                                        }
+                                        @if (showCategoryColumn && row.CanEdit && string.IsNullOrEmpty(row.CategoryName)
+                                             && _suggestions.TryGetValue(row.Id, out var suggestion) && suggestion.Confidence >= SuggestionChip.InlineConfidence)
+                                        {
+                                            <SuggestionChip Suggestion="suggestion" OnAccept="() => AcceptSuggestionAsync(row, suggestion)"
+                                                            OnReject="() => RejectSuggestionAsync(row)" />
                                         }
                                     </div>
                                     <div class="tx-amount @(row.Amount < 0 ? "neg" : "")">@Formatting.FormatMoneyDe(row.Amount, row.Currency)</div>
@@ -557,6 +558,8 @@
 @if (popup == PopupKind.Picker && pickerData is { } pickerModel)
 {
     <CategoryPicker Data="pickerModel" CurrentCategoryId="popupCurrentCategory"
+                    SuggestedCategoryId="popupSuggestion?.CategoryId"
+                    SuggestedHint="@(popupSuggestion is { } ps ? $"{(int)Math.Round(ps.Confidence * 100)} %" : null)"
                     AllowRemove="@(_rulePickPayee == null)" X="popupX" Y="popupY" OnPick="PickCategoryAsync" OnClose="ClosePopup" />
 }
 
@@ -624,6 +627,7 @@
     private double popupY;
     private List<long> popupTargets = [];
     private long? popupCurrentCategory;
+    private OpenBudget.Assist.TxCategorySuggestion? popupSuggestion;
     private IReadOnlyList<ContextMenuItem> contextItems = [];
     private (long Id, string Name)? contextStatement;
     private List<OffsetTarget> contextOffsetTargets = [];

@@ -58,26 +58,23 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Edit" xml:space="preserve">
-    <value>Andere Kategorie wählen</value>
-  </data>
   <data name="Accept" xml:space="preserve">
-    <value>Übernehmen</value>
+    <value>Vorschlag übernehmen</value>
   </data>
   <data name="Reject" xml:space="preserve">
-    <value>Verwerfen</value>
+    <value>Vorschlag verwerfen</value>
   </data>
   <data name="Source_ai" xml:space="preserve">
-    <value>KI-Vorschlag</value>
+    <value>KI</value>
   </data>
   <data name="Source_iban" xml:space="preserve">
-    <value>Gleiches Konto wie frühere Buchungen</value>
+    <value>Gleiche IBAN wie frühere Buchungen</value>
   </data>
   <data name="Source_rule" xml:space="preserve">
-    <value>Passt zu einer Regel</value>
+    <value>Regel</value>
   </data>
   <data name="Source_knn" xml:space="preserve">
-    <value>Ähnliche Buchungen</value>
+    <value>Aus ähnlichen Buchungen</value>
   </data>
   <data name="Split" xml:space="preserve">
     <value>Aufteilen</value>
@@ -89,6 +86,12 @@
     <value>Die Bestellung kam in mehreren Lieferungen; prüfe, welche Artikel diese Zahlung betrifft.</value>
   </data>
   <data name="Source_order" xml:space="preserve">
-    <value>Bestellte Artikel</value>
+    <value>Aus bestellten Artikeln</value>
+  </data>
+  <data name="Source_knn_Count" xml:space="preserve">
+    <value>Aus {0} ähnlichen Buchungen</value>
+  </data>
+  <data name="Why" xml:space="preserve">
+    <value>Warum dieser Vorschlag?</value>
   </data>
 </root>

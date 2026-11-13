@@ -1,54 +1,100 @@
+@using System.Text.RegularExpressions
 @using OpenBudget.Assist
 @using OpenBudget.Services
 @inject IStringLocalizer<SuggestionChip> L
 
-@* A category suggestion on a booking row: the category with its confidence and source (the rationale as tooltip),
-   accept, reject, or pick another category. *@
+@* A category suggestion in a booking row's main column: the category (or the split parts) with its confidence, accept and
+   dismiss. The tooltip carries the full path and where the suggestion came from. Rows only show suggestions of at
+   least InlineConfidence; weaker ones are offered in the category picker instead. *@
 
 <span class="suggest-chip" data-testid="suggest-chip" title="@Title" @onclick:stopPropagation="true">
-    <i class="bi @Icon" aria-hidden="true"></i>
-    <button type="button" class="suggest-chip-name" data-testid="suggest-chip-edit" title="@L["Edit"]" @onclick="e => OnEdit.InvokeAsync(e)">@Suggestion.CategoryPath</button>
-    <span class="suggest-chip-conf">@((int)Math.Round(Suggestion.Confidence * 100)) %</span>
     @if (Suggestion.Split is { } parts)
     {
         <span class="suggest-chip-split" data-testid="suggest-chip-split">
-            @L["Split"]:
-            @foreach (var p in parts)
+            <span>@L["Split"]:</span>
+            @for (var i = 0; i < parts.Count; i++)
             {
-                <span class="suggest-chip-part" title="@p.Label">@p.CategoryPath @Formatting.FormatMoneyDe(p.AmountCents / 100m)</span>
+                var p = parts[i];
+                <span class="suggest-chip-part" title="@p.Label">@Leaf(p.CategoryPath) @Formatting.FormatMoneyDe(Math.Abs(p.AmountCents) / 100m)@(i < parts.Count - 1 ? " ·" : "")</span>
             }
         </span>
     }
+    else
+    {
+        <span class="suggest-chip-name" data-testid="suggest-chip-name">@Leaf(Suggestion.CategoryPath)</span>
+    }
+    <span class="suggest-chip-conf" data-testid="suggest-chip-conf">· @((int)Math.Round(Suggestion.Confidence * 100)) %</span>
     @if (Suggestion.ShipmentUnclear)
     {
-        <span class="suggest-chip-conf" data-testid="suggest-chip-unclear" title="@L["ShipmentUnclear_Title"]">@L["ShipmentUnclear"]</span>
+        <span class="suggest-chip-unclear" data-testid="suggest-chip-unclear" title="@L["ShipmentUnclear_Title"]">
+            <i class="bi bi-exclamation-triangle" aria-hidden="true"></i> @L["ShipmentUnclear"]
+        </span>
     }
-    <button type="button" class="suggest-chip-btn" data-testid="suggest-chip-accept" aria-label="@L["Accept"]"
-            title="@L["Accept"]" @onclick="() => OnAccept.InvokeAsync()">
-        <i class="bi bi-check-lg" aria-hidden="true"></i>
-    </button>
-    <button type="button" class="suggest-chip-btn" data-testid="suggest-chip-reject" aria-label="@L["Reject"]" title="@L["Reject"]" @onclick="() => OnReject.InvokeAsync()">
-        <i class="bi bi-x-lg" aria-hidden="true"></i>
-    </button>
+    @if (showWhy)
+    {
+        <span class="suggest-chip-why" data-testid="suggest-chip-why-text">@Source</span>
+    }
+    <span class="suggest-chip-actions">
+        <button type="button" class="suggest-chip-btn" data-testid="suggest-chip-why" aria-label="@L["Why"]" aria-expanded="@(showWhy ? "true" : "false")"
+                title="@Source" @onclick="() => showWhy = !showWhy">
+            <i class="bi bi-info-circle" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="suggest-chip-btn" data-testid="suggest-chip-accept" aria-label="@($"{L["Accept"]} ({Source})")"
+                title="@L["Accept"]" @onclick="() => OnAccept.InvokeAsync()">
+            <i class="bi bi-check-lg" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="suggest-chip-btn" data-testid="suggest-chip-reject" aria-label="@L["Reject"]"
+                title="@L["Reject"]" @onclick="() => OnReject.InvokeAsync()">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+    </span>
 </span>
 
 @code {
+    /// <summary>Suggestions below this confidence stay out of the row and appear only in the category picker.</summary>
+    public const double InlineConfidence = 0.5;
+
     [Parameter, EditorRequired] public TxCategorySuggestion Suggestion { get; set; } = null!;
     [Parameter] public EventCallback OnAccept { get; set; }
     [Parameter] public EventCallback OnReject { get; set; }
-    [Parameter] public EventCallback<MouseEventArgs> OnEdit { get; set; }
 
-    /// <summary>The booking is still pending.</summary>
-
-
-    private string Icon => Suggestion.Source switch
+    // Category paths are "Group › Leaf"; the row shows the leaf, the tooltip the path.
+    private static string Leaf(string? path)
     {
-        "ai" => "bi-stars",
-        "iban" => "bi-bank",
-        "rule" => "bi-funnel",
-        "order" => "bi-box-seam",
-        _ => "bi-people",
-    };
+        if (string.IsNullOrEmpty(path)) return "";
+        var i = path.LastIndexOf('›');
+        return i < 0 ? path : path[(i + 1)..].Trim();
+    }
 
-    private string Title => L["Source_" + Suggestion.Source] + (string.IsNullOrEmpty(Suggestion.Rationale) ? "" : ": " + Suggestion.Rationale);
+    private bool showWhy;
+
+    private string Source => SourceText(L, Suggestion);
+
+    private string Title
+    {
+        get
+        {
+            var head = Suggestion.Split is { } parts
+                ? string.Join("\n", parts.Select(p => $"{p.CategoryPath} {Formatting.FormatMoneyDe(Math.Abs(p.AmountCents) / 100m)}"))
+                : Suggestion.CategoryPath ?? "";
+            return head + "\n" + Source;
+        }
+    }
+
+    /// <summary>Where a suggestion came from, in words: "From 4 similar bookings", "Rule: …", "Same IBAN", "AI: …".</summary>
+    public static string SourceText(IStringLocalizer<SuggestionChip> l, TxCategorySuggestion s)
+    {
+        var rationale = s.Rationale ?? "";
+        switch (s.Source)
+        {
+            case "knn":
+                var m = Regex.Match(rationale, @"^(\d+) of");
+                return m.Success ? l["Source_knn_Count", int.Parse(m.Groups[1].Value)] : l["Source_knn"];
+            case "iban":
+                return l["Source_iban"];
+            default:
+                var label = l["Source_" + s.Source].Value;
+                return string.IsNullOrEmpty(rationale) ? label : label + ": " + rationale;
+        }
+    }
 }

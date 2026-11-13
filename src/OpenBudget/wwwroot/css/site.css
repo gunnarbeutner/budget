@@ -2114,52 +2114,87 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 
 .suggest-chip {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 3px;
-    max-width: 112px;
-    margin-top: 2px;
-    padding: 0 4px;
-    font-size: 11px;
-    line-height: 1.5;
-    border-radius: 4px;
+    gap: 2px 6px;
+    align-self: flex-start;
+    max-width: 100%;
+    margin-top: 1px;
+    padding: 1px 4px 1px 8px;
+    font-size: 12.5px;
+    line-height: 1.4;
+    border-radius: 6px;
     border: 1px dashed var(--ob-input-border);
-    color: var(--ob-muted);
+    color: var(--ob-text-2);
+    cursor: default;
 }
 
 .suggest-chip-name {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    border: 0;
-    padding: 0;
-    background: none;
-    color: inherit;
-    font: inherit;
+    font-weight: 500;
 }
 
 .suggest-chip-conf {
     white-space: nowrap;
+    color: var(--ob-muted);
+    font-variant-numeric: tabular-nums;
 }
 
 .suggest-chip-split {
     display: inline-flex;
     flex-wrap: wrap;
     gap: 0 6px;
+    min-width: 0;
 }
 
 .suggest-chip-part {
     white-space: nowrap;
+    font-weight: 500;
+}
+
+.suggest-chip-unclear {
+    white-space: nowrap;
+    font-size: 11.5px;
+    color: var(--bs-warning-text-emphasis);
+}
+
+.suggest-chip-why {
+    flex-basis: 100%;
+    font-size: 12px;
+    color: var(--ob-muted);
+}
+
+.suggest-chip-actions {
+    display: inline-flex;
+    gap: 2px;
 }
 
 .suggest-chip-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
     border: 0;
-    padding: 0 1px;
+    border-radius: 4px;
+    padding: 0;
     background: none;
-    color: inherit;
+    color: var(--ob-muted);
     line-height: 1;
 }
 
 .suggest-chip-btn:hover,
-.suggest-chip-name:hover {
+.suggest-chip-btn:focus-visible {
+    background: var(--ob-row-hover-bg);
     color: var(--bs-link-color);
+}
+
+.cp-hint {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--bs-secondary-color);
+    font-variant-numeric: tabular-nums;
 }

@@ -203,7 +203,7 @@ internal static class EditingSeed
         await db.SaveChangesAsync();
     }
 
-    private static void Add(BudgetDbContext db, long id, long account, long cents, string payee, DateTime date, string? purpose = null, bool isNew = false, long? category = null) =>
+    internal static void Add(BudgetDbContext db, long id, long account, long cents, string payee, DateTime date, string? purpose = null, bool isNew = false, long? category = null) =>
         db.Transactions.Add(new Transaction
         {
             Id = id,
