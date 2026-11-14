@@ -131,6 +131,24 @@ public sealed class AmazonTests
         Assert.Equal(1, order.Items[2].Shipment);
     }
 
+    /// <summary>An item as amazon.de shows it today: an empty quantity element, the count only as a badge on the image (above one).</summary>
+    private static string BadgeItem(string asin, string title, int quantity, string price) =>
+        $"""<div data-component="purchasedItems"><div data-component="itemImage"><a href="/-/en/dp/{asin}"><img src="x.jpg"></a>"""
+        + (quantity > 1 ? $"""<span class="od-item-view-qty">{quantity}</span>""" : "") + "</div>"
+        + $"""<div data-component="itemTitle"><a class="a-link-normal" href="/-/en/dp/{asin}?ref=x">{WebUtility.HtmlEncode(title)}</a></div>"""
+        + """<div data-component="orderedMerchant">Sold by: Example Seller</div>"""
+        + $"""<div class="" data-component="quantity">\n    \n  </div><div data-component="unitPrice"><span>{price}</span></div></div>""";
+
+    [Fact]
+    public void The_quantity_comes_from_the_image_badge_and_never_from_the_price()
+    {
+        var html = OrderHtml("28 October 2026", "€13.52",
+            (0, BadgeItem("B000000011", "Example coin cells 4 pack", 1, "€5.52")),
+            (1, BadgeItem("B000000012", "Example coin cells 6 pack", 2, "€4.00")));
+        var order = AmazonPages.ParseOrderDetails(OrderA, html);
+        Assert.Equal([(1, 5.52m), (2, 4.00m)], order.Items.Select(i => (i.Quantity, i.Price!.Value)));
+    }
+
     [Fact]
     public void A_digital_order_page_without_items_still_reads()
     {

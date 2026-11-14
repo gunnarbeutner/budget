@@ -228,6 +228,7 @@ internal static partial class AmazonPages
         var items = new List<RemoteOrderItem>();
         var starts = Markers(html, "itemTitle");
         var shipments = Markers(html, "shipmentStatus");
+        var images = Markers(html, "itemImage");
         for (var i = 0; i < starts.Count; i++)
         {
             var end = i + 1 < starts.Count ? starts[i + 1] : Math.Min(html.Length, starts[i] + 8000);
@@ -236,14 +237,41 @@ internal static partial class AmazonPages
             var title = anchor.Success ? Text(anchor.Groups["text"].Value) : Text(block[..Math.Min(block.Length, 600)]);
             if (string.IsNullOrWhiteSpace(title)) continue;
             var asin = anchor.Success && Asin().Match(anchor.Groups["href"].Value) is { Success: true } a ? a.Groups["asin"].Value : null;
-            var quantity = TextAfter(block, "quantity", 300) is { } q && Number().Match(q) is { Success: true } n
-                && int.TryParse(n.Value, CultureInfo.InvariantCulture, out var qty) && qty is > 0 and < 1000 ? qty : 1;
+            var quantity = Quantity(html, images, starts, i, block);
             decimal? price = TextAfter(block, "unitPrice", 300) is { } p && Money().Match(p) is { Success: true } pm ? ParseAmount(pm.Value) : null;
             var shipment = Math.Max(0, shipments.Count(at => at < starts[i]) - 1);
             items.Add(new RemoteOrderItem(Truncate(title, 500), quantity, price is { } pr ? Math.Abs(pr) : null, asin, shipment));
         }
         return new RemoteOrder(orderId, date, total, currency, items);
     }
+
+    /// <summary>
+    /// An item's quantity: the badge on its image (<c>od-item-view-qty</c>, shown only above one; it sits between the
+    /// item's image and its title, so it is looked for from this item's image to the next one's), else the number inside
+    /// its own <c>quantity</c> element (never text after it), else 1.
+    /// </summary>
+    private static int Quantity(string html, List<int> images, List<int> titles, int i, string block)
+    {
+        if (images.Count == titles.Count)
+        {
+            var from = images[i];
+            var to = i + 1 < images.Count ? images[i + 1] : Math.Min(html.Length, titles[i] + 8000);
+            if (QuantityBadge().Match(html[from..to]) is { Success: true } badge && Count(badge.Groups["n"].Value) is { } b) return b;
+        }
+        if (QuantityElement().Match(block) is { Success: true } own && Number().Match(Text(own.Groups["inner"].Value)) is { Success: true } n
+            && Count(n.Value) is { } q)
+            return q;
+        return 1;
+    }
+
+    private static int? Count(string text) =>
+        int.TryParse(text, CultureInfo.InvariantCulture, out var n) && n is > 0 and < 1000 ? n : null;
+
+    [GeneratedRegex(@"class=""[^""]*\bod-item-view-qty\b[^""]*""[^>]*>\s*(?<n>\d+)\s*<", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
+    private static partial Regex QuantityBadge();
+
+    [GeneratedRegex(@"data-component=""quantity""[^>]*>(?<inner>.*?)</div>", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture | RegexOptions.Singleline, 1000)]
+    private static partial Regex QuantityElement();
 
     private static List<int> Markers(string html, string component)
     {
