@@ -38,6 +38,9 @@ internal static class E2ESeed
     public static async Task ResetAsync(IDbContextFactory<BudgetDbContext> factory)
     {
         await using var db = await factory.CreateDbContextAsync();
+        db.ReceiptInvoices.RemoveRange(db.ReceiptInvoices.IgnoreQueryFilters());
+        db.ItemCategoryMemory.RemoveRange(db.ItemCategoryMemory.IgnoreQueryFilters());
+        db.ReceiptSettings.RemoveRange(db.ReceiptSettings.IgnoreQueryFilters());
         db.Holdings.RemoveRange(db.Holdings.IgnoreQueryFilters());
         db.PortfolioChartPoints.RemoveRange(db.PortfolioChartPoints.IgnoreQueryFilters());
         db.BankStatements.RemoveRange(db.BankStatements.IgnoreQueryFilters());
