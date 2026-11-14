@@ -80,6 +80,7 @@ public sealed class AmazonOrderTests : EndToEndTestBase
         await Expect(row.GetByTestId("account-picker-toggle")).ToHaveTextAsync("Old Example Card (closed)");
 
         await Page.ReloadAsync();
+        await WaitForInteractiveAsync();
         await Expect(row.GetByTestId("account-picker-toggle")).ToHaveTextAsync("Old Example Card (closed)");
         await row.GetByTestId("account-picker-toggle").ClickAsync();
         await row.GetByTestId("account-picker").Locator(".tree-picker-row", new() { HasText = "Not mapped" }).ClickAsync();

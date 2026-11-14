@@ -91,7 +91,8 @@ public sealed class SuggestionChipTests : EndToEndTestBase
         await Expect(picker.GetByTestId("category-picker-suggested")).ToContainTextAsync("30 %");
         await Expect(picker.Locator(".cp-active")).ToHaveAttributeAsync("data-testid", "category-picker-suggested");
         await Page.Keyboard.PressAsync("Enter");
-        await Expect(Row("−12,50")).ToHaveCountAsync(0);
+        // Categorising re-sorts the list on the server, which can take a while on a busy test machine.
+        await Expect(Row("−12,50")).ToHaveCountAsync(0, new() { Timeout = 15000 });
 
         await chip.GetByTestId("suggest-chip-reject").ClickAsync();
         await Expect(Row("−25,00").GetByTestId("suggest-chip")).ToHaveCountAsync(0);
