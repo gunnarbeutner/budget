@@ -49,7 +49,7 @@
                         }
                         else
                         {
-                            <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+                            <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>
                         }
                         @L["CheckNow"]
                     </button>
@@ -58,7 +58,7 @@
                 else
                 {
                     <a class="btn btn-sm btn-primary" href="@GrantHref" target="_top" data-testid="receipts-mail-grant">
-                        <i class="bi bi-microsoft" aria-hidden="true"></i> @L["Grant"]
+                        <i class="bi bi-microsoft me-1" aria-hidden="true"></i>@L["Grant"]
                     </a>
                 }
             </div>
@@ -81,12 +81,12 @@
         {
             @if (settings.Connection is not { MailAccess: true })
             {
-                <p class="small mb-2" data-testid="receipts-mail-status"><i class="bi bi-envelope-x" aria-hidden="true"></i> @L["NotGranted"]</p>
+                <p class="small mb-2" data-testid="receipts-mail-status"><i class="bi bi-envelope-x me-1" aria-hidden="true"></i>@L["NotGranted"]</p>
                 <p class="small text-body-secondary">@L["GrantHelp"]</p>
             }
             else
             {
-                <p class="small mb-2" data-testid="receipts-mail-status"><i class="bi bi-envelope-check" aria-hidden="true"></i> @L["Granted", settings.Connection.AccountName ?? ""]</p>
+                <p class="small mb-2" data-testid="receipts-mail-status"><i class="bi bi-envelope-check me-1" aria-hidden="true"></i>@L["Granted", settings.Connection.AccountName ?? ""]</p>
                 @if (settings.Connection.NeedsReconnect)
                 {
                     <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2 py-2" role="alert" data-testid="receipts-mail-reconnect">
