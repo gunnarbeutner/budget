@@ -107,7 +107,6 @@
                     }
                     else
                     {
-                        <span class="rules-matches small text-body-secondary" data-testid="rule-matches" title="@L["MatchesTitle"]">@row.MatchCount</span>
                         <button type="button" class="ob-btn ob-btn-sm" title="@L["MoveUp"]" aria-label="@L["MoveUp"]" data-testid="rule-up"
                                 disabled="@(index == 0 || row.Id == 0)" @onclick="() => MoveAsync(row, -1)"><i class="bi bi-arrow-up" aria-hidden="true"></i></button>
                         <button type="button" class="ob-btn ob-btn-sm" title="@L["MoveDown"]" aria-label="@L["MoveDown"]" data-testid="rule-down"
@@ -387,6 +386,16 @@
             row.Error = null;
             await EndPreviewAsync();
             rows!.Remove(row);
+            // A saved rule takes the matching uncategorised bookings at once; categorised ones keep their category.
+            if (row.Draft.Enabled)
+            {
+                var count = await RuleService.ApplyExistingAsync(ProjectId, CategoryId);
+                if (count > 0)
+                {
+                    status = L[count == 1 ? "Apply_Done_One" : "Apply_Done", count];
+                    await OnApplied.InvokeAsync();
+                }
+            }
             await LoadAsync();
         }
         catch (RuleValidationException ex)

@@ -133,11 +133,9 @@ public sealed class RulesTests : EndToEndTestBase
         await Expect(bar.GetByTestId("rules-preview-count")).ToHaveTextAsync("3 bookings match");
 
         await payee.PressAsync("Enter");
-        var row = bar.GetByTestId("rule-row");
-        await Expect(row.GetByTestId("rule-matches")).ToHaveTextAsync("3");
         await Expect(bar.GetByTestId("rules-preview-count")).ToHaveCountAsync(0);
 
-        await bar.GetByTestId("rules-apply").ClickAsync();
+        // Saving applies the rule to the matching uncategorised bookings at once.
         await Expect(bar.GetByTestId("rules-status")).ToContainTextAsync("3 bookings categorized");
         await Expect(bar.GetByTestId("rules-apply")).ToHaveCountAsync(0);
 
@@ -180,7 +178,6 @@ public sealed class RulesTests : EndToEndTestBase
         await expression.FillAsync("name:\"Example Grocer\" AND amount<0");
         await Expect(bar.GetByTestId("rule-payee")).ToHaveValueAsync("Example Grocer");
         await bar.GetByTestId("rule-save").ClickAsync();
-        await Expect(bar.GetByTestId("rule-matches")).ToHaveTextAsync("3");
 
         var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
         await using var db = await factory.CreateDbContextAsync();
@@ -198,7 +195,6 @@ public sealed class RulesTests : EndToEndTestBase
         await Expect(bar.GetByTestId("rule-min")).ToBeVisibleAsync();
         await bar.GetByTestId("rule-payee").FillAsync("Example Grocer");
         await bar.GetByTestId("rule-save").ClickAsync();
-        await Expect(bar.GetByTestId("rule-matches")).ToHaveTextAsync("3");
 
         var overflow = await Page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth > window.innerWidth + 1");
         Assert.That(overflow, Is.False);
@@ -238,8 +234,6 @@ public sealed class RulesTests : EndToEndTestBase
         await payee.FillAsync("example grocer");
         await Expect(bar.GetByTestId("rules-preview-count")).ToHaveTextAsync("1 booking matches");
         await payee.PressAsync("Enter");
-        await Expect(bar.GetByTestId("rule-matches")).ToHaveTextAsync("1");
-        await bar.GetByTestId("rules-apply").ClickAsync();
         await Expect(bar.GetByTestId("rules-status")).ToContainTextAsync("1 booking categorized");
 
         await using var check = await factory.CreateDbContextAsync();
