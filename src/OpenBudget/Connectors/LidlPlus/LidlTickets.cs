@@ -74,6 +74,7 @@ public static partial class LidlTickets
     private static void AddLine(List<LidlReceiptLine> items, JsonObject line)
     {
         var name = (Text(line["description"]) ?? Text(line["name"]) ?? "").Trim();
+        if (FoldQuantity(items, name)) return;
         var weighted = line["isWeight"] is JsonValue w && w.TryGetValue<bool>(out var isWeight) && isWeight;
         var quantity = Amount(line["quantity"]) ?? 1m;
         var unit = Amount(line["currentUnitPrice"]);
@@ -93,6 +94,26 @@ public static partial class LidlTickets
                 Amount(deposit["unitPrice"]), depositAmount, Text(deposit["taxGroupName"]), 0m,
                 depositAmount < 0 ? LidlLineKind.DepositReturn : LidlLineKind.Deposit));
         }
+    }
+
+    [GeneratedRegex(@"^\s*(?<n>[-+]?\d+)\s*[x×]\s*(?<unit>-?\d+,\d{2})\s*(€|EUR)?\s*$", RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture, 1000)]
+    private static partial Regex QuantityLine();
+
+    /// <summary>
+    /// A line that is only a quantity expression ("-4 x 0,25 €") under a deposit or deposit return line: the count and
+    /// unit price of that line (whose amount is already the product), not a line of its own. True when folded.
+    /// </summary>
+    private static bool FoldQuantity(List<LidlReceiptLine> items, string text)
+    {
+        if (items.Count == 0 || QuantityLine().Match(text) is not { Success: true } m) return false;
+        var last = items[^1];
+        if (last.Kind == LidlLineKind.Article && !IsDeposit(last.Name)) return false;
+        var count = Math.Abs(decimal.Parse(m.Groups["n"].Value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture));
+        var unit = Math.Abs(Parse(m.Groups["unit"].Value) ?? 0m);
+        var sign = last.Total < 0 || last.Kind == LidlLineKind.DepositReturn ? -1m : 1m;
+        var total = last.Total != 0 ? last.Total : sign * count * unit;
+        items[^1] = last with { Quantity = count, UnitPrice = sign * unit, Total = total };
+        return true;
     }
 
     private static bool IsDeposit(string name) =>
@@ -176,6 +197,7 @@ public static partial class LidlTickets
         {
             var text = line.Content.TrimEnd();
             if (text.Trim().Length == 0 || line.Classes.Contains("currency")) continue;
+            if (FoldQuantity(items, text)) continue;
             var trailing = TrailingAmount().Match(text);
             if (line.Data.TryGetValue("data-art-id", out var artId) && artId.Length > 0)
             {
