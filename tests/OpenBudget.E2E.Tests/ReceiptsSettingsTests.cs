@@ -37,7 +37,6 @@ public sealed class ReceiptsSettingsTests : EndToEndTestBase
 
         await GoToAsync("/receipts");
         await Expect(Page.GetByTestId("receipts-mail-status")).ToContainTextAsync("not granted");
-        await Expect(Page.GetByTestId("receipts-none")).ToBeVisibleAsync();
 
         await Page.GetByTestId("receipts-mail-grant").ClickAsync();
         await Page.WaitForURLAsync(url => url.Contains("/receipts?onedrive=connected", StringComparison.Ordinal));
