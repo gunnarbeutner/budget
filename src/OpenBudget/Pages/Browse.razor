@@ -458,12 +458,12 @@
                                             {
                                                 <button type="button" class="cat-pill @(hasCategory ? "" : "empty")" style="@pillStyle" data-testid="tx-category"
                                                         title="@(hasCategory ? categoryPath : L["Tx_CategoryTitle"].Value)" @onclick="e => OpenPickerFromRow(row, e)" @onclick:stopPropagation="true">
-                                                    @(hasCategory ? categoryLabel : L["Tx_NoCategory"])
+                                                    @if (hasCategory) { @CategoryPillText(categoryLabel!, row.CategoryName!) } else { @L["Tx_NoCategory"] }
                                                 </button>
                                             }
                                             else if (hasCategory)
                                             {
-                                                <span class="cat-pill" style="@pillStyle" data-testid="tx-category-label" title="@categoryPath">@categoryLabel</span>
+                                                <span class="cat-pill" style="@pillStyle" data-testid="tx-category-label" title="@categoryPath">@CategoryPillText(categoryLabel!, row.CategoryName!)</span>
                                             }
                                         }
                                     </div>
@@ -728,6 +728,21 @@
         Collect(tree.Categories);
         return all.Only(ids);
     }
+
+    /// <summary>
+    /// A chip's text: a namesake's group part shrinks first (to an ellipsis), so the category's own name stays readable.
+    /// </summary>
+    private static RenderFragment CategoryPillText(string label, string name) => __builder =>
+    {
+        if (label.Length > name.Length && label.EndsWith(name, StringComparison.Ordinal))
+        {
+            <span class="cat-pill-context">@label[..^name.Length]</span><span class="cat-pill-name">@name</span>
+        }
+        else
+        {
+            @label
+        }
+    };
 
     /// <summary>Short labels that tell namesakes apart among the project's categories (the picker's options).</summary>
     private static Dictionary<long, string> ProjectCategoryLabels(CategoryPickerData picker) =>

@@ -1216,6 +1216,8 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
 }
 /* Text stays selectable with a mouse; on touch a long press opens the row's menu instead. */
 @media (hover: none) { .tx-row { user-select: none; -webkit-user-select: none; } }
+/* wide screens: room for a full category chip ("Group › Name") under the date */
+@media (min-width: 1200px) { .tx-row { grid-template-columns: 200px minmax(0, 1fr) 130px 28px; } }
 .tx-row:hover { background: var(--ob-row-hover-bg); }
 .tx-item.selected { background: var(--ob-row-selected-bg); }
 .tx-item.selected .tx-row:hover { background: transparent; }
@@ -1258,7 +1260,7 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
 /* Category pill: per-category pastel (inline --cat-* vars from CategoryColors). */
 .cat-pill {
     display: inline-block;
-    max-width: 112px;
+    max-width: 100%;
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.02em;
@@ -1278,6 +1280,10 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
     color: var(--cat-fg-d, var(--ob-muted));
 }
 button.cat-pill:hover { filter: brightness(0.96); }
+/* a namesake's chip: the group part shrinks to an ellipsis before the category's own name does */
+.cat-pill:has(.cat-pill-name) { display: inline-flex; vertical-align: top; }
+.cat-pill-context { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 400; opacity: .8; white-space: pre; }
+.cat-pill-name { flex: 0 0 auto; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .cat-pill.empty {
     background: transparent !important;
     color: var(--ob-muted) !important;
