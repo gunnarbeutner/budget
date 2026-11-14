@@ -5,6 +5,7 @@
 @inject AccessScopeProvider AccessProvider
 @inject OpenBudget.Assist.AssistSettingsService Assist
 @inject IConfiguration Configuration
+@inject OpenBudget.Connectors.OneDrive.OneDriveOptions OneDrive
 @inject IStringLocalizer<About> L
 
 @* Which build is running (the image passes its version, commit and date), where the code and docs live, the license,
@@ -58,6 +59,8 @@
         <dd><code>@(schema ?? "–")</code></dd>
         <dt>@L["Label_OpenAi"]</dt>
         <dd>@(Assist.Available ? L["Configured"] : L["NotConfigured"])</dd>
+        <dt>@L["Label_OneDrive"]</dt>
+        <dd>@(OneDrive.IsConfigured ? L["Configured"] : L["NotConfigured"])</dd>
         <dt>@L["Label_FinTs"]</dt>
         <dd>@(OpenBudget.Connectors.FinTs.FinTsOptions.FromConfiguration(Configuration).IsConfigured ? L["Configured"] : L["NotConfigured"])</dd>
     </dl>
