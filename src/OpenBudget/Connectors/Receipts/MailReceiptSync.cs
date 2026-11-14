@@ -193,7 +193,7 @@ public sealed class MailReceiptSync : BackgroundService
                     {
                         unreadable++;
                         _logger.LogWarning(ex, "An invoice PDF in the mailbox of user {UserId} could not be read.", userId);
-                        KeepUnreadable(pdf);
+                        KeepUnreadable(pdf.Content);
                         continue;
                     }
                     if (await ReceiptStore.AddAsync(db, userId, pdf.Ebon ? ReceiptShops.ReweEbon : ReceiptShops.Rewe, parsed, message, Now, ct, parsed.Store)) added++;
