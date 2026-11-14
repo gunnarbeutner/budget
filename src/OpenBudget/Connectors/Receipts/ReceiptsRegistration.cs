@@ -1,3 +1,4 @@
+using OpenBudget.Auth;
 using OpenBudget.Assist;
 
 namespace OpenBudget.Connectors.Receipts;
@@ -12,7 +13,10 @@ public static class ReceiptsRegistration
     {
         services.AddSingleton<IReceiptItemClassifier, ReceiptItemAiClassifier>();
         services.AddSingleton(sp => new ReceiptStore(sp.GetRequiredService<IReceiptItemClassifier>()));
-        services.AddSingleton(new MailReceiptOptions());
+        services.AddSingleton(sp => new MailReceiptOptions
+        {
+            UnreadableDirectory = Path.Combine(OpenBudgetPaths.DataDir(sp.GetRequiredService<IHostEnvironment>().ContentRootPath), "receipts-unreadable"),
+        });
         services.AddSingleton<MailReceiptSync>();
         services.AddHostedService(sp => sp.GetRequiredService<MailReceiptSync>());
         services.AddScoped<ReceiptService>();

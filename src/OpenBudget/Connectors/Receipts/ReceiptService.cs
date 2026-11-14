@@ -112,6 +112,9 @@ public sealed class ReceiptService
     /// <summary>Reads the signed-in user's mailbox now.</summary>
     public async Task<MailCheckResult> CheckMailNowAsync(CancellationToken ct = default) => await _mail.CheckNowAsync(await UserAsync(), ct);
 
+    /// <summary>Whether the signed-in user's mailbox is being read right now.</summary>
+    public bool IsReadingMail(string userId) => _mail.IsReading(userId);
+
     /// <summary>Stops reading the signed-in user's mailbox.</summary>
     public async Task StopMailAsync(CancellationToken ct = default) => await _oneDrive.StopMailAccessAsync(await UserAsync(), ct);
 

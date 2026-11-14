@@ -52,8 +52,8 @@ else
         {
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                 <span data-testid="receipts-mail-status"><i class="bi bi-envelope-check" aria-hidden="true"></i> @L["Mail_Granted", connection.AccountName ?? ""]</span>
-                <button type="button" class="btn btn-sm btn-outline-primary" data-testid="receipts-mail-check" disabled="@(checking || connection.NeedsReconnect)" @onclick="CheckAsync">
-                    @if (checking)
+                <button type="button" class="btn btn-sm btn-outline-primary" data-testid="receipts-mail-check" disabled="@(Checking || connection.NeedsReconnect)" @onclick="CheckAsync">
+                    @if (Checking)
                     {
                         <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
                     }
@@ -139,6 +139,9 @@ else
     private List<ReceiptView> receipts = [];
     private Notice? notice;
     private bool checking;
+
+    // A read started elsewhere (the schedule, or this page before it was left) shows as running too.
+    private bool Checking => checking || (userId != null && Service.IsReadingMail(userId));
     private string? userId;
 
     private static string GrantHref => $"{OneDriveOptions.ConnectPath}?return={OneDriveRegistration.ReceiptsReturn}";

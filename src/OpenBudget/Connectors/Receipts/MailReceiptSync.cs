@@ -10,6 +10,12 @@ namespace OpenBudget.Connectors.Receipts;
 
 public sealed class MailReceiptOptions
 {
+    /// <summary>
+    /// Where invoice PDFs the parser cannot read are kept (named by their content hash), so a new layout can be
+    /// looked at; null keeps none.
+    /// </summary>
+    public string? UnreadableDirectory { get; set; }
+
     /// <summary>The shortest time between two automatic reads of a user's mailbox.</summary>
     public TimeSpan Interval { get; set; } = TimeSpan.FromHours(1);
 
@@ -112,6 +118,27 @@ public sealed class MailReceiptSync : BackgroundService
         return read;
     }
 
+    /// <summary>Whether the user's mailbox is being read right now (by the schedule or "Check mail now").</summary>
+    public bool IsReading(string userId)
+    {
+        lock (_lock) return _gates.TryGetValue(userId, out var gate) && gate.CurrentCount == 0;
+    }
+
+    private void KeepUnreadable(byte[] pdf)
+    {
+        if (_options.UnreadableDirectory is not { } dir) return;
+        try
+        {
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(pdf))[..16] + ".pdf");
+            if (!File.Exists(path)) File.WriteAllBytes(path, pdf);
+        }
+        catch (IOException ex)
+        {
+            _logger.LogWarning(ex, "Keeping an unreadable invoice PDF failed.");
+        }
+    }
+
     /// <summary>Reads the user's mailbox now (one read per user at a time).</summary>
     public async Task<MailCheckResult> CheckNowAsync(string userId, CancellationToken ct = default)
     {
@@ -124,6 +151,7 @@ public sealed class MailReceiptSync : BackgroundService
         await gate.WaitAsync(ct);
         try
         {
+            _notifier.Publish(new DataChange(DataArea.CloudFiles, UserId: userId));
             return await ReadAsync(userId, ct);
         }
         finally
@@ -165,6 +193,7 @@ public sealed class MailReceiptSync : BackgroundService
                     {
                         unreadable++;
                         _logger.LogWarning(ex, "An invoice PDF in the mailbox of user {UserId} could not be read.", userId);
+                        KeepUnreadable(pdf);
                         continue;
                     }
                     if (await ReceiptStore.AddAsync(db, userId, ReceiptShops.Rewe, parsed, message, Now, ct)) added++;
