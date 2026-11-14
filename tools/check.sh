@@ -45,10 +45,20 @@ pids=()
 names=()
 run() { # name, args...
     local name=$1; shift
-    ( dotnet test --no-build -nologo -tl:off --logger "trx;LogFileName=$name.trx" --results-directory "$log_dir" "$@" \
+    # The normal-verbosity console logger writes each failed test's name, error message and stack trace to the log.
+    ( dotnet test --no-build -nologo -tl:off --logger "trx;LogFileName=$name.trx" --logger "console;verbosity=normal" \
+        --results-directory "$log_dir" "$@" \
         > "$log_dir/$name.log" 2>&1 ) &
     pids+=($!)
     names+=("$name")
+}
+trx_summary() { # "Passed!  - Failed: 0, Passed: 12" from a trx file's counters (empty when there is none)
+    local counters failed passed
+    counters=$(grep -oE '<Counters [^>]*>' "$1" 2>/dev/null) || return 0
+    failed=$(sed -E 's/.* failed="([0-9]+)".*/\1/' <<< "$counters")
+    passed=$(sed -E 's/.* passed="([0-9]+)".*/\1/' <<< "$counters")
+    if (( failed == 0 )); then echo "Passed!  - Failed: $failed, Passed: $passed"
+    else echo "Failed!  - Failed: $failed, Passed: $passed"; fi
 }
 
 # The formatting gate CI runs (lint job), alongside the tests.
@@ -87,7 +97,7 @@ while (( remaining > 0 && status == 0 )); do
         remaining=$(( remaining - 1 ))
         set +e; wait "${pids[$i]}"; code=$?; set -e
         name=${names[$i]}
-        summary=$(tr "\r" "\n" < "$log_dir/$name.log" | grep -oE "(Passed|Failed)! +- Failed: +[0-9]+, Passed: +[0-9]+" | tail -n 1 || true)
+        summary=$(trx_summary "$log_dir/$name.trx")
         if (( code == 0 )); then
             echo "$name ok ($(( $(date +%s) - start ))s) $summary"
         else
@@ -96,7 +106,8 @@ while (( remaining > 0 && status == 0 )); do
             if [[ -f $log_dir/$name.trx ]]; then
                 grep -oE 'testName="[^"]+"[^>]*outcome="Failed"' "$log_dir/$name.trx" | sed -E 's/testName="([^"]+)".*/  failed: \1/' || true
             fi
-            grep -E "^\s+Failed |Error Message" -A3 "$log_dir/$name.log" | head -n 40 || tail -n 40 "$log_dir/$name.log"
+            tr "\r" "\n" < "$log_dir/$name.log" | grep -E "^ +Failed [^:]|Error Message" -A4 | head -n 60 \
+                || tail -n 40 "$log_dir/$name.log"
             status=1
             stop_all
             break
