@@ -840,7 +840,11 @@ window.browseChartData = function(canvasId) {
 window.renderBrowseChart = function(canvasId, d, dotnetRef) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return false;
-    if (window.chartInstances[canvasId]) window.chartInstances[canvasId].destroy();
+    // A refresh after a data change (keepIfSame) leaves the chart on the same canvas alone when its data is unchanged.
+    const key = JSON.stringify(Object.assign({}, d, { noAnimate: null, keepIfSame: null }));
+    const existing = window.chartInstances[canvasId];
+    if (d.keepIfSame && existing && existing.canvas === canvas && existing.$obKey === key) return true;
+    if (existing) existing.destroy();
     const css = getComputedStyle(canvas.closest('.browse-chart-frame') || document.documentElement);
     const tok = (name, fallback) => (css.getPropertyValue(name) || '').trim() || fallback;
     const c = {
@@ -1072,6 +1076,7 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
             }
         });
         const chart = window.chartInstances[canvasId];
+        chart.$obKey = key;
         chart.$obFull = { labels: d.labels, values, colors, budget: hasBudget ? d.budget : null, first: () => win.first };
         // Moves the window to the scroll position and redraws it without animation; forced, it
         // also redraws when the window stays where it is.

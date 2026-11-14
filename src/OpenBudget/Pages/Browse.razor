@@ -808,6 +808,9 @@
     // Set by OnChartBarClicked so the next chart render skips the grow-from-zero animation
     // — animating while the user just clicked a bar feels jarring. Cleared after each render.
     private bool chartSkipAnimation;
+    // Set by a quiet reload (a data change, e.g. a finished sync): the chart is redrawn in place without the
+    // grow-from-zero animation, and not at all when its data is unchanged.
+    private bool chartQuiet;
     // User-driven collapse of the chart row to reclaim vertical space. The chart canvas is
     // removed from the DOM when collapsed, so expanding re-renders via the chartDirty path.
     private bool chartCollapsed;
@@ -1402,6 +1405,7 @@
         _leafCacheKey = null; _leafCache = null;
         var fresh = await LoadTreeAsync();
         if (quiet && fresh != null) txTotals = null;
+        if (quiet) chartQuiet = true;
         tree = fresh;
         if (ActiveFilterCount > 0) _filterOpen = true;
         if (tree == null) { notFound = true; return; }
@@ -1886,8 +1890,10 @@
     {
         if (chartBars == null || chartBarStarts == null) return;
         selfRef ??= DotNetObjectReference.Create(this);
-        var noAnimate = chartSkipAnimation;
+        var quiet = chartQuiet;
+        var noAnimate = chartSkipAnimation || quiet;
         chartSkipAnimation = false;
+        chartQuiet = false;
         var ci = System.Globalization.CultureInfo.CurrentUICulture;
         var data = new
         {
@@ -1901,6 +1907,7 @@
             invertY = chartInvertY,
             balance = chartIsBalance,
             noAnimate,
+            keepIfSame = quiet,
             budget = chartBudget?.Select(b => b is { } v ? (double?)v : null).ToArray(),
             budgetLabel = L["Chart_Budget"].Value,
         };

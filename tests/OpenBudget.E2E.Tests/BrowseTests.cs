@@ -1,6 +1,9 @@
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using NUnit.Framework;
+using OpenBudget.Models;
+using OpenBudget.Services;
 
 namespace OpenBudget.E2E.Tests;
 
@@ -142,6 +145,22 @@ public sealed class BrowseTests : EndToEndTestBase
         await Expect(Page.GetByRole(AriaRole.Heading, new() { Name = "Groceries" })).ToBeVisibleAsync();
         await Expect(Page.GetByText("txn-1")).ToBeVisibleAsync();
         await Expect(Page.GetByText("txn-2")).Not.ToBeVisibleAsync();
+    }
+
+    [Test]
+    public async Task A_data_change_keeps_the_chart_in_place()
+    {
+        await GoToAsync($"{BrowseUrl}&sel=cat-200");
+        await Page.WaitForFunctionAsync("() => !!Chart.getChart('browseChart')");
+        await Page.EvaluateAsync("() => { window.__canvas = document.getElementById('browseChart'); window.__chart = Chart.getChart('browseChart'); }");
+
+        // A finished sync announces its changes in a burst; nothing in this category changed.
+        var notifications = Factory.BrowserHostServices.GetRequiredService<ChangeNotificationService>();
+        for (var i = 0; i < 3; i++) notifications.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: E2ESeed.OwnerUserId));
+        await Page.WaitForTimeoutAsync(1500);
+
+        Assert.That(await Page.EvaluateAsync<bool>("() => document.getElementById('browseChart') === window.__canvas"), Is.True, "the canvas was replaced");
+        Assert.That(await Page.EvaluateAsync<bool>("() => Chart.getChart('browseChart') === window.__chart"), Is.True, "the chart was redrawn");
     }
 
     [Test]
