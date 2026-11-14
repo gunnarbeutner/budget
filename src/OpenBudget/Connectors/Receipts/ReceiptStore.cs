@@ -6,12 +6,16 @@ namespace OpenBudget.Connectors.Receipts;
 
 /// <summary>
 /// Places receipt lines the memory and keywords left open (the optional AI), choosing only among
-/// <paramref name="choices"/> (the source's allowed categories and its default); line id → category.
+/// <paramref name="choices"/> (the source's allowed categories and its default); line id → category. The lines may come
+/// from several receipts that share these choices, each with its receipt's date.
 /// </summary>
 public interface IReceiptItemClassifier
 {
-    Task<Dictionary<long, long>> ClassifyAsync(string ownerUserId, DateOnly date, IReadOnlyList<ReceiptLine> lines, IReadOnlyList<AllowedCategory> choices, CancellationToken ct);
+    Task<Dictionary<long, long>> ClassifyAsync(string ownerUserId, IReadOnlyList<DatedReceiptLine> lines, IReadOnlyList<AllowedCategory> choices, CancellationToken ct);
 }
+
+/// <summary>A receipt line to classify with the date of its receipt.</summary>
+public sealed record DatedReceiptLine(ReceiptLine Line, DateOnly Date);
 
 /// <summary>
 /// Stores parsed receipts, matches them with the owner's bookings (see <see cref="ReceiptMatcher"/>) and splits a matched
@@ -72,7 +76,13 @@ public sealed class ReceiptStore
         return true;
     }
 
-    /// <summary>(Re)matches every receipt of the owner and brings the matched bookings' splits and item texts up to date.</summary>
+    /// <summary>
+    /// (Re)matches every receipt of the owner and brings the matched bookings' splits and item texts up to date. Every
+    /// matched receipt is applied again, since what it writes also follows things outside the receipt (the item memory,
+    /// the project's receipt categories, the booking becoming booked or being categorized by hand); the bookings, rules
+    /// and memory are read in a few set-based queries, the AI is asked once per set of choices for the open lines of all
+    /// receipts, and only receipts whose outcome differs write anything.
+    /// </summary>
     public async Task MatchAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct)
     {
         var invoices = await db.ReceiptInvoices.Include(i => i.Items).Where(i => i.OwnerUserId == ownerUserId).ToListAsync(ct);
@@ -98,13 +108,20 @@ public sealed class ReceiptStore
         }
 
         // Earlier matches stay while their booking is still there with the same amount.
+        var linked = invoices.Where(i => i.TransactionId != null).Select(i => i.TransactionId!.Value).Distinct().ToList();
+        var current = (await db.Transactions.AsNoTracking()
+                .Where(t => linked.Contains(t.Id) && t.OwnerUserId == ownerUserId && t.Splitted != SplitState.Child)
+                .Select(t => new { t.Id, Cents = t.SplitOriginalAmount ?? t.Amount, t.AccountId }).ToListAsync(ct))
+            .ToDictionary(t => t.Id);
+        bool StillFits(long id, long paymentCents, long? account) =>
+            current.TryGetValue(id, out var row) && row.Cents == -paymentCents && (account == null || row.AccountId == account);
         var kept = new HashSet<long>();
         var lost = new List<long>();
         foreach (var i in invoices)
         {
             if (i.State == ReceiptMatchState.Dismissed) continue;
             if (i.ManualMatch && i.TransactionId is { } own
-                && await db.Transactions.AnyAsync(x => x.Id == own && x.OwnerUserId == ownerUserId && x.Splitted != SplitState.Child, ct) && kept.Add(own))
+                && current.ContainsKey(own) && kept.Add(own))
             {
                 i.State = ReceiptMatchState.Matched;
                 continue;
@@ -119,7 +136,7 @@ public sealed class ReceiptStore
                 i.State = ReceiptMatchState.Skipped;
                 continue;
             }
-            if (i.TransactionId is { } t && await StillFitsAsync(db, ownerUserId, t, i.PaymentCents, account, ct) && kept.Add(t))
+            if (i.TransactionId is { } t && StillFits(t, i.PaymentCents, account) && kept.Add(t))
             {
                 i.State = ReceiptMatchState.Matched;
                 continue;
@@ -147,18 +164,12 @@ public sealed class ReceiptStore
         await db.SaveChangesAsync(ct);
 
         // A booking that lost its receipt loses the receipt's item text (its split, if any, stays as it is).
-        foreach (var id in lost.Where(l => !kept.Contains(l) && invoices.All(i => i.TransactionId != l)))
-            await db.Transactions.Where(t => t.Id == id && t.OwnerUserId == ownerUserId).ExecuteUpdateAsync(u => u.SetProperty(t => t.OrderItems, (string?)null), ct);
+        var stillLinked = invoices.Where(i => i.TransactionId != null).Select(i => i.TransactionId!.Value).ToHashSet();
+        var released = lost.Where(l => !kept.Contains(l) && !stillLinked.Contains(l)).Distinct().ToList();
+        if (released.Count > 0)
+            await db.Transactions.Where(t => released.Contains(t.Id) && t.OwnerUserId == ownerUserId).ExecuteUpdateAsync(u => u.SetProperty(t => t.OrderItems, (string?)null), ct);
 
-        foreach (var i in invoices.Where(i => i.TransactionId != null))
-            await ApplyAsync(db, i, force: false, ct);
-    }
-
-    private static async Task<bool> StillFitsAsync(BudgetDbContext db, string owner, long id, long paymentCents, long? account, CancellationToken ct)
-    {
-        var row = await db.Transactions.AsNoTracking().Where(t => t.Id == id && t.OwnerUserId == owner && t.Splitted != SplitState.Child)
-            .Select(t => new { Cents = t.SplitOriginalAmount ?? t.Amount, t.AccountId }).FirstOrDefaultAsync(ct);
-        return row != null && row.Cents == -paymentCents && (account == null || row.AccountId == account);
+        await ApplyAllAsync(db, ownerUserId, invoices.Where(i => i.TransactionId != null).ToList(), force: false, ct);
     }
 
     /// <summary>
@@ -185,93 +196,163 @@ public sealed class ReceiptStore
     /// <paramref name="force"/> also over a split or category the owner set by hand) and the item texts.
     /// True when the booking was split or re-split.
     /// </summary>
-    public async Task<bool> ApplyAsync(BudgetDbContext db, ReceiptInvoice invoice, bool force, CancellationToken ct)
-    {
-        if (invoice.TransactionId is not { } txId) return false;
-        var parent = await db.Transactions.FirstOrDefaultAsync(t => t.Id == txId && t.OwnerUserId == invoice.OwnerUserId, ct);
-        if (parent == null) return false;
-        var items = invoice.Items.OrderBy(i => i.Position).ToList();
-        var lines = items.Select(i => new ReceiptLine(i.Id, i.Name, i.VatCode, i.TotalCents, i.NoDiscount, i.Kind)).ToList();
+    public async Task<bool> ApplyAsync(BudgetDbContext db, ReceiptInvoice invoice, bool force, CancellationToken ct) =>
+        (await ApplyAllAsync(db, invoice.OwnerUserId, [invoice], force, ct)).Contains(invoice.Id);
 
-        var children = parent.Splitted == SplitState.Parent
-            ? await db.Transactions.Where(t => t.SplitParentId == parent.Id && t.Splitted == SplitState.Child && t.OwnerUserId == parent.OwnerUserId).ToListAsync(ct)
-            : [];
-        var ours = invoice.SplitSignature != null && parent.Splitted == SplitState.Parent
-            && ReceiptCategorizer.Signature(children.Select(c => (c.Amount, c.CategoryId))) == invoice.SplitSignature;
-        if (!ours) invoice.SplitSignature = null;
-        var mayWrite = force
-            ? parent.Splitted != SplitState.Remainder
-            : ours || (parent.Booked && (parent.Splitted ?? SplitState.Normal) == SplitState.Normal && parent.CategorySetBy != TransactionCategorySource.Manual);
+    /// <summary>One receipt being applied: its booking, the booking's parts and what was worked out for its lines.</summary>
+    private sealed class Pending(ReceiptInvoice invoice, Transaction parent, List<Transaction> children)
+    {
+        public ReceiptInvoice Invoice { get; } = invoice;
+        public Transaction Parent { get; } = parent;
+        public List<Transaction> Children { get; } = children;
+        public List<ReceiptItem> Items { get; } = invoice.Items.OrderBy(i => i.Position).ToList();
+        public List<ReceiptLine> Lines { get; set; } = [];
+        public bool Ours { get; set; }
+        public bool MayWrite { get; set; }
+        public int? Project { get; set; }
+        public ReceiptSourceRules Rules { get; set; } = ReceiptSourceRules.None;
+        public Dictionary<string, long> Memory { get; set; } = new(StringComparer.Ordinal);
+        public Dictionary<long, long?> Manual { get; set; } = [];
+        public Dictionary<long, long> Ai { get; set; } = [];
+    }
+
+    /// <summary>
+    /// Applies the owner's matched receipts (see <see cref="ApplyAsync"/>): bookings, projects, rules and memory are read
+    /// once for all of them, and the AI gets the open lines of all receipts with the same choices in one request. Returns
+    /// the ids of the receipts whose booking was split or re-split.
+    /// </summary>
+    private async Task<HashSet<long>> ApplyAllAsync(BudgetDbContext db, string owner, IReadOnlyList<ReceiptInvoice> invoices, bool force, CancellationToken ct)
+    {
+        var changed = new HashSet<long>();
+        var txIds = invoices.Where(i => i.TransactionId != null).Select(i => i.TransactionId!.Value).Distinct().ToList();
+        if (txIds.Count == 0) return changed;
+        var parents = await db.Transactions.Where(t => txIds.Contains(t.Id) && t.OwnerUserId == owner).ToDictionaryAsync(t => t.Id, ct);
+        var splitIds = parents.Values.Where(p => p.Splitted == SplitState.Parent).Select(p => (long?)p.Id).ToList();
+        var childrenOf = splitIds.Count == 0 ? [] : (await db.Transactions
+                .Where(t => splitIds.Contains(t.SplitParentId) && t.Splitted == SplitState.Child && t.OwnerUserId == owner).ToListAsync(ct))
+            .GroupBy(t => t.SplitParentId!.Value).ToDictionary(g => g.Key, g => g.ToList());
+
+        var projects = new Dictionary<(long?, long?), int?>();
+        var rulesBy = new Dictionary<(int?, string), ReceiptSourceRules>();
+        var work = new List<Pending>();
+        foreach (var invoice in invoices)
+        {
+            if (invoice.TransactionId is not { } txId || !parents.TryGetValue(txId, out var parent)) continue;
+            var p = new Pending(invoice, parent, parent.Splitted == SplitState.Parent ? childrenOf.GetValueOrDefault(parent.Id) ?? [] : []);
+            p.Lines = p.Items.Select(i => new ReceiptLine(i.Id, i.Name, i.VatCode, i.TotalCents, i.NoDiscount, i.Kind)).ToList();
+            p.Ours = invoice.SplitSignature != null && parent.Splitted == SplitState.Parent
+                && ReceiptCategorizer.Signature(p.Children.Select(c => (c.Amount, c.CategoryId))) == invoice.SplitSignature;
+            if (!p.Ours) invoice.SplitSignature = null;
+            p.MayWrite = force
+                ? parent.Splitted != SplitState.Remainder
+                : p.Ours || (parent.Booked && (parent.Splitted ?? SplitState.Normal) == SplitState.Normal && parent.CategorySetBy != TransactionCategorySource.Manual);
+            if (!projects.TryGetValue((parent.AccountId, parent.CategoryId), out var project))
+                projects[(parent.AccountId, parent.CategoryId)] = project = await ReceiptProjects.ResolveAsync(db, owner, parent.AccountId, parent.CategoryId, ct);
+            var source = ReceiptSources.Of(invoice.Shop);
+            if (!rulesBy.TryGetValue((project, source), out var rules))
+                rulesBy[(project, source)] = rules = await ReceiptProjects.RulesAsync(db, owner, project, source, ct);
+            p.Project = project;
+            p.Rules = rules;
+            work.Add(p);
+        }
+
+        // Each project's memory, for the names on its receipts.
+        foreach (var group in work.GroupBy(p => p.Project))
+        {
+            var names = group.SelectMany(p => p.Items).Select(i => ReceiptCategorizer.Normalize(i.Name)).Distinct(StringComparer.Ordinal).ToList();
+            var memory = await MemoryAsync(db, owner, group.Key, names, ct);
+            foreach (var p in group) p.Memory = memory;
+        }
 
         // Categories: the owner's moves stay, AI answers are asked once and kept, the rest follows memory and keywords.
         // An AI answer outside this source's categories (left from before they were configured, or a mapping that
         // changed) is dropped and asked again.
-        var project = await ReceiptProjects.ResolveAsync(db, invoice.OwnerUserId, parent.AccountId, parent.CategoryId, ct);
-        var rules = await ReceiptProjects.RulesAsync(db, invoice.OwnerUserId, project, ReceiptSources.Of(invoice.Shop), ct);
-        var home = parent.CategoryId;
-        var memory = await MemoryAsync(db, invoice.OwnerUserId, project, items.Select(i => ReceiptCategorizer.Normalize(i.Name)).Distinct(StringComparer.Ordinal).ToList(), ct);
-        var manual = items.Where(i => i.CategorySource == ReceiptCategorySource.Manual).ToDictionary(i => i.Id, i => i.CategoryId);
-        foreach (var stale in items.Where(i => i.CategorySource == ReceiptCategorySource.Ai
-            && !(i.CategoryId is { } c && ReceiptCategorizer.IsAllowed(c, rules, parent.CategoryId))))
+        Dictionary<long, string>? paths = null;
+        var asks = new List<(Pending P, List<AllowedCategory> Choices, List<DatedReceiptLine> Lines)>();
+        foreach (var p in work)
         {
-            stale.CategorySource = null;
-            stale.CategoryId = null;
-        }
-        var ai = items.Where(i => i.CategorySource == ReceiptCategorySource.Ai && i.CategoryId != null).ToDictionary(i => i.Id, i => i.CategoryId!.Value);
-        if (mayWrite && _ai != null)
-        {
-            var ask = ReceiptCategorizer.Undecided(lines, rules, memory, parent.CategoryId).Where(l => items.First(i => i.Id == l.Id).CategorySource == null).ToList();
-            if (ask.Count > 0)
+            var parent = p.Parent;
+            p.Manual = p.Items.Where(i => i.CategorySource == ReceiptCategorySource.Manual).ToDictionary(i => i.Id, i => i.CategoryId);
+            foreach (var stale in p.Items.Where(i => i.CategorySource == ReceiptCategorySource.Ai
+                && !(i.CategoryId is { } c && ReceiptCategorizer.IsAllowed(c, p.Rules, parent.CategoryId))))
             {
-                var date = Day(invoice.DeliveryDate ?? invoice.OrderDate) ?? DateOnly.FromDateTime(parent.Date);
-                var choices = rules.Allowed.ToList();
-                if (home is { } h && choices.All(c => c.CategoryId != h))
-                    choices.Insert(0, new AllowedCategory(h, await PathAsync(db, invoice.OwnerUserId, h, ct), "Lebensmittel und alles andere"));
-                foreach (var (id, category) in await _ai.ClassifyAsync(invoice.OwnerUserId, date, ask, choices, ct))
-                    if (ReceiptCategorizer.IsAllowed(category, rules, parent.CategoryId)) ai[id] = category;
+                stale.CategorySource = null;
+                stale.CategoryId = null;
             }
+            p.Ai = p.Items.Where(i => i.CategorySource == ReceiptCategorySource.Ai && i.CategoryId != null).ToDictionary(i => i.Id, i => i.CategoryId!.Value);
+            if (!p.MayWrite || _ai == null) continue;
+            var ask = ReceiptCategorizer.Undecided(p.Lines, p.Rules, p.Memory, parent.CategoryId)
+                .Where(l => p.Items.First(i => i.Id == l.Id).CategorySource == null).ToList();
+            if (ask.Count == 0) continue;
+            var date = Day(p.Invoice.DeliveryDate ?? p.Invoice.OrderDate) ?? DateOnly.FromDateTime(parent.Date);
+            var choices = p.Rules.Allowed.ToList();
+            if (parent.CategoryId is { } h && choices.All(c => c.CategoryId != h))
+            {
+                paths ??= await PathsAsync(db, owner, ct);
+                choices.Insert(0, new AllowedCategory(h, paths.GetValueOrDefault(h) ?? "", "Lebensmittel und alles andere"));
+            }
+            asks.Add((p, choices, ask.Select(l => new DatedReceiptLine(l, date)).ToList()));
         }
-        var assigned = ReceiptCategorizer.Assign(lines, parent.CategoryId, rules, memory, ai, manual);
+        // Receipts offering the AI the same choices are asked together.
+        foreach (var group in asks.GroupBy(a => ChoicesKey(a.Choices), StringComparer.Ordinal))
+        {
+            var answers = await _ai!.ClassifyAsync(owner, group.SelectMany(a => a.Lines).ToList(), group.First().Choices, ct);
+            foreach (var (p, _, lines) in group)
+                foreach (var l in lines)
+                    if (answers.TryGetValue(l.Line.Id, out var category) && ReceiptCategorizer.IsAllowed(category, p.Rules, p.Parent.CategoryId))
+                        p.Ai[l.Line.Id] = category;
+        }
+
+        foreach (var p in work)
+            if (await WriteAsync(db, p, ct)) changed.Add(p.Invoice.Id);
+        await db.SaveChangesAsync(ct);
+        return changed;
+    }
+
+    /// <summary>What sets the AI's choices apart: id, path and description of each, in order.</summary>
+    private static string ChoicesKey(IEnumerable<AllowedCategory> choices) =>
+        string.Join('\n', choices.Select(c => $"{c.CategoryId}\t{c.Path}\t{c.Description}"));
+
+    /// <summary>
+    /// Assigns one receipt's lines and writes its booking's item texts and split (the caller saves). True when the
+    /// booking was split or re-split.
+    /// </summary>
+    private static async Task<bool> WriteAsync(BudgetDbContext db, Pending p, CancellationToken ct)
+    {
+        var (invoice, parent, items, lines) = (p.Invoice, p.Parent, p.Items, p.Lines);
+        var home = parent.CategoryId;
+        var assigned = ReceiptCategorizer.Assign(lines, parent.CategoryId, p.Rules, p.Memory, p.Ai, p.Manual);
         foreach (var item in items)
         {
             var a = assigned[item.Id];
             if (item.CategorySource == ReceiptCategorySource.Manual) continue;
             item.CategoryId = a.CategoryId == parent.CategoryId ? null : a.CategoryId;
             // A line is marked as decided (so the AI is not asked about it again) once the receipt could split the booking.
-            if (mayWrite || a.Source != ReceiptCategorySource.Default || item.CategorySource != null) item.CategorySource = a.Source;
+            if (p.MayWrite || a.Source != ReceiptCategorySource.Default || item.CategorySource != null) item.CategorySource = a.Source;
         }
 
         var all = ReceiptCategorizer.Describe(items.Select(i => (i.Name, i.Quantity)));
         parent.OrderItems = all.Length == 0 ? null : all;
-        var changed = false;
-        if (mayWrite)
+        if (!p.MayWrite) return false;
+        var parts = ReceiptCategorizer.Parts(lines, assigned, invoice.BonusCents, parent.SplitOriginalAmount ?? parent.Amount, home);
+        if (parts.Count >= 2)
         {
-            var parts = ReceiptCategorizer.Parts(lines, assigned, invoice.BonusCents, parent.SplitOriginalAmount ?? parent.Amount, home);
-            if (parts.Count >= 2)
-            {
-                var signature = ReceiptCategorizer.Signature(parts.Select(p => (p.AmountCents, p.CategoryId)));
-                var texts = parts.Select(p => ReceiptCategorizer.Describe(p.LineIds.Select(id => items.First(i => i.Id == id)).Select(i => (i.Name, i.Quantity)))).ToList();
-                var sameTexts = children.Count == parts.Count && children.OrderBy(c => c.Id).Select(c => c.OrderItems).SequenceEqual(texts, StringComparer.Ordinal);
-                if (signature != invoice.SplitSignature || !ours || !sameTexts)
-                {
-                    await SplitService.WritePartsAsync(db, parent, parts.Select((p, n) => new SplitPartWrite(p.AmountCents, p.CategoryId, null, texts[n])).ToList(), ct);
-                    invoice.SplitSignature = signature;
-                    changed = true;
-                }
-            }
-            else if (ours)
-            {
-                // Everything is in one category again: the receipt's split goes.
-                db.Transactions.RemoveRange(children);
-                parent.Splitted = SplitState.Normal;
-                parent.SplitOriginalAmount = null;
-                parent.SplitCheck = false;
-                invoice.SplitSignature = null;
-                changed = true;
-            }
+            var signature = ReceiptCategorizer.Signature(parts.Select(x => (x.AmountCents, x.CategoryId)));
+            var texts = parts.Select(x => ReceiptCategorizer.Describe(x.LineIds.Select(id => items.First(i => i.Id == id)).Select(i => (i.Name, i.Quantity)))).ToList();
+            var sameTexts = p.Children.Count == parts.Count && p.Children.OrderBy(c => c.Id).Select(c => c.OrderItems).SequenceEqual(texts, StringComparer.Ordinal);
+            if (signature == invoice.SplitSignature && p.Ours && sameTexts) return false;
+            await SplitService.WritePartsAsync(db, parent, parts.Select((x, n) => new SplitPartWrite(x.AmountCents, x.CategoryId, null, texts[n])).ToList(), ct);
+            invoice.SplitSignature = signature;
+            return true;
         }
-        await db.SaveChangesAsync(ct);
-        return changed;
+        if (!p.Ours) return false;
+        // Everything is in one category again: the receipt's split goes.
+        db.Transactions.RemoveRange(p.Children);
+        parent.Splitted = SplitState.Normal;
+        parent.SplitOriginalAmount = null;
+        parent.SplitCheck = false;
+        invoice.SplitSignature = null;
+        return true;
     }
 
     /// <summary>The owner's categories by id with their paths ("Group › Category").</summary>
@@ -284,9 +365,6 @@ public sealed class ReceiptStore
         foreach (var c in categories.Where(c => !paths.ContainsKey(c.Id))) paths[c.Id] = c.Name ?? "";
         return paths;
     }
-
-    private static async Task<string> PathAsync(BudgetDbContext db, string ownerUserId, long categoryId, CancellationToken ct) =>
-        (await PathsAsync(db, ownerUserId, ct)).GetValueOrDefault(categoryId) ?? "";
 
     /// <summary>A project's memory entries for these normalised names (none without a project).</summary>
     public static async Task<Dictionary<string, long>> MemoryAsync(BudgetDbContext db, string ownerUserId, int? projectId, IReadOnlyList<string> names, CancellationToken ct)

@@ -258,6 +258,60 @@ public sealed class ReceiptStoreTests
     }
 
     [Fact]
+    public async Task The_ai_is_asked_once_for_all_receipts_with_the_same_choices_and_not_again()
+    {
+        await using var t = await WorldAsync();
+        var ai = new FakeClassifier(name => name.StartsWith("Beispiel Banane", StringComparison.Ordinal) ? ReceiptWorld.Drugstore : null);
+        var store = new ReceiptStore(ai);
+        await using (var db = await t.System.CreateDbContextAsync())
+            for (var n = 1; n <= 3; n++)
+            {
+                await ReceiptWorld.AddDebitAsync(t, ReceiptWorld.Id(500 + n), Payment + 100 * (n - 1));
+                var receipt = ReweInvoice.Parse(SyntheticInvoice.Pdf(SyntheticInvoice.StandardLines(), bonus: -n, invoice: $"PN1000000000000{n}"));
+                await ReceiptStore.AddAsync(db, ReceiptWorld.Alice, ReceiptShops.Rewe, receipt, $"mail-{n}", DateTime.UtcNow, default);
+            }
+        await using (var db = await t.System.CreateDbContextAsync())
+            await store.MatchAsync(db, ReceiptWorld.Alice, default);
+
+        Assert.Equal(1, ai.Calls);
+        Assert.Equal(3, ai.Asked.Count(n => n.StartsWith("Beispiel Banane", StringComparison.Ordinal)));
+        for (var n = 1; n <= 3; n++)
+            Assert.Contains("Beispiel Banane", (await PartsAsync(t, ReceiptWorld.Id(500 + n))).Single(p => p.CategoryId == ReceiptWorld.Drugstore).OrderItems, StringComparison.Ordinal);
+
+        // Matching again leaves the settled receipts as they are, without asking the AI.
+        var parts = new List<long>();
+        for (var n = 1; n <= 3; n++) parts.AddRange((await PartsAsync(t, ReceiptWorld.Id(500 + n))).Select(p => p.Id));
+        await using (var db = await t.System.CreateDbContextAsync())
+            await store.MatchAsync(db, ReceiptWorld.Alice, default);
+        Assert.Equal(1, ai.Calls);
+        var again = new List<long>();
+        for (var n = 1; n <= 3; n++) again.AddRange((await PartsAsync(t, ReceiptWorld.Id(500 + n))).Select(p => p.Id));
+        Assert.Equal(parts, again);
+    }
+
+    [Fact]
+    public async Task Receipts_with_other_choices_are_asked_separately()
+    {
+        // One booking is in another category of the project: its default choice differs, so its lines go in their own request.
+        await using var t = await WorldAsync();
+        var ai = new FakeClassifier(_ => null);
+        var store = new ReceiptStore(ai);
+        await ReceiptWorld.AddDebitAsync(t, ReceiptWorld.Id(501), Payment);
+        await ReceiptWorld.AddDebitAsync(t, ReceiptWorld.Id(502), Payment + 100);
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            (await db.Transactions.SingleAsync(x => x.Id == ReceiptWorld.Id(502))).CategoryId = ReceiptWorld.Drinks;
+            await db.SaveChangesAsync();
+            for (var n = 1; n <= 2; n++)
+                await ReceiptStore.AddAsync(db, ReceiptWorld.Alice, ReceiptShops.Rewe,
+                    ReweInvoice.Parse(SyntheticInvoice.Pdf(SyntheticInvoice.StandardLines(), bonus: -n, invoice: $"PN1000000000000{n}")), $"mail-{n}", DateTime.UtcNow, default);
+            await store.MatchAsync(db, ReceiptWorld.Alice, default);
+        }
+        Assert.Equal(2, ai.Calls);
+        Assert.Contains(ReceiptWorld.Drinks, ai.Choices);
+    }
+
+    [Fact]
     public async Task Items_follow_the_project_of_the_bookings_account_and_its_narrowing_for_the_source()
     {
         // A second project (listed first) shares the account but holds other categories: the booking's category
@@ -387,9 +441,13 @@ public sealed class ReceiptStoreTests
 
         public List<long> Choices { get; } = [];
 
+        public int Calls { get; private set; }
+
         public Task<Dictionary<long, long>> ClassifyAsync(
-            string ownerUserId, DateOnly date, IReadOnlyList<ReceiptLine> lines, IReadOnlyList<AllowedCategory> choices, CancellationToken ct)
+            string ownerUserId, IReadOnlyList<DatedReceiptLine> dated, IReadOnlyList<AllowedCategory> choices, CancellationToken ct)
         {
+            Calls++;
+            var lines = dated.Select(d => d.Line).ToList();
             Asked.AddRange(lines.Select(l => l.Name));
             Choices.AddRange(choices.Select(c => c.CategoryId));
             return Task.FromResult(lines.Where(l => answer(l.Name) != null).ToDictionary(l => l.Id, l => answer(l.Name)!.Value));

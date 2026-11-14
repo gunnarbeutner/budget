@@ -9,7 +9,8 @@ namespace OpenBudget.Assist;
 /// the receipt source's categories (its allowed categories and its default, each with the owner's description), never
 /// among all of the owner's categories, so it cannot put an item into another shop's category. Only when the server
 /// has an AI configured and the receipt's owner opted in to AI suggestions; each line goes as a booking of payee
-/// "Supermarkt" with the product name as its purpose (nothing else of the receipt is sent), in batches. Answers below
+/// "Supermarkt" with the product name as its purpose and the receipt's date (nothing else of the receipt is sent), in
+/// batches; the lines of several receipts with the same choices go together. Answers below
 /// <see cref="MinConfidence"/> are dropped; a failing request places nothing.
 /// </summary>
 public sealed class ReceiptItemAiClassifier : IReceiptItemClassifier
@@ -33,7 +34,7 @@ public sealed class ReceiptItemAiClassifier : IReceiptItemClassifier
             c.Description is { Length: > 0 } d ? $"{c.Path} ({d})" : c.Path, false)).ToList();
 
     public async Task<Dictionary<long, long>> ClassifyAsync(
-        string ownerUserId, DateOnly date, IReadOnlyList<ReceiptLine> lines, IReadOnlyList<AllowedCategory> choices, CancellationToken ct)
+        string ownerUserId, IReadOnlyList<DatedReceiptLine> lines, IReadOnlyList<AllowedCategory> choices, CancellationToken ct)
     {
         var result = new Dictionary<long, long>();
         if (!_client.Enabled || lines.Count == 0 || choices.Count == 0) return result;
@@ -53,7 +54,7 @@ public sealed class ReceiptItemAiClassifier : IReceiptItemClassifier
             {
                 var redactor = new AssistRedactor(names);
                 var items = batch.Select(l => new PromptItem(
-                    redactor.Redact(new AssistBookingSource(l.Id, date, -Math.Abs(l.TotalCents), "EUR", "Supermarkt", l.Name)), [])).ToList();
+                    redactor.Redact(new AssistBookingSource(l.Line.Id, l.Date, -Math.Abs(l.Line.TotalCents), "EUR", "Supermarkt", l.Line.Name)), [])).ToList();
                 var response = await _client.CompleteAsync(
                     new AssistRequest(CategoryPrompt.SchemaName, CategoryPrompt.Schema(), system, CategoryPrompt.UserContent(items)), ct);
                 _log.LogInformation("AI categorized {Count} receipt items ({Input} input tokens, {Output} output)", batch.Length, response.InputTokens, response.OutputTokens);
