@@ -98,15 +98,15 @@ public sealed class BudgetSuggestionService
             .Where(t => t.CategoryId.HasValue && allLeaves.Contains(t.CategoryId.Value))
             .WithinUtc(range)
             .ToListAsync(ct);
-        // Bookings after the cut-off (the running month so far): shown to the model as the latest amounts, never
-        // part of the baseline.
+        // Bookings after the cut-off (the running month, including ones the bank already lists with a later date): shown
+        // to the model as the latest amounts, never part of the baseline.
         var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
         var recentTxs = today >= end
             ? await db.Transactions.AsNoTracking()
                 .Where(t => t.OwnerUserId == ownerId)
                 .CountedAsFlow()
                 .Where(t => t.CategoryId.HasValue && allLeaves.Contains(t.CategoryId.Value))
-                .WithinUtc(TimeRange.Between(new DateTimeOffset(end.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero), new DateTimeOffset(today.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)))
+                .WithinUtc(TimeRange.Between(new DateTimeOffset(end.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero), new DateTimeOffset(end.AddMonths(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)))
                 .ToListAsync(ct)
             : [];
         var allSchedules = await db.ScheduledPayments.AsNoTracking().Where(p => p.OwnerUserId == ownerId).ToListAsync(ct);
@@ -325,7 +325,8 @@ public sealed class BudgetSuggestionService
               months it covers) and for the trailing 12 months, each with all bookings (total) and without the
               outlier bookings (without_outliers). Use these instead of adding up monthly_history yourself.
             - monthly_history: the category's actual total per month ("YYYY-MM"), oldest first, all bookings included.
-            - current_month: the bookings of the running month so far (it is not complete, "through" is today). They are
+            - current_month: the bookings of the running month so far, including ones already listed with a later date
+              (the month is not complete, "through" is today). They are
               not in the baseline, the totals or the history; use them as the latest amount of a payee (a contract's
               newest payment), never as a monthly total or a trend.
             - payees: per payee the number of bookings (n), total, min/typical (median)/max amount, the months it was
