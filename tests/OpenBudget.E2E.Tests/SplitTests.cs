@@ -65,7 +65,6 @@ public sealed class SplitTests : EndToEndTestBase
 
         // A part's details offer editing the split, which can also remove it.
         await Row("−15,00").ClickAsync();
-        await Expect(Page.GetByTestId("tx-details-split-part")).ToBeVisibleAsync();
         await Page.GetByTestId("tx-details-split").ClickAsync();
         await Page.GetByTestId("split-remove").ClickAsync();
         await Expect(Row("−25,00")).ToBeVisibleAsync();

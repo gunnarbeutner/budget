@@ -52,10 +52,6 @@
         {
             <span><b>@L["Note"]</b>@Row.Note</span>
         }
-        @if (Row.IsSplitChild)
-        {
-            <span data-testid="tx-details-split-part"><b>@L["SplitPart"]</b>@L["SplitPart_Text"]</span>
-        }
         @if (Statement is { } statement)
         {
             <span><b>@L["Statement"]</b><a href="@($"/statements/{statement.Id}")" target="_blank" rel="noopener" data-testid="tx-details-statement"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> @statement.Name</a></span>
