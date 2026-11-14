@@ -256,7 +256,11 @@ public sealed class BankSyncRunner
                 finally { await context.CloseBrowsersAsync(); }
                 // New bookings may be the ones open receipts (mailbox, Lidl Plus, Amazon charges) were waiting for.
                 sink.Report("Matching receipts");
-                try { await _receipts.MatchAsync(db, login.OwnerUserId, ct, s => sink.Report("Matching receipts: " + s)); }
+                try
+                {
+                    await _receipts.MatchAsync(db, login.OwnerUserId, ct, s => sink.Report("Matching receipts: " + s));
+                    await AddReceiptPartnersAsync(db, login.OwnerUserId, affected, ct);
+                }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     _logger.LogError(ex, "Bank login {LoginId}: matching receipts failed.", login.Id);
@@ -658,6 +662,23 @@ public sealed class BankSyncRunner
         }
     }
 
+    /// <summary>
+    /// Adds the users on the other side of the owner's receipt links: owners of bookings the owner's receipts are
+    /// linked to (accounts shared for editing), and owners of receipts linked to the owner's bookings. Their open pages
+    /// show the change too.
+    /// </summary>
+    private static async Task AddReceiptPartnersAsync(BudgetDbContext db, string owner, HashSet<string> affected, CancellationToken ct)
+    {
+        var bookingOwners = await db.ReceiptInvoices.AsNoTracking().Where(r => r.OwnerUserId == owner && r.TransactionId != null)
+            .Join(db.Transactions.AsNoTracking(), r => r.TransactionId, t => (long?)t.Id, (r, t) => t.OwnerUserId)
+            .Where(o => o != owner).Distinct().ToListAsync(ct);
+        var receiptOwners = await db.ReceiptInvoices.AsNoTracking().Where(r => r.OwnerUserId != owner && r.TransactionId != null)
+            .Join(db.Transactions.AsNoTracking().Where(t => t.OwnerUserId == owner), r => r.TransactionId, t => (long?)t.Id, (r, t) => r.OwnerUserId)
+            .Distinct().ToListAsync(ct);
+        affected.UnionWith(bookingOwners);
+        affected.UnionWith(receiptOwners);
+    }
+
     /// <summary>An order source: reads charges and new orders, stores them, lists the instruments and matches the charges.</summary>
     private async Task FetchOrdersAsync(
         BudgetDbContext db, BankLogin login, IOrderSource source, ISyncSink sink, SyncContext context, HashSet<string> affected, CancellationToken ct)
@@ -678,6 +699,7 @@ public sealed class BankSyncRunner
         await OpenBudget.Connectors.Amazon.AmazonReceiptStore.ApplyAsync(db, login, result, _clock.GetUtcNow().UtcDateTime, _receipts, ct, s => sink.Report("Matching orders: " + s));
         _logger.LogInformation("Bank login {LoginId}: {Charges} charges and {Orders} order details stored.", login.Id, result.Charges.Count, result.Orders.Count);
         affected.Add(login.OwnerUserId);
+        await AddReceiptPartnersAsync(db, login.OwnerUserId, affected, ct);
     }
 
     /// <summary>
@@ -704,6 +726,7 @@ public sealed class BankSyncRunner
         await _receipts.MatchAsync(db, login.OwnerUserId, ct, s => sink.Report("Matching receipts: " + s));
         _logger.LogInformation("Bank login {LoginId}: {Count} new receipts stored.", login.Id, added);
         affected.Add(login.OwnerUserId);
+        await AddReceiptPartnersAsync(db, login.OwnerUserId, affected, ct);
     }
 
     /// <summary>How far back the first sync of an order source reads.</summary>
