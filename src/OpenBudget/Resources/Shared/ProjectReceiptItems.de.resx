@@ -86,7 +86,7 @@
     <value>Entfernen</value>
   </data>
   <data name="Add" xml:space="preserve">
-    <value>Kategorie hinzufügen</value>
+    <value>Artikelkategorie hinzufügen</value>
   </data>
   <data name="Explain" xml:space="preserve">
     <value>Artikel von Kassenbons, deren Buchung auf einem Konto dieses Projekts liegt, können in diese Kategorien gehen; Artikel, die in keine passen, bleiben in der Kategorie der Buchung.</value>

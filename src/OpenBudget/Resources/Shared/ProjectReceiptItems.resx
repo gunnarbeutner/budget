@@ -86,7 +86,7 @@
     <value>Remove</value>
   </data>
   <data name="Add" xml:space="preserve">
-    <value>Add category</value>
+    <value>Add item category</value>
   </data>
   <data name="Explain" xml:space="preserve">
     <value>Items of receipts whose booking is on one of this project's accounts may go to these categories; items that fit none stay in the booking's category.</value>
