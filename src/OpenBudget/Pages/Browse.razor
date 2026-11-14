@@ -157,6 +157,13 @@
                         </span>
                     }
                 </div>
+                @if (selectionKind == "account" && SelectedAccountNode is { Error: { Length: > 0 } accountError })
+                {
+                    @* the last refresh failed: the reason in full, like the bank or connector put it *@
+                    <div class="browse-account-error" role="status" data-testid="account-error-message">
+                        <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i><span>@accountError</span>
+                    </div>
+                }
             </div>
             @* The view's actions share the title row: period sum, filter chips and toggles left of the balance. *@
             @if (tree != null)

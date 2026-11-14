@@ -12,7 +12,8 @@
    BankLoginService, so nothing here ever shows another user's logins. *@
 
 @* Top-bar sync status: a spinner while syncs run, otherwise the time of the last successful sync ("Synced 07:58");
-   clicking it syncs all of the user's bank logins. Nothing when bank logins are disabled or there are none. *@
+   clicking it syncs all of the user's bank logins. Next to it, a warning sign leads to Connections while a background sync
+   stopped at a step only the user can do. Nothing when bank logins are disabled or there are none. *@
 @if (statuses.Any(s => s.Phase != SyncPhase.Finished))
 {
     <span class="app-sync d-print-none" data-testid="bank-sync-chip">
@@ -28,10 +29,16 @@ else if (lastSync is { } last)
         <span class="app-sync-label">@L["SyncedAt", FormatLastSync(last)]</span>
     </button>
 }
+@if (needsYou && !statuses.Any(s => s.Phase != SyncPhase.Finished))
+{
+    <a class="app-sync-attention d-print-none" href="/connections" data-testid="bank-sync-attention" title="@L["Attention"]" aria-label="@L["Attention"]">
+        <i class="bi bi-exclamation" aria-hidden="true"></i>
+    </a>
+}
 
 <Modal Show="@(challenge != null && NeedsUser(challenge))"
        Title="@(challenge != null ? L[challenge.Challenge?.Kind == ChallengeKind.WebLogin ? "TitleSignIn" : "Title", LoginName(challenge.LoginId)].Value : "")"
-       SizeClass="@(challenge?.Challenge?.Kind == ChallengeKind.WebLogin ? "modal-xl" : "")"
+       SizeClass="@(challenge?.Challenge?.Kind == ChallengeKind.WebLogin && (challenge.WebLoginMode == OpenBudget.Browser.WebLoginMode.Interactive || showBrowser) ? "modal-xl" : "")"
        ShowCloseButton="false" CloseOnBackdropClick="false" OnTop="true" OnClose="@(() => Task.CompletedTask)">
     <ChildContent>
         @if (challenge?.Challenge is { } c)
@@ -126,6 +133,8 @@ else if (lastSync is { } last)
     [Inject] private ClockService ClockSvc { get; set; } = default!;
 
     private IReadOnlyList<BankSyncStatus> statuses = [];
+    // a background sync stopped at a step only the user can do (Connections says which)
+    private bool needsYou;
     private Dictionary<int, string> names = new();
     private BankSyncStatus? challenge;
     private Guid shownChallengeId;
@@ -197,6 +206,7 @@ else if (lastSync is { } last)
         var logins = await Bank.GetLoginsAsync();
         names = logins.ToDictionary(l => l.Id, l => l.DisplayName);
         lastSync = logins.Where(l => l.LastSyncAt != null).Select(l => l.LastSyncAt).Max();
+        needsYou = logins.Any(l => l.NeedsManualSync != null);
 
         var open = statuses.FirstOrDefault(s => s.Challenge != null && s.Phase != SyncPhase.Finished);
         if (open?.ChallengeId != shownChallengeId)

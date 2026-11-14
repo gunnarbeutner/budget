@@ -104,4 +104,7 @@
     <value>Please approve the sign-in in the {0} app.</value>
   </data>
   <data name="Syncing_One" xml:space="preserve"><value>Syncing 1 bank</value></data>
+  <data name="Attention" xml:space="preserve">
+    <value>A connection needs you</value>
+  </data>
 </root>

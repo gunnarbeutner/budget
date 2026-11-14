@@ -67,7 +67,4 @@
   <data name="Settings" xml:space="preserve">
     <value>Settings</value>
   </data>
-  <data name="Attention" xml:space="preserve">
-    <value>A connection needs you</value>
-  </data>
 </root>

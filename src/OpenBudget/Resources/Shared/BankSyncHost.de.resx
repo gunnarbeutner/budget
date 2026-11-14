@@ -104,4 +104,7 @@
     <value>Bitte bestätige die Anmeldung in der App von {0}.</value>
   </data>
   <data name="Syncing_One" xml:space="preserve"><value>Gleiche 1 Bank ab</value></data>
+  <data name="Attention" xml:space="preserve">
+    <value>Eine Verbindung braucht dich</value>
+  </data>
 </root>

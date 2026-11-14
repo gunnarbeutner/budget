@@ -330,6 +330,10 @@
                         @Formatting.FormatMoneyDe(a.Balance.Value, a.Currency ?? "EUR")
                     </span>
                 }
+                @if (!string.IsNullOrEmpty(a.Error))
+                {
+                    <i class="bi bi-exclamation-triangle-fill browse-tree-error" title="@a.Error" aria-label="@a.Error" role="img" data-testid="tree-account-error"></i>
+                }
             </div>
         }
         else
