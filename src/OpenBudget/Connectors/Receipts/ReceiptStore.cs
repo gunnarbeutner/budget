@@ -101,7 +101,7 @@ public sealed class ReceiptStore
         {
             foreach (var owner in owners)
             {
-                var gate = OwnerGates.GetOrAdd(owner, _ => new SemaphoreSlim(1, 1));
+                var gate = _ownerGates.GetOrAdd(owner, _ => new SemaphoreSlim(1, 1));
                 if (!await gate.WaitAsync(0, ct))
                 {
                     progress?.Invoke("waiting for another sync to finish matching");
@@ -139,7 +139,8 @@ public sealed class ReceiptStore
         return (await db.Accounts.AsNoTracking().Where(a => ids.Contains(a.Id) && a.OwnerUserId != ownerUserId).Select(a => a.Id).ToListAsync(ct)).ToHashSet();
     }
 
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> OwnerGates = new(StringComparer.Ordinal);
+    // Per store: the app has one (a singleton), so its runs share these gates.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> _ownerGates = new(StringComparer.Ordinal);
 
     private async Task MatchCoreAsync(BudgetDbContext db, string ownerUserId, Action<string>? progress, CancellationToken ct)
     {
