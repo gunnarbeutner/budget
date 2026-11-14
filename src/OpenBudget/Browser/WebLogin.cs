@@ -181,6 +181,10 @@ public sealed class WebLoginSession : IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Lock _viewerGate = new();
     private Action? _cancelViewer;
+
+    // Completes when the current viewer has stopped its screencast; a newer viewer waits for it first, since the
+    // browser allows one screencast at a time.
+    private Task _viewerDone = Task.CompletedTask;
     private Task? _run;
     private int _ended;
 #pragma warning disable CA2213 // disposed in DisposeAsync unless taken; whoever took it disposes it
@@ -817,20 +821,26 @@ public sealed class WebLoginSession : IAsyncDisposable
     {
         using var viewer = CancellationTokenSource.CreateLinkedTokenSource(ct);
         Action cancel = viewer.Cancel;
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task previous;
         lock (_viewerGate)
         {
             _cancelViewer?.Invoke();
             _cancelViewer = cancel;
+            previous = _viewerDone;
+            _viewerDone = done.Task;
         }
         try
         {
+            await previous.WaitAsync(TimeSpan.FromSeconds(10), viewer.Token).ConfigureAwait(false);
             await _ready.Task.WaitAsync(viewer.Token);
             await RemoteViewSession.ServeAsync(_browser, _browserOptions, _logger, socket, viewer.Token);
         }
-        catch (Exception ex) when (ex is OperationCanceledException or WebSocketException) { /* login ended or viewer replaced */ }
+        catch (Exception ex) when (ex is OperationCanceledException or WebSocketException or TimeoutException) { /* login ended or viewer replaced */ }
         finally
         {
             lock (_viewerGate) { if (_cancelViewer == cancel) _cancelViewer = null; }
+            done.TrySetResult();
             try
             {
                 if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
