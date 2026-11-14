@@ -21,6 +21,9 @@ public sealed class AmazonOptions
     /// <summary>The wait between two requests.</summary>
     public TimeSpan RequestDelay { get; init; } = TimeSpan.FromSeconds(1.5);
 
+    /// <summary>How often a further wallet page that could not be read is asked for again.</summary>
+    public int WalletPageRetries { get; init; } = 2;
+
     /// <summary>At most this many wallet pages per sync.</summary>
     public int MaxWalletPages { get; init; } = 300;
 
@@ -183,7 +186,13 @@ public sealed class AmazonConnector : IBankConnector, IOrderSource
         while (page.HasMore && page.Oldest is { } oldest && oldest >= since && pages < _options.MaxWalletPages)
         {
             await Task.Delay(_options.RequestDelay, _context.Clock, ct);
+            // Amazon now and then answers a page with something else; it usually works when asked again a little later.
             var next = await NextWalletPageAsync(browser, page.NextPageKey!, context, ct);
+            for (var attempt = 1; next == null && attempt <= _options.WalletPageRetries; attempt++)
+            {
+                await Task.Delay(_options.RequestDelay * (4 * attempt), _context.Clock, ct);
+                next = await NextWalletPageAsync(browser, page.NextPageKey!, context, ct);
+            }
             if (next == null)
             {
                 Log.LogWarning("Amazon: wallet page {Page} could not be read; payments before {Oldest} are left out this time.",
@@ -260,7 +269,16 @@ public sealed class AmazonConnector : IBankConnector, IOrderSource
             Log.LogWarning("Amazon: a further payment page answered HTTP {Status}.", response.Status);
             return null;
         }
-        try { return JsonNode.Parse(response.Text) is { } json ? AmazonPages.ParseWalletJson(json) : null; }
-        catch (JsonException) { return null; }
+        try
+        {
+            if (JsonNode.Parse(response.Text) is { } json && AmazonPages.ParseWalletJson(json) is { } page) return page;
+            var keys = JsonNode.Parse(response.Text) is JsonObject o ? string.Join(",", o.Select(p => p.Key)) : "(not an object)";
+            Log.LogWarning("Amazon: a further payment page held no payment list (top-level keys: {Keys}).", keys);
+        }
+        catch (JsonException ex)
+        {
+            Log.LogWarning(ex, "Amazon: a further payment page was not JSON ({Length} characters).", response.Text.Length);
+        }
+        return null;
     }
 }

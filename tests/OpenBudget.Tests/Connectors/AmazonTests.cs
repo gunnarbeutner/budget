@@ -372,6 +372,21 @@ public sealed class AmazonTests
     }
 
     [Fact]
+    public async Task A_further_page_answered_with_something_else_is_asked_for_again()
+    {
+        var shop = new ScriptedShop { OddAnswers = 1 };
+        shop.Pages["/cpe/yourpayments/transactions"] = WalletHtml(true, Entry("-€10.60", "12 Nov 2026", OrderA, "Amazon Visa", "1111"));
+        shop.NextPage = WalletHtml(false, Entry("-€649.00", "2 Oct 2026", OrderB, "Visa", "2222"));
+        shop.Pages["/gp/your-account/order-details"] = OrderHtml("1 Oct 2026", "€649.00", (0, Item("B000000009", "Fridge freezer combination", 1, "€649.00")));
+        var connector = await SignedInAsync(shop);
+
+        var step = await connector.FetchOrdersAsync(new DateOnly(2025, 11, 13), new HashSet<string>(StringComparer.Ordinal), [], null, CancellationToken.None);
+
+        Assert.Equal(2, step.Value!.Charges.Count);
+        Assert.Equal(0, shop.OddAnswers);
+    }
+
+    [Fact]
     public async Task A_sync_pages_through_the_wallet_and_reads_new_orders_once()
     {
         var shop = new ScriptedShop();
@@ -430,6 +445,9 @@ public sealed class AmazonTests
         public string PostBody { get; private set; } = "";
         public string? PostToken { get; private set; }
 
+        /// <summary>How many further-page requests are answered with JSON that holds no payment list.</summary>
+        public int OddAnswers { get; set; }
+
         /// <summary>A further page as Amazon answers it: <c>displayResponse.transactionsList</c> and <c>lastEvaluatedKey</c>.</summary>
         public string? NextPageJson => NextPage == null ? null : NextPageAnswer(NextPage);
         public bool IsOpen => true;
@@ -444,6 +462,11 @@ public sealed class AmazonTests
             {
                 PostBody = request.Body ?? "";
                 PostToken = request.Headers?.GetValueOrDefault("x-amzn-upx-token");
+                if (OddAnswers > 0)
+                {
+                    OddAnswers--;
+                    return Answer(200, request.Url, "{\"type\":\"Throttled\"}");
+                }
                 return Answer(NextPage == null ? 500 : 200, request.Url, NextPageJson ?? "");
             }
             return Pages.TryGetValue(request.Url.AbsolutePath, out var html) ? Answer(200, request.Url, html) : Answer(404, request.Url, "");
