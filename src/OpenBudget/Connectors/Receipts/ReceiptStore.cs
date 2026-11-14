@@ -84,13 +84,14 @@ public sealed class ReceiptStore
     /// receipts, and only receipts whose outcome differs write anything. One run per owner at a time: syncs finishing
     /// together wait for each other, and the later ones find the work done.
     /// </summary>
-    public async Task MatchAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct)
+    /// <param name="progress">Told how far the item categories got (the AI is asked in batches).</param>
+    public async Task MatchAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct, Action<string>? progress = null)
     {
         var gate = OwnerGates.GetOrAdd(ownerUserId, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(ct);
         try
         {
-            await MatchCoreAsync(db, ownerUserId, ct);
+            await MatchCoreAsync(db, ownerUserId, progress, ct);
         }
         finally
         {
@@ -100,7 +101,7 @@ public sealed class ReceiptStore
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> OwnerGates = new(StringComparer.Ordinal);
 
-    private async Task MatchCoreAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct)
+    private async Task MatchCoreAsync(BudgetDbContext db, string ownerUserId, Action<string>? progress, CancellationToken ct)
     {
         var invoices = await db.ReceiptInvoices.Include(i => i.Items).Where(i => i.OwnerUserId == ownerUserId).ToListAsync(ct);
         if (invoices.Count == 0) return;
@@ -186,7 +187,7 @@ public sealed class ReceiptStore
         if (released.Count > 0)
             await db.Transactions.Where(t => released.Contains(t.Id) && t.OwnerUserId == ownerUserId).ExecuteUpdateAsync(u => u.SetProperty(t => t.OrderItems, (string?)null), ct);
 
-        await ApplyAllAsync(db, ownerUserId, invoices.Where(i => i.TransactionId != null).ToList(), force: false, ct);
+        await ApplyAllAsync(db, ownerUserId, invoices.Where(i => i.TransactionId != null).ToList(), force: false, ct, progress);
     }
 
     /// <summary>
@@ -238,7 +239,7 @@ public sealed class ReceiptStore
     /// once for all of them, and the AI gets the open lines of all receipts with the same choices in one request. Returns
     /// the ids of the receipts whose booking was split or re-split.
     /// </summary>
-    private async Task<HashSet<long>> ApplyAllAsync(BudgetDbContext db, string owner, IReadOnlyList<ReceiptInvoice> invoices, bool force, CancellationToken ct)
+    private async Task<HashSet<long>> ApplyAllAsync(BudgetDbContext db, string owner, IReadOnlyList<ReceiptInvoice> invoices, bool force, CancellationToken ct, Action<string>? progress = null)
     {
         var changed = new HashSet<long>();
         var txIds = invoices.Where(i => i.TransactionId != null).Select(i => i.TransactionId!.Value).Distinct().ToList();
@@ -310,14 +311,21 @@ public sealed class ReceiptStore
             }
             asks.Add((p, choices, ask.Select(l => new DatedReceiptLine(l, date)).ToList()));
         }
-        // Receipts offering the AI the same choices are asked together.
+        // Receipts offering the AI the same choices are asked together, a batch at a time (for the progress).
+        var total = asks.Sum(a => a.Lines.Count);
+        var done = 0;
         foreach (var group in asks.GroupBy(a => ChoicesKey(a.Choices), StringComparer.Ordinal))
         {
-            var answers = await _ai!.ClassifyAsync(owner, group.SelectMany(a => a.Lines).ToList(), group.First().Choices, ct);
-            foreach (var (p, _, lines) in group)
-                foreach (var l in lines)
+            var lines = group.SelectMany(a => a.Lines.Select(l => (a.P, Line: l))).ToList();
+            foreach (var batch in lines.Chunk(OpenBudget.Assist.CategorySuggestionService.BatchSize))
+            {
+                progress?.Invoke($"Categorising receipt items ({done} of {total})");
+                var answers = await _ai!.ClassifyAsync(owner, batch.Select(b => b.Line).ToList(), group.First().Choices, ct);
+                foreach (var (p, l) in batch)
                     if (answers.TryGetValue(l.Line.Id, out var category) && ReceiptCategorizer.IsAllowed(category, p.Rules, p.Parent.CategoryId))
                         p.Ai[l.Line.Id] = category;
+                done += batch.Length;
+            }
         }
 
         foreach (var p in work)

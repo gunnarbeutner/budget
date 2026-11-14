@@ -63,7 +63,7 @@ public static class AmazonReceiptStore
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(loginId.ToString(CultureInfo.InvariantCulture) + "|" + chargeKey)))[..40];
 
     /// <summary>Stores a sync's charges and order details for the login, then matches the owner's receipts.</summary>
-    public static async Task ApplyAsync(BudgetDbContext db, BankLogin login, OrderSourceResult result, DateTime nowUtc, ReceiptStore receipts, CancellationToken ct)
+    public static async Task ApplyAsync(BudgetDbContext db, BankLogin login, OrderSourceResult result, DateTime nowUtc, ReceiptStore receipts, CancellationToken ct, Action<string>? progress = null)
     {
         var owner = login.OwnerUserId;
         var stored = await db.ReceiptInvoices.Include(r => r.Items).Where(r => r.BankLoginId == login.Id && r.Shop == ReceiptShops.Amazon).ToListAsync(ct);
@@ -128,7 +128,7 @@ public static class AmazonReceiptStore
             if (!await db.ReceiptInvoices.AnyAsync(r => r.TransactionId == id, ct))
                 await db.Transactions.Where(t => t.Id == id && t.OwnerUserId == owner).ExecuteUpdateAsync(u => u.SetProperty(t => t.OrderItems, (string?)null), ct);
 
-        await receipts.MatchAsync(db, owner, ct);
+        await receipts.MatchAsync(db, owner, ct, progress);
     }
 
     /// <summary>

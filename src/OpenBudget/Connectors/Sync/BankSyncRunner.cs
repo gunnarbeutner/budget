@@ -256,7 +256,7 @@ public sealed class BankSyncRunner
                 finally { await context.CloseBrowsersAsync(); }
                 // New bookings may be the ones open receipts (mailbox, Lidl Plus, Amazon charges) were waiting for.
                 sink.Report("Matching receipts");
-                try { await _receipts.MatchAsync(db, login.OwnerUserId, ct); }
+                try { await _receipts.MatchAsync(db, login.OwnerUserId, ct, s => sink.Report("Matching receipts: " + s)); }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     _logger.LogError(ex, "Bank login {LoginId}: matching receipts failed.", login.Id);
@@ -675,7 +675,7 @@ public sealed class BankSyncRunner
         UpsertAccounts(login, result.Instruments);
         await db.SaveChangesAsync(ct);
         sink.Report("Matching orders");
-        await OpenBudget.Connectors.Amazon.AmazonReceiptStore.ApplyAsync(db, login, result, _clock.GetUtcNow().UtcDateTime, _receipts, ct);
+        await OpenBudget.Connectors.Amazon.AmazonReceiptStore.ApplyAsync(db, login, result, _clock.GetUtcNow().UtcDateTime, _receipts, ct, s => sink.Report("Matching orders: " + s));
         _logger.LogInformation("Bank login {LoginId}: {Charges} charges and {Orders} order details stored.", login.Id, result.Charges.Count, result.Orders.Count);
         affected.Add(login.OwnerUserId);
     }
@@ -701,7 +701,7 @@ public sealed class BankSyncRunner
         var added = 0;
         foreach (var r in step.Value!)
             if (await OpenBudget.Connectors.Receipts.ReceiptStore.AddAsync(db, login.OwnerUserId, shop, r.Receipt, null, now, ct, r.Store)) added++;
-        await _receipts.MatchAsync(db, login.OwnerUserId, ct);
+        await _receipts.MatchAsync(db, login.OwnerUserId, ct, s => sink.Report("Matching receipts: " + s));
         _logger.LogInformation("Bank login {LoginId}: {Count} new receipts stored.", login.Id, added);
         affected.Add(login.OwnerUserId);
     }

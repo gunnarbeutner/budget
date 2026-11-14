@@ -270,10 +270,12 @@ public sealed class ReceiptStoreTests
                 var receipt = ReweInvoice.Parse(SyntheticInvoice.Pdf(SyntheticInvoice.StandardLines(), bonus: -n, invoice: $"PN1000000000000{n}"));
                 await ReceiptStore.AddAsync(db, ReceiptWorld.Alice, ReceiptShops.Rewe, receipt, $"mail-{n}", DateTime.UtcNow, default);
             }
+        var progress = new List<string>();
         await using (var db = await t.System.CreateDbContextAsync())
-            await store.MatchAsync(db, ReceiptWorld.Alice, default);
+            await store.MatchAsync(db, ReceiptWorld.Alice, default, progress.Add);
 
         Assert.Equal(1, ai.Calls);
+        Assert.Matches(@"^Categorising receipt items \(0 of [1-9][0-9]*\)$", Assert.Single(progress));
         Assert.Equal(3, ai.Asked.Count(n => n.StartsWith("Beispiel Banane", StringComparison.Ordinal)));
         for (var n = 1; n <= 3; n++)
             Assert.Contains("Beispiel Banane", (await PartsAsync(t, ReceiptWorld.Id(500 + n))).Single(p => p.CategoryId == ReceiptWorld.Drugstore).OrderItems, StringComparison.Ordinal);
