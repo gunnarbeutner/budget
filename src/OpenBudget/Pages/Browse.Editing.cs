@@ -46,7 +46,7 @@ public partial class Browse
     private int ActiveFilterCount =>
         (accountFilter.HasValue ? 1 : 0) + (amountMin.HasValue ? 1 : 0) + (amountMax.HasValue ? 1 : 0)
         + (checkedFilter != "any" ? 1 : 0) + (directionFilter != "any" ? 1 : 0)
-        + (newOnly ? 1 : 0) + (categoryFilter.HasValue ? 1 : 0);
+        + (newOnly ? 1 : 0) + (OutsideOnlyActive ? 1 : 0) + (categoryFilter.HasValue ? 1 : 0);
 
     private async Task ShowSimilarAsync(TransactionRow row)
     {
@@ -265,7 +265,7 @@ public partial class Browse
         searchInput = ""; searchEffective = "";
         amountMin = null; amountMax = null;
         amountMinInput = ""; amountMaxInput = "";
-        checkedFilter = "any"; directionFilter = "any"; newOnly = false; categoryFilter = null;
+        checkedFilter = "any"; directionFilter = "any"; newOnly = false; outsideOnly = false; categoryFilter = null;
         payeeEquals = null;
     }
 
@@ -337,6 +337,12 @@ public partial class Browse
     {
         popup = PopupKind.None;
         categoryFilter = categoryId;
+        await FilterChangedAsync();
+    }
+
+    private async Task ToggleOutsideOnly()
+    {
+        outsideOnly = !outsideOnly;
         await FilterChangedAsync();
     }
 

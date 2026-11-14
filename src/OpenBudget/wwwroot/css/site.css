@@ -1310,6 +1310,15 @@ button.cat-pill:hover { filter: brightness(0.96); }
 .cat-pill:has(.cat-pill-name) { display: inline-flex; vertical-align: top; }
 .cat-pill-context { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 400; opacity: .8; white-space: pre; }
 .cat-pill-name { flex: 0 0 auto; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+/* a category outside the project (another project's): outlined, with its full path */
+.cat-pill.cat-pill-outside {
+    background: transparent !important;
+    color: var(--ob-muted) !important;
+    outline: 1px dashed var(--ob-input-border);
+    outline-offset: -1px;
+    font-weight: 500;
+}
+.cat-pill-outside-icon { font-size: 0.9em; margin-right: 0.3em; flex: 0 0 auto; }
 .cat-pill.empty {
     background: transparent !important;
     color: var(--ob-muted) !important;

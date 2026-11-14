@@ -214,6 +214,14 @@ public class TransactionQueryService
             baseQuery = baseQuery.Where(t => t.CategoryId.HasValue && leafList.Contains(t.CategoryId.Value));
         }
 
+        if (query.OutsideCategoryIds is { } insideIds)
+        {
+            var ownerId = query.OwnerUserId;
+            var insideList = insideIds.ToList();
+            baseQuery = baseQuery.Where(t => t.CategoryId.HasValue && !insideList.Contains(t.CategoryId.Value)
+                && db.Categories.Any(c => c.OwnerUserId == ownerId && c.Id == t.CategoryId && !string.IsNullOrEmpty(c.Name)));
+        }
+
         if (query.AccountIds is { Count: > 0 } accountIds)
         {
             var accountList = accountIds.ToList();

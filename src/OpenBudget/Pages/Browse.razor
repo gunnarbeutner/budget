@@ -23,6 +23,7 @@
 @inject ManualTransactionService ManualBookings
 @inject AccessScopeProvider AccessProvider
 @inject IStringLocalizer<BrowseTreeRail> RailL
+@inject IStringLocalizer<CategoryPill> PillL
 @inherits DataChangeAwareComponent
 
 <PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
@@ -340,6 +341,13 @@
                             aria-pressed="@newOnly.ToString().ToLowerInvariant()" @onclick="ToggleNewOnly" title="@L["Filter_NewOnlyTitle"]">
                         <span class="tx-new-dot" aria-hidden="true"></span> @L["Filter_NewOnly"]
                     </button>
+                    @if (OutsideFilterApplies)
+                    {
+                        <button type="button" class="ob-btn @(outsideOnly ? "active" : "")" data-testid="filter-outside"
+                                aria-pressed="@outsideOnly.ToString().ToLowerInvariant()" @onclick="ToggleOutsideOnly" title="@L["Filter_OutsideTitle"]">
+                            <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i> @L["Filter_Outside"]
+                        </button>
+                    }
                     <button type="button" class="ob-btn @(pinFilters ? "active" : "")" data-testid="filter-pin"
                             aria-pressed="@pinFilters.ToString().ToLowerInvariant()" @onclick="TogglePin"
                             title="@(pinFilters ? L["Filter_PinOn"] : L["Filter_PinOff"])" aria-label="@L["Filter_Pin"]">
@@ -453,19 +461,25 @@
                                         @if (showCategoryColumn)
                                         {
                                             var hasCategory = !string.IsNullOrEmpty(row.CategoryName);
-                                            var pillStyle = hasCategory ? CategoryColors.For(row.CategoryId ?? 0, row.CategoryColor).Style : null;
-                                            var categoryLabel = hasCategory ? (row.CategoryId is { } labelId && categoryLabels.TryGetValue(labelId, out var shortLabel) ? shortLabel : row.CategoryName) : null;
+                                            var outside = hasCategory ? pickerData?.OutsideOf(row.CategoryId) : null;
+                                            var pillStyle = hasCategory && outside == null ? CategoryColors.For(row.CategoryId ?? 0, row.CategoryColor).Style : null;
+                                            var categoryLabel = outside?.Path ?? (hasCategory ? (row.CategoryId is { } labelId && categoryLabels.TryGetValue(labelId, out var shortLabel) ? shortLabel : row.CategoryName) : null);
                                             var categoryPath = hasCategory ? pickerData?.PathOf(row.CategoryId, row.CategoryName!) ?? row.CategoryName : null;
+                                            var categoryTitle = outside != null ? CategoryPill.OutsideTitle(PillL, outside) : categoryPath;
+                                            var outsideClass = outside != null ? "cat-pill-outside" : "";
                                             @if (row.CanEdit && (hasCategory || row.Amount != 0))
                                             {
-                                                <button type="button" class="cat-pill @(hasCategory ? "" : "empty")" style="@pillStyle" data-testid="tx-category"
-                                                        title="@(hasCategory ? categoryPath : L["Tx_CategoryTitle"].Value)" @onclick="e => OpenPickerFromRow(row, e)" @onclick:stopPropagation="true">
+                                                <button type="button" class="cat-pill @(hasCategory ? "" : "empty") @outsideClass" style="@pillStyle" data-testid="tx-category"
+                                                        data-outside="@(outside != null ? "true" : null)"
+                                                        title="@(hasCategory ? categoryTitle : L["Tx_CategoryTitle"].Value)" @onclick="e => OpenPickerFromRow(row, e)" @onclick:stopPropagation="true">
+                                                    @if (outside != null) { <i class="bi bi-box-arrow-up-right cat-pill-outside-icon" aria-hidden="true"></i> }
                                                     @if (hasCategory) { @CategoryPillText(categoryLabel!, row.CategoryName!) } else { @L["Tx_NoCategory"] }
                                                 </button>
                                             }
                                             else if (hasCategory)
                                             {
-                                                <span class="cat-pill" style="@pillStyle" data-testid="tx-category-label" title="@categoryPath">@CategoryPillText(categoryLabel!, row.CategoryName!)</span>
+                                                <span class="cat-pill @outsideClass" style="@pillStyle" data-testid="tx-category-label" data-outside="@(outside != null ? "true" : null)"
+                                                      title="@categoryTitle">@if (outside != null) { <i class="bi bi-box-arrow-up-right cat-pill-outside-icon" aria-hidden="true"></i> }@CategoryPillText(categoryLabel!, row.CategoryName!)</span>
                                             }
                                         }
                                     </div>
@@ -646,6 +660,8 @@
     private string checkedFilter = "any";
     private string directionFilter = "any";
     private bool newOnly;
+    // only bookings whose category is not one of the project's (another project's category)
+    private bool outsideOnly;
     private long? categoryFilter;
     private bool pinFilters;
     private string? payeeEquals;
@@ -713,7 +729,10 @@
     // labels for the project's categories that share a name with another one of its categories
     private Dictionary<long, string> categoryLabels = [];
 
-    /// <summary>The owner's categories narrowed to the ones in this project: the picker offers only those.</summary>
+    /// <summary>
+    /// The owner's categories narrowed to the ones in this project (the picker offers only those); the others are kept as
+    /// outside categories, named after the other project they belong to.
+    /// </summary>
     private async Task<CategoryPickerData> LoadPickerDataAsync(Project p)
     {
         var all = await Categorization.GetPickerDataAsync(p.OwnerUserId);
@@ -728,7 +747,13 @@
             }
         }
         Collect(tree.Categories);
-        return all.Only(ids);
+        var hier = await Hierarchy.GetAllCategoriesWithChildCountsAsync(p.OwnerUserId);
+        var others = (await ProjectService.GetTrackedItemsByProjectAsync(p.OwnerUserId))
+            .Where(o => o.Id != p.Id && o.Tracked.Count > 0)
+            .Select(o => (o.Name, (IReadOnlySet<long>)CategoryHierarchyService.BuildItemToLeafCategoryIds(o.Tracked, hier)
+                .Values.SelectMany(v => v).ToHashSet()))
+            .ToList();
+        return CategoryPickerLogic.ForProject(all, ids, others);
     }
 
     /// <summary>
@@ -933,7 +958,7 @@
         amountMin = null; amountMax = null; amountMinInput = ""; amountMaxInput = "";
         chartGranularity = "M"; chartMonthlyPicked = false;
         showRelatedAccounts = false; railOpen = false; chartCollapsed = false;
-        checkedFilter = "any"; directionFilter = "any"; newOnly = false; categoryFilter = null; pinFilters = false;
+        checkedFilter = "any"; directionFilter = "any"; newOnly = false; outsideOnly = false; categoryFilter = null; pinFilters = false;
         // The picker lists the categories of the project's own source; another project may sit on another source.
         pickerData = null;
         ResetSelectionState();
@@ -1007,6 +1032,7 @@
         if (query.TryGetValue("chk", out var chkRaw) && chkRaw.ToString() is "yes" or "no") checkedFilter = chkRaw.ToString();
         if (query.TryGetValue("dir", out var dirRaw) && dirRaw.ToString() is "in" or "out") directionFilter = dirRaw.ToString();
         if (query.TryGetValue("new", out var newRaw) && newRaw.ToString() == "1") newOnly = true;
+        if (query.TryGetValue("out", out var outRaw) && outRaw.ToString() == "1") outsideOnly = true;
         if (query.TryGetValue("cat", out var catRaw) && long.TryParse(catRaw, out var catFilterId)) categoryFilter = catFilterId;
         if (query.TryGetValue("payee", out var payeeRaw) && !string.IsNullOrWhiteSpace(payeeRaw)) payeeEquals = payeeRaw.ToString();
         _rulesOpen = query.TryGetValue("rules", out var rulesRaw) && rulesRaw.ToString() == "1" && selectionKind == "category";
@@ -1058,6 +1084,7 @@
         ["chk"] = checkedFilter == "any" ? null : checkedFilter,
         ["dir"] = directionFilter == "any" ? null : directionFilter,
         ["new"] = newOnly ? "1" : null,
+        ["out"] = outsideOnly ? "1" : null,
         ["cat"] = categoryFilter?.ToString(),
         ["pin"] = pinFilters ? "1" : null,
         ["payee"] = string.IsNullOrEmpty(payeeEquals) ? null : payeeEquals,
@@ -1269,7 +1296,37 @@
             ? new TransactionQuery { OwnerUserId = project!.OwnerUserId, OnlyIds = _previewIds, Skip = skip, Take = take }
             : await BuildFilteredTransactionQueryAsync(skip, take, newOnlyOverride);
 
-    private async Task<TransactionQuery> BuildFilteredTransactionQueryAsync(int skip, int take, bool newOnlyOverride) => new()
+    /// <summary>The outside-category filter is offered for the whole project and for its accounts.</summary>
+    private bool OutsideFilterApplies => selectionKind == "all" || IsAccountScope;
+
+    private bool OutsideOnlyActive => outsideOnly && OutsideFilterApplies;
+
+    private async Task<TransactionQuery> BuildFilteredTransactionQueryAsync(int skip, int take, bool newOnlyOverride)
+    {
+        if (!OutsideOnlyActive) return await BuildSelectionQueryAsync(skip, take, newOnlyOverride);
+        pickerData ??= await LoadPickerDataAsync(project!);
+        // The project's accounts (or the selected ones) and their bookings whose category is none of the project's.
+        var q = await BuildSelectionQueryAsync(skip, take, newOnlyOverride);
+        return new TransactionQuery
+        {
+            OwnerUserId = q.OwnerUserId,
+            AccountIds = q.AccountIds ?? ProjectAccountIds(),
+            OutsideCategoryIds = pickerData.Options.Select(o => o.Id).ToList(),
+            SearchText = q.SearchText,
+            MinAbsAmount = q.MinAbsAmount,
+            MaxAbsAmount = q.MaxAbsAmount,
+            Checked = q.Checked,
+            Direction = q.Direction,
+            NewOnly = q.NewOnly,
+            FromUtc = q.FromUtc,
+            ToUtcExclusive = q.ToUtcExclusive,
+            PayeeEquals = q.PayeeEquals,
+            Skip = skip,
+            Take = take
+        };
+    }
+
+    private async Task<TransactionQuery> BuildSelectionQueryAsync(int skip, int take, bool newOnlyOverride) => new()
     {
         OwnerUserId = project!.OwnerUserId,
         UncategorizedOnly = selectionKind == "uncategorized",
@@ -1389,7 +1446,7 @@
 
     private bool HasActiveFilter =>
         accountFilter.HasValue || !string.IsNullOrWhiteSpace(searchEffective) || amountMin.HasValue || amountMax.HasValue
-        || checkedFilter != "any" || directionFilter != "any" || newOnly || categoryFilter.HasValue
+        || checkedFilter != "any" || directionFilter != "any" || newOnly || OutsideOnlyActive || categoryFilter.HasValue
         || !string.IsNullOrEmpty(payeeEquals);
 
     private Task ReloadAsync() => ReloadAsync(quiet: false);
@@ -1404,6 +1461,7 @@
         // The hierarchy may have changed (external data change) — drop the leaf-id cache so the
         // current selection re-resolves against fresh data.
         _leafCacheKey = null; _leafCache = null;
+        pickerData = null;
         var fresh = await LoadTreeAsync();
         if (quiet && fresh != null) txTotals = null;
         if (quiet) chartQuiet = true;

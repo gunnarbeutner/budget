@@ -7,6 +7,12 @@ namespace OpenBudget.Services;
 /// <summary>An assignable (leaf) category as the picker lists it. <see cref="Path"/> is "Group › Subgroup › Name".</summary>
 public sealed record CategoryOption(long Id, string Name, string Path, string? Color);
 
+/// <summary>
+/// A category the bookings of a project can carry without it being one of the project's categories: its full path and
+/// the first other project (of the ones the viewer sees) it belongs to, null when it belongs to none of them.
+/// </summary>
+public sealed record OutsideCategory(string Path, string? ProjectName);
+
 /// <summary>One row of the picker's tree: a group header (not assignable) or a category.</summary>
 /// <see cref="Color"/> is the category's own color (leaves only; null = palette by id).
 public sealed record CategoryPickerRow(bool IsGroup, int Depth, long Id, string Name, string Path, string? Color = null);
@@ -17,7 +23,13 @@ public sealed class CategoryPickerData
     public IReadOnlyList<CategoryOption> Options { get; init; } = [];
     public IReadOnlyList<CategoryPickerRow> Tree { get; init; } = [];
 
+    /// <summary>The owner's categories that are not among <see cref="Options"/> (set for a project's picker data).</summary>
+    public IReadOnlyDictionary<long, OutsideCategory> Outside { get; init; } = new Dictionary<long, OutsideCategory>();
+
     private Dictionary<long, string>? _paths;
+
+    /// <summary>The category as a category outside the project, or null when it is the project's own (or unknown).</summary>
+    public OutsideCategory? OutsideOf(long? id) => id is { } v && Outside.TryGetValue(v, out var o) ? o : null;
 
     /// <summary>Only these categories, with the groups above them (groups left without a category below them are dropped).</summary>
     public CategoryPickerData Only(IReadOnlySet<long> categoryIds)
@@ -34,11 +46,12 @@ public sealed class CategoryPickerData
         return new CategoryPickerData { Options = Options.Where(o => categoryIds.Contains(o.Id)).ToList(), Tree = rows };
     }
 
-    /// <summary>The category's full path ("Group › Subgroup › Name"), or its name when it is not among the options.</summary>
+    /// <summary>The category's full path ("Group › Subgroup › Name"), or its name when it is neither an option nor outside.</summary>
     public string PathOf(long? id, string name)
     {
         _paths ??= Options.GroupBy(o => o.Id).ToDictionary(g => g.Key, g => g.First().Path);
-        return id is { } v && _paths.TryGetValue(v, out var path) ? path : name;
+        if (id is not { } v) return name;
+        return _paths.TryGetValue(v, out var path) ? path : Outside.TryGetValue(v, out var outside) ? outside.Path : name;
     }
 }
 
@@ -106,6 +119,26 @@ public static class CategoryPickerLogic
         }
         while (rows.Count != before);
         return new CategoryPickerData { Options = options, Tree = rows };
+    }
+
+    /// <summary>
+    /// A project's picker data: the owner's categories narrowed to <paramref name="projectCategoryIds"/>, every other
+    /// category of the owner kept as <see cref="CategoryPickerData.Outside"/> with the first of
+    /// <paramref name="otherProjects"/> it belongs to.
+    /// </summary>
+    public static CategoryPickerData ForProject(CategoryPickerData all, IReadOnlySet<long> projectCategoryIds,
+        IEnumerable<(string Name, IReadOnlySet<long> CategoryIds)> otherProjects)
+    {
+        var others = otherProjects.ToList();
+        var outside = new Dictionary<long, OutsideCategory>();
+        foreach (var o in all.Options)
+        {
+            if (projectCategoryIds.Contains(o.Id) || outside.ContainsKey(o.Id)) continue;
+            var owner = others.FirstOrDefault(p => p.CategoryIds.Contains(o.Id)).Name;
+            outside[o.Id] = new OutsideCategory(o.Path, owner);
+        }
+        var only = all.Only(projectCategoryIds);
+        return new CategoryPickerData { Options = only.Options, Tree = only.Tree, Outside = outside };
     }
 
     /// <summary>

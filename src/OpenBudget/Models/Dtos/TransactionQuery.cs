@@ -56,6 +56,12 @@ public class TransactionQuery
     /// <summary>Only these rows (the live preview of a draft categorisation rule); null = no restriction.</summary>
     public IReadOnlyCollection<long>? OnlyIds { get; init; }
 
+    /// <summary>
+    /// Only rows with a (named) category that is not among these: a project's bookings carrying a category outside the
+    /// project. Null = no restriction.
+    /// </summary>
+    public IReadOnlyCollection<long>? OutsideCategoryIds { get; init; }
+
     public int Skip { get; init; }
     public int Take { get; init; } = 50;
 }

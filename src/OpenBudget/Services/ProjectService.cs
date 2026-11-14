@@ -56,6 +56,20 @@ public class ProjectService
             .ToList();
     }
 
+    /// <summary>The projects of an owner the user can see, each with the category items it tracks.</summary>
+    public async Task<List<(int Id, string Name, List<(long Id, CategoryItemType ItemType)> Tracked)>> GetTrackedItemsByProjectAsync(string ownerUserId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var projects = await db.Projects
+            .AsNoTracking()
+            .Where(p => p.OwnerUserId == ownerUserId)
+            .Include(p => p.TrackingItems)
+            .ToListAsync();
+        return (await InUserOrderAsync(db, projects))
+            .Select(p => (p.Id, p.Name ?? "", p.TrackingItems.ToTrackedKeys().ToList()))
+            .ToList();
+    }
+
     /// <summary>Get a project with assignments, tracking items, and category-type assignments.</summary>
     public async Task<Project?> GetProjectAsync(int projectId)
     {

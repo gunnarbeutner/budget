@@ -58,6 +58,27 @@ public sealed class CategorizationTests
     }
 
     [Fact]
+    public void A_projects_picker_keeps_its_own_categories_and_names_the_project_of_the_others()
+    {
+        var (groups, cats) = Tree();
+        var all = CategoryPickerLogic.Build(groups, cats, Source);
+        var data = CategoryPickerLogic.ForProject(all, new HashSet<long> { Id(100), Id(101) },
+        [
+            ("Travel", new HashSet<long> { Id(102) }),
+            ("Leisure", new HashSet<long> { Id(102), Id(103) }),
+        ]);
+
+        Assert.Equal([Id(101), Id(100)], data.Options.Select(o => o.Id));
+        Assert.Null(data.OutsideOf(Id(101)));                                          // the project's own
+        Assert.Equal(new OutsideCategory("Freizeit › Reisen", "Travel"), data.OutsideOf(Id(102)));   // first project wins
+        Assert.Equal(new OutsideCategory("Freizeit › Café & Bäckerei", "Leisure"), data.OutsideOf(Id(103)));
+        Assert.Equal(new OutsideCategory("Loose", null), data.OutsideOf(Id(105)));     // in no other project
+        Assert.Null(data.OutsideOf(Id(104)));                                          // the unnamed sentinel is no category
+        Assert.Null(data.OutsideOf(null));
+        Assert.Equal("Freizeit › Reisen", data.PathOf(Id(102), "Reisen"));
+    }
+
+    [Fact]
     public void The_picker_tree_has_group_headers_indentation_and_no_empty_groups()
     {
         var (groups, cats) = Tree();

@@ -44,7 +44,14 @@
         @if (ShowCategory || mainName != null)
         {
             <span data-testid="tx-details-category">
-                <b>@L["Category"]</b>@(string.IsNullOrEmpty(Row.CategoryName) ? L["NoCategory"] : Row.CategoryName)
+                <b>@L["Category"]</b>@if (PickerData?.OutsideOf(Row.CategoryId) != null && !string.IsNullOrEmpty(Row.CategoryName))
+                {
+                    <CategoryPill CategoryId="Row.CategoryId" PickerData="PickerData" FallbackName="@Row.CategoryName" TestId="tx-details-outside" />
+                }
+                else
+                {
+                    @(string.IsNullOrEmpty(Row.CategoryName) ? L["NoCategory"] : Row.CategoryName)
+                }
                 @if (mainName != null)
                 {
                     <span class="ms-1 text-body-secondary" data-testid="tx-details-follows">@L["Follows", mainName]</span>

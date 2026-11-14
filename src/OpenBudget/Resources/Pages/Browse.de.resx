@@ -403,4 +403,10 @@
   <data name="Suggest_None" xml:space="preserve">
     <value>Kein Vorschlag für diese Buchung.</value>
   </data>
+  <data name="Filter_Outside" xml:space="preserve">
+    <value>Kategorie außerhalb dieses Projekts</value>
+  </data>
+  <data name="Filter_OutsideTitle" xml:space="preserve">
+    <value>Nur Buchungen, deren Kategorie nicht zu diesem Projekt gehört</value>
+  </data>
 </root>
