@@ -91,4 +91,7 @@
   <data name="Item_About" xml:space="preserve">
     <value>Über OpenBudget</value>
   </data>
+  <data name="Item_Receipts" xml:space="preserve">
+    <value>Kassenbons</value>
+  </data>
 </root>

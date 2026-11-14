@@ -91,4 +91,7 @@
   <data name="Item_About" xml:space="preserve">
     <value>About</value>
   </data>
+  <data name="Item_Receipts" xml:space="preserve">
+    <value>Receipts</value>
+  </data>
 </root>

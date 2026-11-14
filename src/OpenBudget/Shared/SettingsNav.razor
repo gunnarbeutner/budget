@@ -22,6 +22,7 @@
     @Item("connections", "/connections", "bi-bank", L["Item_BankLogins"], badge: needsYou ? L["Badge_NeedsYou"].Value : null)
     @Item("portfolio-performance", "/portfolio-performance", "bi-pie-chart", L["Item_PortfolioPerformance"])
     @Item("documents", "/documents/assign", "bi-folder-symlink", L["Item_Documents"])
+    @Item("receipts", "/receipts", "bi-receipt", L["Item_Receipts"])
     @if (Assist.Available)
     {
         @Item("assist", "/assist", "bi-stars", L["Item_Assist"])
@@ -30,7 +31,7 @@
 </nav>
 
 @code {
-    /// <summary>The highlighted section: "account", "connections", "portfolio-performance", "documents", "assist" or "about".</summary>
+    /// <summary>The highlighted section: "account", "connections", "portfolio-performance", "documents", "receipts", "assist" or "about".</summary>
     [Parameter] public string? Active { get; set; }
 
     private bool needsYou;

@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Kassenbons · OpenBudget</value>
+  </data>
+  <data name="Heading" xml:space="preserve">
+    <value>Kassenbons</value>
+  </data>
+  <data name="Intro" xml:space="preserve">
+    <value>OpenBudget liest REWE-Rechnungen von Online-Bestellungen aus deinem Microsoft-365-Postfach, ordnet jede ihrer Lastschrift zu und teilt die Buchung nach den Artikeln auf: Lebensmittel bleiben in der Kategorie der Buchung, Non-Food-Artikel kommen in die Kategorie, die du unten wählst. Verschiebst du einen Artikel in den Details der Buchung in eine andere Kategorie, merken sich spätere Kassenbons das.</value>
+  </data>
+  <data name="Mail_Heading" xml:space="preserve">
+    <value>Postfach-Zugriff</value>
+  </data>
+  <data name="Mail_Unavailable" xml:space="preserve">
+    <value>Microsoft ist auf diesem Server nicht eingerichtet, das Postfach kann nicht gelesen werden.</value>
+  </data>
+  <data name="Mail_NotGranted" xml:space="preserve">
+    <value>Postfach-Zugriff: nicht erteilt</value>
+  </data>
+  <data name="Mail_Grant" xml:space="preserve">
+    <value>Erteilen</value>
+  </data>
+  <data name="Mail_GrantHelp" xml:space="preserve">
+    <value>Du meldest dich bei Microsoft an und erlaubst OpenBudget, deine E-Mails zu lesen (es sieht nur REWE-Rechnungsmails an und lädt nur deren PDF). Dafür wird deine OneDrive-Verbindung genutzt oder angelegt. Die Entra-App-Registrierung des Servers braucht die delegierte Microsoft-Graph-Berechtigung Mail.Read.</value>
+  </data>
+  <data name="Mail_Granted" xml:space="preserve">
+    <value>Postfach-Zugriff: erteilt ({0})</value>
+  </data>
+  <data name="Mail_CheckNow" xml:space="preserve">
+    <value>Postfach jetzt prüfen</value>
+  </data>
+  <data name="Mail_Stop" xml:space="preserve">
+    <value>Postfach nicht mehr lesen</value>
+  </data>
+  <data name="Mail_Reconnect" xml:space="preserve">
+    <value>Neu verbinden</value>
+  </data>
+  <data name="Mail_LastChecked" xml:space="preserve">
+    <value>Zuletzt geprüft: {0} (im Hintergrund etwa stündlich)</value>
+  </data>
+  <data name="Never" xml:space="preserve">
+    <value>nie</value>
+  </data>
+  <data name="NonFood_Heading" xml:space="preserve">
+    <value>Non-Food-Artikel kommen nach</value>
+  </data>
+  <data name="NonFood_Help" xml:space="preserve">
+    <value>Artikel wie Seife, Waschmittel oder Toilettenpapier (am Namen erkannt) werden in diese Kategorie abgeteilt. Pfand und Liefergebühr bleiben bei den Lebensmitteln.</value>
+  </data>
+  <data name="NonFood_None" xml:space="preserve">
+    <value>— in der Kategorie der Buchung lassen —</value>
+  </data>
+  <data name="List_Heading" xml:space="preserve">
+    <value>Gelesene Kassenbons</value>
+  </data>
+  <data name="List_None" xml:space="preserve">
+    <value>Noch keine Kassenbons.</value>
+  </data>
+  <data name="List_Delivered" xml:space="preserve">
+    <value>Geliefert</value>
+  </data>
+  <data name="List_Order" xml:space="preserve">
+    <value>Bestellung</value>
+  </data>
+  <data name="List_Amount" xml:space="preserve">
+    <value>Betrag</value>
+  </data>
+  <data name="List_Items" xml:space="preserve">
+    <value>Artikel</value>
+  </data>
+  <data name="List_Status" xml:space="preserve">
+    <value>Buchung</value>
+  </data>
+  <data name="Status_Split" xml:space="preserve">
+    <value>aufgeteilt, gebucht {0}</value>
+  </data>
+  <data name="Status_Matched" xml:space="preserve">
+    <value>gebucht {0}</value>
+  </data>
+  <data name="Status_Ambiguous" xml:space="preserve">
+    <value>mehrere Buchungen passen</value>
+  </data>
+  <data name="Status_Unmatched" xml:space="preserve">
+    <value>noch keine Buchung</value>
+  </data>
+  <data name="Checked" xml:space="preserve">
+    <value>{0} Rechnungsmails gefunden, {1} neue Kassenbons.</value>
+  </data>
+  <data name="Checked_Unreadable" xml:space="preserve">
+    <value>{0} PDFs konnten nicht gelesen werden.</value>
+  </data>
+  <data name="Outcome_Connected" xml:space="preserve">
+    <value>Postfach-Zugriff erteilt.</value>
+  </data>
+  <data name="Outcome_NoMail" xml:space="preserve">
+    <value>Angemeldet, aber Microsoft hat den Postfach-Zugriff nicht erteilt. Prüfe, ob die App-Registrierung die Berechtigung Mail.Read hat.</value>
+  </data>
+  <data name="Outcome_Failed" xml:space="preserve">
+    <value>Der Postfach-Zugriff wurde nicht erteilt.</value>
+  </data>
+</root>

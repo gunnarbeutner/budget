@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="PageTitle" xml:space="preserve">
+    <value>Receipts · OpenBudget</value>
+  </data>
+  <data name="Heading" xml:space="preserve">
+    <value>Receipts</value>
+  </data>
+  <data name="Intro" xml:space="preserve">
+    <value>OpenBudget reads REWE online-order invoices from your Microsoft 365 mailbox, matches each with its direct debit and splits the booking by the items: food stays in the booking's category, non-food items go to the category you choose below. Move an item to another category in the booking's details and later receipts remember it.</value>
+  </data>
+  <data name="Mail_Heading" xml:space="preserve">
+    <value>Mail access</value>
+  </data>
+  <data name="Mail_Unavailable" xml:space="preserve">
+    <value>Microsoft is not set up on this server, so the mailbox cannot be read.</value>
+  </data>
+  <data name="Mail_NotGranted" xml:space="preserve">
+    <value>Mail access: not granted</value>
+  </data>
+  <data name="Mail_Grant" xml:space="preserve">
+    <value>Grant</value>
+  </data>
+  <data name="Mail_GrantHelp" xml:space="preserve">
+    <value>You sign in with Microsoft and allow OpenBudget to read your mail (it only looks at REWE invoice mails and downloads only their PDF). This uses your OneDrive connection, or creates it. The server's Entra app registration needs the delegated Microsoft Graph permission Mail.Read.</value>
+  </data>
+  <data name="Mail_Granted" xml:space="preserve">
+    <value>Mail access: granted ({0})</value>
+  </data>
+  <data name="Mail_CheckNow" xml:space="preserve">
+    <value>Check mail now</value>
+  </data>
+  <data name="Mail_Stop" xml:space="preserve">
+    <value>Stop reading mail</value>
+  </data>
+  <data name="Mail_Reconnect" xml:space="preserve">
+    <value>Reconnect</value>
+  </data>
+  <data name="Mail_LastChecked" xml:space="preserve">
+    <value>Last checked: {0} (checked about every hour in the background)</value>
+  </data>
+  <data name="Never" xml:space="preserve">
+    <value>never</value>
+  </data>
+  <data name="NonFood_Heading" xml:space="preserve">
+    <value>Non-food items go to</value>
+  </data>
+  <data name="NonFood_Help" xml:space="preserve">
+    <value>Items such as soap, detergent or toilet paper (recognised by their names) are split off into this category. Deposit and delivery lines stay with the food.</value>
+  </data>
+  <data name="NonFood_None" xml:space="preserve">
+    <value>— keep them with the booking's category —</value>
+  </data>
+  <data name="List_Heading" xml:space="preserve">
+    <value>Receipts read</value>
+  </data>
+  <data name="List_None" xml:space="preserve">
+    <value>No receipts yet.</value>
+  </data>
+  <data name="List_Delivered" xml:space="preserve">
+    <value>Delivered</value>
+  </data>
+  <data name="List_Order" xml:space="preserve">
+    <value>Order</value>
+  </data>
+  <data name="List_Amount" xml:space="preserve">
+    <value>Amount</value>
+  </data>
+  <data name="List_Items" xml:space="preserve">
+    <value>Items</value>
+  </data>
+  <data name="List_Status" xml:space="preserve">
+    <value>Booking</value>
+  </data>
+  <data name="Status_Split" xml:space="preserve">
+    <value>split, booked {0}</value>
+  </data>
+  <data name="Status_Matched" xml:space="preserve">
+    <value>booked {0}</value>
+  </data>
+  <data name="Status_Ambiguous" xml:space="preserve">
+    <value>several bookings fit</value>
+  </data>
+  <data name="Status_Unmatched" xml:space="preserve">
+    <value>no booking yet</value>
+  </data>
+  <data name="Checked" xml:space="preserve">
+    <value>{0} invoice mails found, {1} new receipts.</value>
+  </data>
+  <data name="Checked_Unreadable" xml:space="preserve">
+    <value>{0} PDFs could not be read.</value>
+  </data>
+  <data name="Outcome_Connected" xml:space="preserve">
+    <value>Mail access granted.</value>
+  </data>
+  <data name="Outcome_NoMail" xml:space="preserve">
+    <value>Signed in, but Microsoft did not grant mail access. Check that the app registration has the Mail.Read permission.</value>
+  </data>
+  <data name="Outcome_Failed" xml:space="preserve">
+    <value>Mail access was not granted.</value>
+  </data>
+</root>

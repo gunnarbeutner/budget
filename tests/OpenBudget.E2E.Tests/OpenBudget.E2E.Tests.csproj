@@ -25,6 +25,7 @@
     <Compile Include="../OpenBudget.Tests/MoneyMoneyZipFixture.cs" Link="MoneyMoneyZipFixture.cs" />
     <Compile Include="../OpenBudget.Tests/Connectors/FakeMicrosoftCloud.cs" Link="FakeMicrosoftCloud.cs" />
     <Compile Include="../OpenBudget.Tests/Connectors/FakeIng.cs" Link="FakeIng.cs" />
+    <Compile Include="../OpenBudget.Tests/Receipts/SyntheticInvoice.cs" Link="SyntheticInvoice.cs" />
   </ItemGroup>
 
   <ItemGroup>

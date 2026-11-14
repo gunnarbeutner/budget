@@ -4,6 +4,7 @@
 @inject IStringLocalizer<TxDetails> L
 @inject ClockService Clock
 @inject OrderEnrichmentService OrderInfo
+@inject OpenBudget.Connectors.Receipts.ReceiptService ReceiptInfo
 @inject IDbContextFactory<BudgetDbContext> DbFactory
 
 @* The in-place expansion of a selected transaction: the bank's details as a flowing "Label value" list (empty ones
@@ -67,7 +68,11 @@
         <div class="tx-details-purpose"><b class="text-body">@L["Purpose"]</b> @Row.Purpose</div>
     }
 
-    @if (!string.IsNullOrWhiteSpace(Row.OrderItems))
+    @if (receipt != null)
+    {
+        <TxReceipt Receipt="receipt" PickerData="PickerData" CanEdit="Row.CanEdit" BookingCategoryName="@receiptCategoryName" OnChanged="ReceiptChangedAsync" />
+    }
+    else if (!string.IsNullOrWhiteSpace(Row.OrderItems))
     {
         <div class="tx-details-purpose" data-testid="tx-details-order">
             <b class="text-body me-1">@L["Order"]</b>
@@ -225,6 +230,8 @@
 
     private BookingOrders? orders;
     private long ordersFor;
+    private OpenBudget.Connectors.Receipts.BookingReceiptView? receipt;
+    private string? receiptCategoryName;
 
     private string? mainName;
     private long mainFor;
@@ -241,7 +248,24 @@
         else if (Row.Amount != 0) mainName = null;
         if (string.IsNullOrWhiteSpace(Row.OrderItems) || ordersFor == Row.Id) return;
         ordersFor = Row.Id;
-        orders = await OrderInfo.GetOrdersAsync(Row.Id);
+        await LoadReceiptAsync();
+        if (receipt == null) orders = await OrderInfo.GetOrdersAsync(Row.Id);
+    }
+
+    private async Task LoadReceiptAsync()
+    {
+        receipt = await ReceiptInfo.GetForBookingAsync(Row.Id);
+        receiptCategoryName = null;
+        if (receipt == null) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var categoryId = await db.Transactions.AsNoTracking().Where(t => t.Id == receipt.TransactionId).Select(t => t.CategoryId).FirstOrDefaultAsync();
+        receiptCategoryName = categoryId is { } c && PickerData != null ? PickerData.PathOf(c, "") : null;
+    }
+
+    private async Task ReceiptChangedAsync()
+    {
+        await LoadReceiptAsync();
+        await OnChanged.InvokeAsync();
     }
 
     private void Toggle(Panel p)

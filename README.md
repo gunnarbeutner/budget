@@ -57,7 +57,7 @@ dotnet run --project src/OpenBudget
 | `OPENBUDGET_FINTS_PRODUCT_ID` | FinTS product ID registered with the [Deutsche Kreditwirtschaft](https://www.fints.org/de/hersteller/produktregistrierung). Required for FinTS banks. |
 | `OPENBUDGET_RP_ID` | Pins the passkey relying-party id (default: the request host). Changing it invalidates registered passkeys. |
 | `CHROME_PATH` | Chromium for web logins outside Docker (the image ships one). |
-| `OPENBUDGET_ONEDRIVE_CLIENT_ID`, `_SECRET`, `_TENANT` | Entra ID app registration for reading PortfolioPerformance files from OneDrive; the feature is hidden without them. |
+| `OPENBUDGET_ONEDRIVE_CLIENT_ID`, `_SECRET`, `_TENANT` | Entra ID app registration for reading PortfolioPerformance files from OneDrive and receipts from Microsoft 365 mail; the features are hidden without them. Delegated Microsoft Graph permissions: `Files.Read.All`, `offline_access`, `openid`, `profile`, and `Mail.Read` for receipts. |
 | `OPENBUDGET_ENABLE_FAKE_BANK` | `true` offers a made-up bank for trying out connectors. |
 | `OPENBUDGET_OPENAI_API_KEY` | Turns on AI suggestions (see below); without it the AI settings are hidden. Not stored in the data volume. |
 | `OPENBUDGET_OPENAI_MODEL` | Model for AI suggestions (default `gpt-6.1-terra`). |
@@ -122,6 +122,14 @@ yourself. The Docker image includes Chromium and Xvfb.
   connections (or keep them as manual accounts) and **finish the MoneyMoney import**.
 - **PortfolioPerformance** — link the `.portfolio` file on OneDrive (read on the server, kept current) or upload it
   on the Portfolio Performance page.
+- **Receipts** — on the Receipts page, grant mail access (a Microsoft sign-in asking for `Mail.Read`; add that
+  delegated permission to the app registration's API permissions first). OpenBudget then reads REWE online-order
+  invoices (subject "Deine Rechnung zu B-…", PDF attachment) about every hour, matches each with its direct debit
+  (same amount, payee REWE, up to ten days after delivery) and splits the booking by category: food stays in the
+  booking's category, non-food items (by keyword) go to the category chosen there, deposit and delivery lines stay
+  with the food, the redeemed bonus is spread over the discountable items. Moving an item to another category in the
+  booking's details re-splits it and is remembered for that product. Bookings categorized or split by hand are left
+  as they are. With AI suggestions on, products neither the memory nor the keywords place are asked about by name.
 
 ## Development
 

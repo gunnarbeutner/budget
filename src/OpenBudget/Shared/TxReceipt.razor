@@ -1,0 +1,91 @@
+@using OpenBudget.Connectors.Receipts
+@using OpenBudget.Services
+@inject IStringLocalizer<TxReceipt> L
+
+@* A booking's receipt in its details: the receipt's lines grouped like the booking's split parts (category and
+   amount, then the lines). The owner can move a line to another category: the receipt remembers it for the product
+   and splits the booking again. *@
+
+<div class="tx-details-purpose" data-testid="tx-receipt">
+    <b class="text-body me-1">@L["Receipt"]</b>
+    <span class="text-body-secondary">REWE @Receipt.OrderNumber@(Receipt.DeliveryDate is { } d ? " · " + d.ToString("dd.MM.yyyy") : "")</span>
+    @if (Receipt.BonusCents != 0)
+    {
+        <span class="text-body-secondary"> · @L["Bonus", Formatting.FormatMoneyDe(Receipt.BonusCents / 100m)]</span>
+    }
+    @foreach (var group in Receipt.Groups)
+    {
+        <div class="mt-1" data-testid="tx-receipt-group" data-category="@group.CategoryId">
+            <b>@CategoryName(group.CategoryId)</b>
+            <span class="text-body-secondary">@Formatting.FormatMoneyDe(group.AmountCents / 100m)</span>:
+            @for (var i = 0; i < group.Lines.Count; i++)
+            {
+                var line = group.Lines[i];
+                @if (moving == line.Id && PickerData != null)
+                {
+                    <select class="form-select form-select-sm d-inline-block w-auto" data-testid="tx-receipt-move" aria-label="@L["Move", line.Name]"
+                            @onchange="e => MoveAsync(line.Id, e)">
+                        <option value="">@line.Name …</option>
+                        @foreach (var o in PickerData.Options)
+                        {
+                            <option value="@o.Id">@o.Path</option>
+                        }
+                    </select>
+                }
+                else if (CanEdit && PickerData != null)
+                {
+                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline text-reset" data-testid="tx-receipt-line"
+                            title="@L["Move", line.Name]" @onclick="() => moving = line.Id">@Label(line)</button>
+                }
+                else
+                {
+                    <span data-testid="tx-receipt-line">@Label(line)</span>
+                }
+                @(i < group.Lines.Count - 1 ? "; " : "")
+            }
+        </div>
+    }
+    @if (error != null)
+    {
+        <div class="text-danger small">@error</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public BookingReceiptView Receipt { get; set; } = null!;
+    /// <summary>Categories for moving a line; without them lines cannot be moved.</summary>
+    [Parameter] public CategoryPickerData? PickerData { get; set; }
+    /// <summary>Whether the signed-in user may move lines (the receipt's owner).</summary>
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public string? BookingCategoryName { get; set; }
+    /// <summary>A line was moved: the page reloads.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    [Inject] private ReceiptService Service { get; set; } = null!;
+
+    private long? moving;
+    private string? error;
+
+    private string CategoryName(long? id) =>
+        id is { } c && PickerData != null ? PickerData.PathOf(c, BookingCategoryName ?? L["NoCategory"]) : BookingCategoryName ?? L["NoCategory"];
+
+    private static string Label(ReceiptLineView line) =>
+        (int.TryParse(line.Quantity, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var q) && q > 1 ? $"{line.Name} ×{q}" : line.Name)
+        + " " + Formatting.FormatMoneyDe(line.TotalCents / 100m);
+
+    private async Task MoveAsync(long itemId, ChangeEventArgs e)
+    {
+        moving = null;
+        error = null;
+        if (!long.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var category)) return;
+        try
+        {
+            await Service.MoveItemAsync(itemId, category);
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or SplitException or InvalidOperationException)
+        {
+            error = ex.Message;
+        }
+    }
+}

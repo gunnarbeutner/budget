@@ -1,0 +1,206 @@
+@page "/receipts"
+@inherits DataChangeAwareComponent
+@using OpenBudget.Connectors.OneDrive
+@using OpenBudget.Connectors.Receipts
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject ReceiptService Service
+@inject CategorizationService Categorization
+@inject NavigationManager Navigation
+@inject ClockService Clock
+@inject IStringLocalizer<Receipts> L
+
+@* Supermarket receipts: mail access through the user's Microsoft connection (grant, check now, stop), where non-food
+   items go, and the receipts read so far with the booking each one was matched to. Everything is the signed-in
+   user's own. *@
+
+<PageTitle>@L["PageTitle"]</PageTitle>
+
+<SettingsShell Active="receipts">
+<PageHeader Title="@L["Heading"]" />
+
+<p class="text-body-secondary">@L["Intro"]</p>
+
+@if (notice is { } n)
+{
+    <div class="alert @(n.Ok ? "alert-success" : "alert-warning") py-2" role="status" data-testid="receipts-notice">@n.Text</div>
+}
+
+@if (settings == null)
+{
+    <div class="skeleton skeleton-line" style="width: 40%;"></div>
+}
+else
+{
+    <section class="mb-4" data-testid="receipts-mail">
+        <h2 class="h5">@L["Mail_Heading"]</h2>
+        @if (!settings.MicrosoftAvailable)
+        {
+            <p class="text-body-secondary small" data-testid="receipts-mail-unavailable">@L["Mail_Unavailable"]</p>
+        }
+        else if (settings.Connection is not { MailAccess: true } connection)
+        {
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <span data-testid="receipts-mail-status"><i class="bi bi-envelope-x" aria-hidden="true"></i> @L["Mail_NotGranted"]</span>
+                <a class="btn btn-sm btn-primary" href="@GrantHref" target="_top" data-testid="receipts-mail-grant">
+                    <i class="bi bi-microsoft" aria-hidden="true"></i> @L["Mail_Grant"]
+                </a>
+            </div>
+            <p class="small text-body-secondary">@L["Mail_GrantHelp"]</p>
+        }
+        else
+        {
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <span data-testid="receipts-mail-status"><i class="bi bi-envelope-check" aria-hidden="true"></i> @L["Mail_Granted", connection.AccountName ?? ""]</span>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-testid="receipts-mail-check" disabled="@(checking || connection.NeedsReconnect)" @onclick="CheckAsync">
+                    @if (checking)
+                    {
+                        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                    }
+                    @L["Mail_CheckNow"]
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger" data-testid="receipts-mail-stop" @onclick="StopAsync">@L["Mail_Stop"]</button>
+            </div>
+            @if (connection.NeedsReconnect)
+            {
+                <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2 py-2" role="alert" data-testid="receipts-mail-reconnect">
+                    <span>@(connection.LastError ?? L["Mail_Reconnect"].Value)</span>
+                    <a class="btn btn-sm btn-warning" href="@GrantHref" target="_top">@L["Mail_Reconnect"]</a>
+                </div>
+            }
+            <p class="small text-body-secondary mb-1" data-testid="receipts-mail-checked">
+                @L["Mail_LastChecked", settings.MailCheckedAt is { } c ? Clock.ToLocal(c).ToString("dd.MM.yyyy HH:mm") : L["Never"].Value]
+            </p>
+            @if (settings.MailLastError is { } err)
+            {
+                <div class="text-danger small" data-testid="receipts-mail-error">@err</div>
+            }
+        }
+    </section>
+
+    <section class="mb-4" data-testid="receipts-nonfood">
+        <h2 class="h5">@L["NonFood_Heading"]</h2>
+        <p class="small text-body-secondary">@L["NonFood_Help"]</p>
+        <select class="form-select form-select-sm w-auto" data-testid="receipts-nonfood-category" aria-label="@L["NonFood_Heading"]"
+                value="@(settings.NonFoodCategoryId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")" @onchange="NonFoodChangedAsync">
+            <option value="">@L["NonFood_None"]</option>
+            @foreach (var o in picker?.Options ?? [])
+            {
+                <option value="@o.Id">@o.Path</option>
+            }
+        </select>
+    </section>
+
+    <section data-testid="receipts-list">
+        <h2 class="h5">@L["List_Heading"]</h2>
+        @if (receipts.Count == 0)
+        {
+            <p class="small text-body-secondary" data-testid="receipts-none">@L["List_None"]</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead>
+                        <tr>
+                            <th>@L["List_Delivered"]</th>
+                            <th>@L["List_Order"]</th>
+                            <th class="text-end">@L["List_Amount"]</th>
+                            <th class="d-none d-md-table-cell text-end">@L["List_Items"]</th>
+                            <th>@L["List_Status"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in receipts)
+                        {
+                            <tr data-testid="receipt-row" data-state="@r.State.ToString().ToLowerInvariant()">
+                                <td>@((r.DeliveryDate ?? r.OrderDate)?.ToString("dd.MM.yyyy"))</td>
+                                <td>REWE @r.OrderNumber</td>
+                                <td class="text-end">@Formatting.FormatMoneyDe(-r.PaymentCents / 100m)</td>
+                                <td class="d-none d-md-table-cell text-end">@r.Items</td>
+                                <td>@Status(r)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+</SettingsShell>
+
+@code {
+    private sealed record Notice(bool Ok, string Text);
+
+    private ReceiptSettingsView? settings;
+    private CategoryPickerData? picker;
+    private List<ReceiptView> receipts = [];
+    private Notice? notice;
+    private bool checking;
+    private string? userId;
+
+    private static string GrantHref => $"{OneDriveOptions.ConnectPath}?return={OneDriveRegistration.ReceiptsReturn}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
+        if (query.TryGetValue("onedrive", out var outcome))
+            notice = outcome.ToString() == "connected" ? new Notice(true, L["Outcome_Connected"]) : new Notice(false, L["Outcome_Failed"]);
+        await LoadAsync();
+        if (notice is { Ok: true } && settings?.Connection is { MailAccess: false })
+            notice = new Notice(false, L["Outcome_NoMail"]);
+    }
+
+    protected override bool IsRelevantChange(DataChange change) =>
+        (change.Area == DataArea.CloudFiles && change.UserId == userId) || (change.Area == DataArea.ImportedData && change.OwnerUserId == userId);
+
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        userId = (await Access.GetAsync()).UserId;
+        if (userId == null) return;
+        settings = await Service.GetSettingsAsync();
+        picker ??= await Categorization.GetPickerDataAsync(userId);
+        receipts = await Service.ListAsync();
+    }
+
+    private string Status(ReceiptView r) => r.State switch
+    {
+        ReceiptMatchState.Matched when r.Split => L["Status_Split", r.BookingDate?.ToString("dd.MM.yyyy") ?? ""],
+        ReceiptMatchState.Matched => L["Status_Matched", r.BookingDate?.ToString("dd.MM.yyyy") ?? ""],
+        ReceiptMatchState.Ambiguous => L["Status_Ambiguous"],
+        _ => L["Status_Unmatched"],
+    };
+
+    private async Task CheckAsync()
+    {
+        checking = true;
+        try
+        {
+            var result = await Service.CheckMailNowAsync();
+            notice = result.Error is { } e
+                ? new Notice(false, e)
+                : new Notice(true, L["Checked", result.Mails, result.NewReceipts] + (result.Unreadable > 0 ? " " + L["Checked_Unreadable", result.Unreadable] : ""));
+        }
+        finally
+        {
+            checking = false;
+        }
+        await LoadAsync();
+    }
+
+    private async Task StopAsync()
+    {
+        await Service.StopMailAsync();
+        notice = null;
+        await LoadAsync();
+    }
+
+    private async Task NonFoodChangedAsync(ChangeEventArgs e)
+    {
+        long? id = long.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
+        await Service.SetNonFoodCategoryAsync(id);
+        await LoadAsync();
+    }
+}
