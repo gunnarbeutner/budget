@@ -50,7 +50,7 @@ public static class ReceiptMatcher
     public const int DaysAfter = 10;
     public const int EbonDaysAfter = 10;
 
-    public const int LidlDaysAfter = 10;
+    public const int LidlDaysAfter = 16;
 
     public const int ClearlyCloserDays = 7;
     public const int AmazonDaysBefore = 7;

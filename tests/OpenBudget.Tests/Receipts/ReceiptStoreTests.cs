@@ -275,7 +275,8 @@ public sealed class ReceiptStoreTests
             await store.MatchAsync(db, ReceiptWorld.Alice, default, progress.Add);
 
         Assert.Equal(1, ai.Calls);
-        Assert.Matches(@"^Categorising receipt items \(0 of [1-9][0-9]*\)$", Assert.Single(progress));
+        // Other tests of the same owner running alongside can add a "waiting" message first.
+        Assert.Matches(@"^Categorising receipt items \(0 of [1-9][0-9]*\)$", Assert.Single(progress, p => p.StartsWith("Categorising", StringComparison.Ordinal)));
         Assert.Equal(3, ai.Asked.Count(n => n.StartsWith("Beispiel Banane", StringComparison.Ordinal)));
         for (var n = 1; n <= 3; n++)
             Assert.Contains("Beispiel Banane", (await PartsAsync(t, ReceiptWorld.Id(500 + n))).Single(p => p.CategoryId == ReceiptWorld.Drugstore).OrderItems, StringComparison.Ordinal);
