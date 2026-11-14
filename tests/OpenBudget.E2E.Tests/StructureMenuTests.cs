@@ -166,6 +166,25 @@ public sealed class StructureMenuTests : EndToEndTestBase
     }
 
     [Test]
+    public async Task Dropping_on_a_groups_top_edge_places_the_row_before_the_group()
+    {
+        await GroupGiroInBanksAsync();
+        await GoToAsync(BrowseUrl);
+        var banks = Sidebar.GetByTestId("tree-group").Filter(new() { HasText = "Banks" }).First;
+
+        // The Giro sits in Banks; dropped on the group's top edge it leaves the group and lands right before it.
+        await Account(EditingSeed.BankAccountName).DragToAsync(banks, new() { TargetPosition = new() { X = 40, Y = 2 } });
+        long? groupId = BanksGroupId;
+        for (var i = 0; i < 50 && groupId != null; i++)
+        {
+            await Task.Delay(100);
+            await using var db = await Db.CreateDbContextAsync();
+            groupId = (await db.Accounts.SingleAsync(a => a.Id == EditingSeed.BankAccountId)).GroupId;
+        }
+        Assert.That(groupId, Is.Null);
+    }
+
+    [Test]
     public async Task Deleting_an_account_group_moves_its_accounts_up_and_settings_rename_an_account()
     {
         await GroupGiroInBanksAsync();

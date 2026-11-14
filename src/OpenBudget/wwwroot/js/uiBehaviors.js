@@ -315,6 +315,25 @@ document.addEventListener("dragstart", function (e) {
     try { e.dataTransfer.setData("text/plain", el.getAttribute("title") || ""); } catch (err) { /* older browsers */ }
 });
 
+// Dropping on a group row moves into the group; its top edge instead places the row before the group. The edge is
+// marked while dragging, and obDropBefore tells Blazor where the last drop landed (it asks after the drop).
+(function () {
+    var row = null, before = false;
+    function clear() { if (row) row.classList.remove("drop-edge-before"); }
+    document.addEventListener("dragstart", function () { clear(); row = null; before = false; });
+    document.addEventListener("dragover", function (e) {
+        var r = e.target && e.target.closest && e.target.closest("[data-ob-drop-group]");
+        if (r !== row) { clear(); row = r; }
+        if (!r) { before = false; return; }
+        var box = r.getBoundingClientRect();
+        before = e.clientY - box.top < box.height * 0.3;
+        r.classList.toggle("drop-edge-before", before);
+    }, true);
+    document.addEventListener("dragend", clear);
+    document.addEventListener("drop", clear, true);
+    window.obDropBefore = function () { return before; };
+})();
+
 // Resizable Browse sidebar: drag the handle on its right edge (or focus it and use the arrow keys); double-click
 // resets. The width is a CSS variable on <html>, so Blazor re-renders never undo it, and is remembered per browser.
 (function () {

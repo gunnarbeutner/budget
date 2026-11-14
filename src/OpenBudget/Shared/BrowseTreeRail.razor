@@ -130,6 +130,8 @@
 
     private bool Draggable(SidebarNode? node) => node != null && CanDrag != null && RenamingNode == null && CanDrag(node);
 
+    private static bool IsGroupNode(SidebarNode? n) => n is { Kind: SidebarNodeKind.CategoryGroup or SidebarNodeKind.AccountGroup };
+
     private static bool IsGroup(SidebarNode n) => n.Kind is SidebarNodeKind.CategoryGroup or SidebarNodeKind.AccountGroup;
 
     private static bool SameTree(SidebarNode a, SidebarNode b) =>
@@ -144,13 +146,15 @@
 
     private void DragEnd() => (dragNode, dropTarget) = (null, null);
 
-    // Dropped on a group: into it (at the end); on any other row: right before it.
+    // Dropped on a group: into it (at the end), or right before it when dropped on the row's top edge (obDropBefore);
+    // on any other row: right before it.
     private async Task DropOn(SidebarNode? target)
     {
         var dragged = dragNode;
         DragEnd();
         if (dragged == null || target == null || dragged == target || !SameTree(dragged, target)) return;
-        await OnDrop.InvokeAsync((dragged, target, IsGroup(target)));
+        var into = IsGroup(target) && !await JS.TryInvokeAsync<bool>("obDropBefore");
+        await OnDrop.InvokeAsync((dragged, target, into));
     }
 
     private string DropClass(SidebarNode? node) =>
@@ -353,6 +357,7 @@
                  draggable="@(Draggable(groupNode) ? "true" : null)" data-ob-drag="@(Draggable(groupNode) ? "" : null)"
                  @ondragstart="() => { if (groupNode != null) DragStart(groupNode); }" @ondragenter="() => DragEnter(groupNode)" @ondragend="DragEnd"
                  @ondragover:preventDefault="@(CanDrag != null)" @ondrop="() => DropOn(groupNode)" @ondrop:preventDefault="true"
+                 data-ob-drop-group="@(groupNode != null && CanDrag != null ? "" : null)"
                  @onclick="() => OnGroupClickAsync(groupId, key)"
                  @oncontextmenu="e => OpenMenu(groupNode, e)" @oncontextmenu:preventDefault="@HasMenu(groupNode)"
                  @onkeydown="e => OnGroupKeydown(e, groupId, key, groupNode)">
@@ -441,6 +446,7 @@
             builder.AddEventPreventDefaultAttribute(15, "ondragover", true);
             builder.AddAttribute(16, "ondrop", EventCallback.Factory.Create<DragEventArgs>(this, () => DropOn(sidebarNode)));
             builder.AddEventPreventDefaultAttribute(17, "ondrop", true);
+            if (IsGroupNode(sidebarNode)) builder.AddAttribute(18, "data-ob-drop-group", "");
         }
         if (HasMenu(sidebarNode))
         {

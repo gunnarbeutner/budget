@@ -1359,6 +1359,7 @@ button.cat-pill:hover { filter: brightness(0.96); }
 .browse-tree-rename { height: 1.6rem; padding: 0 0.35rem; font-size: 0.88rem; min-width: 0; flex: 1 1 auto; }
 .browse-tree-row.drop-before { box-shadow: inset 0 2px 0 var(--ob-accent); }
 .browse-tree-row.drop-into { background: rgba(var(--bs-primary-rgb), 0.15); outline: 1px dashed var(--ob-accent); outline-offset: -1px; }
+.browse-tree-row.drop-into.drop-edge-before { background: none; outline: none; box-shadow: inset 0 2px 0 var(--ob-accent); }
 /* Rows keep the normal cursor; the grabbing cursor shows only while a row is being dragged. */
 .browse-tree.dragging, .browse-tree.dragging .browse-tree-row { cursor: grabbing; }
 .move-group-list { max-height: 22rem; overflow-y: auto; }
