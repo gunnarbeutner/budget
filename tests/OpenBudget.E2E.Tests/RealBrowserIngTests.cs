@@ -96,7 +96,7 @@ public sealed class RealBrowserIngTests
     private BrowserService NewBrowser() => new(NullLogger<BrowserService>.Instance, new BrowserOptions { ExecutablePath = _chrome, IdleShutdown = TimeSpan.FromSeconds(1), Headless = true });
 
     private static WebLoginService Service(BrowserService browser) => new(browser,
-        new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10), Timeout = TimeSpan.FromSeconds(60) },
+        new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(100), StuckAfter = TimeSpan.FromSeconds(2), CodeSettle = TimeSpan.FromMilliseconds(500), DismissWait = TimeSpan.FromMilliseconds(500), SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10), Timeout = TimeSpan.FromSeconds(60) },
         TimeProvider.System, NullLoggerFactory.Instance);
 
     private IngWebClient Client(string? device = null) =>

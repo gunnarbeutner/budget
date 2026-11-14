@@ -235,7 +235,7 @@ public sealed class RealBrowserPayPalTests
     private BrowserService NewBrowser() => new(NullLogger<BrowserService>.Instance, new BrowserOptions { ExecutablePath = _chrome, IdleShutdown = TimeSpan.FromSeconds(1), Headless = true });
 
     private static WebLoginService Service(BrowserService browser) => new(browser,
-        new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },
+        new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(100), StuckAfter = TimeSpan.FromSeconds(2), CodeSettle = TimeSpan.FromMilliseconds(500), DismissWait = TimeSpan.FromMilliseconds(500), SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },
         TimeProvider.System, NullLoggerFactory.Instance);
 
     private PayPalConnector Connector(BankHttpClient http) =>

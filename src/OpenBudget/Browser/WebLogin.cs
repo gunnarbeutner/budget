@@ -22,6 +22,9 @@ public sealed class WebLoginOptions
     /// <summary>When the sign-in form is still (or again) there this long after submitting, the user is shown the page (wrong password, CAPTCHA, ...).</summary>
     public TimeSpan StuckAfter { get; set; } = TimeSpan.FromSeconds(8);
 
+    /// <summary>How long the code page is left alone after a typed code was submitted, before it counts as asking again.</summary>
+    public TimeSpan CodeSettle { get; set; } = TimeSpan.FromSeconds(2);
+
     /// <summary>The longest a browser kept after the login (<see cref="WebLoginSpec.KeepBrowser"/>) stays open.</summary>
     public TimeSpan KeptBrowserLifetime { get; set; } = TimeSpan.FromMinutes(15);
 
@@ -557,7 +560,7 @@ public sealed class WebLoginSession : IAsyncDisposable
         }
         var totp = _totpRejected ? null : form.Totp;
         if (AskForCode == null && totp == null) return false;
-        var settle = _totpAttempts > 0 && !_totpRejected ? form.TotpSettle : TimeSpan.FromSeconds(2);
+        var settle = _totpAttempts > 0 && !_totpRejected ? form.TotpSettle : _options.CodeSettle;
         if (_codeSubmittedAt is { } submitted && DateTime.UtcNow - submitted < settle) return true;
         if (totp != null && !_authenticatorChosen && form.ChooseAuthenticator.Count > 0 && !await _browser.IsVisibleAsync(form.FieldSelector)
             && await ChooseAuthenticatorAsync(form, ct))

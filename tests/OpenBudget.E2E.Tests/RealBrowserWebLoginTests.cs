@@ -210,7 +210,7 @@ public sealed class RealBrowserWebLoginTests
     public async Task A_landing_page_that_still_needs_a_second_factor_is_shown_and_does_not_count_as_signed_in()
     {
         await using var browser = NewBrowser();
-        var service = new WebLoginService(browser, new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },
+        var service = new WebLoginService(browser, new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(100), StuckAfter = TimeSpan.FromSeconds(2), CodeSettle = TimeSpan.FromMilliseconds(500), DismissWait = TimeSpan.FromMilliseconds(500), SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },
             TimeProvider.System, NullLoggerFactory.Instance);
         var pending = new WebLoginSpec(new Uri(_baseUrl + "login"), ["127.0.0.1"], new Uri(_baseUrl + "home"))
         {
@@ -218,7 +218,8 @@ public sealed class RealBrowserWebLoginTests
         };
         await using (var session = await service.StartAsync("user-1", pending, [], CancellationToken.None))
         {
-            await Task.Delay(3000);
+            for (var i = 0; i < 100 && session.Mode != WebLoginMode.Interactive; i++) await Task.Delay(100);
+            await Task.Delay(500);
             Assert.That(session.Completion.IsCompleted, Is.False);
             Assert.That(session.Mode, Is.EqualTo(WebLoginMode.Interactive));
         }
@@ -235,7 +236,7 @@ public sealed class RealBrowserWebLoginTests
     public async Task A_browser_notice_in_front_of_the_form_is_clicked_away_before_filling_it_in()
     {
         await using var browser = NewBrowser();
-        var service = new WebLoginService(browser, new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },
+        var service = new WebLoginService(browser, new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(100), StuckAfter = TimeSpan.FromSeconds(2), CodeSettle = TimeSpan.FromMilliseconds(500), DismissWait = TimeSpan.FromMilliseconds(500), SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },
             TimeProvider.System, NullLoggerFactory.Instance);
         var spec = new WebLoginSpec(new Uri(_baseUrl + "alert"), ["127.0.0.1"], new Uri(_baseUrl + "home"))
         {
@@ -253,7 +254,7 @@ public sealed class RealBrowserWebLoginTests
         await using var browser = NewBrowser();
         using var logs = new OpenbankWebLoginTests.Logs();
         using var factory = Microsoft.Extensions.Logging.LoggerFactory.Create(b => b.AddProvider(logs));
-        var service = new WebLoginService(browser, new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },
+        var service = new WebLoginService(browser, new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(100), StuckAfter = TimeSpan.FromSeconds(2), CodeSettle = TimeSpan.FromMilliseconds(500), DismissWait = TimeSpan.FromMilliseconds(500), SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },
             TimeProvider.System, factory);
         await using var session = await service.StartAsync("user-1", MaskedSpec("8264"), [], CancellationToken.None);
         var result = await session.Completion.WaitAsync(TimeSpan.FromSeconds(60)).ContinueWith(t => t.IsCompletedSuccessfully ? t.Result : WebLoginResult.Fail("timeout"), TaskScheduler.Default);
@@ -264,7 +265,7 @@ public sealed class RealBrowserWebLoginTests
     public async Task The_bank_s_error_box_ends_the_login_as_rejected_credentials()
     {
         await using var browser = NewBrowser();
-        var service = new WebLoginService(browser, new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10), StuckAfter = TimeSpan.FromSeconds(30) },
+        var service = new WebLoginService(browser, new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(100), CodeSettle = TimeSpan.FromMilliseconds(500), DismissWait = TimeSpan.FromMilliseconds(500), SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10), StuckAfter = TimeSpan.FromSeconds(30) },
             TimeProvider.System, NullLoggerFactory.Instance);
         await using var session = await service.StartAsync("user-1", MaskedSpec("1111"), [], CancellationToken.None);
         var result = await session.Completion.WaitAsync(TimeSpan.FromSeconds(30));
@@ -277,7 +278,7 @@ public sealed class RealBrowserWebLoginTests
     public async Task A_two_step_react_form_is_filled_and_submitted_page_by_page()
     {
         await using var browser = NewBrowser();
-        var service = new WebLoginService(browser, new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },
+        var service = new WebLoginService(browser, new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(100), StuckAfter = TimeSpan.FromSeconds(2), CodeSettle = TimeSpan.FromMilliseconds(500), DismissWait = TimeSpan.FromMilliseconds(500), SettleDelay = TimeSpan.FromMilliseconds(100), FormTimeout = TimeSpan.FromSeconds(10) },
             TimeProvider.System, NullLoggerFactory.Instance);
         var spec = new WebLoginSpec(new Uri(_baseUrl + "twostep"), ["127.0.0.1"], new Uri(_baseUrl + "home"))
         {
@@ -303,7 +304,7 @@ public sealed class RealBrowserWebLoginTests
     public async Task A_web_login_seeds_the_browser_exports_the_cookies_and_leaves_nothing_behind()
     {
         await using var browser = NewBrowser();
-        var service = new WebLoginService(browser, new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(300) }, TimeProvider.System, NullLoggerFactory.Instance);
+        var service = new WebLoginService(browser, new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(100), StuckAfter = TimeSpan.FromSeconds(2), CodeSettle = TimeSpan.FromMilliseconds(500), DismissWait = TimeSpan.FromMilliseconds(500), SettleDelay = TimeSpan.FromMilliseconds(300) }, TimeProvider.System, NullLoggerFactory.Instance);
         var spec = new WebLoginSpec(new Uri(_baseUrl + "login"), ["127.0.0.1"], new Uri(_baseUrl + "home"));
         var seed = new CookieState("remember", "device-1", "127.0.0.1", "/", DateTime.UtcNow.AddDays(30), false, true, "Lax");
 
@@ -326,7 +327,7 @@ public sealed class RealBrowserWebLoginTests
     {
         await using var browser = NewBrowser();
         var spec = new WebLoginSpec(new Uri(_baseUrl + "login"), ["127.0.0.1"], new Uri(_baseUrl + "home"));
-        var service = new WebLoginService(browser, new WebLoginOptions { SettleDelay = TimeSpan.FromMilliseconds(100) }, TimeProvider.System, NullLoggerFactory.Instance);
+        var service = new WebLoginService(browser, new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(100), StuckAfter = TimeSpan.FromSeconds(2), CodeSettle = TimeSpan.FromMilliseconds(500), DismissWait = TimeSpan.FromMilliseconds(500), SettleDelay = TimeSpan.FromMilliseconds(100) }, TimeProvider.System, NullLoggerFactory.Instance);
 
         await using var first = await service.StartAsync("user-1", spec, [], CancellationToken.None);
         Assert.That((await first.Completion.WaitAsync(TimeSpan.FromSeconds(60))).Success, Is.True);
