@@ -87,29 +87,22 @@
                 @foreach (var r in visible.Take(shown))
                 {
                     <tr data-testid="receipt-row" data-state="@r.State.ToString().ToLowerInvariant()" data-source="@r.Source" @key="(r.Source, r.Id)"
-                        class="@(r.IsAmazon ? "" : "receipts-row-open")" @onclick="() => Open(r)">
+                        class="receipts-row-open" @onclick="() => Open(r)">
                         <td class="d-none d-sm-table-cell text-nowrap receipts-col-date">@r.Date?.ToString("dd.MM.yy", CultureInfo.InvariantCulture)</td>
                         <td class="receipts-col-title">
-                            @if (r.IsAmazon)
-                            {
-                                <span class="d-block text-truncate">@r.Title</span>
-                            }
-                            else
-                            {
-                                <button type="button" class="btn btn-link btn-sm p-0 text-start text-truncate d-block mw-100 receipts-title" data-testid="receipt-open"
-                                        @onclick="() => Open(r)" @onclick:stopPropagation="true">@r.Title</button>
-                            }
+                            <button type="button" class="btn btn-link btn-sm p-0 text-start text-truncate d-block mw-100 receipts-title" data-testid="receipt-open"
+                                    @onclick="() => Open(r)" @onclick:stopPropagation="true">@r.Title</button>
                             <span class="d-block small text-body-secondary text-truncate"><span class="d-sm-none">@r.Date?.ToString("dd.MM.yy", CultureInfo.InvariantCulture) · </span>@L["Source_" + r.Source]<span class="d-none d-sm-inline d-md-none"> · @L["Items_Count", r.Items]</span></span>
                         </td>
                         <td class="d-none d-md-table-cell text-end receipts-col-items">@r.Items</td>
                         <td class="text-end text-nowrap receipts-col-amount">@Formatting.FormatMoneyDe(-r.PaymentCents / 100m)</td>
                         <td class="receipts-col-status" @onclick:stopPropagation="true">
                             <span class="badge rounded-pill @Pill(r.State)" data-testid="receipt-status" title="@Status(r)">@Status(r)</span>
-                            @if (!r.IsAmazon && r.State is ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched or ReceiptReviewState.Waiting)
+                            @if (r.State is ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched or ReceiptReviewState.Waiting)
                             {
                                 <button type="button" class="btn btn-sm btn-link p-0 d-block" data-testid="receipt-assign" @onclick="() => OpenAssignAsync(r)">@L["Assign_Row"]</button>
                             }
-                            else if (!r.IsAmazon && r.State == ReceiptReviewState.Dismissed)
+                            else if (r.State == ReceiptReviewState.Dismissed)
                             {
                                 <button type="button" class="btn btn-sm btn-link p-0 d-block" data-testid="receipt-reset" @onclick="() => RunAsync(() => Service.ResetAssignmentAsync(r.Id))">@L["Reset"]</button>
                             }
@@ -324,7 +317,7 @@ else
 
     private void Open(ReceiptReviewRow r)
     {
-        if (!r.IsAmazon) openId = r.Id;
+        openId = r.Id;
     }
 
     private static string Pill(ReceiptReviewState s) => s switch

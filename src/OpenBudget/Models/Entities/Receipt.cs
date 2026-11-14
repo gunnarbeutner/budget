@@ -33,6 +33,11 @@ public enum ReceiptMatchState
 
     /// <summary>The owner said its booking is not in the app: no longer matched.</summary>
     Dismissed = 3,
+
+    /// <summary>
+    /// Nothing to look for: paid with points or a gift card, or (Amazon) the payment method is not mapped to an account.
+    /// </summary>
+    Skipped = 4,
 }
 
 /// <summary>What a receipt line is: a product, a deposit line (Pfand, Leergut, Pfandtasche) or a fee (delivery).</summary>
@@ -62,8 +67,8 @@ public static class ReceiptCategorySource
 }
 
 /// <summary>
-/// A shop's invoice (a supermarket receipt) read from the owner's mailbox: its lines, totals and the booking that paid
-/// it. Personal like the mailbox it came from (owner-only query filter).
+/// A shop's receipt (a supermarket receipt from the owner's mailbox or Lidl Plus, or an Amazon order's charge): its
+/// lines, totals and the booking that paid it. Personal (owner-only query filter).
 /// </summary>
 [Table("receipt_invoices")]
 public class ReceiptInvoice
@@ -102,10 +107,10 @@ public class ReceiptInvoice
     /// <summary>The sum of the lines ("Gesamtsumme") in cents.</summary>
     public long TotalCents { get; set; }
 
-    /// <summary>Redeemed bonus credit in cents (zero or negative).</summary>
+    /// <summary>Redeemed bonus credit or coupons in cents (zero or negative); Amazon: what the charge differs from its items (shipping, discounts, points).</summary>
     public long BonusCents { get; set; }
 
-    /// <summary>What was charged ("Zahlungsbetrag") in cents (positive): <see cref="TotalCents"/> plus <see cref="BonusCents"/>.</summary>
+    /// <summary>What was charged ("Zahlungsbetrag") in cents (positive; an Amazon refund negative): <see cref="TotalCents"/> plus <see cref="BonusCents"/>.</summary>
     public long PaymentCents { get; set; }
 
     /// <summary>The mail it came with (Microsoft Graph message id).</summary>
@@ -128,6 +133,27 @@ public class ReceiptInvoice
 
     /// <summary>The owner assigned <see cref="TransactionId"/> by hand: kept while the booking exists, whatever its amount.</summary>
     public bool ManualMatch { get; set; }
+
+    /// <summary>The login that read it (Amazon: one receipt per charge of an order).</summary>
+    public int? BankLoginId { get; set; }
+
+    /// <summary>Amazon: the charge's identity within the login (order, day, amount, payment method and occurrence).</summary>
+    [MaxLength(200)]
+    public string? SourceKey { get; set; }
+
+    /// <summary>Amazon: the payment method's remote id (see <see cref="BankLoginAccount.RemoteId"/>), mapped to the account the charge is booked on.</summary>
+    [MaxLength(200)]
+    public string? PaymentMethodId { get; set; }
+
+    /// <summary>Amazon: the payment method's name ("Visa ****1234", "Amazon gift card").</summary>
+    [MaxLength(200)]
+    public string? PaymentMethod { get; set; }
+
+    /// <summary>Amazon: the order's grand total in cents (all its charges), when its details page shows it.</summary>
+    public long? OrderTotalCents { get; set; }
+
+    /// <summary>Amazon: when the order's details (its items) were read; null while they are not known.</summary>
+    public DateTime? DetailsReadAt { get; set; }
 
     public ICollection<ReceiptItem> Items { get; set; } = new List<ReceiptItem>();
 }
@@ -170,6 +196,9 @@ public class ReceiptItem
     public bool NoDiscount { get; set; }
 
     public ReceiptItemKind Kind { get; set; }
+
+    /// <summary>Amazon: the shipment of the order the item went out with (0-based, in page order).</summary>
+    public int? Shipment { get; set; }
 
     /// <summary>The category the item goes to (null: the booking's own category).</summary>
     public long? CategoryId { get; set; }

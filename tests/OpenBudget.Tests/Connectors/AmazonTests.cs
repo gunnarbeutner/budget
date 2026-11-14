@@ -6,6 +6,8 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenBudget.Connectors;
 using OpenBudget.Connectors.Amazon;
+using OpenBudget.Connectors.Receipts;
+using OpenBudget.Models;
 using Xunit;
 
 namespace OpenBudget.Tests.Connectors;
@@ -149,30 +151,36 @@ public sealed class AmazonTests
 
     private static readonly DateOnly Day = new(2026, 11, 10);
 
+    /// <summary>An Amazon charge on account <paramref name="account"/> (signed cents as the wallet shows them).</summary>
+    private static ReceiptToMatch Charge(long id, long account, DateOnly day, long cents) => new(id, -cents, null, day, ReceiptShops.Amazon, account);
+
+    private static ReceiptBooking Booking(long id, long account, DateOnly day, long cents, bool shopLike, bool Pending = false) =>
+        new(id, day, cents, shopLike ? "AMAZON EU S.A R.L." : "Card payment", null, account, Pending);
+
     [Fact]
     public void A_charge_matches_the_same_amount_from_two_days_before_to_five_days_after()
     {
-        var charges = new[] { new ChargeToMatch(1, 7, Day, -1060) };
-        Assert.Equal(10, AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day.AddDays(-2), -1060, false)]).Matches[1]);
-        Assert.Equal(10, AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day.AddDays(5), -1060, false)]).Matches[1]);
-        Assert.Empty(AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day.AddDays(6), -1060, false)]).Matches);
+        var charges = new[] { Charge(1, 7, Day, -1060) };
+        Assert.Equal(10, ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(-2), -1060, false)]).Matches[1]);
+        Assert.Equal(10, ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(5), -1060, false)]).Matches[1]);
+        Assert.Empty(ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(6), -1060, false)]).Matches);
         // a pending booking carries the bank's expected booking day, often a week or more later
-        Assert.Equal(10, AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day.AddDays(9), -1060, false, Pending: true)]).Matches[1]);
-        Assert.Empty(AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day.AddDays(15), -1060, false, Pending: true)]).Matches);
-        Assert.Empty(AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day.AddDays(-3), -1060, false)]).Matches);
-        Assert.Empty(AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day, -1061, false)]).Matches);
-        Assert.Empty(AmazonMatcher.Match(charges, [new BookingToMatch(10, 8, Day, -1060, false)]).Matches); // another account
-        Assert.Empty(AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day, 1060, false)]).Matches); // the sign counts
+        Assert.Equal(10, ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(9), -1060, false, Pending: true)]).Matches[1]);
+        Assert.Empty(ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(15), -1060, false, Pending: true)]).Matches);
+        Assert.Empty(ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(-3), -1060, false)]).Matches);
+        Assert.Empty(ReceiptMatcher.Match(charges, [Booking(10, 7, Day, -1061, false)]).Matches);
+        Assert.Empty(ReceiptMatcher.Match(charges, [Booking(10, 8, Day, -1060, false)]).Matches); // another account
+        Assert.Empty(ReceiptMatcher.Match(charges, [Booking(10, 7, Day, 1060, false)]).Matches); // the sign counts
     }
 
     [Fact]
     public void Shop_bookings_win_and_equal_candidates_stay_ambiguous()
     {
-        var charges = new[] { new ChargeToMatch(1, 7, Day, -1060) };
-        var preferred = AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day, -1060, false), new BookingToMatch(11, 7, Day, -1060, true)]);
+        var charges = new[] { Charge(1, 7, Day, -1060) };
+        var preferred = ReceiptMatcher.Match(charges, [Booking(10, 7, Day, -1060, false), Booking(11, 7, Day, -1060, true)]);
         Assert.Equal(11, preferred.Matches[1]);
 
-        var unclear = AmazonMatcher.Match(charges, [new BookingToMatch(10, 7, Day, -1060, true), new BookingToMatch(11, 7, Day.AddDays(1), -1060, true)]);
+        var unclear = ReceiptMatcher.Match(charges, [Booking(10, 7, Day, -1060, true), Booking(11, 7, Day.AddDays(1), -1060, true)]);
         Assert.Empty(unclear.Matches);
         Assert.Contains(1L, unclear.Ambiguous);
     }
@@ -180,15 +188,15 @@ public sealed class AmazonTests
     [Fact]
     public void Two_charges_on_one_booking_leave_both_open_but_shipments_with_their_own_bookings_match()
     {
-        var both = AmazonMatcher.Match([new ChargeToMatch(1, 7, Day, -500), new ChargeToMatch(2, 7, Day.AddDays(1), -500)],
-            [new BookingToMatch(10, 7, Day.AddDays(1), -500, true)]);
+        var both = ReceiptMatcher.Match([Charge(1, 7, Day, -500), Charge(2, 7, Day.AddDays(1), -500)],
+            [Booking(10, 7, Day.AddDays(1), -500, true)]);
         Assert.Empty(both.Matches);
         Assert.Equal([1L, 2L], both.Ambiguous.Order());
 
         // Two shipments of one order: different amounts, each its own booking; a refund matches money coming back.
-        var shipments = AmazonMatcher.Match(
-            [new ChargeToMatch(1, 7, Day, -1247), new ChargeToMatch(2, 7, Day.AddDays(3), -64900), new ChargeToMatch(3, 7, Day.AddDays(9), 1247)],
-            [new BookingToMatch(10, 7, Day.AddDays(1), -1247, true), new BookingToMatch(11, 7, Day.AddDays(4), -64900, true), new BookingToMatch(12, 7, Day.AddDays(10), 1247, true)]);
+        var shipments = ReceiptMatcher.Match(
+            [Charge(1, 7, Day, -1247), Charge(2, 7, Day.AddDays(3), -64900), Charge(3, 7, Day.AddDays(9), 1247)],
+            [Booking(10, 7, Day.AddDays(1), -1247, true), Booking(11, 7, Day.AddDays(4), -64900, true), Booking(12, 7, Day.AddDays(10), 1247, true)]);
         Assert.Equal(new Dictionary<long, long> { [1] = 10, [2] = 11, [3] = 12 }, shipments.Matches);
     }
 
@@ -196,8 +204,8 @@ public sealed class AmazonTests
     public void A_settled_charge_frees_its_booking_for_another()
     {
         // Charge 1 can only be booking 10; then charge 2 has only booking 11 left.
-        var outcome = AmazonMatcher.Match([new ChargeToMatch(1, 7, Day.AddDays(-5), -500), new ChargeToMatch(2, 7, Day, -500)],
-            [new BookingToMatch(10, 7, Day.AddDays(-3), -500, true), new BookingToMatch(11, 7, Day.AddDays(2), -500, true)]);
+        var outcome = ReceiptMatcher.Match([Charge(1, 7, Day.AddDays(-5), -500), Charge(2, 7, Day, -500)],
+            [Booking(10, 7, Day.AddDays(-3), -500, true), Booking(11, 7, Day.AddDays(2), -500, true)]);
         Assert.Equal(10, outcome.Matches[1]);
         Assert.Equal(11, outcome.Matches[2]);
     }
@@ -207,13 +215,13 @@ public sealed class AmazonTests
     [Fact]
     public void Shares_follow_the_prices_and_the_rounding_rest_goes_to_the_largest()
     {
-        Assert.Equal([-332, -336, -332], AmazonSplit.Proportion(-1000, [100, 101, 100]));
-        Assert.Equal([-1247, -64900], AmazonSplit.Proportion(-66147, [1247, 64900]));
+        Assert.Equal([-332, -336, -332], ReceiptCategorizer.Proportion(-1000, [100, 101, 100]));
+        Assert.Equal([-1247, -64900], ReceiptCategorizer.Proportion(-66147, [1247, 64900]));
         // Shipping and points spread alike: 20 € of items charged as 18 € after points.
-        Assert.Equal([-900, -900], AmazonSplit.Proportion(-1800, [1000, 1000]));
-        Assert.Equal([-500, -500], AmazonSplit.Proportion(-1000, [null, null])); // no prices: equal shares
-        Assert.Equal([-333, -334, -334], AmazonSplit.Proportion(-1001, [1, 1, 1])); // the rounding rest lands on one share
-        Assert.Equal([700, 300], AmazonSplit.Proportion(1000, [70, 30])); // refunds keep their sign
+        Assert.Equal([-900, -900], ReceiptCategorizer.Proportion(-1800, [1000, 1000]));
+        Assert.Equal([-500, -500], ReceiptCategorizer.Proportion(-1000, [null, null])); // no prices: equal shares
+        Assert.Equal([-333, -334, -334], ReceiptCategorizer.Proportion(-1001, [1, 1, 1])); // the rounding rest lands on one share
+        Assert.Equal([700, 300], ReceiptCategorizer.Proportion(1000, [70, 30])); // refunds keep their sign
     }
 
     private static readonly SplitItem Snacks = new(1, "Salted snack mix", 1, 1247, Shipment: 0);
@@ -224,8 +232,8 @@ public sealed class AmazonTests
     {
         var items = new[] { Snacks, Fridge };
         long[] charges = [-1247, -64900];
-        var first = AmazonSplit.ItemsForCharge(items, -1247, charges, 0, 66147);
-        var second = AmazonSplit.ItemsForCharge(items, -64900, charges, 0, 66147);
+        var first = AmazonShipments.ItemsForCharge(items, -1247, charges, 0, 66147);
+        var second = AmazonShipments.ItemsForCharge(items, -64900, charges, 0, 66147);
         Assert.Equal([1L], first.Items.Select(i => i.Id));
         Assert.Equal([2L], second.Items.Select(i => i.Id));
         Assert.False(first.Unclear || second.Unclear);
@@ -234,7 +242,7 @@ public sealed class AmazonTests
     [Fact]
     public void One_charge_for_the_whole_order_covers_every_item()
     {
-        var paid = AmazonSplit.ItemsForCharge([Snacks, Fridge with { Shipment = 0 }], -66147, [-66147], 0, 66147);
+        var paid = AmazonShipments.ItemsForCharge([Snacks, Fridge with { Shipment = 0 }], -66147, [-66147], 0, 66147);
         Assert.Equal(2, paid.Items.Count);
         Assert.False(paid.Unclear);
     }
@@ -243,18 +251,18 @@ public sealed class AmazonTests
     public void Points_lower_the_charge_of_a_shipment()
     {
         // The fridge shipment was paid 640.00 by card and 9.00 with points.
-        var paid = AmazonSplit.ItemsForCharge([Snacks, Fridge], -64000, [-1247, -64000], 900, 66147);
+        var paid = AmazonShipments.ItemsForCharge([Snacks, Fridge], -64000, [-1247, -64000], 900, 66147);
         Assert.Equal([2L], paid.Items.Select(i => i.Id));
     }
 
     [Fact]
     public void A_charge_that_fits_no_shipment_is_unclear_and_equal_charges_are_instalments()
     {
-        var unclear = AmazonSplit.ItemsForCharge([Snacks, Fridge], -30000, [-30000, -37147], 0, 66147);
+        var unclear = AmazonShipments.ItemsForCharge([Snacks, Fridge], -30000, [-30000, -37147], 0, 66147);
         Assert.True(unclear.Unclear);
         Assert.Equal(2, unclear.Items.Count);
 
-        var instalment = AmazonSplit.ItemsForCharge([Snacks, Fridge with { Shipment = 0 }], -22049, [-22049, -22049, -22049], 0, 66147);
+        var instalment = AmazonShipments.ItemsForCharge([Snacks, Fridge with { Shipment = 0 }], -22049, [-22049, -22049, -22049], 0, 66147);
         Assert.True(instalment.Instalment);
         Assert.Equal(2, instalment.Items.Count);
     }

@@ -3,7 +3,6 @@
 @using OpenBudget.Services
 @inject IStringLocalizer<TxDetails> L
 @inject ClockService Clock
-@inject OrderEnrichmentService OrderInfo
 @inject OpenBudget.Connectors.Receipts.ReceiptService ReceiptInfo
 @inject IDbContextFactory<BudgetDbContext> DbFactory
 
@@ -76,20 +75,7 @@
     {
         <div class="tx-details-purpose" data-testid="tx-details-order">
             <b class="text-body me-1">@L["Order"]</b>
-            @if (orders != null)
-            {
-                @for (var i = 0; i < orders.Orders.Count; i++)
-                {
-                    var o = orders.Orders[i];
-                    <a href="@o.Url" target="_blank" rel="noopener" data-testid="tx-details-order-link">@o.OrderId</a>@(i < orders.Orders.Count - 1 ? ", " : "")
-                }
-                <span class="me-1">:</span>
-            }
             <span data-testid="tx-details-order-items">@Row.OrderItems</span>
-            @if (orders?.Unclear == true)
-            {
-                <span class="text-body-secondary"> (@L["Order_ShipmentUnclear"])</span>
-            }
         </div>
     }
 
@@ -228,7 +214,6 @@
         shownRowId = Row.Id;
     }
 
-    private BookingOrders? orders;
     private long ordersFor;
     private OpenBudget.Connectors.Receipts.BookingReceiptView? receipt;
     private string? receiptCategoryName;
@@ -250,7 +235,6 @@
         if (string.IsNullOrWhiteSpace(Row.OrderItems) || ordersFor == Row.Id) return;
         ordersFor = Row.Id;
         await LoadReceiptAsync();
-        if (receipt == null) orders = await OrderInfo.GetOrdersAsync(Row.Id);
     }
 
     private async Task LoadReceiptAsync()

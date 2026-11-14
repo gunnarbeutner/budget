@@ -215,6 +215,7 @@ else
                 @if (login.OrderSource)
                 {
                     <OrderSourceSection LoginId="login.Id" Version="loadCount" />
+                    <ReceiptSourceProjects Source="@ReceiptSources.Amazon" Version="loadCount" />
                 }
                 else if (login.ReceiptShop != null)
                 {

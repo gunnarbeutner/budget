@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261114141447_ProjectReceiptCategories";
+    public override string LastMigrationId => "20261114142933_AmazonReceipts";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -265,148 +265,6 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                 b.HasIndex("ParentGroupId");
 
                 b.ToTable("account_groups");
-            });
-
-        modelBuilder.Entity("OpenBudget.Models.AmazonCharge", b =>
-            {
-                b.Property<long>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("INTEGER");
-
-                b.Property<long>("AmountCents")
-                    .HasColumnType("INTEGER");
-
-                b.Property<int>("BankLoginId")
-                    .HasColumnType("INTEGER");
-
-                b.Property<string>("ChargeKey")
-                    .IsRequired()
-                    .HasMaxLength(200)
-                    .HasColumnType("TEXT");
-
-                b.Property<string>("Currency")
-                    .HasMaxLength(10)
-                    .HasColumnType("TEXT");
-
-                b.Property<DateTime>("Date")
-                    .HasColumnType("TEXT");
-
-                b.Property<string>("Instrument")
-                    .IsRequired()
-                    .HasMaxLength(200)
-                    .HasColumnType("TEXT");
-
-                b.Property<string>("InstrumentId")
-                    .IsRequired()
-                    .HasMaxLength(200)
-                    .HasColumnType("TEXT");
-
-                b.Property<string>("OrderId")
-                    .IsRequired()
-                    .HasMaxLength(40)
-                    .HasColumnType("TEXT");
-
-                b.Property<string>("OwnerUserId")
-                    .IsRequired()
-                    .HasMaxLength(450)
-                    .HasColumnType("TEXT");
-
-                b.Property<int>("State")
-                    .HasColumnType("INTEGER");
-
-                b.Property<long?>("TransactionId")
-                    .HasColumnType("INTEGER");
-
-                b.HasKey("Id");
-
-                b.HasIndex("TransactionId");
-
-                b.HasIndex("BankLoginId", "ChargeKey")
-                    .IsUnique();
-
-                b.ToTable("amazon_charges");
-            });
-
-        modelBuilder.Entity("OpenBudget.Models.AmazonOrder", b =>
-            {
-                b.Property<long>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("INTEGER");
-
-                b.Property<int>("BankLoginId")
-                    .HasColumnType("INTEGER");
-
-                b.Property<string>("Currency")
-                    .HasMaxLength(10)
-                    .HasColumnType("TEXT");
-
-                b.Property<DateTime?>("DetailsFetchedAt")
-                    .HasColumnType("TEXT");
-
-                b.Property<DateTime?>("OrderDate")
-                    .HasColumnType("TEXT");
-
-                b.Property<string>("OrderId")
-                    .IsRequired()
-                    .HasMaxLength(40)
-                    .HasColumnType("TEXT");
-
-                b.Property<string>("OwnerUserId")
-                    .IsRequired()
-                    .HasMaxLength(450)
-                    .HasColumnType("TEXT");
-
-                b.Property<long?>("TotalCents")
-                    .HasColumnType("INTEGER");
-
-                b.HasKey("Id");
-
-                b.HasIndex("BankLoginId", "OrderId")
-                    .IsUnique();
-
-                b.ToTable("amazon_orders");
-            });
-
-        modelBuilder.Entity("OpenBudget.Models.AmazonOrderItem", b =>
-            {
-                b.Property<long>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("INTEGER");
-
-                b.Property<long>("AmazonOrderId")
-                    .HasColumnType("INTEGER");
-
-                b.Property<string>("Asin")
-                    .HasMaxLength(20)
-                    .HasColumnType("TEXT");
-
-                b.Property<long?>("CategoryId")
-                    .HasColumnType("INTEGER");
-
-                b.Property<string>("OwnerUserId")
-                    .IsRequired()
-                    .HasMaxLength(450)
-                    .HasColumnType("TEXT");
-
-                b.Property<long?>("PriceCents")
-                    .HasColumnType("INTEGER");
-
-                b.Property<int>("Quantity")
-                    .HasColumnType("INTEGER");
-
-                b.Property<int>("Shipment")
-                    .HasColumnType("INTEGER");
-
-                b.Property<string>("Title")
-                    .IsRequired()
-                    .HasMaxLength(500)
-                    .HasColumnType("TEXT");
-
-                b.HasKey("Id");
-
-                b.HasIndex("AmazonOrderId");
-
-                b.ToTable("amazon_order_items");
             });
 
         modelBuilder.Entity("OpenBudget.Models.AppUser", b =>
@@ -1856,10 +1714,16 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .ValueGeneratedOnAdd()
                     .HasColumnType("INTEGER");
 
+                b.Property<int?>("BankLoginId")
+                    .HasColumnType("INTEGER");
+
                 b.Property<long>("BonusCents")
                     .HasColumnType("INTEGER");
 
                 b.Property<DateTime?>("DeliveryDate")
+                    .HasColumnType("TEXT");
+
+                b.Property<DateTime?>("DetailsReadAt")
                     .HasColumnType("TEXT");
 
                 b.Property<DateTime?>("InvoiceDate")
@@ -1884,6 +1748,9 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .HasMaxLength(40)
                     .HasColumnType("TEXT");
 
+                b.Property<long?>("OrderTotalCents")
+                    .HasColumnType("INTEGER");
+
                 b.Property<string>("OwnerUserId")
                     .IsRequired()
                     .HasMaxLength(450)
@@ -1892,12 +1759,24 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                 b.Property<long>("PaymentCents")
                     .HasColumnType("INTEGER");
 
+                b.Property<string>("PaymentMethod")
+                    .HasMaxLength(200)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("PaymentMethodId")
+                    .HasMaxLength(200)
+                    .HasColumnType("TEXT");
+
                 b.Property<DateTime>("ReadAt")
                     .HasColumnType("TEXT");
 
                 b.Property<string>("Shop")
                     .IsRequired()
                     .HasMaxLength(20)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("SourceKey")
+                    .HasMaxLength(200)
                     .HasColumnType("TEXT");
 
                 b.Property<string>("SplitSignature")
@@ -1918,6 +1797,8 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .HasColumnType("INTEGER");
 
                 b.HasKey("Id");
+
+                b.HasIndex("BankLoginId");
 
                 b.HasIndex("TransactionId");
 
@@ -1965,6 +1846,9 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .HasColumnType("TEXT");
 
                 b.Property<long>("ReceiptInvoiceId")
+                    .HasColumnType("INTEGER");
+
+                b.Property<int?>("Shipment")
                     .HasColumnType("INTEGER");
 
                 b.Property<long>("TotalCents")
@@ -2512,35 +2396,6 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                 b.Navigation("ParentGroup");
             });
 
-        modelBuilder.Entity("OpenBudget.Models.AmazonCharge", b =>
-            {
-                b.HasOne("OpenBudget.Models.BankLogin", null)
-                    .WithMany()
-                    .HasForeignKey("BankLoginId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
-            });
-
-        modelBuilder.Entity("OpenBudget.Models.AmazonOrder", b =>
-            {
-                b.HasOne("OpenBudget.Models.BankLogin", null)
-                    .WithMany()
-                    .HasForeignKey("BankLoginId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
-            });
-
-        modelBuilder.Entity("OpenBudget.Models.AmazonOrderItem", b =>
-            {
-                b.HasOne("OpenBudget.Models.AmazonOrder", "Order")
-                    .WithMany("Items")
-                    .HasForeignKey("AmazonOrderId")
-                    .OnDelete(DeleteBehavior.Cascade)
-                    .IsRequired();
-
-                b.Navigation("Order");
-            });
-
         modelBuilder.Entity("OpenBudget.Models.BackgroundSyncRun", b =>
             {
                 b.HasOne("OpenBudget.Models.BankLogin", null)
@@ -2839,11 +2694,6 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                 b.Navigation("Accounts");
 
                 b.Navigation("SubGroups");
-            });
-
-        modelBuilder.Entity("OpenBudget.Models.AmazonOrder", b =>
-            {
-                b.Navigation("Items");
             });
 
         modelBuilder.Entity("OpenBudget.Models.BankLogin", b =>

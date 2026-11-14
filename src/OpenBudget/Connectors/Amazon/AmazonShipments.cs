@@ -1,7 +1,7 @@
 namespace OpenBudget.Connectors.Amazon;
 
-/// <summary>An order item as the split math sees it: its line total (unit price × quantity) in cents when known, and its shipment.</summary>
-public sealed record SplitItem(long Id, string Title, int Quantity, long? LineCents, int Shipment = 0, long? CategoryId = null);
+/// <summary>An order item as the shipment math sees it: its line total (unit price × quantity) in cents when known, and its shipment.</summary>
+public sealed record SplitItem(long Id, string Title, int Quantity, long? LineCents, int Shipment = 0);
 
 /// <summary>
 /// The items one charge paid for. <see cref="Unclear"/>: the charge could not be tied to shipments, so these are all
@@ -9,8 +9,8 @@ public sealed record SplitItem(long Id, string Title, int Quantity, long? LineCe
 /// </summary>
 public sealed record ChargeItems(IReadOnlyList<SplitItem> Items, bool Unclear, bool Instalment);
 
-/// <summary>Which items a charge paid for, and how a charged amount spreads over them.</summary>
-public static class AmazonSplit
+/// <summary>Which items of an order a charge paid for.</summary>
+public static class AmazonShipments
 {
     private const int MaxShipments = 10;
 
@@ -53,31 +53,5 @@ public static class AmazonSplit
         }
         if (hits.Count != 1) return new(items, true, false);
         return new(items.Where(i => hits[0].Contains(i.Shipment)).ToList(), false, false);
-    }
-
-    /// <summary>
-    /// Spreads <paramref name="totalCents"/> over weights (line totals) in proportion, so shipping, discounts and points
-    /// fall on every item alike. Each share is rounded to cents; what rounding leaves over goes to the largest item. No
-    /// usable weights: equal shares. The shares carry the total's sign and add up to it exactly.
-    /// </summary>
-    public static long[] Proportion(long totalCents, IReadOnlyList<long?> weights)
-    {
-        if (weights.Count == 0) return [];
-        var abs = Math.Abs(totalCents);
-        var w = weights.Select(x => x is > 0 ? x.Value : 0m).ToArray();
-        if (w.Sum() == 0) w = Enumerable.Repeat(1m, weights.Count).ToArray();
-        var sum = w.Sum();
-        var parts = w.Select(x => (long)Math.Round(abs * x / sum, MidpointRounding.AwayFromZero)).ToArray();
-        var largest = Array.IndexOf(w, w.Max());
-        parts[largest] += abs - parts.Sum();
-        var sign = totalCents < 0 ? -1 : 1;
-        return parts.Select(p => p * sign).ToArray();
-    }
-
-    /// <summary>The items as one line of text: "USB-C charger; Laundry detergent ×2".</summary>
-    public static string Describe(IEnumerable<(string Title, int Quantity)> items)
-    {
-        var text = string.Join("; ", items.Select(i => i.Quantity > 1 ? $"{i.Title} ×{i.Quantity}" : i.Title));
-        return text.Length <= 2000 ? text : text[..2000];
     }
 }

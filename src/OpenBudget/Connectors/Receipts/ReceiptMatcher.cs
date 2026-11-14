@@ -3,11 +3,14 @@ using OpenBudget.Models;
 
 namespace OpenBudget.Connectors.Receipts;
 
-/// <summary>A receipt to place: what was charged by card or bank (positive cents), when it was ordered and delivered, and its shop.</summary>
-public sealed record ReceiptToMatch(long Id, long PaymentCents, DateOnly? OrderDate, DateOnly? DeliveryDate, string Shop = ReceiptShops.Rewe);
+/// <summary>
+/// A receipt to place: what was charged by card or bank (positive cents; an Amazon refund negative), when it was
+/// ordered and delivered (Amazon: charged), its shop and (Amazon) the account its payment method is booked on.
+/// </summary>
+public sealed record ReceiptToMatch(long Id, long PaymentCents, DateOnly? OrderDate, DateOnly? DeliveryDate, string Shop = ReceiptShops.Rewe, long? AccountId = null);
 
-/// <summary>A booking that may have paid a receipt.</summary>
-public sealed record ReceiptBooking(long Id, DateOnly Date, long Cents, string? Name, string? Purpose);
+/// <summary>A booking that may have paid a receipt; <see cref="Pending"/>: not booked yet, so its date is the bank's expected booking day.</summary>
+public sealed record ReceiptBooking(long Id, DateOnly Date, long Cents, string? Name, string? Purpose, long? AccountId = null, bool Pending = false);
 
 /// <summary>Which receipt got which booking, and which receipts had several equally good bookings.</summary>
 public sealed record ReceiptMatchOutcome(IReadOnlyDictionary<long, long> Matches, IReadOnlySet<long> Ambiguous);
@@ -27,6 +30,11 @@ public sealed record ReceiptMatchOutcome(IReadOnlyDictionary<long, long> Matches
 /// A REWE eBon (in-store receipt) is paid by card or app on its day: the booking is exactly minus what was paid that way, names
 /// REWE or PAYBACK (PAYBACK PAY), and is booked up to <see cref="EbonDaysAfter"/> days later. A receipt paid only in
 /// cash has nothing to match.
+///
+/// An Amazon charge (or refund) fits a booking on the account its payment method is mapped to, of exactly the same
+/// signed amount, booked from <see cref="AmazonDaysBefore"/> days before to <see cref="AmazonDaysAfter"/> days after the
+/// charge (a pending booking, dated with the bank's expected booking day, up to <see cref="AmazonPendingDaysAfter"/>);
+/// bookings that name Amazon are preferred over others.
 /// </summary>
 public static class ReceiptMatcher
 {
@@ -35,8 +43,15 @@ public static class ReceiptMatcher
 
     public const int LidlDaysAfter = 10;
 
+    public const int AmazonDaysBefore = 2;
+    public const int AmazonDaysAfter = 5;
+    public const int AmazonPendingDaysAfter = 14;
+
     /// <summary>The longest any shop's booking may come after its receipt.</summary>
-    public const int MaxDaysAfter = DaysAfter;
+    public const int MaxDaysAfter = AmazonPendingDaysAfter;
+
+    /// <summary>The longest any shop's booking may come before its receipt.</summary>
+    public const int MaxDaysBefore = AmazonDaysBefore;
 
     private static readonly string[] LidlPayees = ["lidl", "s. payment solutions", "s.payment solutions", "s. digits", "s.digits"];
 
@@ -69,6 +84,12 @@ public static class ReceiptMatcher
     public static List<ReceiptBooking> Candidates(ReceiptToMatch r, IReadOnlyList<ReceiptBooking> bookings)
     {
         if ((r.DeliveryDate ?? r.OrderDate) is not { } from) return [];
+        if (r.Shop == ReceiptShops.Amazon)
+        {
+            var amazon = bookings.Where(b => r.AccountId != null && b.AccountId == r.AccountId && r.PaymentCents != 0 && b.Cents == -r.PaymentCents
+                && b.Date >= from.AddDays(-AmazonDaysBefore) && b.Date <= from.AddDays(b.Pending ? AmazonPendingDaysAfter : AmazonDaysAfter)).ToList();
+            return amazon.Any(b => IsShop(r.Shop, b.Name, b.Purpose)) ? amazon.Where(b => IsShop(r.Shop, b.Name, b.Purpose)).ToList() : amazon;
+        }
         var days = r.Shop switch { ReceiptShops.Lidl => LidlDaysAfter, ReceiptShops.ReweEbon => EbonDaysAfter, _ => DaysAfter };
         var fit = bookings.Where(b => r.PaymentCents > 0 && b.Cents == -r.PaymentCents && IsShop(r.Shop, b.Name, b.Purpose)
             && b.Date >= from && b.Date <= from.AddDays(days)).ToList();
@@ -89,13 +110,14 @@ public static class ReceiptMatcher
     /// <summary>Whether a payee or purpose names REWE.</summary>
     public static bool IsShop(string? name, string? purpose) => IsShop(ReceiptShops.Rewe, name, purpose);
 
-    /// <summary>Whether a payee or purpose names the shop (Lidl: Lidl or its payment companies; REWE eBons: REWE or PAYBACK).</summary>
+    /// <summary>Whether a payee or purpose names the shop (Lidl: Lidl or its payment companies; REWE eBons: REWE or PAYBACK; Amazon: Amazon or AMZN).</summary>
     public static bool IsShop(string shop, string? name, string? purpose)
     {
         IReadOnlyList<string> words = shop switch
         {
             ReceiptShops.Lidl => LidlPayees,
             ReceiptShops.ReweEbon => ["rewe", "payback"],
+            ReceiptShops.Amazon => ["amazon", "amzn"],
             _ => ["rewe"],
         };
         return words.Any(w => (name?.Contains(w, StringComparison.OrdinalIgnoreCase) ?? false) || (purpose?.Contains(w, StringComparison.OrdinalIgnoreCase) ?? false));

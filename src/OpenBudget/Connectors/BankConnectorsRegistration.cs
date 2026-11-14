@@ -67,7 +67,6 @@ public static class BankConnectorsRegistration
         services.AddSingleton(new BankSyncOptions());
         services.AddSingleton<BankStatementStore>();
         services.AddSingleton<BankTransactionStore>();
-        services.AddSingleton<AmazonOrderStore>();
         services.AddSingleton<BankSyncRunner>();
         services.AddSingleton<BankSyncCoordinator>();
         services.AddHostedService(sp => sp.GetRequiredService<BankSyncCoordinator>());

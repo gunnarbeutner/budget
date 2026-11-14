@@ -59,7 +59,6 @@ public sealed class BankSyncRunner
     private readonly ILogger<BankSyncRunner> _logger;
     private readonly Func<BankHttpClient> _httpFactory;
     private readonly IWebLoginService? _webLogins;
-    private readonly AmazonOrderStore _orders;
     private readonly OpenBudget.Connectors.Receipts.ReceiptStore _receipts;
 
     /// <summary>The login-wide state a challenge may need: whose browser to open and which cookie jar to fill.</summary>
@@ -119,10 +118,9 @@ public sealed class BankSyncRunner
     public BankSyncRunner(
         SystemDbContextFactory system, ConnectorRegistry registry, SecretsProtector secrets,
         BankTransactionStore transactions, BankStatementStore statements, TimeProvider clock, ILoggerFactory loggers,
-        Func<BankHttpClient>? httpFactory = null, IWebLoginService? webLogins = null, AmazonOrderStore? orders = null,
+        Func<BankHttpClient>? httpFactory = null, IWebLoginService? webLogins = null,
         OpenBudget.Connectors.Receipts.ReceiptStore? receipts = null)
     {
-        _orders = orders ?? new AmazonOrderStore();
         _receipts = receipts ?? new OpenBudget.Connectors.Receipts.ReceiptStore();
         _webLogins = webLogins;
         _httpFactory = httpFactory ?? (() => new BankHttpClient());
@@ -256,13 +254,7 @@ public sealed class BankSyncRunner
             {
                 try { await RefreshAccountsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct); }
                 finally { await context.CloseBrowsersAsync(); }
-                // New bookings may be the ones open order charges were waiting for.
-                try { await _orders.MatchAsync(db, login.OwnerUserId, ct); }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    _logger.LogError(ex, "Bank login {LoginId}: matching order charges failed.", login.Id);
-                }
-                // ... and the receipts read from the owner's mailbox.
+                // New bookings may be the ones open receipts (mailbox, Lidl Plus, Amazon charges) were waiting for.
                 try { await _receipts.MatchAsync(db, login.OwnerUserId, ct); }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -670,8 +662,8 @@ public sealed class BankSyncRunner
         BudgetDbContext db, BankLogin login, IOrderSource source, ISyncSink sink, SyncContext context, HashSet<string> affected, CancellationToken ct)
     {
         var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
-        var since = await AmazonOrderStore.SinceAsync(db, login.Id, today, OrderHistoryYears, ct);
-        var known = await AmazonOrderStore.KnownOrdersAsync(db, login.Id, ct);
+        var since = await OpenBudget.Connectors.Amazon.AmazonReceiptStore.SinceAsync(db, login.Id, today, OrderHistoryYears, ct);
+        var known = await OpenBudget.Connectors.Amazon.AmazonReceiptStore.KnownOrdersAsync(db, login.Id, ct);
         var step = await DriveAsync(a => source.FetchOrdersAsync(since, known, a, ct), sink, context, ct);
         if (step.Status == StepStatus.NeedsUser) throw new SilentAbortException(step.FailureReason ?? DefaultNeedsUser);
         if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Reading the orders failed.");
@@ -679,7 +671,7 @@ public sealed class BankSyncRunner
         UpsertAccounts(login, result.Instruments);
         await db.SaveChangesAsync(ct);
         sink.Report("Matching orders");
-        await _orders.ApplyAsync(db, login, result, _clock.GetUtcNow().UtcDateTime, ct);
+        await OpenBudget.Connectors.Amazon.AmazonReceiptStore.ApplyAsync(db, login, result, _clock.GetUtcNow().UtcDateTime, _receipts, ct);
         _logger.LogInformation("Bank login {LoginId}: {Charges} charges and {Orders} order details stored.", login.Id, result.Charges.Count, result.Orders.Count);
         affected.Add(login.OwnerUserId);
     }

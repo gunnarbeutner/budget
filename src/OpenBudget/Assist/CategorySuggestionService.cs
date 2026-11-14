@@ -146,23 +146,6 @@ public sealed partial class CategorySuggestionService
         string? aiError = null;
         var sent = 0;
         var skipped = 0;
-        var orderTargets = targets.Where(t => !string.IsNullOrEmpty(t.OrderItems) && !(cached.TryGetValue(t.Id, out var c) && (c.Source != "ai" || useAi))).ToList();
-        if (orderTargets.Count > 0)
-        {
-            try
-            {
-                var (orderSent, orderSkipped) = await OrderSuggestionsAsync(ctx, orderTargets, useAi, results, ct);
-                sent += orderSent;
-                skipped += orderSkipped;
-                // Bookings with an order suggestion need no AI guess from their payee.
-                unsure.RemoveAll(u => results.TryGetValue(u.Row.Id, out var r) && r.Source == "order");
-            }
-            catch (AssistException ex)
-            {
-                aiError = ex.Message;
-                _log.LogWarning(ex, "AI item categories failed");
-            }
-        }
         var aiRules = new List<(string Expression, long CategoryId)>();
         if (useAi && _client.Enabled && unsure.Count > 0)
         {
@@ -481,6 +464,25 @@ public sealed partial class CategorySuggestionService
             Split = stored.Parts.Count == 0 ? null : stored.Parts.Select(p => p with { CategoryPath = ctx.ById[p.CategoryId].Path }).ToList(),
             ShipmentUnclear = stored.Unclear,
         };
+    }
+
+    private sealed record StoredSplit(List<SuggestedSplitPart> Parts, bool Unclear);
+
+    private static StoredSplit? ReadSplit(string json)
+    {
+        try { return System.Text.Json.JsonSerializer.Deserialize<StoredSplit>(json); }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+
+    private static string WriteSplit(TxCategorySuggestion s) =>
+        System.Text.Json.JsonSerializer.Serialize(new StoredSplit(s.Split?.ToList() ?? [], s.ShipmentUnclear));
+
+    /// <summary>Splits the booking as suggested. Throws like <see cref="SplitService.SplitAsync"/> (a pending booking cannot be split yet).</summary>
+    public async Task AcceptSplitAsync(long transactionId, IReadOnlyList<SuggestedSplitPart> parts, CancellationToken ct = default)
+    {
+        var splits = _splits ?? throw new InvalidOperationException("Splitting is not available.");
+        await splits.SplitAsync(transactionId, parts.Select(p => new SplitPartInput(p.AmountCents, p.CategoryId, p.Label)).ToList(), ct);
+        await ForgetAsync([transactionId], ct);
     }
 
     private async Task<Dictionary<long, CategorySuggestion>> CachedAsync(List<long> ids, string treeHash, CancellationToken ct)

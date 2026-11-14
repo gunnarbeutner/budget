@@ -169,6 +169,14 @@ var app = builder.Build();
 await using (var budgetDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
 {
     await budgetDb.Database.MigrateAsync();
+    // Amazon orders still in their former tables move to the shared receipts (once; drops those tables).
+    await using (var amazonDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
+    {
+        if (await OpenBudget.Connectors.Amazon.AmazonReceiptMigration.RunAsync(amazonDb, DateTime.UtcNow) is { } moved)
+            app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("OpenBudget.Migrations").LogInformation(
+                "Amazon: {Charges} charges ({Matched} matched) moved to receipts; {Adopted} splits kept as the receipts', {LeftAlone} left as set by hand; {Memory} item memory entries.",
+                moved.Charges, moved.Matched, moved.SplitsAdopted, moved.SplitsLeftAlone, moved.MemoryEntries);
+    }
     // PortfolioPerformance files still stored under a former per-data-set number move to their owner (idempotent).
     await portfolioFiles.RelocateLegacyFilesAsync(budgetDb);
     // Category rules of data imported before rules were imported (idempotent).

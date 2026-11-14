@@ -78,20 +78,23 @@ public sealed class ReceiptStore
         var invoices = await db.ReceiptInvoices.Include(i => i.Items).Where(i => i.OwnerUserId == ownerUserId).ToListAsync(ct);
         if (invoices.Count == 0) return;
 
+        // Amazon charges are looked for on the account their payment method is mapped to (none: nothing to look for).
+        var accounts = await AmazonAccountsAsync(db, ownerUserId, invoices, ct);
         var dated = invoices.Where(i => (i.DeliveryDate ?? i.OrderDate) != null).ToList();
         var bookings = new List<ReceiptBooking>();
         if (dated.Count > 0)
         {
-            var min = new DateTimeOffset(dated.Min(i => (i.DeliveryDate ?? i.OrderDate)!.Value).AddDays(-1), TimeSpan.Zero).ToUnixTimeSeconds();
+            var min = new DateTimeOffset(dated.Min(i => (i.DeliveryDate ?? i.OrderDate)!.Value).AddDays(-ReceiptMatcher.MaxDaysBefore - 1), TimeSpan.Zero).ToUnixTimeSeconds();
             var max = new DateTimeOffset(dated.Max(i => (i.DeliveryDate ?? i.OrderDate)!.Value).AddDays(ReceiptMatcher.MaxDaysAfter + 2), TimeSpan.Zero).ToUnixTimeSeconds();
             var rows = await db.Transactions.AsNoTracking()
                 .Where(t => t.OwnerUserId == ownerUserId && t.Timestamp >= min && t.Timestamp <= max && t.Splitted != SplitState.Child)
-                .Select(t => new { t.Id, t.Timestamp, t.Amount, t.SplitOriginalAmount, t.Name, t.Purpose })
+                .Select(t => new { t.Id, t.AccountId, t.Timestamp, t.Amount, t.SplitOriginalAmount, t.Name, t.Purpose, t.Booked })
                 .ToListAsync(ct);
-            var shops = invoices.Select(i => i.Shop).Distinct(StringComparer.Ordinal).ToList();
-            bookings = rows.Where(r => shops.Any(s => ReceiptMatcher.IsShop(s, r.Name, r.Purpose)))
+            var shops = invoices.Select(i => i.Shop).Where(s => s != ReceiptShops.Amazon).Distinct(StringComparer.Ordinal).ToList();
+            var amazonAccounts = accounts.Values.ToHashSet();
+            bookings = rows.Where(r => shops.Any(s => ReceiptMatcher.IsShop(s, r.Name, r.Purpose)) || (r.AccountId is { } a && amazonAccounts.Contains(a)))
                 .Select(r => new ReceiptBooking(r.Id, DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(r.Timestamp).UtcDateTime),
-                    r.SplitOriginalAmount ?? r.Amount, r.Name, r.Purpose)).ToList();
+                    r.SplitOriginalAmount ?? r.Amount, r.Name, r.Purpose, r.AccountId, Pending: !r.Booked)).ToList();
         }
 
         // Earlier matches stay while their booking is still there with the same amount.
@@ -107,7 +110,16 @@ public sealed class ReceiptStore
                 continue;
             }
             i.ManualMatch = false;
-            if (i.TransactionId is { } t && await StillFitsAsync(db, ownerUserId, t, i.PaymentCents, ct) && kept.Add(t))
+            var account = accounts.TryGetValue(i.Id, out var mapped) ? mapped : (long?)null;
+            if (i.Shop == ReceiptShops.Amazon && account == null)
+            {
+                if (i.TransactionId is { } was) lost.Add(was);
+                i.TransactionId = null;
+                i.SplitSignature = null;
+                i.State = ReceiptMatchState.Skipped;
+                continue;
+            }
+            if (i.TransactionId is { } t && await StillFitsAsync(db, ownerUserId, t, i.PaymentCents, account, ct) && kept.Add(t))
             {
                 i.State = ReceiptMatchState.Matched;
                 continue;
@@ -118,7 +130,7 @@ public sealed class ReceiptStore
             i.State = ReceiptMatchState.Unmatched;
         }
         var open = invoices.Where(i => i.State == ReceiptMatchState.Unmatched)
-            .Select(i => new ReceiptToMatch(i.Id, i.PaymentCents, Day(i.OrderDate), Day(i.DeliveryDate), i.Shop)).ToList();
+            .Select(i => new ReceiptToMatch(i.Id, i.PaymentCents, Day(i.OrderDate), Day(i.DeliveryDate), i.Shop, accounts.TryGetValue(i.Id, out var a) ? a : null)).ToList();
         var outcome = ReceiptMatcher.Match(open, bookings, kept);
         foreach (var i in invoices.Where(i => i.State == ReceiptMatchState.Unmatched))
         {
@@ -142,11 +154,30 @@ public sealed class ReceiptStore
             await ApplyAsync(db, i, force: false, ct);
     }
 
-    private static async Task<bool> StillFitsAsync(BudgetDbContext db, string owner, long id, long paymentCents, CancellationToken ct)
+    private static async Task<bool> StillFitsAsync(BudgetDbContext db, string owner, long id, long paymentCents, long? account, CancellationToken ct)
     {
         var row = await db.Transactions.AsNoTracking().Where(t => t.Id == id && t.OwnerUserId == owner && t.Splitted != SplitState.Child)
-            .Select(t => new { Cents = t.SplitOriginalAmount ?? t.Amount }).FirstOrDefaultAsync(ct);
-        return row != null && row.Cents == -paymentCents;
+            .Select(t => new { Cents = t.SplitOriginalAmount ?? t.Amount, t.AccountId }).FirstOrDefaultAsync(ct);
+        return row != null && row.Cents == -paymentCents && (account == null || row.AccountId == account);
+    }
+
+    /// <summary>
+    /// For each Amazon receipt of the owner: the owner's account its payment method is mapped to (absent for points, gift
+    /// cards and payment methods not mapped).
+    /// </summary>
+    private static async Task<Dictionary<long, long>> AmazonAccountsAsync(BudgetDbContext db, string ownerUserId, IReadOnlyList<ReceiptInvoice> invoices, CancellationToken ct)
+    {
+        var result = new Dictionary<long, long>();
+        var amazon = invoices.Where(i => i.Shop == ReceiptShops.Amazon && i.BankLoginId != null && !Amazon.AmazonPages.IsPointsLabel(i.PaymentMethod ?? "")).ToList();
+        if (amazon.Count == 0) return result;
+        var loginIds = amazon.Select(i => i.BankLoginId!.Value).Distinct().ToList();
+        var mapping = (await db.BankLoginAccounts.AsNoTracking().Where(a => loginIds.Contains(a.BankLoginId) && a.EnrichAccountId != null).ToListAsync(ct))
+            .ToDictionary(a => (a.BankLoginId, a.RemoteId), a => a.EnrichAccountId!.Value);
+        var mapped = mapping.Values.Distinct().ToList();
+        var owned = (await db.Accounts.AsNoTracking().Where(a => mapped.Contains(a.Id) && a.OwnerUserId == ownerUserId).Select(a => a.Id).ToListAsync(ct)).ToHashSet();
+        foreach (var i in amazon)
+            if (mapping.TryGetValue((i.BankLoginId!.Value, i.PaymentMethodId ?? ""), out var account) && owned.Contains(account)) result[i.Id] = account;
+        return result;
     }
 
     /// <summary>
@@ -211,7 +242,7 @@ public sealed class ReceiptStore
         }
 
         var all = ReceiptCategorizer.Describe(items.Select(i => (i.Name, i.Quantity)));
-        parent.OrderItems = all;
+        parent.OrderItems = all.Length == 0 ? null : all;
         var changed = false;
         if (mayWrite)
         {

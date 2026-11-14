@@ -76,9 +76,6 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<ScheduledPayment> ScheduledPayments => Set<ScheduledPayment>();
     public DbSet<CategorySuggestion> CategorySuggestions => Set<CategorySuggestion>();
     public DbSet<CancelledReservation> CancelledReservations => Set<CancelledReservation>();
-    public DbSet<AmazonOrder> AmazonOrders => Set<AmazonOrder>();
-    public DbSet<AmazonOrderItem> AmazonOrderItems => Set<AmazonOrderItem>();
-    public DbSet<AmazonCharge> AmazonCharges => Set<AmazonCharge>();
     public DbSet<ReceiptInvoice> ReceiptInvoices => Set<ReceiptInvoice>();
     public DbSet<ReceiptItem> ReceiptItems => Set<ReceiptItem>();
     public DbSet<ItemCategoryMemory> ItemCategoryMemory => Set<ItemCategoryMemory>();
@@ -360,18 +357,10 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
             .HasIndex(l => new { l.OwnerUserId, l.PpSecurityUuid })
             .IsUnique();
 
-        // Orders and charges of an order source (Amazon) go with their bank login.
-        modelBuilder.Entity<AmazonOrder>().HasOne<BankLogin>().WithMany().HasForeignKey(o => o.BankLoginId).OnDelete(DeleteBehavior.Cascade);
-        modelBuilder.Entity<AmazonOrder>().HasIndex(o => new { o.BankLoginId, o.OrderId }).IsUnique();
-        modelBuilder.Entity<AmazonOrderItem>().HasOne(i => i.Order).WithMany(o => o.Items).HasForeignKey(i => i.AmazonOrderId).OnDelete(DeleteBehavior.Cascade);
-        modelBuilder.Entity<AmazonCharge>().HasOne<BankLogin>().WithMany().HasForeignKey(c => c.BankLoginId).OnDelete(DeleteBehavior.Cascade);
-        modelBuilder.Entity<AmazonCharge>().HasIndex(c => new { c.BankLoginId, c.ChargeKey }).IsUnique();
-        modelBuilder.Entity<AmazonCharge>().HasIndex(c => c.TransactionId);
-        modelBuilder.Entity<AmazonCharge>().Property(c => c.State).HasConversion<int>();
-
         // Receipts read from the owner's mailbox, the item category memory and the receipt settings.
         modelBuilder.Entity<ReceiptInvoice>().HasIndex(r => new { r.OwnerUserId, r.Shop, r.InvoiceNumber }).IsUnique();
         modelBuilder.Entity<ReceiptInvoice>().HasIndex(r => r.TransactionId);
+        modelBuilder.Entity<ReceiptInvoice>().HasIndex(r => r.BankLoginId);
         modelBuilder.Entity<ReceiptInvoice>().Property(r => r.State).HasConversion<int>();
         modelBuilder.Entity<ReceiptItem>().HasOne(i => i.Invoice).WithMany(r => r.Items).HasForeignKey(i => i.ReceiptInvoiceId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<ReceiptItem>().Property(i => i.Kind).HasConversion<int>();

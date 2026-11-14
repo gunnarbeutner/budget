@@ -58,13 +58,10 @@ public enum ReceiptReviewState
     Dismissed,
 }
 
-/// <summary>
-/// A receipt of any source as the receipts page lists it: <see cref="Id"/> is the receipt's (or, for Amazon, the
-/// charge's) id; only shared-model receipts (<see cref="IsAmazon"/> false) open in the receipt panel or can be assigned.
-/// </summary>
+/// <summary>A receipt of any source as the receipts page lists it.</summary>
 public sealed record ReceiptReviewRow(
     long Id, string Source, string Shop, string Title, DateTime? Date, long PaymentCents, int Items, ReceiptReviewState State,
-    long? TransactionId, DateTime? BookingDate, bool IsAmazon = false);
+    long? TransactionId, DateTime? BookingDate);
 
 /// <summary>A booking that may be a receipt's: id, date, signed amount, payee and purpose.</summary>
 public sealed record ReceiptCandidate(long TransactionId, DateTime Date, long AmountCents, string? Name, string? Purpose);
@@ -125,6 +122,7 @@ public sealed class ReceiptService
     {
         ReceiptShops.Lidl => store is { Length: > 0 } s ? (s.StartsWith("Lidl", StringComparison.OrdinalIgnoreCase) ? s : "Lidl " + s) : "Lidl",
         ReceiptShops.Rewe => ("REWE " + orderNumber).Trim(),
+        ReceiptShops.Amazon => ("Amazon " + orderNumber).Trim(),
         _ => (shop + " " + (store ?? orderNumber)).Trim(),
     };
 
@@ -327,7 +325,7 @@ public sealed class ReceiptService
         var count = await q.CountAsync(ct);
         var matched = await q.CountAsync(r => r.TransactionId != null, ct);
         // a receipt paid in cash has no booking to wait for
-        var open = q.Where(r => r.TransactionId == null && r.PaymentCents > 0 && r.State != ReceiptMatchState.Dismissed);
+        var open = q.Where(r => r.TransactionId == null && r.PaymentCents > 0 && r.State != ReceiptMatchState.Dismissed && r.State != ReceiptMatchState.Skipped);
         var openCount = await open.CountAsync(ct);
         var latest = await open.OrderByDescending(r => r.OrderDate).ThenByDescending(r => r.Id).Take(take)
             .Select(r => new ReceiptView(r.Id, r.Shop, r.OrderNumber, r.OrderDate, r.DeliveryDate, r.PaymentCents, r.Items.Count, r.State, null, null, false, r.Store))
@@ -377,8 +375,7 @@ public sealed class ReceiptService
     public const int WaitingDays = 14;
 
     /// <summary>
-    /// All of the user's receipts, newest first: the shared-model receipts (mailbox, Lidl Plus) and the Amazon charges,
-    /// optionally only one source and one state.
+    /// All of the user's receipts (mailbox, Lidl Plus, Amazon charges), newest first, optionally only one source and one state.
     /// </summary>
     public async Task<List<ReceiptReviewRow>> ListAllAsync(string? source = null, ReceiptReviewState? state = null, int take = 300, CancellationToken ct = default)
     {
@@ -386,51 +383,25 @@ public sealed class ReceiptService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
         var rows = new List<ReceiptReviewRow>();
-        if (source is not ReceiptSources.Amazon)
+        var invoices = await db.ReceiptInvoices.AsNoTracking().Where(r => r.OwnerUserId == user)
+            .OrderByDescending(r => r.DeliveryDate ?? r.OrderDate).ThenByDescending(r => r.Id).Take(take * 2)
+            .Select(r => new { r.Id, r.Shop, r.Store, r.OrderNumber, r.OrderDate, r.DeliveryDate, r.PaymentCents, Items = r.Items.Count, r.State, r.TransactionId, r.SplitSignature })
+            .ToListAsync(ct);
+        rows.AddRange(invoices.Where(r => source == null || ReceiptSources.Of(r.Shop) == source).Select(r =>
         {
-            var invoices = await db.ReceiptInvoices.AsNoTracking().Where(r => r.OwnerUserId == user)
-                .OrderByDescending(r => r.DeliveryDate ?? r.OrderDate).ThenByDescending(r => r.Id).Take(take * 2)
-                .Select(r => new { r.Id, r.Shop, r.Store, r.OrderNumber, r.OrderDate, r.DeliveryDate, r.PaymentCents, Items = r.Items.Count, r.State, r.TransactionId, r.SplitSignature })
-                .ToListAsync(ct);
-            rows.AddRange(invoices.Where(r => source == null || ReceiptSources.Of(r.Shop) == source).Select(r =>
+            var date = r.DeliveryDate ?? r.OrderDate;
+            var st = r.State switch
             {
-                var date = r.DeliveryDate ?? r.OrderDate;
-                var st = r.State switch
-                {
-                    ReceiptMatchState.Matched => r.SplitSignature != null ? ReceiptReviewState.Split : ReceiptReviewState.Matched,
-                    ReceiptMatchState.Ambiguous => ReceiptReviewState.Ambiguous,
-                    ReceiptMatchState.Dismissed => ReceiptReviewState.Dismissed,
-                    _ when r.PaymentCents <= 0 => ReceiptReviewState.NoBooking,
-                    _ when date is { } d && DateOnly.FromDateTime(d).AddDays(WaitingDays) >= today => ReceiptReviewState.Waiting,
-                    _ => ReceiptReviewState.Unmatched,
-                };
-                return new ReceiptReviewRow(r.Id, ReceiptSources.Of(r.Shop), r.Shop, Title(r.Shop, r.Store, r.OrderNumber), date, r.PaymentCents, r.Items, st, r.TransactionId, null);
-            }));
-        }
-        if (source is null or ReceiptSources.Amazon)
-        {
-            var charges = await db.AmazonCharges.AsNoTracking().Where(c => c.OwnerUserId == user)
-                .OrderByDescending(c => c.Date).ThenByDescending(c => c.Id).Take(take)
-                .Select(c => new { c.Id, c.OrderId, c.Date, c.AmountCents, c.State, c.TransactionId })
-                .ToListAsync(ct);
-            var orderIds = charges.Select(c => c.OrderId).Distinct(StringComparer.Ordinal).ToList();
-            var counts = await db.AmazonOrders.AsNoTracking().Where(o => o.OwnerUserId == user && orderIds.Contains(o.OrderId))
-                .Select(o => new { o.OrderId, Items = o.Items.Count }).ToListAsync(ct);
-            var itemCount = counts.GroupBy(c => c.OrderId, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Max(x => x.Items), StringComparer.Ordinal);
-            rows.AddRange(charges.Select(c =>
-            {
-                var st = c.State switch
-                {
-                    AmazonChargeState.Matched => ReceiptReviewState.Matched,
-                    AmazonChargeState.Ambiguous => ReceiptReviewState.Ambiguous,
-                    AmazonChargeState.Skipped => ReceiptReviewState.NoBooking,
-                    _ when DateOnly.FromDateTime(c.Date).AddDays(WaitingDays) >= today => ReceiptReviewState.Waiting,
-                    _ => ReceiptReviewState.Unmatched,
-                };
-                return new ReceiptReviewRow(c.Id, ReceiptSources.Amazon, "amazon", "Amazon " + c.OrderId, c.Date, -c.AmountCents,
-                    itemCount.GetValueOrDefault(c.OrderId), st, c.TransactionId, null, IsAmazon: true);
-            }));
-        }
+                ReceiptMatchState.Matched => r.SplitSignature != null ? ReceiptReviewState.Split : ReceiptReviewState.Matched,
+                ReceiptMatchState.Ambiguous => ReceiptReviewState.Ambiguous,
+                ReceiptMatchState.Dismissed => ReceiptReviewState.Dismissed,
+                ReceiptMatchState.Skipped => ReceiptReviewState.NoBooking,
+                _ when r.PaymentCents == 0 || (r.PaymentCents < 0 && r.Shop != ReceiptShops.Amazon) => ReceiptReviewState.NoBooking,
+                _ when date is { } d && DateOnly.FromDateTime(d).AddDays(WaitingDays) >= today => ReceiptReviewState.Waiting,
+                _ => ReceiptReviewState.Unmatched,
+            };
+            return new ReceiptReviewRow(r.Id, ReceiptSources.Of(r.Shop), r.Shop, Title(r.Shop, r.Store, r.OrderNumber), date, r.PaymentCents, r.Items, st, r.TransactionId, null);
+        }));
         if (state is { } only) rows = rows.Where(r => r.State == only).ToList();
         rows = rows.OrderByDescending(r => r.Date).ThenByDescending(r => r.Id).Take(take).ToList();
         var txIds = rows.Where(r => r.TransactionId != null).Select(r => r.TransactionId!.Value).Distinct().ToList();
@@ -455,7 +426,8 @@ public sealed class ReceiptService
             .Select(t => new { t.Id, t.Timestamp, Cents = t.SplitOriginalAmount ?? t.Amount, t.Name, t.Purpose })
             .ToListAsync(ct);
         var day0 = new DateTimeOffset(day, TimeSpan.Zero).ToUnixTimeSeconds();
-        return rows.Where(r => r.Cents < 0)
+        // a charge was paid by a debit, a refund came back as a credit
+        return rows.Where(r => invoice.PaymentCents < 0 ? r.Cents > 0 : r.Cents < 0)
             .OrderBy(r => Math.Abs(-r.Cents - invoice.PaymentCents)).ThenBy(r => Math.Abs(r.Timestamp - day0)).Take(take)
             .Select(r => new ReceiptCandidate(r.Id, DateTimeOffset.FromUnixTimeSeconds(r.Timestamp).UtcDateTime, r.Cents, r.Name, r.Purpose)).ToList();
     }

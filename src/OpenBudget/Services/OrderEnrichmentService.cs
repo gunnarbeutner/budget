@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Connectors.Amazon;
-using OpenBudget.Connectors.Sync;
+using OpenBudget.Connectors.Receipts;
 using OpenBudget.Models;
 
 namespace OpenBudget.Services;
@@ -15,15 +15,9 @@ public sealed record InstrumentCandidate(long AccountId, string Name, bool Sugge
 /// <summary>A charge without a booking: <see cref="Ambiguous"/> when several bookings fit.</summary>
 public sealed record OpenChargeView(DateTime Date, string OrderId, long AmountCents, string Instrument, bool Ambiguous, Uri OrderUrl);
 
-/// <summary>An order a booking paid for.</summary>
-public sealed record OrderLink(string OrderId, Uri Url);
-
-/// <summary>The orders a booking paid for and the items its charges covered (<see cref="Unclear"/>: could not be told by shipment).</summary>
-public sealed record BookingOrders(IReadOnlyList<OrderLink> Orders, string? Items, bool Unclear);
-
 /// <summary>
-/// The owner's view of an order source (Amazon): mapping its payment instruments to existing accounts, the charges
-/// still without a booking, and the orders behind a booking. Reads and writes through the user-scoped context;
+/// The owner's view of an order source (Amazon): mapping its payment instruments to existing accounts and the charges
+/// (receipts of the shop <see cref="ReceiptShops.Amazon"/>) still without a booking. Reads and writes through the user-scoped context;
 /// re-matching after a mapping change runs on a system context for the owner only.
 /// </summary>
 public sealed partial class OrderEnrichmentService
@@ -31,13 +25,13 @@ public sealed partial class OrderEnrichmentService
     private static readonly AmazonOptions Amazon = new();
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly SystemDbContextFactory _system;
-    private readonly AmazonOrderStore _store;
+    private readonly ReceiptStore _store;
     private readonly AccessScopeProvider _access;
     private readonly ChangeNotificationService _notifier;
     private readonly ChangeOrigin _origin;
 
     public OrderEnrichmentService(
-        IDbContextFactory<BudgetDbContext> dbFactory, SystemDbContextFactory system, AmazonOrderStore store, AccessScopeProvider access,
+        IDbContextFactory<BudgetDbContext> dbFactory, SystemDbContextFactory system, ReceiptStore store, AccessScopeProvider access,
         ChangeNotificationService notifier, ChangeOrigin origin)
     {
         _dbFactory = dbFactory;
@@ -57,8 +51,8 @@ public sealed partial class OrderEnrichmentService
         var rows = await db.BankLoginAccounts.AsNoTracking().Where(a => a.BankLoginId == loginId).OrderBy(a => a.Name).ToListAsync(ct);
         var mapped = rows.Where(r => r.EnrichAccountId != null).Select(r => r.EnrichAccountId!.Value).ToList();
         var names = await db.Accounts.AsNoTracking().Where(a => mapped.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => a.Name, ct);
-        var counts = await db.AmazonCharges.AsNoTracking().Where(c => c.BankLoginId == loginId)
-            .GroupBy(c => c.InstrumentId).Select(g => new { g.Key, All = g.Count(), Matched = g.Count(c => c.State == AmazonChargeState.Matched) })
+        var counts = await db.ReceiptInvoices.AsNoTracking().Where(c => c.BankLoginId == loginId && c.PaymentMethodId != null)
+            .GroupBy(c => c.PaymentMethodId!).Select(g => new { g.Key, All = g.Count(), Matched = g.Count(c => c.TransactionId != null) })
             .ToDictionaryAsync(g => g.Key, ct);
         return rows.Select(r => new InstrumentView(r.Id, r.Name, AmazonPages.IsPointsLabel(r.Name), r.EnrichAccountId,
             r.EnrichAccountId is { } a ? names.GetValueOrDefault(a) : null,
@@ -107,20 +101,10 @@ public sealed partial class OrderEnrichmentService
     public async Task<(int Count, List<OpenChargeView> Latest)> GetOpenChargesAsync(int loginId, int take = 10, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var q = db.AmazonCharges.AsNoTracking().Where(c => c.BankLoginId == loginId && (c.State == AmazonChargeState.Unmatched || c.State == AmazonChargeState.Ambiguous));
+        var q = db.ReceiptInvoices.AsNoTracking().Where(c => c.BankLoginId == loginId && (c.State == ReceiptMatchState.Unmatched || c.State == ReceiptMatchState.Ambiguous));
         var count = await q.CountAsync(ct);
-        var latest = await q.OrderByDescending(c => c.Date).ThenBy(c => c.Id).Take(take).ToListAsync(ct);
-        return (count, latest.Select(c => new OpenChargeView(c.Date, c.OrderId, c.AmountCents, c.Instrument, c.State == AmazonChargeState.Ambiguous, Amazon.OrderUrl(c.OrderId))).ToList());
-    }
-
-    /// <summary>The orders behind a booking (only for its owner); null when it has none.</summary>
-    public async Task<BookingOrders?> GetOrdersAsync(long transactionId, CancellationToken ct = default)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var charges = await db.AmazonCharges.AsNoTracking().Where(c => c.TransactionId == transactionId).ToListAsync(ct);
-        if (charges.Count == 0) return null;
-        var paid = (await AmazonOrderStore.ItemsByBookingAsync(db, charges[0].OwnerUserId, charges, ct)).GetValueOrDefault(transactionId);
-        var orders = charges.Select(c => c.OrderId).Distinct(StringComparer.Ordinal).Select(id => new OrderLink(id, Amazon.OrderUrl(id))).ToList();
-        return new BookingOrders(orders, paid == null ? null : AmazonSplit.Describe(paid.Items.Select(i => (i.Title, i.Quantity))), paid?.Unclear == true);
+        var latest = await q.OrderByDescending(c => c.DeliveryDate).ThenBy(c => c.Id).Take(take).ToListAsync(ct);
+        return (count, latest.Select(c => new OpenChargeView(c.DeliveryDate ?? c.ReadAt, c.OrderNumber ?? "", -c.PaymentCents, c.PaymentMethod ?? "",
+            c.State == ReceiptMatchState.Ambiguous, Amazon.OrderUrl(c.OrderNumber ?? ""))).ToList());
     }
 }

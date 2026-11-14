@@ -1,7 +1,7 @@
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using NUnit.Framework;
+using OpenBudget.Connectors.Amazon;
 using OpenBudget.Models;
 using OpenBudget.Services;
 
@@ -9,7 +9,7 @@ namespace OpenBudget.E2E.Tests;
 
 /// <summary>
 /// An Amazon login with a read order (seeded, made up): map its card to an existing account, then find the order's
-/// items in the matching booking's details.
+/// receipt in the matching booking's details.
 /// </summary>
 [TestFixture]
 public sealed class AmazonOrderTests : EndToEndTestBase
@@ -27,20 +27,9 @@ public sealed class AmazonOrderTests : EndToEndTestBase
         await db.SaveChangesAsync();
         db.BankLoginAccounts.Add(new BankLoginAccount { BankLoginId = login.Id, RemoteId = "amazon-visa-1111", Name = "Amazon Visa •••• 1111", Type = Connectors.RemoteAccountType.CreditCard });
         db.BankLoginAccounts.Add(new BankLoginAccount { BankLoginId = login.Id, RemoteId = "example-points", Name = "Example Points", Type = Connectors.RemoteAccountType.Other });
-        var order = new AmazonOrder { OwnerUserId = E2ESeed.OwnerUserId, BankLoginId = login.Id, OrderId = OrderId, TotalCents = 1250, DetailsFetchedAt = DateTime.UtcNow };
-        order.Items.Add(new AmazonOrderItem { OwnerUserId = E2ESeed.OwnerUserId, Title = "USB-C charger", Quantity = 1, PriceCents = 1250 });
-        db.AmazonOrders.Add(order);
-        db.AmazonCharges.Add(new AmazonCharge
-        {
-            OwnerUserId = E2ESeed.OwnerUserId,
-            BankLoginId = login.Id,
-            ChargeKey = "k1",
-            OrderId = OrderId,
-            Date = new DateTime(2026, 3, 13, 0, 0, 0, DateTimeKind.Utc),
-            AmountCents = -1250,
-            InstrumentId = "amazon-visa-1111",
-            Instrument = "Amazon Visa •••• 1111",
-        });
+        var receipt = AmazonReceiptStore.NewReceipt(E2ESeed.OwnerUserId, login.Id, "k1", OrderId, new DateOnly(2026, 3, 13), -1250, "amazon-visa-1111", "Amazon Visa •••• 1111", DateTime.UtcNow);
+        AmazonReceiptStore.Assign([receipt], [new AmazonItem(0, "USB-C charger", 1, 1250, 0)], new DateOnly(2026, 3, 12), 1250, DateTime.UtcNow);
+        db.ReceiptInvoices.Add(receipt);
         await db.SaveChangesAsync();
     }
 
@@ -58,10 +47,11 @@ public sealed class AmazonOrderTests : EndToEndTestBase
 
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=uncategorized");
         await Page.GetByTestId("tx-row").Filter(new() { HasText = "−12,50" }).ClickAsync();
-        var order = Page.GetByTestId("tx-details-order");
-        await Expect(order).ToContainTextAsync("USB-C charger");
-        await Expect(order.GetByTestId("tx-details-order-link")).ToHaveTextAsync(OrderId);
-        await Expect(order.GetByTestId("tx-details-order-link")).ToHaveAttributeAsync("href", new Regex(Regex.Escape("orderID=" + OrderId)));
+        var receipt = Page.GetByTestId("tx-receipt");
+        await Expect(receipt).ToContainTextAsync("Amazon " + OrderId);
+        await receipt.GetByTestId("tx-receipt-open").ClickAsync();
+        await Expect(Page.GetByTestId("receipt-panel")).ToContainTextAsync("USB-C charger");
+        await Page.GetByTestId("modal-dialog").Locator(".btn-close").ClickAsync();
 
         // The items are searchable.
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&q=charger");

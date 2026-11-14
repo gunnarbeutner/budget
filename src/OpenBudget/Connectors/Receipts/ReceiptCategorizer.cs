@@ -203,7 +203,7 @@ public static partial class ReceiptCategorizer
         var net = lines.ToDictionary(l => l.Id, l => l.TotalCents);
         var eligible = lines.Where(l => !l.NoDiscount && l.TotalCents > 0).ToList();
         if (bonusCents == 0 || eligible.Count == 0) return net;
-        var shares = Amazon.AmazonSplit.Proportion(bonusCents, eligible.Select(l => (long?)l.TotalCents).ToList());
+        var shares = Proportion(bonusCents, eligible.Select(l => (long?)l.TotalCents).ToList());
         for (var i = 0; i < eligible.Count; i++) net[eligible[i].Id] += shares[i];
         return net;
     }
@@ -258,6 +258,25 @@ public static partial class ReceiptCategorizer
         var order = lines.Select((l, i) => (l.Id, i)).ToDictionary(x => x.Id, x => x.i);
         return groups.OrderBy(g => g.Lines.Min(id => order[id]))
             .Select(g => new ReceiptSplitPart(g.Cents, g.Category, g.Lines.OrderBy(id => order[id]).ToList())).ToList();
+    }
+
+    /// <summary>
+    /// Spreads <paramref name="totalCents"/> over weights (line totals) in proportion. Each share is rounded to cents;
+    /// what rounding leaves over goes to the largest weight. No usable weights: equal shares. The shares carry the
+    /// total's sign and add up to it exactly.
+    /// </summary>
+    public static long[] Proportion(long totalCents, IReadOnlyList<long?> weights)
+    {
+        if (weights.Count == 0) return [];
+        var abs = Math.Abs(totalCents);
+        var w = weights.Select(x => x is > 0 ? x.Value : 0m).ToArray();
+        if (w.Sum() == 0) w = Enumerable.Repeat(1m, weights.Count).ToArray();
+        var sum = w.Sum();
+        var parts = w.Select(x => (long)Math.Round(abs * x / sum, MidpointRounding.AwayFromZero)).ToArray();
+        var largest = Array.IndexOf(w, w.Max());
+        parts[largest] += abs - parts.Sum();
+        var sign = totalCents < 0 ? -1 : 1;
+        return parts.Select(p => p * sign).ToArray();
     }
 
     /// <summary>The parts as a compact text ("-1234:56;-789:"), to recognise them again.</summary>

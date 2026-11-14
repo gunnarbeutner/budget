@@ -154,9 +154,6 @@
   <data name="Order" xml:space="preserve">
     <value>Bestellung</value>
   </data>
-  <data name="Order_ShipmentUnclear" xml:space="preserve">
-    <value>Lieferung unklar</value>
-  </data>
   <data name="Follows" xml:space="preserve">
     <value>gehört zu {0}</value>
   </data>

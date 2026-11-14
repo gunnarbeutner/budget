@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Connectors.Receipts;
-using OpenBudget.Connectors.Sync;
 using OpenBudget.Models;
 using OpenBudget.Services;
 using Xunit;
@@ -311,24 +310,6 @@ public sealed class ReceiptStoreTests
         await ReceiptWorld.AddDebitAsync(t, Debit, Payment);
         await AddAndMatchAsync(t, new ReceiptStore());
         Assert.DoesNotContain("Apfelschorle", (await PartsAsync(t, Debit)).Single(x => x.CategoryId == ReceiptWorld.Drugstore).OrderItems, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Amazon_matching_keeps_the_receipt_items()
-    {
-        await using var t = await WorldAsync();
-        await ReceiptWorld.AddDebitAsync(t, Debit, Payment);
-        await AddAndMatchAsync(t, new ReceiptStore());
-        await using (var db = await t.System.CreateDbContextAsync())
-        {
-            db.BankLogins.Add(new BankLogin { Id = 7, OwnerUserId = ReceiptWorld.Alice, ConnectorType = "amazon", DisplayName = "Shop" });
-            await db.SaveChangesAsync();
-            db.AmazonCharges.Add(new AmazonCharge { OwnerUserId = ReceiptWorld.Alice, BankLoginId = 7, ChargeKey = "k", OrderId = "1", Date = ReceiptWorld.Delivered, AmountCents = -100 });
-            await db.SaveChangesAsync();
-            await new AmazonOrderStore().MatchAsync(db, ReceiptWorld.Alice, default);
-        }
-        Assert.NotNull((await RowAsync(t, Debit)).OrderItems);
-        Assert.All(await PartsAsync(t, Debit), p => Assert.NotNull(p.OrderItems));
     }
 
     [Fact]
