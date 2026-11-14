@@ -107,8 +107,42 @@ internal static partial class AmazonPages
         return data == null ? null : ParseWalletJson(data);
     }
 
-    /// <summary>The context the wallet sends with its own requests for further pages (<c>props.pageProps.manageWalletRequest</c>).</summary>
-    public static JsonNode? WalletRequestContext(string html) => NextDataOf(html)?["props"]?["pageProps"]?["manageWalletRequest"]?.DeepClone();
+    /// <summary>
+    /// What the wallet sends with its own requests for further pages: the page token (header <c>x-amzn-upx-token</c>),
+    /// locale, surface and widget name from <c>props.pageProps</c>. Null when the page holds no token.
+    /// </summary>
+    public static AmazonWalletRequest? WalletRequestContext(string html)
+    {
+        var props = NextDataOf(html)?["props"]?["pageProps"];
+        if (Str(props?["token"]) is not { Length: > 0 } token) return null;
+        var context = props?["manageWalletRequest"]?["requestContext"];
+        var surface = context?["surfaceInfo"] is JsonObject si
+            ? new JsonObject
+            {
+                ["surfaceType"] = si["surfaceType"]?.DeepClone(),
+                ["clientApplicationType"] = si["clientApplicationType"]?.DeepClone(),
+                ["surfaceFeatures"] = new JsonArray(),
+                ["userAgent"] = si["userAgent"]?.DeepClone(),
+            }
+            : null;
+        return new AmazonWalletRequest(token, Str(context?["localeInfo"]?["locale"]) ?? "de_DE", surface,
+            Str(props?["request"]?["widgetName"]) ?? "ViewTransactions");
+    }
+
+    /// <summary>The body of a request for the wallet page after <paramref name="pageKey"/>, shaped like the page's own.</summary>
+    public static JsonObject WalletPageBody(AmazonWalletRequest request, string pageKey) => new()
+    {
+        ["type"] = "GetTransactions",
+        ["locale"] = request.Locale,
+        ["surfaceInfo"] = request.SurfaceInfo?.DeepClone(),
+        ["requestTraceId"] = TraceId(20),
+        ["applicationInstanceTraceId"] = TraceId(33),
+        ["transactionsViewRequest"] = new JsonObject { ["filtersControls"] = new JsonObject { ["includeFilters"] = true } },
+        ["exclusiveStartKey"] = pageKey,
+        ["widgetName"] = request.WidgetName,
+    };
+
+    private static string TraceId(int length) => Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(length))[..length];
 
     /// <summary>A transaction list wherever it sits in <paramref name="root"/> (the first page or a further page's answer).</summary>
     public static AmazonWalletPage? ParseWalletJson(JsonNode root)
@@ -352,3 +386,6 @@ internal static partial class AmazonPages
         };
     }
 }
+
+/// <summary>What a request for a further wallet page carries besides the page key (see <see cref="AmazonPages.WalletRequestContext"/>).</summary>
+public sealed record AmazonWalletRequest(string Token, string Locale, JsonObject? SurfaceInfo, string WidgetName);

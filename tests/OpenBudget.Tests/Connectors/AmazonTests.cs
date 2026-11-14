@@ -45,7 +45,16 @@ public sealed class AmazonTests
             {
                 ["pageProps"] = new JsonObject
                 {
-                    ["manageWalletRequest"] = new JsonObject { ["customerId"] = "C-EXAMPLE", ["marketplaceId"] = "M-EXAMPLE" },
+                    ["token"] = "T-EXAMPLE",
+                    ["request"] = new JsonObject { ["widgetName"] = "ViewTransactions" },
+                    ["manageWalletRequest"] = new JsonObject
+                    {
+                        ["requestContext"] = new JsonObject
+                        {
+                            ["localeInfo"] = new JsonObject { ["locale"] = "en_GB" },
+                            ["surfaceInfo"] = new JsonObject { ["surfaceType"] = "desktop", ["clientApplicationType"] = "browser", ["userAgent"] = "Example" },
+                        },
+                    },
                     ["state"] = new JsonObject
                     {
                         ["transactionResponseState"] = new JsonObject
@@ -324,8 +333,13 @@ public sealed class AmazonTests
         Assert.DoesNotContain(shop.Requested, r => r.EndsWith("orderID=" + OrderA, StringComparison.Ordinal)); // known already
         Assert.Equal("Fridge freezer combination", Assert.Single(result.Orders).Items[0].Title);
         Assert.Equal(["Amazon Visa •••• 1111", "Example Points", "Visa •••• 2222"], result.Instruments.Select(i => i.Name));
-        Assert.Contains("\"lastEvaluatedPageKey\":\"page-2\"", shop.PostBody, StringComparison.Ordinal);
-        Assert.Contains("C-EXAMPLE", shop.PostBody, StringComparison.Ordinal);
+        var body = JsonNode.Parse(shop.PostBody)!;
+        Assert.Equal("page-2", (string?)body["exclusiveStartKey"]);
+        Assert.Equal("GetTransactions", (string?)body["type"]);
+        Assert.Equal("en_GB", (string?)body["locale"]);
+        Assert.Equal("ViewTransactions", (string?)body["widgetName"]);
+        Assert.Equal("desktop", (string?)body["surfaceInfo"]?["surfaceType"]);
+        Assert.Equal("T-EXAMPLE", shop.PostToken);
 
         // The instruments are remembered for the next listing.
         var session = await connector.LogoutAsync(CancellationToken.None);
@@ -353,6 +367,7 @@ public sealed class AmazonTests
         public bool SignIn { get; init; }
         public List<string> Requested { get; } = [];
         public string PostBody { get; private set; } = "";
+        public string? PostToken { get; private set; }
         public bool IsOpen => true;
 
         public Task<Uri?> ResolveRedirectAsync(Uri url, CancellationToken ct) => Task.FromResult<Uri?>(null);
@@ -364,6 +379,7 @@ public sealed class AmazonTests
             if (request.Method == "POST")
             {
                 PostBody = request.Body ?? "";
+                PostToken = request.Headers?.GetValueOrDefault("x-amzn-upx-token");
                 return Answer(NextPage == null ? 500 : 200, request.Url, AmazonPages.NextDataOf(NextPage ?? "")?["props"]?["pageProps"]?["state"]?.ToJsonString() ?? "");
             }
             return Pages.TryGetValue(request.Url.AbsolutePath, out var html) ? Answer(200, request.Url, html) : Answer(404, request.Url, "");

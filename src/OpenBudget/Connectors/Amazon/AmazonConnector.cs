@@ -237,27 +237,32 @@ public sealed class AmazonConnector : IBankConnector, IOrderSource
     }
 
     /// <summary>
-    /// A further wallet page, asked the way the page asks itself: a JSON POST with the page key and the page's request
+    /// A further wallet page, asked the way the page asks itself: a JSON POST with the page key, the page's token and
     /// context. Null when the answer cannot be read.
     /// </summary>
-    private async Task<AmazonWalletPage?> NextWalletPageAsync(IBrowserFetcher browser, string pageKey, JsonNode? context, CancellationToken ct)
+    private async Task<AmazonWalletPage?> NextWalletPageAsync(IBrowserFetcher browser, string pageKey, AmazonWalletRequest? context, CancellationToken ct)
     {
-        var body = new JsonObject
+        if (context == null)
         {
-            ["manageWalletRequest"] = context?.DeepClone(),
-            ["lastEvaluatedPageKey"] = pageKey,
-        };
+            Log.LogWarning("Amazon: the payment list carries no request token.");
+            return null;
+        }
         var request = new BrowserFetchRequest("POST", new Uri(_options.BaseUri, _options.WalletDataPath))
         {
             Headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["Content-Type"] = "application/json",
                 ["Accept"] = "application/json",
+                ["x-amzn-upx-token"] = context.Token,
             },
-            Body = body.ToJsonString(),
+            Body = AmazonPages.WalletPageBody(context, pageKey).ToJsonString(),
         };
         var response = await browser.SendAsync(request, ct);
-        if (!response.IsSuccess) return null;
+        if (!response.IsSuccess)
+        {
+            Log.LogWarning("Amazon: a further payment page answered HTTP {Status}.", response.Status);
+            return null;
+        }
         try { return JsonNode.Parse(response.Text) is { } json ? AmazonPages.ParseWalletJson(json) : null; }
         catch (JsonException) { return null; }
     }
