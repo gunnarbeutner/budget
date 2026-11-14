@@ -158,7 +158,7 @@ public sealed class AmazonTests
     /// <summary>An item as amazon.de shows it today: an empty quantity element, the count only as a badge on the image (above one).</summary>
     private static string BadgeItem(string asin, string title, int quantity, string price) =>
         $"""<div data-component="purchasedItems"><div data-component="itemImage"><a href="/-/en/dp/{asin}"><img src="x.jpg"></a>"""
-        + (quantity > 1 ? $"""<span class="od-item-view-qty">{quantity}</span>""" : "") + "</div>"
+        + (quantity > 1 ? $"""<div class="od-item-view-qty"><span>{quantity}</span></div>""" : "") + "</div>"
         + $"""<div data-component="itemTitle"><a class="a-link-normal" href="/-/en/dp/{asin}?ref=x">{WebUtility.HtmlEncode(title)}</a></div>"""
         + """<div data-component="orderedMerchant">Sold by: Example Seller</div>"""
         + $"""<div class="" data-component="quantity">\n    \n  </div><div data-component="unitPrice"><span>{price}</span></div></div>""";

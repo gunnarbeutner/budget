@@ -302,7 +302,7 @@ internal static partial class AmazonPages
     private static int? Count(string text) =>
         int.TryParse(text, CultureInfo.InvariantCulture, out var n) && n is > 0 and < 1000 ? n : null;
 
-    [GeneratedRegex(@"class=""[^""]*\bod-item-view-qty\b[^""]*""[^>]*>\s*(?<n>\d+)\s*<", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
+    [GeneratedRegex(@"class=""[^""]*\bod-item-view-qty\b[^""]*""[^>]*>\s*(?:<span\b[^>]*>\s*)?(?<n>\d+)\s*<", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
     private static partial Regex QuantityBadge();
 
     [GeneratedRegex(@"data-component=""quantity""[^>]*>(?<inner>.*?)</div>", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture | RegexOptions.Singleline, 1000)]

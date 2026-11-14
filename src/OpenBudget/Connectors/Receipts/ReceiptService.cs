@@ -34,7 +34,7 @@ public sealed record ReceiptGroupView(long? CategoryId, long AmountCents, IReadO
 /// </summary>
 public sealed record BookingReceiptView(long ReceiptId, long? TransactionId, string Shop, string? OrderNumber, DateTime? DeliveryDate, long BonusCents,
     IReadOnlyList<ReceiptGroupView> Groups, bool SplitByReceipt, string? Store = null, long TotalCents = 0, long PaymentCents = 0, string? InvoiceNumber = null,
-    bool PaidInInstalments = false, long? BookingCategoryId = null)
+    bool PaidInInstalments = false, long? BookingCategoryId = null, bool Instalment = false)
 {
     /// <summary>The number of lines.</summary>
     public int ItemCount => Groups.Sum(g => g.Lines.Count);
@@ -380,7 +380,10 @@ public sealed class ReceiptService
             .ToList();
         return new BookingReceiptView(invoice.Id, booking?.Id, invoice.Shop, invoice.OrderNumber, invoice.DeliveryDate ?? invoice.OrderDate, invoice.BonusCents, groups,
             invoice.SplitSignature != null, invoice.Store, invoice.TotalCents, invoice.PaymentCents, invoice.InvoiceNumber,
-            invoice.State == ReceiptMatchState.Instalments, bookingCategory);
+            invoice.State == ReceiptMatchState.Instalments, bookingCategory,
+            // One instalment of an order paid in instalments: the rest of the price is in the other instalments.
+            invoice.State != ReceiptMatchState.Instalments && invoice.OrderNumber != null && await db.ReceiptInvoices.AnyAsync(r =>
+                r.OrderNumber == invoice.OrderNumber && r.BankLoginId == invoice.BankLoginId && r.State == ReceiptMatchState.Instalments, ct));
     }
 
     // ---- review ----

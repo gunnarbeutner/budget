@@ -97,6 +97,9 @@
   <data name="Total" xml:space="preserve">
     <value>Total</value>
   </data>
+  <data name="OtherInstalments" xml:space="preserve">
+    <value>Other instalments</value>
+  </data>
   <data name="Unitemised" xml:space="preserve">
     <value>Not itemised (shipping, fees)</value>
   </data>
