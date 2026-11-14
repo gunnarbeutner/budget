@@ -1096,11 +1096,23 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
             forced = forced || !!force;
             if (!frame) frame = requestAnimationFrame(() => { frame = 0; const f = forced; forced = false; syncWindow(f); });
         };
-        const onScroll = () => schedule(false);
+        // The distance from the right end, kept when the chart gets narrower or wider (the latest
+        // bars stay where they are).
+        let rightGap = 0, measured = false;
+        const onScroll = () => {
+            rightGap = Math.max(0, scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft);
+            schedule(false);
+        };
         // Each size report (the first one comes once the frame is laid out) re-measures the
         // window and redraws it from the full series at the current scroll position.
         const resizer = scroller && typeof ResizeObserver === 'function'
-            ? new ResizeObserver(() => { layoutWindow(); schedule(true); })
+            ? new ResizeObserver(() => {
+                const gap = rightGap;
+                layoutWindow();
+                if (measured) scroller.scrollLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth - gap);
+                measured = true;
+                schedule(true);
+            })
             : null;
         if (scroller) {
             scroller.addEventListener('scroll', onScroll, { passive: true });

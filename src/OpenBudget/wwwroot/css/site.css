@@ -1020,7 +1020,9 @@ summary.app-sync:focus-visible { outline: 2px solid var(--bs-primary); outline-o
     background: linear-gradient(to right, transparent 2px, var(--bs-primary) 2px, var(--bs-primary) 4px, transparent 4px);
     outline: none;
 }
-body.resizing-sidebar { cursor: col-resize; user-select: none; }
+/* Safari (iPad) still selects text while dragging without the prefixed property and touch-action. */
+body.resizing-sidebar { cursor: col-resize; user-select: none; -webkit-user-select: none; }
+.browse-resizer { touch-action: none; -webkit-user-select: none; user-select: none; }
 @media (max-width: 767.98px) { .browse-resizer { display: none; } }
 .browse-rail {
     background: var(--ob-sidebar-bg);
