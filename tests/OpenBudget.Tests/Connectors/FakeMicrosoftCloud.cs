@@ -21,9 +21,10 @@ internal sealed class FakeMicrosoftCloud : HttpMessageHandler
     public const string SharedDrive = "drive-shared";
 
     private readonly Lock _lock = new();
-    private readonly Dictionary<string, (string Challenge, string RedirectUri)> _codes = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _refreshTokens = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, DateTime> _accessTokens = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string Challenge, string RedirectUri, string Scope)> _codes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _refreshTokens = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (DateTime Expires, string Scope)> _accessTokens = new(StringComparer.Ordinal);
+    private readonly List<FakeMail> _mails = [];
     private readonly Dictionary<(string Drive, string Id), FakeItem> _items = [];
     private int _counter;
 
@@ -40,7 +41,21 @@ internal sealed class FakeMicrosoftCloud : HttpMessageHandler
         public bool SharedWithMe { get; init; }
     }
 
+    /// <summary>A mail in the fake mailbox with its attachments.</summary>
+    public sealed record FakeMail(string Id, string Subject, DateTime Received, IReadOnlyList<(string Id, string Name, byte[] Content)> Attachments);
+
     public FakeMicrosoftCloud() => Reset();
+
+    /// <summary>When true the consent screen leaves out Mail.Read (the app registration lacks the permission).</summary>
+    public bool WithholdMail { get; set; }
+
+    public void AddMail(FakeMail mail)
+    {
+        lock (_lock) _mails.Add(mail);
+    }
+
+    /// <summary>Attachment downloads so far.</summary>
+    public int AttachmentDownloads => Requests.Count(r => r.EndsWith("/$value", StringComparison.Ordinal));
 
     /// <summary>The account name the ID token carries.</summary>
     public string AccountName { get; set; } = "someone@example.org";
@@ -67,6 +82,8 @@ internal sealed class FakeMicrosoftCloud : HttpMessageHandler
             _refreshTokens.Clear();
             _accessTokens.Clear();
             _items.Clear();
+            _mails.Clear();
+            WithholdMail = false;
             RejectRefresh = false;
             TokenRefreshes = 0;
             Requests.Clear();
@@ -115,7 +132,8 @@ internal sealed class FakeMicrosoftCloud : HttpMessageHandler
         if (q["response_type"] != "code" || q["code_challenge_method"] != "S256") throw new InvalidOperationException("not a PKCE code flow");
         if (!q["scope"].ToString().Contains("offline_access", StringComparison.Ordinal)) throw new InvalidOperationException("no offline_access");
         var code = Next("code");
-        lock (_lock) _codes[code] = (q["code_challenge"]!, q["redirect_uri"]!);
+        var scope = Granted(q["scope"].ToString());
+        lock (_lock) _codes[code] = (q["code_challenge"]!, q["redirect_uri"]!, scope);
         return (code, q["state"]!, q["redirect_uri"]!);
     }
 
@@ -152,13 +170,16 @@ internal sealed class FakeMicrosoftCloud : HttpMessageHandler
                     var challenge = Base64Url(SHA256.HashData(Encoding.ASCII.GetBytes(form["code_verifier"].ToString())));
                     if (challenge != issued.Challenge) return Error("invalid_grant");
                     if (form["redirect_uri"] != issued.RedirectUri) return Error("invalid_grant");
-                    return Issue();
+                    return Issue(issued.Scope);
                 }
                 case "refresh_token":
                 {
                     TokenRefreshes++;
-                    if (RejectRefresh || !_refreshTokens.Remove(form["refresh_token"].ToString())) return Error("invalid_grant");
-                    return Issue();
+                    if (RejectRefresh || !_refreshTokens.Remove(form["refresh_token"].ToString(), out var consented)) return Error("invalid_grant");
+                    // Asking for a permission the user never consented to needs a new sign-in.
+                    var asked = Granted(form["scope"].ToString());
+                    if (asked.Split(' ').Any(a => !consented.Split(' ').Contains(a, StringComparer.Ordinal))) return Error("consent_required");
+                    return Issue(asked);
                 }
                 default:
                     return Error("unsupported_grant_type");
@@ -166,12 +187,17 @@ internal sealed class FakeMicrosoftCloud : HttpMessageHandler
         }
     }
 
-    private HttpResponseMessage Issue()
+    /// <summary>The Graph permissions of a scope list that the user grants (Mail.Read only unless withheld).</summary>
+    private string Granted(string scope) => string.Join(' ', scope.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+        .Where(s => s.StartsWith("https://graph.microsoft.com/", StringComparison.Ordinal))
+        .Where(s => !(WithholdMail && s.EndsWith("Mail.Read", StringComparison.Ordinal))));
+
+    private HttpResponseMessage Issue(string scope)
     {
         var access = Next("access");
         var refresh = Next("refresh");
-        _accessTokens[access] = DateTime.UtcNow.AddHours(1);
-        _refreshTokens.Add(refresh);
+        _accessTokens[access] = (DateTime.UtcNow.AddHours(1), scope);
+        _refreshTokens[refresh] = scope;
         var idPayload = Base64Url(JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, string>(StringComparer.Ordinal) { ["preferred_username"] = AccountName }));
         return Json(HttpStatusCode.OK, new
         {
@@ -179,6 +205,7 @@ internal sealed class FakeMicrosoftCloud : HttpMessageHandler
             access_token = access,
             refresh_token = refresh,
             expires_in = 3600,
+            scope,
             id_token = $"e30.{idPayload}.sig",
         });
     }
@@ -188,13 +215,19 @@ internal sealed class FakeMicrosoftCloud : HttpMessageHandler
         var token = request.Headers.Authorization?.Parameter;
         lock (_lock)
         {
-            if (token == null || !_accessTokens.ContainsKey(token))
+            if (token == null || !_accessTokens.TryGetValue(token, out var granted))
                 return Json(HttpStatusCode.Unauthorized, new { error = new { code = "InvalidAuthenticationToken" } });
 
             var path = request.RequestUri!.AbsolutePath;
             if (!path.StartsWith("/v1.0/", StringComparison.Ordinal)) return new HttpResponseMessage(HttpStatusCode.NotFound);
             var parts = path["/v1.0/".Length..].Split('/').Select(Uri.UnescapeDataString).ToArray();
 
+            if (parts is ["me", "messages", ..])
+            {
+                if (!granted.Scope.Contains("Mail.Read", StringComparison.Ordinal))
+                    return Json(HttpStatusCode.Forbidden, new { error = new { code = "ErrorAccessDenied" } });
+                return Mail(parts, request.RequestUri!);
+            }
             if (parts is ["me", "drive", "root", "children"]) return Children(MyDrive, "root");
             if (parts is ["me", "drive", "sharedWithMe"])
                 return Json(HttpStatusCode.OK, new { value = _items.Values.Where(i => i.SharedWithMe).Select(Remote).ToList() });
@@ -208,6 +241,28 @@ internal sealed class FakeMicrosoftCloud : HttpMessageHandler
             }
             return NotFound();
         }
+    }
+
+    /// <summary>The mailbox: messages filtered like Graph's $filter (received since, with attachments, subject prefix), their attachments and raw content.</summary>
+    private HttpResponseMessage Mail(string[] parts, Uri uri)
+    {
+        if (parts is ["me", "messages"])
+        {
+            var filter = QueryHelpers.ParseQuery(uri.Query)["$filter"].ToString();
+            var since = System.Text.RegularExpressions.Regex.Match(filter, @"receivedDateTime ge (?<v>\S+)", System.Text.RegularExpressions.RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
+            var prefix = System.Text.RegularExpressions.Regex.Match(filter, @"startswith\(subject,'(?<v>[^']*)'\)", System.Text.RegularExpressions.RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
+            var from = since.Success ? DateTime.Parse(since.Groups["v"].Value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal) : DateTime.MinValue;
+            var hits = _mails.Where(m => m.Received >= from && m.Attachments.Count > 0
+                && (!prefix.Success || m.Subject.StartsWith(prefix.Groups["v"].Value, StringComparison.Ordinal))).ToList();
+            return Json(HttpStatusCode.OK, new { value = hits.Select(m => new { id = m.Id, subject = m.Subject, receivedDateTime = m.Received.ToString("o", System.Globalization.CultureInfo.InvariantCulture) }).ToList() });
+        }
+        var mail = _mails.Find(m => m.Id == parts[2]);
+        if (mail == null) return NotFound();
+        if (parts is [_, _, _, "attachments"])
+            return Json(HttpStatusCode.OK, new { value = mail.Attachments.Select(a => new { id = a.Id, name = a.Name, size = a.Content.Length }).ToList() });
+        if (parts is [_, _, _, "attachments", var attachmentId, "$value"] && mail.Attachments.FirstOrDefault(a => a.Id == attachmentId) is { Content: { } content })
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(content) };
+        return NotFound();
     }
 
     private HttpResponseMessage Children(string drive, string parent)

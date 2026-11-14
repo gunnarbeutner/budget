@@ -24,6 +24,12 @@ public sealed class OneDriveOptions
     /// </summary>
     public const string Scopes = "openid profile offline_access https://graph.microsoft.com/Files.Read.All";
 
+    /// <summary>The delegated permission to read the user's mail (receipts); asked for only when the user grants it.</summary>
+    public const string MailScope = "https://graph.microsoft.com/Mail.Read";
+
+    /// <summary>The scopes of a sign-in or refresh, with mail access or without.</summary>
+    public static string ScopesFor(bool mail) => mail ? Scopes + " " + MailScope : Scopes;
+
     public string? ClientId { get; init; }
 
     public string? ClientSecret { get; init; }

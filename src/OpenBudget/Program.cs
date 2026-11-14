@@ -9,6 +9,7 @@ using OpenBudget.Cli;
 using OpenBudget.Connectors;
 using OpenBudget.Connectors.Sync;
 using OpenBudget.Connectors.OneDrive;
+using OpenBudget.Connectors.Receipts;
 using System.Security.Claims;
 using OpenBudget.Importers;
 using OpenBudget.Services;
@@ -137,6 +138,7 @@ builder.Services.AddOpenBudgetDatabase(budgetDbPath);
 builder.Services.AddOpenBudgetAuth(builder.Environment, builder.Environment.ContentRootPath);
 builder.Services.AddBankConnectors(builder.Environment, builder.Environment.ContentRootPath);
 builder.Services.AddOneDrive(builder.Environment.ContentRootPath);
+builder.Services.AddReceipts();
 
 // PortfolioPerformance portfolios as accounts: recomputed from each user's current file, which is the uploaded one.
 var portfolioFiles = new UploadedPortfolioFileSource(Path.Combine(dataDir, "portfolioperformance"));

@@ -5,7 +5,15 @@ using System.Text.Json;
 namespace OpenBudget.Connectors.OneDrive;
 
 /// <summary>Tokens from the Microsoft identity platform. Never logged or shown.</summary>
-public sealed record MicrosoftTokens(string AccessToken, string? RefreshToken, DateTime ExpiresAtUtc, string? AccountName);
+public sealed record MicrosoftTokens(string AccessToken, string? RefreshToken, DateTime ExpiresAtUtc, string? AccountName)
+{
+    /// <summary>The scopes the token endpoint says it granted (null when it did not say).</summary>
+    public string? GrantedScopes { get; init; }
+
+    /// <summary>Whether mail reading was granted: the answer names Mail.Read, or (without a scope list) it was asked for.</summary>
+    public bool GrantsMail(bool requested) =>
+        GrantedScopes == null ? requested : GrantedScopes.Split(' ').Any(s => s.EndsWith("Mail.Read", StringComparison.OrdinalIgnoreCase));
+}
 
 /// <summary>A failure talking to Microsoft; <see cref="Exception.Message"/> is safe to show the user.</summary>
 public class CloudException : Exception
@@ -55,7 +63,7 @@ public sealed class MicrosoftIdentityClient
 
     public static string NewState() => Base64Url(RandomNumberGenerator.GetBytes(24));
 
-    public Uri BuildAuthorizeUrl(string state, string codeChallenge, Uri redirectUri)
+    public Uri BuildAuthorizeUrl(string state, string codeChallenge, Uri redirectUri, bool mail = false)
     {
         var query = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -63,7 +71,7 @@ public sealed class MicrosoftIdentityClient
             ["response_type"] = "code",
             ["redirect_uri"] = redirectUri.AbsoluteUri,
             ["response_mode"] = "query",
-            ["scope"] = OneDriveOptions.Scopes,
+            ["scope"] = OneDriveOptions.ScopesFor(mail),
             ["state"] = state,
             ["code_challenge"] = codeChallenge,
             ["code_challenge_method"] = "S256",
@@ -74,21 +82,28 @@ public sealed class MicrosoftIdentityClient
     }
 
     public Task<MicrosoftTokens> RedeemCodeAsync(string code, string codeVerifier, Uri redirectUri, CancellationToken ct) =>
+        RedeemCodeAsync(code, codeVerifier, redirectUri, false, ct);
+
+    /// <summary>Redeems a code; <paramref name="mail"/>: the sign-in asked for mail access too.</summary>
+    public Task<MicrosoftTokens> RedeemCodeAsync(string code, string codeVerifier, Uri redirectUri, bool mail, CancellationToken ct) =>
         RequestTokenAsync(new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["grant_type"] = "authorization_code",
             ["code"] = code,
             ["redirect_uri"] = redirectUri.AbsoluteUri,
             ["code_verifier"] = codeVerifier,
-            ["scope"] = OneDriveOptions.Scopes,
+            ["scope"] = OneDriveOptions.ScopesFor(mail),
         }, ct);
 
-    public Task<MicrosoftTokens> RefreshAsync(string refreshToken, CancellationToken ct) =>
+    public Task<MicrosoftTokens> RefreshAsync(string refreshToken, CancellationToken ct) => RefreshAsync(refreshToken, false, ct);
+
+    /// <summary>Refreshes; <paramref name="mail"/>: the connection includes mail access (asked for again so the token carries it).</summary>
+    public Task<MicrosoftTokens> RefreshAsync(string refreshToken, bool mail, CancellationToken ct) =>
         RequestTokenAsync(new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["grant_type"] = "refresh_token",
             ["refresh_token"] = refreshToken,
-            ["scope"] = OneDriveOptions.Scopes,
+            ["scope"] = OneDriveOptions.ScopesFor(mail),
         }, ct);
 
     private async Task<MicrosoftTokens> RequestTokenAsync(Dictionary<string, string> form, CancellationToken ct)
@@ -133,7 +148,11 @@ public sealed class MicrosoftIdentityClient
             var expiresIn = root.TryGetProperty("expires_in", out var exp) && exp.TryGetInt32(out var seconds) ? seconds : 3600;
             var refresh = root.TryGetProperty("refresh_token", out var r) ? r.GetString() : null;
             var idToken = root.TryGetProperty("id_token", out var id) ? id.GetString() : null;
-            return new MicrosoftTokens(accessToken, refresh, _clock.GetUtcNow().UtcDateTime.AddSeconds(expiresIn), AccountNameFromIdToken(idToken));
+            var scope = root.TryGetProperty("scope", out var sc) && sc.ValueKind == JsonValueKind.String ? sc.GetString() : null;
+            return new MicrosoftTokens(accessToken, refresh, _clock.GetUtcNow().UtcDateTime.AddSeconds(expiresIn), AccountNameFromIdToken(idToken))
+            {
+                GrantedScopes = scope,
+            };
         }
     }
 

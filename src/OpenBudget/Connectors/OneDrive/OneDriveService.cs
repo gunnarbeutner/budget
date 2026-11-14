@@ -9,7 +9,7 @@ using OpenBudget.Services;
 namespace OpenBudget.Connectors.OneDrive;
 
 /// <summary>The user's Microsoft connection as the settings page shows it (never carries tokens).</summary>
-public sealed record CloudConnectionView(string? AccountName, DateTime ConnectedAt, bool NeedsReconnect, string? LastError);
+public sealed record CloudConnectionView(string? AccountName, DateTime ConnectedAt, bool NeedsReconnect, string? LastError, bool MailAccess = false);
 
 public sealed record CloudFileLinkView(
     int Id, string DisplayPath, DateTime? LastCheckedAt, DateTime? LastImportedAt,
@@ -70,7 +70,7 @@ public sealed class OneDriveService : ICloudFileReader
     private readonly ConcurrentDictionary<string, MicrosoftTokens> _accessTokens = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _refreshLocks = new(StringComparer.Ordinal);
 
-    private sealed record PendingSignIn(string UserId, string CodeVerifier, Uri RedirectUri, DateTime ExpiresAtUtc);
+    private sealed record PendingSignIn(string UserId, string CodeVerifier, Uri RedirectUri, DateTime ExpiresAtUtc, bool Mail);
 
     public OneDriveService(
         SystemDbContextFactory system, MicrosoftIdentityClient identity, IHttpClientFactory http, SecretsProtector secrets,
@@ -95,8 +95,11 @@ public sealed class OneDriveService : ICloudFileReader
 
     // ---- Connecting ----
 
-    /// <summary>Starts a sign-in for <paramref name="userId"/>: remembers state and PKCE verifier, returns the Microsoft URL to send the browser to.</summary>
-    public Uri BeginConnect(string userId, Uri redirectUri)
+    /// <summary>
+    /// Starts a sign-in for <paramref name="userId"/>: remembers state and PKCE verifier, returns the Microsoft URL to send
+    /// the browser to. <paramref name="mail"/>: ask for mail access (Mail.Read) too.
+    /// </summary>
+    public Uri BeginConnect(string userId, Uri redirectUri, bool mail = false)
     {
         RequireEnabled();
         var now = Now;
@@ -105,8 +108,8 @@ public sealed class OneDriveService : ICloudFileReader
 
         var state = MicrosoftIdentityClient.NewState();
         var verifier = MicrosoftIdentityClient.NewCodeVerifier();
-        _pending[state] = new PendingSignIn(userId, verifier, redirectUri, now + _options.StateLifetime);
-        return _identity.BuildAuthorizeUrl(state, MicrosoftIdentityClient.CodeChallenge(verifier), redirectUri);
+        _pending[state] = new PendingSignIn(userId, verifier, redirectUri, now + _options.StateLifetime, mail);
+        return _identity.BuildAuthorizeUrl(state, MicrosoftIdentityClient.CodeChallenge(verifier), redirectUri, mail);
     }
 
     /// <summary>
@@ -126,7 +129,7 @@ public sealed class OneDriveService : ICloudFileReader
         MicrosoftTokens tokens;
         try
         {
-            tokens = await _identity.RedeemCodeAsync(code, pending.CodeVerifier, pending.RedirectUri, ct);
+            tokens = await _identity.RedeemCodeAsync(code, pending.CodeVerifier, pending.RedirectUri, pending.Mail, ct);
         }
         catch (CloudException ex)
         {
@@ -151,6 +154,7 @@ public sealed class OneDriveService : ICloudFileReader
         connection.ConnectedAt = Now;
         connection.NeedsReconnect = false;
         connection.LastError = null;
+        connection.MailAccess = tokens.GrantsMail(pending.Mail);
         await db.SaveChangesAsync(ct);
         _accessTokens[userId] = tokens;
         Changed(userId);
@@ -162,8 +166,48 @@ public sealed class OneDriveService : ICloudFileReader
         await using var db = await _system.CreateDbContextAsync(ct);
         var c = await db.CloudConnections.AsNoTracking()
             .FirstOrDefaultAsync(c => c.OwnerUserId == userId && c.Provider == CloudProviders.OneDrive, ct);
-        return c == null ? null : new CloudConnectionView(c.AccountName, c.ConnectedAt, c.NeedsReconnect, c.LastError);
+        return c == null ? null : new CloudConnectionView(c.AccountName, c.ConnectedAt, c.NeedsReconnect, c.LastError, c.MailAccess);
     }
+
+    /// <summary>Whether the user's connection includes mail access (a reconnect then asks for it again).</summary>
+    public async Task<bool> HasMailAccessAsync(string userId, CancellationToken ct = default)
+    {
+        await using var db = await _system.CreateDbContextAsync(ct);
+        return await db.CloudConnections.AsNoTracking().AnyAsync(c => c.OwnerUserId == userId && c.Provider == CloudProviders.OneDrive && c.MailAccess, ct);
+    }
+
+    /// <summary>
+    /// Stops using mail access: refreshes no longer ask for it and the mailbox is no longer read. The grant itself is
+    /// withdrawn in the Microsoft account (My Apps); OpenBudget cannot take it back.
+    /// </summary>
+    public async Task StopMailAccessAsync(string userId, CancellationToken ct = default)
+    {
+        await using var db = await _system.CreateDbContextAsync(ct);
+        var connection = await db.CloudConnections.FirstOrDefaultAsync(c => c.OwnerUserId == userId && c.Provider == CloudProviders.OneDrive, ct);
+        if (connection == null || !connection.MailAccess) return;
+        connection.MailAccess = false;
+        await db.SaveChangesAsync(ct);
+        _accessTokens.TryRemove(userId, out _);
+        Changed(userId);
+    }
+
+    /// <summary>
+    /// Sends a Microsoft Graph request for the user (a 401 refreshes the token once; a second 401 marks the connection
+    /// for reconnecting and throws <see cref="CloudReconnectRequiredException"/>). Other answers are the caller's.
+    /// </summary>
+    public async Task<HttpResponseMessage> GraphRequestAsync(string userId, Func<HttpRequestMessage> build, CancellationToken ct)
+    {
+        RequireEnabled();
+        var response = await GraphAsync(userId, build, ct);
+        if (response.StatusCode != HttpStatusCode.Unauthorized) return response;
+        response.Dispose();
+        const string message = "Microsoft no longer accepts OpenBudget's access. Reconnect to Microsoft.";
+        await MarkReconnectAsync(userId, message, ct);
+        throw new CloudReconnectRequiredException(message);
+    }
+
+    /// <summary>The Graph base URL ("https://graph.microsoft.com/v1.0").</summary>
+    public string GraphBase => _options.GraphBase;
 
     /// <summary>Forgets the user's connection, its refresh token and all their linked files.</summary>
     public async Task DisconnectAsync(string userId, CancellationToken ct = default)
@@ -408,7 +452,7 @@ public sealed class OneDriveService : ICloudFileReader
             MicrosoftTokens tokens;
             try
             {
-                tokens = await _identity.RefreshAsync(refreshToken, ct);
+                tokens = await _identity.RefreshAsync(refreshToken, connection.MailAccess, ct);
             }
             catch (CloudReconnectRequiredException ex)
             {
