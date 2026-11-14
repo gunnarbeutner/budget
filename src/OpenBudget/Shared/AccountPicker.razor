@@ -8,14 +8,14 @@
    accounts in their own section. With AllowNone, a "none" entry (NoneLabel) picks null. *@
 
 <div class="account-picker" @attributes="AdditionalAttributes">
-    <button type="button" class="form-select form-select-sm text-start account-picker-toggle" aria-label="@AriaLabel"
+    <button type="button" @ref="toggle" class="form-select form-select-sm text-start account-picker-toggle" aria-label="@AriaLabel"
             aria-expanded="@(open ? "true" : "false")" data-testid="account-picker-toggle" @onclick="Toggle">
         @CurrentLabel()
     </button>
     @if (open)
     {
         <div class="account-picker-backdrop" @onclick="Close"></div>
-        <div class="account-picker-panel" role="dialog" aria-label="@AriaLabel" data-testid="account-picker" @onkeydown="OnKeyDown">
+        <div class="account-picker-panel" @ref="panel" style="visibility: hidden" role="dialog" aria-label="@AriaLabel" data-testid="account-picker" @onkeydown="OnKeyDown">
             <input type="search" class="form-control form-control-sm mb-2" autocomplete="off" @ref="search"
                    placeholder="@L["Search_Placeholder"]" aria-label="@L["Search_Placeholder"]" data-testid="account-picker-search"
                    value="@query" @oninput="e => query = e.Value?.ToString() ?? string.Empty" />
@@ -49,11 +49,14 @@
     private const long NoneId = 0;
     private bool open;
     private bool focusPending;
-    private ElementReference search;
+    private ElementReference search, toggle, panel;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!focusPending || !open) return;
+        if (!open) return;
+        // Fixed in the window under the button (like the category picker), its list scrolling inside.
+        await JS.TryInvokeVoidAsync("obPlacePickerUnder", panel, toggle);
+        if (!focusPending) return;
         focusPending = false;
         await JS.TryInvokeVoidAsync("obFocus", search);
     }

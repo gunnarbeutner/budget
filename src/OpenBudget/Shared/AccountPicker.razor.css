@@ -15,9 +15,7 @@
 }
 
 .account-picker-panel {
-    position: absolute;
-    top: calc(100% + 0.25rem);
-    right: 0;
+    position: fixed;
     z-index: 1050;
     width: min(22rem, calc(100vw - 2rem));
     padding: 0.5rem;
@@ -28,5 +26,5 @@
 }
 
 .account-picker-panel ::deep .tree-picker {
-    max-height: 20rem;
+    overflow-y: auto;
 }

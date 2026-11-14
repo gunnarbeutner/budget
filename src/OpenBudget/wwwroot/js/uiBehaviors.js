@@ -237,6 +237,13 @@ window.obPlaceMenu = function (el, x, y) {
 // with more room (growing upward from the point), and gives the list the free height of that side minus a margin,
 // at least 120px and at most 70% of the window. Horizontally it stays inside the window. It follows window resizes
 // and scrolling while it is open.
+// Places a picker panel under its anchor (a button), its list being the panel's .tree-picker.
+window.obPlacePickerUnder = function (panel, anchor) {
+    if (!panel || !anchor) return;
+    var r = anchor.getBoundingClientRect();
+    window.obPlacePicker(panel, panel.querySelector(".tree-picker"), Math.max(0, r.right - panel.offsetWidth), r.bottom + 4);
+};
+
 window.obPlacePicker = function (panel, list, x, y) {
     if (!panel || !list) return;
     var place = function () {
