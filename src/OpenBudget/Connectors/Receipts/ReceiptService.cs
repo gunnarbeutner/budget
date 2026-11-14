@@ -16,6 +16,9 @@ public sealed record ReceiptView(
 {
     /// <summary>The shop and where or what: "REWE B-…" or "Lidl Teststraße 1, Musterstadt".</summary>
     public string Title => ReceiptService.Title(Shop, Store, OrderNumber);
+
+    /// <summary>The order's page at the shop, when the shop has one (Amazon).</summary>
+    public Uri? ShopUrl => ReceiptService.ShopUrl(Shop, OrderNumber);
 }
 
 /// <summary>A receipt line in a booking's details: name, quantity, line total and the category it went to.</summary>
@@ -37,6 +40,9 @@ public sealed record BookingReceiptView(long ReceiptId, long? TransactionId, str
 
     /// <summary>See <see cref="ReceiptView.Title"/>.</summary>
     public string Title => ReceiptService.Title(Shop, Store, OrderNumber);
+
+    /// <summary>The order's page at the shop, when the shop has one (Amazon).</summary>
+    public Uri? ShopUrl => ReceiptService.ShopUrl(Shop, OrderNumber);
 }
 
 /// <summary>Where a receipt stands, as the receipts page filters it.</summary>
@@ -118,6 +124,9 @@ public sealed class ReceiptService
     }
 
     /// <summary>A receipt's heading: the shop's name and its store or order number.</summary>
+    public static Uri? ShopUrl(string shop, string? orderNumber) =>
+        shop == ReceiptShops.Amazon && !string.IsNullOrEmpty(orderNumber) ? new OpenBudget.Connectors.Amazon.AmazonOptions().OrderUrl(orderNumber) : null;
+
     public static string Title(string shop, string? store, string? orderNumber) => shop switch
     {
         ReceiptShops.Lidl => store is { Length: > 0 } s ? (s.StartsWith("Lidl", StringComparison.OrdinalIgnoreCase) ? s : "Lidl " + s) : "Lidl",

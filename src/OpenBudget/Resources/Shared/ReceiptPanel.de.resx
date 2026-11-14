@@ -109,4 +109,5 @@
   <data name="NoCategory" xml:space="preserve">
     <value>Keine Kategorie</value>
   </data>
+  <data name="OpenAtShop" xml:space="preserve"><value>Bei Amazon öffnen</value></data>
 </root>

@@ -20,6 +20,10 @@
         <div data-testid="receipt-panel">
             <div class="small text-body-secondary mb-2">
                 @(view.DeliveryDate?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture))@(view.InvoiceNumber is { Length: > 0 } n ? " · " + n : "")
+                @if (view.ShopUrl is { } shopUrl)
+                {
+                    <a class="ms-2" href="@shopUrl" target="_blank" rel="noopener" data-testid="receipt-panel-shop-link"><i class="bi bi-box-arrow-up-right me-1" aria-hidden="true"></i>@L["OpenAtShop"]</a>
+                }
                 · @L["Items", view.ItemCount]
                 @if (view.TransactionId == null)
                 {
