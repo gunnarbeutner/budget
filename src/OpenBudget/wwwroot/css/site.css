@@ -1495,6 +1495,14 @@ button.cat-pill:hover { filter: brightness(0.96); }
     background: var(--bs-warning); color: #1b1b1b !important; text-decoration: none; font-size: 15px; font-weight: 700;
 }
 .app-sync-attention:hover, .app-sync-attention:focus-visible { filter: brightness(1.08); outline: none; }
+.app-sync-attention { cursor: pointer; list-style: none; }
+.app-sync-attention::-webkit-details-marker { display: none; }
+.sync-problems { position: relative; }
+.sync-problems-menu { position: absolute; top: calc(100% + 8px); right: 0; width: min(26rem, calc(100vw - 32px)); padding: 6px; }
+.sync-problems-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.sync-problems-list li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 6px; }
+.sync-problems-list li > i { color: var(--bs-warning); margin-top: 2px; }
+.sync-problems-list .small { overflow-wrap: anywhere; }
 .ob-badge-danger { background: var(--ob-danger-bg) !important; color: var(--ob-danger-fg) !important; }
 
 /* ---- Project switcher ---- */

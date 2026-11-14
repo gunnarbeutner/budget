@@ -12,8 +12,8 @@
    BankLoginService, so nothing here ever shows another user's logins. *@
 
 @* Top-bar sync status: a spinner while syncs run, otherwise the time of the last successful sync ("Synced 07:58");
-   clicking it syncs all of the user's bank logins. Next to it, a warning sign leads to Connections while a background sync
-   stopped at a step only the user can do. Nothing when bank logins are disabled or there are none. *@
+   clicking it syncs all of the user's bank logins. Next to it, a warning sign opens the connections that need the user (a
+   background sync waiting for them, rejected credentials, a failed last sync), with a link to Connections. Nothing when bank logins are disabled or there are none. *@
 @if (statuses.Any(s => s.Phase != SyncPhase.Finished))
 {
     <span class="app-sync d-print-none" data-testid="bank-sync-chip">
@@ -29,11 +29,31 @@ else if (lastSync is { } last)
         <span class="app-sync-label">@L["SyncedAt", FormatLastSync(last)]</span>
     </button>
 }
-@if (needsYou && !statuses.Any(s => s.Phase != SyncPhase.Finished))
+@if (problems.Count > 0 && !statuses.Any(s => s.Phase != SyncPhase.Finished))
 {
-    <a class="app-sync-attention d-print-none" href="/connections" data-testid="bank-sync-attention" title="@L["Attention"]" aria-label="@L["Attention"]">
-        <i class="bi bi-exclamation" aria-hidden="true"></i>
-    </a>
+    @* A dropdown like the project switcher: uiBehaviors.js closes it on click-away, on Escape and when its link is followed. *@
+    <details class="app-menu sync-problems d-print-none" data-testid="bank-sync-attention">
+        <summary class="app-sync-attention" title="@L["Attention"]" aria-label="@L["Attention"]">
+            <i class="bi bi-exclamation" aria-hidden="true"></i>
+        </summary>
+        <div class="dropdown-menu dropdown-menu-end show sync-problems-menu">
+            <div class="project-switcher-head">@L["Problems_Heading"]</div>
+            <ul class="sync-problems-list">
+                @foreach (var (name, message) in problems)
+                {
+                    <li data-testid="sync-problem">
+                        <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                        <div><div class="fw-semibold">@name</div><div class="small text-body-secondary">@message</div></div>
+                    </li>
+                }
+            </ul>
+            <div class="project-switcher-foot">
+                <a class="dropdown-item" href="/connections" data-testid="sync-problems-connections">
+                    <i class="bi bi-bank me-2" aria-hidden="true"></i>@L["Problems_Open"]
+                </a>
+            </div>
+        </div>
+    </details>
 }
 
 <Modal Show="@(challenge != null && NeedsUser(challenge))"
@@ -133,8 +153,8 @@ else if (lastSync is { } last)
     [Inject] private ClockService ClockSvc { get; set; } = default!;
 
     private IReadOnlyList<BankSyncStatus> statuses = [];
-    // a background sync stopped at a step only the user can do (Connections says which)
-    private bool needsYou;
+    // connections that need the user: a background sync waiting for them, rejected credentials or a failed last sync
+    private List<(string Name, string Message)> problems = [];
     private Dictionary<int, string> names = new();
     private BankSyncStatus? challenge;
     private Guid shownChallengeId;
@@ -206,7 +226,13 @@ else if (lastSync is { } last)
         var logins = await Bank.GetLoginsAsync();
         names = logins.ToDictionary(l => l.Id, l => l.DisplayName);
         lastSync = logins.Where(l => l.LastSyncAt != null).Select(l => l.LastSyncAt).Max();
-        needsYou = logins.Any(l => l.NeedsManualSync != null);
+        problems = logins
+            .Select(l => (l.DisplayName, Message: l.NeedsManualSync is { Length: > 0 } waiting ? waiting
+                : l.CredentialsInvalid ? L["Problem_Credentials"].Value
+                : l.LastError))
+            .Where(p => !string.IsNullOrEmpty(p.Message))
+            .Select(p => (p.DisplayName, p.Message!))
+            .ToList();
 
         var open = statuses.FirstOrDefault(s => s.Challenge != null && s.Phase != SyncPhase.Finished);
         if (open?.ChallengeId != shownChallengeId)
