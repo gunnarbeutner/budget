@@ -32,11 +32,11 @@ public static class AmazonReceiptStore
         (await db.ReceiptInvoices.AsNoTracking().Where(r => r.BankLoginId == loginId && r.Shop == ReceiptShops.Amazon && r.DetailsReadAt != null && r.OrderNumber != null)
             .Select(r => r.OrderNumber!).Distinct().ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
 
-    /// <summary>Stored orders paid by card whose details were not read yet (a sync stopped before it got to them).</summary>
+    /// <summary>Stored orders whose details were not read yet (a sync stopped before it got to them, or an older sync left them out).</summary>
     public static async Task<List<string>> UnreadOrdersAsync(BudgetDbContext db, int loginId, CancellationToken ct)
     {
         var receipts = await db.ReceiptInvoices.AsNoTracking()
-            .Where(r => r.BankLoginId == loginId && r.Shop == ReceiptShops.Amazon && r.OrderNumber != null && r.State != ReceiptMatchState.Skipped)
+            .Where(r => r.BankLoginId == loginId && r.Shop == ReceiptShops.Amazon && r.OrderNumber != null)
             .Select(r => new { r.OrderNumber, r.DetailsReadAt, r.DeliveryDate }).ToListAsync(ct);
         return receipts.GroupBy(r => r.OrderNumber!, StringComparer.Ordinal).Where(g => g.All(r => r.DetailsReadAt == null))
             .OrderByDescending(g => g.Max(r => r.DeliveryDate)).Select(g => g.Key).ToList();
