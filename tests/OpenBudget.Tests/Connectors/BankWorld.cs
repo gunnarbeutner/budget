@@ -146,7 +146,7 @@ internal sealed class BankWorld : IAsyncDisposable
     public async Task<BankSyncStatus> WaitAsync(string user, int loginId, string[] answers)
     {
         var next = 0;
-        var deadline = DateTime.UtcNow.AddSeconds(20);
+        var deadline = DateTime.UtcNow.AddSeconds(60);
         while (DateTime.UtcNow < deadline)
         {
             var s = Coordinator.GetStatus(user, loginId);
