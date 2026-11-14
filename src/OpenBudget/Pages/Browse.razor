@@ -518,6 +518,7 @@
                                 @if (isExpanded)
                                 {
                                     <TxDetails Row="row" Statement="expandedStatement" ShowAccount="showAccountColumn" Account="AccountNodeFor(row.AccountId)"
+                                               ShowCategory="@(!showCategoryColumn && !(selectionKind == "category" && row.CategoryId == selectionId))"
                                                OnNoteSave="note => SetNoteForAsync(row.Id, note)"
                                                OnShowSimilar="() => ShowSimilarAsync(row)"
                                                OnSuggest="() => SuggestForRowAsync(row)" HasSuggestion="_suggestions.ContainsKey(row.Id)"

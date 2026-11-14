@@ -41,13 +41,16 @@
         {
             <span data-testid="@("tx-details-" + key)"><b>@L[key]</b>@value</span>
         }
-        <span data-testid="tx-details-category">
-            <b>@L["Category"]</b>@(string.IsNullOrEmpty(Row.CategoryName) ? L["NoCategory"] : Row.CategoryName)
-            @if (mainName != null)
-            {
-                <span class="ms-1 text-body-secondary" data-testid="tx-details-follows">@L["Follows", mainName]</span>
-            }
-        </span>
+        @if (ShowCategory || mainName != null)
+        {
+            <span data-testid="tx-details-category">
+                <b>@L["Category"]</b>@(string.IsNullOrEmpty(Row.CategoryName) ? L["NoCategory"] : Row.CategoryName)
+                @if (mainName != null)
+                {
+                    <span class="ms-1 text-body-secondary" data-testid="tx-details-follows">@L["Follows", mainName]</span>
+                }
+            </span>
+        }
         @if (!Row.CanEdit && !string.IsNullOrEmpty(Row.Note))
         {
             <span><b>@L["Note"]</b>@Row.Note</span>
@@ -197,6 +200,9 @@
     [Parameter] public EventCallback<long> OnCreateOffset { get; set; }
     /// <summary>A split or an offsetting entry was created: the page reloads its data.</summary>
     [Parameter] public EventCallback OnChanged { get; set; }
+
+    /// <summary>Whether the details name the category: only when the list shows it nowhere else for this row.</summary>
+    [Parameter] public bool ShowCategory { get; set; } = true;
 
     private enum Panel { None, Split, Offset }
     private Panel panel;
