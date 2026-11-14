@@ -2035,7 +2035,6 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 .app-topbar:has(.ob-modal-on-top) { z-index: 1065; }
 
 /* ---- Scheduled (the bank's standing orders and future-dated transfers) ---- */
-.sched-list { max-width: 960px; }
 .sched-row {
     display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) auto; gap: 4px 16px; align-items: start;
     padding: 10px 0; border-bottom: 1px solid var(--bs-border-color-translucent);
