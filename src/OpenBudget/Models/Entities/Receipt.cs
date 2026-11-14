@@ -25,6 +25,9 @@ public enum ReceiptMatchState
 
     /// <summary>Several bookings fit equally well; left for the owner.</summary>
     Ambiguous = 2,
+
+    /// <summary>The owner said its booking is not in the app: no longer matched.</summary>
+    Dismissed = 3,
 }
 
 /// <summary>What a receipt line is: a product, a deposit line (Pfand, Leergut, Pfandtasche) or a fee (delivery).</summary>
@@ -118,6 +121,9 @@ public class ReceiptInvoice
     [MaxLength(2000)]
     public string? SplitSignature { get; set; }
 
+    /// <summary>The owner assigned <see cref="TransactionId"/> by hand: kept while the booking exists, whatever its amount.</summary>
+    public bool ManualMatch { get; set; }
+
     public ICollection<ReceiptItem> Items { get; set; } = new List<ReceiptItem>();
 }
 
@@ -210,6 +216,9 @@ public class ReceiptSettings
 
     [MaxLength(1000)]
     public string? MailLastError { get; set; }
+
+    /// <summary>How many receipt attachments the last mailbox read could not read.</summary>
+    public int MailUnreadable { get; set; }
 }
 
 /// <summary>The receipt sources: what a receipt's item categories are configured by (see <see cref="ReceiptSourceCategory"/>).</summary>

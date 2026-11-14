@@ -224,6 +224,7 @@ public sealed class MailReceiptSync : BackgroundService
             settings.MailLastError = error is { Length: > 1000 } ? error[..1000] : error;
             // A read with unreadable invoices is not complete: the next one looks at the same mails again.
             if (error == null && unreadable == 0) settings.MailCheckedAt = started;
+            if (error == null) settings.MailUnreadable = unreadable;
             await db.SaveChangesAsync(ct);
         }
         _logger.LogInformation("Read the mailbox of user {UserId}: {Mails} invoice mails, {New} new receipts, {Unreadable} unreadable.", userId, mails, added, unreadable);

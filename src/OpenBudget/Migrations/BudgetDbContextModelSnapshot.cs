@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261114115834_ReceiptSourceCategories";
+    public override string LastMigrationId => "20261114120922_ReceiptReview";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -1802,6 +1802,9 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .HasMaxLength(40)
                     .HasColumnType("TEXT");
 
+                b.Property<bool>("ManualMatch")
+                    .HasColumnType("INTEGER");
+
                 b.Property<string>("MessageId")
                     .HasMaxLength(500)
                     .HasColumnType("TEXT");
@@ -1928,6 +1931,9 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                 b.Property<string>("MailLastError")
                     .HasMaxLength(1000)
                     .HasColumnType("TEXT");
+
+                b.Property<int>("MailUnreadable")
+                    .HasColumnType("INTEGER");
 
                 b.Property<string>("OwnerUserId")
                     .IsRequired()

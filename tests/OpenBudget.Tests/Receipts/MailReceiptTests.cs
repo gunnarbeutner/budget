@@ -188,6 +188,37 @@ public sealed class MailReceiptTests
     }
 
     [Fact]
+    public async Task A_receipt_without_a_fitting_booking_is_assigned_by_hand_or_dismissed()
+    {
+        await using var x = await World.CreateAsync();
+        // a booking of another amount: not matched automatically
+        await ReceiptWorld.AddDebitAsync(x.W.T, Debit, -1500);
+        await using (var db = await x.W.T.System.CreateDbContextAsync())
+        {
+            await ReceiptStore.AddAsync(db, Alice, ReceiptShops.Rewe, ReceiptWorld.Invoice(), null, DateTime.UtcNow, default);
+            await x.Store.MatchAsync(db, Alice, default);
+        }
+        var alice = x.ServiceFor(Alice);
+        var row = Assert.Single(await alice.ListAllAsync(ReceiptSources.Mail));
+        Assert.Contains(row.State, new[] { ReceiptReviewState.Unmatched, ReceiptReviewState.Waiting });
+        Assert.Equal(Debit, (await alice.CandidatesAsync(row.Id)).First().TransactionId);
+        await Assert.ThrowsAsync<AccessDeniedException>(() => x.ServiceFor(ReceiptWorld.Bob).AssignAsync(row.Id, Debit));
+
+        await alice.AssignAsync(row.Id, Debit);
+        Assert.Equal(ReceiptReviewState.Split, Assert.Single(await alice.ListAllAsync()).State);
+        Assert.Equal(-1500, (await alice.GetForBookingAsync(Debit))!.Groups.Sum(g => g.AmountCents));
+        // the manual match stays on the next sync
+        await using (var db = await x.W.T.System.CreateDbContextAsync())
+            await x.Store.MatchAsync(db, Alice, default);
+        Assert.Equal(ReceiptReviewState.Split, Assert.Single(await alice.ListAllAsync()).State);
+
+        await alice.AssignAsync(row.Id, null);
+        Assert.Equal(ReceiptReviewState.Dismissed, Assert.Single(await alice.ListAllAsync(state: ReceiptReviewState.Dismissed)).State);
+        await alice.ResetAssignmentAsync(row.Id);
+        Assert.Empty(await alice.ListAllAsync(state: ReceiptReviewState.Dismissed));
+    }
+
+    [Fact]
     public async Task Reads_ebon_mails_too()
     {
         await using var x = await World.CreateAsync();

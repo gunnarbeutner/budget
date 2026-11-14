@@ -99,6 +99,14 @@ public sealed class ReceiptStore
         var lost = new List<long>();
         foreach (var i in invoices)
         {
+            if (i.State == ReceiptMatchState.Dismissed) continue;
+            if (i.ManualMatch && i.TransactionId is { } own
+                && await db.Transactions.AnyAsync(x => x.Id == own && x.OwnerUserId == ownerUserId && x.Splitted != SplitState.Child, ct) && kept.Add(own))
+            {
+                i.State = ReceiptMatchState.Matched;
+                continue;
+            }
+            i.ManualMatch = false;
             if (i.TransactionId is { } t && await StillFitsAsync(db, ownerUserId, t, i.PaymentCents, ct) && kept.Add(t))
             {
                 i.State = ReceiptMatchState.Matched;

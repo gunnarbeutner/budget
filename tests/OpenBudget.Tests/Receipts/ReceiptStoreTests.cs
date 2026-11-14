@@ -283,10 +283,15 @@ public sealed class ReceiptStoreTests
         {
             db.Transactions.Add(new Transaction
             {
-                Id = lidlDebit, OwnerUserId = ReceiptWorld.Alice, AccountId = ReceiptWorld.Account, Amount = -633,
+                Id = lidlDebit,
+                OwnerUserId = ReceiptWorld.Alice,
+                AccountId = ReceiptWorld.Account,
+                Amount = -633,
                 Timestamp = new DateTimeOffset(ReceiptWorld.Delivered.AddDays(1)).ToUnixTimeSeconds(),
-                Name = "S. Payment Solutions GmbH", Purpose = "Lidl sagt Danke Testfiliale Lidl Pay",
-                CategoryId = ReceiptWorld.Groceries, CategorySetBy = TransactionCategorySource.Rule,
+                Name = "S. Payment Solutions GmbH",
+                Purpose = "Lidl sagt Danke Testfiliale Lidl Pay",
+                CategoryId = ReceiptWorld.Groceries,
+                CategorySetBy = TransactionCategorySource.Rule,
             });
             await db.SaveChangesAsync();
         }
