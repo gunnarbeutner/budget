@@ -21,26 +21,25 @@ public sealed record ReceiptSplitPart(long AmountCents, long? CategoryId, IReadO
 public sealed record AllowedCategory(long CategoryId, string Path, string? Description = null, string? Keywords = null);
 
 /// <summary>
-/// A receipt source's item categories: the default (null: the booking's own category) and the allowed categories.
+/// A receipt source's item categories: the categories its items may be split into besides the booking's own.
 /// </summary>
-public sealed record ReceiptSourceRules(long? DefaultCategoryId, IReadOnlyList<AllowedCategory> Allowed)
+public sealed record ReceiptSourceRules(IReadOnlyList<AllowedCategory> Allowed)
 {
-    public static readonly ReceiptSourceRules None = new(null, []);
+    public static readonly ReceiptSourceRules None = new([]);
 }
 
 /// <summary>
-/// Sorts receipt lines into categories and turns them into split parts. Each receipt source has a default category
-/// (none: the booking's own) and a list of allowed categories (see <see cref="ReceiptSourceRules"/>); a line only ever
-/// goes to one of these.
+/// Sorts receipt lines into categories and turns them into split parts. Each receipt source has a list of allowed categories
+/// (see <see cref="ReceiptSourceRules"/>); a line goes to one of these or stays in the booking's own category.
 ///
-/// A line goes, in this order: deposit lines and fees to the default; a line the owner moved to where they moved it; a
+/// A line goes, in this order: deposit lines and fees to the booking's category; a line the owner moved to where they moved it; a
 /// product the owner categorized before (the item category memory, by <see cref="Normalize">normalised name</see>) to
 /// that category, when it is allowed for this source; a product whose name contains an allowed category's extra keyword
 /// to that category; a product of a built-in kind (<see cref="Kind"/>: drugstore, household, drinks, alcohol, pet
 /// supplies, other non-food) to the first allowed category that kind belongs to (<see cref="KindsOf"/>: the kind's
 /// words in the category's path or description, e.g. "Drogerie" or "Reinigungsmittel"); a product the AI placed (only
 /// when the owner opted in; it only chooses among the allowed categories) to that category; everything else to the
-/// default. The VAT code alone decides nothing.
+/// booking's category. The VAT code alone decides nothing.
 ///
 /// The redeemed bonus credit is spread over the lines that allow discounts in proportion to their totals; the parts
 /// (one per category) add up exactly to the booking, a rounding remainder going to the largest part.
@@ -165,7 +164,7 @@ public static partial class ReceiptCategorizer
         IReadOnlyList<ReceiptLine> lines, long? bookingCategoryId, ReceiptSourceRules rules,
         IReadOnlyDictionary<string, long> memory, IReadOnlyDictionary<long, long>? ai = null, IReadOnlyDictionary<long, long?>? manual = null)
     {
-        var home = rules.DefaultCategoryId ?? bookingCategoryId;
+        var home = bookingCategoryId;
         var result = new Dictionary<long, LineCategory>();
         foreach (var line in lines)
         {
@@ -185,9 +184,9 @@ public static partial class ReceiptCategorizer
         return result;
     }
 
-    /// <summary>Whether a line of this source may go to <paramref name="categoryId"/>: an allowed category, the default or the booking's own.</summary>
+    /// <summary>Whether a line of this source may go to <paramref name="categoryId"/>: an allowed category or the booking's own.</summary>
     public static bool IsAllowed(long categoryId, ReceiptSourceRules rules, long? bookingCategoryId) =>
-        categoryId == (rules.DefaultCategoryId ?? bookingCategoryId) || rules.Allowed.Any(c => c.CategoryId == categoryId);
+        categoryId == bookingCategoryId || rules.Allowed.Any(c => c.CategoryId == categoryId);
 
     /// <summary>Lines that would go to the AI: products without an allowed memory entry or a keyword placement (none when nothing is allowed).</summary>
     public static List<ReceiptLine> Undecided(IReadOnlyList<ReceiptLine> lines, ReceiptSourceRules rules, IReadOnlyDictionary<string, long> memory, long? bookingCategoryId = null) =>

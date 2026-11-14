@@ -179,7 +179,7 @@
     <value>AI</value>
   </data>
   <data name="Ai_Help" xml:space="preserve">
-    <value>If AI suggestions are on, items that neither the item memory nor the keywords place are given to the AI, which chooses only among the source's categories (with their descriptions); otherwise they stay in the default category.</value>
+    <value>If AI suggestions are on, items that neither the item memory nor the keywords place are given to the AI, which chooses only among the source's categories (with their descriptions); otherwise they stay in the booking's category.</value>
   </data>
   <data name="Ai_Link" xml:space="preserve">
     <value>AI settings</value>

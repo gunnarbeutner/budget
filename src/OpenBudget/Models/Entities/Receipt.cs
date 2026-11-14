@@ -244,10 +244,8 @@ public static class ReceiptSources
 }
 
 /// <summary>
-/// A category receipt items of one source may go to. The source's default category (<see cref="IsDefault"/>, at most
-/// one) takes everything not placed elsewhere, deposits and fees included (none: the booking's own category); the
-/// other rows are the allowed categories, each with an optional description (what belongs there, also given to the AI)
-/// and extra keywords (comma-separated name fragments).
+/// A category receipt items of one source may be split into (everything else stays in the booking's own category), with
+/// an optional description (what belongs there, also given to the AI) and extra keywords (comma-separated name fragments).
 /// </summary>
 [Table("receipt_source_categories")]
 public class ReceiptSourceCategory
@@ -265,8 +263,6 @@ public class ReceiptSourceCategory
     public string Source { get; set; } = string.Empty;
 
     public long CategoryId { get; set; }
-
-    public bool IsDefault { get; set; }
 
     [MaxLength(200)]
     public string? Description { get; set; }

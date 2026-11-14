@@ -176,7 +176,7 @@ public sealed class ReceiptStore
         // An AI answer outside this source's categories (left from before they were configured, or a mapping that
         // changed) is dropped and asked again.
         var rules = await RulesAsync(db, invoice.OwnerUserId, ReceiptSources.Of(invoice.Shop), ct);
-        var home = rules.DefaultCategoryId ?? parent.CategoryId;
+        var home = parent.CategoryId;
         var memory = await MemoryAsync(db, invoice.OwnerUserId, items.Select(i => ReceiptCategorizer.Normalize(i.Name)).Distinct(StringComparer.Ordinal).ToList(), ct);
         var manual = items.Where(i => i.CategorySource == ReceiptCategorySource.Manual).ToDictionary(i => i.Id, i => i.CategoryId);
         foreach (var stale in items.Where(i => i.CategorySource == ReceiptCategorySource.Ai
@@ -251,8 +251,7 @@ public sealed class ReceiptStore
         var paths = await PathsAsync(db, ownerUserId, ct);
         rows = rows.Where(r => paths.ContainsKey(r.CategoryId)).ToList();
         return new ReceiptSourceRules(
-            rows.FirstOrDefault(r => r.IsDefault)?.CategoryId,
-            rows.Where(r => !r.IsDefault).Select(r => new AllowedCategory(r.CategoryId, paths[r.CategoryId], r.Description, r.Keywords)).ToList());
+            rows.Select(r => new AllowedCategory(r.CategoryId, paths[r.CategoryId], r.Description, r.Keywords)).ToList());
     }
 
     /// <summary>The owner's categories by id with their paths ("Group › Category").</summary>

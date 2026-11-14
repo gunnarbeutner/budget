@@ -59,16 +59,10 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="Heading" xml:space="preserve">
-    <value>Artikel-Kategorien</value>
-  </data>
-  <data name="Default" xml:space="preserve">
-    <value>Standardkategorie (Lebensmittel, Pfand, alles andere):</value>
-  </data>
-  <data name="BookingCategory" xml:space="preserve">
-    <value>Kategorie der Buchung</value>
+    <value>Kassenbon-Artikel aufteilen in</value>
   </data>
   <data name="Help" xml:space="preserve">
-    <value>Artikel können außerdem in diese Kategorien gehen: über die eingebauten Stichwörter (Drogerie, Haushalt, Getränke, Alkohol, Tierbedarf, Non-Food – einer Kategorie über Wörter in ihrem Namen oder ihrer Beschreibung zugeordnet), über eigene Stichwörter, die Artikelliste oder, wenn eingeschaltet, die KI.</value>
+    <value>Zugeordnet wird über die eingebauten Stichwörter (Drogerie, Haushalt, Getränke, Alkohol, Tierbedarf, Non-Food – über Wörter im Namen oder in der Beschreibung der Kategorie), eigene Stichwörter, die Artikelliste oder, wenn eingeschaltet, die KI.</value>
   </data>
   <data name="Description" xml:space="preserve">
     <value>Beschreibung (z. B. Körperpflege, Reinigungsmittel)</value>
@@ -93,5 +87,8 @@
   </data>
   <data name="Add" xml:space="preserve">
     <value>Kategorie hinzufügen</value>
+  </data>
+  <data name="Explain" xml:space="preserve">
+    <value>Artikel, die in keine dieser Kategorien passen, bleiben in der Kategorie der Buchung.</value>
   </data>
 </root>

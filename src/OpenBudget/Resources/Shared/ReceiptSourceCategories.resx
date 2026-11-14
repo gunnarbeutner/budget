@@ -59,16 +59,10 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="Heading" xml:space="preserve">
-    <value>Item categories</value>
-  </data>
-  <data name="Default" xml:space="preserve">
-    <value>Default category (food, deposit, everything else):</value>
-  </data>
-  <data name="BookingCategory" xml:space="preserve">
-    <value>The booking's category</value>
+    <value>Split receipt items into</value>
   </data>
   <data name="Help" xml:space="preserve">
-    <value>Items may also go to these categories: by the built-in keywords (drugstore, household, drinks, alcohol, pet supplies, non-food — matched to a category by words in its name or description), by your extra keywords, by the item memory, or by the AI if you opted in.</value>
+    <value>Items are matched by the built-in keywords (drugstore, household, drinks, alcohol, pet supplies, non-food — via words in the category's name or description), your extra keywords, the item memory, or the AI if you opted in.</value>
   </data>
   <data name="Description" xml:space="preserve">
     <value>Description (e.g. personal care, cleaning)</value>
@@ -93,5 +87,8 @@
   </data>
   <data name="Add" xml:space="preserve">
     <value>Add category</value>
+  </data>
+  <data name="Explain" xml:space="preserve">
+    <value>Items that fit none of these stay in the booking's category.</value>
   </data>
 </root>

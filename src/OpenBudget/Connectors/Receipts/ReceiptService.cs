@@ -73,7 +73,7 @@ public sealed record ReceiptCandidate(long TransactionId, DateTime Date, long Am
 public sealed record ItemMemoryView(long Id, string Name, long CategoryId, DateTime UpdatedAt);
 
 /// <summary>A receipt source's category: the row id, the category, and whether it is the default.</summary>
-public sealed record SourceCategoryView(long Id, long CategoryId, bool IsDefault, string? Description, string? Keywords);
+public sealed record SourceCategoryView(long Id, long CategoryId, string? Description, string? Keywords);
 
 /// <summary>A receipt source's receipts: how many, how many found their booking, and the latest still waiting for one.</summary>
 public sealed record ReceiptSourceSummary(int Count, int Matched, int OpenCount, IReadOnlyList<ReceiptView> Open);
@@ -130,27 +130,15 @@ public sealed class ReceiptService
         return new ReceiptSettingsView(_oneDrive.IsEnabled, connection, s?.MailCheckedAt, s?.MailAttemptAt, s?.MailLastError, s?.MailUnreadable ?? 0);
     }
 
-    /// <summary>The signed-in user's item categories of a receipt source (see <see cref="ReceiptSources"/>): the default first.</summary>
+    /// <summary>The signed-in user's item categories of a receipt source (see <see cref="ReceiptSources"/>).</summary>
     public async Task<List<SourceCategoryView>> GetSourceCategoriesAsync(string source, CancellationToken ct = default)
     {
         var user = await UserAsync();
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         return await db.ReceiptSourceCategories.AsNoTracking().Where(c => c.OwnerUserId == user && c.Source == source)
-            .OrderByDescending(c => c.IsDefault).ThenBy(c => c.Id)
-            .Select(c => new SourceCategoryView(c.Id, c.CategoryId, c.IsDefault, c.Description, c.Keywords)).ToListAsync(ct);
+            .OrderBy(c => c.Id)
+            .Select(c => new SourceCategoryView(c.Id, c.CategoryId, c.Description, c.Keywords)).ToListAsync(ct);
     }
-
-    /// <summary>Sets a source's default category (null: the booking's own) and brings the matched bookings up to date.</summary>
-    public Task SetSourceDefaultAsync(string source, long? categoryId, CancellationToken ct = default) =>
-        ChangeSourceAsync(source, categoryId, async (db, user) =>
-        {
-            db.ReceiptSourceCategories.RemoveRange(await db.ReceiptSourceCategories.Where(c => c.OwnerUserId == user && c.Source == source && c.IsDefault).ToListAsync(ct));
-            if (categoryId is not { } id) return;
-            // the default is not also an allowed category
-            db.ReceiptSourceCategories.RemoveRange(await db.ReceiptSourceCategories.Where(c => c.OwnerUserId == user && c.Source == source && c.CategoryId == id).ToListAsync(ct));
-            await db.SaveChangesAsync(ct);
-            db.ReceiptSourceCategories.Add(new ReceiptSourceCategory { OwnerUserId = user, Source = source, CategoryId = id, IsDefault = true });
-        }, ct);
 
     /// <summary>Adds an allowed category to a source (nothing when it is there already).</summary>
     public Task AddSourceCategoryAsync(string source, long categoryId, string? description = null, string? keywords = null, CancellationToken ct = default) =>
@@ -286,9 +274,8 @@ public sealed class ReceiptService
         var lines = items.Select(i => new ReceiptLine(i.Id, i.Name, i.VatCode, i.TotalCents, i.NoDiscount, i.Kind)).ToList();
         var bookingCategory = booking?.CategoryId;
         var categories = items.ToDictionary(i => i.Id, i => new LineCategory(i.CategoryId ?? bookingCategory, i.CategorySource ?? ReceiptCategorySource.Default));
-        var rules = await ReceiptStore.RulesAsync(db, invoice.OwnerUserId, ReceiptSources.Of(invoice.Shop), ct);
         var cents = booking != null ? booking.SplitOriginalAmount ?? booking.Amount : -invoice.PaymentCents;
-        var parts = ReceiptCategorizer.Parts(lines, categories, invoice.BonusCents, cents, rules.DefaultCategoryId ?? bookingCategory);
+        var parts = ReceiptCategorizer.Parts(lines, categories, invoice.BonusCents, cents, bookingCategory);
         var groups = parts.Select(part => new ReceiptGroupView(part.CategoryId, part.AmountCents, part.LineIds
                 .Select(i => items.First(x => x.Id == i))
                 .Select(i => new ReceiptLineView(i.Id, i.Name, i.Quantity, i.TotalCents, i.Kind, i.CategoryId ?? bookingCategory, i.CategorySource)).ToList()))

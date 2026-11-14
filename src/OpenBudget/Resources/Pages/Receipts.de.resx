@@ -179,7 +179,7 @@
     <value>KI</value>
   </data>
   <data name="Ai_Help" xml:space="preserve">
-    <value>Sind KI-Vorschläge eingeschaltet, bekommt die KI Artikel, die weder die Artikelliste noch die Stichwörter einordnen; sie wählt nur unter den Kategorien der Quelle (mit ihren Beschreibungen). Sonst bleiben sie in der Standardkategorie.</value>
+    <value>Sind KI-Vorschläge eingeschaltet, bekommt die KI Artikel, die weder die Artikelliste noch die Stichwörter einordnen; sie wählt nur unter den Kategorien der Quelle (mit ihren Beschreibungen). Sonst bleiben sie in der Kategorie der Buchung.</value>
   </data>
   <data name="Ai_Link" xml:space="preserve">
     <value>KI-Einstellungen</value>

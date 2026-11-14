@@ -4,9 +4,9 @@
 @inject CategorizationService Categorization
 @inject IStringLocalizer<ReceiptSourceCategories> L
 
-@* A receipt source's item categories: the default (where everything not placed elsewhere goes; none: the booking's
-   own category) and the allowed categories items may be moved to by keywords or the AI, each with a description of
-   what belongs there and extra keywords. Shown on the source's connection card and on the receipts page. *@
+@* The categories a receipt source's items may be split into (by keywords, the item memory or the AI), each with a
+   description of what belongs there and extra keywords; everything else stays in the booking's category. Shown on the
+   source's connection card and on the receipts page. *@
 
 <div class="receipt-source-categories" data-testid="source-categories" data-source="@Source">
     <h6 class="bank-accounts-heading">@L["Heading"]</h6>
@@ -16,16 +16,10 @@
     }
     else
     {
-        var def = rows.FirstOrDefault(r => r.IsDefault);
-        <div class="small mb-2 d-flex flex-wrap align-items-center gap-2">
-            <span>@L["Default"]</span>
-            <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="source-default" @onclick="e => Open(Picking.Default, e)">
-                <i class="bi bi-tag me-1" aria-hidden="true"></i>@(def != null ? picker.PathOf(def.CategoryId, L["BookingCategory"]) : L["BookingCategory"])
-            </button>
-        </div>
-        <p class="small text-body-secondary mb-1">@L["Help"]</p>
+        <p class="small mb-1" data-testid="source-categories-explain">@L["Explain"]</p>
+        <p class="small text-body-secondary mb-2">@L["Help"]</p>
         <ul class="list-unstyled small mb-2">
-            @foreach (var r in rows.Where(r => !r.IsDefault))
+            @foreach (var r in rows)
             {
                 <li class="d-flex flex-wrap align-items-center gap-2 mb-1" data-testid="source-allowed" data-category="@r.CategoryId">
                     <span class="badge rounded-pill text-bg-light border">@picker.PathOf(r.CategoryId, "?")</span>
@@ -49,14 +43,12 @@
                 </li>
             }
         </ul>
-        <button type="button" class="btn btn-sm btn-outline-primary" data-testid="source-allowed-add" @onclick="e => Open(Picking.Add, e)">
+        <button type="button" class="btn btn-sm btn-outline-primary" data-testid="source-allowed-add" @onclick="Open">
             <i class="bi bi-plus-lg" aria-hidden="true"></i> @L["Add"]
         </button>
-        @if (picking != Picking.None)
+        @if (picking)
         {
-            <CategoryPicker Data="picker" CurrentCategoryId="@(picking == Picking.Default ? def?.CategoryId : null)"
-                            AllowRemove="@(picking == Picking.Default && def != null)" RemoveLabel="@L["BookingCategory"]" X="x" Y="y"
-                            OnPick="PickedAsync" OnClose="() => picking = Picking.None" />
+            <CategoryPicker Data="picker" X="x" Y="y" OnPick="PickedAsync" OnClose="() => picking = false" />
         }
         @if (error != null)
         {
@@ -69,11 +61,9 @@
     /// <summary>See <see cref="OpenBudget.Models.ReceiptSources"/>.</summary>
     [Parameter, EditorRequired] public string Source { get; set; } = "";
 
-    private enum Picking { None, Default, Add }
-
     private List<SourceCategoryView>? rows;
     private CategoryPickerData? picker;
-    private Picking picking;
+    private bool picking;
     private double x, y;
     private long? editing;
     private string? editDescription, editKeywords;
@@ -90,17 +80,12 @@
         rows = await Receipts.GetSourceCategoriesAsync(Source);
     }
 
-    private void Open(Picking what, MouseEventArgs e) => (picking, x, y) = (what, e.ClientX, e.ClientY);
+    private void Open(MouseEventArgs e) => (picking, x, y) = (true, e.ClientX, e.ClientY);
 
     private async Task PickedAsync(long? id)
     {
-        var what = picking;
-        picking = Picking.None;
-        await RunAsync(async () =>
-        {
-            if (what == Picking.Default) await Receipts.SetSourceDefaultAsync(Source, id);
-            else if (id is { } c) await Receipts.AddSourceCategoryAsync(Source, c);
-        });
+        picking = false;
+        if (id is { } c) await RunAsync(() => Receipts.AddSourceCategoryAsync(Source, c));
     }
 
     private Task SaveAsync(long id) => RunAsync(async () =>

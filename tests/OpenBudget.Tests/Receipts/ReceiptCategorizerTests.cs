@@ -32,7 +32,7 @@ public sealed class ReceiptCategorizerTests
     [InlineData("ja! Kochschinken", "ja kochschinken")]
     public void Normalises_names(string name, string expected) => Assert.Equal(expected, ReceiptCategorizer.Normalize(name));
 
-    private static readonly ReceiptSourceRules Rules = new(null,
+    private static readonly ReceiptSourceRules Rules = new(
         [new AllowedCategory(Drugstore, "Haushalt › Verbrauchsartikel", "Drogerie, Haushalt"), new AllowedCategory(Drinks, "Lebensmittel › Getränke")]);
 
     [Theory]
@@ -67,13 +67,13 @@ public sealed class ReceiptCategorizerTests
     }
 
     [Fact]
-    public void Extra_keywords_and_the_default_category()
+    public void Extra_keywords_and_the_booking_category()
     {
-        var rules = new ReceiptSourceRules(Drinks, [new AllowedCategory(Drugstore, "Freizeit › Sonstiges", null, "gouda, käse")]);
+        var rules = new ReceiptSourceRules([new AllowedCategory(Drugstore, "Freizeit › Sonstiges", null, "gouda, käse")]);
         var result = ReceiptCategorizer.Assign(Lines, Food, rules, new Dictionary<string, long>(StringComparer.Ordinal));
         Assert.Equal(Drugstore, result[1].CategoryId);
-        Assert.Equal(Drinks, result[4].CategoryId);   // household, but no allowed category for it: the default
-        Assert.Equal(Drinks, result[5].CategoryId);   // deposit: the default
+        Assert.Equal(Food, result[4].CategoryId);   // household, but no allowed category for it: the booking's
+        Assert.Equal(Food, result[5].CategoryId);   // deposit: the booking's
     }
 
     [Fact]
