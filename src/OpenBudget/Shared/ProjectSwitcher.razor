@@ -17,7 +17,9 @@
    budget (bar + percentage), the default-for-new-accounts badge and who shared it. Then "New project". The
    numbers load when the menu opens, so it costs nothing until used.
    An editor's rows end in a gear that opens the project's settings. A row's context menu (right-click, touch long-press, Shift+F10 / the context-menu key) offers Settings…
-   (the project's settings page), Move up / Move down and Delete (DeleteProjectDialog); rows also reorder by dragging.
+   (the project's settings page), Move up / Move down and Delete (DeleteProjectDialog). Rows reorder like the Browse
+   sidebar's: drop a row on another to place it before that one (the top-edge line marks it), on "New project" to
+   move it to the end, or press Alt+Arrow Up / Down on a focused row.
    The order is each user's own, so everyone reorders every project they see; Settings… needs an editor, Delete the
    owner. Other sessions' changes reload the list. *@
 
@@ -38,26 +40,26 @@
         }
         else
         {
-            <ul class="project-switcher-list" data-testid="switcher-projects">
+            <ul class="project-switcher-list @(dragId != null ? "dragging" : "")" data-testid="switcher-projects">
                 @foreach (var r in rows)
                 {
                     var current = r.Id == Current.ProjectId;
                     var row = r;
                     var hasMenu = MenuFor(r).Count > 0;
-                    <li>
-                        <a class="project-switcher-row @(current ? "current" : "") @(r.Id == dragOverId && dragId != null && dragId != r.Id ? "drag-over" : "") @(r.Id == dragId ? "dragging" : "")"
+                    <li @key="r.Id">
+                        <a class="project-switcher-row @(current ? "current" : "") @(r.Id == dragOverId && dragId != null && dragId != r.Id ? "drop-before" : "")"
                            href="@TargetUrl(r)" aria-current="@(current ? "true" : null)" data-testid="switcher-project"
                            data-project-id="@r.Id"
                            aria-haspopup="@(hasMenu ? "menu" : null)"
                            data-ob-longpress="@(hasMenu ? "" : null)"
                            @oncontextmenu="e => OpenMenu(row, e.ClientX, e.ClientY)" @oncontextmenu:preventDefault="@hasMenu"
-                           @onkeydown="e => MenuKeyAsync(row, e)"
-                           draggable="true"
-                           @ondragstart="() => dragId = row.Id"
-                           @ondragenter="() => dragOverId = row.Id"
+                           @onkeydown="e => KeyAsync(row, e)"
+                           draggable="true" data-ob-drag
+                           @ondragstart="() => (dragId, dragOverId, dragOverEnd) = (row.Id, null, false)"
+                           @ondragenter="() => (dragOverId, dragOverEnd) = (row.Id, false)"
                            @ondragover:preventDefault="true"
                            @ondrop="() => DropAsync(row)" @ondrop:preventDefault="true"
-                           @ondragend="() => dragId = dragOverId = null">
+                           @ondragend="DragEnd">
                             <span class="project-switcher-id">
                                 <span class="project-switcher-name">
                                     <span class="text-truncate">@r.Name</span>
@@ -108,7 +110,10 @@
                 }
             </ul>
         }
-        <div class="project-switcher-foot">
+        <div class="project-switcher-foot @(dragOverEnd && dragId != null ? "drop-before" : "")" data-testid="switcher-foot"
+             @ondragenter="() => (dragOverId, dragOverEnd) = (null, true)"
+             @ondragover:preventDefault="@(dragId != null)"
+             @ondrop="DropAtEndAsync" @ondrop:preventDefault="true">
             <button type="button" class="dropdown-item" data-testid="switcher-new-project" @onclick="OpenNewProject">
                 <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>@L["Item_NewProject"]
             </button>
@@ -157,9 +162,10 @@
     private (int Id, string Name)? deleteTarget;
     private bool showNewProject;
 
-    // Drag and drop (owners, among their own projects)
+    // Drag and drop: the dragged row, and the row it would land before (or the end of the list)
     private int? dragId;
     private int? dragOverId;
+    private bool dragOverEnd;
 
     private string MonthName => Clock.NowLocal.ToString("MMMM yyyy", CultureInfo.CurrentCulture);
 
@@ -247,9 +253,17 @@
         (menuRow, menuItems, menuX, menuY) = (r, items, x, y);
     }
 
-    // Shift+F10 or the context-menu key on a focused row opens its menu below the row.
-    private async Task MenuKeyAsync(Row r, KeyboardEventArgs e)
+    // Shift+F10 or the context-menu key on a focused row opens its menu below the row; Alt+Arrow Up / Down move the
+    // row (the keyboard alternative to drag and drop, as in the Browse sidebar).
+    private async Task KeyAsync(Row r, KeyboardEventArgs e)
     {
+        if (e.AltKey && e.Key is "ArrowUp" or "ArrowDown")
+        {
+            var key = e.Key == "ArrowUp" ? "up" : "down";
+            if (MenuFor(r).Any(i => i.Key == key && !i.Disabled))
+                await RunAsync(() => ProjectService.MoveProjectAsync(r.Id, key == "up" ? -1 : 1));
+            return;
+        }
         if (!(e.Key == "ContextMenu" || (e.Key == "F10" && e.ShiftKey))) return;
         double x = 200, y = 200;
         try
@@ -282,12 +296,22 @@
         }
     }
 
+    private void DragEnd() => (dragId, dragOverId, dragOverEnd) = (null, null, false);
+
     private async Task DropAsync(Row target)
     {
         var dragged = dragId;
-        dragId = dragOverId = null;
+        DragEnd();
         if (dragged is not { } id || id == target.Id) return;
         await RunAsync(() => ProjectService.MoveProjectToAsync(id, target.Id));
+    }
+
+    private async Task DropAtEndAsync()
+    {
+        var dragged = dragId;
+        DragEnd();
+        if (dragged is not { } id) return;
+        await RunAsync(() => ProjectService.MoveProjectToAsync(id, null));
     }
 
     private async Task RunAsync(Func<Task> action)

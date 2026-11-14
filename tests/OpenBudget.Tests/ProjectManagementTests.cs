@@ -39,15 +39,23 @@ public sealed class ProjectManagementTests
     // ---- drag and drop ----
 
     [Fact]
-    public async Task Dragging_down_lands_the_project_at_the_targets_place()
+    public async Task Dragging_down_places_the_project_before_the_target()
     {
         await using var t = await FourOrderedProjectsAsync();
         await t.Projects.MoveProjectToAsync(1, 3);
-        Assert.Equal(new[] { 2, 3, 1, 4 }, await OrderedIdsAsync(t));
+        Assert.Equal(new[] { 2, 1, 3, 4 }, await OrderedIdsAsync(t));
     }
 
     [Fact]
-    public async Task Dragging_up_lands_the_project_at_the_targets_place()
+    public async Task Dropping_after_the_last_row_moves_the_project_to_the_end()
+    {
+        await using var t = await FourOrderedProjectsAsync();
+        await t.Projects.MoveProjectToAsync(2, null);
+        Assert.Equal(new[] { 1, 3, 4, 2 }, await OrderedIdsAsync(t));
+    }
+
+    [Fact]
+    public async Task Dragging_up_places_the_project_before_the_target()
     {
         await using var t = await FourOrderedProjectsAsync();
         await t.Projects.MoveProjectToAsync(4, 2);
@@ -99,13 +107,9 @@ public sealed class ProjectManagementTests
         var b1 = await NewProjectAsync(w, Bob, "Example Market");
         await w.View(Alice).Sharing.SetShareAsync(a1, Bob, role);
         await w.View(Alice).Sharing.SetShareAsync(a2, Bob, role);
-        // Bob's list ends with a1, a2, b1 (dragging onto the last row lands a project at the end).
+        // Bob's list ends with a1, a2, b1.
         var bob = w.View(Bob).Projects;
-        foreach (var id in new[] { a1, a2, b1 })
-        {
-            var last = (await bob.GetProjectsAsync())[^1].Id;
-            if (last != id) await bob.MoveProjectToAsync(id, last);
-        }
+        foreach (var id in new[] { a1, a2, b1 }) await bob.MoveProjectToAsync(id, null);
         return (w, a1, a2, b1);
     }
 
@@ -137,7 +141,7 @@ public sealed class ProjectManagementTests
 
         await bob.Projects.MoveProjectAsync(a2, -1);
         Assert.Equal(new[] { a2, a1, b1 }, await ListOfAsync(w, Bob, a1, a2, b1));
-        await bob.Projects.MoveProjectToAsync(a1, b1);
+        await bob.Projects.MoveProjectToAsync(a1, null);
         Assert.Equal(new[] { a2, b1, a1 }, await ListOfAsync(w, Bob, a1, a2, b1));
         Assert.Equal(new[] { a1, a2 }, await ListOfAsync(w, Alice, a1, a2));
 

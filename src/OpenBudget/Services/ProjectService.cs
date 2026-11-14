@@ -128,20 +128,20 @@ public class ProjectService
     }
 
     /// <summary>
-    /// Drag and drop in the project switcher: move a project to the position of <paramref name="targetProjectId"/>
-    /// (dragging down lands after it, dragging up before it) in the user's project list.
+    /// Drag and drop in the project switcher: move a project right before <paramref name="beforeProjectId"/> in the
+    /// user's project list, or to its end when that is null (like dropping a row on another in the Browse sidebar).
     /// </summary>
-    public async Task MoveProjectToAsync(int projectId, int targetProjectId)
+    public async Task MoveProjectToAsync(int projectId, int? beforeProjectId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        db.Scope?.RequireRole(targetProjectId, ProjectRole.Viewer);
+        if (beforeProjectId is { } target) db.Scope?.RequireRole(target, ProjectRole.Viewer);
         var ordered = await VisibleInOrderAsync(db, projectId);
         var from = ordered.FindIndex(p => p.Id == projectId);
-        var to = ordered.FindIndex(p => p.Id == targetProjectId);
-        if (from < 0 || to < 0 || from == to) return;
-
+        if (from < 0 || projectId == beforeProjectId) return;
         var moved = ordered[from];
         ordered.RemoveAt(from);
+        var to = beforeProjectId is { } b ? ordered.FindIndex(p => p.Id == b) : ordered.Count;
+        if (to < 0) return;
         ordered.Insert(to, moved);
         await SaveOrderAsync(db, ordered);
     }

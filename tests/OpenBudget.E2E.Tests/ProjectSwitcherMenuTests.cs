@@ -10,7 +10,7 @@ namespace OpenBudget.E2E.Tests;
 
 /// <summary>
 /// The project switcher's row context menu: opening it (right-click, Shift+F10), Settings… (rename, live in the
-/// top bar and in another session's switcher), Move up / Move down, drag-and-drop reordering, Delete with the
+/// top bar and in another session's switcher), Move up / Move down, reordering by drag and drop and Alt+Arrow keys, Delete with the
 /// typed-name confirmation, and Delete disabled for an editor.
 /// </summary>
 [TestFixture]
@@ -103,11 +103,39 @@ public sealed class ProjectSwitcherMenuTests : EndToEndTestBase
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
         await OpenSwitcherAsync();
 
+        // Like the Browse sidebar: a row dropped on another lands before it, "New project" takes it to the end.
         await Row(Third).DragToAsync(Row(E2ESeed.ProjectName));
         await ExpectOrderAsync(Third, E2ESeed.ProjectName, Second);
 
         await Row(Third).DragToAsync(Row(Second));
-        await ExpectOrderAsync(E2ESeed.ProjectName, Second, Third);
+        await ExpectOrderAsync(E2ESeed.ProjectName, Third, Second);
+
+        await Row(E2ESeed.ProjectName).DragToAsync(Page.GetByTestId("switcher-new-project"));
+        await ExpectOrderAsync(Third, Second, E2ESeed.ProjectName);
+        await Expect(Page.Locator(".drop-before")).ToHaveCountAsync(0);
+
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
+        await OpenSwitcherAsync();
+        await ExpectOrderAsync(Third, Second, E2ESeed.ProjectName);
+    }
+
+    [Test]
+    public async Task Alt_arrow_keys_move_the_focused_row()
+    {
+        await AddProjectsAsync();
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
+        await OpenSwitcherAsync();
+
+        await Row(Third).FocusAsync();
+        await Page.Keyboard.PressAsync("Alt+ArrowUp");
+        await ExpectOrderAsync(E2ESeed.ProjectName, Third, Second);
+        await Row(E2ESeed.ProjectName).FocusAsync();
+        await Page.Keyboard.PressAsync("Alt+ArrowUp");   // already first
+        await Expect(Row(E2ESeed.ProjectName)).ToBeFocusedAsync();
+        await ExpectOrderAsync(E2ESeed.ProjectName, Third, Second);
+        await Page.Keyboard.PressAsync("Alt+ArrowDown");
+        await ExpectOrderAsync(Third, E2ESeed.ProjectName, Second);
+        await Expect(Row(E2ESeed.ProjectName)).ToBeFocusedAsync();
     }
 
     [Test]

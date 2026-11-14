@@ -24,7 +24,8 @@ document.addEventListener("keydown", function (e) {
         var summary = menu.querySelector("summary");
         if (summary) summary.focus();
         e.preventDefault();
-    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    } else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !e.altKey) {
+        // (Alt+Arrow moves a project switcher row instead.)
         var items = Array.prototype.slice.call(menu.querySelectorAll(":scope > :not(summary) a[href], :scope > :not(summary) button:not([disabled])"));
         if (items.length === 0) return;
         var i = items.indexOf(document.activeElement);
@@ -313,8 +314,8 @@ window.obFocusSelect = function (el) {
     if (el.select) el.select();
 };
 
-// Sidebar drag and drop (rows marked [data-ob-drag]): Blazor tracks what is dragged where; Firefox only starts a
-// drag when the data transfer carries something.
+// Drag and drop of sidebar and project switcher rows (marked [data-ob-drag]): Blazor tracks what is dragged where;
+// Firefox only starts a drag when the data transfer carries something.
 document.addEventListener("dragstart", function (e) {
     var el = e.target && e.target.closest && e.target.closest("[data-ob-drag]");
     if (!el || !e.dataTransfer) return;
@@ -461,15 +462,6 @@ window.addEventListener("click", function (e) {
 window.obCloseMenus = function () {
     document.querySelectorAll("details.project-selector[open], details.app-menu[open]").forEach(function (d) { d.open = false; });
 };
-
-// Dragging a project switcher row to reorder: mark it as a move (Firefox only starts a drag with data set) so the
-// browser doesn't treat it as dragging the row's link somewhere else.
-document.addEventListener("dragstart", function (e) {
-    var row = e.target.closest && e.target.closest(".project-switcher-row[draggable=true]");
-    if (!row || !e.dataTransfer) return;
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", row.getAttribute("data-project-id") || "");
-});
 
 // A right-click on a row with a context menu must not first select the word under the pointer (macOS does that on
 // mousedown): keep the secondary button's mousedown from starting a selection there.
