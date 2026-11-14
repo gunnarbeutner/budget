@@ -5,8 +5,6 @@
 @using OpenBudget.Services
 @inject SecurityTaxService TaxService
 @inject ProjectService ProjectService
-@inject PortfolioService PortfolioService
-@inject NavigationManager Navigation
 @inject IStringLocalizer<SecurityTax> L
 
 <SettingsShell Active="portfolio-performance" Bare="@Embedded">
@@ -93,14 +91,6 @@ else
     /// <summary>Shown inside the Portfolio view (no page title, header or back link, no redirect).</summary>
     [Parameter] public bool Embedded { get; set; }
 
-    // The page moved into the Portfolio view of a project with the user's depots; it stays here only when no project
-    // of theirs has a depot.
-    private async Task<bool> RedirectToPortfolioAsync(string tab)
-    {
-        if (Embedded || await PortfolioService.FindPortfolioProjectAsync(OwnerUserId) is not { } pid) return false;
-        Navigation.NavigateTo($"/projects/{pid}/portfolio?tab={tab}", replace: true);
-        return true;
-    }
 
     private static readonly int[] Kinds = { 0, 1, 2 };                              // InstrumentTaxKind
     private static readonly int[] TeilfreistellungOptions = { 0, 1500, 3000, 6000, 8000 };
@@ -118,7 +108,6 @@ else
         if (OwnerUserId.Length == 0) OwnerUserId = (await Access.GetAsync()).UserId ?? string.Empty;
         if (OwnerUserId.Length == 0 || _loadedOwnerId == OwnerUserId) return;
         _loadedOwnerId = OwnerUserId;
-        if (await RedirectToPortfolioAsync("tax")) return;
         await LoadAsync();
     }
 

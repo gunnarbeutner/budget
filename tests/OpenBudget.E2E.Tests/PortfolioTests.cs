@@ -87,20 +87,15 @@ public sealed class PortfolioTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task Depot_and_tax_pages_lead_to_the_portfolio_of_a_project_with_a_depot()
+    public async Task Depot_and_tax_pages_stay_in_the_settings_with_a_depot_in_a_project()
     {
-        // Without a project showing a depot the pages stay on the Portfolio Performance settings.
-        await GoToAsync("/portfolio-performance/depots");
-        await Expect(Page).ToHaveURLAsync(new Regex("/portfolio-performance/depots$"));
-        await Expect(Page.GetByTestId("settings-nav-portfolio-performance")).ToHaveAttributeAsync("aria-current", "page");
-
         await AddDepotAsync();
-
-        await GoToAsync("/portfolio-performance/tax");
-        await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{Pid}/portfolio\\?tab=tax$"));
-
-        await GoToAsync("/portfolio-performance/depots");
-        await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{Pid}/portfolio\\?tab=positions$"));
+        foreach (var page in new[] { "depots", "instruments", "tax" })
+        {
+            await GoToAsync($"/portfolio-performance/{page}");
+            await Expect(Page).ToHaveURLAsync(new Regex($"/portfolio-performance/{page}$"));
+            await Expect(Page.GetByTestId("settings-nav-portfolio-performance")).ToHaveAttributeAsync("aria-current", "page");
+        }
     }
 
     [Test]
