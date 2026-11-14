@@ -31,9 +31,9 @@ public sealed record ReceiptMatchOutcome(IReadOnlyDictionary<long, long> Matches
 public static class ReceiptMatcher
 {
     public const int DaysAfter = 10;
-    public const int EbonDaysAfter = 5;
+    public const int EbonDaysAfter = 10;
 
-    public const int LidlDaysAfter = 5;
+    public const int LidlDaysAfter = 10;
 
     /// <summary>The longest any shop's booking may come after its receipt.</summary>
     public const int MaxDaysAfter = DaysAfter;
