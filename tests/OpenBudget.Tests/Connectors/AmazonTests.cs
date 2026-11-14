@@ -200,16 +200,16 @@ public sealed class AmazonTests
         new(id, day, cents, shopLike ? "AMAZON EU S.A R.L." : "Card payment", null, account, Pending);
 
     [Fact]
-    public void A_charge_matches_the_same_amount_from_two_days_before_to_five_days_after()
+    public void A_charge_matches_the_same_amount_from_seven_days_before_to_nine_days_after()
     {
         var charges = new[] { Charge(1, 7, Day, -1060) };
-        Assert.Equal(10, ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(-2), -1060, false)]).Matches[1]);
-        Assert.Equal(10, ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(5), -1060, false)]).Matches[1]);
-        Assert.Empty(ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(6), -1060, false)]).Matches);
+        Assert.Equal(10, ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(-7), -1060, false)]).Matches[1]);
+        Assert.Equal(10, ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(9), -1060, false)]).Matches[1]);
+        Assert.Empty(ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(10), -1060, false)]).Matches);
         // a pending booking carries the bank's expected booking day, often a week or more later
         Assert.Equal(10, ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(9), -1060, false, Pending: true)]).Matches[1]);
         Assert.Empty(ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(15), -1060, false, Pending: true)]).Matches);
-        Assert.Empty(ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(-3), -1060, false)]).Matches);
+        Assert.Empty(ReceiptMatcher.Match(charges, [Booking(10, 7, Day.AddDays(-8), -1060, false)]).Matches);
         Assert.Empty(ReceiptMatcher.Match(charges, [Booking(10, 7, Day, -1061, false)]).Matches);
         Assert.Empty(ReceiptMatcher.Match(charges, [Booking(10, 8, Day, -1060, false)]).Matches); // another account
         Assert.Empty(ReceiptMatcher.Match(charges, [Booking(10, 7, Day, 1060, false)]).Matches); // the sign counts
@@ -243,11 +243,21 @@ public sealed class AmazonTests
     }
 
     [Fact]
+    public void Repeated_charges_of_one_amount_pair_with_the_booking_nearest_in_date()
+    {
+        // A monthly charge of one amount: each charge's window holds both bookings, but one is clearly nearer.
+        var outcome = ReceiptMatcher.Match([Charge(1, 7, Day, -899), Charge(2, 7, Day.AddDays(14), -899)],
+            [Booking(10, 7, Day.AddDays(1), -899, true), Booking(11, 7, Day.AddDays(15), -899, true)]);
+        Assert.Equal(10, outcome.Matches[1]);
+        Assert.Equal(11, outcome.Matches[2]);
+    }
+
+    [Fact]
     public void A_settled_charge_frees_its_booking_for_another()
     {
         // Charge 1 can only be booking 10; then charge 2 has only booking 11 left.
-        var outcome = ReceiptMatcher.Match([Charge(1, 7, Day.AddDays(-5), -500), Charge(2, 7, Day, -500)],
-            [Booking(10, 7, Day.AddDays(-3), -500, true), Booking(11, 7, Day.AddDays(2), -500, true)]);
+        var outcome = ReceiptMatcher.Match([Charge(1, 7, Day.AddDays(-12), -500), Charge(2, 7, Day, -500)],
+            [Booking(10, 7, Day.AddDays(-10), -500, true), Booking(11, 7, Day.AddDays(2), -500, true)]);
         Assert.Equal(10, outcome.Matches[1]);
         Assert.Equal(11, outcome.Matches[2]);
     }

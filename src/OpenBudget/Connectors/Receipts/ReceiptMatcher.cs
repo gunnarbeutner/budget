@@ -34,7 +34,12 @@ public sealed record ReceiptMatchOutcome(IReadOnlyDictionary<long, long> Matches
 /// An Amazon charge (or refund) fits a booking on the account its payment method is mapped to, of exactly the same
 /// signed amount, booked from <see cref="AmazonDaysBefore"/> days before to <see cref="AmazonDaysAfter"/> days after the
 /// charge (a pending booking, dated with the bank's expected booking day, up to <see cref="AmazonPendingDaysAfter"/>);
-/// bookings that name Amazon are preferred over others.
+/// bookings that name Amazon are preferred over others. (Card accounts differ: some book days before the date Amazon
+/// lists, some a week after.)
+///
+/// A receipt with exactly one free candidate takes it. Of the rest, a receipt and booking are paired when their dates
+/// are at least <see cref="ClearlyCloserDays"/> days closer together than any other free pairing either of them has
+/// (repeated purchases of one amount, weeks apart); anything closer stays ambiguous.
 /// </summary>
 public static class ReceiptMatcher
 {
@@ -43,8 +48,9 @@ public static class ReceiptMatcher
 
     public const int LidlDaysAfter = 10;
 
-    public const int AmazonDaysBefore = 2;
-    public const int AmazonDaysAfter = 5;
+    public const int ClearlyCloserDays = 7;
+    public const int AmazonDaysBefore = 7;
+    public const int AmazonDaysAfter = 9;
     public const int AmazonPendingDaysAfter = 14;
 
     /// <summary>The longest any shop's booking may come after its receipt.</summary>
@@ -76,9 +82,25 @@ public static class ReceiptMatcher
             }
         }
         while (progress);
+
+        // Closest dates first: a pair counts only when neither side has another free pairing as close.
+        var pairs = receipts.Where(r => !matches.ContainsKey(r.Id))
+            .SelectMany(r => candidates[r.Id].Where(b => !used.Contains(b.Id)).Select(b => (R: r.Id, B: b.Id, Gap: Gap(r, b))))
+            .ToList();
+        foreach (var p in pairs.OrderBy(p => p.Gap))
+        {
+            if (matches.ContainsKey(p.R) || used.Contains(p.B)) continue;
+            var rivals = pairs.Where(o => (o.R == p.R) != (o.B == p.B) && !matches.ContainsKey(o.R) && !used.Contains(o.B));
+            if (rivals.Any(o => o.Gap < p.Gap + ClearlyCloserDays)) continue;
+            matches[p.R] = p.B;
+            used.Add(p.B);
+        }
         var ambiguous = receipts.Where(r => !matches.ContainsKey(r.Id) && candidates[r.Id].Any(b => !used.Contains(b.Id))).Select(r => r.Id).ToHashSet();
         return new ReceiptMatchOutcome(matches, ambiguous);
     }
+
+    private static int Gap(ReceiptToMatch r, ReceiptBooking b) =>
+        (r.DeliveryDate ?? r.OrderDate) is { } from ? Math.Abs(b.Date.DayNumber - from.DayNumber) : int.MaxValue;
 
     /// <summary>The bookings that fit a receipt (the preferred ones only, when any carries the order day).</summary>
     public static List<ReceiptBooking> Candidates(ReceiptToMatch r, IReadOnlyList<ReceiptBooking> bookings)
