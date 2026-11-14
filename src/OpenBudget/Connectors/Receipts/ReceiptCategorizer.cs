@@ -143,13 +143,21 @@ public static partial class ReceiptCategorizer
         return Kinds.Where(k => k.CategoryWords.Any(w => text.Contains(w, StringComparison.Ordinal))).Select(k => k.Kind).ToList();
     }
 
-    /// <summary>The allowed category a product's name places it in by keywords (extra keywords first, then the built-in kinds), or null.</summary>
+    /// <summary>
+    /// The allowed category a product's name places it in by keywords (extra keywords first, then the terms its
+    /// description lists, then the built-in kinds), or null.
+    /// </summary>
     public static long? ByKeywords(string name, ReceiptSourceRules rules)
     {
         var s = Lower(name);
         foreach (var c in rules.Allowed)
             foreach (var k in (c.Keywords ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 if (k.Length >= 2 && s.Contains(Lower(k), StringComparison.Ordinal)) return c.CategoryId;
+        // A product the category's description names as a whole word (at least four letters) belongs there.
+        foreach (var c in rules.Allowed)
+            foreach (var term in (c.Description ?? "").Split([',', ':', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                if (term.Length >= 4 && Regex.IsMatch(s, @"(?<!\p{L})" + Regex.Escape(Lower(term)) + @"(?!\p{L})", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)))
+                    return c.CategoryId;
         if (Kind(name) is not { } kind) return null;
         return rules.Allowed.FirstOrDefault(c => KindsOf(c).Contains(kind, StringComparer.Ordinal))?.CategoryId;
     }
