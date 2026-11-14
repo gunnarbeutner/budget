@@ -54,7 +54,7 @@ public sealed class ReceiptDetailsTests : EndToEndTestBase
         await Page.GetByTestId("category-picker").GetByTestId("category-picker-option").Filter(new() { HasText = EditingSeed.EnergyCategory }).First.ClickAsync();
         await Expect(panel.GetByTestId("receipt-panel-line").Filter(new() { HasText = "Apfelschorle" }).GetByTestId("receipt-panel-category"))
             .ToContainTextAsync(EditingSeed.EnergyCategory);
-        await Page.Keyboard.PressAsync("Escape");
+        await Page.GetByTestId("modal-dialog").Locator(".btn-close").ClickAsync();
         await Expect(panel).ToHaveCountAsync(0);
 
         // The parts are written anew: the list shows the new amounts and the details the new part.
