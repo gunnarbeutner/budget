@@ -282,8 +282,9 @@ public sealed class LidlPlusConnector : IBankConnector, IReceiptSource, IBackgro
             await Task.Delay(_options.RequestDelay, _context.Clock, ct);
             var id = Uri.EscapeDataString(ticket.Id);
             // the v2 details fail for some accounts; v3 has the same receipt
-            var json = await GetJsonAsync(new Uri(_options.TicketsBase, $"v2/{country}/tickets/{id}"), ct)
-                ?? await GetJsonAsync(new Uri(_options.TicketsBase, $"v3/{country}/tickets/{id}"), ct);
+            // v3 is what the app reads today (v2 answers 400 for German receipts); v2 stays as the fallback.
+            var json = await GetJsonAsync(new Uri(_options.TicketsBase, $"v3/{country}/tickets/{id}"), ct)
+                ?? await GetJsonAsync(new Uri(_options.TicketsBase, $"v2/{country}/tickets/{id}"), ct);
             if (json == null || LidlTickets.ParseDetail(json, ticket) is not { } receipt)
             {
                 Log.LogWarning("Lidl Plus: a receipt could not be read; it is tried again next time.");
@@ -298,20 +299,21 @@ public sealed class LidlPlusConnector : IBankConnector, IReceiptSource, IBackgro
     /// <summary>A GET of the ticket API as the app sends it; null when it does not answer with JSON. An expired access token is renewed once.</summary>
     private async Task<JsonNode?> GetJsonAsync(Uri url, CancellationToken ct)
     {
-        var (status, json) = await SendGetAsync(url, ct);
+        var (status, json, error) = await SendGetAsync(url, ct);
         if (status == HttpStatusCode.Unauthorized && _session.Values.TryGetValue(RefreshTokenKey, out var refresh) && await RefreshAsync(refresh, ct))
-            (status, json) = await SendGetAsync(url, ct);
+            (status, json, error) = await SendGetAsync(url, ct);
         if (status == HttpStatusCode.Unauthorized)
             throw _context.Silent ? new SilentAbortException(SignInAgain) : new ConnectorException(SignInAgain);
         if (status is < HttpStatusCode.OK or >= HttpStatusCode.MultipleChoices)
         {
-            Log.LogInformation("Lidl Plus: {Path} answered HTTP {Status}.", string.Join('/', url.AbsolutePath.Split('/').Take(5)), (int)status);
+            Log.LogInformation("Lidl Plus: {Path} answered HTTP {Status}: {Error}", string.Join('/', url.AbsolutePath.Split('/').Take(5)), (int)status, error);
             return null;
         }
         return json;
     }
 
-    private async Task<(HttpStatusCode Status, JsonNode? Json)> SendGetAsync(Uri url, CancellationToken ct)
+    /// <summary>The answer: on success the JSON, otherwise the start of Lidl's error text (an error, never receipt data).</summary>
+    private async Task<(HttpStatusCode Status, JsonNode? Json, string? Error)> SendGetAsync(Uri url, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
@@ -321,9 +323,13 @@ public sealed class LidlPlusConnector : IBankConnector, IReceiptSource, IBackgro
         request.Headers.TryAddWithoutValidation("Accept-Language", _options.Language);
         request.Headers.Accept.ParseAdd("application/json");
         using var response = await _context.Http.SendWithoutSessionAsync(request, ct);
-        if (!response.IsSuccessStatusCode) return (response.StatusCode, null);
-        try { return (response.StatusCode, JsonNode.Parse(await response.Content.ReadAsStringAsync(ct))); }
-        catch (JsonException) { return (HttpStatusCode.UnprocessableEntity, null); }
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            return (response.StatusCode, null, body.Length > 300 ? body[..300] : body);
+        }
+        try { return (response.StatusCode, JsonNode.Parse(await response.Content.ReadAsStringAsync(ct)), null); }
+        catch (JsonException) { return (HttpStatusCode.UnprocessableEntity, null, "not JSON"); }
     }
 
     private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
