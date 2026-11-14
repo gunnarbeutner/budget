@@ -452,16 +452,18 @@
                                         {
                                             var hasCategory = !string.IsNullOrEmpty(row.CategoryName);
                                             var pillStyle = hasCategory ? CategoryColors.For(row.CategoryId ?? 0, row.CategoryColor).Style : null;
+                                            var categoryLabel = hasCategory ? (row.CategoryId is { } labelId && categoryLabels.TryGetValue(labelId, out var shortLabel) ? shortLabel : row.CategoryName) : null;
+                                            var categoryPath = hasCategory ? pickerData?.PathOf(row.CategoryId, row.CategoryName!) ?? row.CategoryName : null;
                                             @if (row.CanEdit && (hasCategory || row.Amount != 0))
                                             {
                                                 <button type="button" class="cat-pill @(hasCategory ? "" : "empty")" style="@pillStyle" data-testid="tx-category"
-                                                        title="@L["Tx_CategoryTitle"]" @onclick="e => OpenPickerFromRow(row, e)" @onclick:stopPropagation="true">
-                                                    @(hasCategory ? row.CategoryName : L["Tx_NoCategory"])
+                                                        title="@(hasCategory ? categoryPath : L["Tx_CategoryTitle"].Value)" @onclick="e => OpenPickerFromRow(row, e)" @onclick:stopPropagation="true">
+                                                    @(hasCategory ? categoryLabel : L["Tx_NoCategory"])
                                                 </button>
                                             }
                                             else if (hasCategory)
                                             {
-                                                <span class="cat-pill" style="@pillStyle" data-testid="tx-category-label" title="@row.CategoryName">@row.CategoryName</span>
+                                                <span class="cat-pill" style="@pillStyle" data-testid="tx-category-label" title="@categoryPath">@categoryLabel</span>
                                             }
                                         }
                                     </div>
@@ -706,6 +708,30 @@
     // portfolio account (or it holds nothing). Drives the holdings card above the tx list.
     private AccountHoldings? holdings;
     private Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize<TxListItem>? txVirtualize;
+    // labels for the project's categories that share a name with another one of its categories
+    private Dictionary<long, string> categoryLabels = [];
+
+    /// <summary>The owner's categories narrowed to the ones in this project: the picker offers only those.</summary>
+    private async Task<CategoryPickerData> LoadPickerDataAsync(Project p)
+    {
+        var all = await Categorization.GetPickerDataAsync(p.OwnerUserId);
+        if (tree == null) return all;
+        var ids = new HashSet<long>();
+        void Collect(IEnumerable<BrowseCategoryNode> level)
+        {
+            foreach (var n in level)
+            {
+                if (n.ItemType == CategoryItemType.Category) ids.Add(n.Id);
+                Collect(n.Children);
+            }
+        }
+        Collect(tree.Categories);
+        return all.Only(ids);
+    }
+
+    /// <summary>Short labels that tell namesakes apart among the project's categories (the picker's options).</summary>
+    private static Dictionary<long, string> ProjectCategoryLabels(CategoryPickerData picker) =>
+        CategoryPickerLogic.ShortLabels(picker.Options);
     // Virtualize keeps its loaded window across RefreshDataAsync and throws when the list shrank under it (a sync
     // removed pending rows): a reload after an outside change gives it a fresh instance instead.
     // Approximate row height in CSS pixels — drives Virtualize's spacer math and the bar-click
@@ -1378,7 +1404,8 @@
     private async Task ReloadTransactionsAsync(bool keepSelection = false)
     {
         if (project == null || tree == null) return;
-        pickerData ??= await Categorization.GetPickerDataAsync(project.OwnerUserId);
+        pickerData ??= await LoadPickerDataAsync(project);
+        categoryLabels = ProjectCategoryLabels(pickerData);
         runningBalance = null;
         if (!keepSelection) ResetSelectionState();
 

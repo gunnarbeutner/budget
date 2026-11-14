@@ -221,7 +221,7 @@ public partial class Browse
             await OpenRulesAsync(category, row.Name.Trim());
             return;
         }
-        pickerData ??= await Categorization.GetPickerDataAsync(project.OwnerUserId);
+        pickerData ??= await LoadPickerDataAsync(project);
         _rulePickPayee = row.Name.Trim();
         popupTargets = [];
         popupCurrentCategory = null;
@@ -567,7 +567,7 @@ public partial class Browse
     {
         if (project == null || selected.Count == 0) return;
         if (BlockedReason(selected) is { } reason) { AddToast(new ToastItem { Message = reason, IsError = true }); return; }
-        pickerData ??= await Categorization.GetPickerDataAsync(project.OwnerUserId);
+        pickerData ??= await LoadPickerDataAsync(project);
         popupTargets = [.. selected];
         var single = popupTargets.Count == 1 && rowCache.TryGetValue(popupTargets[0], out var r) ? r : null;
         popupCurrentCategory = single?.CategoryId;
@@ -769,7 +769,7 @@ public partial class Browse
     private async Task OpenAddBookingAsync()
     {
         if (project == null) return;
-        pickerData ??= await Categorization.GetPickerDataAsync(project.OwnerUserId);
+        pickerData ??= await LoadPickerDataAsync(project);
         _manualTxRow = null;
         _manualTxOpen = true;
     }
@@ -778,7 +778,7 @@ public partial class Browse
     {
         if (project == null) return;
         popup = PopupKind.None;
-        pickerData ??= await Categorization.GetPickerDataAsync(project.OwnerUserId);
+        pickerData ??= await LoadPickerDataAsync(project);
         _manualTxRow = row;
         _manualTxOpen = true;
     }

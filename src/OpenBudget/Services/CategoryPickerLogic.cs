@@ -16,6 +16,30 @@ public sealed class CategoryPickerData
 {
     public IReadOnlyList<CategoryOption> Options { get; init; } = [];
     public IReadOnlyList<CategoryPickerRow> Tree { get; init; } = [];
+
+    private Dictionary<long, string>? _paths;
+
+    /// <summary>Only these categories, with the groups above them (groups left without a category below them are dropped).</summary>
+    public CategoryPickerData Only(IReadOnlySet<long> categoryIds)
+    {
+        var rows = Tree.Where(r => r.IsGroup || categoryIds.Contains(r.Id)).ToList();
+        int before;
+        do
+        {
+            before = rows.Count;
+            var current = rows;
+            rows = current.Where((r, i) => !r.IsGroup || (i + 1 < current.Count && current[i + 1].Depth > r.Depth)).ToList();
+        }
+        while (rows.Count != before);
+        return new CategoryPickerData { Options = Options.Where(o => categoryIds.Contains(o.Id)).ToList(), Tree = rows };
+    }
+
+    /// <summary>The category's full path ("Group › Subgroup › Name"), or its name when it is not among the options.</summary>
+    public string PathOf(long? id, string name)
+    {
+        _paths ??= Options.GroupBy(o => o.Id).ToDictionary(g => g.Key, g => g.First().Path);
+        return id is { } v && _paths.TryGetValue(v, out var path) ? path : name;
+    }
 }
 
 /// <summary>
@@ -82,6 +106,29 @@ public static class CategoryPickerLogic
         }
         while (rows.Count != before);
         return new CategoryPickerData { Options = options, Tree = rows };
+    }
+
+    /// <summary>
+    /// For each category with namesakes, the shortest path suffix (in whole parts) that no namesake shares, e.g.
+    /// "Unterhaltung › Amazon" next to "Onlinedienste › Amazon". Unique names get no entry.
+    /// </summary>
+    public static Dictionary<long, string> ShortLabels(IReadOnlyList<CategoryOption> options)
+    {
+        var labels = new Dictionary<long, string>();
+        foreach (var same in options.GroupBy(o => o.Name, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
+        {
+            var parts = same.Select(o => (o.Id, Parts: o.Path.Split(PathSeparator))).ToList();
+            foreach (var (id, mine) in parts)
+            {
+                string Suffix(string[] p, int take) => string.Join(PathSeparator, p.Skip(Math.Max(0, p.Length - take)));
+                var take = 2;
+                while (take < mine.Length && parts.Any(o => o.Id != id
+                           && string.Equals(Suffix(o.Parts, take), Suffix(mine, take), StringComparison.OrdinalIgnoreCase)))
+                    take++;
+                labels.TryAdd(id, Suffix(mine, take));
+            }
+        }
+        return labels;
     }
 
     /// <summary>

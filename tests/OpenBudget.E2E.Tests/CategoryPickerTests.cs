@@ -31,6 +31,8 @@ public sealed class CategoryPickerTests : EndToEndTestBase
         db.Categories.Add(new Category { Id = 211, OwnerUserId = source, Name = "Train", GroupId = 111, Type = 1, Color = "#1971c2" });
         db.Categories.Add(new Category { Id = 212, OwnerUserId = source, Name = "Birthday", GroupId = 112, Type = 1, Color = "#c2255c" });
         db.Categories.Add(new Category { Id = 213, OwnerUserId = source, Name = "Hobbies", GroupId = 110, Type = 1, Color = "#2f9e44" });
+        // the picker offers the project's categories: "Personal" belongs to it
+        db.ProjectCategoryAssignments.Add(new ProjectCategoryAssignment { ProjectId = E2ESeed.ProjectId, CategoryId = 110 });
         await db.SaveChangesAsync();
     }
 

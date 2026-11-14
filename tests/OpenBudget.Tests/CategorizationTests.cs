@@ -313,4 +313,26 @@ public sealed class CategorizationTests
         Assert.True(again.Checked);
         Assert.False(again.IsNew);
     }
+
+    [Fact]
+    public void Namesakes_get_the_shortest_path_suffix_that_tells_them_apart()
+    {
+        CategoryOption O(long id, string path) => new(id, path.Split(CategoryPickerLogic.PathSeparator)[^1], path, null);
+        var labels = CategoryPickerLogic.ShortLabels(
+        [
+            O(1, "Mine › Online › Shop"),
+            O(2, "Mine › Fun › Shop"),
+            O(3, "Shared › Supplies › Shop"),
+            O(4, "Shared › Fun › Shop"),
+            O(5, "Shared › Online › Shop"),
+            O(6, "Shared › Groceries"),
+        ]);
+
+        Assert.Equal("Mine › Online › Shop", labels[1]);
+        Assert.Equal("Mine › Fun › Shop", labels[2]);
+        Assert.Equal("Supplies › Shop", labels[3]);
+        Assert.Equal("Shared › Fun › Shop", labels[4]);
+        Assert.Equal("Shared › Online › Shop", labels[5]);
+        Assert.False(labels.ContainsKey(6));
+    }
 }
