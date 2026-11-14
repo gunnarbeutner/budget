@@ -131,7 +131,7 @@
     <value>Suggesting amounts…</value>
   </data>
   <data name="Status_GeneratingLong" xml:space="preserve">
-    <value>Looking at your bookings and suggesting amounts…</value>
+    <value>Looking at your bookings and suggesting amounts… With AI suggestions this may take a minute or two.</value>
   </data>
   <data name="Predictions_Intro" xml:space="preserve">
     <value>Under each category: what the amounts are based on and which one-off bookings were left out. Adjust the amounts before saving.</value>

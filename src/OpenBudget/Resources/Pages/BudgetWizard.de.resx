@@ -131,7 +131,7 @@
     <value>Beträge werden vorgeschlagen…</value>
   </data>
   <data name="Status_GeneratingLong" xml:space="preserve">
-    <value>Deine Buchungen werden ausgewertet und Beträge vorgeschlagen…</value>
+    <value>Deine Buchungen werden ausgewertet und Beträge vorgeschlagen… Mit KI-Vorschlägen kann das ein bis zwei Minuten dauern.</value>
   </data>
   <data name="Predictions_Intro" xml:space="preserve">
     <value>Unter jeder Kategorie: worauf die Beträge beruhen und welche einmaligen Buchungen weggelassen wurden. Passe die Beträge vor dem Speichern an.</value>
