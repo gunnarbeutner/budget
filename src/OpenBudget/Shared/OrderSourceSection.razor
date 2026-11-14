@@ -40,7 +40,7 @@ else
                                     <option value="" selected="@(i.AccountId == null)">@L["Orders_NotMapped"]</option>
                                     @foreach (var c in candidates.GetValueOrDefault(i.Id) ?? [])
                                     {
-                                        <option value="@c.AccountId" selected="@(i.AccountId == c.AccountId)">@c.Name@(c.Suggested && i.AccountId == null ? " ★" : "")</option>
+                                        <option value="@c.AccountId" selected="@(i.AccountId == c.AccountId)">@c.Name@(c.Closed ? " " + L["Orders_Closed"] : "")@(c.Suggested && i.AccountId == null ? " ★" : "")</option>
                                     }
                                 </select>
                             }

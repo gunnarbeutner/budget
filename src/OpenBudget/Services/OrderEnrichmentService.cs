@@ -10,7 +10,7 @@ namespace OpenBudget.Services;
 public sealed record InstrumentView(int Id, string Name, bool IsPoints, long? AccountId, string? AccountName, int Charges, int Matched);
 
 /// <summary>An account an instrument can be mapped to; <see cref="Suggested"/>: its IBAN or name ends with the card's last digits.</summary>
-public sealed record InstrumentCandidate(long AccountId, string Name, bool Suggested);
+public sealed record InstrumentCandidate(long AccountId, string Name, bool Suggested, bool Closed = false);
 
 /// <summary>A charge without a booking: <see cref="Ambiguous"/> when several bookings fit.</summary>
 public sealed record OpenChargeView(DateTime Date, string OrderId, long AmountCents, string Instrument, bool Ambiguous, Uri OrderUrl);
@@ -59,7 +59,10 @@ public sealed partial class OrderEnrichmentService
             counts.TryGetValue(r.RemoteId, out var c) ? c.All : 0, counts.TryGetValue(r.RemoteId, out var m) ? m.Matched : 0)).ToList();
     }
 
-    /// <summary>The user's open, non-depot accounts; those whose IBAN or name ends with the instrument's last digits come first, marked.</summary>
+    /// <summary>
+    /// The user's non-depot accounts, closed ones last (old payment methods paid from them); those whose IBAN or name
+    /// ends with the instrument's last digits come first, marked.
+    /// </summary>
     public async Task<List<InstrumentCandidate>> GetCandidatesAsync(int instrumentId, CancellationToken ct = default)
     {
         var scope = await _access.GetAsync();
@@ -67,13 +70,13 @@ public sealed partial class OrderEnrichmentService
         var instrument = await db.BankLoginAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == instrumentId, ct);
         if (instrument == null) return [];
         var accounts = await db.Accounts.AsNoTracking()
-            .Where(a => a.OwnerUserId == scope.UserId && !a.Closed && a.Type != 7 && a.Portfolio != 1).OrderBy(a => a.Name).ToListAsync(ct);
+            .Where(a => a.OwnerUserId == scope.UserId && a.Type != 7 && a.Portfolio != 1).OrderBy(a => a.Name).ToListAsync(ct);
         var digits = LastDigits().Match(instrument.Name) is { Success: true } m ? m.Groups["d"].Value : null;
         bool Suggested(Account a) => digits != null
             && ((a.Iban != null && BankLoginService.NormalizeIban(a.Iban).EndsWith(digits, StringComparison.Ordinal))
                 || (a.Name != null && LastDigits().Match(a.Name) is { Success: true } n && n.Groups["d"].Value.EndsWith(digits, StringComparison.Ordinal)));
-        return accounts.Select(a => new InstrumentCandidate(a.Id, a.Name ?? "?", Suggested(a)))
-            .OrderByDescending(c => c.Suggested).ToList();
+        return accounts.Select(a => new InstrumentCandidate(a.Id, a.Name ?? "?", Suggested(a), a.Closed))
+            .OrderBy(c => c.Closed).ThenByDescending(c => c.Suggested).ToList();
     }
 
     /// <summary>Maps an instrument to one of the user's accounts (null: none), then matches the charges again.</summary>
