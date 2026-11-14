@@ -7,10 +7,11 @@
 @inject AccountSwitchService Switcher
 @inject IStringLocalizer<OpenBudget.Pages.BankLogins> L
 @inject ClockService Clock
+@inject IStringLocalizer<MailboxCard> MailboxL
 
 @* The bank logins of the signed-in user: the list with each login's accounts, adding a login (with its sign-in,
    TAN or app-approval dialogs and the first sync), editing and deleting. Shown by the bank logins page and inline
-   in Get started's first step. *@
+   in Get started's first step. With ShowMailbox, the mailbox card sits among the logins in the same order (by name). *@
 
 
 @if (!Bank.IsEnabled)
@@ -20,6 +21,10 @@
         @L["Disabled_Body_Before"]<code>OPENBUDGET_SECRETS_KEY</code>@L["Disabled_Body_After"]
         <div class="small text-body-secondary mt-1">@Bank.DisabledReason</div>
     </div>
+    @if (ShowMailbox)
+    {
+        <MailboxCard />
+    }
     return;
 }
 
@@ -42,15 +47,22 @@
 {
     <div aria-busy="true"><div class="skeleton skeleton-line mb-2" style="width: 60%;"></div></div>
 }
-else if (logins.Count == 0)
-{
-    <div class="alert alert-secondary">@L["Empty"]</div>
-}
 else
 {
+    @if (logins.Count == 0)
+    {
+        <div class="alert alert-secondary">@L["Empty"]</div>
+    }
+    var mailboxShown = !ShowMailbox;
+    var mailboxName = MailboxL["Title"].Value;
     <div class="bank-login-list">
     @foreach (var login in logins)
     {
+        if (!mailboxShown && string.CompareOrdinal(login.DisplayName, mailboxName) > 0)
+        {
+            mailboxShown = true;
+            <MailboxCard @key="MailboxKey" />
+        }
         var status = statuses.GetValueOrDefault(login.Id);
         var running = status is { Phase: not SyncPhase.Finished };
         var accounts = accountsByLogin.GetValueOrDefault(login.Id) ?? [];
@@ -289,6 +301,10 @@ else
             </div>
         </div>
     }
+    @if (!mailboxShown)
+    {
+        <MailboxCard @key="MailboxKey" />
+    }
     </div>
 }
 
@@ -435,6 +451,11 @@ else
 @code {
     /// <summary>Whether the intro sentence shows (Get started has its own line instead).</summary>
     [Parameter] public bool ShowIntro { get; set; } = true;
+
+    /// <summary>Whether the mailbox card is listed among the logins (the connections page).</summary>
+    [Parameter] public bool ShowMailbox { get; set; }
+
+    private static readonly object MailboxKey = new();
 
     private List<BankLoginView>? logins;
     private IReadOnlyList<ConnectorRegistration> connectors = [];

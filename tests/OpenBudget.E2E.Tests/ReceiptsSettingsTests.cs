@@ -1,4 +1,7 @@
+using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
+using OpenBudget.Models;
+using OpenBudget.Services;
 using OpenBudget.Tests.Connectors;
 using OpenBudget.Tests.Receipts;
 
@@ -13,6 +16,28 @@ namespace OpenBudget.E2E.Tests;
 public sealed class ReceiptsSettingsTests : EndToEndTestBase
 {
     private FakeMicrosoftCloud Microsoft => Factory.Microsoft;
+
+    [Test]
+    public async Task The_mailbox_card_is_sorted_and_spaced_like_the_logins()
+    {
+        var factory = Factory.Services.GetRequiredService<SystemDbContextFactory>();
+        await using (var db = await factory.CreateDbContextAsync())
+        {
+            db.BankLogins.Add(new BankLogin { OwnerUserId = E2ESeed.OwnerUserId, ConnectorType = "amazon", DisplayName = "Alpha Example Shop", RefreshInterval = RefreshInterval.ManualOnly });
+            db.BankLogins.Add(new BankLogin { OwnerUserId = E2ESeed.OwnerUserId, ConnectorType = "amazon", DisplayName = "Zulu Example Shop", RefreshInterval = RefreshInterval.ManualOnly });
+            await db.SaveChangesAsync();
+        }
+
+        await GoToAsync("/connections");
+        await Expect(Page.GetByTestId("mailbox-card")).ToBeVisibleAsync();
+        var titles = await Page.EvaluateAsync<string[]>(
+            "() => [...document.querySelectorAll('.bank-login-list > .card')].map(c => c.querySelector('h5').textContent.trim())");
+        Assert.That(titles, Does.Contain("Mailbox (Microsoft 365)"));
+        Assert.That(titles, Is.EqualTo(titles.Order(StringComparer.Ordinal).ToArray()));
+        var smallestGap = await Page.EvaluateAsync<double>(
+            "() => { const r = [...document.querySelectorAll('.bank-login-list > .card')].map(c => c.getBoundingClientRect()); return Math.min(...r.slice(1).map((b, i) => b.top - r[i].bottom)); }");
+        Assert.That(smallestGap, Is.GreaterThan(10));
+    }
 
     [Test]
     public async Task Grant_mail_access_check_mail_and_list_the_receipt()
