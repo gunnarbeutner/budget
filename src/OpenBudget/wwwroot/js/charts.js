@@ -1130,12 +1130,14 @@ function scrollBrowseChartToPeriod(scroller, anchors, n, fullW) {
     scroller.scrollLeft = Math.max(0, Math.min(max, Math.round(target)));
 }
 
-// Bar-click / anchor-change scroll for the virtualized tx list. Blazor passes an approximate
-// pixel offset (newerCount * itemSize); we set the scrolling ancestor's scrollTop to that
-// position so Virtualize fetches the items around it. Once the matching .in-period row
-// renders, we snap it precisely to the top — polling briefly because Virtualize loads its
-// chunk asynchronously after the scroll fires.
-window.scrollListToTxOffset = function(approxOffset) {
+// Bar-click / anchor-change scroll for the virtualized tx list: brings the row at list index
+// `targetIndex` (newest first) to the top of .tx-scroll. Virtualize only renders the rows near
+// the scroll position and sizes its spacers from measured row heights, so a single offset
+// estimate lands off by however much the real rows (day headers, wrapped text) differ from the
+// nominal size. Each step instead estimates from a rendered row with a known index
+// (data-tx-index) and the rendered rows' average height, waits for Virtualize to load the rows
+// there, and repeats until the target row itself is rendered and then aligns it exactly.
+window.scrollListToTxIndex = function(targetIndex, approxRowHeight) {
     const list = document.querySelector('.tx-list');
     if (!list) return;
     const txScroll = list.closest('.tx-scroll');
@@ -1143,25 +1145,39 @@ window.scrollListToTxOffset = function(approxOffset) {
     const usesContainerScroll = txScroll && (overflowY === 'auto' || overflowY === 'scroll');
     // Below lg the list shares the page scroll with the chart + header — auto-scrolling
     // the whole document on a bar click jumps the chart out from under the tap and feels
-    // jarring. The .in-period highlight still updates so the rows are findable manually.
+    // jarring, so the list stays where it is there.
     if (!usesContainerScroll) return;
-    txScroll.scrollTop = approxOffset;
-    let attempts = 0;
-    const fineTune = () => {
-        const target = document.querySelector('.tx-row.in-period');
-        if (target) {
-            // Scroll ONLY the txScroll container — `target.scrollIntoView()` here would
-            // scroll every ancestor that needs to (including the page), jumping the
-            // whole layout down to align the row under the sticky period bar.
-            const targetRect = target.getBoundingClientRect();
-            const scrollRect = txScroll.getBoundingClientRect();
-            const offset = targetRect.top - scrollRect.top + txScroll.scrollTop;
-            txScroll.scrollTo({ top: offset, behavior: 'smooth' });
-        } else if (attempts++ < 12) {
-            setTimeout(fineTune, 50);
+    const token = (txScroll.$obJump || 0) + 1;
+    txScroll.$obJump = token;
+    const topOf = el => el.getBoundingClientRect().top - txScroll.getBoundingClientRect().top + txScroll.scrollTop;
+    let steps = 0;
+    const step = () => {
+        if (txScroll.$obJump !== token) return;
+        const rows = Array.from(list.querySelectorAll('[data-tx-index]'));
+        const hit = rows.find(r => Number(r.dataset.txIndex) === targetIndex);
+        if (hit) {
+            const top = Math.round(topOf(hit));
+            txScroll.scrollTop = top;
+            // Virtualize can still adjust its spacers right after the rows render; re-check briefly.
+            if (Math.abs(txScroll.scrollTop - Math.min(top, txScroll.scrollHeight - txScroll.clientHeight)) > 1 || steps < 3) {
+                if (steps++ < 40) setTimeout(step, 50);
+            }
+            return;
         }
+        let estimate;
+        if (rows.length >= 2) {
+            const firstRow = rows[0], lastRow = rows[rows.length - 1];
+            const i0 = Number(firstRow.dataset.txIndex), i1 = Number(lastRow.dataset.txIndex);
+            const t0 = topOf(firstRow), t1 = topOf(lastRow);
+            const avg = i1 > i0 ? (t1 - t0) / (i1 - i0) : approxRowHeight;
+            estimate = targetIndex < i0 ? t0 - (i0 - targetIndex) * avg : t1 + (targetIndex - i1) * avg;
+        } else {
+            estimate = targetIndex * approxRowHeight;
+        }
+        txScroll.scrollTop = Math.max(0, Math.round(estimate));
+        if (steps++ < 40) setTimeout(step, 50);
     };
-    setTimeout(fineTune, 60);
+    step();
 };
 
 window.renderChart = function(elementId, chartData) {

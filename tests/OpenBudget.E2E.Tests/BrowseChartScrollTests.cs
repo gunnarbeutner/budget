@@ -112,6 +112,69 @@ public sealed class BrowseChartScrollTests : EndToEndTestBase
         Assert.That(drawn, Is.True);
     }
 
+    // Several years of fictional daily bookings on the bank account (one to three per day, so day
+    // groups differ in height), the newest at the end of February 2026.
+    private async Task SeedLongBookingHistoryAsync()
+    {
+        await using var db = await Factory.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync();
+        var id = 10_000L;
+        for (var day = new DateTime(2019, 1, 1, 0, 0, 0, DateTimeKind.Utc); day < new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc); day = day.AddDays(1))
+        {
+            var count = 1 + (int)(id % 3);
+            for (var k = 0; k < count; k++)
+            {
+                EditingSeed.Add(db, id, EditingSeed.BankAccountId, -(100 + id % 900), $"Example Shop {id % 7}", day.AddHours(10 + k));
+                id++;
+            }
+        }
+        await db.SaveChangesAsync();
+    }
+
+    // Clicking a bar far back in the history scrolls the list so its top row is the newest booking of
+    // that bar's month, in daily and in monthly mode.
+    [TestCase("M", 2024, 6, 15, "30.06.2024")]
+    [TestCase("D", 2024, 6, 15, "30.06.2024")]
+    [TestCase("M", 2020, 2, 10, "29.02.2020")]
+    public async Task Clicking_a_bar_scrolls_the_list_to_the_start_of_its_month(string granularity, int year, int month, int day, string expectedDay)
+    {
+        await SeedLongBookingHistoryAsync();
+        await Page.SetViewportSizeAsync(1300, 900);
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=2&g={granularity}&sel=acct-{EditingSeed.BankAccountId}");
+        await Page.WaitForFunctionAsync("() => !!Chart.getChart('browseChart') && browseChartData('browseChart')?.labels.length > 12");
+        await Expect(Page.GetByTestId("tx-item").First).ToBeVisibleAsync();
+
+        var first = new DateTime(2019, 1, 1);
+        var index = granularity == "D"
+            ? (int)(new DateTime(year, month, day) - first).TotalDays
+            : (year - first.Year) * 12 + month - 1;
+        // Scroll the chart so the bar is in view and return its position on the page.
+        var point = await Page.EvaluateAsync<float[]>("""
+            async (i) => {
+                const scroller = document.getElementById('browseChartScroll');
+                const c = Chart.getChart('browseChart'), n = browseChartData('browseChart').labels.length;
+                scroller.scrollLeft = Math.max(0, i * scroller.scrollWidth / n - scroller.clientWidth / 2);
+                await new Promise(r => setTimeout(r, 100));
+                const bar = c.getDatasetMeta(0).data[i - browseChartData('browseChart').first];
+                const rect = c.canvas.getBoundingClientRect();
+                return [rect.left + bar.x, rect.top + (c.chartArea.top + c.chartArea.bottom) / 2];
+            }
+            """, index);
+        await Page.Mouse.MoveAsync(point[0], point[1]);
+        Assert.That(await Page.EvaluateAsync<int>("() => Chart.getChart('browseChart').$obIdx"), Is.EqualTo(index));
+        await Page.Mouse.ClickAsync(point[0], point[1]);
+
+        // The top row in the list's scroll frame starts the expected day.
+        await Page.WaitForFunctionAsync("""
+            (day) => {
+                const top = document.querySelector('.tx-scroll').getBoundingClientRect().top;
+                const rows = [...document.querySelectorAll('[data-testid="tx-item"]')].filter(r => r.getBoundingClientRect().bottom > top + 2);
+                const row = rows[0];
+                return !!row && Math.abs(row.getBoundingClientRect().top - top) <= 2
+                    && (row.querySelector('[data-testid="tx-day"]')?.textContent ?? '').includes(day);
+            }
+            """, expectedDay, new() { Timeout = 10_000 });
+    }
+
     [TestCase(false), TestCase(true), Explicit("Scroll smoothness measurement; prints frame and long-task numbers")]
     public async Task Measure_scrolling(bool pointerOver)
     {
