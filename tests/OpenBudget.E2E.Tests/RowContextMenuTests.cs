@@ -135,7 +135,10 @@ public sealed class RowContextMenuTests : EndToEndTestBase
         await GoToAsync(GiroUrl);
         await Row("−30,00").ClickAsync();
         await Page.GetByTestId("tx-details-offset").ClickAsync();
-        await Page.GetByTestId($"tx-details-offset-{CashId}").ClickAsync();
+        var offset = Page.GetByTestId("tx-details-offset-picker");
+        await offset.GetByTestId("account-picker-toggle").ClickAsync();
+        await Expect(offset.GetByTestId("account-picker-search")).ToBeFocusedAsync();
+        await offset.GetByTestId("account-picker").Locator(".tree-picker-row", new() { HasText = CashName }).ClickAsync();
         await Expect(Page.GetByTestId("toast").Filter(new() { HasText = CashName })).ToBeVisibleAsync();
         await using var db = await Db.CreateDbContextAsync();
         Assert.That((await db.Transactions.AsNoTracking().SingleAsync(t => t.AccountId == CashId)).Amount, Is.EqualTo(30_00));
