@@ -27,7 +27,23 @@ public static class AmazonReceiptMigration
 
     private sealed record OldItem(long Id, long OrderId, string Title, int Quantity, long? Price, int Shipment, long? CategoryId);
 
+    // Several app instances on one database (tests) start together: one moves the tables, the others then find none.
+    private static readonly SemaphoreSlim Gate = new(1, 1);
+
     public static async Task<AmazonMigrationResult?> RunAsync(BudgetDbContext db, DateTime nowUtc, CancellationToken ct = default)
+    {
+        await Gate.WaitAsync(ct);
+        try
+        {
+            return await MoveAsync(db, nowUtc, ct);
+        }
+        finally
+        {
+            Gate.Release();
+        }
+    }
+
+    private static async Task<AmazonMigrationResult?> MoveAsync(BudgetDbContext db, DateTime nowUtc, CancellationToken ct)
     {
         var connection = db.Database.GetDbConnection();
         if (connection.State != System.Data.ConnectionState.Open) await db.Database.OpenConnectionAsync(ct);
