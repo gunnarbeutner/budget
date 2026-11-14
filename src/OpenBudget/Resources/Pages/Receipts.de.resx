@@ -65,52 +65,22 @@
     <value>Kassenbons</value>
   </data>
   <data name="Intro" xml:space="preserve">
-    <value>OpenBudget liest REWE-Rechnungen von Online-Bestellungen aus deinem Microsoft-365-Postfach, ordnet jede ihrer Lastschrift zu und teilt die Buchung nach den Artikeln auf: Lebensmittel bleiben in der Kategorie der Buchung, Non-Food-Artikel kommen in die Kategorie, die du unten wählst. Verschiebst du einen Artikel in den Details der Buchung in eine andere Kategorie, merken sich spätere Kassenbons das.</value>
+    <value>Alle Kassenbons, die deine Quellen gelesen haben: Jeder wird der Buchung zugeordnet, mit der er bezahlt wurde, und die Buchung wird nach den Artikeln auf die Kategorien der Quelle aufgeteilt. Die Quellen selbst richtest du ein unter</value>
   </data>
-  <data name="Mail_Heading" xml:space="preserve">
-    <value>Postfach-Zugriff</value>
-  </data>
-  <data name="Mail_Unavailable" xml:space="preserve">
-    <value>Microsoft ist auf diesem Server nicht eingerichtet, das Postfach kann nicht gelesen werden.</value>
-  </data>
-  <data name="Mail_NotGranted" xml:space="preserve">
-    <value>Postfach-Zugriff: nicht erteilt</value>
-  </data>
-  <data name="Mail_Grant" xml:space="preserve">
-    <value>Erteilen</value>
-  </data>
-  <data name="Mail_GrantHelp" xml:space="preserve">
-    <value>Du meldest dich bei Microsoft an und erlaubst OpenBudget, deine E-Mails zu lesen (es sieht nur REWE-Rechnungsmails an und lädt nur deren PDF). Dafür wird deine OneDrive-Verbindung genutzt oder angelegt. Die Entra-App-Registrierung des Servers braucht die delegierte Microsoft-Graph-Berechtigung Mail.Read.</value>
-  </data>
-  <data name="Mail_Granted" xml:space="preserve">
-    <value>Postfach-Zugriff: erteilt ({0})</value>
-  </data>
-  <data name="Mail_CheckNow" xml:space="preserve">
-    <value>Postfach jetzt prüfen</value>
-  </data>
-  <data name="Mail_Stop" xml:space="preserve">
-    <value>Postfach nicht mehr lesen</value>
-  </data>
-  <data name="Mail_Reconnect" xml:space="preserve">
-    <value>Neu verbinden</value>
-  </data>
-  <data name="Mail_LastChecked" xml:space="preserve">
-    <value>Zuletzt geprüft: {0} (im Hintergrund etwa stündlich)</value>
-  </data>
-  <data name="Never" xml:space="preserve">
-    <value>nie</value>
+  <data name="Intro_Connections" xml:space="preserve">
+    <value>Verbindungen.</value>
   </data>
   <data name="List_Heading" xml:space="preserve">
     <value>Gelesene Kassenbons</value>
   </data>
   <data name="List_None" xml:space="preserve">
-    <value>Noch keine Kassenbons.</value>
+    <value>Keine Kassenbons.</value>
   </data>
-  <data name="List_Delivered" xml:space="preserve">
-    <value>Geliefert</value>
+  <data name="List_Date" xml:space="preserve">
+    <value>Datum</value>
   </data>
-  <data name="List_Order" xml:space="preserve">
-    <value>Bestellung</value>
+  <data name="List_Receipt" xml:space="preserve">
+    <value>Kassenbon</value>
   </data>
   <data name="List_Amount" xml:space="preserve">
     <value>Betrag</value>
@@ -121,35 +91,17 @@
   <data name="List_Status" xml:space="preserve">
     <value>Buchung</value>
   </data>
-  <data name="Status_Split" xml:space="preserve">
-    <value>aufgeteilt, gebucht {0}</value>
+  <data name="Filter_Source" xml:space="preserve">
+    <value>Quelle</value>
   </data>
-  <data name="Status_Matched" xml:space="preserve">
-    <value>gebucht {0}</value>
+  <data name="Filter_AllSources" xml:space="preserve">
+    <value>Alle Quellen</value>
   </data>
-  <data name="Status_Ambiguous" xml:space="preserve">
-    <value>mehrere Buchungen passen</value>
+  <data name="Filter_State" xml:space="preserve">
+    <value>Status</value>
   </data>
-  <data name="Status_Unmatched" xml:space="preserve">
-    <value>noch keine Buchung</value>
-  </data>
-  <data name="Checked" xml:space="preserve">
-    <value>{0} Rechnungsmails gefunden, {1} neue Kassenbons.</value>
-  </data>
-  <data name="Checked_Unreadable" xml:space="preserve">
-    <value>{0} PDFs konnten nicht gelesen werden.</value>
-  </data>
-  <data name="Outcome_Connected" xml:space="preserve">
-    <value>Postfach-Zugriff erteilt.</value>
-  </data>
-  <data name="Outcome_NoMail" xml:space="preserve">
-    <value>Angemeldet, aber Microsoft hat den Postfach-Zugriff nicht erteilt. Prüfe, ob die App-Registrierung die Berechtigung Mail.Read hat.</value>
-  </data>
-  <data name="Outcome_Failed" xml:space="preserve">
-    <value>Der Postfach-Zugriff wurde nicht erteilt.</value>
-  </data>
-  <data name="Categories_Heading" xml:space="preserve">
-    <value>Artikel-Kategorien je Quelle</value>
+  <data name="Filter_AllStates" xml:space="preserve">
+    <value>Alle Status</value>
   </data>
   <data name="Source_mail" xml:space="preserve">
     <value>Postfach (REWE)</value>
@@ -159,5 +111,77 @@
   </data>
   <data name="Source_amazon" xml:space="preserve">
     <value>Amazon</value>
+  </data>
+  <data name="State_Split" xml:space="preserve">
+    <value>aufgeteilt</value>
+  </data>
+  <data name="State_Matched" xml:space="preserve">
+    <value>zugeordnet</value>
+  </data>
+  <data name="State_Waiting" xml:space="preserve">
+    <value>wartet auf Buchung</value>
+  </data>
+  <data name="State_Ambiguous" xml:space="preserve">
+    <value>mehrere Buchungen passen</value>
+  </data>
+  <data name="State_Unmatched" xml:space="preserve">
+    <value>keine Buchung gefunden</value>
+  </data>
+  <data name="State_NoBooking" xml:space="preserve">
+    <value>bar bezahlt</value>
+  </data>
+  <data name="State_Dismissed" xml:space="preserve">
+    <value>nicht in dieser App</value>
+  </data>
+  <data name="Status_Split" xml:space="preserve">
+    <value>aufgeteilt, gebucht {0}</value>
+  </data>
+  <data name="Status_Matched" xml:space="preserve">
+    <value>gebucht {0}</value>
+  </data>
+  <data name="Assign" xml:space="preserve">
+    <value>Manuell zuordnen</value>
+  </data>
+  <data name="Reset" xml:space="preserve">
+    <value>Automatisch zuordnen</value>
+  </data>
+  <data name="Assign_Title" xml:space="preserve">
+    <value>Kassenbon zuordnen</value>
+  </data>
+  <data name="Assign_None" xml:space="preserve">
+    <value>Keine Buchung in der Nähe dieses Datums.</value>
+  </data>
+  <data name="Assign_NotInApp" xml:space="preserve">
+    <value>Nicht in dieser App</value>
+  </data>
+  <data name="Categories_Heading" xml:space="preserve">
+    <value>Artikel-Kategorien je Quelle</value>
+  </data>
+  <data name="Categories_Amazon" xml:space="preserve">
+    <value>Amazon-Bestellungen behalten vorerst ihre eigene Kategorisierung (je Artikel).</value>
+  </data>
+  <data name="Memory_Heading" xml:space="preserve">
+    <value>Artikelliste</value>
+  </data>
+  <data name="Memory_Help" xml:space="preserve">
+    <value>Produkte, die du auf einem Kassenbon in eine Kategorie verschoben hast; spätere Kassenbons legen sie auch dort ab (wenn die Kategorie zu den Kategorien der Quelle gehört).</value>
+  </data>
+  <data name="Memory_None" xml:space="preserve">
+    <value>Noch nichts gemerkt.</value>
+  </data>
+  <data name="Memory_Search" xml:space="preserve">
+    <value>Produkte suchen</value>
+  </data>
+  <data name="Memory_Delete" xml:space="preserve">
+    <value>{0} vergessen</value>
+  </data>
+  <data name="Ai_Heading" xml:space="preserve">
+    <value>KI</value>
+  </data>
+  <data name="Ai_Help" xml:space="preserve">
+    <value>Sind KI-Vorschläge eingeschaltet, bekommt die KI Artikel, die weder die Artikelliste noch die Stichwörter einordnen; sie wählt nur unter den Kategorien der Quelle (mit ihren Beschreibungen). Sonst bleiben sie in der Standardkategorie.</value>
+  </data>
+  <data name="Ai_Link" xml:space="preserve">
+    <value>KI-Einstellungen</value>
   </data>
 </root>

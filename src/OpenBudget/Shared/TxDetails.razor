@@ -70,7 +70,7 @@
 
     @if (receipt != null)
     {
-        <TxReceipt Receipt="receipt" PickerData="PickerData" CanEdit="Row.CanEdit" BookingCategoryName="@receiptCategoryName" OnChanged="ReceiptChangedAsync" />
+        <TxReceipt Receipt="receipt" PickerData="PickerData" CanEdit="Row.CanEdit" BookingCategoryName="@receiptCategoryName" HighlightCategoryId="receiptShownCategory" OnChanged="ReceiptChangedAsync" />
     }
     else if (!string.IsNullOrWhiteSpace(Row.OrderItems))
     {
@@ -232,6 +232,7 @@
     private long ordersFor;
     private OpenBudget.Connectors.Receipts.BookingReceiptView? receipt;
     private string? receiptCategoryName;
+    private long? receiptShownCategory;
 
     private string? mainName;
     private long mainFor;
@@ -256,10 +257,15 @@
     {
         receipt = await ReceiptInfo.GetForBookingAsync(Row.Id);
         receiptCategoryName = null;
+        receiptShownCategory = null;
         if (receipt == null) return;
         await using var db = await DbFactory.CreateDbContextAsync();
         var categoryId = await db.Transactions.AsNoTracking().Where(t => t.Id == receipt.TransactionId).Select(t => t.CategoryId).FirstOrDefaultAsync();
         receiptCategoryName = categoryId is { } c && PickerData != null ? PickerData.PathOf(c, "") : null;
+        // a split part shows its own part highlighted
+        receiptShownCategory = Row.Id != receipt.TransactionId
+            ? await db.Transactions.AsNoTracking().Where(t => t.Id == Row.Id).Select(t => t.CategoryId).FirstOrDefaultAsync()
+            : null;
     }
 
     private async Task ReceiptChangedAsync()

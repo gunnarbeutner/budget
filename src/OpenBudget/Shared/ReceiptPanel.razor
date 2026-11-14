@@ -1,0 +1,215 @@
+@using System.Globalization
+@using OpenBudget.Connectors.Receipts
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject ReceiptService Service
+@inject IStringLocalizer<ReceiptPanel> L
+
+@* A receipt in a dialog: its lines as a till receipt (item, quantity, price, category), grouped by the parts the
+   receipt splits its booking into, with a filter per part and a search for long receipts. Deposit lines and fees fold
+   into one row that opens on click; the bonus and the payment close the receipt. The owner moves an item by its
+   category chip: the receipt remembers it for the product, splits the booking again, and the dialog shows the result. *@
+
+<Modal Show="ReceiptId != null" Title="@(view?.Title ?? L["Title"])" SizeClass="modal-lg modal-fullscreen-sm-down" OnClose="CloseAsync">
+    @if (view == null)
+    {
+        <div class="skeleton skeleton-line" style="width: 50%;"></div>
+    }
+    else
+    {
+        <div data-testid="receipt-panel">
+            <div class="small text-body-secondary mb-2">
+                @(view.DeliveryDate?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture))@(view.InvoiceNumber is { Length: > 0 } n ? " · " + n : "")
+                · @L["Items", view.ItemCount]
+                @if (view.TransactionId == null)
+                {
+                    <span> · @L["NoBooking"]</span>
+                }
+            </div>
+            <div class="d-flex flex-wrap gap-1 mb-2" role="group" aria-label="@L["Parts"]">
+                <button type="button" class="btn btn-sm @(part == null ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => part = null">@L["AllParts"]</button>
+                @for (var i = 0; i < view.Groups.Count; i++)
+                {
+                    var index = i;
+                    var g = view.Groups[i];
+                    <button type="button" class="btn btn-sm @(part == index ? "btn-secondary" : "btn-outline-secondary")" data-testid="receipt-panel-part"
+                            @onclick="() => part = index">@ShortName(g.CategoryId) @Formatting.FormatMoneyDe(g.AmountCents / 100m) (@g.Lines.Count)</button>
+                }
+            </div>
+            @if (view.ItemCount > 8)
+            {
+                <input type="search" class="form-control form-control-sm mb-2" placeholder="@L["Search"]" aria-label="@L["Search"]"
+                       data-testid="receipt-panel-search" @bind="search" @bind:event="oninput" />
+            }
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-2 receipt-panel-table">
+                    <thead>
+                        <tr>
+                            <th>@L["Item"]</th>
+                            <th class="text-end">@L["Quantity"]</th>
+                            <th class="text-end">@L["Price"]</th>
+                            <th>@L["Category"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var (g, index) in view.Groups.Select((g, i) => (g, i)).Where(x => part == null || part == x.i))
+                        {
+                            var products = g.Lines.Where(l => l.Kind == ReceiptItemKind.Product && Matches(l)).ToList();
+                            var extras = g.Lines.Where(l => l.Kind != ReceiptItemKind.Product).ToList();
+                            @if (view.Groups.Count > 1 && part == null)
+                            {
+                                <tr class="table-light"><th colspan="4" class="small">@CategoryName(g.CategoryId) · @Formatting.FormatMoneyDe(g.AmountCents / 100m)</th></tr>
+                            }
+                            @foreach (var line in products)
+                            {
+                                <tr data-testid="receipt-panel-line">
+                                    <td class="text-break">@line.Name</td>
+                                    <td class="text-end text-nowrap">@line.Quantity</td>
+                                    <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(line.TotalCents / 100m)</td>
+                                    <td>
+                                        @if (CanEdit && PickerData != null)
+                                        {
+                                            <button type="button" class="badge rounded-pill text-bg-light border btn-chip" data-testid="receipt-panel-category"
+                                                    title="@L["Move", line.Name]" @onclick="e => OpenPicker(line, e)">@ShortName(line.CategoryId)</button>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge rounded-pill text-bg-light border">@ShortName(line.CategoryId)</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                            @if (extras.Count > 0 && string.IsNullOrWhiteSpace(search))
+                            {
+                                var open = openExtras.Contains(index);
+                                <tr class="text-body-secondary" data-testid="receipt-panel-extras">
+                                    <td colspan="2">
+                                        <button type="button" class="btn btn-link btn-sm p-0 text-reset" aria-expanded="@(open ? "true" : "false")"
+                                                @onclick="() => { if (!openExtras.Remove(index)) openExtras.Add(index); }">
+                                            <i class="bi @(open ? "bi-chevron-down" : "bi-chevron-right")" aria-hidden="true"></i> @L["Extras", extras.Count]
+                                        </button>
+                                    </td>
+                                    <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(extras.Sum(l => l.TotalCents) / 100m)</td>
+                                    <td><span class="badge rounded-pill text-bg-light border">@ShortName(g.CategoryId)</span></td>
+                                </tr>
+                                @if (open)
+                                {
+                                    @foreach (var line in extras)
+                                    {
+                                        <tr class="small text-body-secondary">
+                                            <td class="ps-4 text-break">@line.Name</td>
+                                            <td class="text-end">@line.Quantity</td>
+                                            <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(line.TotalCents / 100m)</td>
+                                            <td></td>
+                                        </tr>
+                                    }
+                                }
+                            }
+                        }
+                    </tbody>
+                    <tfoot class="small">
+                        <tr><td colspan="2">@L["Total"]</td><td class="text-end text-nowrap">@Formatting.FormatMoneyDe(view.TotalCents / 100m)</td><td></td></tr>
+                        @if (view.BonusCents != 0)
+                        {
+                            <tr><td colspan="2">@L["Bonus"]</td><td class="text-end text-nowrap">@Formatting.FormatMoneyDe(view.BonusCents / 100m)</td><td></td></tr>
+                        }
+                        <tr class="fw-semibold"><td colspan="2">@L["Paid"]</td><td class="text-end text-nowrap" data-testid="receipt-panel-paid">@Formatting.FormatMoneyDe(view.PaymentCents / 100m)</td><td></td></tr>
+                    </tfoot>
+                </table>
+            </div>
+            @if (CanEdit && view.TransactionId != null)
+            {
+                <p class="small text-body-secondary mb-0">@L["MoveHelp"]</p>
+            }
+            @if (error != null)
+            {
+                <div class="text-danger small" role="alert">@error</div>
+            }
+        </div>
+    }
+    @if (moving is { } m && PickerData != null)
+    {
+        <CategoryPicker Data="PickerData" CurrentCategoryId="m.CategoryId" AllowRemove="false" X="pickerX" Y="pickerY"
+                        OnPick="id => MoveAsync(m.Id, id)" OnClose="() => moving = null" />
+    }
+</Modal>
+
+@code {
+    /// <summary>The receipt to show (null: the dialog is closed).</summary>
+    [Parameter] public long? ReceiptId { get; set; }
+    /// <summary>Categories for moving an item; without them items cannot be moved.</summary>
+    [Parameter] public CategoryPickerData? PickerData { get; set; }
+    /// <summary>Whether the signed-in user may move items (the receipt's owner).</summary>
+    [Parameter] public bool CanEdit { get; set; }
+    /// <summary>The name for lines in the booking's own category (null category).</summary>
+    [Parameter] public string? BookingCategoryName { get; set; }
+    /// <summary>The part to show first (its index), or all.</summary>
+    [Parameter] public int? InitialPart { get; set; }
+    /// <summary>The dialog closed; true when an item was moved.</summary>
+    [Parameter] public EventCallback<bool> OnClose { get; set; }
+
+    private BookingReceiptView? view;
+    private long? loadedFor;
+    private int? part;
+    private string? search;
+    private readonly HashSet<int> openExtras = [];
+    private ReceiptLineView? moving;
+    private double pickerX, pickerY;
+    private bool changed;
+    private string? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReceiptId == loadedFor) return;
+        loadedFor = ReceiptId;
+        view = null;
+        changed = false;
+        search = null;
+        error = null;
+        openExtras.Clear();
+        part = InitialPart;
+        if (ReceiptId is { } id) view = await Service.GetReceiptAsync(id);
+        if (view != null && part is { } p && p >= view.Groups.Count) part = null;
+    }
+
+    private bool Matches(ReceiptLineView line) =>
+        string.IsNullOrWhiteSpace(search) || line.Name.Contains(search.Trim(), StringComparison.CurrentCultureIgnoreCase);
+
+    private string CategoryName(long? id) =>
+        id is { } c && PickerData != null ? PickerData.PathOf(c, BookingCategoryName ?? L["NoCategory"]) : BookingCategoryName ?? L["NoCategory"];
+
+    private string ShortName(long? id)
+    {
+        var name = CategoryName(id);
+        var at = name.LastIndexOf('›');
+        return at >= 0 ? name[(at + 1)..].Trim() : name;
+    }
+
+    private void OpenPicker(ReceiptLineView line, MouseEventArgs e) => (moving, pickerX, pickerY) = (line, e.ClientX, e.ClientY);
+
+    private async Task MoveAsync(long itemId, long? picked)
+    {
+        moving = null;
+        error = null;
+        if (picked is not { } category || ReceiptId is not { } id) return;
+        try
+        {
+            await Service.MoveItemAsync(itemId, category);
+            changed = true;
+            view = await Service.GetReceiptAsync(id);
+            if (view != null && part is { } p && p >= view.Groups.Count) part = null;
+        }
+        catch (Exception ex) when (ex is AccessDeniedException or SplitException or InvalidOperationException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task CloseAsync()
+    {
+        var was = changed;
+        loadedFor = null;
+        view = null;
+        await OnClose.InvokeAsync(was);
+    }
+}

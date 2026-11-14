@@ -11,11 +11,11 @@ public static class OneDriveRegistration
     /// <summary>The "return" value of the connect URL that brings the sign-in back to Get started's Portfolio Performance step.</summary>
     public const string GetStartedReturn = "get-started";
 
-    /// <summary>The "return" value of the connect URL that asks for mail access and brings the sign-in back to the receipts page.</summary>
+    /// <summary>The "return" value of the connect URL that asks for mail access and brings the sign-in back to the connections page (the mailbox card).</summary>
     public const string ReceiptsReturn = "receipts";
 
-    /// <summary>The receipts settings page (mail access, non-food category, read receipts).</summary>
-    public const string ReceiptsPath = "/receipts";
+    /// <summary>The connections page, whose mailbox card asks for mail access.</summary>
+    public const string ReceiptsPath = "/connections";
 
     private const string GetStartedPath = "/get-started?step=3";
     private const string ReturnCookie = "OpenBudget.OneDriveReturn";
@@ -44,13 +44,13 @@ public static class OneDriveRegistration
         {
             if (!oneDrive.IsEnabled || http.User.FindFirstValue(ClaimTypes.NameIdentifier) is not { Length: > 0 } userId)
                 return Results.NotFound();
-            // Where the callback leads back to (only Get started, the receipts page or the settings page).
+            // Where the callback leads back to (only Get started, the connections page or the settings page).
             var back = http.Request.Query["return"].ToString();
             if (back is GetStartedReturn or ReceiptsReturn)
                 http.Response.Cookies.Append(ReturnCookie, back, new CookieOptions { HttpOnly = true, Secure = http.Request.IsHttps, SameSite = SameSiteMode.Lax, MaxAge = TimeSpan.FromMinutes(30) });
             else
                 http.Response.Cookies.Delete(ReturnCookie);
-            // Mail access is asked for from the receipts page, and kept when reconnecting a connection that has it.
+            // Mail access is asked for from the mailbox card, and kept when reconnecting a connection that has it.
             var mail = back == ReceiptsReturn || await oneDrive.HasMailAccessAsync(userId, ct);
             return Results.Redirect(oneDrive.BeginConnect(userId, RedirectUri(http.Request), mail).AbsoluteUri);
         });

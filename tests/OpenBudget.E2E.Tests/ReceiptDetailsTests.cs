@@ -8,8 +8,8 @@ using OpenBudget.Tests.Receipts;
 namespace OpenBudget.E2E.Tests;
 
 /// <summary>
-/// A REWE direct debit with a made-up receipt: the booking is split into food and non-food, its details list the
-/// receipt's items by part, and moving an item to another category splits it again.
+/// A REWE direct debit with a made-up receipt: the booking is split into food and non-food, its details show the
+/// receipt's parts, the receipt panel lists the items, and moving an item to another category there splits it again.
 /// </summary>
 [TestFixture]
 public sealed class ReceiptDetailsTests : EndToEndTestBase
@@ -43,15 +43,23 @@ public sealed class ReceiptDetailsTests : EndToEndTestBase
 
         var receipt = Page.GetByTestId("tx-receipt");
         await Expect(receipt).ToContainTextAsync("B-AAA-BBB-CC1");
-        await Expect(receipt.Locator($"[data-category='{Energy}']")).ToContainTextAsync("Musterdeo Roll-On Fresh 50ml");
-        await Expect(receipt.Locator($"[data-category='{Groceries}']")).ToContainTextAsync("Apfelschorle 0,5l ×2");
+        await Expect(receipt.Locator($"[data-category='{Energy}']")).ToContainTextAsync("(2)");
 
-        await receipt.GetByTestId("tx-receipt-line").Filter(new() { HasText = "Apfelschorle" }).ClickAsync();
+        // The receipt panel lists the items; moving one re-splits the booking and the panel shows the result.
+        await receipt.GetByTestId("tx-receipt-open").ClickAsync();
+        var panel = Page.GetByTestId("receipt-panel");
+        var schorle = panel.GetByTestId("receipt-panel-line").Filter(new() { HasText = "Apfelschorle" });
+        await Expect(schorle).ToHaveCountAsync(1);
+        await schorle.GetByTestId("receipt-panel-category").ClickAsync();
         await Page.GetByTestId("category-picker").GetByTestId("category-picker-option").Filter(new() { HasText = EditingSeed.EnergyCategory }).First.ClickAsync();
+        await Expect(panel.GetByTestId("receipt-panel-line").Filter(new() { HasText = "Apfelschorle" }).GetByTestId("receipt-panel-category"))
+            .ToContainTextAsync(EditingSeed.EnergyCategory);
+        await Page.Keyboard.PressAsync("Escape");
+        await Expect(panel).ToHaveCountAsync(0);
 
-        // The parts are written anew: the list shows the new amounts.
+        // The parts are written anew: the list shows the new amounts and the details the new part.
         await Expect(rows.Filter(new() { HasText = "4,12" })).ToHaveCountAsync(0);
-        await rows.First.ClickAsync();
-        await Expect(Page.GetByTestId("tx-receipt").Locator($"[data-category='{Energy}']")).ToContainTextAsync("Apfelschorle 0,5l ×2");
+        if (await Page.GetByTestId("tx-receipt").CountAsync() == 0) await rows.First.ClickAsync();
+        await Expect(Page.GetByTestId("tx-receipt").Locator($"[data-category='{Energy}']")).ToContainTextAsync("(3)");
     }
 }

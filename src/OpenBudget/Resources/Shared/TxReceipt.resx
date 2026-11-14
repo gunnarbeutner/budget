@@ -61,13 +61,10 @@
   <data name="Receipt" xml:space="preserve">
     <value>Receipt</value>
   </data>
-  <data name="Bonus" xml:space="preserve">
-    <value>bonus credit {0}</value>
-  </data>
-  <data name="Move" xml:space="preserve">
-    <value>Move {0} to another category</value>
-  </data>
   <data name="NoCategory" xml:space="preserve">
     <value>No category</value>
+  </data>
+  <data name="Items" xml:space="preserve">
+    <value>{0} items</value>
   </data>
 </root>

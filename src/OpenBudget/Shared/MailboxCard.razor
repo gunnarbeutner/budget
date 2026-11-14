@@ -1,0 +1,179 @@
+@inherits DataChangeAwareComponent
+@using OpenBudget.Connectors.OneDrive
+@using OpenBudget.Connectors.Receipts
+@using OpenBudget.Models
+@using OpenBudget.Services
+@inject ReceiptService Service
+@inject NavigationManager Navigation
+@inject ClockService Clock
+@inject IStringLocalizer<MailboxCard> L
+
+@* The mailbox as a receipt source on the connections page, like the shop logins: mail access through the user's
+   Microsoft connection (grant, check now, stop), the formats it recognises, its receipts (read, matched, waiting for
+   a booking, unreadable) and the source's item categories. Everything is the signed-in user's own. *@
+
+<div class="card bank-login-card mt-3" data-testid="mailbox-card">
+    <div class="card-header bank-login-header">
+        <div class="bank-login-title">
+            <h5 class="mb-1">@L["Title"]</h5>
+            <div class="bank-login-meta small text-body-secondary">
+                <span>@L["Formats"]</span>
+                @if (settings != null)
+                {
+                    <span aria-hidden="true">·</span>
+                    <span>@L["LastCheck"]: <span data-testid="receipts-mail-checked">@(settings.MailCheckedAt is { } c ? Clock.ToLocal(c).ToString("yyyy-MM-dd HH:mm") : L["Never"].Value)</span></span>
+                    @if (Checking)
+                    {
+                        <span class="badge rounded-pill bank-pill-info" data-testid="mailbox-status">@L["Checking"]</span>
+                    }
+                    else if (settings.MailLastError != null || settings.Connection is { NeedsReconnect: true })
+                    {
+                        <span class="badge rounded-pill bank-pill-error" data-testid="mailbox-status">@L["Pill_Error"]</span>
+                    }
+                    else if (settings.Connection is { MailAccess: true } && settings.MailCheckedAt != null)
+                    {
+                        <span class="badge rounded-pill bank-pill-ok" data-testid="mailbox-status">@L["Pill_Ok"]</span>
+                    }
+                }
+            </div>
+        </div>
+        @if (settings is { MicrosoftAvailable: true })
+        {
+            <div class="bank-login-actions">
+                @if (settings.Connection is { MailAccess: true } connection)
+                {
+                    <button type="button" class="btn btn-sm btn-primary" data-testid="receipts-mail-check" disabled="@(Checking || connection.NeedsReconnect)" @onclick="CheckAsync">
+                        @if (Checking)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+                        }
+                        @L["CheckNow"]
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" data-testid="receipts-mail-stop" @onclick="StopAsync">@L["Stop"]</button>
+                }
+                else
+                {
+                    <a class="btn btn-sm btn-primary" href="@GrantHref" target="_top" data-testid="receipts-mail-grant">
+                        <i class="bi bi-microsoft" aria-hidden="true"></i> @L["Grant"]
+                    </a>
+                }
+            </div>
+        }
+    </div>
+    <div class="card-body">
+        @if (notice is { } n)
+        {
+            <div class="alert @(n.Ok ? "alert-success" : "alert-warning") py-2" role="status" data-testid="receipts-notice">@n.Text</div>
+        }
+        @if (settings == null)
+        {
+            <div class="skeleton skeleton-line" style="width: 40%;"></div>
+        }
+        else if (!settings.MicrosoftAvailable)
+        {
+            <p class="text-body-secondary small mb-0" data-testid="receipts-mail-unavailable">@L["Unavailable"]</p>
+        }
+        else
+        {
+            @if (settings.Connection is not { MailAccess: true })
+            {
+                <p class="small mb-2" data-testid="receipts-mail-status"><i class="bi bi-envelope-x" aria-hidden="true"></i> @L["NotGranted"]</p>
+                <p class="small text-body-secondary">@L["GrantHelp"]</p>
+            }
+            else
+            {
+                <p class="small mb-2" data-testid="receipts-mail-status"><i class="bi bi-envelope-check" aria-hidden="true"></i> @L["Granted", settings.Connection.AccountName ?? ""]</p>
+                @if (settings.Connection.NeedsReconnect)
+                {
+                    <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2 py-2" role="alert" data-testid="receipts-mail-reconnect">
+                        <span>@(settings.Connection.LastError ?? L["Reconnect"].Value)</span>
+                        <a class="btn btn-sm btn-warning" href="@GrantHref" target="_top">@L["Reconnect"]</a>
+                    </div>
+                }
+                @if (settings.MailLastError is { } err)
+                {
+                    <div class="alert alert-danger py-2" role="alert" data-testid="receipts-mail-error">@err</div>
+                }
+            }
+            <h6 class="bank-accounts-heading">@L["Receipts_Heading"]</h6>
+            @if (summary != null)
+            {
+                <p class="small mb-1" data-testid="mailbox-summary">
+                    @L["Summary", summary.Count, summary.Matched, summary.OpenCount]
+                    @if (settings.MailUnreadable > 0)
+                    {
+                        <span class="text-warning-emphasis" data-testid="mailbox-unreadable"> · @L["Unreadable", settings.MailUnreadable]</span>
+                    }
+                    · <a href="/receipts">@L["Receipts_Link"]</a>
+                </p>
+            }
+            <ReceiptSourceCategories Source="@ReceiptSources.Mail" />
+        }
+    </div>
+</div>
+
+@code {
+    private sealed record Notice(bool Ok, string Text);
+
+    private ReceiptSettingsView? settings;
+    private ReceiptSourceSummary? summary;
+    private Notice? notice;
+    private bool checking;
+    private string? userId;
+
+    // A read started elsewhere (the schedule, or this page before it was left) shows as running too.
+    private bool Checking => checking || (userId != null && Service.IsReadingMail(userId));
+
+    private static string GrantHref => $"{OneDriveOptions.ConnectPath}?return={OneDriveRegistration.ReceiptsReturn}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
+        if (query.TryGetValue("onedrive", out var outcome))
+            notice = outcome.ToString() == "connected" ? new Notice(true, L["Outcome_Connected"]) : new Notice(false, L["Outcome_Failed"]);
+        await LoadAsync();
+        if (notice is { Ok: true } && settings?.Connection is { MailAccess: false })
+            notice = new Notice(false, L["Outcome_NoMail"]);
+    }
+
+    protected override bool IsRelevantChange(DataChange change) =>
+        (change.Area == DataArea.CloudFiles && change.UserId == userId) || (change.Area == DataArea.ImportedData && change.OwnerUserId == userId);
+
+    protected override Task ReloadAfterChangeAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        userId = (await Access.GetAsync()).UserId;
+        if (userId == null) return;
+        settings = await Service.GetSettingsAsync();
+        summary = await Service.GetShopsSummaryAsync([ReceiptShops.Rewe, ReceiptShops.ReweEbon]);
+    }
+
+    private async Task CheckAsync()
+    {
+        checking = true;
+        try
+        {
+            var result = await Service.CheckMailNowAsync();
+            notice = result.Error is { } e
+                ? new Notice(false, e)
+                : new Notice(true, L["Checked", result.Mails, result.NewReceipts] + (result.Unreadable > 0 ? " " + L["Checked_Unreadable", result.Unreadable] : ""));
+        }
+        finally
+        {
+            checking = false;
+        }
+        await LoadAsync();
+    }
+
+    private async Task StopAsync()
+    {
+        await Service.StopMailAsync();
+        notice = null;
+        await LoadAsync();
+    }
+}

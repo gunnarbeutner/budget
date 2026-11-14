@@ -1,89 +1,59 @@
+@using System.Globalization
 @using OpenBudget.Connectors.Receipts
 @using OpenBudget.Services
 @inject IStringLocalizer<TxReceipt> L
 
-@* A booking's receipt in its details: the receipt's lines grouped like the booking's split parts (category and
-   amount, then the lines). The owner can move a line to another category: the receipt remembers it for the product
-   and splits the booking again. *@
+@* A booking's receipt in its details, compact: one line (shop, number, date, item count) and a chip per part the
+   receipt splits the booking into (category, amount, item count), the shown part highlighted. The line or a chip
+   opens the receipt panel with all items, where the owner moves items to other categories. *@
 
 <div class="tx-details-purpose" data-testid="tx-receipt">
-    <b class="text-body me-1">@L["Receipt"]</b>
-    <span class="text-body-secondary">@Receipt.Title@(Receipt.DeliveryDate is { } d ? " · " + d.ToString("dd.MM.yyyy") : "")</span>
-    @if (Receipt.BonusCents != 0)
-    {
-        <span class="text-body-secondary"> · @L["Bonus", Formatting.FormatMoneyDe(Receipt.BonusCents / 100m)]</span>
-    }
-    @foreach (var group in Receipt.Groups)
-    {
-        <div class="mt-1" data-testid="tx-receipt-group" data-category="@group.CategoryId">
-            <b>@CategoryName(group.CategoryId)</b>
-            <span class="text-body-secondary">@Formatting.FormatMoneyDe(group.AmountCents / 100m)</span>:
-            @for (var i = 0; i < group.Lines.Count; i++)
-            {
-                var line = group.Lines[i];
-                @if (CanEdit && PickerData != null)
-                {
-                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline text-reset" data-testid="tx-receipt-line"
-                            title="@L["Move", line.Name]" @onclick="e => OpenPicker(line.Id, group.CategoryId, e)">@Label(line)</button>
-                }
-                else
-                {
-                    <span data-testid="tx-receipt-line">@Label(line)</span>
-                }
-                @(i < group.Lines.Count - 1 ? "; " : "")
-            }
-        </div>
-    }
-    @if (moving is { } movingId && PickerData != null)
-    {
-        <CategoryPicker Data="PickerData" CurrentCategoryId="movingFrom" AllowRemove="false" X="pickerX" Y="pickerY"
-                        OnPick="id => MoveAsync(movingId, id)" OnClose="() => moving = null" />
-    }
-    @if (error != null)
-    {
-        <div class="text-danger small">@error</div>
-    }
+    <button type="button" class="btn btn-link btn-sm p-0 align-baseline text-reset text-start" data-testid="tx-receipt-open" @onclick="() => Open(null)">
+        <b class="text-body me-1">@L["Receipt"]</b>
+        <span class="text-body-secondary">@Receipt.Title@(Receipt.DeliveryDate is { } d ? " · " + d.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) : "") · @L["Items", Receipt.ItemCount]</span>
+    </button>
+    <div class="d-flex flex-wrap gap-1 mt-1">
+        @for (var i = 0; i < Receipt.Groups.Count; i++)
+        {
+            var index = i;
+            var group = Receipt.Groups[i];
+            var shown = HighlightCategoryId != null && group.CategoryId == HighlightCategoryId;
+            <button type="button" class="badge rounded-pill border @(shown ? "text-bg-primary" : "text-bg-light")" data-testid="tx-receipt-group"
+                    data-category="@group.CategoryId" aria-current="@(shown ? "true" : null)" @onclick="() => Open(index)">
+                @ShortName(group.CategoryId) @Formatting.FormatMoneyDe(group.AmountCents / 100m) (@group.Lines.Count)
+            </button>
+        }
+    </div>
+    <ReceiptPanel ReceiptId="openId" InitialPart="openPart" PickerData="PickerData" CanEdit="CanEdit" BookingCategoryName="@BookingCategoryName" OnClose="ClosedAsync" />
 </div>
 
 @code {
     [Parameter, EditorRequired] public BookingReceiptView Receipt { get; set; } = null!;
-    /// <summary>Categories for moving a line; without them lines cannot be moved.</summary>
+    /// <summary>Categories for naming the parts and moving items; without them items cannot be moved.</summary>
     [Parameter] public CategoryPickerData? PickerData { get; set; }
-    /// <summary>Whether the signed-in user may move lines (the receipt's owner).</summary>
+    /// <summary>Whether the signed-in user may move items (the receipt's owner).</summary>
     [Parameter] public bool CanEdit { get; set; }
     [Parameter] public string? BookingCategoryName { get; set; }
-    /// <summary>A line was moved: the page reloads.</summary>
+    /// <summary>The category of the split part shown (its chip is highlighted), or null when the whole booking is shown.</summary>
+    [Parameter] public long? HighlightCategoryId { get; set; }
+    /// <summary>Items were moved (the panel closed after a change): the details reload.</summary>
     [Parameter] public EventCallback OnChanged { get; set; }
 
-    [Inject] private ReceiptService Service { get; set; } = null!;
+    private long? openId;
+    private int? openPart;
 
-    private long? moving;
-    private long? movingFrom;
-    private double pickerX, pickerY;
+    private void Open(int? part) => (openId, openPart) = (Receipt.ReceiptId, part);
 
-    private void OpenPicker(long itemId, long? from, MouseEventArgs e) => (moving, movingFrom, pickerX, pickerY) = (itemId, from, e.ClientX, e.ClientY);
-    private string? error;
-
-    private string CategoryName(long? id) =>
-        id is { } c && PickerData != null ? PickerData.PathOf(c, BookingCategoryName ?? L["NoCategory"]) : BookingCategoryName ?? L["NoCategory"];
-
-    private static string Label(ReceiptLineView line) =>
-        (int.TryParse(line.Quantity, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var q) && q > 1 ? $"{line.Name} ×{q}" : line.Name)
-        + " " + Formatting.FormatMoneyDe(line.TotalCents / 100m);
-
-    private async Task MoveAsync(long itemId, long? picked)
+    private async Task ClosedAsync(bool changed)
     {
-        moving = null;
-        error = null;
-        if (picked is not { } category) return;
-        try
-        {
-            await Service.MoveItemAsync(itemId, category);
-            await OnChanged.InvokeAsync();
-        }
-        catch (Exception ex) when (ex is AccessDeniedException or SplitException or InvalidOperationException)
-        {
-            error = ex.Message;
-        }
+        openId = null;
+        if (changed) await OnChanged.InvokeAsync();
+    }
+
+    private string ShortName(long? id)
+    {
+        var name = id is { } c && PickerData != null ? PickerData.PathOf(c, BookingCategoryName ?? L["NoCategory"]) : BookingCategoryName ?? L["NoCategory"];
+        var at = name.LastIndexOf('›');
+        return at >= 0 ? name[(at + 1)..].Trim() : name;
     }
 }

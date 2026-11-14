@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Unavailable" xml:space="preserve">
+    <value>Microsoft is not set up on this server, so the mailbox cannot be read.</value>
+  </data>
+  <data name="NotGranted" xml:space="preserve">
+    <value>Mail access: not granted</value>
+  </data>
+  <data name="Grant" xml:space="preserve">
+    <value>Grant</value>
+  </data>
+  <data name="Granted" xml:space="preserve">
+    <value>Mail access: granted ({0})</value>
+  </data>
+  <data name="CheckNow" xml:space="preserve">
+    <value>Check mail now</value>
+  </data>
+  <data name="Stop" xml:space="preserve">
+    <value>Stop reading mail</value>
+  </data>
+  <data name="Reconnect" xml:space="preserve">
+    <value>Reconnect</value>
+  </data>
+  <data name="Never" xml:space="preserve">
+    <value>never</value>
+  </data>
+  <data name="Checked" xml:space="preserve">
+    <value>{0} invoice mails found, {1} new receipts.</value>
+  </data>
+  <data name="Checked_Unreadable" xml:space="preserve">
+    <value>{0} PDFs could not be read.</value>
+  </data>
+  <data name="Outcome_Connected" xml:space="preserve">
+    <value>Mail access granted.</value>
+  </data>
+  <data name="Outcome_NoMail" xml:space="preserve">
+    <value>Signed in, but Microsoft did not grant mail access. Check that the app registration has the Mail.Read permission.</value>
+  </data>
+  <data name="Outcome_Failed" xml:space="preserve">
+    <value>Mail access was not granted.</value>
+  </data>
+  <data name="Title" xml:space="preserve">
+    <value>Mailbox (Microsoft 365)</value>
+  </data>
+  <data name="Formats" xml:space="preserve">
+    <value>Recognises: REWE online invoice, REWE eBon</value>
+  </data>
+  <data name="LastCheck" xml:space="preserve">
+    <value>Last check</value>
+  </data>
+  <data name="Checking" xml:space="preserve">
+    <value>Checking…</value>
+  </data>
+  <data name="Pill_Error" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="Pill_Ok" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="Receipts_Heading" xml:space="preserve">
+    <value>Receipts</value>
+  </data>
+  <data name="Summary" xml:space="preserve">
+    <value>{0} receipts read, {1} matched, {2} waiting for a booking</value>
+  </data>
+  <data name="Unreadable" xml:space="preserve">
+    <value>{0} unreadable in the last check</value>
+  </data>
+  <data name="Receipts_Link" xml:space="preserve">
+    <value>Review receipts</value>
+  </data>
+  <data name="GrantHelp" xml:space="preserve">
+    <value>You sign in with Microsoft and allow OpenBudget to read your mail (it only looks at REWE invoice mails and downloads only their PDF). This uses your OneDrive connection, or creates it. The server's Entra app registration needs the delegated Microsoft Graph permission Mail.Read.</value>
+  </data>
+</root>

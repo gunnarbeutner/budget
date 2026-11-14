@@ -5,8 +5,9 @@ using OpenBudget.Tests.Receipts;
 namespace OpenBudget.E2E.Tests;
 
 /// <summary>
-/// The Receipts settings page against the fake Microsoft: mail access starts as not granted, "Grant" signs in asking
-/// for Mail.Read, "Check mail now" reads a made-up invoice mail and the receipt is listed until its booking arrives.
+/// The mailbox card on the connections page against the fake Microsoft: mail access starts as not granted, "Grant"
+/// signs in asking for Mail.Read, "Check mail now" reads a made-up invoice mail, and the receipts page lists the
+/// receipt until its booking arrives and opens it in the receipt panel.
 /// </summary>
 [TestFixture]
 public sealed class ReceiptsSettingsTests : EndToEndTestBase
@@ -35,23 +36,31 @@ public sealed class ReceiptsSettingsTests : EndToEndTestBase
             });
         });
 
-        await GoToAsync("/receipts");
+        await GoToAsync("/connections");
         await Expect(Page.GetByTestId("receipts-mail-status")).ToContainTextAsync("not granted");
 
         await Page.GetByTestId("receipts-mail-grant").ClickAsync();
-        await Page.WaitForURLAsync(url => url.Contains("/receipts?onedrive=connected", StringComparison.Ordinal));
+        await Page.WaitForURLAsync(url => url.Contains("/connections?onedrive=connected", StringComparison.Ordinal));
         await WaitForInteractiveAsync();
         await Expect(Page.GetByTestId("receipts-notice")).ToContainTextAsync("Mail access granted");
         await Expect(Page.GetByTestId("receipts-mail-status")).ToContainTextAsync("e2e@example.org");
 
         await Page.GetByTestId("receipts-mail-check").ClickAsync();
         await Expect(Page.GetByTestId("receipts-notice")).ToContainTextAsync("1 new receipts");
+        await Expect(Page.GetByTestId("mailbox-summary")).ToContainTextAsync("receipts read");
+        await Page.GetByTestId("receipts-mail-stop").ClickAsync();
+        await Expect(Page.GetByTestId("receipts-mail-grant")).ToBeVisibleAsync();
+
+        await GoToAsync("/receipts");
         // Other receipt tests may have added rows of their own: this test's row is found by its order number.
         var row = Page.GetByTestId("receipt-row").Filter(new() { HasText = "B-AAA-BBB-C99" });
         await Expect(row).ToHaveCountAsync(1);
-        await Expect(row).ToContainTextAsync("no booking yet");
+        await Expect(row).ToHaveAttributeAsync("data-state", new System.Text.RegularExpressions.Regex("^(waiting|unmatched)$"));
+        await Expect(row.GetByTestId("receipt-assign")).ToBeVisibleAsync();
 
-        await Page.GetByTestId("receipts-mail-stop").ClickAsync();
-        await Expect(Page.GetByTestId("receipts-mail-grant")).ToBeVisibleAsync();
+        await row.GetByTestId("receipt-open").ClickAsync();
+        var panel = Page.GetByTestId("receipt-panel");
+        await Expect(panel.GetByTestId("receipt-panel-line").Filter(new() { HasText = "Apfelschorle" })).ToHaveCountAsync(1);
+        await Expect(panel.GetByTestId("receipt-panel-paid")).ToContainTextAsync("15,28");
     }
 }

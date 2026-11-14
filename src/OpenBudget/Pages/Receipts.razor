@@ -1,154 +1,211 @@
 @page "/receipts"
 @inherits DataChangeAwareComponent
-@using OpenBudget.Connectors.OneDrive
+@using System.Globalization
 @using OpenBudget.Connectors.Receipts
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject ReceiptService Service
-@inject NavigationManager Navigation
-@inject ClockService Clock
+@inject CategorizationService Categorization
 @inject IStringLocalizer<Receipts> L
 
-@* Supermarket receipts: mail access through the user's Microsoft connection (grant, check now, stop), where non-food
-   items go, and the receipts read so far with the booking each one was matched to. Everything is the signed-in
-   user's own. *@
+@* The receipts of all sources (mailbox, Lidl Plus, Amazon) for review: filterable by source and state; a receipt
+   opens in the receipt panel; an ambiguous or unmatched one can be assigned to a booking by hand or marked as having
+   no booking in the app. Below: each source's item categories, the item memory (product → category, editable) and
+   how the AI takes part. Everything is the signed-in user's own; the sources themselves are on the connections page. *@
 
 <PageTitle>@L["PageTitle"]</PageTitle>
 
 <SettingsShell Active="receipts">
 <PageHeader Title="@L["Heading"]" />
 
-<p class="text-body-secondary">@L["Intro"]</p>
+<p class="text-body-secondary">@L["Intro"] <a href="/connections">@L["Intro_Connections"]</a></p>
 
-@if (notice is { } n)
+@if (error != null)
 {
-    <div class="alert @(n.Ok ? "alert-success" : "alert-warning") py-2" role="status" data-testid="receipts-notice">@n.Text</div>
+    <div class="alert alert-warning py-2" role="alert">@error</div>
 }
 
-@if (settings == null)
-{
-    <div class="skeleton skeleton-line" style="width: 40%;"></div>
-}
-else
-{
-    <section class="mb-4" data-testid="receipts-mail">
-        <h2 class="h5">@L["Mail_Heading"]</h2>
-        @if (!settings.MicrosoftAvailable)
-        {
-            <p class="text-body-secondary small" data-testid="receipts-mail-unavailable">@L["Mail_Unavailable"]</p>
-        }
-        else if (settings.Connection is not { MailAccess: true } connection)
-        {
-            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                <span data-testid="receipts-mail-status"><i class="bi bi-envelope-x" aria-hidden="true"></i> @L["Mail_NotGranted"]</span>
-                <a class="btn btn-sm btn-primary" href="@GrantHref" target="_top" data-testid="receipts-mail-grant">
-                    <i class="bi bi-microsoft" aria-hidden="true"></i> @L["Mail_Grant"]
-                </a>
-            </div>
-            <p class="small text-body-secondary">@L["Mail_GrantHelp"]</p>
-        }
-        else
-        {
-            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                <span data-testid="receipts-mail-status"><i class="bi bi-envelope-check" aria-hidden="true"></i> @L["Mail_Granted", connection.AccountName ?? ""]</span>
-                <button type="button" class="btn btn-sm btn-outline-primary" data-testid="receipts-mail-check" disabled="@(Checking || connection.NeedsReconnect)" @onclick="CheckAsync">
-                    @if (Checking)
+<section class="mb-4" data-testid="receipts-list">
+    <div class="d-flex flex-wrap align-items-end gap-2 mb-2">
+        <h2 class="h5 me-auto mb-0">@L["List_Heading"]</h2>
+        <select class="form-select form-select-sm w-auto" aria-label="@L["Filter_Source"]" data-testid="receipts-filter-source"
+                value="@(source ?? "")" @onchange="e => FilterAsync(e.Value?.ToString() is { Length: > 0 } v ? v : null, state)">
+            <option value="">@L["Filter_AllSources"]</option>
+            @foreach (var s in ReceiptSources.All)
+            {
+                <option value="@s">@L["Source_" + s]</option>
+            }
+        </select>
+        <select class="form-select form-select-sm w-auto" aria-label="@L["Filter_State"]" data-testid="receipts-filter-state"
+                value="@(state?.ToString() ?? "")" @onchange="e => FilterAsync(source, Enum.TryParse<ReceiptReviewState>(e.Value?.ToString(), out var st) ? st : null)">
+            <option value="">@L["Filter_AllStates"]</option>
+            @foreach (var st in Enum.GetValues<ReceiptReviewState>())
+            {
+                <option value="@st">@L["State_" + st]</option>
+            }
+        </select>
+    </div>
+    @if (rows == null)
+    {
+        <div class="skeleton skeleton-line" style="width: 40%;"></div>
+    }
+    else if (rows.Count == 0)
+    {
+        <p class="small text-body-secondary" data-testid="receipts-none">@L["List_None"]</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>@L["List_Date"]</th>
+                        <th>@L["List_Receipt"]</th>
+                        <th class="text-end">@L["List_Amount"]</th>
+                        <th class="d-none d-md-table-cell text-end">@L["List_Items"]</th>
+                        <th>@L["List_Status"]</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in rows)
                     {
-                        <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+                        <tr data-testid="receipt-row" data-state="@r.State.ToString().ToLowerInvariant()" data-source="@r.Source">
+                            <td class="text-nowrap">@r.Date?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</td>
+                            <td class="text-break">
+                                @if (r.IsAmazon)
+                                {
+                                    @r.Title
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline text-start" data-testid="receipt-open" @onclick="() => openId = r.Id">@r.Title</button>
+                                }
+                            </td>
+                            <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(-r.PaymentCents / 100m)</td>
+                            <td class="d-none d-md-table-cell text-end">@r.Items</td>
+                            <td>@Status(r)</td>
+                            <td class="text-end text-nowrap">
+                                @if (!r.IsAmazon && r.State is ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched or ReceiptReviewState.Waiting)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-primary" data-testid="receipt-assign" @onclick="() => OpenAssignAsync(r)">@L["Assign"]</button>
+                                }
+                                else if (!r.IsAmazon && r.State == ReceiptReviewState.Dismissed)
+                                {
+                                    <button type="button" class="btn btn-sm btn-link" data-testid="receipt-reset" @onclick="() => RunAsync(() => Service.ResetAssignmentAsync(r.Id))">@L["Reset"]</button>
+                                }
+                            </td>
+                        </tr>
                     }
-                    @L["Mail_CheckNow"]
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-danger" data-testid="receipts-mail-stop" @onclick="StopAsync">@L["Mail_Stop"]</button>
-            </div>
-            @if (connection.NeedsReconnect)
-            {
-                <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2 py-2" role="alert" data-testid="receipts-mail-reconnect">
-                    <span>@(connection.LastError ?? L["Mail_Reconnect"].Value)</span>
-                    <a class="btn btn-sm btn-warning" href="@GrantHref" target="_top">@L["Mail_Reconnect"]</a>
-                </div>
-            }
-            <p class="small text-body-secondary mb-1" data-testid="receipts-mail-checked">
-                @L["Mail_LastChecked", settings.MailCheckedAt is { } c ? Clock.ToLocal(c).ToString("dd.MM.yyyy HH:mm") : L["Never"].Value]
-            </p>
-            @if (settings.MailLastError is { } err)
-            {
-                <div class="text-danger small" data-testid="receipts-mail-error">@err</div>
-            }
-        }
-    </section>
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
 
-    <section class="mb-4" data-testid="receipts-categories">
-        <h2 class="h5">@L["Categories_Heading"]</h2>
-        @foreach (var source in new[] { ReceiptSources.Mail, ReceiptSources.Lidl })
-        {
-            <div class="mb-3">
-                <b class="small">@L["Source_" + source]</b>
-                <ReceiptSourceCategories Source="@source" />
-            </div>
-        }
-    </section>
+<section class="mb-4" data-testid="receipts-categories">
+    <h2 class="h5">@L["Categories_Heading"]</h2>
+    @foreach (var s in new[] { ReceiptSources.Mail, ReceiptSources.Lidl })
+    {
+        <div class="mb-3">
+            <b class="small">@L["Source_" + s]</b>
+            <ReceiptSourceCategories Source="@s" />
+        </div>
+    }
+    <p class="small text-body-secondary">@L["Categories_Amazon"]</p>
+</section>
 
-    <section data-testid="receipts-list">
-        <h2 class="h5">@L["List_Heading"]</h2>
-        @if (receipts.Count == 0)
+<section class="mb-4" data-testid="receipts-memory">
+    <h2 class="h5">@L["Memory_Heading"]</h2>
+    <p class="small text-body-secondary">@L["Memory_Help"]</p>
+    @if (memory is { Count: 0 })
+    {
+        <p class="small text-body-secondary" data-testid="receipts-memory-none">@L["Memory_None"]</p>
+    }
+    else if (memory != null && picker != null)
+    {
+        <input type="search" class="form-control form-control-sm mb-2" style="max-width: 20rem;" placeholder="@L["Memory_Search"]" aria-label="@L["Memory_Search"]" @bind="memorySearch" @bind:event="oninput" />
+        <ul class="list-unstyled small">
+            @foreach (var m in memory.Where(m => string.IsNullOrWhiteSpace(memorySearch) || m.Name.Contains(memorySearch.Trim(), StringComparison.CurrentCultureIgnoreCase)).Take(200))
+            {
+                <li class="d-flex flex-wrap align-items-center gap-2 mb-1" data-testid="receipts-memory-entry">
+                    <span>@m.Name</span>
+                    <span aria-hidden="true">→</span>
+                    <button type="button" class="badge rounded-pill text-bg-light border" data-testid="receipts-memory-category" @onclick="e => OpenMemoryPicker(m, e)">@picker.PathOf(m.CategoryId, "?")</button>
+                    <button type="button" class="btn btn-sm btn-link p-0 text-danger" aria-label="@L["Memory_Delete", m.Name]" data-testid="receipts-memory-delete"
+                            @onclick="() => RunAsync(() => Service.SetMemoryAsync(m.Id, null))"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                </li>
+            }
+        </ul>
+        @if (memoryEditing is { } editing)
         {
-            <p class="small text-body-secondary" data-testid="receipts-none">@L["List_None"]</p>
+            <CategoryPicker Data="picker" CurrentCategoryId="editing.CategoryId" AllowRemove="false" X="pickerX" Y="pickerY"
+                            OnPick="id => MemoryPickedAsync(editing, id)" OnClose="() => memoryEditing = null" />
+        }
+    }
+</section>
+
+<section class="mb-4" data-testid="receipts-ai">
+    <h2 class="h5">@L["Ai_Heading"]</h2>
+    <p class="small text-body-secondary">@L["Ai_Help"] <a href="/assist">@L["Ai_Link"]</a></p>
+</section>
+
+<ReceiptPanel ReceiptId="openId" PickerData="picker" CanEdit="true" OnClose="PanelClosedAsync" />
+
+<Modal Show="assigning != null" Title="@L["Assign_Title"]" OnClose="() => assigning = null">
+    <ChildContent>
+    @if (assigning is { } a)
+    {
+        <p class="small">@a.Title · @a.Date?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) · @Formatting.FormatMoneyDe(-a.PaymentCents / 100m)</p>
+        @if (candidates == null)
+        {
+            <div class="skeleton skeleton-line" style="width: 50%;"></div>
+        }
+        else if (candidates.Count == 0)
+        {
+            <p class="small text-body-secondary">@L["Assign_None"]</p>
         }
         else
         {
-            <div class="table-responsive">
-                <table class="table table-sm align-middle">
-                    <thead>
-                        <tr>
-                            <th>@L["List_Delivered"]</th>
-                            <th>@L["List_Order"]</th>
-                            <th class="text-end">@L["List_Amount"]</th>
-                            <th class="d-none d-md-table-cell text-end">@L["List_Items"]</th>
-                            <th>@L["List_Status"]</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var r in receipts)
-                        {
-                            <tr data-testid="receipt-row" data-state="@r.State.ToString().ToLowerInvariant()">
-                                <td>@((r.DeliveryDate ?? r.OrderDate)?.ToString("dd.MM.yyyy"))</td>
-                                <td>@r.Title</td>
-                                <td class="text-end">@Formatting.FormatMoneyDe(-r.PaymentCents / 100m)</td>
-                                <td class="d-none d-md-table-cell text-end">@r.Items</td>
-                                <td>@Status(r)</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
+            <div class="list-group mb-2" data-testid="receipt-candidates">
+                @foreach (var c in candidates)
+                {
+                    <button type="button" class="list-group-item list-group-item-action small" data-testid="receipt-candidate"
+                            @onclick="() => AssignAsync(a.Id, c.TransactionId)">
+                        <span class="text-nowrap">@c.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</span>
+                        · <b class="text-nowrap">@Formatting.FormatMoneyDe(c.AmountCents / 100m)</b>
+                        · @c.Name <span class="text-body-secondary">@c.Purpose</span>
+                    </button>
+                }
             </div>
         }
-    </section>
-}
+    }
+    </ChildContent>
+    <Footer>
+        @if (assigning is { } a)
+        {
+            <button type="button" class="btn btn-outline-secondary" data-testid="receipt-dismiss" @onclick="() => AssignAsync(a.Id, null)">@L["Assign_NotInApp"]</button>
+        }
+    </Footer>
+</Modal>
 </SettingsShell>
 
 @code {
-    private sealed record Notice(bool Ok, string Text);
-
-    private ReceiptSettingsView? settings;
-    private List<ReceiptView> receipts = [];
-    private Notice? notice;
-    private bool checking;
-
-    // A read started elsewhere (the schedule, or this page before it was left) shows as running too.
-    private bool Checking => checking || (userId != null && Service.IsReadingMail(userId));
+    private List<ReceiptReviewRow>? rows;
+    private List<ItemMemoryView>? memory;
+    private CategoryPickerData? picker;
+    private string? source;
+    private ReceiptReviewState? state;
     private string? userId;
+    private string? error;
+    private long? openId;
+    private ReceiptReviewRow? assigning;
+    private List<ReceiptCandidate>? candidates;
+    private ItemMemoryView? memoryEditing;
+    private string? memorySearch;
+    private double pickerX, pickerY;
 
-    private static string GrantHref => $"{OneDriveOptions.ConnectPath}?return={OneDriveRegistration.ReceiptsReturn}";
-
-    protected override async Task OnInitializedAsync()
-    {
-        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
-        if (query.TryGetValue("onedrive", out var outcome))
-            notice = outcome.ToString() == "connected" ? new Notice(true, L["Outcome_Connected"]) : new Notice(false, L["Outcome_Failed"]);
-        await LoadAsync();
-        if (notice is { Ok: true } && settings?.Connection is { MailAccess: false })
-            notice = new Notice(false, L["Outcome_NoMail"]);
-    }
+    protected override async Task OnInitializedAsync() => await LoadAsync();
 
     protected override bool IsRelevantChange(DataChange change) =>
         (change.Area == DataArea.CloudFiles && change.UserId == userId) || (change.Area == DataArea.ImportedData && change.OwnerUserId == userId);
@@ -159,39 +216,66 @@ else
     {
         userId = (await Access.GetAsync()).UserId;
         if (userId == null) return;
-        settings = await Service.GetSettingsAsync();
-        receipts = await Service.ListAsync();
+        picker ??= await Categorization.GetPickerDataAsync(userId);
+        rows = await Service.ListAllAsync(source, state);
+        memory = await Service.ListMemoryAsync();
     }
 
-    private string Status(ReceiptView r) => r.State switch
+    private async Task FilterAsync(string? s, ReceiptReviewState? st)
     {
-        ReceiptMatchState.Matched when r.Split => L["Status_Split", r.BookingDate?.ToString("dd.MM.yyyy") ?? ""],
-        ReceiptMatchState.Matched => L["Status_Matched", r.BookingDate?.ToString("dd.MM.yyyy") ?? ""],
-        ReceiptMatchState.Ambiguous => L["Status_Ambiguous"],
-        _ => L["Status_Unmatched"],
-    };
+        (source, state) = (s, st);
+        rows = await Service.ListAllAsync(source, state);
+    }
 
-    private async Task CheckAsync()
+    private string Status(ReceiptReviewRow r)
     {
-        checking = true;
+        var booked = r.BookingDate?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) ?? "";
+        return r.State switch
+        {
+            ReceiptReviewState.Split => L["Status_Split", booked],
+            ReceiptReviewState.Matched => L["Status_Matched", booked],
+            _ => L["State_" + r.State],
+        };
+    }
+
+    private async Task OpenAssignAsync(ReceiptReviewRow r)
+    {
+        assigning = r;
+        candidates = null;
+        candidates = await Service.CandidatesAsync(r.Id);
+    }
+
+    private async Task AssignAsync(long receiptId, long? transactionId)
+    {
+        assigning = null;
+        await RunAsync(() => Service.AssignAsync(receiptId, transactionId));
+    }
+
+    private void OpenMemoryPicker(ItemMemoryView m, MouseEventArgs e) => (memoryEditing, pickerX, pickerY) = (m, e.ClientX, e.ClientY);
+
+    private async Task MemoryPickedAsync(ItemMemoryView m, long? id)
+    {
+        memoryEditing = null;
+        if (id is { } c) await RunAsync(() => Service.SetMemoryAsync(m.Id, c));
+    }
+
+    private async Task PanelClosedAsync(bool changed)
+    {
+        openId = null;
+        if (changed) await LoadAsync();
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        error = null;
         try
         {
-            var result = await Service.CheckMailNowAsync();
-            notice = result.Error is { } e
-                ? new Notice(false, e)
-                : new Notice(true, L["Checked", result.Mails, result.NewReceipts] + (result.Unreadable > 0 ? " " + L["Checked_Unreadable", result.Unreadable] : ""));
+            await action();
         }
-        finally
+        catch (AccessDeniedException ex)
         {
-            checking = false;
+            error = ex.Message;
         }
-        await LoadAsync();
-    }
-
-    private async Task StopAsync()
-    {
-        await Service.StopMailAsync();
-        notice = null;
         await LoadAsync();
     }
 }

@@ -65,52 +65,22 @@
     <value>Receipts</value>
   </data>
   <data name="Intro" xml:space="preserve">
-    <value>OpenBudget reads REWE online-order invoices from your Microsoft 365 mailbox, matches each with its direct debit and splits the booking by the items: food stays in the booking's category, non-food items go to the category you choose below. Move an item to another category in the booking's details and later receipts remember it.</value>
+    <value>All receipts your sources read: each is matched with the booking that paid it, and the booking is split by the items into the source's categories. The sources themselves are set up under</value>
   </data>
-  <data name="Mail_Heading" xml:space="preserve">
-    <value>Mail access</value>
-  </data>
-  <data name="Mail_Unavailable" xml:space="preserve">
-    <value>Microsoft is not set up on this server, so the mailbox cannot be read.</value>
-  </data>
-  <data name="Mail_NotGranted" xml:space="preserve">
-    <value>Mail access: not granted</value>
-  </data>
-  <data name="Mail_Grant" xml:space="preserve">
-    <value>Grant</value>
-  </data>
-  <data name="Mail_GrantHelp" xml:space="preserve">
-    <value>You sign in with Microsoft and allow OpenBudget to read your mail (it only looks at REWE invoice mails and downloads only their PDF). This uses your OneDrive connection, or creates it. The server's Entra app registration needs the delegated Microsoft Graph permission Mail.Read.</value>
-  </data>
-  <data name="Mail_Granted" xml:space="preserve">
-    <value>Mail access: granted ({0})</value>
-  </data>
-  <data name="Mail_CheckNow" xml:space="preserve">
-    <value>Check mail now</value>
-  </data>
-  <data name="Mail_Stop" xml:space="preserve">
-    <value>Stop reading mail</value>
-  </data>
-  <data name="Mail_Reconnect" xml:space="preserve">
-    <value>Reconnect</value>
-  </data>
-  <data name="Mail_LastChecked" xml:space="preserve">
-    <value>Last checked: {0} (checked about every hour in the background)</value>
-  </data>
-  <data name="Never" xml:space="preserve">
-    <value>never</value>
+  <data name="Intro_Connections" xml:space="preserve">
+    <value>Connections.</value>
   </data>
   <data name="List_Heading" xml:space="preserve">
     <value>Receipts read</value>
   </data>
   <data name="List_None" xml:space="preserve">
-    <value>No receipts yet.</value>
+    <value>No receipts.</value>
   </data>
-  <data name="List_Delivered" xml:space="preserve">
-    <value>Delivered</value>
+  <data name="List_Date" xml:space="preserve">
+    <value>Date</value>
   </data>
-  <data name="List_Order" xml:space="preserve">
-    <value>Order</value>
+  <data name="List_Receipt" xml:space="preserve">
+    <value>Receipt</value>
   </data>
   <data name="List_Amount" xml:space="preserve">
     <value>Amount</value>
@@ -121,35 +91,17 @@
   <data name="List_Status" xml:space="preserve">
     <value>Booking</value>
   </data>
-  <data name="Status_Split" xml:space="preserve">
-    <value>split, booked {0}</value>
+  <data name="Filter_Source" xml:space="preserve">
+    <value>Source</value>
   </data>
-  <data name="Status_Matched" xml:space="preserve">
-    <value>booked {0}</value>
+  <data name="Filter_AllSources" xml:space="preserve">
+    <value>All sources</value>
   </data>
-  <data name="Status_Ambiguous" xml:space="preserve">
-    <value>several bookings fit</value>
+  <data name="Filter_State" xml:space="preserve">
+    <value>State</value>
   </data>
-  <data name="Status_Unmatched" xml:space="preserve">
-    <value>no booking yet</value>
-  </data>
-  <data name="Checked" xml:space="preserve">
-    <value>{0} invoice mails found, {1} new receipts.</value>
-  </data>
-  <data name="Checked_Unreadable" xml:space="preserve">
-    <value>{0} PDFs could not be read.</value>
-  </data>
-  <data name="Outcome_Connected" xml:space="preserve">
-    <value>Mail access granted.</value>
-  </data>
-  <data name="Outcome_NoMail" xml:space="preserve">
-    <value>Signed in, but Microsoft did not grant mail access. Check that the app registration has the Mail.Read permission.</value>
-  </data>
-  <data name="Outcome_Failed" xml:space="preserve">
-    <value>Mail access was not granted.</value>
-  </data>
-  <data name="Categories_Heading" xml:space="preserve">
-    <value>Item categories per source</value>
+  <data name="Filter_AllStates" xml:space="preserve">
+    <value>All states</value>
   </data>
   <data name="Source_mail" xml:space="preserve">
     <value>Mailbox (REWE)</value>
@@ -159,5 +111,77 @@
   </data>
   <data name="Source_amazon" xml:space="preserve">
     <value>Amazon</value>
+  </data>
+  <data name="State_Split" xml:space="preserve">
+    <value>split</value>
+  </data>
+  <data name="State_Matched" xml:space="preserve">
+    <value>matched</value>
+  </data>
+  <data name="State_Waiting" xml:space="preserve">
+    <value>waiting for booking</value>
+  </data>
+  <data name="State_Ambiguous" xml:space="preserve">
+    <value>several bookings fit</value>
+  </data>
+  <data name="State_Unmatched" xml:space="preserve">
+    <value>no booking found</value>
+  </data>
+  <data name="State_NoBooking" xml:space="preserve">
+    <value>paid in cash</value>
+  </data>
+  <data name="State_Dismissed" xml:space="preserve">
+    <value>not in this app</value>
+  </data>
+  <data name="Status_Split" xml:space="preserve">
+    <value>split, booked {0}</value>
+  </data>
+  <data name="Status_Matched" xml:space="preserve">
+    <value>booked {0}</value>
+  </data>
+  <data name="Assign" xml:space="preserve">
+    <value>Assign manually</value>
+  </data>
+  <data name="Reset" xml:space="preserve">
+    <value>Match automatically</value>
+  </data>
+  <data name="Assign_Title" xml:space="preserve">
+    <value>Assign receipt</value>
+  </data>
+  <data name="Assign_None" xml:space="preserve">
+    <value>No booking near this date.</value>
+  </data>
+  <data name="Assign_NotInApp" xml:space="preserve">
+    <value>Not in this app</value>
+  </data>
+  <data name="Categories_Heading" xml:space="preserve">
+    <value>Item categories per source</value>
+  </data>
+  <data name="Categories_Amazon" xml:space="preserve">
+    <value>Amazon orders keep their own categorisation (by item) for now.</value>
+  </data>
+  <data name="Memory_Heading" xml:space="preserve">
+    <value>Item memory</value>
+  </data>
+  <data name="Memory_Help" xml:space="preserve">
+    <value>Products you moved to a category on a receipt; later receipts put them there too (when the category is one of the source's).</value>
+  </data>
+  <data name="Memory_None" xml:space="preserve">
+    <value>Nothing remembered yet.</value>
+  </data>
+  <data name="Memory_Search" xml:space="preserve">
+    <value>Search products</value>
+  </data>
+  <data name="Memory_Delete" xml:space="preserve">
+    <value>Forget {0}</value>
+  </data>
+  <data name="Ai_Heading" xml:space="preserve">
+    <value>AI</value>
+  </data>
+  <data name="Ai_Help" xml:space="preserve">
+    <value>If AI suggestions are on, items that neither the item memory nor the keywords place are given to the AI, which chooses only among the source's categories (with their descriptions); otherwise they stay in the default category.</value>
+  </data>
+  <data name="Ai_Link" xml:space="preserve">
+    <value>AI settings</value>
   </data>
 </root>
