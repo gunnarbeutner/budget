@@ -32,26 +32,50 @@ public sealed class OpenAiAssistClient : IAssistClient
 
     public string Model => _options.Model;
 
-    public static JsonObject BuildBody(string model, AssistRequest request) => new()
+    /// <summary>
+    /// The request body. With tools, earlier rounds follow the user message as they came back (reasoning items carry
+    /// their encrypted content, as nothing is stored by the provider), and the tools stay listed in the final round,
+    /// which only forbids calling them.
+    /// </summary>
+    public static JsonObject BuildBody(string model, AssistRequest request)
     {
-        ["model"] = model,
-        ["store"] = false,
-        ["input"] = new JsonArray
+        var input = new JsonArray
         {
             new JsonObject { ["role"] = "system", ["content"] = request.SystemPrompt },
             new JsonObject { ["role"] = "user", ["content"] = request.UserContent },
-        },
-        ["text"] = new JsonObject
+        };
+        foreach (var turn in request.Turns ?? []) input.Add(turn?.DeepClone());
+        var body = new JsonObject
         {
-            ["format"] = new JsonObject
+            ["model"] = model,
+            ["store"] = false,
+            ["input"] = input,
+            ["text"] = new JsonObject
             {
-                ["type"] = "json_schema",
-                ["name"] = request.SchemaName,
-                ["strict"] = true,
-                ["schema"] = request.Schema.DeepClone(),
+                ["format"] = new JsonObject
+                {
+                    ["type"] = "json_schema",
+                    ["name"] = request.SchemaName,
+                    ["strict"] = true,
+                    ["schema"] = request.Schema.DeepClone(),
+                },
             },
-        },
-    };
+        };
+        if (request.Tools.Count > 0)
+        {
+            body["tools"] = new JsonArray(request.Tools.Select(t => (JsonNode)new JsonObject
+            {
+                ["type"] = "function",
+                ["name"] = t.Name,
+                ["description"] = t.Description,
+                ["parameters"] = t.Parameters.DeepClone(),
+                ["strict"] = true,
+            }).ToArray());
+            body["tool_choice"] = request.ToolsDisabled ? "none" : "auto";
+            body["include"] = new JsonArray("reasoning.encrypted_content");
+        }
+        return body;
+    }
 
     public async Task<AssistResponse> CompleteAsync(AssistRequest request, CancellationToken ct = default)
     {
@@ -73,10 +97,17 @@ public sealed class OpenAiAssistClient : IAssistClient
             throw new AssistException("The AI service sent an unreadable answer.", ex);
         }
         string? text = null, refusal = null;
+        var calls = new List<AssistToolCall>();
         foreach (var item in root?["output"]?.AsArray() ?? [])
         {
-            if (item?["type"]?.GetValue<string>() != "message") continue;
-            foreach (var part in item["content"]?.AsArray() ?? [])
+            var itemType = item?["type"]?.GetValue<string>();
+            if (itemType == "function_call")
+            {
+                calls.Add(new AssistToolCall(item!["call_id"]?.GetValue<string>() ?? "", item["name"]?.GetValue<string>() ?? "", item["arguments"]?.GetValue<string>() ?? "{}"));
+                continue;
+            }
+            if (itemType != "message") continue;
+            foreach (var part in item!["content"]?.AsArray() ?? [])
             {
                 var type = part?["type"]?.GetValue<string>();
                 if (type == "output_text") text = (text ?? "") + part!["text"]?.GetValue<string>();
@@ -86,6 +117,10 @@ public sealed class OpenAiAssistClient : IAssistClient
         var usage = root?["usage"];
         static int Int(JsonNode? n) => n is JsonValue v && v.TryGetValue<int>(out var i) ? i : 0;
         return new AssistResponse(text, refusal, root?["model"]?.GetValue<string>() ?? "",
-            Int(usage?["input_tokens"]), Int(usage?["input_tokens_details"]?["cached_tokens"]), Int(usage?["output_tokens"]), elapsed);
+            Int(usage?["input_tokens"]), Int(usage?["input_tokens_details"]?["cached_tokens"]), Int(usage?["output_tokens"]), elapsed)
+        {
+            ToolCalls = calls,
+            OutputItems = root?["output"] is JsonArray output ? (JsonArray)output.DeepClone() : null,
+        };
     }
 }
