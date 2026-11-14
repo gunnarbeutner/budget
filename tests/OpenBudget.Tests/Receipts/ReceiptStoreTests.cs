@@ -292,6 +292,55 @@ public sealed class ReceiptStoreTests
     }
 
     [Fact]
+    public async Task An_ai_answer_naming_the_bookings_own_category_is_not_asked_again()
+    {
+        await using var t = await WorldAsync();
+        var ai = new FakeClassifier(_ => ReceiptWorld.Groceries);
+        var store = new ReceiptStore(ai);
+        await ReceiptWorld.AddDebitAsync(t, ReceiptWorld.Id(500), Payment);
+        await using (var db = await t.System.CreateDbContextAsync())
+            await ReceiptStore.AddAsync(db, ReceiptWorld.Alice, ReceiptShops.Rewe,
+                ReweInvoice.Parse(SyntheticInvoice.Pdf(SyntheticInvoice.StandardLines(), bonus: -1, invoice: "PN10000000000001")), "mail-1", DateTime.UtcNow, default);
+        for (var run = 0; run < 3; run++)
+            await using (var db = await t.System.CreateDbContextAsync())
+                await store.MatchAsync(db, ReceiptWorld.Alice, default);
+        Assert.Equal(1, ai.Calls);
+    }
+
+    [Fact]
+    public async Task A_second_match_of_the_same_owner_says_it_waits_for_the_first()
+    {
+        await using var t = await WorldAsync();
+        var release = new TaskCompletionSource();
+        var ai = new FakeClassifier(_ => null) { Hold = release.Task };
+        var store = new ReceiptStore(ai);
+        await ReceiptWorld.AddDebitAsync(t, ReceiptWorld.Id(500), Payment);
+        await using (var db = await t.System.CreateDbContextAsync())
+            await ReceiptStore.AddAsync(db, ReceiptWorld.Alice, ReceiptShops.Rewe,
+                ReweInvoice.Parse(SyntheticInvoice.Pdf(SyntheticInvoice.StandardLines(), bonus: -1, invoice: "PN10000000000001")), "mail-1", DateTime.UtcNow, default);
+        var first = await t.System.CreateDbContextAsync();
+        var second = await t.System.CreateDbContextAsync();
+        try
+        {
+#pragma warning disable CA2025 // both tasks are awaited before the contexts are disposed
+            var running = store.MatchAsync(first, ReceiptWorld.Alice, default);
+            await ai.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var progress = new List<string>();
+            var waiting = store.MatchAsync(second, ReceiptWorld.Alice, default, progress.Add);
+#pragma warning restore CA2025
+            Assert.Equal(["waiting for another sync to finish matching"], progress);
+            release.SetResult();
+            await Task.WhenAll(running, waiting);
+        }
+        finally
+        {
+            release.TrySetResult();
+            await first.DisposeAsync();
+            await second.DisposeAsync();
+        }
+    }
+
+    [Fact]
     public async Task Receipts_with_other_choices_are_asked_separately()
     {
         // One booking is in another category of the project: its default choice differs, so its lines go in their own request.
@@ -445,14 +494,21 @@ public sealed class ReceiptStoreTests
 
         public int Calls { get; private set; }
 
-        public Task<Dictionary<long, long>> ClassifyAsync(
+        /// <summary>When set, each request waits for it (after signalling <see cref="Entered"/>).</summary>
+        public Task? Hold { get; init; }
+
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<Dictionary<long, long>> ClassifyAsync(
             string ownerUserId, IReadOnlyList<DatedReceiptLine> dated, IReadOnlyList<AllowedCategory> choices, CancellationToken ct)
         {
             Calls++;
             var lines = dated.Select(d => d.Line).ToList();
             Asked.AddRange(lines.Select(l => l.Name));
             Choices.AddRange(choices.Select(c => c.CategoryId));
-            return Task.FromResult(lines.Where(l => answer(l.Name) != null).ToDictionary(l => l.Id, l => answer(l.Name)!.Value));
+            Entered.TrySetResult();
+            if (Hold != null) await Hold;
+            return lines.Where(l => answer(l.Name) != null).ToDictionary(l => l.Id, l => answer(l.Name)!.Value);
         }
     }
 }

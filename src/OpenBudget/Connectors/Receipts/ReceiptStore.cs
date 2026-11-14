@@ -88,7 +88,11 @@ public sealed class ReceiptStore
     public async Task MatchAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct, Action<string>? progress = null)
     {
         var gate = OwnerGates.GetOrAdd(ownerUserId, _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(ct);
+        if (!await gate.WaitAsync(0, ct))
+        {
+            progress?.Invoke("waiting for another sync to finish matching");
+            await gate.WaitAsync(ct);
+        }
         try
         {
             await MatchCoreAsync(db, ownerUserId, progress, ct);
@@ -291,13 +295,15 @@ public sealed class ReceiptStore
         {
             var parent = p.Parent;
             p.Manual = p.Items.Where(i => i.CategorySource == ReceiptCategorySource.Manual).ToDictionary(i => i.Id, i => i.CategoryId);
+            // An AI answer naming the booking's own category is stored without a category; it still counts as answered.
             foreach (var stale in p.Items.Where(i => i.CategorySource == ReceiptCategorySource.Ai
-                && !(i.CategoryId is { } c && ReceiptCategorizer.IsAllowed(c, p.Rules, parent.CategoryId))))
+                && i.CategoryId is { } c && !ReceiptCategorizer.IsAllowed(c, p.Rules, parent.CategoryId)))
             {
                 stale.CategorySource = null;
                 stale.CategoryId = null;
             }
-            p.Ai = p.Items.Where(i => i.CategorySource == ReceiptCategorySource.Ai && i.CategoryId != null).ToDictionary(i => i.Id, i => i.CategoryId!.Value);
+            p.Ai = p.Items.Where(i => i.CategorySource == ReceiptCategorySource.Ai && (i.CategoryId ?? parent.CategoryId) != null)
+                .ToDictionary(i => i.Id, i => (i.CategoryId ?? parent.CategoryId)!.Value);
             if (!p.MayWrite || _ai == null) continue;
             var ask = ReceiptCategorizer.Undecided(p.Lines, p.Rules, p.Memory, parent.CategoryId)
                 .Where(l => p.Items.First(i => i.Id == l.Id).CategorySource == null).ToList();
