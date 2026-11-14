@@ -191,7 +191,7 @@
     <value>Delete {0}?</value>
   </data>
   <data name="Delete_Body" xml:space="preserve">
-    <value>This removes the stored credentials, session and downloaded statements. Accounts and transactions already imported are kept: accounts taken over from MoneyMoney return to MoneyMoney (its next upload refills them), accounts created for this connection stay as they are but are no longer refreshed.</value>
+    <value>This removes the stored credentials, session and downloaded statements. Accounts and transactions already imported are kept as manual accounts that are no longer refreshed.</value>
   </data>
   <data name="Message_AlreadyRunning" xml:space="preserve">
     <value>A sync is already running for this connection.</value>

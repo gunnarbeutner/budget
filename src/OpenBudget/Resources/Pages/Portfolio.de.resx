@@ -98,7 +98,7 @@
     <value>Verknüpfungen mit Portfolio Performance</value>
   </data>
   <data name="Links_Intro" xml:space="preserve">
-    <value>Welches Depot und welches Wertpapier aus Portfolio Performance zu welchem MoneyMoney-Depot und -Bestand gehört. Depots werden für die Depotkonten dieses Projekts gezeigt, Wertpapiere für die ganze Datenquelle.</value>
+    <value>Welches Depot und welches Wertpapier aus Portfolio Performance zu welchem Depotkonto und Bestand hier gehört. Depots werden für die Depotkonten dieses Projekts gezeigt, Wertpapiere für die ganze Datenquelle.</value>
   </data>
   <data name="Links_Depots" xml:space="preserve">
     <value>Depots</value>

@@ -191,7 +191,7 @@
     <value>{0} löschen?</value>
   </data>
   <data name="Delete_Body" xml:space="preserve">
-    <value>Dies entfernt die gespeicherten Zugangsdaten, die Sitzung und heruntergeladene Kontoauszüge. Bereits importierte Konten und Umsätze bleiben erhalten: von MoneyMoney übernommene Konten gehen an MoneyMoney zurück (der nächste Upload füllt sie neu), für diese Verbindung angelegte Konten bleiben bestehen, werden aber nicht mehr aktualisiert.</value>
+    <value>Dies entfernt die gespeicherten Zugangsdaten, die Sitzung und heruntergeladene Kontoauszüge. Bereits importierte Konten und Umsätze bleiben als manuelle Konten erhalten, die nicht mehr aktualisiert werden.</value>
   </data>
   <data name="Message_AlreadyRunning" xml:space="preserve">
     <value>Für diese Verbindung läuft bereits ein Abgleich.</value>

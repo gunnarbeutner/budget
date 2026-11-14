@@ -98,7 +98,7 @@
     <value>Links to Portfolio Performance</value>
   </data>
   <data name="Links_Intro" xml:space="preserve">
-    <value>Which Portfolio Performance depot and security belongs to which MoneyMoney depot and holding. Depots are shown for this project's depot accounts; securities for all of the owner's data.</value>
+    <value>Which Portfolio Performance depot and security belongs to which depot account and holding here. Depots are shown for this project's depot accounts; securities for all of the owner's data.</value>
   </data>
   <data name="Links_Depots" xml:space="preserve">
     <value>Depots</value>
