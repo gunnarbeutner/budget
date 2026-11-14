@@ -311,15 +311,13 @@ else if (step == 3)
         availableSourceBudgets = await BudgetEntryService.GetBudgetsForProjectAsync(selectedProjectId);
     }
 
-    // The wizard holds unsaved selections/predictions, so banner rather than auto-reload.
-    protected override bool AutoReloadOnChange => false;
+    // Nothing the wizard shows is saved yet, so changes elsewhere never interrupt it: step 1 quietly refreshes the
+    // budgets it can clone, and the suggested amounts of step 2 stay a snapshot of the bookings when they were made.
     protected override bool IsRelevantChange(DataChange change) =>
-        change.Area is DataArea.ImportedData or DataArea.ImportState
-        || change.ProjectId is null || change.ProjectId == ProjectId;
-    protected override Task ReloadAfterChangeAsync()
+        step == 1 && (change.ProjectId is null || change.ProjectId == ProjectId);
+    protected override async Task ReloadAfterChangeAsync()
     {
-        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
-        return Task.CompletedTask;
+        availableSourceBudgets = await BudgetEntryService.GetBudgetsForProjectAsync(selectedProjectId);
     }
 
     private async Task GeneratePredictions()
