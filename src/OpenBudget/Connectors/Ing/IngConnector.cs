@@ -46,16 +46,19 @@ public sealed class IngConnector : IBankConnector, IBatchedStatements, IBackgrou
     private ChallengeCoroutine<IReadOnlyList<RemoteStatement>>? _statements;
     private IReadOnlyList<RemoteAccount> _fintsAccounts = [];
 
-    /// <summary>The connector; <paramref name="webBase"/> is where the web banking lives (tests use a local one), ING's own address when null.</summary>
-    public IngConnector(ConnectorContext context, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null, Uri? webBase = null)
+    /// <summary>
+    /// The connector; <paramref name="webBase"/> is where the web banking lives (tests use a local one), ING's own address
+    /// when null; <paramref name="signInPause"/> is how long each sign-in step is shown before it is submitted.
+    /// </summary>
+    public IngConnector(ConnectorContext context, FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null, Uri? webBase = null, TimeSpan? signInPause = null)
     {
         _context = context;
         _fints = FinTsConnector.Create(context, Config, options, transportFactory);
-        _web = new IngWebClient(webBase, context.Clock, context.Logger);
+        _web = new IngWebClient(webBase, context.Clock, context.Logger, signInPause);
     }
 
-    public static ConnectorRegistration Registration(FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null, Uri? webBase = null) =>
-        new(Config.ConnectorType, Config.DisplayName, Config.Description, ctx => new IngConnector(ctx, options, transportFactory, webBase), Statements: true)
+    public static ConnectorRegistration Registration(FinTsOptions options, Func<ConnectorContext, IFinTsTransport>? transportFactory = null, Uri? webBase = null, TimeSpan? signInPause = null) =>
+        new(Config.ConnectorType, Config.DisplayName, Config.Description, ctx => new IngConnector(ctx, options, transportFactory, webBase, signInPause), Statements: true)
         {
             // background runs do the FinTS part only; the web banking needs an app confirmation
             Silent = SilentCapability.Full,

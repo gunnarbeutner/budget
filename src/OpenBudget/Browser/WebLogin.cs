@@ -16,6 +16,9 @@ public sealed class WebLoginOptions
     /// <summary>How long autofill waits for the sign-in form to appear.</summary>
     public TimeSpan FormTimeout { get; set; } = TimeSpan.FromSeconds(20);
 
+    /// <summary>How long autofill waits for each interstitial (<see cref="WebLoginSpec.Dismiss"/>) before going on without it.</summary>
+    public TimeSpan DismissWait { get; set; } = TimeSpan.FromSeconds(3);
+
     /// <summary>When the sign-in form is still (or again) there this long after submitting, the user is shown the page (wrong password, CAPTCHA, ...).</summary>
     public TimeSpan StuckAfter { get; set; } = TimeSpan.FromSeconds(8);
 
@@ -329,7 +332,7 @@ public sealed class WebLoginSession : IAsyncDisposable
     {
         foreach (var selector in _spec.Dismiss)
         {
-            if (!await WaitVisibleAsync(selector, TimeSpan.FromSeconds(3), ct)) continue;
+            if (!await WaitVisibleAsync(selector, _options.DismissWait, ct)) continue;
             _logger.LogInformation("Web login: dismissing an interstitial ({Selector}).", selector);
             await _browser.ClickAsync(selector);
             await Task.Delay(_options.SettleDelay, ct);

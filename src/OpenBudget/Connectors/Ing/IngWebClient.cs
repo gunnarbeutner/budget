@@ -38,12 +38,14 @@ internal sealed class IngWebClient
     /// How long a sign-in step is shown before it is submitted, like a person: ING ignores (and does not push the app
     /// confirmation for) a submit sent right after the page loaded.
     /// </summary>
-    internal const int PauseMs = 1500;
+    public static readonly TimeSpan DefaultPause = TimeSpan.FromMilliseconds(1500);
 
-    /// <summary>Waits until the page has been open for <see cref="PauseMs"/> before the sign-in form is submitted (the argument is not used).</summary>
-    internal static readonly string PaceScript =
-        "async () => { const wait = " + PauseMs.ToString(CultureInfo.InvariantCulture)
+    /// <summary>Waits until the page has been open for <paramref name="pause"/> before the sign-in form is submitted (the argument is not used).</summary>
+    internal static string PaceScript(TimeSpan pause) =>
+        "async () => { const wait = " + Ms(pause)
         + " - performance.now(); if (wait > 0) await new Promise(r => setTimeout(r, wait)); return { ok: true, reason: '' }; }";
+
+    private static string Ms(TimeSpan span) => ((long)span.TotalMilliseconds).ToString(CultureInfo.InvariantCulture);
 
     private const string RangeField = "erweiterterFilter:zeitraum:zeitraum";
     private const string DateRange = "DATUM";
@@ -137,20 +139,25 @@ internal sealed class IngWebClient
         }
         """;
 
-    private static readonly string Waiting = WaitingScript.Replace("__COOKIE__", DeviceCookie, StringComparison.Ordinal)
-        .Replace("__PAUSE__", PauseMs.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
 
     private static readonly string ChosenDevice = ChosenDeviceScript.Replace("__COOKIE__", DeviceCookie, StringComparison.Ordinal);
 
     private readonly Uri _base;
+    private readonly string _pace;
+    private readonly string _waiting;
     private readonly TimeProvider _clock;
     private readonly ILogger _log;
     private IBrowserFetcher? _browser;
     private IngPage? _overview;
 
-    public IngWebClient(Uri? baseUri, TimeProvider clock, ILogger log)
+    /// <summary>The client; <paramref name="pause"/> is how long a sign-in step is shown before it is submitted (<see cref="DefaultPause"/> when null).</summary>
+    public IngWebClient(Uri? baseUri, TimeProvider clock, ILogger log, TimeSpan? pause = null)
     {
         _base = baseUri ?? DefaultBase;
+        var wait = pause ?? DefaultPause;
+        _pace = PaceScript(wait);
+        _waiting = WaitingScript.Replace("__COOKIE__", DeviceCookie, StringComparison.Ordinal)
+            .Replace("__PAUSE__", Ms(wait), StringComparison.Ordinal);
         _clock = clock;
         _log = log;
     }
@@ -182,19 +189,19 @@ internal sealed class IngWebClient
                 new WebLoginStep([
                     new WebLoginField(UsernameSelector, WebLoginCredential.Username),
                     new WebLoginField(PasswordSelector, WebLoginCredential.Secret) { Optional = true },
-                ], SubmitSelector) { EnterSubmits = true, Verify = new WebLoginVerify(PaceScript) },
+                ], SubmitSelector) { EnterSubmits = true, Verify = new WebLoginVerify(_pace) },
                 new WebLoginStep([new WebLoginField(PasswordSelector, WebLoginCredential.Secret)], SubmitSelector)
                 {
                     SkipWhenEntered = true,
                     EnterSubmits = true,
-                    Verify = new WebLoginVerify(PaceScript),
+                    Verify = new WebLoginVerify(_pace),
                 },
             ]),
             // the sign-in page's error box after the app submitted the stored access number and PIN
             CredentialsError = new WebLoginError(CredentialsErrorSelector, ["falsch", "ungültig", "nicht korrekt", "nicht richtig"],
                 "ING's web banking did not accept the access number or PIN."),
             SuccessCheck = SuccessScript,
-            WaitingScript = Waiting,
+            WaitingScript = _waiting,
             WaitingArgument = JsonSerializer.Serialize(new Dictionary<string, string?>(StringComparer.Ordinal) { ["device"] = PreferredDevice }),
             // the cookie banner over the sign-in form: necessary cookies only
             // (an <ing-button> inside the shadow DOM of <ing-cc-manager>)

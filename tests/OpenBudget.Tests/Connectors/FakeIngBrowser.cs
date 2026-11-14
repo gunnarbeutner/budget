@@ -23,6 +23,9 @@ internal sealed class FakeIngBrowserHost : IBrowserHost
 
     public BrowserOptions Options { get; } = new();
 
+    /// <summary>The connector's pause before a sign-in step is submitted (what its pacing scripts wait for).</summary>
+    public TimeSpan Pause { get; init; } = IngWebClient.DefaultPause;
+
     /// <summary>The device the user picks in the page when the app cannot choose (null: the user does nothing).</summary>
     public int? UserPicksDevice { get; set; }
 
@@ -192,9 +195,9 @@ internal sealed partial class FakeIngBrowserSession : IBrowserSession
             if (function == IngWebClient.SuccessScript)
                 return new WebLoginCheck(Url.AbsolutePath.StartsWith("/app/obligo", StringComparison.Ordinal) && IngHtml.IsOverview(Html), "");
             if (function.Contains("__openbudgetIng", StringComparison.Ordinal)) return await WaitingAsync(argument);
-            if (function == IngWebClient.PaceScript)
+            if (function == IngWebClient.PaceScript(_host.Pause))
             {
-                var wait = _shownAt + TimeSpan.FromMilliseconds(IngWebClient.PauseMs) - DateTime.UtcNow;
+                var wait = _shownAt + _host.Pause - DateTime.UtcNow;
                 if (wait > TimeSpan.Zero) await Task.Delay(wait);
                 return new WebLoginCheck(true, "");
             }
@@ -226,10 +229,10 @@ internal sealed partial class FakeIngBrowserSession : IBrowserSession
                         var reason = $"device choice: {_devices.Count} devices, none remembered";
                         _host.ShownToUser.Add(reason);
                         // the user looks at the page for a moment, then clicks
-                        if (_host.UserPicksDevice is { } pick && DateTime.UtcNow - _shownAt > TimeSpan.FromMilliseconds(500)) await ChooseAsync(pick);
+                        if (_host.UserPicksDevice is { } pick && DateTime.UtcNow - _shownAt > _host.Pause * 2 / 3) await ChooseAsync(pick);
                         return new WebLoginCheck(false, reason);
                     }
-                    if (DateTime.UtcNow - _shownAt < TimeSpan.FromMilliseconds(IngWebClient.PauseMs)) return new WebLoginCheck(true, "");
+                    if (DateTime.UtcNow - _shownAt < _host.Pause) return new WebLoginCheck(true, "");
                     await ChooseAsync(index);
                     return new WebLoginCheck(true, $"device chosen ({_devices.Count} offered)");
                 }

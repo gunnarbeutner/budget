@@ -40,7 +40,7 @@ public sealed class BaaderPortalTests
         public async Task<ConnectorStep<IReadOnlyList<RemoteStatement>>> FetchAsync(
             IReadOnlySet<string>? known = null, IReadOnlyList<RemoteAccount>? accounts = null, bool userSignsIn = true, string tan = FakeBaaderPortal.Tan)
         {
-            var client = new BaaderPortal(Http, Logs.CreateLogger("baader"), state: State); // a new connector per sync
+            var client = new BaaderPortal(Http, Logs.CreateLogger("baader"), state: State, clock: InstantTimers.Instance); // a new connector per sync
             ChallengeAnswer? answer = null;
             for (var i = 0; i < 6; i++)
             {
@@ -285,7 +285,7 @@ public sealed class BaaderPortalTests
     {
         var rig = new Rig();
         Seed(rig.Portal);
-        var client = new BaaderPortal(rig.Http, rig.Logs.CreateLogger("baader"));
+        var client = new BaaderPortal(rig.Http, rig.Logs.CreateLogger("baader"), clock: InstantTimers.Instance);
         var ask = await client.FetchAsync([Cash], new HashSet<string>(StringComparer.Ordinal), Credentials, null, default);
         var browser = rig.Portal.SignInBrowser();
         await client.FetchAsync([Cash], new HashSet<string>(StringComparer.Ordinal), Credentials, new ChallengeAnswer(ask.Challenge!, null) { Browser = browser }, default);

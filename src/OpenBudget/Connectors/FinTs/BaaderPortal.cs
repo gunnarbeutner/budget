@@ -431,12 +431,12 @@ internal sealed partial class BaaderPortal
         var label = Label(mailbox);
         var page = new Uri(_base, MailPath(mailbox));
         await browser.NavigateAsync(page, ct);
-        await Task.Delay(TimeSpan.FromSeconds(2), ct);
+        await Task.Delay(TimeSpan.FromSeconds(2), _clock, ct);
         var (submitted, reason) = await browser.RunAsync(SubmitFilterScript, FilterArgument("range"), ct);
         var mode = "date range";
         if (submitted)
         {
-            await Task.Delay(TimeSpan.FromSeconds(5), ct);
+            await Task.Delay(TimeSpan.FromSeconds(5), _clock, ct);
             var (dialogShown, _) = await browser.RunAsync(TanDialogScript, "", ct);
             var (accepted, _) = dialogShown ? (true, "") : await browser.RunAsync(FilterAcceptedScript, "", ct);
             if (!accepted)
@@ -444,7 +444,7 @@ internal sealed partial class BaaderPortal
                 _log.LogInformation("Baader portal: the {Mailbox} page rejected the date range; using the {Period}-day period.", label, HistoryPeriod);
                 submitted = false;
                 await browser.NavigateAsync(page, ct);
-                await Task.Delay(TimeSpan.FromSeconds(2), ct);
+                await Task.Delay(TimeSpan.FromSeconds(2), _clock, ct);
             }
         }
         else if (reason != "no filter form")
@@ -458,7 +458,7 @@ internal sealed partial class BaaderPortal
                 _log.LogInformation("Baader portal: the {Mailbox} page's filter could not be used ({Reason}).", label, reason);
                 return false;
             }
-            await Task.Delay(TimeSpan.FromSeconds(5), ct);
+            await Task.Delay(TimeSpan.FromSeconds(5), _clock, ct);
         }
         var (dialog, _) = await browser.RunAsync(TanDialogScript, "", ct);
         _tanRequired = dialog;
@@ -532,7 +532,7 @@ internal sealed partial class BaaderPortal
             _log.LogInformation("Baader portal: TAN entered in the page{Reason}.", entered ? "" : $" failed ({reason})");
             if (entered)
             {
-                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                await Task.Delay(TimeSpan.FromSeconds(5), _clock, ct);
                 return;
             }
         }

@@ -20,6 +20,9 @@ public sealed class IngConnectorTests
 {
     private const string Pin = "654321PIN";
 
+    /// <summary>The pause before each sign-in step is submitted: long enough to beat <see cref="FakeIng.RequestBlockMs"/>, short for the suite.</summary>
+    private static readonly TimeSpan SignInPause = TimeSpan.FromMilliseconds(300);
+
     private sealed class Rig : IAsyncDisposable
     {
         public required BankWorld World { get; init; }
@@ -51,14 +54,14 @@ public sealed class IngConnectorTests
         var web = new FakeIng();
         setup?.Invoke(web);
         var logs = new CapturingLoggerFactory();
-        var browser = new FakeIngBrowserHost(web) { UserPicksDevice = userPicks };
+        var browser = new FakeIngBrowserHost(web) { UserPicksDevice = userPicks, Pause = SignInPause };
         var world = await BankWorld.CreateAsync(extras: new BankWorldExtras
         {
-            Registrations = [IngConnector.Registration(FinTsHarness.Options, _ => new FinTsHttpTransport(new BankHttpClient(server), IngConnector.Config.Url))],
+            Registrations = [IngConnector.Registration(FinTsHarness.Options, _ => new FinTsHttpTransport(new BankHttpClient(server), IngConnector.Config.Url), signInPause: SignInPause)],
             HttpFactory = () => new BankHttpClient(jar => new CookieRedirectHandler(jar, web)),
             Loggers = logs,
             BrowserHost = browser,
-            WebLoginOptions = new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(10), SettleDelay = TimeSpan.Zero, StuckAfter = TimeSpan.FromSeconds(1), Timeout = TimeSpan.FromSeconds(15) },
+            WebLoginOptions = new WebLoginOptions { PollInterval = TimeSpan.FromMilliseconds(10), SettleDelay = TimeSpan.Zero, DismissWait = TimeSpan.FromMilliseconds(50), StuckAfter = TimeSpan.FromSeconds(1), Timeout = TimeSpan.FromSeconds(15) },
         });
         var view = await world.For(BankWorld.Alice).CreateLoginAsync(IngConnector.TypeName, "ING", FakeIng.Alias, pin);
         return new Rig { World = world, Web = web, Browser = browser, Logs = logs, LoginId = view.Id };
@@ -138,7 +141,7 @@ public sealed class IngConnectorTests
     [Fact]
     public async Task Every_sign_in_pushes_the_confirmation_once_also_with_the_remembered_device()
     {
-        await using var rig = await CreateAsync(w => { w.RequestBlockMs = 300; w.PendingPolls = 4; });
+        await using var rig = await CreateAsync(w => { w.RequestBlockMs = 150; w.PendingPolls = 4; });
         Assert.True((await rig.SyncAsync(true, false)).Succeeded);
         Assert.Equal(1, rig.Web.Pushes);
         await rig.World.LinkAllAsync(BankWorld.Alice, rig.LoginId);
@@ -161,7 +164,7 @@ public sealed class IngConnectorTests
     [Fact]
     public async Task A_single_device_is_pushed_by_the_paced_sign_in_itself()
     {
-        await using var rig = await CreateAsync(w => { w.Devices = ["phone / Example Phone"]; w.RequestBlockMs = 300; }, userPicks: null);
+        await using var rig = await CreateAsync(w => { w.Devices = ["phone / Example Phone"]; w.RequestBlockMs = 150; }, userPicks: null);
         Assert.True((await rig.SyncAsync(true, false)).Succeeded);
         Assert.Equal(0, rig.Web.Count("/app/login/api/device"));
         Assert.Empty(rig.Browser.ShownToUser);
