@@ -105,6 +105,9 @@ else
     private async Task MapAsync(InstrumentView instrument, long? accountId)
     {
         error = null;
+        // The pick shows at once; matching the charges again can take a while.
+        if (instruments?.FindIndex(i => i.Id == instrument.Id) is >= 0 and var at) instruments[at] = instrument with { AccountId = accountId };
+        StateHasChanged();
         try
         {
             await Orders.MapAsync(instrument.Id, accountId);

@@ -69,6 +69,7 @@ public sealed class AmazonOrderTests : EndToEndTestBase
         await row.GetByTestId("account-picker-toggle").ClickAsync();
         var picker = row.GetByTestId("account-picker");
         var rows = picker.Locator(".tree-picker-row");
+        await Expect(picker.GetByTestId("account-picker-search")).ToBeFocusedAsync();
         await Expect(rows.Filter(new() { HasText = "Example Cards" })).ToBeDisabledAsync();
         await Expect(rows.Last).ToHaveTextAsync("Old Example Card");
         await Expect(rows.Nth(await rows.CountAsync() - 2)).ToHaveTextAsync("Closed accounts");

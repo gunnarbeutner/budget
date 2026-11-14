@@ -1,3 +1,4 @@
+@inject IJSRuntime JS
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject IStringLocalizer<AccountPicker> L
@@ -15,7 +16,7 @@
     {
         <div class="account-picker-backdrop" @onclick="Close"></div>
         <div class="account-picker-panel" role="dialog" aria-label="@AriaLabel" data-testid="account-picker" @onkeydown="OnKeyDown">
-            <input type="search" class="form-control form-control-sm mb-2" autocomplete="off" autofocus
+            <input type="search" class="form-control form-control-sm mb-2" autocomplete="off" @ref="search"
                    placeholder="@L["Search_Placeholder"]" aria-label="@L["Search_Placeholder"]" data-testid="account-picker-search"
                    value="@query" @oninput="e => query = e.Value?.ToString() ?? string.Empty" />
             @{ var nodes = BuildNodes(); }
@@ -47,6 +48,15 @@
     // TreePicker ids: accounts are positive; 0 is "none"; headers count down from -1 (never selectable).
     private const long NoneId = 0;
     private bool open;
+    private bool focusPending;
+    private ElementReference search;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!focusPending || !open) return;
+        focusPending = false;
+        await JS.TryInvokeVoidAsync("obFocus", search);
+    }
     private string query = "";
 
     private string NoneText => NoneLabel ?? L["None"];
@@ -61,6 +71,7 @@
     private void Toggle()
     {
         open = !open;
+        focusPending = open;
         query = "";
     }
 
