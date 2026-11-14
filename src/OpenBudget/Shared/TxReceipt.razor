@@ -8,10 +8,8 @@
    opens the receipt panel with all items, where the owner moves items to other categories. *@
 
 <div class="tx-details-purpose" data-testid="tx-receipt">
-    <button type="button" class="btn btn-link btn-sm p-0 align-baseline text-reset text-start" data-testid="tx-receipt-open" @onclick="() => Open(null)">
-        <b class="text-body me-1">@L["Receipt"]</b>
-        <span class="text-body-secondary">@Receipt.Title@(Receipt.DeliveryDate is { } d ? " · " + d.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) : "") · @L["Items", Receipt.ItemCount]</span>
-    </button>
+    <b class="text-body me-1">@L["Receipt"]</b>
+    <button type="button" class="btn btn-link btn-sm p-0 align-baseline text-start" data-testid="tx-receipt-open" @onclick="() => Open(null)">@Receipt.Title@(Receipt.DeliveryDate is { } d ? " · " + d.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) : "") · @L["Items", Receipt.ItemCount]</button>
     <div class="d-flex flex-wrap gap-1 mt-1">
         @for (var i = 0; i < Receipt.Groups.Count; i++)
         {
