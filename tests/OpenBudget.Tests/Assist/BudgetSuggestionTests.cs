@@ -150,7 +150,7 @@ public sealed partial class BudgetSuggestionTests
     {
         var (request, _) = BudgetSuggestionService.BuildRequest(2026, [], new AssistRedactor([]));
 
-        foreach (var rule in new[] { "is a reserve to plan", "at least 3 months", "no booking for more than 2 months", "current balance", "instead of adding up monthly_history" })
+        foreach (var rule in new[] { "is a reserve to plan", "at least 3 months", "no booking for more than 2 months", "current balance", "instead of adding up monthly_history", "do not fill gaps" })
             Assert.Contains(rule, request.SystemPrompt, StringComparison.Ordinal);
         Assert.StartsWith("Categories:", request.UserContent, StringComparison.Ordinal);
     }

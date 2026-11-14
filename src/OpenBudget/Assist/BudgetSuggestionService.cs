@@ -353,6 +353,9 @@ public sealed class BudgetSuggestionService
               or spread it evenly when there is no pattern;
             - a payee's latest amount is its newest booking, including current_month; a single lower or higher payment
               between two regular ones is an exception, not the new amount;
+            - place a payment only in the months it actually occurred in (current_month and scheduled payments
+              included); do not fill gaps to complete an assumed rhythm (three invoices a year are not quarterly), and a
+              scheduled payment with interval "once" is a single occurrence, not a rhythm;
             - a large one-off purchase hidden in a payee that is otherwise small and regular (for example a shop or
               marketplace) should not inflate the months; take it out unless it clearly repeats;
             - a monthly contract (phone, transport ticket, subscription) should show up every month at its latest amount;
