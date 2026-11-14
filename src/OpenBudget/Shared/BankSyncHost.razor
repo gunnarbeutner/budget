@@ -39,11 +39,14 @@ else if (lastSync is { } last)
         <div class="dropdown-menu dropdown-menu-end show sync-problems-menu">
             <div class="project-switcher-head">@L["Problems_Heading"]</div>
             <ul class="sync-problems-list">
-                @foreach (var (name, message) in problems)
+                @foreach (var (loginId, name, message) in problems)
                 {
+                    var id = loginId;
                     <li data-testid="sync-problem">
                         <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
-                        <div><div class="fw-semibold">@name</div><div class="small text-body-secondary">@message</div></div>
+                        <div class="sync-problem-text"><div class="fw-semibold">@name</div><div class="small text-body-secondary">@message</div></div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary sync-problem-sync" data-testid="sync-problem-sync"
+                                disabled="@(syncingProblem == id)" @onclick="() => SyncProblemAsync(id)">@L["Problems_Sync"]</button>
                     </li>
                 }
             </ul>
@@ -154,7 +157,18 @@ else if (lastSync is { } last)
 
     private IReadOnlyList<BankSyncStatus> statuses = [];
     // connections that need the user: a background sync waiting for them, rejected credentials or a failed last sync
-    private List<(string Name, string Message)> problems = [];
+    private List<(int LoginId, string Name, string Message)> problems = [];
+    private int? syncingProblem;
+
+    /// <summary>Syncs one connection from the problems list; its dialog (a code, an app approval) opens like any sync's.</summary>
+    private async Task SyncProblemAsync(int loginId)
+    {
+        syncingProblem = loginId;
+        try { await Bank.SyncNowAsync(loginId); }
+        catch (Exception ex) when (ex is InvalidOperationException or AccessDeniedException) { /* gone or not allowed: the list refreshes */ }
+        finally { syncingProblem = null; }
+        await RefreshAsync();
+    }
     private Dictionary<int, string> names = new();
     private BankSyncStatus? challenge;
     private Guid shownChallengeId;
@@ -227,11 +241,11 @@ else if (lastSync is { } last)
         names = logins.ToDictionary(l => l.Id, l => l.DisplayName);
         lastSync = logins.Where(l => l.LastSyncAt != null).Select(l => l.LastSyncAt).Max();
         problems = logins
-            .Select(l => (l.DisplayName, Message: l.NeedsManualSync is { Length: > 0 } waiting ? waiting
+            .Select(l => (l.Id, l.DisplayName, Message: l.NeedsManualSync is { Length: > 0 } waiting ? waiting
                 : l.CredentialsInvalid ? L["Problem_Credentials"].Value
                 : l.LastError))
             .Where(p => !string.IsNullOrEmpty(p.Message))
-            .Select(p => (p.DisplayName, p.Message!))
+            .Select(p => (p.Id, p.DisplayName, p.Message!))
             .ToList();
 
         var open = statuses.FirstOrDefault(s => s.Challenge != null && s.Phase != SyncPhase.Finished);

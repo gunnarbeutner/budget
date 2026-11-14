@@ -105,15 +105,18 @@
   </data>
   <data name="Syncing_One" xml:space="preserve"><value>Syncing 1 bank</value></data>
   <data name="Attention" xml:space="preserve">
-    <value>Connections that need you</value>
+    <value>Sync problems</value>
   </data>
   <data name="Problems_Heading" xml:space="preserve">
-    <value>Connections that need you</value>
+    <value>Sync problems</value>
   </data>
   <data name="Problems_Open" xml:space="preserve">
     <value>Open Connections</value>
   </data>
   <data name="Problem_Credentials" xml:space="preserve">
     <value>The bank rejected the stored sign-in details.</value>
+  </data>
+  <data name="Problems_Sync" xml:space="preserve">
+    <value>Sync now</value>
   </data>
 </root>

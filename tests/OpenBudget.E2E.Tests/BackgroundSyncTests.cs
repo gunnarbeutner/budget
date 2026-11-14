@@ -50,10 +50,9 @@ public sealed class BackgroundSyncTests : EndToEndTestBase
         await problems.Locator("summary").ClickAsync();
         await Expect(problems.GetByTestId("sync-problem")).ToContainTextAsync("The bank wants a TAN or code.");
         await Expect(problems.GetByTestId("sync-problems-connections")).ToHaveAttributeAsync("href", "/connections");
-        await Page.Keyboard.PressAsync("Escape");
 
-        // the owner's own sync (the session is remembered) clears it
-        await card.Locator("[data-action=sync-now]").ClickAsync();
+        // the owner's own sync from that list (the session is remembered) clears it
+        await problems.GetByTestId("sync-problem-sync").ClickAsync();
         await Expect(card.GetByTestId("background-status")).ToContainTextAsync("Last background sync");
         await GoToAsync("/connections");
         await Expect(Page.GetByTestId("banklogins-needs-you")).ToHaveCountAsync(0);

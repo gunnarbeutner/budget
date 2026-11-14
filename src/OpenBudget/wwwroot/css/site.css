@@ -1503,6 +1503,8 @@ button.cat-pill:hover { filter: brightness(0.96); }
 .sync-problems-list li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 6px; }
 .sync-problems-list li > i { color: var(--bs-warning); margin-top: 2px; }
 .sync-problems-list .small { overflow-wrap: anywhere; }
+.sync-problem-text { flex: 1 1 auto; min-width: 0; }
+.sync-problem-sync { flex: 0 0 auto; white-space: nowrap; }
 .ob-badge-danger { background: var(--ob-danger-bg) !important; color: var(--ob-danger-fg) !important; }
 
 /* ---- Project switcher ---- */
