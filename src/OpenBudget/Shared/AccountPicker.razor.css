@@ -1,0 +1,32 @@
+.account-picker {
+    position: relative;
+    display: inline-block;
+    min-width: 14rem;
+}
+
+.account-picker-toggle {
+    min-width: 14rem;
+}
+
+.account-picker-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1040;
+}
+
+.account-picker-panel {
+    position: absolute;
+    top: calc(100% + 0.25rem);
+    right: 0;
+    z-index: 1050;
+    width: min(22rem, calc(100vw - 2rem));
+    padding: 0.5rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.375rem;
+    background-color: var(--bs-body-bg, #fff);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.account-picker-panel ::deep .tree-picker {
+    max-height: 20rem;
+}

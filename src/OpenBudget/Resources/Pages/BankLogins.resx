@@ -304,9 +304,6 @@
   <data name="Orders_MapTo" xml:space="preserve">
     <value>Account for {0}</value>
   </data>
-  <data name="Orders_Closed" xml:space="preserve">
-    <value>(closed)</value>
-  </data>
   <data name="Orders_NotMapped" xml:space="preserve">
     <value>Not mapped</value>
   </data>

@@ -10,7 +10,7 @@ namespace OpenBudget.Services;
 public sealed record InstrumentView(int Id, string Name, bool IsPoints, long? AccountId, string? AccountName, int Charges, int Matched);
 
 /// <summary>An account an instrument can be mapped to; <see cref="Suggested"/>: its IBAN or name ends with the card's last digits.</summary>
-public sealed record InstrumentCandidate(long AccountId, string Name, bool Suggested, bool Closed = false);
+public sealed record InstrumentCandidate(long AccountId, string Name, bool Suggested, bool Closed = false, long? GroupId = null, long? Sort = null, string? Icon = null);
 
 /// <summary>A charge without a booking: <see cref="Ambiguous"/> when several bookings fit.</summary>
 public sealed record OpenChargeView(DateTime Date, string OrderId, long AmountCents, string Instrument, bool Ambiguous, Uri OrderUrl);
@@ -75,8 +75,17 @@ public sealed partial class OrderEnrichmentService
         bool Suggested(Account a) => digits != null
             && ((a.Iban != null && BankLoginService.NormalizeIban(a.Iban).EndsWith(digits, StringComparison.Ordinal))
                 || (a.Name != null && LastDigits().Match(a.Name) is { Success: true } n && n.Groups["d"].Value.EndsWith(digits, StringComparison.Ordinal)));
-        return accounts.Select(a => new InstrumentCandidate(a.Id, a.Name ?? "?", Suggested(a), a.Closed))
+        return accounts.Select(a => new InstrumentCandidate(a.Id, a.Name ?? "?", Suggested(a), a.Closed, a.GroupId, a.Sort, AccountIcons.ForAccount(a.Icon, a.Type, false)))
             .OrderBy(c => c.Closed).ThenByDescending(c => c.Suggested).ToList();
+    }
+
+    /// <summary>The user's account groups, for arranging the candidates as the sidebar does.</summary>
+    public async Task<List<AccountGroupInfo>> GetAccountGroupsAsync(CancellationToken ct = default)
+    {
+        var scope = await _access.GetAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var rows = await db.AccountGroups.AsNoTracking().Where(g => g.OwnerUserId == scope.UserId).ToListAsync(ct);
+        return rows.Select(g => new AccountGroupInfo(g.Id, g.ParentGroupId, g.Name ?? "", g.Sort, Icon: g.Icon, Color: g.Color)).ToList();
     }
 
     /// <summary>Maps an instrument to one of the user's accounts (null: none), then matches the charges again.</summary>

@@ -35,14 +35,9 @@ else
                             }
                             else
                             {
-                                <select class="form-select form-select-sm w-auto" aria-label="@L["Orders_MapTo", i.Name]" data-testid="instrument-map"
-                                        @onchange="e => MapAsync(instrument, e.Value?.ToString())">
-                                    <option value="" selected="@(i.AccountId == null)">@L["Orders_NotMapped"]</option>
-                                    @foreach (var c in candidates.GetValueOrDefault(i.Id) ?? [])
-                                    {
-                                        <option value="@c.AccountId" selected="@(i.AccountId == c.AccountId)">@c.Name@(c.Closed ? " " + L["Orders_Closed"] : "")@(c.Suggested && i.AccountId == null ? " ★" : "")</option>
-                                    }
-                                </select>
+                                <AccountPicker data-testid="instrument-map" AriaLabel="@L["Orders_MapTo", i.Name]" NoneLabel="@L["Orders_NotMapped"]"
+                                               Options="@(candidates.GetValueOrDefault(i.Id) ?? [])" Groups="@groups" SelectedId="@i.AccountId"
+                                               OnPick="id => MapAsync(instrument, id)" />
                             }
                         </td>
                     </tr>
@@ -82,7 +77,8 @@ else
     [Parameter] public int Version { get; set; }
 
     private List<InstrumentView>? instruments;
-    private readonly Dictionary<int, List<InstrumentCandidate>> candidates = new();
+    private readonly Dictionary<int, List<AccountPicker.Option>> candidates = new();
+    private List<AccountGroupInfo> groups = [];
     private List<OpenChargeView> open = [];
     private int openCount;
     private string? error;
@@ -99,16 +95,19 @@ else
     {
         instruments = await Orders.GetInstrumentsAsync(LoginId);
         candidates.Clear();
-        foreach (var i in instruments.Where(i => !i.IsPoints)) candidates[i.Id] = await Orders.GetCandidatesAsync(i.Id);
+        foreach (var i in instruments.Where(i => !i.IsPoints))
+            candidates[i.Id] = (await Orders.GetCandidatesAsync(i.Id))
+                .Select(c => new AccountPicker.Option(c.AccountId, c.Name, c.GroupId, c.Sort, c.Icon, c.Suggested, c.Closed)).ToList();
+        groups = await Orders.GetAccountGroupsAsync();
         (openCount, open) = await Orders.GetOpenChargesAsync(LoginId);
     }
 
-    private async Task MapAsync(InstrumentView instrument, string? value)
+    private async Task MapAsync(InstrumentView instrument, long? accountId)
     {
         error = null;
         try
         {
-            await Orders.MapAsync(instrument.Id, long.TryParse(value, out var id) ? id : null);
+            await Orders.MapAsync(instrument.Id, accountId);
         }
         catch (Exception ex) when (ex is InvalidOperationException or AccessDeniedException)
         {

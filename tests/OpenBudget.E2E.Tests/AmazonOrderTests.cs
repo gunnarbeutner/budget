@@ -24,6 +24,9 @@ public sealed class AmazonOrderTests : EndToEndTestBase
         await using var db = await factory.CreateDbContextAsync();
         var login = new BankLogin { OwnerUserId = E2ESeed.OwnerUserId, ConnectorType = "amazon", DisplayName = "My Amazon", RefreshInterval = RefreshInterval.ManualOnly };
         db.BankLogins.Add(login);
+        db.AccountGroups.Add(new AccountGroup { Id = 9601, OwnerUserId = E2ESeed.OwnerUserId, Name = "Example Cards", Sort = 1 });
+        db.Accounts.Add(new Account { Id = 9602, OwnerUserId = E2ESeed.OwnerUserId, Name = "Example Card Account", Type = 1, Currency = "EUR", GroupId = 9601 });
+        db.Accounts.Add(new Account { Id = 9603, OwnerUserId = E2ESeed.OwnerUserId, Name = "Old Example Card", Type = 1, Currency = "EUR", Closed = true, GroupId = 9601 });
         await db.SaveChangesAsync();
         db.BankLoginAccounts.Add(new BankLoginAccount { BankLoginId = login.Id, RemoteId = "amazon-visa-1111", Name = "Amazon Visa •••• 1111", Type = Connectors.RemoteAccountType.CreditCard });
         db.BankLoginAccounts.Add(new BankLoginAccount { BankLoginId = login.Id, RemoteId = "example-points", Name = "Example Points", Type = Connectors.RemoteAccountType.Other });
@@ -41,7 +44,7 @@ public sealed class AmazonOrderTests : EndToEndTestBase
         await Expect(card.GetByTestId("open-charges")).ToContainTextAsync("1");
         await Expect(card.GetByTestId("instrument-points")).ToBeVisibleAsync();
 
-        await card.Locator("[data-instrument='Amazon Visa •••• 1111']").GetByTestId("instrument-map").SelectOptionAsync(new SelectOptionValue { Label = EditingSeed.BankAccountName });
+        await PickAsync(card, EditingSeed.BankAccountName);
         await Expect(card.Locator("[data-instrument='Amazon Visa •••• 1111']")).ToContainTextAsync("1 of 1");
         await Expect(card.GetByTestId("open-charges")).ToHaveCountAsync(0);
 
@@ -56,5 +59,37 @@ public sealed class AmazonOrderTests : EndToEndTestBase
         // The items are searchable.
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&q=charger");
         await Expect(Page.GetByTestId("tx-row")).ToHaveCountAsync(1);
+    }
+
+    [Test]
+    public async Task The_picker_groups_accounts_and_offers_closed_ones_last()
+    {
+        await GoToAsync("/connections");
+        var row = Page.Locator("[data-bank-login='My Amazon'] [data-instrument='Amazon Visa •••• 1111']");
+        await row.GetByTestId("account-picker-toggle").ClickAsync();
+        var picker = row.GetByTestId("account-picker");
+        var rows = picker.Locator(".tree-picker-row");
+        await Expect(rows.Filter(new() { HasText = "Example Cards" })).ToBeDisabledAsync();
+        await Expect(rows.Last).ToHaveTextAsync("Old Example Card");
+        await Expect(rows.Nth(await rows.CountAsync() - 2)).ToHaveTextAsync("Closed accounts");
+
+        await picker.GetByTestId("account-picker-search").FillAsync("old ex");
+        await Expect(picker.Locator(".tree-picker-row:not(.header)")).ToHaveCountAsync(1);
+        await rows.Filter(new() { HasText = "Old Example Card" }).ClickAsync();
+        await Expect(row.GetByTestId("account-picker-toggle")).ToHaveTextAsync("Old Example Card (closed)");
+
+        await Page.ReloadAsync();
+        await Expect(row.GetByTestId("account-picker-toggle")).ToHaveTextAsync("Old Example Card (closed)");
+        await row.GetByTestId("account-picker-toggle").ClickAsync();
+        await row.GetByTestId("account-picker").Locator(".tree-picker-row", new() { HasText = "Not mapped" }).ClickAsync();
+        await Expect(row.GetByTestId("account-picker-toggle")).ToHaveTextAsync("Not mapped");
+    }
+
+    private static async Task PickAsync(ILocator card, string account)
+    {
+        var map = card.Locator("[data-instrument='Amazon Visa •••• 1111']").GetByTestId("instrument-map");
+        await map.GetByTestId("account-picker-toggle").ClickAsync();
+        await map.GetByTestId("account-picker-search").FillAsync(account);
+        await map.GetByTestId("account-picker").Locator(".tree-picker-row:not(.header)", new() { HasText = account }).First.ClickAsync();
     }
 }
