@@ -57,6 +57,35 @@ public sealed class ReweInvoiceTests
     }
 
     [Fact]
+    public void Header_fields_next_to_the_address_column_are_read()
+    {
+        // The PDF's text puts the address and the invoice fields side by side, and "Produkt" below the table header.
+        string[] lines =
+        [
+            "Rechnung",
+            "REWE Markt GmbH, Domstr. 20, 50668 Köln",
+            "Erika Beispiel Belegnummer PN10000000000002",
+            "Beispielweg 1",
+            "Deutschland Bestellnummer B-AAA-BBB-CC2",
+            "Bestelldatum 01.11.2026",
+            "Liefertermin 02.11.2026",
+            "Beispielweg 1 Rechnungsdatum 02.11.2026",
+            "Menge MwSt. Einzelpreis Gesamt",
+            "Produkt",
+            "Beispiel Haferflocken 500g 1 B 0,85 € 0,85 €",
+            "Beispiel Seife 500ml 1 A 2,49 € 2,49 €",
+            "Gesamtsumme 3,34 €",
+            "Zahlungsbetrag 3,34 €",
+        ];
+
+        var receipt = ReweInvoice.Parse(lines);
+
+        Assert.Equal(("PN10000000000002", "B-AAA-BBB-CC2"), (receipt.InvoiceNumber, receipt.OrderNumber));
+        Assert.Equal(new DateOnly(2026, 11, 2), receipt.InvoiceDate);
+        Assert.Equal(2, receipt.Items.Count);
+    }
+
+    [Fact]
     public void Without_bonus_the_payment_is_the_total()
     {
         var receipt = ReweInvoice.Parse(SyntheticInvoice.Pdf(SyntheticInvoice.StandardLines()));

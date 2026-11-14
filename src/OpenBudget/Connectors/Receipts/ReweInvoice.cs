@@ -31,7 +31,7 @@ public static partial class ReweInvoice
     [GeneratedRegex(@"^(?<name>.+?) (?<qty>-?\d+(?:g)?) (?<vat>A/B|A|B) (?<unit>-?[\d.,]+) €(?:/kg)? (?<total>-?[\d.,]+) €$", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
     private static partial Regex ItemLine();
 
-    [GeneratedRegex(@"^(?<label>Belegnummer|Bestellnummer|Bestelldatum|Liefertermin|Rechnungsdatum) (?<value>\S+)", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
+    [GeneratedRegex(@"(?:^|\s)(?<label>Belegnummer|Bestellnummer|Bestelldatum|Liefertermin|Rechnungsdatum) (?<value>\S+)", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
     private static partial Regex Field();
 
     [GeneratedRegex(@"^(?<label>Gesamtsumme|Eingelöstes Bonus-Guthaben|Zahlungsbetrag) (?<value>-?[\d.,]+) €$", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
@@ -61,7 +61,8 @@ public static partial class ReweInvoice
         {
             var line = ReceiptPdf.Normalize(raw);
             if (line.StartsWith("REWE", StringComparison.Ordinal)) isRewe = true;
-            if (line.StartsWith("Produkt Menge MwSt.", StringComparison.Ordinal))
+            // The table header; the PDF's text may put "Produkt" on a line of its own.
+            if (line.Contains("Menge MwSt. Einzelpreis Gesamt", StringComparison.Ordinal))
             {
                 inItems = true;
                 continue;

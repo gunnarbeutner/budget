@@ -47,7 +47,7 @@ public sealed class ReceiptDetailsTests : EndToEndTestBase
         await Expect(receipt.Locator($"[data-category='{Groceries}']")).ToContainTextAsync("Apfelschorle 0,5l ×2");
 
         await receipt.GetByTestId("tx-receipt-line").Filter(new() { HasText = "Apfelschorle" }).ClickAsync();
-        await receipt.GetByTestId("tx-receipt-move").SelectOptionAsync(new Microsoft.Playwright.SelectOptionValue { Value = Energy.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+        await Page.GetByTestId("category-picker").GetByTestId("category-picker-option").Filter(new() { HasText = EditingSeed.EnergyCategory }).First.ClickAsync();
 
         // The parts are written anew: the list shows the new amounts.
         await Expect(rows.Filter(new() { HasText = "4,12" })).ToHaveCountAsync(0);

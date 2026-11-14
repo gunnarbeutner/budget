@@ -13,14 +13,11 @@ public sealed class MailReceiptOptions
     /// <summary>The shortest time between two automatic reads of a user's mailbox.</summary>
     public TimeSpan Interval { get; set; } = TimeSpan.FromHours(1);
 
-    /// <summary>How far back the first read of a mailbox looks.</summary>
-    public int FirstReadDays { get; set; } = 120;
-
     /// <summary>Later reads start this long before the previous one (mails can arrive late).</summary>
     public TimeSpan Overlap { get; set; } = TimeSpan.FromDays(3);
 
     /// <summary>Most messages looked at in one read.</summary>
-    public int MaxMessages { get; set; } = 500;
+    public int MaxMessages { get; set; } = 10_000;
 
     /// <summary>Largest invoice PDF downloaded.</summary>
     public long MaxAttachmentBytes { get; set; } = 10L * 1024 * 1024;
@@ -138,13 +135,14 @@ public sealed class MailReceiptSync : BackgroundService
     private async Task<MailCheckResult> ReadAsync(string userId, CancellationToken ct)
     {
         var started = Now;
-        DateTime since;
+        DateTime? since;
         await using (var db = await _system.CreateDbContextAsync(ct))
         {
             var connection = await db.CloudConnections.AsNoTracking().FirstOrDefaultAsync(c => c.OwnerUserId == userId && c.Provider == CloudProviders.OneDrive, ct);
             if (connection is not { MailAccess: true }) return new MailCheckResult(0, 0, 0, "Mail access is not granted.");
             var settings = await db.ReceiptSettings.AsNoTracking().FirstOrDefaultAsync(s => s.OwnerUserId == userId, ct);
-            since = settings?.MailCheckedAt is { } checkedAt ? checkedAt - _options.Overlap : started.AddDays(-_options.FirstReadDays);
+            // The first read takes the whole mailbox; later ones start shortly before the previous complete read.
+            since = settings?.MailCheckedAt is { } checkedAt ? checkedAt - _options.Overlap : null;
         }
 
         int mails = 0, added = 0, unreadable = 0;
@@ -195,7 +193,8 @@ public sealed class MailReceiptSync : BackgroundService
             }
             settings.MailAttemptAt = Now;
             settings.MailLastError = error is { Length: > 1000 } ? error[..1000] : error;
-            if (error == null) settings.MailCheckedAt = started;
+            // A read with unreadable invoices is not complete: the next one looks at the same mails again.
+            if (error == null && unreadable == 0) settings.MailCheckedAt = started;
             await db.SaveChangesAsync(ct);
         }
         _logger.LogInformation("Read the mailbox of user {UserId}: {Mails} invoice mails, {New} new receipts, {Unreadable} unreadable.", userId, mails, added, unreadable);
@@ -204,11 +203,11 @@ public sealed class MailReceiptSync : BackgroundService
         return new MailCheckResult(mails, added, unreadable, error);
     }
 
-    /// <summary>The ids of mails received since <paramref name="since"/> that look like REWE invoices (subject and attachments).</summary>
-    private async Task<List<string>> ListInvoiceMailsAsync(string userId, DateTime since, CancellationToken ct)
+    /// <summary>The ids of mails received since <paramref name="since"/> (all when null) that look like REWE invoices (subject and attachments).</summary>
+    private async Task<List<string>> ListInvoiceMailsAsync(string userId, DateTime? since, CancellationToken ct)
     {
-        var filter = $"receivedDateTime ge {since.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture)}"
-            + $" and hasAttachments eq true and startswith(subject,'{ReweInvoice.SubjectPrefix}')";
+        var filter = (since is { } from ? $"receivedDateTime ge {from.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture)} and " : "")
+            + $"hasAttachments eq true and startswith(subject,'{ReweInvoice.SubjectPrefix}')";
         string? url = $"{_graph.GraphBase}/me/messages?$filter={Uri.EscapeDataString(filter)}&$select=id,subject,receivedDateTime&$top={PageSize}";
         var ids = new List<string>();
         while (url != null && ids.Count < _options.MaxMessages)

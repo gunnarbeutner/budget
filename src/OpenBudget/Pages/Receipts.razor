@@ -55,7 +55,7 @@ else
                 <button type="button" class="btn btn-sm btn-outline-primary" data-testid="receipts-mail-check" disabled="@(checking || connection.NeedsReconnect)" @onclick="CheckAsync">
                     @if (checking)
                     {
-                        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                        <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
                     }
                     @L["Mail_CheckNow"]
                 </button>
@@ -81,14 +81,16 @@ else
     <section class="mb-4" data-testid="receipts-nonfood">
         <h2 class="h5">@L["NonFood_Heading"]</h2>
         <p class="small text-body-secondary">@L["NonFood_Help"]</p>
-        <select class="form-select form-select-sm w-auto" data-testid="receipts-nonfood-category" aria-label="@L["NonFood_Heading"]"
-                value="@(settings.NonFoodCategoryId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "")" @onchange="NonFoodChangedAsync">
-            <option value="">@L["NonFood_None"]</option>
-            @foreach (var o in picker?.Options ?? [])
-            {
-                <option value="@o.Id">@o.Path</option>
-            }
-        </select>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="receipts-nonfood-category" aria-label="@L["NonFood_Heading"]"
+                disabled="@(picker == null)" @onclick="OpenNonFoodPicker">
+            <i class="bi bi-tag me-1" aria-hidden="true"></i>@(settings.NonFoodCategoryId is { } nf && picker != null ? picker.PathOf(nf, L["NonFood_None"]) : L["NonFood_None"])
+        </button>
+        @if (pickerOpen && picker != null)
+        {
+            <CategoryPicker Data="picker" CurrentCategoryId="settings.NonFoodCategoryId" RemoveLabel="@L["NonFood_None"]"
+                            AllowRemove="@(settings.NonFoodCategoryId != null)" X="pickerX" Y="pickerY"
+                            OnPick="NonFoodPickedAsync" OnClose="() => pickerOpen = false" />
+        }
     </section>
 
     <section data-testid="receipts-list">
@@ -197,9 +199,14 @@ else
         await LoadAsync();
     }
 
-    private async Task NonFoodChangedAsync(ChangeEventArgs e)
+    private bool pickerOpen;
+    private double pickerX, pickerY;
+
+    private void OpenNonFoodPicker(MouseEventArgs e) => (pickerOpen, pickerX, pickerY) = (true, e.ClientX, e.ClientY);
+
+    private async Task NonFoodPickedAsync(long? id)
     {
-        long? id = long.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
+        pickerOpen = false;
         await Service.SetNonFoodCategoryAsync(id);
         await LoadAsync();
     }

@@ -21,21 +21,10 @@
             @for (var i = 0; i < group.Lines.Count; i++)
             {
                 var line = group.Lines[i];
-                @if (moving == line.Id && PickerData != null)
-                {
-                    <select class="form-select form-select-sm d-inline-block w-auto" data-testid="tx-receipt-move" aria-label="@L["Move", line.Name]"
-                            @onchange="e => MoveAsync(line.Id, e)">
-                        <option value="">@line.Name …</option>
-                        @foreach (var o in PickerData.Options)
-                        {
-                            <option value="@o.Id">@o.Path</option>
-                        }
-                    </select>
-                }
-                else if (CanEdit && PickerData != null)
+                @if (CanEdit && PickerData != null)
                 {
                     <button type="button" class="btn btn-link btn-sm p-0 align-baseline text-reset" data-testid="tx-receipt-line"
-                            title="@L["Move", line.Name]" @onclick="() => moving = line.Id">@Label(line)</button>
+                            title="@L["Move", line.Name]" @onclick="e => OpenPicker(line.Id, group.CategoryId, e)">@Label(line)</button>
                 }
                 else
                 {
@@ -44,6 +33,11 @@
                 @(i < group.Lines.Count - 1 ? "; " : "")
             }
         </div>
+    }
+    @if (moving is { } movingId && PickerData != null)
+    {
+        <CategoryPicker Data="PickerData" CurrentCategoryId="movingFrom" AllowRemove="false" X="pickerX" Y="pickerY"
+                        OnPick="id => MoveAsync(movingId, id)" OnClose="() => moving = null" />
     }
     @if (error != null)
     {
@@ -64,6 +58,10 @@
     [Inject] private ReceiptService Service { get; set; } = null!;
 
     private long? moving;
+    private long? movingFrom;
+    private double pickerX, pickerY;
+
+    private void OpenPicker(long itemId, long? from, MouseEventArgs e) => (moving, movingFrom, pickerX, pickerY) = (itemId, from, e.ClientX, e.ClientY);
     private string? error;
 
     private string CategoryName(long? id) =>
@@ -73,11 +71,11 @@
         (int.TryParse(line.Quantity, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var q) && q > 1 ? $"{line.Name} ×{q}" : line.Name)
         + " " + Formatting.FormatMoneyDe(line.TotalCents / 100m);
 
-    private async Task MoveAsync(long itemId, ChangeEventArgs e)
+    private async Task MoveAsync(long itemId, long? picked)
     {
         moving = null;
         error = null;
-        if (!long.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var category)) return;
+        if (picked is not { } category) return;
         try
         {
             await Service.MoveItemAsync(itemId, category);
