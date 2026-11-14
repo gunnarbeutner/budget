@@ -193,6 +193,23 @@ internal sealed class FakeBrowserSession : IBrowserSession
         return Task.CompletedTask;
     }
 
+    private readonly List<(string Prefix, Action<Uri> OnUrl)> _redirectWatchers = [];
+
+    public Task ObserveRedirectsAsync(string prefix, Action<Uri> onUrl)
+    {
+        lock (_redirectWatchers) _redirectWatchers.Add((prefix, onUrl));
+        return Task.CompletedTask;
+    }
+
+    /// <summary>The site sends the page to <paramref name="url"/> (an app's callback, say): the page stays where it is, as in Chromium.</summary>
+    public void SendTo(Uri url)
+    {
+        List<(string Prefix, Action<Uri> OnUrl)> watchers;
+        lock (_redirectWatchers) watchers = [.. _redirectWatchers];
+        foreach (var (prefix, onUrl) in watchers)
+            if (url.OriginalString.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) onUrl(url);
+    }
+
     public Task SetCookiesAsync(IReadOnlyList<CookieState> cookies)
     {
         Seeded.AddRange(cookies);

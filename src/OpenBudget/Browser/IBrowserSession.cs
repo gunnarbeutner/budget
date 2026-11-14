@@ -102,6 +102,13 @@ public interface IBrowserSession : IAsyncDisposable
     void ObserveResponses(IReadOnlyList<string> urlParts, Action<ObservedResponse> onResponse)
     {
     }
+
+    /// <summary>
+    /// Calls <paramref name="onUrl"/> with every address starting with <paramref name="prefix"/> (case-insensitive) that the
+    /// page is sent to: a request, a redirect's Location or a navigation, including addresses of schemes the browser cannot
+    /// open (an app's own callback scheme). The browser does not load them.
+    /// </summary>
+    Task ObserveRedirectsAsync(string prefix, Action<Uri> onUrl) => Task.CompletedTask;
 }
 
 /// <summary>Result of an in-page check: never carries secrets.</summary>

@@ -89,6 +89,9 @@ public sealed record ChallengeAnswer(ConnectorChallenge Challenge, string? Value
     /// </summary>
     public IBrowserFetcher? Browser { get; init; }
 
+    /// <summary>After a web login whose spec has <see cref="WebLoginSpec.CaptureRedirect"/>: the address the page was sent to (it carries a one-time code; never log it).</summary>
+    public Uri? CallbackUrl { get; init; }
+
     /// <summary>After a web login whose spec has <see cref="WebLoginSpec.ReportFailure"/>: why the sign-in did not complete (null when it did).</summary>
     public string? Failure { get; init; }
 }

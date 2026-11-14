@@ -259,6 +259,51 @@ internal sealed class PuppeteerBrowserSession : IBrowserSession
         };
     }
 
+    public async Task ObserveRedirectsAsync(string prefix, Action<Uri> onUrl)
+    {
+        // Requests, redirect answers (their raw Location header) and navigation requests of this page, read from the CDP
+        // events: an address of an unknown scheme never becomes a page, so the page URL alone would not show it.
+        _cdp.MessageReceived += (_, e) =>
+        {
+            if (!e.MessageID.StartsWith("Network.", StringComparison.Ordinal) && !e.MessageID.StartsWith("Page.", StringComparison.Ordinal)) return;
+            try
+            {
+                foreach (var url in RedirectTargets(e.MessageData, prefix)) onUrl(url);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or JsonException) { /* not an event with addresses */ }
+        };
+        try
+        {
+            await _cdp.SendAsync("Network.enable");
+            await _cdp.SendAsync("Page.enable");
+        }
+        catch (PuppeteerException ex)
+        {
+            throw new BrowserActionException("The browser could not watch the sign-in.", ex);
+        }
+    }
+
+    /// <summary>Every string value in a CDP event that is an absolute address starting with <paramref name="prefix"/>.</summary>
+    internal static IEnumerable<Uri> RedirectTargets(JsonElement data, string prefix)
+    {
+        switch (data.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var p in data.EnumerateObject())
+                    foreach (var u in RedirectTargets(p.Value, prefix)) yield return u;
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in data.EnumerateArray())
+                    foreach (var u in RedirectTargets(item, prefix)) yield return u;
+                break;
+            case JsonValueKind.String:
+                var text = data.GetString();
+                if (text != null && text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && Uri.TryCreate(text, UriKind.Absolute, out var url))
+                    yield return url;
+                break;
+        }
+    }
+
     /// <summary>A top-level error code field whose value looks like a code ("INVALID_CREDENTIALS", "401.3"), nothing longer.</summary>
     internal static (string? Field, string? Code) ShortErrorCode(JsonElement root)
     {

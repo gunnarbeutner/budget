@@ -73,6 +73,9 @@ public sealed record WebLoginResult(bool Success, string? Error, IReadOnlyList<C
 {
     public bool HasCookieSnapshot { get; init; }
 
+    /// <summary>The captured callback address (see <see cref="WebLoginSpec.CaptureRedirect"/>); never logged.</summary>
+    public Uri? CapturedUrl { get; init; }
+
     public static WebLoginResult Ok(IReadOnlyList<CookieState> cookies, string? userAgent = null) => new(true, null, cookies, UserAgent: userAgent);
 
     public static WebLoginResult Fail(string error) => new(false, error, []);
@@ -261,6 +264,8 @@ public sealed class WebLoginSession : IAsyncDisposable
                 _browser.ObserveResponses(_spec.ObservedRequests, r => _logger.LogInformation(
                     "Web login: {Path} answered {Status}{Code}.", r.Path, r.Status,
                     r.ErrorField != null ? $" ({r.ErrorField}={r.ErrorCode})" : ""));
+            if (_spec.CaptureRedirect is { Length: > 0 } capture)
+                await _browser.ObserveRedirectsAsync(capture, url => Interlocked.CompareExchange(ref _captured, url, null));
             await _browser.SetCookiesAsync(seed);
             _ready.TrySetResult(); // a viewer may attach now and watch the page load
             if (seed.Count > 0 && _spec.ResumeUrl != null && await ResumeAsync(_spec.ResumeUrl, ct) is { } resumed)
@@ -308,6 +313,9 @@ public sealed class WebLoginSession : IAsyncDisposable
     }
 
     private bool _userCancelled;
+
+    // the callback address the page was sent to (see WebLoginSpec.CaptureRedirect)
+    private Uri? _captured;
 
     /// <summary>
     /// Opens the spec's signed-in page with the stored cookies; the login result when the full success condition holds
@@ -508,6 +516,12 @@ public sealed class WebLoginSession : IAsyncDisposable
         using var timer = new PeriodicTimer(_options.PollInterval);
         while (await timer.WaitForNextTickAsync(ct))
         {
+            if (Volatile.Read(ref _captured) is { } callback)
+            {
+                _logger.LogInformation("Web login: the page went to the app's callback address; signed in.");
+                var all = await _browser.GetCookiesAsync();
+                return WebLoginResult.Ok(all.Where(_spec.Matches).ToList()) with { CapturedUrl = callback };
+            }
             var url = _browser.Url;
             if (await HandleCodePromptAsync(url, ct)) continue;
             // after the app submitted the stored credentials, the bank's own error message means they are wrong:

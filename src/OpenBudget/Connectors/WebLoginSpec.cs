@@ -94,6 +94,13 @@ public sealed class WebLoginSpec
     /// </summary>
     public bool ReportFailure { get; init; }
 
+    /// <summary>
+    /// An address prefix (an app's callback, such as <c>com.example.app://callback</c>) that ends the sign-in as soon as the
+    /// page is sent there: the full address goes to the connector (<see cref="ChallengeAnswer.CallbackUrl"/>) and is never
+    /// logged. For OAuth sign-ins whose redirect target is not a web page.
+    /// </summary>
+    public string? CaptureRedirect { get; init; }
+
     /// <summary>Cookies of these domains (and their sub-/parent domains' cookies that reach them) travel between the jar and the browser.</summary>
     public IReadOnlyList<string> CookieDomains { get; }
 
