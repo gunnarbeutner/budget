@@ -1489,29 +1489,12 @@ button.cat-pill:hover { filter: brightness(0.96); }
 }
 .app-bottom-item i { font-size: 18px; }
 .app-bottom-item.active { color: var(--bs-body-color) !important; box-shadow: inset 0 2px 0 var(--ob-accent); }
-.gear-menu-bottom { flex: 1 1 0; display: flex; }
-.gear-menu-bottom > summary { width: 100%; }
-.gear-menu-bottom .app-menu-list { top: auto; bottom: calc(100% + 8px); right: 8px; }
-
-/* ---- Gear menu ---- */
-.gear-menu > summary { position: relative; cursor: pointer; }
-.gear-menu-list { min-width: 16rem; padding: 6px; }
-.gear-menu-list .dropdown-item { font-size: 14px; border-radius: 6px; padding: 6px 10px; }
-.gear-menu-list .dropdown-header {
-    font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ob-muted); padding: 6px 10px 4px;
-}
-.gear-dot {
-    position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%;
-    background: var(--ob-negative);
-}
 /* the avatar's "a connection needs you" dot, in the warning colour of the Connections badge */
 .app-avatar { position: relative; }
 .avatar-dot {
     position: absolute; top: -1px; right: -1px; width: 9px; height: 9px; border-radius: 50%;
     background: var(--bs-warning); box-shadow: 0 0 0 2px var(--bs-body-bg);
 }
-.gear-menu-bottom .app-bottom-item { position: relative; }
-.gear-menu-bottom .avatar-dot { top: 4px; right: calc(50% - 16px); }
 .avatar-dot-inline { position: static; display: inline-block; box-shadow: none; }
 .ob-badge-danger { background: var(--ob-danger-bg) !important; color: var(--ob-danger-fg) !important; }
 
@@ -2245,3 +2228,9 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 .about-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 24px; row-gap: 6px; margin: 0; max-width: 40rem; }
 .about-facts dt { font-weight: 600; }
 .about-facts dd { margin: 0; color: var(--ob-muted); overflow-wrap: anywhere; }
+
+/* Amazon payment methods: on a phone the name sits above its account picker instead of beside it */
+@media (max-width: 575.98px) {
+    .order-instruments tr { display: grid; gap: 6px; padding-block: 8px; }
+    .order-instruments td { display: block; border: 0; padding: 0; }
+}

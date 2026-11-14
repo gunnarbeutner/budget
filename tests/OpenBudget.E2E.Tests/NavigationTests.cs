@@ -152,7 +152,6 @@ public sealed class NavigationTests : EndToEndTestBase
     public async Task The_avatar_leads_to_settings_and_the_switcher_gear_to_the_project_settings()
     {
         await GoToAsync($"/projects/{Pid}/browse");
-        await Expect(Page.GetByTestId("gear-menu")).ToHaveCountAsync(0);
 
         await Page.Locator("[data-testid=project-selector] summary").ClickAsync();
         await Page.Locator($"[data-testid=switcher-project-settings][href='/projects/{Pid}/settings']").ClickAsync();

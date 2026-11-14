@@ -32,7 +32,7 @@ public sealed record OnboardingState(int BankLogins, bool HasAccounts, UserDataS
 /// <summary>A starter category group: its name, its categories (none = one category of the group's name) and whether it is income.</summary>
 public sealed record StarterGroup(string Name, IReadOnlyList<string> Categories, bool Income = false, bool Tracked = true);
 
-/// <summary>The state behind the Get started page and its gear-menu entry, for the signed-in user.</summary>
+/// <summary>The state behind the Get started page and its settings entry, for the signed-in user.</summary>
 public sealed class OnboardingService
 {
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
