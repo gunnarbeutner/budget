@@ -279,4 +279,81 @@ public sealed class AmazonReceiptStoreTests
             receipt.Items.Single(i => i.Kind == ReceiptItemKind.Product).CategorySource));
         Assert.Equal(0, receipt.BonusCents);
     }
+
+    private const string OrderD = "301-0000000-0000004";
+
+    /// <summary>Order D: a fridge and toothpaste for 279.00, paid in five instalments of 55.80; three are listed so far.</summary>
+    private static OrderSourceResult InstalmentSync() => new(
+        [Charge(OrderD, 0, -279.00m), Charge(OrderD, 0, -55.80m), Charge(OrderD, 30, -55.80m), Charge(OrderD, 59, -55.80m)],
+        [
+            new RemoteOrder(OrderD, Day, 279.00m, "EUR", [
+                new RemoteOrderItem("Fridge freezer combination", 1, 200.00m, null, 0),
+                new RemoteOrderItem("Zahnpasta Mint", 1, 79.00m, null, 0),
+            ]),
+        ],
+        [], Day.AddDays(-30));
+
+    [Fact]
+    public async Task The_full_price_of_an_instalment_order_needs_no_booking_and_each_instalment_is_split_like_the_order()
+    {
+        var (t, login) = await WorldAsync();
+        await using var _ = t;
+        long[] ids = [ReceiptWorld.Id(610), ReceiptWorld.Id(611), ReceiptWorld.Id(612)];
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            db.Transactions.AddRange(Booking(ids[0], -5580, 0, "AMAZON EU"), Booking(ids[1], -5580, 30, "AMAZON EU"), Booking(ids[2], -5580, 59, "AMAZON EU"));
+            await db.SaveChangesAsync();
+        }
+        await SyncAsync(t, login, InstalmentSync());
+
+        await using var check = await t.System.CreateDbContextAsync();
+        var receipts = await check.ReceiptInvoices.Include(r => r.Items).Where(r => r.OrderNumber == OrderD).ToListAsync();
+        var full = receipts.Single(r => r.PaymentCents == 27900);
+        Assert.Equal((ReceiptMatchState.Instalments, (long?)null), (full.State, full.TransactionId));
+        Assert.Equal(2, full.Items.Count);
+        var instalments = receipts.Where(r => r.PaymentCents == 5580).OrderBy(r => r.DeliveryDate).ToList();
+        Assert.Equal(ids, instalments.Select(r => r.TransactionId!.Value));
+        Assert.All(instalments, r => Assert.Equal(2, r.Items.Count));
+        foreach (var id in ids)
+        {
+            var parts = await check.Transactions.AsNoTracking().Where(x => x.SplitParentId == id && x.Splitted == SplitState.Child).ToListAsync();
+            Assert.Equal([(-4000L, ReceiptWorld.Groceries), (-1580L, ReceiptWorld.Drugstore)], parts.OrderBy(p => p.Amount).Select(p => (p.Amount, p.CategoryId!.Value)));
+        }
+
+    }
+
+    private static ReceiptInvoice Entry(long cents, int days, long? orderTotal = 27900, string method = Card) => new()
+    {
+        OwnerUserId = ReceiptWorld.Alice,
+        Shop = ReceiptShops.Amazon,
+        SourceKey = $"{cents}|{days}|{method}",
+        InvoiceNumber = "x",
+        OrderNumber = OrderD,
+        PaymentCents = cents,
+        PaymentMethodId = method,
+        OrderTotalCents = orderTotal,
+        DeliveryDate = Day.AddDays(days).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+    };
+
+    [Fact]
+    public void An_instalment_plan_is_found_with_all_instalments_and_with_the_last_off_by_cents()
+    {
+        var all = AmazonReceiptStore.InstalmentPlans([Entry(27900, 0), .. Enumerable.Range(0, 5).Select(m => Entry(5580, m * 30))]);
+        Assert.Equal((27900L, 5, 5), (all.Single().Full.PaymentCents, all.Single().Count, all.Single().Instalments.Count));
+
+        var uneven = AmazonReceiptStore.InstalmentPlans([Entry(17849, 0, 17849), Entry(3570, 31), Entry(3570, 61), Entry(3570, 92), Entry(3570, 122), Entry(3569, 153)]);
+        Assert.Equal((5, 5), (uneven.Single().Count, uneven.Single().Instalments.Count));
+    }
+
+    [Fact]
+    public void Ordinary_shipment_charges_are_no_instalment_plan()
+    {
+        Assert.Empty(AmazonReceiptStore.InstalmentPlans([Entry(5000, 0, 8000), Entry(3000, 2, 8000)]));
+        // one charge twice the other: the order's total is both, not the larger one
+        Assert.Empty(AmazonReceiptStore.InstalmentPlans([Entry(6000, 0, 9000), Entry(3000, 2, 9000)]));
+        // without the order's total one equal charge is not enough
+        Assert.Empty(AmazonReceiptStore.InstalmentPlans([Entry(6000, 0, null), Entry(3000, 2, null)]));
+        // instalments on another payment method or before the full price do not count
+        Assert.Empty(AmazonReceiptStore.InstalmentPlans([Entry(27900, 30), Entry(5580, 0), Entry(5580, 60, method: Gift)]));
+    }
 }

@@ -229,4 +229,7 @@
   <data name="Assign_Row" xml:space="preserve">
     <value>Zuordnen…</value>
   </data>
+  <data name="State_Instalments" xml:space="preserve">
+    <value>in Raten bezahlt (siehe die Raten)</value>
+  </data>
 </root>

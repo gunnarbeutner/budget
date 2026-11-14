@@ -110,4 +110,7 @@
     <value>No category</value>
   </data>
   <data name="OpenAtShop" xml:space="preserve"><value>Open at Amazon</value></data>
+  <data name="PaidInInstalments" xml:space="preserve">
+    <value>paid in instalments: the instalments have the bookings</value>
+  </data>
 </root>

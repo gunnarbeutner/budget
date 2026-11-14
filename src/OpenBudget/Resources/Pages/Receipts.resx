@@ -229,4 +229,7 @@
   <data name="Assign_Row" xml:space="preserve">
     <value>Assign…</value>
   </data>
+  <data name="State_Instalments" xml:space="preserve">
+    <value>paid in instalments (see the instalments)</value>
+  </data>
 </root>

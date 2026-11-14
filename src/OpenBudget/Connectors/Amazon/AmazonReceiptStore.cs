@@ -12,6 +12,12 @@ namespace OpenBudget.Connectors.Amazon;
 public sealed record AmazonItem(int Position, string Title, int Quantity, long? PriceCents, int Shipment);
 
 /// <summary>
+/// An order paid in monthly instalments on one payment method: the receipt of its full price, which the wallet lists
+/// once but never reaches an account, and the receipts of the instalments listed so far (each a charge of its own).
+/// </summary>
+public sealed record InstalmentPlan(ReceiptInvoice Full, int Count, IReadOnlyList<ReceiptInvoice> Instalments);
+
+/// <summary>
 /// Stores what Amazon's wallet and order pages gave as receipts of the shop <see cref="ReceiptShops.Amazon"/>: one receipt
 /// per card or bank charge or refund (an order paid in several charges, e.g. per shipment, has several), carrying the
 /// items that charge paid for (see <see cref="AmazonShipments.ItemsForCharge"/>). The receipts are then matched and split
@@ -298,13 +304,15 @@ public static class AmazonReceiptStore
         var split = items.Select(i => new SplitItem(i.Position, i.Title, i.Quantity, i.PriceCents * i.Quantity, i.Shipment)).ToList();
         var points = ofOrder.SelectMany(r => r.Items).Where(i => i.Kind == ReceiptItemKind.Credit && i.SourceKey != null)
             .Select(i => ChargeOf(i.SourceKey!).Cents).Where(c => c < 0).Sum(c => -c);
-        var card = ofOrder.Where(r => !IsPoints(r)).Select(r => -r.PaymentCents).ToList();
+        var plans = InstalmentPlans(ofOrder);
+        var whole = plans.Select(p => p.Full).Concat(plans.SelectMany(p => p.Instalments)).ToHashSet();
+        var card = ofOrder.Where(r => !IsPoints(r) && !whole.Contains(r)).Select(r => -r.PaymentCents).ToList();
         foreach (var r in ofOrder)
         {
             r.OrderDate = orderDate?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc) ?? r.OrderDate;
             r.OrderTotalCents = orderTotalCents ?? r.OrderTotalCents;
             r.DetailsReadAt = detailsReadAt;
-            var paid = IsPoints(r) ? items.Select(i => i.Position).ToHashSet()
+            var paid = IsPoints(r) || whole.Contains(r) ? items.Select(i => i.Position).ToHashSet()
                 : AmazonShipments.ItemsForCharge(split, -r.PaymentCents, card, points, orderTotalCents).Items.Select(i => (int)i.Id).ToHashSet();
             var wanted = items.Where(i => paid.Contains(i.Position)).ToList();
             var products = r.Items.Where(i => i.Kind == ReceiptItemKind.Product).ToList();
@@ -326,6 +334,42 @@ public static class AmazonReceiptStore
             }
             Totals(r);
         }
+    }
+
+    /// <summary>The most instalments a plan is looked for with.</summary>
+    public const int MaxInstalments = 24;
+
+    /// <summary>
+    /// The instalment plans among an order's receipts. A charge is the full price of a plan of n instalments (2 to
+    /// <see cref="MaxInstalments"/>) when other charges of the same payment method, on its day or later, come to about
+    /// a nth of it: each within n cents of full/n, at least one of them within one cent (n × amount within n cents of the
+    /// full price), no more than n of them and together no more than the full price plus n cents. Exactly one n must fit.
+    /// When the order's total is known the full price must be it (an order shipped in two charges, one twice the other,
+    /// stays two charges); without it, two instalments must be listed.
+    /// </summary>
+    public static List<InstalmentPlan> InstalmentPlans(IReadOnlyList<ReceiptInvoice> ofOrder)
+    {
+        var plans = new List<InstalmentPlan>();
+        var charges = ofOrder.Where(r => r.PaymentCents > 0 && r.SourceKey != null && !IsPoints(r)).ToList();
+        foreach (var full in charges.OrderByDescending(r => r.PaymentCents).ThenBy(r => r.SourceKey, StringComparer.Ordinal))
+        {
+            if (plans.Any(p => p.Full == full || p.Instalments.Contains(full))) continue;
+            var total = full.PaymentCents;
+            var others = charges.Where(r => r != full && r.PaymentMethodId == full.PaymentMethodId && r.PaymentCents < total
+                && Day(r.DeliveryDate) >= Day(full.DeliveryDate) && plans.All(p => p.Full != r && !p.Instalments.Contains(r))).ToList();
+            var fits = new List<(int N, List<ReceiptInvoice> Of)>();
+            for (var n = 2; n <= MaxInstalments; n++)
+            {
+                var of = others.Where(r => Math.Abs(n * r.PaymentCents - total) <= (long)n * n).ToList();
+                if (of.Count == 0 || of.Count > n || !of.Any(r => Math.Abs(n * r.PaymentCents - total) <= n) || of.Sum(r => r.PaymentCents) > total + n) continue;
+                fits.Add((n, of));
+            }
+            if (fits is not [var fit]) continue;
+            var orderTotal = ofOrder.Select(r => r.OrderTotalCents).FirstOrDefault(t => t != null);
+            if (orderTotal is { } known ? known != total : fit.Of.Count < 2) continue;
+            plans.Add(new InstalmentPlan(full, fit.N, fit.Of.OrderBy(r => r.DeliveryDate).ToList()));
+        }
+        return plans;
     }
 
     /// <summary>The receipt's sum of lines and what the charge differs from it.</summary>

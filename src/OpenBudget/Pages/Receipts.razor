@@ -299,7 +299,7 @@ else
         Group.Review => s is ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched,
         Group.Waiting => s == ReceiptReviewState.Waiting,
         Group.Matched => s is ReceiptReviewState.Split or ReceiptReviewState.Matched,
-        Group.NoBooking => s is ReceiptReviewState.NoBooking or ReceiptReviewState.Dismissed,
+        Group.NoBooking => s is ReceiptReviewState.NoBooking or ReceiptReviewState.Instalments or ReceiptReviewState.Dismissed,
         _ => true,
     };
 

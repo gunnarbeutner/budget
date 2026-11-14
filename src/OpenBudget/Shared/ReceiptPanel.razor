@@ -25,7 +25,11 @@
                     <a class="ms-2" href="@shopUrl" target="_blank" rel="noopener" data-testid="receipt-panel-shop-link"><i class="bi bi-box-arrow-up-right me-1" aria-hidden="true"></i>@L["OpenAtShop"]</a>
                 }
                 · @L["Items", view.ItemCount]
-                @if (view.TransactionId == null)
+                @if (view.PaidInInstalments)
+                {
+                    <span data-testid="receipt-panel-instalments"> · @L["PaidInInstalments"]</span>
+                }
+                else if (view.TransactionId == null)
                 {
                     <span> · @L["NoBooking"]</span>
                 }

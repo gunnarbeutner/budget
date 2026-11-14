@@ -33,7 +33,8 @@ public sealed record ReceiptGroupView(long? CategoryId, long AmountCents, IReadO
 /// lines' sum, the bonus or coupons as zero or negative, and what was paid).
 /// </summary>
 public sealed record BookingReceiptView(long ReceiptId, long? TransactionId, string Shop, string? OrderNumber, DateTime? DeliveryDate, long BonusCents,
-    IReadOnlyList<ReceiptGroupView> Groups, bool SplitByReceipt, string? Store = null, long TotalCents = 0, long PaymentCents = 0, string? InvoiceNumber = null)
+    IReadOnlyList<ReceiptGroupView> Groups, bool SplitByReceipt, string? Store = null, long TotalCents = 0, long PaymentCents = 0, string? InvoiceNumber = null,
+    bool PaidInInstalments = false)
 {
     /// <summary>The number of lines.</summary>
     public int ItemCount => Groups.Sum(g => g.Lines.Count);
@@ -59,6 +60,9 @@ public enum ReceiptReviewState
 
     /// <summary>Paid in cash (or otherwise without a booking to look for).</summary>
     NoBooking,
+
+    /// <summary>The full price of an order paid in instalments: the instalments have the bookings.</summary>
+    Instalments,
 
     /// <summary>The owner said its booking is not in the app.</summary>
     Dismissed,
@@ -334,7 +338,7 @@ public sealed class ReceiptService
         var count = await q.CountAsync(ct);
         var matched = await q.CountAsync(r => r.TransactionId != null, ct);
         // a receipt paid in cash has no booking to wait for
-        var open = q.Where(r => r.TransactionId == null && r.PaymentCents > 0 && r.State != ReceiptMatchState.Dismissed && r.State != ReceiptMatchState.Skipped);
+        var open = q.Where(r => r.TransactionId == null && r.PaymentCents > 0 && r.State != ReceiptMatchState.Dismissed && r.State != ReceiptMatchState.Skipped && r.State != ReceiptMatchState.Instalments);
         var openCount = await open.CountAsync(ct);
         var latest = await open.OrderByDescending(r => r.OrderDate).ThenByDescending(r => r.Id).Take(take)
             .Select(r => new ReceiptView(r.Id, r.Shop, r.OrderNumber, r.OrderDate, r.DeliveryDate, r.PaymentCents, r.Items.Count, r.State, null, null, false, r.Store))
@@ -375,7 +379,8 @@ public sealed class ReceiptService
                 .Select(i => new ReceiptLineView(i.Id, i.Name, i.Quantity, i.TotalCents, i.Kind, i.CategoryId ?? bookingCategory, i.CategorySource)).ToList()))
             .ToList();
         return new BookingReceiptView(invoice.Id, booking?.Id, invoice.Shop, invoice.OrderNumber, invoice.DeliveryDate ?? invoice.OrderDate, invoice.BonusCents, groups,
-            invoice.SplitSignature != null, invoice.Store, invoice.TotalCents, invoice.PaymentCents, invoice.InvoiceNumber);
+            invoice.SplitSignature != null, invoice.Store, invoice.TotalCents, invoice.PaymentCents, invoice.InvoiceNumber,
+            invoice.State == ReceiptMatchState.Instalments);
     }
 
     // ---- review ----
@@ -405,6 +410,7 @@ public sealed class ReceiptService
                 ReceiptMatchState.Ambiguous => ReceiptReviewState.Ambiguous,
                 ReceiptMatchState.Dismissed => ReceiptReviewState.Dismissed,
                 ReceiptMatchState.Skipped => ReceiptReviewState.NoBooking,
+                ReceiptMatchState.Instalments => ReceiptReviewState.Instalments,
                 _ when r.PaymentCents == 0 || (r.PaymentCents < 0 && r.Shop != ReceiptShops.Amazon) => ReceiptReviewState.NoBooking,
                 _ when date is { } d && DateOnly.FromDateTime(d).AddDays(WaitingDays) >= today => ReceiptReviewState.Waiting,
                 _ => ReceiptReviewState.Unmatched,

@@ -139,6 +139,10 @@ public sealed class ReceiptStore
             current.TryGetValue(id, out var row) && row.Cents == -paymentCents && (account == null || row.AccountId == account);
         var kept = new HashSet<long>();
         var lost = new List<long>();
+        // The full price of an Amazon order paid in instalments has no booking: its instalments have theirs.
+        var fullPrices = invoices.Where(i => i.Shop == ReceiptShops.Amazon && i.BankLoginId != null && i.OrderNumber != null)
+            .GroupBy(i => (i.BankLoginId, i.OrderNumber))
+            .SelectMany(g => Amazon.AmazonReceiptStore.InstalmentPlans(g.ToList()).Select(p => p.Full)).ToHashSet();
         foreach (var i in invoices)
         {
             if (i.State == ReceiptMatchState.Dismissed) continue;
@@ -149,6 +153,15 @@ public sealed class ReceiptStore
                 continue;
             }
             i.ManualMatch = false;
+            if (fullPrices.Contains(i))
+            {
+                if (i.TransactionId is { } was) lost.Add(was);
+                i.TransactionId = null;
+                i.SplitSignature = null;
+                i.State = ReceiptMatchState.Instalments;
+                continue;
+            }
+            if (i.State == ReceiptMatchState.Instalments) i.State = ReceiptMatchState.Unmatched;
             var account = accounts.TryGetValue(i.Id, out var mapped) ? mapped : (long?)null;
             if (i.Shop == ReceiptShops.Amazon && account == null)
             {

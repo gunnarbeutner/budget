@@ -38,6 +38,12 @@ public enum ReceiptMatchState
     /// Nothing to look for: paid with points or a gift card, or (Amazon) the payment method is not mapped to an account.
     /// </summary>
     Skipped = 4,
+
+    /// <summary>
+    /// Amazon: the full price of an order paid in monthly instalments. The wallet lists it next to the instalments, which
+    /// are charges of their own and match their bookings; the full price never reaches an account.
+    /// </summary>
+    Instalments = 5,
 }
 
 /// <summary>
