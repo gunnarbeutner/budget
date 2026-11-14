@@ -40,12 +40,16 @@ public enum ReceiptMatchState
     Skipped = 4,
 }
 
-/// <summary>What a receipt line is: a product, a deposit line (Pfand, Leergut, Pfandtasche) or a fee (delivery).</summary>
+/// <summary>
+/// What a receipt line is: a product, a deposit line (Pfand, Leergut, Pfandtasche), a fee (delivery) or a credit (Amazon:
+/// what points or a gift card paid of the order, named after them).
+/// </summary>
 public enum ReceiptItemKind
 {
     Product = 0,
     Deposit = 1,
     Fee = 2,
+    Credit = 3,
 }
 
 /// <summary>Well-known values for <see cref="ReceiptItem.CategorySource"/>.</summary>
@@ -199,6 +203,10 @@ public class ReceiptItem
 
     /// <summary>Amazon: the shipment of the order the item went out with (0-based, in page order).</summary>
     public int? Shipment { get; set; }
+
+    /// <summary>Amazon credit lines: the identity of the points or gift card charge (see <see cref="ReceiptInvoice.SourceKey"/>).</summary>
+    [MaxLength(200)]
+    public string? SourceKey { get; set; }
 
     /// <summary>The category the item goes to (null: the booking's own category).</summary>
     public long? CategoryId { get; set; }

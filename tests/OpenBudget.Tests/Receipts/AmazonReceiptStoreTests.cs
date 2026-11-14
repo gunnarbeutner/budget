@@ -15,6 +15,7 @@ public sealed class AmazonReceiptStoreTests
     private const string Gift = "gift-card";
     private const string OrderA = "301-0000000-0000001";
     private const string OrderB = "301-0000000-0000002";
+    private const string Points = "example-points";
     private static readonly DateOnly Day = new(2026, 11, 3);
     private static readonly long Snacks = ReceiptWorld.Id(600);
     private static readonly long Fridge = ReceiptWorld.Id(601);
@@ -48,7 +49,7 @@ public sealed class AmazonReceiptStoreTests
     };
 
     private static RemoteCharge Charge(string order, int days, decimal amount, string instrument = Card) =>
-        new(order, Day.AddDays(days), amount, "EUR", instrument, instrument == Card ? "Visa •••• 1111" : "Amazon gift card", "Approved", null);
+        new(order, Day.AddDays(days), amount, "EUR", instrument, instrument == Card ? "Visa •••• 1111" : instrument == Points ? "Example Points" : "Amazon gift card", "Approved", null);
 
     /// <summary>Order A: snacks in one shipment, a fridge and toothpaste in another, charged separately; order B paid with a gift card.</summary>
     private static OrderSourceResult FirstSync() => new(
@@ -139,5 +140,143 @@ public sealed class AmazonReceiptStoreTests
 
         Assert.All(await db.ReceiptInvoices.Where(r => r.Shop == ReceiptShops.Amazon).ToListAsync(), r => Assert.Equal(ReceiptMatchState.Skipped, r.State));
         Assert.Null((await db.Transactions.AsNoTracking().SingleAsync(x => x.Id == Snacks)).OrderItems);
+    }
+
+    private const string OrderC = "301-0000000-0000003";
+    private static readonly long Small = ReceiptWorld.Id(603);
+
+    /// <summary>Order C: one item of 11.11, paid 10.60 by card and 0.51 with points on the same day.</summary>
+    private static OrderSourceResult PointsSync() => new(
+        [Charge(OrderC, 0, -10.60m), Charge(OrderC, 0, -0.51m, Points)],
+        [new RemoteOrder(OrderC, Day, 11.11m, "EUR", [new RemoteOrderItem("Example item", 1, 11.11m, null, 0)])],
+        [], Day.AddDays(-30));
+
+    private static async Task AddSmallBookingAsync(TestDb t)
+    {
+        await using var db = await t.System.CreateDbContextAsync();
+        db.Transactions.Add(Booking(Small, -1060, 1, "AMAZON EU"));
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task<List<ReceiptInvoice>> AmazonReceiptsAsync(TestDb t)
+    {
+        await using var db = await t.System.CreateDbContextAsync();
+        return await db.ReceiptInvoices.AsNoTracking().Include(r => r.Items).Where(r => r.Shop == ReceiptShops.Amazon).ToListAsync();
+    }
+
+    private static List<(string Name, long Cents, ReceiptItemKind Kind)> Lines(ReceiptInvoice r) =>
+        r.Items.OrderBy(i => i.Position).Select(i => (i.Name, i.TotalCents, i.Kind)).ToList();
+
+    [Fact]
+    public async Task Points_become_a_credit_line_of_the_card_receipt_and_go_when_the_wallet_drops_them()
+    {
+        var (t, login) = await WorldAsync();
+        await using var _ = t;
+        await AddSmallBookingAsync(t);
+        await SyncAsync(t, login, PointsSync());
+        await SyncAsync(t, login, PointsSync() with { Orders = [] });
+
+        var receipt = Assert.Single(await AmazonReceiptsAsync(t));
+        Assert.Equal((1060L, Small), (receipt.PaymentCents, receipt.TransactionId!.Value));
+        Assert.Equal([("Example item", 1111L, ReceiptItemKind.Product), ("Example Points", -51L, ReceiptItemKind.Credit)], Lines(receipt));
+        Assert.Equal((1060L, 0L), (receipt.TotalCents, receipt.BonusCents));
+
+        var first = PointsSync();
+        await SyncAsync(t, login, first with { Charges = [first.Charges[0]], Orders = [] });
+        receipt = Assert.Single(await AmazonReceiptsAsync(t));
+        Assert.Equal([("Example item", 1111L, ReceiptItemKind.Product)], Lines(receipt));
+        Assert.Equal(Small, receipt.TransactionId);
+    }
+
+    [Fact]
+    public async Task Points_go_to_the_card_charge_of_their_day_and_tell_which_items_it_paid()
+    {
+        var (t, login) = await WorldAsync();
+        await using var _ = t;
+        var first = FirstSync();
+        await SyncAsync(t, login, first with { Charges = [Charge(OrderA, 0, -12.47m), Charge(OrderA, 1, -640.00m), Charge(OrderA, 1, -9.00m, Points)], Orders = [first.Orders[0]] });
+
+        var receipts = await AmazonReceiptsAsync(t);
+        Assert.Equal(2, receipts.Count);
+        Assert.Equal([("Salted snack mix", 1247L, ReceiptItemKind.Product)], Lines(receipts.Single(r => r.PaymentCents == 1247)));
+        var fridge = receipts.Single(r => r.PaymentCents == 64000);
+        Assert.Equal([("Fridge freezer combination", 60000L, ReceiptItemKind.Product), ("Zahnpasta Mint", 4900L, ReceiptItemKind.Product), ("Example Points", -900L, ReceiptItemKind.Credit)],
+            Lines(fridge));
+        Assert.Equal(0, fridge.BonusCents);
+    }
+
+    [Fact]
+    public async Task An_order_paid_with_points_alone_is_one_receipt_without_a_booking()
+    {
+        var (t, login) = await WorldAsync();
+        await using var _ = t;
+        var result = new OrderSourceResult([Charge(OrderB, 1, -3.00m, Points), Charge(OrderB, 1, -2.00m, Gift)],
+            [new RemoteOrder(OrderB, Day, 5.00m, "EUR", [new RemoteOrderItem("Gift wrap", 1, 5.00m, null, 0)])], [], Day.AddDays(-30));
+        await SyncAsync(t, login, result);
+        await SyncAsync(t, login, result with { Orders = [] });
+
+        var receipt = Assert.Single(await AmazonReceiptsAsync(t));
+        Assert.Equal((ReceiptMatchState.Skipped, (long?)null, 0L), (receipt.State, receipt.TransactionId, receipt.PaymentCents));
+        Assert.Equal("Example Points", receipt.PaymentMethod);
+        Assert.Equal([("Gift wrap", 500L, ReceiptItemKind.Product), ("Example Points", -300L, ReceiptItemKind.Credit), ("Amazon gift card", -200L, ReceiptItemKind.Credit)],
+            Lines(receipt));
+        Assert.Equal((0L, 0L), (receipt.TotalCents, receipt.BonusCents));
+
+        // A card charge arriving later takes the credits over.
+        await SyncAsync(t, login, result with { Charges = [.. result.Charges, Charge(OrderB, 2, -1.00m)], Orders = [] });
+        receipt = Assert.Single(await AmazonReceiptsAsync(t));
+        Assert.Equal((100L, Card), (receipt.PaymentCents, receipt.PaymentMethodId));
+        Assert.Equal(2, receipt.Items.Count(i => i.Kind == ReceiptItemKind.Credit));
+    }
+
+    [Fact]
+    public async Task Stored_points_receipts_fold_into_their_card_receipt_keeping_its_booking_and_moves()
+    {
+        var (t, login) = await WorldAsync();
+        await using var _ = t;
+        await AddSmallBookingAsync(t);
+        var now = DateTime.UtcNow;
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            var card = AmazonReceiptStore.NewReceipt(ReceiptWorld.Alice, login.Id, $"{OrderC}|2026-11-03|-1060|{Card}|1", OrderC, Day, -1060, Card, "Visa •••• 1111", now);
+            card.State = ReceiptMatchState.Matched;
+            card.TransactionId = Small;
+            var points = AmazonReceiptStore.NewReceipt(ReceiptWorld.Alice, login.Id, $"{OrderC}|2026-11-03|-51|{Points}|1", OrderC, Day, -51, Points, "Example Points", now);
+            points.State = ReceiptMatchState.Skipped;
+            foreach (var r in new[] { card, points })
+            {
+                r.DetailsReadAt = now;
+                r.OrderTotalCents = 1111;
+            }
+            card.Items.Add(new ReceiptItem
+            {
+                OwnerUserId = ReceiptWorld.Alice,
+                Position = 0,
+                Name = "Example item",
+                UnitCents = 1111,
+                TotalCents = 1111,
+                Shipment = 0,
+                CategoryId = ReceiptWorld.Drugstore,
+                CategorySource = ReceiptCategorySource.Manual,
+            });
+            card.TotalCents = 1111;
+            card.BonusCents = -51;
+            db.ReceiptInvoices.AddRange(card, points);
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            Assert.Equal(1, await AmazonReceiptStore.FoldPointsReceiptsAsync(db, now));
+            Assert.Equal(0, await AmazonReceiptStore.FoldPointsReceiptsAsync(db, now));
+        }
+        await SyncAsync(t, login, PointsSync() with { Orders = [] });
+
+        var receipt = Assert.Single(await AmazonReceiptsAsync(t));
+        Assert.Equal((ReceiptMatchState.Matched, Small), (receipt.State, receipt.TransactionId!.Value));
+        Assert.Equal([("Example item", 1111L, ReceiptItemKind.Product), ("Example Points", -51L, ReceiptItemKind.Credit)], Lines(receipt));
+        Assert.Equal((ReceiptWorld.Drugstore, ReceiptCategorySource.Manual), (receipt.Items.Single(i => i.Kind == ReceiptItemKind.Product).CategoryId!.Value,
+            receipt.Items.Single(i => i.Kind == ReceiptItemKind.Product).CategorySource));
+        Assert.Equal(0, receipt.BonusCents);
     }
 }
