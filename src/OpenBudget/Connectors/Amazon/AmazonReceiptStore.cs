@@ -297,7 +297,8 @@ public static class AmazonReceiptStore
     /// Gives each receipt of an order the items its charge paid for (an order paid by points or gift card alone: all on
     /// its one receipt), the order's day and total. Credit lines stay where they are; what they paid tells which items
     /// the card charges paid. The lines add up to the charge through <see cref="ReceiptInvoice.BonusCents"/> (shipping,
-    /// discounts). A receipt whose items stay the same keeps its lines (and the owner's moves).
+    /// discounts). A receipt whose items stay the same keeps its lines (and the owner's moves), taking over their
+    /// quantities and prices as read.
     /// </summary>
     public static void Assign(IReadOnlyList<ReceiptInvoice> ofOrder, IReadOnlyList<AmazonItem> items, DateOnly? orderDate, long? orderTotalCents, DateTime detailsReadAt)
     {
@@ -331,6 +332,19 @@ public static class AmazonReceiptStore
                         Shipment = i.Shipment,
                         Kind = ReceiptItemKind.Product,
                     });
+            }
+            else
+            {
+                // The same items keep their lines (and the owner's moves); a corrected quantity or price is taken over.
+                foreach (var line in products)
+                {
+                    var i = wanted.First(w => w.Position == line.Position);
+                    line.Name = Truncate(i.Title, 300)!;
+                    line.Quantity = i.Quantity.ToString(CultureInfo.InvariantCulture);
+                    line.UnitCents = i.PriceCents;
+                    line.TotalCents = (i.PriceCents ?? 0) * i.Quantity;
+                    line.Shipment = i.Shipment;
+                }
             }
             Totals(r);
         }

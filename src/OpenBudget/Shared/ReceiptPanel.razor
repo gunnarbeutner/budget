@@ -136,7 +136,7 @@
                         <tr><td colspan="2">@L["Total"]</td><td class="text-end text-nowrap">@Formatting.FormatMoneyDe(view.TotalCents / 100m)</td>@if (categorized) { <td></td> }</tr>
                         @if (view.BonusCents != 0)
                         {
-                            <tr><td colspan="2">@L["Bonus"]</td><td class="text-end text-nowrap">@Formatting.FormatMoneyDe(view.BonusCents / 100m)</td>@if (categorized) { <td></td> }</tr>
+                            <tr><td colspan="2">@(view.BonusCents < 0 ? L["Bonus"] : L["Unitemised"])</td><td class="text-end text-nowrap">@Formatting.FormatMoneyDe(view.BonusCents / 100m)</td>@if (categorized) { <td></td> }</tr>
                         }
                         <tr class="fw-semibold"><td colspan="2">@L["Paid"]</td><td class="text-end text-nowrap" data-testid="receipt-panel-paid">@Formatting.FormatMoneyDe(view.PaymentCents / 100m)</td>@if (categorized) { <td></td> }</tr>
                     </tfoot>

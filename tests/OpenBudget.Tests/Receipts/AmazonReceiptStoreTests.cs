@@ -71,6 +71,22 @@ public sealed class AmazonReceiptStoreTests
     }
 
     [Fact]
+    public async Task Reading_an_order_again_takes_over_a_corrected_quantity()
+    {
+        var (t, login) = await WorldAsync();
+        await using var _ = t;
+        var first = FirstSync();
+        await SyncAsync(t, login, first);
+        var order = first.Orders[0];
+        var corrected = order with { Items = [order.Items[0] with { Quantity = 2, Price = 6.235m }, .. order.Items.Skip(1)] };
+        await SyncAsync(t, login, first with { Orders = [corrected, .. first.Orders.Skip(1)] });
+
+        await using var db = await t.System.CreateDbContextAsync();
+        var line = await db.ReceiptItems.AsNoTracking().FirstAsync(i => i.Name == "Salted snack mix");
+        Assert.Equal("2", line.Quantity);
+    }
+
+    [Fact]
     public async Task Orders_stored_without_their_items_are_asked_for_until_a_sync_reads_them()
     {
         var (t, login) = await WorldAsync();
