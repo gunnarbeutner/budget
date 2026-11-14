@@ -37,6 +37,21 @@ public sealed class AmazonTests
         },
     };
 
+    /// <summary>The answer to a further-page request for the payments <paramref name="walletHtml"/> lists.</summary>
+    internal static string NextPageAnswer(string walletHtml)
+    {
+        var state = AmazonPages.NextDataOf(walletHtml)!["props"]!["pageProps"]!["state"]!;
+        return new JsonObject
+        {
+            ["type"] = "GetTransactions",
+            ["displayResponse"] = new JsonObject
+            {
+                ["transactionsList"] = state["transactionResponseState"]!["visibleTransactionResponse"]!["transactionList"]!.DeepClone(),
+                ["lastEvaluatedKey"] = state["lastEvaluatedPageKey"]?.DeepClone(),
+            },
+        }.ToJsonString();
+    }
+
     internal static string WalletHtml(bool hasMore, params JsonObject[] entries)
     {
         var data = new JsonObject
@@ -368,6 +383,9 @@ public sealed class AmazonTests
         public List<string> Requested { get; } = [];
         public string PostBody { get; private set; } = "";
         public string? PostToken { get; private set; }
+
+        /// <summary>A further page as Amazon answers it: <c>displayResponse.transactionsList</c> and <c>lastEvaluatedKey</c>.</summary>
+        public string? NextPageJson => NextPage == null ? null : NextPageAnswer(NextPage);
         public bool IsOpen => true;
 
         public Task<Uri?> ResolveRedirectAsync(Uri url, CancellationToken ct) => Task.FromResult<Uri?>(null);
@@ -380,7 +398,7 @@ public sealed class AmazonTests
             {
                 PostBody = request.Body ?? "";
                 PostToken = request.Headers?.GetValueOrDefault("x-amzn-upx-token");
-                return Answer(NextPage == null ? 500 : 200, request.Url, AmazonPages.NextDataOf(NextPage ?? "")?["props"]?["pageProps"]?["state"]?.ToJsonString() ?? "");
+                return Answer(NextPage == null ? 500 : 200, request.Url, NextPageJson ?? "");
             }
             return Pages.TryGetValue(request.Url.AbsolutePath, out var html) ? Answer(200, request.Url, html) : Answer(404, request.Url, "");
         }

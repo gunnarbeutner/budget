@@ -147,7 +147,7 @@ internal static partial class AmazonPages
     /// <summary>A transaction list wherever it sits in <paramref name="root"/> (the first page or a further page's answer).</summary>
     public static AmazonWalletPage? ParseWalletJson(JsonNode root)
     {
-        if (Find(root, "transactionList") is not JsonArray list) return null;
+        if ((Find(root, "transactionList") ?? Find(root, "transactionsList")) is not JsonArray list) return null;
         var charges = new List<RemoteCharge>();
         DateOnly? oldest = null;
         foreach (var entry in list.OfType<JsonObject>())
@@ -156,13 +156,14 @@ internal static partial class AmazonPages
             if (date is { } d && (oldest == null || d < oldest)) oldest = d;
             if (ParseCharge(entry, date) is { } charge) charges.Add(charge);
         }
-        var hasMore = Find(root, "hasMore") is JsonValue v && v.TryGetValue<bool>(out var more) && more;
-        var key = Find(root, "lastEvaluatedPageKey") switch
+        var key = (Find(root, "lastEvaluatedPageKey") ?? Find(root, "lastEvaluatedKey")) switch
         {
             JsonValue s when s.TryGetValue<string>(out var str) => str,
             JsonObject o => o.ToJsonString(),
             _ => null,
         };
+        // The first page says hasMore; further pages only carry a key while older payments follow.
+        var hasMore = Find(root, "hasMore") is not JsonValue v || !v.TryGetValue<bool>(out var more) || more;
         return new AmazonWalletPage(charges, hasMore && !string.IsNullOrEmpty(key), key, list.Count) { Oldest = oldest };
     }
 
