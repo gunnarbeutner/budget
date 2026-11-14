@@ -128,7 +128,7 @@
     <value>no booking found</value>
   </data>
   <data name="State_NoBooking" xml:space="preserve">
-    <value>paid in cash</value>
+    <value>not paid from an account</value>
   </data>
   <data name="State_Dismissed" xml:space="preserve">
     <value>not in this app</value>
