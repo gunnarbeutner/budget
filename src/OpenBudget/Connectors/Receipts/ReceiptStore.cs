@@ -182,7 +182,7 @@ public sealed class ReceiptStore
             i.State = ReceiptMatchState.Unmatched;
         }
         var open = invoices.Where(i => i.State == ReceiptMatchState.Unmatched)
-            .Select(i => new ReceiptToMatch(i.Id, i.PaymentCents, Day(i.OrderDate), Day(i.DeliveryDate), i.Shop, accounts.TryGetValue(i.Id, out var a) ? a : null)).ToList();
+            .Select(i => new ReceiptToMatch(i.Id, i.PaymentCents, Day(i.OrderDate), Day(i.DeliveryDate), i.Shop, accounts.TryGetValue(i.Id, out var a) ? a : null, i.OrderNumber)).ToList();
         var outcome = ReceiptMatcher.Match(open, bookings, kept);
         foreach (var i in invoices.Where(i => i.State == ReceiptMatchState.Unmatched))
         {

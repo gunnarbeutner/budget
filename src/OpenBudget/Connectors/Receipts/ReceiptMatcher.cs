@@ -7,7 +7,7 @@ namespace OpenBudget.Connectors.Receipts;
 /// A receipt to place: what was charged by card or bank (positive cents; an Amazon refund negative), when it was
 /// ordered and delivered (Amazon: charged), its shop and (Amazon) the account its payment method is booked on.
 /// </summary>
-public sealed record ReceiptToMatch(long Id, long PaymentCents, DateOnly? OrderDate, DateOnly? DeliveryDate, string Shop = ReceiptShops.Rewe, long? AccountId = null);
+public sealed record ReceiptToMatch(long Id, long PaymentCents, DateOnly? OrderDate, DateOnly? DeliveryDate, string Shop = ReceiptShops.Rewe, long? AccountId = null, string? OrderNumber = null);
 
 /// <summary>A booking that may have paid a receipt; <see cref="Pending"/>: not booked yet, so its date is the bank's expected booking day.</summary>
 public sealed record ReceiptBooking(long Id, DateOnly Date, long Cents, string? Name, string? Purpose, long? AccountId = null, bool Pending = false);
@@ -40,6 +40,10 @@ public sealed record ReceiptMatchOutcome(IReadOnlyDictionary<long, long> Matches
 /// A receipt with exactly one free candidate takes it. Of the rest, a receipt and booking are paired when their dates
 /// are at least <see cref="ClearlyCloserDays"/> days closer together than any other free pairing either of them has
 /// (repeated purchases of one amount, weeks apart); anything closer stays ambiguous.
+///
+/// Twins (receipts of one order with the same amount, day and account, e.g. a shop listing a charge twice) are
+/// interchangeable: when no other receipt wants their bookings, they take them in order, nearest first; a twin left
+/// without a booking stays unmatched.
 /// </summary>
 public static class ReceiptMatcher
 {
@@ -94,6 +98,22 @@ public static class ReceiptMatcher
             if (rivals.Any(o => o.Gap < p.Gap + ClearlyCloserDays)) continue;
             matches[p.R] = p.B;
             used.Add(p.B);
+        }
+        foreach (var twins in receipts.Where(r => !matches.ContainsKey(r.Id) && r.OrderNumber != null)
+            .GroupBy(r => (r.OrderNumber, r.PaymentCents, r.AccountId, Day: r.DeliveryDate ?? r.OrderDate))
+            .Where(g => g.Count() > 1))
+        {
+            var ids = twins.Select(r => r.Id).ToHashSet();
+            var free = twins.SelectMany(r => candidates[r.Id]).Where(b => !used.Contains(b.Id)).DistinctBy(b => b.Id).ToList();
+            if (free.Count == 0) continue;
+            if (receipts.Any(o => !ids.Contains(o.Id) && !matches.ContainsKey(o.Id) && candidates[o.Id].Any(b => free.Any(f => f.Id == b.Id)))) continue;
+            var first = twins.First();
+            var ordered = free.OrderBy(b => Gap(first, b)).ThenBy(b => b.Date).ThenBy(b => b.Id).ToList();
+            foreach (var (r, b) in twins.OrderBy(r => r.Id).Zip(ordered))
+            {
+                matches[r.Id] = b.Id;
+                used.Add(b.Id);
+            }
         }
         var ambiguous = receipts.Where(r => !matches.ContainsKey(r.Id) && candidates[r.Id].Any(b => !used.Contains(b.Id))).Select(r => r.Id).ToHashSet();
         return new ReceiptMatchOutcome(matches, ambiguous);

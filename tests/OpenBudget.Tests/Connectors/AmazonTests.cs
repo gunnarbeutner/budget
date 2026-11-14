@@ -253,6 +253,22 @@ public sealed class AmazonTests
     }
 
     [Fact]
+    public void Twin_charges_of_one_order_take_their_bookings_in_order_and_a_spare_twin_stays_open()
+    {
+        static ReceiptToMatch Twin(long id, string order) => new(id, 500, null, Day, ReceiptShops.Amazon, 7, order);
+        var two = ReceiptMatcher.Match([Twin(1, "A"), Twin(2, "A")], [Booking(10, 7, Day.AddDays(1), -500, true), Booking(11, 7, Day.AddDays(1), -500, true)]);
+        Assert.Equal(new Dictionary<long, long> { [1] = 10, [2] = 11 }, two.Matches);
+
+        var one = ReceiptMatcher.Match([Twin(1, "A"), Twin(2, "A")], [Booking(10, 7, Day.AddDays(1), -500, true)]);
+        Assert.Equal(10, Assert.Single(one.Matches).Value);
+        Assert.Empty(one.Ambiguous);
+
+        // Equal charges of different orders are not twins.
+        var apart = ReceiptMatcher.Match([Twin(1, "A"), Twin(2, "B")], [Booking(10, 7, Day.AddDays(1), -500, true)]);
+        Assert.Empty(apart.Matches);
+    }
+
+    [Fact]
     public void A_settled_charge_frees_its_booking_for_another()
     {
         // Charge 1 can only be booking 10; then charge 2 has only booking 11 left.
