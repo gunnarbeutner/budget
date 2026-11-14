@@ -320,7 +320,8 @@ public partial class BudgetDbContext
     /// Changing only user-owned fields (category, note, check mark, new marker) of an existing transaction is allowed to
     /// the owner and to editors of a project the account is assigned to (provider rule: see the caller);
     /// everything else on a transaction is refused for a changed bank field, and creating or deleting is the owner's alone
-    /// (except split parts, see <see cref="TransactionEditRules.IsOwnSplitPart"/>, which follow the edit rights).
+    /// (except split parts, see <see cref="TransactionEditRules.IsOwnSplitPart"/>, which follow the edit rights, and whose
+    /// amount and item text a new split may update).
     /// </summary>
     private static void EnforceTransactionWrite(
         AccessScope scope, Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, Transaction transaction,
@@ -329,6 +330,11 @@ public partial class BudgetDbContext
         var onlyEditable = entry.State == EntityState.Modified
             && entry.Properties.Where(p => p.IsModified).All(p => TransactionEditRules.EditableProperties.Contains(p.Metadata.Name));
         if (!onlyEditable && entry.State is EntityState.Added or EntityState.Deleted && TransactionEditRules.IsOwnSplitPart(transaction))
+            onlyEditable = true;
+        // A split part the app created may also have its amount and item text updated when the booking is split again.
+        if (!onlyEditable && entry.State == EntityState.Modified && TransactionEditRules.IsOwnSplitPart(transaction)
+            && entry.Properties.Where(p => p.IsModified).All(p => TransactionEditRules.EditableProperties.Contains(p.Metadata.Name)
+                || p.Metadata.Name is nameof(Transaction.Amount) or nameof(Transaction.OrderItems)))
             onlyEditable = true;
         if (!onlyEditable)
         {

@@ -183,8 +183,25 @@ public sealed class SplitService
         await BankTransactionStore.Gate.WaitAsync(ct);
         try
         {
-            var old = await db.Transactions.Where(t => t.SplitParentId == parent.Id && t.Splitted == SplitState.Child).ToListAsync(ct);
-            db.Transactions.RemoveRange(old);
+            // A part whose category stays keeps its row (and with it its id, check mark and the open details on a
+            // page); the others are replaced.
+            var old = await db.Transactions.Where(t => t.SplitParentId == parent.Id && t.Splitted == SplitState.Child)
+                .OrderBy(t => t.Id).ToListAsync(ct);
+            var kept = new List<(Transaction Row, SplitPartWrite Part)>();
+            var added = new List<SplitPartWrite>();
+            foreach (var p in parts)
+            {
+                var row = old.FirstOrDefault(o => o.CategoryId == p.CategoryId && kept.TrueForAll(k => k.Row != o));
+                if (row != null) kept.Add((row, p));
+                else added.Add(p);
+            }
+            db.Transactions.RemoveRange(old.Where(o => kept.TrueForAll(k => k.Row != o)));
+            foreach (var (row, p) in kept)
+            {
+                row.Amount = p.AmountCents;
+                row.Note = string.IsNullOrWhiteSpace(p.Note) ? null : p.Note.Trim();
+                row.OrderItems = p.OrderItems;
+            }
 
             // Ids are allocated over all of the owner's rows (not just what this user sees), in the connector range.
             var rangeStart = RowIds.Namespace((await RowIds.PeekStateAsync(db, parent.OwnerUserId, ct)).IdSpace, BankTransactionStore.ConnectorRowBase);
@@ -192,7 +209,7 @@ public sealed class SplitService
                 .Where(t => t.OwnerUserId == parent.OwnerUserId && t.Id >= rangeStart)
                 .MaxAsync(t => (long?)t.Id, ct) ?? rangeStart;
 
-            foreach (var p in parts)
+            foreach (var p in added)
             {
                 db.Transactions.Add(new Transaction
                 {
