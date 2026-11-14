@@ -1,11 +1,13 @@
 @using OpenBudget.Services
 @inject CurrentProjectState Current
-@inject OnboardingService Onboarding
 @inject BankLoginService BankLogins
 @inject OpenBudget.Assist.AssistSettingsService Assist
+@inject ProjectService Projects
+@inject IHttpContextAccessor HttpContextAccessor
 @inject IStringLocalizer<SettingsNav> L
 
-@* The left list of the app-level settings pages (bank logins, import, profile and passkeys), headed by the way
+@* The left list of the app-level settings pages (account, connections, Portfolio Performance, documents, Assist,
+   about), headed by the way
    back to the project the user came from. Rendered by SettingsShell on the Blazor pages and statically by the
    account page's layout, so it uses plain links only. Without a known project the back link opens "/", which
    picks the last project. *@
@@ -16,35 +18,38 @@
         <span class="text-truncate">@BackLabel</span>
     </a>
     <div class="settings-nav-heading">@L["Heading"]</div>
+    @Item("account", "/Account", "bi-person", L["Item_Account"], forceLoad: true)
     @Item("connections", "/connections", "bi-bank", L["Item_BankLogins"], badge: needsYou ? L["Badge_NeedsYou"].Value : null)
-    @if (showGetStarted || Active == "get-started")
-    {
-        @Item("get-started", "/get-started", "bi-signpost-2", L["Item_GetStarted"])
-    }
     @Item("portfolio-performance", "/portfolio-performance", "bi-pie-chart", L["Item_PortfolioPerformance"])
     @Item("documents", "/documents/assign", "bi-folder-symlink", L["Item_Documents"])
     @if (Assist.Available)
     {
         @Item("assist", "/assist", "bi-stars", L["Item_Assist"])
     }
-    @Item("account", "/Account", "bi-person", L["Item_Account"], forceLoad: true)
+    @Item("about", "/about", "bi-info-circle", L["Item_About"])
 </nav>
 
 @code {
-    /// <summary>The highlighted section: "connections", "get-started", "portfolio-performance", "documents", "assist" or "account".</summary>
+    /// <summary>The highlighted section: "account", "connections", "portfolio-performance", "documents", "assist" or "about".</summary>
     [Parameter] public string? Active { get; set; }
 
-    private bool showGetStarted;
     private bool needsYou;
+    // the project to go back to when the page was opened by a full page load (the account page, a fresh tab):
+    // the last one the user had open (the ob.lastProject cookie)
+    private (int Id, string Name)? lastProject;
 
     protected override async Task OnInitializedAsync()
     {
-        showGetStarted = (await Onboarding.GetAsync()).ShowInMenu;
         needsYou = BankLogins.IsEnabled && await BankLogins.AnyNeedsManualSyncAsync();
+        if (Current.ProjectId == null
+            && HttpContextAccessor.HttpContext?.Request.Cookies["ob.lastProject"] is { } raw
+            && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
+            && await Projects.GetProjectAsync(id) is { } project)
+            lastProject = (project.Id, project.Name);
     }
 
-    private string BackHref => Current.ProjectId is { } id ? $"/projects/{id}/browse" : "/";
-    private string BackLabel => Current.ProjectName is { Length: > 0 } name ? L["Back_Project", name] : L["Back_Projects"];
+    private string BackHref => (Current.ProjectId ?? lastProject?.Id) is { } id ? $"/projects/{id}/browse" : "/";
+    private string BackLabel => (Current.ProjectName ?? lastProject?.Name) is { Length: > 0 } name ? L["Back_Project", name] : L["Back_Projects"];
 
     private RenderFragment Item(string key, string href, string icon, string label, bool forceLoad = false, string? badge = null) => __builder =>
     {

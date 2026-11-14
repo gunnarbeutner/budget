@@ -18,16 +18,6 @@ public sealed class GetStartedTests : EndToEndTestBase
 {
     private SystemDbContextFactory Db => Factory.Services.GetRequiredService<SystemDbContextFactory>();
 
-    private async Task<bool> GearOffersGetStartedAsync()
-    {
-        var gear = Page.GetByTestId("gear-menu");
-        await gear.Locator("summary").ClickAsync();
-        await Expect(gear.GetByTestId("gear-bank-logins")).ToBeVisibleAsync();
-        var shown = await gear.GetByTestId("gear-get-started").CountAsync() > 0;
-        await Page.Keyboard.PressAsync("Escape");
-        return shown;
-    }
-
     /// <summary>Puts the signed-in owner back into Get started (the baseline world has it done).</summary>
     private async Task ReopenGetStartedAsync(string userId = E2ESeed.OwnerUserId)
     {
@@ -47,14 +37,13 @@ public sealed class GetStartedTests : EndToEndTestBase
             await GoToAsync(url);
             await Expect(Page).ToHaveURLAsync(new Regex("/get-started$"));
         }
-        await Expect(Page.GetByTestId("gear-menu")).ToHaveCountAsync(0);
         await Expect(Page.Locator("[data-testid=project-selector]")).ToHaveCountAsync(0);
         await Expect(Page.GetByTestId("settings-nav")).ToHaveCountAsync(0);
         await Expect(Page.GetByTestId("user-menu")).ToBeVisibleAsync();
         // The user menu only signs out; the account page leads back too.
         await Page.GetByTestId("user-menu").Locator("summary").ClickAsync();
         await Expect(Page.GetByTestId("sign-out-link")).ToBeVisibleAsync();
-        await Expect(Page.GetByTestId("user-account-link")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("user-settings-link")).ToHaveCountAsync(0);
         await Page.GotoAsync("/Account");
         await Expect(Page).ToHaveURLAsync(new Regex("/get-started$"));
 
@@ -95,7 +84,7 @@ public sealed class GetStartedTests : EndToEndTestBase
 
         await Page.GetByTestId("get-started-done").ClickAsync();
         await Expect(Page).ToHaveURLAsync(new Regex($"/projects/{E2ESeed.ProjectId}/browse$"));
-        Assert.That(await GearOffersGetStartedAsync(), Is.False);
+        await Expect(Page.GetByTestId("settings-nav-get-started")).ToHaveCountAsync(0);
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/settings/categories");
         await Expect(Page).ToHaveURLAsync(new Regex("/settings/categories$"));
     }
@@ -139,8 +128,7 @@ public sealed class GetStartedTests : EndToEndTestBase
             await Expect(Page.GetByTestId("get-started-next")).ToHaveCountAsync(0);
             await Expect(Page.GetByTestId("start-fresh")).ToHaveCountAsync(0);
             await Expect(Page.GetByTestId("get-started-stepper-1")).Not.ToHaveClassAsync(new Regex("done"));
-            await Expect(Page.GetByTestId("gear-menu")).ToHaveCountAsync(0);
-            await Expect(Page.GetByTestId("settings-nav")).ToHaveCountAsync(0);
+                await Expect(Page.GetByTestId("settings-nav")).ToHaveCountAsync(0);
         }
         finally
         {
@@ -152,7 +140,6 @@ public sealed class GetStartedTests : EndToEndTestBase
         await Expect(Page).ToHaveURLAsync(new Regex("step=2$"));
         await Expect(Page.GetByTestId("get-started-stepper-1")).ToHaveClassAsync(new Regex("done"));
         await Expect(Page.GetByTestId("get-started-next")).ToBeEnabledAsync();
-        await Expect(Page.GetByTestId("gear-menu")).ToHaveCountAsync(0);
         await GoToAsync("/connections");
         await Expect(Page).ToHaveURLAsync(new Regex("/get-started$"));
     }

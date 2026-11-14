@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+    <data name="PageTitle" xml:space="preserve">
+    <value>About · OpenBudget</value>
+  </data>
+  <data name="Heading" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="Version" xml:space="preserve">
+    <value>Version {0}</value>
+  </data>
+  <data name="Version_Unknown" xml:space="preserve">
+    <value>Version unknown</value>
+  </data>
+  <data name="Unknown" xml:space="preserve">
+    <value>unknown</value>
+  </data>
+  <data name="Label_Commit" xml:space="preserve">
+    <value>Commit</value>
+  </data>
+  <data name="Label_Built" xml:space="preserve">
+    <value>Built</value>
+  </data>
+  <data name="Label_Source" xml:space="preserve">
+    <value>Source code</value>
+  </data>
+  <data name="Label_Docs" xml:space="preserve">
+    <value>Documentation</value>
+  </data>
+  <data name="Link_Docs" xml:space="preserve">
+    <value>Running it</value>
+  </data>
+  <data name="Label_Issues" xml:space="preserve">
+    <value>Problems and ideas</value>
+  </data>
+  <data name="Link_Issues" xml:space="preserve">
+    <value>Issue tracker</value>
+  </data>
+  <data name="Label_License" xml:space="preserve">
+    <value>License</value>
+  </data>
+  <data name="License" xml:space="preserve">
+    <value>MIT</value>
+  </data>
+  <data name="Server_Heading" xml:space="preserve">
+    <value>This server</value>
+  </data>
+  <data name="Label_Runtime" xml:space="preserve">
+    <value>Runtime</value>
+  </data>
+  <data name="Label_Schema" xml:space="preserve">
+    <value>Database schema</value>
+  </data>
+  <data name="Label_OpenAi" xml:space="preserve">
+    <value>OpenAI (Assist)</value>
+  </data>
+  <data name="Label_FinTs" xml:space="preserve">
+    <value>FinTS product registration</value>
+  </data>
+  <data name="Configured" xml:space="preserve">
+    <value>Set up</value>
+  </data>
+  <data name="NotConfigured" xml:space="preserve">
+    <value>Not set up</value>
+  </data>
+</root>

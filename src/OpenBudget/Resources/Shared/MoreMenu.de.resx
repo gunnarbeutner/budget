@@ -58,32 +58,19 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Bottom_More" xml:space="preserve">
-    <value>More</value>
-  </data>
-  <data name="Section_Project" xml:space="preserve">
-    <value>Project</value>
+    <data name="Bottom_More" xml:space="preserve">
+    <value>Mehr</value>
   </data>
   <data name="Item_ProjectSettings" xml:space="preserve">
-    <value>Project settings</value>
+    <value>Projekteinstellungen</value>
   </data>
-  <data name="Section_Data" xml:space="preserve">
-    <value>Data</value>
+  <data name="Item_Settings" xml:space="preserve">
+    <value>Einstellungen</value>
   </data>
-  <data name="Item_BankLogins" xml:space="preserve">
-    <value>Connections</value>
-  </data>
-  <data name="Badge_Errors" xml:space="preserve">
-    <value>{0} errors</value>
-  </data>
-  <data name="Badge_Errors_One" xml:space="preserve"><value>1 error</value></data>
-  <data name="Item_PortfolioPerformance" xml:space="preserve">
-    <value>Portfolio Performance</value>
-  </data>
-  <data name="Item_GetStarted" xml:space="preserve">
-    <value>Get started</value>
+  <data name="Item_SignOut" xml:space="preserve">
+    <value>Abmelden</value>
   </data>
   <data name="Aria_Menu" xml:space="preserve">
-    <value>Settings: project, connections, Portfolio Performance</value>
+    <value>Mehr: Projekteinstellungen, Einstellungen, abmelden</value>
   </data>
 </root>

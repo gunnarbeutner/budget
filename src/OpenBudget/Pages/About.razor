@@ -1,0 +1,85 @@
+@page "/about"
+@using Microsoft.EntityFrameworkCore
+@using OpenBudget.Services
+@inject IDbContextFactory<BudgetDbContext> DbFactory
+@inject AccessScopeProvider AccessProvider
+@inject OpenBudget.Assist.AssistSettingsService Assist
+@inject IConfiguration Configuration
+@inject IStringLocalizer<About> L
+
+@* Which build is running (the image passes its version, commit and date), where the code and docs live, the license,
+   and for admins how this server is set up: runtime, database schema and which optional features are configured
+   (yes/no only, never a value). *@
+
+<PageTitle>@L["PageTitle"]</PageTitle>
+
+<SettingsShell Active="about">
+<PageHeader Title="@L["Heading"]" />
+
+<div class="about-head">
+    <img src="icon-192.png" alt="" width="64" height="64" class="about-icon" />
+    <div>
+        <div class="about-name">OpenBudget</div>
+        <div class="text-body-secondary" data-testid="about-version">@VersionText</div>
+    </div>
+</div>
+
+<dl class="about-facts">
+    <dt>@L["Label_Commit"]</dt>
+    <dd data-testid="about-commit">
+        @if (Revision is { } rev)
+        {
+            <a href="@($"https://github.com/gunnarbeutner/budget/commit/{rev}")" target="_blank" rel="noopener"><code>@ShortRevision</code></a>
+        }
+        else
+        {
+            @L["Unknown"]
+        }
+    </dd>
+    <dt>@L["Label_Built"]</dt>
+    <dd>@(BuildDate?.ToString("dd.MM.yyyy HH:mm", CultureInfo.CurrentCulture) ?? L["Unknown"].Value)</dd>
+    <dt>@L["Label_Source"]</dt>
+    <dd><a href="https://github.com/gunnarbeutner/budget" target="_blank" rel="noopener">github.com/gunnarbeutner/budget</a></dd>
+    <dt>@L["Label_Docs"]</dt>
+    <dd><a href="https://github.com/gunnarbeutner/budget#running-it" target="_blank" rel="noopener">@L["Link_Docs"]</a></dd>
+    <dt>@L["Label_Issues"]</dt>
+    <dd><a href="https://github.com/gunnarbeutner/budget/issues" target="_blank" rel="noopener">@L["Link_Issues"]</a></dd>
+    <dt>@L["Label_License"]</dt>
+    <dd>@L["License"]</dd>
+</dl>
+
+@if (isAdmin)
+{
+    <h2 class="h6 mt-4">@L["Server_Heading"]</h2>
+    <dl class="about-facts" data-testid="about-server">
+        <dt>@L["Label_Runtime"]</dt>
+        <dd>.NET @Environment.Version</dd>
+        <dt>@L["Label_Schema"]</dt>
+        <dd><code>@(schema ?? "–")</code></dd>
+        <dt>@L["Label_OpenAi"]</dt>
+        <dd>@(Assist.Available ? L["Configured"] : L["NotConfigured"])</dd>
+        <dt>@L["Label_FinTs"]</dt>
+        <dd>@(OpenBudget.Connectors.FinTs.FinTsOptions.FromConfiguration(Configuration).IsConfigured ? L["Configured"] : L["NotConfigured"])</dd>
+    </dl>
+}
+</SettingsShell>
+
+@code {
+    private bool isAdmin;
+    private string? schema;
+
+    private static string? Env(string name) => Environment.GetEnvironmentVariable(name) is { Length: > 0 } v ? v : null;
+    private static string? Revision => Env("OPENBUDGET_REVISION");
+    private static string? ShortRevision => Revision is { } r ? r[..Math.Min(7, r.Length)] : null;
+    private static DateTimeOffset? BuildDate =>
+        DateTimeOffset.TryParse(Env("OPENBUDGET_BUILD_DATE"), CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d.ToLocalTime() : null;
+    private string VersionText => Env("OPENBUDGET_VERSION") is { } v ? L["Version", v] : ShortRevision is { } r ? L["Version", r] : L["Version_Unknown"];
+
+    protected override async Task OnInitializedAsync()
+    {
+        isAdmin = (await AccessProvider.GetAsync()).IsAdmin;
+        if (!isAdmin) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        schema = (await db.Database.GetAppliedMigrationsAsync()).LastOrDefault();
+    }
+}

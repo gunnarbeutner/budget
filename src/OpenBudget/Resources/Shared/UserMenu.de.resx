@@ -58,13 +58,16 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Account" xml:space="preserve">
-    <value>Profil, Passwort und Passkeys</value>
-  </data>
   <data name="LogOut" xml:space="preserve">
     <value>Abmelden</value>
   </data>
   <data name="Menu" xml:space="preserve">
-    <value>Kontomenü: Profil, Passkeys, Abmelden</value>
+    <value>Kontomenü: Einstellungen, abmelden</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>Einstellungen</value>
+  </data>
+  <data name="Attention" xml:space="preserve">
+    <value>Eine Verbindung braucht dich</value>
   </data>
 </root>

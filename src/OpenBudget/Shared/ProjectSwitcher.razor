@@ -16,7 +16,7 @@
    the numbers the start page used to show: balance and number of accounts, this month's spending against the
    budget (bar + percentage), the default-for-new-accounts badge and who shared it. Then "New project". The
    numbers load when the menu opens, so it costs nothing until used.
-   A row's context menu (right-click, touch long-press, Shift+F10 / the context-menu key) offers Settings…
+   An editor's rows end in a gear that opens the project's settings. A row's context menu (right-click, touch long-press, Shift+F10 / the context-menu key) offers Settings…
    (the project's settings page), Move up / Move down and Delete (DeleteProjectDialog); rows also reorder by dragging.
    The order is each user's own, so everyone reorders every project they see; Settings… needs an editor, Delete the
    owner. Other sessions' changes reload the list. *@
@@ -97,6 +97,13 @@
                                 </span>
                             }
                         </a>
+                        @if (r.Role >= ProjectRole.Editor)
+                        {
+                            <a class="project-switcher-gear" href="@($"/projects/{r.Id}/settings")" data-testid="switcher-project-settings"
+                               title="@L["Menu_Settings"]" aria-label="@L["Aria_ProjectSettings", r.Name]">
+                                <i class="bi bi-gear" aria-hidden="true"></i>
+                            </a>
+                        }
                     </li>
                 }
             </ul>

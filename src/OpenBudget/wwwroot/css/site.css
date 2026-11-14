@@ -1206,7 +1206,8 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
 .tx-day-balance { font-variant-numeric: tabular-nums; }
 .tx-row {
     display: grid;
-    grid-template-columns: 112px minmax(0, 1fr) 130px 28px;
+    /* the date/category column; the expanded details line up with the column after it */
+    grid-template-columns: var(--tx-date-col) minmax(0, 1fr) 130px 28px;
     column-gap: 16px;
     align-items: start;
     padding: 9px 20px;
@@ -1217,7 +1218,8 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
 /* Text stays selectable with a mouse; on touch a long press opens the row's menu instead. */
 @media (hover: none) { .tx-row { user-select: none; -webkit-user-select: none; } }
 /* wide screens: room for a full category chip ("Group › Name") under the date */
-@media (min-width: 1200px) { .tx-row { grid-template-columns: 200px minmax(0, 1fr) 130px 28px; } }
+:root { --tx-date-col: 112px; }
+@media (min-width: 1200px) { :root { --tx-date-col: 200px; } }
 .tx-row:hover { background: var(--ob-row-hover-bg); }
 .tx-item.selected { background: var(--ob-row-selected-bg); }
 .tx-item.selected .tx-row:hover { background: transparent; }
@@ -1293,7 +1295,7 @@ button.cat-pill:hover { filter: brightness(0.96); }
 
 /* Expanded details */
 .tx-details {
-    padding: 0 20px 12px 148px;
+    padding: 0 20px 12px calc(20px + var(--tx-date-col) + 16px);
     cursor: default;
     user-select: text;
     -webkit-user-select: text;
@@ -1502,6 +1504,15 @@ button.cat-pill:hover { filter: brightness(0.96); }
     position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%;
     background: var(--ob-negative);
 }
+/* the avatar's "a connection needs you" dot, in the warning colour of the Connections badge */
+.app-avatar { position: relative; }
+.avatar-dot {
+    position: absolute; top: -1px; right: -1px; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--bs-warning); box-shadow: 0 0 0 2px var(--bs-body-bg);
+}
+.gear-menu-bottom .app-bottom-item { position: relative; }
+.gear-menu-bottom .avatar-dot { top: 4px; right: calc(50% - 16px); }
+.avatar-dot-inline { position: static; display: inline-block; box-shadow: none; }
 .ob-badge-danger { background: var(--ob-danger-bg) !important; color: var(--ob-danger-fg) !important; }
 
 /* ---- Project switcher ---- */
@@ -1526,6 +1537,13 @@ button.cat-pill:hover { filter: brightness(0.96); }
     color: var(--ob-muted);
 }
 .project-switcher-list { list-style: none; margin: 0; padding: 0; }
+.project-switcher-list > li { display: flex; align-items: center; gap: 2px; }
+.project-switcher-list > li > .project-switcher-row { flex: 1 1 auto; min-width: 0; }
+.project-switcher-gear {
+    flex: 0 0 auto; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 6px;
+    color: var(--ob-muted); text-decoration: none;
+}
+.project-switcher-gear:hover, .project-switcher-gear:focus-visible { background: var(--ob-row-hover-bg); color: var(--bs-body-color); outline: none; }
 .project-switcher-row {
     display: flex;
     justify-content: space-between;
@@ -2219,3 +2237,11 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
     color: var(--bs-secondary-color);
     font-variant-numeric: tabular-nums;
 }
+
+/* ---- About ---- */
+.about-head { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+.about-icon { border-radius: 14px; }
+.about-name { font-size: 20px; font-weight: 600; }
+.about-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 24px; row-gap: 6px; margin: 0; max-width: 40rem; }
+.about-facts dt { font-weight: 600; }
+.about-facts dd { margin: 0; color: var(--ob-muted); overflow-wrap: anywhere; }

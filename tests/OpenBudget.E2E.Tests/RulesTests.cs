@@ -79,9 +79,8 @@ public sealed class RulesTests : EndToEndTestBase
         }
         await Expect(Page.GetByTestId("ctx-rules")).ToHaveCountAsync(0);
 
-        var gear = Page.GetByTestId("gear-menu");
-        await gear.Locator("summary").ClickAsync();
-        await Expect(gear.GetByTestId("gear-project-settings")).ToBeVisibleAsync();
+        await Page.Locator("[data-testid=project-selector] summary").ClickAsync();
+        await Expect(Page.GetByTestId("switcher-project-settings").First).ToBeVisibleAsync();
         await Expect(Page.GetByTestId("gear-rules")).ToHaveCountAsync(0);
     }
 

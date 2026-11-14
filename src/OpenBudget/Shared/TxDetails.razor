@@ -43,10 +43,6 @@
         }
         <span data-testid="tx-details-category">
             <b>@L["Category"]</b>@(string.IsNullOrEmpty(Row.CategoryName) ? L["NoCategory"] : Row.CategoryName)
-            @if (!string.IsNullOrEmpty(SetByText))
-            {
-                <span class="ms-1" data-testid="tx-details-category-source">(@SetByText)</span>
-            }
             @if (mainName != null)
             {
                 <span class="ms-1 text-body-secondary" data-testid="tx-details-follows">@L["Follows", mainName]</span>
@@ -265,16 +261,6 @@
         panel = Panel.None;
         await OnCreateOffset.InvokeAsync(accountId);
     }
-
-    private string SetByText => Row.CategoryId == null && Row.CategorySetBy == TransactionCategorySource.Import
-        ? ""
-        : Row.CategorySetBy switch
-        {
-            TransactionCategorySource.Manual => L["SetBy_Manual"],
-            TransactionCategorySource.Rule => L["SetBy_RuleUnknown"],
-            TransactionCategorySource.Follow => L["SetBy_Follow"],
-            _ => L["SetBy_Import"],
-        };
 
     /// <summary>The SEPA / bank detail fields the row has, in display order (label key, value).</summary>
     private IEnumerable<(string Key, string Value)> SepaFacts =>

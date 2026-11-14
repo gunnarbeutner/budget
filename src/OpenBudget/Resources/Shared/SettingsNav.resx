@@ -74,7 +74,7 @@
     <value>Connections</value>
   </data>
   <data name="Item_Account" xml:space="preserve">
-    <value>Profile and passkeys</value>
+    <value>Account</value>
   </data>
   <data name="Item_Documents" xml:space="preserve">
     <value>Documents to assign</value>
@@ -82,13 +82,13 @@
   <data name="Item_PortfolioPerformance" xml:space="preserve">
     <value>Portfolio Performance</value>
   </data>
-  <data name="Item_GetStarted" xml:space="preserve">
-    <value>Get started</value>
-  </data>
   <data name="Badge_NeedsYou" xml:space="preserve">
     <value>A connection needs you</value>
   </data>
   <data name="Item_Assist" xml:space="preserve">
     <value>AI suggestions</value>
+  </data>
+  <data name="Item_About" xml:space="preserve">
+    <value>About</value>
   </data>
 </root>

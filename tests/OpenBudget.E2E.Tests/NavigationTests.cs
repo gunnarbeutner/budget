@@ -149,39 +149,39 @@ public sealed class NavigationTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task Gear_menu_reaches_project_settings_bank_logins_and_portfolio_performance()
+    public async Task The_avatar_leads_to_settings_and_the_switcher_gear_to_the_project_settings()
     {
         await GoToAsync($"/projects/{Pid}/browse");
-        var gear = Page.Locator("[data-testid=gear-menu]");
+        await Expect(Page.GetByTestId("gear-menu")).ToHaveCountAsync(0);
 
-        await gear.Locator("summary").ClickAsync();
-        await gear.GetByTestId("gear-project-settings").ClickAsync();
+        await Page.Locator("[data-testid=project-selector] summary").ClickAsync();
+        await Page.Locator($"[data-testid=switcher-project-settings][href='/projects/{Pid}/settings']").ClickAsync();
         await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/settings$"));
 
-        await gear.Locator("summary").ClickAsync();
-        await gear.GetByTestId("gear-bank-logins").ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex(".*/connections$"));
-
-        await gear.Locator("summary").ClickAsync();
-        await gear.GetByTestId("gear-portfolio-performance").ClickAsync();
-        await Expect(Page).ToHaveURLAsync(new Regex(".*/portfolio-performance$"));
-
-        // The account menu is about the user only now.
-        await Page.GetByTestId("user-menu").Locator("summary").ClickAsync();
-        await Expect(Page.GetByTestId("user-menu").GetByText("Connections")).ToHaveCountAsync(0);
-        await Expect(Page.GetByTestId("sign-out-link")).ToBeVisibleAsync();
+        var menu = Page.GetByTestId("user-menu");
+        await menu.Locator("summary").ClickAsync();
+        await Expect(menu.GetByTestId("sign-out-link")).ToBeVisibleAsync();
+        await menu.GetByTestId("user-settings-link").ClickAsync();
+        await Expect(Page).ToHaveURLAsync(new Regex(".*/Account$"));
+        // the settings list starts with the account and ends with About
+        var items = Page.Locator("[data-testid=settings-nav] .shell-view");
+        await Expect(items.First).ToHaveAttributeAsync("data-testid", "settings-nav-account");
+        await Expect(items.Last).ToHaveAttributeAsync("data-testid", "settings-nav-about");
+        await Expect(Page.GetByTestId("settings-nav-get-started")).ToHaveCountAsync(0);
+        await Page.GetByTestId("settings-nav-about").ClickAsync();
+        await Expect(Page.GetByTestId("about-version")).ToBeVisibleAsync();
     }
 
     [Test]
-    public async Task Escape_closes_the_gear_menu()
+    public async Task Escape_closes_the_avatar_menu()
     {
         await GoToAsync($"/projects/{Pid}/browse");
-        var gear = Page.Locator("[data-testid=gear-menu]");
-        await gear.Locator("summary").ClickAsync();
-        await Expect(gear.GetByTestId("gear-bank-logins")).ToBeVisibleAsync();
+        var menu = Page.GetByTestId("user-menu");
+        await menu.Locator("summary").ClickAsync();
+        await Expect(menu.GetByTestId("user-settings-link")).ToBeVisibleAsync();
 
         await Page.Keyboard.PressAsync("Escape");
 
-        await Expect(gear.GetByTestId("gear-bank-logins")).Not.ToBeVisibleAsync();
+        await Expect(menu.GetByTestId("user-settings-link")).Not.ToBeVisibleAsync();
     }
 }

@@ -74,7 +74,7 @@
     <value>Verbindungen</value>
   </data>
   <data name="Item_Account" xml:space="preserve">
-    <value>Profil und Passkeys</value>
+    <value>Konto</value>
   </data>
   <data name="Item_Documents" xml:space="preserve">
     <value>Zuzuordnende Dokumente</value>
@@ -82,13 +82,13 @@
   <data name="Item_PortfolioPerformance" xml:space="preserve">
     <value>Portfolio Performance</value>
   </data>
-  <data name="Item_GetStarted" xml:space="preserve">
-    <value>Erste Schritte</value>
-  </data>
   <data name="Badge_NeedsYou" xml:space="preserve">
     <value>Eine Verbindung braucht dich</value>
   </data>
   <data name="Item_Assist" xml:space="preserve">
     <value>KI-Vorschläge</value>
+  </data>
+  <data name="Item_About" xml:space="preserve">
+    <value>Über OpenBudget</value>
   </data>
 </root>

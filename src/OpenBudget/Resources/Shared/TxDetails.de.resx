@@ -94,15 +94,6 @@
   <data name="Statement" xml:space="preserve">
     <value>Kontoauszug</value>
   </data>
-  <data name="SetBy_Manual" xml:space="preserve">
-    <value>von Hand gesetzt</value>
-  </data>
-  <data name="SetBy_RuleUnknown" xml:space="preserve">
-    <value>durch eine Regel gesetzt</value>
-  </data>
-  <data name="SetBy_Import" xml:space="preserve">
-    <value>aus MoneyMoney importiert</value>
-  </data>
   <data name="Lock_MoneyMoney" xml:space="preserve">
     <value>Wird in MoneyMoney kategorisiert, bis dieses Konto auf eine Verbindung umgestellt wird</value>
   </data>
@@ -174,8 +165,5 @@
   </data>
   <data name="Action_PickCategory" xml:space="preserve">
     <value>Kategorie wählen</value>
-  </data>
-  <data name="SetBy_Follow" xml:space="preserve">
-    <value>von der zugehörigen Buchung übernommen</value>
   </data>
 </root>

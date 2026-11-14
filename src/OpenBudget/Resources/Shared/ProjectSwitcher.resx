@@ -115,4 +115,7 @@
   <data name="Reason_OwnerOnly" xml:space="preserve">
     <value>Only the project's owner can do this.</value>
   </data>
+  <data name="Aria_ProjectSettings" xml:space="preserve">
+    <value>Settings of {0}</value>
+  </data>
 </root>

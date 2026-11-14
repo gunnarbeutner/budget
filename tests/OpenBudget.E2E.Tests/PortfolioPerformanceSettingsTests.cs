@@ -31,12 +31,10 @@ public sealed class PortfolioPerformanceSettingsTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task Gear_menu_opens_the_page_and_an_uploaded_file_lists_its_portfolios()
+    public async Task The_settings_list_opens_the_page_and_an_uploaded_file_lists_its_portfolios()
     {
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
-        var gear = Page.GetByTestId("gear-menu");
-        await gear.Locator("summary").ClickAsync();
-        await gear.GetByTestId("gear-portfolio-performance").ClickAsync();
+        await GoToAsync("/connections");
+        await Page.GetByTestId("settings-nav-portfolio-performance").ClickAsync();
         await Expect(Page).ToHaveURLAsync(new Regex("/portfolio-performance$"));
         await Expect(Page.GetByTestId("settings-nav-portfolio-performance")).ToHaveAttributeAsync("aria-current", "page");
         await Expect(Page.GetByTestId("pp-no-data")).ToBeVisibleAsync();

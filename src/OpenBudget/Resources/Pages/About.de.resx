@@ -58,32 +58,67 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Bottom_More" xml:space="preserve">
-    <value>Mehr</value>
+    <data name="PageTitle" xml:space="preserve">
+    <value>Über · OpenBudget</value>
   </data>
-  <data name="Section_Project" xml:space="preserve">
-    <value>Projekt</value>
+  <data name="Heading" xml:space="preserve">
+    <value>Über OpenBudget</value>
   </data>
-  <data name="Item_ProjectSettings" xml:space="preserve">
-    <value>Projekteinstellungen</value>
+  <data name="Version" xml:space="preserve">
+    <value>Version {0}</value>
   </data>
-  <data name="Section_Data" xml:space="preserve">
-    <value>Daten</value>
+  <data name="Version_Unknown" xml:space="preserve">
+    <value>Version unbekannt</value>
   </data>
-  <data name="Item_BankLogins" xml:space="preserve">
-    <value>Verbindungen</value>
+  <data name="Unknown" xml:space="preserve">
+    <value>unbekannt</value>
   </data>
-  <data name="Badge_Errors" xml:space="preserve">
-    <value>{0} Fehler</value>
+  <data name="Label_Commit" xml:space="preserve">
+    <value>Commit</value>
   </data>
-  <data name="Badge_Errors_One" xml:space="preserve"><value>1 Fehler</value></data>
-  <data name="Item_PortfolioPerformance" xml:space="preserve">
-    <value>Portfolio Performance</value>
+  <data name="Label_Built" xml:space="preserve">
+    <value>Gebaut</value>
   </data>
-  <data name="Item_GetStarted" xml:space="preserve">
-    <value>Erste Schritte</value>
+  <data name="Label_Source" xml:space="preserve">
+    <value>Quellcode</value>
   </data>
-  <data name="Aria_Menu" xml:space="preserve">
-    <value>Einstellungen: Projekt, Verbindungen, Portfolio Performance</value>
+  <data name="Label_Docs" xml:space="preserve">
+    <value>Dokumentation</value>
+  </data>
+  <data name="Link_Docs" xml:space="preserve">
+    <value>Betrieb</value>
+  </data>
+  <data name="Label_Issues" xml:space="preserve">
+    <value>Probleme und Ideen</value>
+  </data>
+  <data name="Link_Issues" xml:space="preserve">
+    <value>Issue-Tracker</value>
+  </data>
+  <data name="Label_License" xml:space="preserve">
+    <value>Lizenz</value>
+  </data>
+  <data name="License" xml:space="preserve">
+    <value>MIT</value>
+  </data>
+  <data name="Server_Heading" xml:space="preserve">
+    <value>Dieser Server</value>
+  </data>
+  <data name="Label_Runtime" xml:space="preserve">
+    <value>Laufzeit</value>
+  </data>
+  <data name="Label_Schema" xml:space="preserve">
+    <value>Datenbankschema</value>
+  </data>
+  <data name="Label_OpenAi" xml:space="preserve">
+    <value>OpenAI (Assistent)</value>
+  </data>
+  <data name="Label_FinTs" xml:space="preserve">
+    <value>FinTS-Produktregistrierung</value>
+  </data>
+  <data name="Configured" xml:space="preserve">
+    <value>Eingerichtet</value>
+  </data>
+  <data name="NotConfigured" xml:space="preserve">
+    <value>Nicht eingerichtet</value>
   </data>
 </root>

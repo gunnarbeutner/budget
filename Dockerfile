@@ -63,6 +63,9 @@ EXPOSE 8080
 WORKDIR /app
 VOLUME ["/app/data"]
 COPY --from=build /app/publish .
+# Which build this is, for the About page; builds that don't pass them show the version as unknown.
+ARG VERSION="" REVISION="" BUILD_DATE=""
+ENV OPENBUDGET_VERSION=$VERSION OPENBUDGET_REVISION=$REVISION OPENBUDGET_BUILD_DATE=$BUILD_DATE
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
     CMD curl -fsS http://localhost:8080/healthz || exit 1

@@ -94,15 +94,6 @@
   <data name="Statement" xml:space="preserve">
     <value>Statement</value>
   </data>
-  <data name="SetBy_Manual" xml:space="preserve">
-    <value>set by hand</value>
-  </data>
-  <data name="SetBy_RuleUnknown" xml:space="preserve">
-    <value>set by a rule</value>
-  </data>
-  <data name="SetBy_Import" xml:space="preserve">
-    <value>imported from MoneyMoney</value>
-  </data>
   <data name="Lock_MoneyMoney" xml:space="preserve">
     <value>Categorized in MoneyMoney until this account switches to a connection</value>
   </data>
@@ -174,8 +165,5 @@
   </data>
   <data name="Action_PickCategory" xml:space="preserve">
     <value>Choose category</value>
-  </data>
-  <data name="SetBy_Follow" xml:space="preserve">
-    <value>taken from the matching booking</value>
   </data>
 </root>

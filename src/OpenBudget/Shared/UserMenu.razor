@@ -3,23 +3,35 @@
 @inject IStringLocalizer<UserMenu> L
 @inject OpenBudget.Auth.UserDirectory Users
 @inject OpenBudget.Services.GetStartedGate Gate
+@inject OpenBudget.Services.BankLoginService Bank
 
-@* The avatar at the right end of the top bar: only about you — who is signed in, the account page (password,
-   passkeys) and sign-out; setup pages live behind the gear (GearMenu) in a small dropdown. The account and logout pages are plain server-rendered pages, not Blazor routes,
-   so those links force a full navigation instead of the router's client-side one. *@
+@* The avatar at the right end of the top bar: who is signed in, Settings (the app-level settings pages, which start with
+   the account page) and sign-out. A dot on the avatar says a connection needs the user (the Connections entry of the
+   settings list says which). The account and logout pages are plain server-rendered pages, not Blazor routes, so those
+   links force a full navigation instead of the router's client-side one. *@
 
 @if (userName != null)
 {
     <details class="app-menu user-menu" data-testid="user-menu">
-        <summary class="app-avatar" aria-label="@L["Menu"]" title="@userName">@Initial</summary>
+        <summary class="app-avatar" aria-label="@L["Menu"]" title="@userName">
+            @Initial
+            @if (needsYou)
+            {
+                <span class="avatar-dot" data-testid="user-menu-attention" title="@L["Attention"]"></span>
+            }
+        </summary>
         <ul class="dropdown-menu dropdown-menu-end show app-menu-list">
             @if (!captive)
             {
+            <li><h6 class="dropdown-header text-truncate" data-testid="user-name">@userName</h6></li>
             <li>
-                <a href="/Account" class="dropdown-item" data-testid="user-account-link"
+                <a href="/Account" class="dropdown-item d-flex align-items-center" data-testid="user-settings-link"
                    @onclick="@(() => Navigation.NavigateTo("/Account", forceLoad: true))" @onclick:preventDefault>
-                    <div class="fw-semibold">@userName</div>
-                    <div class="small text-body-secondary">@L["Account"]</div>
+                    <i class="bi bi-gear me-2" aria-hidden="true"></i>@L["Settings"]
+                    @if (needsYou)
+                    {
+                        <span class="avatar-dot avatar-dot-inline ms-auto" aria-hidden="true"></span>
+                    }
                 </a>
             </li>
             <li><hr class="dropdown-divider" /></li>
@@ -38,6 +50,8 @@
     private string? userName;
     // While Get started holds the user, the menu only signs out.
     private bool captive;
+    // a connection needs the user: a background sync stopped at a step only they can do
+    private bool needsYou;
 
     private string Initial => string.IsNullOrEmpty(userName) ? "?" : userName[..1].ToUpper(CultureInfo.CurrentCulture);
 
@@ -54,6 +68,7 @@
                 && (await Users.GetNamesAsync([id])).TryGetValue(id, out var shown) && shown.Length > 0)
                 userName = shown;   // the display name when set
             captive = userName != null && await Gate.IsCaptiveAsync();
+            needsYou = userName != null && !captive && Bank.IsEnabled && await Bank.AnyNeedsManualSyncAsync();
         }
         catch (InvalidOperationException)
         {

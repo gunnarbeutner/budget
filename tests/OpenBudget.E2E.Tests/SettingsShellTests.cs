@@ -51,8 +51,10 @@ public sealed class SettingsShellTests : EndToEndTestBase
     public async Task Settings_list_highlights_the_page_and_leads_back_to_the_project()
     {
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse");
-        await Page.GetByTestId("gear-menu").Locator("summary").ClickAsync();
-        await Page.GetByTestId("gear-menu").GetByTestId("gear-bank-logins").ClickAsync();
+        await Page.GetByTestId("user-menu").Locator("summary").ClickAsync();
+        await Page.GetByTestId("user-settings-link").ClickAsync();
+        await Expect(Page.GetByTestId("settings-nav-account")).ToHaveAttributeAsync("aria-current", "page");
+        await Page.GetByTestId("settings-nav-connections").ClickAsync();
         await Expect(Page.GetByTestId("settings-nav-connections")).ToHaveAttributeAsync("aria-current", "page");
         await Page.GetByTestId("settings-nav-portfolio-performance").ClickAsync();
         await Expect(Page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/portfolio-performance$"));

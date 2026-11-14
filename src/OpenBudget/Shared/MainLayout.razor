@@ -7,7 +7,7 @@
 
 @* App chrome: one 44px top bar for every page — wordmark, the project switcher (which replaced the start page),
    the period selector of the views that have one (PeriodNav renders into the outlet; on phones it takes a second
-   row), the search field of the views with a transaction list (rendered into its outlet), the bank-sync status, the gear (project settings and data sources) and the account menu. There are no tabs:
+   row), the search field of the views with a transaction list (rendered into its outlet), the bank-sync status and the account menu (settings, sign-out). There are no tabs:
    a project's views live in its sidebar (ProjectShell). Page toolbars (filters, actions) follow in the body. While
    the user is held in Get started (GetStartedGate) only the wordmark, the sync status and the account menu show. *@
 <header class="app-topbar d-print-none" data-testid="app-topbar">
@@ -25,10 +25,6 @@
     </div>
     <BankSyncHost />
     <CloudFileSyncHost />
-    @if (!GetStarted.Captive)
-    {
-        <GearMenu />
-    }
     <UserMenu />
 </header>
 
