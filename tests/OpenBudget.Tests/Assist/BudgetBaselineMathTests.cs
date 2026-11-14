@@ -105,6 +105,65 @@ public sealed class BudgetBaselineMathTests
     }
 
     [Fact]
+    public void A_yearly_payment_of_varying_amount_lands_in_its_month_at_the_latest_amount()
+    {
+        var bookings = Months(2023, 36).Select(m => B(m.Year, m.Month, 80m, "EXAMPLE UTILITY")).ToList();
+        bookings.AddRange([B(2023, 3, 150m, "EXAMPLE UTILITY", day: 20), B(2024, 3, 420m, "EXAMPLE UTILITY", day: 20), B(2025, 3, 260m, "EXAMPLE UTILITY", day: 20)]);
+
+        var result = BudgetBaselineMath.Compute(bookings, [], 2026, AsOf);
+
+        var yearly = Assert.Single(result.Recurring, r => r.IntervalMonths == 12);
+        Assert.Equal(260m, yearly.Amount);
+        Assert.Empty(result.Outliers);
+        Assert.Equal(80m + 260m, result.Monthly[2]);
+        Assert.Equal(80m, result.Monthly[3]);
+    }
+
+    [Fact]
+    public void A_big_purchase_from_a_regular_payee_is_an_outlier()
+    {
+        var bookings = Months(2023, 36).Select(m => B(m.Year, m.Month, 25m, "EXAMPLE MARKETPLACE")).ToList();
+        var big = B(2025, 8, 1400m, "EXAMPLE MARKETPLACE", day: 12);
+        bookings.Add(big);
+        // Small deviations of a payee are no outliers.
+        bookings.Add(B(2025, 9, 60m, "EXAMPLE MARKETPLACE", day: 12));
+
+        var result = BudgetBaselineMath.Compute(bookings, [], 2026, AsOf);
+
+        Assert.Equal([big], result.Outliers);
+        Assert.Contains("other bookings", result.OutlierNotes[big.Id], StringComparison.Ordinal);
+        Assert.True(result.Monthly[7] < 100m);
+    }
+
+    [Fact]
+    public void Refunds_never_make_a_month_negative()
+    {
+        var bookings = new List<BaselineBooking> { B(2025, 2, 40m, "EXAMPLE TAX OFFICE"), B(2025, 6, -1200m, "EXAMPLE TAX OFFICE") };
+
+        var result = BudgetBaselineMath.Compute(bookings, [], 2026, AsOf);
+
+        Assert.All(result.Monthly, m => Assert.True(m >= 0));
+        Assert.True(result.Clamped);
+    }
+
+    [Fact]
+    public void The_history_and_payee_summaries_cover_all_bookings()
+    {
+        var bookings = Months(2025, 12).Select(m => B(m.Year, m.Month, 30m, "EXAMPLE PHONE")).ToList();
+        bookings.AddRange([B(2024, 3, 500m, "EXAMPLE INSURANCE"), B(2025, 3, 540m, "EXAMPLE INSURANCE")]);
+
+        var result = BudgetBaselineMath.Compute(bookings, [], 2026, AsOf);
+
+        Assert.Equal(new DateOnly(2024, 3, 1), result.HistoryStart);
+        Assert.Equal(22, result.History.Length);
+        Assert.Equal(570m, result.History[12]);
+        var insurance = result.Payees[0];
+        Assert.Equal(("EXAMPLE INSURANCE", 2, 1040m, 500m, 540m), (insurance.PayeeKey, insurance.Count, insurance.Total, insurance.Min, insurance.Max));
+        Assert.Equal([new DateOnly(2024, 3, 1), new DateOnly(2025, 3, 1)], insurance.Months);
+        Assert.Equal(540m + 30m, result.Monthly[2]);
+    }
+
+    [Fact]
     public void No_bookings_no_budget()
     {
         var result = BudgetBaselineMath.Compute([], [], 2026, AsOf);

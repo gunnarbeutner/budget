@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace OpenBudget.Assist;
 
 /// <summary>A booking of a category for the baseline: <paramref name="Amount"/> is positive for spending (expense
@@ -10,21 +12,46 @@ public sealed record BaselineSchedule(string PayeeKey, decimal Amount, int Inter
 /// <summary>A payment repeating every <see cref="IntervalMonths"/> months (1, 3, 6 or 12).</summary>
 public sealed record RecurringSeries(string PayeeKey, int IntervalMonths, decimal Amount, DateOnly LastDate, IReadOnlyList<long> BookingIds);
 
-/// <summary>The deterministic budget proposal for one category.</summary>
+/// <summary>
+/// One payee's bookings in the window: count, total, smallest/median/largest amount, the distinct months
+/// (first day of each) it was booked in, and its first and last date.
+/// </summary>
+public sealed record PayeeSummary(
+    string PayeeKey, int Count, decimal Total, decimal Min, decimal Typical, decimal Max, IReadOnlyList<DateOnly> Months, DateOnly First, DateOnly Last);
+
+/// <summary>
+/// The deterministic budget proposal for one category. <see cref="History"/> holds the category's monthly totals
+/// (all bookings) from <see cref="HistoryStart"/> up to the cut-off, oldest first; <see cref="Payees"/> the per-payee
+/// summaries, largest total first; <see cref="OutlierNotes"/> says per outlier booking id how it relates to its payee's
+/// other bookings; <see cref="Clamped"/> is set when refunds pushed months below zero and they were set to 0.
+/// </summary>
 public sealed record BudgetBaseline(
     decimal[] Monthly, string Basis, IReadOnlyList<BaselineBooking> Outliers, IReadOnlyList<RecurringSeries> Recurring,
-    int MonthsOfData, decimal Median, decimal Mad, decimal Trend);
+    int MonthsOfData, decimal Median, decimal Mad, decimal Trend)
+{
+    public DateOnly HistoryStart { get; init; }
+    public decimal[] History { get; init; } = [];
+    public IReadOnlyList<PayeeSummary> Payees { get; init; } = [];
+    public IReadOnlyDictionary<long, string> OutlierNotes { get; init; } = new Dictionary<long, string>();
+    public bool Clamped { get; init; }
+}
 
 /// <summary>
 /// Statistics behind "Suggest budget": per category, last year's total (the 12 months before the cut-off) without clear
-/// one-offs (a single booking of its payee, robust z-score over 3.5 and ten times the usual booking). Payments
-/// repeating every 3, 6 or 12 months from the same payee (amounts within ±10 %) stay in their calendar month, standing
-/// orders the bank holds land where they are due; the rest is spread by the category's month pattern over up to 36
-/// months when that is clearly seasonal, otherwise evenly.
+/// one-offs: a single booking of its payee, robust z-score over 3.5 and ten times the usual booking; or a booking far
+/// outside its own payee's usual range (robust z over 3.5 on that payee's amounts, five times its median and at
+/// least <see cref="MinPayeeOutlier"/>). Payments repeating every 3, 6 or 12 months from the same payee (amounts
+/// within ±10 %) stay in their calendar month, as do a payee's bookings in a calendar month it was booked in during at
+/// least two of the window's years when it has bookings outside a monthly series in at most two calendar months
+/// (yearly payments of varying amount; placed at the latest amount). Standing orders the bank holds land where they
+/// are due; the rest is spread by the category's month pattern over up to 36 months when that is clearly seasonal,
+/// otherwise evenly. Months never go below zero: refunds that would make a month negative leave it at 0.
 /// </summary>
 public static class BudgetBaselineMath
 {
     public const double OutlierZ = 3.5;
+    /// <summary>The smallest booking flagged as unusual for its payee.</summary>
+    public const decimal MinPayeeOutlier = 100m;
     private static readonly int[] Intervals = [1, 3, 6, 12];
 
     public static decimal Median(IReadOnlyList<decimal> values)
@@ -98,6 +125,7 @@ public static class BudgetBaselineMath
             var ids = bookings.Where(b => b.PayeeKey == s.PayeeKey).Select(b => b.Id).ToList();
             recurring.Add(new RecurringSeries(s.PayeeKey, s.IntervalMonths, s.Amount, s.NextDate.AddMonths(-s.IntervalMonths), ids));
         }
+        recurring.AddRange(FindYearlyVarying(bookings, recurring.SelectMany(r => r.BookingIds).ToHashSet()));
         var periodic = recurring.Where(r => r.IntervalMonths > 1).ToList();
         var periodicIds = periodic.SelectMany(r => r.BookingIds).ToHashSet();
         var recurringIds = recurring.SelectMany(r => r.BookingIds).ToHashSet();
@@ -107,10 +135,28 @@ public static class BudgetBaselineMath
         var sizes = bookings.Select(b => b.Amount).ToList();
         var medSize = Median(sizes);
         var madSize = Mad(sizes);
+        var payeeCounts = bookings.GroupBy(b => b.PayeeKey, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
         var outliers = bookings
             .Where(b => !recurringIds.Contains(b.Id) && RobustZ(b.Amount, medSize, madSize) > OutlierZ && b.Amount > 10 * Math.Max(medSize, 1)
-                && bookings.Count(o => o.PayeeKey == b.PayeeKey) == 1)
+                && payeeCounts[b.PayeeKey] == 1)
             .ToList();
+        var notes = outliers.ToDictionary(o => o.Id, o => "only booking of this payee in the window");
+        // Bookings far outside their own payee's range (a big purchase at a shop otherwise used for small things).
+        foreach (var g in bookings.Where(b => b.PayeeKey.Length > 0).GroupBy(b => b.PayeeKey, StringComparer.Ordinal))
+        {
+            var amounts = g.Select(b => b.Amount).ToList();
+            if (amounts.Count < 3) continue;
+            var med = Median(amounts);
+            var payeeMad = Mad(amounts);
+            foreach (var b in g)
+            {
+                if (recurringIds.Contains(b.Id) || notes.ContainsKey(b.Id) || b.Amount < MinPayeeOutlier || b.Amount < 5 * Math.Max(med, 1) || RobustZ(b.Amount, med, payeeMad) <= OutlierZ) continue;
+                outliers.Add(b);
+                notes[b.Id] = string.Create(CultureInfo.InvariantCulture,
+                    $"payee has {amounts.Count - 1} other bookings in the window, typically {Math.Round(med, 0)} EUR");
+            }
+        }
+        outliers = outliers.OrderBy(o => o.Date).ToList();
         var outlierIds = outliers.Select(o => o.Id).ToHashSet();
 
         var rest = new decimal[months];
@@ -143,7 +189,8 @@ public static class BudgetBaselineMath
             var ids = r.BookingIds.ToHashSet();
             foreach (var b in lastYear.Where(b => ids.Contains(b.Id))) monthly[b.Date.Month - 1] += b.Amount;
         }
-        for (var m = 0; m < 12; m++) monthly[m] = Math.Round(monthly[m], 0, MidpointRounding.AwayFromZero);
+        var clamped = monthly.Any(m => m < 0);
+        for (var m = 0; m < 12; m++) monthly[m] = Math.Max(0, Math.Round(monthly[m], 0, MidpointRounding.AwayFromZero));
 
         var periodicTotal = periodic.Sum(r => r.Amount * MonthsOf(r, year).Count());
         var total = monthly.Sum();
@@ -152,7 +199,52 @@ public static class BudgetBaselineMath
             : season.Any(f => Math.Abs(f - 1) > 0.25m) ? "seasonal"
             : trend != 0 && Math.Abs(trend) >= 0.1m ? "trend"
             : "median";
-        return new BudgetBaseline(monthly, basis, outliers, recurring, months, median, mad, trend);
+        var history = new decimal[months];
+        foreach (var b in bookings) history[MonthIndex(b.Date) - firstIndex] += b.Amount;
+        return new BudgetBaseline(monthly, basis, outliers, recurring, months, median, mad, trend)
+        {
+            HistoryStart = new DateOnly(firstIndex / 12, (firstIndex % 12) + 1, 1),
+            History = history,
+            Payees = SummarisePayees(bookings),
+            OutlierNotes = notes,
+            Clamped = clamped,
+        };
+    }
+
+    /// <summary>Per-payee summaries of the bookings (bookings without a payee are left out), largest total first.</summary>
+    public static List<PayeeSummary> SummarisePayees(IReadOnlyList<BaselineBooking> bookings) =>
+        bookings.Where(b => b.PayeeKey.Length > 0).GroupBy(b => b.PayeeKey, StringComparer.Ordinal)
+            .Select(g =>
+            {
+                var amounts = g.Select(b => b.Amount).ToList();
+                var months = g.Select(b => new DateOnly(b.Date.Year, b.Date.Month, 1)).Distinct().Order().ToList();
+                return new PayeeSummary(g.Key, amounts.Count, amounts.Sum(), amounts.Min(), Median(amounts), amounts.Max(), months,
+                    g.Min(b => b.Date), g.Max(b => b.Date));
+            })
+            .OrderByDescending(p => Math.Abs(p.Total)).ThenBy(p => p.PayeeKey, StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>
+    /// Yearly payments whose amount varies too much for <see cref="FindRecurring"/> (a utility settlement, an annual
+    /// premium): a payee's bookings outside the series in <paramref name="taken"/>, in a calendar month they fell in
+    /// during at least two different years, when those bookings span at most two calendar months. The series' amount
+    /// is the latest booking's, as a varying yearly payment is best predicted by its most recent value.
+    /// </summary>
+    public static List<RecurringSeries> FindYearlyVarying(IReadOnlyList<BaselineBooking> bookings, IReadOnlySet<long> taken)
+    {
+        var result = new List<RecurringSeries>();
+        foreach (var g in bookings.Where(b => b.PayeeKey.Length > 0 && !taken.Contains(b.Id)).GroupBy(b => b.PayeeKey, StringComparer.Ordinal))
+        {
+            var byMonth = g.GroupBy(b => b.Date.Month).ToList();
+            if (byMonth.Count > 2) continue;
+            foreach (var m in byMonth)
+            {
+                if (m.Select(b => b.Date.Year).Distinct().Count() < 2) continue;
+                var list = m.OrderBy(b => b.Date).ToList();
+                result.Add(new RecurringSeries(g.Key, 12, list[^1].Amount, list[^1].Date, list.Select(b => b.Id).ToList()));
+            }
+        }
+        return result;
     }
 
     /// <summary>
