@@ -3,6 +3,8 @@
 // only the newest frame is decoded and painted (once per animation frame). Input goes back as small JSON messages;
 // hover moves and wheel deltas are coalesced per frame; drag paths retain every event. Nothing typed is kept here.
 export function attach(canvas, dotnet, sessionId) {
+    // The dialog can close between rendering and attaching; then there is nothing to show.
+    if (!canvas) return { focus() {}, dispose() {} };
     const ctx = canvas.getContext('2d');
     let cssW = 1366, cssH = 850;
     let disposed = false;

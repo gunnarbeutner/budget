@@ -57,6 +57,7 @@
             await _view.InvokeVoidAsync("focus");
         }
         catch (JSDisconnectedException) { /* circuit gone */ }
+        catch (JSException) { _attachedTo = null; /* the canvas left the page before it could be attached */ }
     }
 
     private string _url = "";
