@@ -121,6 +121,31 @@ public sealed partial class BudgetSuggestionTests
     }
 
     [Fact]
+    public void The_running_month_is_sent_as_the_latest_amounts_and_redacted()
+    {
+        var baseline = BudgetBaselineMath.Compute([], [], 2026, AsOf);
+        var recent = new Transaction
+        {
+            Id = 1,
+            OwnerUserId = TestDb.DefaultOwner,
+            CategoryId = Leaf,
+            Amount = -27408,
+            Name = "Erika Mustermann Versicherung",
+            Timestamp = ((DateTimeOffset)new DateTime(2026, 1, 16, 0, 0, 0, DateTimeKind.Utc)).ToUnixTimeSeconds(),
+        };
+        var month = new BudgetCurrentMonth(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 20), [[recent]]);
+
+        var (request, _) = BudgetSuggestionService.BuildRequest(2026,
+            [(new BudgetSuggestionInput(Key, "Versicherungen", false), baseline, new Dictionary<long, Transaction>())],
+            new AssistRedactor(["Erika Mustermann"]), currentMonth: month);
+
+        Assert.Contains("\"current_month\":{\"month\":\"2026-01\",\"through\":\"2026-01-20\"", request.UserContent, StringComparison.Ordinal);
+        Assert.Contains("\"amount\":274.08", request.UserContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("Mustermann", request.UserContent, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("trailing 12 months weighted", request.SystemPrompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_system_prompt_has_the_planning_rules()
     {
         var (request, _) = BudgetSuggestionService.BuildRequest(2026, [], new AssistRedactor([]));

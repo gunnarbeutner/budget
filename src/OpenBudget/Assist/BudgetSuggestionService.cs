@@ -98,10 +98,22 @@ public sealed class BudgetSuggestionService
             .Where(t => t.CategoryId.HasValue && allLeaves.Contains(t.CategoryId.Value))
             .WithinUtc(range)
             .ToListAsync(ct);
+        // Bookings after the cut-off (the running month so far): shown to the model as the latest amounts, never
+        // part of the baseline.
+        var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
+        var recentTxs = today >= end
+            ? await db.Transactions.AsNoTracking()
+                .Where(t => t.OwnerUserId == ownerId)
+                .CountedAsFlow()
+                .Where(t => t.CategoryId.HasValue && allLeaves.Contains(t.CategoryId.Value))
+                .WithinUtc(TimeRange.Between(new DateTimeOffset(end.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero), new DateTimeOffset(today.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)))
+                .ToListAsync(ct)
+            : [];
         var allSchedules = await db.ScheduledPayments.AsNoTracking().Where(p => p.OwnerUserId == ownerId).ToListAsync(ct);
         var schedules = allSchedules.Where(p => p.Kind == ScheduledPaymentKind.Standing && p.IntervalUnit == ScheduleUnit.Month).ToList();
 
         var computed = new List<(BudgetSuggestionInput Input, BudgetBaseline Baseline, Dictionary<long, Transaction> Rows)>();
+        var recent = new List<IReadOnlyList<Transaction>>();
         var allBookings = new List<IReadOnlyList<BaselineBooking>>();
         foreach (var row in rows)
         {
@@ -116,6 +128,7 @@ public sealed class BudgetSuggestionService
                 .ToList();
             computed.Add((row, BudgetBaselineMath.Compute(bookings, rowSchedules, year, end), own.ToDictionary(t => t.Id)));
             allBookings.Add(bookings);
+            recent.Add(recentTxs.Where(t => leafIds.Contains(t.CategoryId!.Value)).OrderBy(t => t.Date).ToList());
         }
 
         var result = computed.Select(c => new BudgetSuggestionRow(
@@ -130,7 +143,7 @@ public sealed class BudgetSuggestionService
             try
             {
                 var household = await LoadHouseholdAsync(db, projectId, ownerId, start, end, allSchedules, ct);
-                result = await AskAiAsync(year, computed, allBookings, household, start, end, result, ct);
+                result = await AskAiAsync(year, computed, allBookings, recent, household, start, end, today, result, ct);
                 aiUsed = true;
             }
             catch (AssistException ex)
@@ -165,8 +178,8 @@ public sealed class BudgetSuggestionService
 
     private async Task<List<BudgetSuggestionRow>> AskAiAsync(
         int year, List<(BudgetSuggestionInput Input, BudgetBaseline Baseline, Dictionary<long, Transaction> Rows)> computed,
-        List<IReadOnlyList<BaselineBooking>> bookings, Household household, DateOnly start, DateOnly end,
-        List<BudgetSuggestionRow> rows, CancellationToken ct)
+        List<IReadOnlyList<BaselineBooking>> bookings, List<IReadOnlyList<Transaction>> recent, Household household,
+        DateOnly start, DateOnly end, DateOnly today, List<BudgetSuggestionRow> rows, CancellationToken ct)
     {
         var redactor = new AssistRedactor(await _settings.PersonNamesAsync(ct));
         redactor.SetOwnAccounts(household.Accounts.Select(a => a.Id));
@@ -180,7 +193,8 @@ public sealed class BudgetSuggestionService
         var ended = BudgetSuggestionContext.EndedPayees(bookings.Select((list, i) => (handleOf[i], list)), scheduled, end);
         var context = BudgetSuggestionContext.Build(household.DebtAccounts, household.Schedules, ended, k => payeeCategory.GetValueOrDefault(k), redactor);
 
-        var (request, handles) = BuildRequest(year, computed.Select(c => (c.Input, c.Baseline, (IReadOnlyDictionary<long, Transaction>)c.Rows)).ToList(), redactor, context);
+        var (request, handles) = BuildRequest(year, computed.Select(c => (c.Input, c.Baseline, (IReadOnlyDictionary<long, Transaction>)c.Rows)).ToList(), redactor, context,
+            recent.Count > 0 && end <= today ? new BudgetCurrentMonth(end, today, recent) : null);
         var tools = new BudgetSuggestionTools(redactor,
             computed.Select((c, i) => (Handle: handleOf[i], Rows: (IReadOnlyList<Transaction>)c.Rows.Values.ToList())).ToDictionary(x => x.Handle, x => x.Rows, StringComparer.Ordinal),
             household.DebtAccounts, household.Accounts.ToDictionary(a => a.Id, a => a.KindLabel), start, end);
@@ -244,10 +258,28 @@ public sealed class BudgetSuggestionService
         }
     }
 
+    /// <summary>A row's bookings of the running month (redacted): payee, date and amount, positive like the other fields.</summary>
+    private static JsonObject CurrentMonthNode(BudgetCurrentMonth month, int row, bool income, AssistRedactor redactor)
+    {
+        var sign = income ? 1m : -1m;
+        var list = row < month.Rows.Count ? month.Rows[row] : [];
+        return new JsonObject
+        {
+            ["month"] = month.From.ToString("yyyy-MM", CultureInfo.InvariantCulture),
+            ["through"] = month.Through.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ["bookings"] = new JsonArray(list.Take(30).Select(t => (JsonNode)new JsonObject
+            {
+                ["payee"] = redactor.CleanText(CategoryMatching.PayeeKey(t.Name), [], 60),
+                ["date"] = DateOnly.FromDateTime(t.Date).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                ["amount"] = sign * t.Amount / 100m,
+            }).ToArray()),
+        };
+    }
+
     /// <summary>The request for a set of rows (redacted) and which handle ("c1") stands for which row.</summary>
     public static (AssistRequest Request, Dictionary<string, int> Handles) BuildRequest(
         int year, IReadOnlyList<(BudgetSuggestionInput Input, BudgetBaseline Baseline, IReadOnlyDictionary<long, Transaction> Rows)> computed, AssistRedactor redactor,
-        JsonObject? context = null)
+        JsonObject? context = null, BudgetCurrentMonth? currentMonth = null)
     {
         var handles = new Dictionary<string, int>(StringComparer.Ordinal);
         var items = new JsonArray();
@@ -269,6 +301,7 @@ public sealed class BudgetSuggestionService
                 ["refunds_clamped"] = baseline.Clamped,
                 ["year_totals"] = Totals(baseline),
                 ["monthly_history"] = History(baseline),
+                ["current_month"] = currentMonth == null ? null : CurrentMonthNode(currentMonth, i, input.IsIncome, redactor),
                 ["payees"] = Payees(baseline, redactor),
                 ["recurring"] = new JsonArray(baseline.Recurring.Select(r => (JsonNode)new JsonObject
                 {
@@ -292,6 +325,9 @@ public sealed class BudgetSuggestionService
               months it covers) and for the trailing 12 months, each with all bookings (total) and without the
               outlier bookings (without_outliers). Use these instead of adding up monthly_history yourself.
             - monthly_history: the category's actual total per month ("YYYY-MM"), oldest first, all bookings included.
+            - current_month: the bookings of the running month so far (it is not complete, "through" is today). They are
+              not in the baseline, the totals or the history; use them as the latest amount of a payee (a contract's
+              newest payment), never as a monthly total or a trend.
             - payees: per payee the number of bookings (n), total, min/typical (median)/max amount, the months it was
               booked in (or months_count when booked in many months), first and last date; the largest payees only,
               the rest summed up as "other payees".
@@ -310,9 +346,12 @@ public sealed class BudgetSuggestionService
             - a payee booked once a year (or every quarter / half year) in the same month belongs in that month at
               about its latest amount, not spread over the year; add it if the baseline misses it;
             - large spending that recurs every year in different bookings (trips, equipment for a hobby, larger
-              household purchases) is a reserve to plan, not a one-off: plan about the average yearly amount over the
-              available full years, leaving out only truly unique items, and place it in the months it usually happens,
+              household purchases) is a reserve to plan, not a one-off: plan about the yearly amount without truly
+              unique items, averaging the full years and the trailing 12 months with the trailing 12 months weighted
+              at least half (recent spending decides when it differs), and place it in the months it usually happens,
               or spread it evenly when there is no pattern;
+            - a payee's latest amount is its newest booking, including current_month; a single lower or higher payment
+              between two regular ones is an exception, not the new amount;
             - a large one-off purchase hidden in a payee that is otherwise small and regular (for example a shop or
               marketplace) should not inflate the months; take it out unless it clearly repeats;
             - a monthly contract (phone, transport ticket, subscription) should show up every month at its latest amount;
@@ -481,3 +520,6 @@ public sealed class BudgetSuggestionService
         }
         """)!;
 }
+
+/// <summary>The running month after the cut-off: its first day, today and each row's bookings so far.</summary>
+public sealed record BudgetCurrentMonth(DateOnly From, DateOnly Through, IReadOnlyList<IReadOnlyList<Transaction>> Rows);
