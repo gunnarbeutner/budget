@@ -59,6 +59,7 @@ public sealed class BankSyncRunner
     private readonly Func<BankHttpClient> _httpFactory;
     private readonly IWebLoginService? _webLogins;
     private readonly AmazonOrderStore _orders;
+    private readonly OpenBudget.Connectors.Receipts.ReceiptStore _receipts;
 
     /// <summary>The login-wide state a challenge may need: whose browser to open and which cookie jar to fill.</summary>
     private sealed record SyncContext(string OwnerUserId, BankHttpClient Http)
@@ -117,9 +118,11 @@ public sealed class BankSyncRunner
     public BankSyncRunner(
         SystemDbContextFactory system, ConnectorRegistry registry, SecretsProtector secrets,
         BankTransactionStore transactions, BankStatementStore statements, TimeProvider clock, ILoggerFactory loggers,
-        Func<BankHttpClient>? httpFactory = null, IWebLoginService? webLogins = null, AmazonOrderStore? orders = null)
+        Func<BankHttpClient>? httpFactory = null, IWebLoginService? webLogins = null, AmazonOrderStore? orders = null,
+        OpenBudget.Connectors.Receipts.ReceiptStore? receipts = null)
     {
         _orders = orders ?? new AmazonOrderStore();
+        _receipts = receipts ?? new OpenBudget.Connectors.Receipts.ReceiptStore();
         _webLogins = webLogins;
         _httpFactory = httpFactory ?? (() => new BankHttpClient());
         _system = system;
@@ -250,6 +253,12 @@ public sealed class BankSyncRunner
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     _logger.LogError(ex, "Bank login {LoginId}: matching order charges failed.", login.Id);
+                }
+                // ... and the receipts read from the owner's mailbox.
+                try { await _receipts.MatchAsync(db, login.OwnerUserId, ct); }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(ex, "Bank login {LoginId}: matching receipts failed.", login.Id);
                 }
             }
             if (request.Statements && !(request.Background && connector is IBackgroundScope { StatementsInBackground: false }))

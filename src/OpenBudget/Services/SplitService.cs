@@ -8,6 +8,9 @@ namespace OpenBudget.Services;
 /// <summary>One part of a split as the user enters it (amount in cents, signed like the booking).</summary>
 public sealed record SplitPartInput(long AmountCents, long? CategoryId, string? Note);
 
+/// <summary>A part as written: signed cents, category, note and the order items it stands for.</summary>
+public sealed record SplitPartWrite(long AmountCents, long? CategoryId, string? Note, string? OrderItems);
+
 /// <summary>A stored split part.</summary>
 public sealed record SplitPartView(long Id, long AmountCents, long? CategoryId, string? CategoryName, string? Note);
 
@@ -151,6 +154,32 @@ public sealed class SplitService
             if (valid != categoryIds.Count) throw new InvalidOperationException("Unknown category.");
         }
 
+        await WritePartsAsync(db, parent, parts.Select(p => new SplitPartWrite(p.AmountCents, p.CategoryId, p.Note, null)).ToList(), ct);
+        Publish(parent.OwnerUserId);
+    }
+
+    /// <summary>Removes the split: the parts go away and the booking counts as one again (keeping its own category).</summary>
+    public async Task RemoveSplitAsync(long id, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var parent = await LoadParentAsync(db, id, ct);
+        await RequireEditableAsync(db, [parent], ct);
+        if (parent.Splitted != SplitState.Parent) return;
+        var parts = await db.Transactions.Where(t => t.SplitParentId == parent.Id && t.Splitted == SplitState.Child).ToListAsync(ct);
+        db.Transactions.RemoveRange(parts);
+        parent.Splitted = SplitState.Normal;
+        parent.SplitOriginalAmount = null;
+        parent.SplitCheck = false;
+        await db.SaveChangesAsync(ct);
+        Publish(parent.OwnerUserId);
+    }
+
+    /// <summary>
+    /// Replaces the parts of <paramref name="parent"/> (tracked by <paramref name="db"/>) with <paramref name="parts"/> and
+    /// marks it a split parent, under the bank store's gate. No checks: callers validate the parts and the access.
+    /// </summary>
+    internal static async Task WritePartsAsync(BudgetDbContext db, Transaction parent, IReadOnlyList<SplitPartWrite> parts, CancellationToken ct)
+    {
         await BankTransactionStore.Gate.WaitAsync(ct);
         try
         {
@@ -185,6 +214,7 @@ public sealed class SplitService
                     CategoryId = p.CategoryId,
                     CategorySetBy = TransactionCategorySource.Manual,
                     Note = string.IsNullOrWhiteSpace(p.Note) ? null : p.Note.Trim(),
+                    OrderItems = p.OrderItems,
                 });
             }
             if (parent.Splitted != SplitState.Parent)
@@ -200,23 +230,6 @@ public sealed class SplitService
         {
             BankTransactionStore.Gate.Release();
         }
-        Publish(parent.OwnerUserId);
-    }
-
-    /// <summary>Removes the split: the parts go away and the booking counts as one again (keeping its own category).</summary>
-    public async Task RemoveSplitAsync(long id, CancellationToken ct = default)
-    {
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var parent = await LoadParentAsync(db, id, ct);
-        await RequireEditableAsync(db, [parent], ct);
-        if (parent.Splitted != SplitState.Parent) return;
-        var parts = await db.Transactions.Where(t => t.SplitParentId == parent.Id && t.Splitted == SplitState.Child).ToListAsync(ct);
-        db.Transactions.RemoveRange(parts);
-        parent.Splitted = SplitState.Normal;
-        parent.SplitOriginalAmount = null;
-        parent.SplitCheck = false;
-        await db.SaveChangesAsync(ct);
-        Publish(parent.OwnerUserId);
     }
 
     // ---- helpers ----

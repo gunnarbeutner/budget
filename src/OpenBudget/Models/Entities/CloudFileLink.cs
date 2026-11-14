@@ -38,6 +38,9 @@ public class CloudConnection
     [MaxLength(1000)]
     public string? LastError { get; set; }
 
+    /// <summary>Whether the user granted reading their mail (Mail.Read) with this connection; refreshes then ask for it too.</summary>
+    public bool MailAccess { get; set; }
+
     public List<CloudFileLink> Files { get; set; } = [];
 }
 

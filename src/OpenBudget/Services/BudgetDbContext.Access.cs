@@ -77,6 +77,11 @@ public partial class BudgetDbContext
         modelBuilder.Entity<AmazonOrder>().HasQueryFilter(o => ScopeUnrestricted || o.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<AmazonOrderItem>().HasQueryFilter(i => ScopeUnrestricted || i.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<AmazonCharge>().HasQueryFilter(c => ScopeUnrestricted || c.OwnerUserId == ScopeUserId);
+        // Receipts come from the owner's mailbox: personal, like the item memory and the receipt settings.
+        modelBuilder.Entity<ReceiptInvoice>().HasQueryFilter(r => ScopeUnrestricted || r.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<ReceiptItem>().HasQueryFilter(i => ScopeUnrestricted || i.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<ItemCategoryMemory>().HasQueryFilter(m => ScopeUnrestricted || m.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<ReceiptSettings>().HasQueryFilter(s => ScopeUnrestricted || s.OwnerUserId == ScopeUserId);
         // Read marks and the order of the project list are personal.
         modelBuilder.Entity<UserProjectOrder>().HasQueryFilter(o => ScopeUnrestricted || o.UserId == ScopeUserId);
         modelBuilder.Entity<StatementRead>().HasQueryFilter(r => ScopeUnrestricted || r.UserId == ScopeUserId);

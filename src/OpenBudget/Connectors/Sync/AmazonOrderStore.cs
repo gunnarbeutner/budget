@@ -104,7 +104,11 @@ public sealed class AmazonOrderStore
     public async Task MatchAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct)
     {
         var charges = await db.AmazonCharges.Where(c => c.OwnerUserId == ownerUserId).ToListAsync(ct);
-        var previouslyEnriched = await db.Transactions.Where(t => t.OwnerUserId == ownerUserId && t.OrderItems != null).Select(t => t.Id).ToListAsync(ct);
+        // Bookings (and their parts) that carry a receipt's items are the receipt store's.
+        var receiptBookings = db.ReceiptInvoices.Where(r => r.OwnerUserId == ownerUserId && r.TransactionId != null).Select(r => r.TransactionId);
+        var previouslyEnriched = await db.Transactions
+            .Where(t => t.OwnerUserId == ownerUserId && t.OrderItems != null && !receiptBookings.Contains(t.Id) && !receiptBookings.Contains(t.SplitParentId))
+            .Select(t => t.Id).ToListAsync(ct);
         if (charges.Count == 0 && previouslyEnriched.Count == 0) return;
         var loginIds = charges.Select(c => c.BankLoginId).Distinct().ToList();
         var mapping = (await db.BankLoginAccounts.AsNoTracking()

@@ -79,6 +79,10 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<AmazonOrder> AmazonOrders => Set<AmazonOrder>();
     public DbSet<AmazonOrderItem> AmazonOrderItems => Set<AmazonOrderItem>();
     public DbSet<AmazonCharge> AmazonCharges => Set<AmazonCharge>();
+    public DbSet<ReceiptInvoice> ReceiptInvoices => Set<ReceiptInvoice>();
+    public DbSet<ReceiptItem> ReceiptItems => Set<ReceiptItem>();
+    public DbSet<ItemCategoryMemory> ItemCategoryMemory => Set<ItemCategoryMemory>();
+    public DbSet<ReceiptSettings> ReceiptSettings => Set<ReceiptSettings>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -362,6 +366,15 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<AmazonCharge>().HasIndex(c => new { c.BankLoginId, c.ChargeKey }).IsUnique();
         modelBuilder.Entity<AmazonCharge>().HasIndex(c => c.TransactionId);
         modelBuilder.Entity<AmazonCharge>().Property(c => c.State).HasConversion<int>();
+
+        // Receipts read from the owner's mailbox, the item category memory and the receipt settings.
+        modelBuilder.Entity<ReceiptInvoice>().HasIndex(r => new { r.OwnerUserId, r.Shop, r.InvoiceNumber }).IsUnique();
+        modelBuilder.Entity<ReceiptInvoice>().HasIndex(r => r.TransactionId);
+        modelBuilder.Entity<ReceiptInvoice>().Property(r => r.State).HasConversion<int>();
+        modelBuilder.Entity<ReceiptItem>().HasOne(i => i.Invoice).WithMany(r => r.Items).HasForeignKey(i => i.ReceiptInvoiceId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ReceiptItem>().Property(i => i.Kind).HasConversion<int>();
+        modelBuilder.Entity<ItemCategoryMemory>().HasIndex(m => new { m.OwnerUserId, m.NormalizedName }).IsUnique();
+        modelBuilder.Entity<ReceiptSettings>().HasIndex(s => s.OwnerUserId).IsUnique();
 
         ConfigureAccessFilters(modelBuilder);
     }
