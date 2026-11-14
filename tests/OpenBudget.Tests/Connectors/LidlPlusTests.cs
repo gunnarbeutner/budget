@@ -402,8 +402,8 @@ public sealed class LidlPlusTests
 
     [Theory]
     [InlineData(-490, 0, "LIDL DIENSTLEISTUNG", null, true)]
-    [InlineData(-490, 5, "S. Payment Solutions GmbH", "Lidl sagt Danke", true)]
-    [InlineData(-490, 6, "S. Payment Solutions GmbH", null, false)]
+    [InlineData(-490, 10, "S. Payment Solutions GmbH", "Lidl sagt Danke", true)]
+    [InlineData(-490, 11, "S. Payment Solutions GmbH", null, false)]
     [InlineData(-490, -1, "S. Payment Solutions GmbH", null, false)]
     [InlineData(-491, 1, "S. Payment Solutions GmbH", null, false)]
     [InlineData(490, 1, "S. Payment Solutions GmbH", null, false)]

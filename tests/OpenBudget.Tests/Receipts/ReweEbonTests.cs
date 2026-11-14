@@ -123,13 +123,13 @@ public sealed class ReweEbonTests
         Assert.Throws<InvalidDataException>(() => ReweEbon.Parse(Pdf(sum: "18,01")));
 
     [Fact]
-    public void Matches_a_card_payment_within_five_days_but_never_a_cash_receipt()
+    public void Matches_a_card_payment_within_ten_days_but_never_a_cash_receipt()
     {
         var day = new DateOnly(2026, 11, 3);
         ReceiptBooking Booking(long id, int days, string name) => new(id, day.AddDays(days), -1800, name, null);
         var card = new ReceiptToMatch(1, 1800, day, day, ReceiptShops.ReweEbon);
         Assert.Equal(10, ReceiptMatcher.Match([card], [Booking(10, 2, "PAYBACK")]).Matches[1]);
-        Assert.Empty(ReceiptMatcher.Match([card], [Booking(10, 6, "VISA REWE MARKT")]).Matches);
+        Assert.Empty(ReceiptMatcher.Match([card], [Booking(10, 11, "VISA REWE MARKT")]).Matches);
         Assert.Empty(ReceiptMatcher.Match([new ReceiptToMatch(1, 0, day, day, ReceiptShops.ReweEbon)], [Booking(10, 0, "REWE SAGT DANKE")]).Matches);
         // An online invoice does not take a PAYBACK booking.
         Assert.Empty(ReceiptMatcher.Match([card with { Shop = ReceiptShops.Rewe }], [Booking(10, 2, "PAYBACK")]).Matches);
