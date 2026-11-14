@@ -43,10 +43,12 @@
     @if (Tree.Accounts.Count > 0)
     {
         var closedCount = Tree.Accounts.Count(a => a.MarkedClosed && (ShowRelatedAccounts || a.IsAssigned));
-        var showClosed = _showClosed || (SelectionKind == "account" && Tree.Accounts.Any(a => a.Id == SelectionId && a.MarkedClosed));
+        var showClosed = _showClosed;
+        // The selected account stays in the list even when closed ones are hidden.
+        var selectedAccount = SelectionKind == "account" ? SelectionId : null;
         var visibleAccounts = (ShowRelatedAccounts
             ? (IEnumerable<BrowseAccountNode>)Tree.Accounts
-            : Tree.Accounts.Where(a => a.IsAssigned)).Where(a => showClosed || !a.MarkedClosed);
+            : Tree.Accounts.Where(a => a.IsAssigned)).Where(a => showClosed || !a.MarkedClosed || a.Id == selectedAccount);
         var hiddenRelatedCount = Tree.Accounts.Count(a => !a.IsAssigned);
         <div class="browse-tree-section">@L["Tree_Section_Accounts"]</div>
         @foreach (var node in AccountNodes(visibleAccounts))
