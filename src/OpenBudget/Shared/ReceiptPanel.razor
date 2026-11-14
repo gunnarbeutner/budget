@@ -147,6 +147,8 @@
     [Parameter] public int? InitialPart { get; set; }
     /// <summary>The dialog closed; true when an item was moved.</summary>
     [Parameter] public EventCallback<bool> OnClose { get; set; }
+    /// <summary>An item was moved and the booking split again: the page behind refreshes while the panel stays open.</summary>
+    [Parameter] public EventCallback OnMoved { get; set; }
 
     private BookingReceiptView? view;
     private long? loadedFor;
@@ -191,6 +193,7 @@
             changed = true;
             view = await Service.GetReceiptAsync(id);
             if (view != null && part is { } p && p >= view.Groups.Count) part = null;
+            await OnMoved.InvokeAsync();
         }
         catch (Exception ex) when (ex is AccessDeniedException or SplitException or InvalidOperationException)
         {

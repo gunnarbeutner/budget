@@ -24,7 +24,7 @@
             </CategoryPill>
         }
     </div>
-    <ReceiptPanel ReceiptId="openId" InitialPart="openPart" PickerData="PickerData" CanEdit="CanEdit" BookingCategoryName="@BookingCategoryName" OnClose="ClosedAsync" />
+    <ReceiptPanel ReceiptId="openId" InitialPart="openPart" PickerData="PickerData" CanEdit="CanEdit" BookingCategoryName="@BookingCategoryName" OnClose="Closed" OnMoved="MovedAsync" />
 </div>
 
 @code {
@@ -44,10 +44,9 @@
 
     private void Open(int? part) => (openId, openPart) = (Receipt.ReceiptId, part);
 
-    private async Task ClosedAsync(bool changed)
-    {
-        openId = null;
-        if (changed) await OnChanged.InvokeAsync();
-    }
+    // Each move already refreshed the page behind (OnMoved), so closing only hides the panel.
+    private void Closed(bool _) => openId = null;
+
+    private Task MovedAsync() => OnChanged.InvokeAsync();
 
 }
