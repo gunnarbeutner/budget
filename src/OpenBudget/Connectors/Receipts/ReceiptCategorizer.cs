@@ -75,20 +75,23 @@ public static partial class ReceiptCategorizer
     /// </summary>
     public static Dictionary<long, LineCategory> Assign(
         IReadOnlyList<ReceiptLine> lines, long? bookingCategoryId, long? nonFoodCategoryId,
-        IReadOnlyDictionary<string, long> memory, IReadOnlyDictionary<long, long>? ai = null, IReadOnlyDictionary<long, long?>? manual = null)
+        IReadOnlyDictionary<string, long> memory, IReadOnlyDictionary<long, long>? ai = null, IReadOnlyDictionary<long, long?>? manual = null,
+        IReadOnlySet<long>? shopCategories = null)
     {
         var result = new Dictionary<long, LineCategory>();
+        // A shop's own category (another supermarket) is never where an item of this booking goes: it stays with the booking.
+        bool Shop(long c) => c != bookingCategoryId && shopCategories != null && shopCategories.Contains(c);
         foreach (var line in lines)
         {
             if (manual != null && manual.TryGetValue(line.Id, out var own))
                 result[line.Id] = new LineCategory(own ?? bookingCategoryId, ReceiptCategorySource.Manual);
             else if (line.Kind != ReceiptItemKind.Product)
                 result[line.Id] = new LineCategory(bookingCategoryId, ReceiptCategorySource.Default);
-            else if (memory.TryGetValue(Normalize(line.Name), out var remembered))
+            else if (memory.TryGetValue(Normalize(line.Name), out var remembered) && !Shop(remembered))
                 result[line.Id] = new LineCategory(remembered, ReceiptCategorySource.Memory);
             else if (nonFoodCategoryId != null && IsNonFood(line.Name))
                 result[line.Id] = new LineCategory(nonFoodCategoryId, ReceiptCategorySource.Keyword);
-            else if (ai != null && ai.TryGetValue(line.Id, out var guessed))
+            else if (ai != null && ai.TryGetValue(line.Id, out var guessed) && !Shop(guessed))
                 result[line.Id] = new LineCategory(guessed, ReceiptCategorySource.Ai);
             else
                 result[line.Id] = new LineCategory(bookingCategoryId, ReceiptCategorySource.Default);
@@ -117,26 +120,44 @@ public static partial class ReceiptCategorizer
 
     /// <summary>
     /// The split parts for a booking of <paramref name="bookingCents"/> (signed): one per category, in the order the
-    /// categories first appear, each the sum of its lines after the bonus; parts that come to zero are left out (their
-    /// lines join the booking category's part). The parts add up to the booking exactly: a difference (the booking
-    /// differs from the receipt) goes to the largest part.
+    /// categories first appear, each the sum of its lines after the bonus. Deposit lines and fees never make a part of
+    /// their own: they join the part of the booking's category (or, when the products left no such part, the largest
+    /// part). A part that comes to zero or to the opposite sign of the booking joins that part too, so every part has
+    /// the booking's sign. The parts add up to the booking exactly: a difference (the booking differs from the receipt)
+    /// goes to the largest part.
     /// </summary>
     public static List<ReceiptSplitPart> Parts(
         IReadOnlyList<ReceiptLine> lines, IReadOnlyDictionary<long, LineCategory> categories, long bonusCents, long bookingCents, long? bookingCategoryId)
     {
         var net = NetCents(lines, bonusCents);
         var sign = bookingCents < 0 ? -1 : 1;
-        var groups = lines.GroupBy(l => categories[l.Id].CategoryId)
+        var products = lines.Where(l => l.Kind == ReceiptItemKind.Product).ToList();
+        var groups = products.GroupBy(l => categories[l.Id].CategoryId)
             .Select(g => (Category: g.Key, Cents: g.Sum(l => net[l.Id]) * sign, Lines: g.Select(l => l.Id).ToList()))
             .ToList();
-        var zero = groups.Where(g => g.Cents == 0 && g.Category != bookingCategoryId).ToList();
-        if (zero.Count > 0)
+        int Home() => groups.FindIndex(g => g.Category == bookingCategoryId) is var i and >= 0 ? i
+            : groups.Count == 0 ? -1 : groups.IndexOf(groups.MaxBy(g => g.Cents * sign)!);
+        void Join(IReadOnlyList<long> ids, long cents)
         {
-            groups = groups.Except(zero).ToList();
-            var home = groups.FindIndex(g => g.Category == bookingCategoryId);
-            var moved = zero.SelectMany(z => z.Lines).ToList();
-            if (home >= 0) groups[home] = (groups[home].Category, groups[home].Cents, [.. groups[home].Lines, .. moved]);
-            else groups.Add((bookingCategoryId, 0, moved));
+            var home = Home();
+            if (home < 0) groups.Add((bookingCategoryId, cents, ids.ToList()));
+            else groups[home] = (groups[home].Category, groups[home].Cents + cents, [.. groups[home].Lines, .. ids]);
+        }
+        var extra = lines.Where(l => l.Kind != ReceiptItemKind.Product).ToList();
+        if (extra.Count > 0) Join(extra.Select(l => l.Id).ToList(), extra.Sum(l => net[l.Id]) * sign);
+        while (groups.Count > 1 && groups.FindIndex(g => g.Category != bookingCategoryId && g.Cents * sign <= 0) is var bad and >= 0)
+        {
+            var g = groups[bad];
+            groups.RemoveAt(bad);
+            Join(g.Lines, g.Cents);
+        }
+        // the booking category's own part can end up with the wrong sign (deposit returns larger than its products)
+        while (groups.Count > 1 && groups.FindIndex(g => g.Category == bookingCategoryId && g.Cents * sign <= 0) is var own and >= 0)
+        {
+            var g = groups[own];
+            groups.RemoveAt(own);
+            var largest = groups.IndexOf(groups.MaxBy(x => x.Cents * sign)!);
+            groups[largest] = (bookingCategoryId, groups[largest].Cents + g.Cents, [.. groups[largest].Lines, .. g.Lines]);
         }
         var diff = bookingCents - groups.Sum(g => g.Cents);
         if (diff != 0 && groups.Count > 0)
@@ -144,7 +165,9 @@ public static partial class ReceiptCategorizer
             var largest = groups.IndexOf(groups.MaxBy(g => Math.Abs(g.Cents)));
             groups[largest] = (groups[largest].Category, groups[largest].Cents + diff, groups[largest].Lines);
         }
-        return groups.Select(g => new ReceiptSplitPart(g.Cents, g.Category, g.Lines)).ToList();
+        var order = lines.Select((l, i) => (l.Id, i)).ToDictionary(x => x.Id, x => x.i);
+        return groups.OrderBy(g => g.Lines.Min(id => order[id]))
+            .Select(g => new ReceiptSplitPart(g.Cents, g.Category, g.Lines.OrderBy(id => order[id]).ToList())).ToList();
     }
 
     /// <summary>The parts as a compact text ("-1234:56;-789:"), to recognise them again.</summary>

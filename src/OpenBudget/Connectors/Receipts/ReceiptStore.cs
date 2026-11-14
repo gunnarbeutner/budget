@@ -176,7 +176,8 @@ public sealed class ReceiptStore
                 foreach (var (id, category) in await _ai.ClassifyAsync(invoice.OwnerUserId, date, ask, ct)) ai[id] = category;
             }
         }
-        var assigned = ReceiptCategorizer.Assign(lines, parent.CategoryId, nonFood, memory, ai, manual);
+        var shops = await ShopCategoriesAsync(db, invoice.OwnerUserId, ct);
+        var assigned = ReceiptCategorizer.Assign(lines, parent.CategoryId, nonFood, memory, ai, manual, shops);
         foreach (var item in items)
         {
             var a = assigned[item.Id];
@@ -217,6 +218,18 @@ public sealed class ReceiptStore
         }
         await db.SaveChangesAsync(ct);
         return changed;
+    }
+
+    /// <summary>
+    /// The categories of the owner's bookings that receipts were matched to: the shops' own categories ("Supermarkt ›
+    /// Lidl", "Supermarkt › Rewe"), which an item of another shop's receipt never goes to.
+    /// </summary>
+    public static async Task<HashSet<long>> ShopCategoriesAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct)
+    {
+        var ids = db.ReceiptInvoices.Where(i => i.OwnerUserId == ownerUserId && i.TransactionId != null).Select(i => i.TransactionId!.Value);
+        var rows = await db.Transactions.AsNoTracking().Where(t => t.OwnerUserId == ownerUserId && ids.Contains(t.Id) && t.CategoryId != null)
+            .Select(t => t.CategoryId!.Value).Distinct().ToListAsync(ct);
+        return rows.ToHashSet();
     }
 
     /// <summary>The owner's memory entries for these normalised names.</summary>
