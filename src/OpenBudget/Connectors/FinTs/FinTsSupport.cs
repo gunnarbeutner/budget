@@ -170,9 +170,11 @@ internal sealed class ChallengeCoroutine<T> : IChallengeAsker
     {
         if (_silent) throw new SilentAbortException(ConnectorStep.SilentReason(challenge));
         _open = challenge;
-        _answer = NewSource<ChallengeAnswer>();
+        // the answer can arrive (and ResumeAsync clear _answer) as soon as _asked is set, so return this source's task
+        var answer = NewSource<ChallengeAnswer>();
+        _answer = answer;
         _asked.TrySetResult(challenge);
-        return _answer.Task;
+        return answer.Task;
     }
 
     public async Task<ConnectorStep<T>> ResumeAsync(ChallengeAnswer? answer, CancellationToken ct)
