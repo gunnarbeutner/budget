@@ -84,7 +84,7 @@ public sealed class KeptBrowserTests
     }
 
     [Fact]
-    public async Task A_kept_browser_closes_itself_after_its_lifetime()
+    public async Task A_kept_browser_closes_itself_when_left_unused()
     {
         var host = new FakeBrowserHost { User = SignsIn };
         await using var session = await Service(host, TimeSpan.FromMilliseconds(100)).StartAsync(BankWorld.Alice, Spec(), [], CancellationToken.None);
@@ -93,6 +93,22 @@ public sealed class KeptBrowserTests
         for (var i = 0; i < 300 && kept.IsOpen; i++) await Task.Delay(10);
         Assert.False(kept.IsOpen);
         Assert.True(Assert.Single(host.Sessions).Disposed);
+    }
+
+    [Fact]
+    public async Task A_kept_browser_in_use_stays_open_past_its_idle_limit()
+    {
+        var host = new FakeBrowserHost { User = SignsIn };
+        await using var session = await Service(host, TimeSpan.FromMilliseconds(300)).StartAsync(BankWorld.Alice, Spec(), [], CancellationToken.None);
+        await session.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        var kept = session.TakeBrowser()!;
+        for (var i = 0; i < 10; i++)
+        {
+            await Task.Delay(100);
+            await kept.SendAsync(new BrowserFetchRequest("GET", new Uri("https://bank.test/data")), CancellationToken.None);
+        }
+        Assert.True(kept.IsOpen);
+        await kept.DisposeAsync();
     }
 
     [Fact]

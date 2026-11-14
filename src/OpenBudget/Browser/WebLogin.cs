@@ -32,7 +32,7 @@ public sealed class WebLoginOptions
     /// <summary>How long the code page is left alone after a typed code was submitted, before it counts as asking again.</summary>
     public TimeSpan CodeSettle { get; set; } = TimeSpan.FromSeconds(2);
 
-    /// <summary>The longest a browser kept after the login (<see cref="WebLoginSpec.KeepBrowser"/>) stays open.</summary>
+    /// <summary>How long a browser kept after the login (<see cref="WebLoginSpec.KeepBrowser"/>) stays open without a request.</summary>
     public TimeSpan KeptBrowserLifetime { get; set; } = TimeSpan.FromMinutes(15);
 
     /// <summary>The longest an unattended (background) web login may take before it counts as needing the owner.</summary>

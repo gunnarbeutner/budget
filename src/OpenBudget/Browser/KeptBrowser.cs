@@ -4,8 +4,8 @@ namespace OpenBudget.Browser;
 
 /// <summary>
 /// The signed-in browser of a finished web login, kept for a connector's requests (<see cref="WebLoginSpec.KeepBrowser"/>).
-/// Nobody can watch it any more (its web login has ended). Requests run one at a time; disposing it, or reaching
-/// <paramref name="lifetime"/>, destroys the browser context. Only method, path and status are logged.
+/// Nobody can watch it any more (its web login has ended). Requests run one at a time; disposing it, or
+/// <paramref name="idleLimit"/> passing without a request (a long sync keeps it open), destroys the browser context. Only method, path and status are logged.
 /// </summary>
 public sealed class KeptBrowser : IBrowserFetcher, IAsyncDisposable
 {
@@ -21,17 +21,20 @@ public sealed class KeptBrowser : IBrowserFetcher, IAsyncDisposable
     private Action<IReadOnlyList<CookieState>>? _cookieSink;
     private int _disposed;
 
-    internal KeptBrowser(IBrowserSession browser, TimeSpan lifetime, TimeProvider clock, ILogger logger)
+    private readonly TimeSpan _idleLimit;
+
+    internal KeptBrowser(IBrowserSession browser, TimeSpan idleLimit, TimeProvider clock, ILogger logger)
     {
         _browser = browser;
         _logger = logger;
-        _expiry = clock.CreateTimer(Expire, null, lifetime, Timeout.InfiniteTimeSpan);
+        _idleLimit = idleLimit;
+        _expiry = clock.CreateTimer(Expire, null, idleLimit, Timeout.InfiniteTimeSpan);
     }
 
     private void Expire(object? state)
     {
         if (!IsOpen) return;
-        _logger.LogInformation("A kept browser reached its lifetime limit; closing it.");
+        _logger.LogInformation("A kept browser was left unused; closing it.");
         _ = DisposeAsync().AsTask();
     }
 
@@ -75,6 +78,7 @@ public sealed class KeptBrowser : IBrowserFetcher, IAsyncDisposable
         try
         {
             if (!IsOpen) throw SessionEnded();
+            _expiry.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
             return await action(linked.Token);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -88,6 +92,7 @@ public sealed class KeptBrowser : IBrowserFetcher, IAsyncDisposable
         finally
         {
             _gate.Release();
+            if (IsOpen) _expiry.Change(_idleLimit, Timeout.InfiniteTimeSpan);
         }
     }
 
