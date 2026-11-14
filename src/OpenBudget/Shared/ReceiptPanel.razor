@@ -30,6 +30,10 @@
                     <span> · @L["NoBooking"]</span>
                 }
             </div>
+            @* Without a booking nothing is split, so the receipt shows no categories. *@
+            @{ var categorized = view.TransactionId != null; var cols = categorized ? 4 : 3; }
+            @if (categorized)
+            {
             <div class="d-flex flex-wrap gap-1 mb-2" role="group" aria-label="@L["Parts"]">
                 <button type="button" class="btn btn-sm @(part == null ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => part = null">@L["AllParts"]</button>
                 @for (var i = 0; i < view.Groups.Count; i++)
@@ -40,6 +44,7 @@
                             @onclick="() => part = index"><CategoryPill CategoryId="g.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" /> @Formatting.FormatMoneyDe(g.AmountCents / 100m) (@g.Lines.Count)</button>
                 }
             </div>
+            }
             @if (view.ItemCount > 8)
             {
                 <input type="search" class="form-control form-control-sm mb-2" placeholder="@L["Search"]" aria-label="@L["Search"]"
@@ -52,7 +57,10 @@
                             <th>@L["Item"]</th>
                             <th class="text-end">@L["Quantity"]</th>
                             <th class="text-end">@L["Price"]</th>
-                            <th>@L["Category"]</th>
+                            @if (categorized)
+                            {
+                                <th>@L["Category"]</th>
+                            }
                         </tr>
                     </thead>
                     <tbody>
@@ -62,7 +70,7 @@
                             var extras = g.Lines.Where(l => l.Kind != ReceiptItemKind.Product).ToList();
                             @if (view.Groups.Count > 1 && part == null)
                             {
-                                <tr class="table-light"><th colspan="4" class="small">@CategoryName(g.CategoryId) · @Formatting.FormatMoneyDe(g.AmountCents / 100m)</th></tr>
+                                <tr class="table-light"><th colspan="@cols" class="small">@CategoryName(g.CategoryId) · @Formatting.FormatMoneyDe(g.AmountCents / 100m)</th></tr>
                             }
                             @foreach (var line in products)
                             {
@@ -70,6 +78,8 @@
                                     <td class="text-break">@line.Name</td>
                                     <td class="text-end text-nowrap">@line.Quantity</td>
                                     <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(line.TotalCents / 100m)</td>
+                                    @if (categorized)
+                                    {
                                     <td>
                                         @if (CanEdit && PickerData != null)
                                         {
@@ -81,6 +91,7 @@
                                             <CategoryPill CategoryId="line.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" />
                                         }
                                     </td>
+                                    }
                                 </tr>
                             }
                             @if (extras.Count > 0 && string.IsNullOrWhiteSpace(search))
@@ -94,7 +105,10 @@
                                         </button>
                                     </td>
                                     <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(extras.Sum(l => l.TotalCents) / 100m)</td>
-                                    <td><CategoryPill CategoryId="g.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" /></td>
+                                    @if (categorized)
+                                    {
+                                        <td><CategoryPill CategoryId="g.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" /></td>
+                                    }
                                 </tr>
                                 @if (open)
                                 {
@@ -104,7 +118,10 @@
                                             <td class="ps-4 text-break">@line.Name</td>
                                             <td class="text-end">@line.Quantity</td>
                                             <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(line.TotalCents / 100m)</td>
-                                            <td></td>
+                                            @if (categorized)
+                                            {
+                                                <td></td>
+                                            }
                                         </tr>
                                     }
                                 }
@@ -112,12 +129,12 @@
                         }
                     </tbody>
                     <tfoot class="small">
-                        <tr><td colspan="2">@L["Total"]</td><td class="text-end text-nowrap">@Formatting.FormatMoneyDe(view.TotalCents / 100m)</td><td></td></tr>
+                        <tr><td colspan="2">@L["Total"]</td><td class="text-end text-nowrap">@Formatting.FormatMoneyDe(view.TotalCents / 100m)</td>@if (categorized) { <td></td> }</tr>
                         @if (view.BonusCents != 0)
                         {
-                            <tr><td colspan="2">@L["Bonus"]</td><td class="text-end text-nowrap">@Formatting.FormatMoneyDe(view.BonusCents / 100m)</td><td></td></tr>
+                            <tr><td colspan="2">@L["Bonus"]</td><td class="text-end text-nowrap">@Formatting.FormatMoneyDe(view.BonusCents / 100m)</td>@if (categorized) { <td></td> }</tr>
                         }
-                        <tr class="fw-semibold"><td colspan="2">@L["Paid"]</td><td class="text-end text-nowrap" data-testid="receipt-panel-paid">@Formatting.FormatMoneyDe(view.PaymentCents / 100m)</td><td></td></tr>
+                        <tr class="fw-semibold"><td colspan="2">@L["Paid"]</td><td class="text-end text-nowrap" data-testid="receipt-panel-paid">@Formatting.FormatMoneyDe(view.PaymentCents / 100m)</td>@if (categorized) { <td></td> }</tr>
                     </tfoot>
                 </table>
             </div>
