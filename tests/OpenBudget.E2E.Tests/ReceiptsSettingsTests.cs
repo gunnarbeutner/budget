@@ -46,9 +46,9 @@ public sealed class ReceiptsSettingsTests : EndToEndTestBase
 
         await Page.GetByTestId("receipts-mail-check").ClickAsync();
         await Expect(Page.GetByTestId("receipts-notice")).ToContainTextAsync("1 new receipts");
-        var row = Page.GetByTestId("receipt-row");
+        // Other receipt tests may have added rows of their own: this test's row is found by its order number.
+        var row = Page.GetByTestId("receipt-row").Filter(new() { HasText = "B-AAA-BBB-C99" });
         await Expect(row).ToHaveCountAsync(1);
-        await Expect(row).ToContainTextAsync("B-AAA-BBB-C99");
         await Expect(row).ToContainTextAsync("no booking yet");
 
         await Page.GetByTestId("receipts-mail-stop").ClickAsync();
