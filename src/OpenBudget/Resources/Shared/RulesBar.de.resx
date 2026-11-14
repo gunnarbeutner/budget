@@ -74,7 +74,6 @@
   <data name="Enabled" xml:space="preserve"><value>Aktiv</value></data>
   <data name="Save" xml:space="preserve"><value>Speichern</value></data>
   <data name="Cancel" xml:space="preserve"><value>Abbrechen</value></data>
-  <data name="MatchesTitle" xml:space="preserve"><value>Umsätze dieses Projekts, auf die die Regel passt</value></data>
   <data name="MoveUp" xml:space="preserve"><value>Nach oben</value></data>
   <data name="MoveDown" xml:space="preserve"><value>Nach unten</value></data>
   <data name="Delete" xml:space="preserve"><value>Löschen</value></data>

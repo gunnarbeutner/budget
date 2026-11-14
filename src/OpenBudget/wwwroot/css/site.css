@@ -1832,7 +1832,6 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
 .rules-row.disabled .rules-text { opacity: 0.6; }
 .rules-check { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.8125rem; margin: 0; white-space: nowrap; }
 .rules-actions { display: flex; align-items: center; gap: 0.25rem; justify-content: flex-end; white-space: nowrap; }
-.rules-matches { min-width: 1.5rem; text-align: right; }
 .rules-more, .rules-error, .rules-expr { grid-column: 1 / -1; }
 .rules-textonly { grid-column: span 3; }
 .rules-more { display: flex; flex-wrap: wrap; gap: 0.35rem; }

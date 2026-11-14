@@ -74,7 +74,6 @@
   <data name="Enabled" xml:space="preserve"><value>Enabled</value></data>
   <data name="Save" xml:space="preserve"><value>Save</value></data>
   <data name="Cancel" xml:space="preserve"><value>Cancel</value></data>
-  <data name="MatchesTitle" xml:space="preserve"><value>Bookings of this project the rule matches</value></data>
   <data name="MoveUp" xml:space="preserve"><value>Move up</value></data>
   <data name="MoveDown" xml:space="preserve"><value>Move down</value></data>
   <data name="Delete" xml:space="preserve"><value>Delete</value></data>
