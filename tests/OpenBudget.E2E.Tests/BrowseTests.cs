@@ -58,7 +58,7 @@ public sealed class BrowseTests : EndToEndTestBase
         await GoToAsync(BrowseUrl);
         await Expect(Page.GetByText(new Regex("2 transactions"))).ToBeVisibleAsync();
 
-        await Page.GetByPlaceholder("Search name or comment…").FillAsync("txn-2");
+        await Page.GetByPlaceholder("Search name, purpose, note or amount…").FillAsync("txn-2");
 
         // Debounced search resolves to a single match.
         await Expect(Page.GetByText(new Regex("1 transactions"))).ToBeVisibleAsync();

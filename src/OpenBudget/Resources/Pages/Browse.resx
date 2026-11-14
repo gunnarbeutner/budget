@@ -70,7 +70,7 @@
   <data name="Empty_NoTransactions" xml:space="preserve"><value>No transactions match the current filter.</value></data>
   <data name="Filter_AnyAccount" xml:space="preserve"><value>Any account</value></data>
   <data name="Filter_Clear" xml:space="preserve"><value>Clear filters</value></data>
-  <data name="Filter_SearchPlaceholder" xml:space="preserve"><value>Search name or comment…</value></data>
+  <data name="Filter_SearchPlaceholder" xml:space="preserve"><value>Search name, purpose, note or amount…</value></data>
   <data name="Footer_Sum" xml:space="preserve"><value>Sum:</value></data>
   <data name="Footer_Total" xml:space="preserve"><value>{0} transactions</value></data>
   <data name="Header_Uncategorized" xml:space="preserve"><value>Uncategorized</value></data>

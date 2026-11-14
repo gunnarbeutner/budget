@@ -70,7 +70,7 @@
   <data name="Empty_NoTransactions" xml:space="preserve"><value>Keine Buchungen im aktuellen Filter.</value></data>
   <data name="Filter_AnyAccount" xml:space="preserve"><value>Alle Konten</value></data>
   <data name="Filter_Clear" xml:space="preserve"><value>Filter zurücksetzen</value></data>
-  <data name="Filter_SearchPlaceholder" xml:space="preserve"><value>Name oder Kommentar suchen…</value></data>
+  <data name="Filter_SearchPlaceholder" xml:space="preserve"><value>Name, Zweck, Notiz oder Betrag suchen…</value></data>
   <data name="Footer_Sum" xml:space="preserve"><value>Summe:</value></data>
   <data name="Footer_Total" xml:space="preserve"><value>{0} Buchungen</value></data>
   <data name="Header_Uncategorized" xml:space="preserve"><value>Nicht kategorisiert</value></data>
