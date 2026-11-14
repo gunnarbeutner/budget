@@ -27,7 +27,7 @@ public sealed class WebLoginOptions
     /// without success after the form was submitted before the page is shown (or, unattended, the login ends): a page
     /// the app does not recognise (a captcha, say) needs someone to look at it.
     /// </summary>
-    public TimeSpan HiddenStuckAfter { get; set; } = TimeSpan.FromSeconds(60);
+    public TimeSpan HiddenStuckAfter { get; set; } = TimeSpan.FromSeconds(15);
 
     /// <summary>How long the code page is left alone after a typed code was submitted, before it counts as asking again.</summary>
     public TimeSpan CodeSettle { get; set; } = TimeSpan.FromSeconds(2);
