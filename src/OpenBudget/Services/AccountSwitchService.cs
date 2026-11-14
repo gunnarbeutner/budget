@@ -326,14 +326,28 @@ public sealed class AccountSwitchService
         return rows.Count;
     }
 
-    /// <summary>Marks the user's MoneyMoney import finished (further imports are refused) or resumes it.</summary>
+    /// <summary>
+    /// Marks the user's MoneyMoney import finished (further imports are refused) or resumes it. Finishing keeps every
+    /// account MoneyMoney still owns and no connection is linked to as a manual account, so its rows become editable.
+    /// </summary>
     public async Task SetImportFinishedAsync(string ownerId, bool finished, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         db.Scope?.RequireOwner(ownerId);
         var source = await RowIds.StateAsync(db, ownerId, ct);
         source.MoneyMoneyImportFinishedAt = finished ? source.MoneyMoneyImportFinishedAt ?? _clock.GetUtcNow().UtcDateTime : null;
+        if (finished)
+        {
+            var linked = await db.BankLoginAccounts.AsNoTracking().Where(l => l.LinkedAccountId != null).Select(l => l.LinkedAccountId!.Value).ToListAsync(ct);
+            foreach (var a in await db.Accounts.Where(a => a.OwnerUserId == ownerId && a.Provider == AccountProviders.MoneyMoney
+                         && a.Type != GroupType && !linked.Contains(a.Id)).ToListAsync(ct))
+            {
+                a.Provider = AccountProviders.Manual;
+                a.Error = null;
+            }
+        }
         await db.SaveChangesAsync(ct);
+        if (finished) _notifier.Publish(new DataChange(DataArea.ImportedData, OwnerUserId: ownerId), _origin.Id);
         _notifier.Publish(new DataChange(DataArea.ImportState, OwnerUserId: ownerId), _origin.Id);
     }
 

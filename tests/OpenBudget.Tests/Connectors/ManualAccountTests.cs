@@ -120,22 +120,21 @@ public sealed class ManualAccountTests
     }
 
     [Fact]
-    public async Task Accounts_left_on_MoneyMoney_after_finishing_stay_readable_but_read_only()
+    public async Task Finishing_the_import_keeps_the_remaining_MoneyMoney_accounts_as_manual_and_editable_ones()
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
         var switcher = w.Switcher(BankWorld.Alice);
-        await switcher.SetImportFinishedAsync(BankWorld.Alice, true);
-
-        Assert.Equal(2, (await w.TransactionsAsync(Giro)).Count);
         var row = (await w.TransactionsAsync(Giro))[0];
         var edits = new TransactionEditService(
             new ScopedDbContextFactory(w.T.System, new AccessScopeProvider(w.T.System, new FixedCurrentUser(BankWorld.Alice), w.T.Notifier)),
             w.T.Notifier, new ChangeOrigin());
         await Assert.ThrowsAsync<AccessDeniedException>(() => edits.SetNoteAsync([row.Id], "note"));
 
-        // Keeping them as manual accounts still works after finishing and makes them editable.
-        await switcher.KeepManualAsync([Giro]);
+        await switcher.SetImportFinishedAsync(BankWorld.Alice, true);
+
+        Assert.Equal(AccountProviders.Manual, (await w.AccountAsync(Giro)).Provider);
+        Assert.Equal(2, (await w.TransactionsAsync(Giro)).Count);
         await edits.SetNoteAsync([row.Id], "note");
     }
 
