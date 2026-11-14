@@ -47,6 +47,9 @@ public sealed record ConnectorRegistration(
     /// <summary>An order source (<see cref="IOrderSource"/>): its accounts are payment instruments mapped to existing accounts.</summary>
     public bool OrderSource { get; init; }
 
+    /// <summary>The shop of a receipt source (<see cref="LidlPlus.IReceiptSource"/>): no accounts; its receipts are matched to the owner's bookings.</summary>
+    public string? ReceiptShop { get; init; }
+
     /// <summary>The German bank code of a FinTS bank: background FinTS runs are switched on per bank.</summary>
     public string? FinTsBlz { get; init; }
 

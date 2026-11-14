@@ -29,7 +29,8 @@ public sealed class ReceiptStore
     public ReceiptStore(IReceiptItemClassifier? ai = null) => _ai = ai;
 
     /// <summary>Stores a parsed receipt for the owner; false when it is known already (same shop and invoice number).</summary>
-    public static async Task<bool> AddAsync(BudgetDbContext db, string ownerUserId, string shop, ParsedReceipt r, string? messageId, DateTime nowUtc, CancellationToken ct)
+    public static async Task<bool> AddAsync(
+        BudgetDbContext db, string ownerUserId, string shop, ParsedReceipt r, string? messageId, DateTime nowUtc, CancellationToken ct, string? store = null)
     {
         if (await db.ReceiptInvoices.AnyAsync(i => i.OwnerUserId == ownerUserId && i.Shop == shop && i.InvoiceNumber == r.InvoiceNumber, ct)) return false;
         static DateTime? Utc(DateOnly? d) => d?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
@@ -37,6 +38,7 @@ public sealed class ReceiptStore
         {
             OwnerUserId = ownerUserId,
             Shop = shop,
+            Store = Truncate(store, 200),
             InvoiceNumber = Truncate(r.InvoiceNumber, 40)!,
             OrderNumber = Truncate(r.OrderNumber, 40),
             OrderDate = Utc(r.OrderDate),
@@ -78,12 +80,13 @@ public sealed class ReceiptStore
         if (dated.Count > 0)
         {
             var min = new DateTimeOffset(dated.Min(i => (i.DeliveryDate ?? i.OrderDate)!.Value).AddDays(-1), TimeSpan.Zero).ToUnixTimeSeconds();
-            var max = new DateTimeOffset(dated.Max(i => (i.DeliveryDate ?? i.OrderDate)!.Value).AddDays(ReceiptMatcher.DaysAfter + 2), TimeSpan.Zero).ToUnixTimeSeconds();
+            var max = new DateTimeOffset(dated.Max(i => (i.DeliveryDate ?? i.OrderDate)!.Value).AddDays(ReceiptMatcher.MaxDaysAfter + 2), TimeSpan.Zero).ToUnixTimeSeconds();
             var rows = await db.Transactions.AsNoTracking()
                 .Where(t => t.OwnerUserId == ownerUserId && t.Timestamp >= min && t.Timestamp <= max && t.Splitted != SplitState.Child)
                 .Select(t => new { t.Id, t.Timestamp, t.Amount, t.SplitOriginalAmount, t.Name, t.Purpose })
                 .ToListAsync(ct);
-            bookings = rows.Where(r => ReceiptMatcher.IsShop(r.Name, r.Purpose))
+            var shops = invoices.Select(i => i.Shop).Distinct(StringComparer.Ordinal).ToList();
+            bookings = rows.Where(r => shops.Any(s => ReceiptMatcher.IsShop(s, r.Name, r.Purpose)))
                 .Select(r => new ReceiptBooking(r.Id, DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(r.Timestamp).UtcDateTime),
                     r.SplitOriginalAmount ?? r.Amount, r.Name, r.Purpose)).ToList();
         }
@@ -104,7 +107,7 @@ public sealed class ReceiptStore
             i.State = ReceiptMatchState.Unmatched;
         }
         var open = invoices.Where(i => i.State == ReceiptMatchState.Unmatched)
-            .Select(i => new ReceiptToMatch(i.Id, i.PaymentCents, Day(i.OrderDate), Day(i.DeliveryDate))).ToList();
+            .Select(i => new ReceiptToMatch(i.Id, i.PaymentCents, Day(i.OrderDate), Day(i.DeliveryDate), i.Shop)).ToList();
         var outcome = ReceiptMatcher.Match(open, bookings, kept);
         foreach (var i in invoices.Where(i => i.State == ReceiptMatchState.Unmatched))
         {

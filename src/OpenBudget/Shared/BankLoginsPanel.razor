@@ -204,6 +204,10 @@ else
                 {
                     <OrderSourceSection LoginId="login.Id" Version="loadCount" />
                 }
+                else if (login.ReceiptShop != null)
+                {
+                    <ReceiptSourceSection LoginId="login.Id" Shop="@(login.ReceiptShop ?? string.Empty)" Version="loadCount" />
+                }
                 else
                 {
                 <h6 class="bank-accounts-heading">@L["Accounts_Heading"]</h6>
@@ -515,7 +519,7 @@ else
             if (login.BackgroundEnabled || login.FinTsBlz != null) runsByLogin[login.Id] = await Bank.GetRunsAsync(login.Id);
             var accounts = await Bank.GetAccountsAsync(login.Id);
             accountsByLogin[login.Id] = accounts;
-            if (login.OrderSource) continue;
+            if (login.OrderSource || login.ReceiptShop != null) continue;
             foreach (var a in accounts.Where(a => a.LinkedAccountId == null && !a.Closed))
                 candidatesByAccount[a.Id] = await Bank.GetLinkCandidatesAsync(a.Id);
         }

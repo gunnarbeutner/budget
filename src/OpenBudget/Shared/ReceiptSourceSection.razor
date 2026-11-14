@@ -1,0 +1,53 @@
+@using OpenBudget.Connectors.Receipts
+@using OpenBudget.Services
+@inject ReceiptService Receipts
+@inject IStringLocalizer<OpenBudget.Pages.BankLogins> L
+
+@* A receipt source's part of its login card (Lidl Plus): how many receipts found their booking, and the latest that did
+   not yet. The receipts themselves are on the receipts page. *@
+
+<h6 class="bank-accounts-heading">@L["Receipts_Heading"]</h6>
+@if (summary == null)
+{
+    <div class="skeleton skeleton-line mb-2" style="width: 40%;"></div>
+}
+else if (summary.Count == 0)
+{
+    <p class="text-body-secondary small" data-testid="receipts-empty">@L["Receipts_None"]</p>
+}
+else
+{
+    <p class="small mb-1" data-testid="receipts-matched">@L["Receipts_Matched", summary.Matched, summary.Count] · <a href="/receipts">@L["Receipts_Link"]</a></p>
+    @if (summary.OpenCount > 0)
+    {
+        <details class="small" data-testid="open-receipts">
+            <summary>@L["Receipts_Open", summary.OpenCount]</summary>
+            <ul class="mb-0 mt-1">
+                @foreach (var r in summary.Open)
+                {
+                    <li>@(r.OrderDate?.ToString("dd.MM.yyyy", System.Globalization.CultureInfo.InvariantCulture)) · @Formatting.FormatMoneyDe(r.PaymentCents / 100m) · @r.Title</li>
+                }
+            </ul>
+        </details>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public int LoginId { get; set; }
+
+    /// <summary>The shop the login's receipts are stored under.</summary>
+    [Parameter, EditorRequired] public string Shop { get; set; } = "";
+
+    /// <summary>Bumped by the card when the login changed (a sync finished): reloads.</summary>
+    [Parameter] public int Version { get; set; }
+
+    private ReceiptSourceSummary? summary;
+    private int loadedVersion = -1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedVersion == Version) return;
+        loadedVersion = Version;
+        summary = await Receipts.GetShopSummaryAsync(Shop);
+    }
+}

@@ -36,6 +36,9 @@ public sealed record BankLoginView(
 
     /// <summary>An order source (Amazon): its accounts are payment methods mapped to existing accounts.</summary>
     public bool OrderSource { get; init; }
+
+    /// <summary>The shop of a receipt source (Lidl Plus; see <see cref="ReceiptShops"/>): no accounts; its receipts are matched to the owner's bookings.</summary>
+    public string? ReceiptShop { get; init; }
 }
 // StoredExtraCredentials: keys of the extra credential values that are stored (the values themselves never leave the server).
 
@@ -176,6 +179,7 @@ public class BankLoginService
             FinTsBlz = registration?.FinTsBlz,
             FinTsBankAllowed = registration?.FinTsBlz is { } blz && !revokedBanks.Contains(blz),
             OrderSource = registration?.OrderSource == true,
+            ReceiptShop = registration?.ReceiptShop,
         };
     }
 

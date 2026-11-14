@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Browser;
+using OpenBudget.Connectors.LidlPlus;
 using OpenBudget.Models;
 using OpenBudget.Services;
 
@@ -212,6 +213,9 @@ public sealed class BankSyncRunner
             {
                 Progress = sink.Report,
                 Silent = request.Background,
+#pragma warning disable CA2025 // the connector only calls it during this sync, while the client is alive
+                SaveSession = (session, token) => SaveSessionNowAsync(login.Id, session, http, token),
+#pragma warning restore CA2025
             });
 
             sink.Report("Logging in");
@@ -239,7 +243,11 @@ public sealed class BankSyncRunner
             }
             await db.SaveChangesAsync(ct);
 
-            if (request.Transactions && connector is IOrderSource orderSource)
+            if (request.Transactions && connector is IReceiptSource receiptSource)
+            {
+                await FetchReceiptsAsync(db, login, receiptSource, sink, context, affected, ct);
+            }
+            else if (request.Transactions && connector is IOrderSource orderSource)
             {
                 try { await FetchOrdersAsync(db, login, orderSource, sink, context, affected, ct); }
                 finally { await context.CloseBrowsersAsync(); }
@@ -315,6 +323,16 @@ public sealed class BankSyncRunner
         if (errors.Count == 0) _logger.LogInformation("Sync of bank login {LoginId} finished.", login.Id);
         else _logger.LogWarning("Sync of bank login {LoginId} finished with errors: {Errors}", login.Id, string.Join(" ", errors));
         return new SyncOutcome(errors.Count == 0, errors.Count == 0 ? null : string.Join(" ", errors), affected);
+    }
+
+    /// <summary>Writes a connector's session to its login right away, in a write of its own (see <see cref="ConnectorContext.SaveSession"/>).</summary>
+    private async Task SaveSessionNowAsync(int loginId, ConnectorSession session, BankHttpClient http, CancellationToken ct)
+    {
+        if (!_secrets.IsConfigured) return;
+        session.Cookies = http.ExportCookies().ToList();
+        var encrypted = _secrets.Encrypt(JsonSerializer.Serialize(session), SessionPurpose);
+        await using var db = await _system.CreateDbContextAsync(ct);
+        await db.BankLogins.Where(l => l.Id == loginId).ExecuteUpdateAsync(s => s.SetProperty(l => l.EncryptedSession, encrypted), ct);
     }
 
     /// <summary>The background-run backoff after <paramref name="failures"/> failed runs in a row: 1 h, 2 h, 4 h ... at most 24 h.</summary>
@@ -515,8 +533,9 @@ public sealed class BankSyncRunner
                 if (session.TakeBrowser() is { } kept)
                 {
                     context.Keep(kept, spec);
-                    return (new ChallengeAnswer(challenge, null) { Browser = kept }, null);
+                    return (new ChallengeAnswer(challenge, null) { Browser = kept, CallbackUrl = result.CapturedUrl }, null);
                 }
+                return (new ChallengeAnswer(challenge, null) { CallbackUrl = result.CapturedUrl }, null);
             }
             finally
             {
@@ -524,7 +543,6 @@ public sealed class BankSyncRunner
                 sink.HideWebLogin();
             }
         }
-        return (new ChallengeAnswer(challenge, null), null);
     }
 
     /// <summary>
@@ -558,10 +576,10 @@ public sealed class BankSyncRunner
             if (session.TakeBrowser() is { } kept)
             {
                 context.Keep(kept, spec);
-                return (new ChallengeAnswer(challenge, null) { Browser = kept }, null, null);
+                return (new ChallengeAnswer(challenge, null) { Browser = kept, CallbackUrl = result.CapturedUrl }, null, null);
             }
+            return (new ChallengeAnswer(challenge, null) { CallbackUrl = result.CapturedUrl }, null, null);
         }
-        return (new ChallengeAnswer(challenge, null), null, null);
     }
 
     /// <summary>Updates the login's accounts; returns the linked, previously open ones the bank no longer lists.</summary>
@@ -663,6 +681,33 @@ public sealed class BankSyncRunner
         sink.Report("Matching orders");
         await _orders.ApplyAsync(db, login, result, _clock.GetUtcNow().UtcDateTime, ct);
         _logger.LogInformation("Bank login {LoginId}: {Charges} charges and {Orders} order details stored.", login.Id, result.Charges.Count, result.Orders.Count);
+        affected.Add(login.OwnerUserId);
+    }
+
+    /// <summary>
+    /// A receipt source: reads the receipts not stored yet, stores them with the owner's other receipts and matches
+    /// (and splits) them like those (see <see cref="OpenBudget.Connectors.Receipts.ReceiptStore"/>).
+    /// </summary>
+    private async Task FetchReceiptsAsync(
+        BudgetDbContext db, BankLogin login, IReceiptSource source, ISyncSink sink, SyncContext context, HashSet<string> affected, CancellationToken ct)
+    {
+        var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
+        var shop = source.Shop;
+        var stored = db.ReceiptInvoices.AsNoTracking().Where(r => r.OwnerUserId == login.OwnerUserId && r.Shop == shop);
+        var known = (await stored.Select(r => r.InvoiceNumber).ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
+        var newest = await stored.MaxAsync(r => r.OrderDate, ct);
+        var floor = today.AddYears(-OrderHistoryYears);
+        var since = newest is { } n && DateOnly.FromDateTime(n).AddDays(-30) > floor ? DateOnly.FromDateTime(n).AddDays(-30) : floor;
+        var step = await DriveAsync(a => source.FetchReceiptsAsync(since, known, a, ct), sink, context, ct);
+        if (step.Status == StepStatus.NeedsUser) throw new SilentAbortException(step.FailureReason ?? DefaultNeedsUser);
+        if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Reading the receipts failed.");
+        sink.Report("Matching receipts");
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var added = 0;
+        foreach (var r in step.Value!)
+            if (await OpenBudget.Connectors.Receipts.ReceiptStore.AddAsync(db, login.OwnerUserId, shop, r.Receipt, null, now, ct, r.Store)) added++;
+        await _receipts.MatchAsync(db, login.OwnerUserId, ct);
+        _logger.LogInformation("Bank login {LoginId}: {Count} new receipts stored.", login.Id, added);
         affected.Add(login.OwnerUserId);
     }
 

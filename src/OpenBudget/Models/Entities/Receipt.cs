@@ -7,6 +7,9 @@ namespace OpenBudget.Models;
 public static class ReceiptShops
 {
     public const string Rewe = "rewe";
+
+    /// <summary>Lidl Plus receipts (read by the Lidl Plus connector).</summary>
+    public const string Lidl = "lidl";
 }
 
 /// <summary>How a receipt relates to the bookings.</summary>
@@ -69,6 +72,10 @@ public class ReceiptInvoice
     [Required]
     [MaxLength(40)]
     public string InvoiceNumber { get; set; } = string.Empty;
+
+    /// <summary>The store (branch) the receipt is from, when the shop says (Lidl Plus).</summary>
+    [MaxLength(200)]
+    public string? Store { get; set; }
 
     /// <summary>The order number ("B-XXX-XXX-XXX").</summary>
     [MaxLength(40)]

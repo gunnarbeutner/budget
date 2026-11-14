@@ -8,7 +8,7 @@
 
 <div class="tx-details-purpose" data-testid="tx-receipt">
     <b class="text-body me-1">@L["Receipt"]</b>
-    <span class="text-body-secondary">REWE @Receipt.OrderNumber@(Receipt.DeliveryDate is { } d ? " · " + d.ToString("dd.MM.yyyy") : "")</span>
+    <span class="text-body-secondary">@Receipt.Title@(Receipt.DeliveryDate is { } d ? " · " + d.ToString("dd.MM.yyyy") : "")</span>
     @if (Receipt.BonusCents != 0)
     {
         <span class="text-body-secondary"> · @L["Bonus", Formatting.FormatMoneyDe(Receipt.BonusCents / 100m)]</span>

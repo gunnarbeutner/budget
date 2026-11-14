@@ -7,6 +7,7 @@ using OpenBudget.Connectors.Openbank;
 using OpenBudget.Connectors.PayPal;
 using OpenBudget.Connectors.Ing;
 using OpenBudget.Connectors.Kraken;
+using OpenBudget.Connectors.LidlPlus;
 using OpenBudget.Connectors.Scalable;
 using OpenBudget.Connectors.Sync;
 using OpenBudget.Services;
@@ -39,6 +40,7 @@ public static class BankConnectorsRegistration
                 OpenbankConnector.CreateRegistration(new OpenbankOptions()),
                 PayPalConnector.CreateRegistration(new PayPalOptions()),
                 AmazonConnector.CreateRegistration(new AmazonOptions()),
+                LidlPlusConnector.CreateRegistration(new LidlPlusOptions()),
                 KrakenConnector.CreateRegistration(new KrakenOptions()),
                 IngConnector.Registration(fints),
                 BaaderConnector.Registration(fints),

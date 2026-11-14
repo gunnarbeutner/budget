@@ -117,7 +117,7 @@ else
                         {
                             <tr data-testid="receipt-row" data-state="@r.State.ToString().ToLowerInvariant()">
                                 <td>@((r.DeliveryDate ?? r.OrderDate)?.ToString("dd.MM.yyyy"))</td>
-                                <td>REWE @r.OrderNumber</td>
+                                <td>@r.Title</td>
                                 <td class="text-end">@Formatting.FormatMoneyDe(-r.PaymentCents / 100m)</td>
                                 <td class="d-none d-md-table-cell text-end">@r.Items</td>
                                 <td>@Status(r)</td>

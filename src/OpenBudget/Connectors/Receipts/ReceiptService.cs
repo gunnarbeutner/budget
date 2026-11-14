@@ -12,7 +12,11 @@ public sealed record ReceiptSettingsView(
 /// <summary>A stored receipt as the list shows it.</summary>
 public sealed record ReceiptView(
     long Id, string Shop, string? OrderNumber, DateTime? OrderDate, DateTime? DeliveryDate, long PaymentCents, int Items,
-    ReceiptMatchState State, long? TransactionId, DateTime? BookingDate, bool Split);
+    ReceiptMatchState State, long? TransactionId, DateTime? BookingDate, bool Split, string? Store = null)
+{
+    /// <summary>The shop and where or what: "REWE B-…" or "Lidl Teststraße 1, Musterstadt".</summary>
+    public string Title => ReceiptService.Title(Shop, Store, OrderNumber);
+}
 
 /// <summary>A receipt line in a booking's details: name, quantity, line total and the category it went to.</summary>
 public sealed record ReceiptLineView(long Id, string Name, string Quantity, long TotalCents, ReceiptItemKind Kind, long? CategoryId, string? Source);
@@ -22,7 +26,14 @@ public sealed record ReceiptGroupView(long? CategoryId, long AmountCents, IReadO
 
 /// <summary>A booking's receipt: its shop, order, the lines grouped by category and whether the receipt split the booking.</summary>
 public sealed record BookingReceiptView(long ReceiptId, long TransactionId, string Shop, string? OrderNumber, DateTime? DeliveryDate, long BonusCents,
-    IReadOnlyList<ReceiptGroupView> Groups, bool SplitByReceipt);
+    IReadOnlyList<ReceiptGroupView> Groups, bool SplitByReceipt, string? Store = null)
+{
+    /// <summary>See <see cref="ReceiptView.Title"/>.</summary>
+    public string Title => ReceiptService.Title(Shop, Store, OrderNumber);
+}
+
+/// <summary>A receipt source's receipts: how many, how many found their booking, and the latest still waiting for one.</summary>
+public sealed record ReceiptSourceSummary(int Count, int Matched, int OpenCount, IReadOnlyList<ReceiptView> Open);
 
 /// <summary>
 /// The owner's side of receipts: settings (the non-food category), the list of read receipts, a booking's receipt
@@ -56,6 +67,14 @@ public sealed class ReceiptService
         _origin = origin;
         _clock = clock;
     }
+
+    /// <summary>A receipt's heading: the shop's name and its store or order number.</summary>
+    public static string Title(string shop, string? store, string? orderNumber) => shop switch
+    {
+        ReceiptShops.Lidl => store is { Length: > 0 } s ? (s.StartsWith("Lidl", StringComparison.OrdinalIgnoreCase) ? s : "Lidl " + s) : "Lidl",
+        ReceiptShops.Rewe => ("REWE " + orderNumber).Trim(),
+        _ => (shop + " " + (store ?? orderNumber)).Trim(),
+    };
 
     private async Task<string> UserAsync() => (await _access.GetAsync()).UserId ?? throw new AccessDeniedException("Not signed in.");
 
@@ -103,12 +122,29 @@ public sealed class ReceiptService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var rows = await db.ReceiptInvoices.AsNoTracking().Where(r => r.OwnerUserId == user)
             .OrderByDescending(r => r.DeliveryDate ?? r.OrderDate).ThenByDescending(r => r.Id).Take(take)
-            .Select(r => new { r.Id, r.Shop, r.OrderNumber, r.OrderDate, r.DeliveryDate, r.PaymentCents, Items = r.Items.Count, r.State, r.TransactionId, r.SplitSignature })
+            .Select(r => new { r.Id, r.Shop, r.Store, r.OrderNumber, r.OrderDate, r.DeliveryDate, r.PaymentCents, Items = r.Items.Count, r.State, r.TransactionId, r.SplitSignature })
             .ToListAsync(ct);
         var txIds = rows.Where(r => r.TransactionId != null).Select(r => r.TransactionId!.Value).ToList();
         var dates = await db.Transactions.AsNoTracking().Where(t => txIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Timestamp, ct);
         return rows.Select(r => new ReceiptView(r.Id, r.Shop, r.OrderNumber, r.OrderDate, r.DeliveryDate, r.PaymentCents, r.Items, r.State, r.TransactionId,
-            r.TransactionId is { } t && dates.TryGetValue(t, out var ts) ? DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime : null, r.SplitSignature != null)).ToList();
+            r.TransactionId is { } t && dates.TryGetValue(t, out var ts) ? DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime : null, r.SplitSignature != null, r.Store)).ToList();
+    }
+
+    /// <summary>The user's receipts of one shop (a receipt source's login card): counts and the latest without a booking.</summary>
+    public async Task<ReceiptSourceSummary> GetShopSummaryAsync(string shop, int take = 10, CancellationToken ct = default)
+    {
+        var user = await UserAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var q = db.ReceiptInvoices.AsNoTracking().Where(r => r.OwnerUserId == user && r.Shop == shop);
+        var count = await q.CountAsync(ct);
+        var matched = await q.CountAsync(r => r.TransactionId != null, ct);
+        // a receipt paid in cash has no booking to wait for
+        var open = q.Where(r => r.TransactionId == null && r.PaymentCents > 0);
+        var openCount = await open.CountAsync(ct);
+        var latest = await open.OrderByDescending(r => r.OrderDate).ThenByDescending(r => r.Id).Take(take)
+            .Select(r => new ReceiptView(r.Id, r.Shop, r.OrderNumber, r.OrderDate, r.DeliveryDate, r.PaymentCents, r.Items.Count, r.State, null, null, false, r.Store))
+            .ToListAsync(ct);
+        return new ReceiptSourceSummary(count, matched, openCount, latest);
     }
 
     /// <summary>The receipt of a booking (given by the booking or one of its parts), or null; only for the receipt's owner.</summary>
@@ -130,7 +166,7 @@ public sealed class ReceiptService
                 .Select(id => items.First(i => i.Id == id))
                 .Select(i => new ReceiptLineView(i.Id, i.Name, i.Quantity, i.TotalCents, i.Kind, i.CategoryId ?? booking.CategoryId, i.CategorySource)).ToList()))
             .ToList();
-        return new BookingReceiptView(invoice.Id, bookingId, invoice.Shop, invoice.OrderNumber, invoice.DeliveryDate, invoice.BonusCents, groups, invoice.SplitSignature != null);
+        return new BookingReceiptView(invoice.Id, bookingId, invoice.Shop, invoice.OrderNumber, invoice.DeliveryDate, invoice.BonusCents, groups, invoice.SplitSignature != null, invoice.Store);
     }
 
     /// <summary>

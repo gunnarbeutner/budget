@@ -195,4 +195,10 @@ public sealed record ConnectorContext(IBankHttpClient Http, TimeProvider Clock, 
     /// <see cref="SilentAbortException"/> before sending anything.
     /// </summary>
     public bool Silent { get; init; }
+
+    /// <summary>
+    /// Stores the session at once (encrypted, as at the end of a sync), for state the bank has just replaced and that a
+    /// failure later in the sync must not lose (a rotated refresh token). Null when nothing can be stored.
+    /// </summary>
+    public Func<ConnectorSession, CancellationToken, Task>? SaveSession { get; init; }
 }
