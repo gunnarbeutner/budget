@@ -11,15 +11,53 @@
    image, app approval) in a dialog the moment a sync asks for one. All state comes from the owner-scoped
    BankLoginService, so nothing here ever shows another user's logins. *@
 
-@* Top-bar sync status: a spinner while syncs run, otherwise the time of the last successful sync ("Synced 07:58");
+@* Top-bar sync status: a spinner while syncs run, which opens the list of running syncs (progress, how long), otherwise the time of the last successful sync ("Synced 07:58");
    clicking it syncs all of the user's bank logins. Next to it, a warning sign opens the connections that need the user (a
    background sync waiting for them, rejected credentials, a failed last sync), with a link to Connections. Nothing when bank logins are disabled or there are none. *@
 @if (statuses.Any(s => s.Phase != SyncPhase.Finished))
 {
-    <span class="app-sync d-print-none" data-testid="bank-sync-chip">
-        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-        <span class="app-sync-label">@{ var running = statuses.Where(s => s.Phase != SyncPhase.Finished).ToList(); var syncing = running.Count; }@L[syncing == 1 ? "Syncing_One" : "Syncing", syncing]@if (syncing == 1 && running[0].Message is { Length: > 0 } progress && progress.StartsWith("Fetching documents", StringComparison.Ordinal)) {<span class="text-body-secondary" data-testid="bank-sync-progress"> · @progress</span>}</span>
-    </span>
+    var running = statuses.Where(s => s.Phase != SyncPhase.Finished).OrderBy(s => s.StartedAt).ToList();
+    var syncing = running.Count;
+    @* The running syncs open a dropdown like the sync problems: uiBehaviors.js closes it on click-away, on Escape and when its link is followed. *@
+    <details class="app-menu sync-problems d-print-none" data-testid="bank-sync-running">
+        <summary class="app-sync" data-testid="bank-sync-chip" title="@L["Running_Title"]">
+            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+            <span class="app-sync-label">@L[syncing == 1 ? "Syncing_One" : "Syncing", syncing]@if (syncing == 1 && running[0].Message is { Length: > 0 } progress && progress.StartsWith("Fetching documents", StringComparison.Ordinal)) {<span class="text-body-secondary" data-testid="bank-sync-progress"> · @progress</span>}</span>
+            <span class="visually-hidden">@L["Running_Title"]</span>
+        </summary>
+        <div class="dropdown-menu dropdown-menu-end show sync-problems-menu">
+            <div class="project-switcher-head">@L["Running_Heading"]</div>
+            <ul class="sync-problems-list">
+                @foreach (var s in running)
+                {
+                    var status = s;
+                    var login = logins.GetValueOrDefault(s.LoginId);
+                    <li data-testid="sync-running" data-login="@(login?.DisplayName)">
+                        <span class="spinner-border spinner-border-sm text-body-secondary flex-shrink-0 mt-1" aria-hidden="true"></span>
+                        <div class="sync-problem-text">
+                            <div class="fw-semibold">@(login?.DisplayName)</div>
+                            @if (login != null && login.ConnectorName != login.DisplayName)
+                            {
+                                <div class="small text-body-secondary">@login.ConnectorName</div>
+                            }
+                            <div class="small" data-testid="sync-running-progress">@RunningText(s)</div>
+                            <div class="small text-body-secondary" data-testid="sync-running-elapsed">@(s.Background ? L["Running_Background", FormatElapsed(s.StartedAt)] : L["Running_For", FormatElapsed(s.StartedAt)])</div>
+                        </div>
+                        @if (challenge == status && !NeedsUser(status))
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-secondary sync-problem-sync" data-testid="sync-running-open"
+                                    @onclick="() => showBrowser = true">@L["Running_Open"]</button>
+                        }
+                    </li>
+                }
+            </ul>
+            <div class="project-switcher-foot">
+                <a class="dropdown-item" href="/connections" data-testid="sync-running-connections">
+                    <i class="bi bi-bank me-2" aria-hidden="true"></i>@L["Problems_Open"]
+                </a>
+            </div>
+        </div>
+    </details>
 }
 else if (lastSync is { } last)
 {
@@ -173,6 +211,38 @@ else if (lastSync is { } last)
         await RefreshAsync();
     }
     private Dictionary<int, string> names = new();
+    private Dictionary<int, BankLoginView> logins = new();
+    private System.Threading.Timer? elapsedTimer;
+
+    /// <summary>What a running sync does now: waiting for the user, for an app approval, or the coordinator's progress text.</summary>
+    private string RunningText(BankSyncStatus s) => s.Phase switch
+    {
+        SyncPhase.WaitingForInput => L["Running_WaitingInput"].Value,
+        SyncPhase.WaitingForApproval => L["Running_WaitingApproval"].Value,
+        _ => s.Message is { Length: > 0 } m ? m : L["Running_Started"].Value,
+    };
+
+    private string FormatElapsed(DateTime startedUtc)
+    {
+        var elapsed = ClockSvc.UtcNow - startedUtc;
+        if (elapsed < TimeSpan.Zero) elapsed = TimeSpan.Zero;
+        return elapsed.TotalMinutes < 1
+            ? L["Elapsed_Seconds", (int)elapsed.TotalSeconds].Value
+            : L["Elapsed_Minutes", (int)elapsed.TotalMinutes, elapsed.Seconds.ToString("D2", System.Globalization.CultureInfo.InvariantCulture)].Value;
+    }
+
+    // While syncs run, the elapsed times in the list tick every few seconds.
+    private void UpdateElapsedTimer()
+    {
+        var anyRunning = statuses.Any(s => s.Phase != SyncPhase.Finished);
+        if (anyRunning && elapsedTimer == null)
+            elapsedTimer = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+        else if (!anyRunning && elapsedTimer != null)
+        {
+            elapsedTimer.Dispose();
+            elapsedTimer = null;
+        }
+    }
     private BankSyncStatus? challenge;
     private Guid shownChallengeId;
     private bool showBrowser;
@@ -240,11 +310,12 @@ else if (lastSync is { } last)
     {
         if (!enabled) return;
         statuses = await Bank.GetStatusesAsync();
-        var logins = await Bank.GetLoginsAsync();
-        names = logins.ToDictionary(l => l.Id, l => l.DisplayName);
-        lastSync = logins.Where(l => l.LastSyncAt != null).Select(l => l.LastSyncAt).Max();
+        var all = await Bank.GetLoginsAsync();
+        logins = all.ToDictionary(l => l.Id);
+        names = all.ToDictionary(l => l.Id, l => l.DisplayName);
+        lastSync = all.Where(l => l.LastSyncAt != null).Select(l => l.LastSyncAt).Max();
         // the bank's own error first (it says what went wrong), then why a background sync waits for the user
-        problems = logins
+        problems = all
             .Select(l => (l.Id, l.DisplayName, Message: string.Join("\n", new[]
             {
                 l.CredentialsInvalid ? L["Problem_Credentials"].Value : l.LastError,
@@ -263,6 +334,7 @@ else if (lastSync is { } last)
             error = null;
         }
         challenge = open;
+        UpdateElapsedTimer();
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)
@@ -289,6 +361,7 @@ else if (lastSync is { } last)
     protected override void Dispose(bool disposing)
     {
         if (disposing && subscribed) Navigation.LocationChanged -= OnLocationChanged;
+        if (disposing) elapsedTimer?.Dispose();
         base.Dispose(disposing);
     }
 

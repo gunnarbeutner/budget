@@ -119,4 +119,14 @@
   <data name="Problems_Sync" xml:space="preserve">
     <value>Jetzt synchronisieren</value>
   </data>
+  <data name="Running_Title" xml:space="preserve"><value>Laufende Abgleiche anzeigen</value></data>
+  <data name="Running_Heading" xml:space="preserve"><value>Wird gerade abgeglichen</value></data>
+  <data name="Running_WaitingInput" xml:space="preserve"><value>Wartet auf dich</value></data>
+  <data name="Running_WaitingApproval" xml:space="preserve"><value>Wartet auf Freigabe in der App</value></data>
+  <data name="Running_Started" xml:space="preserve"><value>Startet</value></data>
+  <data name="Running_For" xml:space="preserve"><value>Läuft seit {0}</value></data>
+  <data name="Running_Background" xml:space="preserve"><value>Hintergrund-Abgleich, läuft seit {0}</value></data>
+  <data name="Running_Open" xml:space="preserve"><value>Öffnen</value></data>
+  <data name="Elapsed_Seconds" xml:space="preserve"><value>{0} s</value></data>
+  <data name="Elapsed_Minutes" xml:space="preserve"><value>{0}:{1} min</value></data>
 </root>

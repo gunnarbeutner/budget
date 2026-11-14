@@ -32,6 +32,14 @@ public sealed class FakeBankConnector : IBankConnector
     private bool _refreshCodeAsked;
     private bool _statementCodeAsked;
     private bool _refreshed;
+    private string _username = "";
+
+    // "slow" logins waiting in their giro refresh, by username
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource> SlowGates = new(StringComparer.Ordinal);
+
+    /// <summary>Lets the waiting refresh of a "slow" login (by its username) finish.</summary>
+    public static void Release(string username) =>
+        SlowGates.GetOrAdd(username, _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
 
     public FakeBankConnector(ConnectorContext context) => _context = context;
 
@@ -39,7 +47,7 @@ public sealed class FakeBankConnector : IBankConnector
         TypeName,
         "Example Bank (fake)",
         "A made-up bank for trying out the connector framework. Behaviour flags go after the username separated by '+': "
-        + "code, choice, approve[N], image, loginfail, syncerror, refreshcode, statementcode, pending, dups, noid, statements, web, session. "
+        + "code, choice, approve[N], image, loginfail, syncerror, refreshcode, statementcode, pending, dups, noid, statements, web, session, slow. "
         + "Codes: 123456 (code), 4711 (image). Any PIN works except \"wrong\".",
         ctx => new FakeBankConnector(ctx))
     {
@@ -61,6 +69,7 @@ public sealed class FakeBankConnector : IBankConnector
         if (answer == null)
         {
             _settings = FakeBankSettings.Parse(credentials.Username);
+            _username = credentials.Username ?? "";
             _session = storedSession ?? new ConnectorSession();
             _loginStages.Clear();
             _stage = 0;
@@ -136,13 +145,23 @@ public sealed class FakeBankConnector : IBankConnector
 #pragma warning restore S1075
     }
 
-    public Task<IReadOnlyList<RemoteAccount>> ListAccountsAsync(CancellationToken ct) =>
-        Task.FromResult<IReadOnlyList<RemoteAccount>>(
+    public async Task<IReadOnlyList<RemoteAccount>> ListAccountsAsync(CancellationToken ct)
+    {
+        if (_settings.Slow)
+        {
+            _context.Progress?.Invoke("Reading Example Bank accounts (1 of 3)");
+            var gate = SlowGates.GetOrAdd(_username, _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+            try { await gate.Task.WaitAsync(TimeSpan.FromMinutes(1), ct); }
+            catch (TimeoutException) { /* goes on by itself */ }
+            SlowGates.TryRemove(new KeyValuePair<string, TaskCompletionSource>(_username, gate));
+        }
+        return
         [
             new RemoteAccount(GiroId, "Example Giro", RemoteAccountType.Giro, GiroIban, "EUR"),
             new RemoteAccount(SavingsId, "Example Savings", RemoteAccountType.Savings, "DE00000000000000000002", "EUR"),
             new RemoteAccount(DepotId, "Example Depot", RemoteAccountType.Depot, null, "EUR"),
-        ]);
+        ];
+    }
 
     public Task<ConnectorStep<AccountRefresh>> RefreshAsync(RemoteAccount account, DateOnly? since, ChallengeAnswer? answer, CancellationToken ct)
     {

@@ -119,4 +119,14 @@
   <data name="Problems_Sync" xml:space="preserve">
     <value>Sync now</value>
   </data>
+  <data name="Running_Title" xml:space="preserve"><value>Show running syncs</value></data>
+  <data name="Running_Heading" xml:space="preserve"><value>Syncing now</value></data>
+  <data name="Running_WaitingInput" xml:space="preserve"><value>Waiting for you</value></data>
+  <data name="Running_WaitingApproval" xml:space="preserve"><value>Waiting for approval in the app</value></data>
+  <data name="Running_Started" xml:space="preserve"><value>Starting</value></data>
+  <data name="Running_For" xml:space="preserve"><value>Running for {0}</value></data>
+  <data name="Running_Background" xml:space="preserve"><value>Background sync, running for {0}</value></data>
+  <data name="Running_Open" xml:space="preserve"><value>Open</value></data>
+  <data name="Elapsed_Seconds" xml:space="preserve"><value>{0} s</value></data>
+  <data name="Elapsed_Minutes" xml:space="preserve"><value>{0}:{1} min</value></data>
 </root>

@@ -833,7 +833,10 @@ a, .btn-link {
     border-radius: 6px;
     white-space: nowrap;
 }
-button.app-sync:hover { color: var(--bs-body-color); background: var(--ob-chip-bg); }
+button.app-sync:hover, summary.app-sync:hover { color: var(--bs-body-color); background: var(--ob-chip-bg); }
+summary.app-sync { cursor: pointer; list-style: none; }
+summary.app-sync::-webkit-details-marker { display: none; }
+summary.app-sync:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 1px; }
 
 .app-icon-btn {
     display: inline-flex;

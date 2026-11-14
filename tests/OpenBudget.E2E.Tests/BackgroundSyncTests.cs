@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using NUnit.Framework;
 using OpenBudget.Connectors;
+using OpenBudget.Connectors.FakeBank;
 using OpenBudget.Models;
 using OpenBudget.Services;
 
@@ -58,6 +59,44 @@ public sealed class BackgroundSyncTests : EndToEndTestBase
         await Expect(Page.GetByTestId("banklogins-needs-you")).ToHaveCountAsync(0);
         await Expect(Page.GetByTestId("bank-sync-attention")).ToHaveCountAsync(0);
         await Expect(card.GetByTestId("background-switch")).ToBeCheckedAsync();
+    }
+
+    [Test]
+    public async Task The_sync_indicator_lists_the_running_syncs_until_they_finish()
+    {
+        const string username = "demo+slow+running-list";
+        await GoToAsync("/connections");
+        await Page.GetByTestId("add-login-open").ClickAsync();
+        await Page.Locator("#new-login-connector").SelectOptionAsync("fake");
+        await Page.Locator("#new-login-name").FillAsync("Slow bank");
+        await Page.Locator("#new-login-username").FillAsync(username);
+        await Page.Locator("#new-login-pin").FillAsync("1234");
+        await Page.Locator("#new-login-add").ClickAsync();
+
+        try
+        {
+            var menu = Page.GetByTestId("bank-sync-running");
+            await menu.GetByTestId("bank-sync-chip").ClickAsync();
+            var row = menu.Locator("[data-testid=sync-running][data-login='Slow bank']");
+            await Expect(row).ToContainTextAsync("Example Bank (fake)");
+            await Expect(row.GetByTestId("sync-running-progress")).ToHaveTextAsync("Reading Example Bank accounts (1 of 3)");
+            await Expect(row.GetByTestId("sync-running-elapsed")).ToContainTextAsync("Running for");
+            await Expect(menu.GetByTestId("sync-running-connections")).ToHaveAttributeAsync("href", "/connections");
+
+            // Escape closes the list and leaves the focus on the indicator
+            await Page.Keyboard.PressAsync("Escape");
+            await Expect(row).Not.ToBeVisibleAsync();
+            await Expect(menu.GetByTestId("bank-sync-chip")).ToBeFocusedAsync();
+            await menu.GetByTestId("bank-sync-chip").ClickAsync();
+            await Expect(row).ToBeVisibleAsync();
+        }
+        finally
+        {
+            FakeBankConnector.Release(username);
+        }
+
+        await Expect(Page.GetByTestId("bank-sync-running")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("bank-sync-status")).ToBeVisibleAsync();
     }
 
     [Test]

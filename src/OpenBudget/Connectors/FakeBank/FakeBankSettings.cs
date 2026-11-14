@@ -53,6 +53,9 @@ public sealed class FakeBankSettings
     /// <summary>Offer statements (tiny PDFs).</summary>
     public bool Statements { get; private init; }
 
+    /// <summary>Listing the accounts waits (reporting its progress) until <see cref="FakeBankConnector.Release"/> or a minute has passed.</summary>
+    public bool Slow { get; private init; }
+
     public static FakeBankSettings Parse(string? username)
     {
         var flags = (username ?? string.Empty).Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -85,6 +88,7 @@ public sealed class FakeBankSettings
             NoIds = Has("NOID"),
             Statements = Has("STATEMENTS"),
             Session = Has("SESSION"),
+            Slow = Has("SLOW"),
         };
     }
 }
