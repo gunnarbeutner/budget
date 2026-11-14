@@ -547,4 +547,22 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         Assert.That(colors.TakeLast(today.Day), Has.All.EqualTo(colors[^1]));
         Assert.That(colors[^(today.Day + 1)], Is.Not.EqualTo(colors[^1]));
     }
+
+    [Test]
+    public async Task An_account_whose_refresh_failed_is_marked_in_the_list_and_explains_why()
+    {
+        const string reason = "The bank asks for an authorization for the transaction download.";
+        await using (var db = await Factory.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
+        {
+            var account = await db.Accounts.SingleAsync(a => a.Id == EditingSeed.BankAccountId);
+            account.Error = reason;
+            await db.SaveChangesAsync();
+        }
+
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.BankAccountId}");
+
+        await Expect(Page.GetByTestId("tree-account-error")).ToHaveCountAsync(1);
+        await Expect(Page.GetByTestId("tree-account-error")).ToHaveAttributeAsync("title", reason);
+        await Expect(Page.GetByTestId("account-error-message")).ToHaveTextAsync(reason);
+    }
 }
