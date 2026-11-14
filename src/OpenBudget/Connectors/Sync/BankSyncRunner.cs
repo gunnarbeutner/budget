@@ -691,13 +691,12 @@ public sealed class BankSyncRunner
     private async Task FetchReceiptsAsync(
         BudgetDbContext db, BankLogin login, IReceiptSource source, ISyncSink sink, SyncContext context, HashSet<string> affected, CancellationToken ct)
     {
-        var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
         var shop = source.Shop;
         var stored = db.ReceiptInvoices.AsNoTracking().Where(r => r.OwnerUserId == login.OwnerUserId && r.Shop == shop);
         var known = (await stored.Select(r => r.InvoiceNumber).ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
         var newest = await stored.MaxAsync(r => r.OrderDate, ct);
-        var floor = today.AddYears(-OrderHistoryYears);
-        var since = newest is { } n && DateOnly.FromDateTime(n).AddDays(-30) > floor ? DateOnly.FromDateTime(n).AddDays(-30) : floor;
+        // The first read takes every receipt the source still has; later ones the last month before the newest stored.
+        var since = newest is { } n ? DateOnly.FromDateTime(n).AddDays(-30) : DateOnly.MinValue;
         var step = await DriveAsync(a => source.FetchReceiptsAsync(since, known, a, ct), sink, context, ct);
         if (step.Status == StepStatus.NeedsUser) throw new SilentAbortException(step.FailureReason ?? DefaultNeedsUser);
         if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Reading the receipts failed.");
