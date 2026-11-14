@@ -48,6 +48,8 @@ public sealed class BrowseTests : EndToEndTestBase
         Assert.That(after, Is.EqualTo(before + 120).Within(8));
 
         await Page.ReloadAsync();
+
+        await WaitForInteractiveAsync();
         await Expect(Page.GetByText("txn-1")).ToBeVisibleAsync();
         Assert.That((await rail.BoundingBoxAsync())!.Width, Is.EqualTo(after).Within(2));
 

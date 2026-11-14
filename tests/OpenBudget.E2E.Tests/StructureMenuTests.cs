@@ -270,6 +270,8 @@ public sealed class StructureMenuTests : EndToEndTestBase
         await Expect(living).ToHaveAttributeAsync("aria-selected", "false");
 
         await Page.ReloadAsync();
+
+        await WaitForInteractiveAsync();
         await Expect(living).ToHaveAttributeAsync("aria-expanded", "false");
 
         // ArrowRight on the focused group unfolds it again.

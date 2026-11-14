@@ -75,6 +75,7 @@ public sealed class ProjectSettingsTests : EndToEndTestBase
         await Page.Locator("#project-name").FocusAsync();   // leaving the field saves at once
         await Expect(Page.GetByTestId("page-header")).ToContainTextAsync("Example description");
         await Page.ReloadAsync();
+        await WaitForInteractiveAsync();
         await Expect(Page.Locator("#project-name")).ToHaveValueAsync("Renamed Project");
         await Expect(Page.Locator("#project-description")).ToHaveValueAsync("Example description");
     }
@@ -214,6 +215,7 @@ public sealed class ProjectSettingsTests : EndToEndTestBase
         await savingsCashflow.UncheckAsync();
         await Expect(savingsCashflow).Not.ToBeCheckedAsync();
         await Page.ReloadAsync();
+        await WaitForInteractiveAsync();
         await Expect(savingsCashflow).Not.ToBeCheckedAsync();
     }
 
