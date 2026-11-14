@@ -108,6 +108,26 @@ public sealed class LidlPlusTests
         Assert.Equal(3.60m, receipt.Items.Sum(i => i.Net));
     }
 
+    [Fact]
+    public void A_quantity_line_under_a_deposit_return_is_its_count_and_unit_price()
+    {
+        const string html = """
+            <div><span id="purchase_list_line_1" class="article" data-art-id="0003" data-art-quantity="1" data-unit-price="4,10" data-tax-type="B" data-art-description="Testbrot">Testbrot     4,10 B</span>
+            <span id="purchase_list_line_2" class="article">Pfandrückgabe  -1,00 A</span>
+            <span id="purchase_list_line_3">-4 x 0,25 €</span>
+            <span id="purchase_list_line_4" class="article">Pfandrückgabe  -4,00 A</span>
+            <span id="purchase_list_line_5">  -16 x   0,25</span></div>
+            """;
+        var ticket = FakeLidlPlus.Ticket("T-7", "2026-11-02T10:00:00", -0.90m, [], ("CreditCard", "0,00"));
+        ticket["itemsLine"] = new JsonArray();
+        ticket["htmlPrintedReceipt"] = html;
+        var receipt = LidlTickets.ParseDetail(ticket)!;
+        Assert.Equal(["Testbrot", "Pfandrückgabe", "Pfandrückgabe"], receipt.Items.Select(i => i.Name));
+        Assert.Equal((4m, -0.25m, -1.00m), (receipt.Items[1].Quantity, receipt.Items[1].UnitPrice!.Value, receipt.Items[1].Total));
+        Assert.Equal((16m, -4.00m), (receipt.Items[2].Quantity, receipt.Items[2].Total));
+        Assert.Equal(-0.90m, receipt.Items.Sum(i => i.Net));
+    }
+
     // ---- callback ----
 
     [Fact]
@@ -178,7 +198,7 @@ public sealed class LidlPlusTests
             BrowserHost = browser,
         });
         await ReceiptWorld.SeedAsync(world.T, users: false);
-        await ReceiptWorld.SetNonFoodAsync(world.T, ReceiptWorld.Drugstore);
+        await ReceiptWorld.AllowAsync(world.T, ReceiptWorld.Drugstore);
         await using (var db = await world.T.System.CreateDbContextAsync())
         {
             db.Accounts.Add(new Account { Id = Giro, OwnerUserId = BankWorld.Alice, Name = "Giro" });
