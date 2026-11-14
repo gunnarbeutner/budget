@@ -4,10 +4,13 @@ using OpenBudget.Services;
 
 namespace OpenBudget.Connectors.Receipts;
 
-/// <summary>Places receipt lines the memory and keywords left open (the optional AI); line id → category.</summary>
+/// <summary>
+/// Places receipt lines the memory and keywords left open (the optional AI), choosing only among
+/// <paramref name="choices"/> (the source's allowed categories and its default); line id → category.
+/// </summary>
 public interface IReceiptItemClassifier
 {
-    Task<Dictionary<long, long>> ClassifyAsync(string ownerUserId, DateOnly date, IReadOnlyList<ReceiptLine> lines, CancellationToken ct);
+    Task<Dictionary<long, long>> ClassifyAsync(string ownerUserId, DateOnly date, IReadOnlyList<ReceiptLine> lines, IReadOnlyList<AllowedCategory> choices, CancellationToken ct);
 }
 
 /// <summary>
@@ -162,27 +165,38 @@ public sealed class ReceiptStore
             : ours || (parent.Booked && (parent.Splitted ?? SplitState.Normal) == SplitState.Normal && parent.CategorySetBy != TransactionCategorySource.Manual);
 
         // Categories: the owner's moves stay, AI answers are asked once and kept, the rest follows memory and keywords.
-        var settings = await db.ReceiptSettings.AsNoTracking().FirstOrDefaultAsync(s => s.OwnerUserId == invoice.OwnerUserId, ct);
-        var nonFood = settings?.NonFoodCategoryId is { } nf && await db.Categories.AnyAsync(c => c.Id == nf && c.OwnerUserId == invoice.OwnerUserId, ct) ? nf : (long?)null;
+        // An AI answer outside this source's categories (left from before they were configured, or a mapping that
+        // changed) is dropped and asked again.
+        var rules = await RulesAsync(db, invoice.OwnerUserId, ReceiptSources.Of(invoice.Shop), ct);
+        var home = rules.DefaultCategoryId ?? parent.CategoryId;
         var memory = await MemoryAsync(db, invoice.OwnerUserId, items.Select(i => ReceiptCategorizer.Normalize(i.Name)).Distinct(StringComparer.Ordinal).ToList(), ct);
         var manual = items.Where(i => i.CategorySource == ReceiptCategorySource.Manual).ToDictionary(i => i.Id, i => i.CategoryId);
+        foreach (var stale in items.Where(i => i.CategorySource == ReceiptCategorySource.Ai
+            && !(i.CategoryId is { } c && ReceiptCategorizer.IsAllowed(c, rules, parent.CategoryId))))
+        {
+            stale.CategorySource = null;
+            stale.CategoryId = null;
+        }
         var ai = items.Where(i => i.CategorySource == ReceiptCategorySource.Ai && i.CategoryId != null).ToDictionary(i => i.Id, i => i.CategoryId!.Value);
         if (mayWrite && _ai != null)
         {
-            var ask = ReceiptCategorizer.Undecided(lines, nonFood, memory).Where(l => items.First(i => i.Id == l.Id).CategorySource == null).ToList();
+            var ask = ReceiptCategorizer.Undecided(lines, rules, memory, parent.CategoryId).Where(l => items.First(i => i.Id == l.Id).CategorySource == null).ToList();
             if (ask.Count > 0)
             {
                 var date = Day(invoice.DeliveryDate ?? invoice.OrderDate) ?? DateOnly.FromDateTime(parent.Date);
-                foreach (var (id, category) in await _ai.ClassifyAsync(invoice.OwnerUserId, date, ask, ct)) ai[id] = category;
+                var choices = rules.Allowed.ToList();
+                if (home is { } h && choices.All(c => c.CategoryId != h))
+                    choices.Insert(0, new AllowedCategory(h, await PathAsync(db, invoice.OwnerUserId, h, ct), "Lebensmittel und alles andere"));
+                foreach (var (id, category) in await _ai.ClassifyAsync(invoice.OwnerUserId, date, ask, choices, ct))
+                    if (ReceiptCategorizer.IsAllowed(category, rules, parent.CategoryId)) ai[id] = category;
             }
         }
-        var shops = await ShopCategoriesAsync(db, invoice.OwnerUserId, ct);
-        var assigned = ReceiptCategorizer.Assign(lines, parent.CategoryId, nonFood, memory, ai, manual, shops);
+        var assigned = ReceiptCategorizer.Assign(lines, parent.CategoryId, rules, memory, ai, manual);
         foreach (var item in items)
         {
             var a = assigned[item.Id];
             if (item.CategorySource == ReceiptCategorySource.Manual) continue;
-            item.CategoryId = a.Source == ReceiptCategorySource.Default ? null : a.CategoryId;
+            item.CategoryId = a.CategoryId == parent.CategoryId ? null : a.CategoryId;
             // A line is marked as decided (so the AI is not asked about it again) once the receipt could split the booking.
             if (mayWrite || a.Source != ReceiptCategorySource.Default || item.CategorySource != null) item.CategorySource = a.Source;
         }
@@ -192,7 +206,7 @@ public sealed class ReceiptStore
         var changed = false;
         if (mayWrite)
         {
-            var parts = ReceiptCategorizer.Parts(lines, assigned, invoice.BonusCents, parent.SplitOriginalAmount ?? parent.Amount, parent.CategoryId);
+            var parts = ReceiptCategorizer.Parts(lines, assigned, invoice.BonusCents, parent.SplitOriginalAmount ?? parent.Amount, home);
             if (parts.Count >= 2)
             {
                 var signature = ReceiptCategorizer.Signature(parts.Select(p => (p.AmountCents, p.CategoryId)));
@@ -220,17 +234,32 @@ public sealed class ReceiptStore
         return changed;
     }
 
-    /// <summary>
-    /// The categories of the owner's bookings that receipts were matched to: the shops' own categories ("Supermarkt ›
-    /// Lidl", "Supermarkt › Rewe"), which an item of another shop's receipt never goes to.
-    /// </summary>
-    public static async Task<HashSet<long>> ShopCategoriesAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct)
+    /// <summary>The owner's item categories for a receipt source (categories that still exist), with their paths.</summary>
+    public static async Task<ReceiptSourceRules> RulesAsync(BudgetDbContext db, string ownerUserId, string source, CancellationToken ct)
     {
-        var ids = db.ReceiptInvoices.Where(i => i.OwnerUserId == ownerUserId && i.TransactionId != null).Select(i => i.TransactionId!.Value);
-        var rows = await db.Transactions.AsNoTracking().Where(t => t.OwnerUserId == ownerUserId && ids.Contains(t.Id) && t.CategoryId != null)
-            .Select(t => t.CategoryId!.Value).Distinct().ToListAsync(ct);
-        return rows.ToHashSet();
+        var rows = await db.ReceiptSourceCategories.AsNoTracking().Where(c => c.OwnerUserId == ownerUserId && c.Source == source)
+            .OrderBy(c => c.Id).ToListAsync(ct);
+        if (rows.Count == 0) return ReceiptSourceRules.None;
+        var paths = await PathsAsync(db, ownerUserId, ct);
+        rows = rows.Where(r => paths.ContainsKey(r.CategoryId)).ToList();
+        return new ReceiptSourceRules(
+            rows.FirstOrDefault(r => r.IsDefault)?.CategoryId,
+            rows.Where(r => !r.IsDefault).Select(r => new AllowedCategory(r.CategoryId, paths[r.CategoryId], r.Description, r.Keywords)).ToList());
     }
+
+    /// <summary>The owner's categories by id with their paths ("Group › Category").</summary>
+    public static async Task<Dictionary<long, string>> PathsAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct)
+    {
+        var groups = await db.CategoryGroups.AsNoTracking().Where(g => g.OwnerUserId == ownerUserId).ToListAsync(ct);
+        var categories = await db.Categories.AsNoTracking().Where(c => c.OwnerUserId == ownerUserId).ToListAsync(ct);
+        var picker = CategoryPickerLogic.Build(groups, categories, await RowIds.SentinelRootAsync(db, ownerUserId, ct));
+        var paths = picker.Options.ToDictionary(o => o.Id, o => o.Path);
+        foreach (var c in categories.Where(c => !paths.ContainsKey(c.Id))) paths[c.Id] = c.Name ?? "";
+        return paths;
+    }
+
+    private static async Task<string> PathAsync(BudgetDbContext db, string ownerUserId, long categoryId, CancellationToken ct) =>
+        (await PathsAsync(db, ownerUserId, ct)).GetValueOrDefault(categoryId) ?? "";
 
     /// <summary>The owner's memory entries for these normalised names.</summary>
     public static async Task<Dictionary<string, long>> MemoryAsync(BudgetDbContext db, string ownerUserId, IReadOnlyList<string> names, CancellationToken ct)

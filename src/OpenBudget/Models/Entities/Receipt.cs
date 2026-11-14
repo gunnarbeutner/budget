@@ -44,7 +44,7 @@ public static class ReceiptCategorySource
     /// <summary>The owner's item category memory.</summary>
     public const string Memory = "memory";
 
-    /// <summary>The non-food keyword list.</summary>
+    /// <summary>The built-in keyword sets and the extra keywords of the source's allowed categories.</summary>
     public const string Keyword = "keyword";
 
     public const string Ai = "ai";
@@ -202,9 +202,6 @@ public class ReceiptSettings
     [MaxLength(450)]
     public string OwnerUserId { get; set; } = string.Empty;
 
-    /// <summary>Where non-food items of supermarket receipts go (null: they stay with the booking's category).</summary>
-    public long? NonFoodCategoryId { get; set; }
-
     /// <summary>When the mailbox was last read successfully (the next read starts a little before it).</summary>
     public DateTime? MailCheckedAt { get; set; }
 
@@ -213,4 +210,58 @@ public class ReceiptSettings
 
     [MaxLength(1000)]
     public string? MailLastError { get; set; }
+}
+
+/// <summary>The receipt sources: what a receipt's item categories are configured by (see <see cref="ReceiptSourceCategory"/>).</summary>
+public static class ReceiptSources
+{
+    /// <summary>The owner's mailbox (REWE online invoices and eBons).</summary>
+    public const string Mail = "mail";
+
+    public const string Lidl = "lidl";
+
+    public const string Amazon = "amazon";
+
+    /// <summary>Every source, in the order the receipts page shows them.</summary>
+    public static readonly IReadOnlyList<string> All = [Mail, Lidl, Amazon];
+
+    /// <summary>The source a shop's receipts come from.</summary>
+    public static string Of(string shop) => shop switch
+    {
+        ReceiptShops.Lidl => Lidl,
+        ReceiptShops.Rewe or ReceiptShops.ReweEbon => Mail,
+        _ => shop,
+    };
+}
+
+/// <summary>
+/// A category receipt items of one source may go to. The source's default category (<see cref="IsDefault"/>, at most
+/// one) takes everything not placed elsewhere, deposits and fees included (none: the booking's own category); the
+/// other rows are the allowed categories, each with an optional description (what belongs there, also given to the AI)
+/// and extra keywords (comma-separated name fragments).
+/// </summary>
+[Table("receipt_source_categories")]
+public class ReceiptSourceCategory
+{
+    [Key]
+    public long Id { get; set; }
+
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
+
+    /// <summary>See <see cref="ReceiptSources"/>.</summary>
+    [Required]
+    [MaxLength(20)]
+    public string Source { get; set; } = string.Empty;
+
+    public long CategoryId { get; set; }
+
+    public bool IsDefault { get; set; }
+
+    [MaxLength(200)]
+    public string? Description { get; set; }
+
+    [MaxLength(500)]
+    public string? Keywords { get; set; }
 }

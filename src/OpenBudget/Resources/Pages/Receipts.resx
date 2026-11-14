@@ -100,15 +100,6 @@
   <data name="Never" xml:space="preserve">
     <value>never</value>
   </data>
-  <data name="NonFood_Heading" xml:space="preserve">
-    <value>Non-food items go to</value>
-  </data>
-  <data name="NonFood_Help" xml:space="preserve">
-    <value>Items such as soap, detergent or toilet paper (recognised by their names) are split off into this category. Deposit and delivery lines stay with the food.</value>
-  </data>
-  <data name="NonFood_None" xml:space="preserve">
-    <value>— keep them with the booking's category —</value>
-  </data>
   <data name="List_Heading" xml:space="preserve">
     <value>Receipts read</value>
   </data>
@@ -156,5 +147,17 @@
   </data>
   <data name="Outcome_Failed" xml:space="preserve">
     <value>Mail access was not granted.</value>
+  </data>
+  <data name="Categories_Heading" xml:space="preserve">
+    <value>Item categories per source</value>
+  </data>
+  <data name="Source_mail" xml:space="preserve">
+    <value>Mailbox (REWE)</value>
+  </data>
+  <data name="Source_lidl" xml:space="preserve">
+    <value>Lidl Plus</value>
+  </data>
+  <data name="Source_amazon" xml:space="preserve">
+    <value>Amazon</value>
   </data>
 </root>

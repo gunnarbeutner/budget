@@ -35,7 +35,7 @@ public sealed class MailReceiptTests
         {
             var w = await OneDriveWorld.CreateAsync();
             await ReceiptWorld.SeedAsync(w.T, users: false);
-            await ReceiptWorld.SetNonFoodAsync(w.T, ReceiptWorld.Drugstore);
+            await ReceiptWorld.AllowAsync(w.T, ReceiptWorld.Drugstore);
             return new World(w);
         }
 

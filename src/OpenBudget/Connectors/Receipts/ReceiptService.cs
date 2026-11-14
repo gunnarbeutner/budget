@@ -7,7 +7,7 @@ namespace OpenBudget.Connectors.Receipts;
 
 /// <summary>The signed-in user's receipt settings and mailbox state.</summary>
 public sealed record ReceiptSettingsView(
-    bool MicrosoftAvailable, CloudConnectionView? Connection, long? NonFoodCategoryId, DateTime? MailCheckedAt, DateTime? MailAttemptAt, string? MailLastError);
+    bool MicrosoftAvailable, CloudConnectionView? Connection, DateTime? MailCheckedAt, DateTime? MailAttemptAt, string? MailLastError);
 
 /// <summary>A stored receipt as the list shows it.</summary>
 public sealed record ReceiptView(
@@ -31,6 +31,9 @@ public sealed record BookingReceiptView(long ReceiptId, long TransactionId, stri
     /// <summary>See <see cref="ReceiptView.Title"/>.</summary>
     public string Title => ReceiptService.Title(Shop, Store, OrderNumber);
 }
+
+/// <summary>A receipt source's category: the row id, the category, and whether it is the default.</summary>
+public sealed record SourceCategoryView(long Id, long CategoryId, bool IsDefault, string? Description, string? Keywords);
 
 /// <summary>A receipt source's receipts: how many, how many found their booking, and the latest still waiting for one.</summary>
 public sealed record ReceiptSourceSummary(int Count, int Matched, int OpenCount, IReadOnlyList<ReceiptView> Open);
@@ -84,30 +87,88 @@ public sealed class ReceiptService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var s = await db.ReceiptSettings.AsNoTracking().FirstOrDefaultAsync(x => x.OwnerUserId == user, ct);
         var connection = _oneDrive.IsEnabled ? await _oneDrive.GetConnectionAsync(user, ct) : null;
-        return new ReceiptSettingsView(_oneDrive.IsEnabled, connection, s?.NonFoodCategoryId, s?.MailCheckedAt, s?.MailAttemptAt, s?.MailLastError);
+        return new ReceiptSettingsView(_oneDrive.IsEnabled, connection, s?.MailCheckedAt, s?.MailAttemptAt, s?.MailLastError);
     }
 
-    /// <summary>Sets where non-food items go (null: nowhere special) and brings the matched bookings up to date.</summary>
-    public async Task SetNonFoodCategoryAsync(long? categoryId, CancellationToken ct = default)
+    /// <summary>The signed-in user's item categories of a receipt source (see <see cref="ReceiptSources"/>): the default first.</summary>
+    public async Task<List<SourceCategoryView>> GetSourceCategoriesAsync(string source, CancellationToken ct = default)
     {
+        var user = await UserAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await db.ReceiptSourceCategories.AsNoTracking().Where(c => c.OwnerUserId == user && c.Source == source)
+            .OrderByDescending(c => c.IsDefault).ThenBy(c => c.Id)
+            .Select(c => new SourceCategoryView(c.Id, c.CategoryId, c.IsDefault, c.Description, c.Keywords)).ToListAsync(ct);
+    }
+
+    /// <summary>Sets a source's default category (null: the booking's own) and brings the matched bookings up to date.</summary>
+    public Task SetSourceDefaultAsync(string source, long? categoryId, CancellationToken ct = default) =>
+        ChangeSourceAsync(source, categoryId, async (db, user) =>
+        {
+            db.ReceiptSourceCategories.RemoveRange(await db.ReceiptSourceCategories.Where(c => c.OwnerUserId == user && c.Source == source && c.IsDefault).ToListAsync(ct));
+            if (categoryId is not { } id) return;
+            // the default is not also an allowed category
+            db.ReceiptSourceCategories.RemoveRange(await db.ReceiptSourceCategories.Where(c => c.OwnerUserId == user && c.Source == source && c.CategoryId == id).ToListAsync(ct));
+            await db.SaveChangesAsync(ct);
+            db.ReceiptSourceCategories.Add(new ReceiptSourceCategory { OwnerUserId = user, Source = source, CategoryId = id, IsDefault = true });
+        }, ct);
+
+    /// <summary>Adds an allowed category to a source (nothing when it is there already).</summary>
+    public Task AddSourceCategoryAsync(string source, long categoryId, string? description = null, string? keywords = null, CancellationToken ct = default) =>
+        ChangeSourceAsync(source, categoryId, async (db, user) =>
+        {
+            if (await db.ReceiptSourceCategories.AnyAsync(c => c.OwnerUserId == user && c.Source == source && c.CategoryId == categoryId, ct)) return;
+            db.ReceiptSourceCategories.Add(new ReceiptSourceCategory
+            {
+                OwnerUserId = user, Source = source, CategoryId = categoryId, Description = Clean(description, 200), Keywords = Clean(keywords, 500),
+            });
+        }, ct);
+
+    /// <summary>Changes an allowed category's description and extra keywords.</summary>
+    public async Task UpdateSourceCategoryAsync(long id, string? description, string? keywords, CancellationToken ct = default)
+    {
+        var source = await SourceOfAsync(id, ct);
+        await ChangeSourceAsync(source, null, async (db, user) =>
+        {
+            var row = await db.ReceiptSourceCategories.FirstAsync(c => c.Id == id && c.OwnerUserId == user, ct);
+            row.Description = Clean(description, 200);
+            row.Keywords = Clean(keywords, 500);
+        }, ct);
+    }
+
+    /// <summary>Removes an allowed category from its source.</summary>
+    public async Task RemoveSourceCategoryAsync(long id, CancellationToken ct = default)
+    {
+        var source = await SourceOfAsync(id, ct);
+        await ChangeSourceAsync(source, null, async (db, user) =>
+            db.ReceiptSourceCategories.Remove(await db.ReceiptSourceCategories.FirstAsync(c => c.Id == id && c.OwnerUserId == user, ct)), ct);
+    }
+
+    private async Task<string> SourceOfAsync(long id, CancellationToken ct)
+    {
+        var user = await UserAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await db.ReceiptSourceCategories.AsNoTracking().Where(c => c.Id == id && c.OwnerUserId == user).Select(c => c.Source).FirstOrDefaultAsync(ct)
+            ?? throw new AccessDeniedException("Receipt category not found.");
+    }
+
+    private async Task ChangeSourceAsync(string source, long? categoryId, Func<BudgetDbContext, string, Task> change, CancellationToken ct)
+    {
+        if (!ReceiptSources.All.Contains(source, StringComparer.Ordinal)) throw new ArgumentException("Unknown receipt source.", nameof(source));
         var user = await UserAsync();
         await using (var db = await _dbFactory.CreateDbContextAsync(ct))
         {
             if (categoryId is { } c && !await db.Categories.AnyAsync(x => x.Id == c && x.OwnerUserId == user, ct))
                 throw new AccessDeniedException("Category not found.");
-            var s = await db.ReceiptSettings.FirstOrDefaultAsync(x => x.OwnerUserId == user, ct);
-            if (s == null)
-            {
-                s = new ReceiptSettings { OwnerUserId = user };
-                db.ReceiptSettings.Add(s);
-            }
-            s.NonFoodCategoryId = categoryId;
+            await change(db, user);
             await db.SaveChangesAsync(ct);
         }
         await using (var sys = await _system.CreateDbContextAsync(ct))
             await _store.MatchAsync(sys, user, ct);
         Publish(user);
     }
+
+    private static string? Clean(string? text, int max) =>
+        string.IsNullOrWhiteSpace(text) ? null : text.Trim().Length <= max ? text.Trim() : text.Trim()[..max];
 
     /// <summary>Reads the signed-in user's mailbox now.</summary>
     public async Task<MailCheckResult> CheckMailNowAsync(CancellationToken ct = default) => await _mail.CheckNowAsync(await UserAsync(), ct);
@@ -164,7 +225,8 @@ public sealed class ReceiptService
         var items = invoice.Items.OrderBy(i => i.Position).ToList();
         var lines = items.Select(i => new ReceiptLine(i.Id, i.Name, i.VatCode, i.TotalCents, i.NoDiscount, i.Kind)).ToList();
         var categories = items.ToDictionary(i => i.Id, i => new LineCategory(i.CategoryId ?? booking.CategoryId, i.CategorySource ?? ReceiptCategorySource.Default));
-        var parts = ReceiptCategorizer.Parts(lines, categories, invoice.BonusCents, booking.SplitOriginalAmount ?? booking.Amount, booking.CategoryId);
+        var rules = await ReceiptStore.RulesAsync(db, invoice.OwnerUserId, ReceiptSources.Of(invoice.Shop), ct);
+        var parts = ReceiptCategorizer.Parts(lines, categories, invoice.BonusCents, booking.SplitOriginalAmount ?? booking.Amount, rules.DefaultCategoryId ?? booking.CategoryId);
         var groups = parts.Select(part => new ReceiptGroupView(part.CategoryId, part.AmountCents, part.LineIds
                 .Select(id => items.First(i => i.Id == id))
                 .Select(i => new ReceiptLineView(i.Id, i.Name, i.Quantity, i.TotalCents, i.Kind, i.CategoryId ?? booking.CategoryId, i.CategorySource)).ToList()))
@@ -174,7 +236,8 @@ public sealed class ReceiptService
 
     /// <summary>
     /// Moves a receipt line to <paramref name="categoryId"/>: the line keeps it, the item memory remembers it for the
-    /// product (deposit lines and fees are not remembered), and the booking is split by the receipt again.
+    /// product (deposit lines and fees are not remembered), the category becomes one of the receipt source's categories
+    /// (unless it is the booking's own), and the booking is split by the receipt again.
     /// </summary>
     public async Task MoveItemAsync(long itemId, long categoryId, CancellationToken ct = default)
     {
@@ -208,6 +271,11 @@ public sealed class ReceiptService
                 memory.CategoryId = categoryId;
                 memory.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
             }
+            // A category the owner moves an item to becomes one of the source's categories, so the memory applies.
+            var source = ReceiptSources.Of(invoice.Shop);
+            if (!await sys.ReceiptSourceCategories.AnyAsync(c => c.OwnerUserId == user && c.Source == source && c.CategoryId == categoryId, ct)
+                && !await sys.Transactions.AnyAsync(t => t.Id == invoice.TransactionId && t.CategoryId == categoryId, ct))
+                sys.ReceiptSourceCategories.Add(new ReceiptSourceCategory { OwnerUserId = user, Source = source, CategoryId = categoryId });
             await sys.SaveChangesAsync(ct);
             await _store.ApplyAsync(sys, invoice, force: true, ct);
         }

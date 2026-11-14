@@ -83,6 +83,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<ReceiptItem> ReceiptItems => Set<ReceiptItem>();
     public DbSet<ItemCategoryMemory> ItemCategoryMemory => Set<ItemCategoryMemory>();
     public DbSet<ReceiptSettings> ReceiptSettings => Set<ReceiptSettings>();
+    public DbSet<ReceiptSourceCategory> ReceiptSourceCategories => Set<ReceiptSourceCategory>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -375,6 +376,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<ReceiptItem>().Property(i => i.Kind).HasConversion<int>();
         modelBuilder.Entity<ItemCategoryMemory>().HasIndex(m => new { m.OwnerUserId, m.NormalizedName }).IsUnique();
         modelBuilder.Entity<ReceiptSettings>().HasIndex(s => s.OwnerUserId).IsUnique();
+        modelBuilder.Entity<ReceiptSourceCategory>().HasIndex(c => new { c.OwnerUserId, c.Source, c.CategoryId }).IsUnique();
 
         ConfigureAccessFilters(modelBuilder);
     }

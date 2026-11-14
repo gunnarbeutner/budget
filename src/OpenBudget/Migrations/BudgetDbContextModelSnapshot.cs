@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261114111534_LidlReceiptStore";
+    public override string LastMigrationId => "20261114115834_ReceiptSourceCategories";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -1929,9 +1929,6 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .HasMaxLength(1000)
                     .HasColumnType("TEXT");
 
-                b.Property<long?>("NonFoodCategoryId")
-                    .HasColumnType("INTEGER");
-
                 b.Property<string>("OwnerUserId")
                     .IsRequired()
                     .HasMaxLength(450)
@@ -1943,6 +1940,44 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .IsUnique();
 
                 b.ToTable("receipt_settings");
+            });
+
+        modelBuilder.Entity("OpenBudget.Models.ReceiptSourceCategory", b =>
+            {
+                b.Property<long>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER");
+
+                b.Property<long>("CategoryId")
+                    .HasColumnType("INTEGER");
+
+                b.Property<string>("Description")
+                    .HasMaxLength(200)
+                    .HasColumnType("TEXT");
+
+                b.Property<bool>("IsDefault")
+                    .HasColumnType("INTEGER");
+
+                b.Property<string>("Keywords")
+                    .HasMaxLength(500)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("OwnerUserId")
+                    .IsRequired()
+                    .HasMaxLength(450)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Source")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("TEXT");
+
+                b.HasKey("Id");
+
+                b.HasIndex("OwnerUserId", "Source", "CategoryId")
+                    .IsUnique();
+
+                b.ToTable("receipt_source_categories");
             });
 
         modelBuilder.Entity("OpenBudget.Models.RemovedImportItem", b =>

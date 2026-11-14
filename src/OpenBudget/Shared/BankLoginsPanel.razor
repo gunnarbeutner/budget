@@ -207,6 +207,7 @@ else
                 else if (login.ReceiptShop != null)
                 {
                     <ReceiptSourceSection LoginId="login.Id" Shop="@(login.ReceiptShop ?? string.Empty)" Version="loadCount" />
+                    <ReceiptSourceCategories Source="@ReceiptSources.Of(login.ReceiptShop ?? string.Empty)" />
                 }
                 else
                 {

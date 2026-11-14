@@ -26,7 +26,7 @@ public sealed class ReceiptDetailsTests : EndToEndTestBase
         await using var db = await factory.CreateDbContextAsync();
         EditingSeed.Add(db, Debit, EditingSeed.BankAccountId, -14_28, "REWE Markt GmbH", new DateTime(2026, 3, 6, 0, 0, 0, DateTimeKind.Utc),
             purpose: "48466003260302300881", category: Groceries);
-        db.ReceiptSettings.Add(new ReceiptSettings { OwnerUserId = E2ESeed.OwnerUserId, NonFoodCategoryId = Energy });
+        db.ReceiptSourceCategories.Add(new ReceiptSourceCategory { OwnerUserId = E2ESeed.OwnerUserId, Source = ReceiptSources.Mail, CategoryId = Energy, Description = "Drogerie, Haushalt" });
         await db.SaveChangesAsync();
         var receipt = ReweInvoice.Parse(SyntheticInvoice.Pdf(SyntheticInvoice.StandardLines(), bonus: -1.00m, orderDate: "02.03.2026", delivery: "03.03.2026"));
         await ReceiptStore.AddAsync(db, E2ESeed.OwnerUserId, ReceiptShops.Rewe, receipt, "mail-1", DateTime.UtcNow, default);

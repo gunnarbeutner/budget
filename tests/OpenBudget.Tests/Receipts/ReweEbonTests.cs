@@ -75,12 +75,12 @@ public sealed class ReweEbonTests
     }
 
     [Fact]
-    public void Abbreviated_drugstore_names_are_non_food()
+    public void Abbreviated_drugstore_names_are_recognised()
     {
-        Assert.True(ReceiptCategorizer.IsNonFood("ZAHNP.PROFI"));
-        Assert.True(ReceiptCategorizer.IsNonFood("SPUELM.ZITRONE"));
-        Assert.True(ReceiptCategorizer.IsNonFood("TROCKENSHAMPOO"));
-        Assert.False(ReceiptCategorizer.IsNonFood("H-MILCH 3,5%"));
+        Assert.Equal("drugstore", ReceiptCategorizer.Kind("ZAHNP.PROFI"));
+        Assert.Equal("household", ReceiptCategorizer.Kind("SPUELM.ZITRONE"));
+        Assert.Equal("drugstore", ReceiptCategorizer.Kind("TROCKENSHAMPOO"));
+        Assert.Null(ReceiptCategorizer.Kind("H-MILCH 3,5%"));
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public sealed class ReweEbonTests
     {
         await using var t = new TestDb();
         await ReceiptWorld.SeedAsync(t);
-        await ReceiptWorld.SetNonFoodAsync(t, ReceiptWorld.Drugstore);
+        await ReceiptWorld.AllowAsync(t, ReceiptWorld.Drugstore);
         await ReceiptWorld.AddDebitAsync(t, ReceiptWorld.Id(600), -1800, days: 1);
         var store = new ReceiptStore();
         await using (var db = await t.System.CreateDbContextAsync())

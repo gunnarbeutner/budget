@@ -100,15 +100,6 @@
   <data name="Never" xml:space="preserve">
     <value>nie</value>
   </data>
-  <data name="NonFood_Heading" xml:space="preserve">
-    <value>Non-Food-Artikel kommen nach</value>
-  </data>
-  <data name="NonFood_Help" xml:space="preserve">
-    <value>Artikel wie Seife, Waschmittel oder Toilettenpapier (am Namen erkannt) werden in diese Kategorie abgeteilt. Pfand und Liefergebühr bleiben bei den Lebensmitteln.</value>
-  </data>
-  <data name="NonFood_None" xml:space="preserve">
-    <value>— in der Kategorie der Buchung lassen —</value>
-  </data>
   <data name="List_Heading" xml:space="preserve">
     <value>Gelesene Kassenbons</value>
   </data>
@@ -156,5 +147,17 @@
   </data>
   <data name="Outcome_Failed" xml:space="preserve">
     <value>Der Postfach-Zugriff wurde nicht erteilt.</value>
+  </data>
+  <data name="Categories_Heading" xml:space="preserve">
+    <value>Artikel-Kategorien je Quelle</value>
+  </data>
+  <data name="Source_mail" xml:space="preserve">
+    <value>Postfach (REWE)</value>
+  </data>
+  <data name="Source_lidl" xml:space="preserve">
+    <value>Lidl Plus</value>
+  </data>
+  <data name="Source_amazon" xml:space="preserve">
+    <value>Amazon</value>
   </data>
 </root>

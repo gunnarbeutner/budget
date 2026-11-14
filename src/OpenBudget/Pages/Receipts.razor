@@ -5,7 +5,6 @@
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject ReceiptService Service
-@inject CategorizationService Categorization
 @inject NavigationManager Navigation
 @inject ClockService Clock
 @inject IStringLocalizer<Receipts> L
@@ -78,18 +77,14 @@ else
         }
     </section>
 
-    <section class="mb-4" data-testid="receipts-nonfood">
-        <h2 class="h5">@L["NonFood_Heading"]</h2>
-        <p class="small text-body-secondary">@L["NonFood_Help"]</p>
-        <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="receipts-nonfood-category" aria-label="@L["NonFood_Heading"]"
-                disabled="@(picker == null)" @onclick="OpenNonFoodPicker">
-            <i class="bi bi-tag me-1" aria-hidden="true"></i>@(settings.NonFoodCategoryId is { } nf && picker != null ? picker.PathOf(nf, L["NonFood_None"]) : L["NonFood_None"])
-        </button>
-        @if (pickerOpen && picker != null)
+    <section class="mb-4" data-testid="receipts-categories">
+        <h2 class="h5">@L["Categories_Heading"]</h2>
+        @foreach (var source in new[] { ReceiptSources.Mail, ReceiptSources.Lidl })
         {
-            <CategoryPicker Data="picker" CurrentCategoryId="settings.NonFoodCategoryId" RemoveLabel="@L["NonFood_None"]"
-                            AllowRemove="@(settings.NonFoodCategoryId != null)" X="pickerX" Y="pickerY"
-                            OnPick="NonFoodPickedAsync" OnClose="() => pickerOpen = false" />
+            <div class="mb-3">
+                <b class="small">@L["Source_" + source]</b>
+                <ReceiptSourceCategories Source="@source" />
+            </div>
         }
     </section>
 
@@ -135,7 +130,6 @@ else
     private sealed record Notice(bool Ok, string Text);
 
     private ReceiptSettingsView? settings;
-    private CategoryPickerData? picker;
     private List<ReceiptView> receipts = [];
     private Notice? notice;
     private bool checking;
@@ -166,7 +160,6 @@ else
         userId = (await Access.GetAsync()).UserId;
         if (userId == null) return;
         settings = await Service.GetSettingsAsync();
-        picker ??= await Categorization.GetPickerDataAsync(userId);
         receipts = await Service.ListAsync();
     }
 
@@ -199,18 +192,6 @@ else
     {
         await Service.StopMailAsync();
         notice = null;
-        await LoadAsync();
-    }
-
-    private bool pickerOpen;
-    private double pickerX, pickerY;
-
-    private void OpenNonFoodPicker(MouseEventArgs e) => (pickerOpen, pickerX, pickerY) = (true, e.ClientX, e.ClientY);
-
-    private async Task NonFoodPickedAsync(long? id)
-    {
-        pickerOpen = false;
-        await Service.SetNonFoodCategoryAsync(id);
         await LoadAsync();
     }
 }

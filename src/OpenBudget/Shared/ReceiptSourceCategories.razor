@@ -1,0 +1,127 @@
+@using OpenBudget.Connectors.Receipts
+@using OpenBudget.Services
+@inject ReceiptService Receipts
+@inject CategorizationService Categorization
+@inject IStringLocalizer<ReceiptSourceCategories> L
+
+@* A receipt source's item categories: the default (where everything not placed elsewhere goes; none: the booking's
+   own category) and the allowed categories items may be moved to by keywords or the AI, each with a description of
+   what belongs there and extra keywords. Shown on the source's connection card and on the receipts page. *@
+
+<div class="receipt-source-categories" data-testid="source-categories" data-source="@Source">
+    <h6 class="bank-accounts-heading">@L["Heading"]</h6>
+    @if (rows == null || picker == null)
+    {
+        <div class="skeleton skeleton-line mb-2" style="width: 40%;"></div>
+    }
+    else
+    {
+        var def = rows.FirstOrDefault(r => r.IsDefault);
+        <div class="small mb-2 d-flex flex-wrap align-items-center gap-2">
+            <span>@L["Default"]</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="source-default" @onclick="e => Open(Picking.Default, e)">
+                <i class="bi bi-tag me-1" aria-hidden="true"></i>@(def != null ? picker.PathOf(def.CategoryId, L["BookingCategory"]) : L["BookingCategory"])
+            </button>
+        </div>
+        <p class="small text-body-secondary mb-1">@L["Help"]</p>
+        <ul class="list-unstyled small mb-2">
+            @foreach (var r in rows.Where(r => !r.IsDefault))
+            {
+                <li class="d-flex flex-wrap align-items-center gap-2 mb-1" data-testid="source-allowed" data-category="@r.CategoryId">
+                    <span class="badge rounded-pill text-bg-light border">@picker.PathOf(r.CategoryId, "?")</span>
+                    @if (editing == r.Id)
+                    {
+                        <input class="form-control form-control-sm" style="max-width: 16rem;" placeholder="@L["Description"]" aria-label="@L["Description"]"
+                               data-testid="source-allowed-description" @bind="editDescription" />
+                        <input class="form-control form-control-sm" style="max-width: 16rem;" placeholder="@L["Keywords"]" aria-label="@L["Keywords"]"
+                               data-testid="source-allowed-keywords" @bind="editKeywords" />
+                        <button type="button" class="btn btn-sm btn-primary" data-testid="source-allowed-save" @onclick="() => SaveAsync(r.Id)">@L["Save"]</button>
+                        <button type="button" class="btn btn-sm btn-link" @onclick="() => editing = null">@L["Cancel"]</button>
+                    }
+                    else
+                    {
+                        <span class="text-body-secondary">@r.Description@(r.Keywords is { Length: > 0 } k ? $" · {L["KeywordsShort"]}: {k}" : "")</span>
+                        <button type="button" class="btn btn-sm btn-link p-0" data-testid="source-allowed-edit"
+                                @onclick="() => (editing, editDescription, editKeywords) = (r.Id, r.Description, r.Keywords)">@L["Edit"]</button>
+                        <button type="button" class="btn btn-sm btn-link p-0 text-danger" data-testid="source-allowed-remove"
+                                aria-label="@L["Remove"]" @onclick="() => RemoveAsync(r.Id)"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+                    }
+                </li>
+            }
+        </ul>
+        <button type="button" class="btn btn-sm btn-outline-primary" data-testid="source-allowed-add" @onclick="e => Open(Picking.Add, e)">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i> @L["Add"]
+        </button>
+        @if (picking != Picking.None)
+        {
+            <CategoryPicker Data="picker" CurrentCategoryId="@(picking == Picking.Default ? def?.CategoryId : null)"
+                            AllowRemove="@(picking == Picking.Default && def != null)" RemoveLabel="@L["BookingCategory"]" X="x" Y="y"
+                            OnPick="PickedAsync" OnClose="() => picking = Picking.None" />
+        }
+        @if (error != null)
+        {
+            <div class="text-danger small">@error</div>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>See <see cref="OpenBudget.Models.ReceiptSources"/>.</summary>
+    [Parameter, EditorRequired] public string Source { get; set; } = "";
+
+    private enum Picking { None, Default, Add }
+
+    private List<SourceCategoryView>? rows;
+    private CategoryPickerData? picker;
+    private Picking picking;
+    private double x, y;
+    private long? editing;
+    private string? editDescription, editKeywords;
+    private string? error;
+
+    [Inject] private AccessScopeProvider Access { get; set; } = null!;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        if ((await Access.GetAsync()).UserId is not { } user) return;
+        picker ??= await Categorization.GetPickerDataAsync(user);
+        rows = await Receipts.GetSourceCategoriesAsync(Source);
+    }
+
+    private void Open(Picking what, MouseEventArgs e) => (picking, x, y) = (what, e.ClientX, e.ClientY);
+
+    private async Task PickedAsync(long? id)
+    {
+        var what = picking;
+        picking = Picking.None;
+        await RunAsync(async () =>
+        {
+            if (what == Picking.Default) await Receipts.SetSourceDefaultAsync(Source, id);
+            else if (id is { } c) await Receipts.AddSourceCategoryAsync(Source, c);
+        });
+    }
+
+    private Task SaveAsync(long id) => RunAsync(async () =>
+    {
+        await Receipts.UpdateSourceCategoryAsync(id, editDescription, editKeywords);
+        editing = null;
+    });
+
+    private Task RemoveAsync(long id) => RunAsync(() => Receipts.RemoveSourceCategoryAsync(id));
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        error = null;
+        try
+        {
+            await action();
+        }
+        catch (AccessDeniedException ex)
+        {
+            error = ex.Message;
+        }
+        await LoadAsync();
+    }
+}

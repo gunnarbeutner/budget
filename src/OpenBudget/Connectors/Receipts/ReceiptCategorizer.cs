@@ -15,33 +15,100 @@ public sealed record LineCategory(long? CategoryId, string Source);
 public sealed record ReceiptSplitPart(long AmountCents, long? CategoryId, IReadOnlyList<long> LineIds);
 
 /// <summary>
-/// Sorts supermarket receipt lines into categories and turns them into split parts.
+/// A category a source's items may go to: its path ("Haushalt › Drogerie"), the owner's description of what belongs
+/// there and extra keywords (comma-separated).
+/// </summary>
+public sealed record AllowedCategory(long CategoryId, string Path, string? Description = null, string? Keywords = null);
+
+/// <summary>
+/// A receipt source's item categories: the default (null: the booking's own category) and the allowed categories.
+/// </summary>
+public sealed record ReceiptSourceRules(long? DefaultCategoryId, IReadOnlyList<AllowedCategory> Allowed)
+{
+    public static readonly ReceiptSourceRules None = new(null, []);
+}
+
+/// <summary>
+/// Sorts receipt lines into categories and turns them into split parts. Each receipt source has a default category
+/// (none: the booking's own) and a list of allowed categories (see <see cref="ReceiptSourceRules"/>); a line only ever
+/// goes to one of these.
 ///
-/// A line goes, in this order: deposit lines and fees to the booking's category; a product the owner categorized
-/// before (the item category memory, by <see cref="Normalize">normalised name</see>) to that category; a product whose
-/// name contains a non-food keyword (soap, detergent, deodorant, …) to the owner's non-food category, when one is set;
-/// a product the AI placed (only when the owner opted in) to that category; everything else to the booking's category.
-/// The VAT code alone decides nothing (drinks and some vegetables carry 19 % too).
+/// A line goes, in this order: deposit lines and fees to the default; a line the owner moved to where they moved it; a
+/// product the owner categorized before (the item category memory, by <see cref="Normalize">normalised name</see>) to
+/// that category, when it is allowed for this source; a product whose name contains an allowed category's extra keyword
+/// to that category; a product of a built-in kind (<see cref="Kind"/>: drugstore, household, drinks, alcohol, pet
+/// supplies, other non-food) to the first allowed category that kind belongs to (<see cref="KindsOf"/>: the kind's
+/// words in the category's path or description, e.g. "Drogerie" or "Reinigungsmittel"); a product the AI placed (only
+/// when the owner opted in; it only chooses among the allowed categories) to that category; everything else to the
+/// default. The VAT code alone decides nothing.
 ///
 /// The redeemed bonus credit is spread over the lines that allow discounts in proportion to their totals; the parts
 /// (one per category) add up exactly to the booking, a rounding remainder going to the largest part.
 /// </summary>
 public static partial class ReceiptCategorizer
 {
-    /// <summary>Name fragments of household goods, drugstore and other non-food products (lower case, matched anywhere in the name).</summary>
-    public static readonly IReadOnlyList<string> NonFoodKeywords =
+    /// <summary>
+    /// The built-in kinds: the words in a category's path or description that make it the place for the kind, and the
+    /// fragments of product names of that kind (lower case, matched anywhere in the name; a fragment starting with "^"
+    /// only at the start of a word, one ending in "$" only at the end of a word). Till receipts abbreviate ("ZAHNP.",
+    /// "SPUELM.", "TOIL.PAP", "KUECHENR", "WASCHM", "DUSCHG", "TRCK.-SH"), so the abbreviations are listed too. Product
+    /// names are checked against the kinds in this order.
+    /// </summary>
+    public static readonly IReadOnlyList<(string Kind, IReadOnlyList<string> CategoryWords, IReadOnlyList<string> Keywords)> Kinds =
     [
-        "deo", "seife", "toilettenpapier", "klopapier", "spül", "waschmittel", "weichspüler", "küchenrolle", "küchentücher",
-        "zahnpasta", "zahncreme", "zahnbürste", "zahnseide", "shampoo", "duschgel", "duschbad", "spülung", "müllbeutel",
-        "abfallbeutel", "reiniger", "putzmittel", "taschentücher", "kosmetiktücher", "feuchttücher", "windel", "batterie",
-        "kerze", "teelicht", "folie", "schwamm", "spüllappen", "wattepads", "wattestäbchen", "rasier", "binden", "tampon",
-        "slipeinlage", "handcreme", "bodylotion", "sonnencreme", "lippenpflege", "pflaster", "glühbirne", "leuchtmittel",
-        "gefrierbeutel", "backpapier", "alufolie", "frischhaltefolie", "entkalker", "geschirr", "tabs", "katzenstreu",
-        "grillanzünder", "streichhölzer", "feuerzeug",
-        // Till receipts abbreviate: "ZAHNP.", "SPUELM.", "TOIL.PAP", "KUECHENR", "WASCHM", "DUSCHG", "TRCK.-SH".
-        "zahnp", "spuelm", "spülm", "toil.pap", "toilettenp", "kuechenr", "küchenr", "waschm", "duschg", "shamp", "weichsp",
-        "allzweckr", "wc-rein", "trck.-sh", "taschent", "muellb", "müllb", "spuel", "rasierkl",
+        ("drugstore", ["drogerie", "körperpflege", "pflege", "hygiene", "kosmetik"],
+        [
+            "deo", "seife", "zahnpasta", "zahncreme", "zahnbürste", "zahnseide", "shampoo", "duschgel", "duschbad", "^spülung",
+            "taschentücher", "kosmetiktücher", "feuchttücher", "windel", "wattepads", "wattestäbchen", "rasier", "^binden",
+            "tampon", "slipeinlage", "handcreme", "bodylotion", "sonnencreme", "lippenpflege", "pflaster", "toilettenpapier",
+            "klopapier", "mundspül", "haarspray", "haargel", "make-up", "nagellack", "abschmink",
+            "zahnp", "toil.pap", "toilettenp", "duschg", "shamp", "trck.-sh", "taschent", "rasierkl", "zahnb",
+        ]),
+        ("household", ["haushalt", "reinigung", "putz", "verbrauch"],
+        [
+            "spülmittel", "spülm", "spuelm", "waschmittel", "weichspüler", "weichsp", "küchenrolle", "küchentücher", "küchenr",
+            "kuechenr", "müllbeutel", "müllb", "muellb", "abfallbeutel", "reiniger", "putzmittel", "schwamm", "spüllappen",
+            "entkalker", "geschirrsp", "spülmasch", "maschinentabs", "spültabs", "^tabs", "glanzspüler", "allzweckr", "wc-rein",
+            "waschm", "spuel", "fleckenentf", "desinfektion", "scheuermilch", "regeneriersalz", "wc-stein",
+        ]),
+        ("pets", ["tier", "katze", "hund"],
+        [
+            "katzenstreu", "katzenfutter", "hundefutter", "tierfutter", "vogelfutter", "kauknochen", "hundesnack",
+            "katzensnack", "nassfutter", "trockenfutter", "kleintierstreu",
+        ]),
+        ("nonfood", ["non-food", "nonfood", "haushaltswaren", "sonstiges"],
+        [
+            "batterie", "kerze", "teelicht", "alufolie", "frischhaltefolie", "^folie", "gefrierbeutel", "backpapier", "glühbirne",
+            "leuchtmittel", "grillanzünder", "streichhölzer", "feuerzeug", "blumenerde", "^socken", "^tragetasche",
+            "^zeitschrift", "^zeitung", "geschenkpapier", "^grillkohle",
+        ]),
+        ("alcohol", ["alkohol", "spirituosen", "wein", "bier"],
+        [
+            "^bier", "pils$", "pilsener", "pilsner", "weizenbier", "^radler", "^wein$", "rotwein", "weißwein", "weisswein",
+            "roséwein", "rosewein", "^sekt", "prosecco", "champagner", "^vodka", "^wodka", "whisky", "whiskey",
+            "^rum$", "^gin$", "likör", "^korn$", "^aperol", "^cider", "^lambrusco", "riesling", "merlot", "chardonnay",
+            "spätburgunder", "grauburgunder", "^glühwein", "^weinbrand",
+        ]),
+        ("drinks", ["getränk"],
+        [
+            "mineralwasser", "mineralw", "tafelwasser", "^wasser", "^sprudel", "schorle", "^cola", "limonade", "^limo",
+            "eistee", "energy drink", "^saft", "fruchtsaft", "orangensaft", "apfelsaft", "^nektar", "^smoothie",
+        ]),
     ];
+
+    private static readonly IReadOnlyList<(string Kind, Regex Pattern)> KindPatterns = Kinds
+        .Select(k => (k.Kind, new Regex(string.Join('|', k.Keywords.Select(KeywordPattern)), RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1))))
+        .ToList();
+
+    private static string KeywordPattern(string k)
+    {
+        var start = k.StartsWith('^', StringComparison.Ordinal);
+        var end = k.EndsWith('$', StringComparison.Ordinal);
+        var core = Regex.Escape(k.TrimStart('^').TrimEnd('$'));
+        return (start ? @"(?<![\p{L}\p{N}])" : "") + core + (end ? @"(?![\p{L}\p{N}])" : "");
+    }
+
+    private static string Lower(string s) => s.ToLower(CultureInfo.GetCultureInfo("de-DE"));
 
     [GeneratedRegex(@"\b(ca\.?\s*)?\d+([.,]\d+)?\s*(x\s*\d+([.,]\d+)?\s*)?(g|kg|mg|ml|cl|l|st|stk|stück|er|m|cm|w)\b", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
     private static partial Regex Sizes();
@@ -61,48 +128,72 @@ public static partial class ReceiptCategorizer
         return s.Length <= 300 ? s : s[..300];
     }
 
-    /// <summary>Whether the name contains a non-food keyword.</summary>
-    public static bool IsNonFood(string name)
+    /// <summary>The built-in kind of a product name (see <see cref="Kinds"/>), or null.</summary>
+    public static string? Kind(string name)
     {
-        var s = name.ToLower(CultureInfo.GetCultureInfo("de-DE"));
-        return NonFoodKeywords.Any(k => s.Contains(k, StringComparison.Ordinal));
+        var s = Lower(name);
+        foreach (var (kind, pattern) in KindPatterns)
+            if (pattern.IsMatch(s)) return kind;
+        return null;
+    }
+
+    /// <summary>The built-in kinds an allowed category is the place for: their words in its path or description.</summary>
+    public static IReadOnlyList<string> KindsOf(AllowedCategory category)
+    {
+        var text = Lower(category.Path + " " + category.Description);
+        return Kinds.Where(k => k.CategoryWords.Any(w => text.Contains(w, StringComparison.Ordinal))).Select(k => k.Kind).ToList();
+    }
+
+    /// <summary>The allowed category a product's name places it in by keywords (extra keywords first, then the built-in kinds), or null.</summary>
+    public static long? ByKeywords(string name, ReceiptSourceRules rules)
+    {
+        var s = Lower(name);
+        foreach (var c in rules.Allowed)
+            foreach (var k in (c.Keywords ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                if (k.Length >= 2 && s.Contains(Lower(k), StringComparison.Ordinal)) return c.CategoryId;
+        if (Kind(name) is not { } kind) return null;
+        return rules.Allowed.FirstOrDefault(c => KindsOf(c).Contains(kind, StringComparer.Ordinal))?.CategoryId;
     }
 
     /// <summary>
     /// Each line's category (see the class remarks). <paramref name="memory"/>: normalised name → category;
     /// <paramref name="ai"/>: line id → category, for lines the AI placed; <paramref name="manual"/>: lines the owner
-    /// moved (they keep their category).
+    /// moved (they keep their category; null: the booking's). Memory and AI answers outside the source's categories
+    /// are ignored.
     /// </summary>
     public static Dictionary<long, LineCategory> Assign(
-        IReadOnlyList<ReceiptLine> lines, long? bookingCategoryId, long? nonFoodCategoryId,
-        IReadOnlyDictionary<string, long> memory, IReadOnlyDictionary<long, long>? ai = null, IReadOnlyDictionary<long, long?>? manual = null,
-        IReadOnlySet<long>? shopCategories = null)
+        IReadOnlyList<ReceiptLine> lines, long? bookingCategoryId, ReceiptSourceRules rules,
+        IReadOnlyDictionary<string, long> memory, IReadOnlyDictionary<long, long>? ai = null, IReadOnlyDictionary<long, long?>? manual = null)
     {
+        var home = rules.DefaultCategoryId ?? bookingCategoryId;
         var result = new Dictionary<long, LineCategory>();
-        // A shop's own category (another supermarket) is never where an item of this booking goes: it stays with the booking.
-        bool Shop(long c) => c != bookingCategoryId && shopCategories != null && shopCategories.Contains(c);
         foreach (var line in lines)
         {
             if (manual != null && manual.TryGetValue(line.Id, out var own))
                 result[line.Id] = new LineCategory(own ?? bookingCategoryId, ReceiptCategorySource.Manual);
             else if (line.Kind != ReceiptItemKind.Product)
-                result[line.Id] = new LineCategory(bookingCategoryId, ReceiptCategorySource.Default);
-            else if (memory.TryGetValue(Normalize(line.Name), out var remembered) && !Shop(remembered))
+                result[line.Id] = new LineCategory(home, ReceiptCategorySource.Default);
+            else if (memory.TryGetValue(Normalize(line.Name), out var remembered) && IsAllowed(remembered, rules, bookingCategoryId))
                 result[line.Id] = new LineCategory(remembered, ReceiptCategorySource.Memory);
-            else if (nonFoodCategoryId != null && IsNonFood(line.Name))
-                result[line.Id] = new LineCategory(nonFoodCategoryId, ReceiptCategorySource.Keyword);
-            else if (ai != null && ai.TryGetValue(line.Id, out var guessed) && !Shop(guessed))
+            else if (ByKeywords(line.Name, rules) is { } keyword)
+                result[line.Id] = new LineCategory(keyword, ReceiptCategorySource.Keyword);
+            else if (ai != null && ai.TryGetValue(line.Id, out var guessed) && IsAllowed(guessed, rules, bookingCategoryId))
                 result[line.Id] = new LineCategory(guessed, ReceiptCategorySource.Ai);
             else
-                result[line.Id] = new LineCategory(bookingCategoryId, ReceiptCategorySource.Default);
+                result[line.Id] = new LineCategory(home, ReceiptCategorySource.Default);
         }
         return result;
     }
 
-    /// <summary>Lines that would go to the AI: products without a memory or keyword hit.</summary>
-    public static List<ReceiptLine> Undecided(IReadOnlyList<ReceiptLine> lines, long? nonFoodCategoryId, IReadOnlyDictionary<string, long> memory) =>
-        lines.Where(l => l.Kind == ReceiptItemKind.Product && !memory.ContainsKey(Normalize(l.Name))
-            && !(nonFoodCategoryId != null && IsNonFood(l.Name))).ToList();
+    /// <summary>Whether a line of this source may go to <paramref name="categoryId"/>: an allowed category, the default or the booking's own.</summary>
+    public static bool IsAllowed(long categoryId, ReceiptSourceRules rules, long? bookingCategoryId) =>
+        categoryId == (rules.DefaultCategoryId ?? bookingCategoryId) || rules.Allowed.Any(c => c.CategoryId == categoryId);
+
+    /// <summary>Lines that would go to the AI: products without an allowed memory entry or a keyword placement (none when nothing is allowed).</summary>
+    public static List<ReceiptLine> Undecided(IReadOnlyList<ReceiptLine> lines, ReceiptSourceRules rules, IReadOnlyDictionary<string, long> memory, long? bookingCategoryId = null) =>
+        rules.Allowed.Count == 0 ? [] : lines.Where(l => l.Kind == ReceiptItemKind.Product
+            && !(memory.TryGetValue(Normalize(l.Name), out var m) && IsAllowed(m, rules, bookingCategoryId))
+            && ByKeywords(l.Name, rules) == null).ToList();
 
     /// <summary>
     /// What each line costs after the bonus: <paramref name="bonusCents"/> (zero or negative) spread over the lines that
