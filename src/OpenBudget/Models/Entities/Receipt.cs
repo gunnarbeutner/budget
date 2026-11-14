@@ -14,6 +14,11 @@ public static class ReceiptShops
 
     /// <summary>REWE in-store receipts (eBon).</summary>
     public const string ReweEbon = "rewe-ebon";
+
+    /// <summary>Amazon (amazon.de) orders: one receipt per card or bank charge of an order (read by the Amazon connector).</summary>
+    public const string Amazon = "amazon";
+
+    public static readonly IReadOnlyList<string> All = [Rewe, ReweEbon, Lidl, Amazon];
 }
 
 /// <summary>How a receipt relates to the bookings.</summary>
@@ -175,8 +180,9 @@ public class ReceiptItem
 }
 
 /// <summary>
-/// The owner's item category memory: a normalised product name and the category its items go to. Written when the
-/// owner moves a receipt item to another category; consulted first for every later receipt.
+/// A project's item category memory: a normalised product name and the category its items go to. Written when the
+/// owner moves a receipt item of a booking of the project to another category; consulted first for every later
+/// receipt whose booking lies in the same project.
 /// </summary>
 [Table("item_category_memory")]
 public class ItemCategoryMemory
@@ -191,6 +197,9 @@ public class ItemCategoryMemory
     [Required]
     [MaxLength(300)]
     public string NormalizedName { get; set; } = string.Empty;
+
+    /// <summary>The project the memory belongs to.</summary>
+    public int ProjectId { get; set; }
 
     public long CategoryId { get; set; }
 
@@ -221,7 +230,7 @@ public class ReceiptSettings
     public int MailUnreadable { get; set; }
 }
 
-/// <summary>The receipt sources: what a receipt's item categories are configured by (see <see cref="ReceiptSourceCategory"/>).</summary>
+/// <summary>The receipt sources: what a project's item categories can be narrowed by (see <see cref="ProjectReceiptSource"/>).</summary>
 public static class ReceiptSources
 {
     /// <summary>The owner's mailbox (REWE online invoices and eBons).</summary>
@@ -244,11 +253,13 @@ public static class ReceiptSources
 }
 
 /// <summary>
-/// A category receipt items of one source may be split into (everything else stays in the booking's own category), with
-/// an optional description (what belongs there, also given to the AI) and extra keywords (comma-separated name fragments).
+/// A category a project's receipt items may be split into (everything else stays in the booking's own category), with
+/// an optional description (what belongs there, also given to the AI) and extra keywords (comma-separated name
+/// fragments). The list applies to receipts whose booking lies on an account of the project (see
+/// <see cref="ProjectReceiptSource"/> for narrowing it per source). Personal like the receipts: kept by the project's owner.
 /// </summary>
-[Table("receipt_source_categories")]
-public class ReceiptSourceCategory
+[Table("project_receipt_categories")]
+public class ProjectReceiptCategory
 {
     [Key]
     public long Id { get; set; }
@@ -257,10 +268,7 @@ public class ReceiptSourceCategory
     [MaxLength(450)]
     public string OwnerUserId { get; set; } = string.Empty;
 
-    /// <summary>See <see cref="ReceiptSources"/>.</summary>
-    [Required]
-    [MaxLength(20)]
-    public string Source { get; set; } = string.Empty;
+    public int ProjectId { get; set; }
 
     public long CategoryId { get; set; }
 
@@ -269,4 +277,30 @@ public class ReceiptSourceCategory
 
     [MaxLength(500)]
     public string? Keywords { get; set; }
+}
+
+/// <summary>
+/// Narrows a project's receipt item categories (<see cref="ProjectReceiptCategory"/>) for one receipt source: only
+/// <see cref="CategoryIds"/> of the project's list apply to that source's receipts. Without a row the whole list applies.
+/// </summary>
+[Table("project_receipt_sources")]
+public class ProjectReceiptSource
+{
+    [Key]
+    public long Id { get; set; }
+
+    [Required]
+    [MaxLength(450)]
+    public string OwnerUserId { get; set; } = string.Empty;
+
+    public int ProjectId { get; set; }
+
+    /// <summary>See <see cref="ReceiptSources"/>.</summary>
+    [Required]
+    [MaxLength(20)]
+    public string Source { get; set; } = string.Empty;
+
+    /// <summary>The categories that apply, comma-separated ids; empty: none of the list.</summary>
+    [MaxLength(2000)]
+    public string CategoryIds { get; set; } = string.Empty;
 }

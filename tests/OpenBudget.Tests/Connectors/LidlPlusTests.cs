@@ -202,6 +202,7 @@ public sealed class LidlPlusTests
         await using (var db = await world.T.System.CreateDbContextAsync())
         {
             db.Accounts.Add(new Account { Id = Giro, OwnerUserId = BankWorld.Alice, Name = "Giro" });
+            db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = ReceiptWorld.Project, AccountId = Giro });
             db.Transactions.AddRange(
                 Booking(1, -440, new DateTime(2026, 11, 5), "S. Payment Solutions GmbH", "VISA Lidl sagt Danke"),
                 Booking(2, -1250, new DateTime(2026, 11, 2), "Florist Example", null),

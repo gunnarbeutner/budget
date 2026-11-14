@@ -189,6 +189,7 @@ public class ProjectService
         {
             await db.ProjectShares.Where(s => s.ProjectId == projectId).ExecuteDeleteAsync();
             await db.UserProjectOrders.IgnoreQueryFilters().Where(o => o.ProjectId == projectId).ExecuteDeleteAsync();
+            await db.ItemCategoryMemory.IgnoreQueryFilters().Where(m => m.ProjectId == projectId).ExecuteDeleteAsync();
             db.Projects.Remove(project);
             await db.SaveChangesAsync();
             Notify(new DataChange(DataArea.Projects, ProjectId: projectId));

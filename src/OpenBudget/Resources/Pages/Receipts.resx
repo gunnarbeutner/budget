@@ -157,9 +157,6 @@
   <data name="Categories_Heading" xml:space="preserve">
     <value>Split receipt items into</value>
   </data>
-  <data name="Categories_Amazon" xml:space="preserve">
-    <value>Amazon orders keep their own categorisation (by item) for now.</value>
-  </data>
   <data name="Memory_Heading" xml:space="preserve">
     <value>Item memory</value>
   </data>
@@ -227,7 +224,7 @@
     <value>Cancel</value>
   </data>
   <data name="Categories_Help" xml:space="preserve">
-    <value>Per source, the categories items may be moved to. Items that fit none of these stay in the booking's category.</value>
+    <value>Per project, the categories items may be moved to; they apply to receipts whose booking is on the project's accounts. Items that fit none stay in the booking's category.</value>
   </data>
   <data name="Assign_Row" xml:space="preserve">
     <value>Assign…</value>

@@ -89,6 +89,33 @@
     <value>Add category</value>
   </data>
   <data name="Explain" xml:space="preserve">
-    <value>Items that fit none of these stay in the booking's category.</value>
+    <value>Items of receipts whose booking is on one of this project's accounts may go to these categories; items that fit none stay in the booking's category.</value>
+  </data>
+  <data name="Narrow_Help" xml:space="preserve">
+    <value>Per source, all of these categories apply unless you pick only some.</value>
+  </data>
+  <data name="Narrow_All" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="Narrow_On" xml:space="preserve">
+    <value>Applies to this source (click to leave out)</value>
+  </data>
+  <data name="Narrow_Off" xml:space="preserve">
+    <value>Left out for this source (click to include)</value>
+  </data>
+  <data name="Source_mail" xml:space="preserve">
+    <value>Mailbox (REWE)</value>
+  </data>
+  <data name="Source_lidl" xml:space="preserve">
+    <value>Lidl Plus</value>
+  </data>
+  <data name="Source_amazon" xml:space="preserve">
+    <value>Amazon</value>
+  </data>
+  <data name="Source_Explain" xml:space="preserve">
+    <value>Set per project (the project of the booking's account):</value>
+  </data>
+  <data name="Source_NoProjects" xml:space="preserve">
+    <value>no project yet – see the receipts settings</value>
   </data>
 </root>

@@ -83,7 +83,8 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<ReceiptItem> ReceiptItems => Set<ReceiptItem>();
     public DbSet<ItemCategoryMemory> ItemCategoryMemory => Set<ItemCategoryMemory>();
     public DbSet<ReceiptSettings> ReceiptSettings => Set<ReceiptSettings>();
-    public DbSet<ReceiptSourceCategory> ReceiptSourceCategories => Set<ReceiptSourceCategory>();
+    public DbSet<ProjectReceiptCategory> ProjectReceiptCategories => Set<ProjectReceiptCategory>();
+    public DbSet<ProjectReceiptSource> ProjectReceiptSources => Set<ProjectReceiptSource>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -374,9 +375,13 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<ReceiptInvoice>().Property(r => r.State).HasConversion<int>();
         modelBuilder.Entity<ReceiptItem>().HasOne(i => i.Invoice).WithMany(r => r.Items).HasForeignKey(i => i.ReceiptInvoiceId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<ReceiptItem>().Property(i => i.Kind).HasConversion<int>();
-        modelBuilder.Entity<ItemCategoryMemory>().HasIndex(m => new { m.OwnerUserId, m.NormalizedName }).IsUnique();
+        modelBuilder.Entity<ItemCategoryMemory>().HasIndex(m => new { m.OwnerUserId, m.ProjectId, m.NormalizedName }).IsUnique();
         modelBuilder.Entity<ReceiptSettings>().HasIndex(s => s.OwnerUserId).IsUnique();
-        modelBuilder.Entity<ReceiptSourceCategory>().HasIndex(c => new { c.OwnerUserId, c.Source, c.CategoryId }).IsUnique();
+        // A project's receipt item categories go with the project.
+        modelBuilder.Entity<ProjectReceiptCategory>().HasOne<Project>().WithMany().HasForeignKey(c => c.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ProjectReceiptCategory>().HasIndex(c => new { c.ProjectId, c.CategoryId }).IsUnique();
+        modelBuilder.Entity<ProjectReceiptSource>().HasOne<Project>().WithMany().HasForeignKey(c => c.ProjectId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ProjectReceiptSource>().HasIndex(c => new { c.ProjectId, c.Source }).IsUnique();
 
         ConfigureAccessFilters(modelBuilder);
     }

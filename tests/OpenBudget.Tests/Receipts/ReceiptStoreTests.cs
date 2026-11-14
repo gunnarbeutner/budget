@@ -20,6 +20,9 @@ internal static class ReceiptWorld
     public static long Drugstore => Id(201);
     public static long Drinks => Id(202);
 
+    /// <summary>Alice's household project: the joint account and the "Lebensmittel" group.</summary>
+    public const int Project = 40;
+
     public static readonly DateTime Delivered = new(2026, 11, 3, 0, 0, 0, DateTimeKind.Utc);
 
     /// <summary>Users, id spaces, Alice's categories and account (no bookings).</summary>
@@ -37,6 +40,9 @@ internal static class ReceiptWorld
         t.AddLeaf(Drugstore, Id(100), "Drogerie", ownerId: Alice);
         t.AddLeaf(Drinks, Id(100), "Getränke", ownerId: Alice);
         t.AddAccount(Account, "Joint account", Alice);
+        t.AddProject(Project, "Household", Alice);
+        t.AssignGroup(Project, Id(100));
+        t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = Project, AccountId = Account });
         await t.Db.SaveChangesAsync();
     }
 
@@ -63,13 +69,12 @@ internal static class ReceiptWorld
     public static ParsedReceipt Invoice(string number = "PN10000000000001") =>
         ReweInvoice.Parse(SyntheticInvoice.Pdf(SyntheticInvoice.StandardLines(), bonus: -1.00m, invoice: number));
 
-    /// <summary>Allows <paramref name="category"/> for Alice's mailbox and Lidl Plus receipts.</summary>
+    /// <summary>Adds <paramref name="category"/> to the receipt item categories of Alice's household project.</summary>
     public static async Task AllowAsync(TestDb t, long? category, string? description = "Drogerie, Haushalt, Non-Food")
     {
         if (category is not { } c) return;
         await using var db = await t.System.CreateDbContextAsync();
-        foreach (var source in new[] { ReceiptSources.Mail, ReceiptSources.Lidl })
-            db.ReceiptSourceCategories.Add(new ReceiptSourceCategory { OwnerUserId = Alice, Source = source, CategoryId = c, Description = description });
+        db.ProjectReceiptCategories.Add(new ProjectReceiptCategory { OwnerUserId = Alice, ProjectId = Project, CategoryId = c, Description = description });
         await db.SaveChangesAsync();
     }
 }
@@ -236,7 +241,7 @@ public sealed class ReceiptStoreTests
         await ReceiptWorld.AddDebitAsync(t, Debit, Payment);
         await using (var db = await t.System.CreateDbContextAsync())
         {
-            db.ItemCategoryMemory.Add(new ItemCategoryMemory { OwnerUserId = ReceiptWorld.Alice, NormalizedName = "apfelschorle", CategoryId = ReceiptWorld.Drinks });
+            db.ItemCategoryMemory.Add(new ItemCategoryMemory { OwnerUserId = ReceiptWorld.Alice, ProjectId = ReceiptWorld.Project, NormalizedName = "apfelschorle", CategoryId = ReceiptWorld.Drinks });
             await db.SaveChangesAsync();
         }
         await ReceiptWorld.AllowAsync(t, ReceiptWorld.Drinks, null);
@@ -251,6 +256,61 @@ public sealed class ReceiptStoreTests
         await using (var db = await t.System.CreateDbContextAsync())
             await store.MatchAsync(db, ReceiptWorld.Alice, default);
         Assert.Equal(3, ai.Asked.Count);
+    }
+
+    [Fact]
+    public async Task Items_follow_the_project_of_the_bookings_account_and_its_narrowing_for_the_source()
+    {
+        // A second project (listed first) shares the account but holds other categories: the booking's category
+        // decides, so the household project's list applies.
+        await using var t = await WorldAsync();
+        var other = ReceiptWorld.Id(300);
+        t.AddGroup(other, name: "Other", ownerId: ReceiptWorld.Alice);
+        t.AddLeaf(ReceiptWorld.Id(301), other, "Hobby", ownerId: ReceiptWorld.Alice);
+        var p = t.AddProject(41, "Other", ReceiptWorld.Alice);
+        p.SortOrder = -1;
+        t.AssignGroup(41, other);
+        t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 41, AccountId = ReceiptWorld.Account });
+        await t.Db.SaveChangesAsync();
+        await using (var db = await t.System.CreateDbContextAsync())
+            Assert.Equal(ReceiptWorld.Project, await ReceiptProjects.ResolveAsync(db, ReceiptWorld.Alice, ReceiptWorld.Account, ReceiptWorld.Groceries, default));
+        await using (var db = await t.System.CreateDbContextAsync())
+            Assert.Equal(41, await ReceiptProjects.ResolveAsync(db, ReceiptWorld.Alice, ReceiptWorld.Account, null, default));
+
+        // Narrowed to nothing for the mailbox: the receipt does not split the booking.
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            db.ProjectReceiptSources.Add(new ProjectReceiptSource { OwnerUserId = ReceiptWorld.Alice, ProjectId = ReceiptWorld.Project, Source = ReceiptSources.Mail, CategoryIds = "" });
+            await db.SaveChangesAsync();
+        }
+        await ReceiptWorld.AddDebitAsync(t, Debit, Payment);
+        await AddAndMatchAsync(t, new ReceiptStore());
+        Assert.Empty(await PartsAsync(t, Debit));
+
+        // Narrowed to the drugstore category: it splits again.
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            (await db.ProjectReceiptSources.SingleAsync()).CategoryIds = ReceiptProjects.FormatIds([ReceiptWorld.Drugstore]);
+            await db.SaveChangesAsync();
+            await new ReceiptStore().MatchAsync(db, ReceiptWorld.Alice, default);
+        }
+        Assert.Contains(await PartsAsync(t, Debit), x => x.CategoryId == ReceiptWorld.Drugstore);
+    }
+
+    [Fact]
+    public async Task Item_memory_of_another_project_does_not_apply()
+    {
+        await using var t = await WorldAsync();
+        t.AddProject(41, "Other", ReceiptWorld.Alice);
+        await t.Db.SaveChangesAsync();
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            db.ItemCategoryMemory.Add(new ItemCategoryMemory { OwnerUserId = ReceiptWorld.Alice, ProjectId = 41, NormalizedName = "apfelschorle", CategoryId = ReceiptWorld.Drugstore });
+            await db.SaveChangesAsync();
+        }
+        await ReceiptWorld.AddDebitAsync(t, Debit, Payment);
+        await AddAndMatchAsync(t, new ReceiptStore());
+        Assert.DoesNotContain("Apfelschorle", (await PartsAsync(t, Debit)).Single(x => x.CategoryId == ReceiptWorld.Drugstore).OrderItems, StringComparison.Ordinal);
     }
 
     [Fact]

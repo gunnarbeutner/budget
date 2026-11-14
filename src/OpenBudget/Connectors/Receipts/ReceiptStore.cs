@@ -175,9 +175,10 @@ public sealed class ReceiptStore
         // Categories: the owner's moves stay, AI answers are asked once and kept, the rest follows memory and keywords.
         // An AI answer outside this source's categories (left from before they were configured, or a mapping that
         // changed) is dropped and asked again.
-        var rules = await RulesAsync(db, invoice.OwnerUserId, ReceiptSources.Of(invoice.Shop), ct);
+        var project = await ReceiptProjects.ResolveAsync(db, invoice.OwnerUserId, parent.AccountId, parent.CategoryId, ct);
+        var rules = await ReceiptProjects.RulesAsync(db, invoice.OwnerUserId, project, ReceiptSources.Of(invoice.Shop), ct);
         var home = parent.CategoryId;
-        var memory = await MemoryAsync(db, invoice.OwnerUserId, items.Select(i => ReceiptCategorizer.Normalize(i.Name)).Distinct(StringComparer.Ordinal).ToList(), ct);
+        var memory = await MemoryAsync(db, invoice.OwnerUserId, project, items.Select(i => ReceiptCategorizer.Normalize(i.Name)).Distinct(StringComparer.Ordinal).ToList(), ct);
         var manual = items.Where(i => i.CategorySource == ReceiptCategorySource.Manual).ToDictionary(i => i.Id, i => i.CategoryId);
         foreach (var stale in items.Where(i => i.CategorySource == ReceiptCategorySource.Ai
             && !(i.CategoryId is { } c && ReceiptCategorizer.IsAllowed(c, rules, parent.CategoryId))))
@@ -242,18 +243,6 @@ public sealed class ReceiptStore
         return changed;
     }
 
-    /// <summary>The owner's item categories for a receipt source (categories that still exist), with their paths.</summary>
-    public static async Task<ReceiptSourceRules> RulesAsync(BudgetDbContext db, string ownerUserId, string source, CancellationToken ct)
-    {
-        var rows = await db.ReceiptSourceCategories.AsNoTracking().Where(c => c.OwnerUserId == ownerUserId && c.Source == source)
-            .OrderBy(c => c.Id).ToListAsync(ct);
-        if (rows.Count == 0) return ReceiptSourceRules.None;
-        var paths = await PathsAsync(db, ownerUserId, ct);
-        rows = rows.Where(r => paths.ContainsKey(r.CategoryId)).ToList();
-        return new ReceiptSourceRules(
-            rows.Select(r => new AllowedCategory(r.CategoryId, paths[r.CategoryId], r.Description, r.Keywords)).ToList());
-    }
-
     /// <summary>The owner's categories by id with their paths ("Group › Category").</summary>
     public static async Task<Dictionary<long, string>> PathsAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct)
     {
@@ -268,10 +257,11 @@ public sealed class ReceiptStore
     private static async Task<string> PathAsync(BudgetDbContext db, string ownerUserId, long categoryId, CancellationToken ct) =>
         (await PathsAsync(db, ownerUserId, ct)).GetValueOrDefault(categoryId) ?? "";
 
-    /// <summary>The owner's memory entries for these normalised names.</summary>
-    public static async Task<Dictionary<string, long>> MemoryAsync(BudgetDbContext db, string ownerUserId, IReadOnlyList<string> names, CancellationToken ct)
+    /// <summary>A project's memory entries for these normalised names (none without a project).</summary>
+    public static async Task<Dictionary<string, long>> MemoryAsync(BudgetDbContext db, string ownerUserId, int? projectId, IReadOnlyList<string> names, CancellationToken ct)
     {
-        var rows = await db.ItemCategoryMemory.AsNoTracking().Where(m => m.OwnerUserId == ownerUserId && names.Contains(m.NormalizedName))
+        if (projectId is not { } project) return new Dictionary<string, long>(StringComparer.Ordinal);
+        var rows = await db.ItemCategoryMemory.AsNoTracking().Where(m => m.OwnerUserId == ownerUserId && m.ProjectId == project && names.Contains(m.NormalizedName))
             .Select(m => new { m.NormalizedName, m.CategoryId }).ToListAsync(ct);
         var valid = (await db.Categories.AsNoTracking().Where(c => c.OwnerUserId == ownerUserId).Select(c => c.Id).ToListAsync(ct)).ToHashSet();
         return rows.Where(r => valid.Contains(r.CategoryId)).ToDictionary(r => r.NormalizedName, r => r.CategoryId, StringComparer.Ordinal);

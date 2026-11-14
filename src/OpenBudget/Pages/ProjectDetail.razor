@@ -136,6 +136,15 @@ else
                                          ActualCategories="allActualCategories"
                                          OnConfigureOpening="LoadTrackingCategoriesAsync"
                                          OnSave="SaveTrackingConfiguration" />
+
+                    @if (isOwner)
+                    {
+                        @* Receipts are personal: only the owner configures how their items are split. *@
+                        <div class="card mt-3" data-testid="project-receipt-items-card">
+                            <div class="card-header"><h5 class="mb-0">@L["Heading_ReceiptItems"]</h5></div>
+                            <div class="card-body"><ProjectReceiptItems ProjectId="ProjectId" ShowHeading="false" /></div>
+                        </div>
+                    }
                     break;
 
                 case SharingSection:

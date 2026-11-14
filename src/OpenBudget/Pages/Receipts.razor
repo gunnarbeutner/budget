@@ -11,8 +11,8 @@
 @* The receipts of all sources (mailbox, Lidl Plus, Amazon) for review, in two tabs. "Receipts": a compact list,
    newest first, with a sticky filter bar (source, status chips with counts, search) and a page of rows at a time; a
    row opens the receipt panel; an ambiguous or unmatched receipt can be assigned to a booking by hand (a dialog lists
-   the bookings near its date) or marked as having no booking in the app. "Settings": each source's categories to
-   split items into, the item memory (product → category, editable) and how the AI takes part. Everything is the
+   the bookings near its date) or marked as having no booking in the app. "Settings" (also /receipts?tab=settings):
+   each project's categories to split items into (see ProjectReceiptItems), the item memory (product → category, editable) and how the AI takes part. Everything is the
    signed-in user's own; the sources themselves are on the connections page. *@
 
 <PageTitle>@L["PageTitle"]</PageTitle>
@@ -133,14 +133,13 @@ else
 <section class="mb-4" data-testid="receipts-categories">
     <h2 class="h5">@L["Categories_Heading"]</h2>
     <p class="small text-body-secondary">@L["Categories_Help"]</p>
-    @foreach (var s in new[] { ReceiptSources.Mail, ReceiptSources.Lidl })
+    @foreach (var p in projects ?? [])
     {
-        <details class="receipts-settings-block mb-2" open>
-            <summary class="fw-semibold">@L["Source_" + s]</summary>
-            <div class="pt-2"><ReceiptSourceCategories Source="@s" /></div>
+        <details class="receipts-settings-block mb-2" open="@(p.Categories.Count > 0)" data-testid="receipts-project" data-project="@p.ProjectId">
+            <summary class="fw-semibold">@p.ProjectName <span class="text-body-secondary fw-normal">(@p.Categories.Count)</span></summary>
+            <div class="pt-2"><ProjectReceiptItems ProjectId="p.ProjectId" ShowHeading="false" /></div>
         </details>
     }
-    <p class="small text-body-secondary">@L["Categories_Amazon"]</p>
 </section>
 
 <section class="mb-4" data-testid="receipts-memory">
@@ -160,6 +159,10 @@ else
                 {
                     <li class="d-flex flex-wrap align-items-center gap-2 mb-1" data-testid="receipts-memory-entry">
                         <span class="text-break">@m.Name</span>
+                        @if (m.ProjectName != null && (projects?.Count ?? 0) > 1)
+                        {
+                            <span class="text-body-secondary" data-testid="receipts-memory-project">(@m.ProjectName)</span>
+                        }
                         <span aria-hidden="true">→</span>
                         <button type="button" class="badge rounded-pill text-bg-light border" data-testid="receipts-memory-category" @onclick="e => OpenMemoryPicker(m, e)">@picker.PathOf(m.CategoryId, "?")</button>
                         <button type="button" class="btn btn-sm btn-link p-0 text-danger" aria-label="@L["Memory_Delete", m.Name]" data-testid="receipts-memory-delete"
@@ -255,6 +258,7 @@ else
     private string? search;
     private List<ReceiptReviewRow>? rows;
     private List<ItemMemoryView>? memory;
+    private List<ProjectReceiptSettingsView>? projects;
     private CategoryPickerData? picker;
     private string? source;
     private string? userId;
@@ -266,7 +270,14 @@ else
     private string? memorySearch;
     private double pickerX, pickerY;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    /// <summary>"settings" opens the Settings tab (links from the connections page).</summary>
+    [SupplyParameterFromQuery(Name = "tab")] public string? TabParam { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (TabParam == "settings") tab = Tab.Settings;
+        await LoadAsync();
+    }
 
     protected override bool IsRelevantChange(DataChange change) =>
         (change.Area == DataArea.CloudFiles && change.UserId == userId) || (change.Area == DataArea.ImportedData && change.OwnerUserId == userId);
@@ -280,6 +291,7 @@ else
         picker ??= await Categorization.GetPickerDataAsync(userId);
         rows = await Service.ListAllAsync(source, take: 5000);
         memory = await Service.ListMemoryAsync();
+        projects = await Service.ListProjectSettingsAsync();
     }
 
     private async Task SourceAsync(string? s)

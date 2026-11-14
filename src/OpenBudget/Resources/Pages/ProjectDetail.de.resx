@@ -115,4 +115,7 @@
   <data name="Delete_Hint" xml:space="preserve">
     <value>Das Löschen eines Projekts lässt sich nicht rückgängig machen.</value>
   </data>
+  <data name="Heading_ReceiptItems" xml:space="preserve">
+    <value>Kassenbon-Artikel</value>
+  </data>
 </root>

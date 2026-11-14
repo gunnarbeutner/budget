@@ -89,6 +89,33 @@
     <value>Kategorie hinzufügen</value>
   </data>
   <data name="Explain" xml:space="preserve">
-    <value>Artikel, die in keine dieser Kategorien passen, bleiben in der Kategorie der Buchung.</value>
+    <value>Artikel von Kassenbons, deren Buchung auf einem Konto dieses Projekts liegt, können in diese Kategorien gehen; Artikel, die in keine passen, bleiben in der Kategorie der Buchung.</value>
+  </data>
+  <data name="Narrow_Help" xml:space="preserve">
+    <value>Je Quelle gelten alle diese Kategorien, außer du wählst nur einige aus.</value>
+  </data>
+  <data name="Narrow_All" xml:space="preserve">
+    <value>Alle</value>
+  </data>
+  <data name="Narrow_On" xml:space="preserve">
+    <value>Gilt für diese Quelle (klicken zum Weglassen)</value>
+  </data>
+  <data name="Narrow_Off" xml:space="preserve">
+    <value>Für diese Quelle weggelassen (klicken zum Aufnehmen)</value>
+  </data>
+  <data name="Source_mail" xml:space="preserve">
+    <value>Postfach (REWE)</value>
+  </data>
+  <data name="Source_lidl" xml:space="preserve">
+    <value>Lidl Plus</value>
+  </data>
+  <data name="Source_amazon" xml:space="preserve">
+    <value>Amazon</value>
+  </data>
+  <data name="Source_Explain" xml:space="preserve">
+    <value>Wird je Projekt eingestellt (das Projekt des Kontos der Buchung):</value>
+  </data>
+  <data name="Source_NoProjects" xml:space="preserve">
+    <value>noch kein Projekt – siehe Kassenbon-Einstellungen</value>
   </data>
 </root>

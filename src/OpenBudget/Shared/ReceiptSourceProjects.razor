@@ -1,0 +1,50 @@
+@using OpenBudget.Connectors.Receipts
+@inject ReceiptService Receipts
+@inject IStringLocalizer<ProjectReceiptItems> L
+
+@* On a receipt source's card: where its item categories are set — in the projects its bookings land in (linked to
+   their settings), or on the receipts page while there are none. *@
+
+<div class="receipt-source-categories" data-testid="source-projects" data-source="@Source">
+    <h6 class="bank-accounts-heading">@L["Heading"]</h6>
+    @if (projects == null)
+    {
+        <div class="skeleton skeleton-line mb-2" style="width: 40%;"></div>
+    }
+    else
+    {
+        <p class="small mb-1">
+            @L["Source_Explain"]
+            @if (projects.Count == 0)
+            {
+                <a href="/receipts?tab=settings" data-testid="source-projects-none">@L["Source_NoProjects"]</a>
+            }
+            else
+            {
+                @for (var i = 0; i < projects.Count; i++)
+                {
+                    var p = projects[i];
+                    <a href="@($"/projects/{p.ProjectId}/settings/categories#receipt-items")" data-testid="source-project-link" data-project="@p.ProjectId">@p.Name</a>@(i < projects.Count - 1 ? ", " : "")
+                }
+            }
+        </p>
+    }
+</div>
+
+@code {
+    /// <summary>See <see cref="OpenBudget.Models.ReceiptSources"/>.</summary>
+    [Parameter, EditorRequired] public string Source { get; set; } = "";
+
+    /// <summary>Bumped when the source changed (a sync finished): reloads.</summary>
+    [Parameter] public int Version { get; set; }
+
+    private List<ReceiptProjectLink>? projects;
+    private int loadedVersion = -1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedVersion == Version && projects != null) return;
+        loadedVersion = Version;
+        projects = await Receipts.ProjectsOfSourceAsync(Source);
+    }
+}

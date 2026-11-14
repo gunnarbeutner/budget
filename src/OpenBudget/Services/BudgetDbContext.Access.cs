@@ -82,7 +82,8 @@ public partial class BudgetDbContext
         modelBuilder.Entity<ReceiptItem>().HasQueryFilter(i => ScopeUnrestricted || i.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<ItemCategoryMemory>().HasQueryFilter(m => ScopeUnrestricted || m.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<ReceiptSettings>().HasQueryFilter(s => ScopeUnrestricted || s.OwnerUserId == ScopeUserId);
-        modelBuilder.Entity<ReceiptSourceCategory>().HasQueryFilter(c => ScopeUnrestricted || c.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<ProjectReceiptCategory>().HasQueryFilter(c => ScopeUnrestricted || c.OwnerUserId == ScopeUserId);
+        modelBuilder.Entity<ProjectReceiptSource>().HasQueryFilter(c => ScopeUnrestricted || c.OwnerUserId == ScopeUserId);
         // Read marks and the order of the project list are personal.
         modelBuilder.Entity<UserProjectOrder>().HasQueryFilter(o => ScopeUnrestricted || o.UserId == ScopeUserId);
         modelBuilder.Entity<StatementRead>().HasQueryFilter(r => ScopeUnrestricted || r.UserId == ScopeUserId);

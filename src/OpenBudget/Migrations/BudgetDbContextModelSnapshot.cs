@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261114134208_ReceiptSourceNoDefault";
+    public override string LastMigrationId => "20261114141447_ProjectReceiptCategories";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -1290,12 +1290,15 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .HasMaxLength(450)
                     .HasColumnType("TEXT");
 
+                b.Property<int>("ProjectId")
+                    .HasColumnType("INTEGER");
+
                 b.Property<DateTime>("UpdatedAt")
                     .HasColumnType("TEXT");
 
                 b.HasKey("Id");
 
-                b.HasIndex("OwnerUserId", "NormalizedName")
+                b.HasIndex("OwnerUserId", "ProjectId", "NormalizedName")
                     .IsUnique();
 
                 b.ToTable("item_category_memory");
@@ -1728,6 +1731,71 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                 b.ToTable("project_category_assignments");
             });
 
+        modelBuilder.Entity("OpenBudget.Models.ProjectReceiptCategory", b =>
+            {
+                b.Property<long>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER");
+
+                b.Property<long>("CategoryId")
+                    .HasColumnType("INTEGER");
+
+                b.Property<string>("Description")
+                    .HasMaxLength(200)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Keywords")
+                    .HasMaxLength(500)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("OwnerUserId")
+                    .IsRequired()
+                    .HasMaxLength(450)
+                    .HasColumnType("TEXT");
+
+                b.Property<int>("ProjectId")
+                    .HasColumnType("INTEGER");
+
+                b.HasKey("Id");
+
+                b.HasIndex("ProjectId", "CategoryId")
+                    .IsUnique();
+
+                b.ToTable("project_receipt_categories");
+            });
+
+        modelBuilder.Entity("OpenBudget.Models.ProjectReceiptSource", b =>
+            {
+                b.Property<long>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER");
+
+                b.Property<string>("CategoryIds")
+                    .IsRequired()
+                    .HasMaxLength(2000)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("OwnerUserId")
+                    .IsRequired()
+                    .HasMaxLength(450)
+                    .HasColumnType("TEXT");
+
+                b.Property<int>("ProjectId")
+                    .HasColumnType("INTEGER");
+
+                b.Property<string>("Source")
+                    .IsRequired()
+                    .HasMaxLength(20)
+                    .HasColumnType("TEXT");
+
+                b.HasKey("Id");
+
+                b.HasIndex("ProjectId", "Source")
+                    .IsUnique();
+
+                b.ToTable("project_receipt_sources");
+            });
+
         modelBuilder.Entity("OpenBudget.Models.ProjectShare", b =>
             {
                 b.Property<int>("Id")
@@ -1946,41 +2014,6 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .IsUnique();
 
                 b.ToTable("receipt_settings");
-            });
-
-        modelBuilder.Entity("OpenBudget.Models.ReceiptSourceCategory", b =>
-            {
-                b.Property<long>("Id")
-                    .ValueGeneratedOnAdd()
-                    .HasColumnType("INTEGER");
-
-                b.Property<long>("CategoryId")
-                    .HasColumnType("INTEGER");
-
-                b.Property<string>("Description")
-                    .HasMaxLength(200)
-                    .HasColumnType("TEXT");
-
-                b.Property<string>("Keywords")
-                    .HasMaxLength(500)
-                    .HasColumnType("TEXT");
-
-                b.Property<string>("OwnerUserId")
-                    .IsRequired()
-                    .HasMaxLength(450)
-                    .HasColumnType("TEXT");
-
-                b.Property<string>("Source")
-                    .IsRequired()
-                    .HasMaxLength(20)
-                    .HasColumnType("TEXT");
-
-                b.HasKey("Id");
-
-                b.HasIndex("OwnerUserId", "Source", "CategoryId")
-                    .IsUnique();
-
-                b.ToTable("receipt_source_categories");
             });
 
         modelBuilder.Entity("OpenBudget.Models.RemovedImportItem", b =>
@@ -2675,6 +2708,24 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                     .IsRequired();
 
                 b.Navigation("Project");
+            });
+
+        modelBuilder.Entity("OpenBudget.Models.ProjectReceiptCategory", b =>
+            {
+                b.HasOne("OpenBudget.Models.Project", null)
+                    .WithMany()
+                    .HasForeignKey("ProjectId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
+            });
+
+        modelBuilder.Entity("OpenBudget.Models.ProjectReceiptSource", b =>
+            {
+                b.HasOne("OpenBudget.Models.Project", null)
+                    .WithMany()
+                    .HasForeignKey("ProjectId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
             });
 
         modelBuilder.Entity("OpenBudget.Models.ProjectShare", b =>

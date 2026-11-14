@@ -157,9 +157,6 @@
   <data name="Categories_Heading" xml:space="preserve">
     <value>Kassenbon-Artikel aufteilen in</value>
   </data>
-  <data name="Categories_Amazon" xml:space="preserve">
-    <value>Amazon-Bestellungen behalten vorerst ihre eigene Kategorisierung (je Artikel).</value>
-  </data>
   <data name="Memory_Heading" xml:space="preserve">
     <value>Artikelliste</value>
   </data>
@@ -227,7 +224,7 @@
     <value>Abbrechen</value>
   </data>
   <data name="Categories_Help" xml:space="preserve">
-    <value>Je Quelle die Kategorien, in die Artikel verschoben werden können. Artikel, die in keine davon passen, bleiben in der Kategorie der Buchung.</value>
+    <value>Je Projekt die Kategorien, in die Artikel verschoben werden können; sie gelten für Kassenbons, deren Buchung auf einem Konto des Projekts liegt. Artikel, die in keine davon passen, bleiben in der Kategorie der Buchung.</value>
   </data>
   <data name="Assign_Row" xml:space="preserve">
     <value>Zuordnen…</value>

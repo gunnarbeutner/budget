@@ -115,4 +115,7 @@
   <data name="Delete_Hint" xml:space="preserve">
     <value>Deleting a project cannot be undone.</value>
   </data>
+  <data name="Heading_ReceiptItems" xml:space="preserve">
+    <value>Receipt items</value>
+  </data>
 </root>

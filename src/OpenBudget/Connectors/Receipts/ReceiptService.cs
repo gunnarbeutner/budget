@@ -69,11 +69,20 @@ public sealed record ReceiptReviewRow(
 /// <summary>A booking that may be a receipt's: id, date, signed amount, payee and purpose.</summary>
 public sealed record ReceiptCandidate(long TransactionId, DateTime Date, long AmountCents, string? Name, string? Purpose);
 
-/// <summary>An item memory entry: the normalised product name and its category.</summary>
-public sealed record ItemMemoryView(long Id, string Name, long CategoryId, DateTime UpdatedAt);
+/// <summary>An item memory entry: the normalised product name, its category and the project it belongs to.</summary>
+public sealed record ItemMemoryView(long Id, string Name, long CategoryId, DateTime UpdatedAt, int ProjectId = 0, string? ProjectName = null);
 
-/// <summary>A receipt source's category: the row id, the category, and whether it is the default.</summary>
-public sealed record SourceCategoryView(long Id, long CategoryId, string? Description, string? Keywords);
+/// <summary>A project's receipt item category: the row id, the category, its description and extra keywords.</summary>
+public sealed record ProjectReceiptCategoryView(long Id, long CategoryId, string? Description, string? Keywords);
+
+/// <summary>
+/// A project's receipt item categories and, per receipt source the owner narrowed, the categories of the list that apply
+/// to it (sources not in <see cref="Narrowed"/> use the whole list).
+/// </summary>
+public sealed record ProjectReceiptSettingsView(int ProjectId, string ProjectName, IReadOnlyList<ProjectReceiptCategoryView> Categories, IReadOnlyDictionary<string, IReadOnlySet<long>> Narrowed);
+
+/// <summary>A project a receipt source's bookings land in.</summary>
+public sealed record ReceiptProjectLink(int ProjectId, string Name);
 
 /// <summary>A receipt source's receipts: how many, how many found their booking, and the latest still waiting for one.</summary>
 public sealed record ReceiptSourceSummary(int Count, int Matched, int OpenCount, IReadOnlyList<ReceiptView> Open);
@@ -130,65 +139,143 @@ public sealed class ReceiptService
         return new ReceiptSettingsView(_oneDrive.IsEnabled, connection, s?.MailCheckedAt, s?.MailAttemptAt, s?.MailLastError, s?.MailUnreadable ?? 0);
     }
 
-    /// <summary>The signed-in user's item categories of a receipt source (see <see cref="ReceiptSources"/>).</summary>
-    public async Task<List<SourceCategoryView>> GetSourceCategoriesAsync(string source, CancellationToken ct = default)
+    /// <summary>The signed-in user's projects with their receipt item categories, in the projects' order.</summary>
+    public async Task<List<ProjectReceiptSettingsView>> ListProjectSettingsAsync(CancellationToken ct = default)
     {
         var user = await UserAsync();
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        return await db.ReceiptSourceCategories.AsNoTracking().Where(c => c.OwnerUserId == user && c.Source == source)
-            .OrderBy(c => c.Id)
-            .Select(c => new SourceCategoryView(c.Id, c.CategoryId, c.Description, c.Keywords)).ToListAsync(ct);
+        var projects = await db.Projects.AsNoTracking().Where(p => p.OwnerUserId == user).OrderBy(p => p.SortOrder).ThenBy(p => p.Id)
+            .Select(p => new { p.Id, p.Name }).ToListAsync(ct);
+        var result = new List<ProjectReceiptSettingsView>();
+        foreach (var p in projects) result.Add(await SettingsAsync(db, user, p.Id, p.Name, ct));
+        return result;
     }
 
-    /// <summary>Adds an allowed category to a source (nothing when it is there already).</summary>
-    public Task AddSourceCategoryAsync(string source, long categoryId, string? description = null, string? keywords = null, CancellationToken ct = default) =>
-        ChangeSourceAsync(source, categoryId, async (db, user) =>
+    /// <summary>One of the signed-in user's projects with its receipt item categories.</summary>
+    public async Task<ProjectReceiptSettingsView> GetProjectSettingsAsync(int projectId, CancellationToken ct = default)
+    {
+        var user = await UserAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var name = await db.Projects.AsNoTracking().Where(p => p.Id == projectId && p.OwnerUserId == user).Select(p => p.Name).FirstOrDefaultAsync(ct)
+            ?? throw new AccessDeniedException("Project not found.");
+        return await SettingsAsync(db, user, projectId, name, ct);
+    }
+
+    private static async Task<ProjectReceiptSettingsView> SettingsAsync(BudgetDbContext db, string user, int projectId, string name, CancellationToken ct)
+    {
+        var categories = await db.ProjectReceiptCategories.AsNoTracking().Where(c => c.OwnerUserId == user && c.ProjectId == projectId).OrderBy(c => c.Id)
+            .Select(c => new ProjectReceiptCategoryView(c.Id, c.CategoryId, c.Description, c.Keywords)).ToListAsync(ct);
+        var narrowed = (await db.ProjectReceiptSources.AsNoTracking().Where(s => s.OwnerUserId == user && s.ProjectId == projectId).ToListAsync(ct))
+            .ToDictionary(s => s.Source, s => (IReadOnlySet<long>)ReceiptProjects.ParseIds(s.CategoryIds), StringComparer.Ordinal);
+        return new ProjectReceiptSettingsView(projectId, name, categories, narrowed);
+    }
+
+    /// <summary>Adds a category to a project's receipt item categories (nothing when it is there already).</summary>
+    public Task AddProjectCategoryAsync(int projectId, long categoryId, string? description = null, string? keywords = null, CancellationToken ct = default) =>
+        ChangeProjectAsync(projectId, categoryId, async (db, user) =>
         {
-            if (await db.ReceiptSourceCategories.AnyAsync(c => c.OwnerUserId == user && c.Source == source && c.CategoryId == categoryId, ct)) return;
-            db.ReceiptSourceCategories.Add(new ReceiptSourceCategory
+            if (await db.ProjectReceiptCategories.AnyAsync(c => c.ProjectId == projectId && c.CategoryId == categoryId, ct)) return;
+            db.ProjectReceiptCategories.Add(new ProjectReceiptCategory
             {
                 OwnerUserId = user,
-                Source = source,
+                ProjectId = projectId,
                 CategoryId = categoryId,
                 Description = Clean(description, 200),
                 Keywords = Clean(keywords, 500),
             });
         }, ct);
 
-    /// <summary>Changes an allowed category's description and extra keywords.</summary>
-    public async Task UpdateSourceCategoryAsync(long id, string? description, string? keywords, CancellationToken ct = default)
+    /// <summary>Changes a project receipt category's description and extra keywords.</summary>
+    public async Task UpdateProjectCategoryAsync(long id, string? description, string? keywords, CancellationToken ct = default)
     {
-        var source = await SourceOfAsync(id, ct);
-        await ChangeSourceAsync(source, null, async (db, user) =>
+        var projectId = await ProjectOfRowAsync(id, ct);
+        await ChangeProjectAsync(projectId, null, async (db, user) =>
         {
-            var row = await db.ReceiptSourceCategories.FirstAsync(c => c.Id == id && c.OwnerUserId == user, ct);
+            var row = await db.ProjectReceiptCategories.FirstAsync(c => c.Id == id && c.OwnerUserId == user, ct);
             row.Description = Clean(description, 200);
             row.Keywords = Clean(keywords, 500);
         }, ct);
     }
 
-    /// <summary>Removes an allowed category from its source.</summary>
-    public async Task RemoveSourceCategoryAsync(long id, CancellationToken ct = default)
+    /// <summary>Removes a category from its project's receipt item categories (and from the project's source narrowings).</summary>
+    public async Task RemoveProjectCategoryAsync(long id, CancellationToken ct = default)
     {
-        var source = await SourceOfAsync(id, ct);
-        await ChangeSourceAsync(source, null, async (db, user) =>
-            db.ReceiptSourceCategories.Remove(await db.ReceiptSourceCategories.FirstAsync(c => c.Id == id && c.OwnerUserId == user, ct)), ct);
+        var projectId = await ProjectOfRowAsync(id, ct);
+        await ChangeProjectAsync(projectId, null, async (db, user) =>
+        {
+            var row = await db.ProjectReceiptCategories.FirstAsync(c => c.Id == id && c.OwnerUserId == user, ct);
+            db.ProjectReceiptCategories.Remove(row);
+            foreach (var n in await db.ProjectReceiptSources.Where(s => s.ProjectId == projectId && s.OwnerUserId == user).ToListAsync(ct))
+            {
+                var ids = ReceiptProjects.ParseIds(n.CategoryIds);
+                if (ids.Remove(row.CategoryId)) n.CategoryIds = ReceiptProjects.FormatIds(ids);
+            }
+        }, ct);
     }
 
-    private async Task<string> SourceOfAsync(long id, CancellationToken ct)
+    /// <summary>
+    /// Narrows a project's receipt item categories for one source to <paramref name="categoryIds"/> (of the project's
+    /// list; empty: none apply); null lets the whole list apply again.
+    /// </summary>
+    public async Task SetSourceNarrowingAsync(int projectId, string source, IReadOnlyCollection<long>? categoryIds, CancellationToken ct = default)
+    {
+        if (!ReceiptSources.All.Contains(source, StringComparer.Ordinal)) throw new ArgumentException("Unknown receipt source.", nameof(source));
+        await ChangeProjectAsync(projectId, null, async (db, user) =>
+        {
+            var row = await db.ProjectReceiptSources.FirstOrDefaultAsync(s => s.ProjectId == projectId && s.Source == source && s.OwnerUserId == user, ct);
+            if (categoryIds == null)
+            {
+                if (row != null) db.ProjectReceiptSources.Remove(row);
+                return;
+            }
+            if (row == null)
+            {
+                row = new ProjectReceiptSource { OwnerUserId = user, ProjectId = projectId, Source = source };
+                db.ProjectReceiptSources.Add(row);
+            }
+            var listed = await db.ProjectReceiptCategories.Where(c => c.ProjectId == projectId && c.OwnerUserId == user).Select(c => c.CategoryId).ToListAsync(ct);
+            row.CategoryIds = ReceiptProjects.FormatIds(categoryIds.Where(listed.Contains));
+        }, ct);
+    }
+
+    /// <summary>
+    /// The signed-in user's projects a receipt source's bookings land in: the projects of the accounts of its matched
+    /// bookings (for Amazon also of the accounts its payment methods are mapped to), in the projects' order.
+    /// </summary>
+    public async Task<List<ReceiptProjectLink>> ProjectsOfSourceAsync(string source, CancellationToken ct = default)
     {
         var user = await UserAsync();
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        return await db.ReceiptSourceCategories.AsNoTracking().Where(c => c.Id == id && c.OwnerUserId == user).Select(c => c.Source).FirstOrDefaultAsync(ct)
+        var shops = ReceiptShops.All.Where(s => ReceiptSources.Of(s) == source).ToList();
+        var bookings = db.ReceiptInvoices.Where(r => r.OwnerUserId == user && shops.Contains(r.Shop) && r.TransactionId != null).Select(r => r.TransactionId);
+        var accounts = await db.Transactions.AsNoTracking().Where(t => bookings.Contains(t.Id) && t.AccountId != null).Select(t => t.AccountId!.Value).Distinct().ToListAsync(ct);
+        if (source == ReceiptSources.Amazon)
+        {
+            var logins = db.BankLogins.Where(l => l.OwnerUserId == user && l.ConnectorType == ReceiptShops.Amazon).Select(l => l.Id);
+            accounts.AddRange(await db.BankLoginAccounts.AsNoTracking().Where(a => logins.Contains(a.BankLoginId) && a.EnrichAccountId != null)
+                .Select(a => a.EnrichAccountId!.Value).ToListAsync(ct));
+        }
+        var rows = await db.ProjectAccountAssignments.AsNoTracking()
+            .Where(a => accounts.Contains(a.AccountId) && a.Project.OwnerUserId == user)
+            .Select(a => new { a.ProjectId, a.Project.Name, a.Project.SortOrder }).ToListAsync(ct);
+        return rows.DistinctBy(p => p.ProjectId).OrderBy(p => p.SortOrder).ThenBy(p => p.ProjectId)
+            .Select(p => new ReceiptProjectLink(p.ProjectId, p.Name)).ToList();
+    }
+
+    private async Task<int> ProjectOfRowAsync(long id, CancellationToken ct)
+    {
+        var user = await UserAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await db.ProjectReceiptCategories.AsNoTracking().Where(c => c.Id == id && c.OwnerUserId == user).Select(c => (int?)c.ProjectId).FirstOrDefaultAsync(ct)
             ?? throw new AccessDeniedException("Receipt category not found.");
     }
 
-    private async Task ChangeSourceAsync(string source, long? categoryId, Func<BudgetDbContext, string, Task> change, CancellationToken ct)
+    private async Task ChangeProjectAsync(int projectId, long? categoryId, Func<BudgetDbContext, string, Task> change, CancellationToken ct)
     {
-        if (!ReceiptSources.All.Contains(source, StringComparer.Ordinal)) throw new ArgumentException("Unknown receipt source.", nameof(source));
         var user = await UserAsync();
         await using (var db = await _dbFactory.CreateDbContextAsync(ct))
         {
+            if (!await db.Projects.AnyAsync(p => p.Id == projectId && p.OwnerUserId == user, ct)) throw new AccessDeniedException("Project not found.");
             if (categoryId is { } c && !await db.Categories.AnyAsync(x => x.Id == c && x.OwnerUserId == user, ct))
                 throw new AccessDeniedException("Category not found.");
             await change(db, user);
@@ -435,8 +522,10 @@ public sealed class ReceiptService
     {
         var user = await UserAsync();
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        return await db.ItemCategoryMemory.AsNoTracking().Where(m => m.OwnerUserId == user).OrderBy(m => m.NormalizedName)
-            .Select(m => new ItemMemoryView(m.Id, m.NormalizedName, m.CategoryId, m.UpdatedAt)).ToListAsync(ct);
+        var names = await db.Projects.AsNoTracking().Where(p => p.OwnerUserId == user).ToDictionaryAsync(p => p.Id, p => p.Name, ct);
+        return (await db.ItemCategoryMemory.AsNoTracking().Where(m => m.OwnerUserId == user).OrderBy(m => m.NormalizedName).ThenBy(m => m.ProjectId)
+                .Select(m => new ItemMemoryView(m.Id, m.NormalizedName, m.CategoryId, m.UpdatedAt, m.ProjectId, null)).ToListAsync(ct))
+            .Select(m => m with { ProjectName = names.GetValueOrDefault(m.ProjectId) }).ToList();
     }
 
     /// <summary>Changes an item memory entry's category (null: deletes the entry); the bookings are brought up to date.</summary>
@@ -465,9 +554,10 @@ public sealed class ReceiptService
     }
 
     /// <summary>
-    /// Moves a receipt line to <paramref name="categoryId"/>: the line keeps it, the item memory remembers it for the
-    /// product (deposit lines and fees are not remembered), the category becomes one of the receipt source's categories
-    /// (unless it is the booking's own), and the booking is split by the receipt again.
+    /// Moves a receipt line to <paramref name="categoryId"/>: the line keeps it, the item memory of the booking's project
+    /// remembers it for the product (deposit lines and fees are not remembered), the category becomes one of the
+    /// project's receipt item categories for the receipt's source (unless it is the booking's own), and the booking is
+    /// split by the receipt again.
     /// </summary>
     public async Task MoveItemAsync(long itemId, long categoryId, CancellationToken ct = default)
     {
@@ -490,22 +580,33 @@ public sealed class ReceiptService
             var line = invoice.Items.First(i => i.Id == itemId);
             line.CategoryId = categoryId;
             line.CategorySource = ReceiptCategorySource.Manual;
-            if (name.Length > 0)
+            var booking = invoice.TransactionId is { } t
+                ? await sys.Transactions.AsNoTracking().Where(x => x.Id == t && x.OwnerUserId == user).Select(x => new { x.AccountId, x.CategoryId }).FirstOrDefaultAsync(ct)
+                : null;
+            var project = booking == null ? null : await ReceiptProjects.ResolveAsync(sys, user, booking.AccountId, booking.CategoryId, ct);
+            if (project is { } p)
             {
-                var memory = await sys.ItemCategoryMemory.FirstOrDefaultAsync(m => m.OwnerUserId == user && m.NormalizedName == name, ct);
-                if (memory == null)
+                if (name.Length > 0)
                 {
-                    memory = new ItemCategoryMemory { OwnerUserId = user, NormalizedName = name };
-                    sys.ItemCategoryMemory.Add(memory);
+                    var memory = await sys.ItemCategoryMemory.FirstOrDefaultAsync(m => m.OwnerUserId == user && m.ProjectId == p && m.NormalizedName == name, ct);
+                    if (memory == null)
+                    {
+                        memory = new ItemCategoryMemory { OwnerUserId = user, ProjectId = p, NormalizedName = name };
+                        sys.ItemCategoryMemory.Add(memory);
+                    }
+                    memory.CategoryId = categoryId;
+                    memory.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
                 }
-                memory.CategoryId = categoryId;
-                memory.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
+                // A category the owner moves an item to becomes one of the project's categories for this source, so the memory applies.
+                if (booking!.CategoryId != categoryId)
+                {
+                    if (!await sys.ProjectReceiptCategories.AnyAsync(c => c.ProjectId == p && c.CategoryId == categoryId, ct))
+                        sys.ProjectReceiptCategories.Add(new ProjectReceiptCategory { OwnerUserId = user, ProjectId = p, CategoryId = categoryId });
+                    var source = ReceiptSources.Of(invoice.Shop);
+                    if (await sys.ProjectReceiptSources.FirstOrDefaultAsync(s => s.ProjectId == p && s.Source == source, ct) is { } narrowing)
+                        narrowing.CategoryIds = ReceiptProjects.FormatIds(ReceiptProjects.ParseIds(narrowing.CategoryIds).Append(categoryId));
+                }
             }
-            // A category the owner moves an item to becomes one of the source's categories, so the memory applies.
-            var source = ReceiptSources.Of(invoice.Shop);
-            if (!await sys.ReceiptSourceCategories.AnyAsync(c => c.OwnerUserId == user && c.Source == source && c.CategoryId == categoryId, ct)
-                && !await sys.Transactions.AnyAsync(t => t.Id == invoice.TransactionId && t.CategoryId == categoryId, ct))
-                sys.ReceiptSourceCategories.Add(new ReceiptSourceCategory { OwnerUserId = user, Source = source, CategoryId = categoryId });
             await sys.SaveChangesAsync(ct);
             await _store.ApplyAsync(sys, invoice, force: true, ct);
         }
