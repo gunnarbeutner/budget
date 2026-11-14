@@ -27,11 +27,17 @@ public static class AmazonReceiptStore
         (await db.ReceiptInvoices.AsNoTracking().Where(r => r.BankLoginId == loginId && r.Shop == ReceiptShops.Amazon && r.DetailsReadAt != null && r.OrderNumber != null)
             .Select(r => r.OrderNumber!).Distinct().ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
 
-    /// <summary>The first day the next sync reads: the configured history on the first one, later a month before the newest charge.</summary>
-    public static async Task<DateOnly> SinceAsync(BudgetDbContext db, int loginId, DateOnly today, int historyYears, CancellationToken ct)
+    /// <summary>
+    /// The first day the next sync reads: the whole configured history until one sync got that far
+    /// (<see cref="BankLogin.OrderHistoryCompleteAt"/>; the payment list also ends where Amazon has nothing older), then
+    /// a month before the newest charge.
+    /// </summary>
+    public static async Task<DateOnly> SinceAsync(BudgetDbContext db, BankLogin login, DateOnly today, int historyYears, CancellationToken ct)
     {
         var floor = today.AddYears(-historyYears);
-        var newest = await db.ReceiptInvoices.AsNoTracking().Where(r => r.BankLoginId == loginId && r.Shop == ReceiptShops.Amazon).MaxAsync(r => r.DeliveryDate, ct);
+        if (login.OrderHistoryCompleteAt == null) return floor;
+        var newest = await db.ReceiptInvoices.AsNoTracking().Where(r => r.BankLoginId == login.Id && r.Shop == ReceiptShops.Amazon)
+            .MaxAsync(r => r.DeliveryDate, ct);
         if (newest is not { } n) return floor;
         var since = DateOnly.FromDateTime(n).AddDays(-30);
         return since < floor ? floor : since;

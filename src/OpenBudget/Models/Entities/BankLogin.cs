@@ -94,6 +94,12 @@ public class BankLogin
     /// <summary>Background runs that failed in a row (drives <see cref="NextBackgroundAttemptAt"/>).</summary>
     public int BackgroundFailures { get; set; }
 
+    /// <summary>
+    /// When an order source's sync last reached back to the full configured history (or to the start of the shop's
+    /// list); until then every sync reads back that far.
+    /// </summary>
+    public DateTime? OrderHistoryCompleteAt { get; set; }
+
     public ICollection<BankLoginAccount> Accounts { get; set; } = new List<BankLoginAccount>();
 }
 

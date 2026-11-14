@@ -662,12 +662,14 @@ public sealed class BankSyncRunner
         BudgetDbContext db, BankLogin login, IOrderSource source, ISyncSink sink, SyncContext context, HashSet<string> affected, CancellationToken ct)
     {
         var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
-        var since = await OpenBudget.Connectors.Amazon.AmazonReceiptStore.SinceAsync(db, login.Id, today, OrderHistoryYears, ct);
+        var since = await OpenBudget.Connectors.Amazon.AmazonReceiptStore.SinceAsync(db, login, today, OrderHistoryYears, ct);
         var known = await OpenBudget.Connectors.Amazon.AmazonReceiptStore.KnownOrdersAsync(db, login.Id, ct);
         var step = await DriveAsync(a => source.FetchOrdersAsync(since, known, a, ct), sink, context, ct);
         if (step.Status == StepStatus.NeedsUser) throw new SilentAbortException(step.FailureReason ?? DefaultNeedsUser);
         if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Reading the orders failed.");
         var result = step.Value!;
+        // The read reached the requested day (or the start of the shop's list): the history is complete.
+        if (result.CoveredFrom <= since) login.OrderHistoryCompleteAt ??= _clock.GetUtcNow().UtcDateTime;
         UpsertAccounts(login, result.Instruments);
         await db.SaveChangesAsync(ct);
         sink.Report("Matching orders");
@@ -703,7 +705,7 @@ public sealed class BankSyncRunner
     }
 
     /// <summary>How far back the first sync of an order source reads.</summary>
-    public int OrderHistoryYears { get; init; } = 2;
+    public int OrderHistoryYears { get; init; } = 10;
 
     /// <summary>The login's linked accounts as a <see cref="SyncHistory"/> (see there).</summary>
     internal static async Task<SyncHistory> SyncHistoryAsync(BudgetDbContext db, BankLogin login, string connectorType, int overlapDays, CancellationToken ct)

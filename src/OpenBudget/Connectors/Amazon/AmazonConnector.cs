@@ -22,7 +22,7 @@ public sealed class AmazonOptions
     public TimeSpan RequestDelay { get; init; } = TimeSpan.FromSeconds(1.5);
 
     /// <summary>At most this many wallet pages per sync.</summary>
-    public int MaxWalletPages { get; init; } = 60;
+    public int MaxWalletPages { get; init; } = 300;
 
     /// <summary>At most this many order details per sync; the rest follow next time.</summary>
     public int MaxOrderDetails { get; init; } = 150;
