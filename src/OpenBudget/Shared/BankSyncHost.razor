@@ -44,7 +44,10 @@ else if (lastSync is { } last)
                     var id = loginId;
                     <li data-testid="sync-problem">
                         <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
-                        <div class="sync-problem-text"><div class="fw-semibold">@name</div><div class="small text-body-secondary">@message</div></div>
+                        <div class="sync-problem-text"><div class="fw-semibold">@name</div>@foreach (var line in message.Split('\n'))
+                        {
+                            <div class="small text-body-secondary">@line</div>
+                        }</div>
                         <button type="button" class="btn btn-sm btn-outline-secondary sync-problem-sync" data-testid="sync-problem-sync"
                                 disabled="@(syncingProblem == id)" @onclick="() => SyncProblemAsync(id)">@L["Problems_Sync"]</button>
                     </li>
@@ -240,12 +243,14 @@ else if (lastSync is { } last)
         var logins = await Bank.GetLoginsAsync();
         names = logins.ToDictionary(l => l.Id, l => l.DisplayName);
         lastSync = logins.Where(l => l.LastSyncAt != null).Select(l => l.LastSyncAt).Max();
+        // the bank's own error first (it says what went wrong), then why a background sync waits for the user
         problems = logins
-            .Select(l => (l.Id, l.DisplayName, Message: l.NeedsManualSync is { Length: > 0 } waiting ? waiting
-                : l.CredentialsInvalid ? L["Problem_Credentials"].Value
-                : l.LastError))
-            .Where(p => !string.IsNullOrEmpty(p.Message))
-            .Select(p => (p.Id, p.DisplayName, p.Message!))
+            .Select(l => (l.Id, l.DisplayName, Message: string.Join("\n", new[]
+            {
+                l.CredentialsInvalid ? L["Problem_Credentials"].Value : l.LastError,
+                l.NeedsManualSync,
+            }.Where(m => !string.IsNullOrEmpty(m)))))
+            .Where(p => p.Message.Length > 0)
             .ToList();
 
         var open = statuses.FirstOrDefault(s => s.Challenge != null && s.Phase != SyncPhase.Finished);
