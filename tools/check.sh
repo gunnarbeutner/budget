@@ -17,11 +17,24 @@ unit_only=false
 start=$(date +%s)
 echo "build ..."
 # One build for both test projects (they share the app project); the test runs below use --no-build.
-# The Release publish is what the Docker image runs; it compiles some Razor differently from Debug.
+# The Release publish is what the Docker image runs; it compiles some Razor differently from Debug, so it runs when a
+# .razor/.cshtml file differs from origin/main (committed or not), or always with CHECK_RELEASE=1.
+release_publish=${CHECK_RELEASE:-}
+if [[ -z $release_publish ]]; then
+    release_publish=0
+    if ! git rev-parse -q --verify origin/main >/dev/null \
+        || { git diff --name-only origin/main; git ls-files --others --exclude-standard; } | grep -qE '\.(razor|cshtml)$'; then
+        release_publish=1
+    fi
+fi
+publish() {
+    [[ $release_publish == 1 ]] || { echo "(Release publish skipped: no Razor changes)" > "$log_dir/build-release.log"; return 0; }
+    dotnet publish src/OpenBudget/OpenBudget.csproj -c Release -o "$log_dir/publish" -v quiet -nologo \
+        /p:UseAppHost=false /p:RunAnalyzers=false > "$log_dir/build-release.log" 2>&1
+}
 if ! dotnet build tests/OpenBudget.E2E.Tests -v quiet -nologo > "$log_dir/build-e2e.log" 2>&1 \
     || ! dotnet build tests/OpenBudget.Tests -v quiet -nologo > "$log_dir/build-unit.log" 2>&1 \
-    || ! dotnet publish src/OpenBudget/OpenBudget.csproj -c Release -o "$log_dir/publish" -v quiet -nologo \
-        /p:UseAppHost=false /p:RunAnalyzers=false > "$log_dir/build-release.log" 2>&1; then
+    || ! publish; then
     tail -n 30 "$log_dir"/build-*.log
     echo "FAILED: build ($log_dir)"
     exit 1
