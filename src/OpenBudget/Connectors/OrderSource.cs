@@ -26,7 +26,10 @@ public sealed record OrderSourceResult(
 /// </summary>
 public interface IOrderSource
 {
-    /// <summary>Reads the charges back to <paramref name="since"/> and the details of orders not in <paramref name="knownOrderIds"/>.</summary>
+    /// <summary>
+    /// Reads the charges back to <paramref name="since"/>, the details of their orders not in <paramref name="knownOrderIds"/>,
+    /// and the details of <paramref name="unreadOrderIds"/> (stored orders whose details an earlier sync did not get to).
+    /// </summary>
     Task<ConnectorStep<OrderSourceResult>> FetchOrdersAsync(
-        DateOnly since, IReadOnlySet<string> knownOrderIds, ChallengeAnswer? answer, CancellationToken ct);
+        DateOnly since, IReadOnlySet<string> knownOrderIds, IReadOnlyList<string> unreadOrderIds, ChallengeAnswer? answer, CancellationToken ct);
 }

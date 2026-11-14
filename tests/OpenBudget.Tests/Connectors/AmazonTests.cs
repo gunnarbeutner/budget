@@ -338,7 +338,7 @@ public sealed class AmazonTests
         shop.Pages["/gp/your-account/order-details"] = OrderHtml("1 Oct 2026", "€649.00", (0, Item("B000000009", "Fridge freezer combination", 1, "€649.00")));
         var connector = await SignedInAsync(shop);
 
-        var step = await connector.FetchOrdersAsync(new DateOnly(2025, 11, 13), new HashSet<string>([OrderA], StringComparer.Ordinal), null, CancellationToken.None);
+        var step = await connector.FetchOrdersAsync(new DateOnly(2025, 11, 13), new HashSet<string>([OrderA], StringComparer.Ordinal), [OrderC], null, CancellationToken.None);
 
         Assert.Equal(StepStatus.Done, step.Status);
         var result = step.Value!;
@@ -346,7 +346,9 @@ public sealed class AmazonTests
         Assert.Equal(["/gp/your-account/order-details"], shop.Requested.Where(r => r.Contains("order-details", StringComparison.Ordinal)).Select(r => r.Split('?')[0]).Distinct(StringComparer.Ordinal));
         Assert.Contains(shop.Requested, r => r.EndsWith("orderID=" + OrderB, StringComparison.Ordinal));
         Assert.DoesNotContain(shop.Requested, r => r.EndsWith("orderID=" + OrderA, StringComparison.Ordinal)); // known already
-        Assert.Equal("Fridge freezer combination", Assert.Single(result.Orders).Items[0].Title);
+        Assert.Contains(shop.Requested, r => r.EndsWith("orderID=" + OrderC, StringComparison.Ordinal)); // stored without details
+        Assert.Equal([OrderB, OrderC], result.Orders.Select(o => o.OrderId));
+        Assert.Equal("Fridge freezer combination", result.Orders[0].Items[0].Title);
         Assert.Equal(["Amazon Visa •••• 1111", "Example Points", "Visa •••• 2222"], result.Instruments.Select(i => i.Name));
         var body = JsonNode.Parse(shop.PostBody)!;
         Assert.Equal("page-2", (string?)body["exclusiveStartKey"]);
@@ -367,10 +369,10 @@ public sealed class AmazonTests
     public async Task A_sign_in_page_stops_a_background_sync_for_the_owner_and_asks_otherwise()
     {
         var shop = new ScriptedShop { SignIn = true };
-        var background = await (await SignedInAsync(shop, silent: true)).FetchOrdersAsync(new DateOnly(2026, 1, 1), new HashSet<string>(StringComparer.Ordinal), null, CancellationToken.None);
+        var background = await (await SignedInAsync(shop, silent: true)).FetchOrdersAsync(new DateOnly(2026, 1, 1), new HashSet<string>(StringComparer.Ordinal), [], null, CancellationToken.None);
         Assert.Equal(StepStatus.NeedsUser, background.Status);
 
-        var manual = await (await SignedInAsync(shop)).FetchOrdersAsync(new DateOnly(2026, 1, 1), new HashSet<string>(StringComparer.Ordinal), null, CancellationToken.None);
+        var manual = await (await SignedInAsync(shop)).FetchOrdersAsync(new DateOnly(2026, 1, 1), new HashSet<string>(StringComparer.Ordinal), [], null, CancellationToken.None);
         Assert.Equal(StepStatus.Challenge, manual.Status);
         Assert.Equal(ChallengeKind.WebLogin, manual.Challenge!.Kind);
     }

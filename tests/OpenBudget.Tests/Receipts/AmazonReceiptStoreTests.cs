@@ -70,6 +70,22 @@ public sealed class AmazonReceiptStoreTests
     }
 
     [Fact]
+    public async Task Orders_stored_without_their_items_are_asked_for_until_a_sync_reads_them()
+    {
+        var (t, login) = await WorldAsync();
+        await using var _ = t;
+        var first = FirstSync();
+        await SyncAsync(t, login, first with { Orders = [] });
+
+        await using (var db = await t.System.CreateDbContextAsync())
+            Assert.Contains(OrderA, await AmazonReceiptStore.UnreadOrdersAsync(db, login.Id, default));
+
+        await SyncAsync(t, login, first);
+        await using (var db = await t.System.CreateDbContextAsync())
+            Assert.DoesNotContain(OrderA, await AmazonReceiptStore.UnreadOrdersAsync(db, login.Id, default));
+    }
+
+    [Fact]
     public async Task Each_charge_becomes_a_receipt_with_its_shipments_items_matched_by_account_and_split()
     {
         var (t, login) = await WorldAsync();
@@ -91,6 +107,7 @@ public sealed class AmazonReceiptStoreTests
             parts.OrderBy(p => p.Amount).Select(p => (p.Amount, p.CategoryId!.Value)));
         Assert.Equal("Fridge freezer combination; Zahnpasta Mint", (await db.Transactions.AsNoTracking().SingleAsync(x => x.Id == Fridge)).OrderItems);
         Assert.Equal([OrderA, OrderB], (await AmazonReceiptStore.KnownOrdersAsync(db, login.Id, default)).Order(StringComparer.Ordinal));
+        Assert.Empty(await AmazonReceiptStore.UnreadOrdersAsync(db, login.Id, default));
     }
 
     [Fact]

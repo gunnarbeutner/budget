@@ -664,7 +664,8 @@ public sealed class BankSyncRunner
         var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
         var since = await OpenBudget.Connectors.Amazon.AmazonReceiptStore.SinceAsync(db, login, today, OrderHistoryYears, ct);
         var known = await OpenBudget.Connectors.Amazon.AmazonReceiptStore.KnownOrdersAsync(db, login.Id, ct);
-        var step = await DriveAsync(a => source.FetchOrdersAsync(since, known, a, ct), sink, context, ct);
+        var unread = await OpenBudget.Connectors.Amazon.AmazonReceiptStore.UnreadOrdersAsync(db, login.Id, ct);
+        var step = await DriveAsync(a => source.FetchOrdersAsync(since, known, unread, a, ct), sink, context, ct);
         if (step.Status == StepStatus.NeedsUser) throw new SilentAbortException(step.FailureReason ?? DefaultNeedsUser);
         if (step.Status != StepStatus.Done) throw new ConnectorException(step.FailureReason ?? "Reading the orders failed.");
         var result = step.Value!;

@@ -24,9 +24,6 @@ public sealed class AmazonOptions
     /// <summary>At most this many wallet pages per sync.</summary>
     public int MaxWalletPages { get; init; } = 300;
 
-    /// <summary>At most this many order details per sync; the rest follow next time.</summary>
-    public int MaxOrderDetails { get; init; } = 150;
-
     public Uri OrderUrl(string orderId) => new(BaseUri, string.Format(CultureInfo.InvariantCulture, OrderDetailsPage, Uri.EscapeDataString(orderId)));
 }
 
@@ -166,7 +163,7 @@ public sealed class AmazonConnector : IBankConnector, IOrderSource
     }
 
     public async Task<ConnectorStep<OrderSourceResult>> FetchOrdersAsync(
-        DateOnly since, IReadOnlySet<string> knownOrderIds, ChallengeAnswer? answer, CancellationToken ct)
+        DateOnly since, IReadOnlySet<string> knownOrderIds, IReadOnlyList<string> unreadOrderIds, ChallengeAnswer? answer, CancellationToken ct)
     {
         if (answer?.Browser is { IsOpen: true } fresh) _browser = fresh;
         if (_browser is not { IsOpen: true } browser) return NeedSignIn(answer != null);
@@ -209,8 +206,8 @@ public sealed class AmazonConnector : IBankConnector, IOrderSource
         _session.Values[InstrumentsKey] = JsonSerializer.Serialize(instruments);
 
         // ---- order details ----
-        var wanted = charges.Where(c => !c.Skip).Select(c => c.OrderId).Distinct(StringComparer.Ordinal)
-            .Where(id => !knownOrderIds.Contains(id)).Take(_options.MaxOrderDetails).ToList();
+        var wanted = charges.Where(c => !c.Skip).Select(c => c.OrderId).Concat(unreadOrderIds).Distinct(StringComparer.Ordinal)
+            .Where(id => !knownOrderIds.Contains(id)).ToList();
         var orders = new List<RemoteOrder>();
         foreach (var orderId in wanted)
         {

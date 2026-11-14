@@ -27,6 +27,16 @@ public static class AmazonReceiptStore
         (await db.ReceiptInvoices.AsNoTracking().Where(r => r.BankLoginId == loginId && r.Shop == ReceiptShops.Amazon && r.DetailsReadAt != null && r.OrderNumber != null)
             .Select(r => r.OrderNumber!).Distinct().ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
 
+    /// <summary>Stored orders paid by card whose details were not read yet (a sync stopped before it got to them).</summary>
+    public static async Task<List<string>> UnreadOrdersAsync(BudgetDbContext db, int loginId, CancellationToken ct)
+    {
+        var receipts = await db.ReceiptInvoices.AsNoTracking()
+            .Where(r => r.BankLoginId == loginId && r.Shop == ReceiptShops.Amazon && r.OrderNumber != null && r.State != ReceiptMatchState.Skipped)
+            .Select(r => new { r.OrderNumber, r.DetailsReadAt, r.DeliveryDate }).ToListAsync(ct);
+        return receipts.GroupBy(r => r.OrderNumber!, StringComparer.Ordinal).Where(g => g.All(r => r.DetailsReadAt == null))
+            .OrderByDescending(g => g.Max(r => r.DeliveryDate)).Select(g => g.Key).ToList();
+    }
+
     /// <summary>
     /// The first day the next sync reads: the whole configured history until one sync got that far
     /// (<see cref="BankLogin.OrderHistoryCompleteAt"/>; the payment list also ends where Amazon has nothing older), then
