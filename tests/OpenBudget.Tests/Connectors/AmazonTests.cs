@@ -357,7 +357,7 @@ public sealed class AmazonTests
 
     private static AmazonConnector Connector(bool silent = false) => new(
         new ConnectorContext(new BankHttpClient(), TimeProvider.System, NullLogger.Instance) { Silent = silent },
-        new AmazonOptions { BaseUri = new Uri("https://shop.test/"), RequestDelay = TimeSpan.Zero });
+        new AmazonOptions { BaseUri = new Uri("https://shop.test/"), RequestDelay = TimeSpan.Zero, WalletRetryDelay = TimeSpan.Zero });
 
     private static async Task<AmazonConnector> SignedInAsync(IBrowserFetcher browser, bool silent = false)
     {

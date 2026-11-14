@@ -22,7 +22,10 @@ public sealed class AmazonOptions
     public TimeSpan RequestDelay { get; init; } = TimeSpan.FromSeconds(1.5);
 
     /// <summary>How often a further wallet page that could not be read is asked for again.</summary>
-    public int WalletPageRetries { get; init; } = 2;
+    public int WalletPageRetries { get; init; } = 4;
+
+    /// <summary>The first pause before asking for an unread wallet page again; it doubles with each attempt.</summary>
+    public TimeSpan WalletRetryDelay { get; init; } = TimeSpan.FromSeconds(20);
 
     /// <summary>At most this many wallet pages per sync.</summary>
     public int MaxWalletPages { get; init; } = 300;
@@ -190,7 +193,9 @@ public sealed class AmazonConnector : IBankConnector, IOrderSource
             var next = await NextWalletPageAsync(browser, page.NextPageKey!, context, ct);
             for (var attempt = 1; next == null && attempt <= _options.WalletPageRetries; attempt++)
             {
-                await Task.Delay(_options.RequestDelay * (4 * attempt), _context.Clock, ct);
+                // Amazon throttles a long read (HTTP 429): the pause grows to a few minutes before giving up.
+                _context.Progress?.Invoke($"Reading Amazon payments ({pages} pages, Amazon asks to wait)");
+                await Task.Delay(_options.WalletRetryDelay * (1 << (attempt - 1)), _context.Clock, ct);
                 next = await NextWalletPageAsync(browser, page.NextPageKey!, context, ct);
             }
             if (next == null)
