@@ -1045,7 +1045,6 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
 .browse-main > :not(.browse-scroll) { flex-shrink: 0; }
 .browse-main > .page-toolbar { position: static; margin: 0; padding: 6px 20px; flex-wrap: wrap; row-gap: 6px; }
 .browse-toolbar .browse-ident { flex: 1 1 0; }
-.browse-readonly { color: var(--ob-muted); cursor: help; }
 .browse-scroll {
     flex: 1 1 auto;
     min-height: 0;

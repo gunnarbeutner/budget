@@ -257,7 +257,7 @@ public sealed class PortfolioAccountSyncTests : IAsyncDisposable
         var setting = await SettingAsync("pf-a");
         Assert.NotEqual(10L, setting.DepotAccountId!.Value);
         Assert.False(setting.TakenOver);
-        Assert.Equal(AccountProviders.MoneyMoney, (await AccountAsync(10)).Provider);
+        Assert.Equal(AccountProviders.Manual, (await AccountAsync(10)).Provider);
     }
 
     [Fact]

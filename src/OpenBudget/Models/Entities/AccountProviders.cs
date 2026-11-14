@@ -3,11 +3,9 @@ namespace OpenBudget.Models;
 /// <summary>Well-known values for <see cref="Account.Provider"/>.</summary>
 public static class AccountProviders
 {
-    public const string MoneyMoney = "moneymoney";
-
     /// <summary>
-    /// Nobody refreshes the account any more (a connector-created account whose connector link was
-    /// removed). Its data stays; it can be linked to a connector again.
+    /// Nobody refreshes the account: entered by hand, imported from MoneyMoney, or left behind by a removed connector
+    /// link. Its data stays editable; it can be linked to a connector, which then takes it over.
     /// </summary>
     public const string Manual = "manual";
 

@@ -50,8 +50,8 @@ public interface IBatchedStatements
 /// <summary>
 /// What the app already holds for a login's linked accounts, handed to a connector after the login and before the account
 /// listing, so it can tell whether anything new happened. <see cref="LastSuccessUtc"/> is the oldest last successful
-/// refresh among the linked accounts; null when one of them was never refreshed, still waits for its switch from
-/// MoneyMoney, or none is linked. <see cref="KnownTransactionIds"/> are the bank transaction ids stored for those
+/// refresh among the linked accounts; null when one of them was never refreshed, is not the connector's, or none is
+/// linked. <see cref="KnownTransactionIds"/> are the bank transaction ids stored for those
 /// accounts from a few days before that point on; <see cref="PendingCount"/> counts their stored pending rows.
 /// </summary>
 public sealed record SyncHistory(DateTime? LastSuccessUtc, IReadOnlySet<string> KnownTransactionIds, int PendingCount);

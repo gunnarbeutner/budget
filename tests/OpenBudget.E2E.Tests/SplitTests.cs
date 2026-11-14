@@ -111,11 +111,11 @@ public sealed class SplitTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task Moneymoney_rows_offer_no_split()
+    public async Task Rows_of_an_imported_account_offer_a_split()
     {
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.MoneyMoneyAccountId}");
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.ImportedAccountId}");
         await Row("Example Bakery").ClickAsync();
         await Expect(Page.GetByTestId("tx-details")).ToBeVisibleAsync();
-        await Expect(Page.GetByTestId("tx-details-split")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("tx-details-split")).ToBeVisibleAsync();
     }
 }

@@ -14,7 +14,9 @@ namespace OpenBudget.Importers.MoneyMoney;
 /// Imports a MoneyMoney SQLite file as a user's data. Reads the MoneyMoney DB read-only via raw
 /// <see cref="SqliteDataReader"/> for speed (EF AddRange is much slower at hundreds-of-thousands of
 /// transactions), numbers every rowid in the user's id space (<see cref="RowIds.Namespace"/>), and
-/// replaces the user's MoneyMoney rows inside one EF transaction so partial failures roll back cleanly.
+/// copies the data inside one EF transaction so partial failures roll back cleanly. The import is a one-time copy: its
+/// accounts are manual accounts (<see cref="AccountProviders.Manual"/>) that bank connections can take over, and a
+/// further import for a user who already imported is refused (<see cref="MoneyMoneyAlreadyImportedException"/>).
 ///
 /// Registered as a singleton so the per-user serialization semaphore is shared across concurrent imports.
 /// </summary>
@@ -136,10 +138,8 @@ public class MoneyMoneyImportService
         }
     }
 
-    /// <summary>The explanation a refused import gets once the owner declared their MoneyMoney import finished.</summary>
-    public const string ImportFinishedMessage =
-        "The MoneyMoney import is finished: the accounts are kept up to date by bank connections in OpenBudget. "
-        + "It can be resumed on the Get started page if MoneyMoney should deliver data again.";
+    /// <summary>The explanation a refused import gets once the owner imported from MoneyMoney.</summary>
+    public const string AlreadyImportedMessage = "The MoneyMoney data was already imported; the import runs only once.";
 
     /// <summary>Runs <paramref name="action"/> while no import for the user is running (and blocks imports meanwhile).</summary>
     public async Task<T> WithOwnerLockAsync<T>(string ownerUserId, Func<Task<T>> action, CancellationToken ct)
@@ -164,7 +164,7 @@ public class MoneyMoneyImportService
         var source = await RowIds.StateAsync(db, ownerUserId, ct);
         string ownerId = source.UserId;
         int idSpace = source.IdSpace;
-        if (source.MoneyMoneyImportFinishedAt != null) throw new MoneyMoneyImportFinishedException();
+        if (source.LastUploadAt != null) throw new MoneyMoneyAlreadyImportedException();
 
         var connStr = new SqliteConnectionStringBuilder
         {
@@ -193,134 +193,56 @@ public class MoneyMoneyImportService
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         try
         {
-            // Wipe the owner's previous MoneyMoney rows. Order matters: transactions and securities
-            // reference accounts/categories via FKs (Restrict), so they go first. Accounts
-            // reference account_groups, so accounts go before account_groups.
-            // Remember each account's provider (keyed by Id, which MoneyMoney keeps stable) before
-            // the accounts are replaced, so accounts handed over to another connector stay that way.
-            var providers = await db.Accounts
-                .Where(a => a.OwnerUserId == ownerId)
-                .ToDictionaryAsync(a => a.Id, a => a.Provider, ct);
-            // Closed accounts stay closed: the flag is remembered like the provider and restored after the accounts are copied (MoneyMoney's own closed bit is added while copying).
-            var closedAccountIds = await db.Accounts.Where(a => a.OwnerUserId == ownerId && a.Closed).Select(a => a.Id).ToListAsync(ct);
-            // Icons and colours picked in OpenBudget are remembered the same way and restored after the copy.
-            var accountLooks = await db.Accounts.Where(a => a.OwnerUserId == ownerId && (a.Icon != null || a.Color != null))
-                .Select(a => new { a.Id, a.Icon, a.Color }).ToListAsync(ct);
-            var groupLooks = await db.AccountGroups.Where(g => g.OwnerUserId == ownerId && (g.Icon != null || g.Color != null))
-                .Select(g => new { g.Id, g.Icon, g.Color }).ToListAsync(ct);
-            var foreignAccountIds = providers
-                .Where(p => p.Value != AccountProviders.MoneyMoney)
-                .Select(p => p.Key)
-                .ToHashSet();
-
-            // Once the owner took the structure over, accounts, groups and categories are OpenBudget's: they are
-            // kept (not wiped and re-copied), so ids, names, grouping and order survive; only what MoneyMoney
-            // still owns - balances of its accounts and all of its transactions - is refreshed.
-            bool takenOver = source.StructureTakenOverAt != null;
-
-            // Accounts and categories the owner deleted after the takeover stay deleted: the upload skips them (an
-            // account together with its bookings and positions, exactly like a connector-owned one).
-            var removed = takenOver
-                ? await db.RemovedImportItems.IgnoreQueryFilters().Where(r => r.OwnerUserId == ownerId).ToListAsync(ct)
-                : [];
-            var removedAccountIds = removed.Where(r => r.Kind == RemovedImportItem.AccountKind).Select(r => r.ItemId).ToHashSet();
-            var removedCategoryIds = removed.Where(r => r.Kind == RemovedImportItem.CategoryKind).Select(r => r.ItemId).ToHashSet();
-            foreignAccountIds.UnionWith(removedAccountIds);
-
-            // Balance / refresh state of accounts handed to a connector belongs to that connector.
-            var foreignState = takenOver || foreignAccountIds.Count == 0
-                ? new Dictionary<long, ForeignAccountState>()
-                : await db.Accounts
-                    .Where(a => a.OwnerUserId == ownerId && foreignAccountIds.Contains(a.Id))
-                    .ToDictionaryAsync(a => a.Id, a => new ForeignAccountState(a.Balances, a.RefreshTimestamp, a.Error), ct);
-
-            // Only MoneyMoney-owned transactions are replaced; accounts owned by another provider
-            // keep theirs untouched.
-            if (takenOver)
-            {
-                // An account MoneyMoney no longer delivers keeps its history: only accounts in this upload are replaced.
-                var uploaded = (await ReadRowidsAsync(src, "accounts", ct))
-                    .Select(r => RowIds.Namespace(idSpace, r))
-                    .Where(id => !foreignAccountIds.Contains(id))
-                    .ToList();
-                await db.Transactions.Where(t => t.OwnerUserId == ownerId && t.AccountId == null).ExecuteDeleteAsync(ct);
-                foreach (var chunk in uploaded.Chunk(500))
-                {
-                    var ids = chunk;
-                    await db.Transactions
-                        .Where(t => t.OwnerUserId == ownerId && t.AccountId != null && ids.Contains(t.AccountId.Value))
-                        .ExecuteDeleteAsync(ct);
-                }
-            }
-            else
-            {
-                await db.Database.ExecuteSqlRawAsync(
-                    """
-                    DELETE FROM transactions
-                    WHERE OwnerUserId = {0}
-                      AND (local_account_key IS NULL
-                           OR local_account_key NOT IN (SELECT Id FROM accounts WHERE OwnerUserId = {0} AND provider <> {1}))
-                    """,
-                    new object[] { ownerId, AccountProviders.MoneyMoney }, ct);
-            }
-            // Likewise positions / portfolio history of connector-owned accounts stay as the connector wrote them.
+            // Clear leftovers in MoneyMoney's half of the owner's id space before the copy. Order matters: transactions
+            // and securities reference accounts/categories via FKs (Restrict), so they go first. Accounts reference
+            // account_groups, so accounts go before account_groups. Rows OpenBudget or a connector created live in the
+            // connector half and stay, with their transactions, positions and value history.
+            long lo = RowIds.Namespace(idSpace, 0), hi = RowIds.Namespace(idSpace, BankTransactionStore.ConnectorRowBase);
+            var existingAccountIds = (await db.Accounts
+                .Where(a => a.OwnerUserId == ownerId && (a.Id < lo || a.Id >= hi))
+                .Select(a => a.Id)
+                .ToListAsync(ct)).ToHashSet();
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                DELETE FROM transactions
+                WHERE OwnerUserId = {0}
+                  AND (local_account_key IS NULL
+                       OR local_account_key NOT IN (SELECT Id FROM accounts WHERE OwnerUserId = {0} AND (Id < {1} OR Id >= {2})))
+                """,
+                new object[] { ownerId, lo, hi }, ct);
             await db.Database.ExecuteSqlRawAsync(
                 """
                 DELETE FROM portfolio_chart
                 WHERE OwnerUserId = {0}
-                  AND account_key NOT IN (SELECT Id FROM accounts WHERE OwnerUserId = {0} AND provider <> {1})
+                  AND account_key NOT IN (SELECT Id FROM accounts WHERE OwnerUserId = {0} AND (Id < {1} OR Id >= {2}))
                 """,
-                new object[] { ownerId, AccountProviders.MoneyMoney }, ct);
-            await RelocateKeptPortfolioChartAsync(db, ownerId, idSpace, ct);
+                new object[] { ownerId, lo, hi }, ct);
             await db.Database.ExecuteSqlRawAsync(
                 """
                 DELETE FROM holdings
                 WHERE OwnerUserId = {0}
-                  AND account_key NOT IN (SELECT Id FROM accounts WHERE OwnerUserId = {0} AND provider <> {1})
+                  AND account_key NOT IN (SELECT Id FROM accounts WHERE OwnerUserId = {0} AND (Id < {1} OR Id >= {2}))
                 """,
-                new object[] { ownerId, AccountProviders.MoneyMoney }, ct);
-            if (!takenOver)
-            {
-                await db.Database.ExecuteSqlRawAsync("DELETE FROM categories WHERE OwnerUserId = {0}", new object[] { ownerId }, ct);
-                await db.Database.ExecuteSqlRawAsync("DELETE FROM category_groups WHERE OwnerUserId = {0}", new object[] { ownerId }, ct);
-                await db.Database.ExecuteSqlRawAsync("DELETE FROM accounts WHERE OwnerUserId = {0}", new object[] { ownerId }, ct);
-                await db.Database.ExecuteSqlRawAsync("DELETE FROM account_groups WHERE OwnerUserId = {0}", new object[] { ownerId }, ct);
-            }
+                new object[] { ownerId, lo, hi }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM categories WHERE OwnerUserId = {0} AND Id >= {1} AND Id < {2}", new object[] { ownerId, lo, hi }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM category_groups WHERE OwnerUserId = {0} AND Id >= {1} AND Id < {2}", new object[] { ownerId, lo, hi }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM accounts WHERE OwnerUserId = {0} AND Id >= {1} AND Id < {2}", new object[] { ownerId, lo, hi }, ct);
+            await db.Database.ExecuteSqlRawAsync("DELETE FROM account_groups WHERE OwnerUserId = {0} AND Id >= {1} AND Id < {2}", new object[] { ownerId, lo, hi }, ct);
 
-            int accountGroupCount = takenOver ? 0 : await CopyAccountGroupsAsync(src, db, ownerId, idSpace, ct);
-            int accountCount = await CopyAccountsAsync(src, db, ownerId, idSpace, providers, foreignState, takenOver, removedAccountIds, ct);
-            if (closedAccountIds.Count > 0)
-                await db.Accounts.Where(a => closedAccountIds.Contains(a.Id)).ExecuteUpdateAsync(s => s.SetProperty(a => a.Closed, true), ct);
-            foreach (var look in accountLooks)
-                await db.Accounts.Where(a => a.Id == look.Id)
-                    .ExecuteUpdateAsync(s => s.SetProperty(a => a.Icon, look.Icon).SetProperty(a => a.Color, look.Color), ct);
-            foreach (var look in groupLooks)
-                await db.AccountGroups.Where(g => g.Id == look.Id)
-                    .ExecuteUpdateAsync(s => s.SetProperty(g => g.Icon, look.Icon).SetProperty(g => g.Color, look.Color), ct);
-            int groupCount = takenOver ? 0 : await CopyCategoryGroupsAsync(src, db, ownerId, idSpace, ct);
-            int categoryCount = takenOver
-                ? await CopyNewCategoriesAsync(src, db, ownerId, idSpace, removedCategoryIds, ct)
-                : await CopyCategoriesAsync(src, db, ownerId, idSpace, ct);
-            var (restrictedCount, unknownRestrictions) = takenOver ? (0, 0) : await CopyCategoryRestrictionsAsync(src, db, ownerId, idSpace, ct);
+            int accountGroupCount = await CopyAccountGroupsAsync(src, db, ownerId, idSpace, ct);
+            int accountCount = await CopyAccountsAsync(src, db, ownerId, idSpace, ct);
+            int groupCount = await CopyCategoryGroupsAsync(src, db, ownerId, idSpace, ct);
+            int categoryCount = await CopyCategoriesAsync(src, db, ownerId, idSpace, ct);
+            var (restrictedCount, unknownRestrictions) = await CopyCategoryRestrictionsAsync(src, db, ownerId, idSpace, ct);
             // Column names only (no data): which MoneyMoney fields this upload offers for the detail mapping.
             _logger.LogInformation("MoneyMoney transactions columns: {Columns}",
                 string.Join(", ", (await ColumnsAsync(src, "transactions", ct)).Order(StringComparer.OrdinalIgnoreCase)));
             _logger.LogInformation("MoneyMoney accounts columns: {Columns}",
                 string.Join(", ", (await ColumnsAsync(src, "accounts", ct)).Order(StringComparer.OrdinalIgnoreCase)));
-            int txCount = await CopyTransactionsAsync(src, db, ownerId, idSpace, foreignAccountIds, ct);
+            int txCount = await CopyTransactionsAsync(src, db, ownerId, idSpace, existingAccountIds, ct);
             await CopyInitialBalancesAsync(src, db, ownerId, idSpace, ct);
-            if (removedCategoryIds.Count > 0)
-            {
-                // MoneyMoney still files bookings under a category deleted here: they arrive uncategorized.
-                await db.Database.ExecuteSqlRawAsync(
-                    """
-                    UPDATE transactions SET category_key = NULL
-                    WHERE OwnerUserId = {0} AND category_key IN (SELECT ItemId FROM removed_import_items WHERE OwnerUserId = {0} AND Kind = {1})
-                    """,
-                    new object[] { ownerId, RemovedImportItem.CategoryKind }, ct);
-            }
-            int securityCount = await CopySecuritiesAsync(src, db, ownerId, idSpace, foreignAccountIds, ct);
-            int portfolioChartCount = await CopyPortfolioChartAsync(src, db, ownerId, idSpace, foreignAccountIds, ct);
+            int securityCount = await CopySecuritiesAsync(src, db, ownerId, idSpace, existingAccountIds, ct);
+            int portfolioChartCount = await CopyPortfolioChartAsync(src, db, ownerId, idSpace, existingAccountIds, ct);
 
             long fileSize = new FileInfo(sqliteFilePath).Length;
             source.LastUploadAt = DateTime.UtcNow;
@@ -333,7 +255,7 @@ public class MoneyMoneyImportService
                 .Where(a => a.OwnerUserId == ownerId)
                 .Select(a => a.Id)
                 .ToListAsync(ct);
-            newAccountIds.RemoveAll(providers.ContainsKey);
+            newAccountIds.RemoveAll(existingAccountIds.Contains);
             int autoAssigned = await DefaultProjectAssigner.AssignNewAccountsAsync(db, ownerId, newAccountIds, ct);
 
             // MoneyMoney's category rules become (or update) the projects' categorisation rules.
@@ -532,8 +454,7 @@ public class MoneyMoneyImportService
     }
 
     private static async Task<int> CopyAccountsAsync(
-        SqliteConnection src, BudgetDbContext db, string ownerId, int idSpace, IReadOnlyDictionary<long, string> providers,
-        Dictionary<long, ForeignAccountState> foreignState, bool keepStructure, HashSet<long> removedAccountIds, CancellationToken ct)
+        SqliteConnection src, BudgetDbContext db, string ownerId, int idSpace, CancellationToken ct)
     {
         // group_key is the FK into account_groups; older exporters (pre-account-groups) won't
         // have account_groups but the column itself has always been on accounts. Probe anyway
@@ -547,28 +468,17 @@ public class MoneyMoneyImportService
             SELECT rowid, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, {groupKeyExpr}, {closedExpr}, {iconExpr}
             FROM accounts
             """;
-        // After a structure takeover an upload only inserts accounts it newly reports (ungrouped, unsorted: they land
-        // in "Other accounts") and refreshes the MoneyMoney-owned ones' bank-side fields; name, group and order stay.
-        string insert = keepStructure
-            ? """
-              INSERT INTO accounts (Id, OwnerUserId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider, closed, icon, color)
-              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider, $closed, $icon, $color)
-              ON CONFLICT(Id) DO UPDATE SET iban = excluded.iban, currency = excluded.currency, type = excluded.type,
-                  portfolio = excluded.portfolio, balances = excluded.balances, refresh_tsp = excluded.refresh_tsp, error = excluded.error,
-                  closed = accounts.closed OR excluded.closed
-              WHERE accounts.provider = 'moneymoney'
-              """
-            : """
-              INSERT INTO accounts (Id, OwnerUserId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider, closed, icon, color)
-              VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider, $closed, $icon, $color)
-              """;
+        const string insert = """
+            INSERT INTO accounts (Id, OwnerUserId, name, iban, currency, type, portfolio, balances, sort, refresh_tsp, error, group_key, provider, closed, icon, color)
+            VALUES ($id, $sid, $name, $iban, $currency, $type, $portfolio, $balances, $sort, $refresh_tsp, $error, $group_key, $provider, $closed, $icon, $color)
+            """;
         return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
         {
             long rowid = r.GetInt64(0);
             long id = RowIds.Namespace(idSpace, rowid);
             cmd.Parameters["$id"].Value = id;
             cmd.Parameters["$sid"].Value = ownerId;
-            cmd.Parameters["$provider"].Value = providers.GetValueOrDefault(id, AccountProviders.MoneyMoney);
+            cmd.Parameters["$provider"].Value = AccountProviders.Manual;
             cmd.Parameters["$name"].Value = r.IsDBNull(1) ? DBNull.Value : r.GetString(1);
             cmd.Parameters["$iban"].Value = r.IsDBNull(2) ? DBNull.Value : r.GetString(2);
             cmd.Parameters["$currency"].Value = r.IsDBNull(3) ? DBNull.Value : r.GetString(3);
@@ -578,27 +488,14 @@ public class MoneyMoneyImportService
             cmd.Parameters["$sort"].Value = r.IsDBNull(7) ? DBNull.Value : r.GetInt64(7);
             cmd.Parameters["$refresh_tsp"].Value = r.IsDBNull(8) ? DBNull.Value : r.GetInt64(8);
             cmd.Parameters["$error"].Value = r.IsDBNull(9) ? DBNull.Value : r.GetString(9);
-            // only accounts MoneyMoney still owns take its closed state; the others keep OpenBudget's (restored below)
-            cmd.Parameters["$closed"].Value = providers.GetValueOrDefault(id, AccountProviders.MoneyMoney) == AccountProviders.MoneyMoney && r.GetInt64(11) != 0;
+            cmd.Parameters["$closed"].Value = r.GetInt64(11) != 0;
             cmd.Parameters["$group_key"].Value = r.IsDBNull(10)
                 ? DBNull.Value
                 : NamespaceParentKey(idSpace, r.GetInt64(10));
             var look = MoneyMoneyIcons.Parse(r.IsDBNull(12) ? null : r.GetString(12));
             cmd.Parameters["$icon"].Value = (object?)look?.Icon ?? DBNull.Value;
             cmd.Parameters["$color"].Value = (object?)look?.Color ?? DBNull.Value;
-            if (keepStructure)
-            {
-                cmd.Parameters["$sort"].Value = DBNull.Value;
-                cmd.Parameters["$group_key"].Value = DBNull.Value;
-            }
-            if (foreignState.TryGetValue(id, out var kept))
-            {
-                // A connector owns this account: keep its balance and refresh state rather than MoneyMoney's.
-                cmd.Parameters["$balances"].Value = (object?)kept.Balances ?? DBNull.Value;
-                cmd.Parameters["$refresh_tsp"].Value = (object?)kept.RefreshTimestamp ?? DBNull.Value;
-                cmd.Parameters["$error"].Value = (object?)kept.Error ?? DBNull.Value;
-            }
-        }, AccountInsertParameters, ct, skipRow: r => removedAccountIds.Contains(RowIds.Namespace(idSpace, r.GetInt64(0))));
+        }, AccountInsertParameters, ct);
     }
 
     private static async Task<int> CopyAccountGroupsAsync(SqliteConnection src, BudgetDbContext db, string ownerId, int idSpace, CancellationToken ct)
@@ -672,68 +569,6 @@ public class MoneyMoneyImportService
         }, CategoryInsertParameters, ct);
     }
 
-    /// <summary>Name of the category group that collects categories MoneyMoney reports after the structure takeover.</summary>
-    public const string NewCategoriesGroupName = "New categories";
-
-    /// <summary>The id of that group in a user's id space (reserved rowid next to the connector range, never used by MoneyMoney rowids).</summary>
-    public static long NewCategoriesGroupId(int idSpace) =>
-        RowIds.Namespace(idSpace, BankTransactionStore.ConnectorRowBase + 1);
-
-    [SuppressMessage("Security", "CA2100:Review SQL queries for security vulnerabilities",
-        Justification = "The statement is picked from two compile-time literals by a switch; no user input reaches it.")]
-    private static async Task<List<long>> ReadRowidsAsync(SqliteConnection src, string table, CancellationToken ct)
-    {
-        var ids = new List<long>();
-        if (!TableExists(src, table)) return ids;
-        await using var cmd = src.CreateCommand();
-        cmd.CommandText = table switch
-        {
-            "accounts" => "SELECT rowid FROM accounts",
-            "categories" => "SELECT rowid FROM categories",
-            _ => throw new ArgumentOutOfRangeException(nameof(table), table, null),
-        };
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
-        while (await reader.ReadAsync(ct)) ids.Add(reader.GetInt64(0));
-        return ids;
-    }
-
-    /// <summary>
-    /// Structure-taken-over mode: categories the upload reports that OpenBudget does not know yet are added to the
-    /// "New categories" group (created on demand); known ones are left exactly as they are.
-    /// </summary>
-    private static async Task<int> CopyNewCategoriesAsync(SqliteConnection src, BudgetDbContext db, string ownerId, int idSpace, HashSet<long> removedCategoryIds, CancellationToken ct)
-    {
-        var known = (await db.Categories.Where(c => c.OwnerUserId == ownerId).Select(c => c.Id).ToListAsync(ct)).ToHashSet();
-        known.UnionWith(removedCategoryIds);
-        var fresh = (await ReadRowidsAsync(src, "categories", ct)).Where(r => !known.Contains(RowIds.Namespace(idSpace, r))).ToHashSet();
-        if (fresh.Count == 0) return 0;
-
-        var groupId = NewCategoriesGroupId(idSpace);
-        if (!await db.CategoryGroups.AnyAsync(g => g.Id == groupId, ct))
-        {
-            await db.Database.ExecuteSqlRawAsync(
-                "INSERT INTO category_groups (Id, OwnerUserId, name, group_key, sort, color) VALUES ({0}, {1}, {2}, NULL, NULL, NULL)",
-                new object[] { groupId, ownerId, NewCategoriesGroupName }, ct);
-        }
-
-        const string select = "SELECT rowid, name, type, color, rules, group_key, sort FROM categories";
-        const string insert = """
-            INSERT INTO categories (Id, OwnerUserId, name, type, color, rules, group_key, sort)
-            VALUES ($id, $sid, $name, $type, $color, $rules, $group_key, $sort)
-            """;
-        return await BulkCopyAsync(src, db, select, insert, (cmd, r) =>
-        {
-            cmd.Parameters["$id"].Value = RowIds.Namespace(idSpace, r.GetInt64(0));
-            cmd.Parameters["$sid"].Value = ownerId;
-            cmd.Parameters["$name"].Value = r.IsDBNull(1) ? DBNull.Value : r.GetString(1);
-            cmd.Parameters["$type"].Value = r.IsDBNull(2) ? DBNull.Value : r.GetInt64(2);
-            cmd.Parameters["$color"].Value = r.IsDBNull(3) ? DBNull.Value : r.GetString(3);
-            cmd.Parameters["$rules"].Value = r.IsDBNull(4) ? DBNull.Value : r.GetString(4);
-            cmd.Parameters["$group_key"].Value = groupId;
-            cmd.Parameters["$sort"].Value = DBNull.Value;
-        }, CategoryInsertParameters, ct, skipRow: r => !fresh.Contains(r.GetInt64(0)));
-    }
-
     /// <summary>
     /// MoneyMoney's "Restrict to" of a category (<c>categories.apply_to_account</c>: <c>A&lt;accounts.rowid&gt;</c> or
     /// <c>G&lt;account_groups.rowid&gt;</c>, empty = all accounts) onto the imported category. A target the import does
@@ -780,7 +615,7 @@ public class MoneyMoneyImportService
             : ('?', 0);
 
     private static async Task<int> CopyTransactionsAsync(
-        SqliteConnection src, BudgetDbContext db, string ownerId, int idSpace, HashSet<long> foreignAccountIds, CancellationToken ct)
+        SqliteConnection src, BudgetDbContext db, string ownerId, int idSpace, HashSet<long> existingAccountIds, CancellationToken ct)
     {
         // MoneyMoney's SEPA "Verwendungszweck" lives in unformatted_purpose (verified against
         // a live MoneyMoney 2.5-era SQLCipher db: rows there carry the BILLCOLL/EREF/MREF/CRED
@@ -830,7 +665,7 @@ public class MoneyMoneyImportService
             cmd.Parameters["$timestamp"].Value = r.IsDBNull(4) ? DBNull.Value : r.GetInt64(4);
             cmd.Parameters["$name"].Value = r.IsDBNull(5) ? DBNull.Value : r.GetString(5);
             cmd.Parameters["$comment"].Value = r.IsDBNull(6) ? DBNull.Value : r.GetString(6);
-            // MoneyMoney-owned rows are read-only here: OpenBudget's note and check mark mirror MoneyMoney's.
+            // OpenBudget's note and check mark start as MoneyMoney's.
             cmd.Parameters["$note"].Value = r.IsDBNull(6) ? DBNull.Value : r.GetString(6);
             cmd.Parameters["$purpose"].Value = r.IsDBNull(7) ? DBNull.Value : r.GetString(7);
             cmd.Parameters["$category_key"].Value = r.IsDBNull(8)
@@ -872,7 +707,7 @@ public class MoneyMoneyImportService
                 }
             }
         }, TransactionInsertParameters, ct, skipRow: r =>
-            !r.IsDBNull(1) && foreignAccountIds.Contains(RowIds.Namespace(idSpace, r.GetInt64(1))));
+            !r.IsDBNull(1) && existingAccountIds.Contains(RowIds.Namespace(idSpace, r.GetInt64(1))));
     }
 
     /// <summary>
@@ -935,7 +770,7 @@ public class MoneyMoneyImportService
         return (sums, children);
     }
 
-    private static async Task<int> CopySecuritiesAsync(SqliteConnection src, BudgetDbContext db, string ownerId, int idSpace, HashSet<long> foreignAccountIds, CancellationToken ct)
+    private static async Task<int> CopySecuritiesAsync(SqliteConnection src, BudgetDbContext db, string ownerId, int idSpace, HashSet<long> existingAccountIds, CancellationToken ct)
     {
         // securities only ships in exporter builds that copy it; tolerate its absence so a stale
         // upload still imports the rest. Only live positions are carried over — MoneyMoney keeps
@@ -969,42 +804,10 @@ public class MoneyMoneyImportService
             cmd.Parameters["$price_cur"].Value = r.IsDBNull(10) ? DBNull.Value : r.GetString(10);
             cmd.Parameters["$purchase"].Value = r.IsDBNull(11) ? DBNull.Value : r.GetDouble(11);
             cmd.Parameters["$asset_class"].Value = r.IsDBNull(12) ? DBNull.Value : r.GetInt64(12);
-        }, SecurityInsertParameters, ct, skipRow: r => foreignAccountIds.Contains(RowIds.Namespace(idSpace, r.GetInt64(1))));
+        }, SecurityInsertParameters, ct, skipRow: r => existingAccountIds.Contains(RowIds.Namespace(idSpace, r.GetInt64(1))));
     }
 
-    /// <summary>
-    /// Portfolio history kept for connector-owned accounts may still carry ids from an earlier MoneyMoney upload; MoneyMoney
-    /// renumbers that table, so such ids would collide with the upload's rows. They move to the connector half of the id
-    /// space (<see cref="BankTransactionStore.ConnectorRowBase"/> and up), after any ids already there.
-    /// </summary>
-    private static async Task RelocateKeptPortfolioChartAsync(BudgetDbContext db, string ownerId, int idSpace, CancellationToken ct)
-    {
-        var lowest = RowIds.Namespace(idSpace, 0);
-        var connectorBase = RowIds.Namespace(idSpace, BankTransactionStore.ConnectorRowBase);
-        var next = RowIds.Namespace(idSpace + 1, 0);
-        var conn = db.Database.GetDbConnection();
-        var stale = new List<long>();
-        long highest = connectorBase - 1;
-        await using (var cmd = conn.CreateCommand())
-        {
-            cmd.Transaction = db.Database.CurrentTransaction?.GetDbTransaction();
-            cmd.CommandText = "SELECT Id FROM portfolio_chart WHERE OwnerUserId = $sid ORDER BY Id";
-            var p = cmd.CreateParameter(); p.ParameterName = "$sid"; p.Value = ownerId; cmd.Parameters.Add(p);
-            await using var reader = await cmd.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
-            {
-                var id = reader.GetInt64(0);
-                if (id >= lowest && id < connectorBase) stale.Add(id);
-                else if (id >= connectorBase && id < next) highest = Math.Max(highest, id);
-            }
-        }
-        foreach (var id in stale)
-        {
-            await db.Database.ExecuteSqlRawAsync("UPDATE portfolio_chart SET Id = {0} WHERE Id = {1}", new object[] { ++highest, id }, ct);
-        }
-    }
-
-    private static async Task<int> CopyPortfolioChartAsync(SqliteConnection src, BudgetDbContext db, string ownerId, int idSpace, HashSet<long> foreignAccountIds, CancellationToken ct)
+    private static async Task<int> CopyPortfolioChartAsync(SqliteConnection src, BudgetDbContext db, string ownerId, int idSpace, HashSet<long> existingAccountIds, CancellationToken ct)
     {
         // portfolio_chart, like securities, only ships in newer exporter builds. securities_key is
         // namespaced but carries no FK (it can reference deleted positions we don't import), so a
@@ -1027,7 +830,7 @@ public class MoneyMoneyImportService
             cmd.Parameters["$securities_key"].Value = r.IsDBNull(5)
                 ? DBNull.Value
                 : NamespaceParentKey(idSpace, r.GetInt64(5));
-        }, PortfolioChartInsertParameters, ct, skipRow: r => foreignAccountIds.Contains(RowIds.Namespace(idSpace, r.GetInt64(1))));
+        }, PortfolioChartInsertParameters, ct, skipRow: r => existingAccountIds.Contains(RowIds.Namespace(idSpace, r.GetInt64(1))));
     }
 
     /// <summary>
@@ -1085,27 +888,24 @@ public class MoneyMoneyImportService
     }
 }
 
-/// <summary>Balance and refresh state of an account owned by a bank connector, preserved across MoneyMoney imports.</summary>
-/// <summary>An import arrived for a user who declared their MoneyMoney import finished.</summary>
-public sealed class MoneyMoneyImportFinishedException : InvalidOperationException
+/// <summary>An import arrived for a user who already imported from MoneyMoney.</summary>
+public sealed class MoneyMoneyAlreadyImportedException : InvalidOperationException
 {
-    public MoneyMoneyImportFinishedException()
-        : base(MoneyMoneyImportService.ImportFinishedMessage)
+    public MoneyMoneyAlreadyImportedException()
+        : base(MoneyMoneyImportService.AlreadyImportedMessage)
     {
     }
 
-    public MoneyMoneyImportFinishedException(string message)
+    public MoneyMoneyAlreadyImportedException(string message)
         : base(message)
     {
     }
 
-    public MoneyMoneyImportFinishedException(string message, Exception innerException)
+    public MoneyMoneyAlreadyImportedException(string message, Exception innerException)
         : base(message, innerException)
     {
     }
 }
-
-internal sealed record ForeignAccountState(string? Balances, long? RefreshTimestamp, string? Error);
 
 public class ImportResult
 {

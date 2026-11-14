@@ -222,12 +222,9 @@ public sealed class MoneyMoneyBrowserImportTests : IAsyncDisposable
         var projectId = await UserDefaultProject.EnsureAsync(_t.System, Owner);
         Assert.NotNull(projectId);
 
-        for (var run = 0; run < 2; run++)   // a retried import adds nothing twice
-        {
-            var id = await UploadAsync(import, MoneyMoneyZipFixture.Build("secret"), 4096);
-            Assert.True(import.StartImport(Owner, id, "secret"));
-            Assert.True((await WaitAsync(import)).Phase == MoneyMoneyImportPhase.Done, _log.All);
-        }
+        var id = await UploadAsync(import, MoneyMoneyZipFixture.Build("secret"), 4096);
+        Assert.True(import.StartImport(Owner, id, "secret"));
+        Assert.True((await WaitAsync(import)).Phase == MoneyMoneyImportPhase.Done, _log.All);
 
         await using var db = await _t.System.CreateDbContextAsync();
         var ownerId = Owner;
@@ -280,19 +277,15 @@ public sealed class MoneyMoneyBrowserImportTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Category_budgets_become_the_active_MoneyMoney_budget_once()
+    public async Task Category_budgets_become_the_active_MoneyMoney_budget()
     {
         var (import, _) = await ServiceAsync();
         var projectId = await UserDefaultProject.EnsureAsync(_t.System, Owner);
 
-        MoneyMoneyImportJob job = null!;
-        for (var run = 0; run < 2; run++)
-        {
-            var id = await UploadAsync(import, MoneyMoneyZipFixture.Build("secret"), 4096);
-            Assert.True(import.StartImport(Owner, id, "secret"));
-            job = await WaitAsync(import);
-            Assert.True(job.Phase == MoneyMoneyImportPhase.Done, _log.All);
-        }
+        var id = await UploadAsync(import, MoneyMoneyZipFixture.Build("secret"), 4096);
+        Assert.True(import.StartImport(Owner, id, "secret"));
+        var job = await WaitAsync(import);
+        Assert.True(job.Phase == MoneyMoneyImportPhase.Done, _log.All);
         Assert.Equal(1, job.Budgets!.SkippedTotal);
 
         await using var db = await _t.System.CreateDbContextAsync();
@@ -359,12 +352,12 @@ public sealed class MoneyMoneyBrowserImportTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task A_finished_MoneyMoney_import_refuses_another_one()
+    public async Task A_second_MoneyMoney_import_is_refused()
     {
         var (import, staging) = await ServiceAsync();
         await using (var db = await _t.System.CreateDbContextAsync())
         {
-            (await RowIds.StateAsync(db, Owner)).MoneyMoneyImportFinishedAt = DateTime.UtcNow;
+            (await RowIds.StateAsync(db, Owner)).LastUploadAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
         }
         var id = await UploadAsync(import, MoneyMoneyZipFixture.Build("secret"), 1 << 20);
@@ -372,7 +365,7 @@ public sealed class MoneyMoneyBrowserImportTests : IAsyncDisposable
         Assert.True(import.StartImport(Owner, id, "secret"));
         var job = await WaitAsync(import);
 
-        Assert.Equal(MoneyMoneyImportError.ImportFinished, job.Error);
+        Assert.Equal(MoneyMoneyImportError.AlreadyImported, job.Error);
         Assert.Empty(Directory.EnumerateFileSystemEntries(staging));
     }
 

@@ -26,12 +26,12 @@ public sealed record PortfolioTakeoverCandidate(long? DepotAccountId, string? De
 /// rows whose transaction was deleted in PortfolioPerformance disappear.</item>
 /// </list>
 /// New accounts belong to the user and are numbered in the connector half of their id space (<see cref="RowIds"/>),
-/// apart from the accounts a MoneyMoney import replaces. A portfolio whose accounts already exist under the same name (made by the
-/// earlier MoneyMoney extension) is not given new accounts until the owner takes those over or declines; taken-over
+/// apart from accounts a MoneyMoney import brought. A portfolio whose accounts were imported from MoneyMoney under the same
+/// name (made by the earlier MoneyMoney extension) is not given new accounts until the owner takes those over or declines; taken-over
 /// accounts keep their history: bookings that match a PortfolioPerformance transaction are adopted, others (e.g.
 /// funding transfers) stay, and value history before the first PortfolioPerformance day is kept.
 /// Accounts of a portfolio that is switched off or deleted in PortfolioPerformance are released: taken-over ones keep
-/// their data and return to MoneyMoney; ones this sync created are removed when the portfolio is switched off, and become
+/// their data and become manual accounts again; ones this sync created are removed when the portfolio is switched off, and become
 /// manual when it is deleted in PortfolioPerformance.
 /// </summary>
 public sealed class PortfolioAccountSync
@@ -60,16 +60,18 @@ public sealed class PortfolioAccountSync
     /// <summary>Whether a portfolio is shown as accounts when the owner has not decided: not when it is linked to a bank depot or retired.</summary>
     public static bool DefaultShow(bool linkedToBankDepot, bool retired) => !linkedToBankDepot && !retired;
 
-    /// <summary>Accounts of <paramref name="ownerUserId"/> that the portfolio's accounts could take over (MoneyMoney-owned, same name).</summary>
+    /// <summary>Accounts of <paramref name="ownerUserId"/> that the portfolio's accounts could take over (imported manual accounts of the same name).</summary>
     public static async Task<PortfolioTakeoverCandidate> FindTakeoverCandidateAsync(
         BudgetDbContext db, string? ownerUserId, string portfolioName, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(ownerUserId)) return new PortfolioTakeoverCandidate(null, null, null, null);
         var ledgerName = portfolioName + LedgerSuffix;
-        var accounts = await db.Accounts.IgnoreQueryFilters().AsNoTracking()
-            .Where(a => a.OwnerUserId == ownerUserId && a.Provider == AccountProviders.MoneyMoney && (a.Name == portfolioName || a.Name == ledgerName))
+        var accounts = (await db.Accounts.IgnoreQueryFilters().AsNoTracking()
+            .Where(a => a.OwnerUserId == ownerUserId && a.Provider == AccountProviders.Manual && (a.Name == portfolioName || a.Name == ledgerName))
             .OrderBy(a => a.Id)
-            .ToListAsync(ct);
+            .ToListAsync(ct))
+            .Where(a => RowIds.IsImported(a.Id))
+            .ToList();
         var depot = accounts.FirstOrDefault(a => a.Name == portfolioName && (a.Portfolio == 1 || a.Type == 7));
         var ledger = accounts.FirstOrDefault(a => a.Name == ledgerName && a.Portfolio != 1 && a.Type != 7);
         return new PortfolioTakeoverCandidate(depot?.Id, depot?.Name, ledger?.Id, ledger?.Name);
@@ -191,8 +193,8 @@ public sealed class PortfolioAccountSync
     }
 
     /// <summary>
-    /// Releases a portfolio's accounts: ones taken over from MoneyMoney (<see cref="PpPortfolioSetting.TakenOver"/>) return
-    /// to MoneyMoney with their data. Ones this sync created are removed with its bookings, positions and
+    /// Releases a portfolio's accounts: ones taken over (<see cref="PpPortfolioSetting.TakenOver"/>) become manual
+    /// accounts again with their data. Ones this sync created are removed with its bookings, positions and
     /// value history when the owner switched the portfolio off (<paramref name="removeCreated"/>; it is created afresh if
     /// the portfolio is shown again), and stays as a manual account when the portfolio disappeared from the file.
     /// </summary>
@@ -201,12 +203,7 @@ public sealed class PortfolioAccountSync
         var ids = new[] { setting.DepotAccountId, setting.LedgerAccountId }.OfType<long>().ToList();
         foreach (var account in await db.Accounts.Where(a => ids.Contains(a.Id) && a.Provider == AccountProviders.PortfolioPerformance).ToListAsync(ct))
         {
-            if (setting.TakenOver)
-            {
-                account.Provider = AccountProviders.MoneyMoney;
-                continue;
-            }
-            if (!removeCreated)
+            if (setting.TakenOver || !removeCreated)
             {
                 account.Provider = AccountProviders.Manual;
                 continue;

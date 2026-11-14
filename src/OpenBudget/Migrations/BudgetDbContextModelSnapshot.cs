@@ -198,7 +198,7 @@ namespace OpenBudget.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT")
-                        .HasDefaultValue("moneymoney")
+                        .HasDefaultValue("manual")
                         .HasColumnName("provider");
 
                     b.Property<long?>("RefreshTimestamp")
@@ -645,14 +645,8 @@ namespace OpenBudget.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("PendingRefreshAt")
-                        .HasColumnType("TEXT");
 
-                    b.Property<string>("PendingRefreshJson")
-                        .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("PendingSinceUtc")
-                        .HasColumnType("TEXT");
 
                     b.Property<string>("RemoteId")
                         .IsRequired()
@@ -2152,8 +2146,6 @@ namespace OpenBudget.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime?>("MoneyMoneyImportFinishedAt")
-                        .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("StructureTakenOverAt")
                         .HasColumnType("TEXT");

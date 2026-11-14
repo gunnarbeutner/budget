@@ -53,8 +53,7 @@ public sealed class RuleValidationException : Exception
 
 /// <summary>
 /// Applying rules (the part shared by the sync pipeline and the "apply to existing" action). Only transactions without a
-/// category whose category was not chosen by hand are touched, and only on accounts OpenBudget owns (MoneyMoney-owned
-/// accounts get their categories from MoneyMoney). The rules considered are those of the projects the account is
+/// category whose category was not chosen by hand are touched. The rules considered are those of the projects the account is
 /// assigned to, by project order, then rule order; the first match wins. A rule of a category restricted to an account or
 /// account group only matches bookings of that account or of an account under that group.
 /// </summary>
@@ -72,7 +71,7 @@ public static class CategoryRuleEngine
     {
         if (added.Count == 0) return 0;
         var account = await db.Accounts.AsNoTracking().Where(a => a.Id == accountId).Select(a => new { a.OwnerUserId, a.Provider, a.Iban }).FirstOrDefaultAsync(ct);
-        if (account == null || account.Provider == AccountProviders.MoneyMoney) return 0;
+        if (account == null) return 0;
 
         var rules = await db.CategoryRules.AsNoTracking()
             .Where(r => r.Enabled && !r.Dismissed && db.ProjectAccountAssignments.Any(a => a.AccountId == accountId && a.ProjectId == r.ProjectId))
@@ -334,8 +333,7 @@ public sealed class CategoryRuleService
         rules = rules.Where(r => validCategories.Contains(r.CategoryId)).ToList();
 
         var accounts = (await ProjectAccountsAsync(db, projectId, ct))
-            .Where(a => a.Provider != AccountProviders.MoneyMoney
-                && TransactionEditRules.Check(db.Scope, a.OwnerUserId, a.Id, a.Provider) == EditBlock.None)
+            .Where(a => TransactionEditRules.Check(db.Scope, a.OwnerUserId, a.Id, a.Provider) == EditBlock.None)
             .Select(a => a.Id).ToList();
         var restrictions = await CategoryRestrictions.LoadAsync(db, rules.Select(r => r.CategoryId), accounts, ct);
         var subjects = await SubjectsAsync(db, accounts, onlyCandidates: true, restrictions.Groups, ct);

@@ -8,7 +8,7 @@ namespace OpenBudget.Connectors.Sync;
 /// Builds a connector depot's value history (<c>portfolio_chart</c>) one day at a time: after a successful refresh,
 /// the day of the sync gets a total point (no security) with the depot's value and a point per held security with
 /// that holding's value, all at noon UTC like the imported history. A later sync on the same day replaces that day's
-/// points; earlier days stay. Accounts whose history PortfolioPerformance or MoneyMoney own are left alone.
+/// points; earlier days stay. Accounts whose history PortfolioPerformance owns are left alone.
 /// Points are in the account's currency; a holding valued in another currency gets no point of its own.
 /// </summary>
 public static class DepotHistoryStore
@@ -16,9 +16,7 @@ public static class DepotHistoryStore
     /// <summary>Records today's value of <paramref name="account"/> from <paramref name="refresh"/>; the holdings must already be stored.</summary>
     public static async Task RecordAsync(BudgetDbContext db, Account account, AccountRefresh refresh, DateOnly today, CancellationToken ct)
     {
-        if (string.Equals(account.Provider, AccountProviders.PortfolioPerformance, StringComparison.Ordinal)
-            || string.Equals(account.Provider, AccountProviders.MoneyMoney, StringComparison.Ordinal))
-            return;
+        if (string.Equals(account.Provider, AccountProviders.PortfolioPerformance, StringComparison.Ordinal)) return;
         var depot = refresh.Positions.Count > 0 || account.Type == 7 || account.Portfolio == 1;
         if (!depot) return;
 

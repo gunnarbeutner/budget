@@ -42,7 +42,7 @@ public sealed class DefaultProjectTests
     // ---- setting and clearing ----
 
     [Fact]
-    public async Task Users_without_a_project_get_one_that_takes_their_accounts_and_later_new_ones()
+    public async Task Users_without_a_project_get_one_that_takes_their_accounts()
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w, 1));
@@ -60,11 +60,6 @@ public sealed class DefaultProjectTests
             Assert.Equal("carol", carols.Name);
             Assert.Equal(bobsOwn, (await db.Projects.SingleAsync(p => p.OwnerUserId == Bob)).Id);
         }
-
-        await w.ImportMoneyMoneyAsync(Snapshot(w, 2));
-        await using var check = await w.T.System.CreateDbContextAsync();
-        var alicesId = await check.Projects.Where(p => p.OwnerUserId == Alice).Select(p => p.Id).SingleAsync();
-        Assert.Equal(alicesId, (await AssignmentsAsync(w))[Account(2)]);
     }
 
     [Fact]
@@ -215,24 +210,18 @@ public sealed class DefaultProjectTests
     // ---- automatic assignment ----
 
     [Fact]
-    public async Task A_new_MoneyMoney_account_goes_to_the_default_project_and_existing_ones_are_untouched()
+    public async Task Imported_accounts_go_to_the_default_project()
     {
         await using var w = await BankWorld.CreateAsync();
-        var alice = w.View(Alice);
-        await w.ImportMoneyMoneyAsync(Snapshot(w, 2));
-        var other = await NewProjectAsync(w, Alice, "Holidays");
         var def = await NewProjectAsync(w, Alice, "Household");
-        await alice.Spending.AssignAccountToProjectAsync(other, Account(1), AccountScope.Exclusive);
-        await alice.Projects.SetDefaultForNewAccountsAsync(def, true);
+        await w.View(Alice).Projects.SetDefaultForNewAccountsAsync(def, true);
 
-        await w.ImportMoneyMoneyAsync(Snapshot(w, 3));
-        await w.ImportMoneyMoneyAsync(Snapshot(w, 3)); // re-uploading again changes nothing
+        await w.ImportMoneyMoneyAsync(Snapshot(w, 2));
 
         var assignments = await AssignmentsAsync(w);
         Assert.Equal(2, assignments.Count);
-        Assert.Equal(other, assignments[Account(1)]);
-        Assert.False(assignments.ContainsKey(Account(2)));   // known account without assignment stays unassigned
-        Assert.Equal(def, assignments[Account(3)]);
+        Assert.Equal(def, assignments[Account(1)]);
+        Assert.Equal(def, assignments[Account(2)]);
     }
 
     [Fact]
@@ -240,7 +229,6 @@ public sealed class DefaultProjectTests
     {
         await using var w = await BankWorld.CreateAsync();
         await NewProjectAsync(w, Alice, "Household");
-        await w.ImportMoneyMoneyAsync(Snapshot(w, 1));
         await w.ImportMoneyMoneyAsync(Snapshot(w, 3));
         Assert.Empty(await AssignmentsAsync(w));
     }

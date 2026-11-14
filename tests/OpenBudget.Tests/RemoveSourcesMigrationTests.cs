@@ -118,7 +118,6 @@ public sealed class RemoveSourcesMigrationTests
         Assert.Equal("1,3", string.Join(',', states[0].LegacyFileKeys!.Split(',').Order(StringComparer.Ordinal)));
         Assert.NotNull(states[0].LastUploadAt);
         Assert.NotNull(states[0].StructureTakenOverAt);
-        Assert.NotNull(states[1].MoneyMoneyImportFinishedAt);
 
         // The model works on the migrated schema: a new project, and a new user's id space after every one in use.
         db.Projects.Add(new Models.Project { Name = "New", OwnerUserId = Second });

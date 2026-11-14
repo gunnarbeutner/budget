@@ -76,7 +76,6 @@
   <data name="GroupSettings_Title" xml:space="preserve"><value>Einstellungen von „{0}“</value></data>
   <data name="Settings_Name" xml:space="preserve"><value>Name</value></data>
   <data name="Settings_Bank" xml:space="preserve"><value>Verbindung</value></data>
-  <data name="Settings_Bank_MoneyMoney" xml:space="preserve"><value>Wird von MoneyMoney aktualisiert</value></data>
   <data name="Settings_Bank_None" xml:space="preserve"><value>Mit keiner Verbindung verknüpft</value></data>
   <data name="Settings_Bank_Manage" xml:space="preserve"><value>Verbindungen verwalten</value></data>
   <data name="Settings_Statements" xml:space="preserve"><value>Kontoauszüge</value></data>
@@ -94,41 +93,14 @@
   <data name="Settings_UpdatedBy" xml:space="preserve">
     <value>Aktualisiert durch</value>
   </data>
-  <data name="Settings_UpdatedBy_MoneyMoney" xml:space="preserve">
-    <value>MoneyMoney-Uploads (Buchungen sind hier schreibgeschützt).</value>
-  </data>
   <data name="Settings_UpdatedBy_Bank" xml:space="preserve">
     <value>Die Bankverbindung in OpenBudget.</value>
   </data>
   <data name="Settings_UpdatedBy_Other" xml:space="preserve">
-    <value>OpenBudget (keine MoneyMoney-Uploads).</value>
-  </data>
-  <data name="Settings_Switch_LinkFirst" xml:space="preserve">
-    <value>Mit einer Verbindung verknüpfen, um es umzustellen.</value>
-  </data>
-  <data name="Settings_Switched_On" xml:space="preserve">
-    <value>Am {0} von MoneyMoney umgestellt.</value>
-  </data>
-  <data name="Settings_KeepManual_Button" xml:space="preserve">
-    <value>Als manuelles Konto behalten…</value>
+    <value>Aus der PortfolioPerformance-Datei berechnet.</value>
   </data>
   <data name="Settings_UpdatedBy_Manual" xml:space="preserve">
     <value>Von Hand in OpenBudget (manuelles Konto).</value>
-  </data>
-  <data name="Settings_Return_Button" xml:space="preserve">
-    <value>Zurück zu MoneyMoney</value>
-  </data>
-  <data name="Settings_Return_Finished" xml:space="preserve">
-    <value>Der MoneyMoney-Import ist abgeschlossen; nimm ihn zuerst auf der Import-Seite wieder auf.</value>
-  </data>
-  <data name="Return_Title" xml:space="preserve">
-    <value>Zurück zu MoneyMoney?</value>
-  </data>
-  <data name="Return_Body" xml:space="preserve">
-    <value>Der nächste MoneyMoney-Upload ersetzt Buchungen, Saldo und Bankdaten von „{0}“ durch die aus MoneyMoney.</value>
-  </data>
-  <data name="Return_Lost" xml:space="preserve">
-    <value>Zwischenzeitlich hier erfasste oder bearbeitete Buchungen (Beträge, Kategorien, Notizen, Häkchen, Aufteilungen) bleiben nicht erhalten.</value>
   </data>
   <data name="Settings_Closed" xml:space="preserve">
     <value>Konto geschlossen</value>

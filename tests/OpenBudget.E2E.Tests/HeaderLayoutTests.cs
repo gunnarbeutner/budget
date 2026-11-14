@@ -26,9 +26,8 @@ public sealed class HeaderLayoutTests : EndToEndTestBase
         await Page.AddInitScriptAsync("try { localStorage.setItem('ob.sidebarWidth', '520'); } catch (e) {}");
         var pid = E2ESeed.ProjectId;
 
-        await GoToAsync($"/projects/{pid}/browse?year=2026&month=3&sel=acct-{EditingSeed.MoneyMoneyAccountId}");
+        await GoToAsync($"/projects/{pid}/browse?year=2026&month=3&sel=acct-{EditingSeed.ImportedAccountId}");
         var toolbar = Page.GetByTestId("browse-toolbar");
-        await Expect(Page.GetByTestId("browse-readonly")).ToBeVisibleAsync();
         await Expect(Page.GetByTestId("filter-toggle")).ToBeVisibleAsync();
         var rail = await Page.Locator(".browse-rail").BoundingBoxAsync();
         Assert.That(rail!.Width, Is.EqualTo(520).Within(2), "the sidebar keeps its resized width");

@@ -600,7 +600,7 @@ public partial class Browse
     {
         var known = ids.Where(rowCache.ContainsKey).Select(i => rowCache[i]).ToList();
         if (known.Count == 0 || known.Count < ids.Count || known.Any(r => r.CanEdit)) return null;
-        return known.Any(r => r.EditBlock == EditBlock.MoneyMoney) ? L["Lock_MoneyMoney"] : L["Lock_NoPermission"];
+        return L["Lock_NoPermission"];
     }
 
     private async Task OnRowContextAsync(TxListItem item, MouseEventArgs e)

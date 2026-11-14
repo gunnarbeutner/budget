@@ -166,9 +166,6 @@
   <data name="Block_Manual" xml:space="preserve">
     <value>Manuelles Konto</value>
   </data>
-  <data name="Block_MoneyMoney" xml:space="preserve">
-    <value>Kommt aus MoneyMoney</value>
-  </data>
   <data name="Block_Closed" xml:space="preserve">
     <value>Konto geschlossen</value>
   </data>

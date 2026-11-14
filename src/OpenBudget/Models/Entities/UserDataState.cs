@@ -21,19 +21,16 @@ public class UserDataState
     /// </summary>
     public int IdSpace { get; set; }
 
-    /// <summary>When the most recent MoneyMoney import of this user finished copying.</summary>
+    /// <summary>When the user's MoneyMoney import finished copying; a further import is refused while it is set.</summary>
     public DateTime? LastUploadAt { get; set; }
 
     public long? LastUploadSizeBytes { get; set; }
 
     /// <summary>
     /// When the user's structure (account groups, accounts' names/groups/order, category groups, categories) became
-    /// OpenBudget's: a later MoneyMoney import only refreshes transactions and balances of MoneyMoney-owned accounts.
+    /// OpenBudget's (its siblings got explicit sort positions).
     /// </summary>
     public DateTime? StructureTakenOverAt { get; set; }
-
-    /// <summary>When the user declared the MoneyMoney import finished; further imports are refused.</summary>
-    public DateTime? MoneyMoneyImportFinishedAt { get; set; }
 
     /// <summary>
     /// Comma-separated numbers under which the user's last PortfolioPerformance file may still be stored from before files

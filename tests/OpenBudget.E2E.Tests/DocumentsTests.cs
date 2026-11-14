@@ -193,9 +193,9 @@ public sealed class DocumentsTests : EndToEndTestBase
         await Expect(dialog).ToContainTextAsync("Statement download");
         await Expect(dialog.GetByTestId("settings-note")).ToHaveTextAsync("If no new statement is there yet, it tries again daily.");
 
-        var mm = dialog.Locator($"[data-testid=setting-row][data-account='{EditingSeed.MoneyMoneyAccountId}']");
-        await Expect(mm.GetByTestId("setting-switch")).ToBeDisabledAsync();
-        await Expect(mm.GetByTestId("setting-reason")).ToHaveTextAsync("Comes from MoneyMoney");
+        var imported = dialog.Locator($"[data-testid=setting-row][data-account='{EditingSeed.ImportedAccountId}']");
+        await Expect(imported.GetByTestId("setting-switch")).ToBeDisabledAsync();
+        await Expect(imported.GetByTestId("setting-reason")).ToHaveTextAsync("Manual account");
 
         var giro = dialog.Locator($"[data-testid=setting-row][data-account='{EditingSeed.BankAccountId}']");
         await Expect(giro.GetByTestId("setting-switch")).Not.ToBeCheckedAsync();

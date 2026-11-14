@@ -38,7 +38,7 @@ public sealed class ScheduledTests : EndToEndTestBase
         db.ScheduledPayments.AddRange(
             Order(EditingSeed.BankAccountId, ScheduledPaymentKind.Standing, next, -850_00, "Example Landlord", "Rent flat 3", monthDay: next.Day),
             Order(EditingSeed.BankAccountId, ScheduledPaymentKind.Scheduled, Today.AddDays(2), -49_99, "Example Shop", "Order 4711"),
-            Order(EditingSeed.MoneyMoneyAccountId, ScheduledPaymentKind.Standing, Today.AddDays(20), 300_00, "Example Tenant", "Garage rent", monthDay: Today.AddDays(20).Day, interval: 3, last: new DateOnly(2027, 12, 31)),
+            Order(EditingSeed.ImportedAccountId, ScheduledPaymentKind.Standing, Today.AddDays(20), 300_00, "Example Tenant", "Garage rent", monthDay: Today.AddDays(20).Day, interval: 3, last: new DateOnly(2027, 12, 31)),
             Order(outside, ScheduledPaymentKind.Standing, Today.AddDays(1), -10_00, "Hidden Payee", "not in the project", monthDay: 1));
         await db.SaveChangesAsync();
     }
@@ -90,7 +90,7 @@ public sealed class ScheduledTests : EndToEndTestBase
         await Expect(Page).ToHaveURLAsync(new Regex("kind=standing"));
         await Expect(Page.GetByTestId("scheduled-name")).ToHaveTextAsync(new[] { "Example Landlord", "Example Tenant" });
 
-        await Page.GetByTestId("scheduled-account").SelectOptionAsync(EditingSeed.MoneyMoneyAccountId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        await Page.GetByTestId("scheduled-account").SelectOptionAsync(EditingSeed.ImportedAccountId.ToString(System.Globalization.CultureInfo.InvariantCulture));
         await Expect(Page.GetByTestId("scheduled-name")).ToHaveTextAsync(new[] { "Example Tenant" });
 
         await Page.GetByTestId("scheduled-kind").SelectOptionAsync("scheduled");

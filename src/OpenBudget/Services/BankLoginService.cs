@@ -342,8 +342,7 @@ public class BankLoginService
 
     /// <summary>
     /// Deletes the login with its credentials, session, remote-account list and downloaded statements (files
-    /// included). Accounts and transactions already imported are kept: accounts that were taken over from MoneyMoney
-    /// return to MoneyMoney (its next upload refills them), accounts the connector created become "manual".
+    /// included). Accounts and transactions already imported are kept; the linked accounts become manual accounts.
     /// </summary>
     public async Task DeleteLoginAsync(int id, CancellationToken ct = default)
     {
@@ -354,7 +353,7 @@ public class BankLoginService
             ?? throw new AccessDeniedException("Connection not found.");
 
         foreach (var link in login.Accounts.Where(a => a.LinkedAccountId != null))
-            await _accounts.SetProviderAsync(link.LinkedAccountId!.Value, link.CreatedByConnector ? AccountProviders.Manual : AccountProviders.MoneyMoney, ct);
+            await _accounts.SetProviderAsync(link.LinkedAccountId!.Value, AccountProviders.Manual, ct);
 
         var statements = await db.BankStatements.Where(s => s.BankLoginId == id).ToListAsync(ct);
         db.BankStatements.RemoveRange(statements);
@@ -386,7 +385,7 @@ public class BankLoginService
         }).ToList();
     }
 
-    /// <summary>The user's own accounts that a remote account may be linked to (MoneyMoney or detached ones not yet linked).</summary>
+    /// <summary>The user's own accounts that a remote account may be linked to (manual ones not yet linked, imported ones included).</summary>
     public async Task<List<LinkCandidate>> GetLinkCandidatesAsync(int loginAccountId, CancellationToken ct = default)
     {
         var scope = await _access.GetAsync();
@@ -396,7 +395,7 @@ public class BankLoginService
         var owner = scope.UserId;
         var taken = await db.BankLoginAccounts.AsNoTracking().Where(a => a.LinkedAccountId != null).Select(a => a.LinkedAccountId!.Value).ToListAsync(ct);
         var accounts = await db.Accounts.AsNoTracking()
-            .Where(a => a.OwnerUserId == owner && (a.Provider == AccountProviders.MoneyMoney || a.Provider == AccountProviders.Manual) && a.Type != 8 && !a.Closed)
+            .Where(a => a.OwnerUserId == owner && a.Provider == AccountProviders.Manual && a.Type != 8 && !a.Closed)
             .OrderBy(a => a.Name).ToListAsync(ct);
         var wanted = NormalizeIban(remote.Iban);
         // A depot only links to a depot, and a cash account only to a non-depot account: positions and
@@ -432,8 +431,8 @@ public class BankLoginService
     public static string NormalizeIban(string? iban) => (iban ?? string.Empty).Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
 
     /// <summary>
-    /// Links a remote account to an existing local account, which is the connector's from then on. An account imported
-    /// from MoneyMoney keeps its bookings; the first sync matches the bank's rows from its newest booking on.
+    /// Links a remote account to an existing manual account, which is the connector's from then on. The account keeps its
+    /// bookings (an imported account its MoneyMoney history); the first sync matches the bank's rows from its newest booking on.
     /// </summary>
     public async Task LinkAsync(int loginAccountId, long accountId, CancellationToken ct = default)
     {
@@ -447,14 +446,10 @@ public class BankLoginService
         if (candidates.All(c => c.AccountId != accountId))
             throw new InvalidOperationException("That account cannot be linked (not yours, already linked, or owned by another provider).");
 
-        var candidate = candidates.First(c => c.AccountId == accountId);
         if (!await _accounts.SetProviderAsync(accountId, remote.BankLogin.ConnectorType, ct))
             throw new AccessDeniedException("Account not found.");
         remote.LinkedAccountId = accountId;
-        remote.SwitchedAt = candidate.Provider == AccountProviders.MoneyMoney ? DateTime.UtcNow : null;
-        remote.PendingRefreshJson = null;
-        remote.PendingRefreshAt = null;
-        remote.PendingSinceUtc = null;
+        remote.SwitchedAt = DateTime.UtcNow;
         remote.CreatedByConnector = false;
         remote.SyncFloorUtc = null;
         remote.LastSuccessAt = null;
@@ -466,8 +461,7 @@ public class BankLoginService
 
     /// <summary>
     /// Creates a new local account of the user for a remote one, synced by the login's connector and assigned to the
-    /// default project for new accounts. A MoneyMoney import leaves it alone, as it only replaces MoneyMoney's accounts.
-    /// Its id comes from the connector half of the user's id space (see <see cref="RowIds"/>).
+    /// default project for new accounts. Its id comes from the connector half of the user's id space (see <see cref="RowIds"/>).
     /// </summary>
     public async Task<long> CreateAccountAsync(int loginAccountId, CancellationToken ct = default)
     {
@@ -516,7 +510,7 @@ public class BankLoginService
         return account.Id;
     }
 
-    /// <summary>Unlinks: a taken-over account returns to MoneyMoney, a connector-created one becomes "manual". Data stays.</summary>
+    /// <summary>Unlinks: the account becomes a manual account. Data stays.</summary>
     public async Task UnlinkAsync(int loginAccountId, CancellationToken ct = default)
     {
         var userId = await RequireUserAsync();
@@ -524,16 +518,13 @@ public class BankLoginService
         var remote = await db.BankLoginAccounts.FirstOrDefaultAsync(a => a.Id == loginAccountId, ct)
             ?? throw new AccessDeniedException("Bank account not found.");
         if (remote.LinkedAccountId is not { } accountId) return;
-        await _accounts.SetProviderAsync(accountId, remote.CreatedByConnector ? AccountProviders.Manual : AccountProviders.MoneyMoney, ct);
+        await _accounts.SetProviderAsync(accountId, AccountProviders.Manual, ct);
         remote.LinkedAccountId = null;
         remote.CreatedByConnector = false;
         remote.StatementsEnabled = false;
         remote.SyncFloorUtc = null;
         remote.LastSuccessAt = null;
         remote.SwitchedAt = null;
-        remote.PendingRefreshJson = null;
-        remote.PendingRefreshAt = null;
-        remote.PendingSinceUtc = null;
         await db.SaveChangesAsync(ct);
         Changed(userId);
         await PublishAccountSourceAsync(accountId);

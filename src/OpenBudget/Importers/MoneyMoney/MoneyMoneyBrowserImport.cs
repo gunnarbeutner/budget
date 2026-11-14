@@ -21,7 +21,7 @@ public enum MoneyMoneyImportError
     WrongPassword,
     NoDatabase,
     NotAZip,
-    ImportFinished,
+    AlreadyImported,
     Failed,
 }
 
@@ -236,6 +236,7 @@ public sealed class MoneyMoneyBrowserImport
         var first = await IsFirstImportAsync(userId, ct);
         try
         {
+            if (!first) throw new MoneyMoneyAlreadyImportedException();
             var folder = MoneyMoneyArchive.Extract(zipPath, workDir);
             TryDelete(zipPath);
 
@@ -288,9 +289,9 @@ public sealed class MoneyMoneyBrowserImport
         {
             outcome = Failed(MoneyMoneyImportError.NotAZip);
         }
-        catch (MoneyMoneyImportFinishedException)
+        catch (MoneyMoneyAlreadyImportedException)
         {
-            outcome = Failed(MoneyMoneyImportError.ImportFinished);
+            outcome = Failed(MoneyMoneyImportError.AlreadyImported);
         }
 #pragma warning disable CA1031 // a background job: every failure is reported to the user and logged, never thrown
         catch (Exception ex)
@@ -301,7 +302,7 @@ public sealed class MoneyMoneyBrowserImport
         }
         finally
         {
-            if (outcome is { Phase: MoneyMoneyImportPhase.Failed, Error: not MoneyMoneyImportError.ImportFinished } && first)
+            if (outcome is { Phase: MoneyMoneyImportPhase.Failed, Error: not MoneyMoneyImportError.AlreadyImported } && first)
                 await UndoAsync(userId);
             TryDelete(zipPath);
             TryDeleteDirectory(workDir);

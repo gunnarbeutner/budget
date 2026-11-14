@@ -4,7 +4,6 @@
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject OnboardingService Onboarding
-@inject AccountSwitchService Switcher
 @inject MoneyMoneyBrowserImport BrowserImport
 @inject IJSRuntime JS
 @inject ClockService Clock
@@ -16,11 +15,10 @@
    (1) optionally the history from MoneyMoney, (2) bank logins, whose accounts link to the imported ones they match
    (the suggestion is preselected; switching keeps the imported history), (3) optionally Portfolio Performance,
    whose portfolios take over matching imported accounts, (4) the project's accounts and the imported budget.
-   MoneyMoney is uploaded as a ZIP of its data folder and imported in the background (MoneyMoneyBrowserImport);
-   while that import is unfinished, step 1 also
-   switches its accounts to their bank connections (or keeps them as manual ones) and finishes the import. The gear
-   menu offers this page, and signing in leads to it, until the MoneyMoney import is finished or the user ends it
-   with Done (OnboardingState.ShowInMenu), and until then no other page opens (AccessRouteView). Each
+   MoneyMoney is uploaded as a ZIP of its data folder and imported once in the background (MoneyMoneyBrowserImport);
+   its accounts become manual accounts that the bank logins of step 2 can take over. The gear menu offers this page,
+   and signing in leads to it, until the user ends it with Done (OnboardingState.ShowInMenu), and until then no
+   other page opens (AccessRouteView). Each
    step brings what it needs inline: the bank logins (BankLoginsPanel), the MoneyMoney upload, the Portfolio
    Performance file (PortfolioPerformanceSource) and the project's accounts (ProjectAccountsPanel) with the
    imported budget. *@
@@ -99,12 +97,11 @@ else
                             <div class="progress" style="height: .5rem;"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width: @(PhasePercent(running))%"></div></div>
                         </div>
                     }
-                    else if (state.Import is { MoneyMoneyImportFinishedAt: { } finishedAt } finishedState)
+                    else if (state.Import is { LastUploadAt: { } importedAt })
                     {
                         <p class="mb-0">
-                            <span class="badge text-bg-secondary me-2" data-testid="import-finished">@L["Finished_Badge", Clock.ToLocal(finishedAt).ToString("yyyy-MM-dd")]</span>
-                            <span class="small text-body-secondary me-2">@L["Finished_Hint"]</span>
-                            <button class="btn btn-sm btn-outline-secondary" data-testid="import-resume" @onclick="() => SetFinishedAsync(finishedState.UserId, false)">@L["Finished_Resume"]</button>
+                            <span class="badge text-bg-secondary me-2" data-testid="import-done">@L["Imported_Badge", Clock.ToLocal(importedAt).ToString("yyyy-MM-dd")]</span>
+                            <span class="small text-body-secondary">@L["Imported_Hint"]</span>
                         </p>
                     }
                     else
@@ -321,7 +318,7 @@ else
         MoneyMoneyImportError.WrongPassword => L[lastUploadHadPassword ? "Error_WrongPassword" : "Error_PasswordNeeded"],
         MoneyMoneyImportError.NoDatabase => L["Error_NoDatabase"],
         MoneyMoneyImportError.NotAZip => L["Error_NotAZip"],
-        MoneyMoneyImportError.ImportFinished => L["Error_Finished"],
+        MoneyMoneyImportError.AlreadyImported => L["Error_AlreadyImported"],
         _ => L["Error_Failed"],
     };
 
@@ -330,9 +327,9 @@ else
     private async Task UploadAsync()
     {
         uploadError = null;
-        if (state?.Import is { MoneyMoneyImportFinishedAt: not null })
+        if (state is { MoneyMoneyImported: true })
         {
-            uploadError = L["Error_Finished"];
+            uploadError = L["Error_AlreadyImported"];
             return;
         }
         uploading = true;
@@ -460,22 +457,9 @@ else
     /// <summary>Ends Get started and opens the project.</summary>
     private async Task DoneAsync()
     {
-        // Imported accounts not linked to a bank login become manual ones, and the one-time import is finished.
-        if (userId != null && state is { MoneyMoneyImported: true })
-        {
-            var st = await Switcher.GetSourceStateAsync(userId);
-            if (st.MoneyMoneyAccounts.Count > 0) await Switcher.KeepManualAsync(st.MoneyMoneyAccounts.Select(a => a.AccountId).ToList());
-            await Switcher.SetImportFinishedAsync(userId, true);
-        }
         await Onboarding.CompleteAsync();
         Gate.Invalidate();
         Navigation.NavigateTo(state?.ProjectId is { } pid ? $"/projects/{pid}/browse" : "/");
-    }
-
-    private async Task SetFinishedAsync(string ownerId, bool finished)
-    {
-        await Switcher.SetImportFinishedAsync(ownerId, finished);
-        await LoadAsync();
     }
 
     protected override void Dispose(bool disposing)

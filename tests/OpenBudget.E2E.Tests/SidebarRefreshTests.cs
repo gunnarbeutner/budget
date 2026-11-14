@@ -73,7 +73,7 @@ public sealed class SidebarRefreshTests : EndToEndTestBase
             Assert.That(await db.BankLoginAccounts.Where(a => a.RemoteId == "FAKE-GIRO").Select(a => a.LastSuccessAt).SingleAsync(), Is.Not.Null);
 
         // the MoneyMoney account has no bank login: no bank entries
-        await Account(EditingSeed.MoneyMoneyAccountName).ClickAsync(new() { Button = MouseButton.Right });
+        await Account(EditingSeed.ImportedAccountName).ClickAsync(new() { Button = MouseButton.Right });
         await Expect(Page.GetByTestId("context-menu")).ToBeVisibleAsync();
         await Expect(Page.GetByTestId("ctx-bank-refresh-account")).ToHaveCountAsync(0);
     }

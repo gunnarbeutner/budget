@@ -119,7 +119,6 @@ public sealed class CategorizationTests
         await t.Db.SaveChangesAsync();
         t.Db.Categories.AddRange(cats);
         t.Db.Accounts.Add(new Account { Id = Id(1), OwnerUserId = Owner, Name = "Bank", Provider = "fake" });
-        t.Db.Accounts.Add(new Account { Id = Id(2), OwnerUserId = Owner, Name = "MM", Provider = AccountProviders.MoneyMoney });
         await t.Db.SaveChangesAsync();
         return t;
     }
@@ -146,7 +145,6 @@ public sealed class CategorizationTests
         AddTx(t, 101, Id(1), "example shop", null, 2);                   // similar
         AddTx(t, 102, Id(1), "Example Shop", Id(101), 3);                // already categorized
         AddTx(t, 103, Id(1), "Another Shop", null, 4);                   // other payee
-        AddTx(t, 104, Id(2), "Example Shop", null, 5);                   // MoneyMoney account: read-only
         AddTx(t, 105, Id(1), "Example Shop", Id(104), 6);                // sentinel category counts as uncategorized
         await t.Db.SaveChangesAsync();
 

@@ -123,7 +123,7 @@ internal sealed class BankWorld : IAsyncDisposable
         var access = new AccessScopeProvider(T.System, new FixedCurrentUser(userId), T.Notifier);
         var factory = new ScopedDbContextFactory(T.System, access);
         var origin = new ChangeOrigin();
-        return new AccountSwitchService(factory, access, T.Notifier, origin, Clock);
+        return new AccountSwitchService(factory, access, T.Notifier, origin);
     }
 
     /// <summary>The app's service graph for a user (reads/writes through global filters and write guard).</summary>
@@ -195,6 +195,13 @@ internal sealed class BankWorld : IAsyncDisposable
     {
         await using var db = await T.System.CreateDbContextAsync();
         return await db.Transactions.AsNoTracking().Where(t => t.AccountId == accountId).OrderBy(t => t.Timestamp).ThenBy(t => t.Id).ToListAsync();
+    }
+
+    /// <summary>Hands the account to <paramref name="provider"/> directly (as linking or a portfolio would).</summary>
+    public async Task SetProviderAsync(long id, string provider)
+    {
+        await using var db = await T.System.CreateDbContextAsync();
+        await db.Accounts.Where(a => a.Id == id).ExecuteUpdateAsync(u => u.SetProperty(a => a.Provider, provider));
     }
 
     public async Task<Account> AccountAsync(long id)

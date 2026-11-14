@@ -156,23 +156,10 @@ public class BankLoginAccount
     public DateTime? LastSuccessAt { get; set; }
 
     /// <summary>
-    /// When a linked account that MoneyMoney owned was switched to this connection (its provider became the connector's).
-    /// Null while the link waits for the switch (the account is still MoneyMoney's), for accounts the connector created,
-    /// and for links switched before this was recorded.
+    /// When an existing account was linked to this connection (its provider became the connector's). Null for accounts the
+    /// connector created and for links made before this was recorded.
     /// </summary>
     public DateTime? SwitchedAt { get; set; }
-
-    /// <summary>
-    /// While the linked account is still MoneyMoney's: what the bank reported in the most recent sync (JSON of the
-    /// connector's account refresh), kept only for the switch preview and applied by the switch. Never shown as rows.
-    /// </summary>
-    public string? PendingRefreshJson { get; set; }
-
-    /// <summary>When <see cref="PendingRefreshJson"/> was fetched.</summary>
-    public DateTime? PendingRefreshAt { get; set; }
-
-    /// <summary>The booking-date floor <see cref="PendingRefreshJson"/> was fetched from (null = the bank's full history).</summary>
-    public DateTime? PendingSinceUtc { get; set; }
 
     /// <summary>The bank no longer lists this account (closed): it cannot be linked or have statements switched on.</summary>
     public bool Closed { get; set; }

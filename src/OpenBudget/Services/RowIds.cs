@@ -30,6 +30,12 @@ public static class RowIds
         Namespace(idSpace, 1)
     };
 
+    /// <summary>
+    /// Whether <paramref name="id"/> is a rowid the MoneyMoney import brought (below
+    /// <see cref="Connectors.Sync.BankTransactionStore.ConnectorRowBase"/>); rows OpenBudget or a connector create live above.
+    /// </summary>
+    public static bool IsImported(long id) => (id & ((1L << 40) - 1)) < Connectors.Sync.BankTransactionStore.ConnectorRowBase;
+
     public static long SentinelRoot(int idSpace) => Namespace(idSpace, 1);
     public static long SentinelZero(int idSpace) => Namespace(idSpace, 0);
 

@@ -16,9 +16,6 @@ public sealed record OnboardingState(int BankLogins, bool HasAccounts, UserDataS
     /// <summary>Whether a MoneyMoney import delivered data.</summary>
     public bool MoneyMoneyImported => Import is { LastUploadAt: not null };
 
-    /// <summary>A MoneyMoney import that delivered data and was not declared finished.</summary>
-    public bool MoneyMoneyUnfinished => Import is { LastUploadAt: not null, MoneyMoneyImportFinishedAt: null };
-
     /// <summary>
     /// The gear menu and the settings navigation offer Get started (and signing in leads to it) until the user is
     /// through with it (<see cref="IsFinished"/>).

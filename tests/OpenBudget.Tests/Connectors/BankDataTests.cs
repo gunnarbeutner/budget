@@ -38,7 +38,7 @@ public sealed class BankDataTests
     // ---- linking and switching ----
 
     [Fact]
-    public async Task Candidates_are_owned_moneymoney_accounts_with_an_iban_suggestion()
+    public async Task Candidates_are_owned_imported_accounts_with_an_iban_suggestion()
     {
         await using var w = await BankWorld.CreateAsync();
         var accountId = await ImportGiroAsync(w);
@@ -75,7 +75,7 @@ public sealed class BankDataTests
     }
 
     [Fact]
-    public async Task Linking_keeps_moneymoney_until_the_switch_and_unlinking_restores_moneymoney()
+    public async Task Linking_switches_the_account_and_unlinking_makes_it_manual()
     {
         await using var w = await BankWorld.CreateAsync();
         var accountId = await ImportGiroAsync(w);
@@ -90,7 +90,7 @@ public sealed class BankDataTests
 
         var giro = await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId);
         await w.For(BankWorld.Alice).UnlinkAsync(giro.Id);
-        Assert.Equal(AccountProviders.MoneyMoney, (await w.AccountAsync(accountId)).Provider);
+        Assert.Equal(AccountProviders.Manual, (await w.AccountAsync(accountId)).Provider);
         Assert.Null((await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).LinkedAccountId);
     }
 
@@ -104,49 +104,7 @@ public sealed class BankDataTests
         await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false));
         var giro = await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId);
         await Assert.ThrowsAsync<InvalidOperationException>(() => w.For(BankWorld.Alice).LinkAsync(giro.Id, RowIds.Namespace(3, 1)));
-        Assert.Equal(AccountProviders.MoneyMoney, (await w.AccountAsync(RowIds.Namespace(3, 1))).Provider);
-    }
-
-    [Fact]
-    public async Task A_moneymoney_upload_leaves_connector_data_intact_until_unlinked()
-    {
-        await using var w = await BankWorld.CreateAsync();
-        var snapshot = w.BuildSnapshot([("MM Giro", "DE00 0000 0000 0000 0000 01"), ("MM Other", null)],
-        [
-            Mm(1, -10, new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc), "Old Shop", "Old purchase"),
-            Mm(2, -5, new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc), "Other Shop", "Other purchase"),
-        ]);
-        await w.ImportMoneyMoneyAsync(snapshot);
-        var accountId = RowIds.Namespace(BankWorld.SourceAlice, 1);
-        var id = await w.AddLoginAsync(BankWorld.Alice, "demo+statements");
-        await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, false, false));
-        await w.For(BankWorld.Alice).LinkAsync((await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).Id, accountId);
-        Assert.True((await w.SyncAsync(BankWorld.Alice, id, new SyncRequest(id, true, false))).Succeeded);
-
-        var before = await w.TransactionsAsync(accountId);
-        var balanceBefore = (await w.AccountAsync(accountId)).Balances;
-        Assert.Contains(before, t => t.ExternalId != null);
-        Assert.Contains(before, t => t.Name == "Old Shop"); // MoneyMoney's own row, older than the boundary
-
-        // The same (or any) MoneyMoney upload again.
-        await w.ImportMoneyMoneyAsync(snapshot);
-
-        var after = await w.TransactionsAsync(accountId);
-        Assert.Equal(before.Select(t => (t.Id, t.ExternalId, t.Amount)), after.Select(t => (t.Id, t.ExternalId, t.Amount)));
-        var account = await w.AccountAsync(accountId);
-        Assert.Equal("fake", account.Provider);
-        Assert.Equal(balanceBefore, account.Balances);
-        Assert.NotNull(account.RefreshTimestamp);
-        // The other (MoneyMoney-owned) account was re-imported as usual.
-        Assert.Single(await w.TransactionsAsync(RowIds.Namespace(BankWorld.SourceAlice, 2)));
-
-        // After unlinking, the next upload refills the account from MoneyMoney alone.
-        await w.For(BankWorld.Alice).UnlinkAsync((await w.RemoteAsync(BankWorld.Alice, id, FakeBankConnector.GiroId)).Id);
-        await w.ImportMoneyMoneyAsync(snapshot);
-        var refilled = await w.TransactionsAsync(accountId);
-        Assert.Equal("Old Shop", Assert.Single(refilled).Name);
-        Assert.Null(refilled[0].ExternalId);
-        Assert.Equal(AccountProviders.MoneyMoney, (await w.AccountAsync(accountId)).Provider);
+        Assert.Equal(AccountProviders.Manual, (await w.AccountAsync(RowIds.Namespace(3, 1))).Provider);
     }
 
     [Fact]
@@ -502,7 +460,7 @@ public sealed class BankDataTests
         await svc.DeleteLoginAsync(id);
 
         Assert.Null(await svc.GetLoginAsync(id));
-        Assert.Equal(AccountProviders.MoneyMoney, (await w.AccountAsync(accountId)).Provider);
+        Assert.Equal(AccountProviders.Manual, (await w.AccountAsync(accountId)).Provider);
         Assert.Equal(AccountProviders.Manual, (await w.AccountAsync(created)).Provider);
         Assert.Equal(txCount, (await w.TransactionsAsync(accountId)).Count);
         Assert.Empty(Directory.GetFiles(w.StatementsDir, "*.pdf", SearchOption.AllDirectories));

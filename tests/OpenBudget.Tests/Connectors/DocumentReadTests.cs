@@ -134,7 +134,7 @@ public sealed class DocumentReadTests
         var (w, _, giro) = await SetupAsync();
         await using var _w = w;
         w.T.Db.Accounts.Add(new Account { Id = 9001, OwnerUserId = BankWorld.Alice, Name = "Cash box", Provider = AccountProviders.Manual });
-        w.T.Db.Accounts.Add(new Account { Id = 9002, OwnerUserId = BankWorld.Alice, Name = "Imported", Provider = AccountProviders.MoneyMoney });
+        w.T.Db.Accounts.Add(new Account { Id = 9002, OwnerUserId = BankWorld.Alice, Name = "Portfolio", Provider = AccountProviders.PortfolioPerformance });
         w.T.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 1, AccountId = 9001 });
         w.T.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 1, AccountId = 9002 });
         await w.T.Db.SaveChangesAsync();
@@ -146,7 +146,7 @@ public sealed class DocumentReadTests
         Assert.True(g.Enabled);
         Assert.True(g.CanChange);
         Assert.Equal(StatementBlock.Manual, settings.Single(s => s.AccountId == 9001).Block);
-        Assert.Equal(StatementBlock.MoneyMoney, settings.Single(s => s.AccountId == 9002).Block);
+        Assert.Equal(StatementBlock.Manual, settings.Single(s => s.AccountId == 9002).Block);
 
         var bobs = await Docs(w, BankWorld.Bob).GetSettingsAsync(1);
         var bg = bobs.Single(s => s.AccountId == giro);

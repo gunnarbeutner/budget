@@ -94,9 +94,6 @@
   <data name="Statement" xml:space="preserve">
     <value>Statement</value>
   </data>
-  <data name="Lock_MoneyMoney" xml:space="preserve">
-    <value>Categorized in MoneyMoney until this account switches to a connection</value>
-  </data>
   <data name="Lock_NoPermission" xml:space="preserve">
     <value>You can only view these transactions</value>
   </data>

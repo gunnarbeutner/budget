@@ -156,16 +156,16 @@ internal static class E2ESeed
 
 /// <summary>
 /// The extra world the transaction-editing tests need on top of the baseline: one bank-connector account (editable)
-/// with uncategorized rows, one MoneyMoney-owned account (read-only), both assigned to the demo project.
+/// with uncategorized rows, one manual account imported from MoneyMoney, both assigned to the demo project.
 /// </summary>
 internal static class EditingSeed
 {
     public const string BankAccountName = "Example Giro";
-    public const string MoneyMoneyAccountName = "Example MoneyMoney Account";
+    public const string ImportedAccountName = "Example Imported Account";
     public const string EnergyCategory = "Energy";
 
     public static readonly long BankAccountId = RowIds.Namespace(E2ESeed.IdSpace, 1);
-    public static readonly long MoneyMoneyAccountId = RowIds.Namespace(E2ESeed.IdSpace, 2);
+    public static readonly long ImportedAccountId = RowIds.Namespace(E2ESeed.IdSpace, 2);
 
     public static async Task SeedAsync(IDbContextFactory<BudgetDbContext> factory)
     {
@@ -181,16 +181,16 @@ internal static class EditingSeed
             Currency = "EUR",
             Balances = "11:1000.000000,3:EUR,",
         });
-        db.Accounts.Add(new Account { Id = MoneyMoneyAccountId, OwnerUserId = E2ESeed.OwnerUserId, Name = MoneyMoneyAccountName, Type = 1, Currency = "EUR", Balances = "11:50.000000,3:EUR," });
+        db.Accounts.Add(new Account { Id = ImportedAccountId, OwnerUserId = E2ESeed.OwnerUserId, Name = ImportedAccountName, Provider = AccountProviders.Manual, Type = 1, Currency = "EUR", Balances = "11:50.000000,3:EUR," });
         await db.SaveChangesAsync();
         db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = BankAccountId });
-        db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = MoneyMoneyAccountId });
+        db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = ImportedAccountId });
 
         Add(db, 101, BankAccountId, -25_00, "Example Grocer", new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc), purpose: "Card payment 1234");
         Add(db, 102, BankAccountId, -30_00, "Example Grocer", new DateTime(2026, 3, 12, 0, 0, 0, DateTimeKind.Utc), isNew: true);
         Add(db, 103, BankAccountId, -12_50, "Example Grocer", new DateTime(2026, 3, 14, 0, 0, 0, DateTimeKind.Utc));
         Add(db, 104, BankAccountId, 2000_00, "Example Employer", new DateTime(2026, 3, 14, 0, 0, 0, DateTimeKind.Utc), category: 201);
-        Add(db, 110, MoneyMoneyAccountId, -4_50, "Example Bakery", new DateTime(2026, 3, 11, 0, 0, 0, DateTimeKind.Utc));
+        Add(db, 110, ImportedAccountId, -4_50, "Example Bakery", new DateTime(2026, 3, 11, 0, 0, 0, DateTimeKind.Utc));
         await db.SaveChangesAsync();
     }
 

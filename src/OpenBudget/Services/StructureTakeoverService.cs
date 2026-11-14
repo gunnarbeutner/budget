@@ -12,9 +12,7 @@ public sealed record StructureTakeoverResult(int AccountGroups, int Accounts, in
 /// (account groups and accounts' names/grouping/order, category groups and categories with names, colors, MoneyMoney's
 /// rule text, order) already lives in OpenBudget's own rows - the import writes it there - so the takeover freezes it:
 /// it gives every sibling an explicit sort position (MoneyMoney leaves some empty and relies on name order) and marks the
-/// user via <see cref="UserDataState.StructureTakenOverAt"/>. The MoneyMoney import checks that mark and from then on only
-/// refreshes transactions and balances of MoneyMoney-owned accounts; ids stay stable, so projects, budgets and tracking
-/// keep working.
+/// user via <see cref="UserDataState.StructureTakenOverAt"/>.
 /// </summary>
 public sealed class StructureTakeoverService
 {

@@ -217,13 +217,13 @@ public sealed class CategoryRuleTests
     }
 
     [Fact]
-    public async Task Moneymoney_owned_accounts_are_left_alone()
+    public async Task Imported_manual_accounts_get_rules_too()
     {
         await using var t = await WorldAsync();
         var s = ServiceFor(t, AccessWorld.Alice);
         await AddRuleAsync(s, AccessWorld.Property, "Example Market", Groceries);
-        Assert.Equal(0, await s.ApplyExistingAsync(AccessWorld.Property));
-        Assert.Null((await LoadAsync(t, 25)).CategoryId);
+        Assert.Equal(1, await s.ApplyExistingAsync(AccessWorld.Property));
+        Assert.Equal(Groceries, (await LoadAsync(t, 25)).CategoryId);
     }
 
     [Fact]

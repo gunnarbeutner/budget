@@ -52,8 +52,7 @@ public enum SplitProblem
 /// already skips split parents counts the parts instead. Part ids come from the connector row range of the source.
 ///
 /// Everything goes through the user-scoped context: only rows the user may edit are touched (see
-/// <see cref="TransactionEditRules"/>), so MoneyMoney-owned accounts cannot be split (their next upload would replace the
-/// rows and lose the parts). Pending bookings can be split too: the sync moves the split to the booking that replaces
+/// <see cref="TransactionEditRules"/>). Pending bookings can be split too: the sync moves the split to the booking that replaces
 /// them (see <see cref="PendingCarryOver"/>).
 /// </summary>
 public sealed class SplitService
@@ -244,9 +243,7 @@ public sealed class SplitService
             var block = TransactionEditRules.Check(db.Scope, r.OwnerUserId, r.AccountId,
                 r.AccountId is { } aid && providers.TryGetValue(aid, out var p) ? p : null);
             if (block != EditBlock.None)
-                throw new AccessDeniedException(block == EditBlock.MoneyMoney
-                    ? "Transactions of accounts still owned by MoneyMoney are read-only."
-                    : "Not allowed to edit these transactions.");
+                throw new AccessDeniedException("Not allowed to edit these transactions.");
         }
     }
 

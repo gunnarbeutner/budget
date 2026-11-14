@@ -23,7 +23,6 @@ public sealed record AssignTarget(int ProjectId, string ProjectName, long Accoun
 public enum StatementBlock
 {
     Manual,
-    MoneyMoney,
     Closed,
     NotOffered,
 }
@@ -299,7 +298,7 @@ public class DocumentService
             var link = links.Where(l => l.AccountId == a.Id).OrderBy(l => l.Closed).ThenBy(l => l.Id).FirstOrDefault();
             if (link == null)
             {
-                var block = a.Provider == AccountProviders.Manual ? StatementBlock.Manual : StatementBlock.MoneyMoney;
+                var block = StatementBlock.Manual;
                 result.Add(new StatementSetting(a.Id, a.Name ?? "?", block, null, null, false, StatementsInterval.Monthly, null, false));
                 continue;
             }

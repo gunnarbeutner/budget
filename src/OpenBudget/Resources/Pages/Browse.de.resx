@@ -175,9 +175,6 @@
   <data name="Bar_Clear" xml:space="preserve">
     <value>Auswahl aufheben</value>
   </data>
-  <data name="Lock_MoneyMoney" xml:space="preserve">
-    <value>Wird in MoneyMoney kategorisiert, bis dieses Konto auf eine Verbindung umgestellt wird</value>
-  </data>
   <data name="Lock_NoPermission" xml:space="preserve">
     <value>Sie können diese Umsätze nur ansehen</value>
   </data>
@@ -324,9 +321,6 @@
   </data>
   <data name="Toast_MarkedAll_Many" xml:space="preserve">
     <value>{0} Umsätze als abgehakt markiert.</value>
-  </data>
-  <data name="ReadOnly_MoneyMoney" xml:space="preserve">
-    <value>Wird in MoneyMoney kategorisiert, bis dieses Konto auf eine Verbindung umgestellt wird</value>
   </data>
   <data name="Filter_Button" xml:space="preserve">
     <value>Filter</value>

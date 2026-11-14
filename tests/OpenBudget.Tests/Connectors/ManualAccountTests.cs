@@ -8,8 +8,8 @@ using Xunit;
 namespace OpenBudget.Tests.Connectors;
 
 /// <summary>
-/// Keeping MoneyMoney accounts as manual accounts (and returning them), closing accounts, and entering bookings of
-/// manual accounts by hand with the balance following.
+/// Imported accounts as manual accounts, closing accounts, and entering bookings of manual accounts by hand with the
+/// balance following.
 /// </summary>
 public sealed class ManualAccountTests
 {
@@ -35,127 +35,37 @@ public sealed class ManualAccountTests
     }
 
     [Fact]
-    public async Task Keeping_an_account_as_manual_needs_the_takeover_and_stops_uploads_from_touching_it()
+    public async Task An_import_creates_manual_accounts_whose_bookings_the_owner_edits()
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
-        var switcher = w.Switcher(BankWorld.Alice);
 
-        var state = await switcher.GetSourceStateAsync(BankWorld.Alice);
-        Assert.Equal(2, state.MoneyMoneyAccountsWithoutLink);
-        Assert.Equal(2, state.MoneyMoneyAccounts.Single(a => a.AccountId == Giro).Bookings);
-        Assert.True((await switcher.GetAccountStateAsync(Giro))!.CanKeepManual);
-
-        Assert.Equal(2, await switcher.KeepManualAsync([Giro, Savings]));
         Assert.Equal(AccountProviders.Manual, (await w.AccountAsync(Giro)).Provider);
+        Assert.Equal(AccountProviders.Manual, (await w.AccountAsync(Savings)).Provider);
+        var state = (await w.Switcher(BankWorld.Alice).GetAccountStateAsync(Giro))!;
+        Assert.Equal(AccountProviders.Manual, state.Provider);
+        Assert.True(state.CanManage);
+        Assert.False((await w.Switcher(BankWorld.Bob).GetAccountStateAsync(Giro))?.CanManage ?? false);
 
-        state = await switcher.GetSourceStateAsync(BankWorld.Alice);
-        Assert.Equal(0, state.MoneyMoneyAccountsWithoutLink);
-        Assert.Equal(2, state.ManualAccounts.Count);
-        Assert.True((await switcher.GetAccountStateAsync(Giro))!.CanReturnToMoneyMoney);
-
-        // An upload with other rows leaves the manual accounts' history and balance alone.
-        await w.ImportMoneyMoneyAsync(Snapshot(w, [new(1, -1, Day(11, 1), "OTHER", "OTHER")]));
-        Assert.Equal(2, (await w.TransactionsAsync(Giro)).Count);
-        Assert.Single(await w.TransactionsAsync(Savings));
-    }
-
-    [Fact]
-    public async Task Accounts_in_the_overview_show_their_group_path()
-    {
-        await using var w = await BankWorld.CreateAsync();
-        await w.ImportMoneyMoneyAsync(Snapshot(w));
-        await using (var db = await w.T.System.CreateDbContextAsync())
-        {
-            var top = new AccountGroup { Id = RowIds.Namespace(BankWorld.SourceAlice, 900), OwnerUserId = BankWorld.Alice, Name = "Savings" };
-            var sub = new AccountGroup { Id = RowIds.Namespace(BankWorld.SourceAlice, 901), OwnerUserId = BankWorld.Alice, Name = "Old", ParentGroupId = top.Id };
-            db.AccountGroups.AddRange(top, sub);
-            await db.SaveChangesAsync();
-            (await db.Accounts.FindAsync(Savings))!.GroupId = sub.Id;
-            await db.SaveChangesAsync();
-        }
-
-        var state = await w.Switcher(BankWorld.Alice).GetSourceStateAsync(BankWorld.Alice);
-        Assert.Equal(["Savings › Old:Old Savings", ":Old Giro"], state.MoneyMoneyAccounts.Select(a => $"{a.GroupPath}:{a.Name}"));
-    }
-
-    [Fact]
-    public async Task Returning_to_MoneyMoney_hands_the_account_to_the_next_upload_and_is_refused_while_finished()
-    {
-        await using var w = await BankWorld.CreateAsync();
-        await w.ImportMoneyMoneyAsync(Snapshot(w));
-        var switcher = w.Switcher(BankWorld.Alice);
-        await switcher.KeepManualAsync([Giro]);
-        await Manual(w, BankWorld.Alice).AddAsync(Giro, new ManualTransactionInput(new DateOnly(2026, 11, 2), -5m, "Kiosk", null, null, null));
-
-        await switcher.SetImportFinishedAsync(BankWorld.Alice, true);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => switcher.ReturnToMoneyMoneyAsync(Giro));
-        await switcher.SetImportFinishedAsync(BankWorld.Alice, false);
-
-        await switcher.ReturnToMoneyMoneyAsync(Giro);
-        Assert.Equal(AccountProviders.MoneyMoney, (await w.AccountAsync(Giro)).Provider);
-        await w.ImportMoneyMoneyAsync(Snapshot(w));
-        Assert.Equal(2, (await w.TransactionsAsync(Giro)).Count);
-        Assert.DoesNotContain(await w.TransactionsAsync(Giro), t => t.Name == "Kiosk");
-    }
-
-    [Fact]
-    public async Task Linked_accounts_and_other_users_cannot_be_kept_manual()
-    {
-        await using var w = await BankWorld.CreateAsync();
-        await w.ImportMoneyMoneyAsync(Snapshot(w));
-        var loginId = await w.AddLoginAsync(BankWorld.Alice);
-        await w.SyncAsync(BankWorld.Alice, loginId, new SyncRequest(loginId, false, false));
-        var link = await w.RemoteAsync(BankWorld.Alice, loginId, FakeBankConnector.GiroId);
-        await w.For(BankWorld.Alice).LinkAsync(link.Id, Giro);
-
-        var switcher = w.Switcher(BankWorld.Alice);
-        Assert.False((await switcher.GetAccountStateAsync(Giro))!.CanKeepManual);
-        Assert.Equal(0, await switcher.KeepManualAsync([Giro]));
-        Assert.Empty(await switcher.PreviewKeepManualAsync([Giro]));
-        Assert.Single(await switcher.PreviewKeepManualAsync([Giro, Savings]));
-
-        await Assert.ThrowsAsync<AccessDeniedException>(() => w.Switcher(BankWorld.Bob).KeepManualAsync([Savings]));
-        Assert.Equal(AccountProviders.MoneyMoney, (await w.AccountAsync(Savings)).Provider);
-    }
-
-    [Fact]
-    public async Task Finishing_the_import_keeps_the_remaining_MoneyMoney_accounts_as_manual_and_editable_ones()
-    {
-        await using var w = await BankWorld.CreateAsync();
-        await w.ImportMoneyMoneyAsync(Snapshot(w));
-        var switcher = w.Switcher(BankWorld.Alice);
         var row = (await w.TransactionsAsync(Giro))[0];
         var edits = new TransactionEditService(
             new ScopedDbContextFactory(w.T.System, new AccessScopeProvider(w.T.System, new FixedCurrentUser(BankWorld.Alice), w.T.Notifier)),
             w.T.Notifier, new ChangeOrigin());
-        await Assert.ThrowsAsync<AccessDeniedException>(() => edits.SetNoteAsync([row.Id], "note"));
-
-        await switcher.SetImportFinishedAsync(BankWorld.Alice, true);
-
-        Assert.Equal(AccountProviders.Manual, (await w.AccountAsync(Giro)).Provider);
-        Assert.Equal(2, (await w.TransactionsAsync(Giro)).Count);
         await edits.SetNoteAsync([row.Id], "note");
+        Assert.Equal("note", (await w.TransactionsAsync(Giro)).Single(t => t.Id == row.Id).Note);
+        Assert.True(await Manual(w, BankWorld.Alice).CanEnterAsync(Giro));
     }
 
     [Fact]
-    public async Task Closed_accounts_count_as_handled_and_survive_uploads()
+    public async Task Closed_accounts_are_marked_by_the_owner_only()
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
         var switcher = w.Switcher(BankWorld.Alice);
 
         Assert.Equal(1, await switcher.SetClosedAsync([Savings], true));
-        var state = await switcher.GetSourceStateAsync(BankWorld.Alice);
-        Assert.Equal(1, state.MoneyMoneyAccountsWithoutLink);
-        Assert.Equal(Savings, Assert.Single(state.ClosedAccounts).AccountId);
         Assert.True((await switcher.GetAccountStateAsync(Savings))!.Closed);
-
-        // Without the takeover the upload replaces the accounts; the flag is OpenBudget's and stays.
-        await w.ImportMoneyMoneyAsync(Snapshot(w));
-        var savings = await w.AccountAsync(Savings);
-        Assert.True(savings.Closed);
-        Assert.Equal(AccountProviders.MoneyMoney, savings.Provider);
+        Assert.True((await w.AccountAsync(Savings)).Closed);
         Assert.Single(await w.TransactionsAsync(Savings));
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => w.Switcher(BankWorld.Bob).SetClosedAsync([Savings], false));
@@ -168,7 +78,6 @@ public sealed class ManualAccountTests
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
-        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro]);
         var manual = Manual(w, BankWorld.Alice);
         Assert.Equal(10m, (await w.AccountAsync(Giro)).CurrentBalance);
 
@@ -214,7 +123,7 @@ public sealed class ManualAccountTests
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
-        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro]);
+        await w.SetProviderAsync(Savings, FakeBankConnector.TypeName);
         var category = RowIds.Namespace(BankWorld.SourceAlice, 51);
         int projectId;
         await using (var db = await w.T.System.CreateDbContextAsync())
@@ -250,7 +159,7 @@ public sealed class ManualAccountTests
         Assert.Equal("Offsetting entry for Interest", entry.Note);
         Assert.Equal(-15m, (await w.AccountAsync(Giro)).CurrentBalance);
 
-        // Not on a MoneyMoney account, not by someone else, not on the booking's own account.
+        // Not on a bank's account, not by someone else, not on the booking's own account.
         var giroRow = (await w.TransactionsAsync(Giro)).First(t => t.Id != id);
         await Assert.ThrowsAsync<InvalidOperationException>(() => manual.CreateOffsettingEntryAsync(giroRow.Id, Savings, null));
         await Assert.ThrowsAsync<AccessDeniedException>(() => Manual(w, BankWorld.Bob).CreateOffsettingEntryAsync(original.Id, Giro, null));
@@ -263,13 +172,13 @@ public sealed class ManualAccountTests
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
-        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro]);
+        await w.SetProviderAsync(Savings, FakeBankConnector.TypeName);
         var input = new ManualTransactionInput(new DateOnly(2026, 11, 5), -1m, "X", null, null, null);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => Manual(w, BankWorld.Alice).AddAsync(Savings, input));
         await Assert.ThrowsAsync<AccessDeniedException>(() => Manual(w, BankWorld.Bob).AddAsync(Giro, input));
-        var mmRow = (await w.TransactionsAsync(Savings))[0];
-        await Assert.ThrowsAsync<InvalidOperationException>(() => Manual(w, BankWorld.Alice).UpdateAsync(mmRow.Id, input));
+        var bankRow = (await w.TransactionsAsync(Savings))[0];
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Manual(w, BankWorld.Alice).UpdateAsync(bankRow.Id, input));
         Assert.True(await Manual(w, BankWorld.Alice).CanEnterAsync(Giro));
         Assert.False(await Manual(w, BankWorld.Alice).CanEnterAsync(Savings));
     }
@@ -279,7 +188,7 @@ public sealed class ManualAccountTests
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
-        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro]);
+        await w.SetProviderAsync(Savings, FakeBankConnector.TypeName);
         var alice = Manual(w, BankWorld.Alice);
         var before = await w.AccountAsync(Giro);
 
@@ -302,7 +211,7 @@ public sealed class ManualAccountTests
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
-        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro]);
+        await w.SetProviderAsync(Savings, FakeBankConnector.TypeName);
         var alice = Manual(w, BankWorld.Alice);
 
         await Assert.ThrowsAsync<ArgumentException>(() => alice.AddAsync(Giro, new ManualTransactionInput(new DateOnly(2026, 11, 5), -3m, "  ", null, null, null)));
@@ -323,7 +232,7 @@ public sealed class ManualAccountTests
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
-        await w.Switcher(BankWorld.Alice).KeepManualAsync([Giro]);
+        await w.SetProviderAsync(Savings, FakeBankConnector.TypeName);
         var alice = Manual(w, BankWorld.Alice);
 
         var state = (await alice.GetInitialBalanceAsync(Giro))!;

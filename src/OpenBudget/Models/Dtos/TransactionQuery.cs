@@ -124,7 +124,7 @@ public class TransactionRow
 
     public string OwnerUserId { get; init; } = string.Empty;
 
-    /// <summary>OpenBudget's own note (MoneyMoney's comment for MoneyMoney-owned rows).</summary>
+    /// <summary>OpenBudget's own note (MoneyMoney's comment for imported rows).</summary>
     public string? Note { get; init; }
 
     public bool IsChecked { get; init; }
@@ -140,7 +140,7 @@ public class TransactionRow
     public string? AccountProvider { get; init; }
 
     /// <summary>Whether the current user may change category, note and check mark of this row, and if not why.</summary>
-    public EditBlock EditBlock { get; init; } = EditBlock.MoneyMoney;
+    public EditBlock EditBlock { get; init; } = EditBlock.NoPermission;
 
     public bool CanEdit => EditBlock == EditBlock.None;
 

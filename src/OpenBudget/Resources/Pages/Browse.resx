@@ -175,9 +175,6 @@
   <data name="Bar_Clear" xml:space="preserve">
     <value>Clear selection</value>
   </data>
-  <data name="Lock_MoneyMoney" xml:space="preserve">
-    <value>Categorized in MoneyMoney until this account switches to a connection</value>
-  </data>
   <data name="Lock_NoPermission" xml:space="preserve">
     <value>You can only view these transactions</value>
   </data>
@@ -324,9 +321,6 @@
   </data>
   <data name="Toast_MarkedAll_Many" xml:space="preserve">
     <value>{0} transactions marked as checked.</value>
-  </data>
-  <data name="ReadOnly_MoneyMoney" xml:space="preserve">
-    <value>Categorized in MoneyMoney until this account switches to a connection</value>
   </data>
   <data name="Filter_Button" xml:space="preserve">
     <value>Filter</value>

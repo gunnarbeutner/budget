@@ -103,18 +103,6 @@
 </Modal>
 
 
-<KeepManualDialog AccountIds="_keepManualIds" OnTop="true" OnClose="() => _keepManualIds = null" OnDone="KeptManualAsync" />
-
-<Modal Show="_confirmReturn" Title="@L["Return_Title"]" OnClose="() => _confirmReturn = false" OnTop="true">
-    <ChildContent>
-        <p>@L["Return_Body", _settings?.Account.Name ?? ""]</p>
-        <p class="small text-body-secondary mb-0">@L["Return_Lost"]</p>
-    </ChildContent>
-    <Footer>
-        <button type="button" class="btn btn-secondary" @onclick="() => _confirmReturn = false">@L["Cancel"]</button>
-        <button type="button" class="btn btn-danger" data-testid="return-mm-confirm" @onclick="ReturnConfirmedAsync">@L["Settings_Return_Button"]</button>
-    </Footer>
-</Modal>
 
 <Modal Show="_settings != null" Title="@L["Settings_Title"]" OnClose="() => _settings = null" CloseOnBackdropClick="false">
     <ChildContent>
@@ -142,7 +130,7 @@
                 }
                 else
                 {
-                    <div class="text-body-secondary small" data-testid="account-settings-bank">@(s.Account.IsMoneyMoney ? L["Settings_Bank_MoneyMoney"] : L["Settings_Bank_None"])</div>
+                    <div class="text-body-secondary small" data-testid="account-settings-bank">@L["Settings_Bank_None"]</div>
                 }
                 @if (!string.IsNullOrEmpty(s.Account.Iban))
                 {
@@ -214,28 +202,9 @@
             {
                 <div class="mb-3" data-testid="account-settings-provider">
                     <div class="form-label mb-1">@L["Settings_UpdatedBy"]</div>
-                    @if (sw.Provider == OpenBudget.Models.AccountProviders.MoneyMoney)
-                    {
-                        <div class="small">@L["Settings_UpdatedBy_MoneyMoney"]</div>
-                        @if (sw.CanManage)
-                        {
-                            <div class="small text-body-secondary">@L["Settings_Switch_LinkFirst"]</div>
-                        }
-                        @if (sw.CanKeepManual)
-                        {
-                            <button type="button" class="btn btn-sm btn-outline-secondary mt-1" data-testid="account-settings-keep-manual"
-                                    @onclick="() => _keepManualIds = [s.Account.Id]">@L["Settings_KeepManual_Button"]</button>
-                        }
-                    }
-                    else if (sw.Provider == OpenBudget.Models.AccountProviders.Manual)
+                    @if (sw.Provider == OpenBudget.Models.AccountProviders.Manual)
                     {
                         <div class="small">@L["Settings_UpdatedBy_Manual"]</div>
-                        @if (sw.CanReturnToMoneyMoney)
-                        {
-                            <button type="button" class="btn btn-sm btn-link p-0 mt-1" data-testid="account-settings-return-mm"
-                                    disabled="@sw.ImportFinished" title="@(sw.ImportFinished ? L["Settings_Return_Finished"].Value : null)"
-                                    @onclick="() => _confirmReturn = true">@L["Settings_Return_Button"]</button>
-                        }
                     }
                     else if (sw.Provider is OpenBudget.Models.AccountProviders.PortfolioPerformance)
                     {
@@ -244,10 +213,6 @@
                     else
                     {
                         <div class="small">@L["Settings_UpdatedBy_Bank"]</div>
-                        @if (sw.Link is { Switched: true, SwitchedAt: { } at })
-                        {
-                            <div class="small text-body-secondary">@L["Settings_Switched_On", at.ToString("yyyy-MM-dd")]</div>
-                        }
                     }
                 </div>
             }
@@ -359,8 +324,6 @@
     private SettingsState? _settings;
     private AccountSwitchState? _switchState;
 
-    private IReadOnlyList<long>? _keepManualIds;
-    private bool _confirmReturn;
 
     private async Task ReloadSwitchStateAsync()
     {
@@ -369,21 +332,6 @@
             try { _switchState = await Switcher.GetAccountStateAsync(s.Account.Id); }
             catch (AccessDeniedException) { _switchState = null; }
         }
-    }
-
-    private async Task KeptManualAsync(int count)
-    {
-        _keepManualIds = null;
-        await ReloadSwitchStateAsync();
-        await OnChanged.InvokeAsync(null);
-    }
-
-    private async Task ReturnConfirmedAsync()
-    {
-        _confirmReturn = false;
-        if (_settings is not { } s) return;
-        await RunAsync(() => Switcher.ReturnToMoneyMoneyAsync(s.Account.Id));
-        await ReloadSwitchStateAsync();
     }
 
     private async Task SetClosedAsync(long accountId, bool closed)

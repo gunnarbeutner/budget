@@ -10,7 +10,7 @@ namespace OpenBudget.E2E.Tests;
 
 /// <summary>
 /// The editable transaction list: select and expand a row, categorize through the picker with the keyboard, bulk edits via the
-/// context menu with undo, the filter bar, the read-only lock on a MoneyMoney row, and a viewer who may not edit.
+/// context menu with undo, the filter bar, and a viewer who may not edit.
 /// The extra world (see <see cref="EditingSeed"/>) has a connector account with uncategorized "Example Grocer" rows.
 /// </summary>
 [TestFixture]
@@ -205,14 +205,9 @@ public sealed class TransactionEditingTests : EndToEndTestBase
 
         await Page.GetByTestId("toast-similar").ClickAsync();
 
-        await Expect(Page.GetByText(new Regex("1 transactions"))).ToBeVisibleAsync();   // only the MoneyMoney bakery row is left
+        await Expect(Page.GetByText(new Regex("1 transactions"))).ToBeVisibleAsync();   // only the bakery row is left
         foreach (var id in new long[] { 101, 102, 103 }) Assert.That((await LoadAsync(id)).CategoryId, Is.EqualTo(200));
         Assert.That((await LoadAsync(110)).CategoryId, Is.Null);
-
-        // The account itself carries one read-only notice in the toolbar instead of a lock per row.
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.MoneyMoneyAccountId}");
-        await Expect(Page.GetByTestId("browse-readonly")).ToHaveAttributeAsync("title", "Categorized in MoneyMoney until this account switches to a connection");
-        await Expect(Page.GetByTestId("tx-check")).ToBeDisabledAsync();
     }
 
     [Test]
@@ -388,7 +383,7 @@ public sealed class TransactionEditingTests : EndToEndTestBase
         await Page.GetByTestId("mark-all-checked").ClickAsync();
         await Expect(Page.GetByTestId("toast").First).ToContainTextAsync("marked as checked");
         Assert.That((await LoadAsync(101)).Checked, Is.True);
-        Assert.That((await LoadAsync(110)).Checked, Is.False);                  // MoneyMoney row: read-only, skipped
+        Assert.That((await LoadAsync(110)).Checked, Is.True);                   // the imported account's row too
         await Page.GetByTestId("toast-undo").First.ClickAsync();
         await Expect(Row("\u221225,00").GetByTestId("tx-check")).Not.ToBeCheckedAsync();
         Assert.That((await LoadAsync(101)).Checked, Is.False);
@@ -406,31 +401,15 @@ public sealed class TransactionEditingTests : EndToEndTestBase
     }
 
     [Test]
-    public async Task A_moneymoney_row_is_locked_read_only()
+    public async Task A_row_of_an_imported_account_is_editable()
     {
-        await GoToAsync(UncategorizedUrl);
-        var bakery = Row("\u22124,50");
-        var check = bakery.GetByTestId("tx-check");
-        await Expect(check).ToBeDisabledAsync();
-        await Expect(check).ToHaveAttributeAsync("title", "Categorized in MoneyMoney until this account switches to a connection");
-        await Expect(bakery.GetByTestId("tx-category")).ToHaveCountAsync(0);          // no inline picker button
-
-        await bakery.ClickAsync();
-        await Expect(Page.GetByTestId("tx-details-readonly")).ToBeVisibleAsync();
-        await Expect(Page.GetByTestId("tx-details-note")).ToHaveCountAsync(0);
-
-        await Page.Keyboard.PressAsync("c");
-        await Expect(Page.GetByTestId("category-picker")).ToHaveCountAsync(0);
-        await Expect(Page.GetByTestId("toast").First).ToContainTextAsync("Categorized in MoneyMoney");
-
-        await bakery.ClickAsync(new() { Button = MouseButton.Right });
-        await Expect(Page.GetByTestId("ctx-category")).ToBeDisabledAsync();
-        Assert.That((await LoadAsync(110)).CategoryId, Is.Null);
-
-        // The account itself carries one read-only notice in the toolbar instead of a lock per row.
-        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.MoneyMoneyAccountId}");
-        await Expect(Page.GetByTestId("browse-readonly")).ToHaveAttributeAsync("title", "Categorized in MoneyMoney until this account switches to a connection");
-        await Expect(Page.GetByTestId("tx-check")).ToBeDisabledAsync();
+        await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{EditingSeed.ImportedAccountId}");
+        var check = Row("\u22124,50").GetByTestId("tx-check");
+        await Expect(check).ToBeEnabledAsync();
+        await check.ClickAsync();
+        await Expect(check).ToBeCheckedAsync();
+        for (var i = 0; i < 40 && !(await LoadAsync(110)).Checked; i++) await Task.Delay(100);
+        Assert.That((await LoadAsync(110)).Checked, Is.True);
     }
 
     [Test]

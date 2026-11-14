@@ -10,7 +10,7 @@ namespace OpenBudget.E2E.Tests;
 /// <summary>
 /// Structure editing through the sidebar's context menus (no buttons on the rows): inline rename, colour, move up /
 /// down (Alt+Arrow), Move to group…, drag and drop, account settings, deletes (an account only after typing its
-/// name), MoneyMoney-owned rows disabled with the reason, and no editing entries for viewers. Uses the editing
+/// name), and no editing entries for viewers. Uses the editing
 /// world (<see cref="EditingSeed"/>); its source never got a MoneyMoney upload, so its structure is OpenBudget's.
 /// </summary>
 [TestFixture]
@@ -141,7 +141,7 @@ public sealed class StructureMenuTests : EndToEndTestBase
         await using var db = await Db.CreateDbContextAsync();
         Assert.That(await db.Accounts.AnyAsync(a => a.Id == EditingSeed.BankAccountId), Is.False);
         Assert.That(await db.Transactions.AnyAsync(t => t.AccountId == EditingSeed.BankAccountId), Is.False);
-        Assert.That(await db.Transactions.AnyAsync(t => t.AccountId == EditingSeed.MoneyMoneyAccountId), Is.True);
+        Assert.That(await db.Transactions.AnyAsync(t => t.AccountId == EditingSeed.ImportedAccountId), Is.True);
     }
 
     [Test]
@@ -150,19 +150,19 @@ public sealed class StructureMenuTests : EndToEndTestBase
         await GroupGiroInBanksAsync();
         await GoToAsync(BrowseUrl);
 
-        await OpenMenuAsync(Account(EditingSeed.MoneyMoneyAccountName));
+        await OpenMenuAsync(Account(EditingSeed.ImportedAccountName));
         await Page.GetByTestId("ctx-move-to").ClickAsync();
         await Page.GetByTestId("move-groups").GetByTestId("move-group").Filter(new() { HasText = "Banks" }).ClickAsync();
         await Expect(Sidebar.GetByTestId("tree-group").Filter(new() { HasText = "Other accounts" })).ToHaveCountAsync(0);
         await using (var db = await Db.CreateDbContextAsync())
-            Assert.That((await db.Accounts.SingleAsync(a => a.Id == EditingSeed.MoneyMoneyAccountId)).GroupId, Is.EqualTo(BanksGroupId));
+            Assert.That((await db.Accounts.SingleAsync(a => a.Id == EditingSeed.ImportedAccountId)).GroupId, Is.EqualTo(BanksGroupId));
 
         // Drag the MoneyMoney account onto the Giro: it lands right before it.
-        await Account(EditingSeed.MoneyMoneyAccountName).DragToAsync(Account(EditingSeed.BankAccountName));
-        await Expect(Sidebar.GetByTestId("tree-account").First).ToContainTextAsync(EditingSeed.MoneyMoneyAccountName);
+        await Account(EditingSeed.ImportedAccountName).DragToAsync(Account(EditingSeed.BankAccountName));
+        await Expect(Sidebar.GetByTestId("tree-account").First).ToContainTextAsync(EditingSeed.ImportedAccountName);
         await using var after = await Db.CreateDbContextAsync();
         var sorts = await after.Accounts.Where(a => a.GroupId == BanksGroupId).OrderBy(a => a.Sort).Select(a => a.Id).ToListAsync();
-        Assert.That(sorts, Is.EqualTo(new[] { EditingSeed.MoneyMoneyAccountId, EditingSeed.BankAccountId }));
+        Assert.That(sorts, Is.EqualTo(new[] { EditingSeed.ImportedAccountId, EditingSeed.BankAccountId }));
     }
 
     [Test]

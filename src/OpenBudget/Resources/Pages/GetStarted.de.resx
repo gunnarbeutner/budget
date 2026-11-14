@@ -58,14 +58,11 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Finished_Badge" xml:space="preserve">
-    <value>MoneyMoney-Import am {0} abgeschlossen</value>
+  <data name="Imported_Badge" xml:space="preserve">
+    <value>Am {0} aus MoneyMoney importiert</value>
   </data>
-  <data name="Finished_Hint" xml:space="preserve">
-    <value>Uploads werden abgelehnt.</value>
-  </data>
-  <data name="Finished_Resume" xml:space="preserve">
-    <value>MoneyMoney-Import fortsetzen</value>
+  <data name="Imported_Hint" xml:space="preserve">
+    <value>Der Import läuft einmal. Verknüpfe im nächsten Schritt deine Bankverbindungen mit den importierten Konten.</value>
   </data>
   <data name="PageTitle" xml:space="preserve">
     <value>Erste Schritte</value>
@@ -163,8 +160,8 @@
   <data name="Error_NotAZip" xml:space="preserve">
     <value>Das ist keine ZIP-Datei.</value>
   </data>
-  <data name="Error_Finished" xml:space="preserve">
-    <value>Der MoneyMoney-Import ist abgeschlossen. Setze ihn zuerst fort, um erneut hochzuladen.</value>
+  <data name="Error_AlreadyImported" xml:space="preserve">
+    <value>Deine MoneyMoney-Daten wurden bereits importiert; der Import läuft nur einmal.</value>
   </data>
   <data name="Error_Failed" xml:space="preserve">
     <value>Der Import ist fehlgeschlagen. Bitte versuche es erneut.</value>

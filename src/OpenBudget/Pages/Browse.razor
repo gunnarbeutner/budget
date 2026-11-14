@@ -122,11 +122,6 @@
                                 }
                             </span>
                         }
-                        @if (info.IsMoneyMoney)
-                        {
-                            <span class="browse-readonly ms-1" data-testid="browse-readonly" role="img" tabindex="0"
-                                  title="@L["ReadOnly_MoneyMoney"]" aria-label="@L["ReadOnly_MoneyMoney"]"><i class="bi bi-lock-fill" aria-hidden="true"></i></span>
-                        }
                         @if (info.MarkedClosed)
                         {
                             <span class="badge text-bg-secondary ms-1" data-testid="account-closed">@L["Header_Closed"]</span>
@@ -517,7 +512,6 @@
                                     </div>
                                     <div class="tx-amount @(row.Amount < 0 ? "neg" : "")">@Formatting.FormatMoneyDe(row.Amount, row.Currency)</div>
                                     <input type="checkbox" class="tx-check" data-testid="tx-check" aria-label="@L["Tx_Checked"]"
-                                           title="@(row.EditBlock == EditBlock.MoneyMoney ? L["Lock_MoneyMoney"].Value : null)"
                                            checked="@row.IsChecked" disabled="@(!row.CanEdit)"
                                            @onclick:stopPropagation="true" @onchange="() => SetCheckedForAsync(row.Id, !row.IsChecked)" />
                                 </div>

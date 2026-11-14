@@ -7,15 +7,16 @@ using Xunit;
 namespace OpenBudget.Tests;
 
 /// <summary>
-/// Editing category / note / check mark: manual flag, bulk edits with one undo, read-only MoneyMoney rows, and who may do
+/// Editing category / note / check mark: manual flag, bulk edits with one undo, read-only rows without an account, and who may do
 /// what (owner, project editor, project viewer, strangers) - enforced by the service and by the SaveChanges write guard.
 /// </summary>
 public sealed class TransactionEditingTests
 {
     private const long Tx1 = 1;   // alice's Shared account (connector-owned in these tests), expense on SharedLeaf
     private const long Tx2 = 2;   // alice's private account (connector-owned), not shared
-    private const long Tx3 = 3;   // property account: still MoneyMoney-owned, visible to bob through the parent share
+    private const long Tx3 = 3;   // property account (manual, imported), visible to bob through the parent share
     private const long Tx4 = 4;   // bob's own account
+    private const long TxLoose = 12;  // alice's row without an account: read-only
 
     private static readonly long OtherLeaf = AccessWorld.Id(AccessWorld.SourceAlice, 201);
     private static readonly long BobLeaf = AccessWorld.Id(AccessWorld.SourceBob, 200);
@@ -32,6 +33,10 @@ public sealed class TransactionEditingTests
             // Two more rows of the same payee on the shared account, one already by hand.
             db.Transactions.Add(Row(10, AccessWorld.AccountWp, -500, "Payee Shared"));
             db.Transactions.Add(Row(11, AccessWorld.AccountWp, -600, "Payee Shared"));
+            var loose = Row(TxLoose, AccessWorld.AccountWp, -700, "Payee Loose");
+            loose.AccountId = null;
+            loose.CategoryId = AccessWorld.SharedLeaf;
+            db.Transactions.Add(loose);
             await db.SaveChangesAsync();
         }
         return t;
@@ -111,19 +116,27 @@ public sealed class TransactionEditingTests
         Assert.Equal(AccessWorld.SharedLeaf, (await LoadAsync(t, Tx1)).CategoryId);
     }
 
-    // ---- read-only MoneyMoney rows ----
+    // ---- read-only rows ----
 
     [Fact]
-    public async Task Moneymoney_owned_rows_are_refused_server_side_even_for_the_owner()
+    public async Task Imported_rows_of_a_manual_account_are_editable_by_the_owner()
+    {
+        await using var t = await WorldAsync();
+        await EditFor(t, AccessWorld.Alice).SetNoteAsync([Tx3], "x");
+        Assert.Equal("x", (await LoadAsync(t, Tx3)).Note);
+    }
+
+    [Fact]
+    public async Task Rows_without_an_account_are_refused_server_side_even_for_the_owner()
     {
         await using var t = await WorldAsync();
         var edit = EditFor(t, AccessWorld.Alice);
 
-        await Assert.ThrowsAsync<AccessDeniedException>(() => edit.SetCategoryAsync([Tx3], OtherLeaf));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => edit.SetNoteAsync([Tx3], "x"));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => edit.SetCheckedAsync([Tx3], true));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => edit.SetCategoryAsync([TxLoose], OtherLeaf));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => edit.SetNoteAsync([TxLoose], "x"));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => edit.SetCheckedAsync([TxLoose], true));
 
-        var row = await LoadAsync(t, Tx3);
+        var row = await LoadAsync(t, TxLoose);
         Assert.Equal(AccessWorld.SharedLeaf, row.CategoryId);
         Assert.Equal(TransactionCategorySource.Import, row.CategorySetBy);
         Assert.False(row.Checked);
@@ -131,12 +144,12 @@ public sealed class TransactionEditingTests
     }
 
     [Fact]
-    public async Task The_write_guard_itself_refuses_edits_of_moneymoney_rows()
+    public async Task The_write_guard_itself_refuses_edits_of_rows_without_an_account()
     {
         await using var t = await WorldAsync();
         var factory = t.ForUser(AccessWorld.Alice).Factory;
         await using var db = await factory.CreateDbContextAsync();
-        (await db.Transactions.SingleAsync(x => x.Id == Tx3)).CategoryId = OtherLeaf;
+        (await db.Transactions.SingleAsync(x => x.Id == TxLoose)).CategoryId = OtherLeaf;
         await Assert.ThrowsAsync<AccessDeniedException>(() => db.SaveChangesAsync());
 
         // ... while the same change on a connector-owned row passes.
@@ -146,15 +159,15 @@ public sealed class TransactionEditingTests
     }
 
     [Fact]
-    public async Task A_mixed_selection_edits_what_it_can_and_skips_the_moneymoney_rows()
+    public async Task A_mixed_selection_edits_what_it_can_and_skips_the_read_only_rows()
     {
         await using var t = await WorldAsync();
-        var result = await EditFor(t, AccessWorld.Alice).SetCategoryAsync([Tx1, Tx2, Tx3], OtherLeaf);
+        var result = await EditFor(t, AccessWorld.Alice).SetCategoryAsync([Tx1, Tx2, TxLoose], OtherLeaf);
 
         Assert.Equal(2, result.Changed);
         Assert.Equal(1, result.Skipped);
         Assert.Equal(OtherLeaf, (await LoadAsync(t, Tx1)).CategoryId);
-        Assert.Equal(AccessWorld.SharedLeaf, (await LoadAsync(t, Tx3)).CategoryId);
+        Assert.Equal(AccessWorld.SharedLeaf, (await LoadAsync(t, TxLoose)).CategoryId);
     }
 
     [Fact]
@@ -284,13 +297,12 @@ public sealed class TransactionEditingTests
     }
 
     [Fact]
-    public async Task A_project_editor_cannot_touch_accounts_outside_the_shared_project_or_moneymoney_rows()
+    public async Task A_project_editor_cannot_touch_accounts_outside_the_shared_project()
     {
         await using var t = await WorldAsync(ProjectRole.Editor);
         var edit = EditFor(t, AccessWorld.Bob);
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => edit.SetCategoryAsync([Tx2], OtherLeaf));   // alice's private account: invisible
-        await Assert.ThrowsAsync<AccessDeniedException>(() => edit.SetNoteAsync([Tx3], "x"));             // visible, but MoneyMoney-owned
         await Assert.ThrowsAsync<InvalidOperationException>(() => edit.SetCategoryAsync([Tx4], OtherLeaf)); // bob's own row, but alice's category is not his
         Assert.Equal(AccessWorld.SharedLeaf, (await LoadAsync(t, Tx2)).CategoryId);
     }
@@ -382,11 +394,12 @@ public sealed class TransactionEditingTests
         await using var t = await WorldAsync(ProjectRole.Viewer);
         var page = await t.ForUser(AccessWorld.Bob).TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = AccessWorld.Alice });
         Assert.Equal(EditBlock.NoPermission, page.Rows.First(r => r.Id == Tx1).EditBlock);
-        Assert.Equal(EditBlock.MoneyMoney, page.Rows.First(r => r.Id == Tx3).EditBlock);
+        Assert.Equal(EditBlock.NoPermission, page.Rows.First(r => r.Id == Tx3).EditBlock);
 
         var owner = await t.ForUser(AccessWorld.Alice).TransactionQueries.QueryAsync(new TransactionQuery { OwnerUserId = AccessWorld.Alice });
         Assert.Equal(EditBlock.None, owner.Rows.First(r => r.Id == Tx1).EditBlock);
         Assert.True(owner.Rows.First(r => r.Id == Tx1).CanEdit);
-        Assert.Equal(EditBlock.MoneyMoney, owner.Rows.First(r => r.Id == Tx3).EditBlock);
+        Assert.Equal(EditBlock.None, owner.Rows.First(r => r.Id == Tx3).EditBlock);
+        Assert.Equal(EditBlock.NoPermission, owner.Rows.First(r => r.Id == TxLoose).EditBlock);
     }
 }

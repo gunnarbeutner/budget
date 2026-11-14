@@ -8,8 +8,8 @@ using OpenBudget.Services;
 namespace OpenBudget.E2E.Tests;
 
 /// <summary>
-/// Accounts without a bank connection: kept as manual accounts or closed from the Import page's switch overview (in
-/// bulk), and bookings of a manual account entered, edited and deleted in Transactions.
+/// Accounts without a bank connection: closed accounts in the sidebar, and bookings of a manual account entered, edited
+/// and deleted in Transactions.
 /// </summary>
 [TestFixture]
 public sealed class ManualAccountTests : EndToEndTestBase
@@ -19,13 +19,13 @@ public sealed class ManualAccountTests : EndToEndTestBase
 
     private SystemDbContextFactory Db => Factory.Services.GetRequiredService<SystemDbContextFactory>();
 
-    /// <summary>Two MoneyMoney accounts of the demo source (which has seen an upload), assigned to the demo project.</summary>
-    private async Task SeedAsync(string provider = AccountProviders.MoneyMoney)
+    /// <summary>A manual cash account and a savings account a bank updates, assigned to the demo project.</summary>
+    private async Task SeedAsync()
     {
         await using var db = await Db.CreateDbContextAsync();
         (await db.UserDataStates.SingleAsync(s => s.UserId == E2ESeed.OwnerUserId)).LastUploadAt = DateTime.UtcNow;
-        db.Accounts.Add(new Account { Id = Cash, OwnerUserId = E2ESeed.OwnerUserId, Name = "Example Cash", Currency = "EUR", Type = 6, Provider = provider, Balances = "11:100.000000,3:EUR," });
-        db.Accounts.Add(new Account { Id = Old, OwnerUserId = E2ESeed.OwnerUserId, Name = "Example Old Savings", Currency = "EUR", Type = 2, Balances = "11:0.000000,3:EUR," });
+        db.Accounts.Add(new Account { Id = Cash, OwnerUserId = E2ESeed.OwnerUserId, Name = "Example Cash", Currency = "EUR", Type = 6, Provider = AccountProviders.Manual, Balances = "11:100.000000,3:EUR," });
+        db.Accounts.Add(new Account { Id = Old, OwnerUserId = E2ESeed.OwnerUserId, Name = "Example Old Savings", Currency = "EUR", Type = 2, Provider = "fake", Balances = "11:0.000000,3:EUR," });
         await db.SaveChangesAsync();
         db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = Cash });
         db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = E2ESeed.ProjectId, AccountId = Old });
@@ -68,7 +68,7 @@ public sealed class ManualAccountTests : EndToEndTestBase
     [Test]
     public async Task Add_edit_and_delete_bookings_of_a_manual_account()
     {
-        await SeedAsync(AccountProviders.Manual);
+        await SeedAsync();
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{Cash}");
 
         await Page.GetByTestId("tx-add").ClickAsync();
@@ -127,7 +127,7 @@ public sealed class ManualAccountTests : EndToEndTestBase
     {
         await Page.SetViewportSizeAsync(width, 800);
         await Page.EmulateMediaAsync(new PageEmulateMediaOptions { ColorScheme = theme == "dark" ? ColorScheme.Dark : ColorScheme.Light });
-        await SeedAsync(AccountProviders.Manual);
+        await SeedAsync();
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{Cash}");
 
         var title = (await Page.Locator(".browse-title").BoundingBoxAsync())!;
@@ -147,7 +147,7 @@ public sealed class ManualAccountTests : EndToEndTestBase
     {
         var dir = Environment.GetEnvironmentVariable("OB_INITIAL_BALANCE_SCREENSHOT_DIR");
         await Page.EmulateMediaAsync(new PageEmulateMediaOptions { ColorScheme = theme == "dark" ? ColorScheme.Dark : ColorScheme.Light });
-        await SeedAsync(AccountProviders.Manual);
+        await SeedAsync();
         await GoToAsync($"/projects/{E2ESeed.ProjectId}/browse?year=2026&month=3&sel=acct-{Cash}");
         var sidebar = Page.GetByTestId("project-sidebar");
 

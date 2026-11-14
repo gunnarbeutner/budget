@@ -7,13 +7,12 @@ using Xunit;
 namespace OpenBudget.Tests;
 
 /// <summary>
-/// Splits: validation, how they change budget / cashflow / sidebar sums and the list, MoneyMoney rows and who may do
+/// Splits: validation, how they change budget / cashflow / sidebar sums and the list, and who may do
 /// what. Also how bookings between own accounts are kept out of totals by their (untracked) category.
 /// </summary>
 public sealed class SplitTests
 {
     private const long Tx1 = 1; // -100.00 on the Shared account (connector-owned), SharedLeaf
-    private const long Tx3 = 3; // property account, still MoneyMoney-owned
 
     private static readonly long UntrackedGroup = AccessWorld.Id(AccessWorld.SourceAlice, 150);
     private static readonly long UntrackedLeaf = AccessWorld.Id(AccessWorld.SourceAlice, 250);
@@ -43,7 +42,7 @@ public sealed class SplitTests
         db.Transactions.Add(Row(20, AccountSavings, 10000, March10.AddDays(2)));   // match
         db.Transactions.Add(Row(21, AccountSavings, 10000, March10.AddDays(7)));   // too late
         db.Transactions.Add(Row(22, AccountSavings, -10000, March10));             // same sign
-        db.Transactions.Add(Row(23, AccountMm, 10000, March10));                   // MoneyMoney account
+        db.Transactions.Add(Row(23, AccountMm, 10000, March10));                   // imported manual account
         db.Transactions.Add(Row(24, AccountOther, 10000, March10));                // account not in the project
         db.Transactions.Add(Row(25, AccountSavings, 10000, March10.AddDays(-1)));  // match, closer
         await db.SaveChangesAsync();
@@ -174,12 +173,11 @@ public sealed class SplitTests
     }
 
     [Fact]
-    public async Task Splits_that_dont_add_up_or_hit_moneymoney_rows_are_refused_and_pending_rows_can_be_split()
+    public async Task Splits_that_dont_add_up_are_refused_and_pending_rows_can_be_split()
     {
         await using var t = await WorldAsync();
         var svc = For(t, AccessWorld.Alice);
         await Assert.ThrowsAsync<SplitException>(() => svc.SplitAsync(Tx1, [new(-6000, null, null), new(-3000, null, null)]));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => svc.SplitAsync(Tx3, [new(-1000, null, null), new(-1500, null, null)]));
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             svc.SplitAsync(Tx1, [new(-6000, AccessWorld.Id(AccessWorld.SourceBob, 200), null), new(-4000, null, null)]));
 
@@ -283,17 +281,5 @@ public sealed class SplitTests
             Name = "Example Market",
         });
         await Assert.ThrowsAsync<AccessDeniedException>(() => db.SaveChangesAsync());
-
-        await using var db2 = await t.ForUser(AccessWorld.Bob).Factory.CreateDbContextAsync();
-        db2.Transactions.Add(new Transaction
-        {
-            Id = 9002,
-            OwnerUserId = AccessWorld.Alice,
-            AccountId = AccessWorld.AccountProperty,
-            Amount = -1,
-            Splitted = SplitState.Child,
-            SplitParentId = 3,
-        });
-        await Assert.ThrowsAsync<AccessDeniedException>(() => db2.SaveChangesAsync()); // MoneyMoney-owned account
     }
 }

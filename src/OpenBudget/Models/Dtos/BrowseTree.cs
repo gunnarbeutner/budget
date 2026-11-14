@@ -48,7 +48,7 @@ public class BrowseAccountNode
     public long? Sort { get; init; }
     public long? Type { get; init; }
     public string? Iban { get; init; }
-    /// <summary>Bank login name for connector-linked accounts the viewer owns; null otherwise (MoneyMoney does not import a bank name).</summary>
+    /// <summary>Bank login name for connector-linked accounts the viewer owns; null otherwise.</summary>
     public string? Institution { get; init; }
     /// <summary>Last successful update (connector link, else the account's refresh timestamp), UTC.</summary>
     public DateTime? LastUpdatedUtc { get; init; }
@@ -62,9 +62,6 @@ public class BrowseAccountNode
     public int? SyncLoginAccountId { get; init; }
     /// <summary>The bank no longer lists this account (closed).</summary>
     public bool Closed { get; init; }
-
-    /// <summary>MoneyMoney owns the account's transactions (they are read-only in OpenBudget).</summary>
-    public bool IsMoneyMoney { get; init; }
 
     /// <summary>Its owner marked it closed in OpenBudget (the sidebar hides it by default).</summary>
     public bool MarkedClosed { get; init; }

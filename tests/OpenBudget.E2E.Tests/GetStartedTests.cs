@@ -277,6 +277,9 @@ public sealed class GetStartedTests : EndToEndTestBase
         var source = await db.UserDataStates.SingleAsync(s => s.UserId == guest.Id);
         Assert.That(source.LastUploadAt, Is.Not.Null);
         Assert.That(await db.Accounts.CountAsync(a => a.OwnerUserId == guest.Id), Is.EqualTo(2));
+        // The imported accounts are manual accounts that bank connections can take over.
+        Assert.That(await db.Accounts.Where(a => a.OwnerUserId == guest.Id).Select(a => a.Provider).Distinct().ToListAsync(),
+            Is.EqualTo(new[] { OpenBudget.Models.AccountProviders.Manual }));
         Assert.That(await db.BankStatements.CountAsync(s => s.OwnerUserId == guest.Id), Is.EqualTo(1));
 
         // The default project gets income and tracking as the data suggests: Salary (positive bookings) is income,
@@ -295,13 +298,13 @@ public sealed class GetStartedTests : EndToEndTestBase
         await Expect(salaryRow.GetByTestId("setup-income")).ToBeCheckedAsync();
         await Expect(Page.GetByTestId("category-setup").Locator("[data-setup-row='Groceries']").GetByTestId("setup-track")).ToBeCheckedAsync();
 
-        // Done turns the imported accounts not linked to a bank into manual ones and finishes the one-time import.
         await Page.GetByTestId("get-started-done").ClickAsync();
         await Expect(Page).Not.ToHaveURLAsync(new Regex("/get-started"));
-        await using var after = await Db.CreateDbContextAsync();
-        Assert.That(await after.Accounts.Where(a => a.OwnerUserId == guest.Id).Select(a => a.Provider).Distinct().ToListAsync(),
-            Is.EqualTo(new[] { OpenBudget.Models.AccountProviders.Manual }));
-        Assert.That((await after.UserDataStates.SingleAsync(s => s.UserId == guest.Id)).MoneyMoneyImportFinishedAt, Is.Not.Null);
+
+        // The import runs once: its step shows when it ran instead of another upload.
+        await GoToAsync("/get-started?step=1");
+        await Expect(Page.GetByTestId("import-done")).ToBeVisibleAsync();
+        await Expect(Page.Locator("#mm-zip")).ToHaveCountAsync(0);
     }
 
     // Set OB_ONBOARDING_SCREENSHOT_DIR to keep screenshots of each Get started step at desktop and phone width in

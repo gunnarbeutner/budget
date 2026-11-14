@@ -140,7 +140,7 @@ public partial class BudgetDbContext
     /// <item>account assignments, shares, parent, delete, creating projects: project Owner
     /// ;</item>
     /// <item>a transaction's category, note, check mark and new marker (and nothing else of it): the owner or an
-    /// Editor of a project the account is in - and only while the account is not owned by MoneyMoney;</item>
+    /// Editor of a project the account is in;</item>
     /// <item>a user's own project-list order: that user, for projects they can see;</item>
     /// <item>everything imported or configured per user: that user.</item>
     /// </list>
@@ -250,8 +250,8 @@ public partial class BudgetDbContext
             }
         }
 
-        // Edits of user-owned transaction fields additionally require an account that is not MoneyMoney's any more.
-        // The account is looked up through the (filtered) set; an account the user cannot see counts as read-only.
+        // Edits of user-owned transaction fields additionally require an account the user can see (looked up through
+        // the filtered set); an account the user cannot see counts as read-only.
         if (editedTransactions.Count > 0)
         {
             var accountIds = editedTransactions.Where(e => e.AccountId.HasValue).Select(e => e.AccountId!.Value).Distinct().ToList();
@@ -260,8 +260,6 @@ public partial class BudgetDbContext
             {
                 string? provider = accountId is { } id && providers.TryGetValue(id, out var p) ? p : null;
                 var block = TransactionEditRules.Check(scope, ownerId, accountId, provider);
-                if (block == EditBlock.MoneyMoney)
-                    throw new AccessDeniedException("Transactions of accounts still owned by MoneyMoney are read-only.");
                 if (block == EditBlock.NoPermission)
                     throw new AccessDeniedException("Not allowed to edit these transactions.");
             }

@@ -171,9 +171,6 @@ await using (var budgetDb = await app.Services.GetRequiredService<SystemDbContex
     await portfolioFiles.RelocateLegacyFilesAsync(budgetDb);
     // Category rules of data imported before rules were imported (idempotent).
     await OpenBudget.Importers.MoneyMoney.MoneyMoneyRuleImport.BackfillAsync(budgetDb, CancellationToken.None);
-    // Linked accounts are the connector's, also those linked while MoneyMoney still updated them (idempotent).
-    await AccountSwitchService.SwitchLinkedMoneyMoneyAccountsAsync(app.Services.GetRequiredService<SystemDbContextFactory>(),
-        app.Services.GetRequiredService<OpenBudget.Connectors.Sync.BankTransactionStore>(), DateTime.UtcNow);
     // Every category group and category has a colour (idempotent).
     await using (var colorDb = await app.Services.GetRequiredService<SystemDbContextFactory>().CreateDbContextAsync())
         await CategoryColorBackfill.FillAsync(colorDb);

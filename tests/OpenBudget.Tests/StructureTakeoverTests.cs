@@ -9,9 +9,8 @@ using Xunit;
 namespace OpenBudget.Tests;
 
 /// <summary>
-/// The structure takeover at the end of a browser MoneyMoney import: afterwards MoneyMoney uploads keep delivering transactions and balances but never
-/// touch account/category names, groups or order; ids stay stable; new accounts and categories land in the
-/// catch-all places.
+/// The structure takeover at the end of a browser MoneyMoney import: it marks the user and freezes the order of their
+/// accounts and categories.
 /// </summary>
 public sealed class StructureTakeoverTests : IDisposable
 {
@@ -109,7 +108,7 @@ public sealed class StructureTakeoverTests : IDisposable
     public async Task Takeover_marks_the_source_and_freezes_the_order()
     {
         await using var t = await WorldAsync();
-        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
+        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, [new Tx(1, 2, -5)]));
 
         var result = await Takeover(t).TakeOverAsync(AccessWorld.Alice);
 
@@ -126,7 +125,7 @@ public sealed class StructureTakeoverTests : IDisposable
     }
 
     [Fact]
-    public async Task Category_colors_are_editable_by_the_owner_and_kept_after_the_takeover()
+    public async Task Category_colors_are_editable_by_the_owner_after_the_takeover()
     {
         await using var t = await WorldAsync();
         await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
@@ -143,33 +142,6 @@ public sealed class StructureTakeoverTests : IDisposable
 
         await using (var db = await t.Factory.CreateDbContextAsync())
             Assert.Equal("#2b5797", (await db.Categories.SingleAsync(c => c.Id == rent)).Color);
-
-        // A later upload keeps the color OpenBudget owns now.
-        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
-        await using var after = await t.Factory.CreateDbContextAsync();
-        Assert.Equal("#2b5797", (await after.Categories.SingleAsync(c => c.Id == rent)).Color);
-    }
-
-    [Fact]
-    public async Task Accounts_and_categories_deleted_after_the_takeover_stay_deleted_on_later_uploads()
-    {
-        await using var t = await WorldAsync();
-        Tx[] bookings = [new Tx(1, 2, -5), new Tx(2, 3, -6)];
-        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, bookings));
-        await Takeover(t).TakeOverAsync(AccessWorld.Alice);
-        var structure = new StructureService(t.ForUser(AccessWorld.Alice).Factory, t.System, t.Notifier, new ChangeOrigin());
-
-        await structure.DeleteAccountAsync(Id(2), "Savings");
-        await structure.DeleteCategoryAsync(Id(2));   // Groceries
-        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, bookings));
-
-        await using var db = await t.Factory.CreateDbContextAsync();
-        Assert.Equal(["Giro"], await db.Accounts.Select(a => a.Name).ToListAsync());
-        Assert.False(await db.Categories.AnyAsync(c => c.Id == Id(2)));
-        // Only Giro's booking came in, and MoneyMoney's (deleted) category no longer sticks to it.
-        var tx = await db.Transactions.SingleAsync();
-        Assert.Equal(Id(1), tx.AccountId);
-        Assert.Null(tx.CategoryId);
     }
 
     [Fact]
@@ -180,144 +152,5 @@ public sealed class StructureTakeoverTests : IDisposable
         var service = Takeover(t);
         Assert.NotNull(await service.TakeOverAsync(AccessWorld.Alice));
         Assert.Null(await service.TakeOverAsync(AccessWorld.Alice));
-    }
-
-    [Fact]
-    public async Task Later_uploads_keep_the_structure_but_refresh_transactions_and_balances()
-    {
-        await using var t = await WorldAsync();
-        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, [new Tx(1, 2, -5, "first")]));
-        await Takeover(t).TakeOverAsync(AccessWorld.Alice);
-
-        // MoneyMoney now renames, regroups and reorders everything and drops a category - none of that may arrive.
-        var changed = Snapshot(
-            [new("Giro RENAMED", 1, 0, Balance: 99), new("Savings", 1, 9, Balance: 5)],
-            [new("Groceries RENAMED", 2, 0)],
-            [new Tx(1, 2, -7, "second", Checkmark: 1)],
-            groupName: "Banks RENAMED", householdName: "Household RENAMED");
-        await ImportAsync(t, changed);
-
-        await using var db = await t.Factory.CreateDbContextAsync();
-        var giro = await db.Accounts.SingleAsync(a => a.Id == Id(1));
-        Assert.Equal("Giro", giro.Name);
-        Assert.Equal(1, giro.Sort);
-        Assert.Equal(Id(1), giro.GroupId);
-        Assert.Equal(99m, giro.CurrentBalance);        // balances of MoneyMoney accounts still refresh
-        Assert.Equal("Banks", (await db.AccountGroups.SingleAsync(g => g.Id == Id(1))).Name);
-        Assert.Equal("Household", (await db.CategoryGroups.SingleAsync(g => g.Id == Id(2))).Name);
-        Assert.Equal("Groceries", (await db.Categories.SingleAsync(c => c.Id == Id(2))).Name);
-        Assert.Equal("Rent", (await db.Categories.SingleAsync(c => c.Id == Id(3))).Name);   // gone from MoneyMoney, kept here
-        Assert.Equal("payee contains x", (await db.Categories.SingleAsync(c => c.Id == Id(2))).Rules);
-
-        // Transactions are replaced by the upload's; note and check mark mirror MoneyMoney.
-        var tx = await db.Transactions.SingleAsync();
-        Assert.Equal(-700, tx.Amount);
-        Assert.Equal("second", tx.Note);
-        Assert.True(tx.Checked);
-        Assert.Equal(TransactionCategorySource.Import, tx.CategorySetBy);
-    }
-
-    [Fact]
-    public async Task Ids_stay_stable_across_the_takeover_and_later_uploads()
-    {
-        await using var t = await WorldAsync();
-        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
-        static List<long> Ids(BudgetDbContext d) => [.. d.Accounts.Select(a => a.Id), .. d.Categories.Select(c => c.Id), .. d.CategoryGroups.Select(c => c.Id), .. d.AccountGroups.Select(c => c.Id)];
-        await using (var before = await t.Factory.CreateDbContextAsync())
-        {
-            var idsBefore = Ids(before);
-            await Takeover(t).TakeOverAsync(AccessWorld.Alice);
-            await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
-            await using var after = await t.Factory.CreateDbContextAsync();
-            Assert.Equal(idsBefore.Order(), Ids(after).Order());
-        }
-    }
-
-    [Fact]
-    public async Task New_accounts_land_ungrouped_and_in_the_default_project_and_new_categories_in_the_new_group()
-    {
-        await using var t = await WorldAsync();
-        var project = t.AddProject(1, "Main", AccessWorld.Alice);
-        project.OwnerUserId = AccessWorld.Alice;
-        project.IsDefaultForNewAccounts = true;
-        await t.Db.SaveChangesAsync();
-        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
-        await Takeover(t).TakeOverAsync(AccessWorld.Alice);
-
-        var next = Snapshot(
-            [.. TwoAccounts, new("Brand new", 1, 1)],
-            [.. TwoCategories, new("Hobby", 2, 4)],
-            [new Tx(3, 4, -12)]);
-        await ImportAsync(t, next);
-
-        await using var db = await t.Factory.CreateDbContextAsync();
-        var fresh = await db.Accounts.SingleAsync(a => a.Name == "Brand new");
-        Assert.Null(fresh.GroupId);                     // "Other accounts"
-        Assert.Null(fresh.Sort);
-        Assert.Equal(AccountProviders.MoneyMoney, fresh.Provider);
-        Assert.True(await db.ProjectAccountAssignments.AnyAsync(a => a.AccountId == fresh.Id && a.ProjectId == 1));
-
-        var hobby = await db.Categories.SingleAsync(c => c.Name == "Hobby");
-        Assert.Equal(MoneyMoneyImportService.NewCategoriesGroupId(AccessWorld.SourceAlice), hobby.GroupId);
-        var group = await db.CategoryGroups.SingleAsync(g => g.Id == hobby.GroupId);
-        Assert.Equal(MoneyMoneyImportService.NewCategoriesGroupName, group.Name);
-        Assert.Null(group.ParentGroupId);
-        Assert.Equal(hobby.Id, (await db.Transactions.SingleAsync()).CategoryId);
-
-        // A further upload neither duplicates the group nor moves the category.
-        await ImportAsync(t, next);
-        await using var again = await t.Factory.CreateDbContextAsync();
-        Assert.Single(await again.CategoryGroups.Where(g => g.Name == MoneyMoneyImportService.NewCategoriesGroupName).ToListAsync());
-        Assert.Equal(1, await again.Categories.CountAsync(c => c.Name == "Hobby"));
-    }
-
-    [Fact]
-    public async Task An_account_MoneyMoney_stops_delivering_keeps_its_history()
-    {
-        await using var t = await WorldAsync();
-        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, [new Tx(1, 2, -5), new Tx(2, 2, -6)]));
-        await Takeover(t).TakeOverAsync(AccessWorld.Alice);
-
-        // Upload without the "Savings" account (rowid 2) and without its transaction.
-        await ImportAsync(t, Snapshot([TwoAccounts[0]], TwoCategories, [new Tx(1, 2, -5)]));
-
-        await using var db = await t.Factory.CreateDbContextAsync();
-        Assert.True(await db.Accounts.AnyAsync(a => a.Id == Id(2)));
-        Assert.Equal(2, await db.Transactions.CountAsync());
-    }
-
-    [Fact]
-    public async Task Before_the_takeover_uploads_still_own_the_structure()
-    {
-        await using var t = await WorldAsync();
-        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, []));
-        await ImportAsync(t, Snapshot([new("Giro RENAMED", 1, 7)], [new("Groceries RENAMED", 2, 1)], []));
-
-        await using var db = await t.Factory.CreateDbContextAsync();
-        Assert.Equal("Giro RENAMED", (await db.Accounts.SingleAsync(a => a.Id == Id(1))).Name);
-        Assert.False(await db.Categories.AnyAsync(c => c.Name == "Rent"));
-    }
-
-    [Fact]
-    public async Task Connector_owned_accounts_are_left_alone_after_the_takeover()
-    {
-        await using var t = await WorldAsync();
-        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, [new Tx(1, 2, -5)]));
-        await using (var db = await t.Factory.CreateDbContextAsync())
-        {
-            var giro = await db.Accounts.SingleAsync(a => a.Id == Id(1));
-            giro.Provider = "fake";
-            giro.Balances = "11:42.000000,3:EUR,";
-            await db.SaveChangesAsync();
-        }
-        await Takeover(t).TakeOverAsync(AccessWorld.Alice);
-
-        await ImportAsync(t, Snapshot(TwoAccounts, TwoCategories, [new Tx(1, 2, -99)]));
-
-        await using var after = await t.Factory.CreateDbContextAsync();
-        var kept = await after.Accounts.SingleAsync(a => a.Id == Id(1));
-        Assert.Equal("fake", kept.Provider);
-        Assert.Equal(42m, kept.CurrentBalance);
-        Assert.Equal(-500, (await after.Transactions.SingleAsync()).Amount);   // the connector's rows, not MoneyMoney's
     }
 }

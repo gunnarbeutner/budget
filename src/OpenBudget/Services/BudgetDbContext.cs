@@ -196,7 +196,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
 
         modelBuilder.Entity<Account>()
             .Property(a => a.Provider)
-            .HasDefaultValue(AccountProviders.MoneyMoney);
+            .HasDefaultValue(AccountProviders.Manual);
 
         modelBuilder.Entity<Transaction>()
             .HasIndex(t => new { t.OwnerUserId, t.Timestamp });

@@ -158,7 +158,7 @@
     @if (!Row.CanEdit)
     {
         <div class="tx-details-readonly" data-testid="tx-details-readonly">
-            <i class="bi bi-lock" aria-hidden="true"></i> @LockText
+            <i class="bi bi-lock" aria-hidden="true"></i> @L["Lock_NoPermission"]
         </div>
     }
 </div>
@@ -274,7 +274,6 @@
             ("ReturnReason", Row.ReturnReason),
         }.Where(f => !string.IsNullOrWhiteSpace(f.Value)).Select(f => (f.Key, f.Value!));
 
-    private string LockText => Row.EditBlock == EditBlock.MoneyMoney ? L["Lock_MoneyMoney"] : L["Lock_NoPermission"];
 
     private Task OnNoteChanged(ChangeEventArgs e) => OnNoteSave.InvokeAsync(e.Value?.ToString() ?? "");
 }

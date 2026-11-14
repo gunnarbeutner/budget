@@ -55,6 +55,7 @@ public sealed class AccountSwitchTests
     {
         await using var w = await BankWorld.CreateAsync();
         await w.ImportMoneyMoneyAsync(Snapshot(w));
+        Assert.Equal(AccountProviders.Manual, (await w.AccountAsync(Giro)).Provider);
         long rentId;
         await using (var db = await w.T.System.CreateDbContextAsync())
         {
@@ -82,21 +83,10 @@ public sealed class AccountSwitchTests
     }
 
     [Fact]
-    public async Task Uploads_ignore_a_linked_account_and_later_syncs_mark_only_arrivals_new()
+    public async Task Later_syncs_of_a_linked_imported_account_mark_only_arrivals_new()
     {
         await using var w = await BankWorld.CreateAsync();
         var (loginId, _) = await LinkedAndFetchedAsync(w);
-        // The browser import hands the structure over when it finishes.
-        await new StructureTakeoverService(w.T.System, w.T.Notifier, new ChangeOrigin()).TakeOverAsync(BankWorld.Alice);
-        var before = await w.TransactionsAsync(Giro);
-        var name = (await w.AccountAsync(Giro)).Name;
-
-        // MoneyMoney renames the account and delivers different rows: none of it reaches the switched account.
-        var other = w.BuildSnapshot([("Renamed Giro", null), ("MM Other", null)], [Mm(-1, Day(11, 5), "Something", "Else")]);
-        await w.ImportMoneyMoneyAsync(other);
-        var after = await w.TransactionsAsync(Giro);
-        Assert.Equal(before.Select(t => (t.Id, t.ExternalId, t.Amount, t.Name)), after.Select(t => (t.Id, t.ExternalId, t.Amount, t.Name)));
-        Assert.Equal(name, (await w.AccountAsync(Giro)).Name);
 
         // A booking that arrives with a later sync is new.
         await using (var db = await w.T.System.CreateDbContextAsync())
@@ -105,33 +95,6 @@ public sealed class AccountSwitchTests
         var rows = await w.TransactionsAsync(Giro);
         Assert.True(Assert.Single(rows, t => t.ExternalId == "id:G-2026-11-FOOD").IsNew);
         Assert.Single(rows, t => t.IsNew);
-    }
-
-    [Fact]
-    public async Task Accounts_linked_while_MoneyMoney_still_owned_them_are_switched_at_startup()
-    {
-        await using var w = await BankWorld.CreateAsync();
-        await w.ImportMoneyMoneyAsync(Snapshot(w));
-        var loginId = await w.AddLoginAsync(BankWorld.Alice);
-        await w.SyncAsync(BankWorld.Alice, loginId, new SyncRequest(loginId, false, false));
-        var link = await w.RemoteAsync(BankWorld.Alice, loginId, FakeBankConnector.GiroId);
-        await w.For(BankWorld.Alice).LinkAsync(link.Id, Giro);
-        // Such a link left the account MoneyMoney's.
-        await using (var db = await w.T.System.CreateDbContextAsync())
-        {
-            await db.Accounts.Where(a => a.Id == Giro).ExecuteUpdateAsync(u => u.SetProperty(a => a.Provider, AccountProviders.MoneyMoney));
-            await db.BankLoginAccounts.Where(l => l.Id == link.Id).ExecuteUpdateAsync(u => u.SetProperty(l => l.SwitchedAt, (DateTime?)null));
-        }
-
-        Assert.Equal(1, await AccountSwitchService.SwitchLinkedMoneyMoneyAccountsAsync(w.T.System, new BankTransactionStore(), DateTime.UtcNow));
-        Assert.Equal(0, await AccountSwitchService.SwitchLinkedMoneyMoneyAccountsAsync(w.T.System, new BankTransactionStore(), DateTime.UtcNow));
-        Assert.Equal("fake", (await w.AccountAsync(Giro)).Provider);
-        Assert.NotNull((await w.RemoteAsync(BankWorld.Alice, loginId, FakeBankConnector.GiroId)).SwitchedAt);
-
-        Assert.True((await w.SyncAsync(BankWorld.Alice, loginId, new SyncRequest(loginId, true, false))).Succeeded);
-        var rows = await w.TransactionsAsync(Giro);
-        Assert.All(rows, t => Assert.False(t.IsNew));
-        Assert.Single(rows, t => t.ExternalId == "id:G-2026-11-FOOD");
     }
 
     [Fact]
@@ -149,31 +112,26 @@ public sealed class AccountSwitchTests
     }
 
     [Fact]
-    public async Task Only_the_owner_sees_the_switch_state_and_changes_the_import_setting()
+    public async Task Unlinking_leaves_an_imported_account_manual_with_its_history()
     {
         await using var w = await BankWorld.CreateAsync();
-        await LinkedAndFetchedAsync(w);
+        var (_, linkId) = await LinkedAndFetchedAsync(w);
+        var rows = (await w.TransactionsAsync(Giro)).Count;
 
-        await Assert.ThrowsAsync<AccessDeniedException>(() => w.Switcher(BankWorld.Bob).GetSourceStateAsync(BankWorld.Alice));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => w.Switcher(BankWorld.Bob).SetImportFinishedAsync(BankWorld.Alice, true));
+        await w.For(BankWorld.Alice).UnlinkAsync(linkId);
+        Assert.Equal(AccountProviders.Manual, (await w.AccountAsync(Giro)).Provider);
+        Assert.Equal(rows, (await w.TransactionsAsync(Giro)).Count);
     }
 
     [Fact]
-    public async Task A_finished_import_refuses_imports_until_resumed()
+    public async Task The_import_runs_once()
     {
         await using var w = await BankWorld.CreateAsync();
-        await LinkedAndFetchedAsync(w);
-        var switcher = w.Switcher(BankWorld.Alice);
-
-        var state = await switcher.GetSourceStateAsync(BankWorld.Alice);
-        Assert.True(Assert.Single(state.Links).Switched);
-        Assert.Null(state.ImportFinishedAt);
-
-        await switcher.SetImportFinishedAsync(BankWorld.Alice, true);
-        Assert.NotNull((await switcher.GetSourceStateAsync(BankWorld.Alice)).ImportFinishedAt);
-        await Assert.ThrowsAsync<MoneyMoneyImportFinishedException>(() => w.ImportMoneyMoneyAsync(Snapshot(w)));
-
-        await switcher.SetImportFinishedAsync(BankWorld.Alice, false);
         await w.ImportMoneyMoneyAsync(Snapshot(w));
+        var rows = (await w.TransactionsAsync(Giro)).Count;
+
+        await Assert.ThrowsAsync<MoneyMoneyAlreadyImportedException>(() => w.ImportMoneyMoneyAsync(w.BuildSnapshot([("Other", null)], [Mm(-1, Day(11, 5), "Something", "Else")])));
+        Assert.Equal(rows, (await w.TransactionsAsync(Giro)).Count);
+        Assert.Equal("MM Giro", (await w.AccountAsync(Giro)).Name);
     }
 }

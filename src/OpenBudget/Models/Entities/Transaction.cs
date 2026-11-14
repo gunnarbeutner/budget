@@ -99,15 +99,14 @@ public class Transaction
     public string? ExternalId { get; set; }
 
     /// <summary>
-    /// OpenBudget's own note (<c>note</c>). For MoneyMoney-owned rows the import fills it from
-    /// MoneyMoney's <see cref="Comment"/> on every upload; for connector-owned rows the user edits it.
+    /// OpenBudget's own note (<c>note</c>), edited by the user. The MoneyMoney import starts it as MoneyMoney's
+    /// <see cref="Comment"/>.
     /// </summary>
     [Column("note")]
     public string? Note { get; set; }
 
     /// <summary>
-    /// The check mark. MoneyMoney-owned rows mirror MoneyMoney's <see cref="Checkmark"/> on every upload;
-    /// for connector-owned rows the user toggles it.
+    /// The check mark, toggled by the user. The MoneyMoney import starts it as MoneyMoney's <see cref="Checkmark"/>.
     /// </summary>
     [Column("checked")]
     public bool Checked { get; set; }
@@ -191,7 +190,7 @@ public class Transaction
 /// <summary>Well-known values for <see cref="Transaction.CategorySetBy"/>.</summary>
 public static class TransactionCategorySource
 {
-    /// <summary>Delivered by the MoneyMoney upload (read-only in OpenBudget).</summary>
+    /// <summary>Delivered by the MoneyMoney import.</summary>
     public const string Import = "import";
 
     /// <summary>Chosen by a user in OpenBudget; never overwritten by rules.</summary>

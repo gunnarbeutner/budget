@@ -240,7 +240,7 @@ public sealed class MoneyMoneyImportTests : IDisposable
     // ---- pending bookings ----
 
     [Fact]
-    public async Task Booked_flag_is_imported_and_defaults_to_booked_when_the_column_is_missing()
+    public async Task Booked_flag_is_imported()
     {
         await using var t = new TestDb();
         var result = await ImportAsync(t, BuildSnapshot(new[] { new Row(1, -1, Booked: 1), new Row(1, -2, Booked: 0) }));
@@ -252,6 +252,12 @@ public sealed class MoneyMoneyImportTests : IDisposable
         Assert.Equal(-3m, page.TotalSum); // pending rows count toward totals
         Assert.Single(page.Rows, r => r.IsPending);
 
+    }
+
+    [Fact]
+    public async Task Rows_count_as_booked_when_the_column_is_missing()
+    {
+        await using var t = new TestDb();
         await ImportAsync(t, BuildSnapshot(new[] { new Row(1, -1), new Row(1, -2) }, withBooked: false));
         Assert.All(await TransactionsAsync(t), r => Assert.True(r.Booked));
     }
@@ -275,46 +281,19 @@ public sealed class MoneyMoneyImportTests : IDisposable
     // ---- per-account provider ----
 
     [Fact]
-    public async Task Reimport_keeps_other_providers_transactions_and_provider_values()
+    public async Task Imported_accounts_are_manual_and_a_second_import_is_refused()
     {
         await using var t = new TestDb();
-        var first = await ImportAsync(t, BuildSnapshot(new[] { new Row(1, -1), new Row(2, -2) }));
-        var acct1 = RowIds.Namespace(1, 1);
-        var acct2 = RowIds.Namespace(1, 2);
+        await ImportAsync(t, BuildSnapshot(new[] { new Row(1, -1), new Row(2, -2) }));
 
-        // Hand account 2 over to a native connector and give it a transaction of its own.
-        Assert.True(await t.Accounts.SetProviderAsync(acct2, "native"));
-        await using (var db = await t.Factory.CreateDbContextAsync())
-        {
-            db.Transactions.Add(new Transaction { Id = 9_999, OwnerUserId = first.OwnerUserId, AccountId = acct2, Amount = -777, Timestamp = 1 });
-            await db.SaveChangesAsync();
-        }
+        await Assert.ThrowsAsync<MoneyMoneyAlreadyImportedException>(() => ImportAsync(t, BuildSnapshot(new[] { new Row(1, -2), new Row(1, -3) })));
 
-        // New snapshot: account 1 gets a different transaction, account 2 still has MoneyMoney rows.
-        await ImportAsync(t, BuildSnapshot(new[] { new Row(1, -5), new Row(2, -6), new Row(2, -7) }));
-
-        var rows = await TransactionsAsync(t);
-        // Account 1 was replaced (-1 -> -5); account 2 keeps everything it had (the earlier
-        // MoneyMoney row -2 and the native one) and ignores the snapshot's new rows -6 / -7.
-        Assert.Equal(new long[] { -777, -500, -200 }, rows.Select(r => r.Amount).OrderBy(a => a).ToArray());
-        Assert.Single(rows, r => r.AccountId == acct2 && r.Id == 9_999);
-
-        await using var check = await t.Factory.CreateDbContextAsync();
-        var providers = await check.Accounts.ToDictionaryAsync(a => a.Id, a => a.Provider);
-        Assert.Equal(AccountProviders.MoneyMoney, providers[acct1]);
-        Assert.Equal("native", providers[acct2]);
-    }
-
-    [Fact]
-    public async Task Moneymoney_accounts_default_to_the_moneymoney_provider_and_have_their_transactions_replaced()
-    {
-        await using var t = new TestDb();
-        await ImportAsync(t, BuildSnapshot(new[] { new Row(1, -1) }));
-        await ImportAsync(t, BuildSnapshot(new[] { new Row(1, -2), new Row(1, -3) }));
-
-        Assert.Equal(2, (await TransactionsAsync(t)).Count);
+        Assert.Equal(new long[] { -200, -100 }, (await TransactionsAsync(t)).Select(r => r.Amount).OrderBy(a => a).ToArray());
         await using var db = await t.Factory.CreateDbContextAsync();
-        Assert.All(await db.Accounts.ToListAsync(), a => Assert.Equal(AccountProviders.MoneyMoney, a.Provider));
+        var accounts = await db.Accounts.ToListAsync();
+        Assert.Equal(2, accounts.Count);
+        Assert.All(accounts, a => Assert.Equal(AccountProviders.Manual, a.Provider));
+        Assert.All(accounts, a => Assert.True(RowIds.IsImported(a.Id)));
     }
 
     // ---- category rules ----
@@ -323,6 +302,17 @@ public sealed class MoneyMoneyImportTests : IDisposable
     {
         await using var db = await t.Factory.CreateDbContextAsync();
         return await db.CategoryRules.AsNoTracking().OrderBy(r => r.Id).ToListAsync();
+    }
+
+    /// <summary>
+    /// Gives the imported food category <paramref name="foodRules"/> as MoneyMoney's rule text and runs the rule sync
+    /// (as the import and the startup backfill do).
+    /// </summary>
+    private static async Task SyncRulesAsync(TestDb t, string ownerId, string? foodRules)
+    {
+        await using var db = await t.Factory.CreateDbContextAsync();
+        await db.Categories.Where(c => c.Id == RowIds.Namespace(1, 2)).ExecuteUpdateAsync(u => u.SetProperty(c => c.Rules, foodRules));
+        await MoneyMoneyRuleImport.SyncAsync(db, ownerId, CancellationToken.None);
     }
 
     [Fact]
@@ -338,26 +328,26 @@ public sealed class MoneyMoneyImportTests : IDisposable
             await db.SaveChangesAsync();
         }
 
-        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: first));
+        await SyncRulesAsync(t, result.OwnerUserId, first);
         var rule = Assert.Single(await RulesAsync(t));
         Assert.Equal(first, rule.Expression);
         Assert.Equal(MoneyMoneyRuleImport.Origin, rule.ImportOrigin);
         Assert.Equal(RowIds.Namespace(1, 2), rule.CategoryId);
 
         // Same again: no duplicate. Changed upstream: updated in place.
-        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: first));
+        await SyncRulesAsync(t, result.OwnerUserId, first);
         Assert.Single(await RulesAsync(t));
         const string second = "name:\"Example Market\"";
-        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: second));
+        await SyncRulesAsync(t, result.OwnerUserId, second);
         Assert.Equal(second, Assert.Single(await RulesAsync(t)).Expression);
 
-        // Edited here: later uploads leave it alone.
+        // Edited here: later syncs leave it alone.
         await using (var db = await t.Factory.CreateDbContextAsync())
         {
             (await db.CategoryRules.SingleAsync()).Expression = "sample";
             await db.SaveChangesAsync();
         }
-        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: first));
+        await SyncRulesAsync(t, result.OwnerUserId, first);
         Assert.Equal("sample", Assert.Single(await RulesAsync(t)).Expression);
     }
 
@@ -371,62 +361,25 @@ public sealed class MoneyMoneyImportTests : IDisposable
             db.Projects.Add(new Project { Name = "Household", OwnerUserId = result.OwnerUserId });
             await db.SaveChangesAsync();
         }
-        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: "bakery"));
+        await SyncRulesAsync(t, result.OwnerUserId, "bakery");
         Assert.Single(await RulesAsync(t));
-        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: ""));
+        await SyncRulesAsync(t, result.OwnerUserId, "");
         Assert.Empty(await RulesAsync(t));
 
-        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: "bakery"));
+        await SyncRulesAsync(t, result.OwnerUserId, "bakery");
         await using (var db = await t.Factory.CreateDbContextAsync())
         {
             var r = await db.CategoryRules.SingleAsync();
             r.Dismissed = true;
             await db.SaveChangesAsync();
         }
-        await ImportAsync(t, BuildSnapshot([new Row(1, -1)], foodRules: "bakery OR market"));
+        await SyncRulesAsync(t, result.OwnerUserId, "bakery OR market");
         var only = Assert.Single(await RulesAsync(t));
         Assert.True(only.Dismissed);
         Assert.Equal("bakery", only.Expression);
     }
 
     // ---- detail fields ----
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Reimport_keeps_icons_and_colours_picked_for_accounts_and_groups(bool takenOver)
-    {
-        await using var t = new TestDb();
-        string Snapshot()
-        {
-            var path = BuildSnapshot([new Row(1, -1)]);
-            Exec(path, """
-                INSERT INTO account_groups (name, sort) VALUES ('Banks', 0);
-                UPDATE accounts SET group_key = 1;
-                """);
-            return path;
-        }
-        var first = await ImportAsync(t, Snapshot());
-        var account = RowIds.Namespace(1, 1);
-        var group = RowIds.Namespace(1, 1);
-        await using (var db = await t.Factory.CreateDbContextAsync())
-        {
-            await db.Accounts.Where(a => a.Id == account).ExecuteUpdateAsync(s => s.SetProperty(a => a.Icon, "bi-wallet2").SetProperty(a => a.Color, "#2b5797"));
-            await db.AccountGroups.Where(g => g.Id == group).ExecuteUpdateAsync(s => s.SetProperty(g => g.Icon, "bi-safe").SetProperty(g => g.Color, "#1f6b35"));
-            if (takenOver)
-                await db.UserDataStates.Where(s => s.UserId == first.OwnerUserId).ExecuteUpdateAsync(s => s.SetProperty(x => x.StructureTakenOverAt, DateTime.UtcNow));
-        }
-
-        await ImportAsync(t, Snapshot());
-
-        await using var check = await t.Factory.CreateDbContextAsync();
-        var a = await check.Accounts.SingleAsync(x => x.Id == account);
-        Assert.Equal(("bi-wallet2", "#2b5797"), (a.Icon, a.Color));
-        var g = await check.AccountGroups.SingleAsync(x => x.Id == group);
-        Assert.Equal(("bi-safe", "#1f6b35"), (g.Icon, g.Color));
-        // The other account keeps its default.
-        Assert.Null((await check.Accounts.SingleAsync(x => x.Id == RowIds.Namespace(1, 2))).Icon);
-    }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA2100", Justification = "Test-only constant SQL.")]
     private static void Exec(string path, string sql)

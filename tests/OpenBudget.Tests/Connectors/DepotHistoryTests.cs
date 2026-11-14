@@ -171,13 +171,13 @@ public sealed class DepotHistoryTests
     }
 
     [Fact]
-    public async Task Accounts_owned_by_portfolio_performance_or_moneymoney_get_no_points()
+    public async Task Accounts_owned_by_portfolio_performance_get_no_points()
     {
         var (w, _, _) = await SetupAsync();
         await using var _w = w;
         await using var db = await w.T.System.CreateDbContextAsync();
         var refresh = new AccountRefresh(500m, [], [new RemotePosition("Example Equity Fund", null, null, null, 1m, 500m, "EUR", 500m)]);
-        foreach (var (provider, n) in new[] { (AccountProviders.PortfolioPerformance, 50L), (AccountProviders.MoneyMoney, 51L) })
+        foreach (var (provider, n) in new[] { (AccountProviders.PortfolioPerformance, 50L) })
         {
             var account = new Account { Id = RowIds.Namespace(BankWorld.SourceAlice, n), OwnerUserId = BankWorld.Alice, Name = provider, Type = 7, Portfolio = 1, Currency = "EUR", Provider = provider };
             db.Accounts.Add(account);
