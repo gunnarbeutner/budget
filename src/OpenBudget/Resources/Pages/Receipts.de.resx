@@ -89,7 +89,7 @@
     <value>Artikel</value>
   </data>
   <data name="List_Status" xml:space="preserve">
-    <value>Buchung</value>
+    <value>Status</value>
   </data>
   <data name="Filter_Source" xml:space="preserve">
     <value>Quelle</value>
@@ -155,7 +155,7 @@
     <value>Nicht in dieser App</value>
   </data>
   <data name="Categories_Heading" xml:space="preserve">
-    <value>Artikel-Kategorien je Quelle</value>
+    <value>Kassenbon-Artikel aufteilen in</value>
   </data>
   <data name="Categories_Amazon" xml:space="preserve">
     <value>Amazon-Bestellungen behalten vorerst ihre eigene Kategorisierung (je Artikel).</value>
@@ -183,5 +183,53 @@
   </data>
   <data name="Ai_Link" xml:space="preserve">
     <value>KI-Einstellungen</value>
+  </data>
+  <data name="Tab_List" xml:space="preserve">
+    <value>Kassenbons</value>
+  </data>
+  <data name="Tab_Settings" xml:space="preserve">
+    <value>Einstellungen</value>
+  </data>
+  <data name="Search" xml:space="preserve">
+    <value>Laden, Datum oder Betrag suchen</value>
+  </data>
+  <data name="Group_All" xml:space="preserve">
+    <value>Alle</value>
+  </data>
+  <data name="Group_Review" xml:space="preserve">
+    <value>Zu prüfen</value>
+  </data>
+  <data name="Group_Waiting" xml:space="preserve">
+    <value>Wartend</value>
+  </data>
+  <data name="Group_Matched" xml:space="preserve">
+    <value>Zugeordnet</value>
+  </data>
+  <data name="Group_NoBooking" xml:space="preserve">
+    <value>Ohne Buchung</value>
+  </data>
+  <data name="Items_Count" xml:space="preserve">
+    <value>{0} Artikel</value>
+  </data>
+  <data name="Shown" xml:space="preserve">
+    <value>{0} von {1}</value>
+  </data>
+  <data name="More" xml:space="preserve">
+    <value>Mehr anzeigen</value>
+  </data>
+  <data name="Assign_Help" xml:space="preserve">
+    <value>Wähle die Buchung, mit der dieser Kassenbon bezahlt wurde. Aufgeführt sind Buchungen um sein Datum, nächstliegender Betrag zuerst.</value>
+  </data>
+  <data name="Assign_SameAmount" xml:space="preserve">
+    <value>gleicher Betrag</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="Categories_Help" xml:space="preserve">
+    <value>Je Quelle die Kategorien, in die Artikel verschoben werden können. Artikel, die in keine davon passen, bleiben in der Kategorie der Buchung.</value>
+  </data>
+  <data name="Assign_Row" xml:space="preserve">
+    <value>Zuordnen…</value>
   </data>
 </root>

@@ -89,7 +89,7 @@
     <value>Items</value>
   </data>
   <data name="List_Status" xml:space="preserve">
-    <value>Booking</value>
+    <value>Status</value>
   </data>
   <data name="Filter_Source" xml:space="preserve">
     <value>Source</value>
@@ -155,7 +155,7 @@
     <value>Not in this app</value>
   </data>
   <data name="Categories_Heading" xml:space="preserve">
-    <value>Item categories per source</value>
+    <value>Split receipt items into</value>
   </data>
   <data name="Categories_Amazon" xml:space="preserve">
     <value>Amazon orders keep their own categorisation (by item) for now.</value>
@@ -183,5 +183,53 @@
   </data>
   <data name="Ai_Link" xml:space="preserve">
     <value>AI settings</value>
+  </data>
+  <data name="Tab_List" xml:space="preserve">
+    <value>Receipts</value>
+  </data>
+  <data name="Tab_Settings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="Search" xml:space="preserve">
+    <value>Search shop, date or amount</value>
+  </data>
+  <data name="Group_All" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="Group_Review" xml:space="preserve">
+    <value>Needs review</value>
+  </data>
+  <data name="Group_Waiting" xml:space="preserve">
+    <value>Waiting</value>
+  </data>
+  <data name="Group_Matched" xml:space="preserve">
+    <value>Matched</value>
+  </data>
+  <data name="Group_NoBooking" xml:space="preserve">
+    <value>No booking</value>
+  </data>
+  <data name="Items_Count" xml:space="preserve">
+    <value>{0} items</value>
+  </data>
+  <data name="Shown" xml:space="preserve">
+    <value>{0} of {1}</value>
+  </data>
+  <data name="More" xml:space="preserve">
+    <value>Show more</value>
+  </data>
+  <data name="Assign_Help" xml:space="preserve">
+    <value>Pick the booking that paid this receipt. Bookings near its date are listed, closest amount first.</value>
+  </data>
+  <data name="Assign_SameAmount" xml:space="preserve">
+    <value>same amount</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Categories_Help" xml:space="preserve">
+    <value>Per source, the categories items may be moved to. Items that fit none of these stay in the booking's category.</value>
+  </data>
+  <data name="Assign_Row" xml:space="preserve">
+    <value>Assign…</value>
   </data>
 </root>
