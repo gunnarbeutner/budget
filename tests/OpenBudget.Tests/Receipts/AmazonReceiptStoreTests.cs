@@ -372,4 +372,104 @@ public sealed class AmazonReceiptStoreTests
         // instalments on another payment method or before the full price do not count
         Assert.Empty(AmazonReceiptStore.InstalmentPlans([Entry(27900, 30), Entry(5580, 0), Entry(5580, 60, method: Gift)]));
     }
+
+    // ---- one charge for several orders ----
+
+    private const string OrderE = "301-0000000-0000005";
+    private const string OrderF = "301-0000000-0000006";
+    private static readonly long Together = ReceiptWorld.Id(620);
+
+    private static readonly RemoteOrder MouseMat = new(OrderE, Day, 5.99m, "EUR", [new RemoteOrderItem("Mouse mat", 1, 5.99m, null, 0)]);
+
+    /// <summary>Order F: a keyboard in one shipment, a cable in another.</summary>
+    private static readonly RemoteOrder Keyboard = new(OrderF, Day, 58.00m, "EUR", [
+        new RemoteOrderItem("Example keyboard", 1, 49.00m, null, 0),
+        new RemoteOrderItem("Example cable", 1, 9.00m, null, 1),
+    ]);
+
+    private static RemoteCharge Both(decimal amount) => Charge(OrderE, 1, amount) with { OtherOrderIds = [OrderF] };
+
+    private static async Task AddBookingAsync(TestDb t, long id, long cents)
+    {
+        await using var db = await t.System.CreateDbContextAsync();
+        db.Transactions.Add(Booking(id, cents, 2, "AMAZON EU"));
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task One_charge_for_two_orders_is_one_receipt_with_both_orders_items()
+    {
+        var (t, login) = await WorldAsync();
+        await using var _ = t;
+        await AddBookingAsync(t, Together, -6399);
+        var result = new OrderSourceResult([Both(-63.99m)], [MouseMat, Keyboard], [], Day.AddDays(-30));
+        await SyncAsync(t, login, result);
+        await SyncAsync(t, login, result with { Orders = [] });
+
+        var receipt = Assert.Single(await AmazonReceiptsAsync(t));
+        Assert.Equal((OrderE, OrderF), (receipt.OrderNumber, receipt.OtherOrderNumbers));
+        Assert.Equal([("Mouse mat", 599L, ReceiptItemKind.Product), ("Example keyboard", 4900L, ReceiptItemKind.Product), ("Example cable", 900L, ReceiptItemKind.Product)],
+            Lines(receipt));
+        Assert.Equal((6399L, 0L, Together), (receipt.TotalCents, receipt.BonusCents, receipt.TransactionId!.Value));
+        Assert.Equal(599, receipt.OrderTotalCents);
+        await using var db = await t.System.CreateDbContextAsync();
+        Assert.Equal([OrderE, OrderF], (await AmazonReceiptStore.KnownOrdersAsync(db, login.Id, default)).Order(StringComparer.Ordinal));
+        Assert.Empty(await AmazonReceiptStore.UnreadOrdersAsync(db, login.Id, default));
+        Assert.Equal("Mouse mat; Example keyboard; Example cable", (await db.Transactions.AsNoTracking().SingleAsync(x => x.Id == Together)).OrderItems);
+    }
+
+    [Fact]
+    public async Task A_receipt_stored_for_the_first_order_alone_takes_the_other_orders_items_in_place()
+    {
+        var (t, login) = await WorldAsync();
+        await using var _ = t;
+        await AddBookingAsync(t, Together, -6399);
+        await SyncAsync(t, login, new OrderSourceResult([Charge(OrderE, 1, -63.99m)], [MouseMat], [], Day.AddDays(-30)));
+        var before = Assert.Single(await AmazonReceiptsAsync(t));
+        Assert.Equal(Together, before.TransactionId);
+
+        await using (var db = await t.System.CreateDbContextAsync())
+        {
+            Assert.DoesNotContain(OrderF, await AmazonReceiptStore.KnownOrdersAsync(db, login.Id, default));
+            var mat = await db.ReceiptItems.SingleAsync(i => i.Name == "Mouse mat");
+            mat.CategoryId = ReceiptWorld.Drugstore;
+            mat.CategorySource = ReceiptCategorySource.Manual;
+            await db.SaveChangesAsync();
+        }
+        // The next sync reads only the order it did not know.
+        await SyncAsync(t, login, new OrderSourceResult([Both(-63.99m)], [Keyboard], [], Day.AddDays(-30)));
+
+        var receipt = Assert.Single(await AmazonReceiptsAsync(t));
+        Assert.Equal((before.Id, Together, OrderF), (receipt.Id, receipt.TransactionId!.Value, receipt.OtherOrderNumbers));
+        Assert.Equal(["Mouse mat", "Example keyboard", "Example cable"], Lines(receipt).Select(l => l.Name));
+        Assert.Equal(ReceiptCategorySource.Manual, receipt.Items.Single(i => i.Name == "Mouse mat").CategorySource);
+        await using (var db = await t.System.CreateDbContextAsync())
+            Assert.Contains(OrderF, await AmazonReceiptStore.KnownOrdersAsync(db, login.Id, default));
+    }
+
+    [Fact]
+    public async Task A_charge_for_two_orders_gets_what_the_orders_own_charges_did_not_pay()
+    {
+        var (t, login) = await WorldAsync();
+        await using var _ = t;
+        // The keyboard shipped and was charged alone; the cable went out with the mouse mat, charged together.
+        var result = new OrderSourceResult([Charge(OrderF, 0, -49.00m), Both(-14.99m)], [MouseMat, Keyboard], [], Day.AddDays(-30));
+        await SyncAsync(t, login, result);
+        await SyncAsync(t, login, result with { Orders = [] });
+
+        var receipts = await AmazonReceiptsAsync(t);
+        Assert.Equal(2, receipts.Count);
+        Assert.Equal(["Example keyboard"], Lines(receipts.Single(r => r.PaymentCents == 4900)).Select(l => l.Name));
+        var both = receipts.Single(r => r.PaymentCents == 1499);
+        Assert.Equal(["Mouse mat", "Example cable"], Lines(both).Select(l => l.Name));
+        Assert.Equal(0, both.BonusCents);
+    }
+
+    [Fact]
+    public void A_charge_for_several_orders_is_in_no_instalment_plan()
+    {
+        var full = Entry(27900, 0);
+        full.OtherOrderNumbers = OrderF;
+        Assert.Empty(AmazonReceiptStore.InstalmentPlans([full, .. Enumerable.Range(0, 5).Select(m => Entry(5580, m * 30))]));
+    }
 }

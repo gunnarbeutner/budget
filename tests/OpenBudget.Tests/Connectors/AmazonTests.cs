@@ -174,6 +174,24 @@ public sealed class AmazonTests
     }
 
     [Fact]
+    public void A_payment_for_several_orders_lists_them_all_in_order()
+    {
+        var keyed = Entry("-€63.99", "12 Nov 2026", null, "Visa", "1111");
+        keyed["orderData"] = new JsonObject
+        {
+            ["1"] = new JsonObject { ["orderDisplayString"] = "Order #" + OrderB },
+            ["0"] = new JsonObject { ["orderDisplayString"] = "Order #" + OrderA },
+        };
+        var listed = Entry("-€20.00", "11 Nov 2026", null, "Visa", "1111");
+        listed["orderData"] = new JsonArray(new JsonObject { ["orderDisplayString"] = "Order #" + OrderC }, new JsonObject { ["orderDetailsUrl"] = "https://shop.test/x?orderID=" + OrderA });
+        var page = AmazonPages.ParseWalletJson(new JsonObject { ["transactionList"] = new JsonArray(keyed, listed, Entry("-€5.00", "10 Nov 2026", OrderB, "Visa", "1111")) })!;
+
+        Assert.Equal([(OrderA, new[] { OrderB }), (OrderC, new[] { OrderA }), (OrderB, Array.Empty<string>())],
+            page.Charges.Select(c => (c.OrderId, c.OtherOrderIds.ToArray())));
+        Assert.Equal([OrderA, OrderB], page.Charges[0].OrderIds);
+    }
+
+    [Fact]
     public void A_digital_order_page_without_items_still_reads()
     {
         var order = AmazonPages.ParseOrderDetails("D01-4444444-4444444", "<html><body>Your membership</body></html>");

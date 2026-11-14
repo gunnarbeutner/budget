@@ -1,8 +1,17 @@
 namespace OpenBudget.Connectors;
 
-/// <summary>A payment of an online shop's payment list: one order, one payment instrument, a signed amount (negative = charge).</summary>
+/// <summary>
+/// A payment of an online shop's payment list: one payment instrument, a signed amount (negative = charge), for one
+/// order (<see cref="OrderId"/>) or several charged together (<see cref="OtherOrderIds"/> follow it).
+/// </summary>
 public sealed record RemoteCharge(string OrderId, DateOnly Date, decimal Amount, string Currency, string InstrumentId, string Instrument, string? Status, string? Merchant)
 {
+    /// <summary>The further orders the payment covered, in the shop's order.</summary>
+    public IReadOnlyList<string> OtherOrderIds { get; init; } = [];
+
+    /// <summary><see cref="OrderId"/>, then <see cref="OtherOrderIds"/>.</summary>
+    public IEnumerable<string> OrderIds => OtherOrderIds.Prepend(OrderId);
+
     /// <summary>Paid with points or a gift card: there is no booking for it.</summary>
     public bool Skip { get; init; }
 }

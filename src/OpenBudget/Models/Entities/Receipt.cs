@@ -108,6 +108,21 @@ public class ReceiptInvoice
     [MaxLength(40)]
     public string? OrderNumber { get; set; }
 
+    /// <summary>
+    /// Further orders the receipt's payment covered, space-separated (Amazon: one charge for several orders); their items
+    /// follow the first order's (see <see cref="OrderNumbers"/>).
+    /// </summary>
+    [MaxLength(400)]
+    public string? OtherOrderNumbers { get; set; }
+
+    /// <summary>The receipt's orders: <see cref="OrderNumber"/>, then <see cref="OtherOrderNumbers"/>.</summary>
+    public static IReadOnlyList<string> OrderNumbersOf(string? orderNumber, string? otherOrderNumbers) =>
+        orderNumber == null ? [] : [orderNumber, .. (otherOrderNumbers ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries)];
+
+    /// <summary>See <see cref="OrderNumbersOf"/>.</summary>
+    [NotMapped]
+    public IReadOnlyList<string> OrderNumbers => OrderNumbersOf(OrderNumber, OtherOrderNumbers);
+
     public DateTime? OrderDate { get; set; }
 
     public DateTime? DeliveryDate { get; set; }

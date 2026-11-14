@@ -12,10 +12,10 @@ public sealed record ReceiptSettingsView(
 /// <summary>A stored receipt as the list shows it.</summary>
 public sealed record ReceiptView(
     long Id, string Shop, string? OrderNumber, DateTime? OrderDate, DateTime? DeliveryDate, long PaymentCents, int Items,
-    ReceiptMatchState State, long? TransactionId, DateTime? BookingDate, bool Split, string? Store = null)
+    ReceiptMatchState State, long? TransactionId, DateTime? BookingDate, bool Split, string? Store = null, string? OtherOrderNumbers = null)
 {
-    /// <summary>The shop and where or what: "REWE B-…" or "Lidl Teststraße 1, Musterstadt".</summary>
-    public string Title => ReceiptService.Title(Shop, Store, OrderNumber);
+    /// <summary>The shop and where or what: "REWE B-…", "Amazon 304-…, 305-…" or "Lidl Teststraße 1, Musterstadt".</summary>
+    public string Title => ReceiptService.Title(Shop, Store, OrderNumber, OtherOrderNumbers);
 
     /// <summary>The order's page at the shop, when the shop has one (Amazon).</summary>
     public Uri? ShopUrl => ReceiptService.ShopUrl(Shop, OrderNumber);
@@ -34,16 +34,22 @@ public sealed record ReceiptGroupView(long? CategoryId, long AmountCents, IReadO
 /// </summary>
 public sealed record BookingReceiptView(long ReceiptId, long? TransactionId, string Shop, string? OrderNumber, DateTime? DeliveryDate, long BonusCents,
     IReadOnlyList<ReceiptGroupView> Groups, bool SplitByReceipt, string? Store = null, long TotalCents = 0, long PaymentCents = 0, string? InvoiceNumber = null,
-    bool PaidInInstalments = false, long? BookingCategoryId = null, bool Instalment = false)
+    bool PaidInInstalments = false, long? BookingCategoryId = null, bool Instalment = false, string? OtherOrderNumbers = null)
 {
     /// <summary>The number of lines.</summary>
     public int ItemCount => Groups.Sum(g => g.Lines.Count);
 
     /// <summary>See <see cref="ReceiptView.Title"/>.</summary>
-    public string Title => ReceiptService.Title(Shop, Store, OrderNumber);
+    public string Title => ReceiptService.Title(Shop, Store, OrderNumber, OtherOrderNumbers);
 
     /// <summary>The order's page at the shop, when the shop has one (Amazon).</summary>
     public Uri? ShopUrl => ReceiptService.ShopUrl(Shop, OrderNumber);
+
+    /// <summary>Each order's number and page at the shop (several when one payment covered several orders).</summary>
+    public IReadOnlyList<(string OrderNumber, Uri Url)> ShopUrls() =>
+        [.. ReceiptInvoice.OrderNumbersOf(OrderNumber, OtherOrderNumbers)
+            .Select(o => (OrderNumber: o, Url: ReceiptService.ShopUrl(Shop, o)))
+            .Where(x => x.Url != null).Select(x => (x.OrderNumber, x.Url!))];
 }
 
 /// <summary>Where a receipt stands, as the receipts page filters it.</summary>
@@ -133,11 +139,11 @@ public sealed class ReceiptService
     public static Uri? ShopUrl(string shop, string? orderNumber) =>
         shop == ReceiptShops.Amazon && !string.IsNullOrEmpty(orderNumber) ? new OpenBudget.Connectors.Amazon.AmazonOptions().OrderUrl(orderNumber) : null;
 
-    public static string Title(string shop, string? store, string? orderNumber) => shop switch
+    public static string Title(string shop, string? store, string? orderNumber, string? otherOrderNumbers = null) => shop switch
     {
         ReceiptShops.Lidl => store is { Length: > 0 } s ? (s.StartsWith("Lidl", StringComparison.OrdinalIgnoreCase) ? s : "Lidl " + s) : "Lidl",
         ReceiptShops.Rewe => ("REWE " + orderNumber).Trim(),
-        ReceiptShops.Amazon => ("Amazon " + orderNumber).Trim(),
+        ReceiptShops.Amazon => ("Amazon " + string.Join(", ", ReceiptInvoice.OrderNumbersOf(orderNumber, otherOrderNumbers))).Trim(),
         _ => (shop + " " + (store ?? orderNumber)).Trim(),
     };
 
@@ -318,12 +324,12 @@ public sealed class ReceiptService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var rows = await db.ReceiptInvoices.AsNoTracking().Where(r => r.OwnerUserId == user)
             .OrderByDescending(r => r.DeliveryDate ?? r.OrderDate).ThenByDescending(r => r.Id).Take(take)
-            .Select(r => new { r.Id, r.Shop, r.Store, r.OrderNumber, r.OrderDate, r.DeliveryDate, r.PaymentCents, Items = r.Items.Count, r.State, r.TransactionId, r.SplitSignature })
+            .Select(r => new { r.Id, r.Shop, r.Store, r.OrderNumber, r.OtherOrderNumbers, r.OrderDate, r.DeliveryDate, r.PaymentCents, Items = r.Items.Count, r.State, r.TransactionId, r.SplitSignature })
             .ToListAsync(ct);
         var txIds = rows.Where(r => r.TransactionId != null).Select(r => r.TransactionId!.Value).ToList();
         var dates = await db.Transactions.AsNoTracking().Where(t => txIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Timestamp, ct);
         return rows.Select(r => new ReceiptView(r.Id, r.Shop, r.OrderNumber, r.OrderDate, r.DeliveryDate, r.PaymentCents, r.Items, r.State, r.TransactionId,
-            r.TransactionId is { } t && dates.TryGetValue(t, out var ts) ? DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime : null, r.SplitSignature != null, r.Store)).ToList();
+            r.TransactionId is { } t && dates.TryGetValue(t, out var ts) ? DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime : null, r.SplitSignature != null, r.Store, r.OtherOrderNumbers)).ToList();
     }
 
     /// <summary>The user's receipts of one shop (a receipt source's login card): counts and the latest without a booking.</summary>
@@ -343,7 +349,7 @@ public sealed class ReceiptService
         var open = q.Where(r => r.TransactionId == null && r.PaymentCents > 0 && r.State != ReceiptMatchState.Dismissed && r.State != ReceiptMatchState.Skipped && r.State != ReceiptMatchState.Instalments);
         var openCount = await open.CountAsync(ct);
         var latest = await open.OrderByDescending(r => r.OrderDate).ThenByDescending(r => r.Id).Take(take)
-            .Select(r => new ReceiptView(r.Id, r.Shop, r.OrderNumber, r.OrderDate, r.DeliveryDate, r.PaymentCents, r.Items.Count, r.State, null, null, false, r.Store))
+            .Select(r => new ReceiptView(r.Id, r.Shop, r.OrderNumber, r.OrderDate, r.DeliveryDate, r.PaymentCents, r.Items.Count, r.State, null, null, false, r.Store, r.OtherOrderNumbers))
             .ToListAsync(ct);
         return new ReceiptSourceSummary(count, matched, openCount, latest);
     }
@@ -388,8 +394,9 @@ public sealed class ReceiptService
         return new BookingReceiptView(invoice.Id, booking?.Id, invoice.Shop, invoice.OrderNumber, invoice.DeliveryDate ?? invoice.OrderDate, invoice.BonusCents, groups,
             invoice.SplitSignature != null, invoice.Store, invoice.TotalCents, invoice.PaymentCents, invoice.InvoiceNumber,
             invoice.State == ReceiptMatchState.Instalments, bookingCategory,
+            OtherOrderNumbers: invoice.OtherOrderNumbers,
             // One instalment of an order paid in instalments: the rest of the price is in the other instalments.
-            invoice.State != ReceiptMatchState.Instalments && invoice.OrderNumber != null && await db.ReceiptInvoices.AnyAsync(r =>
+            Instalment: invoice.State != ReceiptMatchState.Instalments && invoice.OrderNumber != null && await db.ReceiptInvoices.AnyAsync(r =>
                 r.OrderNumber == invoice.OrderNumber && r.BankLoginId == invoice.BankLoginId && r.State == ReceiptMatchState.Instalments, ct));
     }
 
@@ -409,7 +416,7 @@ public sealed class ReceiptService
         var rows = new List<ReceiptReviewRow>();
         var invoices = await db.ReceiptInvoices.AsNoTracking().Where(r => r.OwnerUserId == user)
             .OrderByDescending(r => r.DeliveryDate ?? r.OrderDate).ThenByDescending(r => r.Id).Take(take * 2)
-            .Select(r => new { r.Id, r.Shop, r.Store, r.OrderNumber, r.OrderDate, r.DeliveryDate, r.PaymentCents, Items = r.Items.Count, r.State, r.TransactionId, r.SplitSignature })
+            .Select(r => new { r.Id, r.Shop, r.Store, r.OrderNumber, r.OtherOrderNumbers, r.OrderDate, r.DeliveryDate, r.PaymentCents, Items = r.Items.Count, r.State, r.TransactionId, r.SplitSignature })
             .ToListAsync(ct);
         rows.AddRange(invoices.Where(r => source == null || ReceiptSources.Of(r.Shop) == source).Select(r =>
         {
@@ -425,7 +432,7 @@ public sealed class ReceiptService
                 _ when date is { } d && DateOnly.FromDateTime(d).AddDays(WaitingDays) >= today => ReceiptReviewState.Waiting,
                 _ => ReceiptReviewState.Unmatched,
             };
-            return new ReceiptReviewRow(r.Id, ReceiptSources.Of(r.Shop), r.Shop, Title(r.Shop, r.Store, r.OrderNumber), date, r.PaymentCents, r.Items, st, r.TransactionId, null);
+            return new ReceiptReviewRow(r.Id, ReceiptSources.Of(r.Shop), r.Shop, Title(r.Shop, r.Store, r.OrderNumber, r.OtherOrderNumbers), date, r.PaymentCents, r.Items, st, r.TransactionId, null);
         }));
         if (state is { } only) rows = rows.Where(r => r.State == only).ToList();
         rows = rows.OrderByDescending(r => r.Date).ThenByDescending(r => r.Id).Take(take).ToList();

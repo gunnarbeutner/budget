@@ -206,7 +206,7 @@ public sealed class AmazonConnector : IBankConnector, IOrderSource
         _session.Values[InstrumentsKey] = JsonSerializer.Serialize(instruments);
 
         // ---- order details ----
-        var wanted = charges.Where(c => !c.Skip).Select(c => c.OrderId).Concat(unreadOrderIds).Distinct(StringComparer.Ordinal)
+        var wanted = charges.Where(c => !c.Skip).SelectMany(c => c.OrderIds).Concat(unreadOrderIds).Distinct(StringComparer.Ordinal)
             .Where(id => !knownOrderIds.Contains(id)).ToList();
         var orders = new List<RemoteOrder>();
         foreach (var orderId in wanted)

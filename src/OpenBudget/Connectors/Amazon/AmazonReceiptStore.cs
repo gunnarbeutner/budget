@@ -33,18 +33,29 @@ public static class AmazonReceiptStore
     /// <summary>Where an Amazon receipt's credit lines start (after the order's items, which keep their place in the order).</summary>
     private const int CreditPosition = 10000;
 
-    /// <summary>Orders whose details were read already (not asked for again).</summary>
+    /// <summary>Where the items of a receipt's further orders start: its n-th order's items are at n × this plus their place in the order.</summary>
+    private const int OrderPositions = 1000;
+
+    /// <summary>The most orders one receipt carries items of (the rest of a larger payment's orders are left out).</summary>
+    private const int MaxOrders = CreditPosition / OrderPositions;
+
+    /// <summary>
+    /// Orders whose details were read already (not asked for again). A receipt of several orders counts as read once all
+    /// its orders were.
+    /// </summary>
     public static async Task<HashSet<string>> KnownOrdersAsync(BudgetDbContext db, int loginId, CancellationToken ct) =>
         (await db.ReceiptInvoices.AsNoTracking().Where(r => r.BankLoginId == loginId && r.Shop == ReceiptShops.Amazon && r.DetailsReadAt != null && r.OrderNumber != null)
-            .Select(r => r.OrderNumber!).Distinct().ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
+            .Select(r => new { r.OrderNumber, r.OtherOrderNumbers }).ToListAsync(ct))
+            .SelectMany(r => ReceiptInvoice.OrderNumbersOf(r.OrderNumber, r.OtherOrderNumbers)).ToHashSet(StringComparer.Ordinal);
 
     /// <summary>Stored orders whose details were not read yet (a sync stopped before it got to them, or an older sync left them out).</summary>
     public static async Task<List<string>> UnreadOrdersAsync(BudgetDbContext db, int loginId, CancellationToken ct)
     {
         var receipts = await db.ReceiptInvoices.AsNoTracking()
             .Where(r => r.BankLoginId == loginId && r.Shop == ReceiptShops.Amazon && r.OrderNumber != null)
-            .Select(r => new { r.OrderNumber, r.DetailsReadAt, r.DeliveryDate }).ToListAsync(ct);
-        return receipts.GroupBy(r => r.OrderNumber!, StringComparer.Ordinal).Where(g => g.All(r => r.DetailsReadAt == null))
+            .Select(r => new { r.OrderNumber, r.OtherOrderNumbers, r.DetailsReadAt, r.DeliveryDate }).ToListAsync(ct);
+        return receipts.SelectMany(r => ReceiptInvoice.OrderNumbersOf(r.OrderNumber, r.OtherOrderNumbers).Select(o => (Order: o, r.DetailsReadAt, r.DeliveryDate)))
+            .GroupBy(r => r.Order, StringComparer.Ordinal).Where(g => g.All(r => r.DetailsReadAt == null))
             .OrderByDescending(g => g.Max(r => r.DeliveryDate)).Select(g => g.Key).ToList();
     }
 
@@ -74,6 +85,8 @@ public static class AmazonReceiptStore
         var owner = login.OwnerUserId;
         var stored = await db.ReceiptInvoices.Include(r => r.Items).Where(r => r.BankLoginId == login.Id && r.Shop == ReceiptShops.Amazon).ToListAsync(ct);
         var known = stored.Select(s => s.SourceKey).Concat(stored.SelectMany(s => s.Items).Select(i => i.SourceKey)).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        var bySource = stored.Where(s => s.SourceKey != null).GroupBy(s => s.SourceKey!, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        var readBefore = stored.Where(s => s.DetailsReadAt != null).SelectMany(s => s.OrderNumbers).ToHashSet(StringComparer.Ordinal);
         var touched = new HashSet<string>(StringComparer.Ordinal);
         var credits = new List<(string OrderId, ReceiptItem Line)>();
 
@@ -87,14 +100,22 @@ public static class AmazonReceiptStore
             occurrences[basis] = occurrences.GetValueOrDefault(basis) + 1;
             var key = Truncate(basis + "|" + occurrences[basis].ToString(CultureInfo.InvariantCulture), 200)!;
             keys.Add(key);
+            // A payment of several orders is keyed by its first: a receipt stored for that order alone takes the others on.
+            var others = Others(c);
+            if (bySource.TryGetValue(key, out var seen) && seen.OtherOrderNumbers != others)
+            {
+                seen.OtherOrderNumbers = others;
+                touched.UnionWith(seen.OrderNumbers);
+            }
             if (!known.Add(key)) continue;
-            touched.Add(c.OrderId);
+            touched.UnionWith(c.OrderIds);
             if (AmazonPages.IsPointsLabel(c.Instrument))
             {
                 credits.Add((c.OrderId, CreditLine(owner, key, c.Instrument)));
                 continue;
             }
             var receipt = NewReceipt(owner, login.Id, key, c.OrderId, c.Date, cents, c.InstrumentId, c.Instrument, nowUtc);
+            receipt.OtherOrderNumbers = others;
             db.ReceiptInvoices.Add(receipt);
             stored.Add(receipt);
         }
@@ -102,14 +123,14 @@ public static class AmazonReceiptStore
         var gone = stored.Where(s => s.SourceKey != null && Day(s.DeliveryDate) >= from && !keys.Contains(s.SourceKey)).ToList();
         foreach (var g in gone)
         {
-            touched.Add(g.OrderNumber ?? "");
+            touched.UnionWith(g.OrderNumbers);
             stored.Remove(g);
         }
         db.ReceiptInvoices.RemoveRange(gone);
         foreach (var s in stored)
             foreach (var line in s.Items.Where(i => i.SourceKey != null && ChargeOf(i.SourceKey).Date >= from && !keys.Contains(i.SourceKey)).ToList())
             {
-                touched.Add(s.OrderNumber ?? "");
+                touched.UnionWith(s.OrderNumbers);
                 s.Items.Remove(line);
             }
 
@@ -121,11 +142,14 @@ public static class AmazonReceiptStore
             if (details.TryGetValue(orderId, out var d))
             {
                 var items = d.Items.Select((i, n) => new AmazonItem(n, i.Title, i.Quantity, i.Price is { } p ? Cents(p) : null, i.Shipment)).ToList();
-                Assign(ofOrder, items, d.Date, d.Total is { } t ? Cents(t) : null, nowUtc);
+                Assign(ofOrder, items, d.Date, d.Total is { } t ? Cents(t) : null, nowUtc, orderId);
             }
             else
-                Reassign(ofOrder);
+                Reassign(ofOrder, orderId);
         }
+        // A receipt of several orders is read once each of its orders was (in this sync or before).
+        foreach (var s in stored.Where(s => s.OtherOrderNumbers != null && s.OrderNumbers.Any(touched.Contains)))
+            s.DetailsReadAt = s.OrderNumbers.All(o => details.ContainsKey(o) || readBefore.Contains(o)) ? s.DetailsReadAt ?? nowUtc : null;
         await db.SaveChangesAsync(ct);
 
         // A booking whose charge went loses the receipt's item text (its split, if any, stays as it is).
@@ -175,6 +199,20 @@ public static class AmazonReceiptStore
         return points.Count;
     }
 
+    /// <summary>A charge's further orders as <see cref="ReceiptInvoice.OtherOrderNumbers"/> stores them (null: one order).</summary>
+    private static string? Others(RemoteCharge c)
+    {
+        var others = c.OtherOrderIds.Where(o => o != c.OrderId).Take(MaxOrders - 1).Select(o => Truncate(o, 40)!).ToList();
+        return others.Count == 0 ? null : string.Join(' ', others);
+    }
+
+    /// <summary>Which of a receipt's orders <paramref name="orderId"/> is (0: its first, or a receipt of one order).</summary>
+    private static int OrderIndex(ReceiptInvoice r, string? orderId) =>
+        orderId == null ? 0 : Math.Max(0, r.OrderNumbers.ToList().IndexOf(orderId));
+
+    /// <summary>Whether a receipt carries several orders' items.</summary>
+    private static bool Shared(ReceiptInvoice r) => r.OtherOrderNumbers != null;
+
     /// <summary>A new, unmatched receipt for one wallet charge by card or bank (positive cents: refund; negative: charge).</summary>
     public static ReceiptInvoice NewReceipt(string owner, int loginId, string key, string orderId, DateOnly date, long cents, string instrumentId, string instrument, DateTime nowUtc) => new()
     {
@@ -220,8 +258,9 @@ public static class AmazonReceiptStore
     /// </summary>
     private static List<ReceiptInvoice> Fold(BudgetDbContext db, BankLogin login, string orderId, List<ReceiptInvoice> stored, IReadOnlyList<ReceiptItem> added, DateTime nowUtc)
     {
-        var ofOrder = stored.Where(s => s.OrderNumber == orderId).ToList();
-        var lines = ofOrder.SelectMany(r => r.Items.Where(i => i.Kind == ReceiptItemKind.Credit && i.SourceKey != null).Select(i => (Line: i, On: (ReceiptInvoice?)r)))
+        var ofOrder = stored.Where(s => s.OrderNumbers.Contains(orderId, StringComparer.Ordinal)).ToList();
+        // A charge of several orders carries the credits of its first.
+        var lines = ofOrder.Where(r => OrderIndex(r, orderId) == 0).SelectMany(r => r.Items.Where(i => i.Kind == ReceiptItemKind.Credit && i.SourceKey != null).Select(i => (Line: i, On: (ReceiptInvoice?)r)))
             .Concat(added.Select(i => (Line: i, On: (ReceiptInvoice?)null))).ToList();
         var cards = ofOrder.Where(r => !IsPoints(r)).ToList();
         var holders = ofOrder.Where(IsPoints).ToList();
@@ -281,18 +320,22 @@ public static class AmazonReceiptStore
     }
 
     /// <summary>Gives an order's receipts their items again from what they carry (once its details were read), or just their totals.</summary>
-    private static void Reassign(List<ReceiptInvoice> ofOrder)
+    private static void Reassign(List<ReceiptInvoice> ofOrder, string? orderId = null)
     {
         var known = ofOrder.Where(o => o.DetailsReadAt != null).ToList();
-        if (known.Count > 0) Assign(ofOrder, ItemsOf(known), Day(known[0].OrderDate), known[0].OrderTotalCents, known.Max(o => o.DetailsReadAt)!.Value);
+        // The order's day and total are on the receipts it comes first on.
+        var own = known.FirstOrDefault(r => OrderIndex(r, orderId) == 0);
+        if (known.Count > 0) Assign(ofOrder, ItemsOf(known, orderId), Day(own?.OrderDate), own?.OrderTotalCents, known.Max(o => o.DetailsReadAt)!.Value, orderId);
         else
             foreach (var r in ofOrder) Totals(r);
     }
 
     /// <summary>The order's items as its receipts carry them (each item once, by its place in the order).</summary>
-    public static List<AmazonItem> ItemsOf(IEnumerable<ReceiptInvoice> receipts) =>
-        receipts.SelectMany(r => r.Items).Where(i => i.Kind == ReceiptItemKind.Product).GroupBy(i => i.Position).OrderBy(g => g.Key).Select(g => g.First())
-            .Select(i => new AmazonItem(i.Position, i.Name, int.TryParse(i.Quantity, NumberStyles.Integer, CultureInfo.InvariantCulture, out var q) ? q : 1, i.UnitCents, i.Shipment ?? 0))
+    public static List<AmazonItem> ItemsOf(IEnumerable<ReceiptInvoice> receipts, string? orderId = null) =>
+        receipts.SelectMany(r => r.Items.Where(i => i.Kind == ReceiptItemKind.Product && i.Position / OrderPositions == OrderIndex(r, orderId))
+                .Select(i => (Position: i.Position % OrderPositions, Line: i)))
+            .GroupBy(i => i.Position).OrderBy(g => g.Key).Select(g => (g.Key, g.First().Line))
+            .Select(x => new AmazonItem(x.Key, x.Line.Name, int.TryParse(x.Line.Quantity, NumberStyles.Integer, CultureInfo.InvariantCulture, out var q) ? q : 1, x.Line.UnitCents, x.Line.Shipment ?? 0))
             .ToList();
 
     /// <summary>
@@ -301,32 +344,58 @@ public static class AmazonReceiptStore
     /// the card charges paid. The lines add up to the charge through <see cref="ReceiptInvoice.BonusCents"/> (shipping,
     /// discounts). A receipt whose items stay the same keeps its lines (and the owner's moves), taking over their
     /// quantities and prices as read.
+    ///
+    /// A charge of several orders (<paramref name="orderId"/> one of them) gets the order's items no charge of the order
+    /// alone paid for, next to its other orders' items; it keeps the day and total of its first order, and when it was
+    /// read is up to the caller (all its orders must be).
     /// </summary>
-    public static void Assign(IReadOnlyList<ReceiptInvoice> ofOrder, IReadOnlyList<AmazonItem> items, DateOnly? orderDate, long? orderTotalCents, DateTime detailsReadAt)
+    public static void Assign(IReadOnlyList<ReceiptInvoice> ofOrder, IReadOnlyList<AmazonItem> items, DateOnly? orderDate, long? orderTotalCents, DateTime detailsReadAt,
+        string? orderId = null)
     {
         var split = items.Select(i => new SplitItem(i.Position, i.Title, i.Quantity, i.PriceCents * i.Quantity, i.Shipment)).ToList();
-        var points = ofOrder.SelectMany(r => r.Items).Where(i => i.Kind == ReceiptItemKind.Credit && i.SourceKey != null)
+        var points = ofOrder.Where(r => OrderIndex(r, orderId) == 0).SelectMany(r => r.Items).Where(i => i.Kind == ReceiptItemKind.Credit && i.SourceKey != null)
             .Select(i => ChargeOf(i.SourceKey!).Cents).Where(c => c < 0).Sum(c => -c);
         var plans = InstalmentPlans(ofOrder);
         var whole = plans.Select(p => p.Full).Concat(plans.SelectMany(p => p.Instalments)).ToHashSet();
         var card = ofOrder.Where(r => !IsPoints(r) && !whole.Contains(r)).Select(r => -r.PaymentCents).ToList();
+        var all = items.Select(i => i.Position).ToHashSet();
+        var paidBy = new Dictionary<ReceiptInvoice, HashSet<int>>();
+        var claimed = new HashSet<int>();
+        foreach (var r in ofOrder.Where(r => !Shared(r)))
+        {
+            if (IsPoints(r) || whole.Contains(r))
+            {
+                paidBy[r] = all;
+                continue;
+            }
+            var charge = AmazonShipments.ItemsForCharge(split, -r.PaymentCents, card, points, orderTotalCents);
+            paidBy[r] = charge.Items.Select(i => (int)i.Id).ToHashSet();
+            if (r.PaymentCents > 0 && !charge.Unclear) claimed.UnionWith(paidBy[r]);
+        }
+        // A charge of several orders paid what this order's own charges did not (a refund: all of it).
+        foreach (var r in ofOrder.Where(Shared))
+            paidBy[r] = r.PaymentCents > 0 ? all.Where(p => !claimed.Contains(p)).ToHashSet() : all;
         foreach (var r in ofOrder)
         {
-            r.OrderDate = orderDate?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc) ?? r.OrderDate;
-            r.OrderTotalCents = orderTotalCents ?? r.OrderTotalCents;
-            r.DetailsReadAt = detailsReadAt;
-            var paid = IsPoints(r) || whole.Contains(r) ? items.Select(i => i.Position).ToHashSet()
-                : AmazonShipments.ItemsForCharge(split, -r.PaymentCents, card, points, orderTotalCents).Items.Select(i => (int)i.Id).ToHashSet();
-            var wanted = items.Where(i => paid.Contains(i.Position)).ToList();
-            var products = r.Items.Where(i => i.Kind == ReceiptItemKind.Product).ToList();
-            if (!products.Select(i => i.Position).Order().SequenceEqual(wanted.Select(i => i.Position)))
+            var index = OrderIndex(r, orderId);
+            var offset = index * OrderPositions;
+            if (index == 0)
+            {
+                r.OrderDate = orderDate?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc) ?? r.OrderDate;
+                r.OrderTotalCents = orderTotalCents ?? r.OrderTotalCents;
+            }
+            if (!Shared(r)) r.DetailsReadAt = detailsReadAt;
+            var paid = paidBy[r];
+            var wanted = items.Where(i => paid.Contains(i.Position) && i.Position < OrderPositions).ToList();
+            var products = r.Items.Where(i => i.Kind == ReceiptItemKind.Product && i.Position / OrderPositions == index).ToList();
+            if (!products.Select(i => i.Position).Order().SequenceEqual(wanted.Select(i => i.Position + offset)))
             {
                 foreach (var old in products) r.Items.Remove(old);
                 foreach (var i in wanted)
                     r.Items.Add(new ReceiptItem
                     {
                         OwnerUserId = r.OwnerUserId,
-                        Position = i.Position,
+                        Position = i.Position + offset,
                         Name = Truncate(i.Title, 300)!,
                         Quantity = i.Quantity.ToString(CultureInfo.InvariantCulture),
                         UnitCents = i.PriceCents,
@@ -340,7 +409,7 @@ public static class AmazonReceiptStore
                 // The same items keep their lines (and the owner's moves); a corrected quantity or price is taken over.
                 foreach (var line in products)
                 {
-                    var i = wanted.First(w => w.Position == line.Position);
+                    var i = wanted.First(w => w.Position + offset == line.Position);
                     line.Name = Truncate(i.Title, 300)!;
                     line.Quantity = i.Quantity.ToString(CultureInfo.InvariantCulture);
                     line.UnitCents = i.PriceCents;
@@ -361,12 +430,12 @@ public static class AmazonReceiptStore
     /// a nth of it: each within n cents of full/n, at least one of them within one cent (n × amount within n cents of the
     /// full price), no more than n of them and together no more than the full price plus n cents. Exactly one n must fit.
     /// When the order's total is known the full price must be it (an order shipped in two charges, one twice the other,
-    /// stays two charges); without it, two instalments must be listed.
+    /// stays two charges); without it, two instalments must be listed. A charge of several orders is in no plan.
     /// </summary>
     public static List<InstalmentPlan> InstalmentPlans(IReadOnlyList<ReceiptInvoice> ofOrder)
     {
         var plans = new List<InstalmentPlan>();
-        var charges = ofOrder.Where(r => r.PaymentCents > 0 && r.SourceKey != null && !IsPoints(r)).ToList();
+        var charges = ofOrder.Where(r => r.PaymentCents > 0 && r.SourceKey != null && !IsPoints(r) && !Shared(r)).ToList();
         foreach (var full in charges.OrderByDescending(r => r.PaymentCents).ThenBy(r => r.SourceKey, StringComparer.Ordinal))
         {
             if (plans.Any(p => p.Full == full || p.Instalments.Contains(full))) continue;

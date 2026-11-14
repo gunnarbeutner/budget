@@ -119,4 +119,5 @@
   <data name="PaidInInstalments" xml:space="preserve">
     <value>in Raten bezahlt: die Raten haben die Buchungen</value>
   </data>
+  <data name="OpenOrderAtShop" xml:space="preserve"><value>{0} bei Amazon öffnen</value></data>
 </root>

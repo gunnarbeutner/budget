@@ -119,4 +119,5 @@
   <data name="PaidInInstalments" xml:space="preserve">
     <value>paid in instalments: the instalments have the bookings</value>
   </data>
+  <data name="OpenOrderAtShop" xml:space="preserve"><value>Open {0} at Amazon</value></data>
 </root>

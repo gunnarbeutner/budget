@@ -22,8 +22,8 @@ internal sealed record AmazonWalletPage(IReadOnlyList<RemoteCharge> Charges, boo
 /// <c>__NEXT_DATA__</c> script at <c>props.pageProps.state.transactionResponseState.visibleTransactionResponse</c>
 /// (<c>transactionList</c>, 20 per page; <c>hasMore</c> and <c>lastEvaluatedPageKey</c> for paging). Further pages
 /// answer in the same shape. Each entry has <c>formattedAmount</c> ("-€10.60" / "-10,60 €"), <c>formattedDate</c>
-/// ("12 Nov 2026", "26 Sept 2026", "12. Nov. 2026"), <c>statementDescriptor</c>, <c>statusInfo</c>, <c>orderData[]</c>
-/// with <c>orderDisplayString</c> ("Order #304-…") and <c>orderDetailsUrl</c>, and
+/// ("12 Nov 2026", "26 Sept 2026", "12. Nov. 2026"), <c>statementDescriptor</c>, <c>statusInfo</c>, <c>orderData</c>
+/// (a list, or an object keyed "0", "1", … listing every order one payment covered) with <c>orderDisplayString</c> ("Order #304-…") and <c>orderDetailsUrl</c>, and
 /// <c>paymentMethodDisplayStringData</c> (<c>paymentMethodName</c>, <c>paymentMethodNumber.lastDigits</c>; points
 /// have no number). Entries without an order are skipped.
 ///
@@ -176,17 +176,23 @@ internal static partial class AmazonPages
         var status = Str(entry["statusInfo"]?["label"]) ?? Str(entry["statusInfo"]?["status"]);
         var statusAll = Str(entry["statusInfo"]?["status"]) + " " + Str(entry["statusInfo"]?["label"]);
         if (FailedWords.Any(w => statusAll.Contains(w, StringComparison.OrdinalIgnoreCase))) return null;
-        string? orderId = null;
-        if (entry["orderData"] is JsonArray orders)
+        // orderData is a list, or an object keyed "0", "1", … when one payment covered several orders.
+        var ids = new List<string>();
+        var orders = entry["orderData"] switch
         {
-            foreach (var o in orders.OfType<JsonObject>())
-            {
-                var m = OrderNumber().Match(Str(o["orderDisplayString"]) ?? "");
-                if (!m.Success) m = OrderNumber().Match(Str(o["orderDetailsUrl"]) ?? "");
-                if (m.Success) { orderId = m.Groups["id"].Value; break; }
-            }
+            JsonArray a => a.OfType<JsonObject>().ToList(),
+            JsonObject o => o.OrderBy(kv => int.TryParse(kv.Key, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : int.MaxValue)
+                .Select(kv => kv.Value).OfType<JsonObject>().ToList(),
+            _ => [],
+        };
+        foreach (var o in orders)
+        {
+            var m = OrderNumber().Match(Str(o["orderDisplayString"]) ?? "");
+            if (!m.Success) m = OrderNumber().Match(Str(o["orderDetailsUrl"]) ?? "");
+            if (m.Success && !ids.Contains(m.Groups["id"].Value)) ids.Add(m.Groups["id"].Value);
         }
-        if (orderId == null) return null;
+        if (ids.Count == 0) return null;
+        var orderId = ids[0];
         var method = entry["paymentMethodDisplayStringData"];
         var name = (Str(method?["paymentMethodName"]) ?? "Unknown").Trim();
         var digits = Str(method?["paymentMethodNumber"]?["lastDigits"])?.Trim();
@@ -194,7 +200,7 @@ internal static partial class AmazonPages
         var skip = string.IsNullOrEmpty(digits) && SkipWords.Any(w => name.Contains(w, StringComparison.OrdinalIgnoreCase));
         return new RemoteCharge(orderId, date.Value, amount.Value, CurrencyOf(formatted), InstrumentId(name, digits), label, status,
             Str(entry["statementDescriptor"]) is { Length: > 0 } descriptor ? descriptor : null)
-        { Skip = skip };
+        { Skip = skip, OtherOrderIds = ids.Skip(1).ToList() };
     }
 
     /// <summary>A stable id for a payment method: its name in lower case letters and digits, and the last digits.</summary>
