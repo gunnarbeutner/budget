@@ -17,8 +17,8 @@ public sealed class ReceiptsSettingsTests : EndToEndTestBase
     public async Task Grant_mail_access_check_mail_and_list_the_receipt()
     {
         Microsoft.AccountName = "e2e@example.org";
-        Microsoft.AddMail(new("mail-1", "Deine Rechnung zu B-AAA-BBB-CC1", DateTime.UtcNow.AddDays(-1),
-            [("att-1", "Rechnung_PN10000000000001.pdf", SyntheticInvoice.Pdf(SyntheticInvoice.StandardLines()))]));
+        Microsoft.AddMail(new("mail-99", "Deine Rechnung zu B-AAA-BBB-C99", DateTime.UtcNow.AddDays(-1),
+            [("att-1", "Rechnung_PN10000000000099.pdf", SyntheticInvoice.Pdf(SyntheticInvoice.StandardLines(), invoice: "PN10000000000099", order: "B-AAA-BBB-C99"))]));
         await Page.RouteAsync("**/connect/onedrive?return=receipts", async route =>
         {
             var response = await route.FetchAsync(new() { MaxRedirects = 0 });
@@ -48,7 +48,7 @@ public sealed class ReceiptsSettingsTests : EndToEndTestBase
         await Expect(Page.GetByTestId("receipts-notice")).ToContainTextAsync("1 new receipts");
         var row = Page.GetByTestId("receipt-row");
         await Expect(row).ToHaveCountAsync(1);
-        await Expect(row).ToContainTextAsync("B-AAA-BBB-CC1");
+        await Expect(row).ToContainTextAsync("B-AAA-BBB-C99");
         await Expect(row).ToContainTextAsync("no booking yet");
 
         await Page.GetByTestId("receipts-mail-stop").ClickAsync();
