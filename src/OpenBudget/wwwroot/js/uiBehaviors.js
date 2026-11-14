@@ -545,10 +545,29 @@ window.obPickerMoreHint = function (list) {
 })();
 
 // Copies text to the clipboard; resolves to whether it worked.
-window.obCopyText = function (text) {
-    if (!navigator.clipboard) return Promise.resolve(false);
-    return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return false; });
-};
+// Safari lets a page write the clipboard only while it handles the click, not after the round trip to the server. So a
+// click on an element with data-copy copies right away, and obCopyText (called by the server afterwards) reports that
+// copy's outcome; other callers copy then and there.
+(function () {
+    var pending = null;
+    function write(text) {
+        if (!navigator.clipboard) return Promise.resolve(false);
+        return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return false; });
+    }
+    document.addEventListener("click", function (e) {
+        var el = e.target.closest && e.target.closest("[data-copy]");
+        if (!el || el.disabled) return;
+        pending = { text: el.getAttribute("data-copy"), result: write(el.getAttribute("data-copy")) };
+    }, true);
+    window.obCopyText = function (text) {
+        if (pending && pending.text === text) {
+            var result = pending.result;
+            pending = null;
+            return result;
+        }
+        return write(text);
+    };
+})();
 
 // Pending bookings' stripes continue from row to row: each pending row gets its offset within the transaction list as
 // --tx-row-top (see .tx-item-pending in site.css). Offsets change when Virtualize moves its window, rows expand or

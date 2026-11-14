@@ -98,7 +98,7 @@
                         {
                             @if (parts++ > 0) { <span> · </span> }
                             <button type="button" class="browse-iban-btn" data-testid="account-iban" title="@L["Header_CopyIban"]"
-                                    @onclick="() => CopyAsync(AccountDisplay.CompactIban(info.Iban))">@ibanText</button>
+                                    data-copy="@AccountDisplay.CompactIban(info.Iban)" @onclick="() => CopyAsync(AccountDisplay.CompactIban(info.Iban))">@ibanText</button>
                         }
                         @if (info.LastUpdatedUtc != null || info.Error != null)
                         {

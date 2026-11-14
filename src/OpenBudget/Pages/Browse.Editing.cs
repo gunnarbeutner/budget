@@ -637,9 +637,9 @@ public partial class Browse
     {
         if (selectionKind != "account" || SelectedAccountNode == null) return;
         var items = new List<ContextMenuItem> { new("copy-heading", L["Ctx_Copy"], Disabled: true) };
-        if (HeaderCopyText("copy-bank-details") != null) items.Add(new("copy-bank-details", L["Ctx_CopyBankDetails"], "bi-bank"));
-        if (HeaderCopyText("copy-iban") != null) items.Add(new("copy-iban", L["Ctx_CopyIban"], "bi-credit-card-2-front"));
-        if (HeaderCopyText("copy-balance") != null) items.Add(new("copy-balance", L["Ctx_CopyBalance"], "bi-cash"));
+        if (HeaderCopyText("copy-bank-details") is { } bankDetails) items.Add(new("copy-bank-details", L["Ctx_CopyBankDetails"], "bi-bank") { CopyText = bankDetails });
+        if (HeaderCopyText("copy-iban") is { } iban) items.Add(new("copy-iban", L["Ctx_CopyIban"], "bi-credit-card-2-front") { CopyText = iban });
+        if (HeaderCopyText("copy-balance") is { } balanceText) items.Add(new("copy-balance", L["Ctx_CopyBalance"], "bi-cash") { CopyText = balanceText });
         if (items.Count == 1) return;
         contextItems = items;
         (popupX, popupY) = (e.ClientX, e.ClientY);

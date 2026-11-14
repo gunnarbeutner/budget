@@ -24,7 +24,7 @@
             var hasChildren = item.Children is { Count: > 0 };
             var open = hasChildren && openSub == key;
             <button type="button" role="menuitem" class="ctx-item @(i == active ? "ctx-active" : "") @(item.Danger ? "ctx-danger" : "") @(open ? "ctx-open" : "")" disabled="@item.Disabled"
-                    title="@item.Tooltip" data-testid="@("ctx-" + item.Key)"
+                    title="@item.Tooltip" data-testid="@("ctx-" + item.Key)" data-copy="@item.CopyText"
                     aria-haspopup="@(hasChildren ? "menu" : null)" aria-expanded="@(hasChildren ? open.ToString().ToLowerInvariant() : null)"
                     @onmouseenter="() => Hover(i, key, hasChildren)"
                     @onclick="() => Activate(i, item)">
