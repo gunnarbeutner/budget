@@ -44,7 +44,7 @@
                 {
                     var index = i;
                     var g = view.Groups[i];
-                    <button type="button" class="btn btn-sm @(part == index ? "btn-secondary" : "btn-outline-secondary")" data-testid="receipt-panel-part"
+                    <button type="button" class="btn btn-sm d-inline-flex align-items-center gap-1 @(part == index ? "btn-secondary" : "btn-outline-secondary")" data-testid="receipt-panel-part"
                             @onclick="() => part = index"><CategoryPill CategoryId="g.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" /> @Formatting.FormatMoneyDe(g.AmountCents / 100m) (@g.Lines.Count)</button>
                 }
             </div>
