@@ -3,6 +3,8 @@ using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Connectors.Sync;
 using OpenBudget.Models;
+using OpenBudget.PortfolioPerformance.Proto;
+using OpenBudget.Services.Quotes;
 
 namespace OpenBudget.Services;
 
@@ -90,16 +92,17 @@ public sealed class PortfolioAccountSync
 
     private async Task SyncCoreAsync(string ownerId, CancellationToken ct)
     {
-        PpValuation valuation;
+        PClient client;
         await using (var file = await _files.OpenLatestAsync(ownerId, ct))
         {
             if (file == null) return;
-            var client = PortfolioPerformanceFile.ReadClient(file);
-            var now = _clock.GetUtcNow();
-            valuation = PortfolioValuation.Compute(client, DateOnly.FromDateTime(now.UtcDateTime));
+            client = PortfolioPerformanceFile.ReadClient(file);
         }
 
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var closes = await MarketClosesAsync(db, client, ct);
+        var valuation = PortfolioValuation.Compute(client, DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime), closes);
+        var quoted = client.Securities.Where(s => QuoteSymbols.YahooSymbol(s) != null).Select(s => s.Uuid).ToHashSet(StringComparer.Ordinal);
         var settings = await db.PpPortfolioSettings.Where(s => s.OwnerUserId == ownerId).ToListAsync(ct);
         var linked = (await db.PpPortfolioLinks.Where(l => l.OwnerUserId == ownerId).Select(l => l.PpPortfolioUuid).ToListAsync(ct))
             .ToHashSet(StringComparer.Ordinal);
@@ -159,7 +162,7 @@ public sealed class PortfolioAccountSync
             try
             {
                 await using var tx = await db.Database.BeginTransactionAsync(ct);
-                await WriteDepotAsync(db, depotAccount, portfolio, valuation.BaseCurrency, setting.TakenOver, ct);
+                await WriteDepotAsync(db, depotAccount, portfolio, valuation.BaseCurrency, setting.TakenOver, quoted, ct);
                 await WriteLedgerAsync(db, ledgerAccount, portfolio, valuation.BaseCurrency, setting.TakenOver,
                     markNew: !created.Contains(ledgerAccount.Id), ct);
                 depotAccount.RefreshTimestamp = nowSeconds;
@@ -267,7 +270,7 @@ public sealed class PortfolioAccountSync
     }
 
     private static async Task WriteDepotAsync(
-        BudgetDbContext db, Account account, PpPortfolioValuation portfolio, string baseCurrency, bool takenOver, CancellationToken ct)
+        BudgetDbContext db, Account account, PpPortfolioValuation portfolio, string baseCurrency, bool takenOver, HashSet<string> quoted, CancellationToken ct)
     {
         await db.Holdings.Where(h => h.AccountId == account.Id).ExecuteDeleteAsync(ct);
         var nextHolding = await NextIdAsync(db, db.Holdings.Where(h => h.OwnerUserId == account.OwnerUserId).Select(h => h.Id), account.OwnerUserId, ct);
@@ -292,6 +295,7 @@ public sealed class PortfolioAccountSync
                 AmountCurrency = currency,
                 Price = p.Price,
                 PriceCurrency = currency,
+                PriceTime = quoted.Contains(p.Security.Uuid) ? p.Security.PriceDay * 86400 : null,
                 Purchase = p.PurchasePrice,
             });
         }
@@ -323,6 +327,25 @@ public sealed class PortfolioAccountSync
             }
             db.PortfolioChartPoints.Add(Point(++nextPoint, account, baseCurrency, ts, sum, null));
         }
+    }
+
+    /// <summary>The fetched closes of the file's quoted securities (by security uuid), in each security's own currency.</summary>
+    private static async Task<Dictionary<string, IReadOnlyList<MarketClose>>> MarketClosesAsync(BudgetDbContext db, PClient client, CancellationToken ct)
+    {
+        var bySymbol = client.Securities
+            .Select(s => (Security: s, Symbol: QuoteSymbols.YahooSymbol(s)))
+            .Where(x => x.Symbol != null && !string.IsNullOrEmpty(x.Security.Uuid))
+            .ToList();
+        var result = new Dictionary<string, IReadOnlyList<MarketClose>>(StringComparer.Ordinal);
+        if (bySymbol.Count == 0) return result;
+        var symbols = bySymbol.Select(x => x.Symbol!).Distinct(StringComparer.Ordinal).ToList();
+        var quotes = await db.MarketQuotes.AsNoTracking().Where(q => symbols.Contains(q.Symbol)).ToListAsync(ct);
+        var grouped = quotes.GroupBy(q => (q.Symbol, q.Currency)).ToDictionary(g => g.Key, g => g.Select(q => new MarketClose(q.Day, q.Close)).ToList());
+        foreach (var (security, symbol) in bySymbol)
+        {
+            if (grouped.TryGetValue((symbol!, security.CurrencyCode), out var list)) result[security.Uuid] = list;
+        }
+        return result;
     }
 
     private static PortfolioChartPoint Point(long id, Account account, string currency, long ts, double value, long? securityId) => new()

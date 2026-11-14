@@ -88,4 +88,13 @@
   <data name="Holdings_Total" xml:space="preserve">
     <value>Total</value>
   </data>
+  <data name="Holdings_PricesAsOf" xml:space="preserve">
+    <value>Prices as of {0}</value>
+  </data>
+  <data name="Holdings_RefreshQuotes" xml:space="preserve">
+    <value>Refresh quotes</value>
+  </data>
+  <data name="Holdings_RefreshFailed" xml:space="preserve">
+    <value>No quotes for {0}</value>
+  </data>
 </root>

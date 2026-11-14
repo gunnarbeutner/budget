@@ -18,6 +18,12 @@ public class AccountHoldings
     /// uploaded or none of the holdings carry a matching ISIN (e.g. a pure-crypto depot).
     /// </summary>
     public List<TaxonomyLookThrough> Taxonomies { get; init; } = new();
+
+    /// <summary>The oldest price day among the holdings quoted from a market feed; null when none is.</summary>
+    public DateOnly? PricesAsOf { get; init; }
+
+    /// <summary>The owner whose quotes can be refreshed (<see cref="Services.Quotes.QuoteRefreshService"/>); null when no holding is quoted.</summary>
+    public string? QuoteOwnerId { get; init; }
 }
 
 /// <summary>

@@ -8,6 +8,9 @@ namespace OpenBudget.Services;
 public sealed record PpValuedSecurity(
     string Uuid, string Name, string? Currency, string? Isin, string? Ticker, string? Wkn, double? Price, long? PriceDay);
 
+/// <summary>A daily close fetched from a market data feed (epoch day, price in the security's currency).</summary>
+public sealed record MarketClose(long Day, double Close);
+
 /// <summary>One held position: shares × latest price, and the moving-average purchase price per share when known.</summary>
 public sealed record PpPosition(PpValuedSecurity Security, double Shares, double? PurchasePrice, string? PurchaseCurrency)
 {
@@ -90,8 +93,12 @@ public static class PortfolioValuation
     public const string FeeLabel = "Gebühr";
     public const string TaxLabel = "Steuer";
 
-    /// <summary>Values every portfolio of <paramref name="client"/>; the history runs up to <paramref name="today"/> (UTC).</summary>
-    public static PpValuation Compute(PClient client, DateOnly today)
+    /// <summary>
+    /// Values every portfolio of <paramref name="client"/>; the history runs up to <paramref name="today"/> (UTC).
+    /// A security's prices are the file's history plus its latest quote; <paramref name="marketCloses"/> (by security
+    /// uuid) add the days after the newest of those, so the file decides every day it covers.
+    /// </summary>
+    public static PpValuation Compute(PClient client, DateOnly today, IReadOnlyDictionary<string, IReadOnlyList<MarketClose>>? marketCloses = null)
     {
         var baseCurrency = Str(client.BaseCurrency) ?? "EUR";
         var todayDay = today.DayNumber - DateOnly.FromDateTime(DateTime.UnixEpoch).DayNumber;
@@ -113,9 +120,23 @@ public static class PortfolioValuation
                 price = last.Close / Quote;
                 priceDay = last.Date;
             }
+            var history = s.Prices.Select(p => (p.Date, p.Close / Quote)).OrderBy(p => p.Date).ThenBy(p => p.Item2).ToList();
+            if (s.Latest is { Close: not 0 } newest && (history.Count == 0 || newest.Date > history[^1].Date))
+                history.Add((newest.Date, newest.Close / Quote));
+            if (marketCloses != null && marketCloses.TryGetValue(uuid, out var fetched))
+            {
+                var after = history.Count > 0 ? history[^1].Date : long.MinValue;
+                foreach (var c in fetched.Where(c => c.Day > after && c.Day <= todayDay && c.Close > 0).OrderBy(c => c.Day))
+                    history.Add((c.Day, c.Close));
+            }
+            if (history.Count > 0 && (priceDay == null || history[^1].Date > priceDay))
+            {
+                price = history[^1].Item2;
+                priceDay = history[^1].Date;
+            }
             securities[uuid] = new PpValuedSecurity(uuid, Str(s.Name) ?? uuid, Str(s.CurrencyCode), Str(s.Isin),
                 Str(s.TickerSymbol), Str(s.Wkn), price, priceDay);
-            priceHistory[uuid] = s.Prices.Select(p => (p.Date, p.Close / Quote)).OrderBy(p => p.Date).ThenBy(p => p.Item2).ToList();
+            priceHistory[uuid] = history;
         }
 
         var txns = client.Transactions;

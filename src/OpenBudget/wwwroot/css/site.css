@@ -2250,3 +2250,8 @@ body.doc-marquee-active { user-select: none; -webkit-user-select: none; }
     background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); font-size: 13px; line-height: 1.4;
 }
 .browse-account-error i { margin-top: 2px; }
+
+/* A refresh icon while its work runs. */
+.spin { display: inline-block; animation: ob-spin 1s linear infinite; }
+@keyframes ob-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }

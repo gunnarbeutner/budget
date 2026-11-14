@@ -1243,6 +1243,10 @@ namespace OpenBudget.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("price_cur");
 
+                    b.Property<long?>("PriceTime")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("price_time");
+
                     b.Property<double?>("Purchase")
                         .HasColumnType("REAL")
                         .HasColumnName("purchase");
@@ -1266,6 +1270,31 @@ namespace OpenBudget.Migrations
                     b.HasIndex("OwnerUserId", "AccountId");
 
                     b.ToTable("holdings");
+                });
+
+            modelBuilder.Entity("OpenBudget.Models.MarketQuote", b =>
+                {
+                    b.Property<string>("Symbol")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Day")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("Close")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("FetchedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Symbol", "Day");
+
+                    b.ToTable("market_quote");
                 });
 
             modelBuilder.Entity("OpenBudget.Models.MonthlyBudgetEntry", b =>

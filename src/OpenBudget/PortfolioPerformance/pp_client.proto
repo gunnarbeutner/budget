@@ -35,6 +35,7 @@ message PSecurity {
   string isin = 7;          // join key to mm_securities; empty for crypto
   string tickerSymbol = 8;
   string wkn = 9;
+  string feed = 11;         // quote feed id for the history, e.g. "YAHOO"
   repeated PHistoricalPrice prices = 13;  // price history, ascending by date
   PFullHistoricalPrice latest = 16;   // latest quote (online feed); absent for some securities
 }

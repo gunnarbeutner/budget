@@ -107,7 +107,7 @@ public sealed class PortfolioAccountSyncTests : IAsyncDisposable
         Assert.Equal(26, chart.Count);
         var totals = chart.Where(p => p.SecurityId == null).OrderBy(p => p.Timestamp).ToList();
         Assert.Equal(Day(1, 2) * 86400 + 43200, totals[0].Timestamp);
-        Assert.Equal([500.0, 950, 1225, 1300, 1120, 1000, 1000, 1000, 1000], totals.Select(p => p.Balance!.Value));
+        Assert.Equal([500.0, 950, 1225, 1300, 1120, 1000, 1000, 1020, 1020], totals.Select(p => p.Balance!.Value));
         Assert.All(chart.Where(p => p.SecurityId != null), p => Assert.Contains(holdings, h => h.Id == p.SecurityId));
 
         var rows = await LedgerAsync(ledger.Id);

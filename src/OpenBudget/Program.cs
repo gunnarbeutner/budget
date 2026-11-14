@@ -146,6 +146,21 @@ builder.Services.TryAddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<PortfolioAccountSync>();
 builder.Services.AddScoped<PortfolioAccountSettingsService>();
 
+// Yahoo quotes for the held PortfolioPerformance securities, between saves of the file.
+builder.Services.AddHttpClient(OpenBudget.Services.Quotes.YahooQuoteFeed.HttpClientName, c =>
+{
+    c.BaseAddress = new Uri(builder.Configuration["OPENBUDGET_QUOTES_URL"]!);
+    c.Timeout = TimeSpan.FromSeconds(30);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible; OpenBudget)");
+});
+builder.Services.TryAddSingleton<OpenBudget.Services.Quotes.IQuoteFeed>(sp => new OpenBudget.Services.Quotes.YahooQuoteFeed(sp.GetRequiredService<IHttpClientFactory>()));
+builder.Services.AddSingleton<OpenBudget.Services.Quotes.QuoteRefreshService>();
+builder.Services.AddSingleton(sp => new OpenBudget.Services.Quotes.QuoteRefreshOptions
+{
+    Enabled = !string.Equals(sp.GetRequiredService<IConfiguration>()[OpenBudget.Services.Quotes.QuoteRefreshOptions.EnabledVariable], "false", StringComparison.OrdinalIgnoreCase),
+});
+builder.Services.AddHostedService<OpenBudget.Services.Quotes.QuoteRefreshScheduler>();
+
 var app = builder.Build();
 
 // Initialize budget database (apply migrations on startup so Docker volumes stay in sync).

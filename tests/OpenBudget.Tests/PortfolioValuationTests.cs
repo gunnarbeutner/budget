@@ -99,7 +99,8 @@ public class PortfolioValuationTests
         Assert.Equal(825, gold[Day(1, 4)], 9);   // 15 × 55
         Assert.Equal(900, gold[Day(1, 5)], 9);   // 15 × 60
         Assert.Equal(720, gold[Day(1, 6)], 9);   // 12 × 60
-        Assert.Equal(600, gold[Day(1, 10)], 9);  // 10 × 60 (the latest quote is not part of the history)
+        Assert.Equal(600, gold[Day(1, 8)], 9);   // 10 × 60
+        Assert.Equal(620, gold[Day(1, 10)], 9);  // 10 × 62, the latest quote (Jan 9) after the history's last close
 
         var etf = history["Example ETF"].Values;
         Assert.Equal(8, etf.Count);
@@ -107,7 +108,7 @@ public class PortfolioValuationTests
 
         var broker = Valuation().Portfolios.Single(p => p.Uuid == "pf-b").History.Single();
         Assert.Equal([Day(1, 7), Day(1, 8), Day(1, 9), Day(1, 10)], broker.Values.Keys);
-        Assert.All(broker.Values.Values, v => Assert.Equal(120, v, 9));
+        Assert.Equal([120.0, 120, 124, 124], broker.Values.Values);   // 2 × 60, then 2 × the latest quote 62
     }
 
     [Fact]

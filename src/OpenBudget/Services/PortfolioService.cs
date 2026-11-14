@@ -333,7 +333,9 @@ public class PortfolioService
             TotalValue = total,
             Rows = rows,
             Allocation = allocation,
-            Taxonomies = taxonomies
+            Taxonomies = taxonomies,
+            PricesAsOf = holdings.Where(h => h.PriceTime != null).Select(h => (DateOnly?)DateOnly.FromDateTime(DateTime.UnixEpoch.AddSeconds(h.PriceTime!.Value))).Min(),
+            QuoteOwnerId = holdings.Any(h => h.PriceTime != null) ? ownerId : null,
         };
     }
 

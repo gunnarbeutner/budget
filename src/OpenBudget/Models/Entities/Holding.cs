@@ -65,6 +65,10 @@ public class Holding
     [Column("price_cur")]
     public string? PriceCurrency { get; set; }
 
+    /// <summary>Day of <see cref="Price"/> (Unix seconds at UTC midnight), when the source says it.</summary>
+    [Column("price_time")]
+    public long? PriceTime { get; set; }
+
     /// <summary>
     /// Purchase price per unit (source <c>purchase</c>). Populated for ETFs/funds but null for
     /// crypto, so <see cref="CostBasis"/> and <see cref="UnrealizedGain"/> are unavailable there.

@@ -54,6 +54,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
     public DbSet<PortfolioChartPoint> PortfolioChartPoints => Set<PortfolioChartPoint>();
     public DbSet<SecurityTaxonomy> SecurityTaxonomies => Set<SecurityTaxonomy>();
     public DbSet<PpSecurity> PpSecurities => Set<PpSecurity>();
+    public DbSet<MarketQuote> MarketQuotes => Set<MarketQuote>();
     public DbSet<PpPortfolio> PpPortfolios => Set<PpPortfolio>();
     public DbSet<PpLot> PpLots => Set<PpLot>();
     public DbSet<PpPortfolioLink> PpPortfolioLinks => Set<PpPortfolioLink>();
@@ -230,6 +231,7 @@ public partial class BudgetDbContext : IdentityUserContext<AppUser>
         modelBuilder.Entity<UserProjectOrder>().HasOne<Project>().WithMany().HasForeignKey(o => o.ProjectId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<UserProjectOrder>().HasOne<AppUser>().WithMany().HasForeignKey(o => o.UserId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<StatementRead>().HasKey(r => new { r.UserId, r.StatementId });
+        modelBuilder.Entity<MarketQuote>().HasKey(q => new { q.Symbol, q.Day });
         modelBuilder.Entity<StatementRead>().HasIndex(r => r.StatementId);
         modelBuilder.Entity<StatementRead>().HasOne<BankStatement>().WithMany().HasForeignKey(r => r.StatementId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<StatementRead>().HasOne<AppUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);

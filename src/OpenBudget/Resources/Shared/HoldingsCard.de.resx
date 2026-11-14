@@ -88,4 +88,13 @@
   <data name="Holdings_Total" xml:space="preserve">
     <value>Gesamt</value>
   </data>
+  <data name="Holdings_PricesAsOf" xml:space="preserve">
+    <value>Kurse vom {0}</value>
+  </data>
+  <data name="Holdings_RefreshQuotes" xml:space="preserve">
+    <value>Kurse aktualisieren</value>
+  </data>
+  <data name="Holdings_RefreshFailed" xml:space="preserve">
+    <value>Keine Kurse für {0}</value>
+  </data>
 </root>

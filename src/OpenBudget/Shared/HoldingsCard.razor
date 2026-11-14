@@ -2,6 +2,8 @@
 @using OpenBudget.Models
 @using OpenBudget.Services
 @inject IStringLocalizer<HoldingsCard> L
+@inject OpenBudget.Services.Quotes.QuoteRefreshService Quotes
+@inject TimeProvider Clock
 
 @* Holdings of a depot, or of several merged (the Transactions view of a depot, and the
    Positions section of the Portfolio view): allocation bars, PortfolioPerformance look-through by taxonomy,
@@ -17,6 +19,25 @@
             <h6 class="mb-0">@L["Holdings_Title"]</h6>
             <span class="text-body-secondary small">@L["Holdings_PositionCount", h.Rows.Count]</span>
         </div>
+        @if (h.PricesAsOf is { } asOf)
+        {
+            var stale = DateOnly.FromDateTime(Clock.GetUtcNow().UtcDateTime).DayNumber - asOf.DayNumber > StaleDays;
+            <div class="d-flex align-items-center gap-2 small mb-3 @(stale ? "text-warning-emphasis" : "text-body-secondary")" data-testid="holdings-prices-as-of">
+                @if (stale) { <i class="bi bi-exclamation-triangle" aria-hidden="true"></i> }
+                <span>@L["Holdings_PricesAsOf", asOf.ToString("d MMM yyyy", CultureInfo.CurrentCulture)]</span>
+                @if (h.QuoteOwnerId != null)
+                {
+                    <button type="button" class="btn btn-link btn-sm p-0 small" data-testid="holdings-refresh-quotes"
+                            disabled="@refreshing" @onclick="RefreshQuotesAsync">
+                        <i class="bi bi-arrow-repeat @(refreshing ? "spin" : "")" aria-hidden="true"></i> @L["Holdings_RefreshQuotes"]
+                    </button>
+                }
+                @if (refreshFailed is { Count: > 0 } failed)
+                {
+                    <span class="text-warning-emphasis" data-testid="holdings-refresh-failed">@L["Holdings_RefreshFailed", string.Join(", ", failed)]</span>
+                }
+            </div>
+        }
 
         @* The plain allocation is only a fallback: with look-through data its first taxonomy shows the same split. *@
         @if (h.Taxonomies.Count == 0 && h.Allocation.Count > 0 && h.TotalValue > 0)
@@ -148,6 +169,28 @@
 
 @code {
     [Parameter, EditorRequired] public AccountHoldings Holdings { get; set; } = default!;
+
+    /// <summary>Prices older than this (in days) are flagged; a weekend plus a holiday stays below it.</summary>
+    private const int StaleDays = 4;
+
+    private bool refreshing;
+    private IReadOnlyList<string>? refreshFailed;
+
+    // Fetches current quotes; the recomputed accounts reach this card through the usual change notifications.
+    private async Task RefreshQuotesAsync()
+    {
+        if (Holdings.QuoteOwnerId is not { } owner) return;
+        refreshing = true;
+        refreshFailed = null;
+        try
+        {
+            refreshFailed = (await Quotes.RefreshAsync(owner)).Failed;
+        }
+        finally
+        {
+            refreshing = false;
+        }
+    }
 
     // Which PortfolioPerformance taxonomy the look-through is showing; kept valid for new holdings.
     private string? holdingsTaxonomy;
