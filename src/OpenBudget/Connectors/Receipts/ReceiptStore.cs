@@ -81,9 +81,26 @@ public sealed class ReceiptStore
     /// matched receipt is applied again, since what it writes also follows things outside the receipt (the item memory,
     /// the project's receipt categories, the booking becoming booked or being categorized by hand); the bookings, rules
     /// and memory are read in a few set-based queries, the AI is asked once per set of choices for the open lines of all
-    /// receipts, and only receipts whose outcome differs write anything.
+    /// receipts, and only receipts whose outcome differs write anything. One run per owner at a time: syncs finishing
+    /// together wait for each other, and the later ones find the work done.
     /// </summary>
     public async Task MatchAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct)
+    {
+        var gate = OwnerGates.GetOrAdd(ownerUserId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
+        try
+        {
+            await MatchCoreAsync(db, ownerUserId, ct);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> OwnerGates = new(StringComparer.Ordinal);
+
+    private async Task MatchCoreAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct)
     {
         var invoices = await db.ReceiptInvoices.Include(i => i.Items).Where(i => i.OwnerUserId == ownerUserId).ToListAsync(ct);
         if (invoices.Count == 0) return;

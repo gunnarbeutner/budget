@@ -255,6 +255,7 @@ public sealed class BankSyncRunner
                 try { await RefreshAccountsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct); }
                 finally { await context.CloseBrowsersAsync(); }
                 // New bookings may be the ones open receipts (mailbox, Lidl Plus, Amazon charges) were waiting for.
+                sink.Report("Matching receipts");
                 try { await _receipts.MatchAsync(db, login.OwnerUserId, ct); }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
