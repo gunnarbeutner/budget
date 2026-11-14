@@ -97,8 +97,10 @@ public sealed record ReceiptSourceSummary(int Count, int Matched, int OpenCount,
 /// <summary>
 /// The owner's side of receipts: settings (the non-food category), the list of read receipts, a booking's receipt
 /// lines, and moving a line to another category (which the item memory keeps for later receipts and which re-splits the
-/// booking). Only the receipt's owner sees or changes anything (owner-only query filters); the booking is rewritten
-/// on a system context for that owner.
+/// booking). The receipt's owner sees and manages their receipts (owner-only query filters). A receipt on another
+/// user's booking (an Amazon payment method mapped to a shared account) is also shown to whoever sees that booking, and
+/// its lines may be moved by whoever may edit the booking; categories, item memory and project receipt categories are
+/// then the booking owner's. Bookings are rewritten on a system context.
 /// </summary>
 public sealed class ReceiptService
 {
@@ -346,23 +348,28 @@ public sealed class ReceiptService
         return new ReceiptSourceSummary(count, matched, openCount, latest);
     }
 
-    /// <summary>The receipt of a booking (given by the booking or one of its parts), or null; only for the receipt's owner.</summary>
+    /// <summary>The receipt of a booking (given by the booking or one of its parts) the user sees, or null; whoever owns the receipt.</summary>
     public async Task<BookingReceiptView?> GetForBookingAsync(long transactionId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var row = await db.Transactions.AsNoTracking().Where(t => t.Id == transactionId).Select(t => new { t.Id, t.SplitParentId, t.Splitted }).FirstOrDefaultAsync(ct);
         if (row == null) return null;
         var bookingId = row.Splitted == SplitState.Child && row.SplitParentId is { } p ? p : row.Id;
-        var invoice = await db.ReceiptInvoices.AsNoTracking().Include(r => r.Items).FirstOrDefaultAsync(r => r.TransactionId == bookingId, ct);
-        return invoice == null ? null : await ViewAsync(db, invoice, ct);
+        await using var sys = await _system.CreateDbContextAsync(ct);
+        var invoice = await sys.ReceiptInvoices.AsNoTracking().Include(r => r.Items).OrderBy(r => r.Id).FirstOrDefaultAsync(r => r.TransactionId == bookingId, ct);
+        return invoice == null ? null : await ViewAsync(sys, invoice, ct);
     }
 
-    /// <summary>A receipt by its id, or null; only for the receipt's owner.</summary>
+    /// <summary>A receipt by its id, or null; for the receipt's owner and for whoever sees its booking.</summary>
     public async Task<BookingReceiptView?> GetReceiptAsync(long receiptId, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var invoice = await db.ReceiptInvoices.AsNoTracking().Include(r => r.Items).FirstOrDefaultAsync(r => r.Id == receiptId, ct);
-        return invoice == null ? null : await ViewAsync(db, invoice, ct);
+        if (invoice != null) return await ViewAsync(db, invoice, ct);
+        await using var sys = await _system.CreateDbContextAsync(ct);
+        invoice = await sys.ReceiptInvoices.AsNoTracking().Include(r => r.Items).FirstOrDefaultAsync(r => r.Id == receiptId, ct);
+        if (invoice?.TransactionId is not { } t || !await db.Transactions.AnyAsync(x => x.Id == t, ct)) return null;
+        return await ViewAsync(sys, invoice, ct);
     }
 
     private static async Task<BookingReceiptView> ViewAsync(BudgetDbContext db, ReceiptInvoice invoice, CancellationToken ct)
@@ -428,21 +435,33 @@ public sealed class ReceiptService
             ? r with { BookingDate = DateTimeOffset.FromUnixTimeSeconds(ts).UtcDateTime } : r).ToList();
     }
 
-    /// <summary>Bookings that may be a receipt's: the user's own bookings near its date, closest amount first.</summary>
+    /// <summary>
+    /// Bookings that may be a receipt's: bookings near its date the user may edit (their own and those on accounts shared
+    /// with them as editor) not linked to another receipt, closest amount first.
+    /// </summary>
     public async Task<List<ReceiptCandidate>> CandidatesAsync(long receiptId, int take = 10, CancellationToken ct = default)
     {
         var user = await UserAsync();
+        var editable = (await _access.GetAsync()).EditableSharedAccountIds.ToList();
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var invoice = await db.ReceiptInvoices.AsNoTracking().FirstOrDefaultAsync(r => r.Id == receiptId && r.OwnerUserId == user, ct)
             ?? throw new AccessDeniedException("Receipt not found.");
         var day = invoice.DeliveryDate ?? invoice.OrderDate ?? invoice.ReadAt;
         var min = new DateTimeOffset(day.AddDays(-3), TimeSpan.Zero).ToUnixTimeSeconds();
         var max = new DateTimeOffset(day.AddDays(ReceiptMatcher.MaxDaysAfter + 10), TimeSpan.Zero).ToUnixTimeSeconds();
-        var taken = db.ReceiptInvoices.Where(r => r.OwnerUserId == user && r.TransactionId != null && r.Id != receiptId).Select(r => r.TransactionId!.Value);
         var rows = await db.Transactions.AsNoTracking()
-            .Where(t => t.OwnerUserId == user && t.Timestamp >= min && t.Timestamp <= max && t.Splitted != SplitState.Child && !taken.Contains(t.Id))
+            .Where(t => (t.OwnerUserId == user || (t.AccountId != null && editable.Contains(t.AccountId.Value)))
+                && t.Timestamp >= min && t.Timestamp <= max && t.Splitted != SplitState.Child)
             .Select(t => new { t.Id, t.Timestamp, Cents = t.SplitOriginalAmount ?? t.Amount, t.Name, t.Purpose })
             .ToListAsync(ct);
+        // Linked to a receipt of any owner (the user's own other receipts and those of the users they share with).
+        var ids = rows.Select(r => r.Id).ToList();
+        await using (var sys = await _system.CreateDbContextAsync(ct))
+        {
+            var taken = (await sys.ReceiptInvoices.AsNoTracking().Where(r => r.TransactionId != null && ids.Contains(r.TransactionId.Value) && r.Id != receiptId)
+                .Select(r => r.TransactionId!.Value).ToListAsync(ct)).ToHashSet();
+            rows = rows.Where(r => !taken.Contains(r.Id)).ToList();
+        }
         var day0 = new DateTimeOffset(day, TimeSpan.Zero).ToUnixTimeSeconds();
         // a charge was paid by a debit, a refund came back as a credit
         return rows.Where(r => invoice.PaymentCents < 0 ? r.Cents > 0 : r.Cents < 0)
@@ -451,20 +470,26 @@ public sealed class ReceiptService
     }
 
     /// <summary>
-    /// Assigns a receipt to one of the user's bookings by hand (kept whatever its amount), or with null marks it as
-    /// having no booking in the app (it is no longer matched); the bookings are brought up to date.
+    /// Assigns a receipt to a booking the user may edit by hand (kept whatever its amount; not one linked to another
+    /// user's receipt), or with null marks it as having no booking in the app (it is no longer matched); the bookings are
+    /// brought up to date.
     /// </summary>
     public async Task AssignAsync(long receiptId, long? transactionId, CancellationToken ct = default)
     {
         var user = await UserAsync();
+        var scope = await _access.GetAsync();
         await using (var sys = await _system.CreateDbContextAsync(ct))
         {
             var invoice = await sys.ReceiptInvoices.FirstOrDefaultAsync(r => r.Id == receiptId && r.OwnerUserId == user, ct)
                 ?? throw new AccessDeniedException("Receipt not found.");
             if (transactionId is { } t)
             {
-                if (!await sys.Transactions.AnyAsync(x => x.Id == t && x.OwnerUserId == user && x.Splitted != SplitState.Child, ct))
+                var booking = await sys.Transactions.AsNoTracking().Where(x => x.Id == t && x.Splitted != SplitState.Child)
+                    .Select(x => new { x.OwnerUserId, x.AccountId }).FirstOrDefaultAsync(ct);
+                if (booking == null || !scope.CanEditTransactionsOf(booking.OwnerUserId, booking.AccountId))
                     throw new AccessDeniedException("Booking not found.");
+                if (await sys.ReceiptInvoices.AnyAsync(r => r.TransactionId == t && r.OwnerUserId != user, ct))
+                    throw new InvalidOperationException("The booking has another user's receipt.");
                 // the booking's former receipt lets go of it
                 foreach (var other in await sys.ReceiptInvoices.Where(r => r.OwnerUserId == user && r.TransactionId == t && r.Id != receiptId).ToListAsync(ct))
                 {
@@ -547,41 +572,44 @@ public sealed class ReceiptService
     /// Moves a receipt line to <paramref name="categoryId"/>: the line keeps it, the item memory of the booking's project
     /// remembers it for the product (deposit lines and fees are not remembered), the category becomes one of the
     /// project's receipt item categories for the receipt's source (unless it is the booking's own), and the booking is
-    /// split by the receipt again.
+    /// split by the receipt again. Allowed to the receipt's owner while they may edit its booking (or it has none), and to
+    /// whoever may edit its booking; the category, memory and project are the booking owner's.
     /// </summary>
     public async Task MoveItemAsync(long itemId, long categoryId, CancellationToken ct = default)
     {
         var user = await UserAsync();
-        string name;
-        long invoiceId;
-        await using (var db = await _dbFactory.CreateDbContextAsync(ct))
-        {
-            var item = await db.ReceiptItems.AsNoTracking().FirstOrDefaultAsync(i => i.Id == itemId && i.OwnerUserId == user, ct)
-                ?? throw new AccessDeniedException("Receipt item not found.");
-            if (!await db.Categories.AnyAsync(c => c.Id == categoryId && c.OwnerUserId == user && c.Name != null && c.Name != "", ct))
-                throw new AccessDeniedException("Category not found.");
-            name = item.Kind == ReceiptItemKind.Product ? ReceiptCategorizer.Normalize(item.Name) : "";
-            invoiceId = item.ReceiptInvoiceId;
-        }
-
+        var scope = await _access.GetAsync();
+        var receiptOwner = user;
         await using (var sys = await _system.CreateDbContextAsync(ct))
         {
-            var invoice = await sys.ReceiptInvoices.Include(r => r.Items).FirstAsync(r => r.Id == invoiceId && r.OwnerUserId == user, ct);
+            var item = await sys.ReceiptItems.AsNoTracking().FirstOrDefaultAsync(i => i.Id == itemId, ct)
+                ?? throw new AccessDeniedException("Receipt item not found.");
+            var invoice = await sys.ReceiptInvoices.Include(r => r.Items).FirstAsync(r => r.Id == item.ReceiptInvoiceId, ct);
+            receiptOwner = invoice.OwnerUserId;
+            var booking = invoice.TransactionId is { } t
+                ? await sys.Transactions.AsNoTracking().Where(x => x.Id == t).Select(x => new { x.OwnerUserId, x.AccountId, x.CategoryId }).FirstOrDefaultAsync(ct)
+                : null;
+            var allowed = booking != null
+                ? scope.CanEditTransactionsOf(booking.OwnerUserId, booking.AccountId)
+                : invoice.OwnerUserId == user;
+            if (!allowed) throw new AccessDeniedException("Receipt item not found.");
+            var categoryOwner = booking?.OwnerUserId ?? user;
+            if (!await sys.Categories.AnyAsync(c => c.Id == categoryId && c.OwnerUserId == categoryOwner && c.Name != null && c.Name != "", ct))
+                throw new AccessDeniedException("Category not found.");
+            var name = item.Kind == ReceiptItemKind.Product ? ReceiptCategorizer.Normalize(item.Name) : "";
+
             var line = invoice.Items.First(i => i.Id == itemId);
             line.CategoryId = categoryId;
             line.CategorySource = ReceiptCategorySource.Manual;
-            var booking = invoice.TransactionId is { } t
-                ? await sys.Transactions.AsNoTracking().Where(x => x.Id == t && x.OwnerUserId == user).Select(x => new { x.AccountId, x.CategoryId }).FirstOrDefaultAsync(ct)
-                : null;
-            var project = booking == null ? null : await ReceiptProjects.ResolveAsync(sys, user, booking.AccountId, booking.CategoryId, ct);
+            var project = booking == null ? null : await ReceiptProjects.ResolveAsync(sys, categoryOwner, booking.AccountId, booking.CategoryId, ct);
             if (project is { } p)
             {
                 if (name.Length > 0)
                 {
-                    var memory = await sys.ItemCategoryMemory.FirstOrDefaultAsync(m => m.OwnerUserId == user && m.ProjectId == p && m.NormalizedName == name, ct);
+                    var memory = await sys.ItemCategoryMemory.FirstOrDefaultAsync(m => m.OwnerUserId == categoryOwner && m.ProjectId == p && m.NormalizedName == name, ct);
                     if (memory == null)
                     {
-                        memory = new ItemCategoryMemory { OwnerUserId = user, ProjectId = p, NormalizedName = name };
+                        memory = new ItemCategoryMemory { OwnerUserId = categoryOwner, ProjectId = p, NormalizedName = name };
                         sys.ItemCategoryMemory.Add(memory);
                     }
                     memory.CategoryId = categoryId;
@@ -591,7 +619,7 @@ public sealed class ReceiptService
                 if (booking!.CategoryId != categoryId)
                 {
                     if (!await sys.ProjectReceiptCategories.AnyAsync(c => c.ProjectId == p && c.CategoryId == categoryId, ct))
-                        sys.ProjectReceiptCategories.Add(new ProjectReceiptCategory { OwnerUserId = user, ProjectId = p, CategoryId = categoryId });
+                        sys.ProjectReceiptCategories.Add(new ProjectReceiptCategory { OwnerUserId = categoryOwner, ProjectId = p, CategoryId = categoryId });
                     var source = ReceiptSources.Of(invoice.Shop);
                     if (await sys.ProjectReceiptSources.FirstOrDefaultAsync(s => s.ProjectId == p && s.Source == source, ct) is { } narrowing)
                         narrowing.CategoryIds = ReceiptProjects.FormatIds(ReceiptProjects.ParseIds(narrowing.CategoryIds).Append(categoryId));
@@ -599,8 +627,10 @@ public sealed class ReceiptService
             }
             await sys.SaveChangesAsync(ct);
             await _store.ApplyAsync(sys, invoice, force: true, ct);
+            if (booking != null && booking.OwnerUserId != user) Publish(booking.OwnerUserId);
         }
         Publish(user);
+        if (receiptOwner != user) Publish(receiptOwner);
     }
 
     private void Publish(string user)

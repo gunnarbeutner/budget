@@ -130,9 +130,11 @@ public static class AmazonReceiptStore
 
         // A booking whose charge went loses the receipt's item text (its split, if any, stays as it is).
         var lost = gone.Where(g => g.TransactionId != null).Select(g => g.TransactionId!.Value).ToList();
+        var shared = lost.Count == 0 ? [] : (await ReceiptStore.SharedAccountsAsync(db, owner, ct)).ToList();
         foreach (var id in lost)
             if (!await db.ReceiptInvoices.AnyAsync(r => r.TransactionId == id, ct))
-                await db.Transactions.Where(t => t.Id == id && t.OwnerUserId == owner).ExecuteUpdateAsync(u => u.SetProperty(t => t.OrderItems, (string?)null), ct);
+                await db.Transactions.Where(t => t.Id == id && (t.OwnerUserId == owner || (t.AccountId != null && shared.Contains(t.AccountId.Value))))
+                    .ExecuteUpdateAsync(u => u.SetProperty(t => t.OrderItems, (string?)null), ct);
 
         await receipts.MatchAsync(db, owner, ct, progress);
     }

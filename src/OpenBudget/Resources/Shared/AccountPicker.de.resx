@@ -73,6 +73,9 @@
   <data name="ClosedSuffix" xml:space="preserve">
     <value>(geschlossen)</value>
   </data>
+  <data name="SharedAccounts" xml:space="preserve">
+    <value>Mit dir geteilt</value>
+  </data>
   <data name="ClosedAccounts" xml:space="preserve">
     <value>Geschlossene Konten</value>
   </data>

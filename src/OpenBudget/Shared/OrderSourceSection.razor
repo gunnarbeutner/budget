@@ -97,7 +97,7 @@ else
         candidates.Clear();
         foreach (var i in instruments.Where(i => !i.IsPoints))
             candidates[i.Id] = (await Orders.GetCandidatesAsync(i.Id))
-                .Select(c => new AccountPicker.Option(c.AccountId, c.Name, c.GroupId, c.Sort, c.Icon, c.Suggested, c.Closed)).ToList();
+                .Select(c => new AccountPicker.Option(c.AccountId, c.Name, c.GroupId, c.Sort, c.Icon, c.Suggested, c.Closed, c.Shared)).ToList();
         groups = await Orders.GetAccountGroupsAsync();
         (openCount, open) = await Orders.GetOpenChargesAsync(LoginId);
     }

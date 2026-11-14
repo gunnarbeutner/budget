@@ -4,8 +4,8 @@
 @inject IStringLocalizer<AccountPicker> L
 
 @* Dropdown picker for one of the user's accounts: a button naming the current choice opens a searchable TreePicker
-   with the suggested accounts first, then the accounts in their groups as the sidebar orders them, then the closed
-   accounts in their own section. With AllowNone, a "none" entry (NoneLabel) picks null. *@
+   with the suggested accounts first, then the accounts in their groups as the sidebar orders them, then the open
+   accounts of other users shared with this one, then the closed accounts in their own section. With AllowNone, a "none" entry (NoneLabel) picks null. *@
 
 <div class="account-picker" @attributes="AdditionalAttributes">
     <button type="button" @ref="toggle" class="form-select form-select-sm text-start account-picker-toggle" aria-label="@AriaLabel"
@@ -34,7 +34,7 @@
 
 @code {
     /// <summary>An account that can be picked.</summary>
-    public sealed record Option(long Id, string Name, long? GroupId, long? Sort, string? Icon, bool Suggested, bool Closed);
+    public sealed record Option(long Id, string Name, long? GroupId, long? Sort, string? Icon, bool Suggested, bool Closed, bool Shared = false);
 
     [Parameter, EditorRequired] public IReadOnlyList<Option> Options { get; set; } = [];
     [Parameter] public IReadOnlyList<AccountGroupInfo> Groups { get; set; } = [];
@@ -113,7 +113,7 @@
         }
 
         var byId = hits.ToDictionary(o => o.Id);
-        var openAccounts = hits.Where(o => !o.Closed)
+        var openAccounts = hits.Where(o => !o.Closed && !o.Shared)
             .Select(o => new BrowseAccountNode { Id = o.Id, Name = o.Name, GroupId = o.GroupId, Sort = o.Sort }).ToList();
         void Walk(IEnumerable<AccountTreeNode> tree, int level)
         {
@@ -128,6 +128,13 @@
             }
         }
         Walk(AccountTreeBuilder.Build(openAccounts, Groups, L["OtherAccounts"]), 0);
+
+        var shared = hits.Where(o => o.Shared && !o.Closed).OrderBy(o => o.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        if (shared.Count > 0)
+        {
+            Header(0, L["SharedAccounts"], "bi-people");
+            foreach (var o in shared) Leaf(o, 1);
+        }
 
         var closed = hits.Where(o => o.Closed).OrderBy(o => o.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
         if (closed.Count > 0)

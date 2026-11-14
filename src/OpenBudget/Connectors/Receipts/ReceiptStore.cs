@@ -26,8 +26,13 @@ public sealed record DatedReceiptLine(ReceiptLine Line, DateOnly Date);
 /// A booking is split automatically only when it is booked, not split yet and its category was not chosen by hand, or
 /// when it carries exactly the split this receipt wrote before (then the split follows the receipt, e.g. after the
 /// owner moved a line). A split the owner changed, and a booking they categorized by hand, keep what they have; the
-/// receipt only adds its lines. Running again changes nothing. Works on a system context and only ever pairs receipts
-/// and bookings of the same owner.
+/// receipt only adds its lines. Running again changes nothing. Works on a system context.
+///
+/// A receipt pairs with bookings of its owner and, for an Amazon payment method mapped to another user's account, with
+/// bookings on that account while the receipt's owner may edit them (see <see cref="AccessScope.CanEditTransactionsOf"/>);
+/// once that access is gone, the match is dropped on the next run. What the receipt writes to a booking (parts, item
+/// texts) belongs to the booking's owner and follows that owner's projects, receipt categories and item memory. A
+/// booking linked to a receipt of one owner is taken for the receipts of every other owner.
 /// </summary>
 public sealed class ReceiptStore
 {
@@ -82,25 +87,56 @@ public sealed class ReceiptStore
     /// the project's receipt categories, the booking becoming booked or being categorized by hand); the bookings, rules
     /// and memory are read in a few set-based queries, the AI is asked once per set of choices for the open lines of all
     /// receipts, and only receipts whose outcome differs write anything. One run per owner at a time: syncs finishing
-    /// together wait for each other, and the later ones find the work done.
+    /// together wait for each other, and the later ones find the work done. A run also waits for the runs of the owners
+    /// whose accounts this owner's payment methods are mapped to, and of those who map theirs to this owner's accounts,
+    /// so two owners never match one booking at the same time.
     /// </summary>
     /// <param name="progress">Told how far the item categories got (the AI is asked in batches).</param>
     public async Task MatchAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct, Action<string>? progress = null)
     {
-        var gate = OwnerGates.GetOrAdd(ownerUserId, _ => new SemaphoreSlim(1, 1));
-        if (!await gate.WaitAsync(0, ct))
-        {
-            progress?.Invoke("waiting for another sync to finish matching");
-            await gate.WaitAsync(ct);
-        }
+        // Taken in one order (by id) by every run, so runs waiting for each other cannot deadlock.
+        var owners = (await LinkedOwnersAsync(db, ownerUserId, ct)).Append(ownerUserId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        var held = new List<SemaphoreSlim>();
         try
         {
+            foreach (var owner in owners)
+            {
+                var gate = OwnerGates.GetOrAdd(owner, _ => new SemaphoreSlim(1, 1));
+                if (!await gate.WaitAsync(0, ct))
+                {
+                    progress?.Invoke("waiting for another sync to finish matching");
+                    await gate.WaitAsync(ct);
+                }
+                held.Add(gate);
+            }
             await MatchCoreAsync(db, ownerUserId, progress, ct);
         }
         finally
         {
-            gate.Release();
+            foreach (var gate in held) gate.Release();
         }
+    }
+
+    /// <summary>
+    /// The other users whose accounts the owner's payment methods are mapped to, and those whose payment methods are mapped
+    /// to the owner's accounts.
+    /// </summary>
+    private static async Task<List<string>> LinkedOwnersAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct)
+    {
+        var pairs = await (from m in db.BankLoginAccounts.AsNoTracking()
+                           join a in db.Accounts.AsNoTracking() on m.EnrichAccountId equals a.Id
+                           where m.BankLogin.OwnerUserId != a.OwnerUserId && (m.BankLogin.OwnerUserId == ownerUserId || a.OwnerUserId == ownerUserId)
+                           select new { Login = m.BankLogin.OwnerUserId, Account = a.OwnerUserId }).Distinct().ToListAsync(ct);
+        return pairs.Select(p => p.Login == ownerUserId ? p.Account : p.Login).Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>The accounts of other users whose bookings the owner may edit through projects shared with them.</summary>
+    public static async Task<HashSet<long>> SharedAccountsAsync(BudgetDbContext db, string ownerUserId, CancellationToken ct)
+    {
+        var scope = await AccessScopeProvider.ComputeAsync(db, ownerUserId, ct);
+        if (scope.EditableSharedAccountIds.Length == 0) return [];
+        var ids = scope.EditableSharedAccountIds.ToList();
+        return (await db.Accounts.AsNoTracking().Where(a => ids.Contains(a.Id) && a.OwnerUserId != ownerUserId).Select(a => a.Id).ToListAsync(ct)).ToHashSet();
     }
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> OwnerGates = new(StringComparer.Ordinal);
@@ -111,7 +147,10 @@ public sealed class ReceiptStore
         if (invoices.Count == 0) return;
 
         // Amazon charges are looked for on the account their payment method is mapped to (none: nothing to look for).
-        var accounts = await AmazonAccountsAsync(db, ownerUserId, invoices, ct);
+        var shared = await SharedAccountsAsync(db, ownerUserId, ct);
+        var sharedList = shared.ToList();
+        var accounts = await AmazonAccountsAsync(db, ownerUserId, shared, invoices, ct);
+        var sharedMapped = accounts.Values.Where(shared.Contains).Distinct().ToList();
         var dated = invoices.Where(i => (i.DeliveryDate ?? i.OrderDate) != null).ToList();
         var bookings = new List<ReceiptBooking>();
         if (dated.Count > 0)
@@ -119,7 +158,8 @@ public sealed class ReceiptStore
             var min = new DateTimeOffset(dated.Min(i => (i.DeliveryDate ?? i.OrderDate)!.Value).AddDays(-ReceiptMatcher.MaxDaysBefore - 1), TimeSpan.Zero).ToUnixTimeSeconds();
             var max = new DateTimeOffset(dated.Max(i => (i.DeliveryDate ?? i.OrderDate)!.Value).AddDays(ReceiptMatcher.MaxDaysAfter + 2), TimeSpan.Zero).ToUnixTimeSeconds();
             var rows = await db.Transactions.AsNoTracking()
-                .Where(t => t.OwnerUserId == ownerUserId && t.Timestamp >= min && t.Timestamp <= max && t.Splitted != SplitState.Child)
+                .Where(t => (t.OwnerUserId == ownerUserId || (t.AccountId != null && sharedMapped.Contains(t.AccountId.Value)))
+                    && t.Timestamp >= min && t.Timestamp <= max && t.Splitted != SplitState.Child)
                 .Select(t => new { t.Id, t.AccountId, t.Timestamp, t.Amount, t.SplitOriginalAmount, t.Name, t.Purpose, t.Booked })
                 .ToListAsync(ct);
             var shops = invoices.Select(i => i.Shop).Where(s => s != ReceiptShops.Amazon).Distinct(StringComparer.Ordinal).ToList();
@@ -132,7 +172,8 @@ public sealed class ReceiptStore
         // Earlier matches stay while their booking is still there with the same amount.
         var linked = invoices.Where(i => i.TransactionId != null).Select(i => i.TransactionId!.Value).Distinct().ToList();
         var current = (await db.Transactions.AsNoTracking()
-                .Where(t => linked.Contains(t.Id) && t.OwnerUserId == ownerUserId && t.Splitted != SplitState.Child)
+                .Where(t => linked.Contains(t.Id) && (t.OwnerUserId == ownerUserId || (t.AccountId != null && sharedList.Contains(t.AccountId.Value)))
+                    && t.Splitted != SplitState.Child)
                 .Select(t => new { t.Id, Cents = t.SplitOriginalAmount ?? t.Amount, t.AccountId }).ToListAsync(ct))
             .ToDictionary(t => t.Id);
         bool StillFits(long id, long paymentCents, long? account) =>
@@ -183,7 +224,12 @@ public sealed class ReceiptStore
         }
         var open = invoices.Where(i => i.State == ReceiptMatchState.Unmatched)
             .Select(i => new ReceiptToMatch(i.Id, i.PaymentCents, Day(i.OrderDate), Day(i.DeliveryDate), i.Shop, accounts.TryGetValue(i.Id, out var a) ? a : null, i.OrderNumber)).ToList();
-        var outcome = ReceiptMatcher.Match(open, bookings, kept);
+        // Bookings linked to another owner's receipts are taken.
+        var candidateIds = bookings.Select(b => b.Id).ToList();
+        var takenByOthers = candidateIds.Count == 0 ? [] : await db.ReceiptInvoices.AsNoTracking()
+            .Where(r => r.OwnerUserId != ownerUserId && r.TransactionId != null && candidateIds.Contains(r.TransactionId.Value))
+            .Select(r => r.TransactionId!.Value).Distinct().ToListAsync(ct);
+        var outcome = ReceiptMatcher.Match(open, bookings, kept.Concat(takenByOthers).ToHashSet());
         foreach (var i in invoices.Where(i => i.State == ReceiptMatchState.Unmatched))
         {
             if (outcome.Matches.TryGetValue(i.Id, out var t))
@@ -202,16 +248,18 @@ public sealed class ReceiptStore
         var stillLinked = invoices.Where(i => i.TransactionId != null).Select(i => i.TransactionId!.Value).ToHashSet();
         var released = lost.Where(l => !kept.Contains(l) && !stillLinked.Contains(l)).Distinct().ToList();
         if (released.Count > 0)
-            await db.Transactions.Where(t => released.Contains(t.Id) && t.OwnerUserId == ownerUserId).ExecuteUpdateAsync(u => u.SetProperty(t => t.OrderItems, (string?)null), ct);
+            await db.Transactions.Where(t => released.Contains(t.Id) && (t.OwnerUserId == ownerUserId || (t.AccountId != null && sharedList.Contains(t.AccountId.Value))))
+                .ExecuteUpdateAsync(u => u.SetProperty(t => t.OrderItems, (string?)null), ct);
 
-        await ApplyAllAsync(db, ownerUserId, invoices.Where(i => i.TransactionId != null).ToList(), force: false, ct, progress);
+        await ApplyAllAsync(db, ownerUserId, shared, invoices.Where(i => i.TransactionId != null).ToList(), force: false, ct, progress);
     }
 
     /// <summary>
-    /// For each Amazon receipt of the owner: the owner's account its payment method is mapped to (absent for points, gift
-    /// cards and payment methods not mapped).
+    /// For each Amazon receipt of the owner: the account its payment method is mapped to, one of the owner's or of
+    /// <paramref name="shared"/> (absent for points, gift cards and payment methods not mapped).
     /// </summary>
-    private static async Task<Dictionary<long, long>> AmazonAccountsAsync(BudgetDbContext db, string ownerUserId, IReadOnlyList<ReceiptInvoice> invoices, CancellationToken ct)
+    private static async Task<Dictionary<long, long>> AmazonAccountsAsync(
+        BudgetDbContext db, string ownerUserId, HashSet<long> shared, IReadOnlyList<ReceiptInvoice> invoices, CancellationToken ct)
     {
         var result = new Dictionary<long, long>();
         var amazon = invoices.Where(i => i.Shop == ReceiptShops.Amazon && i.BankLoginId != null && !Amazon.AmazonPages.IsPointsLabel(i.PaymentMethod ?? "")).ToList();
@@ -222,7 +270,8 @@ public sealed class ReceiptStore
         var mapped = mapping.Values.Distinct().ToList();
         var owned = (await db.Accounts.AsNoTracking().Where(a => mapped.Contains(a.Id) && a.OwnerUserId == ownerUserId).Select(a => a.Id).ToListAsync(ct)).ToHashSet();
         foreach (var i in amazon)
-            if (mapping.TryGetValue((i.BankLoginId!.Value, i.PaymentMethodId ?? ""), out var account) && owned.Contains(account)) result[i.Id] = account;
+            if (mapping.TryGetValue((i.BankLoginId!.Value, i.PaymentMethodId ?? ""), out var account) && (owned.Contains(account) || shared.Contains(account)))
+                result[i.Id] = account;
         return result;
     }
 
@@ -232,7 +281,7 @@ public sealed class ReceiptStore
     /// True when the booking was split or re-split.
     /// </summary>
     public async Task<bool> ApplyAsync(BudgetDbContext db, ReceiptInvoice invoice, bool force, CancellationToken ct) =>
-        (await ApplyAllAsync(db, invoice.OwnerUserId, [invoice], force, ct)).Contains(invoice.Id);
+        (await ApplyAllAsync(db, invoice.OwnerUserId, await SharedAccountsAsync(db, invoice.OwnerUserId, ct), [invoice], force, ct)).Contains(invoice.Id);
 
     /// <summary>One receipt being applied: its booking, the booking's parts and what was worked out for its lines.</summary>
     private sealed class Pending(ReceiptInvoice invoice, Transaction parent, List<Transaction> children)
@@ -254,21 +303,27 @@ public sealed class ReceiptStore
     /// <summary>
     /// Applies the owner's matched receipts (see <see cref="ApplyAsync"/>): bookings, projects, rules and memory are read
     /// once for all of them, and the AI gets the open lines of all receipts with the same choices in one request. Returns
-    /// the ids of the receipts whose booking was split or re-split.
+    /// the ids of the receipts whose booking was split or re-split. Only bookings of the owner and on
+    /// <paramref name="shared"/> are written; categories, projects, rules and memory are those of the booking's owner.
     /// </summary>
-    private async Task<HashSet<long>> ApplyAllAsync(BudgetDbContext db, string owner, IReadOnlyList<ReceiptInvoice> invoices, bool force, CancellationToken ct, Action<string>? progress = null)
+    private async Task<HashSet<long>> ApplyAllAsync(
+        BudgetDbContext db, string owner, HashSet<long> shared, IReadOnlyList<ReceiptInvoice> invoices, bool force, CancellationToken ct, Action<string>? progress = null)
     {
         var changed = new HashSet<long>();
         var txIds = invoices.Where(i => i.TransactionId != null).Select(i => i.TransactionId!.Value).Distinct().ToList();
         if (txIds.Count == 0) return changed;
-        var parents = await db.Transactions.Where(t => txIds.Contains(t.Id) && t.OwnerUserId == owner).ToDictionaryAsync(t => t.Id, ct);
+        var sharedList = shared.ToList();
+        var parents = await db.Transactions
+            .Where(t => txIds.Contains(t.Id) && (t.OwnerUserId == owner || (t.AccountId != null && sharedList.Contains(t.AccountId.Value))))
+            .ToDictionaryAsync(t => t.Id, ct);
         var splitIds = parents.Values.Where(p => p.Splitted == SplitState.Parent).Select(p => (long?)p.Id).ToList();
         var childrenOf = splitIds.Count == 0 ? [] : (await db.Transactions
-                .Where(t => splitIds.Contains(t.SplitParentId) && t.Splitted == SplitState.Child && t.OwnerUserId == owner).ToListAsync(ct))
+                .Where(t => splitIds.Contains(t.SplitParentId) && t.Splitted == SplitState.Child).ToListAsync(ct))
+            .Where(t => parents.TryGetValue(t.SplitParentId!.Value, out var p) && p.OwnerUserId == t.OwnerUserId)
             .GroupBy(t => t.SplitParentId!.Value).ToDictionary(g => g.Key, g => g.ToList());
 
         var projects = new Dictionary<(long?, long?), int?>();
-        var rulesBy = new Dictionary<(int?, string), ReceiptSourceRules>();
+        var rulesBy = new Dictionary<(int?, string, string), ReceiptSourceRules>();
         var work = new List<Pending>();
         foreach (var invoice in invoices)
         {
@@ -282,27 +337,27 @@ public sealed class ReceiptStore
                 ? parent.Splitted != SplitState.Remainder
                 : p.Ours || (parent.Booked && (parent.Splitted ?? SplitState.Normal) == SplitState.Normal && parent.CategorySetBy != TransactionCategorySource.Manual);
             if (!projects.TryGetValue((parent.AccountId, parent.CategoryId), out var project))
-                projects[(parent.AccountId, parent.CategoryId)] = project = await ReceiptProjects.ResolveAsync(db, owner, parent.AccountId, parent.CategoryId, ct);
+                projects[(parent.AccountId, parent.CategoryId)] = project = await ReceiptProjects.ResolveAsync(db, parent.OwnerUserId, parent.AccountId, parent.CategoryId, ct);
             var source = ReceiptSources.Of(invoice.Shop);
-            if (!rulesBy.TryGetValue((project, source), out var rules))
-                rulesBy[(project, source)] = rules = await ReceiptProjects.RulesAsync(db, owner, project, source, ct);
+            if (!rulesBy.TryGetValue((project, source, parent.OwnerUserId), out var rules))
+                rulesBy[(project, source, parent.OwnerUserId)] = rules = await ReceiptProjects.RulesAsync(db, parent.OwnerUserId, project, source, ct);
             p.Project = project;
             p.Rules = rules;
             work.Add(p);
         }
 
         // Each project's memory, for the names on its receipts.
-        foreach (var group in work.GroupBy(p => p.Project))
+        foreach (var group in work.GroupBy(p => (p.Project, p.Parent.OwnerUserId)))
         {
             var names = group.SelectMany(p => p.Items).Select(i => ReceiptCategorizer.Normalize(i.Name)).Distinct(StringComparer.Ordinal).ToList();
-            var memory = await MemoryAsync(db, owner, group.Key, names, ct);
+            var memory = await MemoryAsync(db, group.Key.OwnerUserId, group.Key.Project, names, ct);
             foreach (var p in group) p.Memory = memory;
         }
 
         // Categories: the owner's moves stay, AI answers are asked once and kept, the rest follows memory and keywords.
         // An AI answer outside this source's categories (left from before they were configured, or a mapping that
         // changed) is dropped and asked again.
-        Dictionary<long, string>? paths = null;
+        var pathsBy = new Dictionary<string, Dictionary<long, string>>(StringComparer.Ordinal);
         var asks = new List<(Pending P, List<AllowedCategory> Choices, List<DatedReceiptLine> Lines)>();
         foreach (var p in work)
         {
@@ -325,7 +380,8 @@ public sealed class ReceiptStore
             var choices = p.Rules.Allowed.ToList();
             if (parent.CategoryId is { } h && choices.All(c => c.CategoryId != h))
             {
-                paths ??= await PathsAsync(db, owner, ct);
+                if (!pathsBy.TryGetValue(parent.OwnerUserId, out var paths))
+                    pathsBy[parent.OwnerUserId] = paths = await PathsAsync(db, parent.OwnerUserId, ct);
                 choices.Insert(0, new AllowedCategory(h, paths.GetValueOrDefault(h) ?? "", "Lebensmittel und alles andere"));
             }
             asks.Add((p, choices, ask.Select(l => new DatedReceiptLine(l, date)).ToList()));

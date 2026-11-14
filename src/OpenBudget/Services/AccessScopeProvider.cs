@@ -119,6 +119,13 @@ public sealed class AccessScopeProvider : IDisposable
         if (string.IsNullOrEmpty(userId)) return AccessScope.Anonymous;
 
         await using var db = await system.CreateDbContextAsync(ct);
+        return await ComputeAsync(db, userId, ct);
+    }
+
+    /// <summary>Computes the scope for <paramref name="userId"/> on an unrestricted (system) context.</summary>
+    public static async Task<AccessScope> ComputeAsync(BudgetDbContext db, string? userId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(userId)) return AccessScope.Anonymous;
         var user = await db.Users.AsNoTracking()
             .Where(u => u.Id == userId)
             .Select(u => new { u.IsAdmin })
