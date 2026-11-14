@@ -882,8 +882,9 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
     };
     const hasBudget = !d.balance && Array.isArray(d.budget) && d.budget.length === n;
 
-    // Month (or year) labels along the top with a thin separator where each one starts. Major
-    // labels (first bar, January) are placed first, then the others wherever they fit.
+    // Labels along the top with a thin separator where each one starts: "May 26" per month for
+    // daily bars, the year for monthly bars, quarters otherwise. Major labels (first bar, January)
+    // are placed first, then the others wherever they fit.
     const topAxis = {
         id: 'obTopAxis',
         afterDraw(chart) {
@@ -896,9 +897,9 @@ window.renderBrowseChart = function(canvasId, d, dotnetRef) {
                 const s = starts[i], first = i === from;
                 let text = null, major = first || s.m === 1;
                 if (g === 'D') {
-                    if (first || s.day === 1) text = d.monthNames[s.m - 1] + (major ? ' ' + s.y : '');
+                    if (first || s.day === 1) text = d.monthNames[s.m - 1] + ' ' + pad2(s.y % 100);
                 } else if (g === 'M') {
-                    text = major ? d.monthNames[s.m - 1] + ' ' + s.y : d.monthNames[s.m - 1];
+                    if (major) text = String(s.y);
                 } else if (g === 'Q') {
                     text = major ? quarter(s) + ' ' + s.y : quarter(s);
                 } else {
