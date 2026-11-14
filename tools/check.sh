@@ -51,6 +51,13 @@ run() { # name, args...
     names+=("$name")
 }
 
+# The formatting gate CI runs (lint job), alongside the tests.
+( for target in budget.slnx tests/OpenBudget.E2E.Tests/OpenBudget.E2E.Tests.csproj; do
+      dotnet format whitespace "$target" --verify-no-changes --no-restore || exit 1
+      dotnet format style "$target" --verify-no-changes --no-restore || exit 1
+  done > "$log_dir/format.log" 2>&1 ) &
+pids+=($!)
+names+=(format)
 run unit tests/OpenBudget.Tests
 if ! $unit_only; then
     e2e_args=(tests/OpenBudget.E2E.Tests)
