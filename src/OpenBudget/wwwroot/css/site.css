@@ -1452,6 +1452,8 @@ button.cat-pill:hover { filter: brightness(0.96); }
 .shell-view:hover { background: var(--ob-row-hover-bg); }
 .shell-view.active { background: var(--ob-selected-bg); box-shadow: inset 3px 0 0 var(--ob-accent); }
 .shell-view.active i { color: var(--ob-accent); }
+/* a badge keeps its own text colour (the item icon tints above do not apply inside it) */
+.shell-view .badge i { color: inherit; }
 .shell-view:focus-visible { outline: 2px solid var(--ob-accent); outline-offset: -2px; }
 .shell-view-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shell-view-badge { font-weight: 400; color: var(--ob-muted); font-variant-numeric: tabular-nums; }
