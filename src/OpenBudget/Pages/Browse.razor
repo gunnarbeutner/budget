@@ -458,8 +458,7 @@
                                      @oncontextmenu="e => OnRowContextAsync(item, e)" @oncontextmenu:preventDefault="true">
                                     <div class="tx-date-col">
                                         <span class="tx-date">@Clock.ToLocal(row.Date).ToString("dd.MM.yyyy")</span>
-                                        @if (showCategoryColumn)
-                                        {
+                                        @{
                                             var hasCategory = !string.IsNullOrEmpty(row.CategoryName);
                                             var outside = hasCategory ? pickerData?.OutsideOf(row.CategoryId) : null;
                                             var pillStyle = hasCategory && outside == null ? CategoryColors.For(row.CategoryId ?? 0, row.CategoryColor).Style : null;
@@ -467,20 +466,20 @@
                                             var categoryPath = hasCategory ? pickerData?.PathOf(row.CategoryId, row.CategoryName!) ?? row.CategoryName : null;
                                             var categoryTitle = outside != null ? CategoryPill.OutsideTitle(PillL, outside) : categoryPath;
                                             var outsideClass = outside != null ? "cat-pill-outside" : "";
-                                            @if (row.CanEdit && (hasCategory || row.Amount != 0))
-                                            {
-                                                <button type="button" class="cat-pill @(hasCategory ? "" : "empty") @outsideClass" style="@pillStyle" data-testid="tx-category"
-                                                        data-outside="@(outside != null ? "true" : null)"
-                                                        title="@(hasCategory ? categoryTitle : L["Tx_CategoryTitle"].Value)" @onclick="e => OpenPickerFromRow(row, e)" @onclick:stopPropagation="true">
-                                                    @if (outside != null) { <i class="bi bi-box-arrow-up-right cat-pill-outside-icon" aria-hidden="true"></i> }
-                                                    @if (hasCategory) { @CategoryPillText(categoryLabel!, row.CategoryName!) } else { @L["Tx_NoCategory"] }
-                                                </button>
-                                            }
-                                            else if (hasCategory)
-                                            {
-                                                <span class="cat-pill @outsideClass" style="@pillStyle" data-testid="tx-category-label" data-outside="@(outside != null ? "true" : null)"
-                                                      title="@categoryTitle">@if (outside != null) { <i class="bi bi-box-arrow-up-right cat-pill-outside-icon" aria-hidden="true"></i> }@CategoryPillText(categoryLabel!, row.CategoryName!)</span>
-                                            }
+                                        }
+                                        @if (row.CanEdit && (hasCategory || row.Amount != 0))
+                                        {
+                                            <button type="button" class="cat-pill @(hasCategory ? "" : "empty") @outsideClass" style="@pillStyle" data-testid="tx-category"
+                                                    data-outside="@(outside != null ? "true" : null)"
+                                                    title="@(hasCategory ? categoryTitle : L["Tx_CategoryTitle"].Value)" @onclick="e => OpenPickerFromRow(row, e)" @onclick:stopPropagation="true">
+                                                @if (outside != null) { <i class="bi bi-box-arrow-up-right cat-pill-outside-icon" aria-hidden="true"></i> }
+                                                @if (hasCategory) { @CategoryPillText(categoryLabel!, row.CategoryName!) } else { @L["Tx_NoCategory"] }
+                                            </button>
+                                        }
+                                        else if (hasCategory)
+                                        {
+                                            <span class="cat-pill @outsideClass" style="@pillStyle" data-testid="tx-category-label" data-outside="@(outside != null ? "true" : null)"
+                                                  title="@categoryTitle">@if (outside != null) { <i class="bi bi-box-arrow-up-right cat-pill-outside-icon" aria-hidden="true"></i> }@CategoryPillText(categoryLabel!, row.CategoryName!)</span>
                                         }
                                     </div>
                                     <div class="tx-payee">
@@ -516,7 +515,7 @@
                                         {
                                             <div class="tx-comment" data-testid="tx-note"><i class="bi bi-sticky me-1" aria-hidden="true"></i>@row.Note</div>
                                         }
-                                        @if (showCategoryColumn && row.CanEdit && string.IsNullOrEmpty(row.CategoryName) && row.Amount != 0
+                                        @if (row.CanEdit && string.IsNullOrEmpty(row.CategoryName) && row.Amount != 0
                                              && _suggestions.TryGetValue(row.Id, out var suggestion) && suggestion.Confidence >= SuggestionChip.InlineConfidence)
                                         {
                                             <SuggestionChip Suggestion="suggestion" OnAccept="() => AcceptSuggestionAsync(row, suggestion)"
@@ -532,7 +531,7 @@
                                 @if (isExpanded)
                                 {
                                     <TxDetails Row="row" Statement="expandedStatement" ShowAccount="showAccountColumn" Account="AccountNodeFor(row.AccountId)"
-                                               ShowCategory="@(!showCategoryColumn && !(selectionKind == "category" && row.CategoryId == selectionId))"
+                                               ShowCategory="false"
                                                OnNoteSave="note => SetNoteForAsync(row.Id, note)"
                                                OnShowSimilar="() => ShowSimilarAsync(row)"
                                                OnSuggest="() => SuggestForRowAsync(row)" HasSuggestion="_suggestions.ContainsKey(row.Id)"
@@ -1763,7 +1762,6 @@
         }
     }
 
-    private bool showCategoryColumn => selectionKind != "category" || _previewIds != null;
     // The account per row only matters when the list spans more than one account.
     /// <summary>The sidebar's node for a booking's account (its icon and colour), or null when the tree lacks it.</summary>
     private BrowseAccountNode? AccountNodeFor(long? accountId) =>
