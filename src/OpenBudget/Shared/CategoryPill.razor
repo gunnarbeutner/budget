@@ -1,0 +1,69 @@
+@using System.Runtime.CompilerServices
+@using OpenBudget.Services
+
+@* A category as the transaction list shows it: the category's colour and the shortest label that tells it apart from
+   its namesakes ("Supermarkt › Rewe" next to "Verbrauchsartikel › REWE"), its group part shrinking first. A button
+   when OnClick is set; ChildContent follows the name (an amount, a count). *@
+
+@if (OnClick.HasDelegate)
+{
+    <button type="button" class="cat-pill @Class" style="@Style" title="@(Title ?? Path)" data-testid="@TestId" data-category="@CategoryId"
+            @onclick="OnClick" @onclick:stopPropagation="true">@Text()@ChildContent</button>
+}
+else
+{
+    <span class="cat-pill @Class" style="@Style" title="@(Title ?? Path)" data-testid="@TestId" data-category="@CategoryId">@Text()@ChildContent</span>
+}
+
+@code {
+    [Parameter] public long? CategoryId { get; set; }
+    [Parameter] public CategoryPickerData? PickerData { get; set; }
+    /// <summary>Shown when the category is unknown (or none): usually the booking's category name.</summary>
+    [Parameter] public string? FallbackName { get; set; }
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? TestId { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    // Labels are worked out once per set of options (one picker's data serves every pill of a page).
+    private static readonly ConditionalWeakTable<CategoryPickerData, Dictionary<long, string>> LabelCache = new();
+
+    private CategoryOption? Option => CategoryId is { } id ? PickerData?.Options.FirstOrDefault(o => o.Id == id) : null;
+
+    private string Path => Option?.Path ?? FallbackName ?? "";
+
+    private string Name => Option?.Name ?? LastSegment(FallbackName ?? "");
+
+    private string Label
+    {
+        get
+        {
+            if (Option is not { } o || PickerData == null) return Name;
+            var labels = LabelCache.GetValue(PickerData, d => CategoryPickerLogic.ShortLabels(d.Options));
+            return labels.TryGetValue(o.Id, out var l) ? l : o.Name;
+        }
+    }
+
+    private string? Style => Option is { } o ? CategoryColors.For(o.Id, o.Color).Style : null;
+
+    private RenderFragment Text() => __builder =>
+    {
+        var label = Label;
+        var name = Name;
+        if (label.Length > name.Length && label.EndsWith(name, StringComparison.Ordinal))
+        {
+            <span class="cat-pill-context">@label[..^name.Length]</span><span class="cat-pill-name">@name</span>
+        }
+        else
+        {
+            @label
+        }
+    };
+
+    private static string LastSegment(string path)
+    {
+        var at = path.LastIndexOf('›');
+        return at >= 0 ? path[(at + 1)..].Trim() : path;
+    }
+}

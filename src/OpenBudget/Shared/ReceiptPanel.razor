@@ -33,7 +33,7 @@
                     var index = i;
                     var g = view.Groups[i];
                     <button type="button" class="btn btn-sm @(part == index ? "btn-secondary" : "btn-outline-secondary")" data-testid="receipt-panel-part"
-                            @onclick="() => part = index">@ShortName(g.CategoryId) @Formatting.FormatMoneyDe(g.AmountCents / 100m) (@g.Lines.Count)</button>
+                            @onclick="() => part = index"><CategoryPill CategoryId="g.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" /> @Formatting.FormatMoneyDe(g.AmountCents / 100m) (@g.Lines.Count)</button>
                 }
             </div>
             @if (view.ItemCount > 8)
@@ -69,12 +69,12 @@
                                     <td>
                                         @if (CanEdit && PickerData != null)
                                         {
-                                            <button type="button" class="badge rounded-pill text-bg-light border btn-chip" data-testid="receipt-panel-category"
-                                                    title="@L["Move", line.Name]" @onclick="e => OpenPicker(line, e)">@ShortName(line.CategoryId)</button>
+                                            <CategoryPill CategoryId="line.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" TestId="receipt-panel-category"
+                                                          Title="@L["Move", line.Name]" OnClick="e => OpenPicker(line, e)" />
                                         }
                                         else
                                         {
-                                            <span class="badge rounded-pill text-bg-light border">@ShortName(line.CategoryId)</span>
+                                            <CategoryPill CategoryId="line.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" />
                                         }
                                     </td>
                                 </tr>
@@ -90,7 +90,7 @@
                                         </button>
                                     </td>
                                     <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(extras.Sum(l => l.TotalCents) / 100m)</td>
-                                    <td><span class="badge rounded-pill text-bg-light border">@ShortName(g.CategoryId)</span></td>
+                                    <td><CategoryPill CategoryId="g.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" /></td>
                                 </tr>
                                 @if (open)
                                 {
@@ -177,13 +177,6 @@
 
     private string CategoryName(long? id) =>
         id is { } c && PickerData != null ? PickerData.PathOf(c, BookingCategoryName ?? L["NoCategory"]) : BookingCategoryName ?? L["NoCategory"];
-
-    private string ShortName(long? id)
-    {
-        var name = CategoryName(id);
-        var at = name.LastIndexOf('›');
-        return at >= 0 ? name[(at + 1)..].Trim() : name;
-    }
 
     private void OpenPicker(ReceiptLineView line, MouseEventArgs e) => (moving, pickerX, pickerY) = (line, e.ClientX, e.ClientY);
 

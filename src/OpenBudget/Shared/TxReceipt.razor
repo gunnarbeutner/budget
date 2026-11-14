@@ -18,10 +18,10 @@
             var index = i;
             var group = Receipt.Groups[i];
             var shown = HighlightCategoryId != null && group.CategoryId == HighlightCategoryId;
-            <button type="button" class="badge rounded-pill border @(shown ? "text-bg-primary" : "text-bg-light")" data-testid="tx-receipt-group"
-                    data-category="@group.CategoryId" aria-current="@(shown ? "true" : null)" @onclick="() => Open(index)">
-                @ShortName(group.CategoryId) @Formatting.FormatMoneyDe(group.AmountCents / 100m) (@group.Lines.Count)
-            </button>
+            <CategoryPill CategoryId="group.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" TestId="tx-receipt-group"
+                          Class="@(shown ? "cat-pill-current" : null)" OnClick="() => Open(index)">
+                <span class="cat-pill-amount">@Formatting.FormatMoneyDe(group.AmountCents / 100m) (@group.Lines.Count)</span>
+            </CategoryPill>
         }
     </div>
     <ReceiptPanel ReceiptId="openId" InitialPart="openPart" PickerData="PickerData" CanEdit="CanEdit" BookingCategoryName="@BookingCategoryName" OnClose="ClosedAsync" />
@@ -50,10 +50,4 @@
         if (changed) await OnChanged.InvokeAsync();
     }
 
-    private string ShortName(long? id)
-    {
-        var name = id is { } c && PickerData != null ? PickerData.PathOf(c, BookingCategoryName ?? L["NoCategory"]) : BookingCategoryName ?? L["NoCategory"];
-        var at = name.LastIndexOf('›');
-        return at >= 0 ? name[(at + 1)..].Trim() : name;
-    }
 }
