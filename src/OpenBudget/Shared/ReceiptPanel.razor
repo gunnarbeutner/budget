@@ -59,11 +59,11 @@
                     <thead>
                         <tr>
                             <th>@L["Item"]</th>
-                            <th class="text-end">@L["Quantity"]</th>
-                            <th class="text-end">@L["Price"]</th>
+                            <th class="text-end text-nowrap">@L["Quantity"]</th>
+                            <th class="text-end text-nowrap">@L["Price"]</th>
                             @if (categorized)
                             {
-                                <th>@L["Category"]</th>
+                                <th class="text-nowrap">@L["Category"]</th>
                             }
                         </tr>
                     </thead>
@@ -84,7 +84,7 @@
                                     <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(line.TotalCents / 100m)</td>
                                     @if (categorized)
                                     {
-                                    <td>
+                                    <td class="text-nowrap">
                                         @if (CanEdit && PickerData != null)
                                         {
                                             <CategoryPill CategoryId="line.CategoryId" PickerData="PickerData" FallbackName="@BookingCategoryName" TestId="receipt-panel-category"
@@ -154,7 +154,7 @@
     }
     @if (moving is { } m && PickerData != null)
     {
-        <CategoryPicker Data="PickerData" CurrentCategoryId="m.CategoryId" AllowRemove="false" X="pickerX" Y="pickerY"
+        <CategoryPicker Data="PickerData" CurrentCategoryId="m.CategoryId ?? view?.BookingCategoryId" AllowRemove="false" X="pickerX" Y="pickerY"
                         OnPick="id => MoveAsync(m.Id, id)" OnClose="() => moving = null" />
     }
 </Modal>

@@ -34,7 +34,7 @@ public sealed record ReceiptGroupView(long? CategoryId, long AmountCents, IReadO
 /// </summary>
 public sealed record BookingReceiptView(long ReceiptId, long? TransactionId, string Shop, string? OrderNumber, DateTime? DeliveryDate, long BonusCents,
     IReadOnlyList<ReceiptGroupView> Groups, bool SplitByReceipt, string? Store = null, long TotalCents = 0, long PaymentCents = 0, string? InvoiceNumber = null,
-    bool PaidInInstalments = false)
+    bool PaidInInstalments = false, long? BookingCategoryId = null)
 {
     /// <summary>The number of lines.</summary>
     public int ItemCount => Groups.Sum(g => g.Lines.Count);
@@ -380,7 +380,7 @@ public sealed class ReceiptService
             .ToList();
         return new BookingReceiptView(invoice.Id, booking?.Id, invoice.Shop, invoice.OrderNumber, invoice.DeliveryDate ?? invoice.OrderDate, invoice.BonusCents, groups,
             invoice.SplitSignature != null, invoice.Store, invoice.TotalCents, invoice.PaymentCents, invoice.InvoiceNumber,
-            invoice.State == ReceiptMatchState.Instalments);
+            invoice.State == ReceiptMatchState.Instalments, bookingCategory);
     }
 
     // ---- review ----
