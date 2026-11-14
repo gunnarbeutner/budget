@@ -10,6 +10,13 @@
 <div class="tx-details-purpose" data-testid="tx-receipt">
     <b class="text-body me-1">@L["Receipt"]</b>
     <button type="button" class="btn btn-link btn-sm p-0 align-baseline text-start" data-testid="tx-receipt-open" @onclick="() => Open(null)">@Receipt.Title@(Receipt.DeliveryDate is { } d ? " · " + d.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) : "") · @L["Items", Receipt.ItemCount]</button>
+    @if (Receipt.ShopUrl is { } shopUrl)
+    {
+        <a class="ms-2 small" href="@shopUrl" target="_blank" rel="noopener" data-testid="tx-receipt-shop-link"><i class="bi bi-box-arrow-up-right me-1" aria-hidden="true"></i>@L["OpenAtShop"]</a>
+    }
+    @* One part is the booking itself: a chip would only repeat its category and amount. *@
+    @if (Receipt.Groups.Count > 1)
+    {
     <div class="d-flex flex-wrap gap-1 mt-1">
         @for (var i = 0; i < Receipt.Groups.Count; i++)
         {
@@ -22,6 +29,7 @@
             </CategoryPill>
         }
     </div>
+    }
     <ReceiptPanel ReceiptId="openId" InitialPart="openPart" PickerData="PickerData" CanEdit="CanEdit" BookingCategoryName="@BookingCategoryName" OnClose="Closed" OnMoved="MovedAsync" />
 </div>
 
