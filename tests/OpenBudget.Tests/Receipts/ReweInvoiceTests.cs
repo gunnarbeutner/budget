@@ -105,4 +105,57 @@ public sealed class ReweInvoiceTests
         Assert.Throws<InvalidDataException>(() => ReweInvoice.Parse(SyntheticInvoice.Build([[["Some other document"]]])));
         Assert.Throws<InvalidDataException>(() => ReweInvoice.Parse([.. "not a pdf"u8.ToArray()]));
     }
+
+    [Fact]
+    public void The_older_layout_with_wrapped_names_page_footers_and_discounts_is_read()
+    {
+        string[] lines =
+        [
+            "Rechnung PN24000000000042",
+            "Rechnungsdatum: 05.03.2025",
+            "REWE Markt GmbH, Beispielstr. 1, 12345 Musterstadt",
+            "Bestellnummer: B-AAA-BBB-CC9",
+            "Erika Mustermann",
+            "Bestelldatum: 04.03.2025",
+            "12345 Musterstadt Lieferdatum: 05.03.2025",
+            "Bezeichnung Menge MwSt. Einzelpreis Summe Pos.",
+            "Beispiel Haferflocken 500g 3 B 0,85 € 2,55 €",
+            "Beispiel Beste Wahl Limited Edition",
+            "1 A 2,99 € 2,99 €",
+            "Toilettenpapier 8x180 Blatt",
+            "Beispiel Maultaschen traditionell",
+            "1 B 2,19 € 2,19 €",
+            "360g",
+            "Rabatt B -0,20 €",
+            "Beispiel Apfel rot ca. 200g 804g B 2,99 €/kg 2,40 €",
+            "Beispiel H-Milch laktosefrei",
+            "2 B 1,19 € 2,38 €",
+            "1,5% 1l",
+            "REWE Markt GmbH Registergericht: Amtsgericht Musterstadt",
+            "Beispielstr. 1 HRB 00000",
+            "www.rewe.de",
+            "1 von 2",
+            "Bezeichnung Menge MwSt. Einzelpreis Summe Pos.",
+            "Pfandtasche 2 A 0,50 € 1,00 € *",
+            "Pfandtasche -2 A 0,50 € -1,00 € *",
+            "Liefergebühr 1 A/B 1,90 € 1,90 €",
+            "Summe Rabatt Gesamtpositionen 1 A/B -1,00 € -1,00 € **",
+            "Summe 13,21 €",
+            "Gesamtbetrag 13,21 €",
+            "Eingelöstes Bonus-Guthaben 2,00 €",
+            "Lastschrift 11,21 €",
+        ];
+        var r = ReweInvoice.Parse(lines);
+        Assert.Equal(("PN24000000000042", "B-AAA-BBB-CC9"), (r.InvoiceNumber, r.OrderNumber));
+        Assert.Equal((new DateOnly(2025, 3, 4), new DateOnly(2025, 3, 5), new DateOnly(2025, 3, 5)), (r.OrderDate!.Value, r.DeliveryDate!.Value, r.InvoiceDate!.Value));
+        Assert.Equal(
+            ["Beispiel Haferflocken 500g", "Beispiel Beste Wahl Limited Edition Toilettenpapier 8x180 Blatt", "Beispiel Maultaschen traditionell 360g",
+             "Beispiel Apfel rot ca. 200g", "Beispiel H-Milch laktosefrei 1,5% 1l", "Pfandtasche", "Pfandtasche", "Liefergebühr"],
+            r.Items.Select(i => i.Name));
+        Assert.Equal(199, r.Items[2].TotalCents);   // the discount is the item's
+        Assert.True(r.Items[5].NoDiscount);
+        Assert.Equal(ReceiptItemKind.Deposit, r.Items[5].Kind);
+        Assert.Equal((1421L, -300L, 1121L), (r.TotalCents, r.BonusCents, r.PaymentCents));
+        Assert.Equal(r.TotalCents, r.Items.Sum(i => i.TotalCents));
+    }
 }

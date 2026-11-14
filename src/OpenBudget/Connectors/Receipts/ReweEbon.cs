@@ -8,11 +8,12 @@ namespace OpenBudget.Connectors.Receipts;
 /// REWE in-store receipts sent as eBon mails ("Dein REWE eBon vom 31.10.2022" with an attachment "REWE-eBon.pdf"). The
 /// PDF is the till receipt: item lines "NAME amount VAT [*]" between the "EUR" heading and "SUMME"; a line
 /// "N Stk x price" or "0,812 kg x 1,99 EUR/kg" gives the quantity of the item above it, and a negative line (a
-/// discount or coupon) is taken off the item above it (returned empties stay lines of their own). The lines must add
-/// up to "SUMME". Payments read "Geg. &lt;means&gt; EUR amount": what was paid by card or app (girocard, VISA, PAYBACK
-/// PAY, …) is the payment to match; cash ("BAR") is not, so a cash-only receipt is stored but never matched. The
-/// receipt's identity is its "ReceiptID", else market, till, receipt number and day. The address lines under the
-/// "R E W E" heading (up to the tax number or the "EUR" heading) are the store.
+/// discount or coupon) is taken off the item above it (returned empties stay lines of their own); a count may carry
+/// decimals ("0.521 Stk x 9,98"). The lines must add up to "SUMME". Payments read "Geg. &lt;means&gt; EUR amount": what
+/// was paid by card or app (girocard, VISA, PAYBACK PAY, …) is the payment to match; cash ("BAR") is not, so a
+/// cash-only receipt is stored but never matched. The receipt's identity is its "ReceiptID", else market, till,
+/// receipt number and day (the day from "Datum:", else from the "dd.MM.yyyy HH:mm Bon-Nr.:…" line). The address lines
+/// under the "R E W E" heading (up to the tax number or the "EUR" heading) are the store.
 /// </summary>
 public static partial class ReweEbon
 {
@@ -25,7 +26,7 @@ public static partial class ReweEbon
     [GeneratedRegex(@"^(?<name>.+?) (?<amount>-?\d+(?:\.\d{3})*,\d\d) (?<vat>[AB])(?<star> \*)?$", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
     private static partial Regex ItemLine();
 
-    [GeneratedRegex(@"^(?<n>\d+) Stk x (?<price>-?[\d.,]+)$", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
+    [GeneratedRegex(@"^(?<n>\d+(?:[.,]\d+)?) Stk x (?<price>-?[\d.,]+)$", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
     private static partial Regex CountLine();
 
     [GeneratedRegex(@"^(?<kg>\d+,\d+) kg x (?<price>[\d.,]+) EUR/kg$", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
@@ -39,6 +40,9 @@ public static partial class ReweEbon
 
     [GeneratedRegex(@"^Datum: (?<d>\d\d\.\d\d\.\d{4})$", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
     private static partial Regex DateLine();
+
+    [GeneratedRegex(@"^(?<d>\d\d\.\d\d\.\d{4}) \d\d:\d\d\b", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
+    private static partial Regex StampLine();
 
     [GeneratedRegex(@"^ReceiptID: ?(?<id>[0-9A-Za-z]+)$", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]
     private static partial Regex ReceiptId();
@@ -74,7 +78,8 @@ public static partial class ReweEbon
         foreach (var raw in rawLines)
         {
             var line = ReceiptPdf.Normalize(raw);
-            if (line is "R E W E" || line.StartsWith("REWE", StringComparison.Ordinal))
+            // Item names may start with "REWE" too ("REWE PIZZA"): within the items it is no heading.
+            if (line is "R E W E" || (!inItems && line.StartsWith("REWE", StringComparison.Ordinal)))
             {
                 isRewe = true;
                 inAddress = line == "R E W E" && address.Count == 0;
@@ -126,6 +131,9 @@ public static partial class ReweEbon
             }
             if (DateLine().Match(line) is { Success: true } d)
                 date ??= DateOnly.ParseExact(d.Groups["d"].Value, "dd.MM.yyyy", CultureInfo.InvariantCulture);
+            if (StampLine().Match(line) is { Success: true } st
+                && DateOnly.TryParseExact(st.Groups["d"].Value, "dd.MM.yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var stamped))
+                date ??= stamped;
             if (ReceiptId().Match(line) is { Success: true } r) id ??= r.Groups["id"].Value;
             if (Market().Match(line) is { Success: true } mk) market ??= mk.Groups["m"].Value;
             if (Till().Match(line) is { Success: true } k) till ??= k.Groups["k"].Value;

@@ -92,6 +92,33 @@ public sealed class ReweEbonTests
     }
 
     [Fact]
+    public void Items_named_rewe_decimal_counts_and_a_date_from_the_receipt_line_are_read()
+    {
+        string[] lines =
+        [
+            "R E W E", "Beispielweg 9", "12345 Musterstadt", "UID Nr.: DE000000000", "EUR",
+            "REWE GOUDA MA 2,69 B",
+            "SCHWEINEFILET 5,20 B",
+            "0.521 Stk x 9,98",
+            "EMMENTALER 45% 1,23 B",
+            "0,113 kg x 10,90 EUR/kg",
+            "--------------------------------------",
+            "SUMME EUR 9,12",
+            "Geg. VISA EUR 9,12",
+            "29.03.2025 13:38 Bon-Nr.:7372",
+            "Markt:0999 Kasse:2 Bed.:000000",
+            "REWE Markt GmbH",
+        ];
+        var r = ReweEbon.Parse(lines);
+        Assert.Equal(["REWE GOUDA MA", "SCHWEINEFILET", "EMMENTALER 45%"], r.Items.Select(i => i.Name));
+        Assert.Equal(("0.521", 998L), (r.Items[1].Quantity, r.Items[1].UnitCents!.Value));
+        Assert.Equal("113g", r.Items[2].Quantity);
+        Assert.Equal(new DateOnly(2025, 3, 29), r.OrderDate);
+        Assert.Equal("M0999-K2-B7372-20250329", r.InvoiceNumber);
+        Assert.Equal((912L, 912L), (r.TotalCents, r.PaymentCents));
+    }
+
+    [Fact]
     public void Lines_that_do_not_add_up_are_rejected() =>
         Assert.Throws<InvalidDataException>(() => ReweEbon.Parse(Pdf(sum: "18,01")));
 
