@@ -3,7 +3,7 @@ using OpenBudget.Models;
 
 namespace OpenBudget.Connectors.Receipts;
 
-/// <summary>A receipt to place: what was charged (positive cents), when it was ordered and delivered.</summary>
+/// <summary>A receipt to place: what was charged by card or bank (positive cents), when it was ordered and delivered, and its shop.</summary>
 public sealed record ReceiptToMatch(long Id, long PaymentCents, DateOnly? OrderDate, DateOnly? DeliveryDate, string Shop = ReceiptShops.Rewe);
 
 /// <summary>A booking that may have paid a receipt.</summary>
@@ -23,10 +23,15 @@ public sealed record ReceiptMatchOutcome(IReadOnlyDictionary<long, long> Matches
 /// Lidl receipts (bought in a store, paid by card or Lidl Pay) fit a booking of exactly minus the card/app part, booked
 /// on the purchase day or up to <see cref="LidlDaysAfter"/> days later (card bookings lag), whose payee or purpose
 /// names Lidl or Lidl's payment companies ("S. Payment Solutions", "S. Digits").
+///
+/// A REWE eBon (in-store receipt) is paid by card or app on its day: the booking is exactly minus what was paid that way, names
+/// REWE or PAYBACK (PAYBACK PAY), and is booked up to <see cref="EbonDaysAfter"/> days later. A receipt paid only in
+/// cash has nothing to match.
 /// </summary>
 public static class ReceiptMatcher
 {
     public const int DaysAfter = 10;
+    public const int EbonDaysAfter = 5;
 
     public const int LidlDaysAfter = 5;
 
@@ -64,7 +69,7 @@ public static class ReceiptMatcher
     public static List<ReceiptBooking> Candidates(ReceiptToMatch r, IReadOnlyList<ReceiptBooking> bookings)
     {
         if ((r.DeliveryDate ?? r.OrderDate) is not { } from) return [];
-        var days = r.Shop == ReceiptShops.Lidl ? LidlDaysAfter : DaysAfter;
+        var days = r.Shop switch { ReceiptShops.Lidl => LidlDaysAfter, ReceiptShops.ReweEbon => EbonDaysAfter, _ => DaysAfter };
         var fit = bookings.Where(b => r.PaymentCents > 0 && b.Cents == -r.PaymentCents && IsShop(r.Shop, b.Name, b.Purpose)
             && b.Date >= from && b.Date <= from.AddDays(days)).ToList();
         if (r.Shop != ReceiptShops.Rewe) return fit;
@@ -77,13 +82,22 @@ public static class ReceiptMatcher
         return fit;
     }
 
+    /// <summary>Whether a payee or purpose names PAYBACK (payments with PAYBACK PAY).</summary>
+    public static bool IsPayback(string? name, string? purpose) =>
+        (name?.Contains("payback", StringComparison.OrdinalIgnoreCase) ?? false) || (purpose?.Contains("payback", StringComparison.OrdinalIgnoreCase) ?? false);
+
     /// <summary>Whether a payee or purpose names REWE.</summary>
     public static bool IsShop(string? name, string? purpose) => IsShop(ReceiptShops.Rewe, name, purpose);
 
-    /// <summary>Whether a payee or purpose names the shop (for Lidl: Lidl or its payment companies).</summary>
+    /// <summary>Whether a payee or purpose names the shop (Lidl: Lidl or its payment companies; REWE eBons: REWE or PAYBACK).</summary>
     public static bool IsShop(string shop, string? name, string? purpose)
     {
-        IReadOnlyList<string> words = shop == ReceiptShops.Lidl ? LidlPayees : ["rewe"];
+        IReadOnlyList<string> words = shop switch
+        {
+            ReceiptShops.Lidl => LidlPayees,
+            ReceiptShops.ReweEbon => ["rewe", "payback"],
+            _ => ["rewe"],
+        };
         return words.Any(w => (name?.Contains(w, StringComparison.OrdinalIgnoreCase) ?? false) || (purpose?.Contains(w, StringComparison.OrdinalIgnoreCase) ?? false));
     }
 }

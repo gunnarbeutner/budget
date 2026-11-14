@@ -125,7 +125,8 @@ yourself. The Docker image includes Chromium and Xvfb.
 - **Receipts** — on the Receipts page, grant mail access (a Microsoft sign-in asking for `Mail.Read`; add that
   delegated permission to the app registration's API permissions first). OpenBudget then reads REWE online-order
   invoices (subject "Deine Rechnung zu B-…", PDF attachment) about every hour, matches each with its direct debit
-  (same amount, payee REWE, up to ten days after delivery) and splits the booking by category: food stays in the
+  (same amount, payee REWE, up to ten days after delivery), and in-store eBons ("Dein REWE eBon vom …", matched with
+  the card or PAYBACK PAY payment up to five days later; cash-only receipts are kept but not matched), and splits the booking by category: food stays in the
   booking's category, non-food items (by keyword) go to the category chosen there, deposit and delivery lines stay
   with the food, the redeemed bonus is spread over the discountable items. Moving an item to another category in the
   booking's details re-splits it and is remembered for that product. Bookings categorized or split by hand are left

@@ -6,10 +6,14 @@ namespace OpenBudget.Models;
 /// <summary>Shops whose receipts OpenBudget reads.</summary>
 public static class ReceiptShops
 {
+    /// <summary>REWE online-order invoices.</summary>
     public const string Rewe = "rewe";
 
     /// <summary>Lidl Plus receipts (read by the Lidl Plus connector).</summary>
     public const string Lidl = "lidl";
+
+    /// <summary>REWE in-store receipts (eBon).</summary>
+    public const string ReweEbon = "rewe-ebon";
 }
 
 /// <summary>How a receipt relates to the bookings.</summary>

@@ -11,7 +11,11 @@ public sealed record ParsedReceiptItem(
 /// <summary>A parsed invoice; amounts in cents, <see cref="BonusCents"/> zero or negative.</summary>
 public sealed record ParsedReceipt(
     string InvoiceNumber, string? OrderNumber, DateOnly? OrderDate, DateOnly? DeliveryDate, DateOnly? InvoiceDate,
-    IReadOnlyList<ParsedReceiptItem> Items, long TotalCents, long BonusCents, long PaymentCents);
+    IReadOnlyList<ParsedReceiptItem> Items, long TotalCents, long BonusCents, long PaymentCents)
+{
+    /// <summary>The store's name and address, when the receipt shows them ("REWE Beispielweg 9, 12345 Musterstadt").</summary>
+    public string? Store { get; init; }
+}
 
 /// <summary>
 /// REWE online-order invoices: which mails carry one ("Deine Rechnung zu B-…" with an attachment "Rechnung_PN….pdf"),

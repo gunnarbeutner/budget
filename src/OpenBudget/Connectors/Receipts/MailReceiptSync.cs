@@ -187,7 +187,7 @@ public sealed class MailReceiptSync : BackgroundService
                     ParsedReceipt parsed;
                     try
                     {
-                        parsed = ReweInvoice.Parse(pdf);
+                        parsed = pdf.Ebon ? ReweEbon.Parse(pdf.Content) : ReweInvoice.Parse(pdf.Content);
                     }
                     catch (InvalidDataException ex)
                     {
@@ -196,7 +196,7 @@ public sealed class MailReceiptSync : BackgroundService
                         KeepUnreadable(pdf);
                         continue;
                     }
-                    if (await ReceiptStore.AddAsync(db, userId, ReceiptShops.Rewe, parsed, message, Now, ct)) added++;
+                    if (await ReceiptStore.AddAsync(db, userId, pdf.Ebon ? ReceiptShops.ReweEbon : ReceiptShops.Rewe, parsed, message, Now, ct, parsed.Store)) added++;
                 }
             }
             await using (var db = await _system.CreateDbContextAsync(ct))
@@ -236,7 +236,7 @@ public sealed class MailReceiptSync : BackgroundService
     private async Task<List<string>> ListInvoiceMailsAsync(string userId, DateTime? since, CancellationToken ct)
     {
         var filter = (since is { } from ? $"receivedDateTime ge {from.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture)} and " : "")
-            + $"hasAttachments eq true and startswith(subject,'{ReweInvoice.SubjectPrefix}')";
+            + $"hasAttachments eq true and (startswith(subject,'{ReweInvoice.SubjectPrefix}') or startswith(subject,'{ReweEbon.SubjectPrefix}'))";
         string? url = $"{_graph.GraphBase}/me/messages?$filter={Uri.EscapeDataString(filter)}&$select=id,subject,receivedDateTime&$top={PageSize}";
         var ids = new List<string>();
         while (url != null && ids.Count < _options.MaxMessages)
@@ -247,35 +247,38 @@ public sealed class MailReceiptSync : BackgroundService
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
             if (doc.RootElement.TryGetProperty("value", out var values))
                 foreach (var m in values.EnumerateArray())
-                    if (Str(m, "id") is { } id && ReweInvoice.IsInvoiceSubject(Str(m, "subject"))) ids.Add(id);
+                    if (Str(m, "id") is { } id && (ReweInvoice.IsInvoiceSubject(Str(m, "subject")) || ReweEbon.IsEbonSubject(Str(m, "subject")))) ids.Add(id);
             url = doc.RootElement.TryGetProperty("@odata.nextLink", out var next) ? next.GetString() : null;
         }
         return ids;
     }
 
-    /// <summary>The invoice PDFs attached to a mail (attachments named "Rechnung_PN….pdf"; nothing else is downloaded).</summary>
-    private async Task<List<byte[]>> InvoicePdfsAsync(string userId, string messageId, CancellationToken ct)
+    /// <summary>
+    /// The receipt PDFs attached to a mail (invoices "Rechnung_PN….pdf" and eBons "REWE-eBon.pdf"; nothing else is
+    /// downloaded), each with whether it is an eBon.
+    /// </summary>
+    private async Task<List<(byte[] Content, bool Ebon)>> InvoicePdfsAsync(string userId, string messageId, CancellationToken ct)
     {
         var baseUrl = $"{_graph.GraphBase}/me/messages/{Uri.EscapeDataString(messageId)}/attachments";
-        var list = new List<(string Id, long? Size)>();
+        var list = new List<(string Id, long? Size, bool Ebon)>();
         using (var response = await _graph.GraphRequestAsync(userId, () => new HttpRequestMessage(HttpMethod.Get, baseUrl + "?$select=id,name,size"), ct))
         {
             Ensure(response);
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
             if (doc.RootElement.TryGetProperty("value", out var values))
                 foreach (var a in values.EnumerateArray())
-                    if (Str(a, "id") is { } id && ReweInvoice.IsInvoiceAttachment(Str(a, "name")))
-                        list.Add((id, a.TryGetProperty("size", out var s) && s.TryGetInt64(out var size) ? size : null));
+                    if (Str(a, "id") is { } id && Str(a, "name") is var name && (ReweInvoice.IsInvoiceAttachment(name) || ReweEbon.IsEbonAttachment(name)))
+                        list.Add((id, a.TryGetProperty("size", out var s) && s.TryGetInt64(out var size) ? size : null, ReweEbon.IsEbonAttachment(name)));
         }
-        var pdfs = new List<byte[]>();
-        foreach (var (id, size) in list)
+        var pdfs = new List<(byte[], bool)>();
+        foreach (var (id, size, ebon) in list)
         {
             if (size > _options.MaxAttachmentBytes) continue;
             var url = $"{baseUrl}/{Uri.EscapeDataString(id)}/$value";
             using var response = await _graph.GraphRequestAsync(userId, () => new HttpRequestMessage(HttpMethod.Get, url), ct);
             Ensure(response);
             var bytes = await response.Content.ReadAsByteArrayAsync(ct);
-            if (bytes.Length <= _options.MaxAttachmentBytes) pdfs.Add(bytes);
+            if (bytes.Length <= _options.MaxAttachmentBytes) pdfs.Add((bytes, ebon));
         }
         return pdfs;
     }

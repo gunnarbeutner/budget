@@ -38,6 +38,9 @@ public static partial class ReceiptCategorizer
         "slipeinlage", "handcreme", "bodylotion", "sonnencreme", "lippenpflege", "pflaster", "glühbirne", "leuchtmittel",
         "gefrierbeutel", "backpapier", "alufolie", "frischhaltefolie", "entkalker", "geschirr", "tabs", "katzenstreu",
         "grillanzünder", "streichhölzer", "feuerzeug",
+        // Till receipts abbreviate: "ZAHNP.", "SPUELM.", "TOIL.PAP", "KUECHENR", "WASCHM", "DUSCHG", "TRCK.-SH".
+        "zahnp", "spuelm", "spülm", "toil.pap", "toilettenp", "kuechenr", "küchenr", "waschm", "duschg", "shamp", "weichsp",
+        "allzweckr", "wc-rein", "trck.-sh", "taschent", "muellb", "müllb", "spuel", "rasierkl",
     ];
 
     [GeneratedRegex(@"\b(ca\.?\s*)?\d+([.,]\d+)?\s*(x\s*\d+([.,]\d+)?\s*)?(g|kg|mg|ml|cl|l|st|stk|stück|er|m|cm|w)\b", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture, 1000)]

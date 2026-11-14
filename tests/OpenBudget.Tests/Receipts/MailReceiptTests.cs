@@ -186,4 +186,19 @@ public sealed class MailReceiptTests
         // The receipts page lists both.
         Assert.Equal(2, (await alice.ListAsync()).Count(r => r.State == ReceiptMatchState.Matched && r.Split));
     }
+
+    [Fact]
+    public async Task Reads_ebon_mails_too()
+    {
+        await using var x = await World.CreateAsync();
+        await x.GrantMailAsync();
+        x.W.Fake.AddMail(new("e1", "Dein REWE eBon vom 03.11.2026", new DateTime(2026, 11, 9, 18, 0, 0, DateTimeKind.Utc),
+            [("e1-pdf", "REWE-eBon.pdf", ReweEbonTests.Pdf()), ("e1-ad", "Angebote.pdf", [1, 2])]));
+
+        Assert.Equal(new MailCheckResult(1, 1, 0, null), await x.Sync.CheckNowAsync(Alice));
+        Assert.Equal(1, x.W.Fake.AttachmentDownloads);
+        await using var db = await x.W.T.System.CreateDbContextAsync();
+        var receipt = await db.ReceiptInvoices.SingleAsync();
+        Assert.Equal((ReceiptShops.ReweEbon, 1800L, "REWE Beispielweg 9, 12345 Musterstadt"), (receipt.Shop, receipt.PaymentCents, receipt.Store));
+    }
 }

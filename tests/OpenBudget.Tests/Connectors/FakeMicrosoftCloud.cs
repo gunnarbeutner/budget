@@ -250,10 +250,11 @@ internal sealed class FakeMicrosoftCloud : HttpMessageHandler
         {
             var filter = QueryHelpers.ParseQuery(uri.Query)["$filter"].ToString();
             var since = System.Text.RegularExpressions.Regex.Match(filter, @"receivedDateTime ge (?<v>\S+)", System.Text.RegularExpressions.RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
-            var prefix = System.Text.RegularExpressions.Regex.Match(filter, @"startswith\(subject,'(?<v>[^']*)'\)", System.Text.RegularExpressions.RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1));
+            var prefixes = System.Text.RegularExpressions.Regex.Matches(filter, @"startswith\(subject,'(?<v>[^']*)'\)", System.Text.RegularExpressions.RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(1))
+                .Select(p => p.Groups["v"].Value).ToList();
             var from = since.Success ? DateTime.Parse(since.Groups["v"].Value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal) : DateTime.MinValue;
             var hits = _mails.Where(m => m.Received >= from && m.Attachments.Count > 0
-                && (!prefix.Success || m.Subject.StartsWith(prefix.Groups["v"].Value, StringComparison.Ordinal))).ToList();
+                && (prefixes.Count == 0 || prefixes.Any(p => m.Subject.StartsWith(p, StringComparison.Ordinal)))).ToList();
             return Json(HttpStatusCode.OK, new { value = hits.Select(m => new { id = m.Id, subject = m.Subject, receivedDateTime = m.Received.ToString("o", System.Globalization.CultureInfo.InvariantCulture) }).ToList() });
         }
         var mail = _mails.Find(m => m.Id == parts[2]);
