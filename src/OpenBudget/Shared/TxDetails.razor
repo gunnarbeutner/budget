@@ -138,12 +138,22 @@
     else if (panel == Panel.Offset)
     {
         <div class="tx-details-offset" data-testid="tx-details-offset-targets">
-            @foreach (var target in OffsetTargets)
+            @* A few targets are one click each; more get the searchable account picker. *@
+            @if (OffsetTargets.Count > MaxOffsetButtons)
             {
-                var accountId = target.AccountId;
-                <button type="button" class="ob-btn" data-testid="@("tx-details-offset-" + accountId)" @onclick="() => OffsetAsync(accountId)">
-                    <i class="bi @target.Icon" aria-hidden="true"></i> @target.Name
-                </button>
+                <AccountPicker data-testid="tx-details-offset-picker" AllowNone="false" AriaLabel="@L["Action_Offset"]" NoneLabel="@L["Offset_Choose"]"
+                               Options="@(OffsetTargets.Select(t => new AccountPicker.Option(t.AccountId, t.Name, null, null, t.Icon, false, false)).ToList())"
+                               OnPick="id => id is { } a ? OffsetAsync(a) : Task.CompletedTask" />
+            }
+            else
+            {
+                @foreach (var target in OffsetTargets)
+                {
+                    var accountId = target.AccountId;
+                    <button type="button" class="ob-btn" data-testid="@("tx-details-offset-" + accountId)" @onclick="() => OffsetAsync(accountId)">
+                        <i class="bi @target.Icon" aria-hidden="true"></i> @target.Name
+                    </button>
+                }
             }
         </div>
     }
@@ -212,6 +222,8 @@
     [Parameter] public bool ShowCategory { get; set; } = true;
 
     private enum Panel { None, Split, Offset }
+
+    private const int MaxOffsetButtons = 4;
     private Panel panel;
     private string? error;
     private long shownRowId;

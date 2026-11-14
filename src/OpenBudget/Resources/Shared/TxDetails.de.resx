@@ -154,4 +154,7 @@
   <data name="Action_PickCategory" xml:space="preserve">
     <value>Kategorie wählen</value>
   </data>
+  <data name="Offset_Choose" xml:space="preserve">
+    <value>Konto wählen…</value>
+  </data>
 </root>
