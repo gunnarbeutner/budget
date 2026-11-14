@@ -99,12 +99,13 @@ public sealed class KeptBrowserTests
     public async Task A_kept_browser_in_use_stays_open_past_its_idle_limit()
     {
         var host = new FakeBrowserHost { User = SignsIn };
-        await using var session = await Service(host, TimeSpan.FromMilliseconds(300)).StartAsync(BankWorld.Alice, Spec(), [], CancellationToken.None);
+        await using var session = await Service(host, TimeSpan.FromSeconds(2)).StartAsync(BankWorld.Alice, Spec(), [], CancellationToken.None);
         await session.Completion.WaitAsync(TimeSpan.FromSeconds(5));
         var kept = session.TakeBrowser()!;
-        for (var i = 0; i < 10; i++)
+        // Requests half a second apart for longer than the idle limit.
+        for (var i = 0; i < 6; i++)
         {
-            await Task.Delay(100);
+            await Task.Delay(500);
             await kept.SendAsync(new BrowserFetchRequest("GET", new Uri("https://bank.test/data")), CancellationToken.None);
         }
         Assert.True(kept.IsOpen);
