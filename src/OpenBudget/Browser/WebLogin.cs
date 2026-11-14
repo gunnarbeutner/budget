@@ -22,6 +22,13 @@ public sealed class WebLoginOptions
     /// <summary>When the sign-in form is still (or again) there this long after submitting, the user is shown the page (wrong password, CAPTCHA, ...).</summary>
     public TimeSpan StuckAfter { get; set; } = TimeSpan.FromSeconds(8);
 
+    /// <summary>
+    /// How long a sign-in whose security check the app answers itself (<see cref="WebLoginSession.AnswersCheckItself"/>) may stay
+    /// without success after the form was submitted before the page is shown (or, unattended, the login ends): a page
+    /// the app does not recognise (a captcha, say) needs someone to look at it.
+    /// </summary>
+    public TimeSpan HiddenStuckAfter { get; set; } = TimeSpan.FromSeconds(60);
+
     /// <summary>How long the code page is left alone after a typed code was submitted, before it counts as asking again.</summary>
     public TimeSpan CodeSettle { get; set; } = TimeSpan.FromSeconds(2);
 
@@ -518,6 +525,15 @@ public sealed class WebLoginSession : IAsyncDisposable
                 _shownBecauseStuck = true;
                 SetMode(WebLoginMode.Interactive);
             }
+            // a wait the app answers itself is hidden from the owner entirely, so one that makes no progress is shown
+            if (Mode != WebLoginMode.Interactive && AnswersCheckItself && !_approvalWait && _submittedAt is { } since && DateTime.UtcNow - since > _options.HiddenStuckAfter
+                && !_spec.UrlMatches(url))
+            {
+                _logger.LogInformation("Web login: no progress {Seconds} s after submitting on {Path}; showing the page.",
+                    (int)_options.HiddenStuckAfter.TotalSeconds, SafePath(url));
+                _shownBecauseStuck = true;
+                SetMode(WebLoginMode.Interactive);
+            }
             if (_spec.WaitingScript is { } waiting && (_submittedAt != null || Mode == WebLoginMode.Interactive)
                 && await RunWaitingScriptAsync(waiting, url) is { } ended)
                 return ended;
@@ -541,6 +557,9 @@ public sealed class WebLoginSession : IAsyncDisposable
     }
 
     private bool _codePromptDisabled;
+
+    // the page says the bank waits for an approval elsewhere (its app); such waits are not "stuck"
+    private bool _approvalWait;
     private DateTime? _codeSubmittedAt;
 
     // codes entered from the stored TOTP secret; once they were rejected the shared prompt takes over
@@ -677,6 +696,7 @@ public sealed class WebLoginSession : IAsyncDisposable
         var r = await _browser.CheckAsync(script, _spec.WaitingArgument);
         if (r.Ok && r.Reason.StartsWith("waiting:", StringComparison.Ordinal))
         {
+            _approvalWait = true;
             // the bank waits for a confirmation elsewhere (an app): nothing to do on the page, so it is hidden
             if (Mode == WebLoginMode.Interactive)
             {

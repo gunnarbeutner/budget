@@ -131,6 +131,33 @@ public sealed class UnattendedWebLoginTests
     }
 
     [Fact]
+    public async Task An_attended_sign_in_the_app_answers_itself_shows_a_page_that_makes_no_progress()
+    {
+        // After submitting, the bank stays on its sign-in page with a check the app does not recognise (a captcha).
+        var host = new FakeBrowserHost
+        {
+            User = SignInPage(p =>
+            {
+                lock (p.Visible) p.Visible.Clear();
+                p.OnCheck = _ => new WebLoginCheck(true, "");
+            }),
+        };
+        var service = new WebLoginService(host, new WebLoginOptions
+        {
+            PollInterval = TimeSpan.FromMilliseconds(10),
+            SettleDelay = TimeSpan.Zero,
+            FormTimeout = TimeSpan.FromMilliseconds(300),
+            HiddenStuckAfter = TimeSpan.FromMilliseconds(300),
+        }, TimeProvider.System, NullLoggerFactory.Instance);
+        await using var session = await service.StartAsync("user", Spec(totp: true), [], CancellationToken.None);
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (session.Mode != WebLoginMode.Interactive && DateTime.UtcNow < deadline) await Task.Delay(20);
+        Assert.Equal(WebLoginMode.Interactive, session.Mode);
+        Assert.Equal(["#go"], host.Sessions.Single().Clicked);
+    }
+
+    [Fact]
     public async Task A_rejected_password_is_reported_as_rejected_credentials()
     {
         var host = new FakeBrowserHost

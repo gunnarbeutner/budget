@@ -171,7 +171,7 @@ public sealed class PayPalConnector : IBankConnector, ISyncHistoryConsumer
             Totp = TotpSecret.TryParse(credentials?.ExtraValue(TotpKey), out var totp) ? totp : null,
             ChooseAuthenticator = AuthenticatorChoiceSelectors,
         },
-        WaitingScript = "() => ({ ok: !location.pathname.startsWith('/authflow/'), reason: 'Complete the security check on the PayPal page.' })",
+        WaitingScript = "() => location.pathname.startsWith('/authflow/') ? { ok: false, reason: 'Complete the security check on the PayPal page.' } : { ok: true, reason: '' }",
         Dismiss = DismissSelectors,
         CredentialsError = new WebLoginError(CredentialsErrorSelector, CredentialsErrorTexts, CredentialsRejectedMessage),
         ObservedRequests = ["/signin", "geo.ddc.paypal.com", "ct.ddc.paypal.com"],
