@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenBudget.Assist;
+using OpenBudget.Models;
 using OpenBudget.Services;
 using Xunit;
 
@@ -83,6 +84,40 @@ public sealed partial class BudgetSuggestionTests
         Assert.True(row.Flagged);
         Assert.Equal(("trend", "Steigt."), (row.Basis, row.Explanation));
         Assert.Equal(("refund", "Rückgabe", true), (row.Outliers[0].Kind, row.Outliers[0].Note, row.Outliers[0].Excluded));
+    }
+
+    [Fact]
+    public void The_request_carries_monthly_history_and_redacted_payee_summaries()
+    {
+        long id = 0;
+        Transaction Tx(DateTime date, long cents, string name) => new()
+        {
+            Id = ++id,
+            OwnerUserId = TestDb.DefaultOwner,
+            CategoryId = Leaf,
+            Amount = cents,
+            Name = name,
+            Timestamp = ((DateTimeOffset)DateTime.SpecifyKind(date, DateTimeKind.Utc)).ToUnixTimeSeconds(),
+        };
+        var txs = Enumerable.Range(0, 24).Select(i => Tx(new DateTime(2024, 1, 10).AddMonths(i), -3000, "Example Marketplace")).ToList();
+        txs.Add(Tx(new DateTime(2025, 8, 12), -140000, "Example Marketplace"));
+        txs.Add(Tx(new DateTime(2024, 6, 1), -5000, "Erika Mustermann"));
+        txs.Add(Tx(new DateTime(2025, 6, 1), -5000, "Erika Mustermann"));
+        var bookings = txs.Select(t => new BaselineBooking(t.Id, DateOnly.FromDateTime(t.Date), -t.Amount / 100m, CategoryMatching.PayeeKey(t.Name))).ToList();
+        var baseline = BudgetBaselineMath.Compute(bookings, [], 2026, AsOf);
+        var redactor = new AssistRedactor(["Erika Mustermann"]);
+
+        var (request, _) = BudgetSuggestionService.BuildRequest(2026,
+            [(new BudgetSuggestionInput(Key, "Hobbies", false), baseline, txs.ToDictionary(t => t.Id))], redactor);
+
+        var content = request.UserContent;
+        Assert.Contains("\"monthly_history\":{\"2024-01\":30,", content, StringComparison.Ordinal);
+        Assert.Contains("\"2025-08\":1430", content, StringComparison.Ordinal);
+        Assert.Contains("\"n\":25", content, StringComparison.Ordinal);
+        Assert.Contains("\"months\":\"2024-06, 2025-06\"", content, StringComparison.Ordinal);
+        Assert.Contains("payee has 24 other bookings", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("Mustermann", content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("PERSON_A", content, StringComparison.Ordinal);
     }
 
     [GeneratedRegex("\"tx\":\"(?<tx>t\\d+)\"", RegexOptions.ExplicitCapture)]

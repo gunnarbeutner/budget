@@ -32,6 +32,11 @@ public sealed class BudgetSuggestionService
 {
     public const double FlagDeviation = 0.3;
     public const string SchemaName = "budget_suggestions";
+    /// <summary>Payees listed per category; the rest go into one "other payees" line.</summary>
+    public const int MaxPayees = 15;
+    /// <summary>A payee booked in more months than this gets a month count instead of the list of months.</summary>
+    public const int MaxListedMonths = 12;
+    public const string ClampedNote = "Erstattungen hätten einzelne Monate negativ gemacht; diese Monate stehen auf 0.";
 
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly CategoryHierarchyService _hierarchy;
@@ -101,7 +106,7 @@ public sealed class BudgetSuggestionService
         var result = computed.Select(c => new BudgetSuggestionRow(
             c.Input.Key, c.Input.Name, c.Input.IsIncome, c.Baseline.Monthly, (decimal[])c.Baseline.Monthly.Clone(), c.Baseline.Basis,
             c.Baseline.Outliers.Select(o => new BudgetOutlier(o.Id, o.Date, o.Amount, c.Rows[o.Id].Name, "one_off", null, true)).ToList(),
-            null, false, c.Baseline.MonthsOfData)).ToList();
+            c.Baseline.Clamped ? ClampedNote : null, false, c.Baseline.MonthsOfData)).ToList();
 
         string? aiError = null;
         var aiUsed = false;
@@ -154,6 +159,9 @@ public sealed class BudgetSuggestionService
                 ["trend"] = baseline.Trend,
                 ["basis"] = baseline.Basis,
                 ["baseline_monthly"] = new JsonArray(baseline.Monthly.Select(m => (JsonNode)JsonValue.Create(m)).ToArray()),
+                ["refunds_clamped"] = baseline.Clamped,
+                ["monthly_history"] = History(baseline),
+                ["payees"] = Payees(baseline, redactor),
                 ["recurring"] = new JsonArray(baseline.Recurring.Select(r => (JsonNode)new JsonObject
                 {
                     ["payee"] = redactor.CleanText(r.PayeeKey, [], 60),
@@ -161,21 +169,76 @@ public sealed class BudgetSuggestionService
                     ["amount"] = r.Amount,
                 }).ToArray()),
                 ["outliers"] = new JsonArray(baseline.Outliers.Select(o =>
-                    JsonSerializer.SerializeToNode(redactor.Redact(AssistSettingsService.ToSource(txRows[o.Id], null)), CategoryPrompt.Json)).ToArray()),
+                    JsonSerializer.SerializeToNode(redactor.Redact(AssistSettingsService.ToSource(txRows[o.Id], null) with
+                    {
+                        Recurrence = baseline.OutlierNotes.GetValueOrDefault(o.Id),
+                    }), CategoryPrompt.Json)).ToArray()),
             });
         }
         var system = $"""
             You help a German household plan a yearly budget ({year.ToString(CultureInfo.InvariantCulture)}) per category.
-            For each category you get a statistical baseline (12 months, in EUR, positive = expected spending or for income
-            categories expected income), how it was computed, recurring payments and unusual single bookings (outliers) of
-            the last years. Classify every outlier: one_off (will not repeat), recurring (will happen again in the same
-            month) or refund (money back). Return 12 monthly amounts: start from the baseline and only change it with a
-            reason (recurring outliers, an obvious trend). basis: one of median, seasonal, recurring, trend, none.
-            explanation: one or two short sentences in German for the household, no amounts of single bookings.
+            For each category you get (amounts in EUR, positive = spending, or income for income categories):
+            - baseline_monthly: a statistical proposal for the 12 months, computed as described by basis; months that
+              refunds would have made negative are set to 0 (refunds_clamped).
+            - monthly_history: the category's actual total per month ("YYYY-MM"), oldest first, all bookings included.
+            - payees: per payee the number of bookings (n), total, min/typical (median)/max amount, the months it was
+              booked in (or months_count when booked in many months), first and last date; the largest payees only,
+              the rest summed up as "other payees".
+            - recurring: payments detected as repeating (every_months, amount).
+            - outliers: unusual single bookings; recurrence says whether it was the payee's only booking or far above
+              that payee's usual amount.
+            Classify every outlier: one_off (will not repeat), recurring (will happen again in the same month) or refund
+            (money back). Return 12 non-negative monthly amounts. Start from the baseline but check it against
+            monthly_history and payees and correct it where they show a reason:
+            - a payee booked once a year (or every quarter / half year) in the same month belongs in that month at
+              about its latest amount, not spread over the year; add it if the baseline misses it;
+            - a large one-off purchase hidden in a payee that is otherwise small and regular (for example a shop or
+              marketplace) should not inflate the months; take it out unless it clearly repeats;
+            - a monthly contract (phone, transport ticket, subscription) should show up every month at its latest amount;
+            - an obvious trend in the last 12 months versus before.
+            Do not merely repeat the baseline when the data shows such a case. basis: one of median, seasonal, recurring,
+            trend, none. explanation: one or two short sentences in German for the household saying what you changed and
+            why, no amounts of single bookings.
             Tokens like PERSON_A stand for household members, ACC_1 for an account, # for removed digits.
             """;
         return (new AssistRequest(SchemaName, Schema(), system, "Categories:\n" + items.ToJsonString(CategoryPrompt.Json)), handles);
     }
+
+    private static JsonObject History(BudgetBaseline baseline)
+    {
+        var history = new JsonObject();
+        for (var i = 0; i < baseline.History.Length; i++)
+            history[MonthLabel(baseline.HistoryStart.AddMonths(i))] = baseline.History[i];
+        return history;
+    }
+
+    private static JsonArray Payees(BudgetBaseline baseline, AssistRedactor redactor)
+    {
+        var list = new JsonArray();
+        foreach (var p in baseline.Payees.Take(MaxPayees))
+        {
+            var o = new JsonObject
+            {
+                ["payee"] = redactor.CleanText(p.PayeeKey, [], 60),
+                ["n"] = p.Count,
+                ["total"] = p.Total,
+                ["min"] = p.Min,
+                ["typical"] = p.Typical,
+                ["max"] = p.Max,
+            };
+            if (p.Months.Count > MaxListedMonths) o["months_count"] = p.Months.Count;
+            else o["months"] = string.Join(", ", p.Months.Select(MonthLabel));
+            o["first"] = p.First.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            o["last"] = p.Last.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            list.Add(o);
+        }
+        var rest = baseline.Payees.Skip(MaxPayees).ToList();
+        if (rest.Count > 0)
+            list.Add(new JsonObject { ["payee"] = "other payees", ["payees"] = rest.Count, ["n"] = rest.Sum(p => p.Count), ["total"] = rest.Sum(p => p.Total) });
+        return list;
+    }
+
+    private static string MonthLabel(DateOnly d) => d.ToString("yyyy-MM", CultureInfo.InvariantCulture);
 
     /// <summary>Applies the model's answer onto the baseline rows (see the class summary for what is checked).</summary>
     public static List<BudgetSuggestionRow> Merge(AssistResponse response, AssistRedactor redactor, IReadOnlyDictionary<string, int> handles, List<BudgetSuggestionRow> rows)
