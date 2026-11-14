@@ -19,6 +19,15 @@ public sealed record RecurringSeries(string PayeeKey, int IntervalMonths, decima
 public sealed record PayeeSummary(
     string PayeeKey, int Count, decimal Total, decimal Min, decimal Typical, decimal Max, IReadOnlyList<DateOnly> Months, DateOnly First, DateOnly Last);
 
+/// <summary>A category's total over a period: all bookings, and without the bookings the baseline treats as outliers.</summary>
+public sealed record PeriodTotal(int Months, decimal Total, decimal WithoutOutliers);
+
+/// <summary>
+/// A category's totals: each full calendar year inside the window, the current year up to the cut-off
+/// (<see cref="CurrentYear"/>, null when the cut-off is a 1 January) and the 12 months before the cut-off.
+/// </summary>
+public sealed record YearTotals(IReadOnlyList<(int Year, PeriodTotal Total)> FullYears, int Year, PeriodTotal? CurrentYear, PeriodTotal Trailing12);
+
 /// <summary>
 /// The deterministic budget proposal for one category. <see cref="History"/> holds the category's monthly totals
 /// (all bookings) from <see cref="HistoryStart"/> up to the cut-off, oldest first; <see cref="Payees"/> the per-payee
@@ -34,6 +43,7 @@ public sealed record BudgetBaseline(
     public IReadOnlyList<PayeeSummary> Payees { get; init; } = [];
     public IReadOnlyDictionary<long, string> OutlierNotes { get; init; } = new Dictionary<long, string>();
     public bool Clamped { get; init; }
+    public YearTotals? Totals { get; init; }
 }
 
 /// <summary>
@@ -208,7 +218,28 @@ public static class BudgetBaselineMath
             Payees = SummarisePayees(bookings),
             OutlierNotes = notes,
             Clamped = clamped,
+            Totals = Totals(bookings, outlierIds, asOf),
         };
+    }
+
+    /// <summary>
+    /// The totals of the bookings in the 36 months before <paramref name="asOf"/>: per full calendar year inside that
+    /// window, the year of <paramref name="asOf"/> up to it, and the last 12 months; each also without
+    /// <paramref name="outlierIds"/>.
+    /// </summary>
+    public static YearTotals Totals(IReadOnlyList<BaselineBooking> bookings, IReadOnlySet<long> outlierIds, DateOnly asOf)
+    {
+        var endIndex = MonthIndex(asOf);
+        var startIndex = endIndex - 36;
+        PeriodTotal Sum(int from, int to)
+        {
+            var inRange = bookings.Where(b => MonthIndex(b.Date) >= Math.Max(from, startIndex) && MonthIndex(b.Date) < Math.Min(to, endIndex)).ToList();
+            return new PeriodTotal(to - from, inRange.Sum(b => b.Amount), inRange.Where(b => !outlierIds.Contains(b.Id)).Sum(b => b.Amount));
+        }
+        var years = new List<(int, PeriodTotal)>();
+        for (var y = (startIndex + 11) / 12; (y * 12) + 12 <= endIndex; y++) years.Add((y, Sum(y * 12, (y * 12) + 12)));
+        var yearStart = asOf.Year * 12;
+        return new YearTotals(years, asOf.Year, endIndex > yearStart ? Sum(yearStart, endIndex) : null, Sum(endIndex - 12, endIndex));
     }
 
     /// <summary>Per-payee summaries of the bookings (bookings without a payee are left out), largest total first.</summary>

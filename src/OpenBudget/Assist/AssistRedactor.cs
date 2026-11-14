@@ -39,6 +39,8 @@ public sealed partial class AssistRedactor
     private readonly Dictionary<string, string> _creditors = new(StringComparer.Ordinal);
     private readonly Dictionary<long, string> _ids = new();
     private readonly Dictionary<string, long> _back = new(StringComparer.Ordinal);
+    private readonly Dictionary<long, string> _own = new();
+    private readonly Dictionary<string, long> _ownBack = new(StringComparer.Ordinal);
 
     /// <summary>Creates a redactor for one request.</summary>
     /// <param name="personNames">The users' own names (display and user names); each person gets one token.</param>
@@ -71,6 +73,25 @@ public sealed partial class AssistRedactor
 
     /// <summary>The booking id behind a pseudonym of this request, or null for an unknown one.</summary>
     public long? Resolve(string? pseudonym) => pseudonym != null && _back.TryGetValue(pseudonym, out var id) ? id : null;
+
+    /// <summary>Gives the household's own accounts their tokens ("OWN_1", …) in account id order, as
+    /// <see cref="CategoryEvidence"/> does for a project's accounts.</summary>
+    public void SetOwnAccounts(IEnumerable<long> accountIds)
+    {
+        foreach (var id in accountIds.Distinct().Order())
+        {
+            if (_own.ContainsKey(id)) continue;
+            var token = "OWN_" + (_own.Count + 1).ToString(CultureInfo.InvariantCulture);
+            _own[id] = token;
+            _ownBack[token] = id;
+        }
+    }
+
+    /// <summary>The token of an own account given to <see cref="SetOwnAccounts"/>, or null.</summary>
+    public string? OwnAccountToken(long? accountId) => accountId is { } id && _own.TryGetValue(id, out var t) ? t : null;
+
+    /// <summary>The own account behind a token of this request, or null.</summary>
+    public long? ResolveOwnAccount(string? token) => token != null && _ownBack.TryGetValue(token.Trim(), out var id) ? id : null;
 
     public string AccountToken(string iban)
     {

@@ -22,11 +22,17 @@ public sealed record BudgetSuggestionRow(
 
 public sealed record BudgetSuggestionResult(IReadOnlyList<BudgetSuggestionRow> Rows, string? AiError, bool AiUsed);
 
+/// <summary>What a tool-calling run took: requests sent, tool calls per name, tokens and time.</summary>
+public sealed record BudgetToolRun(AssistResponse Final, int Rounds, IReadOnlyDictionary<string, int> ToolCalls, int InputTokens, int OutputTokens, TimeSpan Elapsed);
+
 /// <summary>
 /// "Suggest budget": a deterministic baseline per row (<see cref="BudgetBaselineMath"/>) that works without AI. With
 /// AI on (configured and opted in by the user and the data's owner), the model classifies the outliers (one-off,
 /// recurring, refund), may adjust the months and writes a short explanation per row; the server keeps the AI's
-/// months only when there are 12 non-negative ones and flags a year total more than 30 % off the baseline.
+/// months only when there are 12 non-negative ones and flags a year total more than 30 % off the baseline. The model
+/// gets per category the baseline, history, year totals and payees, once per request a household context
+/// (<see cref="BudgetSuggestionContext"/>), and may call read-only tools (<see cref="BudgetSuggestionTools"/>) for up
+/// to <see cref="MaxToolRounds"/> rounds or <see cref="ToolTimeBudget"/>, after which it must answer without them.
 /// </summary>
 public sealed class BudgetSuggestionService
 {
@@ -36,6 +42,14 @@ public sealed class BudgetSuggestionService
     public const int MaxPayees = 15;
     /// <summary>A payee booked in more months than this gets a month count instead of the list of months.</summary>
     public const int MaxListedMonths = 12;
+    /// <summary>Requests in which the model may call tools; the next one asks for the answer without tools.</summary>
+    public const int MaxToolRounds = 8;
+    /// <summary>Tool calls answered per run; later ones get an error.</summary>
+    public const int MaxToolCalls = 40;
+    /// <summary>After this the model is asked for its answer without tools.</summary>
+    public static readonly TimeSpan ToolTimeBudget = TimeSpan.FromMinutes(4);
+    /// <summary>The whole AI run is cancelled after this.</summary>
+    public static readonly TimeSpan RunTimeout = TimeSpan.FromMinutes(7);
     public const string ClampedNote = "Erstattungen hätten einzelne Monate negativ gemacht; diese Monate stehen auf 0.";
 
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
@@ -84,11 +98,11 @@ public sealed class BudgetSuggestionService
             .Where(t => t.CategoryId.HasValue && allLeaves.Contains(t.CategoryId.Value))
             .WithinUtc(range)
             .ToListAsync(ct);
-        var schedules = await db.ScheduledPayments.AsNoTracking()
-            .Where(p => p.OwnerUserId == ownerId && p.Kind == ScheduledPaymentKind.Standing && p.IntervalUnit == ScheduleUnit.Month)
-            .ToListAsync(ct);
+        var allSchedules = await db.ScheduledPayments.AsNoTracking().Where(p => p.OwnerUserId == ownerId).ToListAsync(ct);
+        var schedules = allSchedules.Where(p => p.Kind == ScheduledPaymentKind.Standing && p.IntervalUnit == ScheduleUnit.Month).ToList();
 
         var computed = new List<(BudgetSuggestionInput Input, BudgetBaseline Baseline, Dictionary<long, Transaction> Rows)>();
+        var allBookings = new List<IReadOnlyList<BaselineBooking>>();
         foreach (var row in rows)
         {
             var leafIds = leaves.GetValueOrDefault(row.Key) ?? [];
@@ -101,6 +115,7 @@ public sealed class BudgetSuggestionService
                 .Where(s => payees.Contains(s.PayeeKey))
                 .ToList();
             computed.Add((row, BudgetBaselineMath.Compute(bookings, rowSchedules, year, end), own.ToDictionary(t => t.Id)));
+            allBookings.Add(bookings);
         }
 
         var result = computed.Select(c => new BudgetSuggestionRow(
@@ -114,7 +129,8 @@ public sealed class BudgetSuggestionService
         {
             try
             {
-                result = await AskAiAsync(year, computed, result, ct);
+                var household = await LoadHouseholdAsync(db, projectId, ownerId, start, end, allSchedules, ct);
+                result = await AskAiAsync(year, computed, allBookings, household, start, end, result, ct);
                 aiUsed = true;
             }
             catch (AssistException ex)
@@ -126,21 +142,112 @@ public sealed class BudgetSuggestionService
         return new BudgetSuggestionResult(result, aiError, aiUsed);
     }
 
+    private sealed record Household(List<Account> Accounts, List<HouseholdAccount> DebtAccounts, List<ScheduledPayment> Schedules);
+
+    /// <summary>The project's accounts (as the owner's), their debt-like balances and the schedules on them.</summary>
+    private static async Task<Household> LoadHouseholdAsync(
+        BudgetDbContext db, int projectId, string ownerId, DateOnly start, DateOnly end, List<ScheduledPayment> schedules, CancellationToken ct)
+    {
+        var accounts = await db.Accounts.AsNoTracking()
+            .Where(a => a.OwnerUserId == ownerId && db.ProjectAccountAssignments.Any(p => p.ProjectId == projectId && p.AccountId == a.Id))
+            .ToListAsync(ct);
+        var candidates = accounts.Where(a => !a.Closed && a.Type is 1 or 3 or 4).Select(a => a.Id).ToList();
+        // Split parts are left out: their parent carries the booking's full amount on the account.
+        var rows = await db.Transactions.AsNoTracking()
+            .Where(t => t.OwnerUserId == ownerId && t.AccountId.HasValue && candidates.Contains(t.AccountId.Value) && t.Splitted != SplitState.Child)
+            .Select(t => new { AccountId = t.AccountId!.Value, t.Amount, t.Timestamp })
+            .ToListAsync(ct);
+        var bookings = rows.Select(r => (r.AccountId, r.Amount, DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeSeconds(r.Timestamp).UtcDateTime))).ToList();
+        var debt = BudgetSuggestionContext.Accounts(accounts, bookings, end, ((end.Year - start.Year) * 12) + end.Month - start.Month);
+        var ids = accounts.Select(a => a.Id).ToHashSet();
+        return new Household(accounts, debt, schedules.Where(s => ids.Contains(s.AccountId)).ToList());
+    }
+
     private async Task<List<BudgetSuggestionRow>> AskAiAsync(
         int year, List<(BudgetSuggestionInput Input, BudgetBaseline Baseline, Dictionary<long, Transaction> Rows)> computed,
+        List<IReadOnlyList<BaselineBooking>> bookings, Household household, DateOnly start, DateOnly end,
         List<BudgetSuggestionRow> rows, CancellationToken ct)
     {
         var redactor = new AssistRedactor(await _settings.PersonNamesAsync(ct));
-        var (request, handles) = BuildRequest(year, computed.Select(c => (c.Input, c.Baseline, (IReadOnlyDictionary<long, Transaction>)c.Rows)).ToList(), redactor);
-        var response = await _client.CompleteAsync(request, ct);
-        _log.LogInformation("AI budget suggestion for {Count} rows ({Input} input tokens, {Output} output, {Ms} ms)",
-            computed.Count, response.InputTokens, response.OutputTokens, (int)response.Elapsed.TotalMilliseconds);
-        return Merge(response, redactor, handles, rows);
+        redactor.SetOwnAccounts(household.Accounts.Select(a => a.Id));
+        var handleOf = Enumerable.Range(0, computed.Count).Select(i => CategoryPrompt.Handle(i + 1)).ToList();
+
+        // The category a payee's bookings mostly fall in, for the schedules.
+        var payeeCategory = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var g in bookings.SelectMany((list, i) => list.Select(b => (b.PayeeKey, Handle: handleOf[i]))).Where(x => x.PayeeKey.Length > 0).GroupBy(x => x.PayeeKey, StringComparer.Ordinal))
+            payeeCategory[g.Key] = g.GroupBy(x => x.Handle, StringComparer.Ordinal).OrderByDescending(h => h.Count()).ThenBy(h => h.Key, StringComparer.Ordinal).First().Key;
+        var scheduled = household.Schedules.Select(s => CategoryMatching.PayeeKey(s.CounterpartyName)).Where(k => k.Length > 0).ToHashSet(StringComparer.Ordinal);
+        var ended = BudgetSuggestionContext.EndedPayees(bookings.Select((list, i) => (handleOf[i], list)), scheduled, end);
+        var context = BudgetSuggestionContext.Build(household.DebtAccounts, household.Schedules, ended, k => payeeCategory.GetValueOrDefault(k), redactor);
+
+        var (request, handles) = BuildRequest(year, computed.Select(c => (c.Input, c.Baseline, (IReadOnlyDictionary<long, Transaction>)c.Rows)).ToList(), redactor, context);
+        var tools = new BudgetSuggestionTools(redactor,
+            computed.Select((c, i) => (Handle: handleOf[i], Rows: (IReadOnlyList<Transaction>)c.Rows.Values.ToList())).ToDictionary(x => x.Handle, x => x.Rows, StringComparer.Ordinal),
+            household.DebtAccounts, household.Accounts.ToDictionary(a => a.Id, a => a.KindLabel), start, end);
+        var run = await RunAsync(_client, request, tools, _clock, ct);
+        _log.LogInformation(
+            "AI budget suggestion for {Count} rows ({Rounds} rounds, tools {Tools}, {Input} input tokens, {Output} output, {Ms} ms)",
+            computed.Count, run.Rounds, run.ToolCalls.Count == 0 ? "none" : string.Join(", ", run.ToolCalls.Select(t => $"{t.Key}={t.Value}")),
+            run.InputTokens, run.OutputTokens, (int)run.Elapsed.TotalMilliseconds);
+        return Merge(run.Final, redactor, handles, rows);
+    }
+
+    /// <summary>
+    /// Sends the request with the tools and answers the model's tool calls until it gives its answer. After
+    /// <see cref="MaxToolRounds"/> requests with tools, or once <see cref="ToolTimeBudget"/> has passed, the next request
+    /// forbids tool calls; the whole run is cancelled after <see cref="RunTimeout"/>.
+    /// </summary>
+    public static async Task<BudgetToolRun> RunAsync(IAssistClient client, AssistRequest request, BudgetSuggestionTools tools, TimeProvider clock, CancellationToken ct)
+    {
+        var started = clock.GetTimestamp();
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budget.CancelAfter(RunTimeout);
+        var turns = new JsonArray();
+        int rounds = 0, inputTokens = 0, outputTokens = 0, answered = 0;
+        try
+        {
+            while (true)
+            {
+                var final = rounds >= MaxToolRounds || clock.GetElapsedTime(started) >= ToolTimeBudget;
+                var response = await client.CompleteAsync(request with
+                {
+                    Tools = BudgetSuggestionTools.Definitions,
+                    Turns = (JsonArray)turns.DeepClone(),
+                    ToolsDisabled = final,
+                }, budget.Token);
+                rounds++;
+                inputTokens += response.InputTokens;
+                outputTokens += response.OutputTokens;
+                if (final || response.ToolCalls.Count == 0)
+                    return new BudgetToolRun(response, rounds, tools.Calls, inputTokens, outputTokens, clock.GetElapsedTime(started));
+                if (response.OutputItems != null)
+                {
+                    foreach (var item in response.OutputItems) turns.Add(item?.DeepClone());
+                }
+                else
+                {
+                    foreach (var call in response.ToolCalls)
+                        turns.Add(new JsonObject { ["type"] = "function_call", ["call_id"] = call.CallId, ["name"] = call.Name, ["arguments"] = call.Arguments });
+                }
+                foreach (var call in response.ToolCalls)
+                {
+                    var output = ++answered > MaxToolCalls
+                        ? "{\"error\":\"tool call limit reached; answer with what you have\"}"
+                        : tools.Execute(call);
+                    turns.Add(new JsonObject { ["type"] = "function_call_output", ["call_id"] = call.CallId, ["output"] = output });
+                }
+            }
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new AssistException("The AI did not finish in time.");
+        }
     }
 
     /// <summary>The request for a set of rows (redacted) and which handle ("c1") stands for which row.</summary>
     public static (AssistRequest Request, Dictionary<string, int> Handles) BuildRequest(
-        int year, IReadOnlyList<(BudgetSuggestionInput Input, BudgetBaseline Baseline, IReadOnlyDictionary<long, Transaction> Rows)> computed, AssistRedactor redactor)
+        int year, IReadOnlyList<(BudgetSuggestionInput Input, BudgetBaseline Baseline, IReadOnlyDictionary<long, Transaction> Rows)> computed, AssistRedactor redactor,
+        JsonObject? context = null)
     {
         var handles = new Dictionary<string, int>(StringComparer.Ordinal);
         var items = new JsonArray();
@@ -160,6 +267,7 @@ public sealed class BudgetSuggestionService
                 ["basis"] = baseline.Basis,
                 ["baseline_monthly"] = new JsonArray(baseline.Monthly.Select(m => (JsonNode)JsonValue.Create(m)).ToArray()),
                 ["refunds_clamped"] = baseline.Clamped,
+                ["year_totals"] = Totals(baseline),
                 ["monthly_history"] = History(baseline),
                 ["payees"] = Payees(baseline, redactor),
                 ["recurring"] = new JsonArray(baseline.Recurring.Select(r => (JsonNode)new JsonObject
@@ -180,6 +288,9 @@ public sealed class BudgetSuggestionService
             For each category you get (amounts in EUR, positive = spending, or income for income categories):
             - baseline_monthly: a statistical proposal for the 12 months, computed as described by basis; months that
               refunds would have made negative are set to 0 (refunds_clamped).
+            - year_totals: computed totals per full calendar year, for the current year to date (months = how many
+              months it covers) and for the trailing 12 months, each with all bookings (total) and without the
+              outlier bookings (without_outliers). Use these instead of adding up monthly_history yourself.
             - monthly_history: the category's actual total per month ("YYYY-MM"), oldest first, all bookings included.
             - payees: per payee the number of bookings (n), total, min/typical (median)/max amount, the months it was
               booked in (or months_count when booked in many months), first and last date; the largest payees only,
@@ -187,21 +298,60 @@ public sealed class BudgetSuggestionService
             - recurring: payments detected as repeating (every_months, amount).
             - outliers: unusual single bookings; recurrence says whether it was the payee's only booking or far above
               that payee's usual amount.
+            The household context (once, before the categories) lists debt_accounts (loans, credit cards and checking
+            accounts below zero: current balance, zero_now and the last month-end balances), scheduled_payments the
+            bank holds (signed as booked, negative = money out; category_id when its payee's bookings mostly fall in
+            one of the categories) and ended_monthly_payees (booked monthly, then no booking for more than 2 months).
+            You may call tools to look at the bookings behind a category or payee, or at an account's balance history,
+            when the summaries leave a question open; do not call them for every category.
             Classify every outlier: one_off (will not repeat), recurring (will happen again in the same month) or refund
             (money back). Return 12 non-negative monthly amounts. Start from the baseline but check it against
-            monthly_history and payees and correct it where they show a reason:
+            year_totals, monthly_history and payees and correct it where they show a reason:
             - a payee booked once a year (or every quarter / half year) in the same month belongs in that month at
               about its latest amount, not spread over the year; add it if the baseline misses it;
+            - large spending that recurs every year in different bookings (trips, equipment for a hobby, larger
+              household purchases) is a reserve to plan, not a one-off: plan about the average yearly amount over the
+              available full years, leaving out only truly unique items, and place it in the months it usually happens,
+              or spread it evenly when there is no pattern;
             - a large one-off purchase hidden in a payee that is otherwise small and regular (for example a shop or
               marketplace) should not inflate the months; take it out unless it clearly repeats;
             - a monthly contract (phone, transport ticket, subscription) should show up every month at its latest amount;
-            - an obvious trend in the last 12 months versus before.
+              a monthly payee with no booking for more than 2 months has ended (see ended_monthly_payees): do not plan
+              it, unless a scheduled payment says it continues;
+            - a change is a trend only when it holds for at least 3 months and has a cause visible in the data (a new
+              or ended payee, a new contract amount); a jump in one or two months is not a trend, do not extrapolate it;
+              when the current year's run rate (current_year_to_date) differs from the last full year, weigh it by
+              how many months it covers;
+            - interest and fees that depend on a balance (overdraft or loan interest, credit-card fees) follow the
+              current balance of the accounts in debt_accounts: an account at zero now causes no interest going
+              forward.
             Do not merely repeat the baseline when the data shows such a case. basis: one of median, seasonal, recurring,
             trend, none. explanation: one or two short sentences in German for the household saying what you changed and
             why, no amounts of single bookings.
-            Tokens like PERSON_A stand for household members, ACC_1 for an account, # for removed digits.
+            Tokens like PERSON_A stand for household members, ACC_1 for a counterparty account, OWN_1 for an own account,
+            # for removed digits.
             """;
-        return (new AssistRequest(SchemaName, Schema(), system, "Categories:\n" + items.ToJsonString(CategoryPrompt.Json)), handles);
+        var user = (context == null ? "" : "Household context:\n" + context.ToJsonString(CategoryPrompt.Json) + "\n\n")
+            + "Categories:\n" + items.ToJsonString(CategoryPrompt.Json);
+        return (new AssistRequest(SchemaName, Schema(), system, user), handles);
+    }
+
+    private static JsonObject Totals(BudgetBaseline baseline)
+    {
+        static JsonObject Node(PeriodTotal p) => new() { ["months"] = p.Months, ["total"] = p.Total, ["without_outliers"] = p.WithoutOutliers };
+        var o = new JsonObject();
+        if (baseline.Totals is not { } totals) return o;
+        var years = new JsonObject();
+        foreach (var (y, total) in totals.FullYears) years[y.ToString(CultureInfo.InvariantCulture)] = Node(total);
+        o["full_years"] = years;
+        if (totals.CurrentYear is { } current)
+        {
+            var node = Node(current);
+            node["year"] = totals.Year;
+            o["current_year_to_date"] = node;
+        }
+        o["trailing_12_months"] = Node(totals.Trailing12);
+        return o;
     }
 
     private static JsonObject History(BudgetBaseline baseline)

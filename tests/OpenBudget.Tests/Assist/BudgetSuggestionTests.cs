@@ -120,6 +120,16 @@ public sealed partial class BudgetSuggestionTests
         Assert.Contains("PERSON_A", content, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void The_system_prompt_has_the_planning_rules()
+    {
+        var (request, _) = BudgetSuggestionService.BuildRequest(2026, [], new AssistRedactor([]));
+
+        foreach (var rule in new[] { "is a reserve to plan", "at least 3 months", "no booking for more than 2 months", "current balance", "instead of adding up monthly_history" })
+            Assert.Contains(rule, request.SystemPrompt, StringComparison.Ordinal);
+        Assert.StartsWith("Categories:", request.UserContent, StringComparison.Ordinal);
+    }
+
     [GeneratedRegex("\"tx\":\"(?<tx>t\\d+)\"", RegexOptions.ExplicitCapture)]
     private static partial Regex TxId();
 }
