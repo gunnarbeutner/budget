@@ -28,9 +28,9 @@ public sealed class AuthStateCurrentUser : ICurrentUser
         try
         {
             // signing in or out reloads the page, so the state cannot change while the circuit lives
-            #pragma warning disable BL0013
+#pragma warning disable BL0013
             var state = await _auth.GetAuthenticationStateAsync();
-            #pragma warning restore BL0013
+#pragma warning restore BL0013
             return state.User.Identity?.IsAuthenticated == true
                 ? state.User.FindFirstValue(ClaimTypes.NameIdentifier)
                 : null;
