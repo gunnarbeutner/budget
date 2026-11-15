@@ -142,4 +142,12 @@
   <data name="Rhythm_EveryMonths" xml:space="preserve">
     <value>Every {0} months</value>
   </data>
+  <data name="Show_Cancelled" xml:space="preserve"><value>Cancelled</value></data>
+  <data name="CancelledOn" xml:space="preserve"><value>Cancelled on {0}</value></data>
+  <data name="ChargedAfterCancel" xml:space="preserve"><value>Charged after cancellation on {0}: {1}</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Cancelled…</value></data>
+  <data name="Cancel_Date" xml:space="preserve"><value>Cancelled on</value></data>
+  <data name="Cancel_Save" xml:space="preserve"><value>Save</value></data>
+  <data name="Cancel_Close" xml:space="preserve"><value>Close</value></data>
+  <data name="UndoCancel" xml:space="preserve"><value>Undo cancellation</value></data>
 </root>

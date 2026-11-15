@@ -5,14 +5,23 @@ using OpenBudget.Models;
 
 namespace OpenBudget.Services;
 
-/// <summary>A detected series as the Recurring view shows it, with its account and category and whether the user dismissed it.</summary>
+/// <summary>
+/// A detected series as the Subscriptions tab shows it, with its account and category, whether the user dismissed it,
+/// the day the user cancelled it (null = not cancelled) and the charges booked after that day plus
+/// <see cref="RecurringPaymentService.CancellationGraceDays"/>.
+/// </summary>
 public sealed record RecurringEntry(
     RecurringSeries Series,
     string AccountName,
     string AccountIcon,
     string? AccountColor,
     string? CategoryName,
-    bool Dismissed);
+    bool Dismissed,
+    DateOnly? CancelledOn = null,
+    IReadOnlyList<RecurringBooking>? ChargedAfterCancellation = null)
+{
+    public bool Cancelled => CancelledOn != null;
+}
 
 /// <summary>
 /// The detected series per user, project and day, kept until data that feeds them changes (bookings, accounts, projects,
@@ -48,11 +57,15 @@ public sealed class RecurringPaymentCache : IDisposable
 /// <summary>
 /// Recurring charges of a project, detected from the bookings of its accounts (<see cref="RecurringPaymentDetector"/>):
 /// on an Exclusive account all of them, on a Shared account those in the project's categories and uncategorised ones. Reads through the
-/// user-scoped context, so only bookings the user may see count. Series the user dismissed are flagged
-/// (<see cref="RecurringEntry.Dismissed"/>) or, for Scheduled and Cashflow, left out (<see cref="ActiveAsync"/>).
+/// user-scoped context, so only bookings the user may see count. Series the user dismissed or cancelled are flagged
+/// (<see cref="RecurringEntry.Dismissed"/>, <see cref="RecurringEntry.CancelledOn"/>) or, for Scheduled and Cashflow,
+/// left out (<see cref="ActiveAsync"/>; a series cancelled for a later day is expected until that day).
 /// </summary>
 public class RecurringPaymentService
 {
+    /// <summary>Days after a cancellation in which a charge is still taken as one already in flight, not as a warning.</summary>
+    public const int CancellationGraceDays = 3;
+
     /// <summary>How far back bookings are read: enough for three yearly charges.</summary>
     public const int HistoryYears = 4;
 
@@ -76,13 +89,13 @@ public class RecurringPaymentService
         _origin = origin;
     }
 
-    /// <summary>All series of the project, most expensive per month first, with the dismissed ones flagged.</summary>
+    /// <summary>All series of the project, most expensive per month first, with the dismissed and cancelled ones flagged.</summary>
     public async Task<List<RecurringEntry>> GetAsync(int projectId, DateOnly today, CancellationToken ct = default)
     {
         var series = await DetectAsync(projectId, today, ct);
         if (series.Count == 0) return [];
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var dismissed = await DismissedKeysAsync(db, ct);
+        var marks = await MarksAsync(db, ct);
         var accountIds = series.Select(s => s.AccountId).Distinct().ToList();
         var accounts = await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id))
             .Select(a => new { a.Id, a.Name, a.Icon, a.Color, a.Type, a.Portfolio }).ToDictionaryAsync(a => a.Id, ct);
@@ -91,38 +104,83 @@ public class RecurringPaymentService
         return series.Where(s => accounts.ContainsKey(s.AccountId)).Select(s =>
         {
             var a = accounts[s.AccountId];
+            var hasMark = marks.TryGetValue(s.Key, out var cancelledOn);
             return new RecurringEntry(s, a.Name ?? "?", AccountIcons.ForAccount(a.Icon, a.Type, a.Portfolio == 1), a.Color,
-                s.CategoryId is { } c ? categories.GetValueOrDefault(c) : null, dismissed.Contains(s.Key));
+                s.CategoryId is { } c ? categories.GetValueOrDefault(c) : null, hasMark && cancelledOn == null, cancelledOn,
+                cancelledOn is { } on ? ChargedAfter(s, on) : []);
         }).ToList();
     }
 
-    /// <summary>The active series of the project the user has not dismissed, optionally only those on <paramref name="accountIds"/>.</summary>
+    /// <summary>The series' charges booked after <paramref name="cancelledOn"/> plus the grace days.</summary>
+    public static IReadOnlyList<RecurringBooking> ChargedAfter(RecurringSeries series, DateOnly cancelledOn) =>
+        series.Bookings.Where(b => b.Date > cancelledOn.AddDays(CancellationGraceDays)).OrderBy(b => b.Date).ToList();
+
+    /// <summary>
+    /// The active series of the project the user has neither dismissed nor cancelled, optionally only those on
+    /// <paramref name="accountIds"/>. A series cancelled for a day after <paramref name="today"/> stays, ending that day
+    /// (<see cref="RecurringSeries.EndsOn"/>).
+    /// </summary>
     public async Task<List<RecurringSeries>> ActiveAsync(int projectId, DateOnly today, IReadOnlyCollection<long>? accountIds = null, CancellationToken ct = default)
     {
         var series = await DetectAsync(projectId, today, ct);
         series = series.Where(s => s.Status == RecurringStatus.Active && (accountIds == null || accountIds.Contains(s.AccountId))).ToList();
         if (series.Count == 0) return series;
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var dismissed = await DismissedKeysAsync(db, ct);
-        return series.Where(s => !dismissed.Contains(s.Key)).ToList();
+        var marks = await MarksAsync(db, ct);
+        var result = new List<RecurringSeries>();
+        foreach (var s in series)
+        {
+            if (!marks.TryGetValue(s.Key, out var cancelledOn)) result.Add(s);
+            else if (cancelledOn is { } on && on > today) result.Add(s with { EndsOn = on });
+        }
+        return result;
     }
 
-    /// <summary>Marks a series "not a subscription" for the current user, or takes that back.</summary>
+    /// <summary>Marks a series "not a subscription" for the current user, or takes that back (a cancellation stays).</summary>
     public async Task SetDismissedAsync(string seriesKey, bool dismissed, CancellationToken ct = default)
     {
-        var userId = (_access == null ? null : (await _access.GetAsync()).UserId) ?? throw new AccessDeniedException("Sign in to dismiss a series.");
+        var userId = await RequireUserAsync();
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var row = await db.RecurringDismissals.FirstOrDefaultAsync(d => d.SeriesKey == seriesKey, ct);
-        if (dismissed == (row != null)) return;
-        if (row != null) db.RecurringDismissals.Remove(row);
-        else db.RecurringDismissals.Add(new RecurringDismissal { OwnerUserId = userId, SeriesKey = seriesKey });
+        if (dismissed)
+        {
+            if (row == null) db.RecurringDismissals.Add(new RecurringDismissal { OwnerUserId = userId, SeriesKey = seriesKey });
+            else row.CancelledOn = null;
+        }
+        else if (row is { CancelledOn: null }) db.RecurringDismissals.Remove(row);
+        await SaveAndPublishAsync(db, userId, ct);
+    }
+
+    /// <summary>Records that the user cancelled a series on <paramref name="cancelledOn"/>, or (null) takes that back.</summary>
+    public async Task SetCancelledAsync(string seriesKey, DateOnly? cancelledOn, CancellationToken ct = default)
+    {
+        var userId = await RequireUserAsync();
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var row = await db.RecurringDismissals.FirstOrDefaultAsync(d => d.SeriesKey == seriesKey, ct);
+        if (cancelledOn is { } on)
+        {
+            if (row == null) db.RecurringDismissals.Add(new RecurringDismissal { OwnerUserId = userId, SeriesKey = seriesKey, CancelledOn = on });
+            else row.CancelledOn = on;
+        }
+        else if (row is { CancelledOn: not null }) db.RecurringDismissals.Remove(row);
+        await SaveAndPublishAsync(db, userId, ct);
+    }
+
+    private async Task<string> RequireUserAsync() =>
+        (_access == null ? null : (await _access.GetAsync()).UserId) ?? throw new AccessDeniedException("Sign in to mark a series.");
+
+    private async Task SaveAndPublishAsync(BudgetDbContext db, string userId, CancellationToken ct)
+    {
+        if (!db.ChangeTracker.HasChanges()) return;
         await db.SaveChangesAsync(ct);
         // Scheduled and Cashflow of the user's other sessions follow.
         _notifier?.Publish(new DataChange(DataArea.ImportedData, UserId: userId), _origin?.Id);
     }
 
-    private static async Task<HashSet<string>> DismissedKeysAsync(BudgetDbContext db, CancellationToken ct) =>
-        (await db.RecurringDismissals.AsNoTracking().Select(d => d.SeriesKey).ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
+    /// <summary>The user's marked series: key → the cancellation day, null for a dismissal.</summary>
+    private static async Task<Dictionary<string, DateOnly?>> MarksAsync(BudgetDbContext db, CancellationToken ct) =>
+        (await db.RecurringDismissals.AsNoTracking().Select(d => new { d.SeriesKey, d.CancelledOn }).ToListAsync(ct))
+            .GroupBy(d => d.SeriesKey, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().CancelledOn, StringComparer.Ordinal);
 
     private async Task<List<RecurringSeries>> DetectAsync(int projectId, DateOnly today, CancellationToken ct)
     {

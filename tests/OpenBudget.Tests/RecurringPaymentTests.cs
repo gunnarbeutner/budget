@@ -238,4 +238,76 @@ public sealed class RecurringPaymentTests
         var result = CashflowCalculator.ComputeBalance(data, 2027, 2026, 1, [], expenses, histograms, [], 0m, scheduled);
         Assert.Equal(1000m - 12 * 15m, result.BalanceDaily[^1]);
     }
+    // ---------------------------------------------------------------- cancellations
+
+    private static RecurringPaymentService UserRecurring(TestDb t, out UserView user)
+    {
+        user = t.ForUser(TestDb.DefaultOwner);
+        return new RecurringPaymentService(user.Factory, user.Hierarchy, user.Projects, user.Access);
+    }
+
+    [Fact]
+    public async Task A_cancelled_series_leaves_the_totals_Scheduled_and_Cashflow()
+    {
+        await using var t = await WorldAsync();
+        var recurring = UserRecurring(t, out var user);
+        var key = Assert.Single(await recurring.GetAsync(1, Today)).Series.Key;
+
+        await recurring.SetCancelledAsync(key, new DateOnly(2026, 11, 10));
+
+        var entry = Assert.Single(await recurring.GetAsync(1, Today));
+        Assert.Equal((true, false, new DateOnly(2026, 11, 10)), (entry.Cancelled, entry.Dismissed, entry.CancelledOn!.Value));
+        Assert.Empty(entry.ChargedAfterCancellation!);
+        Assert.Empty(await recurring.ActiveAsync(1, Today));
+        Assert.Empty((await new ScheduledPaymentService(user.Factory, recurring: recurring).GetAsync(1, Today)).Items);
+        var cashflow = new CashflowProjectionService(user.Factory, user.Hierarchy, user.Projects, t.System, recurring);
+        Assert.Empty((await cashflow.GetScheduledCashflowAsync(1, 2027, new DateOnly(2026, 12, 15), [(Media, CategoryItemType.Category)])).Occurrences);
+    }
+
+    [Fact]
+    public async Task A_series_cancelled_for_a_later_day_is_expected_until_then()
+    {
+        await using var t = await WorldAsync();
+        var recurring = UserRecurring(t, out _);
+        var key = Assert.Single(await recurring.GetAsync(1, Today)).Series.Key;
+
+        await recurring.SetCancelledAsync(key, new DateOnly(2027, 1, 15));
+
+        var series = Assert.Single(await recurring.ActiveAsync(1, Today));
+        Assert.Equal([new DateOnly(2026, 12, 1), new DateOnly(2027, 1, 1)], series.Occurrences(Today, new DateOnly(2027, 6, 30)));
+    }
+
+    [Fact]
+    public async Task A_charge_after_the_cancellation_is_flagged_but_not_one_within_the_grace_days()
+    {
+        await using var t = await WorldAsync();
+        var recurring = UserRecurring(t, out _);
+        var key = Assert.Single(await recurring.GetAsync(1, Today)).Series.Key;
+
+        // The last charge was on 1 November: three days after 29 October it is still in flight.
+        await recurring.SetCancelledAsync(key, new DateOnly(2026, 10, 29));
+        Assert.Empty(Assert.Single(await recurring.GetAsync(1, Today)).ChargedAfterCancellation!);
+
+        await recurring.SetCancelledAsync(key, new DateOnly(2026, 9, 20));
+        var late = Assert.Single(await recurring.GetAsync(1, Today)).ChargedAfterCancellation!;
+        Assert.Equal([(new DateOnly(2026, 10, 1), -1500L), (new DateOnly(2026, 11, 1), -1500L)], late.Select(b => (b.Date, b.Cents)));
+    }
+
+    [Fact]
+    public async Task Undoing_a_cancellation_brings_the_series_back_and_keeps_a_dismissal_apart()
+    {
+        await using var t = await WorldAsync();
+        var recurring = UserRecurring(t, out _);
+        var key = Assert.Single(await recurring.GetAsync(1, Today)).Series.Key;
+        await recurring.SetCancelledAsync(key, new DateOnly(2026, 11, 10));
+
+        // Taking back a dismissal that was never made leaves the cancellation alone.
+        await recurring.SetDismissedAsync(key, false);
+        Assert.True(Assert.Single(await recurring.GetAsync(1, Today)).Cancelled);
+
+        await recurring.SetCancelledAsync(key, null);
+        var entry = Assert.Single(await recurring.GetAsync(1, Today));
+        Assert.Equal((false, false), (entry.Cancelled, entry.Dismissed));
+        Assert.Single(await recurring.ActiveAsync(1, Today));
+    }
 }

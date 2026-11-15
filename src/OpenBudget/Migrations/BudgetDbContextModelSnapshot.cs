@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261115093808_CategoryTransferFlag";
+    public override string LastMigrationId => "20261115093919_RecurringCancellations";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -2007,6 +2007,9 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
 
                 b.Property<string>("SeriesKey")
                     .HasMaxLength(500)
+                    .HasColumnType("TEXT");
+
+                b.Property<DateOnly?>("CancelledOn")
                     .HasColumnType("TEXT");
 
                 b.Property<DateTime>("CreatedAt")

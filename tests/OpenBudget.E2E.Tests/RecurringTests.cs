@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
@@ -81,6 +82,46 @@ public sealed class RecurringTests : EndToEndTestBase
         await Page.GetByTestId("scheduled-tab-upcoming").ClickAsync();
         await Expect(Page).ToHaveURLAsync(new Regex($".*/projects/{Pid}/scheduled$"));
         await Expect(Page.GetByTestId("scheduled-kind")).ToBeVisibleAsync();
+    }
+
+    [Test]
+    public async Task A_subscription_is_cancelled_warns_about_later_charges_and_the_cancellation_is_undone()
+    {
+        await SeedAsync();
+        await GoToAsync($"/projects/{Pid}/scheduled?tab=subscriptions");
+        await Expect(Rows).ToHaveCountAsync(2);
+        var gym = Rows.Filter(new() { HasText = "Example Gym" });
+
+        // Cancelled two months ago: the two charges since then are flagged.
+        var cancelledOn = DateTime.Today.AddMonths(-2).AddDays(-12);
+        await gym.GetByTestId("recurring-cancel").ClickAsync();
+        await Expect(gym.GetByTestId("recurring-cancel-date")).ToHaveValueAsync(DateTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        await gym.GetByTestId("recurring-cancel-date").FillAsync(cancelledOn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        await gym.GetByTestId("recurring-cancel-save").ClickAsync();
+
+        await Expect(Rows).ToHaveCountAsync(1);
+        await Expect(Page.GetByTestId("recurring-totals")).ToHaveTextAsync("12,99 € per month · 155,88 € per year");
+        await Expect(Page.GetByTestId("recurring-cancel-warning")).ToHaveCountAsync(2);
+        await Expect(Page.GetByTestId("recurring-cancel-warning").First).ToContainTextAsync("Charged after cancellation on");
+        await Expect(Page.GetByTestId("recurring-cancel-warning").First).ToContainTextAsync("−30,00 €");
+
+        await Page.GetByTestId("recurring-show").SelectOptionAsync("cancelled");
+        await Expect(Page).ToHaveURLAsync(new Regex("[?&]show=cancelled"));
+        await Expect(Rows).ToHaveCountAsync(1);
+        await Expect(gym.GetByTestId("recurring-cancelled")).ToHaveTextAsync($"Cancelled on {cancelledOn.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)}");
+        await Expect(gym.GetByTestId("recurring-charged-after")).ToHaveCountAsync(2);
+
+        // Upcoming no longer expects it.
+        await GoToAsync($"/projects/{Pid}/scheduled?kind=recurring");
+        await Expect(Page.GetByTestId("scheduled-row")).ToHaveCountAsync(1);
+        await Expect(Page.GetByTestId("scheduled-name")).ToHaveTextAsync("Streamio Media");
+
+        await GoToAsync($"/projects/{Pid}/scheduled?tab=subscriptions&show=cancelled");
+        await gym.GetByTestId("recurring-uncancel").ClickAsync();
+        await Expect(Page.GetByTestId("recurring-empty")).ToBeVisibleAsync();
+        await Expect(Page.GetByTestId("recurring-cancel-warning")).ToHaveCountAsync(0);
+        await Page.GetByTestId("recurring-show").SelectOptionAsync("active");
+        await Expect(Rows).ToHaveCountAsync(2);
     }
 
     [Test]

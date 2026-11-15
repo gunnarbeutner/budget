@@ -7,9 +7,25 @@
 
 @* The Subscriptions tab of Scheduled: subscriptions and other recurring charges detected in the bookings of the project's
    accounts (RecurringPaymentDetector), most expensive per month first, with the monthly and yearly cost of the active
-   ones on top. Show: active (default: active and overdue) | ended | dismissed, kept by the page in ?show=. A series
-   opens to list its bookings; "Not a subscription" hides it for the current user (also from Upcoming and Cashflow),
-   "Show again" takes that back. *@
+   ones on top. Show: active (default: active and overdue) | ended | cancelled | dismissed, kept by the page in ?show=.
+   A series opens to list its bookings; "Not a subscription" hides it for the current user (also from Upcoming and
+   Cashflow), "Show again" takes that back. "Cancelled…" records the day the user cancelled it: from then on it is out
+   of the totals, Upcoming and Cashflow, and a charge of the series booked more than
+   RecurringPaymentService.CancellationGraceDays later is a warning on the series and at the top of the tab. *@
+
+@if (Warnings().Count > 0)
+{
+    <div class="alert alert-danger py-2 small" role="alert" data-testid="recurring-cancel-warnings">
+        @foreach (var (entry, b) in Warnings())
+        {
+            <div data-testid="recurring-cancel-warning">
+                <i class="bi bi-exclamation-octagon me-1" aria-hidden="true"></i><b>@PayeeOf(entry.Series)</b>:
+                @L["ChargedAfterCancel", b.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture), Formatting.FormatMoneyDe(b.Cents / 100m)]
+                (@L["CancelledOn", entry.CancelledOn!.Value.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)])
+            </div>
+        }
+    </div>
+}
 
 <div class="d-flex flex-wrap align-items-center gap-2 mb-2" data-testid="recurring-toolbar">
     @if (entries != null)
@@ -23,6 +39,7 @@
             @onchange="e => ShowChanged.InvokeAsync(e.Value?.ToString() ?? Active)">
         <option value="active" selected="@(Show == Active)">@L["Show_Active"]</option>
         <option value="ended" selected="@(Show == "ended")">@L["Show_Ended"]</option>
+        <option value="cancelled" selected="@(Show == "cancelled")">@L["Show_Cancelled"]</option>
         <option value="dismissed" selected="@(Show == "dismissed")">@L["Show_Dismissed"]</option>
     </select>
 </div>
@@ -52,7 +69,7 @@ else
             var expanded = openKey == s.Key;
             <li class="sched-row" @key="s.Key" data-testid="recurring-row" data-status="@s.Status.ToString().ToLowerInvariant()">
                 <div class="sched-date">
-                    @if (s.Status == RecurringStatus.Ended)
+                    @if (s.Status == RecurringStatus.Ended || entry.Cancelled)
                     {
                         <div class="fw-semibold" data-testid="recurring-date">@s.LastDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</div>
                         <div class="small text-body-secondary">@L["Last"]</div>
@@ -65,8 +82,12 @@ else
                 </div>
                 <div class="sched-main min-w-0">
                     <div class="d-flex flex-wrap align-items-center gap-2">
-                        <span class="sched-name text-truncate" data-testid="recurring-name">@(s.Payee.Length > 0 ? s.Payee : L["NoName"])</span>
-                        @if (s.Status != RecurringStatus.Active)
+                        <span class="sched-name text-truncate" data-testid="recurring-name">@PayeeOf(s)</span>
+                        @if (entry.CancelledOn is { } cancelledOn)
+                        {
+                            <span class="badge text-bg-secondary" data-testid="recurring-cancelled">@L["CancelledOn", cancelledOn.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)]</span>
+                        }
+                        else if (s.Status != RecurringStatus.Active)
                         {
                             <span class="badge text-bg-secondary" data-testid="recurring-status">@L["Status_" + s.Status]</span>
                         }
@@ -78,6 +99,12 @@ else
                             </span>
                         }
                     </div>
+                    @foreach (var b in entry.ChargedAfterCancellation ?? [])
+                    {
+                        <div class="small text-danger fw-semibold" data-testid="recurring-charged-after">
+                            <i class="bi bi-exclamation-octagon me-1" aria-hidden="true"></i>@L["ChargedAfterCancel", b.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture), Formatting.FormatMoneyDe(b.Cents / 100m)]
+                        </div>
+                    }
                     <div class="small text-body-secondary sched-meta">
                         <span data-testid="recurring-rhythm"><i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>@RhythmText(s.Rhythm)</span>
                         <span data-testid="recurring-category">@(entry.CategoryName ?? L["NoCategory"])</span>
@@ -89,11 +116,32 @@ else
                                 data-testid="recurring-toggle" @onclick="() => openKey = expanded ? null : s.Key">
                             @L["Bookings", s.Bookings.Count]
                         </button>
+                        @if (entry.Cancelled)
+                        {
+                            <button type="button" class="btn btn-link sched-receipt" data-testid="recurring-uncancel"
+                                    @onclick="() => SetCancelledAsync(entry, null)">@L["UndoCancel"]</button>
+                        }
+                        else if (!entry.Dismissed)
+                        {
+                            <button type="button" class="btn btn-link sched-receipt" data-testid="recurring-cancel"
+                                    @onclick="() => OpenCancel(s.Key)">@L["Cancel"]</button>
+                        }
                         <button type="button" class="btn btn-link sched-receipt" data-testid="recurring-dismiss"
                                 @onclick="() => SetDismissedAsync(entry, !entry.Dismissed)">
                             @(entry.Dismissed ? L["Restore"] : L["Dismiss"])
                         </button>
                     </div>
+                    @if (cancelKey == s.Key)
+                    {
+                        <div class="d-flex flex-wrap align-items-center gap-2 mt-2" data-testid="recurring-cancel-form">
+                            <label class="small" for="recurring-cancel-date">@L["Cancel_Date"]</label>
+                            <input type="date" id="recurring-cancel-date" class="form-control form-control-sm" style="max-width: 10rem;"
+                                   data-testid="recurring-cancel-date" @bind="cancelDate" />
+                            <button type="button" class="btn btn-sm btn-primary" data-testid="recurring-cancel-save"
+                                    @onclick="() => SetCancelledAsync(entry, cancelDate)">@L["Cancel_Save"]</button>
+                            <button type="button" class="btn btn-sm btn-secondary" @onclick="() => cancelKey = null">@L["Cancel_Close"]</button>
+                        </div>
+                    }
                     @if (expanded)
                     {
                         <ul class="list-unstyled small mt-2 mb-0" data-testid="recurring-bookings">
@@ -130,16 +178,39 @@ else
     private List<RecurringEntry>? entries;
     private int _loadedProjectId;
     private string? openKey;
+    private string? cancelKey;
+    private DateOnly cancelDate;
 
-    /// <summary>The monthly cost of the active series the user has not dismissed (positive).</summary>
-    private decimal MonthlyTotal => -(entries ?? []).Where(e => !e.Dismissed && e.Series.Status == RecurringStatus.Active).Sum(e => e.Series.MonthlyCents) / 100m;
+    /// <summary>The monthly cost of the active series the user has neither dismissed nor cancelled (positive).</summary>
+    private decimal MonthlyTotal => -(entries ?? []).Where(e => !e.Dismissed && !e.Cancelled && e.Series.Status == RecurringStatus.Active)
+        .Sum(e => e.Series.MonthlyCents) / 100m;
+
+    /// <summary>Every charge booked after its series was cancelled, newest first.</summary>
+    private List<(RecurringEntry Entry, RecurringBooking Booking)> Warnings() =>
+        (entries ?? []).SelectMany(e => (e.ChargedAfterCancellation ?? []).Select(b => (e, b))).OrderByDescending(w => w.b.Date).ToList();
 
     private List<RecurringEntry> Visible() => (entries ?? []).Where(e => Show switch
     {
         "dismissed" => e.Dismissed,
-        "ended" => !e.Dismissed && e.Series.Status == RecurringStatus.Ended,
-        _ => !e.Dismissed && e.Series.Status != RecurringStatus.Ended,
+        "cancelled" => e.Cancelled,
+        "ended" => !e.Dismissed && !e.Cancelled && e.Series.Status == RecurringStatus.Ended,
+        _ => !e.Dismissed && !e.Cancelled && e.Series.Status != RecurringStatus.Ended,
     }).ToList();
+
+    private string PayeeOf(RecurringSeries s) => s.Payee.Length > 0 ? s.Payee : L["NoName"];
+
+    private void OpenCancel(string key)
+    {
+        cancelKey = key;
+        cancelDate = DateOnly.FromDateTime(Clock.Today);
+    }
+
+    private async Task SetCancelledAsync(RecurringEntry entry, DateOnly? on)
+    {
+        cancelKey = null;
+        await Detection.SetCancelledAsync(entry.Series.Key, on);
+        await LoadAsync();
+    }
 
     private string RhythmText(RecurringRhythm r) => r.Weekly
         ? (r.Count == 1 ? L["Rhythm_Weekly"] : L["Rhythm_EveryWeeks", r.Count])

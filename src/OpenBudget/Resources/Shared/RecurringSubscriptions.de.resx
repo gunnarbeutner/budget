@@ -142,4 +142,12 @@
   <data name="Rhythm_EveryMonths" xml:space="preserve">
     <value>Alle {0} Monate</value>
   </data>
+  <data name="Show_Cancelled" xml:space="preserve"><value>Gekündigt</value></data>
+  <data name="CancelledOn" xml:space="preserve"><value>Gekündigt am {0}</value></data>
+  <data name="ChargedAfterCancel" xml:space="preserve"><value>Nach Kündigung belastet am {0}: {1}</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Gekündigt…</value></data>
+  <data name="Cancel_Date" xml:space="preserve"><value>Gekündigt am</value></data>
+  <data name="Cancel_Save" xml:space="preserve"><value>Speichern</value></data>
+  <data name="Cancel_Close" xml:space="preserve"><value>Abbrechen</value></data>
+  <data name="UndoCancel" xml:space="preserve"><value>Kündigung zurücknehmen</value></data>
 </root>

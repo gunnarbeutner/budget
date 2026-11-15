@@ -62,12 +62,19 @@ public sealed record RecurringSeries(
     DateOnly? PriceChangedOn,
     IReadOnlyList<RecurringBooking> Bookings)
 {
+    /// <summary>The day from which no charge is expected any more (the user cancelled it); null = open-ended.</summary>
+    public DateOnly? EndsOn { get; init; }
+
     /// <summary>The cost per month, cents (negative).</summary>
     public long MonthlyCents => (long)Math.Round(Cents * Rhythm.PerYear / 12m, MidpointRounding.AwayFromZero);
 
-    /// <summary>The occurrences expected in <paramref name="from"/>..<paramref name="to"/>; older missed ones are not owed.</summary>
+    /// <summary>
+    /// The occurrences expected in <paramref name="from"/>..<paramref name="to"/>, before <see cref="EndsOn"/>; older
+    /// missed ones are not owed.
+    /// </summary>
     public IEnumerable<DateOnly> Occurrences(DateOnly from, DateOnly to)
     {
+        if (EndsOn is { } end && end.AddDays(-1) < to) to = end.AddDays(-1);
         // A charge that is a little late (the one after it is not yet due) is expected on "from".
         if (Rhythm.After(LastDate) < from && Rhythm.After(LastDate, 2) > from && from <= to) yield return from;
         for (var n = 1; n < 1000; n++)

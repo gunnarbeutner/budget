@@ -274,7 +274,7 @@
         kind = query.TryGetValue("kind", out var k) && k.ToString() is "standing" or "scheduled" or "instalment" or "recurring" ? k.ToString() : "all";
         account = query.TryGetValue("account", out var ac) && ac.ToString() is { Length: > 0 } av ? av : "all";
         subscriptions = query.TryGetValue("tab", out var t) && t.ToString() == "subscriptions";
-        show = query.TryGetValue("show", out var sh) && sh.ToString() is "ended" or "dismissed" ? sh.ToString() : "active";
+        show = query.TryGetValue("show", out var sh) && sh.ToString() is "ended" or "cancelled" or "dismissed" ? sh.ToString() : "active";
         if (_loadedProjectId != ProjectId)
         {
             _loadedProjectId = ProjectId;
