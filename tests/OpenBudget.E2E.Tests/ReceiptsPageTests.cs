@@ -145,7 +145,10 @@ public sealed class ReceiptsPageTests : EndToEndTestBase
     public async Task A_running_instalment_plan_shows_its_progress()
     {
         await GoToAsync("/receipts");
-        await Page.Locator("[data-testid=receipts-chip][data-group=waiting]").ClickAsync();
+        var waiting = Page.Locator("[data-testid=receipts-chip][data-group=waiting]");
+        await waiting.ClickAsync();
+        // The filtered list arrives with the render that marks the chip; until then all three rows of the order show.
+        await Expect(waiting).ToHaveClassAsync(new System.Text.RegularExpressions.Regex(@"\bactive\b"));
         var row = Page.GetByTestId("receipt-row").Filter(new() { HasText = RunningOrder });
         await Expect(row.GetByTestId("receipt-status")).ToHaveTextAsync("Instalments 2 of 3");
         var next = DateTime.UtcNow.Date.AddDays(25).ToString("dd.MM.", System.Globalization.CultureInfo.InvariantCulture);
