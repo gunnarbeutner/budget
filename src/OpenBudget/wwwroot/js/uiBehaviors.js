@@ -92,9 +92,14 @@ window.modalA11y = (function () {
             modal.addEventListener("keydown", keydownHandler);
         },
         deactivate: function () {
+            var modal = trapEl;
             if (trapEl && keydownHandler) trapEl.removeEventListener("keydown", keydownHandler);
             trapEl = null; keydownHandler = null;
-            if (returnFocusEl && typeof returnFocusEl.focus === "function") {
+            // This runs after the dialog has rendered closed, so the user may already have moved focus elsewhere
+            // (e.g. opened a top-bar menu); only focus left in the dialog or dropped to the page goes back.
+            var active = document.activeElement;
+            var focusLost = !active || active === document.body || (modal && modal.contains(active));
+            if (focusLost && returnFocusEl && typeof returnFocusEl.focus === "function") {
                 try { returnFocusEl.focus(); } catch (e) { /* trigger gone */ }
             }
             returnFocusEl = null;
