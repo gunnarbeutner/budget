@@ -64,6 +64,47 @@ public sealed class ScheduledTests : EndToEndTestBase
         };
 
     [Test]
+    public async Task The_kind_filter_shows_the_expected_instalments_of_a_running_plan()
+    {
+        await SeedOrdersAsync();
+        await using (var db = await Db.CreateDbContextAsync())
+        {
+            var login = new BankLogin { OwnerUserId = E2ESeed.OwnerUserId, ConnectorType = "amazon", DisplayName = "Shop" };
+            db.BankLogins.Add(login);
+            await db.SaveChangesAsync();
+            db.BankLoginAccounts.Add(new BankLoginAccount { BankLoginId = login.Id, RemoteId = "visa-4444", Name = "Visa •••• 4444", EnrichAccountId = EditingSeed.BankAccountId });
+            var first = DateTime.UtcNow.Date.AddDays(-20);
+            foreach (var (key, cents, state) in new[] { ("E2E-PLAN", 27900L, ReceiptMatchState.Instalments), ("E2E-PLAN-1", 9300L, ReceiptMatchState.Matched) })
+                db.ReceiptInvoices.Add(new ReceiptInvoice
+                {
+                    OwnerUserId = E2ESeed.OwnerUserId,
+                    Shop = ReceiptShops.Amazon,
+                    BankLoginId = login.Id,
+                    PaymentMethodId = "visa-4444",
+                    InvoiceNumber = key,
+                    SourceKey = key,
+                    OrderNumber = "302-0000000-0000600",
+                    DeliveryDate = first,
+                    TotalCents = cents,
+                    PaymentCents = cents,
+                    ReadAt = DateTime.UtcNow,
+                    State = state,
+                });
+            await db.SaveChangesAsync();
+        }
+        await GoToAsync($"/projects/{Pid}/scheduled?kind=instalment");
+        await Expect(Rows).ToHaveCountAsync(2);
+        var row = Rows.Nth(0);
+        await Expect(row).ToHaveAttributeAsync("data-kind", "instalment");
+        await Expect(row.GetByTestId("scheduled-name")).ToHaveTextAsync("Amazon 302-0000000-0000600");
+        await Expect(row.GetByTestId("scheduled-rhythm")).ToContainTextAsync("Instalment 2 of 3");
+        await Expect(row.GetByTestId("scheduled-amount")).ToHaveTextAsync("−93,00 €");
+        await Expect(row.GetByTestId("scheduled-date")).ToContainTextAsync("~");
+        await row.GetByTestId("scheduled-receipt").ClickAsync();
+        await Expect(Page.GetByTestId("receipt-panel-plan-due")).ToHaveCountAsync(2);
+    }
+
+    [Test]
     public async Task The_view_lists_the_projects_orders_soonest_first_and_filters_by_kind_and_account()
     {
         await SeedOrdersAsync();

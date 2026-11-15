@@ -34,7 +34,8 @@ public sealed record ReceiptGroupView(long? CategoryId, long AmountCents, IReadO
 /// </summary>
 public sealed record BookingReceiptView(long ReceiptId, long? TransactionId, string Shop, string? OrderNumber, DateTime? DeliveryDate, long BonusCents,
     IReadOnlyList<ReceiptGroupView> Groups, bool SplitByReceipt, string? Store = null, long TotalCents = 0, long PaymentCents = 0, string? InvoiceNumber = null,
-    bool PaidInInstalments = false, long? BookingCategoryId = null, bool Instalment = false, string? OtherOrderNumbers = null)
+    bool PaidInInstalments = false, long? BookingCategoryId = null, bool Instalment = false, string? OtherOrderNumbers = null,
+    InstalmentProgress? Plan = null)
 {
     /// <summary>The number of lines.</summary>
     public int ItemCount => Groups.Sum(g => g.Lines.Count);
@@ -73,6 +74,12 @@ public enum ReceiptReviewState
     /// <summary>The full price of an order paid in instalments whose instalments are not all charged and matched yet.</summary>
     InstalmentsPending,
 
+    /// <summary>
+    /// An order paid in instalments that was returned or cancelled: the remaining instalments never come. Both its full
+    /// price and the refunds of the full price without a booking (the plan's reversal, no money moved) need nothing more.
+    /// </summary>
+    InstalmentsCancelled,
+
     /// <summary>The owner said its booking is not in the app.</summary>
     Dismissed,
 }
@@ -83,7 +90,7 @@ public enum ReceiptReviewGroup { Review, Waiting, Done, NoBooking }
 /// <summary>A receipt of any source as the receipts list shows it; <see cref="IsOwn"/>: the signed-in user's own (theirs to assign).</summary>
 public sealed record ReceiptReviewRow(
     long Id, string Source, string Shop, string Title, DateTime? Date, long PaymentCents, int Items, ReceiptReviewState State,
-    long? TransactionId, DateTime? BookingDate, bool IsOwn = true);
+    long? TransactionId, DateTime? BookingDate, bool IsOwn = true, InstalmentProgress? Instalments = null);
 
 /// <summary>A booking that may be a receipt's: id, date, signed amount, payee and purpose.</summary>
 public sealed record ReceiptCandidate(long TransactionId, DateTime Date, long AmountCents, string? Name, string? Purpose);
@@ -413,7 +420,12 @@ public sealed class ReceiptService
             OtherOrderNumbers: invoice.OtherOrderNumbers,
             // One instalment of an order paid in instalments: the rest of the price is in the other instalments.
             Instalment: invoice.State != ReceiptMatchState.Instalments && invoice.OrderNumber != null && await db.ReceiptInvoices.AnyAsync(r =>
-                r.OrderNumber == invoice.OrderNumber && r.BankLoginId == invoice.BankLoginId && r.State == ReceiptMatchState.Instalments, ct));
+                r.OrderNumber == invoice.OrderNumber && r.BankLoginId == invoice.BankLoginId && r.State == ReceiptMatchState.Instalments, ct),
+            // The full price of an order paid in instalments: its instalments and those still due.
+            Plan: invoice.State == ReceiptMatchState.Instalments && invoice.PaymentCents > 0
+                ? (await InstalmentPlansAsync(db, [(invoice.Id, invoice.OrderNumber, invoice.BankLoginId, invoice.PaymentCents, invoice.State, invoice.TransactionId)], ct))
+                    .Plans.GetValueOrDefault(invoice.Id)
+                : null);
     }
 
     // ---- review ----
@@ -435,13 +447,13 @@ public sealed class ReceiptService
 
     /// <summary>
     /// The status chip a receipt falls under. "Done": nothing left to do — matched or split, the full price of an order paid
-    /// in instalments, or nothing to pay (whatever its state). "No booking": it cost money but its booking is not in the app
+    /// in instalments whose plan is complete or cancelled (and the refunds reversing a cancelled plan), or nothing to pay (whatever its state). "No booking": it cost money but its booking is not in the app
     /// (dismissed, or paid without a booking to look for). "Review": ambiguous or unmatched.
     /// </summary>
     public static ReceiptReviewGroup GroupOf(ReceiptReviewState state, long paymentCents) => state switch
     {
         _ when paymentCents == 0 => ReceiptReviewGroup.Done,
-        ReceiptReviewState.Split or ReceiptReviewState.Matched or ReceiptReviewState.Instalments => ReceiptReviewGroup.Done,
+        ReceiptReviewState.Split or ReceiptReviewState.Matched or ReceiptReviewState.Instalments or ReceiptReviewState.InstalmentsCancelled => ReceiptReviewGroup.Done,
         ReceiptReviewState.Waiting or ReceiptReviewState.InstalmentsPending => ReceiptReviewGroup.Waiting,
         ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched => ReceiptReviewGroup.Review,
         _ => ReceiptReviewGroup.NoBooking,
@@ -520,26 +532,44 @@ public sealed class ReceiptService
     }
 
     /// <summary>
-    /// The full-price entries of orders paid in instalments whose plan is not complete: the order's instalment charges on the
-    /// same login (a charge of several orders is in no plan, so the order number alone groups them) do not add up to the full
-    /// price yet (one cent of rounding per instalment), or one of them is not matched or split.
+    /// The plans of orders paid in instalments among the given receipts and their progress (see
+    /// <see cref="InstalmentProgress.Of"/>), by the full-price entry's id, and the refunds without a booking that equal the
+    /// full price of a cancelled plan (its reversal: no money moved). The order's instalment charges and refunds are its
+    /// other receipts on the same login (a charge of several orders is in no plan, so the order number alone groups them).
+    /// Full-price entries of the receipts' orders that are not among them count too, for the refunds' sake.
     /// </summary>
-    private static async Task<HashSet<long>> PendingInstalmentPlansAsync(BudgetDbContext db, List<InvoiceRow> plans, CancellationToken ct)
+    internal static async Task<(Dictionary<long, InstalmentProgress> Plans, HashSet<long> Reversals)> InstalmentPlansAsync(
+        BudgetDbContext db, IReadOnlyCollection<(long Id, string? OrderNumber, int? BankLoginId, long PaymentCents, ReceiptMatchState State, long? TransactionId)> receipts,
+        CancellationToken ct)
     {
-        var pending = new HashSet<long>();
-        if (plans.Count == 0) return pending;
-        var orders = plans.Where(p => p.OrderNumber != null).Select(p => p.OrderNumber!).Distinct(StringComparer.Ordinal).ToList();
-        var logins = plans.Select(p => p.BankLoginId).Distinct().ToList();
-        var charges = await db.ReceiptInvoices.AsNoTracking()
-            .Where(r => r.OrderNumber != null && orders.Contains(r.OrderNumber) && logins.Contains(r.BankLoginId) && r.State != ReceiptMatchState.Instalments && r.PaymentCents > 0)
-            .Select(r => new { r.OrderNumber, r.BankLoginId, r.PaymentCents, r.State }).ToListAsync(ct);
-        foreach (var plan in plans)
+        var plans = new Dictionary<long, InstalmentProgress>();
+        var reversals = new HashSet<long>();
+        var relevant = receipts.Where(r => r.OrderNumber != null && (r.State == ReceiptMatchState.Instalments && r.PaymentCents > 0
+            || r.PaymentCents < 0 && r.TransactionId == null)).ToList();
+        if (relevant.Count == 0) return (plans, reversals);
+        var orders = relevant.Select(p => p.OrderNumber!).Distinct(StringComparer.Ordinal).ToList();
+        var logins = relevant.Select(p => p.BankLoginId).Distinct().ToList();
+        var all = await db.ReceiptInvoices.AsNoTracking()
+            .Where(r => r.Shop == ReceiptShops.Amazon && r.OrderNumber != null && orders.Contains(r.OrderNumber) && logins.Contains(r.BankLoginId))
+            .Select(r => new { r.Id, r.OrderNumber, r.BankLoginId, r.PaymentCents, r.State, r.TransactionId, Date = r.DeliveryDate ?? r.OrderDate })
+            .ToListAsync(ct);
+        foreach (var order in all.GroupBy(r => (r.OrderNumber, r.BankLoginId)))
         {
-            var of = charges.Where(c => c.OrderNumber == plan.OrderNumber && c.BankLoginId == plan.BankLoginId).ToList();
-            var complete = of.Count > 0 && of.Sum(c => c.PaymentCents) + of.Count >= plan.PaymentCents && of.All(c => c.State == ReceiptMatchState.Matched);
-            if (!complete) pending.Add(plan.Id);
+            var fulls = order.Where(r => r.State == ReceiptMatchState.Instalments && r.PaymentCents > 0).ToList();
+            if (fulls.Count == 0) continue;
+            var charges = order.Where(r => r.State != ReceiptMatchState.Instalments && r.PaymentCents > 0)
+                .Select(r => new InstalmentCharge(r.Id, r.Date, r.PaymentCents, r.State == ReceiptMatchState.Matched, r.TransactionId)).ToList();
+            var refunds = order.Where(r => r.PaymentCents < 0).ToList();
+            foreach (var full in fulls)
+            {
+                var progress = InstalmentProgress.Of(full.PaymentCents, charges, refunds.Select(r => -r.PaymentCents));
+                plans[full.Id] = progress;
+                if (progress.Cancelled)
+                    reversals.UnionWith(refunds.Where(r => -r.PaymentCents == full.PaymentCents && r.TransactionId == null
+                        && r.State is ReceiptMatchState.Unmatched or ReceiptMatchState.Ambiguous).Select(r => r.Id));
+            }
         }
-        return pending;
+        return (plans, reversals);
     }
 
     /// <summary>The review rows of the given invoices (one source, one state), newest first, with their bookings' dates.</summary>
@@ -550,8 +580,11 @@ public sealed class ReceiptService
             .Select(r => new ReceiptReviewRow(r.Id, ReceiptSources.Of(r.Shop), r.Shop, Title(r.Shop, r.Store, r.OrderNumber, r.OtherOrderNumbers),
                 r.DeliveryDate ?? r.OrderDate, r.PaymentCents, r.Items, StateOf(r, today), r.TransactionId, null, r.OwnerUserId == user))
             .ToList();
-        var pending = await PendingInstalmentPlansAsync(db, invoices.Where(r => r.State == ReceiptMatchState.Instalments).ToList(), ct);
-        rows = rows.Select(r => pending.Contains(r.Id) ? r with { State = ReceiptReviewState.InstalmentsPending } : r).ToList();
+        var (plans, reversals) = await InstalmentPlansAsync(db,
+            invoices.Where(r => r.Shop == ReceiptShops.Amazon).Select(r => (r.Id, r.OrderNumber, r.BankLoginId, r.PaymentCents, r.State, r.TransactionId)).ToList(), ct);
+        rows = rows.Select(r => plans.TryGetValue(r.Id, out var p)
+                ? r with { State = p.Cancelled ? ReceiptReviewState.InstalmentsCancelled : p.Complete ? ReceiptReviewState.Instalments : ReceiptReviewState.InstalmentsPending, Instalments = p }
+                : reversals.Contains(r.Id) ? r with { State = ReceiptReviewState.InstalmentsCancelled } : r).ToList();
         if (state is { } only) rows = rows.Where(r => r.State == only).ToList();
         rows = rows.OrderByDescending(r => r.Date).ThenByDescending(r => r.Id).Take(take).ToList();
         var txIds = rows.Where(r => r.TransactionId != null).Select(r => r.TransactionId!.Value).Distinct().ToList();

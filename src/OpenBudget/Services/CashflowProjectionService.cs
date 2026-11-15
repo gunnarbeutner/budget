@@ -14,12 +14,15 @@ public class CashflowProjectionService
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
     private readonly CategoryHierarchyService _hierarchy;
     private readonly ProjectService _projects;
+    private readonly SystemDbContextFactory? _system;
 
     public CashflowProjectionService(
         IDbContextFactory<BudgetDbContext> dbFactory,
         CategoryHierarchyService hierarchy,
-        ProjectService projects)
+        ProjectService projects,
+        SystemDbContextFactory? system = null)
     {
+        _system = system;
         _dbFactory = dbFactory;
         _hierarchy = hierarchy;
         _projects = projects;
@@ -173,7 +176,14 @@ public class CashflowProjectionService
         var orders = await db.ScheduledPayments.AsNoTracking()
             .Where(p => p.OwnerUserId == project.OwnerUserId && accountIds.Contains(p.AccountId))
             .ToListAsync();
-        if (orders.Count == 0) return result;
+        var instalments = new List<Connectors.Receipts.ExpectedInstalment>();
+        if (_system != null)
+        {
+            var visible = await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id)).Select(a => a.Id).ToListAsync();
+            await using var sys = await _system.CreateDbContextAsync();
+            instalments = (await Connectors.Receipts.ExpectedInstalments.ForAccountsAsync(sys, visible, from)).Where(e => e.Date <= to).ToList();
+        }
+        if (orders.Count == 0 && instalments.Count == 0) return result;
 
         var hierarchy = await _hierarchy.GetAllCategoriesWithChildCountsAsync(project.OwnerUserId);
         var rowByLeaf = new Dictionary<long, (long, CategoryItemType)>();
@@ -205,6 +215,13 @@ public class CashflowProjectionService
                     months[date.Month - 1] += amount;
                 }
             }
+        }
+        // Expected instalments of running Amazon plans: single payments in the category their instalments were booked to.
+        foreach (var e in instalments)
+        {
+            if (scopeByAccount[e.AccountId] == AccountScope.Shared && (e.CategoryId == null || projectLeaves?.Contains(e.CategoryId.Value) != true))
+                continue;
+            result.Occurrences.Add(new ScheduledOccurrence(e.Date, e.Cents / 100m, $"Amazon {e.OrderNumber} ({e.Number}/{e.Count})", ScheduledPaymentKind.Instalment));
         }
         result.Occurrences.Sort((a, b) => a.Date.CompareTo(b.Date));
         return result;

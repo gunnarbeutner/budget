@@ -120,4 +120,22 @@
     <value>paid in instalments: the instalments have the bookings</value>
   </data>
   <data name="OpenOrderAtShop" xml:space="preserve"><value>Open {0} at Amazon</value></data>
+  <data name="Plan_Title" xml:space="preserve">
+    <value>Instalments</value>
+  </data>
+  <data name="Plan_Instalment" xml:space="preserve">
+    <value>Instalment {0} of {1}</value>
+  </data>
+  <data name="Plan_Booked" xml:space="preserve">
+    <value>booked</value>
+  </data>
+  <data name="Plan_NotBooked" xml:space="preserve">
+    <value>no booking yet</value>
+  </data>
+  <data name="Plan_Due" xml:space="preserve">
+    <value>due ~{0}</value>
+  </data>
+  <data name="Plan_Cancelled" xml:space="preserve">
+    <value>Instalments cancelled: the order was returned or cancelled, the remaining instalments do not come.</value>
+  </data>
 </root>

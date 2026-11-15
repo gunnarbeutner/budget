@@ -51,19 +51,32 @@ public sealed class ReceiptsPageTests : EndToEndTestBase
         db.ReceiptInvoices.Add(Instalment("E2E-AMZ-FULL", 9000, ReceiptMatchState.Instalments, day.AddDays(-71)));
         db.ReceiptInvoices.Add(Instalment("E2E-AMZ-I1", 4500, ReceiptMatchState.Matched, day.AddDays(-71)));
         db.ReceiptInvoices.Add(Instalment("E2E-AMZ-I2", 4500, ReceiptMatchState.Matched, day.AddDays(-72)));
+        // A plan of three instalments with two charged, and a cancelled one: one instalment charged, then returned (its
+        // refund and the plan's reversal of the full price).
+        var now = DateTime.UtcNow.Date;
+        db.ReceiptInvoices.Add(Instalment("E2E-AMZ-RUN", 27900, ReceiptMatchState.Instalments, now.AddDays(-35), RunningOrder));
+        db.ReceiptInvoices.Add(Instalment("E2E-AMZ-RUN1", 9300, ReceiptMatchState.Matched, now.AddDays(-35), RunningOrder));
+        db.ReceiptInvoices.Add(Instalment("E2E-AMZ-RUN2", 9300, ReceiptMatchState.Matched, now.AddDays(-5), RunningOrder));
+        db.ReceiptInvoices.Add(Instalment("E2E-AMZ-CAN", 6246, ReceiptMatchState.Instalments, now.AddDays(-30), CancelledOrder));
+        db.ReceiptInvoices.Add(Instalment("E2E-AMZ-CAN1", 2082, ReceiptMatchState.Matched, now.AddDays(-30), CancelledOrder));
+        db.ReceiptInvoices.Add(Instalment("E2E-AMZ-CANR", -2082, ReceiptMatchState.Matched, now.AddDays(-20), CancelledOrder));
+        db.ReceiptInvoices.Add(Instalment("E2E-AMZ-CANF", -6246, ReceiptMatchState.Unmatched, now.AddDays(-20), CancelledOrder));
         await db.SaveChangesAsync();
     }
 
-    private static ReceiptInvoice Instalment(string key, long cents, ReceiptMatchState state, DateTime day) => new()
+    private const string RunningOrder = "302-0000000-0000210";
+    private const string CancelledOrder = "302-0000000-0000220";
+
+    private static ReceiptInvoice Instalment(string key, long cents, ReceiptMatchState state, DateTime day, string order = "302-0000000-0000200") => new()
     {
         OwnerUserId = E2ESeed.OwnerUserId,
         Shop = ReceiptShops.Amazon,
         InvoiceNumber = key,
         SourceKey = key,
-        OrderNumber = "302-0000000-0000200",
+        OrderNumber = order,
         OrderDate = day,
         DeliveryDate = day,
-        TotalCents = cents,
+        TotalCents = Math.Abs(cents),
         PaymentCents = cents,
         ReadAt = DateTime.UtcNow,
         State = state,
@@ -90,9 +103,9 @@ public sealed class ReceiptsPageTests : EndToEndTestBase
     {
         await GoToAsync("/receipts");
         var rows = Page.GetByTestId("receipt-row");
-        await Expect(Page.GetByTestId("receipts-shown")).ToHaveTextAsync("64 receipts");
+        await Expect(Page.GetByTestId("receipts-shown")).ToHaveTextAsync("71 receipts");
         await Expect(rows.First).ToBeVisibleAsync();
-        Assert.That(await rows.CountAsync(), Is.LessThan(64), "only the rows near the viewport render");
+        Assert.That(await rows.CountAsync(), Is.LessThan(71), "only the rows near the viewport render");
         await ScrollListToAsync(Page, "Teststadt 059");
 
         var review = Page.Locator("[data-testid=receipts-chip][data-group=review]");
@@ -118,10 +131,29 @@ public sealed class ReceiptsPageTests : EndToEndTestBase
         await Expect(Page.Locator("[data-testid=receipts-chip][data-group=nobooking]")).ToHaveCountAsync(0);
         var done = Page.Locator("[data-testid=receipts-chip][data-group=done]");
         await Expect(done).ToContainTextAsync("Done");
-        await Expect(done.Locator(".receipts-chip-count")).ToHaveTextAsync("61");
+        await Expect(done.Locator(".receipts-chip-count")).ToHaveTextAsync("67");
         await done.ClickAsync();
+        var cancelled = Page.GetByTestId("receipt-row").Filter(new() { HasText = CancelledOrder });
+        await Expect(cancelled.GetByTestId("receipt-status").Filter(new() { HasText = "Instalments cancelled" })).ToHaveCountAsync(2);
         await ScrollListToAsync(Page, "302-0000000-0000100");
         await ScrollListToAsync(Page, "302-0000000-0000200");
+        var complete = Page.GetByTestId("receipt-row").Filter(new() { HasText = "302-0000000-0000200" }).Filter(new() { HasText = "90,00" });
+        await Expect(complete.GetByTestId("receipt-status")).ToHaveTextAsync("Paid in 2 instalments");
+    }
+
+    [Test]
+    public async Task A_running_instalment_plan_shows_its_progress()
+    {
+        await GoToAsync("/receipts");
+        await Page.Locator("[data-testid=receipts-chip][data-group=waiting]").ClickAsync();
+        var row = Page.GetByTestId("receipt-row").Filter(new() { HasText = RunningOrder });
+        await Expect(row.GetByTestId("receipt-status")).ToHaveTextAsync("Instalments 2 of 3");
+        var next = DateTime.UtcNow.Date.AddDays(25).ToString("dd.MM.", System.Globalization.CultureInfo.InvariantCulture);
+        await Expect(row.GetByTestId("receipt-instalments")).ToHaveTextAsync($"186,00 € paid · next ~{next}");
+
+        await row.GetByTestId("receipt-open").ClickAsync();
+        await Expect(Page.GetByTestId("receipt-panel-plan-charge")).ToHaveCountAsync(2);
+        await Expect(Page.GetByTestId("receipt-panel-plan-due")).ToContainTextAsync("Instalment 3 of 3");
     }
 
     [Test]

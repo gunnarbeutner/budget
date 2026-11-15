@@ -149,6 +149,39 @@
                     </tfoot>
                 </table>
             </div>
+            @if (view.Plan is { } plan)
+            {
+                @* The full price of an order paid in instalments: each instalment with its booking, then those still due. *@
+                <div class="small mb-2" data-testid="receipt-panel-plan">
+                    <div class="fw-semibold mb-1">@L["Plan_Title"]</div>
+                    @if (plan.Cancelled)
+                    {
+                        <p class="text-body-secondary mb-1" data-testid="receipt-panel-plan-cancelled">@L["Plan_Cancelled"]</p>
+                    }
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                            @foreach (var (c, i) in plan.Charges.Select((c, i) => (c, i)))
+                            {
+                                <tr data-testid="receipt-panel-plan-charge">
+                                    <td>@L["Plan_Instalment", i + 1, plan.Count]</td>
+                                    <td class="text-nowrap">@c.Date?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</td>
+                                    <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(c.Cents / 100m)</td>
+                                    <td class="text-body-secondary">@(c.TransactionId != null ? L["Plan_Booked"] : L["Plan_NotBooked"])</td>
+                                </tr>
+                            }
+                            @foreach (var d in plan.Due)
+                            {
+                                <tr class="text-body-secondary" data-testid="receipt-panel-plan-due">
+                                    <td>@L["Plan_Instalment", d.Number, plan.Count]</td>
+                                    <td class="text-nowrap">@L["Plan_Due", d.Date.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)]</td>
+                                    <td class="text-end text-nowrap">@Formatting.FormatMoneyDe(d.Cents / 100m)</td>
+                                    <td></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
             @if (CanEdit && view.TransactionId != null)
             {
                 <p class="small text-body-secondary mb-0">@L["MoveHelp"]</p>

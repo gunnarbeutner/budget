@@ -80,6 +80,10 @@
                         <td class="text-end text-nowrap receipts-col-amount">@Formatting.FormatMoneyDe(-r.PaymentCents / 100m)</td>
                         <td class="receipts-col-status" @onclick:stopPropagation="true">
                             <span class="badge rounded-pill @Pill(r.State)" data-testid="receipt-status" title="@Status(r)">@Status(r)</span>
+                            @if (r.Instalments is { Running: true } plan)
+                            {
+                                <span class="d-block small text-body-secondary text-nowrap" data-testid="receipt-instalments">@InstalmentLine(plan)</span>
+                            }
                             @if (r.IsOwn && r.State is ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched or ReceiptReviewState.Waiting)
                             {
                                 <button type="button" class="btn btn-sm btn-link p-0 d-block" data-testid="receipt-assign" @onclick="() => OpenAssignAsync(r)">@L["Assign_Row"]</button>
@@ -236,6 +240,8 @@
         ReceiptReviewState.Split or ReceiptReviewState.Matched => "bank-pill-ok",
         ReceiptReviewState.Waiting or ReceiptReviewState.InstalmentsPending => "bank-pill-info",
         ReceiptReviewState.Ambiguous or ReceiptReviewState.Unmatched => "bank-pill-warn",
+        ReceiptReviewState.Instalments => "bank-pill-ok",
+        ReceiptReviewState.InstalmentsCancelled => "text-bg-light border text-body-secondary",
         _ => "text-bg-light border",
     };
 
@@ -246,8 +252,17 @@
         {
             ReceiptReviewState.Split => L["Status_Split", booked],
             ReceiptReviewState.Matched => L["Status_Matched", booked],
+            ReceiptReviewState.InstalmentsPending when r.Instalments is { } p => L["Status_InstalmentsOf", p.Charged, p.Count],
+            ReceiptReviewState.Instalments when r.Instalments is { } p => L["Status_InstalmentsPaid", p.Count],
             _ => L["State_" + r.State],
         };
+    }
+
+    /// <summary>"186,00 € paid · next ~02.12." under a running plan's badge.</summary>
+    private string InstalmentLine(InstalmentProgress p)
+    {
+        var paid = L["Instalments_Paid", Formatting.FormatMoneyDe(p.PaidCents / 100m)].Value;
+        return p.NextDate is { } next ? paid + " · " + L["Instalments_Next", next.ToString("dd.MM.", CultureInfo.InvariantCulture)] : paid;
     }
 
     private async Task OpenAssignAsync(ReceiptReviewRow r)

@@ -80,6 +80,12 @@ public enum ScheduledPaymentKind
 
     /// <summary>A standing order (Dauerauftrag).</summary>
     Standing = 1,
+
+    /// <summary>
+    /// An expected instalment of an order paid in instalments (Amazon), worked out from the receipts rather than
+    /// reported by a bank; never stored.
+    /// </summary>
+    Instalment = 2,
 }
 
 /// <summary>The time unit of a standing order's rhythm.</summary>

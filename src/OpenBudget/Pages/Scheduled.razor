@@ -11,8 +11,9 @@
 @inject IStringLocalizer<Scheduled> L
 
 @* The Scheduled view of a project: the standing orders and future-dated transfers the banks reported for the
-   project's accounts at the last sync, soonest first, with filters in the URL (?kind=standing|scheduled,
-   ?account=<id>). Read-only: orders are managed at the bank. *@
+   project's accounts at the last sync, plus the expected instalments of running Amazon plans paid from them (an
+   estimated day, opening the order's receipt), soonest first, with filters in the URL
+   (?kind=standing|scheduled|instalment, ?account=<id>). Read-only: orders are managed at the bank. *@
 
 <PageTitle>@(project?.Name is { Length: > 0 } n ? L["PageTitle_WithProject", n] : L["PageTitle"])</PageTitle>
 
@@ -38,6 +39,7 @@
                 <option value="all" selected="@(kind == "all")">@L["Kind_All"]</option>
                 <option value="scheduled" selected="@(kind == "scheduled")">@L["Kind_Scheduled"]</option>
                 <option value="standing" selected="@(kind == "standing")">@L["Kind_Standing"]</option>
+                <option value="instalment" selected="@(kind == "instalment")">@L["Kind_Instalment"]</option>
             </select>
             <select class="form-select form-select-sm docs-select docs-select-wide" aria-label="@L["Filter_Account"]" data-testid="scheduled-account"
                     @onchange="e => SetFilter(account: e.Value?.ToString())">
@@ -81,9 +83,9 @@
         <ul class="sched-list list-unstyled mb-0" data-testid="scheduled-list" aria-label="@L["View_Title"]">
             @foreach (var item in Visible())
             {
-                <li class="sched-row" @key="item.Id" data-testid="scheduled-row" data-kind="@(item.Kind == ScheduledPaymentKind.Standing ? "standing" : "scheduled")">
+                <li class="sched-row" @key="item.Id" data-testid="scheduled-row" data-kind="@KindKey(item.Kind)">
                     <div class="sched-date">
-                        <div class="fw-semibold" data-testid="scheduled-date">@item.NextDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</div>
+                        <div class="fw-semibold" data-testid="scheduled-date">@(item.Kind == ScheduledPaymentKind.Instalment ? "~" : "")@item.NextDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)</div>
                         <div class="small text-body-secondary" data-testid="scheduled-in">@InDays(item.NextDate)</div>
                     </div>
                     <div class="sched-main min-w-0">
@@ -94,8 +96,12 @@
                         }
                         <div class="small text-body-secondary sched-meta">
                             <span class="sched-rhythm" data-testid="scheduled-rhythm">
-                                <i class="bi @(item.Kind == ScheduledPaymentKind.Standing ? "bi-arrow-repeat" : "bi-calendar-event") me-1" aria-hidden="true"></i>@Rhythm(item)
+                                <i class="bi @(item.Kind switch { ScheduledPaymentKind.Standing => "bi-arrow-repeat", ScheduledPaymentKind.Instalment => "bi-receipt", _ => "bi-calendar-event" }) me-1" aria-hidden="true"></i>@Rhythm(item)
                             </span>
+                            @if (item.ReceiptId is { } receipt)
+                            {
+                                <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-testid="scheduled-receipt" @onclick="() => openReceipt = receipt">@L["OpenReceipt"]</button>
+                            }
                             @if (!string.IsNullOrEmpty(item.CounterpartyIban))
                             {
                                 <span class="sched-iban" data-testid="scheduled-iban">@AccountDisplay.FormatIban(item.CounterpartyIban)@(item.CounterpartyBic is { Length: > 0 } bic ? $" · {bic}" : "")</span>
@@ -114,6 +120,8 @@
     }
 </ProjectShell>
 
+<ReceiptPanel ReceiptId="openReceipt" OnClose="_ => openReceipt = null" />
+
 @code {
     [Parameter] public int ProjectId { get; set; }
 
@@ -123,6 +131,14 @@
     private int _loadedProjectId;
     private string kind = "all";
     private string account = "all";
+    private long? openReceipt;
+
+    private static string KindKey(ScheduledPaymentKind k) => k switch
+    {
+        ScheduledPaymentKind.Standing => "standing",
+        ScheduledPaymentKind.Instalment => "instalment",
+        _ => "scheduled",
+    };
 
     private IEnumerable<(long Id, string Name)> AccountOptions => (overview?.Items ?? [])
         .GroupBy(i => i.AccountId)
@@ -134,6 +150,7 @@
         IEnumerable<ScheduledItem> q = overview?.Items ?? [];
         if (kind == "standing") q = q.Where(i => i.Kind == ScheduledPaymentKind.Standing);
         else if (kind == "scheduled") q = q.Where(i => i.Kind == ScheduledPaymentKind.Scheduled);
+        else if (kind == "instalment") q = q.Where(i => i.Kind == ScheduledPaymentKind.Instalment);
         if (long.TryParse(account, NumberStyles.None, CultureInfo.InvariantCulture, out var a)) q = q.Where(i => i.AccountId == a);
         return q.ToList();
     }
@@ -152,6 +169,7 @@
     /// <summary>"Monthly on the 1st · until 25.12.2026" / "Every 2 weeks on Monday · ∞" / "Once".</summary>
     private string Rhythm(ScheduledItem item)
     {
+        if (item.Kind == ScheduledPaymentKind.Instalment) return L["Rhythm_Instalment", item.InstalmentNumber ?? 0, item.InstalmentCount ?? 0];
         if (item.Kind != ScheduledPaymentKind.Standing) return L["Rhythm_Once"];
         var count = item.IntervalCount is > 0 ? item.IntervalCount.Value : 1;
         string every;
@@ -212,7 +230,7 @@
     protected override async Task OnParametersSetAsync()
     {
         var query = QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
-        kind = query.TryGetValue("kind", out var k) && k.ToString() is "standing" or "scheduled" ? k.ToString() : "all";
+        kind = query.TryGetValue("kind", out var k) && k.ToString() is "standing" or "scheduled" or "instalment" ? k.ToString() : "all";
         account = query.TryGetValue("account", out var ac) && ac.ToString() is { Length: > 0 } av ? av : "all";
         if (_loadedProjectId != ProjectId)
         {

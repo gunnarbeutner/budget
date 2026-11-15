@@ -66,7 +66,7 @@ internal sealed class TestDb : IAsyncDisposable
         Predictions = new BudgetPredictionService(factory, Hierarchy);
         TransactionQueries = new TransactionQueryService(factory);
         Browse = new BrowseService(factory, Hierarchy, Projects, Entries, Spending);
-        Cashflow = new CashflowProjectionService(factory, Hierarchy, Projects);
+        Cashflow = new CashflowProjectionService(factory, Hierarchy, Projects, System);
         Portfolio = new PortfolioService(factory, Projects);
         DepotMapping = new DepotMappingService(factory);
         SecurityTax = new SecurityTaxService(factory);
@@ -256,7 +256,7 @@ internal sealed class UserView
         Spending = new BudgetService(Factory, Hierarchy, Projects, Entries, Notifier, origin);
         TransactionQueries = new TransactionQueryService(Factory);
         Browse = new BrowseService(Factory, Hierarchy, Projects, Entries, Spending, Access);
-        Cashflow = new CashflowProjectionService(Factory, Hierarchy, Projects);
+        Cashflow = new CashflowProjectionService(Factory, Hierarchy, Projects, t.System);
         Portfolio = new PortfolioService(Factory, Projects);
         Freshness = new FreshnessService(Factory);
         DepotMapping = new DepotMappingService(Factory);

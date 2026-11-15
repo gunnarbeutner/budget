@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using OpenBudget.Connectors;
+using OpenBudget.Connectors.Receipts;
 using OpenBudget.Models;
 
 namespace OpenBudget.Services;
@@ -22,7 +23,10 @@ public sealed record ScheduledItem(
     long AccountId,
     string AccountName,
     string AccountIcon,
-    string? AccountColor);
+    string? AccountColor,
+    long? ReceiptId = null,
+    int? InstalmentNumber = null,
+    int? InstalmentCount = null);
 
 /// <summary>An account of the project whose bank could not deliver its standing orders in the last sync.</summary>
 public sealed record ScheduledFetchProblem(long AccountId, string AccountName, string Error);
@@ -32,14 +36,21 @@ public sealed record ScheduledOverview(IReadOnlyList<ScheduledItem> Items, IRead
 
 /// <summary>
 /// The Scheduled view: the standing orders and future-dated transfers the banks reported for the project's accounts,
-/// soonest first. Reads through the user-scoped context, so the access rules of <see cref="ScheduledPayment"/> (those
-/// of the account's transactions) apply.
+/// plus the expected instalments of running Amazon plans whose payment method is mapped to one of them (see
+/// <see cref="ExpectedInstalments"/>), soonest first. Reads through the user-scoped context, so the access rules of
+/// <see cref="ScheduledPayment"/> (those of the account's transactions) apply; the instalments are read on a system
+/// context, but only for the accounts the user sees.
 /// </summary>
 public class ScheduledPaymentService
 {
     private readonly IDbContextFactory<BudgetDbContext> _dbFactory;
+    private readonly IDbContextFactory<BudgetDbContext>? _system;
 
-    public ScheduledPaymentService(IDbContextFactory<BudgetDbContext> dbFactory) => _dbFactory = dbFactory;
+    public ScheduledPaymentService(IDbContextFactory<BudgetDbContext> dbFactory, SystemDbContextFactory? system = null)
+    {
+        _dbFactory = dbFactory;
+        _system = system;
+    }
 
     public async Task<ScheduledOverview> GetAsync(int projectId, DateOnly today, CancellationToken ct = default)
     {
@@ -63,6 +74,20 @@ public class ScheduledPaymentService
                 p.Id, p.Kind, next.Value, p.LastDate, p.IntervalUnit, p.IntervalCount, p.ExecutionDay,
                 p.Amount / 100m, p.Currency, p.CounterpartyName, p.CounterpartyIban, p.CounterpartyBic, p.Purpose,
                 p.AccountId, a.Name ?? "?", AccountIcons.ForAccount(a.Icon, a.Type, a.Portfolio == 1), a.Color));
+        }
+        if (_system != null)
+        {
+            await using var sys = await _system.CreateDbContextAsync(ct);
+            foreach (var e in await ExpectedInstalments.ForAccountsAsync(sys, visible, today, ct))
+            {
+                var a = accounts[e.AccountId];
+                // Negative ids keep the expected instalments apart from the stored orders.
+                items.Add(new ScheduledItem(
+                    -(e.ReceiptId * ExpectedInstalments.MaxCount + e.Number), ScheduledPaymentKind.Instalment, e.Date, null, null, null, null,
+                    e.Cents / 100m, "EUR", "Amazon " + e.OrderNumber, null, null, e.FirstItem,
+                    e.AccountId, a.Name ?? "?", AccountIcons.ForAccount(a.Icon, a.Type, a.Portfolio == 1), a.Color,
+                    e.ReceiptId, e.Number, e.Count));
+            }
         }
         items = items.OrderBy(i => i.NextDate).ThenBy(i => i.CounterpartyName, StringComparer.CurrentCultureIgnoreCase).ThenBy(i => i.Id).ToList();
 

@@ -241,4 +241,19 @@
   <data name="Project_Settings" xml:space="preserve">
     <value>Settings.</value>
   </data>
+  <data name="Status_InstalmentsOf" xml:space="preserve">
+    <value>Instalments {0} of {1}</value>
+  </data>
+  <data name="Status_InstalmentsPaid" xml:space="preserve">
+    <value>Paid in {0} instalments</value>
+  </data>
+  <data name="State_InstalmentsCancelled" xml:space="preserve">
+    <value>Instalments cancelled</value>
+  </data>
+  <data name="Instalments_Paid" xml:space="preserve">
+    <value>{0} paid</value>
+  </data>
+  <data name="Instalments_Next" xml:space="preserve">
+    <value>next ~{0}</value>
+  </data>
 </root>

@@ -92,7 +92,7 @@
     <value>{0}: Die Bank hat die Daueraufträge beim letzten Abgleich nicht geliefert ({1}).</value>
   </data>
   <data name="Empty" xml:space="preserve">
-    <value>Keine Daueraufträge oder terminierten Überweisungen. Über FinTS verbundene Banken (etwa ING) liefern sie bei jedem Abgleich; sie erscheinen hier nach dem nächsten.</value>
+    <value>Keine Daueraufträge, terminierten Überweisungen oder erwarteten Raten. Über FinTS verbundene Banken (etwa ING) liefern sie bei jedem Abgleich; sie erscheinen hier nach dem nächsten. Erwartete Raten von Amazon-Bestellungen mit Ratenzahlung erscheinen, sobald ihre Zahlungsart einem Konto zugeordnet ist.</value>
   </data>
   <data name="Empty_Filtered" xml:space="preserve">
     <value>Nichts passt zu den Filtern.</value>
@@ -150,5 +150,14 @@
   </data>
   <data name="Until" xml:space="preserve">
     <value>bis {0}</value>
+  </data>
+  <data name="Kind_Instalment" xml:space="preserve">
+    <value>Ratenzahlung</value>
+  </data>
+  <data name="Rhythm_Instalment" xml:space="preserve">
+    <value>Rate {0} von {1} · geschätzt</value>
+  </data>
+  <data name="OpenReceipt" xml:space="preserve">
+    <value>Beleg öffnen</value>
   </data>
 </root>

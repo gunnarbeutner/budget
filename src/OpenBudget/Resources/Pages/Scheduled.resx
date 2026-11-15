@@ -92,7 +92,7 @@
     <value>{0}: the bank did not deliver the standing orders at the last sync ({1}).</value>
   </data>
   <data name="Empty" xml:space="preserve">
-    <value>No standing orders or scheduled transfers. Banks connected over FinTS (such as ING) deliver them with every sync; they show up here after the next one.</value>
+    <value>No standing orders, scheduled transfers or expected instalments. Banks connected over FinTS (such as ING) deliver them with every sync; they show up here after the next one. Expected instalments of Amazon orders paid in instalments show up once their payment method is mapped to an account.</value>
   </data>
   <data name="Empty_Filtered" xml:space="preserve">
     <value>Nothing matches the filters.</value>
@@ -150,5 +150,14 @@
   </data>
   <data name="Until" xml:space="preserve">
     <value>until {0}</value>
+  </data>
+  <data name="Kind_Instalment" xml:space="preserve">
+    <value>Instalment</value>
+  </data>
+  <data name="Rhythm_Instalment" xml:space="preserve">
+    <value>Instalment {0} of {1} · estimated</value>
+  </data>
+  <data name="OpenReceipt" xml:space="preserve">
+    <value>Open receipt</value>
   </data>
 </root>
