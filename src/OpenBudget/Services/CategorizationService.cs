@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using OpenBudget.Assist;
 
 namespace OpenBudget.Services;
 
@@ -18,21 +19,30 @@ public sealed class CategorizationService
     }
 
     /// <summary>
-    /// Uncategorized transactions of the same payee the user may edit, except the given ones: what "Also categorize N similar"
-    /// acts on. Split parents are never offered.
+    /// Uncategorized transactions of the same payee as <paramref name="transactionId"/> that the user may edit, except the
+    /// given ones: what "Also categorize N similar" acts on. The same payee is the assistant's: the same
+    /// <see cref="CategoryMatching.PayeeKey"/> (legal forms and booking boilerplate ignored), and where both bookings carry a
+    /// counterparty IBAN, the same IBAN. Split parents are never offered.
     /// </summary>
     public async Task<List<long>> FindSimilarUncategorizedAsync(
-        string ownerId, string? payee, IReadOnlyCollection<long> exclude, CancellationToken ct = default)
+        string ownerId, long transactionId, IReadOnlyCollection<long> exclude, CancellationToken ct = default)
     {
-        var name = payee?.Trim();
-        if (string.IsNullOrEmpty(name)) return [];
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
-        var rows = await db.Transactions.AsNoTracking()
-            .Where(t => t.OwnerUserId == ownerId && t.Splitted != 1 && t.Name != null && EF.Functions.Collate(t.Name, "NOCASE") == name)
+        var source = await db.Transactions.AsNoTracking().Where(t => t.Id == transactionId)
+            .Select(t => new { t.Name, t.CounterpartyIban }).FirstOrDefaultAsync(ct);
+        var key = CategoryMatching.PayeeKey(source?.Name);
+        if (source == null || key.Length == 0) return [];
+        var iban = CategoryMatching.IbanKey(source.CounterpartyIban);
+        var candidates = await db.Transactions.AsNoTracking()
+            .Where(t => t.OwnerUserId == ownerId && t.Splitted != 1 && t.Name != null)
             .WhereUncategorized(db, ownerId)
-            .Select(t => new { t.Id, t.OwnerUserId, t.AccountId })
+            .Select(t => new { t.Id, t.OwnerUserId, t.AccountId, t.Name, t.CounterpartyIban })
             .ToListAsync(ct);
-        rows = rows.Where(r => !exclude.Contains(r.Id)).ToList();
+        var rows = candidates
+            .Where(r => !exclude.Contains(r.Id)
+                && string.Equals(CategoryMatching.PayeeKey(r.Name), key, StringComparison.Ordinal)
+                && (iban == null || CategoryMatching.IbanKey(r.CounterpartyIban) is not { } other || string.Equals(other, iban, StringComparison.Ordinal)))
+            .ToList();
 
         var accountIds = rows.Where(r => r.AccountId.HasValue).Select(r => r.AccountId!.Value).Distinct().ToList();
         var providers = (await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id)).Select(a => new { a.Id, a.Provider }).ToListAsync(ct))

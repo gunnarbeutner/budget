@@ -253,8 +253,8 @@
 
     private async Task OnNodeMenuPick((SidebarNode Node, string Key) pick)
     {
-        if (pick.Key == SidebarMenus.Rules && pick.Node.Kind == SidebarNodeKind.Category)
-            Navigation.NavigateTo($"{TransactionsUrl}&sel=cat-{pick.Node.Id}&rules=1");
+        if (SidebarMenus.IsRulesPick(pick.Node, pick.Key, out var categoryId))
+            Navigation.NavigateTo($"{TransactionsUrl}&sel={SelectionKey.Category(categoryId)}&rules=1");
         else if (structure != null)
             await structure.PickAsync(pick.Node, pick.Key);
     }

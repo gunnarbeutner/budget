@@ -252,6 +252,7 @@ public sealed class ReceiptStoreTests
         Assert.Equal("Beispiel Banane ca. 200g; Apfelschorle 0,5l ×2", drinks.OrderItems);
         // Only products the memory and keywords left open were asked about, and only once.
         Assert.Equal(["Beispiel Gouda gerieben 150g", "ja! Kochschinken 200g", "Beispiel Banane ca. 200g"], ai.Asked);
+        Assert.Equal(["REWE"], ai.Shops);
         await using (var db = await t.System.CreateDbContextAsync())
             await store.MatchAsync(db, ReceiptWorld.Alice, default);
         Assert.Equal(3, ai.Asked.Count);
@@ -491,6 +492,8 @@ public sealed class ReceiptStoreTests
     {
         public List<string> Asked { get; } = [];
 
+        public HashSet<string> Shops { get; } = new(StringComparer.Ordinal);
+
         public List<long> Choices { get; } = [];
 
         public int Calls { get; private set; }
@@ -506,6 +509,7 @@ public sealed class ReceiptStoreTests
             Calls++;
             var lines = dated.Select(d => d.Line).ToList();
             Asked.AddRange(lines.Select(l => l.Name));
+            Shops.UnionWith(dated.Select(d => d.Shop));
             Choices.AddRange(choices.Select(c => c.CategoryId));
             Entered.TrySetResult();
             if (Hold != null) await Hold;

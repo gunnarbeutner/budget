@@ -19,6 +19,15 @@ public static class ReceiptShops
     public const string Amazon = "amazon";
 
     public static readonly IReadOnlyList<string> All = [Rewe, ReweEbon, Lidl, Amazon];
+
+    /// <summary>The shop's own name as it appears on bank statements (the same for every language).</summary>
+    public static string DisplayName(string shop) => shop switch
+    {
+        Rewe or ReweEbon => "REWE",
+        Lidl => "Lidl",
+        Amazon => "Amazon",
+        _ => shop,
+    };
 }
 
 /// <summary>How a receipt relates to the bookings.</summary>

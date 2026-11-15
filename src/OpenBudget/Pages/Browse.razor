@@ -706,11 +706,9 @@
                 await SelectUncategorized();
                 return;
         }
-        if (tree != null && key.Length > 4 && long.TryParse(key[4..], out var id))
-        {
-            var type = key.StartsWith("grp-", StringComparison.Ordinal) ? CategoryItemType.Group : CategoryItemType.Category;
-            if (FindCategoryNode(tree.Categories, id, type) is { } node) await SelectCategoryNode(node);
-        }
+        if (tree != null && SelectionKey.TryParse(key, out var sel) && sel.Kind != SelectionKind.Account
+            && FindCategoryNode(tree.Categories, sel.Id, sel.ItemType) is { } node)
+            await SelectCategoryNode(node);
     }
 
     // Tree + tx totals (count + sum across the active filter, refreshed on filter change).
@@ -1000,17 +998,15 @@
         if (query.TryGetValue("sel", out var s) && !string.IsNullOrWhiteSpace(s))
         {
             var raw = s.ToString();
-            if (raw.StartsWith("cat-") && long.TryParse(raw[4..], out var cid))
+            if (SelectionKey.TryParse(raw, out var key))
             {
-                selectionKind = "category"; selectionId = cid;
-            }
-            else if (raw.StartsWith("grp-") && long.TryParse(raw[4..], out var gid))
-            {
-                selectionKind = "group"; selectionId = gid;
-            }
-            else if (raw.StartsWith("acct-") && long.TryParse(raw[5..], out var aid))
-            {
-                selectionKind = "account"; selectionId = aid;
+                selectionKind = key.Kind switch
+                {
+                    SelectionKind.Group => "group",
+                    SelectionKind.Account => "account",
+                    _ => "category",
+                };
+                selectionId = key.Id;
             }
             else if (raw.StartsWith('g') && long.TryParse(raw[1..], out var agid))
             {
@@ -1068,9 +1064,9 @@
     {
         ["sel"] = selectionKind switch
         {
-            "category" => $"cat-{selectionId}",
-            "group" => $"grp-{selectionId}",
-            "account" => $"acct-{selectionId}",
+            "category" => SelectionKey.Category(selectionId ?? 0).ToString(),
+            "group" => SelectionKey.Group(selectionId ?? 0).ToString(),
+            "account" => SelectionKey.Account(selectionId ?? 0).ToString(),
             "accountgroup" => $"g{selectionId}",
             "uncategorized" => "uncategorized",
             _ => null

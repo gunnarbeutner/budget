@@ -14,8 +14,8 @@ public interface IReceiptItemClassifier
     Task<Dictionary<long, long>> ClassifyAsync(string ownerUserId, IReadOnlyList<DatedReceiptLine> lines, IReadOnlyList<AllowedCategory> choices, CancellationToken ct);
 }
 
-/// <summary>A receipt line to classify with the date of its receipt.</summary>
-public sealed record DatedReceiptLine(ReceiptLine Line, DateOnly Date);
+/// <summary>A receipt line to classify, with the receipt's date and the shop's name (<see cref="ReceiptShops.DisplayName"/>).</summary>
+public sealed record DatedReceiptLine(ReceiptLine Line, DateOnly Date, string Shop);
 
 /// <summary>
 /// Stores parsed receipts, matches them with the owner's bookings (see <see cref="ReceiptMatcher"/>) and splits a matched
@@ -408,7 +408,7 @@ public sealed class ReceiptStore
                     pathsBy[parent.OwnerUserId] = paths = await PathsAsync(db, parent.OwnerUserId, ct);
                 choices.Insert(0, new AllowedCategory(h, paths.GetValueOrDefault(h) ?? "", "Lebensmittel und alles andere"));
             }
-            asks.Add((p, choices, ask.Select(l => new DatedReceiptLine(l, date)).ToList()));
+            asks.Add((p, choices, ask.Select(l => new DatedReceiptLine(l, date, ReceiptShops.DisplayName(p.Invoice.Shop))).ToList()));
         }
         // Receipts offering the AI the same choices are asked together, a batch at a time (for the progress).
         var total = asks.Sum(a => a.Lines.Count);

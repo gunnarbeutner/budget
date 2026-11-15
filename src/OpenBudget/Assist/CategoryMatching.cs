@@ -48,13 +48,6 @@ public sealed partial class CategoryMatching
     /// <summary>How far back the same payee and amount are looked for.</summary>
     public const int RecurrenceMonths = 18;
 
-    private static readonly HashSet<string> Noise = new(StringComparer.Ordinal)
-    {
-        "GMBH", "MBH", "AG", "KG", "SE", "CO", "UG", "EV", "OHG", "GBR", "LTD", "INC", "SAGT", "DANKE", "UND", "DER", "DIE", "DAS",
-        "FUER", "VOM", "BEI", "MIT", "IHR", "IHRE", "EUR", "SEPA", "LASTSCHRIFT", "UEBERWEISUNG", "GUTSCHRIFT", "KARTENZAHLUNG",
-        "DATUM", "UHR", "ZAHLUNG", "AUFTRAG", "REF", "NR", "KTO", "BLZ", "VISA", "DEBIT", "GIROCARD", "ONLINE",
-    };
-
     private readonly List<HistoryBooking> _history;
     private readonly Dictionary<string, List<HistoryBooking>> _byToken = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<HistoryBooking>> _byPayee = new(StringComparer.Ordinal);
@@ -85,13 +78,13 @@ public sealed partial class CategoryMatching
     public static string PayeeKey(string? payee)
     {
         if (string.IsNullOrWhiteSpace(payee)) return "";
-        var words = Words(payee).Where(w => !Noise.Contains(w)).ToList();
+        var words = Words(payee).Where(w => !MerchantNoise.Contains(w)).ToList();
         return string.Join(' ', words);
     }
 
     /// <summary>The distinct words (three letters or more, no digits, no filler words) of payee and purpose.</summary>
     public static HashSet<string> Tokens(string? payee, string? purpose) =>
-        Words(payee + " " + purpose).Where(w => w.Length >= 3 && !Noise.Contains(w)).ToHashSet(StringComparer.Ordinal);
+        Words(payee + " " + purpose).Where(w => w.Length >= 3 && !MerchantNoise.Contains(w)).ToHashSet(StringComparer.Ordinal);
 
     private static string[] Words(string text) =>
         NonLetters().Replace(RuleExpression.Fold(text), " ").Split(' ', StringSplitOptions.RemoveEmptyEntries);

@@ -89,7 +89,7 @@
                 }
                 @foreach (var label in LabelOptions)
                 {
-                    <option value="@("bank:" + label)" selected="@(account == "bank:" + label)">@label</option>
+                    <option value="@InstitutionKey.Format(label)" selected="@(account == InstitutionKey.Format(label))">@label</option>
                 }
                 @if (items?.Any(i => i.AccountId == null && i.Institution == null) == true)
                 {
@@ -366,7 +366,7 @@
         };
         if (status == "unread") q = q.Where(d => d.Unread || readThisVisit.Contains(d.Id)); // what was just opened stays until the filter changes
         if (account == "none") q = q.Where(d => d.AccountId == null && d.Institution == null);
-        else if (account.StartsWith("bank:", StringComparison.Ordinal)) q = q.Where(d => d.AccountId == null && d.Institution == account[5..]);
+        else if (InstitutionKey.TryParse(account, out var institution)) q = q.Where(d => d.AccountId == null && d.Institution == institution);
         else if (long.TryParse(account, NumberStyles.None, CultureInfo.InvariantCulture, out var a)) q = q.Where(d => d.AccountId == a);
         var s = search.Trim();
         if (s.Length > 0)

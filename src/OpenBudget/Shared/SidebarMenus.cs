@@ -32,6 +32,14 @@ public static class SidebarMenus
     public const string CloseAccount = "close-account";
     public const string ReopenAccount = "reopen-account";
 
+    /// <summary>Whether a menu pick asks for a category's rules (<see cref="Rules"/>); every view opens them in Transactions.</summary>
+    public static bool IsRulesPick(SidebarNode node, string key, out long categoryId)
+    {
+        var rules = key == Rules && node.Kind == SidebarNodeKind.Category;
+        categoryId = rules ? node.Id : 0;
+        return rules;
+    }
+
     public static IReadOnlyList<ContextMenuItem> For(SidebarNode node, SidebarMenuContext ctx, IStringLocalizer<BrowseTreeRail> l)
     {
         var items = new List<ContextMenuItem>();

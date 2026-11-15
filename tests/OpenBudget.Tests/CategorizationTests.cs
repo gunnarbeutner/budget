@@ -144,13 +144,14 @@ public sealed class CategorizationTests
         return t;
     }
 
-    private static void AddTx(TestDb t, long id, long account, string? payee, long? category, int day) =>
+    private static void AddTx(TestDb t, long id, long account, string? payee, long? category, int day, string? iban = null) =>
         t.Db.Transactions.Add(new Transaction
         {
             Id = id,
             OwnerUserId = Owner,
             AccountId = account,
             Name = payee,
+            CounterpartyIban = iban,
             CategoryId = category,
             Amount = -1000,
             Timestamp = new DateTimeOffset(2026, 5, day, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds(),
@@ -169,7 +170,7 @@ public sealed class CategorizationTests
         AddTx(t, 105, Id(1), "Example Shop", Id(104), 6);                // sentinel category counts as uncategorized
         await t.Db.SaveChangesAsync();
 
-        var ids = await new CategorizationService(t.Factory).FindSimilarUncategorizedAsync(Owner, "Example Shop", [100]);
+        var ids = await new CategorizationService(t.Factory).FindSimilarUncategorizedAsync(Owner, 100, [100]);
 
         Assert.Equal(L(101, 105), ids.Order());
     }
@@ -183,9 +184,25 @@ public sealed class CategorizationTests
         await t.Db.SaveChangesAsync();
 
         var asBob = new CategorizationService(t.ForUser("u-bob").Factory);
-        Assert.Empty(await asBob.FindSimilarUncategorizedAsync(Owner, "Example Shop", []));
+        Assert.Empty(await asBob.FindSimilarUncategorizedAsync(Owner, 101, []));
         var asAlice = new CategorizationService(t.ForUser("u-alice").Factory);
-        Assert.Single(await asAlice.FindSimilarUncategorizedAsync(Owner, "Example Shop", []));
+        Assert.Single(await asAlice.FindSimilarUncategorizedAsync(Owner, 101, []));
+    }
+
+    [Fact]
+    public async Task Similar_matches_payee_variants_and_tells_ibans_apart()
+    {
+        await using var t = await WorldAsync();
+        AddTx(t, 100, Id(1), "Example Bakery GmbH", null, 1, "DE00 1111 2222 3333 4444 55");
+        AddTx(t, 101, Id(1), "EXAMPLE BAKERY", null, 2);                                       // no IBAN: the name decides
+        AddTx(t, 102, Id(1), "Example Bakery GmbH & Co. KG", null, 3, "DE00111122223333444455"); // same IBAN, other spelling
+        AddTx(t, 103, Id(1), "Example Bakery", null, 4, "DE00999988887777666655");               // same name, another account
+        AddTx(t, 104, Id(1), "Example Bakery Mitte", null, 5);                                  // another payee
+        await t.Db.SaveChangesAsync();
+
+        var ids = await new CategorizationService(t.Factory).FindSimilarUncategorizedAsync(Owner, 100, [100]);
+
+        Assert.Equal(L(101, 102), ids.Order());
     }
 
     // ---- list filters ----

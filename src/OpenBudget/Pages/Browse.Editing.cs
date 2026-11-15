@@ -143,9 +143,9 @@ public partial class Browse
 
     private async Task OnNodeMenuPickAsync((SidebarNode Node, string Key) pick)
     {
-        if (pick.Key == SidebarMenus.Rules && pick.Node.Kind == SidebarNodeKind.Category)
+        if (SidebarMenus.IsRulesPick(pick.Node, pick.Key, out var categoryId))
         {
-            await OpenRulesAsync(pick.Node.Id, null);
+            await OpenRulesAsync(categoryId, null);
             return;
         }
         if (await PickBankEntryAsync(pick.Node, pick.Key)) return;
@@ -884,14 +884,14 @@ public partial class Browse
     private async Task CategorizeAsync(List<long> ids, long? categoryId, bool offerSimilar = true)
     {
         if (project == null) return;
-        var payee = ids.Count == 1 && rowCache.TryGetValue(ids.First(), out var row) ? row.Name : null;
+        var source = ids.Count == 1 && rowCache.TryGetValue(ids.First(), out var row) && !string.IsNullOrWhiteSpace(row.Name) ? row.Id : (long?)null;
         await RunEditAsync(
             () => Edits.SetCategoryAsync(ids, categoryId),
             result => Plural(categoryId == null ? "Toast_CategoryRemoved" : "Toast_CategorySet", result.Changed),
             async (toast, _) =>
             {
-                if (!offerSimilar || categoryId == null || string.IsNullOrWhiteSpace(payee)) return;
-                var similar = await Categorization.FindSimilarUncategorizedAsync(project.OwnerUserId, payee, ids);
+                if (!offerSimilar || categoryId == null || source is not { } sourceId) return;
+                var similar = await Categorization.FindSimilarUncategorizedAsync(project.OwnerUserId, sourceId, ids);
                 if (similar.Count > 0)
                     toast.Actions.Add(new ToastAction(L["Toast_AlsoSimilar", similar.Count], () => CategorizeAsync(similar, categoryId, offerSimilar: false), "toast-similar"));
             });
