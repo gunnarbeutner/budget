@@ -54,6 +54,7 @@ public sealed class AmazonOrderTests : EndToEndTestBase
         await Expect(receipt).ToContainTextAsync("Amazon " + OrderId);
         await receipt.GetByTestId("tx-receipt-open").ClickAsync();
         await Expect(Page.GetByTestId("receipt-panel")).ToContainTextAsync("USB-C charger");
+        await Expect(Page.GetByTestId("receipt-panel")).ToContainTextAsync("1 item · Open at Amazon");
         await Page.GetByTestId("modal-dialog").Locator(".btn-close").ClickAsync();
 
         // The items are searchable.

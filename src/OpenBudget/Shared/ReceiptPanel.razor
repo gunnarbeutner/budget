@@ -19,26 +19,26 @@
     {
         <div data-testid="receipt-panel">
             <div class="small text-body-secondary mb-2">
-                @(view.DeliveryDate?.ToAppDate())@(view.InvoiceNumber is { Length: > 0 } n ? " · " + n : "")
-                @if (view.ShopUrls() is { Count: > 1 } orders)
-                {
-                    @foreach (var (number, url) in orders)
-                    {
-                        <a class="ms-2" href="@url" target="_blank" rel="noopener" data-testid="receipt-panel-shop-link"><i class="bi bi-box-arrow-up-right me-1" aria-hidden="true"></i>@L["OpenOrderAtShop", number]</a>
-                    }
-                }
-                else if (view.ShopUrl is { } shopUrl)
-                {
-                    <a class="ms-2" href="@shopUrl" target="_blank" rel="noopener" data-testid="receipt-panel-shop-link"><i class="bi bi-box-arrow-up-right me-1" aria-hidden="true"></i>@L["OpenAtShop"]</a>
-                }
-                · @L["Items", view.ItemCount]
+                <span title="@view.InvoiceNumber">@(view.DeliveryDate?.ToAppDate())</span>
+                · @(view.ItemCount == 1 ? L["ItemsOne", view.ItemCount] : L["Items", view.ItemCount])
                 @if (view.PaidInInstalments)
                 {
-                    <span data-testid="receipt-panel-instalments"> · @L["PaidInInstalments"]</span>
+                    <span data-testid="receipt-panel-instalments"> · @(view.Plan is { } p ? L["InstalmentCount", p.Count] : L["Plan_Title"])</span>
                 }
                 else if (view.TransactionId == null)
                 {
                     <span> · @L["NoBooking"]</span>
+                }
+                @if (view.ShopUrls() is { Count: > 1 } orders)
+                {
+                    @foreach (var (number, url) in orders)
+                    {
+                        <span> · </span><a href="@url" target="_blank" rel="noopener" data-testid="receipt-panel-shop-link"><i class="bi bi-box-arrow-up-right me-1" aria-hidden="true"></i>@L["OpenOrderAtShop", number]</a>
+                    }
+                }
+                else if (view.ShopUrl is { } shopUrl)
+                {
+                    <span> · </span><a href="@shopUrl" target="_blank" rel="noopener" data-testid="receipt-panel-shop-link"><i class="bi bi-box-arrow-up-right me-1" aria-hidden="true"></i>@L["OpenAtShop"]</a>
                 }
             </div>
             @* Without a booking nothing is split, so the receipt shows no categories. *@
