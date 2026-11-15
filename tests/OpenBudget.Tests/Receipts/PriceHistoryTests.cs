@@ -178,9 +178,27 @@ public sealed class PriceHistoryTests
         Assert.Equal([false, false, false, true, false, false], PriceAnalysis.Offers([199, 199, 199, 149, 199, 199]));
         // A price rise leaves the earlier, cheaper purchases alone.
         Assert.All(PriceAnalysis.Offers([199, 199, 199, 199, 229, 229, 229, 229]), Assert.False);
-        // 10 % below counts, 9 % does not; the first purchase is judged by the next two.
-        Assert.Equal([true, false, false], PriceAnalysis.Offers([90, 100, 100]));
-        Assert.Equal([false, false, false], PriceAnalysis.Offers([91, 100, 100]));
+        // 10 % below counts, 9 % does not.
+        Assert.Equal([false, true, false], PriceAnalysis.Offers([100, 90, 100]));
+        Assert.Equal([false, false, false], PriceAnalysis.Offers([100, 91, 100]));
+        // Without a purchase before and after it nothing is decided yet.
+        Assert.Equal([false, false, false], PriceAnalysis.Offers([90, 100, 100]));
+    }
+
+    [Fact]
+    public void A_seasonal_drop_at_the_end_is_no_offer()
+    {
+        // A made-up vegetable: dearer in winter, cheaper in spring, latest purchase the cheap one.
+        Assert.All(PriceAnalysis.Offers([139, 149, 159, 149, 95]), Assert.False);
+        Assert.All(PriceAnalysis.Unusual([139, 149, 159, 149, 95]), Assert.False);
+    }
+
+    [Fact]
+    public void A_lasting_drop_is_no_offer_and_not_unusual()
+    {
+        long[] prices = [200, 200, 200, 200, 200, 200, 90, 90, 90];
+        Assert.All(PriceAnalysis.Offers(prices), Assert.False);
+        Assert.All(PriceAnalysis.Unusual(prices), Assert.False);
     }
 
     [Fact]

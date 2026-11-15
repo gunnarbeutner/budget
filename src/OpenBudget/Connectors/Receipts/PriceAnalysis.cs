@@ -412,14 +412,22 @@ public static partial class PriceAnalysis
     /// <summary>Unusual purchases need a median of at least this many purchases to stand out from.</summary>
     private const int UnusualMinPurchases = 3;
 
-    /// <summary>Which of the prices are unusual (see <see cref="UnusualFactor"/>); none with fewer than three.</summary>
+    /// <summary>
+    /// Which of the prices (oldest first) are unusual (see <see cref="UnusualFactor"/>): apart by that factor from both
+    /// the median of the whole history and the medians of up to three purchases before and of up to three after (each
+    /// side it has), so a purchase at a new lasting level is not unusual. None with fewer than three.
+    /// </summary>
     public static bool[] Unusual(IReadOnlyList<long> prices)
     {
         var result = new bool[prices.Count];
         if (prices.Count < UnusualMinPurchases) return result;
         var median = (decimal)Median(prices.ToList());
         for (var i = 0; i < prices.Count; i++)
-            result[i] = prices[i] > median * UnusualFactor || prices[i] * UnusualFactor < median;
+        {
+            var before = prices.Skip(Math.Max(0, i - Neighbours)).Take(Math.Min(i, Neighbours)).ToList();
+            var after = prices.Skip(i + 1).Take(Neighbours).ToList();
+            result[i] = Apart(prices[i], median) && (before.Count == 0 || Apart(prices[i], Median(before))) && (after.Count == 0 || Apart(prices[i], Median(after)));
+        }
         return result;
     }
 
@@ -427,9 +435,10 @@ public static partial class PriceAnalysis
     private const int Neighbours = 3;
 
     /// <summary>
-    /// Which of the prices (oldest first) are offers: at most <see cref="OfferFactor"/> of the usual price on both sides,
-    /// the median of up to three purchases before and after. At either end the one side decides, with at least two
-    /// purchases. A price rise therefore does not turn the earlier, cheaper purchases into offers.
+    /// Which of the prices (oldest first) are offers, a temporary dip: at most <see cref="OfferFactor"/> of the usual
+    /// price on both sides, the median of up to three purchases before and of up to three after. A purchase without one
+    /// before and one after is no offer (not decided yet), so a seasonal or lasting drop is not an offer, nor does a
+    /// rise turn the earlier, cheaper purchases into offers.
     /// </summary>
     public static bool[] Offers(IReadOnlyList<long> prices)
     {
@@ -438,17 +447,12 @@ public static partial class PriceAnalysis
         {
             var before = prices.Skip(Math.Max(0, i - Neighbours)).Take(Math.Min(i, Neighbours)).ToList();
             var after = prices.Skip(i + 1).Take(Neighbours).ToList();
-            long? usual = (before.Count, after.Count) switch
-            {
-                ( > 0, > 0) => Math.Min(Median(before), Median(after)),
-                ( >= 2, 0) => Median(before),
-                (0, >= 2) => Median(after),
-                _ => null,
-            };
-            result[i] = usual is { } u && prices[i] <= u * OfferFactor;
+            result[i] = before.Count > 0 && after.Count > 0 && prices[i] <= Math.Min(Median(before), Median(after)) * OfferFactor;
         }
         return result;
     }
+
+    private static bool Apart(long price, decimal usual) => price > usual * UnusualFactor || price * UnusualFactor < usual;
 
     private static long Median(List<long> values)
     {
