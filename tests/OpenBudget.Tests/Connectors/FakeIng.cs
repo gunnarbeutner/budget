@@ -39,6 +39,15 @@ internal sealed class FakeIng : HttpMessageHandler
 
     public bool Reject { get; set; }
 
+    /// <summary>The VL account's payout plans ("Übersicht Auszahlpläne", linked from its function menu).</summary>
+    public List<IngPlanPages.Row> PayoutPlans { get; set; } = [];
+
+    /// <summary>The VL account's savings plans ("Übersicht Sparaufträge", linked from "Konto verwalten").</summary>
+    public List<IngPlanPages.Row> SavingsPlans { get; set; } = [new("Erika Mustermann", "Sparen", "01.12.2026", "Monatlich", "50,00")];
+
+    /// <summary>Served instead of the savings plan overview when set (a page the connector does not understand).</summary>
+    public string? SavingsPageOverride { get; set; }
+
     /// <summary>The sign-in page asks for the access number first and for the PIN on the next route.</summary>
     public bool PinOnNextPage { get; set; }
 
@@ -161,6 +170,12 @@ internal sealed class FakeIng : HttpMessageHandler
         {
             "/app/obligo" or "/app/obligo/" => Redirect(_base + "/app/obligo/obligo?x=ov"),
             "/app/obligo/obligo" => Html(Overview()),
+            "/app/zahlungsverkehr/auszahlplan_details" => PlanDetails("Auszahlplan Details", PayoutPlans, x),
+            "/app/zahlungsverkehr/sparauftrag_details" => PlanDetails("Sparauftrag Details", SavingsPlans, x),
+            "/app/zahlungsverkehr/aendern" or "/app/zahlungsverkehr/loeschen" => throw new InvalidOperationException("only a plan's Details may be opened"),
+            "/app/zahlungsverkehr/auszahlplaene" => Html(IngPlanPages.Payouts("VL-Sparen", "DE00 0000 0000 0000 0000 77", PayoutPlans, IngPlanPages.Menu("./auszahlplaene?x=vl"))),
+            "/app/zahlungsverkehr/sparauftraege" => Html(SavingsPageOverride ?? IngPlanPages.Savings("VL-Sparen", "DE00 0000 0000 0000 0000 77", SavingsPlans)),
+            "/app/customercockpit/produkt_einstellungen" => Html(IngPlanPages.Settings(("VL-Sparen", "DE00 0000 0000 0000 0000 77", "DE00 0000 0000 0000 0000 11", "../zahlungsverkehr/sparauftraege?x=vl"))),
             "/app/obligo/postbox" => Redirect(_base + "/app/postbox/postbox?x=box1"),
             "/app/obligo/umsatzanzeige" => Umsatz(request.Method, x, form, ajax),
             "/app/postbox/postbox" => Postbox(request.Method, x, form, ajax),
@@ -278,6 +293,11 @@ internal sealed class FakeIng : HttpMessageHandler
     private static HttpResponseMessage Json(HttpStatusCode status, string json) =>
         new(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 
+    private static HttpResponseMessage PlanDetails(string title, List<IngPlanPages.Row> plans, string x) =>
+        int.TryParse(x.TrimStart('d'), System.Globalization.CultureInfo.InvariantCulture, out var i) && i < plans.Count
+            ? Html(IngPlanPages.Details(title, "VL-Sparen", "DE00 0000 0000 0000 0000 77", plans[i]))
+            : new HttpResponseMessage(HttpStatusCode.NotFound);
+
     // ---- overview ----
 
     private static string Row(string href, string headline, string? product, string iban, string amount) =>
@@ -288,6 +308,7 @@ internal sealed class FakeIng : HttpMessageHandler
 
     internal static string Overview() => Page(
         "<a class=\"quicklinks__postbox\" id=\"id233\" href=\"./postbox?x=pb\"> Postbox </a>"
+        + "<a href=\"../customercockpit/produkt_einstellungen?x=ke\">Konto verwalten</a>"
         + Row("./umsatzanzeige?x=giro", "Alltag", "Girokonto", "DE00 0000 0000 0000 0000 11", "955,11")
         + Row("./umsatzanzeige?x=vl", "VL-Sparen", null, "DE00 0000 0000 0000 0000 77", "1.040,00")
         + Row("./umsatzanzeige?x=credit", "Rahmenkredit", null, "DE00 0000 0000 0000 0000 99", "1.500,00"),
@@ -306,7 +327,8 @@ internal sealed class FakeIng : HttpMessageHandler
                     + "<input class=\"input-field picker\" type=\"text\" value=\"09.10.2026\" name=\"filterAnzeige:datum:von:input\" id=\"idvon\" data-date-start-date=\"15.10.2025\" data-date-end-date=\"09.11.2026\"/>"
                     + "<input class=\"input-field picker\" type=\"text\" value=\"09.11.2026\" name=\"filterAnzeige:datum:bis:input\" id=\"idbis\"/>"
                     + "<button type=\"submit\" name=\"filterAnzeige:ergebnisseAnzeigenButton\" id=\"idok\">Filter anwenden</button></form>"
-                    + "<a class=\"button-text-indigo\" id=\"idexp\" href=\"#\">Exportieren</a>",
+                    + "<a class=\"button-text-indigo\" id=\"idexp\" href=\"#\">Exportieren</a>"
+                    + IngPlanPages.Menu("../zahlungsverkehr/auszahlplaene?x=" + _opened),
                     "Wicket.Ajax.ajax({\"u\":\"./umsatzanzeige?x=export\",\"c\":\"idexp\",\"e\":\"click\",\"pd\":true});"));
             case "filter" when method == HttpMethod.Post:
                 Filters.Add((form["filterAnzeige:datum:von:input"] ?? "", form["filterAnzeige:datum:bis:input"] ?? ""));

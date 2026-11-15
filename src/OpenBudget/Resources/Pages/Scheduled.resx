@@ -160,4 +160,7 @@
   <data name="OpenReceipt" xml:space="preserve">
     <value>Open receipt</value>
   </data>
+  <data name="FromWebBanking" xml:space="preserve">
+    <value>from web banking, as of {0}</value>
+  </data>
 </root>

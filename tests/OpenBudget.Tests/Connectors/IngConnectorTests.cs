@@ -1,4 +1,5 @@
 #pragma warning disable CA2000 // test objects live for the test
+using Microsoft.EntityFrameworkCore;
 using OpenBudget.Browser;
 using OpenBudget.Connectors;
 using OpenBudget.Connectors.FinTs;
@@ -193,6 +194,48 @@ public sealed class IngConnectorTests
         Assert.True((await rig.SyncAsync(true, false)).Succeeded);
         Assert.True(rig.Web.Filters.Count > filters);
         Assert.NotEqual("15.10.2025", rig.Web.Filters[^1].From);
+    }
+
+    [Fact]
+    public async Task Savings_plans_are_read_while_the_web_banking_is_open_and_kept_by_FinTS_only_syncs()
+    {
+        await using var rig = await CreateAsync();
+        Assert.True((await rig.SyncAsync(true, false)).Succeeded);
+        await rig.World.LinkAllAsync(BankWorld.Alice, rig.LoginId);
+        Assert.True((await rig.SyncAsync(true, false)).Succeeded);
+
+        var vl = await rig.World.RemoteAsync(BankWorld.Alice, rig.LoginId, FakeIng.VlIban);
+        async Task<List<ScheduledPayment>> PlansAsync()
+        {
+            await using var db = await rig.World.T.System.CreateDbContextAsync();
+            return await db.ScheduledPayments.AsNoTracking().Where(p => p.AccountId == vl.LinkedAccountId).ToListAsync();
+        }
+        var plan = Assert.Single(await PlansAsync());
+        Assert.True(plan.FromWebBanking);
+        Assert.Equal((ScheduledPaymentKind.Standing, 5000L, new DateOnly(2026, 12, 1)), (plan.Kind, plan.Amount, plan.NextDate));
+        Assert.Equal(("Erika Mustermann", "Sparen", "DE00000000000000000000"), (plan.CounterpartyName, plan.Purpose, plan.CounterpartyIban));
+        Assert.Null(plan.LastDate);
+
+        // A background sync runs FinTS only: no web request, and the plan stays.
+        var requests = rig.Web.Requests.Count;
+        var status = await rig.World.SyncAsync(BankWorld.Alice, rig.LoginId, new SyncRequest(rig.LoginId, true, false, Background: true));
+        Assert.True(status.Succeeded, status.Error);
+        Assert.Equal(requests, rig.Web.Requests.Count);
+        Assert.Single(await PlansAsync());
+
+        // A payout plan joins it; an overview that cannot be read keeps the plans; one that says there are none clears them.
+        rig.Web.PayoutPlans = [new("Erika Mustermann", "Auszahlung", "01.12.2026", "Monatlich", "1.900,00", Last: "01.06.2027")];
+        Assert.True((await rig.SyncAsync(true, false)).Succeeded);
+        Assert.Equal(new DateOnly(2027, 6, 1), (await PlansAsync()).Single(p => p.Amount < 0).LastDate);
+        Assert.Equal([-190000L, 5000L], (await PlansAsync()).Select(p => p.Amount).Order());
+        rig.Web.SavingsPageOverride = "<html><body><h1>Wartungsarbeiten</h1></body></html>";
+        Assert.True((await rig.SyncAsync(true, false)).Succeeded);
+        Assert.Equal(2, (await PlansAsync()).Count);
+        rig.Web.SavingsPageOverride = null;
+        rig.Web.SavingsPlans = [];
+        rig.Web.PayoutPlans = [];
+        Assert.True((await rig.SyncAsync(true, false)).Succeeded);
+        Assert.Empty(await PlansAsync());
     }
 
     [Fact]

@@ -6,7 +6,8 @@ namespace OpenBudget.Models;
 
 /// <summary>
 /// A standing order or future-dated transfer the bank holds for an account, as the last sync reported it. Every
-/// sync that reads them replaces the account's rows. Read-only: nothing here is ever sent back to the bank.
+/// sync that reads them replaces the account's rows of that source (<see cref="FromWebBanking"/>). Read-only:
+/// nothing here is ever sent back to the bank.
 /// </summary>
 [Table("scheduled_payments")]
 public class ScheduledPayment
@@ -62,6 +63,12 @@ public class ScheduledPayment
     public string? Purpose { get; set; }
 
     public DateTime FetchedAt { get; set; }
+
+    /// <summary>
+    /// Read from the bank's web banking (plans its FinTS does not report) rather than with the account's refresh. Each
+    /// source replaces only its own rows, so a sync that reads only one of them keeps the other's.
+    /// </summary>
+    public bool FromWebBanking { get; set; }
 
     public Account? Account { get; set; }
 

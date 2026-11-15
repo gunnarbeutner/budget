@@ -4,18 +4,29 @@ using OpenBudget.Services;
 
 namespace OpenBudget.Connectors.Sync;
 
-/// <summary>Keeps an account's standing orders and scheduled transfers (<see cref="ScheduledPayment"/>) as the bank last reported them.</summary>
+/// <summary>
+/// Keeps an account's standing orders and scheduled transfers (<see cref="ScheduledPayment"/>) as the bank last reported
+/// them, per source: the account refresh, and the web banking (<see cref="IWebScheduledSource"/>).
+/// </summary>
 public static class ScheduledPaymentStore
 {
     /// <summary>
-    /// Replaces the account's rows with <see cref="AccountRefresh.Scheduled"/>. A refresh without that list (the
-    /// connector does not report them, or reading them failed) leaves the stored rows alone. Saves nothing itself.
+    /// Replaces the account's refresh rows with <see cref="AccountRefresh.Scheduled"/>. A refresh without that list (the
+    /// connector does not report them, or reading them failed) leaves the stored rows alone; rows read from the web
+    /// banking always stay. Saves nothing itself.
     /// </summary>
-    public static async Task ApplyAsync(BudgetDbContext db, Account account, AccountRefresh refresh, DateTime nowUtc, CancellationToken ct)
+    public static Task ApplyAsync(BudgetDbContext db, Account account, AccountRefresh refresh, DateTime nowUtc, CancellationToken ct) =>
+        refresh.Scheduled == null ? Task.CompletedTask : ReplaceAsync(db, account, refresh.Scheduled, fromWeb: false, nowUtc, ct);
+
+    /// <summary>Replaces the account's rows read from the web banking with <paramref name="plans"/>; the refresh rows stay. Saves nothing itself.</summary>
+    public static Task ApplyWebAsync(BudgetDbContext db, Account account, IReadOnlyList<RemoteScheduledPayment> plans, DateTime nowUtc, CancellationToken ct) =>
+        ReplaceAsync(db, account, plans, fromWeb: true, nowUtc, ct);
+
+    private static async Task ReplaceAsync(
+        BudgetDbContext db, Account account, IReadOnlyList<RemoteScheduledPayment> list, bool fromWeb, DateTime nowUtc, CancellationToken ct)
     {
-        if (refresh.Scheduled == null) return;
-        await db.ScheduledPayments.Where(p => p.AccountId == account.Id).ExecuteDeleteAsync(ct);
-        foreach (var r in refresh.Scheduled)
+        await db.ScheduledPayments.Where(p => p.AccountId == account.Id && p.FromWebBanking == fromWeb).ExecuteDeleteAsync(ct);
+        foreach (var r in list)
         {
             db.ScheduledPayments.Add(new ScheduledPayment
             {
@@ -36,6 +47,7 @@ public static class ScheduledPaymentStore
                 CounterpartyBic = Clip(r.CounterpartyBic, 20),
                 Purpose = Clip(r.Purpose, 1000),
                 FetchedAt = nowUtc,
+                FromWebBanking = fromWeb,
             });
         }
     }

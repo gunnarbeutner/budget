@@ -87,3 +87,14 @@ public interface IBackgroundScope
     /// <summary>Whether a background run fetches statements.</summary>
     bool StatementsInBackground { get; }
 }
+
+/// <summary>
+/// A connector that reads standing orders from a second source the account refresh does not cover (a bank's web
+/// banking, for plans its FinTS does not report). <see cref="WebScheduled"/> holds, per remote account id, the complete
+/// list read in this run; an account missing from it was not read this time, and its rows from an earlier read stay.
+/// The sync stores them after the refreshes and statements, apart from the refresh's own list.
+/// </summary>
+public interface IWebScheduledSource
+{
+    IReadOnlyDictionary<string, IReadOnlyList<RemoteScheduledPayment>> WebScheduled { get; }
+}

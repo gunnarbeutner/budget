@@ -106,6 +106,10 @@
                             {
                                 <span class="sched-iban" data-testid="scheduled-iban">@AccountDisplay.FormatIban(item.CounterpartyIban)@(item.CounterpartyBic is { Length: > 0 } bic ? $" · {bic}" : "")</span>
                             }
+                            @if (item.WebBankingAsOf is { } asOf)
+                            {
+                                <span class="sched-source" data-testid="scheduled-web">@L["FromWebBanking", DateTime.SpecifyKind(asOf, DateTimeKind.Utc).ToLocalTime().ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)]</span>
+                            }
                             <span class="sched-account text-truncate" data-testid="scheduled-account-name">
                                 <i class="bi @item.AccountIcon me-1" style="@AccountIcons.TintStyle(item.AccountColor)" aria-hidden="true"></i>@item.AccountName
                             </span>

@@ -11,9 +11,11 @@ namespace OpenBudget.Connectors.Ing;
 /// contracts, the Rahmenkredit credit line; see <see cref="WebProducts"/>). The web part signs in in a browser (a web
 /// login that keeps the browser for the requests) with the same access number and PIN and needs a confirmation in the
 /// Banking to go app, so it only runs when it is needed: once to discover web-only accounts, when a web-only account is
-/// refreshed, and when statements are fetched. A failed discovery never fails the FinTS part.
+/// refreshed, and when statements are fetched. A failed discovery never fails the FinTS part. Whenever it has signed in
+/// anyway, it also reads the payout and savings plans ("Auszahlpläne", "Sparpläne") of the savings accounts, which
+/// FinTS does not report (<see cref="WebScheduled"/>); background runs never sign in for them.
 /// </summary>
-public sealed class IngConnector : IBankConnector, IBatchedStatements, IBackgroundRunInfo, IBackgroundScope
+public sealed class IngConnector : IBankConnector, IBatchedStatements, IBackgroundRunInfo, IBackgroundScope, IWebScheduledSource
 {
     public const string TypeName = "ing";
     internal const string WebAccountsKey = "ing.web.accounts";
@@ -156,10 +158,39 @@ public sealed class IngConnector : IBankConnector, IBatchedStatements, IBackgrou
             .Select(x => new WebAccount(x.Row.Iban!, $"{x.Row.Product} ...{x.Row.Iban![^4..]}", x.Product!.Type, x.Product.Debt))
             .ToList();
         _session.Values[WebAccountsKey] = JsonSerializer.Serialize(found);
+        await ReadPlansAsync(found, ct);
         _session.Values[WebProductsKey] = WebProductsVersion;
         _session.Values.Remove(WebAttemptKey);
         Log.LogInformation("ING web banking: {Count} web-only account(s) found ({Kinds}).", found.Count,
             string.Join(", ", found.GroupBy(f => f.Kind).Select(g => $"{g.Count()} {g.Key}")));
+    }
+
+    private readonly Dictionary<string, IReadOnlyList<RemoteScheduledPayment>> _webScheduled = new(StringComparer.Ordinal);
+
+    public IReadOnlyDictionary<string, IReadOnlyList<RemoteScheduledPayment>> WebScheduled => _webScheduled;
+
+    /// <summary>
+    /// Reads the plans of every savings account (FinTS or web-only) in the signed-in web banking. An account whose plans
+    /// could not be read is left out, so the ones read before stay; a failure here never fails the sync.
+    /// </summary>
+    private async Task ReadPlansAsync(IReadOnlyList<WebAccount> web, CancellationToken ct)
+    {
+        var savings = _fintsAccounts.Where(a => a.Type == RemoteAccountType.Savings && a.Iban != null).Select(a => (a.Iban!, a.RemoteId))
+            .Concat(web.Where(w => w.Kind == RemoteAccountType.Savings).Select(w => (w.Iban, w.Iban)))
+            .DistinctBy(x => x.Item1, StringComparer.Ordinal)
+            .ToList();
+        foreach (var (iban, remoteId) in savings)
+        {
+            try
+            {
+                if (await _web.PlansAsync(iban, ct) is { } plans) _webScheduled[remoteId] = plans;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Log.LogWarning(ex, "ING web banking: reading the payout and savings plans failed.");
+            }
+            if (!_web.LoggedIn) break;
+        }
     }
 
     private List<WebAccount> WebAccounts()

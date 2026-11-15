@@ -153,7 +153,9 @@ public class CashflowProjectionService
     /// are one-offs that the category projection does not foresee, so they are only added.
     ///
     /// On a Shared account only orders whose category is one of the project's count, the same rule the
-    /// account's bookings follow; on an Exclusive account all of them.
+    /// account's bookings follow; on an Exclusive account all of them. An order whose counterparty IBAN is another
+    /// of the project's "In cashflow" accounts (a payout plan from the savings account to the Girokonto, a savings
+    /// standing order the other way) only moves money between them and is left out.
     /// </summary>
     public async Task<ScheduledCashflow> GetScheduledCashflowAsync(
         int projectId, int year, DateOnly today, IReadOnlyCollection<(long Id, CategoryItemType ItemType)> rowKeys)
@@ -197,6 +199,11 @@ public class CashflowProjectionService
             projectLeaves = CategoryHierarchyService.BuildItemToLeafCategoryIds(tracked, hierarchy).Values.SelectMany(s => s).ToHashSet();
         }
 
+        // An order to another of the project's cashflow accounts moves money between them: no income or spending.
+        var cashflowIbans = (await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id) && a.Iban != null).Select(a => a.Iban!).ToListAsync())
+            .Select(NormalizeIban).ToHashSet(StringComparer.Ordinal);
+        orders = orders.Where(o => o.CounterpartyIban == null || !cashflowIbans.Contains(NormalizeIban(o.CounterpartyIban))).ToList();
+
         var categories = await InferCategoriesAsync(db, project.OwnerUserId, orders);
         var scopeByAccount = assignments.ToDictionary(a => a.AccountId, a => a.Scope);
         foreach (var order in orders)
@@ -226,6 +233,8 @@ public class CashflowProjectionService
         result.Occurrences.Sort((a, b) => a.Date.CompareTo(b.Date));
         return result;
     }
+
+    private static string NormalizeIban(string iban) => iban.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
 
     /// <summary>Per order id: the category of the most recent booked transaction the order produced (see <see cref="GetScheduledCashflowAsync"/>).</summary>
     private static async Task<Dictionary<long, long?>> InferCategoriesAsync(BudgetDbContext db, string ownerId, List<ScheduledPayment> orders)

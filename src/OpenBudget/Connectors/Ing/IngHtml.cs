@@ -20,6 +20,9 @@ internal sealed record IngOverviewAccount(string Headline, string Product, strin
 /// <summary>One row of a Postbox listing.</summary>
 internal sealed record IngPostboxRow(string Type, string Subject, DateOnly Date, string DownloadHref);
 
+/// <summary>A row of a plan overview: the plan as the row shows it and the href of its "Details" link.</summary>
+internal sealed record IngPlanRow(RemoteScheduledPayment Plan, string? DetailsHref);
+
 /// <summary>A postbox tab (one per customer / joint customer relationship).</summary>
 internal sealed record IngPostboxTab(string Label, string Href, bool Selected);
 
@@ -383,6 +386,197 @@ internal static partial class IngHtml
         cells.Add(current.ToString());
         return cells;
     }
+
+    // ---- payout plans ("Auszahlpläne") and savings plans ("Sparaufträge") ----
+
+    /// <summary>The href of the first link whose text is exactly <paramref name="text"/>, or null.</summary>
+    public static string? LinkByText(string html, string text)
+    {
+        foreach (Match m in AnchorRegex().Matches(html))
+        {
+            if (string.Equals(Text(m.Groups["inner"].Value), text, StringComparison.OrdinalIgnoreCase)) return Attr(m.Groups["open"].Value, "href");
+        }
+        return null;
+    }
+
+    /// <summary>The hrefs of every link whose address contains <paramref name="path"/> (for instance "sparauftraege").</summary>
+    public static IReadOnlyList<string> LinksTo(string html, string path) =>
+        AnchorRegex().Matches(html).Select(m => Attr(m.Groups["open"].Value, "href")).OfType<string>()
+            .Where(h => h.Contains(path, StringComparison.OrdinalIgnoreCase)).Distinct(StringComparer.Ordinal).ToList();
+
+    /// <summary>The IBAN in the page header of an account page (<c>div.g2p-banking-header__account__iban</c>), or null.</summary>
+    public static string? HeaderIban(string html)
+    {
+        var inner = Match1(html, @"class=""[^""]*\bg2p-banking-header__account__iban\b[^""]*""[^>]*>(?<v>.*?)</div>");
+        return inner == null ? null : FindIban(Text(inner));
+    }
+
+    /// <summary>
+    /// The reference account (Referenzkonto) per savings account on "Konto verwalten": in the page text, an IBAN with
+    /// "Referenzkonto" between it and the IBAN before it belongs to the account whose IBAN came last before it.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> ReferenceAccounts(string html)
+    {
+        var text = Text(html);
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        string? account = null;
+        var lastEnd = 0;
+        foreach (Match m in IbanInTextRegex().Matches(text))
+        {
+            if (NormalizeIban(m.Value) is not { } iban) continue;
+            var before = text[lastEnd..m.Index];
+            lastEnd = m.Index + m.Length;
+            if (before.Contains("Referenzkonto", StringComparison.OrdinalIgnoreCase))
+            {
+                if (account != null) result.TryAdd(account, iban);
+            }
+            else account = iban;
+        }
+        return result;
+    }
+
+    /// <summary>Whether an overview page says it lists nothing ("Es sind keine Sparaufträge vorhanden.").</summary>
+    public static bool SaysNoPlans(string html) =>
+        Regex.IsMatch(Text(html), @"\bkeine\s+(?:Sparauftr|Auszahlpl|Auftr)\w*\s+vorhanden", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
+
+    /// <summary>
+    /// The plans of an overview page ("Übersicht Auszahlpläne", "Übersicht Sparaufträge"): a <c>div.ibbr-table</c> whose
+    /// header names the columns (Empfänger or Kontoinhaber, Verwendungszweck, Ausführung, Intervall, Betrag). Each row's
+    /// cells are mapped by that order; the mobile summary cell (<c>u-visible-sm</c>) repeats the data and is skipped.
+    /// Amounts are shown unsigned: payouts (<paramref name="incoming"/> false) leave the account, savings plans pay into
+    /// it. <paramref name="counterpartyIban"/> is the account's reference account, where payouts go and savings plans
+    /// come from, until a plan's detail page (the row's "Details" link) names its own. Null when the page has no such table (not understood); rows without a date or amount are skipped.
+    /// </summary>
+    public static IReadOnlyList<IngPlanRow>? PlanTable(string html, bool incoming, string? counterpartyIban, DateOnly today)
+    {
+        var start = TableStartRegex().Match(html);
+        if (!start.Success) return null;
+        var table = html[start.Index..];
+        var bodyAt = table.IndexOf("ibbr-table-body", StringComparison.Ordinal);
+        var header = bodyAt < 0 ? table : table[..bodyAt];
+        var columns = HeaderCellRegex().Matches(header).Select(m => Text(m.Groups["inner"].Value)).ToList();
+        int Col(params string[] names) => columns.FindIndex(c => names.Any(n => c.StartsWith(n, StringComparison.OrdinalIgnoreCase)));
+        int name = Col("Empfänger", "Kontoinhaber"), purpose = Col("Verwendungszweck"), date = Col("Ausführung"), interval = Col("Intervall"), amount = Col("Betrag");
+        if (date < 0 || amount < 0) return null;
+        if (bodyAt < 0) return [];
+
+        var result = new List<IngPlanRow>();
+        var rows = TableRowRegex().Matches(table, bodyAt).Select(m => m.Index).ToList();
+        for (var r = 0; r < rows.Count; r++)
+        {
+            var row = table[rows[r]..(r + 1 < rows.Count ? rows[r + 1] : table.Length)];
+            var cellStarts = CellRegex().Matches(row).ToList();
+            var cells = new List<string>();
+            for (var c = 0; c < cellStarts.Count; c++)
+            {
+                if (HasClass(cellStarts[c].Value, "u-visible-sm")) continue;
+                var end = c + 1 < cellStarts.Count ? cellStarts[c + 1].Index : row.Length;
+                cells.Add(Text(row[(cellStarts[c].Index + cellStarts[c].Length)..end]));
+            }
+            string? Cell(int i) => i >= 0 && i < cells.Count && cells[i].Length > 0 ? cells[i] : null;
+            if (!DateOnly.TryParseExact(Cell(date), "dd.MM.yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var next)) continue;
+            var amountText = Cell(amount);
+            if (amountText == null || !Regex.IsMatch(amountText, @"^-?[\d.]+,\d{2}", RegexOptions.None, TimeSpan.FromSeconds(1))) continue;
+            var size = Math.Abs(ParseAmount(Regex.Match(amountText, @"^-?[\d.]+,\d{2}", RegexOptions.None, TimeSpan.FromSeconds(1)).Value));
+            var (unit, count) = Cell(interval) is { } t && Rhythm(t) is { } rhythm ? rhythm : (ScheduleUnit.Month, 1);
+            while (next < today) next = unit == ScheduleUnit.Week ? next.AddDays(7 * count) : next.AddMonths(count);
+            var who = Cell(name);
+            var what = Cell(purpose);
+            var id = string.Join(':', "web", incoming ? "in" : "out", who ?? "", what ?? "", $"{unit}{count}", size.ToString(CultureInfo.InvariantCulture), r.ToString(CultureInfo.InvariantCulture));
+            var weekday = (int)next.DayOfWeek == 0 ? 7 : (int)next.DayOfWeek;
+            result.Add(new IngPlanRow(new RemoteScheduledPayment(ScheduledPaymentKind.Standing, id, next, incoming ? size : -size, "EUR", who, counterpartyIban, null, what,
+                IntervalUnit: unit, IntervalCount: count, ExecutionDay: unit == ScheduleUnit.Week ? weekday : next.Day), LinkByText(row, "Details")));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// The fields of a plan's detail page ("Auszahlplan Details"): each <c>div.form-group__label</c> text with the text
+    /// that follows it up to the next label (its <c>form-group__controls</c>); an empty value stays empty.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> DetailFields(string html)
+    {
+        var labels = DetailLabelRegex().Matches(html).ToList();
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < labels.Count; i++)
+        {
+            var from = labels[i].Index + labels[i].Length;
+            var to = i + 1 < labels.Count ? labels[i + 1].Index : Math.Min(html.Length, from + 2000);
+            result.TryAdd(Text(labels[i].Groups["label"].Value), Text(html[from..to]));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// <paramref name="plan"/> completed from its detail page: the counterparty's IBAN and name (Zahlungsempfänger for a
+    /// payout, Auftraggeber for a savings plan), next execution, amount, interval, purpose and the last execution
+    /// ("Letzte Ausführung", empty while the plan runs until cancelled). Null when the page shows no plan details.
+    /// </summary>
+    public static RemoteScheduledPayment? WithDetails(RemoteScheduledPayment plan, string html, bool incoming, DateOnly today)
+    {
+        var f = DetailFields(html);
+        if (!f.ContainsKey("Nächste Ausführung") && !f.ContainsKey("Betrag")) return null;
+        string? Get(string key) => f.TryGetValue(key, out var v) && v.Length > 0 ? v : null;
+        static DateOnly? Date(string? text) =>
+            text != null && DateOnly.TryParseExact(text, "dd.MM.yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+
+        var result = plan;
+        if (Get("IBAN") is { } ibanText && FindIban(ibanText) is { } iban) result = result with { CounterpartyIban = iban };
+        if (Get(incoming ? "Auftraggeber" : "Zahlungsempfänger") is { } name) result = result with { CounterpartyName = name };
+        if (Get("Verwendungszweck") is { } purpose) result = result with { Purpose = purpose };
+        if (Get("Betrag") is { } amountText && Regex.Match(amountText, @"[\d.]+,\d{2}", RegexOptions.None, TimeSpan.FromSeconds(1)) is { Success: true } a)
+        {
+            var size = Math.Abs(ParseAmount(a.Value));
+            result = result with { Amount = incoming ? size : -size };
+        }
+        if (Get("Intervall") is { } interval && Rhythm(interval) is { } rhythm) result = result with { IntervalUnit = rhythm.Unit, IntervalCount = rhythm.Count };
+        if (Date(Get("Nächste Ausführung")) is { } next)
+        {
+            var count = result.IntervalCount ?? 1;
+            while (next < today) next = result.IntervalUnit == ScheduleUnit.Week ? next.AddDays(7 * count) : next.AddMonths(count);
+            var weekday = (int)next.DayOfWeek == 0 ? 7 : (int)next.DayOfWeek;
+            result = result with { NextDate = next, ExecutionDay = result.IntervalUnit == ScheduleUnit.Week ? weekday : next.Day };
+        }
+        return result with { LastDate = Date(Get("Letzte Ausführung")) };
+    }
+
+    /// <summary>The rhythm a line names ("Monatlich", "Alle 3 Monate", "14-tägig", ...), or null.</summary>
+    internal static (ScheduleUnit Unit, int Count)? Rhythm(string line)
+    {
+        var m = RhythmRegex().Match(line);
+        if (!m.Success) return null;
+        var word = m.Value;
+        if (m.Groups["n"].Success)
+        {
+            var n = int.Parse(m.Groups["n"].Value, CultureInfo.InvariantCulture);
+            return word.Contains("woche", StringComparison.OrdinalIgnoreCase) || word.Contains("week", StringComparison.OrdinalIgnoreCase) ? (ScheduleUnit.Week, n) : (ScheduleUnit.Month, n);
+        }
+        if (word.StartsWith("monat", StringComparison.OrdinalIgnoreCase) || word.StartsWith("month", StringComparison.OrdinalIgnoreCase)) return (ScheduleUnit.Month, 1);
+        if (word.StartsWith("viertel", StringComparison.OrdinalIgnoreCase) || word.StartsWith("quarter", StringComparison.OrdinalIgnoreCase)) return (ScheduleUnit.Month, 3);
+        if (word.StartsWith("halb", StringComparison.OrdinalIgnoreCase) || word.StartsWith("half", StringComparison.OrdinalIgnoreCase) || word.StartsWith("semi", StringComparison.OrdinalIgnoreCase)) return (ScheduleUnit.Month, 6);
+        if (word.StartsWith('j', StringComparison.OrdinalIgnoreCase) || word.StartsWith('y', StringComparison.OrdinalIgnoreCase) || word.StartsWith('a', StringComparison.OrdinalIgnoreCase)) return (ScheduleUnit.Month, 12);
+        if (word.StartsWith("14", StringComparison.OrdinalIgnoreCase) || word.StartsWith("zwei", StringComparison.OrdinalIgnoreCase)) return (ScheduleUnit.Week, 2);
+        return (ScheduleUnit.Week, 1);
+    }
+
+    [GeneratedRegex(@"<div\b[^>]*class=""[^""]*\bform-group__label\b[^""]*""[^>]*>(?<label>.*?)</div>", RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 2000)]
+    private static partial Regex DetailLabelRegex();
+
+    [GeneratedRegex(@"<div\b[^>]*class=""[^""]*\bibbr-table\b[^""]*""", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 2000)]
+    private static partial Regex TableStartRegex();
+
+    [GeneratedRegex(@"<span\b[^>]*role=""columnheader""[^>]*>(?<inner>.*?)</span>\s*(?=<span\b[^>]*role=""columnheader""|</div>)", RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 2000)]
+    private static partial Regex HeaderCellRegex();
+
+    [GeneratedRegex(@"<div\b[^>]*class=""[^""]*\bibbr-table-row\b[^""]*""", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 2000)]
+    private static partial Regex TableRowRegex();
+
+    [GeneratedRegex(@"<(?:span|div)\b[^>]*role=""cell""[^>]*>", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 2000)]
+    private static partial Regex CellRegex();
+
+    [GeneratedRegex(@"\b(?:monatlich|monthly|viertelj(?:ä|ae)hrlich|quarterly|halbj(?:ä|ae)hrlich|half-yearly|semi-annually|j(?:ä|ae)hrlich|yearly|annually|w(?:ö|oe)chentlich|weekly|14-t(?:ä|ae)gig|zweiw(?:ö|oe)chentlich|alle\s+(?<n>\d{1,2})\s+(?:Monate|Wochen)|every\s+(?<n>\d{1,2})\s+(?:months|weeks))\b",
+        RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex RhythmRegex();
 
     [GeneratedRegex(@"<[^>]+>", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex Tags();

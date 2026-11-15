@@ -231,4 +231,56 @@ public sealed class ScheduledPaymentTests
         await t.Db.ProjectAccountAssignments.ExecuteUpdateAsync(s => s.SetProperty(a => a.InCashflow, false));
         Assert.Empty((await t.Cashflow.GetScheduledCashflowAsync(1, 2027, new DateOnly(2026, 12, 15), [])).Occurrences);
     }
+
+    // ---------------------------------------------------------------- web banking plans
+
+    private static RemoteScheduledPayment Payout(decimal amount = -1900m) =>
+        new(ScheduledPaymentKind.Standing, "web:out:Auszahlplan Beispiel", new DateOnly(2026, 12, 1), amount, "EUR",
+            "Alltag", "DE00 0000 0000 0000 0000 11", null, "Auszahlplan Beispiel", IntervalUnit: ScheduleUnit.Month, IntervalCount: 1, ExecutionDay: 1);
+
+    [Fact]
+    public async Task Plans_from_the_web_banking_survive_syncs_that_only_read_FinTS_and_are_replaced_by_the_next_web_read()
+    {
+        await using var t = new TestDb();
+        var savings = t.AddAccount(10, "Extra");
+        await t.Db.SaveChangesAsync();
+
+        await ScheduledPaymentStore.ApplyWebAsync(t.Db, savings, [Payout()], DateTime.UtcNow, default);
+        await t.Db.SaveChangesAsync();
+        // a FinTS-only sync: the bank's standing order list for the account is empty
+        await ScheduledPaymentStore.ApplyAsync(t.Db, savings, new AccountRefresh(null, [], [], []), DateTime.UtcNow, default);
+        await t.Db.SaveChangesAsync();
+        var kept = Assert.Single(await t.Db.ScheduledPayments.AsNoTracking().ToListAsync());
+        Assert.True(kept.FromWebBanking);
+        Assert.Equal((-190000L, ScheduleUnit.Month, "DE00000000000000000011"), (kept.Amount, kept.IntervalUnit!.Value, kept.CounterpartyIban));
+
+        // a FinTS order next to it, then a new web read with a changed amount: each source replaces only its own rows
+        await ScheduledPaymentStore.ApplyAsync(t.Db, savings, new AccountRefresh(null, [], [], [Payout(-25m) with { BankOrderId = "SO-9" }]), DateTime.UtcNow, default);
+        await ScheduledPaymentStore.ApplyWebAsync(t.Db, savings, [Payout(-2000m)], DateTime.UtcNow, default);
+        await t.Db.SaveChangesAsync();
+        var rows = await t.Db.ScheduledPayments.AsNoTracking().OrderBy(p => p.Amount).ToListAsync();
+        Assert.Equal([(-200000L, true), (-2500L, false)], rows.Select(r => (r.Amount, r.FromWebBanking)));
+    }
+
+    [Fact]
+    public async Task An_order_between_two_cashflow_accounts_of_the_project_is_left_out_of_the_forecast()
+    {
+        await using var t = await CashflowWorldAsync();
+        var giro = await t.Db.Accounts.FirstAsync(a => a.Id == 10);
+        giro.Iban = "DE00000000000000000011";
+        var savings = t.AddAccount(20, "Extra");
+        t.Db.ProjectAccountAssignments.Add(new ProjectAccountAssignment { ProjectId = 1, AccountId = 20, Scope = AccountScope.Exclusive, InCashflow = true });
+        await t.Db.SaveChangesAsync();
+        await ScheduledPaymentStore.ApplyWebAsync(t.Db, savings, [Payout()], DateTime.UtcNow, default);
+        await t.Db.SaveChangesAsync();
+
+        var scheduled = await t.Cashflow.GetScheduledCashflowAsync(1, 2027, new DateOnly(2026, 12, 15), []);
+        Assert.Equal(13, scheduled.Occurrences.Count); // the rents and the one-off; the payout moves money within the project
+        Assert.DoesNotContain(scheduled.Occurrences, o => o.Amount == -1900m);
+
+        // with the Girokonto outside the cashflow, the payout leaves the project's money
+        await t.Db.ProjectAccountAssignments.Where(a => a.AccountId == 10).ExecuteUpdateAsync(s => s.SetProperty(a => a.InCashflow, false));
+        scheduled = await t.Cashflow.GetScheduledCashflowAsync(1, 2027, new DateOnly(2026, 12, 15), []);
+        Assert.Equal(12, scheduled.Occurrences.Count(o => o.Amount == -1900m));
+    }
 }

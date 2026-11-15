@@ -160,4 +160,7 @@
   <data name="OpenReceipt" xml:space="preserve">
     <value>Beleg öffnen</value>
   </data>
+  <data name="FromWebBanking" xml:space="preserve">
+    <value>aus dem Online-Banking, Stand {0}</value>
+  </data>
 </root>

@@ -5,7 +5,7 @@ using OpenBudget.Models;
 
 namespace OpenBudget.Services;
 
-/// <summary>A standing order or scheduled transfer as the Scheduled view shows it (amount signed, in currency units).</summary>
+/// <summary>A standing order or scheduled transfer as the Scheduled view shows it (amount signed, in currency units); <see cref="WebBankingAsOf"/> is when it was read from the web banking, null for orders read with the account refresh.</summary>
 public sealed record ScheduledItem(
     long Id,
     ScheduledPaymentKind Kind,
@@ -26,7 +26,8 @@ public sealed record ScheduledItem(
     string? AccountColor,
     long? ReceiptId = null,
     int? InstalmentNumber = null,
-    int? InstalmentCount = null);
+    int? InstalmentCount = null,
+    DateTime? WebBankingAsOf = null);
 
 /// <summary>An account of the project whose bank could not deliver its standing orders in the last sync.</summary>
 public sealed record ScheduledFetchProblem(long AccountId, string AccountName, string Error);
@@ -73,7 +74,10 @@ public class ScheduledPaymentService
             items.Add(new ScheduledItem(
                 p.Id, p.Kind, next.Value, p.LastDate, p.IntervalUnit, p.IntervalCount, p.ExecutionDay,
                 p.Amount / 100m, p.Currency, p.CounterpartyName, p.CounterpartyIban, p.CounterpartyBic, p.Purpose,
-                p.AccountId, a.Name ?? "?", AccountIcons.ForAccount(a.Icon, a.Type, a.Portfolio == 1), a.Color));
+                p.AccountId, a.Name ?? "?", AccountIcons.ForAccount(a.Icon, a.Type, a.Portfolio == 1), a.Color)
+            {
+                WebBankingAsOf = p.FromWebBanking ? p.FetchedAt : null,
+            });
         }
         if (_system != null)
         {

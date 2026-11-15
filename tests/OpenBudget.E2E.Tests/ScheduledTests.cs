@@ -126,6 +126,7 @@ public sealed class ScheduledTests : EndToEndTestBase
         await Expect(Rows.Nth(2).GetByTestId("scheduled-rhythm")).ToHaveTextAsync(new Regex(@"^Quarterly on the .* · until 31\.12\.2027$"));
         await Expect(Rows.Nth(2).GetByTestId("scheduled-amount")).ToHaveClassAsync(new Regex("money-pos"));
         await Expect(Page.GetByText("Hidden Payee")).ToHaveCountAsync(0);
+        await Expect(Page.GetByTestId("scheduled-web")).ToHaveCountAsync(0); // none of them comes from the web banking
 
         await Page.GetByTestId("scheduled-kind").SelectOptionAsync("standing");
         await Expect(Page).ToHaveURLAsync(new Regex("kind=standing"));
@@ -143,6 +144,25 @@ public sealed class ScheduledTests : EndToEndTestBase
         await WaitForInteractiveAsync();
         await Expect(Page.GetByTestId("scheduled-kind")).ToHaveValueAsync("scheduled");
         await Expect(Rows).ToHaveCountAsync(0);
+    }
+
+    [Test]
+    public async Task A_plan_read_from_the_web_banking_says_so()
+    {
+        await SeedOrdersAsync();
+        await using (var db = await Db.CreateDbContextAsync())
+        {
+            var plan = Order(EditingSeed.BankAccountId, ScheduledPaymentKind.Standing, Today.AddDays(9), -1900_00, "Example Owner", "Payout plan", monthDay: Today.AddDays(9).Day);
+            plan.FromWebBanking = true;
+            plan.FetchedAt = new DateTime(2026, 11, 10, 12, 0, 0, DateTimeKind.Utc);
+            db.ScheduledPayments.Add(plan);
+            await db.SaveChangesAsync();
+        }
+        await GoToAsync($"/projects/{Pid}/scheduled?kind=standing");
+        var row = Rows.Filter(new() { HasText = "Example Owner" });
+        await Expect(row.GetByTestId("scheduled-rhythm")).ToContainTextAsync("Monthly");
+        await Expect(row.GetByTestId("scheduled-web")).ToHaveTextAsync("from web banking, as of 10.11.2026");
+        await Expect(Page.GetByTestId("scheduled-web")).ToHaveCountAsync(1);
     }
 
     [Test]

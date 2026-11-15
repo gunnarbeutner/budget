@@ -217,6 +217,7 @@ internal sealed class IngWebClient
     {
         _browser = browser;
         _overview = null;
+        _settings = null;
         var (picked, label) = await browser.RunAsync(ChosenDevice, "", ct);
         if (picked && label.Length > 0)
         {
@@ -295,6 +296,98 @@ internal sealed class IngWebClient
         var parsed = IngHtml.ParseCsv(IngHtml.DecodeCsv(response.Body));
         _log.LogInformation("ING web banking: the export has {Count} booked transaction(s).", parsed.Transactions.Count);
         return new AccountRefresh(parsed.Balance ?? row.Balance, parsed.Transactions, []);
+    }
+
+    // ---------------------------------------------------------------- payout and savings plans
+
+    /// <summary>"Konto verwalten" of this session (reference accounts and links to the savings plan overviews), read once.</summary>
+    private IngPage? _settings;
+
+    /// <summary>
+    /// The payout plans ("Übersicht Auszahlpläne") and savings plans ("Übersicht Sparaufträge") of the overview account
+    /// with <paramref name="iban"/> (see <see cref="IngHtml.PlanTable"/>), or null when a page could not be read. Every
+    /// address comes from a link (they carry session tokens): the payout plans from the "Auszahlpläne" link of the
+    /// account's function menu, the savings plans from a link to "sparauftraege" on the account page, the payout page or
+    /// "Konto verwalten", taking the one whose page header shows the account's IBAN. Each plan's detail page (its "Details" link)
+    /// adds the counterparty IBAN and the last execution; without one the account's reference account from "Konto
+    /// verwalten" stands in. A link that is not offered means no plans of that kind.
+    /// Uses the open session only.
+    /// </summary>
+    public async Task<IReadOnlyList<RemoteScheduledPayment>?> PlansAsync(string iban, CancellationToken ct)
+    {
+        var row = Accounts.FirstOrDefault(a => string.Equals(a.Iban, iban, StringComparison.Ordinal));
+        if (row == null || _overview == null) return null;
+        var overview = _overview;
+        var account = await GetAsync(Resolve(overview.Url, row.Href), ct);
+        var settingsLink = IngHtml.LinksTo(overview.Html, "produkt_einstellungen") is [var first, ..] ? first : IngHtml.LinkByText(overview.Html, "Konto verwalten");
+        if (_settings == null && settingsLink != null)
+            _settings = await GetAsync(Resolve(overview.Url, settingsLink), ct);
+        var reference = _settings == null ? null : IngHtml.ReferenceAccounts(_settings.Html).GetValueOrDefault(iban);
+
+        var plans = new List<RemoteScheduledPayment>();
+        IngPage? payoutPage = null;
+        if (IngHtml.LinkByText(account.Html, "Auszahlpläne") is { } payoutLink)
+        {
+            payoutPage = await GetAsync(Resolve(account.Url, payoutLink), ct);
+            if (await ReadAsync(payoutPage, incoming: false) is not { } payouts) return null;
+            plans.AddRange(payouts);
+        }
+
+        var candidates = new List<(Uri Page, string Href)>();
+        foreach (var page in new[] { account, payoutPage, _settings }.OfType<IngPage>())
+            candidates.AddRange(IngHtml.LinksTo(page.Html, "sparauftraege").Select(h => (page.Url, h)));
+        var found = false;
+        var unreadable = false;
+        foreach (var url in candidates.Select(c => Resolve(c.Page, c.Href)).DistinctBy(u => u.AbsoluteUri, StringComparer.Ordinal))
+        {
+            var page = await GetAsync(url, ct);
+            var header = IngHtml.HeaderIban(page.Html);
+            unreadable |= header == null;
+            if (!string.Equals(header, iban, StringComparison.Ordinal)) continue;
+            if (await ReadAsync(page, incoming: true) is not { } savings) return null;
+            plans.AddRange(savings);
+            found = true;
+            break;
+        }
+        if (!found && unreadable)
+        {
+            // a savings plan overview that shows no account may have been this account's
+            _log.LogInformation("ING web banking: a savings plan overview showed no account.");
+            return null;
+        }
+        _log.LogInformation("ING web banking: {Count} payout or savings plan(s) read.", plans.Count);
+        return plans;
+
+        async Task<IReadOnlyList<RemoteScheduledPayment>?> ReadAsync(IngPage page, bool incoming)
+        {
+            var header = IngHtml.HeaderIban(page.Html);
+            if (header != null && !string.Equals(header, iban, StringComparison.Ordinal))
+            {
+                _log.LogInformation("ING web banking: a plan overview showed another account.");
+                return null;
+            }
+            var read = IngHtml.PlanTable(page.Html, incoming, reference, Today());
+            if (read == null && IngHtml.SaysNoPlans(page.Html)) return [];
+            if (read == null)
+            {
+                _log.LogInformation("ING web banking: a plan overview looks different than expected: {Shape}", PageShape(page));
+                return null;
+            }
+            // each plan's detail page (only its "Details" link, never "Ändern" or "Löschen") adds the counterparty and the end
+            var result = new List<RemoteScheduledPayment>();
+            foreach (var r in read)
+            {
+                var plan = r.Plan;
+                if (r.DetailsHref != null)
+                {
+                    var details = await GetAsync(Resolve(page.Url, r.DetailsHref), ct);
+                    if (IngHtml.WithDetails(plan, details.Html, incoming, Today()) is { } detailed) plan = detailed;
+                    else _log.LogInformation("ING web banking: a plan's detail page looks different than expected: {Shape}", PageShape(details));
+                }
+                result.Add(plan);
+            }
+            return result;
+        }
     }
 
     private static DateOnly? EarliestDate(string formInner, string field = FromField)

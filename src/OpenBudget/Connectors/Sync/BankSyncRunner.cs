@@ -268,6 +268,8 @@ public sealed class BankSyncRunner
             }
             if (request.Statements && !(request.Background && connector is IBackgroundScope { StatementsInBackground: false }))
                 await FetchStatementsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct);
+            if (connector is IWebScheduledSource webScheduled)
+                await StoreWebScheduledAsync(db, login, webScheduled, affected, ct);
         }
         catch (SilentAbortException ex)
         {
@@ -604,6 +606,23 @@ public sealed class BankSyncRunner
             gone.StatementsEnabled = false;
         }
         return vanished;
+    }
+
+    /// <summary>Stores the standing orders the connector read from the web banking in this run, for the linked accounts it read them for.</summary>
+    private async Task StoreWebScheduledAsync(BudgetDbContext db, BankLogin login, IWebScheduledSource source, HashSet<string> affected, CancellationToken ct)
+    {
+        if (source.WebScheduled.Count == 0) return;
+        var now = _clock.GetUtcNow().UtcDateTime;
+        foreach (var link in login.Accounts.Where(a => a.LinkedAccountId != null && !a.Closed))
+        {
+            if (!source.WebScheduled.TryGetValue(link.RemoteId, out var plans)) continue;
+            var account = await db.Accounts.FirstOrDefaultAsync(a => a.Id == link.LinkedAccountId, ct);
+            if (account == null || account.OwnerUserId != login.OwnerUserId) continue;
+            await ScheduledPaymentStore.ApplyWebAsync(db, account, plans, now, ct);
+            _logger.LogInformation("Bank login {LoginId}: account link {LinkId}: {Count} order(s) from the web banking.", login.Id, link.Id, plans.Count);
+            affected.Add(account.OwnerUserId);
+        }
+        await db.SaveChangesAsync(ct);
     }
 
     private async Task RefreshAccountsAsync(
