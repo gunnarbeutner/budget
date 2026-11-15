@@ -221,6 +221,19 @@ public sealed class StructureService
         Changed(ownerId);
     }
 
+    /// <summary>Sets what an account is used for. Owner only.</summary>
+    public async Task SetAccountRoleAsync(long id, AccountRole role, CancellationToken ct = default)
+    {
+        if (!Enum.IsDefined(role)) throw new ArgumentOutOfRangeException(nameof(role));
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var (ownerId, _) = await LocateAsync(db, StructureItemKind.Account, id, ct);
+        if (await BlockAsync(db, ownerId, ct) == StructureBlock.NotOwner)
+            throw new AccessDeniedException("Only the source's owner can change its structure.");
+        await db.Accounts.Where(x => x.Id == id).ForEachAsync(x => x.Role = role, ct);
+        await db.SaveChangesAsync(ct);
+        Changed(ownerId);
+    }
+
     private static KeyNotFoundException NotFound() => new("Not found.");
 
     // ---- Create ----
@@ -235,7 +248,7 @@ public sealed class StructureService
         var id = await NextOwnIdAsync(db, group.OwnerUserId, ct);
         // Expense by default (MoneyMoney's type 1); the project decides income vs. expense itself.
         // A new category takes its group's colour, else one of the palette.
-        var category = new Category { Id = id, OwnerUserId = group.OwnerUserId, Name = clean, GroupId = groupId, Type = 1, Color = group.Color ?? CategoryColors.FallbackColor(id) };
+        var category = new Category { Id = id, OwnerUserId = group.OwnerUserId, Name = clean, GroupId = groupId, Type = CategoryTypes.Expense, Color = group.Color ?? CategoryColors.FallbackColor(id) };
         db.Categories.Add(category);
         var siblings = await CategorySiblingsAsync(db, group.OwnerUserId, groupId, ct);
         var at = afterId is { } after ? siblings.FindIndex(s => s.Kind == StructureItemKind.Category && s.Id == after) + 1 : siblings.Count;

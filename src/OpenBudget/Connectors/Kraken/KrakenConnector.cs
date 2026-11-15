@@ -72,7 +72,7 @@ public sealed class KrakenConnector : IBankConnector
     }
 
     public Task<IReadOnlyList<RemoteAccount>> ListAccountsAsync(CancellationToken ct) =>
-        Task.FromResult<IReadOnlyList<RemoteAccount>>([new RemoteAccount(DepotRemoteId, "Kraken", RemoteAccountType.Depot, null, Eur)]);
+        Task.FromResult<IReadOnlyList<RemoteAccount>>([new RemoteAccount(DepotRemoteId, "Kraken", RemoteAccountType.Depot, null, Eur) { Role = Models.AccountRole.BrokerCash }]);
 
     public async Task<ConnectorStep<AccountRefresh>> RefreshAsync(RemoteAccount account, DateOnly? since, ChallengeAnswer? answer, CancellationToken ct)
     {

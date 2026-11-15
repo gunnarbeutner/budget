@@ -98,14 +98,14 @@ public class RecurringPaymentService
         var marks = await MarksAsync(db, ct);
         var accountIds = series.Select(s => s.AccountId).Distinct().ToList();
         var accounts = await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id))
-            .Select(a => new { a.Id, a.Name, a.Icon, a.Color, a.Type, a.Portfolio }).ToDictionaryAsync(a => a.Id, ct);
+            .Select(a => new Account { Id = a.Id, Name = a.Name, Icon = a.Icon, Color = a.Color, Type = a.Type, Portfolio = a.Portfolio }).ToDictionaryAsync(a => a.Id, ct);
         var categoryIds = series.Where(s => s.CategoryId != null).Select(s => s.CategoryId!.Value).Distinct().ToList();
         var categories = await db.Categories.AsNoTracking().Where(c => categoryIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name, ct);
         return series.Where(s => accounts.ContainsKey(s.AccountId)).Select(s =>
         {
             var a = accounts[s.AccountId];
             var hasMark = marks.TryGetValue(s.Key, out var cancelledOn);
-            return new RecurringEntry(s, a.Name ?? "?", AccountIcons.ForAccount(a.Icon, a.Type, a.Portfolio == 1), a.Color,
+            return new RecurringEntry(s, a.Name ?? "?", AccountIcons.ForAccount(a), a.Color,
                 s.CategoryId is { } c ? categories.GetValueOrDefault(c) : null, hasMark && cancelledOn == null, cancelledOn,
                 cancelledOn is { } on ? ChargedAfter(s, on) : []);
         }).ToList();

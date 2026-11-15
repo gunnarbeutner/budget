@@ -24,6 +24,9 @@ public static class AccountIcons
     public static string ForAccount(string? icon, long? type, bool isPortfolio) =>
         IsValid(icon) ? icon! : isPortfolio ? "bi-graph-up-arrow" : Models.Account.IconForType(type);
 
+    /// <summary>The icon to show for an account: its chosen one, else the one of its type (depots: the chart icon).</summary>
+    public static string ForAccount(Models.Account account) => ForAccount(account.Icon, account.Type, account.IsDepot);
+
     /// <summary>The icon to show for an account group: its chosen one, else the folder.</summary>
     public static string ForGroup(string? icon) => IsValid(icon) ? icon! : GroupDefault;
 

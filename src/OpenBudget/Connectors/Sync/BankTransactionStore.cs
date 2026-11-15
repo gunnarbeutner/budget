@@ -166,7 +166,7 @@ public sealed class BankTransactionStore
         // one the user chose on the pending booking; adopted rows keep theirs).
         await CategoryRuleEngine.ApplyToNewAsync(db, accountId, added, ct);
 
-        if (refresh.Positions.Count > 0 || account.Type == 7)
+        if (refresh.Positions.Count > 0 || account.IsDepot)
             await ReplaceHoldingsAsync(db, account, refresh.Positions, ct);
 
         if (refresh.Balance is { } balance)

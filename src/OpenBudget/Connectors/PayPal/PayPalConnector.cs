@@ -264,7 +264,7 @@ public sealed class PayPalConnector : IBankConnector, ISyncHistoryConsumer
         }
         _session.Values[CurrenciesKey] = string.Join(',', currencies);
         Log.LogInformation("PayPal: balance currencies {Currencies}.", string.Join(", ", currencies));
-        return currencies.Select(c => new RemoteAccount("paypal-" + c, "PayPal " + c, RemoteAccountType.Other, null, c)).ToList();
+        return currencies.Select(c => new RemoteAccount("paypal-" + c, "PayPal " + c, RemoteAccountType.Other, null, c) { Role = Models.AccountRole.PaymentWallet }).ToList();
     }
 
     // ---- balance and transactions ----

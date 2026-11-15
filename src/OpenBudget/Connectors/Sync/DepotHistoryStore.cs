@@ -17,7 +17,7 @@ public static class DepotHistoryStore
     public static async Task RecordAsync(BudgetDbContext db, Account account, AccountRefresh refresh, DateOnly today, CancellationToken ct)
     {
         if (string.Equals(account.Provider, AccountProviders.PortfolioPerformance, StringComparison.Ordinal)) return;
-        var depot = refresh.Positions.Count > 0 || account.Type == 7 || account.Portfolio == 1;
+        var depot = refresh.Positions.Count > 0 || account.IsDepot;
         if (!depot) return;
 
         var currency = account.Currency ?? "EUR";

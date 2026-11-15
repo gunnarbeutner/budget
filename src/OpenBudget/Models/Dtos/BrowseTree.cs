@@ -75,6 +75,9 @@ public class BrowseAccountNode
     /// <summary>The colour (hex) its icon is tinted in, or null.</summary>
     public string? Color { get; init; }
 
+    /// <summary>What the account is used for (see <see cref="Account.Role"/>).</summary>
+    public AccountRole Role { get; init; }
+
     /// <summary>The Bootstrap icon class to show: the picked one, else the one of its type.</summary>
     public string DisplayIcon => AccountIcons.ForAccount(Icon, Type, IsPortfolio);
 }

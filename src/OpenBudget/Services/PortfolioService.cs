@@ -51,7 +51,7 @@ public class PortfolioService
         var ids = projects.Select(p => p.Id).ToList();
         var withDepot = await db.ProjectAccountAssignments
             .Where(a => ids.Contains(a.ProjectId))
-            .Join(db.Accounts.Where(a => a.Type == 7 || a.Portfolio == 1), pa => pa.AccountId, a => a.Id, (pa, _) => pa.ProjectId)
+            .Join(db.Accounts.WhereDepot(), pa => pa.AccountId, a => a.Id, (pa, _) => pa.ProjectId)
             .Distinct()
             .ToListAsync(ct);
         return projects.FirstOrDefault(p => withDepot.Contains(p.Id))?.Id;
@@ -90,7 +90,7 @@ public class PortfolioService
             .ToListAsync(ct);
         if (assignedIds.Count == 0) return [];
         return await db.Accounts
-            .Where(a => assignedIds.Contains(a.Id) && (a.Type == 7 || a.Portfolio == 1))
+            .WhereDepot().Where(a => assignedIds.Contains(a.Id))
             .Select(a => a.Id)
             .ToListAsync(ct);
     }
@@ -168,7 +168,7 @@ public class PortfolioService
         if (assignedIds.Count == 0) return empty;
 
         var depotIds = await db.Accounts
-            .Where(a => assignedIds.Contains(a.Id) && (a.Type == 7 || a.Portfolio == 1))
+            .WhereDepot().Where(a => assignedIds.Contains(a.Id))
             .Select(a => a.Id).ToListAsync(ct);
         if (depotIds.Count == 0) return empty;
 
@@ -217,7 +217,7 @@ public class PortfolioService
             .Where(a => a.ProjectId == projectId).Select(a => a.AccountId).ToListAsync(ct);
         if (assignedIds.Count == 0) return empty;
         var depotIds = await db.Accounts
-            .Where(a => assignedIds.Contains(a.Id) && (a.Type == 7 || a.Portfolio == 1))
+            .WhereDepot().Where(a => assignedIds.Contains(a.Id))
             .Select(a => a.Id).ToListAsync(ct);
         if (depotIds.Count == 0) return empty;
         var ppUuids = await db.PpPortfolioLinks

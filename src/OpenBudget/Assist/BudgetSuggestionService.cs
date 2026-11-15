@@ -163,7 +163,7 @@ public sealed class BudgetSuggestionService
         var accounts = await db.Accounts.AsNoTracking()
             .Where(a => a.OwnerUserId == ownerId && db.ProjectAccountAssignments.Any(p => p.ProjectId == projectId && p.AccountId == a.Id))
             .ToListAsync(ct);
-        var candidates = accounts.Where(a => !a.Closed && a.Type is 1 or 3 or 4).Select(a => a.Id).ToList();
+        var candidates = accounts.Where(a => !a.Closed && a.Kind is AccountType.Giro or AccountType.CreditCard or AccountType.Loan).Select(a => a.Id).ToList();
         // Split parts are left out: their parent carries the booking's full amount on the account.
         var rows = await db.Transactions.AsNoTracking()
             .Where(t => t.OwnerUserId == ownerId && t.AccountId.HasValue && candidates.Contains(t.AccountId.Value) && t.Splitted != SplitState.Child)

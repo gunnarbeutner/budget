@@ -64,7 +64,7 @@ public class ScheduledPaymentService
         var accountIds = await db.ProjectAccountAssignments.Where(a => a.ProjectId == projectId).Select(a => a.AccountId).ToListAsync(ct);
         if (accountIds.Count == 0) return new ScheduledOverview([], []);
         var accounts = await db.Accounts.AsNoTracking().Where(a => accountIds.Contains(a.Id))
-            .Select(a => new { a.Id, a.Name, a.Icon, a.Color, a.Type, a.Portfolio })
+            .Select(a => new Account { Id = a.Id, Name = a.Name, Icon = a.Icon, Color = a.Color, Type = a.Type, Portfolio = a.Portfolio })
             .ToDictionaryAsync(a => a.Id, ct);
         var visible = accounts.Keys.ToList();
         var rows = await db.ScheduledPayments.AsNoTracking().Where(p => visible.Contains(p.AccountId)).ToListAsync(ct);
@@ -79,7 +79,7 @@ public class ScheduledPaymentService
             items.Add(new ScheduledItem(
                 p.Id, p.Kind, next.Value, p.LastDate, p.IntervalUnit, p.IntervalCount, p.ExecutionDay,
                 p.Amount / 100m, p.Currency, p.CounterpartyName, p.CounterpartyIban, p.CounterpartyBic, p.Purpose,
-                p.AccountId, a.Name ?? "?", AccountIcons.ForAccount(a.Icon, a.Type, a.Portfolio == 1), a.Color)
+                p.AccountId, a.Name ?? "?", AccountIcons.ForAccount(a), a.Color)
             {
                 WebBankingAsOf = p.FromWebBanking ? p.FetchedAt : null,
             });
@@ -94,7 +94,7 @@ public class ScheduledPaymentService
                 items.Add(new ScheduledItem(
                     -(e.ReceiptId * ExpectedInstalments.MaxCount + e.Number), ScheduledPaymentKind.Instalment, e.Date, null, null, null, null,
                     e.Cents / 100m, "EUR", "Amazon " + e.OrderNumber, null, null, e.FirstItem,
-                    e.AccountId, a.Name ?? "?", AccountIcons.ForAccount(a.Icon, a.Type, a.Portfolio == 1), a.Color,
+                    e.AccountId, a.Name ?? "?", AccountIcons.ForAccount(a), a.Color,
                     e.ReceiptId, e.Number, e.Count));
             }
         }
@@ -110,7 +110,7 @@ public class ScheduledPaymentService
                     RecurringIdBase - index++, ScheduledPaymentKind.Recurring, next, null,
                     r.Rhythm.Weekly ? ScheduleUnit.Week : ScheduleUnit.Month, r.Rhythm.Count, null,
                     r.Cents / 100m, "EUR", r.Payee, null, null, null,
-                    r.AccountId, a.Name ?? "?", AccountIcons.ForAccount(a.Icon, a.Type, a.Portfolio == 1), a.Color));
+                    r.AccountId, a.Name ?? "?", AccountIcons.ForAccount(a), a.Color));
             }
         }
         items = items.OrderBy(i => i.NextDate).ThenBy(i => i.CounterpartyName, StringComparer.CurrentCultureIgnoreCase).ThenBy(i => i.Id).ToList();

@@ -409,13 +409,13 @@ public class BankLoginService
         var owner = scope.UserId;
         var taken = await db.BankLoginAccounts.AsNoTracking().Where(a => a.LinkedAccountId != null).Select(a => a.LinkedAccountId!.Value).ToListAsync(ct);
         var accounts = await db.Accounts.AsNoTracking()
-            .Where(a => a.OwnerUserId == owner && a.Provider == AccountProviders.Manual && a.Type != 8 && !a.Closed)
+            .Where(a => a.OwnerUserId == owner && a.Provider == AccountProviders.Manual && a.Type != (long)AccountType.Group && !a.Closed)
             .OrderBy(a => a.Name).ToListAsync(ct);
         var wanted = NormalizeIban(remote.Iban);
         // A depot only links to a depot, and a cash account only to a non-depot account: positions and
         // transactions are stored differently, so mixing them would show nonsense on both sides.
         bool remoteIsDepot = remote.Type == RemoteAccountType.Depot;
-        var eligible = accounts.Where(a => !taken.Contains(a.Id) && IsDepot(a) == remoteIsDepot).ToList();
+        var eligible = accounts.Where(a => !taken.Contains(a.Id) && a.IsDepot == remoteIsDepot).ToList();
         // The suggestion is the account with the same IBAN; without one, the account with the same account number
         // (an IBAN's embedded account number counts, a subaccount suffix does not, leading zeros are ignored).
         Func<Account, bool> suggested = a => wanted.Length > 0 && NormalizeIban(a.Iban) == wanted;
@@ -440,7 +440,16 @@ public class BankLoginService
         return v.TrimStart('0');
     }
 
-    private static bool IsDepot(Account a) => a.Portfolio == 1 || a.Type == 7;
+    /// <summary>The local account type of a remote account type.</summary>
+    public static AccountType LocalType(RemoteAccountType type) => type switch
+    {
+        RemoteAccountType.Giro => AccountType.Giro,
+        RemoteAccountType.Savings => AccountType.Savings,
+        RemoteAccountType.CreditCard => AccountType.CreditCard,
+        RemoteAccountType.Depot => AccountType.Depot,
+        RemoteAccountType.Loan => AccountType.Loan,
+        _ => AccountType.Other,
+    };
 
     public static string NormalizeIban(string? iban) => (iban ?? string.Empty).Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant();
 
@@ -495,16 +504,7 @@ public class BankLoginService
             Name = remote.Name,
             Iban = remote.Iban,
             Currency = remote.Currency,
-            Type = remote.Type switch
-            {
-                RemoteAccountType.Giro => 1,
-                RemoteAccountType.Savings => 2,
-                RemoteAccountType.CreditCard => 3,
-                RemoteAccountType.Depot => 7,
-                RemoteAccountType.Loan => 4,
-                RemoteAccountType.Other => 0,
-                _ => 0,
-            },
+            Type = (long)LocalType(remote.Type),
             Portfolio = remote.Type == RemoteAccountType.Depot ? 1 : 0,
             Provider = login.ConnectorType,
         };

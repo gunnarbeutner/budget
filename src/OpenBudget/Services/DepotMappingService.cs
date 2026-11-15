@@ -26,9 +26,9 @@ public class DepotMappingService
             .Where(l => l.OwnerUserId == ownerId).ToListAsync(ct);
         var links = await db.PpPortfolioLinks.AsNoTracking()
             .Where(l => l.OwnerUserId == ownerId).ToListAsync(ct);
-        // imported depot accounts: portfolio flag set, or the depot account type (7).
+        // imported depot accounts (AccountRules.IsDepot).
         var accounts = await db.Accounts.AsNoTracking()
-            .Where(a => a.OwnerUserId == ownerId && (a.Portfolio == 1 || a.Type == 7))
+            .WhereDepot().Where(a => a.OwnerUserId == ownerId)
             .OrderBy(a => a.Name).ToListAsync(ct);
 
         var lotStats = lots.GroupBy(l => l.PortfolioUuid, StringComparer.Ordinal)

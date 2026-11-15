@@ -124,6 +124,17 @@
                                  DefaultIcon="@AccountIcons.ForAccount(null, s.Account.Type, s.Account.IsPortfolio)" Disabled="@(!s.CanStyle)" />
             </div>
             <div class="mb-3">
+                <label class="form-label" for="account-settings-role">@L["Settings_Role"]</label>
+                <select id="account-settings-role" class="form-select" style="max-width: 20rem;" data-testid="account-settings-role"
+                        disabled="@(!s.CanStyle)" @onchange="e => _settingsRole = Enum.Parse<AccountRole>(e.Value?.ToString() ?? nameof(AccountRole.None))">
+                    @foreach (var role in Enum.GetValues<AccountRole>())
+                    {
+                        <option value="@role" selected="@(role == _settingsRole)">@L["Settings_Role_" + role]</option>
+                    }
+                </select>
+                <div class="form-text">@L["Settings_Role_Hint"]</div>
+            </div>
+            <div class="mb-3">
                 <div class="form-label mb-1">@L["Settings_Bank"]</div>
                 @if (s.Account.Institution is { } inst)
                 {
@@ -384,6 +395,7 @@
     }
 
     private string _settingsName = "";
+    private AccountRole _settingsRole;
     private bool _statementsOn;
     private StatementsInterval _interval;
 
@@ -642,6 +654,7 @@
             _ => null,
         };
         _settingsName = account.Name;
+        _settingsRole = account.Role;
         _statementsOn = statement?.Enabled ?? false;
         _interval = statement?.Interval ?? StatementsInterval.Monthly;
         _error = null;
@@ -732,6 +745,8 @@
                 await Structure.RenameAsync(StructureItemKind.Account, s.Account.Id, _settingsName);
             if (s.CanStyle && (_settingsIcon != s.Account.Icon || _settingsColor != CategoryColors.ToCss(s.Account.Color)))
                 await Structure.SetAppearanceAsync(StructureItemKind.Account, s.Account.Id, _settingsIcon, _settingsColor);
+            if (s.CanStyle && _settingsRole != s.Account.Role)
+                await Structure.SetAccountRoleAsync(s.Account.Id, _settingsRole);
             if (s.Statement is { Block: null, LoginAccountId: { } loginAccount, CanChange: true } st
                 && (st.Enabled != _statementsOn || st.Interval != _interval))
                 await BankLogins.SetStatementsAsync(loginAccount, _statementsOn, _interval);

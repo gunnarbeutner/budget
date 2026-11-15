@@ -34,7 +34,7 @@ public sealed partial class CategoryEvidence
         _categories = categories;
         var i = 0;
         foreach (var a in accounts.OrderBy(a => a.Id))
-            _accounts[a.Id] = ("OWN_" + (++i).ToString(CultureInfo.InvariantCulture), a.KindLabel, AccountRole(a));
+            _accounts[a.Id] = ("OWN_" + (++i).ToString(CultureInfo.InvariantCulture), a.KindLabel, RoleText(a));
         foreach (var t in rows.Values.Where(t => t.Amount != 0))
         {
             var key = CategoryMatching.PayeeKey(t.Name);
@@ -44,23 +44,23 @@ public sealed partial class CategoryEvidence
         }
     }
 
-    /// <summary>The account's role in words, from its type and connector ("PayPal wallet", "credit card", "checking account").</summary>
-    public static string AccountRole(Account a)
+    /// <summary>The account's role in words, from its <see cref="Account.Role"/>, else its type ("payment-service wallet", "credit card", "checking account").</summary>
+    public static string RoleText(Account a) => a.Role switch
     {
-        if (a.Provider == "paypal" || (a.Name?.Contains("paypal", StringComparison.OrdinalIgnoreCase) ?? false)) return "PayPal wallet";
-        if (a.Provider is "kraken" or "scalable" && a.Type != 3) return "broker cash account";
-        return a.Type switch
+        Models.AccountRole.PaymentWallet => "payment-service wallet",
+        Models.AccountRole.BrokerCash => "broker cash account",
+        _ => a.Kind switch
         {
-            1 => "checking account",
-            2 => "savings account",
-            3 => "credit card",
-            4 => "loan",
-            5 => "manually kept account",
-            6 => "cash",
-            7 => "securities account",
+            AccountType.Giro => "checking account",
+            AccountType.Savings => "savings account",
+            AccountType.CreditCard => "credit card",
+            AccountType.Loan => "loan",
+            AccountType.Manual => "manually kept account",
+            AccountType.Cash => "cash",
+            AccountType.Depot => "securities account",
             _ => "other account",
-        };
-    }
+        },
+    };
 
     /// <summary>The stable token of an own account ("OWN_2"), or null.</summary>
     public string? AccountToken(long? accountId) => accountId is { } id && _accounts.TryGetValue(id, out var a) ? a.Token : null;

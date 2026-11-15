@@ -74,7 +74,7 @@ public sealed class ManualTransactionService
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         var account = await db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == accountId, ct);
         if (account == null) return null;
-        var lockReason = account.Portfolio == 1 || account.Type == 7 || account.Provider == AccountProviders.PortfolioPerformance
+        var lockReason = account.IsDepot || account.Provider == AccountProviders.PortfolioPerformance
             ? InitialBalanceLock.Portfolio
             : account.Provider != AccountProviders.Manual ? InitialBalanceLock.Bank
             : db.Scope != null && !db.Scope.Owns(account.OwnerUserId) ? InitialBalanceLock.NotOwner

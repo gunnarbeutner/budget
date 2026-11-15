@@ -72,8 +72,8 @@ public sealed class PortfolioAccountSync
             .ToListAsync(ct))
             .Where(a => RowIds.IsImported(a.Id))
             .ToList();
-        var depot = accounts.FirstOrDefault(a => a.Name == portfolioName && (a.Portfolio == 1 || a.Type == 7));
-        var ledger = accounts.FirstOrDefault(a => a.Name == ledgerName && a.Portfolio != 1 && a.Type != 7);
+        var depot = accounts.FirstOrDefault(a => a.Name == portfolioName && a.IsDepot);
+        var ledger = accounts.FirstOrDefault(a => a.Name == ledgerName && !a.IsDepot);
         return new PortfolioTakeoverCandidate(depot?.Id, depot?.Name, ledger?.Id, ledger?.Name);
     }
 

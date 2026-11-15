@@ -293,7 +293,7 @@ public class BudgetService
                 .Where(c => c.OwnerUserId == ownerId && allLeafIds.Contains(c.Id))
                 .Select(c => new { c.Id, c.Type })
                 .ToListAsync();
-            leafIsIncome = types.ToDictionary(c => c.Id, c => c.Type == 2);
+            leafIsIncome = types.ToDictionary(c => c.Id, c => c.Type == CategoryTypes.Income);
         }
 
         return (itemToLeafIds, allLeafIds, leafIsIncome);

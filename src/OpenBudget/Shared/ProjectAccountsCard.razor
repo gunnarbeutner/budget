@@ -386,7 +386,7 @@
             {
                 var text = AccountLabel(a);
                 if (!matched && !Matches(text)) continue;
-                rows.Add(new PickerRow(false, a.Id, level + 1, text, AccountIcons.ForAccount(a.Icon, a.Type, a.Portfolio == 1), new List<long>(), a.Color));
+                rows.Add(new PickerRow(false, a.Id, level + 1, text, AccountIcons.ForAccount(a), new List<long>(), a.Color));
                 header.AccountIds.Add(a.Id);
             }
             if (header.AccountIds.Count == 0) rows.RemoveRange(at, rows.Count - at);

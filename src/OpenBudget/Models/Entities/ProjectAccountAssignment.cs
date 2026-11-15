@@ -28,10 +28,10 @@ public static class AccountAssignmentDefaults
     /// Closed accounts, depots, PortfolioPerformance accounts, loans and other or unknown types start outside it.
     /// </summary>
     public static bool InCashflow(Account account) =>
-        !account.Closed && !IsInvestment(account) && account.Type is 1 or 2 or 3 or 6;
+        !account.Closed && !IsInvestment(account) && account.Kind is AccountType.Giro or AccountType.Savings or AccountType.CreditCard or AccountType.Cash;
 
     public static bool IsInvestment(Account account) =>
-        account.Provider == AccountProviders.PortfolioPerformance || account.Portfolio is 1 || account.Type == 7;
+        account.Provider == AccountProviders.PortfolioPerformance || account.IsDepot;
 
     public static ProjectAccountAssignment For(int projectId, Account account) => new()
     {

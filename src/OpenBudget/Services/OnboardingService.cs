@@ -54,7 +54,7 @@ public sealed class OnboardingService
         if (db.Scope is not { IsAuthenticated: true, UserId: { } userId } scope) return new OnboardingState(0, false, null, false, null);
         var logins = await db.BankLogins.CountAsync(l => l.OwnerUserId == userId, ct);
         var hasAccounts = await db.Accounts.AnyAsync(ct);
-        var accountCount = await db.Accounts.CountAsync(a => a.Type == null || a.Type != 6, ct);
+        var accountCount = await db.Accounts.CountAsync(a => a.Type == null || a.Type != (long)AccountType.Cash, ct);
         var hasPortfolio = await db.PpPortfolios.AnyAsync(p => p.OwnerUserId == userId, ct);
         var import = await db.UserDataStates.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == userId, ct);
         var hasCategories = await db.Categories.AnyAsync(c => c.OwnerUserId == userId, ct);
@@ -109,7 +109,7 @@ public sealed class OnboardingService
             for (var ci = 0; ci < names.Count; ci++)
             {
                 var id = next++;
-                db.Categories.Add(new Category { Id = id, OwnerUserId = userId, Name = names[ci], GroupId = groupId, Type = 1, Sort = ci, Color = color });
+                db.Categories.Add(new Category { Id = id, OwnerUserId = userId, Name = names[ci], GroupId = groupId, Type = CategoryTypes.Expense, Sort = ci, Color = color });
                 if (g.Income) incomeCategories.Add(id);
             }
         }
@@ -118,7 +118,7 @@ public sealed class OnboardingService
             Id = await RowIds.NextConnectorAccountIdAsync(db, userId, ct),
             OwnerUserId = userId,
             Name = cashAccountName,
-            Type = 6,
+            Type = (long)AccountType.Cash,
             Currency = "EUR",
             Provider = AccountProviders.Manual,
         });

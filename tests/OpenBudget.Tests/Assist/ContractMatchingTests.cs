@@ -120,7 +120,7 @@ public sealed class ContractMatchingTests
         var accounts = new[]
         {
             new Account { Id = 10, OwnerUserId = "u", Name = "Main Giro", Type = 1 },
-            new Account { Id = 11, OwnerUserId = "u", Name = "Wallet", Type = 0, Provider = "paypal" },
+            new Account { Id = 11, OwnerUserId = "u", Name = "Wallet", Type = 0, Provider = "paypal", Role = AccountRole.PaymentWallet },
         };
         static Transaction Tx(long id, long account, long amount, int month, long? category = null, string? mandate = null, string? items = null) => new()
         {
@@ -156,7 +156,7 @@ public sealed class ContractMatchingTests
         var json = CategoryPrompt.UserContent([item]);
         var node = JsonNode.Parse(json["Bookings to categorize:\n".Length..])![0]!;
 
-        Assert.Equal(("OWN_2", "PayPal wallet", "MANDATE_1", "CREDITOR_1"),
+        Assert.Equal(("OWN_2", "payment-service wallet", "MANDATE_1", "CREDITOR_1"),
             ((string?)node["account"], (string?)node["account_role"], (string?)node["mandate"], (string?)node["creditor"]));
         Assert.Equal("same payee and amount 3 times in 18 months, about monthly", (string?)node["recurrence"]);
         Assert.Equal("Desk lamp; Light bulbs ×2", (string?)node["order_items"]);
@@ -171,7 +171,7 @@ public sealed class ContractMatchingTests
         Assert.Contains("c2 | Housing › Gas | expense | only OWN_1 | rules: name:\"Example Energy\" AND purpose:Gas", system, StringComparison.Ordinal);
         Assert.DoesNotContain("MD-HEAT", system, StringComparison.Ordinal);
         Assert.Contains("Prefer contract identity", system, StringComparison.Ordinal);
-        Assert.Contains("PayPal", system, StringComparison.Ordinal);
+        Assert.Contains("payment-service wallet", system, StringComparison.Ordinal);
         Assert.Contains("order_items", system, StringComparison.Ordinal);
 
         var decision = DecisionsCategoryChooser.BuildRequest(item, categories);

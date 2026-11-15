@@ -438,7 +438,7 @@ public class ProjectService
         // Depot accounts report holdings market value rather than the cash blob (mirrors
         // BrowseService), so a securities depot contributes its real value to the
         // total. One grouped query over every assigned depot in view.
-        var depotIds = accounts.Where(a => a.Type == 7 || a.Portfolio == 1).Select(a => a.Id).ToList();
+        var depotIds = accounts.Where(a => a.IsDepot).Select(a => a.Id).ToList();
         var holdingsValueByAccount = depotIds.Count == 0
             ? new Dictionary<long, double>()
             : await db.Holdings
@@ -448,7 +448,7 @@ public class ProjectService
                 .ToDictionaryAsync(x => x.AccountId, x => x.Value);
 
         decimal BalanceOf(Account a) =>
-            (a.Type == 7 || a.Portfolio == 1) && holdingsValueByAccount.TryGetValue(a.Id, out var hv)
+            a.IsDepot && holdingsValueByAccount.TryGetValue(a.Id, out var hv)
                 ? (decimal)hv
                 : a.CurrentBalance ?? 0m;
 

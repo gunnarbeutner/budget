@@ -79,6 +79,11 @@
   <data name="GroupSettings_Title" xml:space="preserve"><value>Einstellungen von „{0}“</value></data>
   <data name="Settings_Name" xml:space="preserve"><value>Name</value></data>
   <data name="Settings_Bank" xml:space="preserve"><value>Verbindung</value></data>
+  <data name="Settings_Role" xml:space="preserve"><value>Verwendet als</value></data>
+  <data name="Settings_Role_None" xml:space="preserve"><value>Normales Konto</value></data>
+  <data name="Settings_Role_PaymentWallet" xml:space="preserve"><value>Guthaben eines Zahlungsdienstes</value></data>
+  <data name="Settings_Role_BrokerCash" xml:space="preserve"><value>Verrechnungskonto eines Brokers</value></data>
+  <data name="Settings_Role_Hint" xml:space="preserve"><value>Hilft dem Assistenten, Aufladungen und Umbuchungen von Käufen zu unterscheiden.</value></data>
   <data name="Settings_Bank_None" xml:space="preserve"><value>Mit keiner Verbindung verknüpft</value></data>
   <data name="Settings_Bank_Manage" xml:space="preserve"><value>Verbindungen verwalten</value></data>
   <data name="Settings_Statements" xml:space="preserve"><value>Kontoauszüge</value></data>

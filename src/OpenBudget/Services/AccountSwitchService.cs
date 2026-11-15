@@ -33,9 +33,6 @@ public sealed class AccountSwitchService
         return new AccountSwitchState(account.Provider, scope.Owns(account.OwnerUserId), account.Closed);
     }
 
-    /// <summary>Account type code of an account group row (never closed).</summary>
-    private const long GroupType = 8;
-
     /// <summary>
     /// Marks the given accounts closed (or reopens them). Closed accounts keep their history and provider; the sidebar
     /// hides them by default. Owner only. Returns how many changed.
@@ -49,7 +46,7 @@ public sealed class AccountSwitchService
         var accounts = await db.Accounts.Where(a => ids.Contains(a.Id)).ToListAsync(ct);
         if (accounts.Count < ids.Count) throw new AccessDeniedException("Account not found.");
         foreach (var a in accounts) scope.RequireOwner(a.OwnerUserId);
-        var changed = accounts.Where(a => a.Closed != closed && a.Type != GroupType).ToList();
+        var changed = accounts.Where(a => a.Closed != closed && a.Type != (long)AccountType.Group).ToList();
         foreach (var a in changed) a.Closed = closed;
         await db.SaveChangesAsync(ct);
         foreach (var ownerId in changed.Select(a => a.OwnerUserId).Distinct(StringComparer.Ordinal))

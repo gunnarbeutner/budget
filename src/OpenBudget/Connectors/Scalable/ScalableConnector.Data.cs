@@ -42,7 +42,7 @@ public sealed partial class ScalableConnector
             if (id == null) continue;
             var name = names.GetValueOrDefault(id) ?? (number == 1 ? "Scalable" : $"Scalable {number}");
             accounts.Add(new RemoteAccount(RemoteId(id, DepotSuffix), $"{name} Depot", RemoteAccountType.Depot, null, DefaultCurrency));
-            accounts.Add(new RemoteAccount(RemoteId(id, CashSuffix), $"{name} Verrechnungskonto", RemoteAccountType.Giro, portfolio.Str("cashAccount", "iban"), DefaultCurrency));
+            accounts.Add(new RemoteAccount(RemoteId(id, CashSuffix), $"{name} Verrechnungskonto", RemoteAccountType.Giro, portfolio.Str("cashAccount", "iban"), DefaultCurrency) { Role = Models.AccountRole.BrokerCash });
         }
 #pragma warning disable S1135, MA0026 // a deliberate, documented gap
         // TODO: savings accounts (interest/api/graphql, account { savingsAccounts }): no query document captured yet, so they are not listed.

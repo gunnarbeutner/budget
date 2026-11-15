@@ -85,7 +85,7 @@ public sealed partial class OrderEnrichmentService
     private static async Task<List<InstrumentCandidate>> CandidatesAsync(BudgetDbContext db, AccessScope scope, string name, CancellationToken ct)
     {
         var accounts = await db.Accounts.AsNoTracking()
-            .Where(a => a.Type != 7 && a.Portfolio != 1).OrderBy(a => a.Name).ToListAsync(ct);
+            .WhereNotDepot().OrderBy(a => a.Name).ToListAsync(ct);
         accounts = accounts.Where(a => scope.CanEditTransactionsOf(a.OwnerUserId, a.Id)).ToList();
         var digits = LastDigits().Match(name) is { Success: true } m ? m.Groups["d"].Value : null;
         bool Suggested(Account a) => digits != null

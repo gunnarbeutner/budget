@@ -57,9 +57,9 @@ public static class CategoryPrompt
           mandate tells them apart, and so does a recurring fixed amount.
         - The same payee with the same recurring amount (a subscription) usually keeps its category; one-off amounts of
           that payee may belong elsewhere (an app store subscription vs. single purchases).
-        - Transfers that fund or top up a PayPal wallet or a credit card from another own account, or pay off a card
-          bill, are transfers between own accounts, not purchases; a purchase paid via PayPal (on the PayPal wallet,
-          naming a shop) is categorized by what was bought. Look at account_role and the wording.
+        - Transfers that fund or top up a payment-service wallet or a credit card from another own account, or pay off a
+          card bill, are transfers between own accounts, not purchases; a purchase paid via a payment service (on the
+          payment-service wallet, naming a shop) is categorized by what was bought. Look at account_role and the wording.
         - When order_items are present, categorize by the items, not by the shop's name.
         - Income categories (marked income) only fit money coming in, other categories money going out (refunds excepted).
         - Tokens like ACC_1 stand for a counterparty account, OWN_1 for an own account, MANDATE_1 and CREDITOR_1 for SEPA

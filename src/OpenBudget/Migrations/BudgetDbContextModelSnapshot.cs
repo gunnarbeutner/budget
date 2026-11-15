@@ -16,7 +16,7 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261115093919_RecurringCancellations";
+    public override string LastMigrationId => "20261115100500_AccountRole";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -209,6 +209,12 @@ partial class BudgetDbContextModelSnapshot : ModelSnapshot
                 b.Property<long?>("RefreshTimestamp")
                     .HasColumnType("INTEGER")
                     .HasColumnName("refresh_tsp");
+
+                b.Property<int>("Role")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER")
+                    .HasDefaultValue(0)
+                    .HasColumnName("role");
 
                 b.Property<long?>("Sort")
                     .HasColumnType("INTEGER")

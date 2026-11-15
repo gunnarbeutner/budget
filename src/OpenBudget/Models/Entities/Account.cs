@@ -30,7 +30,7 @@ public class Account
     public string? Currency { get; set; }
 
     /// <summary>
-    /// imported account type code (1=giro, 2=savings, 4=credit, 6=cash/other, 7=depot, ...).
+    /// The account's kind, an <see cref="AccountType"/> value (see <see cref="Kind"/>).
     /// </summary>
     [Column("type")]
     public long? Type { get; set; }
@@ -46,6 +46,10 @@ public class Account
     /// </summary>
     [Column("balances")]
     public string? Balances { get; set; }
+
+    /// <summary>What the account is used for (a payment wallet, a broker's cash account); set by its connector or its owner.</summary>
+    [Column("role")]
+    public AccountRole Role { get; set; }
 
     [Column("sort")]
     public long? Sort { get; set; }
@@ -101,6 +105,14 @@ public class Account
     [Column("color")]
     public string? Color { get; set; }
 
+    /// <summary><see cref="Type"/> as an <see cref="AccountType"/>; null when unset.</summary>
+    [NotMapped]
+    public AccountType? Kind => (AccountType?)Type;
+
+    /// <summary>Whether the account is a depot (see <see cref="AccountRules.IsDepot"/>).</summary>
+    [NotMapped]
+    public bool IsDepot => AccountRules.IsDepotAccount(this);
+
     // Navigation properties
     public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
     public ICollection<Holding> Holdings { get; set; } = new List<Holding>();
@@ -108,7 +120,7 @@ public class Account
 
     /// <summary>
     /// Sum of the market value of this account's holdings (<see cref="Holding.Amount"/>). For a
-    /// depot (<see cref="Type"/> == 7) this is the meaningful balance — the packed
+    /// depot (<see cref="IsDepot"/>) this is the meaningful balance — the packed
     /// <see cref="Balances"/> blob does not reflect securities value. Null when no holdings are
     /// loaded; callers must <c>Include(a =&gt; a.Holdings)</c> first.
     /// </summary>
@@ -148,17 +160,17 @@ public class Account
     /// Short human label derived from <see cref="Type"/>. Falls back to the raw code.
     /// </summary>
     [NotMapped]
-    public string KindLabel => Type switch
+    public string KindLabel => Kind switch
     {
-        0 => "Other",
-        1 => "Giro",
-        2 => "Savings",
-        3 => "Credit card",
-        4 => "Loan",
-        5 => "Manual",
-        6 => "Cash",
-        7 => "Portfolio",
-        8 => "Group",
+        AccountType.Other => "Other",
+        AccountType.Giro => "Giro",
+        AccountType.Savings => "Savings",
+        AccountType.CreditCard => "Credit card",
+        AccountType.Loan => "Loan",
+        AccountType.Manual => "Manual",
+        AccountType.Cash => "Cash",
+        AccountType.Depot => "Portfolio",
+        AccountType.Group => "Group",
         null => "—",
         _ => $"Type {Type}"
     };
@@ -171,16 +183,16 @@ public class Account
     public string KindIcon => IconForType(Type);
 
     /// <summary>Bootstrap-Icons class for an account type code.</summary>
-    public static string IconForType(long? type) => type switch
+    public static string IconForType(long? type) => (AccountType?)type switch
     {
-        1 => "bi-bank",
-        2 => "bi-piggy-bank",
-        3 => "bi-credit-card-2-front",
-        4 => "bi-cash-stack",
-        5 => "bi-pencil-square",
-        6 => "bi-cash",
-        7 => "bi-graph-up-arrow",
-        8 => "bi-folder",
+        AccountType.Giro => "bi-bank",
+        AccountType.Savings => "bi-piggy-bank",
+        AccountType.CreditCard => "bi-credit-card-2-front",
+        AccountType.Loan => "bi-cash-stack",
+        AccountType.Manual => "bi-pencil-square",
+        AccountType.Cash => "bi-cash",
+        AccountType.Depot => "bi-graph-up-arrow",
+        AccountType.Group => "bi-folder",
         _ => "bi-question-circle"
     };
 }

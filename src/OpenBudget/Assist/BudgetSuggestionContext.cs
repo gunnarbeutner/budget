@@ -43,7 +43,7 @@ public static class BudgetSuggestionContext
     {
         var endIndex = MonthIndex(end);
         var result = new List<HouseholdAccount>();
-        foreach (var a in accounts.Where(a => !a.Closed && a.Type is 1 or 3 or 4).OrderBy(a => a.Id))
+        foreach (var a in accounts.Where(a => !a.Closed && a.Kind is AccountType.Giro or AccountType.CreditCard or AccountType.Loan).OrderBy(a => a.Id))
         {
             var own = bookings.Where(b => b.AccountId == a.Id).ToList();
             var current = a.CurrentBalance ?? ((a.InitialBalance + own.Sum(b => b.Amount)) / 100m);
@@ -51,7 +51,7 @@ public static class BudgetSuggestionContext
             for (var m = endIndex - months; m < endIndex; m++)
                 ends.Add((Label(m), current - (own.Where(b => MonthIndex(b.Date) > m).Sum(b => b.Amount) / 100m)));
             var kind = a.Type switch { 3 => "credit_card", 4 => "loan", _ => "checking_overdraft" };
-            if (a.Type == 1 && current >= 0 && ends.TakeLast(ContextMonths).All(e => e.Item2 >= 0)) continue;
+            if (a.Kind == AccountType.Giro && current >= 0 && ends.TakeLast(ContextMonths).All(e => e.Item2 >= 0)) continue;
             result.Add(new HouseholdAccount(a.Id, kind, current, ends));
         }
         return result;
