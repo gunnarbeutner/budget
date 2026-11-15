@@ -86,7 +86,7 @@ public enum ScheduledPaymentKind
     Standing = 1,
 
     /// <summary>
-    /// An expected instalment of an order paid in instalments (Amazon), worked out from the receipts rather than
+    /// An expected instalment of an order paid in instalments, worked out from the receipts rather than
     /// reported by a bank; never stored.
     /// </summary>
     Instalment = 2,

@@ -4,7 +4,7 @@ namespace OpenBudget.Connectors.Receipts;
 
 /// <summary>
 /// A receipt to place: what was charged by card or bank (positive cents; a refund negative), when it was ordered and
-/// delivered (or charged), its shop, the account its payment method is mapped to (<see cref="AccountId"/>, Amazon) and
+/// delivered (or charged), its shop, the account its payment method is mapped to (<see cref="AccountId"/>, sources with payment methods) and
 /// the accounts its source is mapped to (<see cref="Accounts"/>, see <see cref="ReceiptSourceAccount"/>).
 /// </summary>
 public sealed record ReceiptToMatch(long Id, long PaymentCents, DateOnly? OrderDate, DateOnly? DeliveryDate, string Shop = ReceiptShops.Rewe,

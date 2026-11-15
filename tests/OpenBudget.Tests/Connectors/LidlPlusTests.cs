@@ -295,7 +295,7 @@ public sealed class LidlPlusTests
     private static ReceiptService ReceiptServiceFor(Rig rig)
     {
         var view = rig.World.View(BankWorld.Alice);
-        return new ReceiptService(view.Factory, rig.World.T.System, view.Access, null!, new ReceiptStore(), null!, rig.World.T.Notifier, new ChangeOrigin(), rig.World.Clock);
+        return new ReceiptService(view.Factory, rig.World.T.System, view.Access, null!, new ReceiptStore(), null!, rig.World.T.Notifier, new ChangeOrigin(), rig.World.Clock, TestRegistry.Connectors);
     }
 
     [Fact]

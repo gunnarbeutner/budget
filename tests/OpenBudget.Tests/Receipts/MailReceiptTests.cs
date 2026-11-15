@@ -50,7 +50,7 @@ public sealed class MailReceiptTests
         public ReceiptService ServiceFor(string user)
         {
             var view = W.T.ForUser(user);
-            return new ReceiptService(view.Factory, W.T.System, view.Access, W.Service, Store, Sync, W.T.Notifier, new ChangeOrigin(), W.Clock);
+            return new ReceiptService(view.Factory, W.T.System, view.Access, W.Service, Store, Sync, W.T.Notifier, new ChangeOrigin(), W.Clock, TestRegistry.Connectors);
         }
 
         public async ValueTask DisposeAsync()

@@ -71,6 +71,7 @@ public static partial class ReweInvoice
     public static readonly ReceiptSourceProfile MatchProfile = new()
     {
         Shop = ReceiptShops.Rewe,
+        Groceries = true,
         DaysAfter = 10,
         PayeeWords = ["rewe"],
         PreferredPurposeToken = r => r.OrderDate?.ToString("yyMMdd", CultureInfo.InvariantCulture),

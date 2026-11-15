@@ -111,9 +111,9 @@ public sealed class PriceHistoryService
                 .Select(i => new LineRow(i.ReceiptInvoiceId, i.Invoice.OwnerUserId, i.Invoice.Shop, i.Invoice.OrderNumber, i.Position,
                     i.Invoice.DeliveryDate ?? i.Invoice.OrderDate ?? i.Invoice.InvoiceDate, i.Name, i.Quantity, i.UnitCents, i.TotalCents))
                 .ToListAsync(ct));
-        // Amazon lists an order's items with each of its charges' receipts: one purchase per order and position.
+        // A shop listing an order's items with each of its charges' receipts: one purchase per order and position.
         return rows.Where(r => r.Date != null)
-            .DistinctBy(r => r.Shop == ReceiptShops.Amazon && r.OrderNumber != null ? $"{r.OwnerUserId}|{r.OrderNumber}|{r.Position}" : $"#{r.ReceiptInvoiceId}|{r.Position}", StringComparer.Ordinal)
+            .DistinctBy(r => r.OrderNumber != null && ReceiptSourceProfiles.Default.For(r.Shop)?.ItemsPerOrder == true ? $"{r.OwnerUserId}|{r.OrderNumber}|{r.Position}" : $"#{r.ReceiptInvoiceId}|{r.Position}", StringComparer.Ordinal)
             .Select(r => new PriceLine(r.ReceiptInvoiceId, r.Shop, DateOnly.FromDateTime(r.Date!.Value), r.Name, r.Quantity, r.UnitCents, r.TotalCents, r.OwnerUserId == user))
             .ToList();
     }

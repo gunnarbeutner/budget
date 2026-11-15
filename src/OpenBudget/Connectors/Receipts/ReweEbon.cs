@@ -62,6 +62,7 @@ public static partial class ReweEbon
     public static readonly ReceiptSourceProfile MatchProfile = new()
     {
         Shop = ReceiptShops.ReweEbon,
+        Groceries = true,
         DaysAfter = 10,
         PayeeWords = ["rewe", "payback"],
         DisplayName = (store, orderNumber, _) => (ReceiptShops.ReweEbon + " " + (store ?? orderNumber)).Trim(),

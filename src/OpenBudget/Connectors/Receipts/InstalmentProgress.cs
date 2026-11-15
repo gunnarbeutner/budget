@@ -26,7 +26,7 @@ public sealed record InstalmentProgress(long FullCents, int Count, IReadOnlyList
     /// The progress of a plan of the full price <paramref name="fullCents"/> given its instalment charges and the order's
     /// refunds on the same login (positive cents).
     /// <para>
-    /// The number of instalments is the full price over the first instalment, rounded (Amazon splits evenly, with a cent
+    /// The number of instalments is the full price over the first instalment, rounded (shops split evenly, with a cent
     /// of rounding on the first or last). The plan is complete when the charges add up to the full price (one cent of
     /// rounding per instalment) and all are matched. It is cancelled (returned or cancelled order: the remaining
     /// instalments never come) when a refund equals the full price (the plan's reversal), or the other refunds pay back

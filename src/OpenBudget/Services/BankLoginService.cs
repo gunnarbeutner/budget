@@ -374,7 +374,7 @@ public class BankLoginService
         var statements = await db.BankStatements.Where(s => s.BankLoginId == id).ToListAsync(ct);
         db.BankStatements.RemoveRange(statements);
         db.BankStatementAliases.RemoveRange(await db.BankStatementAliases.Where(a => a.BankLoginId == id).ToListAsync(ct));
-        // Receipts the login read per charge (Amazon) go with it; their bookings keep what was written to them.
+        // Receipts the login read per charge (order sources) go with it; their bookings keep what was written to them.
         db.ReceiptInvoices.RemoveRange(await db.ReceiptInvoices.Include(r => r.Items).Where(r => r.BankLoginId == id).ToListAsync(ct));
         db.BankLogins.Remove(login);
         await db.SaveChangesAsync(ct);

@@ -34,7 +34,7 @@ public sealed class PriceHistoryTests
         var a = PriceAnalysis.ProductKey(ReceiptShops.Amazon, "Beispielmarke Kabel USB-C auf USB-C 2m geflochten, schnellladen, für viele Geräte, schwarz");
         var b = PriceAnalysis.ProductKey(ReceiptShops.Amazon, "Beispielmarke Kabel USB-C auf USB-C 2m geflochten, schnellladen, für viele Geräte, weiß");
         Assert.Equal(a, b);
-        Assert.True(a.Length <= PriceAnalysis.AmazonKeyLength);
+        Assert.True(a.Length <= ReceiptSourceProfiles.Default.For(ReceiptShops.Amazon)!.ProductKeyLength);
     }
 
     [Theory]
@@ -269,7 +269,7 @@ public sealed class PriceHistoryTests
     private static PriceHistoryService Service(TestDb t, string user)
     {
         var view = t.ForUser(user);
-        var receipts = new ReceiptService(view.Factory, t.System, view.Access, null!, new ReceiptStore(), null!, t.Notifier, new ChangeOrigin(), TimeProvider.System);
+        var receipts = new ReceiptService(view.Factory, t.System, view.Access, null!, new ReceiptStore(), null!, t.Notifier, new ChangeOrigin(), TimeProvider.System, TestRegistry.Connectors);
         return new PriceHistoryService(view.Factory, t.System, view.Access, receipts, new PriceHistoryCache(t.Notifier), t.Notifier, new ChangeOrigin(), TimeProvider.System);
     }
 

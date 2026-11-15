@@ -1,6 +1,8 @@
 using OpenBudget.Connectors.Amazon;
 using OpenBudget.Connectors.LidlPlus;
 
+using OpenBudget.Models;
+
 namespace OpenBudget.Connectors.Receipts;
 
 /// <summary>
@@ -40,8 +42,37 @@ public sealed record ReceiptSourceProfile
     /// </summary>
     public bool RequiresAccount { get; init; }
 
-    /// <summary>Whether payments may be negative (refunds, paid back as credits); otherwise only positive payments are matched.</summary>
+    /// <summary>
+    /// Whether payments may be negative (refunds, paid back as credits) and need a booking too; otherwise only positive
+    /// payments are matched and a negative one has no booking.
+    /// </summary>
     public bool SignedAmounts { get; init; }
+
+    /// <summary>
+    /// Whether each receipt carries the payment method it was paid with (of its login), mapped by the owner to the account
+    /// it is booked on; otherwise the source as a whole is mapped to accounts.
+    /// </summary>
+    public bool PerPaymentMethod { get; init; }
+
+    /// <summary>Payment methods (by their label) that are never booked on an account (points, gift cards).</summary>
+    public Func<string, bool> IsUnbookablePaymentMethod { get; init; } = _ => false;
+
+    /// <summary>
+    /// For shops whose orders may be paid in instalments: of one order's receipts on one login, the full-price entries of
+    /// its plans (they never reach an account; the instalments do). Null: the shop has no instalments.
+    /// </summary>
+    public Func<IReadOnlyList<ReceiptInvoice>, IEnumerable<ReceiptInvoice>>? InstalmentFullPrices { get; init; }
+
+    public bool HasInstalments => InstalmentFullPrices != null;
+
+    /// <summary>Whether an order's items are listed with each of its charges' receipts (one purchase per order and position).</summary>
+    public bool ItemsPerOrder { get; init; }
+
+    /// <summary>Product keys are cut to this many characters at a word (long, varying titles); null: not cut.</summary>
+    public int? ProductKeyLength { get; init; }
+
+    /// <summary>Whether the shop's receipts count as grocery shopping.</summary>
+    public bool Groceries { get; init; }
 
     /// <summary>A text of which a booking's purpose carrying it is preferred over other fitting bookings (null: none).</summary>
     public Func<ReceiptToMatch, string?> PreferredPurposeToken { get; init; } = _ => null;
@@ -82,8 +113,10 @@ public sealed class ReceiptSourceProfiles
         _byShop = profiles.ToDictionary(p => p.Shop, StringComparer.Ordinal);
         MaxDaysBefore = _byShop.Values.Select(p => p.DaysBefore).DefaultIfEmpty(0).Max();
         MaxDaysAfter = _byShop.Values.Select(p => p.MaxPendingDaysAfter).DefaultIfEmpty(0).Max();
+        InstalmentShops = _byShop.Values.Where(p => p.HasInstalments).Select(p => p.Shop).ToList();
+        GroceryShops = _byShop.Values.Where(p => p.Groceries).Select(p => p.Shop).ToHashSet(StringComparer.Ordinal);
         MailShops = _byShop.Values.Where(p => p.MailSubjectPrefix != null).Select(p => p.Shop).ToList();
-        MappedSources = _byShop.Values.Where(p => !p.RequiresAccount).Select(p => p.SourceKey).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        MappedSources = _byShop.Values.Where(p => !p.PerPaymentMethod).Select(p => p.SourceKey).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
     }
 
     public IEnumerable<ReceiptSourceProfile> All => _byShop.Values;
@@ -105,9 +138,18 @@ public sealed class ReceiptSourceProfiles
 
     /// <summary>
     /// The sources mapped to accounts as a whole; a shop whose receipts need the account of their payment method
-    /// (<see cref="ReceiptSourceProfile.RequiresAccount"/>) maps each payment method instead.
+    /// (<see cref="ReceiptSourceProfile.PerPaymentMethod"/>) maps each payment method instead.
     /// </summary>
     public IReadOnlyList<string> MappedSources { get; }
+
+    /// <summary>The shops whose orders may be paid in instalments.</summary>
+    public IReadOnlyList<string> InstalmentShops { get; }
+
+    /// <summary>The shops whose receipts count as grocery shopping.</summary>
+    public IReadOnlySet<string> GroceryShops { get; }
+
+    /// <summary>Whether the shop's receipts carry payment methods mapped one by one (see <see cref="ReceiptSourceProfile.PerPaymentMethod"/>).</summary>
+    public bool PerPaymentMethod(string shop) => For(shop)?.PerPaymentMethod == true;
 
     /// <summary>The shop's profile, null for a shop without one.</summary>
     public ReceiptSourceProfile? For(string shop) => _byShop.GetValueOrDefault(shop);

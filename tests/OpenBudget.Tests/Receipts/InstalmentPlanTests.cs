@@ -89,7 +89,7 @@ public sealed class InstalmentPlanTests
     private static ReceiptService Receipts(TestDb t, string user)
     {
         var view = t.ForUser(user);
-        return new ReceiptService(view.Factory, t.System, view.Access, null!, new ReceiptStore(), null!, t.Notifier, new ChangeOrigin(), TimeProvider.System);
+        return new ReceiptService(view.Factory, t.System, view.Access, null!, new ReceiptStore(), null!, t.Notifier, new ChangeOrigin(), TimeProvider.System, TestRegistry.Connectors);
     }
 
     private static async Task<int> LoginAsync(TestDb t, string owner, long? account)

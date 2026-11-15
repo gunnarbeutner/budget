@@ -63,6 +63,7 @@ public sealed class LidlPlusConnector : IBankConnector, IReceiptSource, IBackgro
     public static readonly ReceiptSourceProfile MatchProfile = new()
     {
         Shop = ReceiptShops.Lidl,
+        Groceries = true,
         DaysAfter = 16,
         PayeeWords = ["lidl", "s. payment solutions", "s.payment solutions", "s. digits", "s.digits"],
         DisplayName = (store, _, _) => store is { Length: > 0 } s ? (s.StartsWith("Lidl", StringComparison.OrdinalIgnoreCase) ? s : "Lidl " + s) : "Lidl",

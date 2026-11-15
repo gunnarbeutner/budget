@@ -28,7 +28,7 @@ public sealed record DatedReceiptLine(ReceiptLine Line, DateOnly Date, string Sh
 /// owner moved a line). A split the owner changed, and a booking they categorized by hand, keep what they have; the
 /// receipt only adds its lines. Running again changes nothing. Works on a system context.
 ///
-/// A receipt pairs with bookings of its owner and, for an Amazon payment method mapped to another user's account, with
+/// A receipt pairs with bookings of its owner and, for a payment method mapped to another user's account, with
 /// bookings on that account while the receipt's owner may edit them (see <see cref="AccessScope.CanEditTransactionsOf"/>);
 /// once that access is gone, the match is dropped on the next run. What the receipt writes to a booking (parts, item
 /// texts) belongs to the booking's owner and follows that owner's projects, receipt categories and item memory. A
@@ -147,11 +147,11 @@ public sealed class ReceiptStore
         var invoices = await db.ReceiptInvoices.Include(i => i.Items).Where(i => i.OwnerUserId == ownerUserId).ToListAsync(ct);
         if (invoices.Count == 0) return;
 
-        // Amazon charges are looked for on the account their payment method is mapped to (none: nothing to look for).
+        // Receipts with a payment method are looked for on the account it is mapped to (none: nothing to look for).
         var shared = await SharedAccountsAsync(db, ownerUserId, ct);
         var sharedList = shared.ToList();
-        var accounts = await AmazonAccountsAsync(db, ownerUserId, shared, invoices, ct);
-        // A mapped source (Lidl Plus, the mailbox) is looked for only on the accounts it is mapped to.
+        var accounts = await PaymentMethodAccountsAsync(db, ownerUserId, shared, invoices, ct);
+        // A source mapped as a whole is looked for only on the accounts it is mapped to.
         var sourceAccounts = await SourceAccountsAsync(db, ownerUserId, shared, ct);
         var sharedMapped = accounts.Values.Concat(sourceAccounts.Values.SelectMany(a => a)).Where(shared.Contains).Distinct().ToList();
         var dated = invoices.Where(i => (i.DeliveryDate ?? i.OrderDate) != null).ToList();
@@ -190,10 +190,10 @@ public sealed class ReceiptStore
             current.TryGetValue(id, out var row) && row.Cents == -paymentCents && (account == null || row.AccountId == account);
         var kept = new HashSet<long>();
         var lost = new List<long>();
-        // The full price of an Amazon order paid in instalments has no booking: its instalments have theirs.
-        var fullPrices = invoices.Where(i => i.Shop == ReceiptShops.Amazon && i.BankLoginId != null && i.OrderNumber != null)
-            .GroupBy(i => (i.BankLoginId, i.OrderNumber))
-            .SelectMany(g => Amazon.AmazonReceiptStore.InstalmentPlans(g.ToList()).Select(p => p.Full)).ToHashSet();
+        // The full price of an order paid in instalments has no booking: its instalments have theirs.
+        var fullPrices = invoices.Where(i => i.BankLoginId != null && i.OrderNumber != null && ReceiptSourceProfiles.Default.For(i.Shop)?.HasInstalments == true)
+            .GroupBy(i => (i.Shop, i.BankLoginId, i.OrderNumber))
+            .SelectMany(g => ReceiptSourceProfiles.Default.For(g.Key.Shop)!.InstalmentFullPrices!(g.ToList())).ToHashSet();
         foreach (var i in invoices)
         {
             if (i.State == ReceiptMatchState.Dismissed) continue;
@@ -279,21 +279,23 @@ public sealed class ReceiptStore
     }
 
     /// <summary>
-    /// For each Amazon receipt of the owner: the account its payment method is mapped to, one of the owner's or of
-    /// <paramref name="shared"/> (absent for points, gift cards and payment methods not mapped).
+    /// For each receipt of the owner with a payment method (<see cref="ReceiptSourceProfile.PerPaymentMethod"/>): the
+    /// account it is mapped to, one of the owner's or of <paramref name="shared"/> (absent for payment methods never booked
+    /// on an account and those not mapped).
     /// </summary>
-    private static async Task<Dictionary<long, long>> AmazonAccountsAsync(
+    private static async Task<Dictionary<long, long>> PaymentMethodAccountsAsync(
         BudgetDbContext db, string ownerUserId, HashSet<long> shared, IReadOnlyList<ReceiptInvoice> invoices, CancellationToken ct)
     {
         var result = new Dictionary<long, long>();
-        var amazon = invoices.Where(i => i.Shop == ReceiptShops.Amazon && i.BankLoginId != null && !Amazon.AmazonPages.IsPointsLabel(i.PaymentMethod ?? "")).ToList();
-        if (amazon.Count == 0) return result;
-        var loginIds = amazon.Select(i => i.BankLoginId!.Value).Distinct().ToList();
+        var withMethod = invoices.Where(i => i.BankLoginId != null && ReceiptSourceProfiles.Default.For(i.Shop) is { PerPaymentMethod: true } p
+            && !p.IsUnbookablePaymentMethod(i.PaymentMethod ?? "")).ToList();
+        if (withMethod.Count == 0) return result;
+        var loginIds = withMethod.Select(i => i.BankLoginId!.Value).Distinct().ToList();
         var mapping = (await db.BankLoginAccounts.AsNoTracking().Where(a => loginIds.Contains(a.BankLoginId) && a.EnrichAccountId != null).ToListAsync(ct))
             .ToDictionary(a => (a.BankLoginId, a.RemoteId), a => a.EnrichAccountId!.Value);
         var mapped = mapping.Values.Distinct().ToList();
         var owned = (await db.Accounts.AsNoTracking().Where(a => mapped.Contains(a.Id) && a.OwnerUserId == ownerUserId).Select(a => a.Id).ToListAsync(ct)).ToHashSet();
-        foreach (var i in amazon)
+        foreach (var i in withMethod)
             if (mapping.TryGetValue((i.BankLoginId!.Value, i.PaymentMethodId ?? ""), out var account) && (owned.Contains(account) || shared.Contains(account)))
                 result[i.Id] = account;
         return result;

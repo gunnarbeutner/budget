@@ -43,8 +43,9 @@ public static class ExpectedInstalments
             .GroupBy(a => (a.BankLoginId, a.RemoteId)).ToDictionary(g => g.Key, g => g.First().Account);
         if (mapping.Count == 0) return result;
         var logins = mapping.Keys.Select(k => (int?)k.BankLoginId).Distinct().ToList();
+        var shops = ReceiptSourceProfiles.Default.InstalmentShops;
         var fulls = (await db.ReceiptInvoices.AsNoTracking()
-                .Where(r => r.Shop == ReceiptShops.Amazon && r.State == ReceiptMatchState.Instalments && r.PaymentCents > 0 && r.OrderNumber != null && logins.Contains(r.BankLoginId))
+                .Where(r => shops.Contains(r.Shop) && r.State == ReceiptMatchState.Instalments && r.PaymentCents > 0 && r.OrderNumber != null && logins.Contains(r.BankLoginId))
                 .Select(r => new { r.Id, r.Shop, r.OrderNumber, r.BankLoginId, r.PaymentCents, r.State, r.TransactionId, r.PaymentMethodId })
                 .ToListAsync(ct))
             .Where(r => mapping.ContainsKey((r.BankLoginId!.Value, r.PaymentMethodId ?? ""))).ToList();

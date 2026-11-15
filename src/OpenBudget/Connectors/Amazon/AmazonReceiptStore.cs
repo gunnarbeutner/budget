@@ -49,6 +49,11 @@ public static class AmazonReceiptStore
         RequiresAccount = true,
         SignedAmounts = true,
         OrderUrl = new AmazonOptions().OrderUrl,
+        PerPaymentMethod = true,
+        IsUnbookablePaymentMethod = AmazonPages.IsPointsLabel,
+        InstalmentFullPrices = ofOrder => InstalmentPlans(ofOrder).Select(p => p.Full),
+        ItemsPerOrder = true,
+        ProductKeyLength = 50,
         DisplayName = (_, orderNumber, others) => ("Amazon " + string.Join(", ", ReceiptInvoice.OrderNumbersOf(orderNumber, others))).Trim(),
     };
 

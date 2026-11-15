@@ -246,7 +246,12 @@ public sealed class BankSyncRunner
                 try { matchReceipts = await FetchAsync(db, login, registration, connector, remoteAccounts, request, sink, context, errors, affected, ct); }
                 finally { await context.CloseBrowsersAsync(); }
                 if (matchReceipts) await MatchReceiptsAsync(db, login, sink, ct);
-                await AddReceiptPartnersAsync(db, login.OwnerUserId, affected, ct);
+                try { await AddReceiptPartnersAsync(db, login.OwnerUserId, affected, ct); }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // the data is stored; only other users' open pages miss the change
+                    _logger.LogError(ex, "Bank login {LoginId}: finding the receipts' other owners failed.", login.Id);
+                }
             }
             if (request.Statements && !(request.Background && !registration.Background.Statements))
                 await FetchStatementsAsync(db, login, connector, remoteAccounts, request, sink, context, errors, affected, ct);

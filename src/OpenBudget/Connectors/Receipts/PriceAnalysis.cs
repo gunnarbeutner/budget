@@ -118,8 +118,6 @@ public sealed record PriceSummary(DateOnly Start, DateOnly Today, IReadOnlyList<
 /// </summary>
 public static partial class PriceAnalysis
 {
-    /// <summary>Amazon titles are cut to this many characters (at a word) to form their key.</summary>
-    public const int AmazonKeyLength = 50;
 
     // A size: an optional multipack count ("6x"), an amount and a unit ("500g", "1,5 l", "0.33l").
     [GeneratedRegex(@"(?<![\w.,])(?:(?<n>\d{1,2})\s*[x×]\s*)?(?<v>\d+(?:[.,]\d+)?)\s*(?<u>kg|g|gr|ml|cl|l|ltr|liter)(?![a-z])", RegexOptions.ExplicitCapture | RegexOptions.CultureInvariant, 1000)]
@@ -134,8 +132,8 @@ public static partial class PriceAnalysis
 
     /// <summary>
     /// A product's key within its shop: the name folded (case, umlauts, diacritics), trailing pack sizes and counts
-    /// dropped, punctuation turned into single spaces; Amazon titles additionally cut to their first
-    /// <see cref="AmazonKeyLength"/> characters at a word boundary.
+    /// dropped, punctuation turned into single spaces; for shops with long titles cut to their first
+    /// <see cref="ReceiptSourceProfile.ProductKeyLength"/> characters at a word boundary.
     /// </summary>
     public static string ProductKey(string shop, string name)
     {
@@ -143,10 +141,10 @@ public static partial class PriceAnalysis
         var stripped = TrailingNoise().Replace(folded, "");
         if (stripped.Length >= 3) folded = stripped;
         var key = NonAlnum().Replace(folded, " ").Trim();
-        if (shop == ReceiptShops.Amazon && key.Length > AmazonKeyLength)
+        if (ReceiptSourceProfiles.Default.For(shop)?.ProductKeyLength is { } length && key.Length > length)
         {
-            var cut = key.LastIndexOf(' ', AmazonKeyLength, StringComparison.Ordinal);
-            key = key[..(cut > 20 ? cut : AmazonKeyLength)];
+            var cut = key.LastIndexOf(' ', length, StringComparison.Ordinal);
+            key = key[..(cut > 20 ? cut : length)];
         }
         return key;
     }
@@ -367,8 +365,8 @@ public static partial class PriceAnalysis
         return new IndexLine(shop, points, items.Count);
     }
 
-    /// <summary>The shops whose receipts count as grocery shopping: REWE (delivery and store) and Lidl, not Amazon.</summary>
-    public static readonly IReadOnlySet<string> GroceryShops = new HashSet<string>(StringComparer.Ordinal) { ReceiptShops.Rewe, ReceiptShops.ReweEbon, ReceiptShops.Lidl };
+    /// <summary>The shops whose receipts count as grocery shopping (see <see cref="ReceiptSourceProfile.Groceries"/>).</summary>
+    public static readonly IReadOnlySet<string> GroceryShops = ReceiptSourceProfiles.Default.GroceryShops;
 
     /// <summary>
     /// The average grocery spend per month: the payments of grocery shops' receipts (<see cref="GroceryShops"/>) from

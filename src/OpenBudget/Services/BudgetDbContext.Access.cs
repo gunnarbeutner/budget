@@ -74,7 +74,7 @@ public partial class BudgetDbContext
             ScopeUnrestricted || s.OwnerUserId == ScopeUserId
             || (s.AccountId.HasValue && (ScopeSharedAccountIds.Contains(s.AccountId.Value))));
         // Orders and charges of an order source are personal, like the login they came from.
-        // Receipts (mailbox, Lidl Plus, Amazon orders) are personal, like the item memory and the receipt settings.
+        // Receipts (mailbox, receipt and order sources) are personal, like the item memory and the receipt settings.
         modelBuilder.Entity<ReceiptInvoice>().HasQueryFilter(r => ScopeUnrestricted || r.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<ReceiptItem>().HasQueryFilter(i => ScopeUnrestricted || i.OwnerUserId == ScopeUserId);
         modelBuilder.Entity<ItemCategoryMemory>().HasQueryFilter(m => ScopeUnrestricted || m.OwnerUserId == ScopeUserId);
